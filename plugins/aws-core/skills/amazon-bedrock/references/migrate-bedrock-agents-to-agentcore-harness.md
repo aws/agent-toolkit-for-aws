@@ -83,6 +83,10 @@ Drive the CLI per the approved plan, following [bedrock-agents-to-agentcore-harn
 
 Completion criterion: `agentcore build` and both `agentcore deploy` runs succeed, and `agentcore status --json` shows the Harness and Gateway deployed. Deeper response parity should be tested before cutting over application traffic.
 
+### Phase 7 — Roll back or clean up when requested
+
+The source Bedrock Agent is untouched by this migration, so route callers back to it before removing a migrated deployment. For a dedicated migration project, use the target-specific `agentcore remove all --yes` then `agentcore deploy --yes --target <target>` flow in [deploy.md](bedrock-agents-to-agentcore-harness/deploy.md#clean-up-or-roll-back-a-dedicated-migration-project). Check for non-default Harness endpoints and other project targets first. After confirming removal, delete `./out/source-agent.json` unless it is retained in encrypted audit storage.
+
 ## Security considerations
 
 - **Least-privilege shim roles** — one action on one resource ARN, no wildcards; exact policies in [bedrock-agents-to-agentcore-harness/deploy.md](bedrock-agents-to-agentcore-harness/deploy.md).

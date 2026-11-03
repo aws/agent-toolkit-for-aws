@@ -1,5 +1,7 @@
 # AgentCore Payments
 
+For a CLI-managed project, use `agents-build/references/payments.md` to add payments to an agent being built, or `agents-pay` for an operator-approved spending session. Those skills own the current v1 setup and role-separation workflows. This reference provides background and should not override their session-approval or deployment steps.
+
 ## Overview
 
 Add AgentCore Payments to your agent — the managed service that enables microtransaction payments in AI agents to access paid APIs, MCP servers, and content via the x402 protocol.
@@ -199,10 +201,13 @@ Expected behavior:
 
 If the session has expired, create a fresh one:
 
+Only the human operator with the ManagementRole should run this command, after reviewing the user and cumulative spend cap. The agent Runtime must not hold `CreatePaymentSession`. For an interactive approval gate, use `agents-pay/scripts/agents_pay_admin.py new-session` instead.
+
 ```bash
 export PAYMENT_SESSION_ID=$(aws bedrock-agentcore create-payment-session \
   --payment-manager-arn "$PAYMENT_MANAGER_ARN" \
   --user-id "$PAYMENT_USER_ID" \
+  --limits '{"maxSpendAmount":{"value":"5.00","currency":"USD"}}' \
   --expiry-time-in-minutes 60 \
   --region "$AWS_REGION" \
   --query 'paymentSession.paymentSessionId' --output text)

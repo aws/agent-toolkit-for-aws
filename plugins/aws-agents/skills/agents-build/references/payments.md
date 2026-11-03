@@ -18,7 +18,7 @@ Choose the Runtime framework by reading its code and `runtimes[]` entry. The CLI
 
 ### Step 1: Select provider and authenticate the operator
 
-For Coinbase, Quick Create is the smallest v1 path. The human completes any required Marketplace subscription and Coinbase authorization. For manual Coinbase or Stripe Privy, the human uses `agentcore add credentials payment` with secret values read from files or stdin. The v1 CLI rejects inline secrets and the v0 bare-command wizard no longer applies. Keep provider credentials outside the agent conversation. See the `agents-pay` setup reference for the manual provider flags and IAM role separation.
+For Coinbase, Quick Create is the smallest v1 path. **Before deploy**, the human must activate the AWS Marketplace subscription to **Coinbase Wallets for AgentCore Payments** in the deployment account. This applies to Quick Create and manual Coinbase connectors; without it, `CreatePaymentConnector` fails and the stack rolls back. The human then completes Coinbase authorization. For manual Coinbase or Stripe Privy, the human uses `agentcore add credentials payment` with secret values read from files or stdin. The v1 CLI rejects inline secrets and the v0 bare-command wizard no longer applies. Keep provider credentials outside the agent conversation. See the `agents-pay` setup reference for the manual provider flags and IAM role separation.
 
 ### Step 2: Add resources
 
@@ -55,7 +55,6 @@ If the project uses Strands or LangGraph, use the framework's native payments in
 ```python
 import os
 from strands import Agent
-from strands_tools import http_request
 from bedrock_agentcore.payments.integrations.config import AgentCorePaymentsPluginConfig
 from bedrock_agentcore.payments.integrations.strands.plugin import AgentCorePaymentsPlugin
 
@@ -69,12 +68,12 @@ config = AgentCorePaymentsPluginConfig(
 plugin = AgentCorePaymentsPlugin(config=config)
 agent = Agent(
     system_prompt="You are a helpful assistant that can access paid APIs.",
-    tools=[http_request],
+    tools=[],
     plugins=[plugin],
 )
 ```
 
-The plugin intercepts 402 responses from ANY tool, signs payment, and retries automatically. No special tool needed — the agent just uses `http_request` normally.
+The plugin registers `http_request` itself (`provide_http_request=True` by default), intercepts 402 responses, signs payment, and retries. The v1 Strands Runtime template does not install `strands-agents-tools`, so do not import `http_request` from that package unless you add it as a project dependency.
 
 **LangGraph:**
 
@@ -258,6 +257,7 @@ python /absolute/path/to/agents-build/scripts/setup_payment_user.py \
 ```
 
 The SDK script prints `PAYMENT_SESSION_ID` and the same instrument ID. With LangGraph `auto_session=True`, skip this command; the middleware creates the session on the first 402.
+Session creation requires the human operator at an interactive terminal to type `approve` after reviewing the user, budget, and expiry. The script refuses non-interactive invocation; an agent must not run it through its shell.
 
 Set the tool's config from the `export` lines the Step 6 and Step 8 script runs printed (`PAYMENT_MANAGER_ARN`, `PAYMENT_INSTRUMENT_ID`, `PAYMENT_SESSION_ID`, `PAYMENT_USER_ID`, `AWS_REGION`):
 
@@ -285,7 +285,17 @@ Run the agent and prompt it to fetch a paid endpoint:
 Fetch https://sandbox.node4all.com/v1/x402-test and tell me what you find.
 ```
 
-Run it however your agent runs — directly in your framework, or `agentcore dev` for a local server / `agentcore invoke` for the deployed runtime (set the same `PAYMENT_*` env vars on the runtime). A successful run shows `x402_fetch` hitting `402`, settling payment, and the retry returning `200`.
+For a single-user test of a deployed v1 Runtime, put the values your code reads in that Runtime's `envVars` array in `agentcore/agentcore.json`, then deploy the selected target. Each entry has `name` and `value`:
+
+```json
+"envVars": [
+  {"name": "PAYMENT_INSTRUMENT_ID", "value": "<instrument-id>"},
+  {"name": "PAYMENT_SESSION_ID", "value": "<approved-session-id>"},
+  {"name": "PAYMENT_USER_ID", "value": "<user-id>"}
+]
+```
+
+For a multi-user product, resolve these per-user values from your application flow instead of pinning one user's IDs in shared Runtime configuration. The CLI already injects `AGENTCORE_PAYMENT_<MANAGER_NAME>_MANAGER_ARN`, `AGENTCORE_PAYMENT_<MANAGER_NAME>_PROCESS_PAYMENT_ROLE_ARN`, and `AGENTCORE_PAYMENT_<MANAGER_NAME>_AUTO_PAYMENT` (plus `AGENTCORE_PAYMENT_<MANAGER_NAME>_CONNECTOR_ID` when present). Read the manager ARN from that injected variable in agent code, or set the `PAYMENT_MANAGER_ARN` value read by the examples in `envVars` using `agentcore status --target <target> --json`. The CLI also grants payment IAM permissions; inspect the deployed Runtime role before treating it as a separated ProcessPaymentRole, because v1.0.1 can grant `CreatePaymentSession`. `export` in the operator's shell affects local runs only; it does not configure the deployed Runtime. Run the agent directly, through `agentcore dev`, or through `agentcore invoke`; a successful run shows a 402 challenge followed by settlement and a 200 retry.
 
 ## The `upto` scheme and Permit2 allowance
 

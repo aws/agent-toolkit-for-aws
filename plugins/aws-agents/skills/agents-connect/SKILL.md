@@ -57,7 +57,14 @@ agentcore add gateway --name MyGateway --authorizer-type AWS_IAM
 
 For JWT, pass `--authorizer-type CUSTOM_JWT --authorizer-configuration file://authorizer.json`; use the project's `authorizerConfiguration` shape in the v1 schema. The gateway authorizer controls who can call the Gateway. It does not authenticate the Gateway to a target.
 
-Enable `--enable-semantic-search` if the Gateway needs tool search. This must be configured on the Gateway; merely calling `x_amz_bedrock_agentcore_search` does not enable it.
+To enable tool search, create the Gateway with both `--protocol-type MCP` and `--enable-semantic-search`:
+
+```bash
+agentcore add gateway --name MyGateway --authorizer-type AWS_IAM \
+  --protocol-type MCP --enable-semantic-search
+```
+
+The CLI rejects `--enable-semantic-search` without `--protocol-type MCP`. Merely calling `x_amz_bedrock_agentcore_search` does not enable search.
 
 ### 4. Configure outbound authentication
 

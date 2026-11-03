@@ -20,6 +20,7 @@ import json
 import os
 import subprocess
 import sys
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 def _from_deployed_state(target="default", manager_arn=None):
@@ -104,6 +105,18 @@ def main():
             ap.error("--session-only requires --instrument-id and --budget")
     elif not args.email:
         ap.error("--email is required when creating an instrument")
+    if args.budget:
+        try:
+            budget = Decimal(args.budget)
+        except InvalidOperation:
+            ap.error("--budget must be a positive USD amount")
+        if not budget.is_finite() or budget <= 0:
+            ap.error("--budget must be a positive USD amount")
+        if not sys.stdin.isatty():
+            sys.exit("Session creation requires a human typing 'approve' at an interactive terminal.")
+        print(f"Payment session: user={args.user_id}, budget={args.budget} USD, expiry={args.expiry_minutes} minutes")
+        if input("Type 'approve' to continue: ").strip() != "approve":
+            sys.exit("Payment session creation cancelled.")
 
     manager_arn, connector_id = args.manager_arn, args.connector_id
     if not manager_arn or not connector_id:

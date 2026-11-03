@@ -23,7 +23,7 @@ cd PaymentsProject
 
 ## 1. Choose the connector
 
-For Coinbase, Quick Create lets the service provision provider credentials. Complete any required AWS Marketplace subscription and Coinbase authorization outside the agent conversation. For manually managed Coinbase or Stripe Privy credentials, obtain them from the provider and store each secret in a local file kept outside git. The v1 CLI accepts secret flags only as `file://<path>` or `-` for stdin; it rejects inline secrets.
+For Coinbase, Quick Create lets the service provision provider credentials. **Before deploying** either a Quick Create or manual Coinbase connector, the human must activate the **Coinbase Wallets for AgentCore Payments** AWS Marketplace subscription in the target AWS account. Complete Coinbase authorization after deploy, outside the agent conversation. For manually managed Coinbase or Stripe Privy credentials, obtain them from the provider and store each secret in a local file kept outside git. The v1 CLI accepts secret flags only as `file://<path>` or `-` for stdin; it rejects inline secrets.
 
 ## 2. Add the payment manager
 
@@ -70,6 +70,15 @@ agentcore status --target <target> --json
 Run `agentcore build` before deploying a Quick Create connector. For a manual connector referencing a new payment credential, the first build can fail because that credential has no deployed ARN; deploy provisions it before building the stack, then `agentcore build` can run successfully.
 
 For a new project with no targets, run `agentcore deploy --region <region>` to create `default`, then use `--target default`. For an existing target, use its account and region; `--region` does not change them. For Quick Create, complete the Coinbase authorization URL reported at deploy and confirm the connector is ready. The v1 `agentcore/.cli/deployed-state.json` records the stack binding but does not store payment manager and connector IDs. Read them from `agentcore status --target <target> --json`.
+
+If deploy fails with `NoStack` or a rollback status, inspect the CloudFormation stack events for the actual resource failure. A missing Coinbase subscription appears there as `SubscriptionRequiredException`:
+
+```bash
+aws cloudformation describe-stack-events \
+  --stack-name AgentCore-<project>-<target> \
+  --query "StackEvents[?ResourceStatus=='CREATE_FAILED'].[LogicalResourceId,ResourceStatusReason]" \
+  --output text
+```
 
 Before running the human admin script below, record the project root and selected target, then switch to the installed `agents-pay` skill directory, where `scripts/agents_pay_admin.py` lives:
 

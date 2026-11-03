@@ -5,6 +5,7 @@
 - What It Is
 - Harness vs. Runtime
 - Deployment Workflow
+- Clean up a Harness project
 - Configuration Surface
 - Per-Invocation Overrides
 - Versions and Endpoints
@@ -89,6 +90,29 @@ agentcore invoke --harness ResearchHarness --prompt "Hello, what can you do?"
 
 The editable Harness files are `app/ResearchHarness/harness.yaml` and `system-prompt.md`. The first deploy creates the default target in `agentcore/aws-targets.json` from the effective account and region. `agentcore dev` can run a Runtime locally and can deploy or use a Harness in AWS; it does not run a Harness locally.
 
+The `agentcore add harness` JSON flags use project-input shapes, which differ from the API and `harness.yaml` shapes below:
+
+| CLI flag | v1 JSON example |
+|---|---|
+| `--model` | `'{"provider":"bedrock","modelId":"<model-id>"}'` |
+| `--memory` | `'{"mode":"managed","strategies":["SEMANTIC","SUMMARIZATION"]}'`, `'{"mode":"existing","arn":"<memory-arn>"}'`, or `'{"mode":"disabled"}'` |
+| `--skills` | `'[{"s3Uri":"s3://bucket/key/"},{"path":"./skills/local"}]'` |
+| `--tools` | `'[{"type":"agentcore_code_interpreter","name":"code_interpreter","config":{"agentCoreCodeInterpreter":{}}}]'` |
+| `--authorizer-configuration` | `'{"customJwtAuthorizer":{"discoveryUrl":"https://issuer/.well-known/openid-configuration"}}'` with `--authorizer-type CUSTOM_JWT` |
+
+Every v1 project tool needs `name`, including built-in tools. Use the API/YAML member names only when editing `harness.yaml` or calling the service API directly.
+
+### Clean up a Harness project
+
+For a project dedicated to this Harness, inspect `agentcore status --target <target> --json` and the target's account and region in `agentcore/aws-targets.json`. Delete any non-default Harness endpoints first. After confirming the teardown, remove its deployed resources:
+
+```bash
+agentcore remove all --yes
+agentcore deploy --yes --target <target>
+```
+
+`remove all` empties the shared project configuration for every target and removes project credential keys from `agentcore/.env.local`. Back up those files and use the `agents-deploy` target-specific teardown procedure for a project with other targets or resources. For a shared project where only this Harness should go, use `agentcore remove harness --name <HarnessName>` and deploy the selected target instead.
+
 **AWS CLI / SDK:**
 
 ```bash
@@ -153,9 +177,9 @@ for event in response["stream"]:
 
 Refer to the latest [CreateHarness API reference](https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/API_CreateHarness.html) for the authoritative field list.
 
-### Field shapes
+### CreateHarness API and `harness.yaml` field shapes
 
-The optional fields are typed shapes, not loose key/values — use the exact member names below. `model`, `memory`, and each `skills` entry are **unions** (set exactly one variant); `tools` and `systemPrompt` are **lists**.
+The shapes below describe the CreateHarness API and the CLI-generated `harness.yaml`; they are **not** JSON for `agentcore add harness` flags. The optional fields are typed shapes, not loose key/values — use the exact member names below. `model`, `memory`, and each `skills` entry are **unions** (set exactly one variant); `tools` and `systemPrompt` are **lists**. In a v1 project, every tool also requires a `name`.
 
 ```jsonc
 // model: HarnessModelConfiguration union — variant key is bedrockModelConfig
@@ -177,10 +201,10 @@ The optional fields are typed shapes, not loose key/values — use the exact mem
 // systemPrompt: list of content blocks (NOT a bare string)
 "systemPrompt": [ { "text": "You are a helpful assistant." } ]
 
-// tools: list of { type, name?, config }; type is a wire enum, config holds the matching variant
+// tools: list of { type, name, config }; type is a wire enum, config holds the matching variant
 "tools": [
-  { "type": "agentcore_code_interpreter", "config": { "agentCoreCodeInterpreter": {} } },
-  { "type": "agentcore_gateway", "config": { "agentCoreGateway": { "gatewayArn": "<gateway-arn>" } } },
+  { "type": "agentcore_code_interpreter", "name": "code_interpreter", "config": { "agentCoreCodeInterpreter": {} } },
+  { "type": "agentcore_gateway", "name": "my_gateway", "config": { "agentCoreGateway": { "gatewayArn": "<gateway-arn>" } } },
   { "type": "remote_mcp", "name": "my_mcp", "config": { "remoteMcp": { "url": "https://mcp.example.com/mcp" } } }
 ]
 

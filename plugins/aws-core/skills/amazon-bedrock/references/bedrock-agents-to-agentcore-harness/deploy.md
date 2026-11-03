@@ -67,6 +67,14 @@ agentcore add gateway-target --gateway <GatewayName> --target-configuration file
 
 Use a scoped `bedrock:Retrieve` policy on the source Knowledge Base ARN for a KB shim. (IAM has no `bedrock-agent-runtime` service prefix; that is only the API client name.) For a Knowledge Base with default retrieval behavior that the managed connector supports, use `agentcore add gateway-connector --gateway <GatewayName> --name <TargetName> --connector bedrock-knowledge-bases --knowledge-base <KB_ID>` instead. `lambdaFunctionArn` targets point at an existing Lambda; use `lambda` with `compute` for a shim the project builds. Do not put secret values or unsupported `environment` keys into target configuration. Run `agentcore build` to catch schema errors.
 
+## Shim security and capacity
+
+- Give each action-group shim role only `lambda:InvokeFunction` on the exact source Lambda ARN. A KB shim needs `bedrock-agent-runtime:Retrieve` on the exact source Knowledge Base ARN; do not use resource `*`.
+- Give the shim role `logs:CreateLogGroup`, `logs:CreateLogStream`, and `logs:PutLogEvents` scoped to its `/aws/lambda/<shim-function>` log group. Encrypt that log group with a customer-managed KMS key and set an appropriate retention period. Avoid logging full tool inputs, responses, or retrieval passages.
+- Set reserved concurrency on each shim Lambda to an approved bound so migration traffic cannot consume unlimited account concurrency. Alarm on its `Errors` and `Throttles` metrics.
+- Enable CloudTrail **Lambda data events** for `lambda:Invoke` on the shim and source functions when invocation audit is required; ordinary management-event logging does not capture those calls.
+- If the source Lambda is in another account or its resource policy denies the shim, give the source owner the proposed `aws lambda add-permission` change for review. The shim's own IAM policy does not modify the source Lambda policy. Do not apply a source-side permission change as part of the migration.
+
 ## First deploy and Gateway ARN
 
 ```bash
@@ -101,6 +109,18 @@ agentcore status --json
 ```
 
 Confirm the second deploy succeeds and the Harness and Gateway are deployed. An optional parity check uses `agentcore invoke --harness <HarnessName> --prompt "Hello"`; compare the output with the source agent before traffic cutover.
+
+## Clean up or roll back a dedicated migration project
+
+If the migration should be reversed, the source Bedrock Agent remains available because this workflow does not change or delete it. Return callers to the source before removing the new Harness stack. In a project dedicated to this migration, inspect the selected target and deployed resources, then run:
+
+```bash
+agentcore status --target <target> --json
+agentcore remove all --yes
+agentcore deploy --yes --target <target>
+```
+
+`remove all` empties the project's resource configuration for every target, so follow the `agents-deploy` teardown procedure when the project has other targets or resources; back up `agentcore/agentcore.json` and `agentcore/.env.local` first. Delete any non-default Harness endpoints before removing the Harness. After verifying the stack is gone, delete the sensitive `./out/source-agent.json` discovery manifest unless it must be retained in encrypted audit storage.
 
 ## Source permissions and verification
 

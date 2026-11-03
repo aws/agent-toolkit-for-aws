@@ -130,6 +130,8 @@ agentcore invoke --harness <HarnessName> --prompt "..."
 agentcore invoke --runtime <RuntimeName> --local --payload '{"prompt": "..."}'
 ```
 
+For streaming agents, inspect the response body as well as the command status. An application failure can arrive as an SSE event such as `data: {"error": "...", "error_type": "AccessDeniedException"}` while the HTTP status is 200, the CLI prints `complete=true`, and the exit code is 0. Treat an `error` event as a failed reproduction in scripts and smoke tests.
+
 **Important:** Traces take **30–90 seconds** after an invocation to become readable by `agentcore traces runtime list/get` and `agentcore eval ondemand evaluate`; the same ingestion step unlocks both. The session ID can show `-` at first. Poll `traces runtime list` instead of sleeping. Online-eval results also wait until the session has been idle for the config's session timeout (default 5 min with `add online-eval`, 15 min with `eval online-eval create`), so first results can take 10–15+ minutes.
 
 If `agentcore status` fails with `No deployment targets are configured for project '<name>'`, the project has never been deployed (`agentcore/aws-targets.json` is empty) — there are no logs or traces to read yet; reproduce locally with `agentcore dev` or deploy first (→ `agents-deploy`).
@@ -502,7 +504,7 @@ If still no traces after ~2 minutes:
 
 This is the most common observability issue, especially for Container/Docker builds.
 
-AgentCore doesn't capture raw stdout. It uses OpenTelemetry to ship logs to CloudWatch. Three things must be true:
+AgentCore Runtime captures process stdout and stderr in its CloudWatch `runtime-logs` stream. OpenTelemetry carries structured application logs and traces. Check both paths when debugging missing output:
 
 **1. Your entrypoint must be wrapped with `opentelemetry-instrument`.**
 
@@ -530,19 +532,19 @@ xray:PutTraceSegments → scoped to *
 
 The CDK grants these to the execution role it creates, for CodeZip and Container builds alike. Only an imported role (`executionRoleArn`) needs them added by hand.
 
-**3. Use Python's `logging` module, not `print()`.**
+**3. Use Python's `logging` module for structured application logs.**
 
-OTEL hooks into `logging` automatically — no custom handlers needed. `print()` statements won't appear in CloudWatch.
+OTEL hooks into `logging` automatically — no custom handlers needed. `print()` writes to stdout, which appears in the Runtime's `runtime-logs` stream, but does not create a structured OTEL log record.
 
 ```python
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# ✅ This appears in CloudWatch
+# Structured OTEL application log
 logger.info("Processing request")
 
-# ❌ This does NOT appear in CloudWatch
+# Process stdout in the runtime-logs stream
 print("Processing request")
 ```
 

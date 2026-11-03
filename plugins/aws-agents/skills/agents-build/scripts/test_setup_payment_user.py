@@ -92,6 +92,8 @@ def test_session_only_reuses_instrument_and_creates_bounded_session(monkeypatch,
     agentcore_module.payments = payments_module
     monkeypatch.setitem(sys.modules, "bedrock_agentcore", agentcore_module)
     monkeypatch.setitem(sys.modules, "bedrock_agentcore.payments", payments_module)
+    monkeypatch.setattr(module.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _: "approve")
     monkeypatch.setattr(sys, "argv", [
         "setup_payment_user.py",
         "--user-id", "alice",
@@ -116,3 +118,14 @@ def test_session_only_reuses_instrument_and_creates_bounded_session(monkeypatch,
     output = capsys.readouterr().out
     assert "Instrument ID : instrument-1" in output
     assert "Session ID    : session-1" in output
+
+
+def test_session_creation_refuses_noninteractive_terminal(monkeypatch):
+    monkeypatch.setattr(sys, "argv", [
+        "setup_payment_user.py", "--user-id", "alice", "--session-only",
+        "--instrument-id", "instrument-1", "--budget", "5",
+    ])
+    monkeypatch.setattr(module.sys.stdin, "isatty", lambda: False)
+
+    with pytest.raises(SystemExit, match="interactive terminal"):
+        module.main()

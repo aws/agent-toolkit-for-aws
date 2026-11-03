@@ -96,6 +96,17 @@ def test_resolve_manager_arn_precedence(tmp_path, monkeypatch):
     assert module.resolve_manager_arn(None, empty_config) is None
 
 
+def test_config_rejects_manager_from_another_target(tmp_path, monkeypatch, capsys):
+    config = _write_config(
+        tmp_path, "manager.json",
+        {"target": "default", "payment_manager_arn": MANAGER_ARN},
+    )
+    monkeypatch.setenv("AGENTCORE_TARGET", "prod")
+
+    assert not module.config_matches_target(config)
+    assert "belongs to target 'default'" in capsys.readouterr().err
+
+
 def test_v1_discovery_uses_project_status_instead_of_stale_state(tmp_path):
     project = _write_v1_project(tmp_path)
     state_dir = project / "agentcore" / ".cli"

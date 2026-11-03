@@ -230,6 +230,8 @@ agentcore create --name <ProjectName> --template <Template>
 
 There are no `--framework`, `--model-provider`, `--build`, `--memory`, `--protocol`, or `--network-mode` flags on `create` in v1. The template decides the framework, protocol, and build; memory, gateways, and other resources are added with `agentcore add ...`; network mode is set per Runtime (`agentcore add runtime --name <Name> --language python --network-mode VPC --network-config '<JSON>'`) or per Harness (`--network-mode` / `--network-config` on `agentcore add harness`).
 
+If `create` fails during dependency installation, its scaffolded directory remains. Do not retry creation over that directory; follow the `E401` and partial-scaffold recovery in [`agents-debug/references/doctor.md`](../agents-debug/references/doctor.md#check-2-nodejs-version).
+
 **Guidance on choices:**
 
 - **Protocol:** stay on HTTP templates unless the developer specifically needs MCP tool serving (`mcp-python-fastmcp`), agent-to-agent (`a2a-python-strands`), or an AG-UI frontend (`agui-python-strands`)
