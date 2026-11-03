@@ -248,7 +248,7 @@ The trace shows the model's reasoning steps, tool calls made, and the final resp
 - Is the system prompt providing the right context?
 
 **Step 2:** Check if memory is involved:
-If the agent should be using memory context but isn't, see the "Symptom: Memory not persisting" section later in this skill, or load [`references/doctor.md`](references/doctor.md) if this is an environment issue.
+If the agent should be using memory context but isn't, see the "Symptom: Memory not working" section later in this skill, or load [`references/doctor.md`](references/doctor.md) if this is an environment issue.
 
 **Step 3:** Common causes:
 
@@ -773,8 +773,8 @@ Once you've identified the root cause, hand off to the skill that owns the fix:
 | Multi-agent delegation not working | `agents-build` | Load [`references/multi-agent.md`](../agents-build/references/multi-agent.md) |
 | Custom request headers not reaching agent code | `agents-build` | Load [`references/request-headers.md`](../agents-build/references/request-headers.md) |
 | Cross-account invocation from an app in another account | `agents-build` | Load [`references/integrate.md`](../agents-build/references/integrate.md) (cross-account section) |
-| Gateway auth misconfigured (401, wrong auth type) | `agents-connect` | Gateway auth matrix |
-| Gateway target type question (Lambda vs OpenAPI vs MCP vs API Gateway) | `agents-connect` | "What Gateway is and isn't" section |
+| Gateway auth misconfigured (401, wrong auth type) | `agents-connect` | Steps 3, "Create an authenticated Gateway", and 4, "Configure outbound authentication" |
+| Gateway target type question (Lambda vs OpenAPI vs MCP vs API Gateway) | `agents-connect` | Step 2, "Choose a target" |
 | Policy denying unexpectedly (Cedar, access denied on tool) | `agents-connect` | Load [`references/policy.md`](../agents-connect/references/policy.md) |
 | Observability not set up (no logs, no traces appearing) | `agents-optimize` | Load [`references/observability.md`](../agents-optimize/references/observability.md) |
 | Cold start / initialization too slow | `agents-harden` | Initialization time section |
