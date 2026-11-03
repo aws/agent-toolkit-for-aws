@@ -14,7 +14,10 @@ def normalized(text: str) -> str:
 
 
 def test_gcp_advertises_live_and_usage_discovery_before_terraform_scan() -> None:
+    skill = read("gcp-to-aws/SKILL.md")
     discover = read("gcp-to-aws/references/phases/discover/discover.md")
+
+    assert "Terraform is optional" in skill.split("---", 2)[1]
 
     orientation = discover.index("**Before you send or upload files:**")
     terraform_scan = discover.index("**1a. Check for Terraform files:**")
