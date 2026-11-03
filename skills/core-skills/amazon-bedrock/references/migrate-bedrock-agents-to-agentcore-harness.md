@@ -47,7 +47,7 @@ Snapshot the agent into one manifest (`./out/source-agent.json`) — via the bun
 
 Read the manifest and present a **concise, human-readable inventory** — a scannable list or small table (model; action groups by name + type; KBs + type; guardrail; memory; collaboration), not a prose paragraph.
 
-Also capture the source's **security posture** so the migration can preserve it (see [bedrock-agents-to-agentcore-harness/deploy.md](bedrock-agents-to-agentcore-harness/deploy.md)): its **inbound invocation posture** (which principals hold `bedrock-agent-runtime:InvokeAgent`, plus any resource-based policy on the agent) and its `idleSessionTTLInSeconds`. These set the bar Phase 6 must match, not loosen.
+Also capture the source's **security posture** so the migration can preserve it (see [bedrock-agents-to-agentcore-harness/deploy.md](bedrock-agents-to-agentcore-harness/deploy.md)): its **inbound invocation posture** (which principals hold `bedrock:InvokeAgent` on the agent alias ARN, plus any resource-based policy on the agent) and its `idleSessionTTLInSeconds`. These set the bar Phase 6 must match, not loosen.
 
 Completion criterion: manifest written and inventory presented.
 

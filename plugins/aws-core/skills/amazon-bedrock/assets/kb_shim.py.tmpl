@@ -5,8 +5,8 @@ WHY: the native Gateway KB connector only takes a MANAGED Bedrock KB and a fixed
 retrieval contract. For VECTOR / KENDRA / SQL KBs, or to preserve a managed KB's
 non-default retrieval config (reranker, metadata filter, hybrid override, top-k),
 expose retrieval as this Lambda: it presents one MCP tool, calls
-`bedrock-agent-runtime:Retrieve` against the source KB, and returns MCP-shaped
-passages.
+the `bedrock-agent-runtime` `Retrieve` API (IAM action `bedrock:Retrieve`)
+against the source KB, and returns MCP-shaped passages.
 
 Gateway invokes a Lambda target with the tool arguments flat in `event` and the
 tool name in context.client_context.custom['bedrockAgentCoreToolName']
