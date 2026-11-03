@@ -80,7 +80,7 @@ export AWS_REGION=<target-region>
 cd /absolute/path/to/agents-pay
 ```
 
-The runtime reads only `~<os-user>/.agents-pay/config.json` of the OS account it runs as; it ignores `--path` and `AGENTS_PAY_CONFIG`. Use one OS account (or an isolated runtime) per deployment target, or re-run `init-config --force` when switching targets. The script uses `AGENTCORE_PROJECT_DIR` and `AGENTCORE_TARGET` for status discovery; if discovery is unavailable or the target has multiple managers or connectors, pass the intended `--manager-arn` and `--connector-id` explicitly. Keep these two identifiers from the same manager.
+The runtime reads only `~<os-user>/.agents-pay/config.json` of the OS account it runs as; it ignores `--path` and `AGENTS_PAY_CONFIG`. Use one OS account (or an isolated runtime) per deployment target, or move the existing config aside and run `init-config` again when switching targets (`--force` refuses a config written for another target). The script uses `AGENTCORE_PROJECT_DIR` and `AGENTCORE_TARGET` for status discovery; if discovery is unavailable or the target has multiple managers or connectors, pass the intended `--manager-arn` and `--connector-id` explicitly. Keep these two identifiers from the same manager.
 
 ## 5. IAM: the four-role model
 

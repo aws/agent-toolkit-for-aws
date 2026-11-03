@@ -273,8 +273,9 @@ cd /absolute/path/to/agents-pay
 
 The runtime reads only `~<os-user>/.agents-pay/config.json` of the OS account it
 runs as; it ignores `--path` and `AGENTS_PAY_CONFIG`. Use one OS account (or an
-isolated runtime) per target, or re-run `init-config --force` when switching
-targets. The script is in the skill directory, not in the AgentCore project.
+isolated runtime) per target. To switch targets, move the existing config aside
+and run `init-config` again; `--force` refuses a config written for another
+target. The script is in the skill directory, not in the AgentCore project.
 
 ### Step 2: Write the payment policy — human runs this
 
