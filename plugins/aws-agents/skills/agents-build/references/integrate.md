@@ -328,6 +328,7 @@ When it's the wrong tool:
 **IAM permission required:** `bedrock-agentcore:InvokeAgentRuntimeCommand` on the runtime ARN. This is a **separate** action from `InvokeAgentRuntime` — scope it explicitly to the callers who need it.
 
 ```python
+import sys
 import boto3
 
 client = boto3.client("bedrock-agentcore", region_name="<REGION>")
@@ -336,13 +337,21 @@ response = client.invoke_agent_runtime_command(
     agentRuntimeArn="<AGENT_RUNTIME_ARN>",
     qualifier="DEFAULT",
     runtimeSessionId="550e8400-e29b-41d4-a716-446655440000",   # must be an existing session
-    command="ls -la /tmp && cat /tmp/status.json",
+    body={"command": "ls -la /tmp && cat /tmp/status.json", "timeout": 60},
 )
 
-# Output streams back over HTTP/2 on response["response"]
-for chunk in response["response"].iter_chunks():
-    print(chunk.decode(), end="", flush=True)
+# Output streams back as events on response["stream"]
+for event in response["stream"]:
+    chunk = event.get("chunk", {})
+    if "contentDelta" in chunk:
+        delta = chunk["contentDelta"]
+        print(delta.get("stdout", ""), end="", flush=True)
+        print(delta.get("stderr", ""), end="", file=sys.stderr, flush=True)
+    elif "contentStop" in chunk:
+        print(f"\nexit code: {chunk['contentStop'].get('exitCode')}")
 ```
+
+For a one-off command or an interactive shell from your terminal, the CLI wraps the same API: `agentcore runtime exec --id <runtime-id> --session-id <session-id> --command "ls -la /tmp"` and `agentcore runtime shell --id <runtime-id> --session-id <session-id>`. The Runtime ID is the part of the Runtime ARN after `runtime/`.
 
 **Session must exist.** `InvokeAgentRuntimeCommand` attaches to a running session; it won't create one. If the session has expired or never existed, the call fails. Invoke the agent first (to start the session), then use the session ID for subsequent command calls.
 
