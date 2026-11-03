@@ -313,6 +313,29 @@ Project '…' declares no resources to deploy, so deploying to target '…' woul
 
 Fix: if the teardown is intended, re-run with `--yes`. Otherwise restore the resources (e.g. `git checkout agentcore/agentcore.json`).
 
+**Stack rolled back (`NoStack`):**
+
+```
+Error: ❌  AgentCore-<project>-<target> failed: NoStack: CloudFormationStack object does not hold a stack
+```
+
+The CLI hides the failing resource. Read it from the stack events:
+
+```bash
+aws cloudformation describe-stack-events --stack-name AgentCore-<project>-<target> \
+  --query 'StackEvents[?contains(ResourceStatus,`FAILED`)].[LogicalResourceId,ResourceStatusReason]' --output text
+```
+
+Fix the cause it names, then run `agentcore deploy` again (with the same `--target`); the deploy replaces the rolled-back stack.
+
+**Runtime endpoint not found on a new target:**
+
+```
+ApplicationRuntime<Name>RuntimeEndpoint<endpoint>…  Resource handler returned message: "Agent with agentId: <project>_<target>_<name>-… not found (Service: BedrockAgentCoreControl, Status Code: 404 ...)"
+```
+
+The endpoint points at a Runtime version this target doesn't have. Endpoint versions in `agentcore.json` apply to every target, but a target's first deploy creates only version 1. Fix: set that Runtime's `endpoints.<name>.version` to `1`, deploy the target, then restore the other targets' versions in the file before you deploy them again. Only point an endpoint at a version that exists on every target you deploy (`agentcore runtime version list --id <RUNTIME_ID> --region <region>`; see [versioning.md → Staging targets](references/versioning.md#staging-targets)).
+
 **Memory stuck in CREATING:**
 
 This is unusual — normal provisioning takes a few minutes. Check `agentcore status` and `agentcore memory get --id <MEMORY_ID>`. If stuck, try removing and re-adding the memory resource (`agentcore remove memory --name <Name>`, deploy, then `agentcore add memory --name <Name>` and deploy again).
@@ -376,6 +399,8 @@ agentcore deploy --target production
 ```
 
 Each target gets its own stack (`AgentCore-<project>-<target>`) and its own copies of every resource. `status`, `invoke`, `logs`, and `traces` take the same `--target` flag.
+
+Runtime endpoint versions in `agentcore.json` are shared by every target, but each target has its own version history (a new target has only version 1). Before the first deploy to a new target, point its Runtime endpoints at version 1, or add endpoints only after every target has the version — see [versioning.md → Staging targets](references/versioning.md#staging-targets).
 
 ## Extending the CDK app
 
