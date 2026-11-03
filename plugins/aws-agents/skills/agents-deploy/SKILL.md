@@ -297,13 +297,13 @@ Fix: add the missing file, or follow the CLI's message to switch the build type 
 
 Images are built natively on ARM64 in AWS CodeBuild. Check the base image supports `linux/arm64`, the app listens on `0.0.0.0` on its protocol's port (8080 HTTP/AG-UI, 8000 MCP, 9000 A2A), and `uv.lock` is committed if the Dockerfile runs `uv sync --frozen`. In VPC mode, `networkConfig.vpcId` is required for container builds.
 
-**Model access denied during invoke after deploy:**
+**Invalid model ID during invoke after deploy:**
 
 ```
 ValidationException: The provided model identifier is invalid
 ```
 
-Fix: Enable the model in the Bedrock console → Model access in the target region, and make sure the model ID in code (Runtime) or `harness.yaml` (Harness) matches an enabled model or inference profile.
+The model ID or inference profile in code (Runtime: `app/<name>/model/load.py` or `load.ts`) or `harness.yaml` (Harness) is mistyped, stale, or not offered in the target's region. This is not a model-access problem (missing access returns `AccessDeniedException`). Fix: check the ID with the [Check 3](#check-3-verify-bedrock-model-access) commands against the target's region, correct it, and run `agentcore deploy` again. See `agents-debug` for other model errors.
 
 **Empty project:**
 
