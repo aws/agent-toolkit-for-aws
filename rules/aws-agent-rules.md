@@ -56,6 +56,7 @@
   and what it blocks, and don't overrule it with another check. Searching
   other Regions is for finding resources, not for retrying an auth error.
   Retry throttling with backoff before you report it.
+- Make sure your output is consistent with the user's requirements.
 
 ## Secret Safety
 
