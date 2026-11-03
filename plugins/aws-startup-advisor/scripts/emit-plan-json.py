@@ -66,13 +66,8 @@ _UUID_RE = re.compile(
 # sourcePlatform. Not generated data: each skill records its own id at _init and
 # never changes it. LLM_TO_BEDROCK (OpenAI) is intentionally absent — it has no
 # persisted cost artifact to copy, so it is a follow-up.
-# AZURE_TO_AWS is intentionally absent: the import contract's accepted sourcePlatform
-# values are not confirmed to include AZURE (see PR #435 review, databaseId
-# 4240400316). Re-add once the web consumer confirms AZURE support; the AZURE
-# mapping stays elsewhere in this file (PLATFORM_SOURCE_FIELD,
-# VALID_SCOPES_BY_PLATFORM) so turning it back on is a one-line change, not a
-# rewrite.
 SKILL_TO_PLATFORM = {
+    "AZURE_TO_AWS": "AZURE",
     "GCP_TO_AWS": "GCP",
     "HEROKU_TO_AWS": "HEROKU",
 }

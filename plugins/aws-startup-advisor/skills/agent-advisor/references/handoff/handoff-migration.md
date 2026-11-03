@@ -10,10 +10,12 @@ skills, and the rationale source for Stage 2's injection context block.
 ## Step 1 — Write the handoff summary
 
 Write `$RUN_DIR/handoff-summary.md` (a compact, machine-readable companion to
-`recommendation.md` for the downstream plugins) containing: recommended runtime + deployment
-model + services, coarse model family mapping (the source model from the user's `current_model`
-answer → the Bedrock family per `model-selection.md`; no prices), and the rationale (top scoring
-signals + eliminations, from design.json's `scores`/`eliminated`).
+`recommendation.md` for the downstream plugins) with `initiated_by: AGENT_ADVISOR` as its first
+line, followed by: recommended runtime + deployment model + services, coarse model family
+mapping (the source model from the user's `current_model` answer → the Bedrock family per
+`model-selection.md`; no prices), and the rationale (top scoring signals + eliminations, from
+design.json's `scores`/`eliminated`). The first-line marker is the durable downstream origin
+signal; preserve it when pointing either downstream skill at this file.
 
 ## Step 2 — Check downstream availability
 

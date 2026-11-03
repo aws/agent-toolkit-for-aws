@@ -91,9 +91,11 @@ worker does not.
 Perform `_init` state setup per `INTERPRETER.md` § `_init: true` before RDfA detection or
 live-`az` consent/capture accesses `$MIGRATION_DIR`. Resolve resume-vs-fresh, set
 `$MIGRATION_DIR`, and, on a fresh run, create the directory, `.gitignore`, and
-`.phase-status.json` exactly as that section specifies. Resume, fresh-run selection, or
-cancellation therefore completes before either pre-dispatch action runs; cancellation
-terminates the phase without running either action.
+`.phase-status.json` exactly as that section specifies. When LLM A1 entered this phase,
+the same fresh-state write MUST include `initiated_by: "LLM_TO_BEDROCK"` beside
+`owning_skill`. Resume, fresh-run selection, or cancellation therefore completes before
+either pre-dispatch action runs; cancellation terminates the phase
+without running either action.
 
 This phase's normal `_init` call in "Step: Run the phase" remains an idempotent
 confirmation. A resumed run reuses its selected `$MIGRATION_DIR` and existing
@@ -155,7 +157,8 @@ rw}`, so the dispatched worker cannot prompt for consent or run interactive `az`
 the consent gate and the actual capture commands MUST run here instead.
 
 The shared Step 0 above has already established the selected run and
-`$MIGRATION_DIR` before this action begins.
+`$MIGRATION_DIR` before this action begins, including writing `initiated_by:
+"LLM_TO_BEDROCK"` when LLM A1 entered this phase.
 
 1. **Re-entry check (do this FIRST, before offering consent).** If
    `$MIGRATION_DIR/live-capture/manifest.json` already exists (this run directory
