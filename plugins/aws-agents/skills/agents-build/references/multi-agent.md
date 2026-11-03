@@ -71,11 +71,25 @@ def call_specialist(prompt: str, session_id: str = None) -> str:
         kwargs["runtimeSessionId"] = session_id
 
     response = client.invoke_agent_runtime(**kwargs)
-    # response["response"] is a StreamingBody — read, then parse JSON
-    body = response["response"].read()
-    result = json.loads(body.decode() if isinstance(body, bytes) else body)
+    # response["response"] is a StreamingBody — read it fully
+    body = response["response"].read().decode()
+    # The CLI templates stream Server-Sent Events: join the text deltas
+    if response.get("contentType", "").startswith("text/event-stream"):
+        text = []
+        for line in body.splitlines():
+            if not line.startswith("data: "):
+                continue
+            event = json.loads(line[len("data: "):])
+            if isinstance(event, dict):
+                delta = event.get("event", {}).get("contentBlockDelta", {}).get("delta", {})
+                text.append(delta.get("text", ""))
+        return "".join(text)
+    # A specialist whose entrypoint returns a dict responds with JSON
+    result = json.loads(body)
     return result.get("response", result.get("result", str(result)))
 ```
+
+The `agent-python-strands` template's entrypoint yields Strands events, so the specialist responds with `text/event-stream` and the code above joins the streamed text. If you change the specialist's entrypoint to `return {"response": ...}` instead, it responds with JSON and the last branch handles it.
 
 Passing `"DEFAULT"` as the qualifier calls the live version. To pin to a specific version (staging pin, canary, or rollback), pass a numeric version string instead — see [`agents-deploy/references/versioning.md`](../../agents-deploy/references/versioning.md) for the full workflow.
 
