@@ -6,9 +6,9 @@ description: >-
   hybrid and Outposts networks, and Global Resolver. Applicable when the customer wants to point a
   hostname at a target, split or fail over traffic across endpoints, monitor an endpoint, block
   malicious domains, centralize DNS across accounts, or resolve private DNS across a hybrid network.
-  Routes to the right per-task procedure in references. Does not cover CloudFront-specific setup (see
-  the route53-cloudfront skill) or non-DNS networking.
-version: 1
+  Routes to the right per-task procedure in references. Does not cover CloudFront-specific setup or
+  non-DNS networking.
+version: 2
 ---
 
 # Amazon Route 53
@@ -69,7 +69,7 @@ observability). Fall back to the AWS CLI otherwise. All Route 53 Domains API cal
 ## Cross-service work
 
 Pointing a custom domain at a CloudFront distribution, or failing over between CloudFront
-distributions, is cross-service work owned by the separate `route53-cloudfront` skill. Use this
+distributions, is cross-service work spanning Route 53 and CloudFront. Use this
 skill for the Route 53 side of pure-Route 53 tasks only.
 
 ## Security Considerations
