@@ -380,8 +380,14 @@ async def call_a2a_specialist(message: str, *, access_token: str) -> str:
         )
 
         async for event in client.send_message(msg):
-            if hasattr(event, "parts"):
-                return " ".join(p.text for p in event.parts if hasattr(p, "text"))
+            # a2a-sdk 0.3 yields a Message, or a (Task, update) tuple for task responses
+            if isinstance(event, Message):
+                parts = event.parts
+            else:
+                task, _update = event
+                parts = [p for artifact in task.artifacts or [] for p in artifact.parts]
+            # Part wraps the concrete part type; the text is on p.root
+            return " ".join(p.root.text for p in parts if isinstance(p.root, TextPart))
     return ""
 
 # Use in your orchestrator's entrypoint:
