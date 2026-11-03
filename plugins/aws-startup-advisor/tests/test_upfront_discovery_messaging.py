@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -92,3 +93,13 @@ def test_gcp_billing_guidance_keeps_live_discovery_visible() -> None:
     for path in paths:
         content = read(path)
         assert "live `gcloud` discovery" in content or "live gcloud discovery" in content
+
+
+def test_changed_skill_descriptions_fit_repository_spec_limit() -> None:
+    for skill in ("gcp-to-aws", "azure-to-aws", "heroku-to-aws", "llm-to-bedrock"):
+        skill_file = SKILLS / skill / "SKILL.md"
+        match = re.search(r'^description: "(.*)"$', skill_file.read_text(), re.MULTILINE)
+        assert match is not None, f"missing single-line description in {skill_file}"
+        assert len(match.group(1)) <= 1024, (
+            f"{skill_file} description is {len(match.group(1))} chars"
+        )
