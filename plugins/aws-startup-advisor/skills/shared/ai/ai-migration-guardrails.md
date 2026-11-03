@@ -73,6 +73,22 @@ requires residency consent and API/capability checks from the canonical catalog.
 
 **Source:** [Astra model card, verified 2026-09-16](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html)
 
+### GPT-6.1 Terra — model-specific caching and quotas
+
+For Terra, use this subsection instead of the GPT-5.6-derived scaling assumptions above.
+Its cache-read rate is 5% of uncached input (a 95% discount), with the exact price selected
+by context tier and inference option in `bedrock-pricing-cache.md`. Verify the selected
+endpoint's account quotas and cached-token accounting before promising capacity; the Terra
+card does not establish the GPT-5.6 cached-input exemption.
+
+On runtime, the card specifies 10x output-token burndown:
+`required_TPM = peak_input_TPM + 10 * peak_output_TPM`.
+Do not apply that multiplier to Mantle or to the whole input-plus-output total.
+Retain the selected region, inference profile, and API constraints when changing endpoints.
+Compare costs against measured source spend or verified source rates.
+
+**Source:** [GPT-6.1 Terra model card, verified 2026-11-02](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-terra.html)
+
 ### Other models on Mantle
 
 For non-OpenAI models served through Mantle, verify current quota dimensions and any shared-account limits in the [Mantle documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-mantle.html) before advising on throughput. Do not carry the OpenAI TPM-only model over to other providers without checking, and do not assume previously documented shared-RPM behavior still applies.

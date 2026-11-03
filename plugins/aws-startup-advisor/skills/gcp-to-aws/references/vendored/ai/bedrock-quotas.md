@@ -65,7 +65,7 @@ Resolve the selected target model and endpoint before comparing. On
 into one weighted TPM. On `bedrock-runtime`, weighted peak TPM is peak input
 plus peak output times the output burndown: 15 for Claude 4.8; 10 for Opus
 5.5, Sonnet 5, Opus 5, Fable 5.1, GPT-5.6 Sol, GPT-5.6 Terra, GPT-5.6 Luna,
-and GPT-6 Astra; 5 for other Claude models; 1 otherwise. GPT-5.6 Terra at
+GPT-6 Astra, and GPT-6.1 Terra; 5 for other Claude models; 1 otherwise. GPT-5.6 Terra at
 1,000 input and 25,000 output tokens per minute is 251,000, which is high.
 Compare that runtime number with 200,000 TPM, the Claude example in this file. Above
 200,000, `quota_risk` is `"high"` even when the monthly tier is low or medium.
