@@ -161,7 +161,7 @@ Unknowns that affect cost precision:
 5. Security requirements -- Encryption, compliance may add costs
 
 Recommendation:
-  Run IaC discovery (provide Terraform files) to reduce unknowns.
+  Run read-only live `gcloud` discovery or provide Terraform files to reduce unknowns.
   This would narrow total estimate range from ±30-40% to ±10-15%.
 ```
 
@@ -231,12 +231,12 @@ Write `estimation-billing.json`.
     {
       "category": "compute_sizing",
       "impact": "high",
-      "resolution": "Provide Terraform files or describe instance configurations"
+      "resolution": "Run live `gcloud` discovery, provide Terraform files, or describe instance configurations"
     },
     {
       "category": "database_config",
       "impact": "high",
-      "resolution": "Provide Terraform files or describe database engine, HA, sizing"
+      "resolution": "Run live `gcloud` discovery, provide Terraform files, or describe database engine, HA, and sizing"
     },
     {
       "category": "scaling_config",
@@ -289,7 +289,7 @@ If this gate fails: STOP and output: "estimate-billing did not produce a valid `
 
 After writing `estimation-billing.json`, present a concise summary to the user:
 
-1. **Pricing source and accuracy**: State that estimates are billing-only projections with ±30-40% accuracy due to lack of infrastructure configuration. Example: "Billing-only estimates, accuracy ±30-40%. Provide Terraform files to narrow to ±10-15%."
+1. **Pricing source and accuracy**: State that estimates are billing-only projections with ±30-40% accuracy due to lack of infrastructure configuration. Example: "Billing-only estimates, accuracy ±30-40%. Run live `gcloud` discovery or provide Terraform files to narrow to ±10-15%."
 2. GCP baseline from billing data (total monthly spend)
 3. Estimated monthly AWS cost ranges: low / mid / high per service
 4. Total projection: best case / expected / worst case vs GCP (labeled as estimated monthly costs)

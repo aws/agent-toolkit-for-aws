@@ -24,7 +24,7 @@ custom domain or certificate. Multi-tenant distributions do not have a default t
 Does not cover locking the origin (see protecting-your-origins), restricting who can view content
 (see securing-your-content), custom domains and certificates (see
 managing-certificates-with-cloudfront), logging and analysis (see cloudfront-observability), or the
-Route 53 DNS cutover (owned by the route53-cloudfront skill).
+Route 53 DNS cutover (a Route 53 step; see the route53 skill).
 
 Execute commands using the AWS MCP server when connected (sandboxed execution, audit logging,
 observability). Fall back to the AWS CLI otherwise. CloudFront is a global service; its API calls

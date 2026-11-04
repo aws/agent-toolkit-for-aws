@@ -42,6 +42,8 @@ Read `$MIGRATION_DIR/preferences.json` → `ai_constraints` (if present). If abs
   branch)
 - `"other"` or absent → load `references/design-refs/ai.md` (traditional ML rubric — Vision API, Speech API, Document AI, custom models only; do NOT use for Anthropic SDK users)
 
+**Haiku 5.5 target compatibility:** Before assessing Claude Haiku 5.5 as a candidate or selecting it, load `references/vendored/ai/ai-anthropic-to-bedrock.md` regardless of `ai_source`. Re-evaluate this load when a priority or feature constraint introduces Haiku 5.5 later in model selection. For a non-Anthropic source, apply only its Haiku 5.5 target contract; keep the source provider guide responsible for SDK and request translation. Carry the applicable target requirements into the code migration plan before writing `aws-design-ai.json`.
+
 **Additional load, independent of `ai_source` above:** If any entry in `workloads[]` (from `preferences.json`, falling back to `ai-workload-profile.json`) has `capability` equal to `document_extraction`, `image_analysis`, or `speech_transcription`, ALSO load `references/design-refs/ai.md` — even when a generative `ai_source` already selected a different ref above. A workload's non-generative capability is evaluated independently of the codebase's primary LLM provider; e.g. an `ai_source: "openai"` codebase that also calls `documentai.process_document` needs both `ai-openai-to-bedrock.md` (for its GPT workload) and `ai.md` (for its Document AI workload).
 
 ---
@@ -258,7 +260,7 @@ After selecting models, assess quota risk based on `ai_token_volume` from `prefe
 | `ai_token_volume`         | Selected Model Family              | `quota_risk` | Action                                                                            |
 | ------------------------- | ---------------------------------- | ------------ | --------------------------------------------------------------------------------- |
 | `"high"` or `"very_high"` | Any                                | `"high"`     | Flag: "Request Bedrock quota increase before migration (allow 1–5 business days)" |
-| `"medium"`                | Claude (5× burndown)               | `"medium"`   | Flag: "Monitor TPM usage; quota increase may be needed at peak"                   |
+| `"medium"`                | Claude on bedrock-runtime          | `"medium"`   | Flag: "Monitor TPM usage; quota increase may be needed at peak"                   |
 | `"medium"`                | Astra runtime (10× output burndown) | `"medium"` | Flag: "Verify input TPM + 10 × output TPM against the selected CRIS quota" |
 | `"medium"`                | Verified 1× models (e.g. Nova / Llama) | `"low"` | No action |
 | `"medium"`                | Unverified model/endpoint quota | `"medium"` | Flag: "Verify quota dimensions before estimating throughput" |
@@ -266,7 +268,7 @@ After selecting models, assess quota risk based on `ai_token_volume` from `prefe
 
 Include `quota_risk` in `aws-design-ai.json` → `ai_architecture` alongside `honest_assessment`.
 
-Before writing `quota_risk`, also apply the observed on-demand peak rule in `references/vendored/ai/bedrock-quotas.md`. A monthly `"low"` with a weighted peak above 200,000 TPM becomes `"high"`. A publisher or usage-API profile supplies that peak when it has one. Generate must not keep the earlier monthly decision.
+Also apply **Observed on-demand peak** in `references/vendored/ai/bedrock-quotas.md` before writing that field. A `"low"` monthly tier stays `"low"` only when no usable on-demand peak exceeds that rule. A monthly `"low"` with a weighted peak above 200,000 TPM becomes `"high"`. Batch rows, and any row whose `service_tier` is `unknown`, are excluded. A publisher or usage-API profile supplies that peak when it has one. Profiles without peak fields keep this table. Generate must not keep the earlier monthly decision.
 
 ---
 

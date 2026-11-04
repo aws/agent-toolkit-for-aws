@@ -46,9 +46,9 @@ If any required file is missing: **STOP**. Output: "Missing required artifact: [
 
 ### Recommendation
 
-> **For a more accurate migration plan, provide Terraform files and re-run discovery.**
+> **For a more accurate migration plan, run live `gcloud` discovery or provide Terraform files and re-run discovery.**
 > This billing-only plan is suitable for initial budgeting and stakeholder discussions,
-> but must be refined with IaC discovery before executing the actual migration.
+> but must be refined with live or IaC discovery before executing the actual migration.
 
 ## Part 2: Complexity-Scaled Timeline
 
@@ -310,7 +310,7 @@ The example below shows a **small** tier migration. Adjust `complexity_tier`, `c
     "approach": "Compressed migration",
     "confidence": "low",
     "iac_discovery_offered": true,
-    "note": "For tighter estimates and a shorter timeline, provide Terraform files and re-run discovery.",
+    "note": "For tighter estimates and a shorter timeline, run live gcloud discovery or provide Terraform files and re-run discovery.",
     "key_risks": [
       "Configuration uncertainty",
       "Missing dependency information",

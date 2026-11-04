@@ -46,6 +46,8 @@ defaults (prefer managed Bedrock, no latency constraint, no budget cap).
 - `"other"` or absent → load `references/design-refs/ai.md` (traditional-ML rubric — Azure AI
   Vision, Document Intelligence, Speech, Language, Translator, Azure ML custom models).
 
+**Haiku 5.5 target compatibility:** Before assessing Claude Haiku 5.5 as a candidate or selecting it, load `references/vendored/ai/ai-anthropic-to-bedrock.md` regardless of `ai_source`. Re-evaluate this load when a priority or feature constraint introduces Haiku 5.5 later in model selection. For a non-Anthropic source, apply only its Haiku 5.5 target contract; keep the source provider guide responsible for SDK and request translation. Carry the applicable target requirements into the code migration plan before writing `aws-design-ai.json`.
+
 **Additional load, independent of `ai_source`:** if any `workloads[]` entry has `capability`
 in {`document_extraction`, `image_analysis`, `speech_transcription`}, ALSO load
 `references/design-refs/ai.md` — a workload's traditional-AI capability is evaluated
@@ -158,8 +160,8 @@ flat rates from `references/vendored/ai/bedrock-pricing-cache.md` throughout the
 do not apply the GPT multiplier. Verify other models' tiers individually.
 
 **Quota risk** (per `references/vendored/ai/bedrock-quotas.md`): high/very_high volume →
-`quota_risk: "high"` + a pre-migration quota-increase flag; medium + Claude (5× output burndown) or Astra runtime (10× output burndown) →
-`"medium"`; else `"low"`. Before writing that value, apply the observed on-demand peak rule in `references/vendored/ai/bedrock-quotas.md`, including `azure-openai-metrics-profile.json` when it has an on-demand peak. Unknown `service_tier` is not on-demand. A monthly `"low"` with a weighted peak above 200,000 TPM becomes `"high"`. Record on each `bedrock_models[]` entry. Generate must not keep the earlier monthly decision.
+`quota_risk: "high"` + a pre-migration quota-increase flag; medium + Claude on bedrock-runtime or Astra runtime (10× output burndown) →
+`"medium"`; else `"low"`. Before writing that value, apply **Observed on-demand peak** in `references/vendored/ai/bedrock-quotas.md`, including `azure-openai-metrics-profile.json` when it has an on-demand peak. Unknown `service_tier` is not on-demand. A `"low"` monthly tier stays `"low"` only when no usable on-demand peak exceeds that rule. A monthly `"low"` with a weighted peak above 200,000 TPM becomes `"high"`. Batch rows are excluded. Profiles without peak fields keep the monthly result. Record on each `bedrock_models[]` entry and on `ai_architecture.quota_risk`. Generate reads the value written here and must not keep the earlier monthly decision.
 
 ## Part 1B: Volume-based strategy
 
