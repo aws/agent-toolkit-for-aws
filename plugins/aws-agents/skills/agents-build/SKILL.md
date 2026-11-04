@@ -113,21 +113,18 @@ If the intent is ambiguous, ask the developer which capability they want to add.
 
 For a Strands Runtime, the model is configured in `app/<RuntimeName>/model/load.py` (the `agent-python-strands` template uses `app/agent/model/load.py`). To change it:
 
-1. Open `app/<RuntimeName>/model/load.py`
-2. Change the `model_id` parameter in the `BedrockModel()` constructor
+1. Open `app/<RuntimeName>/model/load.py` and read its current `model_id`. That is the scaffolded default for this project; it can change between CLI versions.
+2. Choose an available model or inference profile for the target region, then change the `model_id` parameter in the `BedrockModel()` constructor. Check `aws bedrock list-inference-profiles --region <target-region>` for current profile IDs.
 
 ```python
-# Default (scaffolded by CLI)
-return BedrockModel(model_id="global.anthropic.claude-sonnet-4-5-20250929-v1:0")
+# Example: switch to Haiku
+return BedrockModel(model_id="global.anthropic.claude-haiku-5-5")
 
-# Switch to Haiku for cost savings
-return BedrockModel(model_id="us.anthropic.claude-3-5-haiku-20241022-v1:0")
-
-# Switch to Nova Lite
-return BedrockModel(model_id="amazon.nova-lite-v1:0")
+# Example: switch to Nova Lite
+return BedrockModel(model_id="us.amazon.nova-lite-v1:0")
 ```
 
-Cross-region inference profile prefixes (`us.`, `eu.`, `apac.`, `global.`) control where inference runs. Use `global.` for maximum throughput, or a geographic prefix for data residency. Not all models support all prefixes — check the Bedrock inference profiles docs.
+These IDs are examples; use the profile ID and region available to your account. Cross-region inference profile prefixes (`us.`, `eu.`, `apac.`, `global.`) control where inference runs. Not all models support all prefixes — check the Bedrock inference profiles docs.
 
 After changing the model:
 
