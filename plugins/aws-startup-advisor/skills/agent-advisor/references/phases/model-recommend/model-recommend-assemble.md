@@ -9,8 +9,8 @@ _produces:
   - model-recommendation-input.json
   - model-recommendation.json
 _knowledge:
-  - { file: references/models/anthropic-bedrock-2026-09-24.json }
-  - { file: references/models/openai-bedrock-2026-09-24.json }
+  - { file: references/vendored/ai/models/anthropic-bedrock.json }
+  - { file: references/vendored/ai/models/openai-bedrock.json }
 ---
 
 # Model Recommend — Assemble the recommendation contract

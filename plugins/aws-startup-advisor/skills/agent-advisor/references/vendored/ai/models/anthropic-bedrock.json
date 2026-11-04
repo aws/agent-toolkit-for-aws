@@ -1,10 +1,10 @@
 {
   "schema_version": 2,
   "provider": "anthropic",
-  "verified_at": "2026-07-21",
+  "verified_at": "2026-09-24",
   "verified_region": "us-east-1",
-  "source": "AWS Bedrock userguide Anthropic model cards (retrieved 2026-07-21) for Claude Sonnet 5; internal migration reference, Anthropic path (2026-06-24 live probes) for the path metadata and the Opus 4.8 / Haiku 4.5 entries",
-  "disclaimer": "Point-in-time capability data. Re-probe every selected model and API path in the target account and region before implementation. Claude Sonnet 5 (launched 2026-06-30, after the reference snapshot) replaces Sonnet 4.6 in the recommendation pool: per its AWS model card it supports Messages on bedrock-mantle as well as Converse/Invoke on bedrock-runtime, with 1M context / 128K output and Global+geo CRIS. Claude Sonnet 5.5 (released 2026-09-28; Bedrock ID anthropic.claude-sonnet-5-5) is a separate model and is not in this recommendation pool. Keep the Sonnet 5 identities and capabilities unchanged until a distinct 5.5 entry and model-specific migration handling are verified. For the new thinking, forced-tool-use, and conversation-state requirements, see https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide; verify Bedrock paths against model-card-anthropic-claude-sonnet-5-5. Claude Fable 5 / Fable 5.1 and Claude Mythos 5 / Mythos 5.1 — and any later Fable or Mythos release — are deliberately NOT pool candidates (Status `restricted` in references/vendored/ai/bedrock-pricing-cache.md). Fable 5 and 5.1 are Covered Models that require the account-level aws_review data-retention opt-in (prompts retained up to 30 days for AWS review) — a compliance decision, not a default recommendation; Fable 5.1 (GA 2026-09-01) is additionally CRIS-only in commercial regions. Mythos 5 and 5.1 are gated Previews for vetted cybersecurity and life-sciences research organizations (provider_data_share retention) — no account-level opt-in reaches them. Evidence: AWS model cards model-card-anthropic-claude-fable-5, -fable-5-1, -mythos-5, -mythos-5-1, read 2026-09-03; this file's 2026-07-21 snapshot predates Fable 5.1.",
+  "source": "Opus 5.5: AWS Bedrock model card retrieved 2026-09-24, https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html. Other entries retain their explicitly dated evidence from the superseded 2026-07-21 catalog (removed; see git history).",
+  "disclaimer": "Point-in-time model-card evidence, not an account invocation. Re-probe the chosen model, API and inference profile in the target account and region. Opus 5.5 is Active, uses always-on adaptive thinking, and has no Batch tier. Global profiles are unavailable in GovCloud. Unchanged prior-generation entries retain their earlier evidence dates; Fable and Mythos are excluded from default selection. Opus 5.5 is the only Opus model in the automatic selection pool; older Opus snapshots and pricing records are historical references. The runtime in-region exception in eu-west-2 was verified 2026-10-03; the original catalog and other model evidence dates remain unchanged.",
   "paths": {
     "mantle_messages": {
       "sdk": "anthropic[bedrock]",
@@ -18,7 +18,7 @@
       ],
       "constraints": [
         "Bedrock Guardrails and runtime invocation logging are not available",
-        "Use a forced tool without strict for portable structured output",
+        "Structured-output strategy is model-specific: Opus 5.5 rejects forced any/tool choice and disabled thinking; use auto tool choice or prompted JSON with application validation and bounded retries, without a native schema guarantee.",
         "Availability must be probed in the target account and region"
       ]
     },
@@ -35,7 +35,7 @@
       "constraints": [
         "Newer Claude models generally require a Global or geography-scoped CRIS inference profile",
         "Anthropic-specific request fields may require additionalModelRequestFields",
-        "Native structured-output mechanisms are model and region dependent; forced tool without strict is the portable default",
+        "Structured-output strategy is model-specific: Opus 5.5 rejects forced any/tool choice and disabled thinking; use auto tool choice or prompted JSON with application validation and bounded retries, without a native schema guarantee.",
         "Availability must be probed in the target account and region"
       ]
     },
@@ -52,42 +52,126 @@
       "constraints": [
         "Uses the Bedrock Anthropic version field rather than the first-party HTTP header",
         "Newer Claude models generally require a Global or geography-scoped CRIS inference profile",
-        "Native structured-output mechanisms are model and region dependent; forced tool without strict is the portable default",
+        "Structured-output strategy is model-specific: Opus 5.5 rejects forced any/tool choice and disabled thinking; use auto tool choice or prompted JSON with application validation and bounded retries, without a native schema guarantee.",
         "Availability must be probed in the target account and region"
       ]
     }
   },
   "models": {
-    "claude_opus_4_8": {
-      "display_name": "Claude Opus 4.8",
+    "claude_opus_5_5": {
+      "display_name": "Claude Opus 5.5",
       "family": "claude_opus",
-      "version": "4.8",
+      "version": "5.5",
       "class": "premium",
       "context_window": 1000000,
       "output_token_ceiling": 128000,
+      "lifecycle_status": "active",
+      "launch_date": "2026-09-22",
+      "eol_no_sooner_than": "2027-09-22",
       "capabilities": [
         "tool_use",
         "extended_thinking",
         "vision",
         "long_context"
       ],
+      "adaptive_thinking_only": true,
+      "sampling_parameters_supported": false,
+      "default_effort": "medium",
+      "batch_supported": false,
+      "inference_profiles": {
+        "us": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2",
+          "ca-central-1",
+          "ca-west-1",
+          "us-gov-east-1",
+          "us-gov-west-1"
+        ],
+        "eu": [
+          "eu-central-1",
+          "eu-central-2",
+          "eu-north-1",
+          "eu-south-1",
+          "eu-south-2",
+          "eu-west-1",
+          "eu-west-2",
+          "eu-west-3"
+        ],
+        "au": [
+          "ap-southeast-2",
+          "ap-southeast-4"
+        ],
+        "jp": [
+          "ap-northeast-1",
+          "ap-northeast-3"
+        ],
+        "global": [
+          "af-south-1",
+          "ap-east-2",
+          "ap-northeast-1",
+          "ap-northeast-2",
+          "ap-northeast-3",
+          "ap-south-1",
+          "ap-south-2",
+          "ap-southeast-1",
+          "ap-southeast-2",
+          "ap-southeast-3",
+          "ap-southeast-4",
+          "ap-southeast-5",
+          "ap-southeast-6",
+          "ap-southeast-7",
+          "ca-central-1",
+          "ca-west-1",
+          "eu-central-1",
+          "eu-central-2",
+          "eu-north-1",
+          "eu-south-1",
+          "eu-south-2",
+          "eu-west-1",
+          "eu-west-2",
+          "eu-west-3",
+          "il-central-1",
+          "me-central-1",
+          "me-south-1",
+          "mx-central-1",
+          "sa-east-1",
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2"
+        ]
+      },
+      "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html (retrieved 2026-09-24); runtime in-region eu-west-2 confirmed from the same model card on 2026-10-03.",
       "paths": {
         "mantle_messages": {
           "available": true,
-          "model_id": "anthropic.claude-opus-4-8",
-          "requires_cris": false
+          "model_id": "anthropic.claude-opus-5-5",
+          "requires_cris": false,
+          "regions": [
+            "us-east-1",
+            "ap-southeast-4",
+            "us-gov-west-1"
+          ]
         },
         "runtime_converse": {
           "available": true,
-          "model_id": "anthropic.claude-opus-4-8",
+          "model_id": "anthropic.claude-opus-5-5",
           "requires_cris": true
         },
         "runtime_invoke": {
           "available": true,
-          "model_id": "anthropic.claude-opus-4-8",
+          "model_id": "anthropic.claude-opus-5-5",
           "requires_cris": true
         }
-      }
+      },
+      "forced_tool_choice_supported": false,
+      "native_structured_output_supported": false,
+      "runtime_in_region_regions": [
+        "eu-west-2"
+      ],
+      "runtime_in_region_verified_at": "2026-10-03"
     },
     "claude_sonnet_5": {
       "display_name": "Claude Sonnet 5",

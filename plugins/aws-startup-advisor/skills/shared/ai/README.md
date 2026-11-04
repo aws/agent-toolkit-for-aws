@@ -22,6 +22,7 @@ before opening a pull request.
 | `sdk-capability-map.json`            | SDK method → capability lookup used by app-code discovery      |
 | `ai-capability-catalog.json`         | Target-only source-provider/gateway capability catalog (schema_version, provider/gateway status, no implemented-adapter claim) |
 | `bedrock-pricing-cache.md`           | Provider-neutral Bedrock model and service pricing             |
+| `models/anthropic-bedrock.json`, `models/openai-bedrock.json` | Machine-readable model-selection catalogs (paths, model IDs, capabilities) read by agent-advisor; `tools/model-catalog-drift.py` checks them against `ai-model-lifecycle.md` |
 | `schema-design-aws-ai.md`            | Target-only `aws-design-ai.json` contract; `metadata.ai_sources[]`/`gateways[]` mirror `ai-workload-profile.schema.json` exactly |
 | `schema-estimate-ai.md`               | Target-only `estimation-ai.json` contract; `cost_by_source[]` traces per-source/per-model cost back to `aws-design-ai.json` |
 | `schema-generate-ai.md`               | Target-only `generation-ai.json` contract; `artifacts_by_source[]` traces per-source/per-model generated artifacts back to `estimation-ai.json` |

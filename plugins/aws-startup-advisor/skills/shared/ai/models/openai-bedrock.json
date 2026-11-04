@@ -3,7 +3,7 @@
   "provider": "openai",
   "verified_at": "2026-09-24",
   "verified_region": "us-east-2",
-  "source": "Opus 5.5 cross-family target: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html (retrieved 2026-09-24). OpenAI and other unchanged entries retain their evidence from openai-bedrock-2026-08-21.json.",
+  "source": "Opus 5.5 cross-family target: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html (retrieved 2026-09-24). OpenAI and other unchanged entries retain their evidence from the superseded 2026-08-21 catalog (removed; see git history).",
   "disclaimer": "The Opus cross-family target is updated to Opus 5.5; same-model OpenAI paths and their earlier evidence remain unchanged. This is a migration target catalog, not an account-availability claim. Verify the chosen model, API, region and CRIS profile before implementation. Opus 5.5 uses CRIS on runtime outside eu-west-2, has 1M context/128K output, always-on adaptive thinking, and no Batch tier. Fable and Mythos remain excluded from default selection. Opus 5.5 is the only Opus model in the automatic selection pool; older Opus snapshots and pricing records are historical references. The runtime in-region exception in eu-west-2 was verified 2026-10-03; the original catalog and other model evidence dates remain unchanged.",
   "paths": {
     "mantle_openai_responses": {
@@ -488,13 +488,13 @@
         "tool_or_function_calling",
         "image_input_vision"
       ],
-      "capability_source": "anthropic-bedrock-2026-07-21 catalog (runtime_converse available; tool_use/vision mapped to this provider's feature vocabulary; no extended-thinking evidence, so reasoning-requiring workloads fall back to a higher Claude tier). Fast/low-cost Claude tier — the Converse target for GPT-5.6 Luna.",
+      "capability_source": "anthropic-bedrock.json catalog (verified 2026-09-24) (runtime_converse available; tool_use/vision mapped to this provider's feature vocabulary; no extended-thinking evidence, so reasoning-requiring workloads fall back to a higher Claude tier). Fast/low-cost Claude tier — the Converse target for GPT-5.6 Luna.",
       "paths": {
         "runtime_converse": {
           "available": true,
           "model_id": "anthropic.claude-haiku-4-5-20251001-v1:0",
           "requires_cris": true,
-          "evidence": "anthropic-bedrock-2026-07-21 catalog runtime_converse entry (requires CRIS profile)"
+          "evidence": "anthropic-bedrock.json catalog (verified 2026-09-24) runtime_converse entry (requires CRIS profile)"
         }
       }
     },

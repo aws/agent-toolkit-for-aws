@@ -437,9 +437,9 @@ def test_current_catalog_readers_match_engine_defaults(relative_path):
         model_recommendation.DEFAULT_CATALOG.name,
         model_recommendation.OPENAI_CATALOG.name,
     }
-    catalog_pattern = r"(?:anthropic|openai)-bedrock-\d{4}-\d{2}-\d{2}\.json"
+    catalog_pattern = r"(?:anthropic|openai)-bedrock\.json"
     assert set(re.findall(catalog_pattern, text)) == expected
     if text.startswith("---\n"):
         frontmatter = text.split("---", 2)[1]
-        loaded = set(re.findall(r"\bfile:\s*references/models/(" + catalog_pattern + r")", frontmatter))
+        loaded = set(re.findall(r"\bfile:\s*references/vendored/ai/models/(" + catalog_pattern + r")", frontmatter))
         assert loaded == expected
