@@ -116,11 +116,13 @@ Group every AI call into an **AI source** keyed by `(provider, source_service)`:
 
 | Evidence                                                                                              | `provider`  | `source_service` |
 | ----------------------------------------------------------------------------------------------------- | ----------- | ---------------- |
-| `vertexai`, `google.cloud.aiplatform`, `@google-cloud/vertexai`, or `genai.Client(vertexai=True)`     | `google`    | `vertex_ai`      |
-| `google.generativeai`, `google-genai` without `vertexai=True`, or `generativelanguage.googleapis.com` | `google`    | `gemini_api`     |
+| `vertexai`, `google.cloud.aiplatform`, `@google-cloud/vertexai`, `genai.Client(vertexai=True)`, or `genai.Client()` with `GOOGLE_GENAI_USE_VERTEXAI` set to true (see below) | `google`    | `vertex_ai`      |
+| `google.generativeai`, `google-genai` with neither `vertexai=True` nor `GOOGLE_GENAI_USE_VERTEXAI` set to true, or `generativelanguage.googleapis.com` | `google`    | `gemini_api`     |
 | `OpenAI()` / `openai` SDK with the default endpoint or `api.openai.com`                               | `openai`    | `openai_api`     |
 | `AzureOpenAI()`, `azure_endpoint=`, or an endpoint ending in `.openai.azure.com`                      | `openai`    | `azure_openai`   |
 | `Anthropic()` / `anthropic` SDK, or `api.anthropic.com`                                               | `anthropic` | `anthropic_api`  |
+
+**google-genai mode.** When `genai.Client()` is called without a `vertexai=` argument, the SDK uses Vertex AI if the environment variable `GOOGLE_GENAI_USE_VERTEXAI` is `true` or `1`. Look for it being set in source code (`os.environ[...] =`, `setdefault`) and in non-secret config: Dockerfile `ENV`, `docker-compose*.yml`, CI workflows, Kubernetes or Cloud Run manifests, and `app.yaml`. Never open `.env*` or other secret files for this. If the variable is set to true anywhere you may read, use `vertex_ai`. If the code reads it but its value can only come from a file you may not open, use `gemini_api`, and say in the evidence `detail` and in the summary to the user that the service could not be confirmed.
 
 A provider reached through two services produces two sources. Other LLM SDKs (Cohere, Mistral, and so on) use the SDK's company name as `provider` and `<provider>_api` as `source_service`.
 
@@ -139,7 +141,7 @@ For each source, extract the model identifiers passed to constructors or API cal
 
 - `GenerativeModel("gemini-pro")` -> model: `"gemini-pro"`
 - `TextEmbeddingModel.from_pretrained("text-embedding-004")` -> model: `"text-embedding-004"`
-- Gemini model string patterns: `gemini-pro`, `gemini-1.5-*`, `gemini-2.0-*`, `gemini-2.5-*`, `gemini-3-*`, `gemini-3.1-*`. Normalize all `gemini-2.5-flash-*` variants to `"gemini-2.5-flash"` (or `"gemini-2.5-flash-thinking"` if the thinking variant is explicit), all `gemini-2.5-pro-*` variants to `"gemini-2.5-pro"`, `gemini-1.5-flash*` to `"gemini-1.5-flash"`, and `gemini-1.5-pro*` to `"gemini-1.5-pro"`.
+- Gemini model string patterns: `gemini-pro`, `gemini-1.5-*`, `gemini-2.0-*`, `gemini-2.5-*`, `gemini-3-*`, `gemini-3.1-*`. Normalize only version suffixes of the same model: drop `-latest`, `-preview`, `-preview-<date>`, `-exp`, `-exp-<date>`, and a trailing `-<digits>` (for example `gemini-2.5-flash-preview-05-20` → `"gemini-2.5-flash"`, `gemini-1.5-pro-002` → `"gemini-1.5-pro"`). Keep every other suffix as part of the model: `-lite`, `-thinking`, `-image`, `-live`, and `-tts` name distinct models, so `gemini-2.5-flash-lite` stays `"gemini-2.5-flash-lite"` and `gemini-2.0-flash-lite-001` becomes `"gemini-2.0-flash-lite"`.
 
 **OpenAI patterns:**
 
@@ -155,7 +157,7 @@ For each source, extract the model identifiers passed to constructors or API cal
 - `anthropic.Anthropic().messages.create(model="claude-*")` -> model: `"claude-*"`
 - Model string patterns: `claude-3-*`, `claude-sonnet-*`, `claude-haiku-*`, `claude-opus-*`
 
-**Normalization.** Lowercase, strip an OpenRouter `provider/` prefix, and apply the Gemini rules above. Never add a date, version, or suffix that the string does not contain, and never write `unknown` or `both`. Keep the verbatim string as `raw_model`.
+**Normalization.** Lowercase, strip an OpenRouter `provider/` prefix, and apply the Gemini rules above. When unsure whether a suffix is a version or a different model, keep the full string. Never add a date, version, or suffix that the string does not contain, and never write `unknown` or `both`. Keep the verbatim string as `raw_model`.
 
 **Model family.** `gpt-*` → `gpt`; `o1*`, `o3*`, `o4*` → `o_series`; `claude-*` → `claude`; `gemini-*` → `gemini`; `text-embedding-*` → `embedding`; otherwise the leading word of the model string.
 

@@ -99,3 +99,17 @@ def test_controller_wiring() -> None:
     assert CONTROLLER.index("validate-ai-profile.py $MIGRATION_DIR") < CONTROLLER.index('set `phases.discover` to `"completed"`')
     description = (BMA / "SKILL.md").read_text().split("\n")[2]
     assert "does not scan code" not in description and "llm-to-bedrock" in description
+
+
+def test_google_genai_mode_and_distinct_gemini_models() -> None:
+    table = _section(SCAN, "## Step 3")
+    assert "`GOOGLE_GENAI_USE_VERTEXAI` set to true" in table
+    assert "Never open `.env*` or other secret files for this." in table
+    models = _section(SCAN, "## Step 4")
+    assert "Normalize all `gemini-2.5-flash-*`" not in models
+    for kept in ("`gemini-2.5-flash-lite` stays `\"gemini-2.5-flash-lite\"`", "`-lite`, `-thinking`", "keep the full string"):
+        assert kept in models, kept
+    profile = json.loads((PLUGIN_ROOT / "fixtures/bma-scan-vertex-env-flash-lite/ai-workload-profile.json").read_text())
+    summary = VALIDATOR.validate_profile(profile)
+    assert [(s["source_service"], [m["model"] for m in s["models"]]) for s in summary["ai_sources"]] == [("vertex_ai", ["gemini-2.5-flash-lite"])]
+    assert summary["models_extractable"] is True
