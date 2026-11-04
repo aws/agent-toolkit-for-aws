@@ -13,13 +13,13 @@ SKILL_ROOT = Path(__file__).resolve().parent.parent
 SCHEMA_PATH = SKILL_ROOT / "references" / "contracts" / "ai-workload-profile.schema.json"
 
 # Top-level keys of the GCP-shaped profile (gcp-to-aws schema-discover-ai.md); none exist in the neutral contract.
-LEGACY_TOP_LEVEL_KEYS = (
-    "metadata", "summary", "models", "integration", "infrastructure", "current_costs",
-    "detection_signals", "workloads", "agentic_profile", "tool_manifest",
-)
+LEGACY_TOP_LEVEL_KEYS = ("metadata", "summary", "models", "infrastructure", "current_costs", "detection_signals")
 LEGACY_SOURCE_KEYS = ("model_id", "service", "detected_via", "capabilities_used", "usage_context")
+V11_FIELDS = ("integration", "workloads", "agentic_profile", "tool_manifest")
+ORCHESTRATION_FRAMEWORKS = {"langchain", "langgraph", "llama_index", "llamaindex", "semantic_kernel"}
+GATEWAY_FRAMEWORK_VALUES = {"llm_router": "llm_router", "api_gateway": "api_gateway", "voice_platform": "voice_platform"}
 
-_JSON_TYPES = {"object": dict, "array": list, "string": str}
+_JSON_TYPES = {"object": dict, "array": list, "string": str, "boolean": bool, "number": (int, float), "integer": int}
 
 
 class ProfileRejected(Exception):
@@ -32,8 +32,13 @@ class ProfileRejected(Exception):
 def _schema_errors(schema: dict, value: Any, root: dict, path: str = "$") -> list[str]:
     if "$ref" in schema:
         return _schema_errors(root["definitions"][schema["$ref"].rsplit("/", 1)[-1]], value, root, path)
-    if "type" in schema and not isinstance(value, _JSON_TYPES[schema["type"]]):
+    if "type" in schema and (
+        not isinstance(value, _JSON_TYPES[schema["type"]])
+        or (schema["type"] in ("integer", "number") and isinstance(value, bool))
+    ):
         return [f"{path}: expected {schema['type']}"]
+    if "minimum" in schema and isinstance(value, (int, float)) and not isinstance(value, bool) and value < schema["minimum"]:
+        return [f"{path}: below minimum {schema['minimum']}"]
     errors: list[str] = []
     if "const" in schema and value != schema["const"]:
         errors.append(f"{path}: must equal {schema['const']!r}")
@@ -96,7 +101,7 @@ def _confirmed_confidence_path(profile: dict) -> str | None:
     return None
 
 
-def _check_semantics(profile: dict) -> None:
+def _check_semantics(profile: dict) -> dict[tuple[str, str], dict]:
     sources: dict[tuple[str, str], dict] = {}
     for source in profile["ai_sources"]:
         key = (source["provider"], source["source_service"])
@@ -167,6 +172,73 @@ def _check_semantics(profile: dict) -> None:
                         f"{gateway['product']}: {key[0]}/{key[1]} family {family['family']} lists {sorted(family['models'])}, "
                         f"but the source observes {sorted(expected)} in that family",
                     )
+    return sources
+
+
+def _check_v11(profile: dict, sources: dict[tuple[str, str], dict]) -> None:
+    present = [k for k in V11_FIELDS if k in profile]
+    if profile["schema_version"] == "1.0" and present:
+        raise ProfileRejected("version_mismatch", f"{', '.join(present)} requires schema_version \"1.1\"")
+    workload_ids: set[str] = set()
+    for workload in profile.get("workloads", []):
+        key = (workload["provider"], workload["source_service"])
+        if workload["workload_id"] in workload_ids:
+            raise ProfileRejected("duplicate_workload", f"workload_id {workload['workload_id']!r} appears more than once")
+        workload_ids.add(workload["workload_id"])
+        if key not in sources or workload["model"] not in sources[key]["models"]:
+            raise ProfileRejected("unmatched_workload", f"{workload['workload_id']}: {key[0]}/{key[1]} {workload['model']} is not an observed model")
+    agentic = profile.get("agentic_profile")
+    tools = profile.get("tool_manifest")
+    if tools is not None and agentic is None:
+        raise ProfileRejected("tool_manifest_without_agents", "tool_manifest is present without agentic_profile")
+    if agentic is None:
+        return
+    observed = {m for s in sources.values() for m in s["models"]}
+    agent_ids = [a["agent_id"] for a in agentic["agents"]]
+    if len(set(agent_ids)) != len(agent_ids):
+        raise ProfileRejected("duplicate_agent", "agent_id values must be unique")
+    tool_names = [tool["name"] for tool in tools or []]
+    if len(set(tool_names)) != len(tool_names):
+        raise ProfileRejected("duplicate_tool", "tool_manifest names must be unique")
+    for agent in agentic["agents"]:
+        if agent["model"] not in observed:
+            raise ProfileRejected("unmatched_agent_model", f"{agent['agent_id']}: {agent['model']} is not an observed model")
+        missing = sorted(set(agent["tools"]) - set(tool_names))
+        if missing:
+            raise ProfileRejected("unmatched_agent_tool", f"{agent['agent_id']} uses {missing}, which tool_manifest does not list")
+    for tool in tools or []:
+        unknown = sorted(set(tool["used_by_agents"]) - set(agent_ids))
+        if unknown:
+            raise ProfileRejected("unmatched_tool_agent", f"tool {tool['name']} names unknown agents {unknown}")
+
+
+def _framework_detected(profile: dict) -> list[str] | None:
+    integration = profile.get("integration")
+    if integration is None or "agentic_profile" in profile:
+        return None
+    values: set[str] = set()
+    for gateway in profile["gateways"]:
+        if gateway["type"] not in GATEWAY_FRAMEWORK_VALUES:
+            return None
+        values.add(GATEWAY_FRAMEWORK_VALUES[gateway["type"]])
+    frameworks = set(integration["frameworks"])
+    if frameworks - ORCHESTRATION_FRAMEWORKS:
+        return None
+    if frameworks:
+        values.add("framework")
+    if integration["pattern"] == "mixed" or (not values and integration["pattern"] in ("direct_sdk", "rest_api")):
+        values.add("direct")
+    return sorted(values) or None
+
+
+def _input_types_detected(profile: dict) -> str | None:
+    integration = profile.get("integration")
+    if integration is None:
+        return None
+    capabilities = integration["capabilities_summary"]
+    if capabilities["speech_to_text"]:
+        return "audio"
+    return "vision" if capabilities["vision"] else "text-only"
 
 
 def _summary(profile: dict) -> dict:
@@ -205,6 +277,8 @@ def _summary(profile: dict) -> dict:
             for g in profile["gateways"]
         ],
         "models_extractable": all_high,
+        "ai_framework_detected": _framework_detected(profile),
+        "ai_vision_detected": _input_types_detected(profile),
     }
 
 
@@ -216,7 +290,7 @@ def validate_profile(profile: Any, schema: dict | None = None) -> dict:
         raise ProfileRejected(
             "legacy_profile_rejected",
             f"field {legacy!r} belongs to the GCP-shaped profile; supply the neutral contract "
-            "(schema_version \"1.0\", ai_sources[], gateways[])",
+            "(schema_version \"1.0\" or \"1.1\", ai_sources[], gateways[])",
         )
     confirmed = _confirmed_confidence_path(profile)
     if confirmed is not None:
@@ -228,7 +302,7 @@ def validate_profile(profile: Any, schema: dict | None = None) -> dict:
     errors = _schema_errors(schema, profile, schema)
     if errors:
         raise ProfileRejected("schema_violation", "; ".join(errors[:5]))
-    _check_semantics(profile)
+    _check_v11(profile, _check_semantics(profile))
     return _summary(profile)
 
 

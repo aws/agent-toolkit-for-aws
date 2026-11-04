@@ -25,6 +25,7 @@ On `bedrock-runtime`, one output token consumes:
 - **15** quota tokens for Claude 4.8
 - **10** for Claude Opus 5.5, Claude Sonnet 5, Claude Opus 5, Claude Fable 5.1, and for GPT-5.6 Sol, GPT-5.6 Terra, and GPT-5.6 Luna
 - **10** for GPT-6 Astra. This is runtime-specific; do not apply it to mantle or infer Astra mantle quotas from GPT-5.6. Source: [Astra model card, verified 2026-09-16](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html)
+- **10** for GPT-6.1 Terra on runtime. Mantle has separate input/output quotas. Source: [Terra model card, verified 2026-11-03](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-terra.html)
 - **5** for other Anthropic Claude models, including 4.7 and below
 - **1** for every other model unless its model card says otherwise. Nova, Llama, DeepSeek, and Mistral are 1×
 
