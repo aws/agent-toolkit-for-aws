@@ -3,7 +3,7 @@
   "provider": "anthropic",
   "verified_at": "2026-09-24",
   "verified_region": "us-east-1",
-  "source": "Opus 5.5: AWS Bedrock model card retrieved 2026-09-24, https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html. Other entries retain their explicitly dated evidence from anthropic-bedrock-2026-07-21.json.",
+  "source": "Opus 5.5: AWS Bedrock model card retrieved 2026-09-24, https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html. Other entries retain their explicitly dated evidence from the superseded 2026-07-21 catalog (removed; see git history).",
   "disclaimer": "Point-in-time model-card evidence, not an account invocation. Re-probe the chosen model, API and inference profile in the target account and region. Opus 5.5 is Active, uses always-on adaptive thinking, and has no Batch tier. Global profiles are unavailable in GovCloud. Unchanged prior-generation entries retain their earlier evidence dates; Fable and Mythos are excluded from default selection. Opus 5.5 is the only Opus model in the automatic selection pool; older Opus snapshots and pricing records are historical references. The runtime in-region exception in eu-west-2 was verified 2026-10-03; the original catalog and other model evidence dates remain unchanged.",
   "paths": {
     "mantle_messages": {
