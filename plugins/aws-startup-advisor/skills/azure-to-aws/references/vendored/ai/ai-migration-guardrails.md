@@ -48,7 +48,7 @@ Inference on `bedrock-mantle` for these models is governed by **two per-model, p
 | Medium          | Medium     | Monitor 429s against **token** throughput, not request rate; enable prompt caching                 |
 | High            | High       | Enable prompt caching first (cached input is exempt from input TPM), then request a quota increase |
 
-**The `bedrock-runtime` fallback exists only for GPT-5.6 and GPT-6 (Astra, Sol, Luna, 6.1 Sol).** GPT-5.5 and GPT-5.4 are `bedrock-mantle` only and in-region only — for them, "switch to `bedrock-runtime`" requires moving to a different model (Bedrock-native or `gpt-oss`), a model change with its own eval cost. GPT-5.6 Sol/Terra/Luna and GPT-6 Astra/Sol/Luna/6.1 Sol DO have a `bedrock-runtime` path via CRIS inference profiles (GPT-5.6 `us.`/`in.`/`global.`, GPT-6 `us.`/`global.` prefixed ids; the model cards recommend runtime for new applications) — a legitimate endpoint option with its own quota family, and on Global CRIS it is also the cost-parity option. Scaling levers on the mantle path, in order:
+**The `bedrock-runtime` fallback exists only for GPT-5.6 and GPT-6 (Astra, Sol, Luna, 6.1 Sol, 6.1 Terra).** GPT-5.5 and GPT-5.4 are `bedrock-mantle` only and in-region only — for them, "switch to `bedrock-runtime`" requires moving to a different model (Bedrock-native or `gpt-oss`), a model change with its own eval cost. GPT-5.6 Sol/Terra/Luna and GPT-6 Astra/Sol/Luna/6.1 Sol/6.1 Terra DO have a `bedrock-runtime` path via CRIS inference profiles (GPT-5.6 `us.`/`in.`/`global.`, GPT-6 `us.`/`global.` prefixed ids; the model cards recommend runtime for new applications) — a legitimate endpoint option with its own quota family, and on Global CRIS it is also the cost-parity option. Scaling levers on the mantle path, in order:
 
 1. Prompt caching (GPT-5.6 and GPT-6 only) — 90% off cached input and exempt from the input-TPM quota
 2. Exponential backoff with a bounded retry count (`max_retries` on the OpenAI SDK)
@@ -72,6 +72,22 @@ do not multiply total source TPM by ten or carry this rule over to mantle. An en
 requires residency consent and API/capability checks from the canonical catalog.
 
 **Source:** [Astra model card, verified 2026-09-16](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html)
+
+### GPT-6.1 Terra — model-specific caching and quotas
+
+For Terra, use this subsection instead of the GPT-5.6-derived scaling assumptions above.
+Its cache-read rate is 5% of uncached input (a 95% discount), with the exact price selected
+by context tier and inference option in `bedrock-pricing-cache.md`. Verify the selected
+endpoint's account quotas and cached-token accounting before promising capacity; the Terra
+card does not establish the GPT-5.6 cached-input exemption.
+
+On runtime, the card specifies 10x output-token burndown:
+`required_TPM = peak_input_TPM + 10 * peak_output_TPM`.
+Do not apply that multiplier to Mantle or to the whole input-plus-output total.
+Retain the selected region, inference profile, and API constraints when changing endpoints.
+Compare costs against measured source spend or verified source rates.
+
+**Source:** [GPT-6.1 Terra model card, verified 2026-11-02](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-terra.html)
 
 ### Other models on Mantle
 
