@@ -15,7 +15,7 @@ How traffic gets in and out of a MicroVM, what protocols are supported, and how 
 
 > The proxy agent auto-detects whether the guest application speaks TLS.
 
-Each MicroVM gets a **dedicated, service-managed HTTPS endpoint** (`https://<microvm>.lambda-microvm.<region>.on.aws`).
+Each MicroVM gets a **dedicated, service-managed HTTPS endpoint** (`https://<microvm>.lambda-microvm.<region>.on.aws`, or `https://<microvm>.lambda-microvm.<region>.on.amazonwebservices.com.cn` in China regions).
 
 ## Ingress (inbound)
 
@@ -130,7 +130,7 @@ Steps:
    aws lambda-core create-network-connector \
      --name my-vpc-egress \
      --configuration '{"VpcEgressConfiguration":{"SubnetIds":["subnet-..."],"SecurityGroupIds":["sg-..."],"NetworkProtocol":"IPv4","AssociatedComputeResourceTypes":["MicroVm"]}}' \
-     --operator-role arn:aws:iam::<account>:role/NetworkConnectorOperatorRole
+     --operator-role arn:<partition>:iam::<account>:role/NetworkConnectorOperatorRole
    ```
 
    States: `PENDING` (provisioning ENIs, up to ~10 min) → `ACTIVE` → `DELETING`. Failure → `FAILED` with `StateReason`.
@@ -138,8 +138,8 @@ Steps:
 
    ```bash
    aws lambda-microvms run-microvm \
-     --image-identifier arn:aws:lambda:<region>:<account>:microvm-image:my-image \
-     --egress-network-connectors '["arn:aws:lambda:<region>:<account>:network-connector:<connector-id>"]'
+     --image-identifier arn:<partition>:lambda:<region>:<account>:microvm-image:my-image \
+     --egress-network-connectors '["arn:<partition>:lambda:<region>:<account>:network-connector:<connector-id>"]'
    ```
 
 Constraints:

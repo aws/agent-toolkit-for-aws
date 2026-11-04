@@ -209,6 +209,7 @@ _Skip when:_ the validator summary reports `models_extractable: true` — every 
 | Gemini Flash | Claude Haiku 5.5 (US Geo: $0.11/$0.55 up to 100K prompt tokens; $0.55/$2.75 above 100K) | Compare the exact Flash model and target token counts; savings are tier-dependent |
 | Gemini Pro    | Claude Sonnet 5 ($2/$10)       | Comparable tier                    |
 | GPT-6/6.1 (Astra/Sol/Luna) | **Same model on Bedrock** | ~10% over OpenAI std (DR tier); Astra/6.1 Sol also support Ultrafast |
+| GPT-6.1 Terra              | **Same model on Bedrock** | Use the model-specific endpoint and context-tier prices in the [GPT-6.1 Terra model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-terra.html); compare against measured source spend or verified source rates. |
 | GPT-5.6 (any) | **Same model on Bedrock**      | ~10% over OpenAI std (DR tier)     |
 | GPT-5.5       | **Same model on Bedrock**      | ~10% over OpenAI std (DR tier)     |
 | GPT-5.4       | **Same model on Bedrock**      | ~10% over OpenAI std (DR tier)     |

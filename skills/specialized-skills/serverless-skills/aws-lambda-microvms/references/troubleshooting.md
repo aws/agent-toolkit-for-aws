@@ -8,7 +8,7 @@ Inspect the per-build error:
 
 ```bash
 aws lambda-microvms list-microvm-image-builds \
-  --image-identifier arn:aws:lambda:<region>:<account>:microvm-image:my-image \
+  --image-identifier arn:<partition>:lambda:<region>:<account>:microvm-image:my-image \
   --image-version 1.0 \
   --query 'items[].[architecture,buildState,stateReason]' --output table
 ```
@@ -106,10 +106,10 @@ Old image versions persist (and bill) even when unused.
 
 ```bash
 aws lambda-microvms list-microvm-image-versions \
-  --image-identifier arn:aws:lambda:<region>:<account>:microvm-image:my-image
+  --image-identifier arn:<partition>:lambda:<region>:<account>:microvm-image:my-image
 
 aws lambda-microvms delete-microvm-image-version \
-  --image-identifier arn:aws:lambda:<region>:<account>:microvm-image:my-image \
+  --image-identifier arn:<partition>:lambda:<region>:<account>:microvm-image:my-image \
   --image-version <old-version>
 ```
 
