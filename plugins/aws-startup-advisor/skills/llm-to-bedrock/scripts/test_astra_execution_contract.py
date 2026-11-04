@@ -336,7 +336,7 @@ def test_azure_runtime_parent_gate_contract(model_id, region, allowed):
 
     This is a source-contract test, not execution of the natural-language DSL.
     """
-    catalog = json.loads((PLUGIN / "skills/agent-advisor/references/models/openai-bedrock-2026-09-24.json").read_text())
+    catalog = json.loads((PLUGIN / "skills/shared/ai/models/openai-bedrock.json").read_text())
     runtime = catalog["models"]["openai_gpt_6_astra"]["paths"]["runtime_converse"]
     witness = {"aws_model_id": model_id, "migration_path": "runtime_openai_cris", "model_change": False}
     assert (region in runtime["inference_profile_regions"].get(witness["aws_model_id"], [])) is allowed

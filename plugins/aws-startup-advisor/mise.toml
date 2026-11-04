@@ -16,7 +16,7 @@ run = "python3 scripts/consent-disclosure-audit.py"
 
 [tasks.ci]
 description = "Run startup advisor CI checks"
-depends = ["lint:md", "lint:model-id", "lint:model-staleness", "lint:startup-model-pricing", "lint:artifacts", "lint:vendored-parity", "lint:skill-refs", "lint:consent-disclosure", "test", "test:telemetry", "test:heroku-source-review"]
+depends = ["lint:md", "lint:model-id", "lint:model-staleness", "lint:model-catalog-drift", "lint:startup-model-pricing", "lint:artifacts", "lint:vendored-parity", "lint:skill-refs", "lint:consent-disclosure", "test", "test:telemetry", "test:heroku-source-review"]
 
 [tasks."lint:md"]
 description = "Lint startup advisor markdown using the shared rules"
@@ -25,6 +25,10 @@ run = "markdownlint-cli2 --config ../../.markdownlint-cli2.yaml '**/*.md' '#node
 [tasks."lint:model-staleness"]
 description = "Check Bedrock model-lifecycle registry freshness"
 run = "python3 tools/model-staleness.py --strict"
+
+[tasks."lint:model-catalog-drift"]
+description = "Check the shared model-selection catalogs cover every Active registry model (warn-only until the catalogs are refreshed)"
+run = "python3 tools/model-catalog-drift.py"
 
 [tasks."lint:model-id"]
 description = "Check model references against the lifecycle registry"
