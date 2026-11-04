@@ -14,7 +14,7 @@ def validate_model_pricing(plugin_root: Path) -> list[str]:
     match = re.search(r'^DEFAULT_CATALOG = MODELS_DIR / "([^"]+)"', selector, re.MULTILINE)
     if not match:
         raise ValueError("Cannot locate the default Anthropic catalog.")
-    catalog = json.loads((skills / "agent-advisor/references/models" / match[1]).read_text())
+    catalog = json.loads((skills / "shared/ai/models" / match[1]).read_text())
     errors = []
     for cloud in ("gcp-to-aws", "azure-to-aws"):
         cache = skills / cloud / "references/vendored/ai/bedrock-pricing-cache.md"
