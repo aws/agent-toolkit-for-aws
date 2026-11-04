@@ -12,7 +12,6 @@ import pytest
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 BMA = PLUGIN_ROOT / "skills" / "bedrock-migration-assessment"
 DISCOVER = BMA / "references" / "phases" / "discover"
-GCP_SCAN = PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "phases" / "discover" / "discover-app-code.md"
 SCAN_FIXTURES = sorted(PLUGIN_ROOT.glob("fixtures/bma-scan-*"))
 
 spec = importlib.util.spec_from_file_location("bma_discover_validator", BMA / "scripts" / "validate-ai-profile.py")
@@ -22,7 +21,7 @@ spec.loader.exec_module(VALIDATOR)
 
 SCAN = (DISCOVER / "discover-app-code.md").read_text(encoding="utf-8")
 CONTROLLER = (DISCOVER / "discover.md").read_text(encoding="utf-8")
-GCP = GCP_SCAN.read_text(encoding="utf-8")
+GCP = (PLUGIN_ROOT / "skills/gcp-to-aws/references/phases/discover/discover-app-code.md").read_text(encoding="utf-8")
 
 
 def _section(text: str, heading: str) -> str:
@@ -102,14 +101,20 @@ def test_controller_wiring() -> None:
 
 
 def test_google_genai_mode_and_distinct_gemini_models() -> None:
-    table = _section(SCAN, "## Step 3")
-    assert "`GOOGLE_GENAI_USE_VERTEXAI` set to true" in table
-    assert "Never open `.env*` or other secret files for this." in table
-    models = _section(SCAN, "## Step 4")
-    assert "Normalize all `gemini-2.5-flash-*`" not in models
+    table, models = _section(SCAN, "## Step 3"), _section(SCAN, "## Step 4")
+    for rule in ("for each `genai.Client(...)` call site separately",
+                 "A value set for a different image, service, job, or module does not apply.",
+                 "Never open `.env*` or other secret files for this."):
+        assert rule in table, rule
+    assert "anywhere you may read" not in table and "Normalize all `gemini-2.5-flash-*`" not in models
     for kept in ("`gemini-2.5-flash-lite` stays `\"gemini-2.5-flash-lite\"`", "`-lite`, `-thinking`", "keep the full string"):
         assert kept in models, kept
-    profile = json.loads((PLUGIN_ROOT / "fixtures/bma-scan-vertex-env-flash-lite/ai-workload-profile.json").read_text())
-    summary = VALIDATOR.validate_profile(profile)
-    assert [(s["source_service"], [m["model"] for m in s["models"]]) for s in summary["ai_sources"]] == [("vertex_ai", ["gemini-2.5-flash-lite"])]
-    assert summary["models_extractable"] is True
+
+
+@pytest.mark.parametrize(("fixture", "expected"), [
+    ("bma-scan-vertex-env-flash-lite", [("vertex_ai", "gemini-2.5-flash-lite")]),
+    ("bma-scan-genai-two-runtimes", [("gemini_api", "gemini-2.5-flash"), ("vertex_ai", "gemini-2.5-pro")]),
+])
+def test_google_identities_survive_the_summary(fixture: str, expected: list) -> None:
+    summary = VALIDATOR.validate_profile(json.loads((PLUGIN_ROOT / "fixtures" / fixture / "ai-workload-profile.json").read_text()))
+    assert sorted((s["source_service"], s["models"][0]["model"]) for s in summary["ai_sources"]) == expected

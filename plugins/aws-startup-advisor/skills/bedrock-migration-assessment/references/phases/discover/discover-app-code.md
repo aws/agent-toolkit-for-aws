@@ -122,7 +122,18 @@ Group every AI call into an **AI source** keyed by `(provider, source_service)`:
 | `AzureOpenAI()`, `azure_endpoint=`, or an endpoint ending in `.openai.azure.com`                      | `openai`    | `azure_openai`   |
 | `Anthropic()` / `anthropic` SDK, or `api.anthropic.com`                                               | `anthropic` | `anthropic_api`  |
 
-**google-genai mode.** When `genai.Client()` is called without a `vertexai=` argument, the SDK uses Vertex AI if the environment variable `GOOGLE_GENAI_USE_VERTEXAI` is `true` or `1`. Look for it being set in source code (`os.environ[...] =`, `setdefault`) and in non-secret config: Dockerfile `ENV`, `docker-compose*.yml`, CI workflows, Kubernetes or Cloud Run manifests, and `app.yaml`. Never open `.env*` or other secret files for this. If the variable is set to true anywhere you may read, use `vertex_ai`. If the code reads it but its value can only come from a file you may not open, use `gemini_api`, and say in the evidence `detail` and in the summary to the user that the service could not be confirmed.
+**google-genai mode.** Decide the service for each `genai.Client(...)` call site separately. **Do not open `.env*` or other secret files to look for this setting, even with values redacted.** A value that could only be in one of them is treated as unknown (step 3).
+
+1. An explicit `vertexai=True` or `vertexai=False` argument decides it.
+2. Otherwise the SDK reads `GOOGLE_GENAI_USE_VERTEXAI` (`true` or `1` means Vertex AI) from the environment of the process that runs the code. Find the value that applies to *that* code only:
+   - a Dockerfile `ENV` applies to the code the image copies in and runs (`COPY` paths, `CMD`, `ENTRYPOINT`);
+   - a `docker-compose*.yml`, Kubernetes, or Cloud Run `environment`/`env` entry applies to that service's image or command;
+   - a CI workflow `env` applies to the commands of that job or step;
+   - `os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = ...` or `setdefault` in code applies to that module and what it imports.
+   A value set for a different image, service, job, or module does not apply. Never open `.env*` or other secret files for this.
+3. If exactly one value applies and it is true, use `vertex_ai`; if it is false or unset, use `gemini_api`. If no runtime can be matched to the call site, or the applicable value can only come from a file you may not open, use `gemini_api` and say in the evidence `detail` and in the summary to the user that the service could not be confirmed.
+
+Call sites that resolve to different services produce separate sources (`google`/`vertex_ai` and `google`/`gemini_api`), each with only its own models.
 
 A provider reached through two services produces two sources. Other LLM SDKs (Cohere, Mistral, and so on) use the SDK's company name as `provider` and `<provider>_api` as `source_service`.
 
