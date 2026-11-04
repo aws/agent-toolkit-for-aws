@@ -38,7 +38,7 @@ one.
 ## Rules for every investigation
 
 1. **Explore before you give up.** Assume the credentials are the intended environment. Treat
-   unfamiliar or internal terms (service nicknames, airport-code regions such as PDX = us-west-2,
+   unfamiliar terms (service nicknames, airport-code regions such as PDX = us-west-2,
    IAD = us-east-1) as search hints: list resources, log groups and data stores in the likely
    regions and search for the identifiers in the request before saying something cannot be done.
 2. **Separate evidence from inference.** Keep a short provenance note per claim

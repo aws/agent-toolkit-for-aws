@@ -74,7 +74,7 @@ When the user names one table as the authority for which records count:
    joins.
 4. Do not collapse rows that share a key: if several entities map to one identifier, list each.
 5. Copy identifier values from query results instead of retyping them, and check that every row has
-   every requested field before writing the answer.
+   every requested field before answering.
 
 ## Output
 
