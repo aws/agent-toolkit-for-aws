@@ -44,6 +44,7 @@
   creation date or a stored-bytes count, or from one query that failed or
   came back empty. Read the records another way, across the full time
   range, before reporting them absent.
+- Make sure your output is consistent with the user's requirements.
 
 ## Secret Safety
 
