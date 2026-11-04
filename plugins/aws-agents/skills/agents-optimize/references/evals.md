@@ -49,22 +49,25 @@ Read `agentcore/agentcore.json` if it exists. Check:
 - Which agents exist — `runtimes` (your own code) and/or `harnesses` (config-defined agents) — and whether they're deployed
 - Existing `evaluators` and `onlineEvalConfigs`
 
-**Project commands vs. `eval` commands.** `agentcore add evaluator ...` and `agentcore add online-eval ...` write to `agentcore.json` and take effect on `agentcore deploy`; they use **project names**. The `agentcore eval ...` command group calls the service directly, works outside a project, and takes **deployed IDs**. Get the IDs from:
+**Project commands vs. `eval` commands.** `agentcore add evaluator ...` and `agentcore add online-eval ...` write to `agentcore.json` and take effect on `agentcore deploy`; they use **project names**. The `agentcore eval ...` command group calls the service directly, works outside a project, and takes **deployed IDs**. Direct `eval` commands use the shell's AWS region, which may differ from the project's deployment target. Get both the IDs and target region from:
 
 ```bash
-agentcore status --json
+agentcore status --target default --json   # use your deployed target if not "default"
 ```
 
 `status` lists each resource with `resourceType`, `name`, `deploymentState`, and its deployed `arn` (`id` is usually `null`, so use the ARN). A Runtime ID is the last path segment of the Runtime ARN (`arn:aws:bedrock-agentcore:<region>:<account>:runtime/<runtimeId>`). For example:
 
 ```bash
-RUNTIME_ID=$(agentcore status --json \
-  | jq -r '.resources[] | select(.resourceType=="runtime" and .name=="MyAgent") | .arn | split("/") | last')
+TARGET=default   # use the target you deployed if not "default"
+PROJECT_STATUS=$(agentcore status --target "$TARGET" --json)
+RUNTIME_ID=$(jq -er '.resources[] | select(.resourceType=="runtime" and .name=="MyAgent") | .arn | split("/") | last' <<< "$PROJECT_STATUS")
+TARGET_REGION=$(jq -er '.region' <<< "$PROJECT_STATUS")
+export AWS_REGION="$TARGET_REGION"   # applies to the direct agentcore eval examples below
 ```
 
 Built-in evaluators are referenced as `Builtin.<Name>` everywhere. Project-defined custom evaluators are referenced by name inside `agentcore.json` (e.g. in `add online-eval --evaluators`) but by their deployed evaluator ID in `agentcore eval ...` commands — look them up the same way (`resourceType=="evaluator"`).
 
-**If no project context:** Ask for the deployed Runtime ID or harness ID and use the `agentcore eval ...` commands directly.
+**If no project context:** Ask for the deployed Runtime ID or harness ID **and its region**. Set `AWS_REGION` to that region (or pass `--region`) before using `agentcore eval ...`. In a project with a non-default target, set `TARGET` to that target before running the status and trace commands.
 
 **What actually requires a deployed agent — and what doesn't:**
 
@@ -90,25 +93,39 @@ Built-in evaluators are referenced as `Builtin.<Name>` everywhere. Project-defin
 These local traces are useful for checking *what the agent did* while you iterate, but they never reach CloudWatch, so `agentcore eval` commands can't score them. To score real sessions, deploy and invoke:
 
 ```bash
-agentcore deploy
+agentcore deploy --target "$TARGET"
 SESSION_ID=$(uuidgen)   # Runtime session IDs must be at least 33 characters
-agentcore invoke --runtime MyAgent --session-id "$SESSION_ID" --payload '{"prompt": "What is the weather in Seattle?"}'
+agentcore invoke --runtime MyAgent --target "$TARGET" --session-id "$SESSION_ID" --payload '{"prompt": "What is the weather in Seattle?"}'
 
-# Traces take 30–90s to land in CloudWatch: poll until the session shows up, then evaluate
-found=
-for i in $(seq 1 18); do   # up to 3 minutes
-  if agentcore traces runtime list --name MyAgent --since 10m --json \
-      | jq -e --arg s "$SESSION_ID" 'any(.traces[]; .sessionId == $s)' > /dev/null; then
-    found=1; break
+# A session can appear before its response. Poll the downloaded trace for
+# Strands' final-response event; list presence or a stable count is not enough.
+TRACE_FILE=$(mktemp)
+trap 'rm -f "$TRACE_FILE"' EXIT
+ready=
+for i in $(seq 1 12); do   # at most about 6 minutes
+  if ! trace_ids=$(agentcore traces runtime list --name MyAgent --target "$TARGET" --since 10m --limit 1000 --json \
+    | jq -r --arg s "$SESSION_ID" '.traces[] | select(.sessionId == $s) | .traceId'); then
+    sleep 30; continue   # telemetry may not be queryable yet
   fi
-  sleep 10
+  for trace_id in $trace_ids; do
+    if agentcore traces runtime get "$trace_id" --name MyAgent --target "$TARGET" \
+      --since 10m --output "$TRACE_FILE" >/dev/null 2>&1 &&
+      jq -e 'any(.[]; .["@message"].eventName == "gen_ai.choice" or
+      any(.["@message"].events[]?; .name == "gen_ai.choice"))' "$TRACE_FILE" >/dev/null; then
+      ready=1; break
+    fi
+  done
+  [ -n "$ready" ] && break
+  sleep 30
 done
-[ -n "$found" ] || { echo "No trace for session $SESSION_ID after 3 minutes; check logs and Transaction Search" >&2; exit 1; }
+[ -n "$ready" ] || { echo "Final response for session $SESSION_ID did not arrive; check logs and Transaction Search" >&2; exit 1; }
 agentcore eval ondemand evaluate \
   --agent "$RUNTIME_ID" \
   --session-ids "$SESSION_ID" \
   --evaluators Builtin.Helpfulness
 ```
+
+This check uses Strands/ADOT's `gen_ai.choice` response event (see Path D). It confirms response evidence is visible, not that every telemetry record has arrived. For another framework, inspect its trace and adapt the marker before scoring. A missing response span is not a failing answer; it is incomplete evidence.
 
 The evaluator runs in AWS (it's a managed evaluation service — the model call happens there, not locally).
 
@@ -313,7 +330,7 @@ These change the deployed config directly; they don't edit `agentcore.json`.
 Two kinds of gate — pick based on what you're protecting:
 
 - **Recent-traffic gate** — score only the sessions your integration tests just produced (`agentcore eval ondemand evaluate --session-ids`). Cheap; reflects whatever the tests sent.
-- **Dataset regression gate** — replay a fixed dataset against the new version and score it (`agentcore eval ondemand simulate`). Same scenarios every run, so scores are comparable across versions. Preferred for promotion gates — see Path E for building the dataset.
+- **Dataset regression gate** — replay a fixed dataset against the new version and score it (`agentcore eval ondemand simulate`). Same scenarios every run, so scores are comparable across versions, but `simulate` uses a fixed ingestion delay, not a final-response check. Do not use its immediate score alone as a promotion gate when traces may be incomplete; see Path E for building the dataset.
 
 Generate a script that runs evals and fails the build if quality drops below a threshold:
 
@@ -323,6 +340,7 @@ Generate a script that runs evals and fails the build if quality drops below a t
 set -euo pipefail
 
 RUNTIME_ID="${RUNTIME_ID:?set RUNTIME_ID to the deployed Runtime ID}"
+TARGET_REGION="${TARGET_REGION:?set TARGET_REGION to the deployment target AWS region}"
 EVALUATOR="Builtin.Helpfulness"
 THRESHOLD="0.7"
 
@@ -332,23 +350,42 @@ THRESHOLD="0.7"
 SESSION_IDS="${SESSION_IDS:?set SESSION_IDS to the space-separated session IDs your tests used}"
 read -ra session_ids <<< "$SESSION_IDS"
 
+# Recent-traffic gate: wait for each Strands session's final response event.
+# A trace-list entry alone can contain only the first few spans.
+TRACE_FILE=$(mktemp)
+trap 'rm -f "$TRACE_FILE"' EXIT
+for session_id in "${session_ids[@]}"; do
+  complete=
+  for i in $(seq 1 12); do   # at most about 6 minutes
+    if ! trace_ids=$(agentcore runtime traces list --id "$RUNTIME_ID" --region "$TARGET_REGION" \
+      --since 10m --limit 1000 --json | jq -r --arg s "$session_id" '.traces[] | select(.sessionId == $s) | .traceId'); then
+      sleep 30; continue   # telemetry may not be queryable yet
+    fi
+    for trace_id in $trace_ids; do
+      if agentcore runtime traces get "$trace_id" --id "$RUNTIME_ID" --region "$TARGET_REGION" \
+        --since 10m --output "$TRACE_FILE" >/dev/null 2>&1 &&
+        jq -e 'any(.[]; .["@message"].eventName == "gen_ai.choice" or
+        any(.["@message"].events[]?; .name == "gen_ai.choice"))' "$TRACE_FILE" >/dev/null; then
+        complete=1; break
+      fi
+    done
+    [ -n "$complete" ] && break
+    sleep 30
+  done
+  [ -n "$complete" ] || { echo "No final response span for session $session_id" >&2; exit 1; }
+done
+
 echo "Running quality gate eval..."
 # Also fails if any session has no supported-scope spans (e.g. from a failed invoke):
 # one such session aborts the whole run.
 result=$(agentcore eval ondemand evaluate --json \
+  --region "$TARGET_REGION" \
   --agent "$RUNTIME_ID" \
   --evaluators "$EVALUATOR" \
   --session-ids "${session_ids[@]}") || { echo "⚠️  Eval failed or found none of the test sessions. Did the tests use these session IDs, did every invoke succeed, and have their traces landed?" >&2; exit 1; }
 expected=${#session_ids[@]}
-# Dataset regression gate (instead of the above):
-# result=$(agentcore eval ondemand simulate \
-#   --runtime-id "$RUNTIME_ID" \
-#   --dataset ./evals/regression.jsonl \
-#   --payload-template '{"prompt":"{input}"}' \
-#   --evaluators "$EVALUATOR") || { echo "⚠️  Dataset replay failed" >&2; exit 1; }
-# failed=$(echo "$result" | jq '.examplesFailed')
-# if [ "$failed" -gt 0 ]; then echo "❌ $failed dataset example(s) failed to invoke" >&2; exit 1; fi
-# expected=$(echo "$result" | jq '.examplesInvoked')
+# For dataset replay, use `ondemand simulate` with --region "$TARGET_REGION".
+# Its fixed ingestion wait does not prove trace completeness.
 
 # Missing sessions don't fail the command: sessionsRequested counts only the
 # sessions it found. Compare against the sessions the gate expected.
@@ -376,7 +413,7 @@ fi
 
 score=$(echo "$result" | jq -r '[.results[].value] | if length == 0 then empty else add / length end')
 if [ -z "$score" ]; then
-  echo "⚠️  No eval results. Invoke the agent, wait for its traces (up to ~90s), then re-run." >&2
+  echo "⚠️  No eval results. Invoke the agent, wait for complete response spans, then re-run." >&2
   exit 1
 fi
 
@@ -390,9 +427,9 @@ fi
 echo "✅ Quality gate PASSED"
 ```
 
-**Note:** Traces take **30–90 seconds** after an invocation to become readable, and the same ingestion step unlocks both trace reads and eval queries. For the recent-traffic gate, invoke the agent as part of your integration tests with known `--session-id` values (pass the same IDs to the gate as `SESSION_IDS`), then poll `agentcore runtime traces list --id "$RUNTIME_ID" --since 10m --json` until every test session appears in `.traces[].sessionId` before running the gate — don't rely on a short fixed `sleep`. (`agentcore traces runtime list`, used in Step 2, needs a project checkout.) The `simulate` commands wait for ingestion themselves (`--ingestion-wait-ms`, default 180000).
+**Note:** CloudWatch can show the first trace records before the agent's response spans arrive. The gate checks Strands/ADOT's `gen_ai.choice` event in the downloaded trace, not list presence. This confirms response evidence is visible, not that all telemetry records have arrived. Trace listing defaults to 20 results; increase `--limit` or narrow `--since` if this runtime receives more than 1,000 traces in 10 minutes. Adapt the response marker for other agent frameworks. (`agentcore traces runtime ...`, used in Step 2, needs a project checkout.) `simulate` sleeps for `--ingestion-wait-ms` (default 180000), then evaluates without verifying response spans.
 
-The gate needs no project checkout — every command above takes the deployed Runtime ID, so pass it to CI as a variable.
+The gate needs no project checkout — pass the deployed Runtime ID and target region to CI as variables.
 
 For a categorical evaluator, replace the numeric checks with a label check, for example `jq '[.results[] | select(.label != "Pass")] | length'` must be `0`.
 
@@ -616,7 +653,7 @@ agentcore eval ondemand simulate \
   --evaluators Builtin.Correctness Builtin.GoalSuccessRate
 ```
 
-`--payload-template` is the request body your agent expects; `{input}` is replaced with each turn's input. The command invokes the Runtime per example, waits for ingestion (`--ingestion-wait-ms`, default 180000), scores the sessions, and prints JSON with `results` plus `examplesInvoked`, `examplesFailed`, and the `sessions` it created.
+`--payload-template` is the request body your agent expects; `{input}` is replaced with each turn's input. The command invokes the Runtime per example, sleeps for `--ingestion-wait-ms` (default 180000), scores the sessions, and prints JSON with `results` plus `examplesInvoked`, `examplesFailed`, and the `sessions` it created. The sleep is not a completeness check; inspect the created sessions' response evidence before relying on their scores.
 
 For a shared, versioned suite, upload the dataset and run it service-side:
 
@@ -691,9 +728,10 @@ The `components.json` shape for a bundle and how the agent reads the active bund
 
 ### "No telemetry found for agent" / no results
 
-- Wait 30–90 seconds after invoking the agent — that's how long traces take to reach CloudWatch (there's no separate eval-indexing step beyond that). Poll `agentcore traces runtime list` (in a project) or `agentcore runtime traces list --id <RUNTIME_ID>` (anywhere) until the session appears; its session ID can show as `-` at first
+- Allow roughly 1–3 minutes after invoking the agent for CloudWatch ingestion. A trace-list entry can arrive before the final response spans; inspect the trace contents before evaluating. Use `agentcore traces runtime list` in a project or `agentcore runtime traces list --id <RUNTIME_ID> --region <target-region>` elsewhere
 - For online-eval results, also wait for the session timeout: a session is only scored after it has been idle for `sessionTimeoutMinutes` (see Path B, Step B4)
 - Confirm you passed the deployed Runtime or harness **ID**, not the project name
+- Confirm the direct `eval` command uses the deployment target's region; `Agent with name ... not found` can mean the shell's region points at the wrong account endpoint
 - Confirm the sessions came from the deployed agent — `agentcore dev` runs never reach CloudWatch
 - Check that the runtime wasn't deployed with `"instrumentation": { "enableOtel": false }` and that Transaction Search is enabled (see Step 2)
 - Widen the window: `--lookback-days 14` or `--lookback-days 30`
@@ -756,7 +794,7 @@ Different tools for different workflows — developers confuse them.
 
 **Use `ondemand evaluate`** when you're iterating on an evaluator, investigating a specific regression, or gating on recent traffic. It's fast, cheap, and doesn't invoke the agent — it only scores existing traces.
 
-**Use `simulate`** when you have a dataset of scenarios with expected responses / trajectories / assertions. It **invokes the agent** for each example, waits for telemetry ingestion once per run, then evaluates. Typical use: regression pack in CI before promoting a new version.
+**Use `simulate`** when you have a dataset of scenarios with expected responses / trajectories / assertions. It **invokes the agent** for each example, sleeps for the configured ingestion delay, then evaluates. Before using its scores to promote a version, verify final-response evidence in the created sessions; the fixed delay is not a completeness check.
 
 **Use online eval** for continuous production monitoring at a sampling rate — not the same as a benchmark.
 
