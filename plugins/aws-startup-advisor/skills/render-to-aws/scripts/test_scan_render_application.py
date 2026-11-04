@@ -67,7 +67,7 @@ def test_openrouter_vendor_prefixed_model_yields_observed_upstream(tmp_path: Pat
     observation = anthropic_source["model_observations"][0]
     assert observation["raw_model"] == "anthropic/claude-3.5-sonnet"
     assert observation["normalized_model"] == "claude-3.5-sonnet"
-    assert observation["evidence"][0] == {"provenance": "code", "confidence": "confirmed", "detail": "app.py:4"}
+    assert observation["evidence"][0] == {"provenance": "code", "confidence": "high", "detail": "app.py:4"}
     assert not any(s["provider"] == "openrouter" for s in profile["ai_sources"])
 
 
@@ -119,7 +119,7 @@ def test_azure_only_file_attributes_models_to_azure_openai(tmp_path: Path) -> No
     assert _sources(profile) == {("openai", "azure_openai"): ["gpt-4o"]}
     azure = profile["ai_sources"][0]
     assert azure["model_evidence"] == "observed"
-    assert azure["model_observations"][0]["evidence"][0]["confidence"] == "confirmed"
+    assert azure["model_observations"][0]["evidence"][0]["confidence"] == "high"
 
 
 def test_mixed_direct_and_azure_file_keeps_both_sources_with_models(tmp_path: Path) -> None:
@@ -149,10 +149,10 @@ def test_same_model_on_both_clients_on_separate_lines_binds_each_source(tmp_path
     sources = _sources(profile)
     assert sources == {("openai", "openai_api"): ["gpt-4o"], ("openai", "azure_openai"): ["gpt-4o"]}
     azure = next(s for s in profile["ai_sources"] if s["source_service"] == "azure_openai")
-    assert azure["model_observations"][0]["evidence"] == [{"provenance": "code", "confidence": "confirmed", "detail": "app.py:6"}]
+    assert azure["model_observations"][0]["evidence"] == [{"provenance": "code", "confidence": "high", "detail": "app.py:6"}]
 
 
-def test_shared_client_model_without_receiver_is_unattributed_not_confirmed(tmp_path: Path) -> None:
+def test_shared_client_model_without_receiver_is_unattributed_not_high_confidence(tmp_path: Path) -> None:
     (tmp_path / "app.py").write_text(
         "import os\nfrom openai import OpenAI, AzureOpenAI\n"
         'direct = OpenAI(api_key=os.environ["OPENAI_API_KEY"])\n'
@@ -169,7 +169,7 @@ def test_shared_client_model_without_receiver_is_unattributed_not_confirmed(tmp_
     observation = unattributed["model_observations"][0]
     assert observation["evidence"] == [{"provenance": "code", "confidence": "low", "detail": "app.py:6:unattributed"}]
     direct = next(s for s in profile["ai_sources"] if s["source_service"] == "openai_api")
-    assert {e["confidence"] for o in direct["model_observations"] for e in o["evidence"] if o["normalized_model"] == "gpt-4o-mini"} == {"confirmed"}
+    assert {e["confidence"] for o in direct["model_observations"] for e in o["evidence"] if o["normalized_model"] == "gpt-4o-mini"} == {"high"}
 
 
 def test_direct_only_file_does_not_emit_azure_source(tmp_path: Path) -> None:

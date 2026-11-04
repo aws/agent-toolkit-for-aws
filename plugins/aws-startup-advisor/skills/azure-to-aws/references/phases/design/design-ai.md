@@ -160,8 +160,8 @@ flat rates from `references/vendored/ai/bedrock-pricing-cache.md` throughout the
 do not apply the GPT multiplier. Verify other models' tiers individually.
 
 **Quota risk** (per `references/vendored/ai/bedrock-quotas.md`): high/very_high volume →
-`quota_risk: "high"` + a pre-migration quota-increase flag; medium + Claude (5× output burndown) or Astra runtime (10× output burndown) →
-`"medium"`; else `"low"`. Before writing that value, apply the observed on-demand peak rule in `references/vendored/ai/bedrock-quotas.md`, including `azure-openai-metrics-profile.json` when it has an on-demand peak. Unknown `service_tier` is not on-demand. A monthly `"low"` with a weighted peak above 200,000 TPM becomes `"high"`. Record on each `bedrock_models[]` entry. Generate must not keep the earlier monthly decision.
+`quota_risk: "high"` + a pre-migration quota-increase flag; medium + Claude on bedrock-runtime or Astra runtime (10× output burndown) →
+`"medium"`; else `"low"`. Before writing that value, apply **Observed on-demand peak** in `references/vendored/ai/bedrock-quotas.md`, including `azure-openai-metrics-profile.json` when it has an on-demand peak. Unknown `service_tier` is not on-demand. A `"low"` monthly tier stays `"low"` only when no usable on-demand peak exceeds that rule. A monthly `"low"` with a weighted peak above 200,000 TPM becomes `"high"`. Batch rows are excluded. Profiles without peak fields keep the monthly result. Record on each `bedrock_models[]` entry and on `ai_architecture.quota_risk`. Generate reads the value written here and must not keep the earlier monthly decision.
 
 ## Part 1B: Volume-based strategy
 
@@ -221,8 +221,8 @@ Completions support is unconfirmed on their model cards, so a Chat Completions s
 still needs a planned reshape to `responses.create`. **No Converse fallback for GPT-5.5/GPT-5.4 — GPT-5.6 and
 GPT-6 differ.** GPT-5.5 and GPT-5.4 are mantle-only, in-region only: needing Guardrails/Knowledge
 Bases/logging/an unsupported region forces a `converse` path with `model_change: true` to a
-Bedrock-native model (or `gpt-oss`). GPT-5.6 Sol/Terra/Luna and all four GPT-6 models (Astra, Sol,
-Luna, 6.1 Sol) DO have a `bedrock-runtime` CRIS path (`us.`/`global.` prefixed IDs) — for these
+Bedrock-native model (or `gpt-oss`). GPT-5.6 Sol/Terra/Luna and all five GPT-6 models (Astra, Sol,
+Luna, 6.1 Sol, 6.1 Terra) DO have a `bedrock-runtime` CRIS path (`us.`/`global.` prefixed IDs) — for these
 models the same need is satisfied by switching endpoint, not model: record
 `migration_path: "runtime_openai_cris"` with `model_change: false`. Note: `runtime_openai_cris`
 for GPT-6 Astra is valid only via Responses/Chat Completions/Converse — Astra does not support
@@ -230,10 +230,15 @@ for GPT-6 Astra is valid only via Responses/Chat Completions/Converse — Astra 
 Sol/Luna/6.1 Sol. **When Guardrails is the driving need and the design keeps
 `runtime_openai_cris` (endpoint switch, not model switch), it MUST also record
 `bedrock_models[].required_client_api` so the generated client uses a Guardrails-capable
-surface — `converse` for Astra; `converse` / `chat_completions` / `invoke` (never `responses`)
-for 6.1 Sol and the other non-Astra GPT-6/5.6 CRIS models. Do not leave the client on
+surface — `converse` for Astra and 6.1 Terra; `converse` / `chat_completions` / `invoke` (never `responses`)
+for 6.1 Sol and the other GPT-6/5.6 CRIS models except Astra and 6.1 Terra. Do not leave the client on
 `responses` when Guardrails is required.** `Responses` stays the default for a region-only
 CRIS move with no Guardrails need.
+
+**GPT-6.1 Terra API constraints:** Guardrails and application inference profiles require
+`required_client_api: "converse"`. Converse rejects document blocks and images in tool
+results; a document workload uses Responses `input_file`, so do not claim that the same
+Terra API path also supplies Guardrails. Resolve conflicting requirements before generation.
 
 An Azure-specific client (`AzureOpenAI`, deployment/API-version configuration) must be adapted
 to the selected Bedrock client; do not claim that setting OPENAI_BASE_URL alone changes that client.

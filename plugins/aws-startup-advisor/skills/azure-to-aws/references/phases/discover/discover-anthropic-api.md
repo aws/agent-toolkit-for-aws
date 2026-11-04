@@ -82,9 +82,12 @@ I can pull your organization's Anthropic (Claude API) cost and usage data
 directly from the Anthropic Admin API. This runs GET requests only, against
 a fixed list of two usage/cost endpoints:
 
-  ✓ Captured: daily token counts by model (input, output, cache read, cache
-    creation), and USD cost by workspace or by model/inference-geo — scoped
-    to the workspace(s) YOU select as belonging to this application.
+  ✓ Captured: token counts by model, service tier, context window
+    (0-200k vs 200k-1M), and inference geo — input, output, cache read,
+    and cache creation split into the 5-minute and 1-hour pools — plus
+    web-search request counts, the busiest day, and peak tokens per
+    minute. USD cost by workspace or by model/inference-geo. Scoped to
+    the workspace(s) YOU select as belonging to this application.
   ✗ Never captured: prompts or completions content, org member data,
     per-key/per-user attribution, or any non-GET request. No request that
     creates, changes, or deletes anything will run — and no Admin,
@@ -252,8 +255,10 @@ that filter, consistent with the Step 0 consent promise.
 
 | # | Endpoint (GET, `https://api.anthropic.com`) | Query parameters | Output file |
 |---|---|---|---|
-| 1 | `/v1/organizations/usage_report/messages` | `starting_at`, `bucket_width=1d`, `group_by[]=model&group_by[]=service_tier`, `workspace_ids[]…` (all selected, one call), `limit=31` | `usage-messages.json` |
+| 1 | `/v1/organizations/usage_report/messages` | `starting_at`, `bucket_width=1d`, `group_by[]=model&group_by[]=service_tier&group_by[]=context_window&group_by[]=inference_geo`, `workspace_ids[]…` (all selected, one call), `limit=31` | `usage-messages.json` |
 | 2 | `/v1/organizations/cost_report` | `starting_at`, `bucket_width=1d`, `group_by[]=workspace_id&group_by[]=description` (one call total, no `workspace_ids[]` param), `limit=31` | `cost-report.json` (single response, filtered client-side to rows whose `workspace_id ∈ $WORKSPACE_IDS`) |
+| 3 | `/v1/organizations/usage_report/messages` | `starting_at`, `bucket_width=1h`, same `group_by[]` as row 1, `workspace_ids[]…`, `limit=168` | `usage-messages-hourly.json` |
+| 4 | `/v1/organizations/usage_report/messages` | busiest non-batch UTC day only (from row 3): `starting_at`/`ending_at` spanning that day, `bucket_width=1m`, same `group_by[]` as row 1, `workspace_ids[]…`, `limit=1440` | `usage-messages-minute.json` |
 
 Grouping the cost endpoint by both `workspace_id` and `description` together
 (the endpoint's `group_by` accepts either or both dimensions in one call) is
@@ -265,6 +270,8 @@ workspace's rows split out individually, so no per-workspace loop is needed
 to break a multi-workspace selection back out. Code-execution costs appear
 only in `cost-report.json`, never in `usage-messages.json` — do not assume
 cost is derivable from tokens alone.
+
+Rows 3 and 4 are the same usage endpoint as row 1, at a finer bucket. `bucket_width=1h` caps `limit` at **168**. `bucket_width=1m` caps `limit` at **1440**. Paginate row 3 across the 30-day window. Run row 4 only after row 3 is parsed: the UTC day with the highest `uncached_input_tokens + cache_read_input_tokens + cache_creation input tokens + output_tokens` among rows whose `service_tier` is not `batch`. If row 3 failed, record row 4 `skipped`. A failed row 3 or 4 never fails the capture; the daily profile is still written.
 
 **2d. Run the script, then delete it.** Record results in
 `$MIGRATION_DIR/anthropic-capture/manifest.json`:
@@ -299,11 +306,14 @@ Sum across the window (a throwaway extraction script if captures are large):
   profile's `input_tokens`/`output_tokens` fields (the API's own field is
   named `uncached_input_tokens`, not `input_tokens` — rename on write, do not
   invent an `input_tokens` field that doesn't exist in the response). Read
-  `cache_read_input_tokens` directly into `cache_read_tokens`. Compute
-  `cache_creation_tokens` as the SUM of `cache_creation.ephemeral_5m_input_tokens`
-  and `cache_creation.ephemeral_1h_input_tokens` (two separate sub-fields on
-  the response's nested `cache_creation` object — not a single top-level
-  field). **These three token pools are mutually exclusive, not nested:**
+  `cache_read_input_tokens` directly into `cache_read_tokens`. Write
+  `cache_creation_5m_tokens` from `cache_creation.ephemeral_5m_input_tokens`
+  and `cache_creation_1h_tokens` from `cache_creation.ephemeral_1h_input_tokens`
+  (two separate sub-fields — do not collapse them; they are priced
+  differently). Also write `cache_creation_tokens` as their SUM so existing
+  consumers that read only the sum still see the full cache-write volume.
+  **Do not add the 5-minute and 1-hour fields on top of `cache_creation_tokens`.**
+  **These three token pools (uncached input, cache read, cache creation) are mutually exclusive, not nested:**
   Anthropic's own contract is `total prompt tokens = uncached_input_tokens +
   cache_read_input_tokens + cache_creation_input_tokens` — unlike OpenRouter's
   `reasoning_tokens` (already included inside `completion_tokens`), a cache
@@ -311,6 +321,30 @@ Sum across the window (a throwaway extraction script if captures are large):
   `num_model_requests` if present in the response shape. Also read each row's
   `service_tier` (present because Row 1's `group_by` now includes
   `service_tier`) — this is what Priority Tier detection below checks.
+  **Do not collapse rows.** One `usage_by_model[]` entry per
+  `(model, service_tier, context_window, inference_geo)`. Write
+  `context_window` (`0-200k` or `200k-1M`) and `inference_geo` from the
+  grouped row. Write `web_search_requests` from
+  `server_tool_use.web_search_requests` (0 when absent).
+  **Peaks** use the same rules as the OpenAI profile, keyed by that tuple.
+  The quota input for a bucket is `uncached_input_tokens` plus cache-creation
+  tokens (`cache_creation_5m_tokens` + `cache_creation_1h_tokens`, or
+  `cache_creation_tokens` when the split is absent). Do not add
+  `cache_read_input_tokens` into that peak. `peak_input_tokens_per_minute` is
+  the maximum of that quota-input pool in any hour, divided by 60, not the
+  maximum of uncached input alone. A minute with 1,000 uncached input tokens,
+  250,000 cache-write tokens, and 1,000 output tokens is 251,000 input-side
+  tokens before output burndown, not 1,000. Keep the billing pools separate:
+  `input_tokens` stays uncached input, and `cache_read_tokens` /
+  `cache_creation_*` stay their own fields.
+  The hourly rates are the maximum hour anywhere in the window, divided by 60,
+  not the busiest hour of the busiest day. Row 4 samples one day. It raises a
+  key's rate only when that key appears in the minute file and the minute count
+  is higher than the full-window hourly rate. A key absent from the minute file
+  keeps its hourly rate. Never replace a known hourly peak with a lower minute sample from a different day. If row 3 failed, omit `peak` and say
+  so in `capture_warnings` — do not invent a peak from the daily total.
+  `service_tier` `"batch"` still gets a peak, and downstream must not use
+  it as the on-demand quota.
 - **Cost** (`cost-report.json`, a single response grouped by both
   `workspace_id` and `description`, filtered client-side per Step 2c to the
   selected workspaces): parse `model`/`inference_geo` out of each
@@ -395,11 +429,28 @@ Write `$MIGRATION_DIR/anthropic-usage-profile.json`:
   "usage_by_model": [
     {
       "model": "claude-sonnet-5",
+      "service_tier": "standard",
+      "context_window": "0-200k",
+      "inference_geo": "us",
       "input_tokens": 1300000,
       "output_tokens": 145000,
       "cache_read_tokens": 400000,
+      "cache_creation_5m_tokens": 15000,
+      "cache_creation_1h_tokens": 5000,
       "cache_creation_tokens": 20000,
-      "num_model_requests": 452
+      "web_search_requests": 12,
+      "num_model_requests": 452,
+      "peak": {
+        "busiest_day": "2026-08-12",
+        "day_input_tokens": 80000,
+        "day_output_tokens": 9000,
+        "day_requests": 40,
+        "day_to_average_ratio": 1.8,
+        "peak_input_tokens_per_minute": 1200,
+        "peak_output_tokens_per_minute": 180,
+        "peak_requests_per_minute": 2.5,
+        "peak_source": "minute|hour"
+      }
     }
   ]
 }
@@ -412,7 +463,7 @@ portion — a prompt-cached model can rank far higher on total volume than its
 only models with non-zero usage. `metadata.capture_warnings` carries every
 `failed`/`skipped` manifest entry (empty array when all rows succeeded) — the
 same convention as the other usage profiles — so downstream phases can tell a
-failed usage category (UNKNOWN volume) from a genuinely unused one (zero).
+failed usage category (UNKNOWN volume) from a genuinely unused one (zero). Name the output file in every warning. A warning for `usage-completions-hourly.json`, `usage-completions-minute.json`, `usage-messages-hourly.json`, `usage-messages-minute.json`, or `analytics-hourly.json` means the peak is uncertain. It does not make the daily volume or the daily cost UNKNOWN.
 Validate: valid JSON, `summary.monthly_cost_usd` approximately equals the sum
 of `costs_by_description[].monthly_cost_usd` (± rounding).
 

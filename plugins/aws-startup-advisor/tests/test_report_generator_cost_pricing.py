@@ -79,6 +79,8 @@ def _run_script(
     model_pairs_src: str,
     baseline_src: str,
     service_tier_src: str | None = None,
+    cache_rates_src: str | None = None,
+    source_cache_rates_src: str | None = None,
 ) -> str:
     """Substitute the markdown placeholders and MODEL_PAIRS/BASELINE_TOKENS_BY_SOURCE
     (and optionally SERVICE_TIER_BY_SOURCE) literals, write the script to a temp file,
@@ -100,6 +102,20 @@ def _run_script(
         body = re.sub(
             r"SERVICE_TIER_BY_SOURCE = \{\n(?:.*?\n)*?\}",
             service_tier_src,
+            body,
+            count=1,
+        )
+    if cache_rates_src is not None:
+        body = re.sub(
+            r"CACHE_WRITE_RATES_BY_TARGET = \{\n(?:.*?\n)*?\}",
+            cache_rates_src,
+            body,
+            count=1,
+        )
+    if source_cache_rates_src is not None:
+        body = re.sub(
+            r"SOURCE_CACHE_WRITE_RATES = \{\n(?:.*?\n)*?\}",
+            source_cache_rates_src,
             body,
             count=1,
         )
@@ -339,3 +355,193 @@ def test_pair_with_no_service_tier_entry_prices_as_standard_unchanged(tmp_path: 
     expected_bedrock_cost = (1000 * 2.20 + 400 * 11.00) / 1_000_000
     assert f"source=${expected_source_cost:.4f}" in stdout, stdout
     assert f"bedrock=${expected_bedrock_cost:.4f}" in stdout, stdout
+
+
+def test_equal_cache_write_totals_price_by_duration(tmp_path: Path) -> None:
+    """1M Sonnet 5 cache-write tokens are $2.50 for 5 minutes and $4.00 for 1 hour.
+
+    Folding either pool into ordinary input tokens prices both at $2.
+    """
+    script_body = _extract_cost_compare_script()
+    repo = _write_fixture(
+        tmp_path,
+        golden_rows=[{"source_model": "claude-sonnet-5", "tokens": {"prompt": 1, "completion": 1}}],
+        baseline_source="claude-sonnet-5",
+    )
+    model_pairs_src = (
+        'MODEL_PAIRS = [\n'
+        '    ("claude-sonnet-5", "anthropic.claude-sonnet-5", 2.00, 10.00, 2.00, 10.00),\n'
+        ']'
+    )
+    rates = (
+        'CACHE_WRITE_RATES_BY_TARGET = {\n'
+        '    "anthropic.claude-sonnet-5": {"5m": 2.50, "1h": 4.00},\n'
+        '}'
+    )
+    five_minute = (
+        'BASELINE_TOKENS_BY_SOURCE = {\n'
+        '    "claude-sonnet-5": {"input": 0, "output": 0, "cache_write_5m": 1_000_000, "cache_write_1h": 0},\n'
+        '}'
+    )
+    one_hour = (
+        'BASELINE_TOKENS_BY_SOURCE = {\n'
+        '    "claude-sonnet-5": {"input": 0, "output": 0, "cache_write_5m": 0, "cache_write_1h": 1_000_000},\n'
+        '}'
+    )
+    five_out = _run_script(
+        script_body,
+        repo=repo,
+        model_pairs_src=model_pairs_src,
+        baseline_src=five_minute,
+        cache_rates_src=rates,
+    )
+    hour_out = _run_script(
+        script_body,
+        repo=repo,
+        model_pairs_src=model_pairs_src,
+        baseline_src=one_hour,
+        cache_rates_src=rates,
+    )
+    assert "bedrock=$2.5000" in five_out, five_out
+    assert "bedrock=$4.0000" in hour_out, hour_out
+    assert "bedrock=$2.0000" not in five_out
+    assert "bedrock=$2.0000" not in hour_out
+    assert "Estimated savings: unavailable" in five_out
+    assert "Estimated savings: -125.0%" not in five_out
+
+
+def test_cache_write_without_source_rate_does_not_compare(tmp_path: Path) -> None:
+    """1M input plus 1M 5-minute writes must not bill the writes on Bedrock only."""
+    script_body = _extract_cost_compare_script()
+    repo = _write_fixture(
+        tmp_path,
+        golden_rows=[{"source_model": "claude-sonnet-5", "tokens": {"prompt": 1, "completion": 1}}],
+        baseline_source="claude-sonnet-5",
+    )
+    stdout = _run_script(
+        script_body,
+        repo=repo,
+        model_pairs_src=(
+            'MODEL_PAIRS = [\n'
+            '    ("claude-sonnet-5", "anthropic.claude-sonnet-5", 2.00, 10.00, 2.00, 10.00),\n'
+            ']'
+        ),
+        baseline_src=(
+            'BASELINE_TOKENS_BY_SOURCE = {\n'
+            '    "claude-sonnet-5": {"input": 1_000_000, "output": 0, "cache_write_5m": 1_000_000, "cache_write_1h": 0},\n'
+            '}'
+        ),
+        cache_rates_src=(
+            'CACHE_WRITE_RATES_BY_TARGET = {\n'
+            '    "anthropic.claude-sonnet-5": {"5m": 2.50, "1h": 4.00},\n'
+            '}'
+        ),
+    )
+    assert "source=$2.0000 bedrock=$2.0000" in stdout, stdout
+    assert "cache-write claude-sonnet-5: bedrock=$2.5000" in stdout, stdout
+    assert "Estimated savings: unavailable — a cache-write component is unpriced" in stdout
+    assert "Estimated savings: -125.0%" not in stdout
+
+
+def test_verified_source_cache_write_rate_is_compared(tmp_path: Path) -> None:
+    script_body = _extract_cost_compare_script()
+    repo = _write_fixture(
+        tmp_path,
+        golden_rows=[{"source_model": "claude-sonnet-5", "tokens": {"prompt": 1, "completion": 1}}],
+        baseline_source="claude-sonnet-5",
+    )
+    stdout = _run_script(
+        script_body,
+        repo=repo,
+        model_pairs_src=(
+            'MODEL_PAIRS = [\n'
+            '    ("claude-sonnet-5", "anthropic.claude-sonnet-5", 2.00, 10.00, 2.00, 10.00),\n'
+            ']'
+        ),
+        baseline_src=(
+            'BASELINE_TOKENS_BY_SOURCE = {\n'
+            '    "claude-sonnet-5": {"input": 0, "output": 0, "cache_write_5m": 1_000_000, "cache_write_1h": 0},\n'
+            '}'
+        ),
+        cache_rates_src=(
+            'CACHE_WRITE_RATES_BY_TARGET = {\n'
+            '    "anthropic.claude-sonnet-5": {"5m": 2.50, "1h": 4.00},\n'
+            '}'
+        ),
+        source_cache_rates_src=(
+            'SOURCE_CACHE_WRITE_RATES = {\n'
+            '    "claude-sonnet-5": {"5m": 3.00, "1h": 6.00},\n'
+            '}'
+        ),
+    )
+    assert "source=$3.0000 bedrock=$2.5000" in stdout, stdout
+    assert "Estimated savings: +16.7%" in stdout, stdout
+
+
+def test_unsplit_cache_write_suppresses_savings_percentage(tmp_path: Path) -> None:
+    script_body = _extract_cost_compare_script()
+    repo = _write_fixture(
+        tmp_path,
+        golden_rows=[{"source_model": "claude-sonnet-5", "tokens": {"prompt": 1, "completion": 1}}],
+        baseline_source="claude-sonnet-5",
+    )
+    stdout = _run_script(
+        script_body,
+        repo=repo,
+        model_pairs_src=(
+            'MODEL_PAIRS = [\n'
+            '    ("claude-sonnet-5", "anthropic.claude-sonnet-5", 2.00, 10.00, 2.00, 10.00),\n'
+            ']'
+        ),
+        baseline_src=(
+            'BASELINE_TOKENS_BY_SOURCE = {\n'
+            '    "claude-sonnet-5": {"input": 1_000_000, "output": 0, "cache_write_unsplit": 1_000_000},\n'
+            '}'
+        ),
+        cache_rates_src=(
+            'CACHE_WRITE_RATES_BY_TARGET = {\n'
+            '    "anthropic.claude-sonnet-5": {"5m": 2.50, "1h": 4.00},\n'
+            '}'
+        ),
+    )
+    assert "cache-write claude-sonnet-5: unpriced" in stdout, stdout
+    assert "source=$2.0000 bedrock=$2.0000" in stdout, stdout
+    assert "Estimated savings: unavailable — a cache-write component is unpriced" in stdout
+    assert "Estimated savings: +" not in stdout
+
+
+def test_partial_source_rate_map_prices_only_the_used_duration(tmp_path: Path) -> None:
+    """A 5-minute write with only the 5-minute source rate must not index 1h."""
+    script_body = _extract_cost_compare_script()
+    repo = _write_fixture(
+        tmp_path,
+        golden_rows=[{"source_model": "claude-sonnet-5", "tokens": {"prompt": 1, "completion": 1}}],
+        baseline_source="claude-sonnet-5",
+    )
+    stdout = _run_script(
+        script_body,
+        repo=repo,
+        model_pairs_src=(
+            'MODEL_PAIRS = [\n'
+            '    ("claude-sonnet-5", "anthropic.claude-sonnet-5", 2.00, 10.00, 2.00, 10.00),\n'
+            ']'
+        ),
+        baseline_src=(
+            'BASELINE_TOKENS_BY_SOURCE = {\n'
+            '    "claude-sonnet-5": {"input": 0, "output": 0, "cache_write_5m": 1_000_000, "cache_write_1h": 0},\n'
+            '}'
+        ),
+        cache_rates_src=(
+            'CACHE_WRITE_RATES_BY_TARGET = {\n'
+            '    "anthropic.claude-sonnet-5": {"5m": 2.50},\n'
+            '}'
+        ),
+        source_cache_rates_src=(
+            'SOURCE_CACHE_WRITE_RATES = {\n'
+            '    "claude-sonnet-5": {"5m": 3.00},\n'
+            '}'
+        ),
+    )
+    assert "KeyError" not in stdout, stdout
+    assert "source=$3.0000 bedrock=$2.5000" in stdout, stdout
+    assert "Estimated savings: +16.7%" in stdout, stdout

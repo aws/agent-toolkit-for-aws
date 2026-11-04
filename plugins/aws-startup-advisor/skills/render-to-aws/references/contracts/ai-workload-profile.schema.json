@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "urn:awslabs:startups:migration:ai-workload-profile",
-  "title": "AI workload profile (target-only observation contract)",
-  "description": "Provider-neutral, target-only contract for a future ai-workload-profile.json observation/normalization output. Structural validity does NOT imply an implemented detector, adapter, route, model mapping, or runtime-supported identity. This document is a design-time target for a schema that does not yet have a producer.",
+  "title": "AI workload profile observation contract",
+  "description": "Provider-neutral contract for ai-workload-profile.json observation and normalization output. Structural validity does NOT imply an implemented adapter, route, model mapping, or runtime-supported identity. Render application discovery is a producer; bedrock-migration-assessment is a consumer.",
   "type": "object",
   "required": ["schema_version", "ai_sources", "gateways"],
   "additionalProperties": false,
@@ -27,7 +27,7 @@
     "normalizedModel": {"type": "string", "pattern": "^(?!(?:both|unknown)$)[a-z0-9][a-z0-9._:/-]*$"},
     "gatewayIdentity": {"type": "string", "pattern": "^(?!(?:both|unknown)$)[a-z][a-z0-9_]*$"},
     "provenance": {"enum": ["code", "iac", "live_api", "usage_api", "user_confirmed"]},
-    "confidence": {"enum": ["confirmed", "high", "medium", "low"]},
+    "confidence": {"description": "User confirmation is provenance user_confirmed with confidence high; there is no confirmed confidence level.", "enum": ["high", "medium", "low"]},
     "evidenceEntry": {
       "type": "object",
       "required": ["provenance", "confidence"],

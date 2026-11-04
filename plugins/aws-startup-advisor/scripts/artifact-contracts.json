@@ -4,7 +4,8 @@
     "gcp-": "gcp-to-aws",
     "heroku-": "heroku-to-aws",
     "azure-": "azure-to-aws",
-    "render-": "render-to-aws"
+    "render-": "render-to-aws",
+    "bma-": "bedrock-migration-assessment"
   },
   "shared": {
     ".phase-status.json": {
@@ -393,6 +394,12 @@
       "generation-warnings.json": {
         "json_schema": "skills/render-to-aws/references/shared/schema-generation-warnings.json",
         "_coverage_why": "validation-report.json, billing, REST-projection and live-capture manifest schemas under skills/render-to-aws/references/shared/ use `if`/`then`/`else`, which this validator's Draft-07 subset rejects at load time (SCHEMA_PARSE). They stay covered by tests/test_render_fixture_contracts.py and the skill's own scripts until the subset grows. ai-workload-profile.json is covered by the `shared` row."
+      }
+    },
+    "bedrock-migration-assessment": {
+      "preferences.json": {
+        "shape": "skills/bedrock-migration-assessment/references/shared/schema-preferences.md",
+        "root_heading": "Top-level shape"
       }
     }
   }

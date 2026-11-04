@@ -46,10 +46,8 @@ SKILLS_DIR = PLUGIN_ROOT / "skills"
 # Imported by skills, not a skill: it has no SKILL.md and cannot be invoked.
 NOT_A_SKILL = {"shared"}
 
-# The telemetry service model does not yet define a PluginSkillId for this skill.
-# Keep the omission explicit rather than sending an invented enum member that makes
-# the service reject the entire telemetry request.
-UNMODELLED_SKILLS = {"render-to-aws"}
+# Skills PluginSkillId has no member for yet; reporting one would 400 the whole request.
+NOT_YET_MODELLED = {"bedrock-migration-assessment", "render-to-aws"}
 
 
 def accept(home):
@@ -78,12 +76,16 @@ class TestSkillIdMap:
         on_disk = {
             path.name
             for path in SKILLS_DIR.iterdir()
-            if path.is_dir() and path.name not in NOT_A_SKILL
+            if path.is_dir() and path.name not in NOT_A_SKILL | NOT_YET_MODELLED
         }
-        # Every on-disk skill is either in the service-backed allowlist or explicitly
-        # excluded until the service model gains a corresponding enum member.
-        assert set(skill_invoked.SKILL_IDS).isdisjoint(UNMODELLED_SKILLS)
-        assert set(skill_invoked.SKILL_IDS) | UNMODELLED_SKILLS == on_disk
+        # The map remains exact after explicitly excluding skills the service model
+        # cannot represent yet.
+        assert set(skill_invoked.SKILL_IDS) == on_disk
+
+    def test_unmodelled_skills_exist_and_are_not_reported(self):
+        for name in NOT_YET_MODELLED:
+            assert (SKILLS_DIR / name / "SKILL.md").is_file()
+            assert name not in skill_invoked.SKILL_IDS
 
     def test_the_client_agrees_with_the_model(self):
         assert set(client.PLUGIN_SKILL_IDS) == MODELLED_SKILL_IDS

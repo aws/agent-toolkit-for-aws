@@ -37,7 +37,9 @@ for it.
     "capability_mapping": {},
     "code_migration": {},
     "infrastructure": [],
-    "services_to_migrate": []
+    "services_to_migrate": [],
+    "quota_risk": "low", // low | medium | high — monthly table, then the observed on-demand peak. Optional on older designs that recorded risk only on bedrock_models[]
+    "quota_risk_basis": "monthly_volume" // monthly_volume | observed_on_demand_peak — optional; present when Design applied the observed-peak rule
   },
   "regional_warnings": [], // ALWAYS present, [] when clean — see § regional_warnings
   "multi_model_warnings": [], // ALWAYS present, [] when single model — see § multi_model_warnings
@@ -113,6 +115,11 @@ Traditional-AI capabilities (AWS AI service, not Bedrock): `document_extraction`
   (`same_model_mantle|direct|litellm|keep_openrouter`).
 - **`infrastructure[]`** — Azure AI infra resource → AWS equivalent, with confidence.
 - **`services_to_migrate[]`** — Azure AI service → AWS service, effort, notes.
+- **`quota_risk`** — optional `low|medium|high` on `ai_architecture`, the value
+  Design writes after the monthly table and the observed on-demand peak. Older
+  designs that recorded risk only on `bedrock_models[]` stay valid.
+- **`quota_risk_basis`** — optional `monthly_volume|observed_on_demand_peak`.
+  Present when Design applied the observed-peak rule. Absent on older designs.
 
 ## migration_path vocabulary
 
@@ -138,9 +145,9 @@ per-feature, not assume parity with Sol/Luna/6.1 Sol.
 generated code must use. Absent/default is `responses` for a region-only `runtime_openai_cris`
 move (no Guardrails or other client-surface need). A Guardrails-requiring workload on
 `runtime_openai_cris` sets it to the surface that is actually Guardrails-capable for that model:
-`converse` for GPT-6 Astra (its only Converse-capable, non-Invoke surface), or
+`converse` for GPT-6 Astra and GPT-6.1 Terra, or
 `converse`/`chat_completions`/`invoke` — never `responses` — for GPT-6.1 Sol and the other
-non-Astra GPT-6/5.6 CRIS models. `generate-artifacts-ai.md`'s CRIS Step 1M reads this field and
+GPT-6/5.6 CRIS models except Astra and GPT-6.1 Terra. Terra also requires `converse` for application inference profiles. `generate-artifacts-ai.md`'s CRIS Step 1M reads this field and
 emits that surface instead of defaulting to `responses.create`. Keep the existing Astra-no-Invoke
 migration_path note above — `required_client_api` never sets `invoke` for Astra.
 

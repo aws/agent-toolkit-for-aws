@@ -100,6 +100,20 @@ confirmation. A resumed run reuses its selected `$MIGRATION_DIR` and existing
 `.phase-status.json`; initialization is not duplicated and resume-vs-fresh is not
 re-prompted.
 
+**Discovery orientation (fresh runs only):** Before RDfA detection, workspace
+scanning, or any request for a file, output this block once. Skip it when resuming:
+
+> **Before you send or upload files:** Terraform is optional. I can inventory your
+> live Azure subscription through your authenticated `az` CLI using read-only
+> commands, scan Terraform and application code already in your workspace, or use
+> a Resource Discovery for Azure (RDfA) report as an accuracy upgrade. If direct
+> OpenAI, OpenRouter, or Anthropic API use is in scope, I can also offer
+> consent-gated provider API discovery for aggregate cost and token usage. I can
+> combine sources to catch resources outside Terraform and report drift.
+
+Do not block on this orientation. Continue directly to the source actions in the
+same turn; their existing consent gates remain the authorization boundary.
+
 ### RDfA detection, guidance, and preparation
 
 1. Detect candidate `*ResourcesReport*.zip` files and extracted directories containing
@@ -263,8 +277,9 @@ only maps prepared JSON.
    Run `discover-openai-api.md` in full (Steps 0–4) when EITHER:
 
    - `ai-workload-profile.json` exists with `summary.ai_source` of `openai` or `both`, OR
-   - no Azure Cost Management billing signal exists in this run AND the user mentions direct
-     OpenAI usage/spend in conversation (NOT Azure OpenAI — see the file's own disambiguation note).
+   - no Azure Cost Management billing signal exists in this run AND either the user's
+     migration request names direct OpenAI or the user mentions direct OpenAI usage/spend in
+     conversation (NOT Azure OpenAI — see the file's own disambiguation note).
 
    This is a judgment call made HERE, in the main window — not expressed as a DSL `_trigger`
    predicate, because the decision requires reading conversational context no dispatched
@@ -288,8 +303,8 @@ only maps prepared JSON.
 
    - app-code discovery (`discover-app-code.md`) detected `integration.gateway_type: llm_router`
      with an `openrouter.ai` base URL, OR
-   - no Azure Cost Management billing signal exists in this run AND the user mentions OpenRouter
-     usage/spend in conversation.
+   - no Azure Cost Management billing signal exists in this run AND either the user's migration
+     request names OpenRouter or the user mentions OpenRouter usage/spend in conversation.
 
    This is a judgment call made HERE, in the main window — not expressed as a DSL `_trigger`
    predicate, because the decision requires reading conversational context no dispatched
@@ -319,11 +334,13 @@ only maps prepared JSON.
      `failed`/`skipped` Analytics row — `cost_provenance: "unknown"` for every model, with the
      matching `capture_warnings` entry. Do NOT re-offer Step 0 consent (no new request, nothing new
      to consent to) and do NOT enter Step 2 for this manifest.
-   - **Manifest exists, `/activity` entry `"ok"`, `/analytics/query` entry `"failed"`** → a
+   - **Manifest exists, `/activity` entry `"ok"`, `/analytics/query` entry `"failed"`** when that entry's `file` is `analytics.json` (or `file` is absent) → a
      pending Analytics-only retry — do NOT re-offer consent; resume
      `discover-openrouter-api.md` from its Step 2 Analytics-only retry path (reusing the
-     already-good `/activity.json`, per that file's own independent-resume rule for
-     `/analytics/query`), then proceed to Step 3 once Analytics reaches a terminal state.
+     already-good `/activity.json`). The classification entry is the `captures[]` item
+     whose `file` is `analytics.json`, or the only `/analytics/query` item when `file`
+     is absent. A failed `analytics-volume.json` or `analytics-hourly.json` is not this
+     case. Proceed to Step 3 once classification reaches a terminal state.
    - **Manifest exists, `/activity` entry `"ok"`, `/analytics/query` entry `"ok"` or
      `"skipped"`, and `openrouter-usage-profile.json` exists** → a prior attempt fully
      completed; keep today's behavior for this case — re-offer `discover-openrouter-api.md`'s
@@ -346,8 +363,9 @@ only maps prepared JSON.
    Run `discover-anthropic-api.md` in full (Steps 0–4) when EITHER:
 
    - `ai-workload-profile.json` exists with `summary.ai_source` of `anthropic` or `both`, OR
-   - no Azure Cost Management billing signal exists in this run AND the user mentions direct
-     Anthropic/Claude usage or spend in conversation.
+   - no Azure Cost Management billing signal exists in this run AND either the user's migration
+     request names direct Anthropic/Claude API use or the user mentions direct Anthropic/Claude
+     usage or spend in conversation.
 
    This is a judgment call made HERE, in the main window — not expressed as a DSL `_trigger`
    predicate, because the decision requires reading conversational context no dispatched

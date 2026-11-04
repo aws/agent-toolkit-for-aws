@@ -266,7 +266,7 @@ def _project_ai_profile(qualifying_components: dict[str, list[tuple[str, list[di
                 if item["attribution"] == "ambiguous":
                     confidence, detail = "low", f"{item['path']}:{item['line']}:unattributed"
                 else:
-                    confidence = "confirmed" if item["path"] in strong_paths else "medium"
+                    confidence = "high" if item["path"] in strong_paths else "medium"
                     detail = f"{item['path']}:{item['line']}"
                 entry = observations[target].setdefault(normalized, {"raws": set(), "family": family, "evidence": set()})
                 entry["raws"].add(raw)
