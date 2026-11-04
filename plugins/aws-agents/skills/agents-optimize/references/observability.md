@@ -100,7 +100,7 @@ agentcore traces harness get <traceId> --name <HarnessName>
 
 Add `--target <name>` for a non-default deployment target and `--qualifier <endpoint>` for a non-default endpoint.
 
-**Trace delay:** Traces take **30–90 seconds** after an invocation to show up in `traces ... list`, and the `SESSION ID` column can show `-` for a little while after the trace itself appears. In scripts, poll `list` until the trace you expect is there instead of sleeping a fixed time.
+**Trace delay:** Traces can take roughly **1–3 minutes** after an invocation to reach CloudWatch, and the `SESSION ID` column can show `-` before all records arrive. A trace appearing in `list` does not mean its response spans are available yet. Before evaluating, inspect the trace for the final agent response rather than treating list presence as completion.
 
 ### Finding the slowest requests
 
