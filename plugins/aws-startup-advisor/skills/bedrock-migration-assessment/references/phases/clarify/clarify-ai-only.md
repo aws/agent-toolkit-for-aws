@@ -2,7 +2,7 @@
 
 **Standalone flow** — Used when ONLY `ai-workload-profile.json` exists (no infrastructure or billing artifacts). Infrastructure stays where it runs today; only AI/LLM calls move to AWS Bedrock.
 
-**Input contract.** The only profile this flow reads is the provider-neutral `ai-workload-profile.json` (`schema_version`, `ai_sources[]`, `gateways[]`), already accepted by `scripts/validate-ai-profile.py`. Use that script's JSON summary for every detected value below. The profile carries no framework, capability, or integration-pattern fields, so the questions that depend on them are asked, not extracted. Do not scan application code or IaC, and do not read usage-profile files or any other file: only the validator summary can supply an extracted answer.
+**Input contract.** The only profile this flow reads is the provider-neutral `ai-workload-profile.json` (`schema_version`, `ai_sources[]`, `gateways[]`), already accepted by `scripts/validate-ai-profile.py`. Use that script's JSON summary for every detected value below. A 1.1 profile also carries `integration`; from it the summary reports `ai_framework_detected` and `ai_vision_detected`. Both are `null` for a 1.0 profile or when the evidence is not definitive, and then Q1 and Q6 are asked, not extracted. Do not scan application code or IaC, and do not read usage-profile files or any other file: only the validator summary can supply an extracted answer.
 
 Produces the same `preferences.json` output but with `design_constraints` limited to region and compliance, `startup_constraints` populated, and `ai_constraints` fully populated. Questions are presented in **two progressive batches** with an intermediate save — partial answers persist across sessions.
 
@@ -64,6 +64,8 @@ Before asking anything, present what the profile already answered as a compact c
 | Setting | Value | Source |
 | ------- | ----- | ------ |
 | Models | [every observed model, e.g. gpt-4o, claude-3-haiku] | ai-workload-profile.json |
+| Framework | [ai_framework_detected, e.g. framework (LangChain)] | ai-workload-profile.json `integration` |
+| Input types | [ai_vision_detected, e.g. vision] | ai-workload-profile.json `integration.capabilities_summary` |
 
 Reply "looks good" to continue to the remaining questions, correct any line
 ("model: gemini-2.5-pro"), or describe the issue in plain words.
@@ -71,7 +73,7 @@ Reply "looks good" to continue to the remaining questions, correct any line
 
 Questions resolved on this sheet are **not** re-asked in the batches below; record them with `chosen_by: "extracted"` and skip their entries in Batch 1/2. Rows the user corrects become `chosen_by: "user"`. The sheet never assumes a value: every question without a detected row stays in the batches, and only "use defaults for the rest" applies defaults.
 
-Show the **Models** row under "Detected" only when the validator summary reports `models_extractable: true`, and list every observed model. If it is `false`, leave the row out of the sheet and ask Q5 in Batch 1 with the detected models as the suggested answer; a user who confirms them records `chosen_by: "user"`.
+Show the **Models** row under "Detected" only when the validator summary reports `models_extractable: true`, and list every observed model. If it is `false`, leave the row out of the sheet and ask Q5 in Batch 1 with the detected models as the suggested answer; a user who confirms them records `chosen_by: "user"`. Show **Framework** only when `ai_framework_detected` is not `null`, and **Input types** only when `ai_vision_detected` is not `null`.
 
 ---
 
@@ -95,7 +97,7 @@ Let's start with your AI strategy and current setup.
 
 ## Q1 — AI framework or orchestration layer (select all that apply)
 
-_Never skipped:_ the neutral profile records gateways but not frameworks, so it cannot resolve this question alone. When the validator summary lists a gateway, present the confirm card below with option 2 as the detected value and the gateway product as the evidence. Otherwise present the full question.
+_Skip when:_ the validator summary reports a non-null `ai_framework_detected`. Record that list with `chosen_by: "extracted"` and `source: "ai-profile:integration"`, and do not present this question. Otherwise, when the summary lists a gateway, present the confirm card below with option 2 as the detected value and the gateway product as the evidence. Otherwise present the full question.
 
 **Gateway confirm card:**
 
@@ -273,7 +275,7 @@ You can answer each, skip individual ones, or say "use defaults for the rest."
 
 ## Q6 — What input types must the model accept: text only, images (vision), or audio/video?
 
-_Never skipped:_ the neutral profile carries no capability summary, so always ask.
+_Skip when:_ the validator summary reports a non-null `ai_vision_detected`. Record it with `chosen_by: "extracted"` and `source: "ai-profile:integration.capabilities_summary"`, and do not present this question. Otherwise ask.
 
 > 1\) Text only | 2\) Vision required | 3\) Audio/Video inputs
 
@@ -283,7 +285,7 @@ _Never skipped:_ the neutral profile carries no capability summary, so always as
 | Vision      | Claude Sonnet or Haiku (both support multimodal vision); Nova Micro excluded (text-only)                        |
 | Audio/Video | Nova 2 Sonic (audio). Nova Reel v1 is past EOL (2026-09-30) with no Active replacement in the registry — do not recommend it. Claude excluded for audio/video input |
 
-Interpret → `ai_vision`. Default: 1 → no constraint.
+Interpret → `ai_vision`: 1 → `"text-only"`, 2 → `"vision"`, 3 → `"audio"`. Default: 1 → `"text-only"` (no constraint).
 
 ## Q7 — Monthly AI usage volume
 
@@ -404,7 +406,7 @@ Write `$MIGRATION_DIR/preferences.json`:
 | `ai_complexity`            | `ai_constraints.ai_complexity`               | From Q9                                                                                                                                                                                                                                         |
 | `ai_critical_feature`      | `ai_constraints.ai_critical_feature`         | From Q10                                                                                                                                                                                                                                        |
 
-`ai_capabilities_required` is omitted: the neutral profile has no capability summary to derive it from, and Q6 and Q10 already record the requirement.
+`ai_capabilities_required` is omitted: Q6 and Q10 already record the requirement.
 
 Each constraint carries the FULL field shape in `references/shared/schema-preferences.md` — `value`, `chosen_by` (`user`|`extracted`|`default`|`derived`), `prompt`, `design_consequence`, and `source`/`question_id` per that file's source-field rules. (The short `{ value, chosen_by }` form shown above is an abbreviation, not the schema.) No nulls. All rules in that file apply, with two AI-only bindings: `metadata.clarify_mode` is `"fast_path"` when Step 1.5 fired, `"full"` for the two-batch flow; and this flow's `questions_extracted` is the full flow's `questions_skipped_extracted` (downstream consumers accept both names).
 
