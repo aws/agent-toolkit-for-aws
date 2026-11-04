@@ -107,6 +107,14 @@ The script prints JSON keyed by model id with `{input_per_1k_usd, output_per_1k_
 
 If a model's `available` is false, render that model's cost line with a "(pricing unavailable)" banner using the `note` — do NOT fabricate numbers. Also flag this for the user in the Risk Assessment section and skip that model's cost calculation.
 
+**GPT-6.1 Terra:** carry the helper's Standard/≤272K qualification into the report.
+For requests above 272,000 input tokens, reprice the full request at 2x input and 1.5x output
+for the selected inference option. If per-request sizes are unknown, present short- and
+long-context scenarios instead of one unqualified estimate. The 1.05M window is not the
+short-context price boundary. Use measured source spend or verified source-provider rates
+for the comparison; otherwise mark source cost and savings unavailable. Do not use the
+closest-model fallback in §6.2 for Terra's unverified source prices.
+
 ## 6.2 Source provider pricing (static table)
 
 The pricing script only covers Bedrock models. For the source provider (OpenAI, Gemini, Azure, etc.), use this static table (update periodically):

@@ -127,6 +127,10 @@ STATIC_FALLBACK = {
     "global.openai.gpt-6-sol":                      {"input_per_1k_usd": 0.0020, "output_per_1k_usd": 0.010},
     "global.openai.gpt-6-luna":                     {"input_per_1k_usd": 0.00010, "output_per_1k_usd": 0.00050},
     "global.openai.gpt-6.1-sol":                    {"input_per_1k_usd": 0.0020, "output_per_1k_usd": 0.010},
+    # GPT-6.1 Terra Standard, <=272K input tokens; model card verified 2026-11-03.
+    "openai.gpt-6.1-terra":                         {"input_per_1k_usd": 0.0011, "output_per_1k_usd": 0.0055},
+    "us.openai.gpt-6.1-terra":                      {"input_per_1k_usd": 0.0011, "output_per_1k_usd": 0.0055},
+    "global.openai.gpt-6.1-terra":                  {"input_per_1k_usd": 0.0010, "output_per_1k_usd": 0.0050},
 }
 
 
@@ -297,6 +301,13 @@ def lookup(region: str, model_id: str) -> dict:
         if model_id.endswith("openai.gpt-6-astra"):
             fb["note"] += ("; Standard tier, <=272K input tokens. For >272K, "
                            "use 2x input / 1.5x output rates.")
+        if model_id.endswith("openai.gpt-6.1-terra"):
+            fb["note"] = (
+                "static pricing table; GPT-6.1 Terra AWS model card verified 2026-11-03; "
+                "Standard tier, <=272K input tokens. For >272K, reprice the full request "
+                "at 2x input / 1.5x output rates. Maximum context window: 1,050,000 tokens. "
+                "Source-provider prices require separate verification."
+            )
         return fb
     if is_mantle_gpt(model_id) or re.match(r"^[^.]+\.openai\.gpt-[56]", model_id):
         # Short-circuit: the PriceList API carries no rows for the proprietary GPT

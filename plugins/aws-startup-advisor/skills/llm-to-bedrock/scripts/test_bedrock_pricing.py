@@ -4,6 +4,45 @@ import pytest
 
 
 @pytest.mark.parametrize("model_id,inp,out", [
+    ("openai.gpt-6.1-terra", 0.0011, 0.0055),
+    ("us.openai.gpt-6.1-terra", 0.0011, 0.0055),
+    ("global.openai.gpt-6.1-terra", 0.0010, 0.0050),
+])
+def test_terra_rates_resolve_without_live_pricing(model_id, inp, out, monkeypatch):
+    import boto3
+
+    def no_live_pricing(*args, **kwargs):
+        raise AssertionError("Terra prices must resolve from the verified model card")
+
+    monkeypatch.setattr(boto3, "client", no_live_pricing)
+    result = bp.lookup("us-east-1", model_id)
+    assert result["available"]
+    assert result["input_per_1k_usd"] == inp
+    assert result["output_per_1k_usd"] == out
+    assert "Standard tier, <=272K" in result["note"]
+    assert "reprice the full request at 2x input / 1.5x output" in result["note"]
+    assert "Source-provider prices require separate verification" in result["note"]
+
+
+@pytest.mark.parametrize("model_id", [
+    "openai.gpt-6.1", "openai.gpt-6.1-terra-pro",
+    "us.openai.gpt-6.1-terra-v1:0", "global.openai.gpt-6.1-terra-pro",
+    "eu.openai.gpt-6.1-terra", "in.openai.gpt-6.1-terra",
+])
+def test_unknown_terra_ids_do_not_inherit_verified_rates(model_id, monkeypatch):
+    import boto3
+
+    def no_live_pricing(*args, **kwargs):
+        raise AssertionError("Unknown proprietary GPT IDs must fail closed")
+
+    monkeypatch.setattr(boto3, "client", no_live_pricing)
+    result = bp.lookup("us-east-1", model_id)
+    assert result["available"] is False
+    assert result["input_per_1k_usd"] is None
+    assert result["output_per_1k_usd"] is None
+
+
+@pytest.mark.parametrize("model_id,inp,out", [
     ("openai.gpt-6-astra", 0.011, 0.055),
     ("us.openai.gpt-6-astra", 0.011, 0.055),
     ("global.openai.gpt-6-astra", 0.010, 0.050),
@@ -340,6 +379,7 @@ def test_gpt6_cris_forms_priced_at_correct_option():
         "gpt-6-sol": (0.0020, 0.010),
         "gpt-6-luna": (0.00010, 0.00050),
         "gpt-6.1-sol": (0.0020, 0.010),
+        "gpt-6.1-terra": (0.0010, 0.0050),
     }
     for mid, entry in bp.STATIC_FALLBACK.items():
         if "openai.gpt-6" not in mid:
