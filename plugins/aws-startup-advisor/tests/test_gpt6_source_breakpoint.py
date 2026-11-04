@@ -28,10 +28,130 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pytest
+
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 REPORT_GENERATOR = PLUGIN_ROOT / "agents" / "llm2bedrock-report-generator.md"
 
 PYTHON_BLOCK_RE = re.compile(r"```python\n(.*?)\n```", re.DOTALL)
+
+
+@pytest.mark.parametrize("distribution", [False, True])
+@pytest.mark.parametrize("request_input", [272_000, 272_001, 300_000])
+def test_terra_target_breakpoint_with_flat_source(tmp_path, distribution, request_input):
+    repo = _write_fixture(tmp_path, golden_rows=[])
+    source = "gpt-4.1"
+    target = "us.openai.gpt-6.1-terra"
+    stdout = _run_script(
+        _extract_cost_compare_script(),
+        repo=repo,
+        model_pairs_src=f"MODEL_PAIRS = {[(source, target, 2.0, 8.0, 1.1, 5.5)]!r}",
+        baseline_src=f"BASELINE_TOKENS_BY_SOURCE = {{'{source}': {{'input': {100 * request_input}, 'output': 1000000}}}}",
+        per_request_src=f"PER_REQUEST_TOKENS = {{'{source}': {{'input': {request_input}, 'output': 10000}}}}",
+        long_context_src=f"BEDROCK_LONG_CONTEXT = {{'{target}': {{'input': 2.2, 'output': 8.25}}}}",
+        tier_distribution_src=(
+            f"TIER_DISTRIBUTION_BY_SOURCE = {{'{source}': [{{'count': 100, 'input': {request_input}, 'output': 10000}}]}}"
+            if distribution else "TIER_DISTRIBUTION_BY_SOURCE = {}"
+        ),
+    )
+    target_in, target_out = (2.2, 8.25) if request_input > 272_000 else (1.1, 5.5)
+    expected_target = (100 * request_input * target_in + 1_000_000 * target_out) / 1_000_000
+    expected_source = (100 * request_input * 2.0 + 1_000_000 * 8.0) / 1_000_000
+    assert f"source=${expected_source:.4f} bedrock=${expected_target:.4f}" in stdout
+
+
+def test_terra_target_prices_mixed_request_sizes_separately(tmp_path):
+    repo = _write_fixture(tmp_path, golden_rows=[])
+    stdout = _run_script(
+        _extract_cost_compare_script(),
+        repo=repo,
+        model_pairs_src="MODEL_PAIRS = [('gpt-4.1', 'global.openai.gpt-6.1-terra', 2.0, 8.0, 1.0, 5.0)]",
+        baseline_src="BASELINE_TOKENS_BY_SOURCE = {}",
+        per_request_src="PER_REQUEST_TOKENS = {}",
+        long_context_src="BEDROCK_LONG_CONTEXT = {'global.openai.gpt-6.1-terra': {'input': 2.0, 'output': 7.5}}",
+        tier_distribution_src=(
+            "TIER_DISTRIBUTION_BY_SOURCE = {'gpt-4.1': ["
+            "{'count': 50, 'input': 200000, 'output': 10000},"
+            "{'count': 50, 'input': 300000, 'output': 10000}]}"
+        ),
+    )
+    assert "source=$58.0000 bedrock=$46.2500" in stdout
+
+
+@pytest.mark.parametrize("distribution", [False, True])
+@pytest.mark.parametrize("measured", [None, 0.0, 2.0])
+def test_terra_unverified_source_preserves_target_cost(tmp_path, distribution, measured):
+    repo = _write_fixture(tmp_path, golden_rows=[])
+    source = "gpt-6.1-terra"
+    baseline = {source: {"input": 1_000_000, "output": 100_000}}
+    if measured is not None:
+        baseline[source]["source_cost_usd"] = measured
+    stdout = _run_script(
+        _extract_cost_compare_script(),
+        repo=repo,
+        model_pairs_src=f"MODEL_PAIRS = [('{source}', 'us.openai.gpt-6.1-terra', None, None, 1.1, 5.5)]",
+        baseline_src=f"BASELINE_TOKENS_BY_SOURCE = {baseline!r}",
+        per_request_src=f"PER_REQUEST_TOKENS = {{'{source}': {{'input': 100000, 'output': 10000}}}}",
+        long_context_src="BEDROCK_LONG_CONTEXT = {'us.openai.gpt-6.1-terra': {'input': 2.2, 'output': 8.25}}",
+        tier_distribution_src=(
+            f"TIER_DISTRIBUTION_BY_SOURCE = {{'{source}': [{{'count': 10, 'input': 100000, 'output': 10000}}]}}"
+            if distribution else "TIER_DISTRIBUTION_BY_SOURCE = {}"
+        ),
+    )
+    assert "bedrock=$1.6500" in stdout
+    if measured is None:
+        assert "TOTAL source=unavailable bedrock=$1.6500" in stdout
+        assert "Estimated savings: unavailable" in stdout
+    else:
+        assert f"TOTAL source=${measured:.4f} bedrock=$1.6500" in stdout
+        if measured:
+            assert "Estimated savings: +17.5%" in stdout
+        else:
+            assert "Estimated savings:" not in stdout
+
+
+def test_unverified_terra_sample_suppresses_mixed_pair_savings(tmp_path):
+    repo = _write_fixture(tmp_path, golden_rows=[
+        {"source_model": "gpt-6.1-terra", "tokens": {"prompt": 100_000, "completion": 10_000}},
+        {"source_model": "gpt-4.1", "tokens": {"prompt": 100_000, "completion": 10_000}},
+    ])
+    stdout = _run_script(
+        _extract_cost_compare_script(),
+        repo=repo,
+        model_pairs_src=(
+            "MODEL_PAIRS = ["
+            "('gpt-6.1-terra', 'us.openai.gpt-6.1-terra', None, None, 1.1, 5.5),"
+            "('gpt-4.1', 'global.openai.gpt-6.1-terra', 2.0, 8.0, 1.0, 5.0)]"
+        ),
+        baseline_src="BASELINE_TOKENS_BY_SOURCE = {}",
+        per_request_src="PER_REQUEST_TOKENS = {'gpt-6.1-terra': {'input': 100000, 'output': 10000}}",
+        long_context_src="BEDROCK_LONG_CONTEXT = {}",
+    )
+    assert "source=unavailable bedrock=$0.1650" in stdout
+    assert "source=$0.2800 bedrock=$0.1500" in stdout
+    assert "TOTAL source=unavailable bedrock=$0.3150" in stdout
+    assert "Estimated savings: unavailable" in stdout
+    assert "Estimated savings: +" not in stdout
+    assert "Estimated savings: -" not in stdout
+
+
+@pytest.mark.parametrize("distribution", [False, True])
+def test_measured_source_bill_overrides_verified_rates(tmp_path, distribution):
+    repo = _write_fixture(tmp_path, golden_rows=[])
+    stdout = _run_script(
+        _extract_cost_compare_script(),
+        repo=repo,
+        model_pairs_src="MODEL_PAIRS = [('gpt-4.1', 'us.openai.gpt-6.1-terra', 2.0, 8.0, 1.1, 5.5)]",
+        baseline_src="BASELINE_TOKENS_BY_SOURCE = {'gpt-4.1': {'input': 1000000, 'output': 100000, 'source_cost_usd': 2.0}}",
+        per_request_src="PER_REQUEST_TOKENS = {'gpt-4.1': {'input': 100000, 'output': 10000}}",
+        long_context_src="BEDROCK_LONG_CONTEXT = {}",
+        tier_distribution_src=(
+            "TIER_DISTRIBUTION_BY_SOURCE = {'gpt-4.1': [{'count': 10, 'input': 100000, 'output': 10000}]}"
+            if distribution else "TIER_DISTRIBUTION_BY_SOURCE = {}"
+        ),
+    )
+    assert "TOTAL source=$2.0000 bedrock=$1.6500" in stdout
+    assert "Estimated savings: +17.5%" in stdout
 
 
 def _extract_cost_compare_script() -> str:
