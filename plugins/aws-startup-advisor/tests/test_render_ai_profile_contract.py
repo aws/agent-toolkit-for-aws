@@ -64,7 +64,7 @@ def test_shared_ai_has_no_competing_profile_schema() -> None:
 
 @pytest.mark.parametrize("fixture", FIXTURES, ids=[path.parent.name for path in FIXTURES])
 def test_upstream_fixtures_validate(fixture: Path) -> None:
-    assert len(FIXTURES) == 4
+    assert len(FIXTURES) == 6
     jsonschema.Draft7Validator(schema()).validate(json.loads(fixture.read_text(encoding="utf-8")))
 
 
