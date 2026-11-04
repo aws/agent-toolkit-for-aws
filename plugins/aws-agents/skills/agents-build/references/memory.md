@@ -163,16 +163,16 @@ def invoke(payload, context):
         # RetrievalConfig parameters:
         #   top_k: max number of memory records to retrieve per namespace (SDK default: 10)
         #   relevance_score: similarity threshold, 0 = return anything, 1 = exact match (SDK default: 0.2)
-        # The CLI template deviates from SDK defaults to favor precision over recall:
-        #   top_k=3 limits context window usage; relevance_score=0.5 filters low-quality matches.
-        # Tune these if retrieval misses relevant facts (lower) or surfaces irrelevant ones (raise).
+        # top_k=3 limits context window usage. Use the Strands SDK's 0.2
+        # relevance threshold for recall; 0.5 can filter out useful records.
+        # Raise the threshold only if retrieval surfaces irrelevant records.
         memory_config = AgentCoreMemoryConfig(
             memory_id=MEMORY_ID,
             session_id=session_id,
             actor_id=actor_id,
             retrieval_config={
-                f"/users/{actor_id}/facts": RetrievalConfig(top_k=3, relevance_score=0.5),
-                f"/users/{actor_id}/preferences": RetrievalConfig(top_k=3, relevance_score=0.5),
+                f"/users/{actor_id}/facts": RetrievalConfig(top_k=3, relevance_score=0.2),
+                f"/users/{actor_id}/preferences": RetrievalConfig(top_k=3, relevance_score=0.2),
             }
         )
         session_manager = AgentCoreMemorySessionManager(memory_config, REGION)
@@ -474,18 +474,28 @@ runs without Memory when the env var is absent. For a local integration test,
 provide the deployed Memory ID and use local AWS credentials with access to it.
 
 To test cross-session memory on the selected target, use two distinct session IDs
-and the same actorId in the payload:
+and the same actorId in the payload. Before deploying, check the scaffolded
+`app/<RuntimeName>/memory/session.py` retrieval configuration. If it still
+uses `relevance_score=0.5`, set it to `0.2` for the fact and preference
+namespaces. Relevant records can score around 0.35 and be excluded by 0.5.
+
+After the first invoke, find the Memory ID
+in `agentcore status --target <target> --json` (the part after `memory/` in its
+ARN). Long-term extraction is asynchronous and can take about 1–2 minutes.
+Repeat the record-list command until the expected fact or preference appears,
+then run the second invoke:
   agentcore deploy --target <target>
   agentcore invoke --target <target> --runtime <RuntimeName> --payload '{"prompt":"My name is Alex and I prefer concise answers","actorId":"alex"}' --session-id 550e8400-e29b-41d4-a716-446655440000
+  agentcore status --target <target> --json
+  agentcore memory record list --id <memory-id> --namespace /users/alex --region <target-region> --json
   agentcore invoke --target <target> --runtime <RuntimeName> --payload '{"prompt":"What do you know about me?","actorId":"alex"}' --session-id 550e8400-e29b-41d4-a716-446655440001
 
 The Strands templates read the actor from payload "actorId" and fall back to
 the shared actor "default", so callers that omit it all share one actor's memory.
 `agentcore invoke --user-id` does not set the actor in the v1 templates.
 
-If using long-term memory (SEMANTIC or USER_PREFERENCE), wait 5–30 seconds
-between the first and second invoke — extraction runs asynchronously after
-each session ends.
+If records appear in the list but the second invoke cannot recall them,
+check the actor, namespace, and retrieval threshold.
 
 Session ID note: use UUIDs (v4) for session IDs — they satisfy the platform's
 minimum length requirement (33 characters) and are what `agentcore invoke`
@@ -534,9 +544,10 @@ Most common cause: the memory resource is configured but the code isn't reading 
 **Memory not persisting across sessions:**
 
 1. Check that the intended long-term strategy is configured and that the code retrieves from its namespace. SUMMARIZATION is also a long-term strategy, but its retrieval path differs from facts and preferences.
-2. Wait 5–30 seconds after a session ends before starting a new one — extraction is async
-3. Find the Memory ARN in `agentcore status --target <target> --json`, take the ID after `memory/`, then verify its service status is ACTIVE with `agentcore memory get --id <memory-id> --region <target-region> --json`
-4. Use UUIDs (v4) for session IDs — the platform requires a minimum of 33 characters. Short IDs like "session-1" or "test" cause LTM to fail silently. `agentcore invoke` generates compliant IDs by default.
+2. Find the Memory ARN in `agentcore status --target <target> --json`, take the ID after `memory/`, then verify its service status is ACTIVE with `agentcore memory get --id <memory-id> --region <target-region> --json`
+3. After the first session ends, repeat `agentcore memory record list --id <memory-id> --namespace /users/<actor-id> --region <target-region> --json` until the expected record appears. Extraction is async and can take about 1–2 minutes. If no record appears, inspect the strategy and extraction setup before testing recall.
+4. If the record exists but recall fails, check `app/<RuntimeName>/memory/session.py`. The scaffolded `relevance_score=0.5` can filter out relevant records; use `0.2` for facts and preferences, matching the Strands SDK default.
+5. Use UUIDs (v4) for session IDs — the platform requires a minimum of 33 characters. Short IDs like "session-1" or "test" cause LTM to fail silently. `agentcore invoke` generates compliant IDs by default.
 
 **Memory not loading at session start:**
 
