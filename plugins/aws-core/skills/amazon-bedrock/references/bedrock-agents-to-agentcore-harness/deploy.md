@@ -69,7 +69,7 @@ Use a scoped `bedrock:Retrieve` policy on the source Knowledge Base ARN for a KB
 
 ## Shim security and capacity
 
-- Give each action-group shim role only `lambda:InvokeFunction` on the exact source Lambda ARN. A KB shim needs `bedrock-agent-runtime:Retrieve` on the exact source Knowledge Base ARN; do not use resource `*`.
+- Give each action-group shim role only `lambda:InvokeFunction` on the exact source Lambda ARN. A KB shim needs `bedrock:Retrieve` on the exact source Knowledge Base ARN; do not use resource `*`.
 - Give the shim role `logs:CreateLogGroup`, `logs:CreateLogStream`, and `logs:PutLogEvents` scoped to its `/aws/lambda/<shim-function>` log group. Encrypt that log group with a customer-managed KMS key and set an appropriate retention period. Avoid logging full tool inputs, responses, or retrieval passages.
 - Set reserved concurrency on each shim Lambda to an approved bound so migration traffic cannot consume unlimited account concurrency. Alarm on its `Errors` and `Throttles` metrics.
 - Enable CloudTrail **Lambda data events** for `lambda:Invoke` on the shim and source functions when invocation audit is required; ordinary management-event logging does not capture those calls.
