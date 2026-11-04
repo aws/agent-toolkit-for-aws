@@ -68,6 +68,7 @@ the resulting rates).
 | ------------- | ------------ | ------------ | ------- | --------- |
 | GPT-6 Astra   | 10.00        | 50.00        | ≤272K*  | frontier  |
 | GPT-6.1 Sol   | 2.00         | 10.00        | ≤272K*  | flagship  |
+| GPT-6.1 Terra | _unverified_ | _unverified_ | 1.05M   | balanced  |
 | GPT-6 Sol     | 2.00         | 10.00        | ≤272K*  | flagship  |
 | GPT-6 Luna    | 0.10         | 0.50         | ≤272K*  | fast      |
 | GPT-5.6 Sol   | _unverified_ | _unverified_ | 1M      | frontier  |
@@ -92,6 +93,10 @@ the resulting rates).
 
 *GPT-6 rows: 1.05M is the model's max window, not this rate's valid range. Requests >272,000 input tokens reprice input/cache 2x and output 1.5x — see the breakpoint note above and pricing-cache.md's long-context tables.
 
+> **GPT-6.1 Terra:** confirm availability, token limits, and pricing with the source provider.
+> Use measured/stated source spend or `pricing-fallback.md` when verified source rates are unavailable.
+> See `shared/openai-on-bedrock.md` for Bedrock availability and prices.
+>
 > **Azure OpenAI note.** Azure lists the same models under Azure-specific deployment names
 > (e.g. `gpt-4o`, `gpt-4.1`) and bills per 1M tokens at rates that track the table above. Azure
 > adds Provisioned Throughput Units (PTU) as an alternative to pay-as-you-go; a customer on PTU

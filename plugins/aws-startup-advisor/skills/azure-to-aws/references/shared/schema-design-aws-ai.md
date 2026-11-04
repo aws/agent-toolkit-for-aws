@@ -145,9 +145,9 @@ per-feature, not assume parity with Sol/Luna/6.1 Sol.
 generated code must use. Absent/default is `responses` for a region-only `runtime_openai_cris`
 move (no Guardrails or other client-surface need). A Guardrails-requiring workload on
 `runtime_openai_cris` sets it to the surface that is actually Guardrails-capable for that model:
-`converse` for GPT-6 Astra (its only Converse-capable, non-Invoke surface), or
+`converse` for GPT-6 Astra and GPT-6.1 Terra, or
 `converse`/`chat_completions`/`invoke` — never `responses` — for GPT-6.1 Sol and the other
-non-Astra GPT-6/5.6 CRIS models. `generate-artifacts-ai.md`'s CRIS Step 1M reads this field and
+GPT-6/5.6 CRIS models except Astra and GPT-6.1 Terra. Terra also requires `converse` for application inference profiles. `generate-artifacts-ai.md`'s CRIS Step 1M reads this field and
 emits that surface instead of defaulting to `responses.create`. Keep the existing Astra-no-Invoke
 migration_path note above — `required_client_api` never sets `invoke` for Astra.
 

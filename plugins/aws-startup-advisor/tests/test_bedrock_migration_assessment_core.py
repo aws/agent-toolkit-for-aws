@@ -277,6 +277,7 @@ BMA_QUESTIONS = _question_sections(BMA_CLARIFY)
 NEUTRALIZED_ROWS = {
     ("Q1.5", "| GDPR"): "document cross-border transfer from your current EU provider",
     ("Q4", "| Latency critical"): "closest region to current deployment",
+    ("Q5", "| GPT-6.1 Terra"): '**Same model on Bedrock** | Use the model-specific endpoint and context-tier prices in the [GPT-6.1 Terra model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-terra.html); compare against measured source spend or verified source rates.',
 }
 
 

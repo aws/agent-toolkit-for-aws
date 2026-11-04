@@ -407,12 +407,17 @@ Astra Chat solely because it is proprietary GPT. Record `model_change: false` on
 the exact source model is retained; a Pro-to-Astra upgrade is a model change requiring eval.
 GPT-5.x retains its separately dated API evidence and any selected Chat-to-Responses reshape.
 
-**A Chat Completions source is a supported near-drop-in for GPT-6 and GPT-5.6 — not a mandatory reshape.** All four GPT-6 models and the GPT-5.6 family list Chat Completions as a supported API on both mantle and runtime CRIS (per `openai-on-bedrock.md` § Access Paths); if `integration` evidence shows `chat.completions.create` for one of these models, the design may keep `chat.completions.create`/`choices[0].message` parsing — reshape to `responses.create` is optional, only for a Responses-only feature (runtime prompt caching, reasoning-item round-trips) or a demonstrated constraint. **GPT-5.5 and GPT-5.4 are the exception**: Chat Completions support is unconfirmed on their model cards (Responses on mantle is the only verified surface), so a Chat Completions source on either model still needs a planned reshape, probed against the target account before committing.
+**A Chat Completions source is a supported near-drop-in for GPT-6 and GPT-5.6 — not a mandatory reshape.** All five GPT-6 models and the GPT-5.6 family list Chat Completions as a supported API on both mantle and runtime CRIS (per `openai-on-bedrock.md` § Access Paths); if `integration` evidence shows `chat.completions.create` for one of these models, the design may keep `chat.completions.create`/`choices[0].message` parsing — reshape to `responses.create` is optional, only for a Responses-only feature (runtime explicit prompt caching, reasoning-item round-trips) or a demonstrated constraint. **GPT-5.5 and GPT-5.4 are the exception**: Chat Completions support is unconfirmed on their model cards (Responses on mantle is the only verified surface), so a Chat Completions source on either model still needs a planned reshape, probed against the target account before committing.
+
+**Terra caching depends on the endpoint and mode.** On runtime, implicit caching supports
+Responses, Chat Completions, InvokeModel, and Converse. It does not require a Chat client
+reshape and can be combined with Converse Guardrails. Runtime explicit caching requires
+Responses. On Mantle, both implicit and explicit caching are Responses-only.
 
 **No Converse fallback for GPT-5.5/GPT-5.4 — GPT-5.6 and GPT-6 differ.** GPT-5.5 and GPT-5.4 are
 `bedrock-mantle` only and in-region only — there is no `bedrock-runtime` path and no cross-region
-inference profile for these two models. GPT-5.6 Sol/Terra/Luna and all four GPT-6 models (Astra,
-Sol, Luna, 6.1 Sol) DO have a `bedrock-runtime` CRIS path (`us.`/`global.` prefixed IDs, per
+inference profile for these two models. GPT-5.6 Sol/Terra/Luna and all five GPT-6 models (Astra,
+Sol, Luna, 6.1 Sol, 6.1 Terra) DO have a `bedrock-runtime` CRIS path (`us.`/`global.` prefixed IDs, per
 `openai-on-bedrock.md` § Access Paths) — for these models, a region or feature need (Guardrails,
 Knowledge Bases, invocation logging, or a region outside the mantle matrix) is satisfied by
 **switching endpoint, not model**: record `migration_path: "runtime_openai_cris"` with
@@ -425,10 +430,14 @@ Profiles (Converse-only features that also require Invoke-adjacent plumbing on s
 must verify against Astra's model card per-feature, not assume parity with Sol/Luna/6.1 Sol.
 **When Guardrails is the driving need and the design keeps `runtime_openai_cris` (endpoint
 switch, not model switch), it MUST also record `bedrock_models[].required_client_api` so the
-generated client uses a Guardrails-capable surface — `converse` for Astra; `converse` /
-`chat_completions` / `invoke` (never `responses`) for 6.1 Sol and the other non-Astra GPT-6/5.6
-CRIS models. Do not leave the client on `responses` when Guardrails is required.** `Responses`
+generated client uses a Guardrails-capable surface — `converse` for Astra and 6.1 Terra; `converse` /
+`chat_completions` / `invoke` (never `responses`) for 6.1 Sol and the other GPT-6/5.6 CRIS models except Astra and 6.1 Terra. Do not leave the client on `responses` when Guardrails is required.** `Responses`
 stays the default for a region-only CRIS move with no Guardrails need.
+
+**GPT-6.1 Terra API constraints:** Guardrails and application inference profiles require
+`required_client_api: "converse"`. Converse rejects document blocks and images in tool
+results; a document workload uses Responses `input_file`, so do not claim that the same
+Terra API path also supplies Guardrails. Resolve conflicting requirements before generation.
 
 When the advisor supplied a
 per-unit model contract, retain its exact `invocation_model_id` in that unit's `aws_model_id`

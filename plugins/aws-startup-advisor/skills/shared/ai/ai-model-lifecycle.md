@@ -13,7 +13,9 @@
 
 <!-- freshness-contract: enforced by plugins/aws-startup-advisor/tools/model-staleness.py -->
 
-**Last updated:** 2026-10-26
+**Last updated:** 2026-11-02
+
+GPT-6.1 Terra was added on this date; existing model rows retain their verification dates.
 
 **Staleness window:** 45 days
 
@@ -100,6 +102,7 @@ Per-model facts read from each Bedrock model card on 2026-10-26 (Model Details, 
 | Nova Lite         | `amazon.nova-lite-v1:0`                    | Active (launched 2024-12-05) ⁷                                                | 300K           | 10K        | yes ⁸                                     | yes         | no           | no          | no                 | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-lite.html), verified 2026-10-26              |
 | Nova Micro        | `amazon.nova-micro-v1:0`                   | Active (launched 2024-12-05) ⁷                                                | 128K           | 10K        | yes ⁸                                     | no          | no           | no          | no                 | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-micro.html), verified 2026-10-26             |
 | GPT-6 Luna        | `openai.gpt-6-luna` ⁴                      | Active (launched 2026-09-22; EOL no sooner than 2027-09-22)                   | 1.05M ⁹        | 128K       | _unverified_ ⁵                            | yes         | no           | no          | yes                | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html), verified 2026-10-26             |
+| GPT-6.1 Terra     | `openai.gpt-6.1-terra` ¹⁰                  | Active (launched 2026-10-26; EOL no sooner than 2027-10-26)                   | 1.05M ⁹        | 128K       | _unverified_ ⁵                            | yes         | no           | no          | yes ¹⁰             | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-terra.html), verified 2026-11-02          |
 
 Table notes (all from the cited cards unless stated):
 
@@ -112,6 +115,8 @@ Table notes (all from the cited cards unless stated):
 7. Launched before 2026-09-07, so the pre-policy-change [lifecycle page](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html) is authoritative; none of these models appears in its table as of 2026-10-26 (the Haiku 4.5 card's "EOL no sooner than" date has passed, but the card still reads Active with no EOL date set).
 8. Card lists client-side tool calling, and the Converse [`ToolChoice`](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ToolChoice.html) reference states the `tool` (named-tool) member is supported by Amazon Nova models.
 9. 1,050,000-token window; the card prices requests above 272K input tokens at long-context rates (see `bedrock-pricing-cache.md`).
+
+10. GPT-6.1 Terra uses the bare ID on Mantle (us-east-1 only), or `us.openai.gpt-6.1-terra` / `global.openai.gpt-6.1-terra` on runtime. Guardrails and application inference profiles are Converse-only. Converse accepts text/image user content, not documents or images in tool results; documents require Responses `input_file`. Runtime JSON Schema outputs require the model card's API-specific configuration; Converse also needs `additionalModelRequestFields.text.format.strict: true`. The card states a Legacy period of at least 6 months.
 
 ## Legacy / EOL Models (as of October 26, 2026)
 
