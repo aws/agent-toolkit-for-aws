@@ -1,7 +1,7 @@
 ---
 name: aws-lambda-microvms
 description: Builds, runs, debugs, and operates applications on AWS Lambda MicroVMs — Firecracker-isolated, snapshot-resumable serverless compute environments running inside a container with up to 8 hr lifetimes. Applicable when workloads need strong isolation between tenants, isolated serverless compute, sandbox compute, or secure multi-tenant execution. Also suited for AI/agent code-execution sandboxes, interactive code playgrounds and notebooks (Jupyter, REPLs, dev environments running user-supplied code), reinforcement-learning environments, multi-tenant CI executors and build runners, sessionful game or simulation servers, or isolated security scanners. Also applicable when the workload needs long-lived sessions, a real port-listening server (gRPC, WebSocket, custom TCP protocols), state preserved across periods of inactivity (suspend/resume), container-level access (FUSE, eBPF, custom syscalls), or session-affine routing.
-version: 2
+version: 3
 ---
 
 # AWS Lambda MicroVMs
@@ -63,22 +63,30 @@ In general, Lambda MicroVMs are suited for long-lived sessions, real port-listen
 5. **CreateMicrovmAuthToken** — get an auth token (max 60 min) with `allowedPorts` specifying which ports the token grants access to. Send traffic to the endpoint with `X-aws-proxy-auth: <token>`.
 6. **Suspend / Resume / Terminate** — explicit APIs, or let the `idlePolicy` drive it (`maxIdleDurationSeconds`, `suspendedDurationSeconds`, `autoResumeEnabled`).
 
+### ARN partitions
+
+Every ARN in this skill is written `arn:<partition>:...`. Set the partition from the target region. Do not default to `arn:aws:`, because an ARN with the wrong partition is rejected.
+
+Only the partition segment changes. The `aws` account field in managed base image ARNs (`arn:<partition>:lambda:<region>:aws:microvm-image:...`) and default network connector ARNs stays `aws`. Where possible, copy ARNs from API output (`list-managed-microvm-images`, `create-microvm-image`, `get-microvm-image`) instead of building them by hand.
+
+MicroVM endpoint domains also differ in China. Endpoints are `<microvm-id>.lambda-microvm.<region>.on.aws` in commercial regions and `<microvm-id>.lambda-microvm.<region>.on.amazonwebservices.com.cn` in China regions. Use the `endpoint` value returned by `run-microvm` or `get-microvm` instead of building the hostname. The VPC endpoint service name, `com.amazonaws.<region>.lambda-microvm`, is the same in every partition.
+
 ### Core CLI commands
 
 ```bash
 # Create an image (zip with Dockerfile at root in S3, plus a managed base image)
 aws lambda-microvms create-microvm-image \
   --name my-image \
-  --base-image-arn arn:aws:lambda:<region>:aws:microvm-image:al2023-1 \
-  --build-role-arn arn:aws:iam::<acct>:role/MicroVMBuildRole \
+  --base-image-arn arn:<partition>:lambda:<region>:aws:microvm-image:al2023-1 \
+  --build-role-arn arn:<partition>:iam::<acct>:role/MicroVMBuildRole \
   --code-artifact '{"uri":"s3://<bucket>/<key>.zip"}'
 
 # Run a MicroVM (returns endpoint + microvmId). --image-identifier takes the
 # image ARN and --image-version is the full major.minor string.
 aws lambda-microvms run-microvm \
-  --image-identifier arn:aws:lambda:<region>:<acct>:microvm-image:my-image \
+  --image-identifier arn:<partition>:lambda:<region>:<acct>:microvm-image:my-image \
   --image-version 1.0 \
-  --execution-role-arn arn:aws:iam::<acct>:role/MicroVMExecutionRole \
+  --execution-role-arn arn:<partition>:iam::<acct>:role/MicroVMExecutionRole \
   --idle-policy '{"maxIdleDurationSeconds":900,"suspendedDurationSeconds":300,"autoResumeEnabled":true}'
 
 # Mint an auth token and call the endpoint
@@ -144,8 +152,8 @@ By default, the container runs with a restricted set of Linux capabilities. Set 
 ```bash
 aws lambda-microvms create-microvm-image \
   --name my-image \
-  --base-image-arn arn:aws:lambda:<region>:aws:microvm-image:al2023-1 \
-  --build-role-arn arn:aws:iam::<acct>:role/MicroVMBuildRole \
+  --base-image-arn arn:<partition>:lambda:<region>:aws:microvm-image:al2023-1 \
+  --build-role-arn arn:<partition>:iam::<acct>:role/MicroVMBuildRole \
   --code-artifact '{"uri":"s3://<bucket>/<key>.zip"}' \
   --additional-os-capabilities '["ALL"]'
 ```
@@ -157,9 +165,9 @@ For programmatic shell access (agent workflows, remote command execution), use t
 ```bash
 # 1. Run with SHELL_INGRESS enabled
 aws lambda-microvms run-microvm \
-  --image-identifier arn:aws:lambda:<region>:<acct>:microvm-image:my-image \
-  --execution-role-arn arn:aws:iam::<acct>:role/MicroVMExecutionRole \
-  --ingress-network-connectors '["arn:aws:lambda:<region>:aws:network-connector:aws-network-connector:SHELL_INGRESS"]' \
+  --image-identifier arn:<partition>:lambda:<region>:<acct>:microvm-image:my-image \
+  --execution-role-arn arn:<partition>:iam::<acct>:role/MicroVMExecutionRole \
+  --ingress-network-connectors '["arn:<partition>:lambda:<region>:aws:network-connector:aws-network-connector:SHELL_INGRESS"]' \
   --idle-policy '{"maxIdleDurationSeconds":900,"suspendedDurationSeconds":300,"autoResumeEnabled":true}'
 # Response includes microvmId and endpoint
 
