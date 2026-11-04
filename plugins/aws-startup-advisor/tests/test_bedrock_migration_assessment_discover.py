@@ -74,7 +74,8 @@ def test_scan_output_rules() -> None:
     step3 = _section(SCAN, "## Step 3")
     assert "**OpenRouter is a gateway, never a source.**" in step3
     assert "`openrouter`" not in [row.split("|")[2].strip() for row in _rows(step3)[1:]]
-    assert "never open `.env*` files, even to look for variable names" in step3
+    for rule in ("never open `.env*` files, even to look for variable names", "A gateway model string is never Vertex evidence"):
+        assert rule in step3, rule
     assert "never run code from the repository" in SCAN
 
 
@@ -114,6 +115,7 @@ def test_google_genai_mode_and_distinct_gemini_models() -> None:
 @pytest.mark.parametrize(("fixture", "expected"), [
     ("bma-scan-vertex-env-flash-lite", [("vertex_ai", "gemini-2.5-flash-lite")]),
     ("bma-scan-genai-two-runtimes", [("gemini_api", "gemini-2.5-flash"), ("vertex_ai", "gemini-2.5-pro")]),
+    ("bma-scan-openrouter-gemini", [("anthropic_api", "claude-3.5-sonnet"), ("gemini_api", "gemini-2.5-flash")]),
 ])
 def test_google_identities_survive_the_summary(fixture: str, expected: list) -> None:
     summary = VALIDATOR.validate_profile(json.loads((PLUGIN_ROOT / "fixtures" / fixture / "ai-workload-profile.json").read_text()))

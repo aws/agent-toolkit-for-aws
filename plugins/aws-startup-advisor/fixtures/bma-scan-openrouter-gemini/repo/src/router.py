@@ -12,3 +12,8 @@ def answer(question: str) -> str:
         messages=[{"role": "user", "content": question}],
     )
     return resp.choices[0].message.content
+
+
+def quick(question: str) -> str:
+    resp = router.chat.completions.create(model="google/gemini-2.5-flash", messages=[{"role": "user", "content": question}])
+    return resp.choices[0].message.content
