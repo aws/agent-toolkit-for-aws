@@ -34,8 +34,8 @@ An always-on service is still a better ECS/EKS fit — Instances sessions end at
 - microVMs session cap: 8h; Instances session cap: 14 days (not indefinite)
 - microVMs compute cap: 2 vCPU / 8 GB (Instances lifts this via EC2 instance choice)
 - Instances launch regions: limited set at launch (2026-08) — verify current list
-- AWS Agent Registry GA Regions (2026-08-31 snapshot): `us-east-1`, `us-west-2`,
-  `ap-northeast-1`, `ap-southeast-2`, `eu-west-1`
+- AWS Agent Registry GA Regions (updated snapshot): `us-east-1`, `us-west-2`, `ap-northeast-1`, `ap-southeast-2`, `eu-west-1`, `eu-west-2`, `eu-central-1`, `us-east-2`, `ca-central-1` (9 regions)
+  `ap-northeast-1`, `ap-southeast-2`, `eu-west-1`, `eu-west-2`, `eu-central-1`, `us-east-2`, `ca-central-1`
   ([GA announcement](https://aws.amazon.com/about-aws/whats-new/2026/08/aws-agent-registry-generally-available)).
   Verify Registry availability in its intended Region before recommending it; Runtime
   availability does not establish Registry availability. See `freshness.md`.
