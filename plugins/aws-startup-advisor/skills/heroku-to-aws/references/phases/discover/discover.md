@@ -61,6 +61,18 @@ _forbids_files:
 
 ## Orientation
 
+**Fresh runs only:** After `_init` and before scanning the workspace or requesting
+files, output this block once. Skip it when resuming:
+
+> **Before you send or upload files:** Terraform is optional. I can inventory your
+> Heroku account through your authenticated Heroku CLI using read-only commands,
+> scan Terraform plus `Procfile`/`app.json` already in your workspace, or use a
+> billing export. When live and workspace sources are combined, I can catch
+> resources outside Terraform and report drift.
+
+Do not block on this orientation. Continue directly into the existing source scan
+and consent gate in the same turn.
+
 Inventory what exists on Heroku into a single flat `heroku-resource-inventory.json`
 in `$MIGRATION_DIR/`. This phase is composed of FRAGMENTS (independent discoverers)
 plus one ASSEMBLER, declared in the frontmatter `_fragments`/`_assemble` — the

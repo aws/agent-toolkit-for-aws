@@ -52,8 +52,9 @@ ANTHROPIC_FILES = [
 ]
 
 USAGE_ROW_PATTERN = re.compile(
-    r"/v1/organization/usage/\S+.*?limit=(\d+)", re.MULTILINE
+    r"/v1/organization/usage/\S+.*?bucket_width=(1d|1h|1m).*?limit=(\d+)"
 )
+USAGE_LIMIT_BY_BUCKET = {"1d": "31", "1h": "168", "1m": "1440"}
 COSTS_ROW_PATTERN = re.compile(r"/v1/organization/costs.*?limit=(\d+)")
 
 
@@ -61,12 +62,16 @@ def test_azure_openai_usage_rows_do_not_request_limit_180() -> None:
     text = AZURE_OPENAI_FILE.read_text(encoding="utf-8")
     usage_limits = USAGE_ROW_PATTERN.findall(text)
     assert usage_limits, "expected to find usage-endpoint rows with a limit= parameter"
-    for limit in usage_limits:
+    for bucket, limit in usage_limits:
         assert limit != "180", (
-            "a usage-endpoint row still requests limit=180 (OpenAI's usage "
+            "a usage-endpoint row still requests limit=180 (OpenAI's daily usage "
             "endpoints cap bucket_width=1d&limit at 31) — see finding 2"
         )
-        assert limit == "31", f"usage-endpoint row requests limit={limit}, expected limit=31"
+        expected = USAGE_LIMIT_BY_BUCKET[bucket]
+        assert limit == expected, (
+            f"usage-endpoint row bucket_width={bucket} requests limit={limit}, "
+            f"expected limit={expected}"
+        )
 
 
 def test_azure_openai_costs_row_keeps_limit_180() -> None:

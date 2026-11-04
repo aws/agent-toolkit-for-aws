@@ -3,7 +3,7 @@
 > Self-contained application code discovery sub-file. Scans for source code, detects GCP SDK imports, infers resources, flags AI signals, and if AI confidence >= 70%, extracts detailed AI workload information and generates `ai-workload-profile.json`.
 > If no source code files are found, exits cleanly with no output.
 
-**Dead-end handling:** If this file exits without producing artifacts (no source code found, or AI confidence < 70%), report to the parent orchestrator: what signals were found (if any), the confidence level, and that the user should provide Terraform files or billing exports to proceed with migration planning.
+**Dead-end handling:** If this file exits without producing artifacts (no source code found, or AI confidence < 70%), report to the parent orchestrator: what signals were found (if any), the confidence level, and that the user can run read-only live `gcloud` discovery, provide Terraform files, or provide billing exports to proceed with migration planning.
 
 **Execute ALL steps in order. Do not skip or optimize.**
 
@@ -244,7 +244,7 @@ Before finalizing AI detection, verify signals are genuine:
 **Exit gate:** If overall AI confidence < 70%:
 
 - **If** `$MIGRATION_DIR/ai-workload-profile.json` **already exists** with `metadata.profile_source` = `"iac_vertex"` (from `discover-iac.md` Step 7d — strong Vertex Terraform): **exit cleanly** without deleting or modifying that file. Report to the parent orchestrator: signals found, confidence below 70%, and that the **IaC-inferred AI profile is retained** for Clarify.
-- **Otherwise:** Do **not** generate `ai-workload-profile.json`. Report signals found, confidence level, and reason for not generating the AI profile. The inferred resources from Steps 1-2 remain available for other sub-files (e.g., discover-iac.md may use them for evidence merge). If no other sub-discoverer produces artifacts, the parent orchestrator will inform the user to provide Terraform files or billing exports.
+- **Otherwise:** Do **not** generate `ai-workload-profile.json`. Report signals found, confidence level, and reason for not generating the AI profile. The inferred resources from Steps 1-2 remain available for other sub-files (e.g., discover-iac.md may use them for evidence merge). If no other sub-discoverer produces artifacts, the parent orchestrator will inform the user that they can run read-only live `gcloud` discovery, provide Terraform files, or provide billing exports.
 
 **If confidence >= 70%**, continue to Steps 5-8 below.
 

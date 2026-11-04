@@ -260,7 +260,7 @@ After selecting models, assess quota risk based on `ai_token_volume` from `prefe
 | `ai_token_volume`         | Selected Model Family              | `quota_risk` | Action                                                                            |
 | ------------------------- | ---------------------------------- | ------------ | --------------------------------------------------------------------------------- |
 | `"high"` or `"very_high"` | Any                                | `"high"`     | Flag: "Request Bedrock quota increase before migration (allow 1–5 business days)" |
-| `"medium"`                | Claude (5× burndown)               | `"medium"`   | Flag: "Monitor TPM usage; quota increase may be needed at peak"                   |
+| `"medium"`                | Claude on bedrock-runtime          | `"medium"`   | Flag: "Monitor TPM usage; quota increase may be needed at peak"                   |
 | `"medium"`                | Astra runtime (10× output burndown) | `"medium"` | Flag: "Verify input TPM + 10 × output TPM against the selected CRIS quota" |
 | `"medium"`                | Verified 1× models (e.g. Nova / Llama) | `"low"` | No action |
 | `"medium"`                | Unverified model/endpoint quota | `"medium"` | Flag: "Verify quota dimensions before estimating throughput" |
@@ -268,7 +268,7 @@ After selecting models, assess quota risk based on `ai_token_volume` from `prefe
 
 Include `quota_risk` in `aws-design-ai.json` → `ai_architecture` alongside `honest_assessment`.
 
-Before writing `quota_risk`, also apply the observed on-demand peak rule in `references/vendored/ai/bedrock-quotas.md`. A monthly `"low"` with a weighted peak above 200,000 TPM becomes `"high"`. A publisher or usage-API profile supplies that peak when it has one. Generate must not keep the earlier monthly decision.
+Also apply **Observed on-demand peak** in `references/vendored/ai/bedrock-quotas.md` before writing that field. A `"low"` monthly tier stays `"low"` only when no usable on-demand peak exceeds that rule. A monthly `"low"` with a weighted peak above 200,000 TPM becomes `"high"`. Batch rows, and any row whose `service_tier` is `unknown`, are excluded. A publisher or usage-API profile supplies that peak when it has one. Profiles without peak fields keep this table. Generate must not keep the earlier monthly decision.
 
 ---
 
