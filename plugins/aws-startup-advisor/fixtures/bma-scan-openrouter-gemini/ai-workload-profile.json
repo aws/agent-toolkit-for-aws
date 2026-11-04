@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "ai_sources": [
+    {
+      "provider": "anthropic",
+      "source_service": "anthropic_api",
+      "model_families": ["claude"],
+      "model_evidence": "observed",
+      "models": ["claude-3.5-sonnet"],
+      "model_observations": [
+        {"normalized_model": "claude-3.5-sonnet", "raw_model": "anthropic/claude-3.5-sonnet", "model_family": "claude", "evidence": [{"provenance": "code", "confidence": "high", "detail": "src/router.py:11 router.chat.completions.create"}]}
+      ]
+    },
+    {
+      "provider": "google",
+      "source_service": "gemini_api",
+      "model_families": ["gemini"],
+      "model_evidence": "observed",
+      "models": ["gemini-2.5-flash"],
+      "model_observations": [
+        {"normalized_model": "gemini-2.5-flash", "raw_model": "gemini-2.5-flash", "model_family": "gemini", "evidence": [{"provenance": "code", "confidence": "medium", "detail": "src/drafts.py:5 DRAFT_MODEL default"}]}
+      ]
+    }
+  ],
+  "gateways": [
+    {
+      "product": "openrouter",
+      "type": "llm_router",
+      "upstream_evidence": "observed",
+      "upstreams": [
+        {"provider": "anthropic", "source_service": "anthropic_api", "model_families": [{"family": "claude", "model_evidence": "observed", "models": ["claude-3.5-sonnet"]}]}
+      ]
+    }
+  ]
+}
