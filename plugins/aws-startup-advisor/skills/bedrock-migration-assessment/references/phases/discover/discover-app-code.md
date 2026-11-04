@@ -139,8 +139,10 @@ A provider reached through two services produces two sources. Other LLM SDKs (Co
 
 **OpenRouter is a gateway, never a source.** Record it in `gateways[]` with `product: "openrouter"` and `type: "llm_router"` when code or config sets a `base_url` containing `openrouter.ai`, or when source code or a non-secret config file (for example `docker-compose.yml` or a CI workflow) names `OPENROUTER_API_KEY` or `OR_API_KEY`. Check names only; never read secret values. The Step 0 secret exclusions still apply: never open `.env*` files, even to look for variable names. LiteLLM (`from litellm import completion` or `litellm` in dependencies) is recorded the same way with `product: "litellm"`.
 
-- When OpenRouter model strings carry a provider prefix (`anthropic/claude-3.5-sonnet`, `openai/gpt-4o`, `google/gemini-pro-1.5`), set `upstream_evidence: "observed"`. Add one upstream per prefix, and add each model to an AI source for that provider (`anthropic`/`anthropic_api`, `openai`/`openai_api`, `google`/`gemini_api`). A gateway model string is never Vertex evidence: use `google`/`vertex_ai` only when the call also matches the `vertex_ai` row above.
-- Otherwise set `upstream_evidence: "unresolved"` and `upstreams: []`. Do not invent upstreams.
+- When OpenRouter model strings carry a provider prefix (`anthropic/claude-3.5-sonnet`, `openai/gpt-4o`, `google/gemini-2.5-flash`), set `upstream_evidence: "observed"`. Add one upstream per prefix, and add each model to an AI source for that provider (`anthropic`/`anthropic_api`, `openai`/`openai_api`).
+- A `google/` prefix does not say which Google service serves the call. Decide it only from the request's OpenRouter `provider` routing: `only`, or `order` with `allow_fallbacks: false`, whose Google slugs all belong to one service. `google-vertex` slugs (including `google-vertex/<region>`) mean `google`/`vertex_ai`; `google-ai-studio` slugs mean `google`/`gemini_api`. The prefix, OpenRouter's model listings, `order` with fallbacks allowed, and routing values you cannot read in the repository decide nothing.
+- If any `google/` model on the gateway has no such routing, set that gateway's `upstream_evidence: "unresolved"` and `upstreams: []`, and do not add those models to any source; `google/` models with such routing keep their source. Name the models without routing in the summary to the user as reached through OpenRouter with the Google service not established.
+- When the model strings carry no provider prefix, set `upstream_evidence: "unresolved"` and `upstreams: []`. Do not invent upstreams.
 
 ---
 

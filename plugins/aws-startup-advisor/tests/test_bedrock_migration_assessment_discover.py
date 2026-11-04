@@ -74,7 +74,7 @@ def test_scan_output_rules() -> None:
     step3 = _section(SCAN, "## Step 3")
     assert "**OpenRouter is a gateway, never a source.**" in step3
     assert "`openrouter`" not in [row.split("|")[2].strip() for row in _rows(step3)[1:]]
-    for rule in ("never open `.env*` files, even to look for variable names", "A gateway model string is never Vertex evidence"):
+    for rule in ("never open `.env*` files, even to look for variable names", "A `google/` prefix does not say which Google service serves the call"):
         assert rule in step3, rule
     assert "never run code from the repository" in SCAN
 
@@ -112,11 +112,13 @@ def test_google_genai_mode_and_distinct_gemini_models() -> None:
         assert kept in models, kept
 
 
-@pytest.mark.parametrize(("fixture", "expected"), [
-    ("bma-scan-vertex-env-flash-lite", [("vertex_ai", "gemini-2.5-flash-lite")]),
-    ("bma-scan-genai-two-runtimes", [("gemini_api", "gemini-2.5-flash"), ("vertex_ai", "gemini-2.5-pro")]),
-    ("bma-scan-openrouter-gemini", [("anthropic_api", "claude-3.5-sonnet"), ("gemini_api", "gemini-2.5-flash")]),
+@pytest.mark.parametrize(("fixture", "expected", "gateway"), [
+    ("bma-scan-vertex-env-flash-lite", [("gemini-2.5-flash-lite", "vertex_ai")], []),
+    ("bma-scan-genai-two-runtimes", [("gemini-2.5-flash", "gemini_api"), ("gemini-2.5-pro", "vertex_ai")], []),
+    ("bma-scan-openrouter-gemini", [("claude-3.5-sonnet", "anthropic_api"), ("gemini-2.5-flash", "gemini_api")], ["unresolved"]),
+    ("bma-scan-openrouter-google-pinned", [("claude-3.5-sonnet", "anthropic_api"), ("gemini-2.5-flash", "vertex_ai")], ["observed"]),
 ])
-def test_google_identities_survive_the_summary(fixture: str, expected: list) -> None:
+def test_google_identities_survive_the_summary(fixture: str, expected: list, gateway: list) -> None:
     summary = VALIDATOR.validate_profile(json.loads((PLUGIN_ROOT / "fixtures" / fixture / "ai-workload-profile.json").read_text()))
-    assert sorted((s["source_service"], s["models"][0]["model"]) for s in summary["ai_sources"]) == expected
+    assert sorted((s["models"][0]["model"], s["source_service"]) for s in summary["ai_sources"]) == expected
+    assert [g["upstream_evidence"] for g in summary["gateways"]] == gateway

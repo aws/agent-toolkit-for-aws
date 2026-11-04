@@ -46,11 +46,6 @@
               "provenance": "code",
               "confidence": "medium",
               "detail": "src/drafts.py:5 DRAFT_MODEL default"
-            },
-            {
-              "provenance": "code",
-              "confidence": "high",
-              "detail": "src/router.py:18 router.chat.completions.create (OpenRouter google/ prefix)"
             }
           ]
         }
@@ -61,35 +56,8 @@
     {
       "product": "openrouter",
       "type": "llm_router",
-      "upstream_evidence": "observed",
-      "upstreams": [
-        {
-          "provider": "anthropic",
-          "source_service": "anthropic_api",
-          "model_families": [
-            {
-              "family": "claude",
-              "model_evidence": "observed",
-              "models": [
-                "claude-3.5-sonnet"
-              ]
-            }
-          ]
-        },
-        {
-          "provider": "google",
-          "source_service": "gemini_api",
-          "model_families": [
-            {
-              "family": "gemini",
-              "model_evidence": "observed",
-              "models": [
-                "gemini-2.5-flash"
-              ]
-            }
-          ]
-        }
-      ]
+      "upstream_evidence": "unresolved",
+      "upstreams": []
     }
   ]
 }
