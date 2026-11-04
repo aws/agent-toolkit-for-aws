@@ -77,6 +77,9 @@ def test_missing_active_model_is_a_warning_and_fails_strict(tmp_path, capsys):
     errors, warnings = drift.check(plugin, TODAY)
     assert errors == []
     assert len(warnings) == 1 and "`anthropic.claude-new`" in warnings[0]
+    # Every entry under `models` is a selection candidate, so the remediation must not suggest a
+    # non-selectable "reference-only" entry; it points at registry_exclusions instead.
+    assert "registry_exclusions" in warnings[0] and "reference-only" not in warnings[0]
     assert drift.main(["--plugin-root", str(plugin), "--today", "2026-11-04"]) == 0
     assert drift.main(["--plugin-root", str(plugin), "--today", "2026-11-04", "--strict"]) == 1
     assert "anthropic.claude-new" in capsys.readouterr().out
