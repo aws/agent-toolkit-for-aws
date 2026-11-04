@@ -10,6 +10,12 @@ Response size above 6MB alone does not require ECS. First evaluate [Lambda respo
 
 **Do NOT start with ECS if**: Your traffic is spiky/unpredictable and you can fit in Lambda's constraints. Lambda's scale-to-zero beats Fargate's minimum-task cost for low-traffic services.
 
+## GPU Sharing
+
+For inference or smaller models that do not need a whole GPU, evaluate NVIDIA Multi-Process Service (MPS) GPU sharing on **ECS Managed Instances or ECS on EC2** before moving to EKS solely for GPU sharing. This option is **not available on Fargate**.
+
+Read [Share GPUs on Amazon ECS](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs-gpu-sharing.html) before recommending it, including supported instances, EC2 agent/AMI prerequisites, and workload restrictions. Containers sharing a GPU share its failure domain; use a whole GPU when a workload must not be affected by its neighbors. MPS sharing does not provide hardware-level isolation.
+
 ## Startup Cost Traps
 
 1. **Fargate Spot in production services**: 70% savings sounds great, but Spot tasks get terminated with 30s warning. Use ONLY for: batch jobs, queue workers, background processing. Never for user-facing APIs unless you have graceful failover to on-demand.

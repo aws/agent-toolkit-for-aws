@@ -13,7 +13,7 @@
 
 - Team > 10-15 engineers with multiple teams needing namespace isolation
 - You're hiring primarily from a Kubernetes-experienced talent pool
-- You need advanced scheduling (GPU sharing, bin-packing, multi-tenancy)
+- You need Kubernetes-specific scheduling or multi-tenancy features that ECS cannot meet
 - Your compute spend exceeds $20K/month and Karpenter's optimization justifies the platform cost
 - You're already running K8s and migrating to AWS (don't re-learn ECS just for AWS)
 
@@ -70,9 +70,10 @@
 | ----------------------------------------------------- | --------------------------------------- |
 | >15 engineers, multiple teams deploying independently | Namespace isolation, RBAC per team      |
 | Monthly compute > $20K, need optimization             | Karpenter's bin-packing saves 30-40%    |
-| Need GPU sharing across workloads                     | K8s device plugin + time-slicing, OR Amazon ECS with NVIDIA MPS GPU sharing        |
 | Hiring pipeline is primarily K8s-experienced          | Developer experience matters            |
 | Need advanced traffic management                      | K8s ecosystem (Istio, Cilium) is richer |
+
+GPU sharing alone is not a reason to migrate to EKS. First evaluate [ECS GPU sharing with NVIDIA MPS](ecs.md#gpu-sharing) on ECS Managed Instances or ECS on EC2; it is not available on Fargate. Choose EKS when the workload also needs Kubernetes-specific scheduling or ecosystem features.
 
 ## Credits-Specific Guidance
 
