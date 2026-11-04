@@ -29,9 +29,11 @@ discovery fails or is ambiguous:
 
 - **Account id and caller:** from `aws sts get-caller-identity` (§1). Do not ask.
 - **Migration service role:** search for an existing one before proposing to create it:
+
   ```bash
   aws iam list-roles --query "Roles[?contains(RoleName,'igration') || contains(RoleName,'S3Tables')].RoleName"
   ```
+
   This name match is a coarse first pass (it also matches DMS, MigrationHub, and partner roles).
   A role is a real candidate only if its trust policy names `migration.s3tables.amazonaws.com`
   with `aws:SourceAccount`/`aws:SourceArn`; inspect trust and inline policies (see
@@ -41,19 +43,19 @@ discovery fails or is ambiguous:
 - **Report bucket:** propose an existing general-purpose bucket in the migration region. Do not
   reuse an Athena-results or other broadly readable bucket; the reports contain schema and
   data-layout detail. Verify before using it (offer to create one if none passes):
-    - **Ownership:** `aws s3api head-bucket --bucket <B> --expected-bucket-owner <ACCT>` succeeds.
-    - **Same region:** `aws s3api get-bucket-location --bucket <B>` returns the migration region.
-      An empty or `null` `LocationConstraint` means `us-east-1`.
-      A cross-region report bucket fails with `reportBucketNotSupported`.
-    - **Not public:** `aws s3api get-public-access-block --bucket <B>` shows all four settings
-      `true` (a `NoSuchPublicAccessBlockConfiguration` error is a FAIL), and
-      `aws s3api get-bucket-policy-status --bucket <B>` reports `IsPublic: false`.
-    - **Encrypted:** `aws s3api get-bucket-encryption --bucket <B>` shows SSE-S3 or SSE-KMS.
-    - **Owner enforced:** `aws s3api get-bucket-ownership-controls --bucket <B>` shows `BucketOwnerEnforced`.
-    - **TLS only:** the bucket policy denies requests where `aws:SecureTransport` is `false`. If it
-      does not, read the current policy with `get-bucket-policy`, add one deny statement, show the
-      user the full result, and apply it only after approval. Never replace the whole policy.
-    - **Retention:** reports contain schema details and object keys. Ask how long to keep them.
+  - **Ownership:** `aws s3api head-bucket --bucket <B> --expected-bucket-owner <ACCT>` succeeds.
+  - **Same region:** `aws s3api get-bucket-location --bucket <B>` returns the migration region.
+    An empty or `null` `LocationConstraint` means `us-east-1`.
+    A cross-region report bucket fails with `reportBucketNotSupported`.
+  - **Not public:** `aws s3api get-public-access-block --bucket <B>` shows all four settings
+    `true` (a `NoSuchPublicAccessBlockConfiguration` error is a FAIL), and
+    `aws s3api get-bucket-policy-status --bucket <B>` reports `IsPublic: false`.
+  - **Encrypted:** `aws s3api get-bucket-encryption --bucket <B>` shows SSE-S3 or SSE-KMS.
+  - **Owner enforced:** `aws s3api get-bucket-ownership-controls --bucket <B>` shows `BucketOwnerEnforced`.
+  - **TLS only:** the bucket policy denies requests where `aws:SecureTransport` is `false`. If it
+    does not, read the current policy with `get-bucket-policy`, add one deny statement, show the
+    user the full result, and apply it only after approval. Never replace the whole policy.
+  - **Retention:** reports contain schema details and object keys. Ask how long to keep them.
   When your coding agent creates a new report bucket (after approval), it sets all four public-access-block
   settings, default encryption, `BucketOwnerEnforced`, a TLS-only bucket policy, and a lifecycle rule
   that expires report objects after the retention period the user chose.
