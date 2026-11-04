@@ -2,7 +2,7 @@
 name: aws-storage
 description: "Selects, investigates, and compares AWS object, file, and block storage services, and answers cost, performance, configuration, security, and troubleshooting questions about storage services. Applies when a user asks where to store or archive data based on their usage patterns; which storage service to choose or how two compare; how to migrate data from on-premises or between AWS services; how to protect, replicate, or recover data; how to optimize storage costs; where to deploy shared NFS, SMB, or POSIX file systems; where to store vector embeddings or tabular data; what storage backs enterprise file shares, self-managed databases on EC2, VMware, or stateful containers; or asks what an AWS storage service can do or how it works. Relevant for storage needs for workloads such as AI/ML, analytics, EDA, HPC, media, genomics, or financial trading. Not applicable for SQL query engines (Athena, Spark, Redshift, EMR), ETL (Glue), streaming (Kafka, MSK, Kinesis), or managed database services (RDS, Aurora, DynamoDB)."
 metadata:
-  version: "1"
+  version: "2"
 ---
 ## Overview
 
@@ -169,3 +169,4 @@ When loaded through the AWS MCP server's retrieve_skill tool: the skill is not i
 | Ingesting data into a data lake | [`ingesting-into-data-lake`](https://github.com/aws/agent-toolkit-for-aws/tree/main/skills/specialized-skills/analytics-skills/ingesting-into-data-lake) |
 | Finding data lake assets | [`finding-data-lake-assets`](https://github.com/aws/agent-toolkit-for-aws/tree/main/skills/specialized-skills/analytics-skills/finding-data-lake-assets) |
 | Querying data lakes | [`querying-data-lake`](https://github.com/aws/agent-toolkit-for-aws/tree/main/skills/specialized-skills/analytics-skills/querying-data-lake) |
+| Migrating a Glue Hive (Parquet) table into S3 Tables via the native migration API | [`migrating-hive-tables-to-s3-tables`](https://github.com/aws/agent-toolkit-for-aws/tree/main/skills/specialized-skills/analytics-skills/migrating-hive-tables-to-s3-tables) |
