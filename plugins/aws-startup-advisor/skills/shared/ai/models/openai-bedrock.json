@@ -64,6 +64,7 @@
   "models": {
     "openai_gpt_5_6_sol": {
       "display_name": "OpenAI GPT-5.6 Sol (on Bedrock)",
+      "selection_status": "selectable",
       "family": "openai_gpt_5",
       "generation": "reasoning",
       "version": "5.6",
@@ -107,6 +108,7 @@
     },
     "openai_gpt_5_5": {
       "display_name": "OpenAI GPT-5.5 (on Bedrock)",
+      "selection_status": "selectable",
       "family": "openai_gpt_5",
       "generation": "reasoning",
       "version": "5.5",
@@ -129,6 +131,7 @@
     },
     "openai_gpt_5_6_terra": {
       "display_name": "OpenAI GPT-5.6 Terra (on Bedrock)",
+      "selection_status": "selectable",
       "family": "openai_gpt_5",
       "generation": "reasoning",
       "version": "5.6",
@@ -169,6 +172,7 @@
     },
     "openai_gpt_5_6_luna": {
       "display_name": "OpenAI GPT-5.6 Luna (on Bedrock)",
+      "selection_status": "selectable",
       "family": "openai_gpt_5",
       "generation": "reasoning",
       "version": "5.6",
@@ -209,6 +213,7 @@
     },
     "openai_gpt_5_4": {
       "display_name": "OpenAI GPT-5.4 (on Bedrock)",
+      "selection_status": "selectable",
       "family": "openai_gpt_5",
       "generation": "reasoning",
       "version": "5.4",
@@ -239,6 +244,7 @@
     },
     "openai_gpt_6_astra": {
       "display_name": "OpenAI GPT-6 Astra (on Bedrock)",
+      "selection_status": "selectable",
       "family": "openai_gpt_6",
       "generation": "reasoning",
       "version": "6",
@@ -380,6 +386,7 @@
     },
     "openai_gpt_6_sol": {
       "display_name": "OpenAI GPT-6 Sol (on Bedrock)",
+      "selection_status": "selectable",
       "family": "openai_gpt_6",
       "generation": "reasoning",
       "version": "6",
@@ -405,6 +412,7 @@
     },
     "openai_gpt_6_luna": {
       "display_name": "OpenAI GPT-6 Luna (on Bedrock)",
+      "selection_status": "selectable",
       "family": "openai_gpt_6",
       "generation": "reasoning",
       "version": "6",
@@ -430,6 +438,7 @@
     },
     "openai_gpt_6_1_sol": {
       "display_name": "OpenAI GPT-6.1 Sol (on Bedrock)",
+      "selection_status": "selectable",
       "family": "openai_gpt_6",
       "generation": "reasoning",
       "version": "6.1",
@@ -455,6 +464,7 @@
     },
     "anthropic_claude_sonnet_5": {
       "display_name": "Claude Sonnet 5 (Converse tier match for GPT-5.6 Terra / 5.5 / 5.4)",
+      "selection_status": "selectable",
       "family": "anthropic_claude",
       "generation": "bedrock_native",
       "version": "5",
@@ -478,6 +488,7 @@
     },
     "anthropic_claude_haiku_4_5": {
       "display_name": "Claude Haiku 4.5 (Converse tier match for GPT-5.6 Luna)",
+      "selection_status": "selectable",
       "family": "anthropic_claude",
       "generation": "bedrock_native",
       "version": "4.5",
@@ -500,6 +511,7 @@
     },
     "anthropic_claude_opus_5_5": {
       "display_name": "Claude Opus 5.5",
+      "selection_status": "selectable",
       "family": "anthropic_claude",
       "version": "5.5",
       "class": "runtime_native",

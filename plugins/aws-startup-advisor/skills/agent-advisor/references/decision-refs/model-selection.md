@@ -26,6 +26,10 @@ file — it is dispatched by source provider so the path vocabulary and rules di
   supported source API and apply each model's dated capability and region checks).
 - **Azure OpenAI / other** → generic `provider_module_pending` until a dedicated module exists.
 
+Both catalogs follow `scripts/contracts/model-selection-catalog.schema.json` (plugin root). Each
+model carries a `selection_status`: only `selectable` entries are automatic-selection candidates;
+`reference_only` entries stay readable for lookups but the engine never picks them.
+
 Do not restate the per-provider path rules here — the dated catalogs and the engine are
 authoritative (a table here would drift). The engine applies these provider-neutral principles:
 

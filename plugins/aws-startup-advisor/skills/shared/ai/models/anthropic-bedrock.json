@@ -60,6 +60,7 @@
   "models": {
     "claude_opus_5_5": {
       "display_name": "Claude Opus 5.5",
+      "selection_status": "selectable",
       "family": "claude_opus",
       "version": "5.5",
       "class": "premium",
@@ -175,6 +176,7 @@
     },
     "claude_sonnet_5": {
       "display_name": "Claude Sonnet 5",
+      "selection_status": "selectable",
       "family": "claude_sonnet",
       "version": "5.0",
       "class": "balanced",
@@ -207,6 +209,7 @@
     },
     "claude_haiku_4_5": {
       "display_name": "Claude Haiku 4.5",
+      "selection_status": "selectable",
       "family": "claude_haiku",
       "version": "4.5",
       "class": "fast",

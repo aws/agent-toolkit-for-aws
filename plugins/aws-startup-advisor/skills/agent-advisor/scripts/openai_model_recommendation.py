@@ -222,7 +222,7 @@ def _catalog_model_for_path(catalog, path, detected_features=None, requirements=
     keys = candidate_order if candidate_order is not None else list(catalog["models"])
     for model_key in keys:
         model = catalog["models"].get(model_key)
-        if model is None:
+        if model is None or not anthropic_model_recommendation.is_selectable(model):
             continue
         path_config = model["paths"].get(path, {})
         if path_config.get("available") is not True:
@@ -998,6 +998,26 @@ def recommend_openai_workload(workload, region, catalog):
         )
         return rec
 
+    # --- Fail closed: Astra is pinned to itself, so a reference_only Astra has no target ---
+    astra_entry = catalog["models"].get("openai_gpt_6_astra")
+    if (_same_model_runtime_key(source) == "openai_gpt_6_astra" and astra_entry is not None
+            and not anthropic_model_recommendation.is_selectable(astra_entry)):
+        return _unresolved(
+            "GPT-6 Astra sources stay on Astra, but the catalog marks Astra reference_only, "
+            "so it is not an automatic-selection candidate.",
+            ["No other model is substituted for an Astra source."],
+            _finding(
+                "model_not_selectable",
+                "[BLOCKS]",
+                "The source model GPT-6 Astra is marked reference_only in the model-selection "
+                "catalog.",
+                "Mark the Astra entry selectable once it is verified, or choose a target "
+                "model explicitly, then rerun Model Recommend.",
+            ),
+            None,
+            decision_options=[],
+        )
+
     # --- Fail closed: a required feature with unknown status is not ready (G08) ---
     if unknown_required:
         return _unresolved(
@@ -1050,6 +1070,8 @@ def recommend_openai_workload(workload, region, catalog):
         path = "runtime_converse"
         candidate_order = _converse_candidate_order(source, requirements)
         same = _same_model_runtime_key(source)
+        if same and not anthropic_model_recommendation.is_selectable(catalog["models"].get(same, {})):
+            same = None
         if same:
             rationale_head = (
                 "Bedrock governance or multi-model requirements select runtime Converse; "
@@ -1134,7 +1156,12 @@ def recommend_openai_workload(workload, region, catalog):
                 ),
                 path,
             )
-        raise ValueError(f"catalog has no available model for path {path}")
+        skipped = sorted(k for k in candidate_order or catalog["models"]
+                         if not anthropic_model_recommendation.is_selectable(catalog["models"].get(k, {})))
+        raise ValueError(
+            f"catalog has no available model for path {path}"
+            + (f" (reference_only entries skipped: {', '.join(skipped)})" if skipped else "")
+        )
     model_key, model, path_config = catalog_hit
     if path == "mantle_openai_chat":
         if model_key == _same_model_catalog_key(source):

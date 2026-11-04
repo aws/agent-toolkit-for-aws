@@ -16,6 +16,22 @@ SUPPORTED_PATHS = {
     "runtime_converse",
     "runtime_invoke",
 }
+# Catalog selection state (scripts/contracts/model-selection-catalog.schema.json). Only
+# `selectable` entries are automatic-selection candidates; `reference_only` entries stay in the
+# catalog for lookups but every candidate enumerator skips them. A missing status counts as
+# selectable so in-memory test catalogs keep working; the loaders require the field on disk.
+SELECTION_STATUSES = ("selectable", "reference_only")
+
+
+def is_selectable(model):
+    status = model.get("selection_status", "selectable")
+    if status not in SELECTION_STATUSES:
+        raise ValueError(
+            f"selection_status must be one of {list(SELECTION_STATUSES)}, got {status!r}"
+        )
+    return status == "selectable"
+
+
 ANTHROPIC_PATHS = (
     "mantle_messages",
     "runtime_converse",
@@ -308,7 +324,7 @@ def _build_candidates(catalog, paths, requirements, region=None):
     for path_rank, path in enumerate(paths):
         for model_rank, model_key in enumerate(model_order):
             model = catalog["models"].get(model_key)
-            if model is None:
+            if model is None or not is_selectable(model):
                 continue
             path_config = model["paths"].get(path, {})
             if path_config.get("available") is not True:
@@ -724,9 +740,11 @@ def _decision_required(workload, region, catalog, constraints):
         catalog, workload, constraints["option_paths"], region
     )
     if len(decision_options) != len(set(constraints["option_paths"])):
+        skipped = sorted(k for k, m in catalog["models"].items() if not is_selectable(m))
         raise ValueError(
             "catalog has no candidate for every conflicting model/path option "
             f"for workload {workload['workload_id']}"
+            + (f" (reference_only entries skipped: {', '.join(skipped)})" if skipped else "")
         )
     blocks = [
         _finding(
@@ -788,9 +806,11 @@ def recommend_anthropic_workload(workload, region, catalog):
         catalog, constraints["paths"], workload["requirements"], region
     )
     if not candidates:
+        skipped = sorted(k for k, m in catalog["models"].items() if not is_selectable(m))
         raise ValueError(
             f"catalog has no model/path candidate satisfying workload "
             f"{workload['workload_id']} requirements"
+            + (f" (reference_only entries skipped: {', '.join(skipped)})" if skipped else "")
         )
     chosen = candidates[0]
     model = chosen["model"]
