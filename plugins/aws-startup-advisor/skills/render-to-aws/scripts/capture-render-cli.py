@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture one exact read-only Render CLI 2.30.0 category."""
+"""Capture one exact read-only Render CLI 2.35.0 category."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from render_common.classifier import safe_literal, sanitize_config
 SKILL_ROOT = Path(__file__).resolve().parent.parent
 CONTRACT_PATH = SKILL_ROOT / "references/shared/render-cli-contracts.json"
 INDEX_SCHEMA_PATH = SKILL_ROOT / "references/shared/schema-ownership-index.json"
-EXPECTED_VERSION = "2.30.0"
+EXPECTED_VERSION = "2.35.0"
 DEFAULT_TIMEOUT = 30
 DEFAULT_MAX_BYTES = 10 * 1024 * 1024
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -49,7 +49,7 @@ class CaptureError(ValueError):
 
 
 def child_environment(source: dict[str, str] | None = None) -> dict[str, str]:
-    """Return the exact reviewed child environment; never inherit credentials."""
+    """Return the reviewed child environment with only the intentional Render key."""
     source = os.environ if source is None else source
     result: dict[str, str] = {}
     for key in sorted(ALLOWED_ENV):
@@ -61,6 +61,11 @@ def child_environment(source: dict[str, str] | None = None) -> dict[str, str]:
             if parsed.username is not None or parsed.password is not None:
                 continue
         result[key] = value
+    api_key = source.get("RENDER_API_KEY")
+    if api_key:
+        if any(character in api_key for character in "\r\n\x00"):
+            raise CaptureError("api_key_invalid")
+        result["RENDER_API_KEY"] = api_key
     return result
 
 
@@ -372,7 +377,6 @@ def build_argv(args: argparse.Namespace, contract: dict[str, Any], executable: s
 
 CHILD_RESOURCE_KINDS = {
     "environments_list": "project",
-    "service_get": "service",
     "service_instances": "service",
     "deploys_list": "service",
     "postgres_get": "postgres",
@@ -456,11 +460,11 @@ def _validate_ownership(
             owner_id = item.get("id")
         if owner_id is not None and owner_id != workspace_id:
             raise CaptureError("ownership_mismatch")
-        if category in {"workspace_current", "projects_list", "services_list", "service_get", "postgres_list", "postgres_get", "keyvalues_list", "keyvalue_get", "workflows_list"} and owner_id is None:
+        if category in {"workspace_current", "projects_list", "services_list", "postgres_list", "postgres_get", "keyvalues_list", "keyvalue_get", "workflows_list"} and owner_id is None:
             raise CaptureError("ownership_unproven")
         if requested_id is None:
             continue
-        if category in {"service_get", "postgres_get", "keyvalue_get", "workflow_task_run_show"} and item.get("id") != requested_id:
+        if category in {"postgres_get", "keyvalue_get", "workflow_task_run_show"} and item.get("id") != requested_id:
             raise CaptureError("ownership_mismatch")
         parent_fields = {
             "environments_list": "projectId",
@@ -535,7 +539,7 @@ def capture(args: argparse.Namespace) -> dict[str, Any]:
         _validate_ownership(projected, args.category, args.workspace_id, args.resource_id, ownership_index)
     return {
         "schema_version": "1.0",
-        "transport": "render_cli_2.30.0",
+        "transport": "render_cli_2.35.0",
         "category": args.category,
         "captured_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
         "attempt_id": args.attempt_id,

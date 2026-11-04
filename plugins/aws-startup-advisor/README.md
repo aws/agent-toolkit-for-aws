@@ -283,7 +283,7 @@ In your local environment, configure AWS credentials and set your target region 
 - Python 3.12 (required by the locked `render-to-aws` script project; other bundled validators require Python 3)
 - Git (the `llm-to-bedrock` flow delivers its rewrite on a branch)
 - The Heroku CLI, authenticated, only if you want live discovery in `heroku-to-aws`
-- Render CLI 2.30.0, authenticated by the user, only if you want consented live discovery or Blueprint semantic validation in `render-to-aws`; the skill never starts browser login
+- Render CLI 2.35.0, authenticated by a user-supplied `RENDER_API_KEY` or an existing saved CLI token, only if you want consented live discovery or Blueprint semantic validation in `render-to-aws`; the skill never starts browser login. Prefer an early-access workspace-scoped API key with read access only to the selected discovery resources. Saved CLI tokens and unscoped API keys remain supported fallbacks; secret-value and write access are never required.
 - The Azure CLI, authenticated, only if you want live discovery in `azure-to-aws`
 - The [gcloud CLI](https://cloud.google.com/sdk/docs/install), authenticated, only if you want live discovery in `gcp-to-aws`
 - Terraform, only if you want to run `fmt`, `init`, or `validate` over generated Terraform

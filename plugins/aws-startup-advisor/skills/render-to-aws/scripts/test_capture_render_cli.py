@@ -81,7 +81,7 @@ def install_process(monkeypatch: pytest.MonkeyPatch, responses: list[tuple[bytes
 
 def test_exact_table_shapes_and_no_secret_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     services = (FIXTURES / "services-populated.json").read_bytes()
-    calls = install_process(monkeypatch, [(b"render 2.30.0\n", 0), (services, 0)])
+    calls = install_process(monkeypatch, [(b"render 2.35.0\n", 0), (services, 0)])
     monkeypatch.setenv("RENDER_API_KEY", "never-child")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "never-child")
     result = module.capture(arguments(tmp_path, "services_list"))
@@ -90,14 +90,19 @@ def test_exact_table_shapes_and_no_secret_output(tmp_path: Path, monkeypatch: py
     assert calls[1]["argv"] == ["/usr/local/bin/render", "services", "--output", "json"]
     child = calls[1]["kwargs"]
     assert child["shell"] is False and child["stdin"] is subprocess.DEVNULL
-    assert "RENDER_API_KEY" not in child["env"]
+    assert child["env"]["RENDER_API_KEY"] == "never-child"
     assert "AWS_SECRET_ACCESS_KEY" not in child["env"]
+    assert "never-child" not in json.dumps(result)
 
-    install_process(monkeypatch, [(b"render 2.30.0\n", 0), ((FIXTURES / "postgres-empty.json").read_bytes(), 0)])
+    install_process(monkeypatch, [(b"render 2.35.0\n", 0), ((FIXTURES / "postgres-empty.json").read_bytes(), 0)])
     assert module.capture(arguments(tmp_path, "postgres_list"))["raw_shape"] == "data_array"
 
-    install_process(monkeypatch, [(b"render 2.30.0\n", 0), ((FIXTURES / "projects-null.json").read_bytes(), 0)])
-    assert module.capture(arguments(tmp_path, "projects_list"))["raw_shape"] == "null"
+    install_process(monkeypatch, [(b"render 2.35.0\n", 0), ((FIXTURES / "projects-null.json").read_bytes(), 0)])
+    with pytest.raises(module.CaptureError, match="unexpected_envelope"):
+        module.capture(arguments(tmp_path, "projects_list"))
+
+    install_process(monkeypatch, [(b"render 2.35.0\n", 0), (b"[]", 0)])
+    assert module.capture(arguments(tmp_path, "projects_list"))["raw_shape"] == "array"
 
 
 def test_forbidden_and_injected_inputs_never_reach_popen(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -113,7 +118,7 @@ def test_forbidden_and_injected_inputs_never_reach_popen(tmp_path: Path, monkeyp
     with pytest.raises(module.CaptureError, match="unsupported_category"):
         module.capture(arguments(tmp_path, "services_create"))
     with pytest.raises(module.CaptureError, match="resource_id_invalid"):
-        module.capture(arguments(tmp_path, "service_get", resource_id="srv-safe; rm -rf /"))
+        module.capture(arguments(tmp_path, "postgres_get", resource_id="dpg-safe; rm -rf /"))
     assert called is False
 
 
@@ -139,8 +144,8 @@ def test_authoritative_auth_workspace_null_get_and_blueprint_contracts(tmp_path:
 
 def test_closed_cli_projection_rejects_unknown_and_secret_fields() -> None:
     with pytest.raises(module.CaptureError, match="capability_drift"):
-        module._project_cli({"id": "srv-safe", "ownerId": "tea-safe", "futureField": "x"}, "service_get")
-    projected = module._project_cli({"id": "srv-safe", "ownerId": "tea-safe", "email": "person@example.test"}, "service_get")
+        module._project_cli({"id": "srv-safe", "ownerId": "tea-safe", "futureField": "x"}, "services_list")
+    projected = module._project_cli({"id": "srv-safe", "ownerId": "tea-safe", "email": "person@example.test"}, "services_list")
     assert "email" not in projected
 
 
@@ -174,7 +179,7 @@ def test_version_gate_stops_before_category_process(tmp_path: Path, monkeypatch:
 
 def test_closed_log_window_and_metadata_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     stream = b'{"id":"log-1","timestamp":"2026-10-21T12:00:00Z","message":"attacker text","labels":[{"name":"resource","value":"srv-safe"}]}'
-    install_process(monkeypatch, [(b"render 2.30.0\n", 0), (stream, 0)])
+    install_process(monkeypatch, [(b"render 2.35.0\n", 0), (stream, 0)])
     result = module.capture(arguments(tmp_path, "log_metadata", resource_id="srv-safe", ownership_index=write_index(tmp_path), start="2026-10-21T11:00:00Z", end="2026-10-21T12:00:00Z", limit=20))
     assert result["data"] == [{"id": "log-1", "timestamp": "2026-10-21T12:00:00Z", "labels": [{"name": "resource", "value": "srv-safe"}]}]
     assert result["ownership_index_digest"] == module.sha256_digest((tmp_path / "ownership.json").read_bytes())
@@ -198,13 +203,23 @@ def test_log_metadata_rejects_secret_bearing_retained_fields() -> None:
         }])
 
 
-@pytest.mark.parametrize("name", ["RENDER_API_KEY", "AWS_SESSION_TOKEN", "GITHUB_TOKEN", "DATABASE_PASSWORD", "GOOGLE_APPLICATION_CREDENTIALS"])
-def test_child_environment_strips_credentials(name: str) -> None:
+@pytest.mark.parametrize("name", ["AWS_SESSION_TOKEN", "GITHUB_TOKEN", "DATABASE_PASSWORD", "GOOGLE_APPLICATION_CREDENTIALS"])
+def test_child_environment_strips_unrelated_credentials(name: str) -> None:
     source = {"PATH": "/bin", "HOME": "/tmp/home", "LANG": "C.UTF-8", name: "secret", "HTTPS_PROXY": "https://user:pass@example.test"}
     environment = module.child_environment(source)
     assert name not in environment
     assert "HTTPS_PROXY" not in environment
     assert set(environment) <= module.ALLOWED_ENV
+
+
+def test_child_environment_passes_only_valid_intentional_render_api_key() -> None:
+    source = {"PATH": "/bin", "HOME": "/tmp/home", "RENDER_API_KEY": "rnd_scoped_safe", "AWS_SECRET_ACCESS_KEY": "never-child"}
+    environment = module.child_environment(source)
+    assert environment["RENDER_API_KEY"] == "rnd_scoped_safe"
+    assert "AWS_SECRET_ACCESS_KEY" not in environment
+    assert set(environment) <= module.ALLOWED_ENV | {"RENDER_API_KEY"}
+    with pytest.raises(module.CaptureError, match="api_key_invalid"):
+        module.child_environment({"RENDER_API_KEY": "bad\nkey"})
 
 
 def test_child_categories_require_owned_request_and_matching_response_parent_before_popen(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -234,7 +249,7 @@ def test_child_categories_require_owned_request_and_matching_response_parent_bef
     ]
     for category, resource_id, payload in cases:
         monkeypatch.setattr(module.subprocess, "Popen", REAL_POPEN)
-        install_process(monkeypatch, [(b"render 2.30.0\n", 0), (json.dumps(payload).encode(), 0)])
+        install_process(monkeypatch, [(b"render 2.35.0\n", 0), (json.dumps(payload).encode(), 0)])
         with pytest.raises(module.CaptureError, match="ownership_mismatch"):
             module.capture(arguments(tmp_path, category, resource_id=resource_id, ownership_index=index))
 
@@ -242,7 +257,7 @@ def test_child_categories_require_owned_request_and_matching_response_parent_bef
 def test_overflow_and_timeout_do_not_write_partial_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     output = tmp_path / "out.json"
     output.write_text("existing\n")
-    install_process(monkeypatch, [(b"render 2.30.0\n", 0), (b"x" * 2049, 0)])
+    install_process(monkeypatch, [(b"render 2.35.0\n", 0), (b"x" * 2049, 0)])
     with pytest.raises(module.CaptureError, match="output_limit_exceeded"):
         module.capture(arguments(tmp_path, "services_list", max_bytes=2048))
     assert output.read_text() == "existing\n"

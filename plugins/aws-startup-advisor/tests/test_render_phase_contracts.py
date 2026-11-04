@@ -295,7 +295,7 @@ def test_render_is_registered_without_mcp_or_plan_handoff_drift() -> None:
     readme = (PLUGIN_ROOT / "README.md").read_text(encoding="utf-8")
     assert "Install all 13 skills together" in readme
     assert "| 7 | `render-to-aws` |" in readme
-    assert "Render CLI 2.30.0" in readme
+    assert "Render CLI 2.35.0" in readme
     assert "neither configures nor invokes a Render MCP server" in readme
 
     mcp = json.loads((PLUGIN_ROOT / ".mcp.json").read_text())

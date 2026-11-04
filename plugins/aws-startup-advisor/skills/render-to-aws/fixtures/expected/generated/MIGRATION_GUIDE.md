@@ -12,6 +12,7 @@ This execution pack implements the supported infrastructure mappings in `aws-des
 - Confirm PostgreSQL version, extensions, replication privileges, network paths, and maintenance window.
 - Confirm external DNS ownership. Request the public web certificate in ACM, create every DNS validation record at the external DNS provider, wait until ACM reports `Issued`, and supply its ARN as `issued_certificate_arn` before applying this stack.
 - Define source-retention and rollback owners before any writer cutover.
+- This fixture assumes the source web service must call AWS during coexistence. Use [Render-managed OIDC](https://render.com/docs/oidc) with a least-privilege AWS role scoped to the confirmed Render workspace and service subject instead of long-lived AWS access keys. Set `AWS_ROLE_ARN`, redeploy the service, and let Render set `AWS_WEB_IDENTITY_TOKEN_FILE`; do not set that variable manually. Render-managed OIDC requires a Pro workspace or higher.
 
 ## Build and deployment migration
 

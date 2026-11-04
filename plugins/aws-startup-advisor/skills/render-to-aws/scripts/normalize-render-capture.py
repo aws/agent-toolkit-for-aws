@@ -374,7 +374,7 @@ def normalize(migration_dir: Path, manifest_path: Path, attempt_id: str) -> tupl
         if transport in {"cli", "rest"}:
             if identity_scope != "live" or not isinstance(value, dict) or value.get("attempt_id") != attempt_id or value.get("workspace_id") != workspace_id or value.get("consent_digest") != consent_digest:
                 raise NormalizeError("capture_attempt_mismatch")
-            expected_transport = "render_cli_2.30.0" if transport == "cli" else "render_rest_v1"
+            expected_transport = "render_cli_2.35.0" if transport == "cli" else "render_rest_v1"
             if value.get("transport") != expected_transport or value.get("category") != category:
                 raise NormalizeError("capture_transport_mismatch")
             if (

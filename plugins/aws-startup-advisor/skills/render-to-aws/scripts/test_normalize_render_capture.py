@@ -47,7 +47,7 @@ def write_capture(root: Path, name: str, transport: str, category: str, value: d
 
 def live(transport: str, category: str, data: Any, resource_id: str | None = None, status: str = "ok") -> dict[str, Any]:
     return {
-        "schema_version": "1.0", "transport": "render_cli_2.30.0" if transport == "cli" else "render_rest_v1",
+        "schema_version": "1.0", "transport": "render_cli_2.35.0" if transport == "cli" else "render_rest_v1",
         "category": category, "captured_at": CAPTURED_AT, "attempt_id": ATTEMPT,
         "workspace_id": "tea-safe", "consent_digest": DIGEST,
         "raw_shape": "array", "command_digest": "sha256:" + "b" * 64,
@@ -578,12 +578,11 @@ def test_cli_nullable_data_envelope_yields_no_resource_row(tmp_path: Path) -> No
     assert [resource["kind"] for resource in inventory["resources"]] == ["render.web_service"]
     assert inventory["discovery_sources"] == ["render_cli", "render_rest"]
     assert module._iter_cli_data("keyvalue_get", {"data": None}) == []
-    assert module._iter_cli_data("projects_list", None) == []
+    with pytest.raises(module.NormalizeError, match="capture_data_invalid"):
+        module._iter_cli_data("projects_list", None)
 
-    # services_list is `nullable_wrapper_array` in render-cli-contracts.json, so the non-nullable controls are
-    # environments_list (`array`) and postgres_list (`data_array`).
-    assert module._iter_cli_data("services_list", None) == []
-    for category, payload in (("postgres_get", {"data": "oops"}), ("postgres_get", {"data": 5}), ("environments_list", None), ("postgres_list", {"data": None}), ("postgres_list", None)):
+    # Render CLI 2.35.0 normalizes every top-level empty list to `[]`; only nullable detail contracts may emit null.
+    for category, payload in (("services_list", None), ("postgres_get", {"data": "oops"}), ("postgres_get", {"data": 5}), ("environments_list", None), ("postgres_list", {"data": None}), ("postgres_list", None)):
         with pytest.raises(module.NormalizeError, match="capture_data_invalid"):
             module._iter_cli_data(category, payload)
     bad = live("cli", "postgres_get", {"data": "oops"}, "dpg-safe")

@@ -15,6 +15,7 @@ Load the vendored region, availability, compliance, cost-appetite, and multi-clo
 - Deployment source and promotion intent: source build, Dockerfile, prebuilt image, or immutable Build Source artifact.
 - Capacity-preserving versus measured right-sizing permission, cost posture, and CPU architecture compatibility.
 - Preview-environment intent and production/staging isolation.
+- Whether any source service must call AWS during coexistence or cutover. When it must, record the service/workspace boundary and required AWS actions so Generate can recommend Render-managed OIDC with a least-privilege role instead of long-lived AWS access keys. Do not require this path when no Render-hosted workload needs AWS access.
 
 Compliance is essential and has no silent `none` default. Missing region, compliance, availability, or management-model facts remain unresolved whenever they can change a target or topology.
 
