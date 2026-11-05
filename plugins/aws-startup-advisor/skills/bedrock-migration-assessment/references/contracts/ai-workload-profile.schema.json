@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "urn:awslabs:startups:migration:ai-workload-profile",
   "title": "AI workload profile (provider-neutral observation contract)",
-  "description": "Provider-neutral ai-workload-profile.json observation contract. bedrock-migration-assessment consumes it; no skill produces it yet. Structural validity does NOT imply an implemented detector, adapter, route, model mapping, or runtime-supported identity.",
+  "description": "Provider-neutral ai-workload-profile.json observation contract. Render application discovery produces version 1.0 profiles; bedrock-migration-assessment consumes versions 1.0 and 1.1. Structural validity does NOT imply an implemented adapter, route, model mapping, or runtime-supported identity.",
   "type": "object",
   "required": ["schema_version", "ai_sources", "gateways"],
   "additionalProperties": false,
