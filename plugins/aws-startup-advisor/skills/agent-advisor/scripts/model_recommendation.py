@@ -121,7 +121,10 @@ def load_openai_catalog(path=OPENAI_CATALOG):
         _check_selection_status(catalog_path, model_key, model)
         for limit in ("context_window", "output_token_ceiling"):
             value = model[limit]
-            if value != "unknown" and not (isinstance(value, int) and value > 0):
+            # bool is an int subclass in Python; reject it like the schema does.
+            if value != "unknown" and not (
+                isinstance(value, int) and not isinstance(value, bool) and value > 0
+            ):
                 raise ValueError(
                     f"{catalog_path}: {model_key} {limit} must be a positive int or "
                     f'"unknown", got {value!r}'

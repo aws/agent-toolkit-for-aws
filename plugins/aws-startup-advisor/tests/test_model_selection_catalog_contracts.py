@@ -118,6 +118,11 @@ def _loader_accepts(tmp_path, name, catalog) -> bool:
     pytest.param("openai", "generation", None, False, id="openai-missing-generation"),
     pytest.param("openai", "context_window", "unknown", True, id="openai-unknown-context"),
     pytest.param("openai", "output_token_ceiling", "unknown", True, id="openai-unknown-output"),
+    # bool is an int subclass in Python; both boundaries must still reject it.
+    pytest.param("anthropic", "context_window", True, False, id="anthropic-bool-context"),
+    pytest.param("anthropic", "output_token_ceiling", True, False, id="anthropic-bool-output"),
+    pytest.param("openai", "context_window", True, False, id="openai-bool-context"),
+    pytest.param("openai", "output_token_ceiling", True, False, id="openai-bool-output"),
 ])
 def test_schema_and_loader_agree_on_provider_rules(tmp_path, name, field, value, valid):
     catalog = _catalog(name)
