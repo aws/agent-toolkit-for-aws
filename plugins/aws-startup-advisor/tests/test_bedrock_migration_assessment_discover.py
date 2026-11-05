@@ -99,11 +99,11 @@ def test_controller_wiring() -> None:
 
 def test_google_genai_mode_and_distinct_gemini_models() -> None:
     table, models = _section(SCAN, "## Step 3"), _section(SCAN, "## Step 4")
-    for rule in ("for each `genai.Client(...)` call site separately", "A value set for a different image, service, job, or module does not apply.",
-                 "Never open `.env*` or other secret files for this.", "If the applicable values disagree",
-                 "`genai.Client(enterprise=True)`", "the value is `GOOGLE_GENAI_USE_ENTERPRISE`'s", "if no runtime config"):
+    for rule in ("for each `genai.Client(...)` call site separately", "A value set for a different image, service, job, or process is not bound.", "each entry point that imports that module",
+                 "Do not open `.env*` or other secret files to look for this setting", "the constructor raises: record it as not confirmed", "`genai.Client(enterprise=True)`",
+                 "an in-code assignment is a bound value but not a runtime config", "Use the first line that matches:", "At least one value is bound, and every bound value is true", "The call passes `project=` or `location=`, which the Gemini API rejects: not confirmed."):
         assert rule in table, rule
-    assert "anywhere you may read" not in table and "`GOOGLE_GENAI_USE_VERTEXAI` set to true" not in table and "Normalize all `gemini-2.5-flash-*`" not in models
+    assert not any(old in table for old in ("anywhere you may read", "`GOOGLE_GENAI_USE_VERTEXAI` set to true", "If every value that applies")) and "Normalize all `gemini-2.5-flash-*`" not in models
     for kept in ("`gemini-2.5-flash-lite` stays `\"gemini-2.5-flash-lite\"`", "`-lite`, `-thinking`", "keep the full string"):
         assert kept in models, kept
 
@@ -111,10 +111,10 @@ def test_google_genai_mode_and_distinct_gemini_models() -> None:
 @pytest.mark.parametrize(("fixture", "expected", "gateway"), [
     ("bma-scan-vertex-env-flash-lite", [("gemini-2.5-flash-lite", "vertex_ai")], []),
     ("bma-scan-genai-two-runtimes", [("gemini-2.5-flash", "gemini_api"), ("gemini-2.5-pro", "vertex_ai")], []),
+    ("bma-scan-genai-env-in-code", [("gemini-2.5-pro", "vertex_ai")], []),
     ("bma-scan-openrouter-gemini", [("claude-3.5-sonnet", "anthropic_api"), ("gemini-2.5-flash", "gemini_api")], ["unresolved"]),
     ("bma-scan-openrouter-google-pinned", [("claude-3.5-sonnet", "anthropic_api"), ("gemini-2.5-flash", "vertex_ai")], ["observed"]),
 ])
 def test_google_identities_survive_the_summary(fixture: str, expected: list, gateway: list) -> None:
     summary = VALIDATOR.validate_profile(json.loads((PLUGIN_ROOT / "fixtures" / fixture / "ai-workload-profile.json").read_text()))
-    assert sorted((s["models"][0]["model"], s["source_service"]) for s in summary["ai_sources"]) == expected
-    assert [g["upstream_evidence"] for g in summary["gateways"]] == gateway
+    assert (sorted((s["models"][0]["model"], s["source_service"]) for s in summary["ai_sources"]), [g["upstream_evidence"] for g in summary["gateways"]]) == (expected, gateway)

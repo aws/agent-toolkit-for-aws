@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0",
+  "ai_sources": [
+    {
+      "provider": "google",
+      "source_service": "vertex_ai",
+      "model_families": [
+        "gemini"
+      ],
+      "model_evidence": "observed",
+      "models": [
+        "gemini-2.5-pro"
+      ],
+      "model_observations": [
+        {
+          "normalized_model": "gemini-2.5-pro",
+          "raw_model": "gemini-2.5-pro",
+          "model_family": "gemini",
+          "evidence": [
+            {
+              "provenance": "code",
+              "confidence": "high",
+              "detail": "app/report.py:11 client.models.generate_content; Vertex via GOOGLE_GENAI_USE_VERTEXAI set in app/report.py:3"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "gateways": []
+}

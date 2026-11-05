@@ -122,16 +122,22 @@ Group every AI call into an **AI source** keyed by `(provider, source_service)`:
 | `AzureOpenAI()`, `azure_endpoint=`, or an endpoint ending in `.openai.azure.com`                      | `openai`    | `azure_openai`   |
 | `Anthropic()` / `anthropic` SDK, or `api.anthropic.com`                                               | `anthropic` | `anthropic_api`  |
 
-**google-genai mode.** Decide the service for each `genai.Client(...)` call site separately. **Do not open `.env*` or other secret files to look for this setting, even with values redacted.** A value that could only be in one of them is treated as unknown (step 3).
+**google-genai mode.** Decide the service for each `genai.Client(...)` call site separately. **Do not open `.env*` or other secret files to look for this setting, even with values redacted.** "Not confirmed" below means: use `gemini_api` and say in the evidence `detail` and in the summary to the user that the service could not be confirmed.
 
-1. An explicit `enterprise=` or `vertexai=` argument decides it (`enterprise` is the SDK's newer name for `vertexai`; `True` means Vertex AI).
-2. Otherwise the SDK reads `GOOGLE_GENAI_USE_ENTERPRISE`, or `GOOGLE_GENAI_USE_VERTEXAI` where that is unset (`true` or `1`, in any case, means Vertex AI), from the environment of the process that runs the code. Where both are set, the value is `GOOGLE_GENAI_USE_ENTERPRISE`'s. Find the values that apply to *that* code only:
-   - a Dockerfile `ENV` applies to the code the image copies in and runs (`COPY` paths, `CMD`, `ENTRYPOINT`);
-   - a `docker-compose*.yml`, Kubernetes, or Cloud Run `environment`/`env` entry applies to that service's image or command;
-   - a CI workflow `env` applies to the commands of that job or step;
-   - an `os.environ[...] = ...` or `os.environ.setdefault(...)` for either variable in code applies to that module and what it imports.
-   A value set for a different image, service, job, or module does not apply. Never open `.env*` or other secret files for this.
-3. If every value that applies is true, use `vertex_ai`. If a runtime config runs the code and every value that applies is false, or none is set, use `gemini_api`. If the applicable values disagree, if no runtime config (Dockerfile, compose, Kubernetes, Cloud Run, or CI entry) runs the call site, or an applicable value can only come from a file you may not open, use `gemini_api` and say in the evidence `detail` and in the summary to the user that the service could not be confirmed.
+1. **Constructor arguments.** If the call passes both `enterprise=` and `vertexai=` with different values, or passes `enterprise=False` or `vertexai=False` together with `project=` or `location=`, the constructor raises: record it as not confirmed. Otherwise an explicit `enterprise=` or `vertexai=` argument decides it (`enterprise` is the SDK's newer name for `vertexai`; `True` means Vertex AI), and steps 2 and 3 do not apply.
+2. **Bound values.** Otherwise the SDK reads `GOOGLE_GENAI_USE_ENTERPRISE`, or `GOOGLE_GENAI_USE_VERTEXAI` where that is unset, from the environment of the process that runs the code. `true` or `1`, in any case, means Vertex AI; where one place sets both, `GOOGLE_GENAI_USE_ENTERPRISE`'s value counts. A value is bound to the call site only when it reaches that code:
+   - a Dockerfile `ENV` binds the code the image copies in and runs (`COPY` paths, `CMD`, `ENTRYPOINT`);
+   - a `docker-compose*.yml`, Kubernetes, or Cloud Run `environment`/`env` entry binds that service's image or command;
+   - a CI workflow `env` binds the commands of that job or step;
+   - an `os.environ[...] = ...` or `os.environ.setdefault(...)` for either variable in code binds every call site in a process that runs it: each entry point that imports that module, directly or through other modules, and everything that entry point runs.
+   A value set for a different image, service, job, or process is not bound. The first three are runtime configs; an in-code assignment is a bound value but not a runtime config.
+3. **Decide.** Use the first line that matches:
+   1. A value that would be bound can only come from a file you may not open (for example a compose `env_file: .env`), or the bound values disagree: not confirmed.
+   2. At least one value is bound, and every bound value is true: `vertex_ai`.
+   3. The call passes `project=` or `location=`, which the Gemini API rejects: not confirmed.
+   4. At least one value is bound, and every bound value is false: `gemini_api`.
+   5. No value is bound, and a runtime config runs the call site: `gemini_api`.
+   6. No value is bound, and no runtime config runs the call site: not confirmed.
 
 Call sites that resolve to different services produce separate sources (`google`/`vertex_ai` and `google`/`gemini_api`), each with only its own models.
 
