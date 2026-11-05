@@ -14,6 +14,7 @@ This plugin brings AWS data engineering expertise directly into your coding assi
 - **Workflow Orchestration (Amazon MWAA)** — Author, test, and debug Apache Airflow DAGs on Amazon Managed Workflows for Apache Airflow (MWAA) provisioned environments and YAML workflows on MWAA Serverless, and upgrade provisioned environments to newer Airflow versions, including 2.x to 3.x.
 - **Streaming (Amazon MSK)** — Operate Amazon MSK Provisioned clusters with Standard and Express brokers: size and cost a cluster, troubleshoot performance and consumer lag, manage topics, replicate across clusters with MSK Replicator for disaster recovery and active-active topologies, and deliver topic data to Apache Iceberg tables on S3 Tables with Streaming Tables. Plan and execute a migration from self-managed Apache Kafka to MSK Express.
 - **Stream Processing (Amazon Managed Service for Apache Flink)** — Develop, deploy, and tune Apache Flink applications on Amazon Managed Service for Apache Flink, including checkpointing, state, connectors, dependency management, and Flink 1.x to 2.x migration.
+- **AWS Glue Auto Version** — Assess which AWS Glue Spark ETL jobs can use auto version (GlueVersion = "auto"), enable it for the jobs you confirm, set up encrypted upgrade email notifications, and review and approve or decline each pending upgrade yourself.
 
 ## Agent Skills
 
@@ -37,6 +38,7 @@ This plugin brings AWS data engineering expertise directly into your coding assi
 | 16 | `developing-applications-on-managed-service-for-apache-flink` | Develop, deploy, and tune Apache Flink applications on Amazon Managed Service for Apache Flink, including checkpointing, connectors, and Flink 2.x migration | [SKILL.md](skills/developing-applications-on-managed-service-for-apache-flink/SKILL.md) |
 | 17 | `managing-data-catalog` | Write and curate business metadata in Amazon SageMaker Catalog or the AWS Glue Data Catalog: descriptions, READMEs, glossaries, metadata forms, publishing, and safe asset retirement | [SKILL.md](skills/managing-data-catalog/SKILL.md) |
 | 18 | `managing-data-asset-access` | Request, approve, share, audit, and revoke access to Amazon SageMaker Catalog assets through subscriptions, and confirm grants have settled | [SKILL.md](skills/managing-data-asset-access/SKILL.md) |
+| 19 | `managing-glue-jobs` | Assess AWS Glue Spark ETL jobs for auto version, enable it for the jobs you confirm, set up upgrade email notifications, and review and approve or decline pending upgrades one job at a time | [SKILL.md](skills/managing-glue-jobs/SKILL.md) |
 
 ## MCP Servers
 
