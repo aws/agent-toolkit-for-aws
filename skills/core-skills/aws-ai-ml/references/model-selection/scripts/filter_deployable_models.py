@@ -31,9 +31,9 @@ Constraints (all optional, repeatable):
     language:<value>       - Match against 'languages' field (substring match)
     model_type:<value>     - Match against 'model_type' field (exact match)
     provider:<value>       - Match against 'provider' field (substring match)
-    bedrock:<true|false>   - Filter by Bedrock eligibility
-    customization:<true|false> - Filter by fine-tuning (customization) eligibility
-    name:<value>           - Match against model 'name' (substring, case-insensitive)
+    bedrock:<true|false>      - Filter by Bedrock eligibility
+    customization:true        - Require customization capability
+    name:<value>             - Match against model 'name' (substring, case-insensitive)
 
 Example:
     python filter_deployable_models.py models.json "task:text generation" "size:1b" "size:1b-10b"
@@ -152,13 +152,12 @@ def matches(model, constraints):
                 return False
 
         elif key == "customization":
-            customization_val = model.get("customization_eligible", None)
-            if customization_val is None:
-                return False
-            value = values[-1]
-            if value == "true" and not customization_val:
-                return False
-            elif value == "false" and customization_val:
+            # Search supports the positive capability only. Keep fallback
+            # behavior identical instead of treating an absent capability as
+            # a supported negative filter.
+            if values[-1] != "true" or not model.get(
+                "customization_capable", False
+            ):
                 return False
 
         elif key == "name":
