@@ -329,7 +329,8 @@ creates that workload rather than here.
 ## Verifying the setup
 
 Read the two grant sets back. `get-access-profile` does not report grants — it returns
-only the profile's own fields — so read them from `list-access-grants`:
+the profile record plus `assumeStatus` (`ALLOWED` or `DENIED`: whether the caller may
+assume it), so use it for that check and read the grants from `list-access-grants`:
 
 ```
 # Permission grants — what the profile can do

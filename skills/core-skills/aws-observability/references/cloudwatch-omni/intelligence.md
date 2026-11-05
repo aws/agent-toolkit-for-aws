@@ -14,15 +14,33 @@ tokens, and cites more of the evidence that matters.
 This reference **composes** the metric, service-health, context-graph, and SQL references
 rather than replacing them. Hand the ask back when it is not a cause question: a bare
 single-signal metric symptom belongs to
-[query/promql-metrics.md](query/promql-metrics.md); a bare "is `<service>` healthy" verdict
+[../cloudwatch/promql.md](../cloudwatch/promql.md); a bare "is `<service>` healthy" verdict
 or a role-labelled dependency map belongs to [service-health.md](service-health.md); a pure
 traversal-direction or edge-semantics question belongs to
 [context-graph.md](context-graph.md). Use this file when the question is *what is wrong and
 why* — status, triage, root cause, or a past incident.
 
+## Investigation question — facts you MUST surface
+
+A how-to-investigate answer, and every root-cause answer, states each of these, with or
+without live data:
+
+1. **Scope first:** the Region (it selects the Space), the anchor service, and the window —
+   the incident window for telemetry, at least the 24 hours ending at the incident for the
+   context graph. Never open with an unscoped log or metric scan.
+2. **Intelligence before raw telemetry:** `ACTIVE` insights and their observations that
+   overlap the window, from the API or the console.
+3. **Localize on the context graph:** `GetContextGraph` at depth 1, `includeMetadata` true,
+   walking downstream to the deepest unhealthy node.
+4. **An insight or edge is a hypothesis.** Confirm the candidate hop with RED metrics in
+   PromQL and with slow or failing spans in SQL.
+5. **An empty or zero result is a scoping signal**, never "healthy".
+6. **Commit to one root-cause service**, with the causal chain and the evidence.
+
 ## Contents
 
 - [Scope and neighbours](#scope-and-neighbours)
+- [Investigation question — facts you MUST surface](#investigation-question--facts-you-must-surface)
 - [Operations](#operations)
 - [When to use](#when-to-use)
 - [Using Omni Intelligence in an investigation](#using-omni-intelligence-in-an-investigation)
@@ -44,6 +62,17 @@ SigV4 API (service `cloudwatch-omni`, signing name `cloudwatch`) — reachable f
 | `ListInsights` | `aws cloudwatchomni list-insights` | Correlated findings — insights |
 | `ListObservations` | `aws cloudwatchomni list-observations` | Anomaly episodes — observations |
 | `GetContextGraph` | `aws cloudwatchomni get-context-graph` | Service/resource topology (full API in [context-graph.md](context-graph.md)) |
+
+These three are the **read** operations this reference teaches, not the whole Intelligence
+API. Enabling and configuring Intelligence has its own public operations —
+`get-intelligence-configuration` / `put-intelligence-configuration` for the optional
+customer-managed KMS key, and `create-integration` / `list-integrations` and their siblings for
+integrations such as `AWS_INTEGRATION` and `AWS_CONFIG_SLREC`. They are real; never tell the
+user they do not exist. For any of them — what they do, the IAM they need, an error they
+return, or a graph that is still empty right after setup — route to the
+`setting-up-cloudwatch-observability` skill's `references/cloudwatch-omni/intelligence-setup.md`.
+An error or an empty result from one of the three read operations above stays here: see
+[When a call fails](#when-a-call-fails) and the context graph's empty-result rules.
 
 Observations and insights say **what moved**; the context graph says **how the moving parts
 are connected**. Used together they answer most status and root-cause questions faster than
@@ -80,6 +109,10 @@ Use when the user asks to:
 
 One way to use the three operations together; adapt it to the question.
 
+0. **Scope first.** Fix the Region (it selects the Space), the anchor service, and the
+   window: the incident window for telemetry, and at least the 24 hours ending at the
+   incident for the context graph. Say what you assumed for any of the three. Do not open
+   with an unscoped log or metric scan.
 1. **Insights: what's going on.** List insights for the window the question needs. `ACTIVE`
    insights cover "now", which is also the place to start when no time is given. For a past
    incident the insight it raised may since have gone `INACTIVE` — the two statuses are
@@ -87,30 +120,48 @@ One way to use the three operations together; adapt it to the question.
    looking at a past incident.
 2. **Rank them by relevance** to the problem under investigation, and keep the ones that match.
 3. **Dive into their observations.** Resolve a kept insight's `observations[]` with one
-   `ListObservations` call using `anomalyIds` — the batch-get, up to 100 ids, mutually
-   exclusive with the other filters (see [ListObservations](#listobservations)). Each
+   `ListObservations` call using `observationIds` — the batch-get, up to 100 ids, sent
+   without `filters` (see [ListObservations](#listobservations)). Each
    observation names a service, a signal, how it changed, and when; these are the evidence for
    the answer.
 4. **Context graph: blast radius and causal chain.** Start from the affected services and
    resources and follow their dependencies, to see which one the others depend on and who is
-   impacted.
-5. **Answer with the evidence.** Name the root cause and each impacted service, and for each
-   one cite the observations behind it: service, signal (metric, log pattern, or operation),
-   how it changed, and when.
+   impacted. For a slow or erroring service, walk **downstream** (its callees and datastores
+   hold the cause; its callers are blast radius): `GetContextGraph` at depth 1 with
+   `includeMetadata` true, follow the edge with an `errorCode` or non-2xx `httpStatusCode`
+   first, raise depth one hop at a time, and check each edge's `lastObservedAt` against the
+   incident. An edge with no error fields is unreported, not healthy. The rules are in
+   [context-graph.md](context-graph.md)'s "facts you MUST surface".
+5. **Confirm the candidate hop in telemetry.** Read its RED metrics (error rate, p99
+   latency, throughput) with PromQL per [../cloudwatch/promql.md](../cloudwatch/promql.md),
+   and its slow or failing spans with SQL per
+   [query/sql-logs-traces.md](query/sql-logs-traces.md).
+6. **Answer with the evidence.** Name **one** root-cause service and each impacted service,
+   with the causal chain, and for each one cite the observations behind it: service, signal
+   (metric, log pattern, or operation), how it changed, and when. Without live data, still
+   end the method on that step: say the walk ends by naming one service and what would
+   confirm it.
 
-An insight is a **hypothesis to confirm**, never the final answer on its own: check that its
-window actually overlaps the incident, then confirm the candidate on the graph and in
-telemetry.
+An insight or a graph edge is a **hypothesis to confirm**, never the final answer on its own:
+check that its window actually overlaps the incident, then confirm the candidate on the graph
+and in telemetry. An empty or zero result is a scoping signal (Region, window, name), never a
+"healthy" finding.
 
 ---
 
 ## Data model
 
-**Observation**: one anomaly episode detected in a service's telemetry (logs, metrics, or traces).
+**Observation**: a correlated finding over one or more anomalies in a service's telemetry
+(logs, metrics, or traces). Field names below are from the registered `cloudwatchomni` model
+(`ObservationMembers`): `observationId`, `accountId`, `title`, `summary`, `severity`, `status`,
+`reasoning`, `anomalies[]` (the anomaly ids it correlates), `affectedNodes`, and the lifecycle
+timestamps and actors. The remaining rows describe anomaly-level detail that a response may
+carry; they could not be confirmed against that model, so read the field names off the
+response rather than relying on them.
 
 | Field | Meaning |
 |---|---|
-| `anomalyId` | Episode id; what an insight's `observations[]` lists |
+| `observationId` | Observation id; the value to pass in `observationIds` |
 | `service` | The monitored service the anomaly was detected on |
 | `signalType` | `logs` \| `metrics` \| `traces` |
 | `anomalyType` | Analyzer classification (a free-form string), for example `latency_spike`, `error_rate_spike`, `frequency_spike`, `rate_drop`, `new_pattern`, `outlier` |
@@ -132,7 +183,7 @@ telemetry.
 | `reasoning` | How the correlated observations led to the finding; usually says which service or resource is the source and which are affected |
 | `severity` | `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` |
 | `status` | `ACTIVE` or `INACTIVE`, and the two are **reversible** — an insight transitions between them in both directions, so an `INACTIVE` insight can return to `ACTIVE`. `ACTIVE` means the condition it tracks is currently firing; `INACTIVE` means it is not firing right now. There is no `CLOSED` or `DISCARDED` status |
-| `observations[]` | The `anomalyId`s it correlates |
+| `observations[]` | The ids it correlates, passed as `observationIds` to ListObservations. Unconfirmed: the registered model documents these as anomaly ids, which may not be the same ids as `observationId`; check that the batch-get returns one item per id |
 | `affectedNodes[]` | Services and resources involved: `name`, `nodeType` (`SERVICE`, `RESOURCE`, `REMOTE_SERVICE`), `accountId`, `sourceAccountId`, `region`, `cloudProvider`, optional `nodeId` (a context-graph id). `name` is the value to pass in the ListObservations `services` filter |
 | `createdAt`, `updatedAt`, `createdBy`, `updatedBy` | Lifecycle timestamps and actors (`createdBy` is the system for generated insights) |
 
@@ -185,30 +236,32 @@ boto3, or any SigV4 client.
 
 | Input | Meaning |
 |---|---|
-| `timeRange` `{start,end}` | Window to search |
-| `services` | Up to 50 service names |
-| `signalTypes` | Up to 3 of `logs`, `metrics`, `traces` (lowercase on the wire) |
-| `severity` | A single value: `info`, `low`, `medium`, `high`, or `critical` |
-| `sourceAccountId` | Restrict to anomalies on signals produced by these accounts |
-| `anomalyIds` | Batch-get up to 100 ids, typically an insight's `observations[]`. Mutually exclusive with `timeRange`, `services`, `signalTypes`, `severity`, and `sourceAccountId` (ValidationException otherwise); missing or inaccessible ids come back in `unprocessedIds` |
+| `filters.timeRange` `{start,end}` | Window to search |
+| `filters.services` | Up to 50 service names |
+| `filters.severity` | A list of `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` |
+| `filters.status` | A list of `ACTIVE`, `INACTIVE` |
+| `query` | Free-text search over observations |
+| `observationIds` | Batch-get up to 100 ids, typically an insight's `observations[]`. Send it without `query` or `filters` (mutually exclusive, ValidationException otherwise); a missing or inaccessible id is omitted from `items`, so compare the ids you sent with the ids returned |
 | `maxResults`, `nextToken` | Page size 1–100 and the cursor |
 
-The response returns the observations in `items`, plus `nextToken` and (only when `anomalyIds`
-was set) `unprocessedIds`.
+Every filter sits under `filters`; a top-level `timeRange`, `services` or `severity` is
+rejected client-side with `Unknown parameter in input`. The response returns the observations
+in `items`, plus `nextToken`; unlike ListInsights there is no `unprocessedIds`.
 
-**Getting one insight's observations.** Use the `anomalyIds` batch-get: one call, passing that
-insight's `observations[]` (up to 100 ids), returns exactly those observations. `anomalyIds` is
-mutually exclusive with the other filters, so send it alone. This is the primary, cheapest path —
-one scoped call rather than listing a window and filtering client-side.
+**Getting one insight's observations.** Use the `observationIds` batch-get: one call, passing
+that insight's `observations[]` (up to 100 ids), returns exactly those observations. Send it
+alone. This is the primary, cheapest path — one scoped call rather than listing a window and
+filtering client-side.
 
-Anomalies on given services and signals in a window — a filtered query, with no `anomalyIds`:
+Anomalies on given services in a window — a filtered query, with no `observationIds`:
 
 ```json
 {
-  "timeRange": {"start": "2026-09-16T00:00:00Z", "end": "2026-09-16T02:00:00Z"},
-  "services": ["orders-api", "inventory-service"],
-  "signalTypes": ["traces", "logs"],
-  "severity": "high"
+  "filters": {
+    "timeRange": {"start": "2026-09-16T00:00:00Z", "end": "2026-09-16T02:00:00Z"},
+    "services": ["<service-a>", "<service-b>"],
+    "severity": ["HIGH", "CRITICAL"]
+  }
 }
 ```
 
@@ -227,8 +280,8 @@ API and traversal rules are in [context-graph.md](context-graph.md); the parts u
 insights:
 
 - An insight's `affectedNodes[].nodeId` (as `nodeFilters.nodeId`), or a service or resource
-  `name` (as `nodeFilters.name`), is the starting point, with `depth` 1 and a window around the
-  problem. `startTime` and `endTime` are required.
+  `name` (as `nodeFilters.name`), is the starting point, with `depth` 1 and a 24-hour window
+  ([why](context-graph.md#choosing-the-time-window)). `startTime` and `endTime` are required.
 - Edges point from caller to dependency, and each service or resource carries only its
   outbound `edges[]`; callers are found with `edgeFilters.to`. An edge's `to` is a `nodeId`,
   mapped to a name from the same response.
@@ -240,14 +293,16 @@ insights:
 AWS CLI example:
 
 ```bash
-# One service and its direct neighbors. --query keeps only each node's identity and its
-# outbound edges (target id, edge type, error code, HTTP status): enough to see what the service
-# depends on and which of those calls are failing, without the full graph payload.
+# One service and its direct neighbors over the 24 hours ending at the incident. --query keeps
+# only each node's identity and its outbound edges (target id, edge type, error code, HTTP
+# status, last seen): enough to see what the service depends on, which of those calls are
+# failing, and whether an edge was live at the incident. --include-metadata adds the selectors
+# that the confirming PromQL and SQL queries are built from.
 aws cloudwatchomni get-context-graph --region <region> \
-  --start-time 2026-09-16T00:00:00Z --end-time 2026-09-16T01:00:00Z \
-  --node-filters '{"name":"orders-api"}' --depth 1 --no-paginate \
-  --query 'nodes[].{id:nodeId,name:name,type:nodeType,
-           out:edges[].{to:to,type:edgeType,err:edgeProperties.errorCode,http:edgeProperties.httpStatusCode}}'
+  --start-time 2026-09-15T00:45:00Z --end-time 2026-09-16T00:45:00Z \
+  --node-filters '{"name":"<service-name>"}' --depth 1 --include-metadata --no-paginate \
+  --query 'nodes[].{id:nodeId,name:name,type:nodeType,metadata:metadata,
+           out:edges[].{to:to,type:edgeType,err:edgeProperties.errorCode,http:edgeProperties.httpStatusCode,seen:lastObservedAt}}'
 ```
 
 For the error semantics — in particular that an `AccessDeniedException` here is an access
@@ -262,15 +317,16 @@ and latency of an investigation. All three operations have a CLI, so the same pr
 to each.
 
 - **Bound calls in time.** Use the window the question needs plus modest slack; widen in
-  steps only when a narrow window is empty. Avoid multi-day sweeps.
-- **Project and cap output.** The AWS CLI fetches *all* pages of a paginated call by default,
-  so use `--max-items` or `--no-paginate`, and a JMESPath `--query` that keeps only the fields
-  you need. Read only what you need to rank and continue (title, severity, status, times,
+  steps only when a narrow window is empty. Avoid multi-day sweeps. (This is for insights; the
+  context graph needs 24 hours.)
+- **Project and cap output.** The AWS CLI fetches *all* pages of a
+  paginated call by default, so use `--max-items` or `--no-paginate`, and a JMESPath `--query`
+  that keeps only the fields you need. Read only what you need to rank and continue (title, severity, status, times,
   affected service and resource names, summary, observation ids); read `reasoning` only for the
   insight you examine. Observation `evidenceSamples` arrays are large; ignore them unless you
   need per-sample values.
 - **Batch, don't loop.** One call scoped to many things beats one call per thing: a single
-  `services` list rather than a loop, and one `anomalyIds` call to fetch an insight's whole
+  `services` list rather than a loop, and one `observationIds` call to fetch an insight's whole
   `observations[]` rather than one call per observation.
 - **Context graph:** `depth` 1 first; `maxEdgesPerNode` (1–50) to bound a densely connected
   service or resource; `includeMetadata` only on a small neighborhood.
