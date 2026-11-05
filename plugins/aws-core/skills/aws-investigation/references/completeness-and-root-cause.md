@@ -1,8 +1,9 @@
-# Investigating a failure from CloudWatch data
+# Completeness and root cause
 
-Use this when you investigate AWS-related issues from CloudWatch logs: confirming whether a
-failure belongs to one entity, reporting counts or totals from logs, and performing root
-cause analysis.
+Use this to decide whether a finding is complete and whether a root cause holds: confirming
+whether a failure belongs to one entity or the whole fleet, reporting counts, totals or "no
+evidence of X", and performing and reporting root cause analysis. It applies to any source
+(logs, API listings, data stores); the pagination rules below name the CloudWatch Logs calls.
 
 Commands use AWS CLI syntax. The AWS MCP server is recommended for sandboxed execution and
 audit logging; the same calls work through the CLI without it.
@@ -41,6 +42,17 @@ before you count, aggregate, or state a scope:
    look partial, since that often means a page was cut off.
 6. **If you can't confirm the data is complete**, say the figures are partial.
 
+### Coverage of the requested range
+
+When you compute a metric over a range (dates, hours, partitions, regions):
+
+1. Check which values in the range have data, separately for each entity being compared.
+2. In the answer, state for each entity whether its data covers the whole range, or name the
+   missing values.
+3. Never present an aggregate as covering the full range when part of it has no data.
+4. If the entities cover different subsets, say so, because it affects whether the comparison is
+   fair, and consider also giving the metric over the overlap they share.
+
 ### Scope verification for failures
 
 When asked to confirm from logs whether a failure belongs to a particular entity (store,
@@ -57,6 +69,10 @@ account, tenant, resource), do not filter only on that entity. Get the wider con
 4. **In the final answer**, state whether the failure is unique to the entity or shared, and
    roughly how widely it is shared. Say which related operations succeeded. Explicitly correct
    any earlier claims in the thread that the logs contradict.
+5. **When asked why one record is failed or in an exception state**, widen the analysis to the
+   whole population the root cause touches: every category or rule pairing involved, every
+   entity, account or ID the user listed, exact totals per category and per side, how many of the
+   listed entities are affected and which are not, and the largest entity in each category.
 
 ## Root-cause analysis
 
@@ -70,7 +86,8 @@ is pushed or pulled):
    entry), do not treat the gap as proof of a defect. First ask whether the design you already
    found explains why it is absent.
 2. **Label any mechanism you could not confirm** from data, configuration or logs as an
-   unverified hypothesis, never as the root cause.
+   unverified hypothesis, never as the root cause. In particular, never claim how a processing
+   engine behaves ("rule X is being applied") unless you have read the rule definition.
 3. **If the evidence points elsewhere** (such as a resource whose state changed or a reference
    that now points to a newer record), build the diagnosis on that.
 
@@ -116,13 +133,18 @@ In root-cause reports:
    policy changes on top of it.
 3. **Remove or correct anything that contradicts** your main finding, the user's stated
    expectation, or the purpose of the code.
+4. **If the user points to a runbook or playbook**, go through every remediation it lists
+   (retry, rollback, scaling, backfill, escalation) and say for each whether it addresses the
+   confirmed cause and why, including the ones you reject. Name the options that only treat the
+   symptom, such as a retry for a deterministic limit or a code defect. Recommend the change that
+   fixes the cause.
 
 ### Answering the user's question
 
 When a user asks a specific question or names a suspected cause (for example, "why isn't X
 being applied?" or "is it enforced per A or per B?"):
 
-1. **Answer that question directly and early**, and back the answer with evidence from the
+1. **Answer that question**, and back the answer with evidence from the
    system.
 2. **Check the actual configuration or enforcement records**, such as limit or quota
    settings, throttle or decision logs, and the keys or dimensions they record.
@@ -136,17 +158,4 @@ being applied?" or "is it enforced per A or per B?"):
 
 ## Closing checklist
 
-Before submitting your analysis:
-
-1. Have you searched all relevant regions and scopes?
-2. Have you paginated through all results?
-3. Have you verified the scope of failures (entity-specific vs fleet-wide)?
-4. Does your root cause fit all the facts you found?
-5. Have you labelled every mechanism you could not confirm as unverified, and reported a
-   missing component as a defect only if it was meant to exist?
-6. Did your claims about live configuration come from the deployed artifact, not the latest
-   stored version?
-7. Have you answered the user's specific question directly?
-8. Before you finish, have you reread your conclusion against each piece of evidence you
-   collected and removed any statement that contradicts it?
-9. Have you removed any contradictions between your findings and recommendations?
+Run the closing checklist in the skill's `SKILL.md` before you report.
