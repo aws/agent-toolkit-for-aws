@@ -23,10 +23,10 @@ try {
 By name or `instanceof` (both safe — SDK overrides `Symbol.hasInstance`):
 
 ```js
-import { NoSuchKeyException } from "@aws-sdk/client-s3";
+import { NoSuchKey } from "@aws-sdk/client-s3";
 
-if (e.name === "NoSuchKeyException") { ... }
-if (e instanceof NoSuchKeyException) { ... }
+if (e.name === "NoSuchKey") { ... }
+if (e instanceof NoSuchKey) { ... }
 ```
 
 ## Unparseable Error Bodies

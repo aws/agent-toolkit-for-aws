@@ -10,6 +10,10 @@ import textwrap
 
 NOTICE_TITLE = "AWS Startup Advisor plugin — usage data notice"
 
+# Raise when NOTICE_BODY discloses something new. The record keeps the version a user
+# answered, so data the older notice did not name is not sent on their old answer.
+NOTICE_VERSION = 2
+
 # One unwrapped paragraph; render() wraps it. Do not wrap it here: {opt_out} is
 # substituted before wrapping, so a line that fits in this source need not fit in
 # the output.
@@ -20,7 +24,8 @@ NOTICE_BODY = (
     "we collect: which skill you invoked, the plugin version, the host tool "
     "you're using, a randomly generated install identifier, and, for migration "
     "skills, the source cloud provider and which migration phase you start and "
-    "complete. The usage data above is not linked to your identity. You can "
+    "complete, and, for operate-on-aws, the ID of the AWS DevOps Agent Space it "
+    "creates. The usage data above is not linked to your identity. You can "
     "opt-out by {opt_out}. Opting out does not change any plugin functionality."
 )
 

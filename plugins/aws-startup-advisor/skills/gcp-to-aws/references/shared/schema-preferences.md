@@ -19,6 +19,11 @@ Every key in `design_constraints`, `ai_constraints`, and `startup_constraints` (
 
 **Do not write null values.** Omit keys that produce no constraint.
 
+For `gcp_monthly_spend`, `cloud_run_monthly_spend`, and `cud_status`, the string
+`"unknown"` records an explicit unknown answer without inventing a fact.
+Retain `chosen_by: "user"` when the user said they do not know. Consumers must
+not convert unknown spend to zero, a default monetary band, or a measured bill.
+
 ### `prompt` by `chosen_by`
 
 | `chosen_by` | `prompt` content                                                                               |

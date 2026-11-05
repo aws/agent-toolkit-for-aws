@@ -15,7 +15,7 @@ from pathlib import Path
 
 TELEMETRY = Path(__file__).resolve().parent
 PLUGIN = TELEMETRY.parents[1]
-SKILLS = ("azure-to-aws", "gcp-to-aws", "heroku-to-aws", "llm-to-bedrock")
+MIGRATION_SKILLS = ("azure-to-aws", "gcp-to-aws", "heroku-to-aws", "llm-to-bedrock")
 RUNTIME_FILES = (
     "cli.py",
     "PROTOCOL.md",
@@ -28,6 +28,20 @@ RUNTIME_FILES = (
     "metric_emission/migration.py",
     "metric_emission/migration_attributes.py",
 )
+# operate-on-aws reports only the Agent Space it creates, so it carries the consent
+# exchange and the client, not the migration emitter.
+OPERATE_FILES = (
+    "devops_agent_cli.py",
+    "consent/record.py",
+    "consent/notice.py",
+    "consent/cli.py",
+    "consent/accept.py",
+    "consent/opt_out.py",
+    "metric_emission/client.py",
+    "metric_emission/agent_space.py",
+)
+BUNDLES = {**{skill: RUNTIME_FILES for skill in MIGRATION_SKILLS}, "operate-on-aws": OPERATE_FILES}
+SKILLS = tuple(BUNDLES)
 
 
 def sync(plugin=PLUGIN, write=False):
@@ -45,10 +59,13 @@ def sync(plugin=PLUGIN, write=False):
     if problems:
         return problems  # Refuse to generate bundles from conflicting version metadata.
 
-    files = {name: (telemetry / name).read_bytes() for name in RUNTIME_FILES}
-    files["version.json"] = (json.dumps({"version": version}, indent=2) + "\n").encode()
+    version_json = (json.dumps({"version": version}, indent=2) + "\n").encode()
+    bundles = {}
+    for skill, names in BUNDLES.items():
+        bundles[skill] = {name: (telemetry / name).read_bytes() for name in names}
+        bundles[skill]["version.json"] = version_json
     expected = []
-    for skill in SKILLS:
+    for skill, files in bundles.items():
         target = plugin / "skills" / skill / "references/vendored/telemetry"
         expected.extend((target / name, content) for name, content in files.items())
     interpreter = (plugin / "skills/shared/dsl/INTERPRETER.md").read_bytes()
@@ -63,7 +80,7 @@ def sync(plugin=PLUGIN, write=False):
             path.write_bytes(content)
         else:
             problems.append(str(path.relative_to(plugin)))
-    for skill in SKILLS:
+    for skill, files in bundles.items():
         target = plugin / "skills" / skill / "references/vendored/telemetry"
         for path in sorted(target.rglob("*")):
             if not path.is_file():

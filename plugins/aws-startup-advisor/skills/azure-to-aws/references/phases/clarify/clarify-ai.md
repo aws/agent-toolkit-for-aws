@@ -44,7 +44,12 @@ models detected, capabilities, integration pattern + SDK, gateway/router, framew
 - **Q17 — Most critical specialized feature.** PROPOSED, default none. → `ai_critical_feature`
   (e.g. `ultra_long_context`, `realtime`, `vision`, none).
 - **Q18 — Usage volume + cost tolerance.** PROPOSED, default `"low"`. → `ai_token_volume`
-  (`low|medium|high|very_high`). Drives the estimate token tiers.
+  (`low|medium|high|very_high`). Drives the estimate token tiers. Before Design,
+  add a full-window `azure-openai-metrics-profile.json` into the same volume sum
+  as the usage-API profiles (`input_tokens + output_tokens` only; do not add
+  `cache_write_tokens`). A `partial_window` metrics profile is not monthly
+  volume. Batch and spillover rows still count in the monthly sum. Name the
+  source `azure-openai-metrics-profile:usage_by_model`.
 - **Q19 — Which model do you use today.** DETECTED from `models[]` when confidence is high, else
   PROPOSED. → `ai_model_baseline`. **Azure catalog:** Azure OpenAI deployments — GPT-4o, GPT-4.1,
   GPT-4.1 mini/nano, o3, o4-mini, GPT-5.x. (No Gemini — azure has no `gemini` source.) If

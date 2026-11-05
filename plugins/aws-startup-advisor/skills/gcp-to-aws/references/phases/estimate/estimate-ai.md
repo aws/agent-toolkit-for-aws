@@ -38,6 +38,16 @@ Read from `$MIGRATION_DIR/`:
 
 ---
 
+## Observed capacity
+
+When a usage profile carries the fields below, use them. When a field is absent, the profile is a 30-day sum only — say that, and do not divide the month by the number of minutes and call the result a peak.
+
+- **On-demand quota** uses `peak.peak_input_tokens_per_minute` and `peak.peak_output_tokens_per_minute` on rows whose `batch` is not true and whose `service_tier` is not `batch`. Batch and other tiers stay visible and are not added into that peak. `day_to_average_ratio` is the burst hint. Design persists `quota_risk` from this peak before Generate reads `aws-design-ai.json`, using the observed-peak rule in `references/vendored/ai/bedrock-quotas.md`. A low monthly volume tier does not stay `quota_risk: "low"` when that weighted on-demand peak is above the bar in that rule. Profiles with no usable peak keep the monthly table.
+- A `capture_warnings` entry that names only `usage-completions-hourly.json`, `usage-completions-minute.json`, `usage-messages-hourly.json`, `usage-messages-minute.json`, or `analytics-hourly.json` means the peak is uncertain. Price the daily volume and cost. Do not treat that warning as a failed daily usage endpoint. A warning that names a daily usage or cost file still makes that capability's volume UNKNOWN.
+- **OpenAI cache fields are already inside `input_tokens`.** Do not add `input_cached_tokens` or `input_cache_write_tokens` on top. Text, image, and audio splits describe modality. They are not extra volume.
+- **Anthropic cache fields stay additional volume**, as in the prerequisites. `cache_creation_5m_tokens` and `cache_creation_1h_tokens` are the split of `cache_creation_tokens`. Price them separately when both are present, and do not add them on top of the sum. `context_window` `200k-1M` is long-context pricing. `inference_geo` is where the provider ran the call, not the AWS region the customer requires. `web_search_requests` means the workload uses server-side web search.
+- **OpenRouter** `p95_latency_ms` and `p95_throughput_tokens_per_sec` are observed speed, not a latency SLO. `byok_fees_usd` is the router fee, not inference. `cached_tokens` is a subset of prompt tokens. `web_search_cost_usd` and `guardrail_invoked_count` are feature flags. Do not split a mixed model's tokens with `byok_request_count`.
+
 ## Part 1: Establish Current AI Costs
 
 Determine current AI spending from the best available source:
@@ -48,6 +58,8 @@ Determine current AI spending from the best available source:
 4. **None available** — Note in output and present model comparison at multiple volume tiers so user can find their range.
 
 Regardless of which dollar source wins, `usage_by_model[]` from EVERY usage profile that exists (`openai-usage-profile.json`, `openrouter-usage-profile.json`, and/or `anthropic-usage-profile.json`) remains the Part 2 token-volume source — not just whichever profile happened to be readable first. When more than one exists, combine their per-model rows (normalizing OpenRouter's `prompt_tokens`/`completion_tokens` to `input_tokens`/`output_tokens`, and INCLUDING Anthropic's `cache_read_tokens`/`cache_creation_tokens` in the sum — these are additional volume the Admin API reports separately from `input_tokens`, per the Prerequisites note) into one volume figure, the same SUM discipline as their dollar figures above — a token-volume comparison that reads only a subset of profiles while the dollar comparison above already summed all of them understates the workload by exactly the fraction the omitted profile(s) carry (subject to the same `partial_window` exception there, applied per profile).
+
+**Live CLI usage.** When `gcp-publisher-metrics-profile.json` exists, its tokens are Gemini and Vertex publisher usage, including serverless Gemini that has no endpoint. Add its `input_tokens` and `output_tokens` to the Part 2 volume. The profile has no dollar field. A GCP billing CSV stays the dollar source. Do not add a second bill derived from these tokens. `request_type` `shared` is not provisioned quota. `observed_p95_first_token_ms` is the worst hour's p95, not the 30-day percentile and not a latency SLO. `peak.peak_source` `"hour"` means the maximum hour anywhere in the window, divided by 60, not the busiest hour of the busiest day. Say that when you use it as a quota starting point. Design already applied the observed-peak rule in `bedrock-quotas.md`. Do not recompute `quota_risk` from the monthly tier alone. Empty monitoring is not proof the project has no AI. Do not divide the month by the number of minutes and call the result a peak.
 
 **IaC-only profile:** If `metadata.profile_source` is `iac_vertex` or `summary.inferred_from_iac` is true and billing/token data is missing, state explicitly that **current GCP AI spend is unverified** and widen uncertainty bands (use the same multi-tier comparison approach as in case 3).
 

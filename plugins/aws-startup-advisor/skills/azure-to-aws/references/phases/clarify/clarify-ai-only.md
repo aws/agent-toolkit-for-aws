@@ -117,6 +117,7 @@ running). → `ai_constraints.cross_cloud`. Default `"latency-acceptable"`.
 | Source (Azure OpenAI / OpenAI deployment) | Baseline recommendation                | Pricing context                            |
 | ----------------------------------------- | -------------------------------------- | ------------------------------------------ |
 | GPT-6 (Astra/Sol/Luna) / GPT-6.1 Sol       | **Same model on Bedrock**              | ~10% over OpenAI std (data-residency tier); Astra/6.1 Sol also support Ultrafast (6x) |
+| GPT-6.1 Terra                              | **Same model on Bedrock**              | Use the model-specific endpoint and context-tier prices in `references/shared/openai-on-bedrock.md`; compare against measured source spend or verified source rates. |
 | GPT-5.6 (Sol/Terra/Luna)                  | **Same model on Bedrock**              | ~10% over OpenAI std (data-residency tier) |
 | GPT-5.5                                   | **Same model on Bedrock**              | ~10% over std                              |
 | GPT-5.4                                   | **Same model on Bedrock**              | ~10% over std                              |
@@ -155,7 +156,11 @@ volume rather than avoiding a double-count). Skip a profile whose
 is partial. Map the combined total to tiers (`<1M`→low, `1–10M`→medium, `10–100M`→high,
 `>100M`→very_high), record the extraction (`chosen_by: "extracted"`, `source` naming whichever
 profile(s) contributed), and tell the user: "Resolved from your usage data: [N tokens/month →
-tier]." → `ai_token_volume`. Default `"medium"`. **Q8 — Response speed** (critical /
+tier]." → `ai_token_volume`. Also add a full-window
+`azure-openai-metrics-profile.json` (`input_tokens + output_tokens` only; do not
+add `cache_write_tokens`). A `partial_window` metrics profile is not monthly
+volume. Batch and spillover rows still count in the monthly sum. Name the
+source `azure-openai-metrics-profile:usage_by_model`. Default `"medium"`. **Q8 — Response speed** (critical /
 important / flexible). → `ai_latency`. Default `"important"`. **Q9 — Task complexity** (simple /
 moderate / complex). → `ai_complexity`. Default `"moderate"`. **Q10 — Specialized features**
 (function calling / ultra-long-context / extended-thinking / prompt-caching / RAG / agentic /

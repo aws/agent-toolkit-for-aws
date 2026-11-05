@@ -19,7 +19,9 @@ Multiple artifacts can be produced in a single run — they are not mutually exc
 
 0. **Orientation (fresh runs only):** When this is a new migration (no existing `.migration/` runs, or the user chooses Fresh below), open your first response with this block — before any scanning output. Skip it entirely when resuming an existing run (the breadcrumb in the resume message covers position).
 
-   > **Here's how this works.** Six phases: I scan your Terraform, app code, or billing data; confirm a few assumptions with you; then design the AWS architecture, price it, and generate everything. Your part is small — most answers come from your own files; you'll typically confirm one summary sheet and answer 2–7 questions. At the end you get a migrate-or-stay recommendation with costs, Terraform for the in-scope workloads, and step-by-step migration scripts. You can stop at any point — progress is saved and I'll resume where you left off.
+   > **Before you send or upload files:** Terraform is optional. I can inventory your live GCP project through your authenticated `gcloud` CLI using read-only commands, scan Terraform and application code already in your workspace, or use a billing export. If OpenAI, OpenRouter, or Anthropic is in scope, I can also offer consent-gated provider API discovery for aggregate cost and token usage; source code is still needed to identify call sites and migration behavior. I can combine sources to catch resources outside Terraform and report drift.
+   >
+   > **Here's how the migration works.** Six phases: discover, confirm assumptions, design the AWS architecture, price it, optionally generate artifacts, and collect feedback. Your part is small: you will typically confirm one summary sheet and answer 2–7 questions. At the end you get a migrate-or-stay recommendation with costs, Terraform for in-scope workloads when you choose generation, and step-by-step migration scripts. You can stop at any point; progress is saved and I will resume where you left off.
 
    Do not pad it, restate it later, or block on it — continue directly into discovery in the same turn.
 
@@ -65,8 +67,8 @@ Multiple artifacts can be produced in a single run — they are not mutually exc
    `run_id` is minted once here: run `uuidgen` (or an equivalent random UUID source) and write its output verbatim; never copy a value from an example or a previous run. It is never changed or reused across runs; unlike `migration_id` it carries no timestamp, so it uniquely identifies this run for telemetry and for the plugin-to-web handoff. `owning_skill` is always `GCP_TO_AWS`. If another skill invoked this run (llm-to-bedrock does, for Assess), also set `initiated_by` to that skill's identifier, e.g. `"initiated_by": "LLM_TO_BEDROCK"`.
 
 5. Confirm both `.migration/.gitignore` and `.phase-status.json` exist before proceeding to Step 1.
-6. Reconcile the initial state in `cli` reporting mode per
-   `references/vendored/telemetry/PROTOCOL.md`; skip the CLI in `hook` mode.
+6. Reconcile the initial state with the explicit project root per
+   `references/vendored/telemetry/PROTOCOL.md` in both reporting modes.
 
 ## Step 1: Scan for Input Sources and Run Sub-Discoveries
 
@@ -162,7 +164,7 @@ holds; otherwise skip silently:
 
 - `ai-workload-profile.json` exists with `summary.ai_source` of `openai` or
   `both`
-- No billing files were found in 1c AND the user mentions OpenAI usage/spend
+- No billing files were found in 1c AND either the user's migration request names direct OpenAI or the user mentions OpenAI usage/spend
 
 The sub-file's Step 0 consent gate is the single consent point for this source
 — do not pre-ask here (loading the file only presents the gate; declining `[B]`
@@ -180,7 +182,7 @@ condition holds; otherwise skip silently:
 
 - the app-code scan detected an OpenRouter transport (`gateway_type: llm_router`
   with an `openrouter.ai` base URL / `OPENROUTER_API_KEY`)
-- No billing files were found in 1c AND the user mentions OpenRouter usage/spend
+- No billing files were found in 1c AND either the user's migration request names OpenRouter or the user mentions OpenRouter usage/spend
 
 The sub-file's Step 0 consent gate is the single consent point for this source
 — do not pre-ask here; declining `[B]` exits cleanly and must not be re-asked
@@ -193,9 +195,12 @@ status); a `failed` status means the prior attempt did NOT complete (see
 `discover-openrouter-api.md` Step 2d's retry rule) — resume from Step 2's
 retry path, not Step 3, since there is no `activity.json` to parse yet.
 **`/activity: ok` does NOT mean route straight to Step 3** — before doing
-that, also check the SAME manifest's `/analytics/query` entry (its resume
+that, also check the SAME manifest's classification entry (its resume
 handling is independent of `/activity`'s, per `discover-openrouter-api.md`
-Step 2d): if `/analytics/query` entry's `status` is `"failed"`, there is a
+Step 2d). The classification entry is the `captures[]` item whose `file` is
+`analytics.json`, or the only `/analytics/query` item when `file` is absent
+on an older manifest. `analytics-volume.json` and `analytics-hourly.json` do
+not satisfy this check. If the classification entry's `status` is `"failed"`, there is a
 pending Analytics-only retry — load `discover-openrouter-api.md` and resume
 from its Step 2 retry path for the Analytics row only (reusing the
 already-good `/activity.json`, per that file's own rule), then proceed to
@@ -218,7 +223,7 @@ treats a `failed`/`skipped` Analytics row — `cost_provenance: "unknown"` for e
 the matching `metadata.capture_warnings` entry Step 3 already appends for that case. This does
 not re-ask Step 0 consent (no new request means nothing new to consent to), and it does not
 proceed through Step 2 at all for this manifest. Only when
-the `/analytics/query` entry is already `"ok"` or `"skipped"` does `/activity:
+the classification entry is already `"ok"` or `"skipped"` does `/activity:
 ok` mean execute straight from Step 3 (parse the existing captures) as
 before. The merge SUMS OpenRouter spend with a genuinely
 separate provider's spend (e.g. a Vertex billing CSV, or OpenAI-direct usage that
@@ -236,8 +241,7 @@ condition holds; otherwise skip silently:
 
 - `ai-workload-profile.json` exists with `summary.ai_source` of `anthropic`
   or `both`
-- No billing files were found in 1c AND the user mentions Anthropic/Claude
-  usage or spend
+- No billing files were found in 1c AND either the user's migration request names direct Anthropic/Claude API use or the user mentions Anthropic/Claude usage or spend
 
 The sub-file's Step 0 consent gate is the single consent point for this
 source — do not pre-ask here (loading the file only presents the gate;
@@ -273,7 +277,7 @@ After all loaded sub-discoveries complete, check what artifacts were produced in
      - If its Step 4 exit gate applied (overall AI confidence **below** 70%) **and** no `ai-workload-profile.json` exists -> **allow completion** (app-code route may produce no AI profile).
      - If Step 4 exit applied with confidence below 70% **but** `ai-workload-profile.json` exists with `metadata.profile_source` = `"iac_vertex"` -> **allow completion** (IaC-inferred profile retained).
      - If execution continued to Steps 5–8 (confidence **≥** 70%) -> **require** `ai-workload-profile.json`.
-   - If `discover-live.md` ran AND capture happened (`$MIGRATION_DIR/live-capture/manifest.json` exists) -> require `gcp-resource-inventory.json` and `gcp-resource-clusters.json`, with `live_metadata` present in the inventory. (If the user declined consent or gcloud was unavailable, the sub-file exited cleanly — no artifact required.)
+   - If `discover-live.md` ran AND capture happened (`$MIGRATION_DIR/live-capture/manifest.json` exists) -> require `gcp-resource-inventory.json` and `gcp-resource-clusters.json`, with `live_metadata` present in the inventory. When `vertex-publisher-tokens.json` has at least one point, also require `ai-workload-profile.json` with `metadata.profile_source` of `"live_monitoring"` or `"merged"` and `metadata.sources_analyzed.live_monitoring` = `true`. (If the user declined consent or gcloud was unavailable, the sub-file exited cleanly — no artifact required.)
    - If full `discover-billing.md` ran OR lightweight billing extraction ran -> require `billing-profile.json`
    - If `discover-openai-api.md` ran AND capture happened (`$MIGRATION_DIR/openai-capture/manifest.json` exists) -> require `openai-usage-profile.json`; when `ai-workload-profile.json` also exists, require `metadata.sources_analyzed.openai_usage_api` = `true` in it. (If the user declined consent or had no Admin key, the sub-file exited cleanly — no artifact required.)
    - If `discover-openrouter-api.md` ran AND capture happened (`$MIGRATION_DIR/openrouter-capture/manifest.json` exists) -> check the manifest's `/activity` entry: `status: "ok"` requires `openrouter-usage-profile.json` (and, when `ai-workload-profile.json` also exists, requires `metadata.sources_analyzed.openrouter_usage_api` = `true` in it); `status: "skipped"` requires NO artifact — the user deliberately abandoned this source with no per-model signal to build a profile from, which is a valid terminal outcome, not a failure; `status: "failed"` means the run did not reach a terminal state for this source and must not have completed Discover at all (the sub-file's own resume rule routes back to its retry path before Discover can finish). (If the user declined consent or had no provisioning key at Step 0/1, the sub-file exited cleanly before ever writing a manifest — no artifact required.)

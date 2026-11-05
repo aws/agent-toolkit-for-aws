@@ -80,7 +80,7 @@ diffs outputs, so the user validates behavior before cutover.
 ## Step 3: `setup_bedrock.sh`
 
 Enables the chosen Bedrock model(s), sets up IAM, and (mantle path) the Bedrock API key. For a
-`runtime_openai_cris` target whose CRIS id is a GPT-6 model (Astra, Sol, Luna, 6.1 Sol), the IAM
+`runtime_openai_cris` target whose CRIS id is a GPT-6 model (Astra, Sol, Luna, 6.1 Sol, 6.1 Terra), the IAM
 policy must grant `bedrock:InvokeModel` on `arn:aws:bedrock:{region}:{account}:project/default`
 in addition to the CRIS inference-profile ARN — both required per the GPT-6 model cards; the
 mantle `bedrock-mantle:*` policy is unaffected.
@@ -98,7 +98,8 @@ Harness (`migration_approach == harness`): `harness.json`, `deploy_harness.sh`,
 `incremental_migration.sh` (only if `harness_config.incremental_migration`). Strands
 (`== strands`): `strands_agents.py`, `deploy_strands.sh`, `bridge_retarget.py` (only if
 `strands_config.bridge_phase`). Both port from gcp unchanged (AgentCore is the target, agnostic of
-source cloud).
+source cloud). Include the GCP Strands runtime's generated `ai-migration/main.py` and
+`ai-migration/pyproject.toml`; register and populate the runtime before deployment, as in that template.
 
 ## Step 3D: eval artifacts (opt-in)
 

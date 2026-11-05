@@ -42,6 +42,8 @@ Read `$MIGRATION_DIR/preferences.json` → `ai_constraints` (if present). If abs
   branch)
 - `"other"` or absent → load `references/design-refs/ai.md` (traditional ML rubric — Vision API, Speech API, Document AI, custom models only; do NOT use for Anthropic SDK users)
 
+**Haiku 5.5 target compatibility:** Before assessing Claude Haiku 5.5 as a candidate or selecting it, load `references/vendored/ai/ai-anthropic-to-bedrock.md` regardless of `ai_source`. Re-evaluate this load when a priority or feature constraint introduces Haiku 5.5 later in model selection. For a non-Anthropic source, apply only its Haiku 5.5 target contract; keep the source provider guide responsible for SDK and request translation. Carry the applicable target requirements into the code migration plan before writing `aws-design-ai.json`.
+
 **Additional load, independent of `ai_source` above:** If any entry in `workloads[]` (from `preferences.json`, falling back to `ai-workload-profile.json`) has `capability` equal to `document_extraction`, `image_analysis`, or `speech_transcription`, ALSO load `references/design-refs/ai.md` — even when a generative `ai_source` already selected a different ref above. A workload's non-generative capability is evaluated independently of the codebase's primary LLM provider; e.g. an `ai_source: "openai"` codebase that also calls `documentai.process_document` needs both `ai-openai-to-bedrock.md` (for its GPT workload) and `ai.md` (for its Document AI workload).
 
 ---
@@ -258,13 +260,15 @@ After selecting models, assess quota risk based on `ai_token_volume` from `prefe
 | `ai_token_volume`         | Selected Model Family              | `quota_risk` | Action                                                                            |
 | ------------------------- | ---------------------------------- | ------------ | --------------------------------------------------------------------------------- |
 | `"high"` or `"very_high"` | Any                                | `"high"`     | Flag: "Request Bedrock quota increase before migration (allow 1–5 business days)" |
-| `"medium"`                | Claude (5× burndown)               | `"medium"`   | Flag: "Monitor TPM usage; quota increase may be needed at peak"                   |
+| `"medium"`                | Claude on bedrock-runtime          | `"medium"`   | Flag: "Monitor TPM usage; quota increase may be needed at peak"                   |
 | `"medium"`                | Astra runtime (10× output burndown) | `"medium"` | Flag: "Verify input TPM + 10 × output TPM against the selected CRIS quota" |
 | `"medium"`                | Verified 1× models (e.g. Nova / Llama) | `"low"` | No action |
 | `"medium"`                | Unverified model/endpoint quota | `"medium"` | Flag: "Verify quota dimensions before estimating throughput" |
 | `"low"`                   | Any                                | `"low"`      | No action                                                                         |
 
 Include `quota_risk` in `aws-design-ai.json` → `ai_architecture` alongside `honest_assessment`.
+
+Also apply **Observed on-demand peak** in `references/vendored/ai/bedrock-quotas.md` before writing that field. A `"low"` monthly tier stays `"low"` only when no usable on-demand peak exceeds that rule. A monthly `"low"` with a weighted peak above 200,000 TPM becomes `"high"`. Batch rows, and any row whose `service_tier` is `unknown`, are excluded. A publisher or usage-API profile supplies that peak when it has one. Profiles without peak fields keep this table. Generate must not keep the earlier monthly decision.
 
 ---
 
@@ -403,12 +407,17 @@ Astra Chat solely because it is proprietary GPT. Record `model_change: false` on
 the exact source model is retained; a Pro-to-Astra upgrade is a model change requiring eval.
 GPT-5.x retains its separately dated API evidence and any selected Chat-to-Responses reshape.
 
-**A Chat Completions source is a supported near-drop-in for GPT-6 and GPT-5.6 — not a mandatory reshape.** All four GPT-6 models and the GPT-5.6 family list Chat Completions as a supported API on both mantle and runtime CRIS (per `openai-on-bedrock.md` § Access Paths); if `integration` evidence shows `chat.completions.create` for one of these models, the design may keep `chat.completions.create`/`choices[0].message` parsing — reshape to `responses.create` is optional, only for a Responses-only feature (runtime prompt caching, reasoning-item round-trips) or a demonstrated constraint. **GPT-5.5 and GPT-5.4 are the exception**: Chat Completions support is unconfirmed on their model cards (Responses on mantle is the only verified surface), so a Chat Completions source on either model still needs a planned reshape, probed against the target account before committing.
+**A Chat Completions source is a supported near-drop-in for GPT-6 and GPT-5.6 — not a mandatory reshape.** All five GPT-6 models and the GPT-5.6 family list Chat Completions as a supported API on both mantle and runtime CRIS (per `openai-on-bedrock.md` § Access Paths); if `integration` evidence shows `chat.completions.create` for one of these models, the design may keep `chat.completions.create`/`choices[0].message` parsing — reshape to `responses.create` is optional, only for a Responses-only feature (runtime explicit prompt caching, reasoning-item round-trips) or a demonstrated constraint. **GPT-5.5 and GPT-5.4 are the exception**: Chat Completions support is unconfirmed on their model cards (Responses on mantle is the only verified surface), so a Chat Completions source on either model still needs a planned reshape, probed against the target account before committing.
+
+**Terra caching depends on the endpoint and mode.** On runtime, implicit caching supports
+Responses, Chat Completions, InvokeModel, and Converse. It does not require a Chat client
+reshape and can be combined with Converse Guardrails. Runtime explicit caching requires
+Responses. On Mantle, both implicit and explicit caching are Responses-only.
 
 **No Converse fallback for GPT-5.5/GPT-5.4 — GPT-5.6 and GPT-6 differ.** GPT-5.5 and GPT-5.4 are
 `bedrock-mantle` only and in-region only — there is no `bedrock-runtime` path and no cross-region
-inference profile for these two models. GPT-5.6 Sol/Terra/Luna and all four GPT-6 models (Astra,
-Sol, Luna, 6.1 Sol) DO have a `bedrock-runtime` CRIS path (`us.`/`global.` prefixed IDs, per
+inference profile for these two models. GPT-5.6 Sol/Terra/Luna and all five GPT-6 models (Astra,
+Sol, Luna, 6.1 Sol, 6.1 Terra) DO have a `bedrock-runtime` CRIS path (`us.`/`global.` prefixed IDs, per
 `openai-on-bedrock.md` § Access Paths) — for these models, a region or feature need (Guardrails,
 Knowledge Bases, invocation logging, or a region outside the mantle matrix) is satisfied by
 **switching endpoint, not model**: record `migration_path: "runtime_openai_cris"` with
@@ -421,10 +430,14 @@ Profiles (Converse-only features that also require Invoke-adjacent plumbing on s
 must verify against Astra's model card per-feature, not assume parity with Sol/Luna/6.1 Sol.
 **When Guardrails is the driving need and the design keeps `runtime_openai_cris` (endpoint
 switch, not model switch), it MUST also record `bedrock_models[].required_client_api` so the
-generated client uses a Guardrails-capable surface — `converse` for Astra; `converse` /
-`chat_completions` / `invoke` (never `responses`) for 6.1 Sol and the other non-Astra GPT-6/5.6
-CRIS models. Do not leave the client on `responses` when Guardrails is required.** `Responses`
+generated client uses a Guardrails-capable surface — `converse` for Astra and 6.1 Terra; `converse` /
+`chat_completions` / `invoke` (never `responses`) for 6.1 Sol and the other GPT-6/5.6 CRIS models except Astra and 6.1 Terra. Do not leave the client on `responses` when Guardrails is required.** `Responses`
 stays the default for a region-only CRIS move with no Guardrails need.
+
+**GPT-6.1 Terra API constraints:** Guardrails and application inference profiles require
+`required_client_api: "converse"`. Converse rejects document blocks and images in tool
+results; a document workload uses Responses `input_file`, so do not claim that the same
+Terra API path also supplies Guardrails. Resolve conflicting requirements before generation.
 
 When the advisor supplied a
 per-unit model contract, retain its exact `invocation_model_id` in that unit's `aws_model_id`
