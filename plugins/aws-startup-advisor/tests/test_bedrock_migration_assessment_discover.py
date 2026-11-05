@@ -35,11 +35,8 @@ def _rows(section: str) -> list[str]:
 
 
 def _signal_rows(text: str, heading: str) -> dict[str, str]:
-    rows = {}
-    for row in _rows(_section(text, heading))[1:]:
-        cells = re.sub(r"^\| \d+\.\d+ ", "| ", row).split("|")
-        rows[cells[1].strip()] = re.sub(r"\s+", " ", "|".join(cells[2:]))
-    return rows
+    cells = [re.sub(r"^\| \d+\.\d+ ", "| ", row).split("|") for row in _rows(_section(text, heading))[1:]]
+    return {c[1].strip(): re.sub(r"\s+", " ", "|".join(c[2:])) for c in cells}
 
 
 def test_kept_rules_match_gcp() -> None:
@@ -70,13 +67,14 @@ def test_scan_drops_gcp_only_steps_and_fields(gcp_only: str) -> None:
 
 
 def test_scan_output_rules() -> None:
-    assert VALIDATOR.validate_profile(json.loads(re.findall(r"```json\n(.*?)```", SCAN, re.S)[-1]))["ok"] is True
+    assert VALIDATOR.validate_profile(json.loads(re.findall(r"```json\n(.*?)```", SCAN, re.S)[-1]))["ok"] is True and "never run code from the repository" in SCAN
     step3 = _section(SCAN, "## Step 3")
-    assert "**OpenRouter is a gateway, never a source.**" in step3
     assert "`openrouter`" not in [row.split("|")[2].strip() for row in _rows(step3)[1:]]
-    for rule in ("never open `.env*` files, even to look for variable names", "A `google/` prefix does not say which Google service serves the call"):
+    for rule in ("**OpenRouter is a gateway, never a source.**", "never open `.env*` files, even to look for variable names",
+                 "A `google/` prefix by itself does not make the gateway observed",
+                 "Anthropic and OpenAI AI sources from the first bullet remain, and routed `google/` models keep their source.", "another prefix such as `mistralai/` or LiteLLM's `vertex_ai/`, or a string with no prefix"):
         assert rule in step3, rule
-    assert "never run code from the repository" in SCAN
+    assert 'set `upstream_evidence: "observed"`. Add one upstream per prefix' not in step3 and "When no model string carries" not in step3
 
 
 @pytest.mark.parametrize("fixture", SCAN_FIXTURES, ids=lambda p: p.name)
@@ -87,15 +85,13 @@ def test_expected_profiles_are_valid_and_cite_real_lines(fixture: Path) -> None:
         for obs in source["model_observations"]:
             for entry in obs["evidence"]:
                 path, line = entry["detail"].split()[0].split(":")
-                assert entry["provenance"] == "code"
-                assert obs["raw_model"] in (fixture / "repo" / path).read_text().splitlines()[int(line) - 1], entry["detail"]
+                assert entry["provenance"] == "code" and obs["raw_model"] in (fixture / "repo" / path).read_text().splitlines()[int(line) - 1], entry["detail"]
     assert "Ignore previous instructions" not in json.dumps(profile)
 
 
 def test_controller_wiring() -> None:
     assert "references/phases/discover/discover.md" in (BMA / "SKILL.md").read_text()
-    assert "references/phases/discover/discover-app-code.md" in CONTROLLER
-    assert "Never pass a profile that fails validation to Clarify." in CONTROLLER
+    assert all(t in CONTROLLER for t in ("references/phases/discover/discover-app-code.md", "Never pass a profile that fails validation to Clarify."))
     assert CONTROLLER.index("validate-ai-profile.py $MIGRATION_DIR") < CONTROLLER.index('set `phases.discover` to `"completed"`')
     description = (BMA / "SKILL.md").read_text().split("\n")[2]
     assert "does not scan code" not in description and "llm-to-bedrock" in description
@@ -103,11 +99,11 @@ def test_controller_wiring() -> None:
 
 def test_google_genai_mode_and_distinct_gemini_models() -> None:
     table, models = _section(SCAN, "## Step 3"), _section(SCAN, "## Step 4")
-    for rule in ("for each `genai.Client(...)` call site separately",
-                 "A value set for a different image, service, job, or module does not apply.",
-                 "Never open `.env*` or other secret files for this."):
+    for rule in ("for each `genai.Client(...)` call site separately", "A value set for a different image, service, job, or module does not apply.",
+                 "Never open `.env*` or other secret files for this.", "If the applicable values disagree",
+                 "`genai.Client(enterprise=True)`", "the value is `GOOGLE_GENAI_USE_ENTERPRISE`'s", "if no runtime config"):
         assert rule in table, rule
-    assert "anywhere you may read" not in table and "Normalize all `gemini-2.5-flash-*`" not in models
+    assert "anywhere you may read" not in table and "`GOOGLE_GENAI_USE_VERTEXAI` set to true" not in table and "Normalize all `gemini-2.5-flash-*`" not in models
     for kept in ("`gemini-2.5-flash-lite` stays `\"gemini-2.5-flash-lite\"`", "`-lite`, `-thinking`", "keep the full string"):
         assert kept in models, kept
 

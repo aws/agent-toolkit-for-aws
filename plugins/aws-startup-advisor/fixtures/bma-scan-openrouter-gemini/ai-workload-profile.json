@@ -45,7 +45,7 @@
             {
               "provenance": "code",
               "confidence": "medium",
-              "detail": "src/drafts.py:5 DRAFT_MODEL default"
+              "detail": "src/drafts.py:5 DRAFT_MODEL default; Gemini API not confirmed: no runtime config runs src/drafts.py"
             }
           ]
         }

@@ -116,22 +116,22 @@ Group every AI call into an **AI source** keyed by `(provider, source_service)`:
 
 | Evidence                                                                                              | `provider`  | `source_service` |
 | ----------------------------------------------------------------------------------------------------- | ----------- | ---------------- |
-| `vertexai`, `google.cloud.aiplatform`, `@google-cloud/vertexai`, `genai.Client(vertexai=True)`, or `genai.Client()` with `GOOGLE_GENAI_USE_VERTEXAI` set to true (see below) | `google`    | `vertex_ai`      |
-| `google.generativeai`, `google-genai` with neither `vertexai=True` nor `GOOGLE_GENAI_USE_VERTEXAI` set to true, or `generativelanguage.googleapis.com` | `google`    | `gemini_api`     |
+| `vertexai`, `google.cloud.aiplatform`, `@google-cloud/vertexai`, `genai.Client(enterprise=True)` or `genai.Client(vertexai=True)`, or `genai.Client()` whose mode resolves to Vertex AI (see below) | `google`    | `vertex_ai`      |
+| `google.generativeai`, `google-genai` whose mode resolves to the Gemini API (see below), or `generativelanguage.googleapis.com` | `google`    | `gemini_api`     |
 | `OpenAI()` / `openai` SDK with the default endpoint or `api.openai.com`                               | `openai`    | `openai_api`     |
 | `AzureOpenAI()`, `azure_endpoint=`, or an endpoint ending in `.openai.azure.com`                      | `openai`    | `azure_openai`   |
 | `Anthropic()` / `anthropic` SDK, or `api.anthropic.com`                                               | `anthropic` | `anthropic_api`  |
 
 **google-genai mode.** Decide the service for each `genai.Client(...)` call site separately. **Do not open `.env*` or other secret files to look for this setting, even with values redacted.** A value that could only be in one of them is treated as unknown (step 3).
 
-1. An explicit `vertexai=True` or `vertexai=False` argument decides it.
-2. Otherwise the SDK reads `GOOGLE_GENAI_USE_VERTEXAI` (`true` or `1` means Vertex AI) from the environment of the process that runs the code. Find the value that applies to *that* code only:
+1. An explicit `enterprise=` or `vertexai=` argument decides it (`enterprise` is the SDK's newer name for `vertexai`; `True` means Vertex AI).
+2. Otherwise the SDK reads `GOOGLE_GENAI_USE_ENTERPRISE`, or `GOOGLE_GENAI_USE_VERTEXAI` where that is unset (`true` or `1`, in any case, means Vertex AI), from the environment of the process that runs the code. Where both are set, the value is `GOOGLE_GENAI_USE_ENTERPRISE`'s. Find the values that apply to *that* code only:
    - a Dockerfile `ENV` applies to the code the image copies in and runs (`COPY` paths, `CMD`, `ENTRYPOINT`);
    - a `docker-compose*.yml`, Kubernetes, or Cloud Run `environment`/`env` entry applies to that service's image or command;
    - a CI workflow `env` applies to the commands of that job or step;
-   - `os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = ...` or `setdefault` in code applies to that module and what it imports.
+   - an `os.environ[...] = ...` or `os.environ.setdefault(...)` for either variable in code applies to that module and what it imports.
    A value set for a different image, service, job, or module does not apply. Never open `.env*` or other secret files for this.
-3. If exactly one value applies and it is true, use `vertex_ai`; if it is false or unset, use `gemini_api`. If no runtime can be matched to the call site, or the applicable value can only come from a file you may not open, use `gemini_api` and say in the evidence `detail` and in the summary to the user that the service could not be confirmed.
+3. If every value that applies is true, use `vertex_ai`. If a runtime config runs the code and every value that applies is false, or none is set, use `gemini_api`. If the applicable values disagree, if no runtime config (Dockerfile, compose, Kubernetes, Cloud Run, or CI entry) runs the call site, or an applicable value can only come from a file you may not open, use `gemini_api` and say in the evidence `detail` and in the summary to the user that the service could not be confirmed.
 
 Call sites that resolve to different services produce separate sources (`google`/`vertex_ai` and `google`/`gemini_api`), each with only its own models.
 
@@ -139,10 +139,10 @@ A provider reached through two services produces two sources. Other LLM SDKs (Co
 
 **OpenRouter is a gateway, never a source.** Record it in `gateways[]` with `product: "openrouter"` and `type: "llm_router"` when code or config sets a `base_url` containing `openrouter.ai`, or when source code or a non-secret config file (for example `docker-compose.yml` or a CI workflow) names `OPENROUTER_API_KEY` or `OR_API_KEY`. Check names only; never read secret values. The Step 0 secret exclusions still apply: never open `.env*` files, even to look for variable names. LiteLLM (`from litellm import completion` or `litellm` in dependencies) is recorded the same way with `product: "litellm"`.
 
-- When OpenRouter model strings carry a provider prefix (`anthropic/claude-3.5-sonnet`, `openai/gpt-4o`, `google/gemini-2.5-flash`), set `upstream_evidence: "observed"`. Add one upstream per prefix, and add each model to an AI source for that provider (`anthropic`/`anthropic_api`, `openai`/`openai_api`).
+- Add each `anthropic/…` model (for example `anthropic/claude-3.5-sonnet`) to an AI source `anthropic`/`anthropic_api` and each `openai/…` model (`openai/gpt-4o`) to `openai`/`openai_api`.
 - A `google/` prefix does not say which Google service serves the call. Decide it only from the request's OpenRouter `provider` routing: `only`, or `order` with `allow_fallbacks: false`, whose Google slugs all belong to one service. `google-vertex` slugs (including `google-vertex/<region>`) mean `google`/`vertex_ai`; `google-ai-studio` slugs mean `google`/`gemini_api`. The prefix, OpenRouter's model listings, `order` with fallbacks allowed, and routing values you cannot read in the repository decide nothing.
-- If any `google/` model on the gateway has no such routing, set that gateway's `upstream_evidence: "unresolved"` and `upstreams: []`, and do not add those models to any source; `google/` models with such routing keep their source. Name the models without routing in the summary to the user as reached through OpenRouter with the Google service not established.
-- When the model strings carry no provider prefix, set `upstream_evidence: "unresolved"` and `upstreams: []`. Do not invent upstreams.
+- Set the gateway's `upstream_evidence: "observed"`, with one upstream for each source the two bullets above produced, only when at least one model string was found and every model string on the gateway has an `anthropic/`, `openai/`, or routed `google/` prefix. A `google/` prefix by itself does not make the gateway observed.
+- Otherwise set `upstream_evidence: "unresolved"` and `upstreams: []`, and do not invent upstreams. Anthropic and OpenAI AI sources from the first bullet remain, and routed `google/` models keep their source. Record no other gateway call in any source: an unrouted `google/` model, another prefix such as `mistralai/` or LiteLLM's `vertex_ai/`, or a string with no prefix. Name those models in the summary to the user as reached through the gateway with the source not established.
 
 ---
 
