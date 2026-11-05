@@ -586,7 +586,7 @@ def main(argv=None):
             snapshot_path,
         ) = _parse_cli_args(sys.argv[1:] if argv is None else argv)
     except CatalogSnapshotError as error:
-        print(str(error))
+        print(str(error), file=sys.stderr)
         return 1
 
     try:

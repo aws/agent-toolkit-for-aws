@@ -233,7 +233,7 @@ def filter_models(models, constraints):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python filter_deployable_models.py <models_json_file> [constraint:value ...]")
+        print("Usage: python filter_deployable_models.py <models_json_file> [constraint:value ...]", file=sys.stderr)
         sys.exit(1)
 
     models_file = sys.argv[1]
