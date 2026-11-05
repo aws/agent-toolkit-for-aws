@@ -739,13 +739,6 @@ def _decision_required(workload, region, catalog, constraints):
     decision_options = _decision_options(
         catalog, workload, constraints["option_paths"], region
     )
-    if len(decision_options) != len(set(constraints["option_paths"])):
-        skipped = sorted(k for k, m in catalog["models"].items() if not is_selectable(m))
-        raise ValueError(
-            "catalog has no candidate for every conflicting model/path option "
-            f"for workload {workload['workload_id']}"
-            + (f" (reference_only entries skipped: {', '.join(skipped)})" if skipped else "")
-        )
     blocks = [
         _finding(
             "model_path_decision_required",
@@ -755,10 +748,35 @@ def _decision_required(workload, region, catalog, constraints):
             "update requirements, and rerun Model Recommend.",
         )
     ]
+    # A real choice needs a candidate on every conflicting side. When a side has none (for
+    # example its only models are reference_only), the result is blocked: options are never
+    # invented to fill the gap.
+    status = "decision_required"
+    if len(decision_options) != len(set(constraints["option_paths"])):
+        skipped = sorted(k for k, m in catalog["models"].items() if not is_selectable(m))
+        if not skipped:
+            # Unsatisfiable requirements with every model selectable: unchanged fail-closed raise.
+            raise ValueError(
+                "catalog has no candidate for every conflicting model/path option "
+                f"for workload {workload['workload_id']}"
+            )
+        status = "blocked"
+        offered = {option["api_path"] for option in decision_options}
+        missing = sorted(set(constraints["option_paths"]) - offered)
+        blocks.append(
+            _finding(
+                "decision_option_unavailable",
+                "[BLOCKS]",
+                f"No selectable catalog model satisfies the {', '.join(missing)} option "
+                f"(reference_only entries skipped: {', '.join(skipped)}).",
+                "Mark a verified model selectable for that path, or update the conflicting "
+                "requirement, then rerun Model Recommend.",
+            )
+        )
     return {
         "workload_id": workload["workload_id"],
         "provider_module": "anthropic",
-        "decision_status": "decision_required",
+        "decision_status": status,
         "source": workload["source"],
         "source_analysis": {
             "detected_version": _source_version(workload["source"]),
@@ -780,8 +798,12 @@ def _decision_required(workload, region, catalog, constraints):
         "migration_deltas": [],
         "evaluation": _evaluation_requirements(workload, feature_status),
         "rollout": {
-            "strategy": "decision_required",
-            "gate": "Resolve the model/path conflict before implementation.",
+            "strategy": status,
+            "gate": (
+                "Resolve the model/path conflict before implementation."
+                if status == "decision_required"
+                else "Resolve the blocking finding (catalog or requirements) and rerun."
+            ),
         },
         "verification": {
             "region": region,

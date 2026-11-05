@@ -29,7 +29,7 @@
           "type": "string"
         },
         "decision_status": {
-          "enum": ["recommended", "decision_required"]
+          "enum": ["recommended", "decision_required", "blocked"]
         },
         "api_path": {
           "oneOf": [

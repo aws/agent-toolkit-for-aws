@@ -965,8 +965,16 @@ def recommend_openai_workload(workload, region, catalog):
     def _unresolved(
         reason_head, reasons, block, path_for_compat, decision_options=None
     ):
-        # Shared decision_required assembly (no target selected).
-        rec = _base(workload, "decision_required")
+        # Shared assembly for results with no target selected. A real choice needs at least
+        # two options (decision_required); with fewer (e.g. a reference_only pinned source, or
+        # every option on one side filtered out) the result is blocked. Never invent options.
+        options = (
+            _decision_options(catalog, workload, region)
+            if decision_options is None
+            else decision_options
+        )
+        status = "decision_required" if len(options) >= 2 else "blocked"
+        rec = _base(workload, status)
         rec.update(
             {
                 "source_analysis": _source_analysis(source, None),
@@ -975,11 +983,7 @@ def recommend_openai_workload(workload, region, catalog):
                 "model_identity": None,
                 "api_path": None,
                 "invocation_model_id": None,
-                "decision_options": (
-                    _decision_options(catalog, workload, region)
-                    if decision_options is None
-                    else decision_options
-                ),
+                "decision_options": options,
                 "alternatives": [],
                 "rationale": [reason_head] + reasons,
                 "blocks": [block],
@@ -990,8 +994,12 @@ def recommend_openai_workload(workload, region, catalog):
                 "migration_deltas": [],
                 "evaluation": _evaluation(detected, requirements),
                 "rollout": {
-                    "strategy": "decision_required",
-                    "gate": "Resolve the open decision before implementation.",
+                    "strategy": status,
+                    "gate": (
+                        "Resolve the open decision before implementation."
+                        if status == "decision_required"
+                        else "Resolve the blocking finding (catalog or requirements) and rerun."
+                    ),
                 },
                 "verification": _verification(region, catalog, None, False, None, selected=False),
             }
@@ -1042,9 +1050,29 @@ def recommend_openai_workload(workload, region, catalog):
     if continuity_required and runtime_required:
         options = _decision_options(catalog, workload, region)
         if len(options) < 2:
-            raise ValueError(
-                f"catalog cannot supply both decision options for workload "
-                f"{workload['workload_id']}"
+            skipped = sorted(k for k, m in catalog["models"].items()
+                             if not anthropic_model_recommendation.is_selectable(m))
+            if not skipped:
+                # Every model selectable and still one side empty: unchanged fail-closed raise.
+                raise ValueError(
+                    f"catalog cannot supply both decision options for workload "
+                    f"{workload['workload_id']}"
+                )
+            # A side lost its only candidates to reference_only: blocked, never padded.
+            return _unresolved(
+                "Required OpenAI API continuity conflicts with a runtime-only Bedrock "
+                "governance requirement, and one side has no selectable model.",
+                [f"reference_only entries skipped: {', '.join(skipped)}."],
+                _finding(
+                    "decision_option_unavailable",
+                    "[BLOCKS]",
+                    "One side of the continuity-versus-governance decision has no selectable "
+                    f"catalog model (reference_only entries skipped: {', '.join(skipped)}).",
+                    "Mark a verified model selectable for that path, or update the conflicting "
+                    "requirement, then rerun Model Recommend.",
+                ),
+                "",
+                decision_options=options,
             )
         return _unresolved(
             "Required OpenAI API continuity conflicts with a runtime-only Bedrock "

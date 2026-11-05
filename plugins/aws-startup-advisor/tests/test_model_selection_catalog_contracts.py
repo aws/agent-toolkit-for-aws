@@ -92,6 +92,54 @@ def test_schema_rejects_mutation(name, mutate):
     assert _findings(catalog) != []
 
 
+# ------------------------------------------------------------------ schema agrees with the consumers
+
+_LOADERS = {"anthropic": "load_catalog", "openai": "load_openai_catalog"}
+
+
+def _model_key(name: str) -> str:
+    return next(iter(_catalog(name)["models"]))
+
+
+def _loader_accepts(tmp_path, name, catalog) -> bool:
+    path = tmp_path / f"{name}.json"
+    path.write_text(json.dumps(catalog))
+    try:
+        getattr(mr, _LOADERS[name])(path)
+    except ValueError:
+        return False
+    return True
+
+
+@pytest.mark.parametrize(("name", "field", "value", "valid"), [
+    pytest.param("anthropic", "context_window", "unknown", False, id="anthropic-unknown-context"),
+    pytest.param("anthropic", "output_token_ceiling", "unknown", False, id="anthropic-unknown-output"),
+    pytest.param("anthropic", "context_window", 0, False, id="anthropic-zero-context"),
+    pytest.param("openai", "generation", None, False, id="openai-missing-generation"),
+    pytest.param("openai", "context_window", "unknown", True, id="openai-unknown-context"),
+    pytest.param("openai", "output_token_ceiling", "unknown", True, id="openai-unknown-output"),
+])
+def test_schema_and_loader_agree_on_provider_rules(tmp_path, name, field, value, valid):
+    catalog = _catalog(name)
+    model = catalog["models"][_model_key(name)]
+    if value is None:
+        model.pop(field)
+    else:
+        model[field] = value
+    assert (_findings(catalog) == []) is valid, "schema verdict"
+    assert _loader_accepts(tmp_path, name, catalog) is valid, "loader verdict"
+
+
+def test_openai_unknown_limits_still_produce_a_recommendation():
+    catalog = copy.deepcopy(mr.load_openai_catalog())
+    for model in catalog["models"].values():
+        if model["paths"].get("mantle_openai_responses"):
+            model["context_window"] = model["output_token_ceiling"] = "unknown"
+    data = _workload("openai", "gpt-6-sol")
+    rec = mr.recommend(data, catalog=mr.load_catalog(), openai_catalog=catalog)["workloads"]["w"]
+    assert rec["decision_status"] == "recommended"
+
+
 # ------------------------------------------------------------------ loaders
 
 @pytest.mark.parametrize(("name", "loader"), [("anthropic", "load_catalog"), ("openai", "load_openai_catalog")])
@@ -188,6 +236,7 @@ def _openai_rec(openai_catalog, source_model, **requirements):
 def test_reference_only_astra_fails_closed_without_substitutes(requirements):
     rec = _openai_rec(_with_reference_only(mr.load_openai_catalog(), "openai_gpt_6_astra"), "gpt-6-astra",
                       **requirements)
+    assert rec["decision_status"] == "blocked"
     assert rec["primary_model"] is None
     assert [b["code"] for b in rec["blocks"]] == ["model_not_selectable"]
     assert rec["decision_options"] == []

@@ -6,6 +6,22 @@
   "type": "object",
   "required": ["schema_version", "provider", "verified_at", "verified_region", "source", "disclaimer", "paths", "models"],
   "additionalProperties": false,
+  "anyOf": [
+    {
+      "$comment": "Anthropic selector compares limits numerically, so every entry needs integer limits.",
+      "properties": {
+        "provider": { "const": "anthropic" },
+        "models": { "additionalProperties": { "$ref": "#/definitions/anthropicModelRules" } }
+      }
+    },
+    {
+      "$comment": "OpenAI loader requires generation; it supports \"unknown\" limits.",
+      "properties": {
+        "provider": { "const": "openai" },
+        "models": { "additionalProperties": { "$ref": "#/definitions/openaiModelRules" } }
+      }
+    }
+  ],
   "properties": {
     "schema_version": { "type": "integer", "const": 2 },
     "provider": { "type": "string", "enum": ["anthropic", "openai"] },
@@ -32,6 +48,15 @@
     }
   },
   "definitions": {
+    "anthropicModelRules": {
+      "properties": {
+        "context_window": { "type": "integer", "minimum": 1 },
+        "output_token_ceiling": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "openaiModelRules": {
+      "required": ["generation"]
+    },
     "stringList": { "type": "array", "items": { "type": "string", "minLength": 1 } },
     "tokenLimit": {
       "anyOf": [

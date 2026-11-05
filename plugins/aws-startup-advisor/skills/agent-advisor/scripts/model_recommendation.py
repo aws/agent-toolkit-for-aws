@@ -71,6 +71,13 @@ def load_catalog(path=DEFAULT_CATALOG):
             if field not in model:
                 raise ValueError(f"{catalog_path}: {model_key} missing {field}")
         _check_selection_status(catalog_path, model_key, model)
+        # The Anthropic selector compares these limits numerically (no "unknown", unlike OpenAI).
+        for limit in ("context_window", "output_token_ceiling"):
+            value = model[limit]
+            if not (isinstance(value, int) and not isinstance(value, bool) and value > 0):
+                raise ValueError(
+                    f"{catalog_path}: {model_key} {limit} must be a positive int, got {value!r}"
+                )
     return catalog
 
 
