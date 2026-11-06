@@ -251,7 +251,7 @@ def scan(plugin: Path) -> List[Ref]:
             files.extend(p for p in root.rglob("*.md") if p.is_file())
     out: List[Ref] = []
     for f in sorted(files):
-        if any(part in ("node_modules", ".git", "fixtures") for part in f.parts):
+        if any(part in ("node_modules", ".git", "fixtures", ".venv") for part in f.parts):
             continue
         out.extend(scan_file(f, plugin))
     return out
