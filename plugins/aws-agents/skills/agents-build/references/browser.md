@@ -68,14 +68,6 @@ Check current IAM action names against the docs — the list evolves.
 
 ## Path A — Strands agent with the Browser tool (recommended for most)
 
-> [!WARNING]
-> Deploy this path as a **Container** Runtime for now. AgentCore CLI v1 CodeZip
-> packaging does not preserve the executable bit on Playwright's
-> `playwright/driver/node`, so a deployed CodeZip Runtime fails with
-> `PermissionError: [Errno 13] Permission denied`. Create the project with
-> `--template agent-python-strands-container`, or add a `Dockerfile` before
-> deploying. This is a CLI packaging limitation; changing the agent code or IAM
-> permissions does not fix it.
 
 ```python
 from strands import Agent
