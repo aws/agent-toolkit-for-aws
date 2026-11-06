@@ -533,7 +533,7 @@ def test_v11_fixtures_are_accepted_and_summarized() -> None:
     vision = BMA_VALIDATOR.validate_profile(V11["v11-framework-vision"])
     assert (vision["ai_framework_detected"], vision["ai_vision_detected"]) == (["framework"], "vision")
     agentic = BMA_VALIDATOR.validate_profile(V11["v11-agentic-tools"])
-    assert (agentic["ai_framework_detected"], agentic["ai_vision_detected"]) == (None, "text-only")
+    assert (agentic["ai_framework_detected"], agentic["ai_vision_detected"]) == (None, None)
 
 
 @pytest.mark.parametrize("fixture_path", PROFILE_FIXTURES, ids=lambda p: p.parent.name)
@@ -577,7 +577,7 @@ def test_agents_suppress_framework_detection() -> None:
 
 
 @pytest.mark.parametrize(("caps", "expected"), [
-    ({"text_generation": True}, "text-only"),
+    ({"text_generation": True}, None),
     ({"vision": True}, "vision"),
     ({"vision": True, "speech_to_text": True}, "audio"),
 ], ids=["text", "vision", "audio-wins"])
