@@ -1,0 +1,149 @@
+{
+  "schema_version": "1.1",
+  "ai_sources": [
+    {
+      "provider": "anthropic",
+      "source_service": "anthropic_api",
+      "model_families": [
+        "claude"
+      ],
+      "model_evidence": "observed",
+      "models": [
+        "claude-haiku-4-5",
+        "claude-sonnet-4-5"
+      ],
+      "model_observations": [
+        {
+          "normalized_model": "claude-haiku-4-5",
+          "raw_model": "claude-haiku-4-5",
+          "model_family": "claude",
+          "evidence": [
+            {
+              "provenance": "code",
+              "confidence": "high",
+              "detail": "ops/agents.py:7 ChatAnthropic"
+            }
+          ]
+        },
+        {
+          "normalized_model": "claude-sonnet-4-5",
+          "raw_model": "claude-sonnet-4-5",
+          "model_family": "claude",
+          "evidence": [
+            {
+              "provenance": "code",
+              "confidence": "high",
+              "detail": "ops/agents.py:6 ChatAnthropic"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "gateways": [],
+  "workloads": [
+    {
+      "workload_id": "anthropic_api.claude-sonnet-4-5.langgraph.create_react_agent.invoke.plain",
+      "provider": "anthropic",
+      "source_service": "anthropic_api",
+      "model": "claude-sonnet-4-5",
+      "sdk_method": "langgraph.create_react_agent.invoke",
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "structured_output": false,
+      "call_sites": [
+        {
+          "file": "ops/agents.py",
+          "line": 11
+        }
+      ]
+    },
+    {
+      "workload_id": "anthropic_api.claude-haiku-4-5.langgraph.create_react_agent.invoke.plain",
+      "provider": "anthropic",
+      "source_service": "anthropic_api",
+      "model": "claude-haiku-4-5",
+      "sdk_method": "langgraph.create_react_agent.invoke",
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "structured_output": false,
+      "call_sites": [
+        {
+          "file": "ops/agents.py",
+          "line": 15
+        }
+      ]
+    }
+  ],
+  "integration": {
+    "pattern": "framework",
+    "languages": [
+      "python"
+    ],
+    "frameworks": [
+      "langchain",
+      "langgraph"
+    ],
+    "capabilities_summary": {
+      "text_generation": true,
+      "streaming": false,
+      "function_calling": true,
+      "vision": false,
+      "embeddings": false,
+      "batch_processing": false,
+      "speech_to_text": false,
+      "text_to_speech": false,
+      "image_generation": false
+    }
+  },
+  "agentic_profile": {
+    "framework": "langgraph",
+    "agents": [
+      {
+        "agent_id": "billing",
+        "file": "ops/agents.py",
+        "line": 6,
+        "model": "claude-sonnet-4-5",
+        "tools": [
+          "issue_refund"
+        ],
+        "memory_type": "none"
+      },
+      {
+        "agent_id": "support",
+        "file": "ops/agents.py",
+        "line": 7,
+        "model": "claude-haiku-4-5",
+        "tools": [
+          "check_status"
+        ],
+        "memory_type": "none"
+      }
+    ],
+    "orchestration_pattern": "unknown",
+    "has_memory": false,
+    "has_human_in_loop": false
+  },
+  "tool_manifest": [
+    {
+      "name": "issue_refund",
+      "file": "ops/tools.py",
+      "line": 6,
+      "transport": "function",
+      "auth_hint": "none",
+      "used_by_agents": [
+        "billing"
+      ]
+    },
+    {
+      "name": "check_status",
+      "file": "ops/tools.py",
+      "line": 12,
+      "transport": "api",
+      "auth_hint": "none",
+      "used_by_agents": [
+        "support"
+      ]
+    }
+  ]
+}
