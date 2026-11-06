@@ -2,6 +2,12 @@
 
 > Loaded by estimate.md when aws-design-ai.json exists.
 
+Before pricing, follow `references/vendored/estimate/cost-export-inputs.md` for
+`estimation-ai.json`. Retain the input snapshot and context for the complete
+selected Bedrock aggregate, including all contributing models and usage.
+Include `export_inputs` when evidence is available; do not infer missing usage
+or upfront values to complete it.
+
 **Execute ALL steps in order. Do not skip or optimize.**
 
 ## Pricing Mode

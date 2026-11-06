@@ -16,6 +16,15 @@ _contributes:
 
 **Execute ALL steps in order. Do not skip or optimize.**
 
+Before pricing, follow `references/vendored/estimate/cost-export-inputs.md` for
+`estimation-infra.json`. Capture the input snapshot, retain the selected rows'
+actual resource/configuration/usage and upfront evidence, and pass the optional
+`export_inputs` object to the assembler with the calculated costs.
+For Apply & reprice, pass the caller's `estimate_scenario_id` to the assembler.
+If a fresh retained row explicitly records `source.scenarioId`, use this supplied
+destination, never the prior active selection. Otherwise leave that optional
+field absent; export supplies it only after verifying the selected snapshots.
+
 ---
 
 ## Step 0: Pricing Mode Selection
