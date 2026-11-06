@@ -20,11 +20,11 @@ Rules
 1. Coverage: every Anthropic or OpenAI model the registry's Capability Constraints table marks
    **Active** must appear in a catalog, either as a model entry (any path's `model_id`) or in
    that catalog's optional top-level `registry_exclusions` object (`{"<model id>": "<reason>"}`),
-   which records an intentional omission. The catalogs have no non-selectable status: the
-   selection engine treats every entry under `models` as a candidate, so a model that should not
-   be selected belongs in `registry_exclusions`, not in `models`. Each exclusion needs a
-   non-empty reason (else an error) and must name a model that is Active in the registry (else
-   a warning).
+   which records an intentional omission. A model entry counts whatever its `selection_status`:
+   `selectable` entries are automatic-selection candidates, while `reference_only` entries are
+   readable but never picked (see scripts/contracts/model-selection-catalog.schema.json). Each
+   exclusion needs a non-empty reason (else an error) and must name a model that is Active in
+   the registry (else a warning).
 2. Freshness: each catalog's `verified_at` must fall inside the registry's staleness window
    and must not be in the future.
 
@@ -154,8 +154,8 @@ def check(plugin: Path, today: dt.date) -> tuple[list[str], list[str]]:
             warnings.append(
                 f"{CATALOG_DIR_REL / f'{provider}-bedrock.json'}: `{model_id}` is Active in "
                 f"{REGISTRY_REL.name} but missing from the catalog; add a complete model entry "
-                f"(every entry under `models` is a selection candidate) or record it under "
-                f"registry_exclusions with a reason")
+                f"(selection_status `selectable`, or `reference_only` to keep it out of automatic "
+                f"selection) or record it under registry_exclusions with a reason")
     return errors, warnings
 
 

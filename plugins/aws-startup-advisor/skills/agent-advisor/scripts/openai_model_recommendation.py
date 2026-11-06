@@ -222,7 +222,7 @@ def _catalog_model_for_path(catalog, path, detected_features=None, requirements=
     keys = candidate_order if candidate_order is not None else list(catalog["models"])
     for model_key in keys:
         model = catalog["models"].get(model_key)
-        if model is None:
+        if model is None or not anthropic_model_recommendation.is_selectable(model):
             continue
         path_config = model["paths"].get(path, {})
         if path_config.get("available") is not True:
@@ -965,8 +965,16 @@ def recommend_openai_workload(workload, region, catalog):
     def _unresolved(
         reason_head, reasons, block, path_for_compat, decision_options=None
     ):
-        # Shared decision_required assembly (no target selected).
-        rec = _base(workload, "decision_required")
+        # Shared assembly for results with no target selected. A real choice needs at least
+        # two options (decision_required); with fewer (e.g. a reference_only pinned source, or
+        # every option on one side filtered out) the result is blocked. Never invent options.
+        options = (
+            _decision_options(catalog, workload, region)
+            if decision_options is None
+            else decision_options
+        )
+        status = "decision_required" if len(options) >= 2 else "blocked"
+        rec = _base(workload, status)
         rec.update(
             {
                 "source_analysis": _source_analysis(source, None),
@@ -975,11 +983,7 @@ def recommend_openai_workload(workload, region, catalog):
                 "model_identity": None,
                 "api_path": None,
                 "invocation_model_id": None,
-                "decision_options": (
-                    _decision_options(catalog, workload, region)
-                    if decision_options is None
-                    else decision_options
-                ),
+                "decision_options": options,
                 "alternatives": [],
                 "rationale": [reason_head] + reasons,
                 "blocks": [block],
@@ -990,13 +994,37 @@ def recommend_openai_workload(workload, region, catalog):
                 "migration_deltas": [],
                 "evaluation": _evaluation(detected, requirements),
                 "rollout": {
-                    "strategy": "decision_required",
-                    "gate": "Resolve the open decision before implementation.",
+                    "strategy": status,
+                    "gate": (
+                        "Resolve the open decision before implementation."
+                        if status == "decision_required"
+                        else "Resolve the blocking finding (catalog or requirements) and rerun."
+                    ),
                 },
                 "verification": _verification(region, catalog, None, False, None, selected=False),
             }
         )
         return rec
+
+    # --- Fail closed: Astra is pinned to itself, so a reference_only Astra has no target ---
+    astra_entry = catalog["models"].get("openai_gpt_6_astra")
+    if (_same_model_runtime_key(source) == "openai_gpt_6_astra" and astra_entry is not None
+            and not anthropic_model_recommendation.is_selectable(astra_entry)):
+        return _unresolved(
+            "GPT-6 Astra sources stay on Astra, but the catalog marks Astra reference_only, "
+            "so it is not an automatic-selection candidate.",
+            ["No other model is substituted for an Astra source."],
+            _finding(
+                "model_not_selectable",
+                "[BLOCKS]",
+                "The source model GPT-6 Astra is marked reference_only in the model-selection "
+                "catalog.",
+                "Mark the Astra entry selectable once it is verified, or choose a target "
+                "model explicitly, then rerun Model Recommend.",
+            ),
+            None,
+            decision_options=[],
+        )
 
     # --- Fail closed: a required feature with unknown status is not ready (G08) ---
     if unknown_required:
@@ -1022,9 +1050,29 @@ def recommend_openai_workload(workload, region, catalog):
     if continuity_required and runtime_required:
         options = _decision_options(catalog, workload, region)
         if len(options) < 2:
-            raise ValueError(
-                f"catalog cannot supply both decision options for workload "
-                f"{workload['workload_id']}"
+            skipped = sorted(k for k, m in catalog["models"].items()
+                             if not anthropic_model_recommendation.is_selectable(m))
+            if not skipped:
+                # Every model selectable and still one side empty: unchanged fail-closed raise.
+                raise ValueError(
+                    f"catalog cannot supply both decision options for workload "
+                    f"{workload['workload_id']}"
+                )
+            # A side lost its only candidates to reference_only: blocked, never padded.
+            return _unresolved(
+                "Required OpenAI API continuity conflicts with a runtime-only Bedrock "
+                "governance requirement, and one side has no selectable model.",
+                [f"reference_only entries skipped: {', '.join(skipped)}."],
+                _finding(
+                    "decision_option_unavailable",
+                    "[BLOCKS]",
+                    "One side of the continuity-versus-governance decision has no selectable "
+                    f"catalog model (reference_only entries skipped: {', '.join(skipped)}).",
+                    "Mark a verified model selectable for that path, or update the conflicting "
+                    "requirement, then rerun Model Recommend.",
+                ),
+                "",
+                decision_options=options,
             )
         return _unresolved(
             "Required OpenAI API continuity conflicts with a runtime-only Bedrock "
@@ -1050,6 +1098,8 @@ def recommend_openai_workload(workload, region, catalog):
         path = "runtime_converse"
         candidate_order = _converse_candidate_order(source, requirements)
         same = _same_model_runtime_key(source)
+        if same and not anthropic_model_recommendation.is_selectable(catalog["models"].get(same, {})):
+            same = None
         if same:
             rationale_head = (
                 "Bedrock governance or multi-model requirements select runtime Converse; "
@@ -1134,7 +1184,12 @@ def recommend_openai_workload(workload, region, catalog):
                 ),
                 path,
             )
-        raise ValueError(f"catalog has no available model for path {path}")
+        skipped = sorted(k for k in candidate_order or catalog["models"]
+                         if not anthropic_model_recommendation.is_selectable(catalog["models"].get(k, {})))
+        raise ValueError(
+            f"catalog has no available model for path {path}"
+            + (f" (reference_only entries skipped: {', '.join(skipped)})" if skipped else "")
+        )
     model_key, model, path_config = catalog_hit
     if path == "mantle_openai_chat":
         if model_key == _same_model_catalog_key(source):
