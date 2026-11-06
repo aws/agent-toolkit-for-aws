@@ -9,13 +9,15 @@ ancestors under `skills/` (so `pytest skills/foo/scripts` covers `skills/foo/scr
 none of the same command's exclusions (`--ignore`, `--ignore-glob`, `--deselect`) is that
 directory or an ancestor. Exclusions apply per command, before coverage is combined across tasks,
 so `pytest skills/foo --ignore skills/foo/scripts` does not cover `skills/foo/scripts` unless
-another task runs it.
+another task runs it. Relative selectors resolve against the working directory set by
+`uv run --directory`, and a pytest command with explicit paths covers only those paths.
 
 Requires Python 3.11+ for `tomllib`; the `test` task pins `uv run --python 3.12`.
 """
 from __future__ import annotations
 
 import fnmatch
+import posixpath
 import shlex
 import tomllib
 from pathlib import PurePosixPath, Path
@@ -45,11 +47,42 @@ def _ci_commands() -> list[str]:
     return commands
 
 
+# pytest options whose value is a separate token (so the value is not mistaken for a path).
+PYTEST_VALUE_FLAGS = {
+    "-k", "-m", "-p", "-c", "-o", "-n", "-r", "-W", "--rootdir", "--maxfail", "--import-mode",
+    "--basetemp", "--confcutdir", "--junitxml", "--durations", "--tb", "--log-level",
+}
+
+
+def _normalize(path: str, base: str | None) -> str:
+    """Resolve a selector against the command's working directory (`uv run --directory`)."""
+    path = path.split("::", 1)[0].rstrip("/")  # `--deselect file::test` -> file
+    if base and not path.startswith("skills/"):
+        path = posixpath.join(base, path)
+    return posixpath.normpath(path)
+
+
+def _pytest_start(tokens: list[str]) -> int | None:
+    """Index after the pytest command itself (not the `pytest` in `--with pytest`)."""
+    hits = [i for i, t in enumerate(tokens) if t == "pytest" and (i == 0 or tokens[i - 1] != "--with")]
+    return hits[-1] + 1 if hits else None
+
+
 def _command_scope(command: str) -> tuple[list[PurePosixPath], list[str]]:
-    """Return (included paths, exclusion patterns) named by one command."""
-    includes: list[PurePosixPath] = []
-    excludes: list[str] = []
+    """Return (paths the command runs, exclusion patterns), both relative to the plugin root."""
     tokens = shlex.split(command)
+    base = None
+    for i, token in enumerate(tokens):
+        flag, eq, value = token.partition("=")
+        if flag == "--directory":
+            base = value if eq else (tokens[i + 1] if i + 1 < len(tokens) else None)
+            break
+    base = base.rstrip("/") if base else None
+
+    start = _pytest_start(tokens)
+    includes: list[str] = []
+    excludes: list[str] = []
+    positional: list[str] = []
     skip_next = False
     for i, token in enumerate(tokens):
         if skip_next:
@@ -63,11 +96,23 @@ def _command_scope(command: str) -> tuple[list[PurePosixPath], list[str]]:
                 excludes.append(tokens[i + 1])
                 skip_next = True
             continue
-        candidate = value if flag.startswith("--") and eq else token
-        if candidate.startswith("skills/"):
-            includes.append(PurePosixPath(candidate.rstrip("/")))
-    # `--deselect path::test` deselects within a file; keep only the path part.
-    return includes, [e.split("::", 1)[0].rstrip("/") for e in excludes]
+        if start is not None and i >= start:
+            if token in PYTEST_VALUE_FLAGS:
+                skip_next = True
+            elif not token.startswith("-"):
+                positional.append(token)
+        elif start is None:
+            candidate = value if flag.startswith("--") and eq else token
+            if candidate.startswith("skills/"):
+                includes.append(candidate)
+
+    if start is not None:
+        # pytest runs its positional paths, or its working directory when none are given.
+        includes = positional or ([base] if base else [])
+    return (
+        [PurePosixPath(_normalize(p, base)) for p in includes],
+        [_normalize(e, base) for e in excludes],
+    )
 
 
 def _excluded(directory: PurePosixPath, patterns: list[str]) -> bool:
@@ -150,3 +195,36 @@ def test_another_task_that_runs_the_excluded_suite_covers_it():
 def test_exclusion_in_one_task_does_not_leak_into_another():
     commands = ["pytest skills/bar --ignore skills/foo", "pytest skills/foo"]
     assert _uncovered([SUITE], commands) == []
+
+
+def test_relative_exclusions_resolve_against_uv_directory():
+    nested = PurePosixPath("skills/foo/scripts/tests")
+    own = PurePosixPath("skills/foo/scripts")
+    for command in (
+        "uv run --directory skills/foo/scripts python -m pytest --ignore tests",
+        "uv run --directory skills/foo/scripts python -m pytest --ignore=tests",
+        "uv run --directory=skills/foo/scripts python -m pytest --ignore ./tests/",
+    ):
+        assert _uncovered([nested], [command]) == [nested], command
+        assert _uncovered([own], [command]) == [], command
+    # Separate-task control: another task that runs the nested suite still covers it.
+    assert _uncovered([nested], [
+        "uv run --directory skills/foo/scripts python -m pytest --ignore tests",
+        "uv run --directory skills/foo/scripts/tests python -m pytest -q",
+    ]) == []
+
+
+def test_explicit_pytest_paths_limit_coverage():
+    unit = PurePosixPath("skills/foo/scripts/tests/unit")
+    other = PurePosixPath("skills/foo/scripts/tests/other")
+    command = "uv run --directory skills/foo/scripts python -m pytest -q tests/unit"
+    assert _uncovered([unit, other], [command]) == [other]
+
+
+def test_option_values_and_with_pytest_are_not_paths():
+    suite = PurePosixPath("skills/foo/scripts")
+    # `-k tests` is an expression, not a path; the whole directory still runs.
+    assert _uncovered([suite], ["uv run --directory skills/foo/scripts python -m pytest -k tests"]) == []
+    # The `pytest` after `--with` is a dependency, not the command.
+    assert _uncovered([suite], ["uv run --no-project --with pytest python -m pytest -q skills/foo/scripts"]) == []
+    assert _uncovered([suite], ["uv run --no-project --with pytest python -m pytest -q skills/bar"]) == [suite]
