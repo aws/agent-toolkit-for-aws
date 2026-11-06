@@ -73,10 +73,23 @@
       ],
       "model_evidence": "observed",
       "models": [
+        "ft:gpt-4o-mini-2024-07-18:acme:triage:a1b2",
         "gpt-4.1",
         "gpt-4o"
       ],
       "model_observations": [
+        {
+          "normalized_model": "ft:gpt-4o-mini-2024-07-18:acme:triage:a1b2",
+          "raw_model": "ft:gpt-4o-mini-2024-07-18:acme:triage:a1b2",
+          "model_family": "gpt",
+          "evidence": [
+            {
+              "provenance": "code",
+              "confidence": "high",
+              "detail": "app/assistant.py:32 client.chat.completions.create"
+            }
+          ]
+        },
         {
           "normalized_model": "gpt-4.1",
           "raw_model": "gpt-4.1",
@@ -155,6 +168,22 @@
         {
           "file": "app/assistant.py",
           "line": 24
+        }
+      ]
+    },
+    {
+      "workload_id": "openai_api.ft_3agpt-4o-mini-2024-07-18_3aacme_3atriage_3aa1b2.openai.chat.completions.create.plain",
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model": "ft:gpt-4o-mini-2024-07-18:acme:triage:a1b2",
+      "sdk_method": "openai.chat.completions.create",
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "structured_output": false,
+      "call_sites": [
+        {
+          "file": "app/assistant.py",
+          "line": 32
         }
       ]
     },

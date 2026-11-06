@@ -36,16 +36,18 @@ def _line(fixture: Path, file: str, line: int) -> str:
 
 def test_rules_are_first_match_lists_tied_to_real_sdk_behavior() -> None:
     sources = _section("## Step 3")
-    for rule in ("in Python so does `1` (the JavaScript SDK reads `1` as false)", "this class does not read `GOOGLE_GENAI_USE_ENTERPRISE`",
+    for rule in ("in Python so does `1` (the JavaScript SDK reads `1` as false)", "so that client reads its own environment as in google-genai step 2",
+                 "Before Python `google-genai` 1.74.0 or JavaScript `@google/genai` 1.51.0",
                  "`load_dotenv()` (python-dotenv)", "the class rejects credentials for the Gemini API", "for `ChatOpenAI`, `OPENAI_API_BASE` first",
                  "a `set_default_openai_client(...)` client's `base_url=` counts as the argument"):
         assert rule in sources, rule
     assert "`true` or `1`, in any case, means Vertex AI" not in sources
     workloads = _section("## Step 4.5")
-    for rule in ("A method that is not in it gets no workload", "use the lowest", "reaches through `handoffs=` or `.as_tool(…)`", "`<source_service>.<model>.<sdk_method>.<structured or plain>`"):
+    for rule in ("A method that is not in it gets no workload", "use the lowest", "each `:` in the model written `_3a`", "reaches through `handoffs=` or `.as_tool(…)`", "`<source_service>.<model>.<sdk_method>.<structured or plain>`"):
         assert rule in workloads, rule
     agents = _section("## Step 4.7")
     assert "Record an agent only when its model is an observed model" in agents and "Do not open MCP config files" in agents
+    assert "leading and trailing `_`, `.`, and `-` removed" in agents and "Otherwise (framework calls, alone or with gateway calls): `framework`" in SCAN
     assert "finding no image or audio input does not prove the app sends only text" in CLARIFY
 
 
@@ -56,7 +58,8 @@ def test_scan_fixtures_follow_the_1_1_rules(fixture: Path) -> None:
     seen = set()
     for w in profile["workloads"]:
         key = (w["provider"], w["source_service"], w["model"], w["sdk_method"], w["structured_output"])
-        assert key not in seen and w["workload_id"] == f"{w['source_service']}.{w['model']}.{w['sdk_method']}.{'structured' if w['structured_output'] else 'plain'}".lower()
+        model = w["model"].replace(":", "_3a").replace("/", "_2f")
+        assert key not in seen and w["workload_id"] == f"{w['source_service']}.{model}.{w['sdk_method']}.{'structured' if w['structured_output'] else 'plain'}".lower()
         seen.add(key)
         assert (w["capability"] == "structured_output") == w["structured_output"]
         sites = [(s["file"], s["line"]) for s in w["call_sites"]]
@@ -75,6 +78,8 @@ def test_scan_fixtures_follow_the_1_1_rules(fixture: Path) -> None:
     ("bma-scan-openrouter-google-pinned", ["llm_router"], None),
     ("bma-scan-agents-langgraph", None, None),
     ("bma-scan-agents-openai", None, None),
+    ("bma-scan-framework-gateway", ["framework", "llm_router"], None),
+    ("bma-scan-agents-independent", None, None),
 ])
 def test_clarify_extracts_only_what_the_scan_shows(fixture: str, framework, vision) -> None:
     summary = VALIDATOR.validate_profile(_profile(PLUGIN_ROOT / "fixtures" / fixture))
@@ -88,6 +93,7 @@ def test_mixed_fixture_keeps_each_workload_apart() -> None:
     assert ("gpt-4o", "openai.chat.completions.create", "text_generation", "medium") in got
     assert ("text-embedding-004", "genai.models.embed_content", "embedding", "high") in got
     assert not any("assistants" in w["sdk_method"] for w in profile["workloads"])
+    assert "ft:gpt-4o-mini-2024-07-18:acme:triage:a1b2" in {w["model"] for w in profile["workloads"]}
 
 
 def test_agents_only_with_observed_models_and_no_secret_copies() -> None:
@@ -96,5 +102,7 @@ def test_agents_only_with_observed_models_and_no_secret_copies() -> None:
     assert "gpt-4o-mini" not in json.dumps(langgraph)
     openai_agents = _profile(PLUGIN_ROOT / "fixtures" / "bma-scan-agents-openai")["agentic_profile"]
     assert (openai_agents["orchestration_pattern"], [a["agent_id"] for a in openai_agents["agents"]]) == ("hierarchical", ["billing", "triage"])
+    independent = _profile(PLUGIN_ROOT / "fixtures" / "bma-scan-agents-independent")["agentic_profile"]
+    assert (independent["orchestration_pattern"], [a["agent_id"] for a in independent["agents"]]) == ("unknown", ["billing", "support"])
     for fixture in FIXTURES:
         assert not re.search(r"sk-[A-Za-z0-9]|eval-canary", json.dumps(_profile(fixture)))

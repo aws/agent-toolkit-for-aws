@@ -26,3 +26,8 @@ def draft(prompt: str) -> str:
 
 def setup() -> str:
     return client.beta.assistants.create(model="gpt-4o", name="helper").id
+
+
+def route(ticket: str) -> str:
+    resp = client.chat.completions.create(model="ft:gpt-4o-mini-2024-07-18:acme:triage:a1b2", messages=[{"role": "user", "content": ticket}])
+    return resp.choices[0].message.content

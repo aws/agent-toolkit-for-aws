@@ -126,7 +126,7 @@ Group every AI call into an **AI source** keyed by `(provider, source_service)`:
 **google-genai mode.** Decide the service for each `genai.Client(...)` call site separately. **Do not open `.env*` or other secret files to look for this setting, even with values redacted.** "Not confirmed" below means: use `gemini_api` and say in the evidence `detail` and in the summary to the user that the service could not be confirmed.
 
 1. **Constructor arguments.** If the call passes both `enterprise=` and `vertexai=` with different values, or passes `enterprise=False` or `vertexai=False` together with `project=` or `location=`, the constructor raises: record it as not confirmed. Otherwise an explicit `enterprise=` or `vertexai=` argument decides it (`enterprise` is the SDK's newer name for `vertexai`; `True` means Vertex AI), and steps 2 and 3 do not apply.
-2. **Bound values.** Otherwise the SDK reads `GOOGLE_GENAI_USE_ENTERPRISE`, or `GOOGLE_GENAI_USE_VERTEXAI` where that is unset, from the environment of the process that runs the code. `true` in any case means Vertex AI, and in Python so does `1` (the JavaScript SDK reads `1` as false); where one place sets both, `GOOGLE_GENAI_USE_ENTERPRISE`'s value counts. A value is bound to the call site only when it reaches that code:
+2. **Bound values.** Otherwise the SDK reads `GOOGLE_GENAI_USE_ENTERPRISE`, or `GOOGLE_GENAI_USE_VERTEXAI` where that is unset, from the environment of the process that runs the code. Before Python `google-genai` 1.74.0 or JavaScript `@google/genai` 1.51.0 (pinned in a manifest or lock file), the SDK has no `enterprise` option and reads only `GOOGLE_GENAI_USE_VERTEXAI`. `true` in any case means Vertex AI, and in Python so does `1` (the JavaScript SDK reads `1` as false); where one place sets both, `GOOGLE_GENAI_USE_ENTERPRISE`'s value counts. A value is bound to the call site only when it reaches that code:
    - a Dockerfile `ENV` binds the code the image copies in and runs (`COPY` paths, `CMD`, `ENTRYPOINT`);
    - a `docker-compose*.yml`, Kubernetes, or Cloud Run `environment`/`env` entry binds that service's image or command;
    - a CI workflow `env` binds the commands of that job or step;
@@ -143,7 +143,7 @@ Group every AI call into an **AI source** keyed by `(provider, source_service)`:
 
 **Endpoints.** The endpoint of an `OpenAI()` or `Anthropic()` client, or of a framework class built on one, is its `base_url=` argument (on `ChatOpenAI` also `openai_api_base=`, on `ChatAnthropic` also `anthropic_api_url=`). Without that argument it is the bound value, as in google-genai step 2, of `OPENAI_BASE_URL` (for `ChatOpenAI`, `OPENAI_API_BASE` first) or `ANTHROPIC_BASE_URL` (for `ChatAnthropic`, `ANTHROPIC_API_URL` first). Use the first line that matches:
 
-1. There is no argument, and a bound value can only come from a file you may not open, or the bound values disagree: the provider's own source, and say in the evidence `detail` and in the summary that the endpoint could not be confirmed.
+1. The argument's value cannot be read in the same file (it is neither a literal nor a name assigned one there), or there is no argument and a bound value can only come from a file you may not open, or the bound values disagree: the provider's own source, and say in the evidence `detail` and in the summary that the endpoint could not be confirmed.
 2. The endpoint contains `openrouter.ai`: the OpenRouter rules below apply.
 3. The endpoint is `*.openai.azure.com`: `openai`/`azure_openai`.
 4. The endpoint is any other host than `api.openai.com` or `api.anthropic.com`: record no source for these calls, and name them in the summary as sent to an unrecognized endpoint.
@@ -166,12 +166,15 @@ Group every AI call into an **AI source** keyed by `(provider, source_service)`:
 **`ChatGoogleGenerativeAI` service.** Before version 4.0 of `langchain-google-genai` (pinned in a manifest or lock file) it is always `gemini_api`. From 4.0, or when unpinned, use the first line that matches:
 
 1. A `vertexai=` argument decides it.
-2. A `GOOGLE_GENAI_USE_VERTEXAI` value is bound, as in google-genai step 2 (this class does not read `GOOGLE_GENAI_USE_ENTERPRISE`). `true`, `1`, or `yes` in any case is Vertex AI; `false`, `0`, or `no` is the Gemini API; any other value counts as unset. If a bound value can only come from a file you may not open, or bound values disagree: `gemini_api`, not confirmed. If every bound value is Vertex AI: `vertex_ai`. If every bound value is the Gemini API: `gemini_api`.
+2. A `GOOGLE_GENAI_USE_VERTEXAI` value is bound, as in google-genai step 2 (the class itself does not read `GOOGLE_GENAI_USE_ENTERPRISE`; its client does, below). `true`, `1`, or `yes` in any case is Vertex AI; `false`, `0`, or `no` is the Gemini API; any other value counts as unset. If a bound value can only come from a file you may not open, or bound values disagree: `gemini_api`, not confirmed. If every bound value is Vertex AI: `vertex_ai`. If every bound value is the Gemini API: `gemini_api`.
 3. The call passes `credentials=` or `project=`: `vertex_ai`.
 4. A runtime config runs the call site: `gemini_api`.
 5. Otherwise: `gemini_api`, not confirmed.
 
-Where this list gives `gemini_api` for a call that passes `credentials=`, record it as `gemini_api`, not confirmed: the class rejects credentials for the Gemini API.
+Where lines 1 to 5 give `gemini_api` without "not confirmed":
+
+- If the call passes `credentials=`: `gemini_api`, not confirmed, because the class rejects credentials for the Gemini API.
+- Otherwise the class creates its google-genai client without `vertexai=`, so that client reads its own environment as in google-genai step 2, including the version note there (early `langchain-google-genai` 4.x releases accept `google-genai` from 1.53.0, so a pinned older `google-genai` still ignores `GOOGLE_GENAI_USE_ENTERPRISE`). If such a value can only come from a file you may not open: `gemini_api`, not confirmed. If the value that google-genai reads is bound and true: `vertex_ai`. Otherwise: the list's `gemini_api`.
 
 Call sites that resolve to different services produce separate sources (`google`/`vertex_ai` and `google`/`gemini_api`), each with only its own models.
 
@@ -214,7 +217,7 @@ For each source, extract the model identifiers passed to constructors or API cal
 
 **Normalization.** Lowercase, strip an OpenRouter `provider/` prefix, a LangChain `provider:` prefix, or an Agents SDK `openai/` prefix, and apply the Gemini rules above. When unsure whether a suffix is a version or a different model, keep the full string. Never add a date, version, or suffix that the string does not contain, and never write `unknown` or `both`. Keep the verbatim string as `raw_model`.
 
-**Model family.** `gpt-*` → `gpt`; `o1*`, `o3*`, `o4*` → `o_series`; `claude-*` → `claude`; `gemini-*` → `gemini`; `text-embedding-*` → `embedding`; otherwise the leading word of the model string.
+**Model family.** A fine-tuned OpenAI model (`ft:<base>:…`) has the family of its base model. `gpt-*` → `gpt`; `o1*`, `o3*`, `o4*` → `o_series`; `claude-*` → `claude`; `gemini-*` → `gemini`; `text-embedding-*` → `embedding`; otherwise the leading word of the model string.
 
 **Confidence for each observation:**
 
@@ -261,7 +264,7 @@ Every other row: `structured_output` is `true` only for a `structured_output` ro
 
 A `Runner` call also sends requests with the model of every agent the starting agent reaches through `handoffs=` or `.as_tool(…)`: write a workload for each of those models too, with the same call site.
 
-**`workload_id`** is `<source_service>.<model>.<sdk_method>.<structured or plain>`, lowercased, for example `openai_api.gpt-4o.openai.chat.completions.create.plain`. **`call_sites`** lists every call's repo-relative file and line, in file and line order.
+**`workload_id`** is `<source_service>.<model>.<sdk_method>.<structured or plain>`, lowercased, with each `:` in the model written `_3a` and each `/` written `_2f`. For example `openai_api.gpt-4o.openai.chat.completions.create.plain`, or for `ft:gpt-4o-mini-2024-07-18:acme:triage:a1b2` `openai_api.ft_3agpt-4o-mini-2024-07-18_3aacme_3atriage_3aa1b2.openai.chat.completions.create.plain`. Model names never contain `_`, so distinct models keep distinct IDs; `model` itself keeps the original string. **`call_sites`** lists every call's repo-relative file and line, in file and line order.
 
 ---
 
@@ -269,7 +272,11 @@ A `Runner` call also sends requests with the model of every agent the starting a
 
 Write one `integration` object:
 
-- **`pattern`**: sort every AI call into one kind: a provider SDK client calling the provider, a provider SDK client calling a gateway, a framework model class or agent, or a raw HTTP request to a provider host. All calls of the first two kinds together, with only one of them present: `direct_sdk`. All framework calls: `framework`. All raw HTTP: `rest_api`. Calls of more than one kind, including direct and gateway calls together: `mixed`.
+- **`pattern`**: sort every AI call into one kind: a provider SDK client calling the provider, a provider SDK client calling a gateway, a framework model class or agent, or a raw HTTP request to a provider host. Use the first line that matches:
+  1. Direct provider calls (an SDK client calling the provider, or raw HTTP) together with any other kind: `mixed`.
+  2. Only SDK calls to the provider, or only SDK calls to a gateway: `direct_sdk`.
+  3. Only raw HTTP: `rest_api`.
+  4. Otherwise (framework calls, alone or with gateway calls): `framework`.
 - **`languages`**: the languages of the files that make AI calls (`python`, `javascript`, `typescript`, `go`, `java`).
 - **`frameworks`**: every orchestration or agent framework imported in active code (not only in tests or examples): `langchain` (any `langchain` or `langchain_*` package), `langgraph`, `llama_index`, `semantic_kernel`, `crewai`, `autogen`, `openai_agents`, `strands`, `pydantic_ai`, `agno`, in this order. Use `[]` when none is imported.
 - **`capabilities_summary`**: each value is `true` only when an AI call in active code shows it, whether or not that call has a workload. Otherwise `false`.
@@ -305,7 +312,7 @@ When agents use more than one framework, set `framework` to the one with the mos
 
 **Each agent:**
 
-- **`agent_id`**: the agent's `name=`, else its variable, function, or class name, lowercased with every other character than `a-z`, `0-9`, `_`, `.`, and `-` turned into `-` (`ResearchAgent` -> `"researchagent"`, `"Research Agent"` -> `"research-agent"`). Add `-2`, `-3`, … to repeated ids.
+- **`agent_id`**: the agent's `name=`, else its variable, function, or class name, lowercased, with every character other than `a-z`, `0-9`, `_`, `.`, and `-` turned into `-`, then leading and trailing `_`, `.`, and `-` removed (`ResearchAgent` -> `"researchagent"`, `"Research Agent"` -> `"research-agent"`, `_billing` -> `"billing"`). If nothing is left, use `agent`. When two agents end up with the same id, give the later one, in file and line order, the smallest `-2`, `-3`, … suffix that is not already an id. Use the final ids in every `used_by_agents`.
 - **`file`** and **`line`**: the line of the call or class that defines the agent.
 - **`model`**: its normalized observed model.
 - **`tools`**: the names of the tools passed to it, and of each MCP server it connects to (`mcp_servers=` or an MCP client), as in `tool_manifest`, or `[]`.
