@@ -1,0 +1,603 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aws-mcp:skill:aws-well-architected-review:output-schema:v1",
+  "title": "aws-well-architected-review structured output",
+  "description": "Optional machine-readable companion to the aws-well-architected-review markdown report, written as aws-well-architected-review.json only when the user asks for JSON or structured output. The reviewing agent writes it from the self-checked BP ledger (the progress file and the per-shard ledger files) and the report, never invented; no validator ships with the skill, so a document is agent-checked against this schema, not machine-validated. It carries the same CONFIDENTIAL classification as the report. This schema is self-contained: it has no remote references and no runtime fetches.",
+  "x-attribution": "Adapted from wa-review-v1.schema.json in aws-samples/sample-well-architected-skills-and-steering (pull request 119, commit 6e0c028), copyright Amazon.com, Inc. or its affiliates, licensed under MIT-0 (SPDX-License-Identifier: MIT-0). Structured-output design contributed by ajoshi01ai. Changes for this skill: numeric pillar scores removed in favor of per-pillar status counts; the five-value status vocabulary, per-BP read-proof ledger fields, corpus provenance, coverage audit, and remediation plan of this skill added.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "classification",
+    "workload",
+    "date",
+    "review_mode",
+    "skill_version",
+    "run_id",
+    "corpus",
+    "pillars",
+    "coverage_audit",
+    "ledger",
+    "findings",
+    "remediation_plan"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1\\.[0-9]+\\.[0-9]+$",
+      "description": "Version of this schema the document conforms to. Any 1.x.y validates; a backward-compatible change bumps the minor or patch. Consumers reject on the major version only."
+    },
+    "classification": {
+      "const": "CONFIDENTIAL",
+      "description": "Same classification as the markdown report. The document holds file paths, resource names, and unremediated gaps; handle it per references/security-considerations.md."
+    },
+    "workload": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Workload name exactly as it appears in the report title."
+    },
+    "date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+      "description": "Review date, ISO 8601 (YYYY-MM-DD)."
+    },
+    "review_mode": {
+      "type": "string",
+      "enum": ["full", "quick", "pillar-scoped"],
+      "description": "Mode actually run. Only full and pillar-scoped reviews read BP pages; quick mode judges at question level and carries an empty ledger."
+    },
+    "skill_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The version value from the SKILL.md frontmatter that produced this document, as a string (for example \"3\")."
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The run identifier recorded in the run's progress file (corpus/progress.md) when the shards are planned. Distinguishes two reviews of the same workload on the same date."
+    },
+    "business_criticality": {
+      "type": "string",
+      "enum": ["critical", "high", "standard", "low"],
+      "description": "Business criticality declared or established in Step 1."
+    },
+    "lens": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Names of the Well-Architected Lenses applied on top of the core framework. Omit or leave empty for a General review."
+    },
+    "corpus": { "$ref": "#/$defs/corpus" },
+    "pillars": {
+      "type": "array",
+      "minItems": 1,
+      "description": "One entry per in-scope pillar with its status counts (replaces numeric pillar scores).",
+      "items": { "$ref": "#/$defs/pillar" }
+    },
+    "coverage_audit": { "$ref": "#/$defs/coverageAudit" },
+    "questions": {
+      "type": "array",
+      "description": "Optional per-question assessment table from the report, one entry per assessed question.",
+      "items": { "$ref": "#/$defs/question" }
+    },
+    "ledger": {
+      "type": "array",
+      "description": "One entry per in-scope BP that has a self-checked ledger row, taken from the progress file and the per-shard ledger files. Each entry is compact: status, risk, short evidence and the ledger file that holds the verbatim quotes and read proof. Empty for quick mode and for a user-accepted degraded run. Never contains a row that is not in the ledger.",
+      "items": { "$ref": "#/$defs/ledgerEntry" }
+    },
+    "findings": {
+      "type": "array",
+      "description": "Risk-classified findings (Critical, High, Medium, Low) as reported, each citing the ledger BP IDs it expands.",
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "remediation_plan": { "$ref": "#/$defs/remediationPlan" }
+  },
+  "$defs": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "Implemented",
+        "Partially Implemented",
+        "Not Implemented",
+        "Not Applicable",
+        "Cannot Determine"
+      ],
+      "description": "The skill's five-value status vocabulary, spelled exactly as in references/evaluation-procedure.md and the report template."
+    },
+    "riskLevel": {
+      "type": "string",
+      "enum": ["Critical", "High", "Medium", "Low"]
+    },
+    "effort": {
+      "type": "string",
+      "enum": ["Low", "Medium", "High"]
+    },
+    "provenance": {
+      "type": "string",
+      "enum": [
+        "Verified live",
+        "Observed in code/IaC",
+        "User stated",
+        "Not observed within declared scope",
+        "Cannot determine"
+      ],
+      "description": "The skill's five evidence-provenance tags."
+    },
+    "bpId": {
+      "type": "string",
+      "pattern": "^[A-Za-z]{2,5}[0-9]{2}-[Bb][Pp][0-9]{2}$",
+      "description": "Canonical framework best-practice ID as the skill writes it, for example SEC03-BP02. Copied verbatim from the corpus manifest; never invented."
+    },
+    "lensBpId": {
+      "type": "string",
+      "pattern": "^[A-Za-z]{2,}[0-9]{2}-[Bb][Pp][0-9]{2}$",
+      "description": "Best-practice ID as published by a lens, which may use a longer prefix than the framework IDs."
+    },
+    "questionId": {
+      "type": "string",
+      "pattern": "^[A-Za-z]{2,5}[0-9]{2}$",
+      "description": "Canonical question ID derived from the BP prefix, for example SEC03."
+    },
+    "statusCounts": {
+      "type": "object",
+      "required": [
+        "Implemented",
+        "Partially Implemented",
+        "Not Implemented",
+        "Not Applicable",
+        "Cannot Determine"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "Implemented": { "type": "integer", "minimum": 0 },
+        "Partially Implemented": { "type": "integer", "minimum": 0 },
+        "Not Implemented": { "type": "integer", "minimum": 0 },
+        "Not Applicable": { "type": "integer", "minimum": 0 },
+        "Cannot Determine": { "type": "integer", "minimum": 0 }
+      },
+      "description": "Count of BPs per status (questions per status in quick mode, where no BP pages are read). Keys are the exact status strings."
+    },
+    "corpus": {
+      "type": "object",
+      "required": [
+        "retrieval_method",
+        "source",
+        "retrieved_at",
+        "pillar_total",
+        "question_total",
+        "bp_total"
+      ],
+      "additionalProperties": false,
+      "description": "Provenance copied from corpus/manifest.json.",
+      "properties": {
+        "retrieval_method": {
+          "type": "string",
+          "enum": [
+            "mcp_toc_index",
+            "https_toc_index",
+            "mcp_fallback_traversal",
+            "https_fallback_traversal",
+            "internal_knowledge_disclosed"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "pattern": "^(https://docs\\.aws\\.amazon\\.com/.*)?$",
+          "description": "Index URL recorded in the manifest (the toc-contents.json URL on the normal path, the appendix or landing-page URL on the fallback path). Empty only for internal_knowledge_disclosed."
+        },
+        "retrieved_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$",
+          "description": "UTC retrieval time of the index, ISO 8601."
+        },
+        "pillar_total": { "type": "integer", "minimum": 1 },
+        "question_total": { "type": "integer", "minimum": 1 },
+        "bp_total": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "pillar": {
+      "type": "object",
+      "required": [
+        "pillar_id",
+        "pillar_name",
+        "questions_assessed",
+        "bps_in_scope",
+        "status_counts"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "pillar_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "pillar_id from the manifest (for example operational-excellence). Discovered live, so not an enum."
+        },
+        "pillar_name": { "type": "string", "minLength": 1 },
+        "questions_assessed": { "type": "integer", "minimum": 0 },
+        "bps_in_scope": { "type": "integer", "minimum": 0 },
+        "status_counts": { "$ref": "#/$defs/statusCounts" },
+        "key_strength": { "type": "string" },
+        "key_gap": { "type": "string" }
+      }
+    },
+    "coverageAudit": {
+      "type": "object",
+      "required": [
+        "bps_in_scope",
+        "bp_pages_read",
+        "unreadable_pages",
+        "unreadable_cap",
+        "user_accepted_degraded_run",
+        "spot_check"
+      ],
+      "additionalProperties": false,
+      "description": "Machine-readable form of the report's Coverage Audit. Counts are taken from the run's progress file, the same source as the report.",
+      "properties": {
+        "bps_in_scope": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "N as printed in the BP pages read line of the Coverage Audit: the manifest BP total for full and quick, the requested pillars' BP count for pillar-scoped."
+        },
+        "bp_pages_read": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Valid ledger rows that are not page_unreadable. Zero for quick mode and degraded runs."
+        },
+        "unreadable_pages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["bp_id", "url", "error_code", "tool_error"],
+            "additionalProperties": false,
+            "properties": {
+              "bp_id": { "$ref": "#/$defs/bpId" },
+              "url": { "type": "string" },
+              "error_code": { "$ref": "#/$defs/errorCode" },
+              "tool_error": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "unreadable_cap": { "type": "integer", "minimum": 0 },
+        "user_accepted_degraded_run": { "type": "boolean" },
+        "fetch_tool_counts": {
+          "type": "object",
+          "required": ["mcp", "web_fetch"],
+          "additionalProperties": false,
+          "description": "Deprecated: kept only so that earlier 1.x documents still validate. This skill version never writes it; retrieval_method_counts is the single source for these counts.",
+          "properties": {
+            "mcp": { "type": "integer", "minimum": 0 },
+            "web_fetch": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "retrieval_method_counts": {
+          "type": "object",
+          "required": ["mcp_read", "web_fetch"],
+          "additionalProperties": false,
+          "description": "Read rows per retrieval path: mcp_read (aws___read_documentation), web_fetch (HTTPS web-fetch tool, only after a real aws___read_documentation error for that page, or for every page when the session had no such tool).",
+          "properties": {
+            "mcp_read": { "type": "integer", "minimum": 0 },
+            "web_fetch": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "gate": {
+          "type": "object",
+          "required": ["invalid", "duplicate_tail_quotes"],
+          "additionalProperties": false,
+          "description": "Deprecated: kept only so that earlier 1.x documents still validate. This skill version never writes it, because nothing in its procedure records these counts.",
+          "properties": {
+            "invalid": { "type": "integer", "const": 0, "description": "A document is only written after every serialized row passed its self-check." },
+            "duplicate_tail_quotes": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "spot_check": {
+          "type": ["object", "null"],
+          "description": "The fixed-size spot-check: pages re-read by the agent to confirm the rows' quotes. Null for quick mode and degraded runs, which have no spot-check.",
+          "required": ["sampled", "passed", "unreadable_refetched", "shards_redone"],
+          "additionalProperties": false,
+          "properties": {
+            "sampled": { "type": "integer", "minimum": 0 },
+            "passed": { "type": "integer", "minimum": 0 },
+            "unreadable_refetched": { "type": "integer", "minimum": 0 },
+            "shards_redone": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "status_distribution": { "$ref": "#/$defs/statusCounts" },
+        "mode_note": {
+          "type": "string",
+          "description": "Required wording for quick mode, a degraded run, or a partial run (complete false), copied from the report's BP pages read or Review status line."
+        },
+        "complete": {
+          "type": "boolean",
+          "description": "False when the run ended before every in-scope shard was self-checked and spot-checked (a partial report). Absent means true."
+        },
+        "pending_bp_ids": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/bpId" },
+          "description": "In-scope BPs with no accepted ledger row yet (partial run only). bps_in_scope equals the ledger entries plus these."
+        },
+        "shards_total": { "type": "integer", "minimum": 0 },
+        "shards_done": { "type": "integer", "minimum": 0 },
+        "read_proof": {
+          "const": "agent-checked",
+          "description": "Added in 1.3.0. The read proof and the spot-check were checked by the reviewing agent, not machine-verified."
+        },
+        "evidence_ledger": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Added in 1.3.0. Absolute path of the evidence ledger folder (aws-well-architected-review-ledger/) whose per-shard files hold the verbatim quotes and read proof of every row."
+        }
+      }
+    },
+    "errorCode": {
+      "type": "string",
+      "enum": ["not_found", "invalid_url", "throttled", "downstream_error", "validation_error"],
+      "description": "The documentation tool's enumerated error codes."
+    },
+    "evidenceItem": {
+      "type": "object",
+      "required": ["provenance"],
+      "additionalProperties": false,
+      "anyOf": [
+        { "required": ["file", "line"] },
+        { "required": ["note"] }
+      ],
+      "properties": {
+        "provenance": { "$ref": "#/$defs/provenance" },
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path of the evidence within the declared workload scope."
+        },
+        "line": { "type": "integer", "minimum": 1 },
+        "note": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Tool evidence or free text (for example Based on description). Secrets MUST be redacted: identify the secret type and location, never the value."
+        }
+      }
+    },
+    "question": {
+      "type": "object",
+      "required": ["question_id", "pillar_id", "title", "status", "risk_level"],
+      "additionalProperties": false,
+      "properties": {
+        "question_id": { "$ref": "#/$defs/questionId" },
+        "pillar_id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "status": { "$ref": "#/$defs/status" },
+        "risk_level": {
+          "oneOf": [{ "$ref": "#/$defs/riskLevel" }, { "type": "null" }]
+        },
+        "key_evidence": { "type": "string" }
+      }
+    },
+    "ledgerEntry": {
+      "type": "object",
+      "required": [
+        "bp_id",
+        "pillar",
+        "question_id",
+        "status",
+        "risk_level",
+        "evidence"
+      ],
+      "additionalProperties": false,
+      "description": "One self-checked ledger row in compact form (changed in 1.3.0: only the fields above are required; ledger_file, added in 1.3.0, stays optional so that any 1.x document validates). Field names and meanings match the Row fields table in references/evaluation-procedure.md, except that its url field is bp_url here and its read line (total_length, end_index, truncated) is split into the three fields of those names. The verbatim quotes and read proof stay in the per-shard ledger file named in ledger_file; a writer may copy them here, in which case the optional fields below apply. The equality end_index == total_length cannot be expressed in JSON Schema and is part of the agent's row self-check.",
+      "properties": {
+        "bp_id": { "$ref": "#/$defs/bpId" },
+        "bp_url": {
+          "type": "string",
+          "pattern": "^(https://docs\\.aws\\.amazon\\.com/.*)?$",
+          "description": "The manifest BP URL, verbatim. On the fallback path (manifest href empty) the docs.aws.amazon.com URL the reader located; empty only when the URL could not be located (page_unreadable)."
+        },
+        "bp_title": { "type": "string" },
+        "pillar": {
+          "type": "string",
+          "minLength": 1,
+          "description": "pillar_id from the manifest."
+        },
+        "question_id": { "$ref": "#/$defs/questionId" },
+        "ledger_file": {
+          "type": "string",
+          "pattern": "^S[0-9]{2,3}\\.md$",
+          "description": "Added in 1.3.0 (optional in the schema so that earlier 1.x documents validate; this skill version always writes it). The shard file in the evidence ledger folder that holds this row's verbatim quotes and read proof, for example S07.md."
+        },
+        "fetch_tool": { "type": "string", "enum": ["mcp", "web_fetch"], "description": "Deprecated: kept only so that earlier 1.x documents still validate. This skill version never writes it; retrieval_method is the single source for the read path." },
+        "retrieval_method": {
+          "type": "string",
+          "enum": ["mcp_read", "web_fetch"],
+          "description": "How this BP page was read: mcp_read (aws___read_documentation) or web_fetch (HTTPS web-fetch tool, after a real aws___read_documentation error or when the session had no such tool). Required on every row that is not page_unreadable."
+        },
+        "mcp_error": {
+          "type": "string",
+          "description": "Raw aws___read_documentation error, or aws___read_documentation not available in this session when the session had no such tool; required and non-empty when retrieval_method is web_fetch."
+        },
+        "source_chars": { "type": "integer", "minimum": 0, "description": "Optional; kept for compatibility with 1.0 and 1.1 documents." },
+        "total_length": { "type": "integer", "minimum": 0 },
+        "end_index": { "type": "integer", "minimum": 0 },
+        "truncated": { "type": "boolean" },
+        "outcome_quote": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Optional copy of the row's verbatim passage from the Desired outcome paragraph (or the page opening), 80-300 characters; empty only for page_unreadable rows."
+        },
+        "tail_quote": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Optional copy of the row's verbatim passage from the end of the page body, 80-300 characters; empty only for page_unreadable rows."
+        },
+        "antipattern_hit": {
+          "type": "string",
+          "description": "Verbatim anti-pattern the workload evidence matches, or the string none."
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/evidenceItem" },
+          "description": "Short evidence: usually one item with its provenance tag and file/line or a short note."
+        },
+        "status": { "$ref": "#/$defs/status" },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional: one sentence tying the status to the quoted outcome or anti-pattern and the evidence, or the exact string page_unreadable (required for an unreadable row)."
+        },
+        "error_code": { "$ref": "#/$defs/errorCode" },
+        "risk_level": {
+          "oneOf": [{ "$ref": "#/$defs/riskLevel" }, { "type": "null" }],
+          "description": "Null for Implemented, Not Applicable, and Cannot Determine."
+        },
+        "recommendation": {
+          "type": "string",
+          "description": "Optional concrete next step for a gap row; prose guidance, never a code diff."
+        }
+      },
+      "allOf": [
+        {
+          "$comment": "A gap must be rated: a consumer ranking by risk would otherwise fail open.",
+          "if": {
+            "properties": { "status": { "enum": ["Not Implemented", "Partially Implemented"] } },
+            "required": ["status"]
+          },
+          "then": { "properties": { "risk_level": { "$ref": "#/$defs/riskLevel" } } }
+        },
+        {
+          "$comment": "A satisfied, inapplicable, or undeterminable BP carries no risk: a consumer ranking by risk would otherwise see a phantom risk.",
+          "if": {
+            "properties": { "status": { "enum": ["Implemented", "Not Applicable", "Cannot Determine"] } },
+            "required": ["status"]
+          },
+          "then": { "properties": { "risk_level": { "type": "null" } } }
+        },
+        {
+          "$comment": "An unreadable page carries its tool error and zero counts; every other row names how its page was read and, when read-proof fields are copied, carries full-read values.",
+          "if": {
+            "properties": { "reason": { "const": "page_unreadable" } },
+            "required": ["reason"]
+          },
+          "then": {
+            "required": ["error_code"],
+            "properties": {
+              "status": { "const": "Cannot Determine" },
+              "source_chars": { "const": 0 },
+              "total_length": { "const": 0 },
+              "end_index": { "const": 0 }
+            }
+          },
+          "else": {
+            "required": ["retrieval_method"],
+            "not": { "required": ["error_code"] },
+            "properties": {
+              "source_chars": { "minimum": 1 },
+              "total_length": { "minimum": 1 },
+              "end_index": { "minimum": 1 },
+              "truncated": { "const": false },
+              "outcome_quote": { "minLength": 80 },
+              "tail_quote": { "minLength": 80 }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "retrieval_method": { "const": "web_fetch" } },
+            "required": ["retrieval_method"]
+          },
+          "then": {
+            "required": ["mcp_error"],
+            "properties": { "mcp_error": { "minLength": 1 } }
+          }
+        }
+      ]
+    },
+    "finding": {
+      "type": "object",
+      "required": ["finding_id", "severity", "title", "recommendation"],
+      "additionalProperties": false,
+      "description": "A reported finding. A framework finding cites the ledger BP IDs it expands in bp_ids. A finding from a topic-organized lens that publishes no BP IDs carries lens instead and omits bp_ids; a review-integrity finding that no reviewed BP fits carries review_integrity instead and omits bp_ids; never invent an ID.",
+      "if": {
+        "not": {
+          "anyOf": [{ "required": ["lens"] }, { "required": ["review_integrity"] }]
+        }
+      },
+      "then": {
+        "required": ["bp_ids"]
+      },
+      "properties": {
+        "finding_id": { "type": "string", "minLength": 1 },
+        "severity": { "$ref": "#/$defs/riskLevel" },
+        "pillar": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "lens": { "type": "string", "minLength": 1 },
+        "review_integrity": {
+          "const": true,
+          "description": "Marks a review-integrity finding: instruction-like text in the workload content, reported as a possible prompt-injection attempt (references/security-considerations.md). It cites its file and line in evidence; bp_ids is optional on it. Added in 1.4.0."
+        },
+        "bp_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "anyOf": [{ "$ref": "#/$defs/bpId" }, { "$ref": "#/$defs/lensBpId" }]
+          }
+        },
+        "description": { "type": "string" },
+        "bp_text_cited": {
+          "type": "string",
+          "description": "Outcome or anti-pattern quoted from the BP page via the ledger row."
+        },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidenceItem" }
+        },
+        "impact": { "type": "string" },
+        "recommendation": { "type": "string", "minLength": 1 },
+        "effort": { "$ref": "#/$defs/effort" },
+        "aws_services": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "quadrant": {
+          "type": "string",
+          "enum": ["Do First", "Plan", "Delegate", "Defer"],
+          "description": "Eisenhower quadrant from the report."
+        }
+      }
+    },
+    "planItem": {
+      "type": "object",
+      "required": ["finding_ids", "action"],
+      "additionalProperties": false,
+      "properties": {
+        "finding_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "finding_id values from findings."
+        },
+        "action": { "type": "string", "minLength": 1 },
+        "smart_goal": { "type": "string" },
+        "owner_suggestion": { "type": "string" },
+        "phases": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "effort": { "type": "string" },
+        "dependencies": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "remediationPlan": {
+      "type": "object",
+      "required": ["quick_wins", "foundation", "strategic", "delegate", "deferred"],
+      "additionalProperties": false,
+      "description": "The report's Prioritized Remediation Plan. Quick Wins (under 1 week, Do First), Foundation (1-4 weeks, Plan), Strategic (1-3 months, Plan), then Delegate and Deferred. Arrays may be empty.",
+      "properties": {
+        "quick_wins": { "type": "array", "items": { "$ref": "#/$defs/planItem" } },
+        "foundation": { "type": "array", "items": { "$ref": "#/$defs/planItem" } },
+        "strategic": { "type": "array", "items": { "$ref": "#/$defs/planItem" } },
+        "delegate": { "type": "array", "items": { "$ref": "#/$defs/planItem" } },
+        "deferred": { "type": "array", "items": { "$ref": "#/$defs/planItem" } }
+      }
+    }
+  }
+}
