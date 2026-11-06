@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "ai_sources": [
+    {
+      "provider": "google",
+      "source_service": "gemini_api",
+      "model_families": ["gemini"],
+      "model_evidence": "observed",
+      "models": ["gemini-2.5-flash"],
+      "model_observations": [
+        {"normalized_model": "gemini-2.5-flash", "raw_model": "gemini-2.5-flash", "model_family": "gemini", "evidence": [{"provenance": "code", "confidence": "high", "detail": "gemini_worker/main.py:7 client.models.generate_content; Gemini API via gemini_worker/Dockerfile:2"}]}
+      ]
+    },
+    {
+      "provider": "google",
+      "source_service": "vertex_ai",
+      "model_families": ["gemini"],
+      "model_evidence": "observed",
+      "models": ["gemini-2.5-pro"],
+      "model_observations": [
+        {"normalized_model": "gemini-2.5-pro", "raw_model": "gemini-2.5-pro", "model_family": "gemini", "evidence": [{"provenance": "code", "confidence": "high", "detail": "vertex_worker/main.py:7 client.models.generate_content; Vertex via vertex_worker/Dockerfile:2"}]}
+      ]
+    }
+  ],
+  "gateways": []
+}

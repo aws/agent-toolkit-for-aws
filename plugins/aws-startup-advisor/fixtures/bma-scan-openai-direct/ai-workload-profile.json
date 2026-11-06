@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "ai_sources": [
+    {
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model_families": ["embedding", "gpt"],
+      "model_evidence": "observed",
+      "models": ["gpt-4o", "text-embedding-3-small"],
+      "model_observations": [
+        {"normalized_model": "gpt-4o", "raw_model": "gpt-4o", "model_family": "gpt", "evidence": [{"provenance": "code", "confidence": "high", "detail": "app/llm.py:8 client.chat.completions.create"}]},
+        {"normalized_model": "text-embedding-3-small", "raw_model": "text-embedding-3-small", "model_family": "embedding", "evidence": [{"provenance": "code", "confidence": "high", "detail": "app/llm.py:15 client.embeddings.create"}]}
+      ]
+    }
+  ],
+  "gateways": []
+}
