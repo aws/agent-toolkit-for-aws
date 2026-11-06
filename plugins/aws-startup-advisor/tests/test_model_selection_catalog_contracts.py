@@ -297,6 +297,65 @@ def test_misspelled_selection_status_is_an_error_even_in_memory(status):
         _anthropic_pick(catalog)
 
 
+# ------------------------------------------------------------------ candidate pricing honors selection_status
+
+PRICING = _load_module("model_selection_catalog__pricing", PLUGIN_ROOT / "scripts" / "validate-model-pricing.py")
+_PRICING_INPUTS = [
+    "skills/agent-advisor/scripts/model_recommendation.py",
+    "skills/shared/ai/models/anthropic-bedrock.json",
+    "skills/gcp-to-aws/references/vendored/ai/bedrock-pricing-cache.md",
+    "skills/azure-to-aws/references/vendored/ai/bedrock-pricing-cache.md",
+]
+
+
+def _pricing_errors(tmp_path, mutate):
+    for rel in _PRICING_INPUTS:
+        target = tmp_path / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((PLUGIN_ROOT / rel).read_bytes())
+    catalog_path = tmp_path / _PRICING_INPUTS[1]
+    catalog = json.loads(catalog_path.read_text())
+    mutate(catalog["models"])
+    catalog_path.write_text(json.dumps(catalog))
+    return PRICING.validate_model_pricing(tmp_path)
+
+
+def _unpriced_copy(models, key, *, status, keep_paths):
+    record = copy.deepcopy(models["claude_haiku_4_5"])
+    record["selection_status"] = status
+    record["display_name"] = "Synthetic unpriced model"
+    record["paths"] = {p: {**record["paths"][p], "model_id": "anthropic.synthetic-unpriced"} for p in keep_paths}
+    models[key] = record
+
+
+def test_pricing_passes_for_shipped_catalog(tmp_path):
+    assert _pricing_errors(tmp_path, lambda models: None) == []
+
+
+def test_pricing_skips_reference_only_without_runtime_path(tmp_path):
+    errors = _pricing_errors(tmp_path, lambda m: _unpriced_copy(
+        m, "synthetic", status="reference_only", keep_paths=["mantle_messages"]))
+    assert errors == []
+
+
+def test_pricing_skips_reference_only_without_active_price(tmp_path):
+    errors = _pricing_errors(tmp_path, lambda m: _unpriced_copy(
+        m, "synthetic", status="reference_only", keep_paths=["runtime_converse"]))
+    assert errors == []
+
+
+def test_pricing_still_fails_selectable_candidate_without_price(tmp_path):
+    errors = _pricing_errors(tmp_path, lambda m: _unpriced_copy(
+        m, "synthetic", status="selectable", keep_paths=["runtime_converse"]))
+    assert errors and all("anthropic.synthetic-unpriced" in e for e in errors)
+
+
+def test_pricing_reports_selectable_candidate_without_runtime_path(tmp_path):
+    errors = _pricing_errors(tmp_path, lambda m: _unpriced_copy(
+        m, "synthetic", status="selectable", keep_paths=["mantle_messages"]))
+    assert errors and all("synthetic has no runtime_converse" in e for e in errors)
+
+
 # ------------------------------------------------------------------ duplicated Claude records stay consistent
 
 # The OpenAI module's capability vocabulary -> the Anthropic module's. `long_context` has no
