@@ -36,7 +36,7 @@ run = "uv run --no-project python scripts/model-id-lint.py"
 
 [tasks.test]
 description = "Run plugin contract tests"
-run = "uv run --no-project --with pytest python -m pytest tests -q"
+run = "uv run --no-project --python 3.12 --with pytest python -m pytest tests -q"
 
 [tasks."test:agent-advisor"]
 description = "Run agent-advisor engine tests (its own uv project, with jsonschema)"
@@ -48,7 +48,7 @@ run = "uv run --directory skills/llm-to-bedrock/scripts python -m pytest -q"
 
 [tasks."test:skill-scripts"]
 description = "Run stdlib-only skill script tests (heroku-to-aws, tf-best-practices)"
-run = "uv run --no-project --with pytest python -m pytest -q --import-mode=importlib skills/heroku-to-aws/scripts skills/tf-best-practices/scripts"
+run = "uv run --no-project --python 3.12 --with pytest python -m pytest -q --import-mode=importlib skills/heroku-to-aws/scripts skills/tf-best-practices/scripts"
 
 [tasks."test:telemetry"]
 description = "Run Startup Advisor telemetry tests"
