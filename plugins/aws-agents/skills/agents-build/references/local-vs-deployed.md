@@ -1,32 +1,33 @@
 # Local vs. Deployed — What Works Where
 
-AgentCore has a local dev server (`agentcore dev`) and a deployed runtime. They don't have feature parity. This reference tells you what works where so generated code and troubleshooting handle both environments correctly.
+AgentCore Runtime has a local dev server (`agentcore dev`) and a deployed environment. They don't have feature parity. A Harness cannot run locally: `agentcore dev` normally deploys it and opens the Agent Inspector, while `agentcore dev --skip-deploy` uses the version already deployed and does not apply local changes.
 
 ## Quick reference
 
-| Feature | `agentcore dev` (local) | Deployed runtime |
+| Feature | `agentcore dev` (local) | Deployed AgentCore |
 |---|---|---|
+| Harness execution | ❌ no local execution; deploys unless `--skip-deploy` is used | ✅ deployments use immutable Harness versions |
 | Agent invocation | ✅ via curl on localhost:8080 | ✅ via `invoke_agent_runtime` or HTTPS |
 | Framework model calls | ✅ if Bedrock creds are available | ✅ |
 | Python/JS function tools (framework-native) | ✅ | ✅ |
 | Credentials (`@requires_api_key`, `@requires_access_token`) | ✅ from `agentcore/.env.local` | ✅ from Secrets Manager |
-| Memory | ❌ env var not set locally | ✅ `MEMORY_<NAME>_ID` injected |
-| Gateway | ❌ env var not set locally | ✅ `AGENTCORE_GATEWAY_<NAME>_URL` injected |
+| Memory | Not injected locally; can use a deployed Memory if its ID and AWS access are supplied | ✅ `MEMORY_<NAME>_ID` injected |
+| Gateway | Not injected locally; can call a deployed Gateway if its URL and auth are supplied | ✅ `AGENTCORE_GATEWAY_<NAME>_URL` injected |
 | Cedar policy evaluation | ❌ policies only enforced at gateway | ✅ |
-| Traces (X-Ray) | ✅ `agentcore dev` emits OTEL to CloudWatch by default; disable with `--no-traces` | ✅ auto-enabled |
-| CloudWatch logs | ✅ via ADOT / OTEL wiring (same path as traces) | ✅ if using `logging` module + OTEL |
+| Traces (X-Ray) | Local OTEL collector stores traces under `agentcore/.cli/traces/`; disable with `--no-traces` | ✅ auto-enabled |
+| CloudWatch logs | ❌ local Runtime output stays local | ✅ runtime stdout/stderr and structured OTEL logs |
 | **Evaluator *definition*** (`agentcore add evaluator`, writing the instructions/code) | ✅ — writes to `agentcore.json`; custom code is unit-testable locally | ✅ |
-| **`agentcore run eval`** (on-demand eval over traces) | ✅ — operates on CloudWatch spans; local-dev spans land there if OTEL is on (default) | ✅ |
+| **`agentcore eval ondemand`** (on-demand eval over traces) | ❌ local traces are not sent to CloudWatch by `agentcore dev` | ✅ uses CloudWatch spans after ingestion |
 | **`Evaluate` API with hand-constructed spans** (boto3) | ✅ — no runtime needed at all; submit `SessionSpans` directly | ✅ |
 | **Dataset runner** (`OnDemandEvaluationDatasetRunner`) | ❌ invokes an AgentCore Runtime agent in its pipeline | ✅ |
 | **Online eval monitoring** (`agentcore add online-eval`) | ❌ ingests traces continuously from deployed runtime | ✅ |
-| Observability dashboards | ✅ once Transaction Search is on and local spans are flowing | ✅ in CloudWatch console |
+| Observability dashboards | ❌ local traces do not appear in CloudWatch | ✅ in CloudWatch console after ingestion |
 | VPC networking | ❌ local always has internet | ✅ subject to `networkMode: VPC` |
 | Inbound auth (AWS_IAM, CUSTOM_JWT) | ❌ no auth required locally | ✅ enforced on every request |
 
 ## Implications for generated code
 
-**Always guard features that aren't available locally:**
+**Guard optional integrations when their environment variables are absent:**
 
 ```python
 # Memory pattern
@@ -54,17 +55,17 @@ else:
 
 ## Testing workflow
 
-Because memory, gateway, and policies don't work locally, the realistic test loop is:
+To test memory, Gateway, and policies with the deployed agent's identity, use this loop:
 
 1. **Local:** `agentcore dev` to verify the agent's code structure, framework wiring, system prompt, and any in-code logic
-2. **Deploy to a staging target:** `agentcore deploy --target staging` to test with real memory, gateway, and policies
+2. **Deploy to a staging target:** define `staging` with its account and region in `agentcore/aws-targets.json` first, then run `agentcore deploy --target staging` to test with real memory, gateway, and policies. Named targets are not created automatically. If the Runtime has named endpoints pinned past version 1, the first staging deploy rolls back, because endpoint versions in `agentcore.json` apply to every target and a new target only has version 1; see `agents-deploy/references/versioning.md`.
 3. **Production:** only after staging validation
 
-Don't expect `agentcore dev` to reproduce a production failure involving memory recall, gateway tool calls, or policy denials — those require a deployed environment.
+`agentcore dev` can call deployed Memory or Gateway resources when you configure them explicitly, but it runs under local credentials and does not reproduce the deployed Runtime's IAM identity.
 
 ## Common "works locally, fails deployed" causes
 
-- Missing `MEMORY_<NAME>_ID` guard — code crashes because the env var is unexpectedly present
+- Missing `MEMORY_<NAME>_ID` guard — code crashes locally because the deployed-only env var is absent
 - Hardcoded localhost URLs for gateway — replace with `AGENTCORE_GATEWAY_<NAME>_URL`
 - IAM permissions that work for your dev credentials but not the execution role
 - Region mismatch between `aws configure` (used locally) and `aws-targets.json` (used in deploy)
