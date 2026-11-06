@@ -5,11 +5,19 @@ fallback, and stable OriginalCreationTime ordering. Search performs candidate
 retrieval for SageMakerPublicHub; private Hubs continue to use the existing
 List-and-filter workflow.
 
-Constraints map to two Search fields. Data type, input and output modality,
-model type, Bedrock eligibility, size, and context window use ``Metadata.*``
-filters over the model's HubContentDocument. Task, license, language,
-provider, and customization use ``HubContentSearchKeywords`` tags. See
-``_METADATA_CONSTRAINTS`` for why the split sits where it does.
+Structured constraints use ``Metadata.*`` document fields. License, provider,
+and task also search exact keywords to preserve producer casing and task
+aliases.
+
+Value resolution fails open. A requested value is first matched against the
+snapshot, which keeps every current keyword spelling. A value the snapshot does
+not know is resolved through the producer contract in
+``discovery_metadata_contracts`` and sent to Search anyway, because the
+snapshot only sees the 50 keywords a model kept and the document may carry
+more. Search then decides membership; an empty result is a real empty result.
+Only a value the contract cannot resolve (a closed vocabulary with no match, or
+a code-shaped language) raises ``ValueNormalizationError`` so the skill can ask
+the user, with the canonical choices in the message.
 
 Usage:
     python search_deployable_models.py SageMakerPublicHub \
@@ -40,6 +48,7 @@ import boto3
 import botocore
 import botocore.exceptions
 
+import discovery_metadata_contracts as contracts
 from filter_deployable_models import filter_models, sort_models_newest_first
 from get_deployable_models import (
     CatalogSnapshotError,
@@ -53,7 +62,6 @@ MINIMUM_SDK_VERSION = (1, 43, 100)
 MAX_EXPRESSION_ITEMS = 20
 MAX_FILTER_VALUE_LENGTH = 1024
 SEARCH_PAGE_SIZE = 100
-# Paging key only. Candidate order is restored from OriginalCreationTime.
 SEARCH_SORT_BY = "HubContentName"
 
 SUPPORTED_CONSTRAINT_KEYS = (
@@ -72,48 +80,15 @@ SUPPORTED_CONSTRAINT_KEYS = (
     "name",
 )
 
-# field in the normalized catalog, raw Hub keyword prefix, match behavior
-_KEYWORD_CONSTRAINTS = {
-    "task": ("tasks", "@task:", "substring"),
-    "license": ("license", "@license:", "substring"),
-    "language": ("languages", "@language:", "substring"),
-    "provider": ("provider", "@provider:", "substring"),
+_KEYWORD_COMPATIBILITY_PREFIXES = {
+    "license": "@license:",
+    "provider": "@provider:",
+    "task": "@task:",
 }
 
-# Constraints served by Search ``Metadata.*`` filters instead of keyword tags.
-#
-# The Search index stores every top-level string or string-array field of a
-# model's HubContentDocument as a metadata entry. A filter names the field as
-# ``Metadata.<DocumentField>``, and ``Equals``/``In`` compare the stored value
-# exactly, case included. These fields each have one document source and no
-# alternate spellings, so exact metadata replaces the derived ``@<tag>:``
-# keyword one for one. Task, license, language, and provider stay on keywords:
-# their values are inconsistent (``Apache 2.0`` and ``Apache-2.0``) or capped
-# by the 50-keyword limit in ways not yet handled.
-#
-# Metadata can reach models whose keyword slot ran out. A model with many
-# languages can exhaust its 50 keywords before ``@model-size:`` or
-# ``@context-window:`` is written, while the document still carries the field.
-# The values this adapter sends are still learned from the snapshot, which is
-# built from ListHubContents and never sees the document. So an overflowed
-# model is reached only when its raw label is also carried by a model that
-# kept its keyword. Every overflowed model in the public Hub today shares
-# ``<1B``, ``1B-10B``, or ``<4K`` with hundreds of tagged models, so all are
-# reached, and normalize_hub_content reads their size and context window from
-# the document. A label carried only by overflowed models stays undiscoverable
-# until values are derived from documents rather than keywords.
-#
-# The Hub builds each ``@<tag>:`` keyword by lower-casing the document value,
-# so the catalog snapshot only knows the lower-cased spelling while metadata
-# keeps the document's own casing. ``enum`` fields (``ModelTypes``,
-# ``Capabilities``) are upper-case by schema. Free-text fields arrive from
-# three producers with three conventions: the Studio manifest lower-cases
-# (``"text"``), the open-source SDK spec capitalizes (``["Text"]``), and the
-# proprietary spec upper-cases (``["TEXT"]``). The adapter sends every
-# convention as exact alternatives so a casing difference cannot silently
-# empty a result.
-#
-# constraint key -> (normalized catalog field, Metadata filter, match, casing)
+# normalized field, filter, match mode, casing
+# Snapshot misses fail open through the producer contract; Search decides
+# whether the exact document value exists.
 _METADATA_CONSTRAINTS = {
     "data_type": ("data_types", "Metadata.DataType", "substring", "free_text"),
     "input_modality": (
@@ -135,25 +110,64 @@ _METADATA_CONSTRAINTS = {
         "exact",
         "free_text",
     ),
+    "language": ("languages", "Metadata.Languages", "substring", "free_text"),
+    "license": ("license", "Metadata.License", "substring", "license"),
+    "provider": ("provider", "Metadata.Provider", "substring", "provider"),
+    "task": ("tasks", "Metadata.Task", "substring", "task"),
 }
 
-# ``size`` is the one constraint whose request value is not a catalog value.
-# The customer picks a canonical bucket (``<=10b``); the Hub stores raw labels
-# (``7B``, ``1B-10B``, ``<1B``). The bucket expands to every raw catalog value
-# that normalize_size_bucket maps into it, and those raw values are what the
-# metadata filter sends. The bucket mapping stays in Sherpa because raw labels
-# mix exact counts and ranges and cannot be filtered as a range server-side.
+_PROVIDER_METADATA_SPELLINGS = {
+    "alibaba-nlp": "Alibaba-NLP",
+    "cohereforai": "CohereForAI",
+    "coherelabs": "CohereLabs",
+    "eleutherai": "EleutherAI",
+    "facebookai": "FacebookAI",
+    "helsinki-nlp": "Helsinki-NLP",
+    "huggingfaceh4": "HuggingFaceH4",
+    "jetbrains": "JetBrains",
+    "minimaxai": "MiniMaxAI",
+    "moritzlaurer": "MoritzLaurer",
+    "nexaai": "NexaAI",
+    "nousresearch": "NousResearch",
+    "openfold": "OpenFold",
+    "redhatai": "RedHatAI",
+    "thebloke": "TheBloke",
+    "tinyllama": "TinyLlama",
+    "wan-ai": "Wan-AI",
+}
+
+_TASK_METADATA_SPELLINGS = {
+    "image-text-to-image": "Image-Text-to-Image",
+    "image-text-to-text": "Image-Text-to-Text",
+    "image-to-image": "Image-to-Image",
+    "rerank": "ReRank",
+    "text-to-image": "Text-to-Image",
+    "text-to-speech": "Text-to-Speech",
+    "text-to-video": "Text-to-Video",
+}
+
+_LICENSE_METADATA_TOKENS = {
+    "bigscience": "BigScience",
+    "bloom": "BLOOM",
+    "rail": "RAIL",
+    "cc": "CC",
+    "by": "BY",
+    "nc": "NC",
+    "sa": "SA",
+    "creativeml": "CreativeML",
+    "openrail": "OpenRAIL",
+    "glm": "GLM",
+    "nvidia": "NVIDIA",
+    "openmdw": "OpenMDW",
+}
+
+# Size buckets expand to exact catalog labels because metadata stores strings.
 _SIZE_METADATA_FILTER = "Metadata.ModelSize"
 
-# Capability constraints served by ``Metadata.Capabilities``. The document
-# field is an upper-case enum array; the keyword was its lower-cased copy.
+# filter, required enum
 _METADATA_CAPABILITIES = {
     "bedrock": ("Metadata.Capabilities", "BEDROCK_CONSOLE"),
-}
-
-# Capability constraints still served by the lower-cased keyword tag.
-_CAPABILITY_TAGS = {
-    "customization": "@capability:customization",
+    "customization": ("Metadata.Capabilities", "CUSTOMIZATION"),
 }
 
 
@@ -202,12 +216,70 @@ class SelectionCatalog:
     source: str
 
 
+@dataclass(frozen=True)
+class SearchPlan:
+    """A built SearchExpression plus the notes its value resolution produced.
+
+    ``notes`` name each requested value the snapshot did not know and the
+    contract value that was searched instead. The activated selection surfaces
+    them as warnings so the customer learns a candidate came from document
+    metadata rather than from a keyword.
+    """
+
+    expression: dict
+    notes: list[str]
+
+
 class SearchAdapterError(Exception):
     """Base error for public-Hub Search adapter failures."""
 
 
 class ConstraintValidationError(SearchAdapterError):
     """A constraint cannot be represented by the public-Hub query contract."""
+
+
+class ValueNormalizationError(ConstraintValidationError):
+    """A requested value is unknown to the snapshot and the contract cannot resolve it.
+
+    The skill turns this into a clarifying question. ``canonical_values`` holds
+    the whole vocabulary of a closed field so the question can offer choices;
+    it is empty for a code-shaped language, where the fix is the full name.
+    """
+
+    def __init__(self, key, requested_value, status, document_field, canonical_values=()):
+        self.key = key
+        self.requested_value = requested_value
+        self.status = status
+        self.document_field = document_field
+        self.canonical_values = tuple(canonical_values)
+        super().__init__(self._message())
+
+    def _message(self):
+        prefix = (
+            f"Constraint {self.key!r} value {self.requested_value!r} is not in the "
+            "current catalog"
+        )
+        choices = ", ".join(self.canonical_values)
+        if self.key == "language":
+            if choices:
+                return (
+                    f"{prefix} and has more than one deterministic language "
+                    f"interpretation: {choices}. Ask the user which full language "
+                    "name they meant."
+                )
+            return (
+                f"{prefix} and cannot be normalized to a known language. Ask the "
+                "user for the full language name, then search again."
+            )
+        if self.status == contracts.AMBIGUOUS:
+            return (
+                f"{prefix} and matches more than one canonical {self.document_field} "
+                f"value: {choices}. Ask the user which one they meant."
+            )
+        return (
+            f"{prefix} and is not a canonical {self.document_field} value. "
+            f"Canonical values: {choices}. Ask the user which of these they meant."
+        )
 
 
 class UnsupportedSdkError(SearchAdapterError):
@@ -299,46 +371,65 @@ def _catalog_field_values(model, field):
                 yield item
 
 
-def _resolve_catalog_values(key, field, match_mode, requested_values, catalog_models):
-    """Return every current catalog value the customer's request matches.
-
-    Resolution runs against the selection-session snapshot so an unknown value
-    is rejected before any service call and a substring request expands to
-    every exact catalog spelling it covers. Values keep their catalog casing.
-    """
+def _snapshot_values(field, match_mode, requested_value, catalog_models):
+    """Return the catalog values one requested value matches, catalog-cased."""
     resolved: dict[str, str] = {}
-
     for model in catalog_models:
         for catalog_value in _catalog_field_values(model, field):
             lowered = catalog_value.lower()
             if match_mode == "exact":
-                matches = lowered in requested_values
+                matches = lowered == requested_value
             else:
-                matches = any(requested in lowered for requested in requested_values)
+                matches = requested_value in lowered
             if matches:
                 resolved.setdefault(catalog_value, catalog_value)
+    return list(resolved.values())
 
-    if not resolved:
-        raise ConstraintValidationError(
-            f"Constraint {key!r} values {requested_values!r} do not match "
-            "any current public-Hub catalog value"
+
+def _contract_values(key, match_mode, requested_value):
+    """Resolve one value the snapshot does not know through the producer contract."""
+    resolution = contracts.resolve_search_values(key, requested_value, match_mode)
+    if not resolution.resolved:
+        raise ValueNormalizationError(
+            key,
+            requested_value,
+            resolution.status,
+            resolution.document_field,
+            resolution.values or resolution.canonical_values,
         )
-    return sorted(resolved.values(), key=str.lower)
+    return list(resolution.values), resolution.document_field
 
 
-def _resolve_keyword_tags(key, requested_values, catalog_models):
-    """Resolve model-selection values to every matching current Hub keyword tag.
+def _resolve_catalog_values(key, field, match_mode, requested_values, catalog_models):
+    """Return the exact values to search for the customer's request.
 
-    This catalog lookup is intentionally retained for licenses. Public models
-    currently use inconsistent spellings such as ``Apache 2.0`` and
-    ``Apache-2.0``; resolving the customer's substring against the snapshot
-    keeps both exact Search tags until the underlying metadata is standardized.
+    Each requested value is matched against the selection-session snapshot
+    first, so current keyword spellings are kept and a substring request
+    expands to every catalog spelling it covers. A value the snapshot does not
+    know fails open to the producer contract: the contract's exact document
+    value is searched and Search decides membership. Only a value the contract
+    cannot resolve raises ``ValueNormalizationError``.
+
+    Returns ``(values, notes)``. ``notes`` has one entry per contract-resolved
+    value so the caller can tell the customer where the value came from.
     """
-    field, prefix, match_mode = _KEYWORD_CONSTRAINTS[key]
-    values = _resolve_catalog_values(
-        key, field, match_mode, requested_values, catalog_models
-    )
-    return [f"{prefix}{value}" for value in values]
+    resolved: dict[str, str] = {}
+    notes: list[str] = []
+
+    for requested_value in requested_values:
+        values = _snapshot_values(field, match_mode, requested_value, catalog_models)
+        if not values:
+            values, document_field = _contract_values(key, match_mode, requested_value)
+            notes.append(
+                f"The {key} value {requested_value!r} has no keyword in the catalog "
+                f"snapshot; resolved by the producer contract to exact "
+                f"Metadata.{document_field} value(s): "
+                f"{', '.join(repr(value) for value in values)}."
+            )
+        for value in values:
+            resolved.setdefault(value, value)
+
+    return sorted(resolved.values(), key=str.lower), notes
 
 
 def _metadata_spellings(value, casing):
@@ -347,53 +438,96 @@ def _metadata_spellings(value, casing):
     See ``_METADATA_CONSTRAINTS``: keywords are the lower-cased document value,
     metadata matches the document value exactly. Enum fields have one
     upper-case spelling; free-text fields may be lower-case, capitalized, or
-    upper-case depending on which Hub producer wrote the document.
+    upper-case depending on which Hub producer wrote the document. Provider and
+    task values restore their mixed-case producer spellings, while license
+    values restore known acronym and brand casing.
     """
     lowered = value.lower()
     if casing == "enum":
         return [lowered.upper()]
-    return list(dict.fromkeys([value, lowered, lowered.capitalize(), lowered.upper()]))
+    # title() handles each word; capitalize() handles only the first.
+    spellings = [
+        value,
+        lowered,
+        lowered.capitalize(),
+        lowered.title(),
+        lowered.upper(),
+    ]
+    if casing == "provider" and lowered in _PROVIDER_METADATA_SPELLINGS:
+        spellings.append(_PROVIDER_METADATA_SPELLINGS[lowered])
+    if casing == "task" and lowered in _TASK_METADATA_SPELLINGS:
+        spellings.append(_TASK_METADATA_SPELLINGS[lowered])
+    if casing == "license":
+        canonical = re.sub(
+            r"[A-Za-z]+",
+            lambda match: _LICENSE_METADATA_TOKENS.get(
+                match.group(0).lower(), match.group(0)
+            ),
+            lowered.title(),
+        )
+        spellings.append(canonical)
+    return list(dict.fromkeys(spellings))
 
 
 def _resolve_metadata_filter(key, requested_values, catalog_models):
-    """Resolve a constraint to its ``Metadata.*`` filter name and exact values."""
+    """Resolve a constraint to its ``Metadata.*`` filter name, exact values, and notes."""
     field, filter_name, match_mode, casing = _METADATA_CONSTRAINTS[key]
-    values = _resolve_catalog_values(
+    values, notes = _resolve_catalog_values(
         key, field, match_mode, requested_values, catalog_models
     )
     spellings: dict[str, str] = {}
     for value in values:
         for spelling in _metadata_spellings(value, casing):
             spellings.setdefault(spelling, spelling)
-    return filter_name, list(spellings.values())
+    return filter_name, list(spellings.values()), notes
 
 
 def _resolve_size_values(requested_values, catalog_models):
-    """Expand normalized size buckets to the raw ``ModelSize`` values they contain.
+    """Expand normalized size buckets to the ``ModelSize`` values they contain.
 
     The raw labels come from the catalog snapshot, where they are the Hub's
     lower-cased keyword copies. The document keeps its own casing (``7B``),
-    so each raw label is expanded to every casing before it is sent.
+    so each raw label is expanded to every casing before it is sent. A bucket
+    no snapshot model carries fails open to the producer's canonical ModelSize
+    values for that bucket (``>100b`` searches ``>100B``), so a model whose
+    size keyword was dropped by the keyword cap is still reachable.
+
+    Returns ``(values, notes)`` like ``_resolve_catalog_values``.
     """
     resolved: dict[str, str] = {}
-    for model in catalog_models:
-        normalized_size = model.get("size")
-        raw_size = model.get("size_raw")
-        if (
-            isinstance(normalized_size, str)
-            and normalized_size.lower() in requested_values
-            and isinstance(raw_size, str)
-            and raw_size
-        ):
+    notes: list[str] = []
+    for requested_value in requested_values:
+        raw_sizes: dict[str, str] = {}
+        for model in catalog_models:
+            normalized_size = model.get("size")
+            raw_size = model.get("size_raw")
+            if (
+                isinstance(normalized_size, str)
+                and normalized_size.lower() == requested_value
+                and isinstance(raw_size, str)
+                and raw_size
+            ):
+                raw_sizes.setdefault(raw_size, raw_size)
+        if not raw_sizes:
+            canonical = contracts.canonical_size_values(requested_value)
+            if not canonical:
+                raise ConstraintValidationError(
+                    f"Size value {requested_value!r} is not a selectable size "
+                    f"bucket. Selectable buckets: "
+                    f"{', '.join(contracts.SIZE_BUCKET_CANONICAL_VALUES)}"
+                )
+            raw_sizes = {value: value for value in canonical}
+            notes.append(
+                f"The size bucket {requested_value!r} has no model-size keyword in "
+                f"the catalog snapshot; resolved by the producer contract to exact "
+                f"Metadata.ModelSize value(s): "
+                f"{', '.join(repr(value) for value in canonical)}."
+            )
+        for raw_size in raw_sizes:
             for spelling in _metadata_spellings(raw_size, "free_text"):
                 resolved.setdefault(spelling, spelling)
 
-    if not resolved:
-        raise ConstraintValidationError(
-            f"Size values {requested_values!r} do not match any current "
-            "public-Hub raw model-size value"
-        )
-    return sorted(resolved.values(), key=str.lower)
+    return sorted(resolved.values(), key=str.lower), notes
 
 
 def _resolve_model_names(requested_values, catalog_models):
@@ -495,6 +629,38 @@ def _append_exact_alternatives(filters, subexpressions, name, values):
     subexpressions.append(_or_expression(alternative_filters))
 
 
+def _metadata_with_keyword_compatibility_expression(
+    key, keyword_prefix, requested_values, catalog_models
+):
+    """Match document metadata without dropping existing keyword matches.
+
+    This protects license values whose future producer casing is unknown and
+    task aliases such as ``generation-text`` that are not values of the
+    document's Task field. Returns ``(expression, notes)``.
+    """
+    filter_name, spellings, notes = _resolve_metadata_filter(
+        key, requested_values, catalog_models
+    )
+    field, _metadata_name, match_mode, _casing = _METADATA_CONSTRAINTS[key]
+    catalog_values, _notes = _resolve_catalog_values(
+        key, field, match_mode, requested_values, catalog_models
+    )
+    compatibility_filters = _alternative_filters(filter_name, spellings)
+    # The Hub writes each keyword as the lower-cased document value. Snapshot
+    # values are already lower-case; a contract value keeps document casing.
+    compatibility_filters.extend(
+        _alternative_filters(
+            "HubContentSearchKeywords",
+            list(
+                dict.fromkeys(
+                    f"{keyword_prefix}{value.lower()}" for value in catalog_values
+                )
+            ),
+        )
+    )
+    return _or_expression(compatibility_filters), notes
+
+
 def validate_search_expression(expression, path="SearchExpression"):
     """Validate generated expression-list and filter-value service limits."""
     if not isinstance(expression, Mapping):
@@ -545,8 +711,8 @@ def validate_search_expression(expression, path="SearchExpression"):
         raise ConstraintValidationError(f"{path} must contain at least one condition")
 
 
-def build_search_expression(hub_name, constraints, catalog_models):
-    """Translate confirmed model-selection constraints into a SearchExpression."""
+def build_search_plan(hub_name, constraints, catalog_models):
+    """Translate confirmed constraints into a SearchExpression plus resolution notes."""
     if hub_name != PUBLIC_HUB_NAME:
         raise ConstraintValidationError(
             "The Search adapter supports SageMakerPublicHub only; "
@@ -559,47 +725,45 @@ def build_search_expression(hub_name, constraints, catalog_models):
         {"Name": "HubContentType", "Operator": "Equals", "Value": "Model"},
     ]
     subexpressions: list[dict] = []
+    notes: list[str] = []
 
     for key in SUPPORTED_CONSTRAINT_KEYS:
         if key not in normalized_constraints:
             continue
         values = normalized_constraints[key]
 
-        if key in _METADATA_CONSTRAINTS:
-            filter_name, spellings = _resolve_metadata_filter(
+        if key in _KEYWORD_COMPATIBILITY_PREFIXES:
+            expression, key_notes = _metadata_with_keyword_compatibility_expression(
+                key,
+                _KEYWORD_COMPATIBILITY_PREFIXES[key],
+                values,
+                catalog_models,
+            )
+            subexpressions.append(expression)
+            notes.extend(key_notes)
+        elif key in _METADATA_CONSTRAINTS:
+            filter_name, spellings, key_notes = _resolve_metadata_filter(
                 key, values, catalog_models
             )
+            notes.extend(key_notes)
             _append_exact_alternatives(filters, subexpressions, filter_name, spellings)
-        elif key in _KEYWORD_CONSTRAINTS:
-            tags = _resolve_keyword_tags(key, values, catalog_models)
-            _append_exact_alternatives(
-                filters, subexpressions, "HubContentSearchKeywords", tags
-            )
         elif key == "size":
-            raw_sizes = _resolve_size_values(values, catalog_models)
+            raw_sizes, key_notes = _resolve_size_values(values, catalog_models)
+            notes.extend(key_notes)
             _append_exact_alternatives(
                 filters, subexpressions, _SIZE_METADATA_FILTER, raw_sizes
             )
-        elif key in _METADATA_CAPABILITIES or key in _CAPABILITY_TAGS:
-            # Capabilities are positive exact values. Absence-based false
-            # matching is not enabled until its Search semantics are verified.
+        elif key in _METADATA_CAPABILITIES:
+            # Only positive capability filters have verified Search semantics.
             if values != ["true"]:
                 raise ConstraintValidationError(
                     f"The Search adapter supports {key}:true only; "
                     "absence-based false matching is not yet verified"
                 )
-            if key in _METADATA_CAPABILITIES:
-                filter_name, capability = _METADATA_CAPABILITIES[key]
-                filters.append(
-                    {"Name": filter_name, "Operator": "Equals", "Value": capability}
-                )
-            else:
-                _append_exact_alternatives(
-                    filters,
-                    subexpressions,
-                    "HubContentSearchKeywords",
-                    [_CAPABILITY_TAGS[key]],
-                )
+            filter_name, capability = _METADATA_CAPABILITIES[key]
+            filters.append(
+                {"Name": filter_name, "Operator": "Equals", "Value": capability}
+            )
         elif key == "name":
             names = _resolve_model_names(values, catalog_models)
             spelling = (
@@ -614,9 +778,7 @@ def build_search_expression(hub_name, constraints, catalog_models):
                     }
                 )
             else:
-                # Several requested substrings or inconsistent catalog casing
-                # cannot share the service's single case-sensitive Contains.
-                # Exact names preserve local case-insensitive matching.
+                # Exact names preserve case-insensitive substring matching.
                 _append_exact_alternatives(
                     filters, subexpressions, "HubContentName", names
                 )
@@ -625,7 +787,12 @@ def build_search_expression(hub_name, constraints, catalog_models):
     if subexpressions:
         expression["SubExpressions"] = subexpressions
     validate_search_expression(expression)
-    return expression
+    return SearchPlan(expression=expression, notes=notes)
+
+
+def build_search_expression(hub_name, constraints, catalog_models):
+    """Translate confirmed model-selection constraints into a SearchExpression."""
+    return build_search_plan(hub_name, constraints, catalog_models).expression
 
 
 def _search_error(error):
@@ -642,9 +809,19 @@ def search_deployable_models(
     region_name=None,
     sm_client=None,
     check_sdk=True,
+    expression=None,
+    normalize=normalize_hub_content,
 ):
-    """Search the public Hub and return normalized candidate models."""
-    expression = build_search_expression(hub_name, constraints, catalog_models)
+    """Search the public Hub and return normalized candidate models.
+
+    ``expression`` overrides the constraint-built expression and ``normalize``
+    overrides the per-record conversion. The live tests use both to send one
+    ``Metadata.*`` branch alone, without the keyword alternative that would
+    otherwise hide a stale casing-map entry, and to read a document's exact
+    spelling before normalization lower-cases it.
+    """
+    if expression is None:
+        expression = build_search_expression(hub_name, constraints, catalog_models)
     if check_sdk:
         validate_sdk_versions()
     try:
@@ -662,12 +839,7 @@ def search_deployable_models(
             "Resource": "HubContent",
             "SearchExpression": expression,
             "MaxResults": SEARCH_PAGE_SIZE,
-            # Pages of an unsorted Search are not stable: identical repeated
-            # runs of one multi-page query return the same record count but
-            # different unique names, with some models repeated and others
-            # skipped. A sort key makes the page boundaries deterministic. The
-            # name is used only for paging; restore_catalog_order() applies the
-            # customer-visible OriginalCreationTime order afterwards.
+            # Sorting stabilizes pages; restore_catalog_order sets display order.
             "SortBy": SEARCH_SORT_BY,
             "SortOrder": "Ascending",
         }
@@ -675,9 +847,6 @@ def search_deployable_models(
             request["NextToken"] = next_token
 
         try:
-            # SageMaker PySDK v3 does not expose HubContent Search. Use the
-            # version-gated boto3 operation so HubContent records are parsed
-            # instead of silently discarded by an older client model.
             response = client.search(**request)
         except botocore.exceptions.ClientError as error:
             raise _search_error(error) from error
@@ -694,9 +863,7 @@ def search_deployable_models(
                 raise SearchResponseError(
                     f"Search result {index} does not contain a HubContent object"
                 )
-            model = normalize_hub_content(record["HubContent"])
-            # A model repeated across pages means paging was not stable; keep
-            # the candidate set a set rather than double-listing it.
+            model = normalize(record["HubContent"])
             name = model.get("name")
             if isinstance(name, str):
                 if name in seen_names:
@@ -785,6 +952,10 @@ def select_public_hub_models(
             f"Unsupported catalog source: {catalog_source!r}"
         )
 
+    # Build the plan before any service call so a constraint or normalization
+    # error stays visible and a contract-resolved value can be reported.
+    plan = build_search_plan(hub_name, constraints, catalog_models)
+
     try:
         search_models = search_deployable_models(
             hub_name,
@@ -792,9 +963,20 @@ def select_public_hub_models(
             catalog_models,
             region_name=region_name,
             sm_client=sm_client,
+            expression=plan.expression,
         )
     except (UnsupportedSdkError, SearchServiceError, SearchResponseError) as error:
         fallback_models = filter_models(catalog_models, constraints)
+        fallback_warnings = list(plan.notes)
+        fallback_warnings.append(
+            "SageMaker Search was unavailable; used the complete "
+            "ListHubContents snapshot and local filtering instead."
+        )
+        if plan.notes:
+            fallback_warnings.append(
+                "The ListHubContents fallback cannot match contract-resolved values "
+                "that have no keyword, so those values may have no fallback results."
+            )
         return PublicHubSelection(
             retrieval_backend="list_fallback",
             fallback_reason=FallbackReason(
@@ -804,10 +986,7 @@ def select_public_hub_models(
             ordering=_ordering_summary(
                 fallback_models, fallback_timestamp_source
             ),
-            warnings=[
-                "SageMaker Search was unavailable; used the complete "
-                "ListHubContents snapshot and local filtering instead."
-            ],
+            warnings=fallback_warnings,
             models=fallback_models,
         )
 
@@ -816,7 +995,7 @@ def select_public_hub_models(
         catalog_models,
         timestamp_source=search_timestamp_source,
     )
-    warnings = []
+    warnings = list(plan.notes)
     if ordering.undated_models:
         warnings.append(
             f"{ordering.undated_models} of {len(ordered_models)} Search results "
@@ -841,15 +1020,18 @@ def _parser():
         "--snapshot-file",
         help="Selection-session catalog snapshot created during --list-values",
     )
+    parser.add_argument(
+        "--resolve-only",
+        action="store_true",
+        help="Resolve constraints through the snapshot and contract without calling Search",
+    )
     return parser
 
 
 def parse_cli_args(argv=None):
     """Parse options and repeatable constraints in any documented order."""
     parser = _parser()
-    # Python 3.10 does not reliably resume a ``nargs='*'`` positional after an
-    # optional argument with parse_args(). parse_intermixed_args() supports the
-    # documented option/constraint order on every runtime we ship.
+    # Needed for documented option/constraint ordering on Python 3.10.
     return parser.parse_intermixed_args(argv)
 
 
@@ -897,6 +1079,18 @@ def main(argv=None):
             )
 
         catalog = _load_catalog_for_selection(args)
+        if args.resolve_only:
+            plan = build_search_plan(args.hub_name, constraints, catalog.models)
+            print(
+                json.dumps(
+                    {
+                        "filters_applied": constraints,
+                        "resolution_notes": plan.notes,
+                    }
+                )
+            )
+            return 0
+
         selection = select_public_hub_models(
             args.hub_name,
             constraints,

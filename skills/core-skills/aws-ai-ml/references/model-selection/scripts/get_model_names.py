@@ -7,7 +7,7 @@ import boto3
 os.environ.setdefault("AWS_SDK_UA_APP_ID", "AWSSkill-SageMaker")
 
 if len(sys.argv) < 2:
-    print("Usage: python get_model_names.py <hub-name> [region]")
+    print("Usage: python get_model_names.py <hub-name> [region]", file=sys.stderr)
     sys.exit(1)
 
 hub_name = sys.argv[1]

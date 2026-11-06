@@ -26,6 +26,8 @@ from datetime import datetime, timezone
 import boto3
 import botocore.exceptions
 
+import discovery_metadata_contracts
+
 os.environ.setdefault("AWS_SDK_UA_APP_ID", "AWSSkill-SageMaker")
 
 SNAPSHOT_SCHEMA_VERSION = 1
@@ -119,38 +121,53 @@ def _parse_billions(token):
         return None
 
 
-# Document fields read when the matching keyword is absent. The Hub writes at
-# most 50 keywords per model and a model with many languages can run out of
-# slots before these are written, while the document still carries them. Only
-# Search returns HubContentDocument; ListHubContents does not, so the snapshot
-# is unaffected. normalized field -> (document field, keyword prefix)
+# Document fields read when the keyword cap dropped them. The Hub writes at
+# most 50 keywords per model. A model with many languages runs out of slots:
+# its language list is cut short, and ``@model-size:`` and ``@context-window:``
+# are never written, while the document still carries every value. Only Search
+# returns HubContentDocument; ListHubContents does not, so the snapshot is
+# unaffected. normalized field -> (document field, keyword prefix)
+#
+# Scalar fields fall back: the document is read only when no keyword with the
+# prefix exists. List fields merge: document values the keywords lack are
+# appended, because a truncated keyword list is still partially present.
 _DOCUMENT_FALLBACK_FIELDS = {
     "size": ("ModelSize", "@model-size:"),
     "context_window": ("ContextWindow", "@context-window:"),
+    "license": ("License", "@license:"),
+    "provider": ("Provider", "@provider:"),
+}
+_DOCUMENT_MERGE_FIELDS = {
+    "languages": ("Languages", "@language:"),
+    "tasks": ("Task", "@task:"),
 }
 
 
-def _document_scalar(model, field):
-    """Return one lower-cased string value of a top-level document field, or None.
+def _document_values(model, field):
+    """Return the lower-cased string values of a top-level document field.
 
     Keywords are the lower-cased document value, so lower-casing here keeps the
-    normalized shape identical whichever source supplied it.
+    normalized shape identical whichever source supplied it. A scalar field
+    yields one value; a list field yields each non-empty string in order.
     """
     document = model.get("HubContentDocument")
     if not isinstance(document, str) or not document:
-        return None
+        return []
     try:
         parsed = json.loads(document)
     except ValueError:
-        return None
+        return []
     if not isinstance(parsed, dict):
-        return None
+        return []
     value = parsed.get(field)
-    if isinstance(value, list):
-        value = next((item for item in value if isinstance(item, str) and item), None)
-    if isinstance(value, str) and value:
-        return value.lower()
-    return None
+    items = value if isinstance(value, list) else [value]
+    return [item.lower() for item in items if isinstance(item, str) and item]
+
+
+def _document_scalar(model, field):
+    """Return the first lower-cased string value of a document field, or None."""
+    values = _document_values(model, field)
+    return values[0] if values else None
 
 
 def normalize_hub_content(model):
@@ -198,7 +215,14 @@ def normalize_hub_content(model):
             entry.setdefault("tasks", []).append(kw.split(":", 1)[1])
 
     entry["bedrock_eligible"] = "@capability:bedrock_console" in keywords
-    entry["customization_eligible"] = "@capability:customization" in keywords
+    if "@capability:customization" in keywords:
+        entry["customization_capable"] = True
+
+    # Search returns the document, so customization remains visible even when
+    # its keyword was omitted. ListHubContents has no document and keeps the
+    # existing keyword-derived behavior.
+    if "customization" in _document_values(model, "Capabilities"):
+        entry["customization_capable"] = True
 
     # A keyword, when present, is authoritative; the document fills in only
     # what the keyword cap dropped.
@@ -213,6 +237,16 @@ def normalize_hub_content(model):
             entry["size"] = normalize_size_bucket(value)
         else:
             entry[normalized_field] = value
+
+    for normalized_field, (document_field, _prefix) in _DOCUMENT_MERGE_FIELDS.items():
+        present = entry.get(normalized_field, [])
+        missing = [
+            value
+            for value in _document_values(model, document_field)
+            if value not in present
+        ]
+        if missing:
+            entry[normalized_field] = list(present) + missing
 
     # ListHubContents exposes this model-level catalog date, while Search only
     # exposes version-level CreationTime. Cache the List field so a version
@@ -310,6 +344,27 @@ def list_available_values(models):
             values["frameworks"].add(model["framework"])
 
     return {k: sorted(v) for k, v in values.items()}
+
+
+def canonical_value_output(hub_name):
+    """Return public-Hub producer contracts for value discovery.
+
+    Private Hubs have no ModelHub producer contract and keep their existing
+    ListHubContents-only discovery behavior, so they receive no extra fields.
+    For SageMakerPublicHub, ``available_values`` lists what current models kept
+    as keywords, which the 50-keyword cap can truncate. ``canonical_values``
+    lists every value the producer contract allows, and ``canonical_rules``
+    describes fields that have a rule instead of a vocabulary. A canonical
+    value absent from ``available_values`` can still be requested: the Search
+    adapter resolves it through the contract and lets Search decide whether any
+    model carries it.
+    """
+    if hub_name != "SageMakerPublicHub":
+        return {}
+    return {
+        "canonical_values": discovery_metadata_contracts.canonical_values_for_requests(),
+        "canonical_rules": discovery_metadata_contracts.canonical_rules_for_requests(),
+    }
 
 
 def build_catalog_snapshot(hub_name, region_name, models, fetched_at=None):
@@ -574,17 +629,17 @@ def main(argv=None):
                 {
                     "snapshot_file": snapshot_path,
                     "available_values": snapshot["available_values"],
+                    **canonical_value_output(hub_name),
                 }
             )
         )
     elif list_values_mode:
-        print(
-            json.dumps(
-                snapshot["available_values"]
-                if snapshot is not None
-                else list_available_values(results)
-            )
+        available_values = (
+            snapshot["available_values"]
+            if snapshot is not None
+            else list_available_values(results)
         )
+        print(json.dumps({**available_values, **canonical_value_output(hub_name)}))
     else:
         print(json.dumps(results))
     return 0

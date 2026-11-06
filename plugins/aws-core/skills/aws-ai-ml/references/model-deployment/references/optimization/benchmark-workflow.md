@@ -17,7 +17,7 @@ If the user doesn't know their endpoint name:
 
 > "I can look up your SageMaker endpoints. Would you like me to list them?"
 
-Run `aws sagemaker list-endpoints --status-equals InService` to list candidates. Run `aws sagemaker describe-endpoint --endpoint-name <name>` to confirm it exists, capture its region, and read the model behind it. If the endpoint uses inference components, run `aws sagemaker list-inference-components --endpoint-name <name>` to enumerate them. (The AWS MCP server is recommended but not required — the runtime routes these CLI calls through it automatically when available.)
+Run `aws sagemaker list-endpoints --status-equals InService` to list candidates. Run `aws sagemaker describe-endpoint --endpoint-name <name>` to confirm it exists, capture its region, and read the model behind it. If the endpoint uses inference components, run `aws sagemaker list-inference-components --endpoint-name-equals <name>` to enumerate them. (The AWS MCP server is recommended but not required — the runtime routes these CLI calls through it automatically when available.)
 
 **Determine the request/response format yourself — don't ask the user.** Read the container image/env vars via `aws sagemaker describe-model --model-name <name>` (LMI/TGI/vLLM → OpenAI ChatCompletions → synthetic mode). If still ambiguous, one probe (`aws sagemaker-runtime invoke-endpoint` with `{"messages":[...], "max_tokens":8}`) settles it — but a probe sends real inference, so gate it behind the Step 2 confirmation (don't send it before the user agrees). A non-OpenAI shape → template mode.
 
@@ -50,7 +50,7 @@ All workload modes — synthetic, dataset, and template (custom-format) — take
 
 ### Workload parameters
 
-Infer input/output token sizes and concurrency from the endpoint's use case (e.g. chat = short-to-moderate; summarization = long input; a load test drives concurrency high); only ask if genuinely ambiguous. Defaults if nothing else is known: input 512, output 256, concurrency 1, request_count 100.
+Infer input/output token sizes and concurrency from the endpoint's use case (e.g. chat = short-to-moderate; summarization = long input; a load test drives concurrency high); only ask if genuinely ambiguous. To benchmark at the load the endpoint serves today, take concurrency from its CloudWatch metrics as in `workload-from-endpoint.md` Step 2, and token sizes from its token metrics as in Step 3, item 2. Defaults if nothing else is known: input 512, output 256, concurrency 1, request_count 100.
 
 ### Custom-format endpoints (template mode)
 
@@ -116,7 +116,7 @@ Cell 3 (optional extra params): `[EXTRA_PARAMS]` → a dict of extra AIPerf work
 
 Cell 3 (dataset mode only): `[DATASET_S3_URI]` → S3 URI of the dataset/traffic-capture prefix to replay (e.g. `s3://my-bucket/benchmark-data/` or the endpoint's SageMaker Data Capture prefix). Only used in the commented `Workload.from_dataset(...)` block; leave the synthetic workload in place if the user isn't benchmarking on their own data.
 
-Cell 4 conditional: `[INFERENCE_COMPONENT_NAME]` → the inference-component name(s) to target, only if the endpoint uses inference components. Obtain via `aws sagemaker list-inference-components --endpoint-name <name>` (Step 1). If the endpoint has none, leave `inference_components=[...]` commented out.
+Cell 4 conditional: `[INFERENCE_COMPONENT_NAME]` → the inference-component name(s) to target, only if the endpoint uses inference components. Obtain via `aws sagemaker list-inference-components --endpoint-name-equals <name>` (Step 1). If the endpoint has none, leave `inference_components=[...]` commented out.
 
 Cell 6: `[PROJECT_DIR]` → absolute path to the user's project directory where the run manifest is written (e.g. `/home/user/my-project`); use the directory established by the `directory-management` reference, or the current working directory if none.
 
