@@ -119,3 +119,26 @@ def test_dd38bc2_spellings_and_openrouter_priority_preserved() -> None:
             f"{f.name}: the OpenRouter subroute no longer takes priority over "
             f"migration_path (dd38bc2 ordering regressed)"
         )
+
+
+RUNTIME_LABEL = "[C] Generate the Bedrock runtime (CRIS) migration script and A/B test harness"
+
+
+def test_runtime_subroutes_resolve_to_runtime_label() -> None:
+    # bedrock-runtime is the default same-model endpoint, so both menus must
+    # resolve the runtime OpenRouter subroute and the runtime_openai_cris
+    # migration_path to the runtime label, not the Mantle one.
+    for f in AI_ONLY_FILES:
+        section = _ai_only_section(f.read_text(encoding="utf-8"))
+        assert "same_model_runtime" in section, (
+            f"{f.name}: the OpenRouter subroute does not know same_model_runtime"
+        )
+        assert "runtime_openai_cris" in section, (
+            f"{f.name}: migration_path resolution does not know runtime_openai_cris"
+        )
+        assert RUNTIME_LABEL in section, (
+            f"{f.name}: the runtime (CRIS) option-C label is missing"
+        )
+        # Mantle label remains for the selector-gated routes.
+        assert "[C] Generate the Mantle migration script and A/B test harness" in section
+

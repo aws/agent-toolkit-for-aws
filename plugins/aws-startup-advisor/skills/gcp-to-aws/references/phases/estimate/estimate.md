@@ -321,6 +321,8 @@ in this order — the OpenRouter subroute wins over `migration_path`, because
 1. **OpenRouter subroute**, when `aws-design-ai.json` →
    `code_migration.openrouter_path` is set, or `ai-workload-profile.json` has a
    `base_url` containing `openrouter.ai`:
+   - `"same_model_runtime"` → `[C] Generate the Bedrock runtime (CRIS) migration script and A/B test harness`
+     (Step 3B skips gateway config and runs Step 1M's CRIS variant; no provider adapter).
    - `"same_model_mantle"` → `[C] Generate the Mantle migration script and A/B test harness`
      (Step 3B skips gateway config and runs Step 1M; no provider adapter).
    - `"direct"` → `[C] Generate the Bedrock setup script, provider adapter, and A/B test harness`
@@ -328,9 +330,11 @@ in this order — the OpenRouter subroute wins over `migration_path`, because
    - `"litellm"`, `"keep_openrouter"`, or absent → `[C] Generate the gateway config, Bedrock setup script, and A/B test harness`
      (absent defaults to litellm). Do not promise a provider adapter on these three.
 2. **Otherwise** read `ai_architecture.code_migration.migration_path`. Design
-   records `"mantle_openai_responses"` (not `"mantle"`) and `"converse"`; accept
-   both Mantle spellings:
-   - `"mantle"` or `"mantle_openai_responses"` → the Mantle label above.
+   records `"runtime_openai_cris"` by default, `"mantle_openai_responses"` /
+   `"mantle_openai_chat"` (not `"mantle"`) only with a `mantle_selector`, and
+   `"converse"`; accept every Mantle spelling:
+   - `"runtime_openai_cris"` → the Bedrock runtime (CRIS) label above.
+   - `"mantle"`, `"mantle_openai_responses"` or `"mantle_openai_chat"` → the Mantle label above.
    - `"converse"`, `"direct"`, or `"gpt-oss"` → the adapter label above.
      `"converse"` is a Converse client swap, not a Mantle script and not gateway config.
    - `"llm_router"`, `"api_gateway"`, `"voice_platform"`, or `"framework"` → the

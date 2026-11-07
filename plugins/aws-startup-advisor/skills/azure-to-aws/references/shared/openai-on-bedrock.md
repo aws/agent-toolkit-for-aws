@@ -174,7 +174,32 @@ path for any GPT-6 model.
 
 ### Client setup
 
-Requires the OpenAI SDK at **>= 2.45.0**. Preferred client auto-refreshes a short-term Bedrock token:
+Requires the OpenAI SDK at **>= 2.45.0**. The default client targets `bedrock-runtime` (`runtime_openai_cris`) and
+auto-refreshes a short-term Bedrock token through a callable `api_key`:
+
+```python
+from aws_bedrock_token_generator import provide_token
+from openai import OpenAI
+
+region = "us-east-1"
+client = OpenAI(
+    base_url=f"https://bedrock-runtime.{region}.amazonaws.com/openai/v1",
+    api_key=lambda: provide_token(region=region),
+    max_retries=6,
+)
+
+response = client.responses.create(
+    model="us.openai.gpt-5.6-terra",  # the CRIS inference-profile id, never the bare id, on runtime
+    input="...",
+    reasoning={"effort": "medium"},
+)
+```
+
+Keep the API the source app already calls (`responses.create` or `chat.completions.create`); the runtime endpoint
+serves both for these models.
+
+**Mantle form (only when Design recorded a `mantle_selector`):** the `BedrockOpenAI` client targets
+`bedrock-mantle` with the bare model id:
 
 ```python
 from aws_bedrock_token_generator import provide_token
@@ -194,7 +219,7 @@ response = client.responses.create(
 )
 ```
 
-The alternative — `OpenAI(base_url=".../openai/v1", api_key=os.environ["AWS_BEARER_TOKEN_BEDROCK"])` — uses a key
+The alternative on either endpoint — `api_key=os.environ["AWS_BEARER_TOKEN_BEDROCK"]` — uses a key
 that expires within 12 hours and is not refreshed. Do not recommend it for production.
 
 **IAM:** on the mantle path, the managed policy `AmazonBedrockMantleInferenceAccess` grants what inference needs,

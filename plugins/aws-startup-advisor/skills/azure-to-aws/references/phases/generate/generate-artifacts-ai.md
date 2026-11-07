@@ -27,8 +27,8 @@ Read `aws-design-ai.json → ai_architecture.code_migration.migration_path` and
 
 | `migration_path` / framework                                      | Emits (in addition to the always-on set)                                  |
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `mantle_openai_responses` / `mantle_openai_chat`                                         | `ai-migration/migrate_to_mantle.sh` — **skip the provider adapter**       |
-| `runtime_openai_cris`                                              | `ai-migration/migrate_to_mantle.sh` (CRIS variant — `bedrock-runtime` base URL + CRIS id) — skip the provider adapter |
+| `runtime_openai_cris` (default same-model path)                   | `ai-migration/migrate_to_mantle.sh` (CRIS variant — `bedrock-runtime` base URL + CRIS id + the row's `required_client_api`) — skip the provider adapter |
+| `mantle_openai_responses` / `mantle_openai_chat` (only with `mantle_selector`) | `ai-migration/migrate_to_mantle.sh` — **skip the provider adapter**       |
 | `direct` (or absent) or `converse`                                | `ai-migration/provider_adapter.{py,js,go}` — `converse` is a Converse client swap, not a Mantle script |
 | `gpt-oss`                                                         | `ai-migration/provider_adapter.{py,js,go}` targeting gpt-oss via Converse |
 | gateway (`llm_router`/`api_gateway`/`voice_platform`/`framework`) | `ai-migration/gateway_config.{yaml,py,json}` — skip the adapter           |
@@ -39,10 +39,13 @@ Read `aws-design-ai.json → ai_architecture.code_migration.migration_path` and
 **Always emit (every path):** `ai-migration/setup_bedrock.sh`, `ai-migration/test_comparison.py`
 (always Python), `ai-migration/bedrock_monitoring.tf`.
 
-> **Mantle is the PRIMARY path for Azure.** Azure OpenAI apps use the OpenAI SDK, so a same-model
-> move keeps the SDK and changes only base URL, credential, model ID, and IAM — `migrate_to_mantle.sh`,
-> not a rewritten adapter. The `direct` adapter path is the exception (cross-family swap, or a
-> Converse feature the mantle models cannot serve), not the default.
+> **`bedrock-runtime` CRIS is the default path for Azure OpenAI.** Azure OpenAI apps use the OpenAI
+> SDK, so a same-model move keeps the SDK and changes only base URL
+> (`https://bedrock-runtime.{region}.amazonaws.com/openai/v1`), credential, model ID (CRIS profile),
+> and IAM (`bedrock:InvokeModel*`) — `migrate_to_mantle.sh` in its CRIS variant, not a rewritten
+> adapter. Mantle is used only when Design recorded a `mantle_selector`
+> (`references/vendored/ai/bedrock-endpoint-policy.md`). The `direct` adapter path is the exception
+> (cross-family swap, or a Converse feature no same-model path can serve), not the default.
 
 ## Step 1M: `migrate_to_mantle.sh` (mantle path)
 
@@ -93,8 +96,9 @@ is unaffected.
 
 Format by framework: `llm_router` → `gateway_config.yaml` (LiteLLM); `framework` →
 `gateway_config.py`; `voice_platform` → `gateway_config.json`; `api_gateway` → `gateway_config.yaml`.
-OpenRouter branches on `code_migration.openrouter_path` (`same_model_mantle` → run Step 1M;
-`direct` → adapter; `litellm` → yaml; `keep_openrouter` → json; absent → litellm).
+OpenRouter branches on `code_migration.openrouter_path` (`same_model_runtime` → run Step 1M's CRIS
+variant, the default same-model subroute; `same_model_mantle` → run Step 1M's Mantle variant, only
+with a `mantle_selector`; `direct` → adapter; `litellm` → yaml; `keep_openrouter` → json; absent → litellm).
 
 ## Step 3C / 3E: agentic artifacts
 

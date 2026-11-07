@@ -51,18 +51,22 @@ If any required file is missing: **STOP**. Output: "Missing required artifact: [
 
 Check `preferences.json` → `ai_constraints.ai_framework.value` and `aws-design-ai.json` → `ai_architecture.code_migration.migration_path`:
 
-- `migration_path` starts with `"mantle"` (`"mantle"`, `"mantle_openai_chat"`, `"mantle_openai_responses"`) → Generate Mantle setup (Step 1M) + setup (Step 3) + test harness (Step 2). Skip provider adapter (Step 1). Design records `"mantle_openai_responses"`; treat that spelling as this same Mantle path.
-- `migration_path` = `"runtime_openai_cris"` → Generate the CRIS-aware Mantle-equivalent script
-  (Step 1M, using the `us.`/`global.`-prefixed inference-profile ID and the `bedrock-runtime`
-  base URL instead of `bedrock-mantle`) + setup (Step 3) + test harness (Step 2). Skip provider
-  adapter (Step 1) — same as `"mantle"`, just a different endpoint and model-id form.
+- `migration_path` = `"runtime_openai_cris"` (**the default same-model path**; Design records it
+  for every proprietary GPT target unless a `mantle_selector` is present) → Generate the CRIS
+  variant of the same-model script (Step 1M, using the `us.`/`global.`-prefixed inference-profile
+  ID, the `bedrock-runtime` base URL `https://bedrock-runtime.{region}.amazonaws.com/openai/v1`,
+  `bedrock:InvokeModel*` IAM and the row's `required_client_api`) + setup (Step 3) + test harness
+  (Step 2). Skip provider adapter (Step 1).
+- `migration_path` starts with `"mantle"` (`"mantle"`, `"mantle_openai_chat"`, `"mantle_openai_responses"`) → Generate Mantle setup (Step 1M) + setup (Step 3) + test harness (Step 2). Skip provider adapter (Step 1). Design records `"mantle_openai_responses"` or `"mantle_openai_chat"` only together with `bedrock_models[].mantle_selector` (see `references/vendored/ai/bedrock-endpoint-policy.md`); echo that selector in the generated script's header so the Mantle choice stays traceable. Treat the `"mantle_openai_responses"` spelling as this same Mantle path.
 - `migration_path` = `"gpt-oss"` → Generate provider adapter (Step 1) targeting the gpt-oss model on Bedrock via the Converse API + setup (Step 3) + test harness (Step 2). Use the Bedrock model ID from `aws-design-ai.json` → `ai_architecture.bedrock_models[].aws_model_id` (the gpt-oss model ID). Do NOT generate a Mantle script — gpt-oss uses the Converse API directly.
 - `"converse"`, `"direct"`, or absent → Generate provider adapter (Step 1) + setup (Step 3) + test harness (Step 2). `"converse"` is a Converse client swap (Design records it when a proprietary model cannot stay on Mantle); do NOT generate a Mantle script for it.
-- `"llm_router"`, `"api_gateway"`, `"voice_platform"`, or `"framework"` → Skip Step 1, generate gateway config (Step 3B) instead. Step 3B's OpenRouter subroute can still replace that gateway config with Step 1M (`same_model_mantle`) or the provider adapter (`direct`); do not decide those two from `migration_path` alone.
+- `"llm_router"`, `"api_gateway"`, `"voice_platform"`, or `"framework"` → Skip Step 1, generate gateway config (Step 3B) instead. Step 3B's OpenRouter subroute can still replace that gateway config with Step 1M (`same_model_runtime` → the CRIS variant, `same_model_mantle` → the Mantle variant) or the provider adapter (`direct`); do not decide those from `migration_path` alone.
 
-For `runtime_openai_cris`, read the matched `bedrock_models[].required_client_api`.
-Use `responses` for current Design plans without that field; only legacy plans fall back
-to the row or `code_migration.runtime_api` and their Converse default. Use the resolved
+For `runtime_openai_cris`, read the matched `bedrock_models[].required_client_api` — the API the
+source app already calls (`responses` or `chat_completions`; `converse` only when Design recorded
+it for a Converse-only feature). A current Design plan always records it; a legacy plan without
+the field falls back to the row or `code_migration.runtime_api`, and if neither is present the
+source API must be resolved before generating — never assume Converse. Use the resolved
 API consistently for the generated client, comparison and setup calls.
 Preserve the exact `aws_model_id` string, whether a short profile ID or a system-profile ARN.
 When building the IAM policy, use a supplied profile ARN directly and resolve its backing
@@ -153,7 +157,7 @@ Generate `ai-migration/test_comparison.py` — always Python regardless of adapt
 - Output structured JSON to `--output` (default: `comparison_results.json`)
 - Built-in test prompts: include 3-5 prompts based on `ai-workload-profile.json` → `models[].usage_context` covering the primary use case
 - **Adapter paths** (`direct`, `converse`, `gpt-oss`, or a gateway subroute that emits an adapter): use `from provider_adapter import get_provider` from the emitted provider adapter.
-- **Mantle / runtime CRIS / `same_model_mantle` paths:** do not import `provider_adapter` because Step 0 intentionally skips it. Call the source using its recorded SDK and call the target directly with the selected Mantle API. Use this target function for proprietary GPT plans, substituting the saved design values:
+- **Mantle / runtime CRIS / `same_model_runtime` / `same_model_mantle` paths:** do not import `provider_adapter` because Step 0 intentionally skips it. Call the source using its recorded SDK and call the target directly with the selected Mantle API. Use this target function for proprietary GPT plans, substituting the saved design values:
 
   ```python
   def call_bedrock(prompt):
@@ -234,7 +238,8 @@ Skip if `ai_framework` = `"direct"` or absent. Read `preferences.json` → `ai_c
 
 Check `aws-design-ai.json` → `code_migration.openrouter_path` (set in Design Part 5):
 
-- `"same_model_mantle"` → Skip gateway config. Run **Step 1M** (Mantle migration script) using the OpenRouter-sourced model ID as the "current model ID" input. Add a header note that Step 1M's usual "no code changes required" claim does NOT hold here: OpenRouter → Mantle changes the base URL, credential type (Bedrock API key/token provider, not an OpenRouter key), and the model-ID format (e.g. `openai/gpt-4o` → the Mantle model ID). Print this as an explicit line in the generated script rather than reusing Step 1M's unchanged-code language verbatim.
+- `"same_model_runtime"` (the default same-model subroute) → Skip gateway config. Run **Step 1M** in its CRIS variant (`bedrock-runtime` base URL `https://bedrock-runtime.{region}.amazonaws.com/openai/v1`, the CRIS inference-profile ID, `bedrock:InvokeModel*` IAM, the row's `required_client_api`) using the OpenRouter-sourced model ID as the "current model ID" input. Add a header note that Step 1M's usual "no code changes required" claim does NOT hold here: OpenRouter → `bedrock-runtime` changes the base URL, credential type (Bedrock token/API key, not an OpenRouter key), and the model-ID format (e.g. `openai/gpt-4o` → the CRIS-prefixed Bedrock model ID). Print this as an explicit line in the generated script rather than reusing Step 1M's unchanged-code language verbatim.
+- `"same_model_mantle"` (only when the row carries a `mantle_selector`) → Skip gateway config. Run **Step 1M** (Mantle migration script) using the OpenRouter-sourced model ID as the "current model ID" input. Add the same header note: OpenRouter → Mantle changes the base URL, credential type (Bedrock API key/token provider, not an OpenRouter key), and the model-ID format (e.g. `openai/gpt-4o` → the Mantle model ID). Print this as an explicit line in the generated script rather than reusing Step 1M's unchanged-code language verbatim.
 - `"direct"` → Skip gateway config. Generate provider adapter instead (same as Step 1 for direct SDK users). Note: "Migrating from OpenRouter to direct Bedrock API removes the routing middleman and OpenRouter's margin."
 - `"litellm"` → Generate `gateway_config.yaml` in LiteLLM format (standard `llm_router` logic above) + add header comment: "# Migration from OpenRouter to self-hosted LiteLLM with Bedrock backend\n# Install: pip install litellm\n# Run: litellm --config gateway_config.yaml"
 - `"keep_openrouter"` → Generate `gateway_config.json` with OpenRouter model ID mappings:

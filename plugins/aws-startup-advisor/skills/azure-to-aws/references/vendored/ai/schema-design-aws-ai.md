@@ -175,26 +175,41 @@ Traditional-AI capabilities (AWS AI service, not Bedrock): `document_extraction`
 - **`bedrock_models[]`** — per Bedrock target: `source_model_id`, `aws_model_id`,
   `capabilities_matched[]`, `capability_gaps[]`, `honest_assessment`, `source_provider_price`,
   `bedrock_price`, `price_comparison`, `migration_complexity`, `model_change` (bool),
-  `migration_path` (see below), `quota_risk` (`low|medium|high`). Traditional-AI capabilities
-  do NOT appear here — they are `design_blocks[]` rows with `target_aws_service`.
+  `migration_path` (see below), `quota_risk` (`low|medium|high`), `required_client_api`
+  (`responses | chat_completions | converse | invoke | messages` — the client API surface the
+  generated code must use; for `runtime_openai_cris` it is the API the source app already
+  calls, never an implicit Converse), and `mantle_selector` (REQUIRED on every `mantle_*` row,
+  absent otherwise — see below). Traditional-AI capabilities do NOT appear here — they are
+  `design_blocks[]` rows with `target_aws_service`.
 - **`capability_mapping`** — per capability that is `true` in the profile's
   `integration.capabilities_summary`: `{ parity: "full|partial|none", notes }`.
 - **`code_migration`** — `primary_pattern` (matches profile `integration.pattern`),
   `framework`, `files_to_modify[]`, `dependency_changes`, and — when a retained source's
   `source_service` is `azure_openai` or a `provider`/`source_service` pair resolves to OpenAI —
   `openrouter_path` when a router was detected
-  (`same_model_mantle|direct|litellm|keep_openrouter`).
+  (`same_model_runtime|same_model_mantle|direct|litellm|keep_openrouter`; `same_model_runtime`
+  is the default same-model route — `bedrock-runtime` CRIS — and `same_model_mantle` requires a
+  `mantle_selector` on the row).
 - **`infrastructure[]`** — source-cloud AI infra resource → AWS equivalent, with confidence.
 - **`services_to_migrate[]`** — source-cloud AI service → AWS service, effort, notes.
 
 ## migration_path vocabulary
 
-`mantle_openai_responses` (an OpenAI-protocol source — direct or Azure-fronted — with the model
-on Bedrock and the region carrying it: keep the SDK, `model_change: false`) · `mantle_openai_chat`
-(same, preserving a Chat Completions source on a model whose card lists Chat Completions on
-mantle — GPT-6, GPT-5.5, GPT-5.4) · `runtime_openai_cris` (same-model move served via
-`bedrock-runtime` with a CRIS id, `model_change: false`; `us.`/`in.`/`global.` for GPT-5.6 Terra
-and Luna; `us.`/`global.` only for GPT-5.6 Sol, GPT-6, GPT-5.5 and GPT-5.4, per their model cards) · `converse` (Bedrock-native
+**`bedrock-runtime` is the default endpoint for every new path** (`vendored/ai/bedrock-endpoint-policy.md`):
+a same-model OpenAI-protocol source records `runtime_openai_cris`, an Anthropic SDK source records
+`runtime_messages`, and a `mantle_*` path is recorded only with a `bedrock_models[].mantle_selector`.
+
+`runtime_openai_cris` (same-model move served via `bedrock-runtime` `/openai/v1` with a CRIS id,
+`model_change: false`, `required_client_api` = the source app's `responses` or `chat_completions`;
+`us.`/`in.`/`global.` for GPT-5.6 Terra and Luna; `us.`/`global.` only for GPT-5.6 Sol, GPT-6,
+GPT-5.5 and GPT-5.4, per their model cards) · `runtime_messages` (Anthropic SDK kept on
+`bedrock-runtime` `/anthropic` with a Claude profile id, `required_client_api: "messages"`,
+`model_change` per the model mapping) · `mantle_openai_responses` (an OpenAI-protocol source — direct
+or Azure-fronted — with the model on Bedrock and the region carrying it: keep the SDK,
+`model_change: false`; requires `mantle_selector`) · `mantle_openai_chat` (same, preserving a Chat
+Completions source on a model whose card lists Chat Completions on mantle — GPT-6, GPT-5.5,
+GPT-5.4; requires `mantle_selector`) · `mantle_messages` (Anthropic SDK on the Mantle `/anthropic`
+endpoint; requires `mantle_selector`, normally `workspaces`) · `converse` (Bedrock-native
 Converse/`bedrock-runtime`; set `model_change: true` when the workload needs Knowledge Bases,
 intelligent prompt routing, or another feature no same-model path serves) · `gpt-oss`
 (OpenAI-lineage model on the Bedrock-native runtime) · `direct` (framework-agnostic Bedrock SDK
@@ -202,6 +217,14 @@ swap). A **bare** proprietary `openai.gpt-*` model ID is NEVER paired with a
 `converse`/`bedrock-runtime` path — bare ids are mantle ids; every proprietary GPT target on
 `bedrock-runtime` carries a CRIS-prefixed id (there is no runtime in-region form for GPT-6,
 GPT-5.6, GPT-5.5 or GPT-5.4).
+
+## mantle_selector (required on every `mantle_*` `bedrock_models[]` row)
+
+One of `background_inference | server_side_tools | web_search | projects | workspaces |
+mantle_only_model_or_api | in_region_processing` — the verified Mantle-only need that justified
+leaving the `bedrock-runtime` default (definitions in `vendored/ai/bedrock-endpoint-policy.md`).
+API continuity (the app already calls Responses, Chat Completions or Messages) is not a selector.
+Absent on `runtime_*`, `converse`, `gpt-oss` and `direct` rows.
 
 ## regional_validation
 
@@ -267,7 +290,10 @@ rubric file (`ai.md`, a provider-to-Bedrock mapping guide, or a `vendored/ai/*` 
       for GPT-5.6 Sol, GPT-6, GPT-5.5 and GPT-5.4).
 - [ ] For a retained source whose `source_service` is `azure_openai`, or whose provider resolves
       to direct OpenAI: every source model that is available on Bedrock and carried by the
-      target region maps to ITSELF with `model_change: false` — not to a Claude/Nova substitute.
+      target region maps to ITSELF with `model_change: false` — not to a Claude/Nova substitute —
+      and records `migration_path: "runtime_openai_cris"` by default.
+- [ ] Every `bedrock_models[]` row whose `migration_path` starts with `mantle_` carries a
+      `mantle_selector` from the enum above; no `runtime_*`/`converse` row carries one.
 - [ ] `regional_warnings` and `multi_model_warnings` are present (`[]` when clean).
 - [ ] If `agentic_profile.is_agentic == true`: `agentic_design` is present with
       `migration_approach` matching `preferences.json`; a `harness` source whose origin resolves

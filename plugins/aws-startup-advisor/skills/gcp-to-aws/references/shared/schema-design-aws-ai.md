@@ -78,9 +78,34 @@ Bedrock-model capabilities: `text_generation`, `structured_output`, `image_gener
 Traditional-AI capabilities (AWS AI service, not Bedrock): `document_extraction`,
 `image_analysis`, `speech_transcription`.
 
+## migration_path, required_client_api, mantle_selector, openrouter_path vocabulary
+
+`ai_architecture.code_migration.migration_path` and the per-row `bedrock_models[]` fields use the
+same vocabulary as the shared contract (`references/vendored/ai/schema-design-aws-ai.md`), with
+**`bedrock-runtime` as the default endpoint** (`references/vendored/ai/bedrock-endpoint-policy.md`):
+
+- `runtime_openai_cris` — same-model OpenAI-protocol move on `bedrock-runtime` `/openai/v1` with a
+  CRIS id (`us.`/`in.`/`global.` for GPT-5.6 Terra and Luna; `us.`/`global.` only for GPT-5.6 Sol,
+  GPT-6, GPT-5.5 and GPT-5.4), `model_change: false`, `required_client_api` = the API the source
+  app already calls (`responses` or `chat_completions`; `converse` only for a Converse-only
+  feature such as Guardrails). This is the default for every proprietary GPT target.
+- `runtime_messages` — Anthropic SDK kept on `bedrock-runtime` `/anthropic` with a Claude profile
+  id, `required_client_api: "messages"`.
+- `mantle_openai_responses` / `mantle_openai_chat` / `mantle_messages` — the `bedrock-mantle`
+  endpoint; each such row MUST carry `mantle_selector`, one of `background_inference |
+  server_side_tools | web_search | projects | workspaces | mantle_only_model_or_api |
+  in_region_processing`. API continuity alone is not a selector.
+- `converse`, `gpt-oss`, `direct` — Bedrock-native paths; never paired with a **bare**
+  proprietary `openai.gpt-*` id.
+- `code_migration.openrouter_path` (router detected) — `same_model_runtime` (default same-model
+  route) | `same_model_mantle` (requires `mantle_selector`) | `direct` | `litellm` |
+  `keep_openrouter`.
+
 ## Validation Checklist
 
 - [ ] `metadata.ai_source` matches `summary.ai_source` from `ai-workload-profile.json`.
+- [ ] Every `bedrock_models[]` row whose `migration_path` starts with `mantle_` carries a
+      `mantle_selector`; a same-model proprietary GPT row records `runtime_openai_cris` by default.
 - [ ] Every `design_blocks[]` row has exactly one of `target_bedrock_model` /
       `target_aws_service` non-null (XOR).
 - [ ] Every traditional-AI row (`document_extraction`/`image_analysis`/`speech_transcription`)

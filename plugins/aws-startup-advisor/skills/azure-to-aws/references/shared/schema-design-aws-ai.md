@@ -104,15 +104,18 @@ Traditional-AI capabilities (AWS AI service, not Bedrock): `document_extraction`
   `capabilities_matched[]`, `capability_gaps[]`, `honest_assessment`, `source_provider_price`,
   `bedrock_price`, `price_comparison`, `migration_complexity`, `model_change` (bool),
   `migration_path` (see below), `quota_risk` (`low|medium|high`), `required_client_api`
-  (optional — see below). Traditional-AI capabilities do NOT appear here — they are
-  `design_blocks[]` rows with `target_aws_service`.
+  (see below), `mantle_selector` (REQUIRED on every `mantle_*` row, absent otherwise — see
+  below). Traditional-AI capabilities do NOT appear here — they are `design_blocks[]` rows
+  with `target_aws_service`.
 - **`capability_mapping`** — per capability that is `true` in the profile's
   `integration.capabilities_summary`: `{ parity: "full|partial|none", notes }`.
 - **`code_migration`** — `migration_path` (the selected API/endpoint path consumed by Generate),
   `primary_pattern` (matches profile `integration.pattern`),
   `framework`, `files_to_modify[]`, `dependency_changes`, and — when the source is Azure
   OpenAI / OpenAI — `openrouter_path` when a router was detected
-  (`same_model_mantle|direct|litellm|keep_openrouter`).
+  (`same_model_runtime|same_model_mantle|direct|litellm|keep_openrouter`; `same_model_runtime`
+  is the default same-model route — `bedrock-runtime` CRIS — and `same_model_mantle` requires a
+  `mantle_selector` on the row).
 - **`infrastructure[]`** — Azure AI infra resource → AWS equivalent, with confidence.
 - **`services_to_migrate[]`** — Azure AI service → AWS service, effort, notes.
 - **`quota_risk`** — optional `low|medium|high` on `ai_architecture`, the value
@@ -123,12 +126,22 @@ Traditional-AI capabilities (AWS AI service, not Bedrock): `document_extraction`
 
 ## migration_path vocabulary
 
-`mantle_openai_chat` preserves a selected Chat Completions API on Mantle for a model whose card
-lists it there (GPT-6, GPT-5.5, GPT-5.4).
-`mantle_openai_responses` (Azure OpenAI / OpenAI source, model on Bedrock, region carries it —
-keep the SDK, `model_change: false`) · `runtime_openai_cris` (GPT-6 / GPT-5.6 / GPT-5.5 / GPT-5.4
-same-model move served via `bedrock-runtime` CRIS — `us.`/`in.`/`global.` prefixed for GPT-5.6
-Terra / Luna, `us.`/`global.` only for GPT-5.6 Sol, GPT-6, GPT-5.5 and GPT-5.4 — `model_change: false`) · `converse` (Bedrock-native Converse/`bedrock-runtime`; set
+**`bedrock-runtime` is the default endpoint for every new path** (`vendored/ai/bedrock-endpoint-policy.md`):
+a same-model Azure OpenAI / OpenAI source records `runtime_openai_cris`, an Anthropic SDK source
+records `runtime_messages`, and a `mantle_*` path is recorded only with a
+`bedrock_models[].mantle_selector`.
+
+`runtime_openai_cris` (GPT-6 / GPT-5.6 / GPT-5.5 / GPT-5.4 same-model move served via
+`bedrock-runtime` `/openai/v1` with a CRIS id — `us.`/`in.`/`global.` prefixed for GPT-5.6
+Terra / Luna, `us.`/`global.` only for GPT-5.6 Sol, GPT-6, GPT-5.5 and GPT-5.4 — `model_change: false`,
+`required_client_api` = the source app's `responses` or `chat_completions`) · `runtime_messages`
+(Anthropic SDK kept on `bedrock-runtime` `/anthropic` with a Claude profile id,
+`required_client_api: "messages"`) · `mantle_openai_chat` (preserves a selected Chat Completions
+API on Mantle for a model whose card lists it there — GPT-6, GPT-5.5, GPT-5.4; requires
+`mantle_selector`) · `mantle_openai_responses` (Azure OpenAI / OpenAI source, model on Bedrock,
+region carries it — keep the SDK, `model_change: false`; requires `mantle_selector`) ·
+`mantle_messages` (Anthropic SDK on the Mantle `/anthropic` endpoint; requires `mantle_selector`,
+normally `workspaces`) · `converse` (Bedrock-native Converse/`bedrock-runtime`; set
 `model_change: true` when the workload needs Knowledge Bases, intelligent prompt routing, or
 another feature the same-model CRIS path itself cannot serve) · `gpt-oss` (OpenAI-lineage model
 on the Bedrock-native runtime) · `direct` (framework-agnostic Bedrock SDK swap). A **bare**
@@ -142,11 +155,21 @@ needs Guardrails or Application Inference Profiles (Converse-only features that 
 Invoke-adjacent plumbing on some other models) must verify against Astra's model card
 per-feature, not assume parity with Sol/Luna/6.1 Sol.
 
-## required_client_api (optional, per `bedrock_models[]` entry)
+## mantle_selector (required on every `mantle_*` `bedrock_models[]` entry)
 
-`responses | converse | chat_completions | invoke` — records the client API surface the
-generated code must use. Absent/default is `responses` for a region-only `runtime_openai_cris`
-move (no Guardrails or other client-surface need). A Guardrails-requiring workload on
+One of `background_inference | server_side_tools | web_search | projects | workspaces |
+mantle_only_model_or_api | in_region_processing` — the verified Mantle-only need that justified
+leaving the `bedrock-runtime` default (definitions in `vendored/ai/bedrock-endpoint-policy.md`).
+API continuity (the app already calls Responses, Chat Completions or Messages) is not a selector.
+Absent on `runtime_*`, `converse`, `gpt-oss` and `direct` rows.
+
+## required_client_api (per `bedrock_models[]` entry)
+
+`responses | converse | chat_completions | invoke | messages` — records the client API surface the
+generated code must use. For a region-only `runtime_openai_cris` move (no Guardrails or other
+client-surface need) record the API the source app already calls — `responses` for a Responses
+source, `chat_completions` for a Chat Completions source; Converse is never an implicit default
+for `runtime_openai_cris`. `messages` belongs to `runtime_messages`. A Guardrails-requiring workload on
 `runtime_openai_cris` sets it to the surface that is actually Guardrails-capable for that model:
 `converse` for GPT-6 Astra and GPT-6.1 Terra, or
 `converse`/`chat_completions`/`invoke` — never `responses` — for GPT-6.1 Sol and the other
@@ -222,7 +245,9 @@ rubric file (`ai.md`, `ai-azure-openai-to-bedrock.md`, or a `vendored/ai/*` ref)
       move keeps the `responses` default.
 - [ ] If `ai_source` is `azure_openai` or `openai`: every source model that is available on
       Bedrock and carried by the target region maps to ITSELF with `model_change: false` — not
-      to a Claude/Nova substitute.
+      to a Claude/Nova substitute — and records `migration_path: "runtime_openai_cris"` by default.
+- [ ] Every `bedrock_models[]` row whose `migration_path` starts with `mantle_` carries a
+      `mantle_selector` from the enum above; no `runtime_*`/`converse` row carries one.
 - [ ] `regional_warnings` and `multi_model_warnings` are present (`[]` when clean).
 - [ ] If `agentic_profile.is_agentic == true`: `agentic_design` is present with
       `migration_approach` matching `preferences.json`; a `harness` source with an

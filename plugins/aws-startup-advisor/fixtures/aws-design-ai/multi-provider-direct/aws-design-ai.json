@@ -93,6 +93,7 @@
         "migration_complexity": "low",
         "model_change": true,
         "migration_path": "mantle_openai_responses",
+        "mantle_selector": "in_region_processing",
         "quota_risk": "low"
       }
     ],

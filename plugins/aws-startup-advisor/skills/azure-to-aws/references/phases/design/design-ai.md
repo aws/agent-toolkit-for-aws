@@ -37,7 +37,8 @@ defaults (prefer managed Bedrock, no latency constraint, no budget cap).
   **and** `references/shared/openai-on-bedrock.md` (the fact base: Bedrock model IDs, endpoint
   paths, region matrix, quotas). Azure OpenAI serves OpenAI models, so the source model is
   usually itself the target — the mapping guide's Tier 0 (same-model) path is the default, not
-  a cross-family swap. `azure_openai` routes IDENTICALLY to `openai`; the distinct label is
+  a cross-family swap, and it runs on `bedrock-runtime` (`migration_path: "runtime_openai_cris"`)
+  unless a `mantle_selector` from `references/vendored/ai/bedrock-endpoint-policy.md` is recorded. `azure_openai` routes IDENTICALLY to `openai`; the distinct label is
   kept only for report wording and provenance (§19.9(b)).
 - `"anthropic"` → load `references/vendored/ai/ai-anthropic-to-bedrock.md` (Anthropic SDK →
   Bedrock Converse client swap).
@@ -190,7 +191,8 @@ Partial/None.
 ## Part 3: Integration pattern → effort
 
 Map `integration.pattern`: `direct_sdk` (Azure OpenAI/OpenAI, model on Bedrock, region carries
-it) → Mantle Responses API, minimal; `direct_sdk` → Bedrock SDK/Converse, medium; `framework`
+it) → Runtime OpenAI API on `bedrock-runtime` CRIS (Mantle only with a `mantle_selector`), minimal;
+`direct_sdk` → Bedrock SDK/Converse, medium; `framework`
 → LangChain/LlamaIndex + Bedrock, low; `rest_api` → Bedrock REST, medium; `mixed` → per-model.
 
 ## Part 4: Infrastructure mapping
@@ -208,14 +210,20 @@ Map Azure AI infrastructure to AWS:
 
 ## Part 5: Code migration plan
 
-Preserve `mantle_openai_chat` when the selected API is Chat Completions.
+Preserve the source app's API: a Chat Completions source keeps Chat Completions
+(`required_client_api: "chat_completions"`, or `mantle_openai_chat` on a selector-gated Mantle row).
 
 Generate before/after examples per detected `integration.pattern` and `ai_source`. For an
-`azure_openai`/`openai` source with the model on Bedrock, the **Mantle Responses API** is the
-primary path (`migration_path: "mantle_openai_responses"`, `model_change: false`): the app
-keeps the OpenAI SDK; only the base URL (`.../openai/v1/responses`), credential (a Bedrock API
-key/token provider), model ID, and IAM (`bedrock-mantle:*`) change. Read
-`references/shared/openai-on-bedrock.md` for exact values. **A Chat Completions source is a
+`azure_openai`/`openai` source with the model on Bedrock, the **`bedrock-runtime` OpenAI-compatible
+API** is the default (`migration_path: "runtime_openai_cris"`, `model_change: false`,
+`required_client_api` = the API the source already calls): the app keeps the OpenAI SDK; only the
+base URL (`https://bedrock-runtime.{region}.amazonaws.com/openai/v1`), credential (a short-term
+Bedrock token or API key), model ID (the CRIS profile), and IAM (`bedrock:InvokeModel*`) change.
+The **Mantle** path (`migration_path: "mantle_openai_responses"` / `"mantle_openai_chat"`, base URL
+`.../openai/v1` on `bedrock-mantle`, `bedrock-mantle:*` IAM) is recorded only when the row also
+carries `bedrock_models[].mantle_selector` (`references/vendored/ai/bedrock-endpoint-policy.md`);
+API continuity alone never selects Mantle. Read `references/shared/openai-on-bedrock.md` for exact
+values. **A Chat Completions source is a
 supported near-drop-in for GPT-6 and GPT-5.6** (both list Chat Completions on mantle and runtime
 CRIS per their model cards) — keep `chat.completions.create` unless a Responses-only feature or
 demonstrated constraint drives a reshape. **GPT-5.5 and GPT-5.4 follow the same rule**: their
@@ -228,9 +236,9 @@ Sol/Terra/Luna, all five GPT-6 models (Astra, Sol, Luna, 6.1 Sol, 6.1 Terra), an
 GPT-5.4 (`us.openai.gpt-5.5` / `global.openai.gpt-5.5`, `us.openai.gpt-5.4` /
 `global.openai.gpt-5.4`; Responses, Chat Completions and Converse on runtime, no runtime
 in-region form) have a `bedrock-runtime` CRIS path (`us.`/`global.` prefixed IDs) — for all of
-them a Guardrails/logging/application-inference-profile/unsupported-region need is satisfied by
-switching endpoint, not model: record `migration_path: "runtime_openai_cris"` with
-`model_change: false`. Reserve `converse` with `model_change: true` to a Bedrock-native model (or
+them a Guardrails/logging/application-inference-profile/unsupported-region need is satisfied on
+the default endpoint without a model switch: record `migration_path: "runtime_openai_cris"` with
+`model_change: false` — the same path a region-only move records. Reserve `converse` with `model_change: true` to a Bedrock-native model (or
 `gpt-oss`) for a need the same-model CRIS path cannot serve (Knowledge Bases, intelligent prompt
 routing). Note: `runtime_openai_cris`
 for GPT-6 Astra is valid only via Responses/Chat Completions/Converse — Astra does not support
@@ -240,8 +248,9 @@ Sol/Luna/6.1 Sol. **When Guardrails is the driving need and the design keeps
 `bedrock_models[].required_client_api` so the generated client uses a Guardrails-capable
 surface — `converse` for Astra and 6.1 Terra; `converse` / `chat_completions` / `invoke` (never `responses`)
 for 6.1 Sol and the other GPT-6/5.6 CRIS models except Astra and 6.1 Terra. Do not leave the client on
-`responses` when Guardrails is required.** `Responses` stays the default for a region-only
-CRIS move with no Guardrails or application-inference-profile need.
+`responses` when Guardrails is required.** For a region-only CRIS move with no Guardrails or
+application-inference-profile need, the default `required_client_api` is the API the source app
+already calls (`responses` or `chat_completions`) — never an implicit Converse.
 
 **Application inference profiles are Converse-only on GPT-5.5, GPT-5.4, GPT-6.1 Terra and Astra —
 the requirement MUST reach `required_client_api`.** The GPT-5.4 / GPT-5.5 model cards (read 2026-11-07)
@@ -270,7 +279,8 @@ Keep `model_change: false` only when the exact underlying model is unchanged; op
 deployment names need verified model identity, not a guessed GPT family.
 
 Anthropic-SDK sources → boto3 Converse client swap. Record `code_migration.openrouter_path`
-when a router was detected (`same_model_mantle|direct|litellm|keep_openrouter`).
+when a router was detected (`same_model_runtime|same_model_mantle|direct|litellm|keep_openrouter`;
+`same_model_runtime` is the default same-model route, `same_model_mantle` needs a `mantle_selector`).
 
 ## Part 6: Write output
 
