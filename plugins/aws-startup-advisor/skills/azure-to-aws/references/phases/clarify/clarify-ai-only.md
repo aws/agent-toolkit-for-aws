@@ -129,9 +129,10 @@ running). → `ai_constraints.cross_cloud`. Default `"latency-acceptable"`.
 | Claude (Anthropic SDK)                    | Same model on Bedrock                  | client swap only — no model change         |
 | Other / multiple / don't know             | ask / infer                            | —                                          |
 
-**Same-model rows first.** GPT-5.6/5.5/5.4 run on Bedrock via `bedrock-mantle` (Responses,
-in-region only) — the case is AWS commitments/governance/residency, not savings, and not parity
-(~10% above OpenAI standard). For sources with no Bedrock equivalent, present a same-vendor
+**Same-model rows first.** GPT-5.6/5.5/5.4 run on Bedrock via `bedrock-mantle` (Responses or
+Chat Completions, in-region only) or via `bedrock-runtime` CRIS ids (`us.`/`global.`) — the case
+is AWS commitments/governance/residency, not savings, and not parity (~10% above OpenAI standard
+in-region; GPT-5.6 Global CRIS is at the standard rate). For sources with no Bedrock equivalent, present a same-vendor
 upgrade AND a cross-family option. → `ai_model_baseline`.
 
 **After Batch 1:** interpret answers, write `preferences-draft.json` (`metadata.draft: true`,

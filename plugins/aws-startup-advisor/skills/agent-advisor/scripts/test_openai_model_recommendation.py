@@ -64,16 +64,56 @@ def test_responses_source_with_continuity_recommends_mantle_responses():
     assert rec["primary_model"] == "openai.gpt-5.6-sol"
 
 
-def test_chat_completions_gpt5_target_selects_responses_not_chat():
+def test_chat_completions_unrecognized_gpt5_source_lands_on_sol_responses():
+    # The default workload's source is `gpt-5.4`, which the engine does not yet
+    # recognize as a same-model identity (see _SOURCE_MODEL_KEYS), so it lands on
+    # the first catalog candidate — GPT-5.6 Sol — whose card leaves Chat
+    # Completions unchecked on Mantle. The reshape here follows from THAT model's
+    # card, not from a blanket "GPT-5.x on Mantle is Responses-only" rule: the
+    # GPT-5.4 card itself lists Chat Completions on Mantle (see the catalog test
+    # below).
     rec = _recommend(
         _workload(
             source={"api_surface": "chat_completions"},
             requirements={"api_continuity": "required"},
         )
     )
+    assert rec["primary_model"] == "openai.gpt-5.6-sol"
+    assert OPENAI_CATALOG["models"]["openai_gpt_5_6_sol"]["paths"]["mantle_openai_chat"]["available"] is False
     assert rec["api_path"] == "mantle_openai_responses"
     assert rec["api_path"] != "mantle_openai_chat"
     assert "chat_completions_to_responses_required" in _codes(rec["blocks"])
+
+
+@pytest.mark.parametrize(
+    ("catalog_key", "model_id", "card"),
+    [
+        ("openai_gpt_5_4", "openai.gpt-5.4", "model-card-openai-gpt-54.html"),
+        ("openai_gpt_5_5", "openai.gpt-5.5", "model-card-openai-gpt-55.html"),
+    ],
+)
+def test_catalog_gpt54_gpt55_record_public_runtime_and_chat_facts(catalog_key, model_id, card):
+    # Public model cards (read 2026-11-06): both models list bedrock-runtime
+    # (Responses, Chat Completions, Converse via us./global. CRIS ids; no in-region
+    # form), Chat Completions on bedrock-mantle, a 1,050,000-token context window
+    # and 128,000 max output. Provenance must be the public card, never an
+    # internal reference.
+    model = OPENAI_CATALOG["models"][catalog_key]
+    paths = model["paths"]
+    assert paths["mantle_openai_responses"]["available"] is True
+    assert paths["mantle_openai_chat"]["available"] is True
+    assert paths["runtime_converse"]["available"] is True
+    assert paths["runtime_converse"]["requires_cris"] is True
+    assert paths["runtime_converse"]["model_id"] == model_id
+    assert f"us.{model_id}" in paths["runtime_converse"]["evidence"]
+    assert f"global.{model_id}" in paths["runtime_converse"]["evidence"]
+    assert set(model["inference_profiles"]) == {"us", "global"}
+    assert model["context_window"] == 1050000
+    assert model["output_token_ceiling"] == 128000
+    assert card in model["capability_source"]
+    for path in paths.values():
+        assert "internal reference" not in path["evidence"]
+    assert "internal reference" not in model["capability_source"]
 
 
 def test_chat_completions_case_includes_full_reshape_deltas():

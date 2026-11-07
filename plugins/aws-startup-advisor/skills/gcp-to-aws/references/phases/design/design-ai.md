@@ -238,7 +238,9 @@ data-residency-tier premium, while supported Global CRIS uses standard-rate pari
 Report the actual option; do not downgrade solely for the modest verified premium.
 **GPT-5.6/GPT-6 only:** above 272K context, apply 2.0x input and 1.5x output rates only when
 the selected model and inference option support that tier; the resulting gap may change
-the assessment. GPT-5.5/5.4 have no 1M tier. **Opus 5.5:** use the selected region/profile's
+the assessment. GPT-5.5/5.4 have their own long-context (>272K) rates on their model cards
+(read 2026-11-06; see `openai-on-bedrock.md` § Pricing) — use those, not the GPT-5.6
+multiplier. **Opus 5.5:** use the selected region/profile's
 flat rates from `references/vendored/ai/bedrock-pricing-cache.md` throughout the full 1M context;
 do not apply the GPT multiplier. Verify other models' tiers individually.
 
@@ -407,23 +409,25 @@ Astra Chat solely because it is proprietary GPT. Record `model_change: false` on
 the exact source model is retained; a Pro-to-Astra upgrade is a model change requiring eval.
 GPT-5.x retains its separately dated API evidence and any selected Chat-to-Responses reshape.
 
-**A Chat Completions source is a supported near-drop-in for GPT-6 and GPT-5.6 — not a mandatory reshape.** All five GPT-6 models and the GPT-5.6 family list Chat Completions as a supported API on both mantle and runtime CRIS (per `openai-on-bedrock.md` § Access Paths); if `integration` evidence shows `chat.completions.create` for one of these models, the design may keep `chat.completions.create`/`choices[0].message` parsing — reshape to `responses.create` is optional, only for a Responses-only feature (runtime explicit prompt caching, reasoning-item round-trips) or a demonstrated constraint. **GPT-5.5 and GPT-5.4 are the exception**: Chat Completions support is unconfirmed on their model cards (Responses on mantle is the only verified surface), so a Chat Completions source on either model still needs a planned reshape, probed against the target account before committing.
+**A Chat Completions source is a supported near-drop-in for GPT-6 and GPT-5.6 — not a mandatory reshape.** All five GPT-6 models and the GPT-5.6 family list Chat Completions as a supported API on both mantle and runtime CRIS (per `openai-on-bedrock.md` § Access Paths); if `integration` evidence shows `chat.completions.create` for one of these models, the design may keep `chat.completions.create`/`choices[0].message` parsing — reshape to `responses.create` is optional, only for a Responses-only feature (runtime explicit prompt caching, reasoning-item round-trips) or a demonstrated constraint. **GPT-5.5 and GPT-5.4 follow the same rule**: their model cards (read 2026-11-06) list Chat Completions as supported on both `bedrock-mantle` and `bedrock-runtime`, so a Chat Completions source on either model may keep Chat Completions; the reshape is optional for them too. A planned reshape is required only when the selected model's card leaves Chat Completions unchecked on the selected endpoint (check the per-model path entries in the canonical catalog). Probe the selected API against the target account before committing, as for any model.
 
 **Terra caching depends on the endpoint and mode.** On runtime, implicit caching supports
 Responses, Chat Completions, InvokeModel, and Converse. It does not require a Chat client
 reshape and can be combined with Converse Guardrails. Runtime explicit caching requires
 Responses. On Mantle, both implicit and explicit caching are Responses-only.
 
-**No Converse fallback for GPT-5.5/GPT-5.4 — GPT-5.6 and GPT-6 differ.** GPT-5.5 and GPT-5.4 are
-`bedrock-mantle` only and in-region only — there is no `bedrock-runtime` path and no cross-region
-inference profile for these two models. GPT-5.6 Sol/Terra/Luna and all five GPT-6 models (Astra,
-Sol, Luna, 6.1 Sol, 6.1 Terra) DO have a `bedrock-runtime` CRIS path (`us.`/`global.` prefixed IDs, per
-`openai-on-bedrock.md` § Access Paths) — for these models, a region or feature need (Guardrails,
-Knowledge Bases, invocation logging, or a region outside the mantle matrix) is satisfied by
-**switching endpoint, not model**: record `migration_path: "runtime_openai_cris"` with
-`model_change: false`. Reserve `migration_path: "converse"` with `model_change: true` for
-GPT-5.5/GPT-5.4 only, or when the GPT-6/5.6 CRIS path itself cannot serve the need (e.g. a feature
-CRIS does not support — see the runtime-side feature splits in `openai-on-bedrock.md`). Note:
+**Every proprietary GPT model on Bedrock has a `bedrock-runtime` CRIS path — including GPT-5.5 and
+GPT-5.4.** GPT-5.6 Sol/Terra/Luna, all five GPT-6 models (Astra, Sol, Luna, 6.1 Sol, 6.1 Terra), and
+GPT-5.5 / GPT-5.4 (model cards read 2026-11-06: `us.openai.gpt-5.5` / `global.openai.gpt-5.5`,
+`us.openai.gpt-5.4` / `global.openai.gpt-5.4`; Responses, Chat Completions and Converse on runtime)
+have a `bedrock-runtime` CRIS path (`us.`/`global.` prefixed IDs, per `openai-on-bedrock.md`
+§ Access Paths). No proprietary GPT model has a runtime in-region form. For all of them, a region
+or feature need (Guardrails, invocation logging, application inference profiles, or a region
+outside the mantle matrix) is satisfied by **switching endpoint, not model**: record
+`migration_path: "runtime_openai_cris"` with `model_change: false`. Reserve
+`migration_path: "converse"` with `model_change: true` for a need the same-model CRIS path itself
+cannot serve (Knowledge Bases, intelligent prompt routing, or a feature CRIS does not support —
+see the runtime-side feature splits in `openai-on-bedrock.md`). Note:
 `runtime_openai_cris` for GPT-6 Astra is valid only via Responses/Chat Completions/Converse —
 Astra does not support `Invoke`, so a design that needs Guardrails or Application Inference
 Profiles (Converse-only features that also require Invoke-adjacent plumbing on some other models)
@@ -511,9 +515,10 @@ Write `aws-design-ai.json` to `$MIGRATION_DIR/`.
 - [ ] `honest_assessment` logic is consistent (weakest model drives overall)
 - [ ] If `ai_source` includes `"openai"`: every model that `shared/openai-on-bedrock.md` lists as available on Bedrock, and whose target region carries it, is mapped to **itself** with `model_change: false` — not to a Claude/Nova substitute
 - [ ] If `honest_assessment == "recommend_stay"`: `honest_assessment_reason` names a non-cost blocker (cost parity alone is never sufficient for an OpenAI source)
-- [ ] No `bedrock_models[]` entry pairs **GPT-5.5 or GPT-5.4** with a Converse/`bedrock-runtime`
-      migration path (those two models only — mantle-only, no CRIS). GPT-5.6 and GPT-6 models MAY
-      use `migration_path: "runtime_openai_cris"` on `bedrock-runtime` — this is NOT a violation.
+- [ ] No `bedrock_models[]` entry pairs a **bare** proprietary GPT id (including bare
+      `openai.gpt-5.5` / `openai.gpt-5.4`) with a Converse/`bedrock-runtime` migration path.
+      GPT-5.6, GPT-6, GPT-5.5 and GPT-5.4 MAY use `migration_path: "runtime_openai_cris"` on
+      `bedrock-runtime` with a `us.`/`in.`/`global.` CRIS id — this is NOT a violation.
 - [ ] `regional_warnings` is present (empty array `[]` if no issues; populated if any service unavailable in target region)
 - [ ] `multi_model_warnings` is present (empty array `[]` if single model or no coordination issues)
 - [ ] If `agentic_profile.is_agentic == true`: `agentic_design` object is present with `migration_approach` matching `preferences.json`

@@ -42,7 +42,9 @@ Two consequences that invert the previous decision logic:
 2. **The cost of a same-model move depends on the inference option — state it conditionally.** GPT-5.x In-Region and Geo
    CRIS are priced at OpenAI's _data residency_ tier, exactly 1.10x the standard list price, so those moves cost
    ~10% more. **GPT-5.6 on Global CRIS is priced at the standard list price — cost parity** — available only when
-   the workload has no data-residency constraint (GPT-5.5 / GPT-5.4 have no CRIS at all). See
+   the workload has no data-residency constraint. GPT-5.5 / GPT-5.4 also have `us.`/`global.` CRIS ids on
+   `bedrock-runtime`, but their model cards (read 2026-11-06) publish In-Region pricing only, so quote the ~10%
+   figure for them on every inference option until a Global rate is published. See
    `shared/openai-on-bedrock.md`. The non-cost case — AWS commitments, IAM/VPC/CloudTrail governance, residency,
    prompt caching, one vendor relationship — carries the in-region path; never present that path as free or neutral.
    For Astra, use its separately dated Bedrock rates and verify the source provider's rate before comparing.
@@ -72,14 +74,15 @@ GPT-5.4, the target is **the same model on Bedrock**.
 | GPT-5.6 Sol   | GPT-5.6 Sol    | `openai.gpt-5.6-sol` / `us.` `global.` prefixed         | `strong_migrate` — same model; parity on Global CRIS, else +10% |
 | GPT-5.6 Terra | GPT-5.6 Terra  | `openai.gpt-5.6-terra` / `us.` `in.` `global.` prefixed | `strong_migrate` — same model; parity on Global CRIS, else +10% |
 | GPT-5.6 Luna  | GPT-5.6 Luna   | `openai.gpt-5.6-luna` / `us.` `in.` `global.` prefixed  | `strong_migrate` — same model; parity on Global CRIS, else +10% |
-| GPT-5.5       | GPT-5.5        | `openai.gpt-5.5` (mantle only)                          | `strong_migrate` — same model, ~10% over OpenAI std             |
-| GPT-5.4       | GPT-5.4        | `openai.gpt-5.4` (mantle only)                          | `strong_migrate` — same model, ~10% over OpenAI std             |
+| GPT-5.5       | GPT-5.5        | `openai.gpt-5.5` / `us.` `global.` prefixed             | `strong_migrate` — same model, ~10% over OpenAI std             |
+| GPT-5.4       | GPT-5.4        | `openai.gpt-5.4` / `us.` `global.` prefixed             | `strong_migrate` — same model, ~10% over OpenAI std             |
 
 Then apply the **region gate** below. Record `model_change: false` and the chosen path in
 `aws-design-ai.json` → `ai_architecture.code_migration`: `migration_path: "mantle_openai_chat"` for
-Astra sources using Chat Completions, or `"mantle_openai_responses"` for a selected Mantle Responses
-path. Use `migration_path: "runtime_openai_cris"` when a GPT-6 / GPT-5.6 target is served via
-`bedrock-runtime` with a CRIS id (the model cards recommend runtime for new applications).
+sources using Chat Completions on a model whose card lists it on mantle (GPT-6, GPT-5.5, GPT-5.4), or
+`"mantle_openai_responses"` for a selected Mantle Responses path. Use `migration_path: "runtime_openai_cris"`
+when a GPT-6 / GPT-5.6 / GPT-5.5 / GPT-5.4 target is served via `bedrock-runtime` with a CRIS id (the model
+cards recommend runtime for new applications).
 
 Report the assessment honestly: `strong_migrate` here means "low-risk, well-supported move", not "cheaper".
 
@@ -105,14 +108,16 @@ regions — offer it, stating the data-residency implication of cross-region rou
 Global routes anywhere and is the cost-parity option). Only a workload that requires strictly in-region processing
 in a region outside the mantle matrix falls through to Tier 1.
 
-**GPT-5.5 / GPT-5.4:** hard gate. Mantle in-region only, no CRIS, no fallback. If the target region is not in the
-matrix:
+**GPT-5.5 / GPT-5.4:** same shape as GPT-5.6, with a narrower mantle matrix (GPT-5.5: us-east-1, us-east-2;
+GPT-5.4: us-east-1, us-east-2, us-west-2, us-gov-west-1 — per their model cards, read 2026-11-06). If the target
+region is in that matrix, either endpoint works. Otherwise the `bedrock-runtime` CRIS path (`us.openai.gpt-5.5` /
+`global.openai.gpt-5.5`, `us.openai.gpt-5.4` / `global.openai.gpt-5.4`) reaches it, with the same data-residency
+caveat as GPT-5.6 (Geo stays within the geography, Global routes anywhere). There is no runtime in-region form.
+Only a workload that requires strictly in-region processing in a region outside the mantle matrix falls through:
 
-1. Prefer offering a **region change** to a supported region, if no data-residency constraint pins the workload.
-   This preserves the zero-behavior-delta benefit, which is the whole point of Tier 0.
-2. If the region is fixed, also offer **upgrading within the vendor to GPT-5.6** (which reaches the region via
-   CRIS) alongside the cross-family option — a generation change, but same vendor and prompt idioms.
-3. Otherwise fall through to Tier 1 and say why explicitly — a region constraint, not a model judgment.
+1. Prefer offering a **region change** to a supported mantle region, if no data-residency constraint pins the
+   workload. This preserves the zero-behavior-delta benefit, which is the whole point of Tier 0.
+2. Otherwise fall through to Tier 1 and say why explicitly — a region constraint, not a model judgment.
 
 Record the outcome in `regional_warnings[]`.
 
@@ -235,10 +240,11 @@ model on price.
 
 ### Open-weight gpt-oss
 
-`openai.gpt-oss-120b` (0.15 / 0.60) and `openai.gpt-oss-20b` (0.07 / 0.30) remain available and, unlike the
-proprietary GPT models, **do** support `bedrock-runtime` / Converse. They sit a capability class below the GPT-5.x
-frontier tier. Recommend them when the user wants OpenAI-architecture models on the Bedrock-native runtime surface
-(for Guardrails, invocation logging, or Converse-based tooling) rather than through mantle.
+`openai.gpt-oss-120b` (0.15 / 0.60) and `openai.gpt-oss-20b` (0.07 / 0.30) remain available and support
+`bedrock-runtime` / Converse with a bare model ID (no CRIS profile needed) and `Invoke`, which the proprietary GPT
+models do not. They sit a capability class below the GPT-5.x frontier tier. Recommend them when the user wants
+OpenAI-architecture models on the Bedrock-native runtime surface (for Guardrails, invocation logging, or
+Converse-based tooling) at the lowest price rather than through mantle.
 
 ---
 
@@ -284,7 +290,7 @@ rather than dismissing it. For a long-context (>272K) workload the gap is much w
 | Chat Completions                           | Preserve supported Chat when selected                       | Reshape only for a selected API change; verify the model and endpoint                                                     |
 | Function calling                           | Supported on GPT-5.x via mantle; Claude tools via Converse  | Same-model keeps tool semantics identical                                                            |
 | Reasoning effort                           | `reasoning={"effort": ...}` on mantle                       | `none` / `low` / `medium` / `high` / `xhigh` / `max`                                                 |
-| Prompt caching                             | GPT-5.6 only (90% off cached input)                         | Not listed for GPT-5.5 / 5.4; Claude has its own caching                                             |
+| Prompt caching                             | GPT-5.6 (90% off cached input); GPT-5.5 / 5.4 implicit caching on `bedrock-runtime` Responses only | GPT-5.5 / 5.4 cards (read 2026-11-06) list a cache-read rate and implicit caching on runtime, none on mantle; Claude has its own caching |
 | Streaming                                  | Supported                                                   | Verify per surface                                                                                   |
 | Vision                                     | GPT-5.x (image input) or Claude / Llama 4                   | Same-model preserves behavior                                                                        |
 | JSON mode                                  | Claude (excellent), Nova Pro (good)                         | Most models via prompt                                                                               |
@@ -339,11 +345,12 @@ and closed to new customers as of July 30, 2026.
 ### When to prefer a Bedrock-native model over the mantle GPT path
 
 Choose Claude / Nova via Converse when the workload needs Knowledge Bases, intelligent prompt routing, structured
-outputs, or application inference profiles — none of which the GPT path offers. Note what no longer forces a family
-switch for GPT-5.6: its `bedrock-runtime` CRIS path provides cross-region inference, invocation logs, and
-Guardrails (Converse API only; prompt caching is Responses-only on runtime). For GPT-5.5 / GPT-5.4, Guardrails,
-logging, and cross-region reach still require a different model. The mantle GPT path is the smallest change; the
-Bedrock-native path remains the most feature-complete.
+outputs, or application inference profiles — none of which the mantle GPT path offers. Note what no longer forces
+a family switch for GPT-5.6, GPT-5.5 and GPT-5.4: their `bedrock-runtime` CRIS paths provide cross-region
+inference, invocation logs, Guardrails and application inference profiles (both Converse API only), and
+structured outputs and implicit prompt caching (both Responses API only) — per the GPT-5.4 / GPT-5.5 model cards
+read 2026-11-06. Knowledge Bases and intelligent prompt routing still require a Bedrock-native model. The mantle
+GPT path is the smallest change; the Bedrock-native path remains the most feature-complete.
 
 ### High-spend tiering
 
@@ -364,8 +371,8 @@ alternative, not against the source provider.
 cheaper and exempt from the input-TPM quota, which relieves the binding constraint on mantle.
 
 **Very high (>100M tokens/day):** tiering plus caching. Check TPM headroom per model per region early; there is no
-RPM quota and no `bedrock-runtime` fallback for GPT models, so quota increases are the scaling lever. See
-`shared/ai-migration-guardrails.md`.
+RPM quota, and the `bedrock-runtime` CRIS path for GPT-5.6 / 5.5 / 5.4 / GPT-6 carries its own quotas rather than
+adding headroom to mantle, so quota increases are the scaling lever. See `shared/ai-migration-guardrails.md`.
 
 ---
 

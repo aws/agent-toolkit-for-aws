@@ -60,12 +60,15 @@ def is_embedding_model(model_id: str) -> bool:
 def is_mantle_model(model_id: str) -> bool:
     """Pure: ids that must be probed via the mantle Responses API rather than
     Converse/InvokeModel. Matches the BARE proprietary GPT ids (`openai.gpt-5*`,
-    `openai.gpt-6*` — covers GPT-5.5/5.4/5.6 and GPT-6 Astra/Sol/Luna/6.1 Sol),
-    which are mantle-served. Deliberately does NOT match:
+    `openai.gpt-6*` — covers GPT-5.5/5.4/5.6 and GPT-6 Astra/Sol/Luna/6.1 Sol).
+    The bare id is the bedrock-mantle form for every proprietary GPT model; none
+    of them has a bedrock-runtime in-region form. Deliberately does NOT match:
     - gpt-oss ids (Converse-capable on bedrock-runtime), and
-    - GPT-5.6/GPT-6 CRIS profile ids (`us.`/`in.`/`global.` prefixed) — those are
-      bedrock-runtime targets where Converse IS supported, so falling through to
-      the standard Converse probe is the correct behavior, not an accident."""
+    - CRIS profile ids (`us.`/`in.`/`global.` prefixed) for any proprietary GPT
+      model, GPT-5.5/5.4 included (their model cards list `us.`/`global.` ids on
+      bedrock-runtime) — those are bedrock-runtime targets where Converse IS
+      supported, so falling through to the standard Converse probe is the
+      correct behavior, not an accident."""
     mid = model_id.lower()
     return (mid.startswith("openai.gpt-5") or mid.startswith("openai.gpt-6")) and "oss" not in mid
 
@@ -160,8 +163,8 @@ def classify_mantle_error(status: int | None, message: str) -> dict:
                           f"Mantle is in-region only; for GPT-5.6 try a bedrock-runtime CRIS "
                           f"id (us./in./global. prefixed); for GPT-6 Astra use us-east-1/us-west-2 "
                           f"mantle or a supported us./global. runtime CRIS path. "
-                          f"For GPT-5.5/5.4 switch to "
-                          f"a supported region or a different model."}
+                          f"For GPT-5.5/5.4 switch to a supported mantle region, a "
+                          f"us./global. bedrock-runtime CRIS id, or a different model."}
     if status == 429:
         # Reaching a token-per-minute ceiling still proves we are authorized.
         return {"ok": True, "reason": "throttled_ok",

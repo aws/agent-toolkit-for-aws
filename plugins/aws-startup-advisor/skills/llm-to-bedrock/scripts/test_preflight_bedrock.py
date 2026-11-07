@@ -197,6 +197,18 @@ def test_mantle_model_detection_excludes_gpt_oss_and_cris_forms():
     assert p.is_mantle_model("amazon.nova-lite-v1:0") is False
 
 
+def test_is_mantle_model_gpt54_55_cris_ids_are_runtime_not_mantle():
+    # GPT-5.4 / GPT-5.5 model cards (read 2026-11-06) list us./global. CRIS ids on
+    # bedrock-runtime. The ID-form rule already classifies them: bare id -> mantle
+    # probe, CRIS-prefixed id -> Converse probe. Lock that in for these two models.
+    assert p.is_mantle_model("openai.gpt-5.4") is True
+    assert p.is_mantle_model("openai.gpt-5.5") is True
+    assert p.is_mantle_model("us.openai.gpt-5.4") is False
+    assert p.is_mantle_model("global.openai.gpt-5.4") is False
+    assert p.is_mantle_model("us.openai.gpt-5.5") is False
+    assert p.is_mantle_model("global.openai.gpt-5.5") is False
+
+
 def test_is_mantle_model_matches_bare_gpt6_ids():
     # Bare GPT-6 ids (Astra, Sol, Luna, 6.1 Sol) are mantle-served, same as the
     # bare GPT-5.x ids above. Their CRIS forms (us./global. prefixed) stay on the
@@ -221,17 +233,20 @@ def test_mantle_authz_error_points_at_mantle_actions_not_invoke_model():
 
 
 def test_mantle_model_unavailable_remedy_is_family_split():
-    # Verified 2026-08-21: mantle itself is in-region only, but GPT-5.6 now has a
-    # bedrock-runtime CRIS path — so the 404 remedy must offer the CRIS form for
-    # 5.6 while making clear 5.5/5.4 have no prefixed form. An earlier version of
-    # this test asserted the opposite (never suggest a prefix), which matched the
-    # pre-2026-08-21 docs.
+    # Mantle itself is in-region only, but every proprietary GPT model has a
+    # bedrock-runtime CRIS path — GPT-5.6 (us./in./global., verified 2026-08-21)
+    # and GPT-5.5/5.4 (us./global., model cards read 2026-11-06). The 404 remedy
+    # must offer the CRIS form for all of them. An earlier version of this test
+    # asserted that 5.5/5.4 have no prefixed form, which matched the pre-2026-11-06
+    # model cards.
     v = p.classify_mantle_error(404, "model not found")
     assert v["ok"] is False
     assert v["reason"] == "model_unavailable"
     assert "in-region only" in v["detail"]
     assert "CRIS" in v["detail"] and "us./in./global." in v["detail"]
     assert "GPT-5.5/5.4" in v["detail"]
+    assert "us./global. bedrock-runtime CRIS id" in v["detail"]
+    assert "different model" in v["detail"]
 
 def test_mantle_throttle_is_ok_for_preflight():
     v = p.classify_mantle_error(429, "too many tokens per minute")

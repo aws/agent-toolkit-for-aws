@@ -204,8 +204,8 @@ _Skip when:_ `models[].model_id` is populated in `ai-workload-profile.json` **wi
 
 **Same-model rows first.** GPT-6 Astra / GPT-5.6 / 5.5 / 5.4 sources map to themselves.
 Apply the model-specific API and region gate in `references/shared/openai-on-bedrock.md`.
-Astra Standard mantle supports `us-east-1` and `us-west-2`; runtime uses US Geo / Global CRIS. GPT-5.6 also has runtime CRIS;
-GPT-5.5 / 5.4 remain mantle-only. GPT-5.x in-region costs about 10% above OpenAI standard,
+Astra Standard mantle supports `us-east-1` and `us-west-2`; runtime uses US Geo / Global CRIS. GPT-5.6, GPT-5.5
+and GPT-5.4 also have runtime CRIS (`us.` / `global.`). GPT-5.x in-region costs about 10% above OpenAI standard,
 while GPT-5.6 Global CRIS uses the standard rate. For Astra, compare its separately dated
 inference/context tier against the source price before claiming savings or parity.
 For sources without a Bedrock equivalent, present a same-vendor upgrade and a cross-family option.

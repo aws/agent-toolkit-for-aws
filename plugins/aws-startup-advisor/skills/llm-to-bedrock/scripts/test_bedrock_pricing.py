@@ -295,6 +295,18 @@ def test_mantle_gpt_detection_excludes_gpt_oss():
     assert bp.is_mantle_gpt("anthropic.claude-sonnet-4-6") is False
 
 
+def test_mantle_gpt_detection_gpt54_55_bare_is_mantle_cris_is_runtime():
+    # GPT-5.4 / GPT-5.5 model cards (read 2026-11-06) list us./global. CRIS ids on
+    # bedrock-runtime. is_mantle_gpt matches only the bare (mantle) id form; the
+    # prefixed runtime forms are handled by the callers' explicit CRIS regex.
+    assert bp.is_mantle_gpt("openai.gpt-5.4") is True
+    assert bp.is_mantle_gpt("openai.gpt-5.5") is True
+    assert bp.is_mantle_gpt("us.openai.gpt-5.4") is False
+    assert bp.is_mantle_gpt("global.openai.gpt-5.4") is False
+    assert bp.is_mantle_gpt("us.openai.gpt-5.5") is False
+    assert bp.is_mantle_gpt("global.openai.gpt-5.5") is False
+
+
 def test_mantle_gpt_detection_includes_bare_gpt6():
     # Finding 1: bare GPT-6 ids must be recognized by the same detector that
     # routes GPT-5.x to the curated static table / mantle path.

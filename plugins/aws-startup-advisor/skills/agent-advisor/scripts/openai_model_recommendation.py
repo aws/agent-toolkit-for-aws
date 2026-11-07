@@ -1271,8 +1271,9 @@ def recommend_openai_workload(workload, region, catalog):
                 (
                     "The selected Astra Responses path requires reshaping the Chat source."
                     if model_key == "openai_gpt_6_astra"
-                    else "GPT-5.x on Mantle rejects Chat Completions; the source must reshape "
-                    "to the Responses API."
+                    else "The selected Mantle Responses path requires reshaping the Chat source "
+                    "to the Responses API (Chat Completions support is per-model: see the "
+                    "selected model's mantle_openai_chat catalog entry)."
                 ),
                 "Apply the request/response/tool/state reshape deltas before cutover.",
             )
