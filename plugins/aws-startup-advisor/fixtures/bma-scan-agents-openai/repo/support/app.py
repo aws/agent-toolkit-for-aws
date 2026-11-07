@@ -1,4 +1,4 @@
-from agents import Agent, Runner, function_tool
+from agents import Agent, RunConfig, Runner, function_tool
 from agents.mcp import MCPServerStdio
 
 docs = MCPServerStdio(name="docs", params={"command": "npx", "args": ["-y", "@acme/docs-mcp"]})
@@ -16,3 +16,7 @@ triage = Agent(name="Triage", model="gpt-4.1", instructions="Send the user to th
 
 def answer(question: str) -> str:
     return Runner.run_sync(triage, question).final_output
+
+
+def answer_fast(question: str) -> str:
+    return Runner.run_sync(triage, question, run_config=RunConfig(model="gpt-4o")).final_output

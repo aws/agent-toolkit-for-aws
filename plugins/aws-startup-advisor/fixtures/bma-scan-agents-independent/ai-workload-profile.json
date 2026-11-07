@@ -21,7 +21,7 @@
             {
               "provenance": "code",
               "confidence": "high",
-              "detail": "ops/agents.py:7 ChatAnthropic"
+              "detail": "ops/agents.py:9 ChatAnthropic"
             }
           ]
         },
@@ -33,7 +33,7 @@
             {
               "provenance": "code",
               "confidence": "high",
-              "detail": "ops/agents.py:6 ChatAnthropic"
+              "detail": "ops/agents.py:8 ChatAnthropic"
             }
           ]
         }
@@ -54,7 +54,11 @@
       "call_sites": [
         {
           "file": "ops/agents.py",
-          "line": 11
+          "line": 14
+        },
+        {
+          "file": "ops/agents.py",
+          "line": 22
         }
       ]
     },
@@ -70,7 +74,7 @@
       "call_sites": [
         {
           "file": "ops/agents.py",
-          "line": 15
+          "line": 18
         }
       ]
     }
@@ -102,20 +106,30 @@
       {
         "agent_id": "billing",
         "file": "ops/agents.py",
-        "line": 6,
+        "line": 8,
         "model": "claude-sonnet-4-5",
         "tools": [
-          "issue_refund"
+          "lookup"
         ],
         "memory_type": "none"
       },
       {
         "agent_id": "support",
         "file": "ops/agents.py",
-        "line": 7,
+        "line": 9,
         "model": "claude-haiku-4-5",
         "tools": [
-          "check_status"
+          "lookup@ops/support/tools.py"
+        ],
+        "memory_type": "none"
+      },
+      {
+        "agent_id": "sales",
+        "file": "ops/agents.py",
+        "line": 10,
+        "model": "claude-sonnet-4-5",
+        "tools": [
+          "lookup@ops/sales/tools.py"
         ],
         "memory_type": "none"
       }
@@ -126,9 +140,9 @@
   },
   "tool_manifest": [
     {
-      "name": "issue_refund",
-      "file": "ops/tools.py",
-      "line": 6,
+      "name": "lookup",
+      "file": "ops/billing/tools.py",
+      "line": 5,
       "transport": "function",
       "auth_hint": "none",
       "used_by_agents": [
@@ -136,9 +150,19 @@
       ]
     },
     {
-      "name": "check_status",
-      "file": "ops/tools.py",
-      "line": 12,
+      "name": "lookup@ops/sales/tools.py",
+      "file": "ops/sales/tools.py",
+      "line": 5,
+      "transport": "function",
+      "auth_hint": "none",
+      "used_by_agents": [
+        "sales"
+      ]
+    },
+    {
+      "name": "lookup@ops/support/tools.py",
+      "file": "ops/support/tools.py",
+      "line": 6,
       "transport": "api",
       "auth_hint": "none",
       "used_by_agents": [

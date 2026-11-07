@@ -10,7 +10,8 @@
       "model_evidence": "observed",
       "models": [
         "gpt-4.1",
-        "gpt-4.1-mini"
+        "gpt-4.1-mini",
+        "gpt-4o"
       ],
       "model_observations": [
         {
@@ -34,6 +35,18 @@
               "provenance": "code",
               "confidence": "high",
               "detail": "support/app.py:13 Agent"
+            }
+          ]
+        },
+        {
+          "normalized_model": "gpt-4o",
+          "raw_model": "gpt-4o",
+          "model_family": "gpt",
+          "evidence": [
+            {
+              "provenance": "code",
+              "confidence": "high",
+              "detail": "support/app.py:22 RunConfig"
             }
           ]
         }
@@ -71,6 +84,22 @@
         {
           "file": "support/app.py",
           "line": 18
+        }
+      ]
+    },
+    {
+      "workload_id": "openai_api.gpt-4o.agents.runner.run_sync.plain",
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model": "gpt-4o",
+      "sdk_method": "agents.Runner.run_sync",
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "structured_output": false,
+      "call_sites": [
+        {
+          "file": "support/app.py",
+          "line": 22
         }
       ]
     }

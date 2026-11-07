@@ -161,7 +161,7 @@ Group every AI call into an **AI source** keyed by `(provider, source_service)`:
 | `ChatVertexAI` (`langchain_google_vertexai`)                    | `google`/`vertex_ai`                                                                                                       |
 | `ChatGoogleGenerativeAI` (`langchain_google_genai`)             | `google`, with the service from the rule below                                                                              |
 | A model string given to `init_chat_model(…)`, `create_agent(…)`, or `create_react_agent(…)` (`langchain`, `langgraph`) | the class its `provider:` prefix or `model_provider=` names: `openai` (`ChatOpenAI`), `anthropic` (`ChatAnthropic`), `azure_openai` (`AzureChatOpenAI`), `google_vertexai` (`ChatVertexAI`), or `google_genai` (`ChatGoogleGenerativeAI`). Without either, a model starting with `gpt-`, `o1`, `o3`, or `chatgpt` is `ChatOpenAI` and one starting with `claude` is `ChatAnthropic`; any other string, including `gemini…` (whose default service LangChain plans to change), is not a source |
-| `Agent(model="…")` (`agents`, from the `openai-agents` package) | `openai`/`openai_api`, under the endpoint rule, where a `set_default_openai_client(...)` client's `base_url=` counts as the argument; an `openai/` prefix is the same as none; a model with another `prefix/` (for example `litellm/…`) or a `model=` that is not a string is not a source |
+| `Agent(model="…")` (`agents`, from the `openai-agents` package) | `openai`/`openai_api`, under the endpoint rule, where a `set_default_openai_client(...)` client's `base_url=` counts as the argument; a `RunConfig(model="…")` string passed to a `Runner` call is a model of the same source; an `openai/` prefix is the same as none; a model with another `prefix/` (for example `litellm/…`) or a `model=` that is not a string is not a source |
 
 **`ChatGoogleGenerativeAI` service.** Before version 4.0 of `langchain-google-genai` (pinned in a manifest or lock file) it is always `gemini_api`. From 4.0, or when unpinned, use the first line that matches:
 
@@ -213,7 +213,7 @@ For each source, extract the model identifiers passed to constructors or API cal
 - `anthropic.Anthropic().messages.create(model="claude-*")` -> model: `"claude-*"`
 - Model string patterns: `claude-3-*`, `claude-sonnet-*`, `claude-haiku-*`, `claude-opus-*`
 
-**Framework model classes and agents:** the `model=` argument (`model_name=` is the same field on the LangChain classes), for example `ChatOpenAI(model="gpt-4o")` -> `"gpt-4o"` or `Agent(model="gpt-4.1")` -> `"gpt-4.1"`, under the same model string patterns as the provider.
+**Framework model classes and agents:** the `model=` argument (`model_name=` is the same field on the LangChain classes), for example `ChatOpenAI(model="gpt-4o")` -> `"gpt-4o"`, `Agent(model="gpt-4.1")` -> `"gpt-4.1"`, or `RunConfig(model="gpt-4o")` -> `"gpt-4o"`, under the same model string patterns as the provider.
 
 **Normalization.** Lowercase, strip an OpenRouter `provider/` prefix, a LangChain `provider:` prefix, or an Agents SDK `openai/` prefix, and apply the Gemini rules above. When unsure whether a suffix is a version or a different model, keep the full string. Never add a date, version, or suffix that the string does not contain, and never write `unknown` or `both`. Keep the verbatim string as `raw_model`.
 
@@ -262,9 +262,9 @@ A workload is one way the code calls one model. Write one `workloads[]` entry pe
 
 Every other row: `structured_output` is `true` only for a `structured_output` row, and `capability_confidence` is `"high"`. When the calls of one workload would get different `capability_confidence` values, use the lowest.
 
-A `Runner` call also sends requests with the model of every agent the starting agent reaches through `handoffs=` or `.as_tool(…)`: write a workload for each of those models too, with the same call site.
+A `Runner` call also sends requests for every agent the starting agent reaches through `handoffs=` or `.as_tool(…)`. For each agent it reaches, the call uses the `model` string of its `run_config=` (a `RunConfig(…)` or a dict, as a literal or a name assigned one in the same file) if it sets one (for an agent reached through `.as_tool(run_config=…)`, that tool's run config instead), and otherwise the agent's own model; write a workload for each model that results, with that call site. A run config that cannot be read in the same file, whose `model` is not a string, or that sets `model_provider`, gives that call no workload: name it in the summary.
 
-**`workload_id`** is `<source_service>.<model>.<sdk_method>.<structured or plain>`, lowercased, with each `:` in the model written `_3a` and each `/` written `_2f`. For example `openai_api.gpt-4o.openai.chat.completions.create.plain`, or for `ft:gpt-4o-mini-2024-07-18:acme:triage:a1b2` `openai_api.ft_3agpt-4o-mini-2024-07-18_3aacme_3atriage_3aa1b2.openai.chat.completions.create.plain`. Model names never contain `_`, so distinct models keep distinct IDs; `model` itself keeps the original string. **`call_sites`** lists every call's repo-relative file and line, in file and line order.
+**`workload_id`** is `<source_service>.<model>.<sdk_method>.<structured or plain>`, lowercased. In the model part, replace each character of the original string in one pass: `_` with `_5f`, `:` with `_3a`, and `/` with `_2f`; the escapes are never re-encoded, so distinct models keep distinct ids, and `model` keeps the original string. For example `openai_api.gpt-4o.openai.chat.completions.create.plain`, or for `ft:gpt-4o-mini-2024-07-18:acme:triage:a1b2` `openai_api.ft_3agpt-4o-mini-2024-07-18_3aacme_3atriage_3aa1b2.openai.chat.completions.create.plain`. **`call_sites`** lists every call's repo-relative file and line, in file and line order.
 
 ---
 
@@ -325,7 +325,7 @@ When agents use more than one framework, set `framework` to the one with the mos
 
 **`tool_manifest`**: one entry per tool used by a recorded agent.
 
-- **`name`**: the tool's name in code (function name, `@tool("…")` or `name=` value, or schema `name`). If two different tools share a name, use `<name>@<file stem>` for the later one, here and in the agents' `tools`.
+- **`name`**: the tool's name in code (function name, `@tool("…")` or `name=` value, or schema `name`). If two different tools share a name, keep the first, in file and line order, as `<name>` and name each later one `<name>@<repo-relative file path>`, adding `#<line>` if that is still taken; use the same names in the agents' `tools`.
 - **`file`** and **`line`**: the line of the tool's `def` or `class`, or, for a tool from another package or an MCP server, the line that creates or imports it.
 - **`transport`**: `mcp` for a tool served by an MCP server (one entry per server, named after the server); `a2a` for an A2A client; `api` when the tool body makes an HTTP request (`requests`, `httpx`, `aiohttp`, `fetch`) or calls a cloud SDK; `function` for a local function without either; `other` when the implementation is in another package and cannot be read.
 - **`auth_hint`**: `api_key`, `oauth`, or `iam` from the names the tool's code uses (an `os.environ["…_API_KEY"]` name, an `Authorization` or `x-api-key` header, `client_id`/`client_secret`, `boto3`); `none` when its code uses none of them; omitted when its implementation cannot be read. Never copy a key, token, or header value. Do not open MCP config files (`.mcp.json`, `mcp.json`, and similar), which often hold tokens: record only MCP servers created in code (for example `MCPServerStdio(name=…)` or `MultiServerMCPClient({…})`), and name servers that only a config file defines in the summary.
