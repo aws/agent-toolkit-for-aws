@@ -48,9 +48,9 @@ Inference on `bedrock-mantle` for these models is governed by **two per-model, p
 | Medium          | Medium     | Monitor 429s against **token** throughput, not request rate; enable prompt caching                 |
 | High            | High       | Enable prompt caching first (cached input is exempt from input TPM), then request a quota increase |
 
-**The `bedrock-runtime` fallback exists only for GPT-5.6 and GPT-6 (Astra, Sol, Luna, 6.1 Sol, 6.1 Terra).** GPT-5.5 and GPT-5.4 are `bedrock-mantle` only and in-region only — for them, "switch to `bedrock-runtime`" requires moving to a different model (Bedrock-native or `gpt-oss`), a model change with its own eval cost. GPT-5.6 Sol/Terra/Luna and GPT-6 Astra/Sol/Luna/6.1 Sol/6.1 Terra DO have a `bedrock-runtime` path via CRIS inference profiles (GPT-5.6 `us.`/`in.`/`global.`, GPT-6 `us.`/`global.` prefixed ids; the model cards recommend runtime for new applications) — a legitimate endpoint option with its own quota family, and on Global CRIS it is also the cost-parity option. Scaling levers on the mantle path, in order:
+**Every proprietary GPT model on Bedrock has a `bedrock-runtime` path via CRIS inference profiles.** GPT-5.6 Sol/Terra/Luna (`us.`/`in.`/`global.`), GPT-6 Astra/Sol/Luna/6.1 Sol/6.1 Terra (`us.`/`global.`), and GPT-5.5 / GPT-5.4 (`us.`/`global.`; per their model cards read 2026-11-06, [GPT-5.4](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html), [GPT-5.5](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html)) all list `bedrock-runtime` with Responses, Chat Completions and Converse; none has a runtime in-region form. The model cards recommend runtime for new applications. It is a legitimate endpoint option with its own quota family, and for GPT-5.6 / GPT-6 on Global CRIS it is also the cost-parity option (the GPT-5.5 / GPT-5.4 cards publish In-Region pricing only). A same-model endpoint switch is not a model change; only moving to a Bedrock-native model or `gpt-oss` carries the eval cost of a model change. Scaling levers on the mantle path, in order:
 
-1. Prompt caching (GPT-5.6 and GPT-6 only) — 90% off cached input and exempt from the input-TPM quota
+1. Prompt caching (GPT-5.6 and GPT-6 on mantle; GPT-5.5 / GPT-5.4 list implicit caching on `bedrock-runtime` Responses only) — 90% off cached input and exempt from the input-TPM quota
 2. Exponential backoff with a bounded retry count (`max_retries` on the OpenAI SDK)
 3. Spreading load across minutes and ramping request rate gradually rather than bursting
 4. A Service Quotas increase for that model's input/output TPM in that region
@@ -108,8 +108,8 @@ Claude models on Mantle have an additional **output TPM cap** that differs by mo
 
 - For Claude migrations at medium/high volume: the 2M output TPM cap on Claude 4.7+ is the binding constraint
 - For OpenAI proprietary GPT targets: this Claude cap does not apply. Use the GPT-5.x mantle quotas or
-  Astra-specific verification above. Astra / GPT-5.6 have runtime CRIS alternatives with their own
-  quotas; GPT-5.5/5.4 have no runtime path
+  Astra-specific verification above. Astra / GPT-5.6 / GPT-5.5 / GPT-5.4 all have runtime CRIS alternatives
+  with their own quotas (`us.`/`global.` prefixed ids; no runtime in-region form)
 - For `gpt-oss` targets: these do run on `bedrock-runtime`, so standard account TPM limits and the Converse-path mitigations apply
 - When output-heavy workloads (long JSON, tool outputs, multi-step reasoning) are detected, flag the relevant cap prominently; recommend `bedrock-runtime` for production **only** when the target model actually has a `bedrock-runtime` path
 

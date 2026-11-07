@@ -20,12 +20,14 @@ def is_inference_profile(model_id: str) -> bool:
 
 def is_mantle_model(model_id: str, region: str = "") -> bool:
     """True for bare proprietary GPT-5/GPT-6 IDs and the bare Opus 5.5 ID, which use
-    bedrock-mantle (Responses and Messages respectively). They need
+    bedrock-mantle (Responses/Chat Completions and Messages respectively). They need
     `bedrock-mantle:*` actions — a policy
     granting only `bedrock:InvokeModel` against a foundation-model ARN cannot
     authorize these bare IDs. Opus 5.5 in eu-west-2 is a runtime in-region
     target (model card verified 2026-10-03); its other bare-ID regions use Mantle.
-    Their prefixed forms use runtime instead.
+    The `us.`/`in.`/`global.` prefixed forms use bedrock-runtime instead — for every
+    proprietary GPT model, GPT-5.5/5.4 included (their model cards list `us.`/`global.`
+    CRIS ids; none has a runtime in-region form), so a prefixed id must NOT match.
     The open-weight gpt-oss models DO use bedrock-runtime and must not match."""
     mid = model_id.lower()
     return ((mid.startswith("openai.gpt-5") or mid.startswith("openai.gpt-6")) and "oss" not in mid) or (

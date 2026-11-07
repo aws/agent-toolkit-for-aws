@@ -126,6 +126,18 @@ def test_mantle_model_detection_excludes_gpt_oss():
     assert is_mantle_model("anthropic.claude-sonnet-4-6") is False
 
 
+def test_is_mantle_model_gpt54_55_cris_ids_are_runtime_not_mantle():
+    # GPT-5.4 / GPT-5.5 model cards (read 2026-11-06) list us./global. CRIS ids on
+    # bedrock-runtime: the bare id needs bedrock-mantle:* actions, the prefixed id
+    # needs bedrock:InvokeModel against the inference-profile ARN.
+    assert is_mantle_model("openai.gpt-5.4") is True
+    assert is_mantle_model("openai.gpt-5.5") is True
+    assert is_mantle_model("us.openai.gpt-5.4") is False
+    assert is_mantle_model("global.openai.gpt-5.4") is False
+    assert is_mantle_model("us.openai.gpt-5.5") is False
+    assert is_mantle_model("global.openai.gpt-5.5") is False
+
+
 def test_is_mantle_model_matches_bare_gpt6_ids():
     assert is_mantle_model("openai.gpt-6-astra") is True
     assert is_mantle_model("openai.gpt-6-sol") is True

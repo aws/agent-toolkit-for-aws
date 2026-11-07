@@ -1189,7 +1189,7 @@ Tell the user, before collecting models:
 > - **OpenAI on Bedrock comes in a few forms, all real** — and which endpoint they use is per-ID, not one blanket rule:
 >   - *Open-weight* `gpt-oss` (`openai.gpt-oss-20b-1:0`, `openai.gpt-oss-120b-1:0`) → `bedrock-runtime` via `bedrock:InvokeModel` / `Converse` (its Responses API is also offered on `bedrock-mantle`).
 >   - *Bare proprietary* GPT ids (`openai.gpt-5*`, not `gpt-oss`) → probed on the `bedrock-mantle` endpoint (Responses API).
->   - A *GPT-5.6 CRIS profile* id prefixed `us.` / `in.` / `global.` (e.g. `global.openai.gpt-5.6-sol`) → a `bedrock-runtime` target where Converse is supported.
+>   - A *CRIS profile* id prefixed `us.` / `in.` / `global.` (e.g. `global.openai.gpt-5.6-sol`, `us.openai.gpt-5.4`, `global.openai.gpt-6-astra`) → a `bedrock-runtime` target where Converse is supported; every proprietary GPT model on Bedrock (GPT-5.6, GPT-6, GPT-5.5, GPT-5.4) has this form, and none has a runtime in-region form.
 >   - The `bedrock-mantle` path uses a **separate** action set — `bedrock-mantle:*` (e.g. the `AmazonBedrockMantleInferenceAccess` managed policy: `bedrock-mantle:CreateInference` + `CallWithBearerToken`) — distinct from `bedrock:InvokeModel`. The preflight decides per model; don't assume.
 > - What is **not** on Bedrock is calling OpenAI's own hosted API at api.openai.com — that stays with OpenAI. 'GPT on Bedrock' means the AWS-served models above, reached through AWS endpoints and IAM.
 >
@@ -1277,8 +1277,9 @@ Then, per B4's branch table:
   after they enable it. This is the common, expected outcome for a user who came here to "get
   access."
 - `reason: authz` → access is enabled but IAM denies inference. Name the action to grant — for a
-  standard model `bedrock:InvokeModel`; for a mantle-only `openai.gpt-5*` target (bare proprietary
-  GPT, not `gpt-oss`) the `bedrock-mantle:*` set (see **B4a**). The `detail` says which — follow it
+  standard model `bedrock:InvokeModel`; for a bare `openai.gpt-5*` / `openai.gpt-6*` mantle target
+  (bare proprietary GPT, not `gpt-oss`, not a `us.`/`in.`/`global.` CRIS id) the `bedrock-mantle:*`
+  set (see **B4a**). The `detail` says which — follow it
   rather than guessing from the ID, since gpt-oss fails on `bedrock:InvokeModel`, not mantle.
 - `reason: model_unavailable` → the ID isn't offered in `$REGION`. Use the
   `resolve-bedrock-model-id` procedure to suggest a cross-region inference-profile ID or a

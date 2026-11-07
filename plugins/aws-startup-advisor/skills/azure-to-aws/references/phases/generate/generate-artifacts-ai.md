@@ -155,9 +155,10 @@ is AWS-only and ports from gcp unchanged.
 - [ ] No secret VALUE in any emitted file; credentials are env-var references.
 - [ ] Bare proprietary GPT ids use Mantle; Astra runtime calls retain the validated `us.` /
       `global.` CRIS id. Chat/Responses and runtime artifact selection match the saved design.
-- [ ] No **GPT-5.5 or GPT-5.4** model ID paired with a Converse/`bedrock-runtime` path (those two
-      models only — mantle-only, no CRIS). GPT-5.6 and GPT-6 models MAY use
-      `migration_path: "runtime_openai_cris"` on `bedrock-runtime` — this is NOT a violation.
+- [ ] No **bare** proprietary GPT model ID (including bare `openai.gpt-5.5` / `openai.gpt-5.4`)
+      paired with a Converse/`bedrock-runtime` path. GPT-5.6, GPT-6, GPT-5.5 and GPT-5.4 MAY use
+      `migration_path: "runtime_openai_cris"` on `bedrock-runtime` with a `us.`/`in.`/`global.`
+      CRIS id — this is NOT a violation.
 - [ ] Plugin attribution strings say "Azure-to-AWS".
 - [ ] `generation-ai.json` validates; `rollback_plan.mechanism == "feature_flag"`.
 

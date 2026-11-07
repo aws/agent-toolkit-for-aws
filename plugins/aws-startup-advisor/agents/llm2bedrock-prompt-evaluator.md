@@ -229,12 +229,13 @@ Interpret the result:
   region. These models are **in-region only**, so there is no cross-region
   inference profile to fall back to and `resolve-bedrock-model-id`'s
   inference-profile ranking does not apply. Return
-  `{ blocked: { reason: 'model_unresolvable', detail: '<the exact error> — <TARGET_MODEL_ID> is not available on the bedrock-mantle endpoint in <REGION>. Mantle is in-region only; for Astra use Virginia/Oregon Standard Mantle or a supported us./global. runtime profile with an explicit plan change; GPT-5.6 may use its us./in./global. CRIS forms, while GPT-5.5/5.4 need a supported region or a different model.' } }`.
+  `{ blocked: { reason: 'model_unresolvable', detail: '<the exact error> — <TARGET_MODEL_ID> is not available on the bedrock-mantle endpoint in <REGION>. Mantle is in-region only; for Astra use Virginia/Oregon Standard Mantle or a supported us./global. runtime profile with an explicit plan change; GPT-5.6 may use its us./in./global. CRIS forms and GPT-5.5/5.4 their us./global. CRIS forms with an explicit plan change, or pick a supported mantle region or a different model.' } }`.
   Use `model_unresolvable` rather than a new reason — its recovery path (user
   picks or pastes an ID, recorded in `resolved_model_overrides`) is exactly right
   here. Astra may use only supported `us.` / `global.` CRIS candidates; check its own region matrix. For GPT-5.6 a `us.`/`in.`/`global.`-prefixed CRIS candidate is legitimate
-  (it switches the run to the Converse path); for GPT-5.5 / GPT-5.4 no prefixed
-  form exists — do not offer one.
+  (it switches the run to the Converse path); for GPT-5.5 / GPT-5.4 the `us.`/`global.`
+  prefixed forms exist on `bedrock-runtime` (model cards read 2026-11-06) and are offered
+  the same way — never silently, always as an explicit plan change.
 - **HTTP 401 / 403** — distinguish the two causes from the message. If it names
   model access, return `{ blocked: { reason: 'model_access', ... } }` as in §6.
   Otherwise it is IAM: the principal needs the `bedrock-mantle:*` actions
