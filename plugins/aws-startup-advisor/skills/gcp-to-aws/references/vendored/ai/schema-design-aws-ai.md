@@ -193,8 +193,8 @@ Traditional-AI capabilities (AWS AI service, not Bedrock): `document_extraction`
 on Bedrock and the region carrying it: keep the SDK, `model_change: false`) · `mantle_openai_chat`
 (same, preserving a Chat Completions source on a model whose card lists Chat Completions on
 mantle — GPT-6, GPT-5.5, GPT-5.4) · `runtime_openai_cris` (same-model move served via
-`bedrock-runtime` with a CRIS id, `model_change: false`; `us.`/`in.`/`global.` for GPT-6 and
-GPT-5.6, `us.`/`global.` only for GPT-5.5 and GPT-5.4, per their model cards) · `converse` (Bedrock-native
+`bedrock-runtime` with a CRIS id, `model_change: false`; `us.`/`in.`/`global.` for GPT-5.6 Terra
+and Luna; `us.`/`global.` only for GPT-5.6 Sol, GPT-6, GPT-5.5 and GPT-5.4, per their model cards) · `converse` (Bedrock-native
 Converse/`bedrock-runtime`; set `model_change: true` when the workload needs Knowledge Bases,
 intelligent prompt routing, or another feature no same-model path serves) · `gpt-oss`
 (OpenAI-lineage model on the Bedrock-native runtime) · `direct` (framework-agnostic Bedrock SDK
@@ -263,8 +263,8 @@ rubric file (`ai.md`, a provider-to-Bedrock mapping guide, or a `vendored/ai/*` 
       `recommend_stay`, `honest_assessment_reason` names a non-cost blocker.
 - [ ] No `bedrock_models[]` entry pairs a **bare** proprietary `openai.gpt-*` model ID with a
       `converse`/`bedrock-runtime` migration path (bare ids are mantle ids; a `bedrock-runtime`
-      target carries a CRIS id: `us.`/`in.`/`global.` for GPT-6 / GPT-5.6, `us.`/`global.` only for
-      GPT-5.5 / GPT-5.4).
+      target carries a CRIS id: `us.`/`in.`/`global.` for GPT-5.6 Terra / Luna; `us.`/`global.` only
+      for GPT-5.6 Sol, GPT-6, GPT-5.5 and GPT-5.4).
 - [ ] For a retained source whose `source_service` is `azure_openai`, or whose provider resolves
       to direct OpenAI: every source model that is available on Bedrock and carried by the
       target region maps to ITSELF with `model_change: false` — not to a Claude/Nova substitute.

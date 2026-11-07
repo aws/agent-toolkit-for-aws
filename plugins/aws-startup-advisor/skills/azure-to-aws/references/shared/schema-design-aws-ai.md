@@ -127,8 +127,8 @@ Traditional-AI capabilities (AWS AI service, not Bedrock): `document_extraction`
 lists it there (GPT-6, GPT-5.5, GPT-5.4).
 `mantle_openai_responses` (Azure OpenAI / OpenAI source, model on Bedrock, region carries it —
 keep the SDK, `model_change: false`) · `runtime_openai_cris` (GPT-6 / GPT-5.6 / GPT-5.5 / GPT-5.4
-same-model move served via `bedrock-runtime` CRIS — `us.`/`in.`/`global.` prefixed for GPT-6 /
-GPT-5.6, `us.`/`global.` only for GPT-5.5 / GPT-5.4 — `model_change: false`) · `converse` (Bedrock-native Converse/`bedrock-runtime`; set
+same-model move served via `bedrock-runtime` CRIS — `us.`/`in.`/`global.` prefixed for GPT-5.6
+Terra / Luna, `us.`/`global.` only for GPT-5.6 Sol, GPT-6, GPT-5.5 and GPT-5.4 — `model_change: false`) · `converse` (Bedrock-native Converse/`bedrock-runtime`; set
 `model_change: true` when the workload needs Knowledge Bases, intelligent prompt routing, or
 another feature the same-model CRIS path itself cannot serve) · `gpt-oss` (OpenAI-lineage model
 on the Bedrock-native runtime) · `direct` (framework-agnostic Bedrock SDK swap). A **bare**
@@ -207,8 +207,8 @@ rubric file (`ai.md`, `ai-azure-openai-to-bedrock.md`, or a `vendored/ai/*` ref)
 - [ ] No `bedrock_models[]` entry pairs a **bare** proprietary GPT id (including bare
       `openai.gpt-5.5` / `openai.gpt-5.4`) with a `converse`/`bedrock-runtime` migration path.
       GPT-5.6, GPT-6, GPT-5.5 and GPT-5.4 MAY use `migration_path: "runtime_openai_cris"` on
-      `bedrock-runtime` with a CRIS id (`us.`/`in.`/`global.` for GPT-6 / GPT-5.6, `us.`/`global.`
-      only for GPT-5.5 / GPT-5.4) — this is NOT a violation.
+      `bedrock-runtime` with a CRIS id (`us.`/`in.`/`global.` for GPT-5.6 Terra / Luna, `us.`/`global.`
+      only for GPT-5.6 Sol, GPT-6, GPT-5.5 and GPT-5.4) — this is NOT a violation.
 - [ ] If `ai_source` is `azure_openai` or `openai`: every source model that is available on
       Bedrock and carried by the target region maps to ITSELF with `model_change: false` — not
       to a Claude/Nova substitute.

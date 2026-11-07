@@ -158,7 +158,8 @@ is AWS-only and ports from gcp unchanged.
 - [ ] No **bare** proprietary GPT model ID (including bare `openai.gpt-5.5` / `openai.gpt-5.4`)
       paired with a Converse/`bedrock-runtime` path. GPT-5.6, GPT-6, GPT-5.5 and GPT-5.4 MAY use
       `migration_path: "runtime_openai_cris"` on `bedrock-runtime` with a CRIS id (`us.`/`in.`/`global.`
-      for GPT-5.6; `us.`/`global.` only for GPT-6, GPT-5.5 and GPT-5.4) — this is NOT a violation.
+      for GPT-5.6 Terra and Luna; `us.`/`global.` only for GPT-5.6 Sol, GPT-6, GPT-5.5 and GPT-5.4) —
+      this is NOT a violation.
 - [ ] Plugin attribution strings say "Azure-to-AWS".
 - [ ] `generation-ai.json` validates; `rollback_plan.mechanism == "feature_flag"`.
 

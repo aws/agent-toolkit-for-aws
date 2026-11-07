@@ -518,8 +518,8 @@ Write `aws-design-ai.json` to `$MIGRATION_DIR/`.
 - [ ] No `bedrock_models[]` entry pairs a **bare** proprietary GPT id (including bare
       `openai.gpt-5.5` / `openai.gpt-5.4`) with a Converse/`bedrock-runtime` migration path.
       GPT-5.6, GPT-6, GPT-5.5 and GPT-5.4 MAY use `migration_path: "runtime_openai_cris"` on
-      `bedrock-runtime` with a CRIS id (`us.`/`in.`/`global.` for GPT-5.6; `us.`/`global.` only for
-      GPT-6, GPT-5.5 and GPT-5.4) — this is NOT a violation.
+      `bedrock-runtime` with a CRIS id (`us.`/`in.`/`global.` for GPT-5.6 Terra and Luna;
+      `us.`/`global.` only for GPT-5.6 Sol, GPT-6, GPT-5.5 and GPT-5.4) — this is NOT a violation.
 - [ ] `regional_warnings` is present (empty array `[]` if no issues; populated if any service unavailable in target region)
 - [ ] `multi_model_warnings` is present (empty array `[]` if single model or no coordination issues)
 - [ ] If `agentic_profile.is_agentic == true`: `agentic_design` object is present with `migration_approach` matching `preferences.json`
