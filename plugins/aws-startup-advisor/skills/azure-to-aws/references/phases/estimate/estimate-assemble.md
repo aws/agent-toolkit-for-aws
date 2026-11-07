@@ -132,8 +132,9 @@ Step 3B does — and then show only the matching label:
 2. **Otherwise** read `ai_architecture.code_migration.migration_path`:
    - `runtime_openai_cris` (Design's default) → the Bedrock runtime (CRIS) label above.
    - `mantle_openai_responses` / `mantle_openai_chat` (Design's spellings, selector-gated) or `mantle` → the Mantle label above.
-   - `converse`, `direct`, or `gpt-oss` → the adapter label above.
-     `converse` is a Converse client swap, not a Mantle script and not gateway config.
+   - `converse`, `direct`, `runtime_messages`, `mantle_messages`, or `gpt-oss` → the adapter label above.
+     `converse` is an explicit Converse rewrite, not a Mantle script and not gateway config;
+     the two Messages paths keep the Anthropic SDK inside the adapter.
    - `llm_router` / `api_gateway` / `voice_platform` / `framework` → the gateway
      label above. This bullet does not apply when step 1 already matched an
      OpenRouter subroute.

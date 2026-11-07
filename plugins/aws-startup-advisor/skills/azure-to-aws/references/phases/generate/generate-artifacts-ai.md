@@ -29,7 +29,9 @@ Read `aws-design-ai.json → ai_architecture.code_migration.migration_path` and
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | `runtime_openai_cris` (default same-model path)                   | `ai-migration/migrate_to_mantle.sh` (CRIS variant — `bedrock-runtime` base URL + CRIS id + the row's `required_client_api`) — skip the provider adapter |
 | `mantle_openai_responses` / `mantle_openai_chat` (only with `mantle_selector`) | `ai-migration/migrate_to_mantle.sh` — **skip the provider adapter**       |
-| `direct` (or absent) or `converse`                                | `ai-migration/provider_adapter.{py,js,go}` — `converse` is a Converse client swap, not a Mantle script |
+| `runtime_messages` (Anthropic source, default)                    | `ai-migration/provider_adapter.{py,js,go}` whose Bedrock class keeps the Anthropic SDK at `https://bedrock-runtime.{region}.amazonaws.com/anthropic` with a string Bedrock token (`required_client_api: messages`; `bedrock:InvokeModel*` IAM) — not a Mantle script, not a Converse rewrite |
+| `mantle_messages` (Anthropic source, only with `mantle_selector`) | same adapter shape at `https://bedrock-mantle.{region}.api.aws/anthropic` with `bedrock-mantle:*` IAM |
+| `direct` (or absent) or `converse`                                | `ai-migration/provider_adapter.{py,js,go}` — `converse` is an explicit boto3 Converse rewrite, not a Mantle script |
 | `gpt-oss`                                                         | `ai-migration/provider_adapter.{py,js,go}` targeting gpt-oss via Converse |
 | gateway (`llm_router`/`api_gateway`/`voice_platform`/`framework`) | `ai-migration/gateway_config.{yaml,py,json}` — skip the adapter           |
 | agentic `migration_approach == harness`                           | `ai-migration/harness.json`, `ai-migration/deploy_harness.sh`             |
@@ -71,7 +73,11 @@ Adapt Azure-specific client/deployment/API-version settings to the Bedrock clien
 Feature-flagged on `AI_PROVIDER` (values `azure_openai` | `bedrock` | `shadow`; **default
 `azure_openai`**). Emits methods gated on `integration.capabilities_summary`: `text_generation`→
 `generate`, `streaming`→`generate_stream`, `embeddings`→`embed`. Bedrock side is boto3 Converse
-(`BEDROCK_INFERENCE_PROFILE_ARN` env, model-id fallback). **Azure source side:** the `azure_openai`
+(`BEDROCK_INFERENCE_PROFILE_ARN` env, model-id fallback); for `runtime_messages` it is instead
+`anthropic.Anthropic(base_url="https://bedrock-runtime.{region}.amazonaws.com/anthropic",
+api_key=provide_token(region=region))` — a string token minted per client, client created and
+closed per request boundary, `messages.create` / `messages.stream` unchanged, `global.`/Geo
+Claude profile ID (`mantle_messages`: same shape at `https://bedrock-mantle.{region}.api.aws/anthropic`). **Azure source side:** the `azure_openai`
 branch calls the `AzureOpenAI` client (`azure_endpoint`, `api_version`) for Python / `@azure/openai`
 (or the `openai` SDK with `azure` config) for Node — NOT Vertex/`@google-cloud/vertexai`.
 

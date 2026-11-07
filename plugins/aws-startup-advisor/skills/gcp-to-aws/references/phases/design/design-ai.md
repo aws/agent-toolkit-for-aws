@@ -27,7 +27,7 @@ Read `$MIGRATION_DIR/preferences.json` → `ai_constraints` (if present). If abs
   `references/shared/openai-on-bedrock.md` (the fact base: model IDs, endpoint paths, region matrix, quotas,
   caching). OpenAI's proprietary GPT models run on Bedrock, so the source model is often itself the target — the
   mapping guide's Tier 0 path is the default, not a cross-family swap.
-- `"anthropic"` → load `references/vendored/ai/ai-anthropic-to-bedrock.md` (Anthropic SDK → Bedrock Converse API client swap; do NOT use ai-openai-to-bedrock.md for Anthropic SDK users)
+- `"anthropic"` → load `references/vendored/ai/ai-anthropic-to-bedrock.md` (Anthropic SDK → Bedrock Runtime Messages (default) / Converse alternative; the Anthropic SDK stays and is repointed at `https://bedrock-runtime.{region}.amazonaws.com/anthropic` — record `migration_path: "runtime_messages"` with `required_client_api: "messages"` by default, `"converse"` only on explicit request or for a Converse-only feature, `"mantle_messages"` only with a `mantle_selector`; do NOT use ai-openai-to-bedrock.md for Anthropic SDK users)
 - `"both"` → `both` never means exactly "Gemini+OpenAI" — per
   `discover-anthropic-api.md` Step 4.5, `both` is also reached when Anthropic
   usage joins a Gemini-or-OpenAI codebase, so it can mean "Gemini+Anthropic"
@@ -395,7 +395,7 @@ For each detected `integration.pattern` and `ai_source`, generate before/after m
 | Direct SDK (OpenAI), same model | OpenAI                    | Selected Mantle API (selector-gated) | Only with `mantle_selector`: base URL → `.../openai/v1` on Mantle, Bedrock credential, `openai.gpt-*` model ID, `bedrock-mantle:*` IAM |
 | Direct SDK                      | Vertex AI                 | boto3 Converse API  | `generate_content()` → `converse()`                                                                  |
 | Direct SDK                      | OpenAI                    | boto3 Converse API  | `completions.create()` → `converse()` (use only for a need no same-model path serves, e.g. Knowledge Bases) |
-| Direct SDK                      | Anthropic                 | boto3 Converse API  | `messages.create()` → `converse()` with Claude model ID on Bedrock                                   |
+| Direct SDK                      | Anthropic                 | Runtime Anthropic Messages (default) | Keep `anthropic.Anthropic`; base URL → `https://bedrock-runtime.{region}.amazonaws.com/anthropic`, string Bedrock token, `global.`/Geo Claude profile ID, `bedrock:InvokeModel*` IAM; `migration_path: "runtime_messages"` + `required_client_api: "messages"`. `"converse"` (boto3 `messages.create()` → `converse()`) only on explicit request / Converse-only feature; `"mantle_messages"` only with a `mantle_selector` |
 | LangChain                       | ChatVertexAI / ChatOpenAI | ChatBedrock         | Swap import and model_id                                                                             |
 | LlamaIndex                      | Vertex / OpenAI LLM       | BedrockConverse     | Swap import                                                                                          |
 | LLM Router (LiteLLM)            | Any                       | Config change       | `model="bedrock/<model_id>"` (1 line)                                                                |

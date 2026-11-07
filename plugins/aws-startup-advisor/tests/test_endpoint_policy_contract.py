@@ -23,6 +23,8 @@ POLICY_VENDORED = [
     PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "vendored" / "ai" / "bedrock-endpoint-policy.md",
 ]
 
+ANTHROPIC_GUIDE = PLUGIN_ROOT / "skills" / "shared" / "ai" / "ai-anthropic-to-bedrock.md"
+
 DESIGN_AI_FILES = [
     PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "phases" / "design" / "design-ai.md",
     PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "phases" / "design" / "design-ai.md",
@@ -94,6 +96,30 @@ def test_schema_docs_carry_the_runtime_default_vocabulary() -> None:
         assert "same_model_runtime" in text, f"{f}: openrouter_path vocabulary missing same_model_runtime"
         for value in MANTLE_SELECTOR_ENUM:
             assert value in text, f"{f}: mantle_selector enum value {value} missing"
+
+
+def test_anthropic_guide_defaults_to_runtime_messages_with_a_string_token() -> None:
+    """The Anthropic guide keeps the SDK on bedrock-runtime /anthropic by default.
+
+    https://docs.aws.amazon.com/bedrock/latest/userguide/inference-messages-api.html
+    (read 2026-11-07) passes the Bedrock token as a plain string `api_key`; the
+    pinned Anthropic SDK accepts no callable there, so the guide must never show
+    `api_key=lambda` / `auth_token=lambda`. Converse stays an explicit alternative.
+    """
+    text = ANTHROPIC_GUIDE.read_text(encoding="utf-8")
+    assert "runtime_messages" in text, "Anthropic guide does not name runtime_messages"
+    assert '"converse"' in text, "Anthropic guide lost the explicit Converse alternative"
+    assert text.index("runtime_messages") < text.index('"converse"'), (
+        "Anthropic guide must present runtime_messages before the converse alternative"
+    )
+    assert "bedrock-runtime.{region}.amazonaws.com/anthropic" in text
+    assert 'required_client_api: "messages"' in text
+    assert "auth_token=lambda" not in text
+    assert "api_key=lambda" not in text
+    for f in DESIGN_AI_FILES:
+        assert "runtime_messages" in f.read_text(encoding="utf-8"), (
+            f"{f}: Anthropic design line does not record migration_path runtime_messages"
+        )
 
 
 def test_fixtures_record_a_selector_on_every_mantle_row() -> None:

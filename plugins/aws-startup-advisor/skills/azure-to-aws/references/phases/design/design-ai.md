@@ -41,7 +41,9 @@ defaults (prefer managed Bedrock, no latency constraint, no budget cap).
   unless a `mantle_selector` from `references/vendored/ai/bedrock-endpoint-policy.md` is recorded. `azure_openai` routes IDENTICALLY to `openai`; the distinct label is
   kept only for report wording and provenance (§19.9(b)).
 - `"anthropic"` → load `references/vendored/ai/ai-anthropic-to-bedrock.md` (Anthropic SDK →
-  Bedrock Converse client swap).
+  Bedrock Runtime Messages (default) / Converse alternative: the Anthropic SDK stays and is
+  repointed at `https://bedrock-runtime.{region}.amazonaws.com/anthropic`; record
+  `migration_path: "runtime_messages"` with `required_client_api: "messages"` by default).
 - `"both"` → load `references/vendored/ai/ai-openai-to-bedrock.md` and, if an Anthropic model
   is also present, `ai-anthropic-to-bedrock.md`.
 - `"other"` or absent → load `references/design-refs/ai.md` (traditional-ML rubric — Azure AI
@@ -278,7 +280,10 @@ to the selected Bedrock client; do not claim that setting OPENAI_BASE_URL alone 
 Keep `model_change: false` only when the exact underlying model is unchanged; opaque Azure
 deployment names need verified model identity, not a guessed GPT family.
 
-Anthropic-SDK sources → boto3 Converse client swap. Record `code_migration.openrouter_path`
+Anthropic-SDK sources → keep the Anthropic SDK on the `bedrock-runtime` Messages endpoint:
+`migration_path: "runtime_messages"` with `required_client_api: "messages"` by default;
+`"converse"` (boto3 rewrite) only on explicit request or for a Converse-only feature;
+`"mantle_messages"` only with a `mantle_selector`. Record `code_migration.openrouter_path`
 when a router was detected (`same_model_runtime|same_model_mantle|direct|litellm|keep_openrouter`;
 `same_model_runtime` is the default same-model route, `same_model_mantle` needs a `mantle_selector`).
 
