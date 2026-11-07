@@ -116,7 +116,10 @@ _HOSTED_TOOL_IMPACTS = {
 
 
 # Converse tier map: a governance workload keeps its capability tier when moving
-# from the (Mantle-only) GPT-5.x family to Claude on runtime Converse.
+# from a GPT-5.x source the engine does not recognize as a same-model runtime
+# identity (see _SOURCE_MODEL_KEYS) to Claude on runtime Converse. This is an
+# engine recognition gap, not an endpoint fact: GPT-5.5 and GPT-5.4 do carry a
+# cataloged runtime_converse path via us./global. CRIS ids.
 #   GPT-5.6 Sol (frontier)      -> Claude Opus 5.5
 #   GPT-5.6 Terra / 5.5 / 5.4   -> Claude Sonnet 5 (also the default tier)
 #   GPT-5.6 Luna (fast/low-cost)-> Claude Haiku 4.5

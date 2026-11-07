@@ -104,7 +104,14 @@ use `mantle_openai_responses`. Both Mantle paths are
 in-region only and enforce the selected model's cataloged `region_availability`: Astra reaches
 us-east-1 and us-west-2, while Sol, Luna, and 6.1 Sol reach us-east-1 only. Outside that footprint,
 the engine skips the same-model Mantle candidate and evaluates its existing capability/numeric
-fallbacks. Governance requirements select the exact same GPT-5.6 or GPT-6 model through
+fallbacks. Those fallbacks walk candidates in catalog order, and GPT-5.5 and GPT-5.4 (both
+cataloged with Chat Completions on Mantle; GPT-5.5 reaches us-east-1/us-east-2, GPT-5.4 reaches
+us-east-1/us-east-2/us-west-2 and us-gov-west-1) precede GPT-6 Astra in that order. A GPT-6 Sol or
+6.1 Sol Chat Completions source outside us-east-1 therefore lands on GPT-5.5 in us-east-2 or GPT-5.4
+in us-west-2 through `mantle_openai_chat`, not on Astra. That is a current engine ordering
+limitation (a newer-generation source falls back to an older-generation model); treat such a
+recommendation as a prompt for the Chat-vs-Converse decision, not as a model endorsement.
+Governance requirements select the exact same GPT-5.6 or GPT-6 model through
 `runtime_converse` only when the requested Global or geography-scoped CRIS profile is cataloged
 for that model and source region; an unsupported profile falls through to an eligible documented
 runtime candidate or remains an explicit decision. GPT-5.5/5.4 also carry a cataloged

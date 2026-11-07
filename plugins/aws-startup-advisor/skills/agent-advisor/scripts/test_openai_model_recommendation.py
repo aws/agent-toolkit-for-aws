@@ -308,6 +308,57 @@ def test_gpt6_mantle_skips_exact_model_outside_cataloged_region():
     assert "exact same model" not in rec["rationale"][0]
 
 
+# Deliberate consequence of recording the public GPT-5.5/GPT-5.4 facts (Chat
+# Completions available on Mantle, cataloged region_availability): the Mantle Chat
+# fallback walks candidates in catalog order, and GPT-5.5 / GPT-5.4 sit ahead of
+# GPT-6 Astra in that order. A GPT-6 Sol / 6.1 Sol Chat source outside its own
+# footprint therefore lands on GPT-5.5 (us-east-2) or GPT-5.4 (us-west-2) instead
+# of Astra / a blocking decision. Pinned here so the shift is visible; reordering
+# the candidate walk is engine work tracked for the follow-up PR.
+@pytest.mark.parametrize("source_id", ["gpt-6-sol", "gpt-6.1-sol"])
+@pytest.mark.parametrize(
+    ("region", "fallback_id", "fallback_key"),
+    [
+        ("us-east-2", "openai.gpt-5.5", "openai_gpt_5_5"),
+        ("us-west-2", "openai.gpt-5.4", "openai_gpt_5_4"),
+    ],
+)
+def test_gpt6_chat_outside_own_footprint_falls_back_to_in_region_gpt5_chat(
+    source_id, region, fallback_id, fallback_key
+):
+    rec = _recommend(
+        _workload(
+            source={"model_ids": [source_id], "api_surface": "chat_completions"},
+            requirements={"api_continuity": "required"},
+        ),
+        region=region,
+    )
+    assert rec["decision_status"] == "recommended"
+    assert rec["primary_model"] == fallback_id
+    assert rec["api_path"] == "mantle_openai_chat"
+    assert "mantle_region_unavailable" not in _codes(rec["blocks"])
+    assert "chat_completions_to_responses_required" not in _codes(rec["blocks"])
+    assert "fallback" in rec["rationale"][0]
+    assert region in OPENAI_CATALOG["models"][fallback_key]["region_availability"]["commercial"]
+
+
+def test_gpt56_sol_responses_outside_us_east_skips_gpt55_for_in_region_terra():
+    # GPT-5.5's cataloged footprint is us-east-1/us-east-2 only, so in us-west-2
+    # the Responses fallback now skips it and lands on GPT-5.6 Terra (base
+    # catalog, with no GPT-5.5 region data, selected GPT-5.5 here).
+    rec = _recommend(
+        _workload(
+            source={"model_ids": ["gpt-5.6-sol"]},
+            requirements={"api_continuity": "required"},
+        ),
+        region="us-west-2",
+    )
+    assert rec["decision_status"] == "recommended"
+    assert rec["primary_model"] == "openai.gpt-5.6-terra"
+    assert rec["api_path"] == "mantle_openai_responses"
+    assert "us-west-2" not in OPENAI_CATALOG["models"]["openai_gpt_5_5"]["region_availability"]["commercial"]
+
+
 def test_gpt6_chat_outside_every_mantle_footprint_returns_blocking_decision():
     workload = _workload(
         source={"model_ids": ["gpt-6-sol"], "api_surface": "chat_completions"},
