@@ -116,6 +116,24 @@ def test_catalog_gpt54_gpt55_record_public_runtime_and_chat_facts(catalog_key, m
     assert "internal reference" not in model["capability_source"]
 
 
+def test_runtime_converse_path_text_does_not_grant_in_profile_to_gpt54_gpt55():
+    # The GPT-5.4 / GPT-5.5 cards publish only us. and global. CRIS ids; only
+    # GPT-5.6 has an in. profile. The shared runtime_converse path text must not
+    # attach the in. prefix to the 5.4/5.5 models, and its feature constraints
+    # must be stated per model (5.4/5.5 cards list structured outputs on Responses
+    # and application inference profiles on Converse, which the GPT-5.6 sentence
+    # denies).
+    path = OPENAI_CATALOG["paths"]["runtime_converse"]
+    strengths = "\n".join(path["strengths"])
+    constraints = "\n".join(path["constraints"])
+    assert "For GPT-5.6, GPT-5.5 and GPT-5.4" not in strengths
+    assert "GPT-5.5 and GPT-5.4 the runtime ids are us. and global. only" in strengths
+    assert "For GPT-5.6, runtime does not support server-side tool use" in constraints
+    assert "GPT-5.5 / GPT-5.4 on runtime" in constraints
+    assert "structured outputs and implicit prompt caching are Responses-only" in constraints
+    assert "Guardrails and application inference profiles are Converse-only" in constraints
+
+
 def test_chat_completions_case_includes_full_reshape_deltas():
     rec = _recommend(
         _workload(

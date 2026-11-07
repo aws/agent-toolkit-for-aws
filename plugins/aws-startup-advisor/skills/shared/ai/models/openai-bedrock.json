@@ -51,11 +51,12 @@
       "strengths": [
         "Bedrock-native multi-model request surface",
         "Supports Bedrock Guardrails (Converse API only), invocation logging, and CloudWatch",
-        "For GPT-5.6, GPT-5.5 and GPT-5.4 this is a SAME-MODEL governance path via CRIS (us./in./global. ids; base URL bedrock-runtime.{region}.amazonaws.com/openai/v1 for the OpenAI-compatible APIs); the model cards recommend runtime for new applications, and for GPT-5.6 Global CRIS is priced at OpenAI's standard rate (cost parity)"
+        "For GPT-5.6 this is a SAME-MODEL governance path via CRIS (us./in./global. ids). For GPT-5.5 and GPT-5.4 the runtime ids are us. and global. only (their model cards publish no in. profile). The base URL for the OpenAI-compatible APIs is bedrock-runtime.{region}.amazonaws.com/openai/v1. The model cards recommend runtime for new applications, and for GPT-5.6 Global CRIS is priced at OpenAI's standard rate (cost parity)"
       ],
       "constraints": [
         "GPT-5.5 / GPT-5.4 on runtime are CRIS-only (us. and global. ids; no in-region form) per their model cards (read 2026-11-06); the cards publish In-Region (1.10x) pricing only, so do not assume Global CRIS price parity for them",
-        "GPT-5.6 on runtime is CRIS-only (no in-region form); Geo CRIS stays within the geography, Global CRIS routes anywhere — pick by data-residency posture. Runtime does not support server-side tool use, structured outputs, or application inference profiles for these models; prompt caching is Responses-only",
+        "GPT-5.6 on runtime is CRIS-only (no in-region form); Geo CRIS stays within the geography, Global CRIS routes anywhere — pick by data-residency posture. For GPT-5.6, runtime does not support server-side tool use, structured outputs, or application inference profiles; prompt caching is Responses-only",
+        "GPT-5.5 / GPT-5.4 on runtime (per their model cards, read 2026-11-07): server-side tool use is unsupported; structured outputs and implicit prompt caching are Responses-only; Guardrails and application inference profiles are Converse-only",
         "Bedrock-native models generally require a Global or geography-scoped CRIS inference profile",
         "Availability must be probed in the target account and region"
       ]
