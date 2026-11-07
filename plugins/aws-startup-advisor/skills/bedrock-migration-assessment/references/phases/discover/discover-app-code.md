@@ -10,6 +10,15 @@
 
 ## Step 0: Self-Scan for Source Code
 
+**Secret file exclusion (HARD — no exceptions):** Before scanning any file, skip the following paths entirely — do NOT read, parse, or include their contents in any output artifact:
+
+- `.env*` (matches `.env`, `.env.local`, `.env.production`, `.env.staging`, and any other `.env` variant)
+- `credentials.json`, `service-account.json`, `*-service-account.json`
+- `*.pem`, `*.key`, `*.p12`, `*.pfx`
+- `secrets.yaml`, `secrets.yml`
+
+If any of these files are encountered during the recursive scan, log: "Skipped [filename] — potential secret file excluded from discovery scope." Do NOT include them in source file counts or any output. Never pass these paths to any tool or command, including `Read`, `cat`, `head`, `grep`, or `sed`, even with redaction: a variable name referenced in source code is enough evidence.
+
 Recursively scan the entire target directory tree for source code and dependency manifests:
 
 **Source code:**
@@ -30,15 +39,6 @@ Recursively scan the entire target directory tree for source code and dependency
 Skip `.git/`, `.migration/`, `node_modules/`, virtual environments (`.venv/`, `venv/`), and build output directories.
 
 **Exit gate:** If NO source code files or dependency manifests are found, **exit cleanly**. Return no output artifacts.
-
-**Secret file exclusion (HARD — no exceptions):** Before scanning any file, skip the following paths entirely — do NOT read, parse, or include their contents in any output artifact:
-
-- `.env*` (matches `.env`, `.env.local`, `.env.production`, `.env.staging`, and any other `.env` variant)
-- `credentials.json`, `service-account.json`, `*-service-account.json`
-- `*.pem`, `*.key`, `*.p12`, `*.pfx`
-- `secrets.yaml`, `secrets.yml`
-
-If any of these files are encountered during the recursive scan, log: "Skipped [filename] — potential secret file excluded from discovery scope." Do NOT include them in source file counts or any output. Never pass these paths to any tool or command, including `Read`, `cat`, `head`, `grep`, or `sed`, even with redaction: a variable name referenced in source code is enough evidence.
 
 ---
 
@@ -204,7 +204,7 @@ For each source, extract the model identifiers passed to constructors or API cal
 - `client.chat.completions.create(model="gpt-4o")` -> model: `"gpt-4o"`
 - `openai.ChatCompletion.create(model="gpt-4")` -> model: `"gpt-4"` (legacy API)
 - `client.embeddings.create(model="text-embedding-3-small")` -> model: `"text-embedding-3-small"`
-- Model strings in config files or environment variables: `OPENAI_MODEL`, `MODEL_NAME`, etc.
+- Model strings in non-secret config files, or as the default where code reads an environment variable (`os.environ.get("OPENAI_MODEL", "gpt-4o")`). A value set only in `.env*` or another secret file is not observed: never open the file to find it.
 - Model string patterns: `gpt-*`, `o1*`, `o3*`, `o4*`, `text-embedding-*`, `dall-e-*`, `gpt-image-*`, `whisper-*`, `tts-*`
 - For Azure OpenAI, the `model=` argument is a deployment name. Record it as the model only when it matches one of these patterns; otherwise treat the model as not observed.
 
@@ -227,7 +227,7 @@ For each source, extract the model identifiers passed to constructors or API cal
 | Model string from a config file, constant, or environment variable name   | `medium`     |
 | Model string found only in comments, tests, or examples                   | `low`        |
 
-When a source's SDK is used but no model string can be located (for example, it is read from an environment variable whose value is not in the repo), set `model_evidence: "not_observed"`, `models: []`, and `model_observations: []`, and keep the source's `model_families` from its SDK (`openai_api` → `gpt`, `anthropic_api` → `claude`, Google → `gemini`).
+When a source's SDK is used but no model string can be located (for example, it is read from an environment variable whose value is not in the repo, or only in a secret file), set `model_evidence: "not_observed"`, `models: []`, and `model_observations: []`, and keep the source's `model_families` from its SDK (`openai_api` → `gpt`, `anthropic_api` → `claude`, Google → `gemini`).
 
 ---
 

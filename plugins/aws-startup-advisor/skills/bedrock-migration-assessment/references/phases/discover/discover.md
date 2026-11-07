@@ -2,6 +2,8 @@
 
 Produces a validated `ai-workload-profile.json` in `$MIGRATION_DIR`, either from a profile the user supplies or by scanning their code.
 
+The SKILL.md secret-file rule applies before Step 1: to see whether the project contains source code, list file names only, and never open `.env*` or other secret files.
+
 ## Step 1: Choose the route
 
 - **Profile route:** the user names an existing `ai-workload-profile.json`. Only the provider-neutral contract is accepted: `schema_version` (`1.0` or `1.1`), `ai_sources[]`, and `gateways[]`, plus, in `1.1` only, the optional `integration`, `workloads[]`, `agentic_profile`, and `tool_manifest[]`.
