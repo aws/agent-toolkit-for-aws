@@ -80,15 +80,38 @@ def _verify(requirements=None, **kwargs):
     )
 
 
+# Mantle is probed only when a mantle_selector put the workload there.
+MANTLE_SELECTED = {"mantle_selector": "workspaces"}
+
+
 def test_mantle_probe_uses_recommended_clean_id():
     client = FakeMantleClient()
-    result = _verify(mantle_client_factory=lambda region: client)
+    result = _verify(MANTLE_SELECTED, mantle_client_factory=lambda region: client)
     verification = result["workloads"]["support-agent"]
 
     assert verification["status"] == "passed"
+    assert verification["api_path"] == "mantle_messages"
     assert verification["response_model_id"] == "anthropic.claude-sonnet-5"
     assert client.messages.calls[0]["model"] == "anthropic.claude-sonnet-5"
     assert client.messages.calls[0]["max_tokens"] == 8
+
+
+def test_default_messages_probe_uses_runtime_messages_with_resolved_cris():
+    messages = FakeMessages(response={"model": "global.anthropic.claude-sonnet-5"})
+    client = FakeMantleClient(messages)
+    mantle_calls = []
+    result = _verify(
+        {"data_residency": "global_allowed"},
+        mantle_client_factory=lambda region: mantle_calls.append(region),
+        runtime_messages_client_factory=lambda region: client,
+    )
+    verification = result["workloads"]["support-agent"]
+
+    assert verification["status"] == "passed"
+    assert verification["api_path"] == "runtime_messages"
+    assert verification["response_model_id"] == "global.anthropic.claude-sonnet-5"
+    assert messages.calls[0]["model"] == "global.anthropic.claude-sonnet-5"
+    assert mantle_calls == []
 
 
 def test_converse_probe_uses_resolved_cris_without_substitution():
@@ -141,7 +164,7 @@ def test_unresolved_runtime_cris_does_not_create_client():
 
 def test_probe_failure_is_structured():
     client = FakeMantleClient(FakeMessages(error=PermissionError("denied")))
-    result = _verify(mantle_client_factory=lambda region: client)
+    result = _verify(MANTLE_SELECTED, mantle_client_factory=lambda region: client)
     verification = result["workloads"]["support-agent"]
 
     assert verification["status"] == "failed"
@@ -163,7 +186,7 @@ def test_decision_required_is_not_probed():
 
 
 def test_verification_output_matches_schema():
-    result = _verify(mantle_client_factory=lambda region: FakeMantleClient())
+    result = _verify(MANTLE_SELECTED, mantle_client_factory=lambda region: FakeMantleClient())
     schema = json.loads(
         (
             pathlib.Path(verify_model_path.__file__).parent
@@ -685,8 +708,9 @@ def test_openai_decision_required_is_not_probed():
 
 # --- bedrock-runtime Responses / Chat Completions / Messages probes -----------
 #
-# The engines do not yet emit these paths, so the recommendations are built by
-# hand from a recommended result and re-pointed at the Runtime path.
+# The OpenAI engine does not yet emit its Runtime paths, so these recommendations are
+# built by hand from a recommended result and re-pointed at the path under test; this
+# keeps every apiPath enum value covered independently of engine defaults.
 
 RECOMMENDATION_SCHEMA = json.loads(
     (pathlib.Path(verify_model_path.__file__).parent / "schemas" / "model-recommendation.json").read_text()

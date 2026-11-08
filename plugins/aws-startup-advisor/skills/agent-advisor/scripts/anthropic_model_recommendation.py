@@ -15,11 +15,26 @@ SUPPORTED_PATHS = {
     "mantle_openai_responses",
     "runtime_converse",
     "runtime_invoke",
+    "runtime_messages",
+    "runtime_openai_chat",
+    "runtime_openai_responses",
 }
 ANTHROPIC_PATHS = (
     "mantle_messages",
     "runtime_converse",
     "runtime_invoke",
+    "runtime_messages",
+)
+# The only reasons to leave the default bedrock-runtime endpoint for bedrock-mantle
+# (skills/shared/ai/bedrock-endpoint-policy.md). Nothing else selects Mantle.
+MANTLE_SELECTORS = (
+    "background_inference",
+    "server_side_tools",
+    "web_search",
+    "projects",
+    "workspaces",
+    "mantle_only_model_or_api",
+    "in_region_processing",
 )
 # Sources this module can genuinely reason about. `none` and `unknown` belong here: a source with no
 # detected provider is treated as Bedrock-native and gets the Anthropic pool. Any OTHER provider
@@ -209,16 +224,25 @@ def _required_capabilities(requirements):
     return capabilities
 
 
+def _converse_required(requirements):
+    # Guardrails and the multi-model surface are Converse-only. invocation_logging and
+    # cloudwatch alone are satisfied by every bedrock-runtime path, including Messages.
+    return "guardrails" in requirements.get("governance", []) or requirements.get(
+        "multi_model_converse", False
+    )
+
+
 def _path_constraints(workload):
     source = workload["source"]
     requirements = workload["requirements"]
     preferred = requirements.get("preferred_api_path")
     if preferred and preferred not in SUPPORTED_PATHS:
         raise ValueError(f"unsupported preferred_api_path: {preferred}")
+    selector = requirements.get("mantle_selector")
+    if selector and selector not in MANTLE_SELECTORS:
+        raise ValueError(f"unsupported mantle_selector: {selector}")
 
-    runtime_required = bool(requirements.get("governance")) or requirements.get(
-        "multi_model_converse", False
-    )
+    converse_required = _converse_required(requirements)
     native_required = requirements.get("requires_native_payload", False)
     messages_required = requirements.get("preserve_messages_api", False) or requirements.get(
         "newest_anthropic_betas", False
@@ -231,24 +255,41 @@ def _path_constraints(workload):
 
     runtime_path = "runtime_invoke" if native_required else "runtime_converse"
     conflicts = []
-    if messages_required and (runtime_required or native_required):
-        conflicts.append("messages_vs_runtime")
+    option_paths = []
+    if messages_required and (converse_required or native_required):
+        conflicts.append("messages_vs_converse")
+        option_paths = ["runtime_messages", runtime_path]
+    if selector and (converse_required or native_required):
+        conflicts.append("mantle_selector_vs_runtime")
+        option_paths = ["mantle_messages", runtime_path]
     if preferred:
-        if preferred.startswith("mantle_") and (runtime_required or native_required):
+        if preferred.startswith("mantle_") and (converse_required or native_required):
             conflicts.append("preferred_path_vs_runtime")
-        if preferred.startswith("runtime_") and messages_required:
+            option_paths = option_paths or ["mantle_messages", runtime_path]
+        if preferred in {"runtime_converse", "runtime_invoke"} and messages_required:
             conflicts.append("preferred_path_vs_messages")
+            option_paths = option_paths or ["runtime_messages", runtime_path]
         if native_required and preferred != "runtime_invoke":
             conflicts.append("preferred_path_vs_native_payload")
+            option_paths = option_paths or ["mantle_messages", runtime_path]
+        if preferred.startswith("mantle_") and not selector:
+            conflicts.append("mantle_selector_required")
+            option_paths = option_paths or [
+                "runtime_messages" if source_messages or messages_required else runtime_path,
+                preferred,
+            ]
 
     if conflicts:
         return {
             "paths": [],
             "conflicts": sorted(set(conflicts)),
-            "option_paths": ["mantle_messages", runtime_path],
+            "option_paths": option_paths,
             "rationale": [
-                "Messages continuity or beta requirements conflict with required Bedrock runtime capabilities."
+                "The recorded requirements cannot be satisfied on one Bedrock path: "
+                + ", ".join(sorted(set(conflicts)))
+                + "."
             ],
+            "mantle_selector": selector,
         }
     if preferred:
         return {
@@ -256,6 +297,7 @@ def _path_constraints(workload):
             "conflicts": [],
             "option_paths": [],
             "rationale": [f"User selected the {preferred} API path."],
+            "mantle_selector": selector,
         }
     if native_required:
         return {
@@ -263,39 +305,51 @@ def _path_constraints(workload):
             "conflicts": [],
             "option_paths": [],
             "rationale": ["InvokeModel is required for the provider-native Bedrock body."],
+            "mantle_selector": selector,
         }
-    if runtime_required:
+    if converse_required:
         return {
             "paths": ["runtime_converse"],
             "conflicts": [],
             "option_paths": [],
-            "rationale": [
-                "Converse is required by governance, logging, or multi-model requirements."
-            ],
+            "rationale": ["Converse is required by Guardrails or multi-model requirements."],
+            "mantle_selector": selector,
         }
-    if messages_required:
+    if selector:
         return {
             "paths": ["mantle_messages"],
             "conflicts": [],
             "option_paths": [],
             "rationale": [
-                "Mantle is required to preserve Messages semantics or newest beta features."
+                f"Mantle is selected by mantle_selector {selector} (bedrock-endpoint-policy.md)."
             ],
+            "mantle_selector": selector,
+        }
+    messages_rationale = (
+        "bedrock-runtime Messages preserves the first-party Messages API on the default endpoint."
+    )
+    if messages_required:
+        return {
+            "paths": ["runtime_messages"],
+            "conflicts": [],
+            "option_paths": [],
+            "rationale": [messages_rationale],
+            "mantle_selector": None,
         }
     if source_messages:
         return {
-            "paths": list(ANTHROPIC_PATHS),
+            "paths": ["runtime_messages", "runtime_converse", "runtime_invoke"],
             "conflicts": [],
             "option_paths": [],
-            "rationale": [
-                "Mantle is preferred for an existing first-party Messages API call."
-            ],
+            "rationale": [messages_rationale],
+            "mantle_selector": None,
         }
     return {
-        "paths": ["runtime_converse", "runtime_invoke", "mantle_messages"],
+        "paths": ["runtime_converse", "runtime_invoke", "runtime_messages"],
         "conflicts": [],
         "option_paths": [],
         "rationale": ["Converse is the default for a new governance-ready Bedrock workload."],
+        "mantle_selector": None,
     }
 
 
@@ -430,19 +484,33 @@ def _resolve_invocation_model_id(model_id, requires_cris, requirements, model=No
 
 
 def _decision_options(catalog, workload, option_paths, region=None):
+    requirements = workload["requirements"]
+    selector = requirements.get("mantle_selector")
     options = []
     for path in dict.fromkeys(option_paths):
-        candidates = _build_candidates(catalog, [path], workload["requirements"], region)
+        candidates = _build_candidates(catalog, [path], requirements, region)
         if not candidates:
             continue
-        tradeoff = (
-            "Preserves Messages code and beta access but gives up runtime-only governance."
-            if path == "mantle_messages"
-            else "Provides runtime governance but requires rewriting the Messages integration."
-        )
-        options.append(
-            _candidate_summary(candidates[0], workload["requirements"], tradeoff, region)
-        )
+        if path == "runtime_messages":
+            tradeoff = (
+                "Keeps the Anthropic Messages API on bedrock-runtime (IAM, invocation logging, "
+                "CloudWatch); Converse-only features such as Guardrails and the multi-model "
+                "surface are not on this API."
+            )
+        elif path == "mantle_messages":
+            tradeoff = (
+                f"Mantle Messages selected by mantle_selector {selector}; gives up "
+                "bedrock-runtime-only governance (Guardrails, invocation logging)."
+                if selector
+                else "Mantle Messages requires a mantle_selector (bedrock-endpoint-policy.md); "
+                "gives up bedrock-runtime-only governance (Guardrails, invocation logging)."
+            )
+        else:
+            tradeoff = "Provides runtime governance but requires rewriting the Messages integration."
+        option = _candidate_summary(candidates[0], requirements, tradeoff, region)
+        if path == "mantle_messages":
+            option["mantle_selector"] = selector
+        options.append(option)
     return options
 
 
@@ -514,7 +582,8 @@ def _migration_deltas(source, source_analysis, path, feature_status, requirement
         _delta(
             "version_header",
             "path",
-            "Mantle uses the HTTP version header; runtime uses the Bedrock body field.",
+            "Messages (Mantle or runtime) sends the anthropic-version header through the SDK; "
+            "Converse and Invoke use the Bedrock body field.",
         ),
         _delta(
             "error_and_quota_surface",
@@ -561,7 +630,8 @@ def _migration_deltas(source, source_analysis, path, feature_status, requirement
             _delta(
                 "prompt_cache_shape",
                 "path",
-                "Mantle cache_control and Converse cachePoint use different request shapes.",
+                "Messages cache_control (Mantle or runtime) and Converse cachePoint use "
+                "different request shapes.",
             )
         )
     return deltas
@@ -576,11 +646,12 @@ def _compatibility(feature_status, requirements, path):
         for feature in detected
         if feature in {"citations", "streaming", "tool_use", "vision"}
     }
-    if "prompt_caching" in detected and path == "mantle_messages":
+    messages_path = path in {"mantle_messages", "runtime_messages"}
+    if "prompt_caching" in detected and messages_path:
         native.add("prompt_caching")
     portable = detected.intersection(_VERSION_SCAN_FEATURES)
     portable.update(detected.intersection({"models_api", "structured_output"}))
-    if "prompt_caching" in detected and path != "mantle_messages":
+    if "prompt_caching" in detected and not messages_path:
         portable.add("prompt_caching")
     rearchitecture = detected.intersection(_REARCHITECTURE_FEATURES)
     critical = set(requirements.get("critical_features", []))
@@ -728,15 +799,27 @@ def _decision_required(workload, region, catalog, constraints):
             "catalog has no candidate for every conflicting model/path option "
             f"for workload {workload['workload_id']}"
         )
+    option_names = " or ".join(option["api_path"] for option in decision_options)
     blocks = [
         _finding(
             "model_path_decision_required",
             "[BLOCKS]",
-            "Messages continuity conflicts with required Bedrock runtime capabilities.",
-            "Choose the Mantle continuity option or the runtime governance option, "
-            "update requirements, and rerun Model Recommend.",
+            "The recorded requirements cannot share one Bedrock path: "
+            + ", ".join(constraints["conflicts"]),
+            f"Choose {option_names}, update requirements, and rerun Model Recommend.",
         )
     ]
+    if "mantle_selector_required" in constraints["conflicts"]:
+        blocks.append(
+            _finding(
+                "mantle_selector_required",
+                "[BLOCKS]",
+                "A bedrock-mantle path was preferred without a mantle_selector; nothing but a "
+                "selector from bedrock-endpoint-policy.md moves a workload off bedrock-runtime.",
+                "Record the applicable requirements.mantle_selector value or choose the "
+                "bedrock-runtime option, then rerun Model Recommend.",
+            )
+        )
     return {
         "workload_id": workload["workload_id"],
         "provider_module": "anthropic",
@@ -752,6 +835,7 @@ def _decision_required(workload, region, catalog, constraints):
         "model_identity": None,
         "api_path": None,
         "invocation_model_id": None,
+        "mantle_selector": None,
         "decision_options": decision_options,
         "alternatives": [],
         "rationale": constraints["rationale"],
@@ -796,6 +880,30 @@ def recommend_anthropic_workload(workload, region, catalog):
     model = chosen["model"]
     path = chosen["path"]
     path_config = chosen["path_config"]
+    requirements = workload["requirements"]
+    rationale = list(constraints["rationale"])
+    mantle_selector = constraints["mantle_selector"] if path == "mantle_messages" else None
+    if (
+        requirements.get("data_residency") == "in_region_required"
+        and path.startswith("runtime_")
+        and path_config["requires_cris"]
+        and not _runtime_in_region_allowed(path_config["model_id"], model, region, requirements)
+        and not (_converse_required(requirements) or requirements.get("requires_native_payload"))
+    ):
+        # Derived selector (bedrock-endpoint-policy.md in_region_processing): bedrock-runtime
+        # serves this model here only through a CRIS profile, which may route out of the Region.
+        in_region = _build_candidates(catalog, ["mantle_messages"], requirements, region)
+        if in_region:
+            chosen = in_region[0]
+            model = chosen["model"]
+            path = chosen["path"]
+            path_config = chosen["path_config"]
+            mantle_selector = "in_region_processing"
+            rationale.append(
+                "Strict in-Region processing was requested and bedrock-runtime serves this model "
+                "only through a CRIS profile here; Mantle Messages keeps processing in-Region "
+                "(mantle_selector in_region_processing)."
+            )
     source_analysis = _source_analysis(workload["source"], model["version"])
     feature_status = _feature_assessment(
         workload,
@@ -846,7 +954,17 @@ def recommend_anthropic_workload(workload, region, catalog):
                     "Opus 5.5 does not support Bedrock Batch. Use on-demand inference, "
                     "or select a verified batch-capable alternative such as Opus 4.6."
                 )
-    rationale = list(constraints["rationale"])
+    if requirements.get("newest_anthropic_betas"):
+        tuning.append(
+            _finding(
+                "beta_header_verification",
+                "[TUNE]",
+                "Newest Anthropic beta headers are model- and endpoint-specific.",
+                "Verify each beta header on the selected endpoint; if a beta is served on "
+                "bedrock-mantle only, record mantle_selector mantle_only_model_or_api and rerun "
+                "Model Recommend.",
+            )
+        )
     rationale.append(
         f"{model['display_name']} is the highest-ranked {chosen['driver']} model "
         f"that satisfies the {path} constraints."
@@ -880,6 +998,7 @@ def recommend_anthropic_workload(workload, region, catalog):
         },
         "api_path": path,
         "invocation_model_id": invocation_model_id,
+        "mantle_selector": mantle_selector,
         "decision_options": [],
         "alternatives": alternatives,
         "rationale": rationale,
