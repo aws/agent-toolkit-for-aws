@@ -214,6 +214,8 @@ Override examples: GPT-4 + Q2=cost → Haiku; Flash + Q10=extended thinking → 
 
 Interpret → `ai_model_baseline`. Default: auto-detect, fallback Q2 priority-based.
 
+When the resolved baseline is a Gemini 2.5 model (`gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`), also ask full-flow **Q19b** from `clarify-ai.md` (serving API: Vertex AI vs Gemini Developer API) with the same auto-detect rule, and write `ai_constraints.ai_source_serving_api`. The 2.5 models are retired on Vertex AI but still billed on the Developer API, so the answer decides the source-price baseline.
+
 ### Batch 1 → Save Draft and Present Batch 2
 
 After the user responds to Batch 1:
