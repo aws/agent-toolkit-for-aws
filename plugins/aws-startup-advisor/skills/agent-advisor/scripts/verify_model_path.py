@@ -67,8 +67,8 @@ def _verify_application_profile(client, model_id, path_model_id, allowed_profile
     raise error
 
 
-def _default_openai_client(region, path_name):
-    """Lazily build an OpenAI SDK client pointed at the Bedrock Mantle endpoint.
+def _default_openai_client(region, path_name, base_url):
+    """Lazily build an OpenAI SDK client pointed at a Bedrock OpenAI-compatible base URL.
 
     Imports are deferred so the offline recommendation/verify code path never
     requires the openai or token-generator packages.
@@ -77,24 +77,68 @@ def _default_openai_client(region, path_name):
         from openai import OpenAI
     except ImportError as exc:
         raise RuntimeError(
-            f"Mantle {path_name} verification requires the openai package"
+            f"{path_name} verification requires the openai package"
         ) from exc
     try:
         from aws_bedrock_token_generator import provide_token
     except ImportError as exc:
         raise RuntimeError(
-            f"Mantle {path_name} verification requires aws-bedrock-token-generator"
+            f"{path_name} verification requires aws-bedrock-token-generator"
         ) from exc
-    base_url = f"https://bedrock-mantle.{region}.api.aws/openai/v1"
     return OpenAI(base_url=base_url, api_key=provide_token(region=region))
 
 
+def _mantle_openai_base_url(region):
+    return f"https://bedrock-mantle.{region}.api.aws/openai/v1"
+
+
+def _runtime_openai_base_url(region):
+    return f"https://bedrock-runtime.{region}.amazonaws.com/openai/v1"
+
+
 def _default_openai_responses_client(region):
-    return _default_openai_client(region, "Responses")
+    return _default_openai_client(region, "Mantle Responses", _mantle_openai_base_url(region))
 
 
 def _default_openai_chat_client(region):
-    return _default_openai_client(region, "Chat Completions")
+    return _default_openai_client(
+        region, "Mantle Chat Completions", _mantle_openai_base_url(region)
+    )
+
+
+def _default_runtime_openai_responses_client(region):
+    return _default_openai_client(
+        region, "Runtime Responses", _runtime_openai_base_url(region)
+    )
+
+
+def _default_runtime_openai_chat_client(region):
+    return _default_openai_client(
+        region, "Runtime Chat Completions", _runtime_openai_base_url(region)
+    )
+
+
+def _default_runtime_messages_client(region):
+    """Lazily build an Anthropic SDK client pointed at bedrock-runtime /anthropic.
+
+    https://docs.aws.amazon.com/bedrock/latest/userguide/inference-messages-api.html
+    (read 2026-11-07): the SDK sends /anthropic/v1/messages and adds the
+    anthropic-version header; the Bedrock bearer token is passed as api_key.
+    """
+    try:
+        from anthropic import Anthropic
+    except ImportError as exc:
+        raise RuntimeError(
+            "Runtime Messages verification requires the anthropic package"
+        ) from exc
+    try:
+        from aws_bedrock_token_generator import provide_token
+    except ImportError as exc:
+        raise RuntimeError(
+            "Runtime Messages verification requires aws-bedrock-token-generator"
+        ) from exc
+    base_url = f"https://bedrock-runtime.{region}.amazonaws.com/anthropic"
+    return Anthropic(base_url=base_url, api_key=provide_token(region=region))
 
 
 def _probe_openai_responses(client, model_id):
@@ -171,6 +215,9 @@ def verify_workload(
     openai_chat_client_factory=None,
     now=None,
     control_client_factory=None,
+    runtime_openai_responses_client_factory=None,
+    runtime_openai_chat_client_factory=None,
+    runtime_messages_client_factory=None,
 ):
     result = _base_result(workload_id, recommendation)
     if recommendation["decision_status"] != "recommended":
@@ -218,6 +265,16 @@ def verify_workload(
         elif path == "runtime_invoke":
             factory = runtime_client_factory or _default_runtime_client
             response = _probe_invoke(factory(result["region"]), model_id)
+        elif path == "runtime_openai_responses":
+            factory = (runtime_openai_responses_client_factory
+                       or _default_runtime_openai_responses_client)
+            response = _probe_openai_responses(factory(result["region"]), model_id)
+        elif path == "runtime_openai_chat":
+            factory = runtime_openai_chat_client_factory or _default_runtime_openai_chat_client
+            response = _probe_openai_chat(factory(result["region"]), model_id)
+        elif path == "runtime_messages":
+            factory = runtime_messages_client_factory or _default_runtime_messages_client
+            response = _probe_mantle(factory(result["region"]), model_id)
         else:
             raise ValueError(f"verification is not implemented for API path: {path}")
     except Exception as exc:
@@ -242,6 +299,9 @@ def verify_recommendation(
     openai_chat_client_factory=None,
     now=None,
     control_client_factory=None,
+    runtime_openai_responses_client_factory=None,
+    runtime_openai_chat_client_factory=None,
+    runtime_messages_client_factory=None,
 ):
     selected = set(workload_ids or recommendation["workloads"])
     unknown = sorted(selected - set(recommendation["workloads"]))
@@ -262,6 +322,9 @@ def verify_recommendation(
             openai_chat_client_factory=openai_chat_client_factory,
             now=generated_at,
             control_client_factory=control_client_factory,
+            runtime_openai_responses_client_factory=runtime_openai_responses_client_factory,
+            runtime_openai_chat_client_factory=runtime_openai_chat_client_factory,
+            runtime_messages_client_factory=runtime_messages_client_factory,
         )
     return {
         "schema_version": 1,
