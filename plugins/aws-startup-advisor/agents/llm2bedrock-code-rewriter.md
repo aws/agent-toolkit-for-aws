@@ -241,7 +241,7 @@ The source SDK stays. Per client, change only three things:
   | ---------------------------------------- | ------------------------------------------------------ |
   | Proprietary OpenAI GPT (`openai.gpt-5*` / `openai.gpt-6*`) | `https://bedrock-mantle.<REGION>.api.aws/openai/v1`    |
   | Other OpenAI-compatible targets          | `https://bedrock-mantle.<REGION>.api.aws/v1`           |
-  | Anthropic SDK                            | `https://bedrock-mantle.<REGION>.api.aws/anthropic/v1` |
+  | Anthropic SDK                            | `https://bedrock-mantle.<REGION>.api.aws/anthropic` (the SDK appends `/v1/messages`) |
 
   If your context has a `Mantle base path` line, use it verbatim — it is authoritative over this table.
 - **Credential** → a Bedrock bearer token, NOT the original provider key. For a short CLI or one-shot script, read it from the `AWS_BEARER_TOKEN_BEDROCK` env var; for any long-running process use the auto-refreshing `provide_token` client shown below (the env-var form expires within 12 hours). Do not leave the old `api_key=os.environ["OPENAI_API_KEY"]` line in place.
@@ -305,9 +305,12 @@ client = anthropic.Anthropic()
 import os
 import anthropic
 client = anthropic.Anthropic(
-    base_url="https://bedrock-mantle.us-east-1.api.aws/anthropic/v1",
-    auth_token=os.environ["AWS_BEARER_TOKEN_BEDROCK"],
+    base_url="https://bedrock-mantle.us-east-1.api.aws/anthropic",
+    api_key=os.environ["AWS_BEARER_TOKEN_BEDROCK"],
 )
+# Same base_url/api_key form as the public Messages API page
+# (https://docs.aws.amazon.com/bedrock/latest/userguide/inference-messages-api.html, read 2026-11-07);
+# the SDK appends /v1/messages and the anthropic-version header itself.
 ```
 
 Preserve compatible SDK request/response shapes. A model version change still requires §9 target checks, including typed response parsing for Opus 5.5. Apply the Chat Completions → Responses reshape only when that API change was selected. Preserve the exact validated runtime profile ID or ARN. After applying the changes above, skip the Converse-specific guidance in the rest of §8; the §9 behavior-delta application still applies normally.

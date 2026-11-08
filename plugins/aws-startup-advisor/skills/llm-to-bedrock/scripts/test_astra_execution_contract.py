@@ -1,4 +1,5 @@
 """Execute the actual evaluator snippets and validate Astra handoff contracts."""
+import base64
 import json
 import re
 import sys
@@ -61,6 +62,47 @@ def test_astra_connectivity_uses_selected_openai_api(surface, mid, monkeypatch):
     runtime.assert_not_called()
     messages.assert_not_called()
     (responses if surface == "chat_completions" else chat).assert_not_called()
+
+
+@pytest.mark.parametrize("mid", ["global.anthropic.claude-sonnet-5", "us.anthropic.claude-opus-5.5"])
+def test_runtime_messages_connectivity_snippet_uses_the_messages_client(mid, monkeypatch, capsys):
+    # §6b is the Messages counterpart of §6a; execute the committed heredoc so a typo
+    # in the evaluator prose cannot ship unnoticed.
+    responses, chat, runtime, messages = clients(monkeypatch)
+    code = snippet("# 6b. Runtime Anthropic Messages connectivity", "# 7. Load golden")
+    code = code.replace("<TARGET_MODEL_ID>", mid).replace("<scriptsDir>", str(Path(__file__).parent))
+    monkeypatch.setenv("AWS_REGION", "us-west-2")
+    exec(compile(code, str(EVALUATOR), "exec"), {})  # nosec B102 - committed test fixture
+    assert messages.call_count == 1
+    assert messages.call_args.kwargs["model"] == mid
+    assert messages.call_args.kwargs["messages"] == [{"role": "user", "content": "ping"}]
+    assert "OK: answer" in capsys.readouterr().out
+    responses.assert_not_called()
+    chat.assert_not_called()
+    runtime.assert_not_called()
+
+
+def test_runtime_messages_vision_snippet_sends_a_base64_source_block(monkeypatch, capsys):
+    import io
+    import urllib.request
+    responses, chat, runtime, messages = clients(monkeypatch)
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: io.BytesIO(b"test-image"))
+    code = snippet("# 9.5b Runtime Anthropic Messages vision", "# 10. Run golden")
+    code = code.replace("<TARGET_MODEL_ID>", "global.anthropic.claude-sonnet-5")
+    code = code.replace("<scriptsDir>", str(Path(__file__).parent))
+    monkeypatch.setenv("AWS_REGION", "us-west-2")
+    exec(compile(code, str(EVALUATOR), "exec"), {})  # nosec B102 - committed smoke snippet
+    call = messages.call_args.kwargs
+    assert call["model"] == "global.anthropic.claude-sonnet-5"
+    image_block, text_block = call["messages"][0]["content"]
+    assert image_block["type"] == "image"
+    assert image_block["source"] == {"type": "base64", "media_type": "image/jpeg",
+                                     "data": base64.b64encode(b"test-image").decode()}
+    assert text_block == {"type": "text", "text": "Describe this image briefly."}
+    assert "VISION_OK: answer" in capsys.readouterr().out
+    responses.assert_not_called()
+    chat.assert_not_called()
+    runtime.assert_not_called()
 
 
 @pytest.mark.parametrize("mid,surface,endpoint", [

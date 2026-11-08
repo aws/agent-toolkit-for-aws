@@ -370,3 +370,30 @@ def test_main_routes_messages_api_to_the_messages_probe(monkeypatch, capsys):
     assert rc == 0
     assert calls == [("messages", "global.anthropic.claude-sonnet-5", "us-west-2")]
     assert json.loads(capsys.readouterr().out)["ok"] is True
+
+
+def test_main_messages_plan_probes_embedding_ids_via_invoke_model(monkeypatch, capsys):
+    # Regression: B1 collects every bedrock_models[].aws_model_id into $TARGET_MODELS and
+    # B4 passes the whole list with one --runtime-api. A runtime_messages plan with a
+    # Claude profile plus an embedding id POSTed the embedding id to /anthropic/v1/messages
+    # and failed preflight spuriously; embeddings must still go via InvokeModel.
+    import boto3
+    import json
+    calls = []
+    monkeypatch.setattr(boto3, "client", lambda *a, **k: object())
+    monkeypatch.setattr(p, "fetch_bedrock_quotas", lambda region: [])
+    monkeypatch.setattr(p, "probe_runtime_messages_model",
+                        lambda mid, region: calls.append(("messages", mid)) or
+                        {"ok": True, "reason": "ok", "detail": "ok"})
+    monkeypatch.setattr(p, "probe_model",
+                        lambda client, mid: calls.append(("invoke_model", mid)) or
+                        {"ok": True, "reason": "ok", "detail": "ok"})
+    monkeypatch.setattr(p, "probe_runtime_openai_model",
+                        lambda *a: (_ for _ in ()).throw(AssertionError("OpenAI probe must not run")))
+    rc = p.main(["--region", "us-west-2",
+                 "--models", "global.anthropic.claude-sonnet-5,amazon.titan-embed-text-v2:0",
+                 "--runtime-api", "messages"])
+    assert rc == 0
+    assert calls == [("messages", "global.anthropic.claude-sonnet-5"),
+                     ("invoke_model", "amazon.titan-embed-text-v2:0")]
+    assert json.loads(capsys.readouterr().out)["ok"] is True

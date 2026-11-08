@@ -411,8 +411,7 @@ ID becomes the CRIS profile and IAM is `bedrock:InvokeModel*`. A `mantle_*` path
 (`"mantle_openai_chat"` for a Chat source, `"mantle_openai_responses"` for a Responses source — e.g.
 Astra on Standard Mantle in `us-east-1` or `us-west-2`) is recorded **only** when the row also
 records `bedrock_models[].mantle_selector` from `references/vendored/ai/bedrock-endpoint-policy.md`
-(background inference, server-side tools / Web Search, Projects / Workspaces, a Mantle-only model or
-API, or strict in-Region processing where runtime offers only CRIS); then keep the OpenAI SDK, use
+(the selector enum is defined there and only there); then keep the OpenAI SDK, use
 `/openai/v1` on Mantle, Bedrock credentials and Mantle IAM. API continuity alone never selects
 Mantle. Do not reshape Astra Chat solely because it is proprietary GPT. Record `model_change: false` only when
 the exact source model is retained; a Pro-to-Astra upgrade is a model change requiring eval.

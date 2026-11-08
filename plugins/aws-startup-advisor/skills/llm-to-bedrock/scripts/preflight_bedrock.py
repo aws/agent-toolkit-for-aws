@@ -12,8 +12,9 @@ runtime OpenAI-compatible APIs, or `messages` for the runtime Anthropic Messages
 API. Embedding models (which don't speak Converse) go via InvokeModel with their
 family's request body. Bare OpenAI proprietary GPT ids are the bedrock-mantle
 form and are probed via the OpenAI Responses API on that endpoint; GPT-6 Astra
-(us./global.) and GPT-5.6 (us./in./global.) CRIS ids are bedrock-runtime targets
-and take the selected runtime API probe.
+(us./global.), GPT-5.6 Terra and Luna (us./in./global.) and GPT-5.6 Sol
+(us./global.) CRIS ids are bedrock-runtime targets and take the selected
+runtime API probe.
 Probe output budgets and cost depend on the selected API.
 """
 import argparse, json, sys
@@ -411,7 +412,9 @@ def main(argv=None) -> int:
                     "Do not assume GPT-5.6's cached-input quota exemption or RPM rules "
                     "apply; Astra's documented 10x output burndown is runtime-specific.")
         else:
-            if args.runtime_api == "messages":
+            # Embedding ids in a chat plan's $TARGET_MODELS never speak the selected
+            # chat API; they are always probed via InvokeModel (probe_model).
+            if args.runtime_api == "messages" and not is_embedding_model(model_id):
                 verdict = probe_runtime_messages_model(model_id, args.region)
             elif (args.runtime_api != "converse" and ".openai.gpt-" in model_id
                     and "gpt-oss" not in model_id):

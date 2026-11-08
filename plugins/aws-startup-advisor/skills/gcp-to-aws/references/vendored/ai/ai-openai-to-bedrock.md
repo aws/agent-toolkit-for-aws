@@ -93,9 +93,8 @@ Amazon Bedrock recommends `bedrock-runtime` for new applications
 (`references/vendored/ai/bedrock-endpoint-policy.md`). Record `migration_path: "mantle_openai_chat"`
 (Chat Completions source on a model whose card lists it on mantle — GPT-6, GPT-5.5, GPT-5.4) or
 `"mantle_openai_responses"` **only** when the row also records a `bedrock_models[].mantle_selector`
-from that policy file (background inference, server-side tools / Web Search, Projects / Workspaces,
-a Mantle-only model or API, or strict in-Region processing where runtime offers only CRIS). API
-continuity alone never selects Mantle.
+from `references/vendored/ai/bedrock-endpoint-policy.md` (the selector enum is defined there and
+only there). API continuity alone never selects Mantle.
 
 Report the assessment honestly: `strong_migrate` here means "low-risk, well-supported move", not "cheaper".
 
