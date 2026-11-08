@@ -15,7 +15,7 @@
 
 **Last updated:** 2026-11-07
 
-The Gemini 2.5 source-model retirement section was added on this date (the Google pages were read 2026-11-08 UTC, the evening of 2026-11-07 US Pacific); existing Bedrock model rows retain their verification dates.
+The Gemini 2.0 and 2.5 source-model retirement section was added on this date (the Google pages were read 2026-11-08 UTC, the evening of 2026-11-07 US Pacific); existing Bedrock model rows retain their verification dates.
 
 **Staleness window:** 45 days
 
@@ -174,9 +174,9 @@ When `image_generation` capability is detected:
 
 ---
 
-## Source-Model Retirements — Gemini 2.5 (verified November 8, 2026)
+## Source-Model Retirements — Gemini 2.0 and 2.5 (verified November 8, 2026)
 
-The Gemini 2.5 generation is retired on the source side. These are **source** models, not Bedrock targets: scanners, fixtures, and discovery docs must keep recognizing the ids because customer code still contains them, but no pricing or mapping table may present a 2.5 model as a current comparison baseline. Mapping guides keep 2.5 rows only in their legacy-source tables so a customer still on one gets a Bedrock mapping. Status values use the pricing-cache enum below, computed with `days_to_eol` against the earliest hard cutoff.
+The Gemini 2.0 and 2.5 generations are retired on the source side. These are **source** models, not Bedrock targets: scanners, fixtures, and discovery docs must keep recognizing the ids because customer code still contains them, but no pricing or mapping table may present a 2.0 or 2.5 model as a current comparison baseline. Mapping guides keep 2.0 and 2.5 rows only in their legacy-source tables so a customer still on one gets a Bedrock mapping. Status values use the pricing-cache enum below, computed with `days_to_eol` against the earliest hard cutoff.
 
 Sources, both read 2026-11-08: the [Vertex AI / Gemini Enterprise Agent Platform model versions page](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions) and the [Gemini Developer API deprecations page](https://aistudio.google.com/docs/deprecations). Prices in the mapping guides for the replacement models come from the [Gemini Developer API pricing page](https://aistudio.google.com/docs/pricing), read the same day.
 
@@ -185,8 +185,10 @@ Sources, both read 2026-11-08: the [Vertex AI / Gemini Enterprise Agent Platform
 | Gemini 2.5 Pro (`gemini-2.5-pro`)              | 2026-10-20 (passed)  | 2026-12-01 — hidden in AI Studio, API limited to existing users, then auto-routes to `gemini-3.8-flash` | `excluded (EOL 2026-12-01)` | `gemini-3.8-flash` or `gemini-3.5-flash` (Vertex); `gemini-3.8-flash` (Developer API) | Claude Sonnet 5 / Nova 2 Pro; Nova Pro for cost  |
 | Gemini 2.5 Flash (`gemini-2.5-flash`)          | 2026-10-20 (passed)  | 2026-12-01 — hidden in AI Studio, API limited to existing users, then auto-routes to `gemini-3.5-flash-lite` | `excluded (EOL 2026-12-01)` | `gemini-3.8-flash` or `gemini-3.5-flash-lite`                                          | Nova Lite; Claude Sonnet 5 when thinking mode is required |
 | Gemini 2.5 Flash-Lite (`gemini-2.5-flash-lite`) | 2026-10-20 (passed)  | **Not deprecated** — no shutdown date announced; still served to Developer API users     | `excluded (EOL 2026-10-20)` on Vertex AI; `active` on the Developer API only | `gemini-3.8-flash`, `gemini-3.5-flash-lite`, or Gemma 4 (Vertex) | Nova Micro / Nova Lite                           |
+| Gemini 2.0 Flash (`gemini-2.0-flash`, `gemini-2.0-flash-001`) | 2026-06-01 (passed) | 2026-06-01 (passed) — listed under Deprecated models with a shutdown date, no auto-routing announced | `excluded (EOL 2026-06-01)` | `gemini-3.5-flash-lite` (Vertex); `gemini-3.6-flash` (Developer API — itself retired on Vertex AI 2026-11-19, upgrade `gemini-3.8-flash`) | Nova Micro; Claude Haiku 5.5 when quality matters more than cost |
+| Gemini 2.0 Flash-Lite (`gemini-2.0-flash-lite`, `gemini-2.0-flash-lite-001`) | 2026-06-01 (passed) | 2026-06-01 (passed) — listed under Deprecated models with a shutdown date, no auto-routing announced | `excluded (EOL 2026-06-01)` | `gemini-3.5-flash-lite` (Vertex); `gemini-3.1-flash-lite` (Developer API)               | Nova Micro / Nova Lite                           |
 
-Apply the same four rules as for Bedrock models: Vertex AI users on any 2.5 model are already past EOL and must migrate the source model or move straight to Bedrock; Developer API users on 2.5 Pro or 2.5 Flash are inside the 90-day exclusion zone. The Flash-Lite exception is real — a Developer API user on `gemini-2.5-flash-lite` has no forced cutoff — but it is still not a current baseline for a new comparison table because the same model is retired on Vertex AI. When Google's auto-routing takes effect on 2026-12-01, a Developer API workload that still names `gemini-2.5-pro` is billed at Gemini 3.8 Flash rates and one that names `gemini-2.5-flash` at Gemini 3.5 Flash-Lite rates; estimate against the replacement's price, not the retired price.
+Apply the same four rules as for Bedrock models: users on any 2.0 model are past the hard shutdown on both Vertex AI and the Developer API, so a workload that still names one is already failing or has been moved — treat the id as evidence of what the customer ran, map it from the legacy rows, and price the comparison against the replacement; Vertex AI users on any 2.5 model are already past EOL and must migrate the source model or move straight to Bedrock; Developer API users on 2.5 Pro or 2.5 Flash are inside the 90-day exclusion zone. The Flash-Lite exception is real — a Developer API user on `gemini-2.5-flash-lite` has no forced cutoff — but it is still not a current baseline for a new comparison table because the same model is retired on Vertex AI. When Google's auto-routing takes effect on 2026-12-01, a Developer API workload that still names `gemini-2.5-pro` is billed at Gemini 3.8 Flash rates and one that names `gemini-2.5-flash` at Gemini 3.5 Flash-Lite rates; estimate against the replacement's price, not the retired price.
 
 The plugin's `lint:model-id` task bans retired **Bedrock** ids by reading the Model ID column of the Legacy/EOL table above and the Removed list; this source-model table keeps its ids in the first column on purpose so retired Gemini ids remain recognizable in scanners, fixtures, and detection docs.
 
@@ -232,7 +234,7 @@ When refreshing the cache, recompute `days_to_eol` and refresh the `active` / `l
 - Exclusion-zone models must not appear in any recommendation row.
 - `restricted` models never appear as a default match; they may be named only as an explicit opt-in alternative with the access requirement stated.
 - Legacy models (>90 days) may appear in notes or legacy-source mapping rows but never as the primary recommendation.
-- Retired **source** models (the Gemini 2.5 generation, see the section above) appear only in legacy-source rows marked Legacy/retired with the retirement date; live comparison baselines and cost-comparison tables use current source models.
+- Retired **source** models (the Gemini 2.0 and 2.5 generations, see the section above) appear only in legacy-source rows marked Legacy/retired with the retirement date; live comparison baselines and cost-comparison tables use current source models.
 
 ---
 

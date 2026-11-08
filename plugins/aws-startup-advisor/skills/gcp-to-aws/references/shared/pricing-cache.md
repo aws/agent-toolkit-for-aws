@@ -408,7 +408,7 @@ Use alongside Bedrock pricing to calculate migration ROI.
 
 ### Gemini (Standard Tier)
 
-Prices per 1M tokens. Source: [ai.google.dev/gemini-api/docs/pricing](https://ai.google.dev/gemini-api/docs/pricing), verified May 2026; Gemini 3.8 Flash, 3.5 Flash-Lite, and the 2.5 retirement status re-read from the [Gemini Developer API pricing page](https://aistudio.google.com/docs/pricing) on 2026-11-08.
+Prices per 1M tokens. Source: [ai.google.dev/gemini-api/docs/pricing](https://ai.google.dev/gemini-api/docs/pricing), verified May 2026; Gemini 3.8 Flash, 3.5 Flash-Lite, and the 2.5 retirement status re-read from the [Gemini Developer API pricing page](https://aistudio.google.com/docs/pricing) on 2026-11-08; the 2.0 Flash / Flash Lite retirement status from the [Vertex AI model versions page](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions) and the [Gemini Developer API deprecations page](https://aistudio.google.com/docs/deprecations), read the same day (their May 2026 prices are kept as historical figures, not refreshed).
 
 | Model                 | Input $/1M | Output $/1M | Context | Tier                                                                                                       |
 | --------------------- | ---------- | ----------- | ------- | ---------------------------------------------------------------------------------------------------------- |
@@ -420,12 +420,13 @@ Prices per 1M tokens. Source: [ai.google.dev/gemini-api/docs/pricing](https://ai
 | Gemini 2.5 Pro        | 1.25       | 10.00       | 1M      | **retired** — Vertex AI 2026-10-20; Developer API shutdown 2026-12-01, then billed at 3.8 Flash rates      |
 | Gemini 2.5 Flash      | 0.30       | 2.50        | 1M      | **retired** — Vertex AI 2026-10-20; Developer API shutdown 2026-12-01, then billed at 3.5 Flash-Lite rates |
 | Gemini 2.5 Flash-Lite | 0.10       | 0.40        | 1M      | **retired** on Vertex AI 2026-10-20; not deprecated on the Developer API (no shutdown date)                 |
-| Gemini 2.0 Flash      | 0.10       | 0.40        | 1M      | fast                                                                                                       |
-| Gemini 2.0 Flash Lite | 0.075      | 0.30        | 1M      | budget                                                                                                     |
+| Gemini 2.0 Flash      | 0.10       | 0.40        | 1M      | **retired** — Vertex AI and Developer API shutdown 2026-06-01; upgrade 3.5 Flash-Lite (Vertex) / 3.6 Flash (Developer API) |
+| Gemini 2.0 Flash Lite | 0.075      | 0.30        | 1M      | **retired** — Vertex AI and Developer API shutdown 2026-06-01; upgrade 3.5 Flash-Lite (Vertex) / 3.1 Flash-Lite (Developer API) |
 
 > **Gemini 3.1 Pro breakpoint pricing:** $4.00/$18.00 per 1M for prompts >200k tokens (vs $2.00/$12.00 for ≤200k). Table above uses ≤200k rates.
 > **Gemini 3.5 Flash** is now GA and the current flagship Flash model, replacing Gemini 2.5 Flash as the primary Flash-tier recommendation. At $1.50/$9.00 it is 5x more expensive than the retired Gemini 2.5 Flash — the Bedrock cost savings case is significantly stronger against 3.5 Flash.
 > **Gemini 2.5 retirement:** the 2.5 rows stay only so a user already on them can compare against what they paid. They are retired on Vertex AI (Oct 20, 2026); on the Gemini Developer API, 2.5 Pro and 2.5 Flash shut down Dec 1, 2026 and auto-route to Gemini 3.8 Flash and Gemini 3.5 Flash-Lite — estimate a still-running Developer API workload at the replacement's rate. Sources: [Vertex AI model versions](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions) and [Gemini API deprecations](https://aistudio.google.com/docs/deprecations), both read 2026-11-08. Never use a 2.5 row as the live comparison baseline for a new estimate.
+> **Gemini 2.0 retirement:** the 2.0 Flash and 2.0 Flash Lite rows stay for the same reason. Both shut down on Vertex AI and the Gemini Developer API on Jun 1, 2026 (same two sources, read 2026-11-08); Google names Gemini 3.5 Flash-Lite as the Vertex upgrade and Gemini 3.6 Flash / 3.1 Flash-Lite on the Developer API, with no auto-routing. A workload that still names a 2.0 id is past a hard cutoff — map it from the legacy rows and estimate against the replacement's rate. Never use a 2.0 row as the live comparison baseline for a new estimate.
 
 ### OpenAI (Standard Tier)
 
