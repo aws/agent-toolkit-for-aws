@@ -66,6 +66,20 @@ models detected, capabilities, integration pattern + SDK, gateway/router, framew
   text-only. → `ai_vision`.
 - **Q21 — Response speed.** PROPOSED, default `"important"`. → `ai_latency`.
 - **Q22 — Task complexity.** PROPOSED, default `"moderate"`. → `ai_complexity`.
+- **Q22b — Mantle-only requirements.** DETECTED from `workloads[].mantle_signals` when present
+  (row `source: "workloads[].mantle_signals"`, user confirms on the sheet), otherwise
+  **ESSENTIAL** (asked in the Gate-2 batch; no default on purpose — the answer decides the
+  endpoint). Four sub-questions (a: asynchronous/background inference; b: provider-run
+  server-side or pre-configured tools incl. web search, hosted MCP servers, code execution,
+  file search — client-side function tools do not count; c: customer-created Projects (OpenAI)
+  / Workspaces (Anthropic); d: strict single-Region processing + which Region). →
+  `ai_constraints.mantle_requirements` (array of `{ workload_id, selector, source, evidence?,
+  region? }`; selector/source vocab as gcp Q22b: `selector` ∈ `background_inference |
+  server_side_tools | web_search | projects | workspaces | in_region_processing | none`, `source`
+  ∈ `detected | user | none`; `region` required for `in_region_processing`). "Use defaults for
+  the rest" writes `[{ "workload_id": "*", "selector": "none", "source": "none" }]` with
+  `chosen_by: "default"`, `source: "default:Q22b"` and the report caveat "Mantle-only
+  requirements were not confirmed by the user; bedrock-runtime assumed".
 
 ### Category G — Agentic (fires ONLY when `agentic_profile.is_agentic == true`)
 
@@ -173,7 +187,8 @@ and is REQUIRED on `DETECTED` applies here the same as the infra flow.
         "value": false,
         "default": false
       }
-    }
+    },
+    "mantle_requirements": { "disposition": "ESSENTIAL", "value": [], "default": [] } // DETECTED with source "workloads[].mantle_signals" when Discover found signals; value = [{ workload_id, selector, source, evidence?, region? }]
   },
   "workloads": [] // NOT a row — the confirmed array itself (persist rule above), same as clarify-ai-only.md's workloads[]
 }
@@ -204,6 +219,7 @@ and is REQUIRED on `DETECTED` applies here the same as the infra flow.
 | -------------------------------------------------------------------------------------- | --------------------------------------------------- |
 | `workloads[]`, `ai_priority`, `ai_critical_feature`, `ai_latency`, `ai_model_baseline` | `design-ai.md` model selection + override hierarchy |
 | `ai_constraints.agentic.migration_approach`                                            | `design-ai.md` Step 0.6 agentic routing             |
+| `ai_constraints.mantle_requirements`                                                   | `design-ai.md` Step 0.8 endpoint selection          |
 | `ai_token_volume`, `ai_monthly_spend`                                                  | `estimate-ai.md` token tiers + ROI                  |
 | `startup_program_status`, `ai_monthly_spend`                                           | `generate-artifacts-ai.md` STARTUP_PROGRAMS.md      |
 

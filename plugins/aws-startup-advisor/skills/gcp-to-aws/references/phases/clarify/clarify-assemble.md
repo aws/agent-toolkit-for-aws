@@ -225,7 +225,7 @@ Present the essential questions (from each fragment's disposition, plus any rows
 text, context, and options from the fragment files. Typical total: 2–7.
 
 **Batch composition:** core first (Q1/Q2/Q3/Q3.5/Q7 + conflicts, from `clarify-global.md`),
-then AI/agentic (Q15, Q23–Q25, multi-workload confirmations, from `clarify-ai.md`). **Q27 is
+then AI/agentic (Q15, Q22b, Q23–Q25, multi-workload confirmations, from `clarify-ai.md`). **Q27 is
 not batched** — ask it as its own short follow-up after the last batch, per the presentation
 rule in `clarify-ai.md` Q27 (it's a funding question, not a technical one). Write
 `preferences-draft.json` between batches (same schema as `preferences.json` plus
@@ -271,6 +271,12 @@ default genuinely does not exist:
   skips it, record `startup_program_status: "unknown"` with `chosen_by: "default"` and
   `source: "default:Q27"`; downstream artifacts must use neutral Activate copy (both tiers, no
   "your status: eligible_*").
+- Q22b (Mantle-only requirements) defaults to the single entry
+  `{ "workload_id": "*", "selector": "none", "source": "none" }` in
+  `ai_constraints.mantle_requirements` with `chosen_by: "default"`, `source: "default:Q22b"`,
+  and appends "Mantle-only requirements were not confirmed by the user; bedrock-runtime
+  assumed" to `metadata.report_caveats[]` (Design then records `bedrock-runtime` with the
+  assumption sentence).
 - Q3.5, Q23–Q25, and unresolved multi-instance conflicts fall back to their documented
   defaults (Q3.5 → 5; Q23 → framework-based; Q24 → session; Q25 → medium; conflicts → most
   conservative posture) with `chosen_by: "default"`.
@@ -693,6 +699,7 @@ skips, "use defaults for the rest", and the fast paths.
 | Q20 — Input types          | 1 (text only)                                                                                                     | no constraint                                                                                                                                                                                        |
 | Q21 — AI latency           | 2 (important)                                                                                                     | `ai_latency: "important"`                                                                                                                                                                            |
 | Q22 — Task complexity      | 2 (moderate)                                                                                                      | `ai_complexity: "moderate"`                                                                                                                                                                          |
+| Q22b — Mantle-only requirements | none (bedrock-runtime assumed, report caveat)                                                                | `ai_constraints.mantle_requirements` default entry                                                                                                                                                   |
 | Q23 — Agentic approach     | _(framework-based auto-detect; see `clarify-ai.md`)_                                                              | `ai_constraints.agentic.migration_approach`                                                                                                                                                          |
 | Q24 — Agent memory         | 2 (session)                                                                                                       | `ai_constraints.agentic.memory_requirement: "session"`                                                                                                                                               |
 | Q25 — Task duration        | 2 (medium)                                                                                                        | `ai_constraints.agentic.task_duration: "medium"`                                                                                                                                                     |

@@ -33,10 +33,12 @@ wording are Azure-swapped (Azure OpenAI, no Gemini).
 ## Step 1.5: Fast-path check
 
 If the AI usage looks simple (single model, non-agentic, no multi-provider/multi-model routing):
-present ONLY Q1.5, Q2, Q3, Q4, Q11 (Q1 framework, Q5 model, Q6 capabilities are extracted;
-Q7–Q10 default). **Q1.5 (compliance) and Q11 (Activate) are never dropped** — always PRESENTED,
-never silently omitted. "Use defaults for the rest" applies documented defaults (compliance →
-`["unknown"]` + a `metadata.report_caveats[]` entry, never a silent "none"; Activate → `unknown`).
+present ONLY Q1.5, Q2, Q3, Q4, Q10.5, Q11 (Q1 framework, Q5 model, Q6 capabilities are extracted;
+Q7–Q10 default). **Q1.5 (compliance), Q10.5 (Mantle-only requirements) and Q11 (Activate) are
+never dropped** — always PRESENTED, never silently omitted. "Use defaults for the rest" applies
+documented defaults (compliance → `["unknown"]` + a `metadata.report_caveats[]` entry, never a
+silent "none"; Mantle-only requirements → the `none` entry + report caveat, `bedrock-runtime`
+assumed; Activate → `unknown`).
 Then skip to Step 3. Otherwise continue to Step 1.75 → Step 2.
 
 ## Step 1.75: Mini assumption sheet
@@ -167,6 +169,16 @@ moderate / complex). → `ai_complexity`. Default `"moderate"`. **Q10 — Specia
 (function calling / ultra-long-context / extended-thinking / prompt-caching / RAG / agentic /
 real-time / image-gen / speech). → `ai_critical_feature`. Default none.
 
+**Q10.5 — Mantle-only requirements** (a: asynchronous/background inference; b: provider-run
+server-side or pre-configured tools incl. web search; c: customer-created Projects/Workspaces;
+d: strict single-Region processing + Region). Prefill from `workloads[].mantle_signals` and
+confirm; otherwise ask. Never dropped. → `ai_constraints.mantle_requirements` (array of
+`{ workload_id, selector, source, evidence?, region? }`; `selector` ∈ `background_inference |
+server_side_tools | web_search | projects | workspaces | in_region_processing | none`, `source` ∈
+`detected | user | none`, `region` required for `in_region_processing`). Default: one
+`{ "workload_id": "*", "selector": "none", "source": "none" }` entry + report caveat
+("Mantle-only requirements were not confirmed by the user; bedrock-runtime assumed").
+
 **Q11 — AWS Activate credits** (**never dropped**; ≡ full-flow Q27). Never infer funding stage
 from Q3 spend. Options: have credits / self-funded (→ Activate Founders up to $5K) /
 VC-backed (→ Activate Portfolio up to $200K, needs Org ID) / don't know. Escalations: `>$10K`→
@@ -188,8 +200,8 @@ Write `$MIGRATION_DIR/preferences.json`:
 - `startup_constraints.startup_program_status` (Q11).
 - `ai_constraints`: `ai_framework`, `ai_priority`, `ai_monthly_spend`, `cross_cloud` (Q4 —
   unique to AI-only), `ai_model_baseline`, `ai_vision`, `ai_token_volume`, `ai_latency`,
-  `ai_complexity`, `ai_critical_feature`, `ai_capabilities_required` (derived from
-  `capabilities_summary`).
+  `ai_complexity`, `ai_critical_feature`, `mantle_requirements` (Q10.5),
+  `ai_capabilities_required` (derived from `capabilities_summary`).
 - Persist the confirmed `workloads[]` (top-level) exactly as `clarify-ai.md` specifies — each
   entry carries `workload_id`, `model_id`, `sdk_method`, `capability`, `capability_confidence`,
   `structured_output`, `call_sites`, `target_bedrock_model`, `priority`, `latency_tier`. This is
@@ -273,6 +285,13 @@ discovery is never indistinguishable from a promoted default. No nulls. Delete
     },
     "ai_capabilities_required": { // REQUIRED
       "value": [], "chosen_by": "derived", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q25"
+    },
+    "mantle_requirements": { // optional on older runs; Design treats absence as no requirement recorded
+      "value": [
+        { "workload_id": "wl-1", "selector": "web_search", "source": "detected", "evidence": "app.py:14 tools type web_search" },
+        { "workload_id": "*", "selector": "in_region_processing", "source": "user", "region": "us-east-1" }
+      ],
+      "chosen_by": "user", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q10.5"
     }
   },
   "workloads": [ // REQUIRED — [] when none; design-ai reads this array, not the profile
