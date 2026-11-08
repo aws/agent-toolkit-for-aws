@@ -363,6 +363,20 @@ After extracting model details (Step 5), split the detected AI usage into distin
     "call_sites": [
       { "file": "lib/imagen.ts", "line": 60 }
     ]
+  },
+  {
+    "workload_id": "wl_9532e7",
+    "model_id": "gpt-4o",
+    "sdk_method": "openai.chat.completions.create",
+    "capability": "text_generation",
+    "capability_confidence": "medium",
+    "structured_output": false,
+    "call_sites": [
+      { "file": "src/ai/openai_client.py", "line": 22 }
+    ],
+    "mantle_signals": [
+      { "selector": "projects", "file": "src/ai/openai_client.py", "line": 9, "construct": "default_headers={\"OpenAI-Project\": os.environ[\"OPENAI_PROJECT_ID\"]}" }
+    ]
   }
 ]
 ```
@@ -373,6 +387,35 @@ After extracting model details (Step 5), split the detected AI usage into distin
 - `call_sites[].file` uses repo-relative POSIX paths
 - Every model_id in `workloads[]` MUST also appear in `models[]` (backward compatibility)
 - If a method is in the structured-output trio AND the model is multimodal (Gemini, GPT-4o, Claude) AND structured output is NOT detected → set `capability_confidence: "medium"` (ambiguous — Clarify will confirm)
+
+## Step 5C: Mantle-Only Selector Signals
+
+A few provider capabilities decide the target endpoint later (`references/vendored/ai/bedrock-endpoint-policy.md`, § How a selector is learned). Five of them are visible in code. For each call site grouped into a workload in Step 5B, scan the call arguments, the client construction that the call site uses, and any request headers for the constructs below. Record a signal only for active (non-commented) code.
+
+| Selector               | Positive constructs (any one)                                                                                                                                                                                                                                                                                           | Does NOT count                                                                                                                                      |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `background_inference` | `background=True` / `background: true` on `responses.create`, or a raw `"background": true` key in a Responses request body                                                                                                                                                                                             | `store=True`, `stream=True`, polling `responses.retrieve` without `background`                                                                      |
+| `web_search`           | `tools=[{"type": "web_search"}]`; `"type": "web_search_preview"` (any dated `web_search_preview_*` form); Anthropic `"type": "web_search_20250305"`; OpenRouter `plugins: [{"id": "web"}]` or a `:online` model suffix                                                                                                  | A client-side `"type": "function"` tool merely NAMED `web_search`                                                                                   |
+| `server_side_tools`    | A tools entry of `"type": "mcp"` (`server_url` / `server_label`), `code_interpreter`, `file_search`, `computer_use_preview`, or `image_generation` used as a tool type; Anthropic `code_execution_*` / `text_editor_*` / `computer_*` / `bash_*` tool types — any provider-executed tool other than web search             | `"type": "function"` tools, Gemini `function_declarations=`, `@tool` decorators, `tool_choice` — client-side function tools never count            |
+| `projects`             | `OpenAI-Project` header (`default_headers={"OpenAI-Project": ...}`), `project=` kwarg on the OpenAI client, or an `OPENAI_PROJECT_ID`-style env name read in code                                                                                                                                                      | `OpenAI-Organization` alone; no header means the default project                                                                                    |
+| `workspaces`           | `anthropic-workspace-id` header or an `ANTHROPIC_WORKSPACE_ID`-style env name                                                                                                                                                                                                                                           | OpenRouter's own `workspace_id` scoping (an OpenRouter account concept)                                                                              |
+
+Two selectors are NOT scanner outputs: `mantle_only_model_or_api` is derived by Design from the model id and API against the catalog, and `in_region_processing` is never code-detectable — Clarify always asks it. Never write either value into `mantle_signals`.
+
+**Output:** append a `mantle_signals` array to that workload's entry in `workloads[]`, one entry per `(selector, call site)`:
+
+```json
+"mantle_signals": [
+  { "selector": "web_search", "file": "src/ai/openai_client.py", "line": 14, "construct": "tools=[{\"type\": \"web_search\"}]" }
+]
+```
+
+- `selector` is one of the five values in the table above.
+- `file` is a repo-relative POSIX path; `line` is the line of the matched construct (the client construction line for `projects` / `workspaces`, the call line otherwise).
+- `construct` is the matched source text — the argument or header as written, never a secret value, prompt text, or comment text. An env var NAME is fine; its value is not.
+- Omit the key, or write `[]`, when nothing matched for that workload.
+
+These signals are evidence for Clarify, not a decision: Clarify asks the user to confirm each one, and Design chooses the endpoint. Do not name AWS endpoints here.
 
 ---
 
@@ -633,6 +676,7 @@ After generating the output file, the parent `discover.md` handles the phase sta
 - Every `workloads[].model_id` also appears in `models[].model_id`
 - `workloads[].capability_confidence` is one of: `"high"`, `"medium"`, `"low"`
 - `workloads[].workload_id` matches pattern `wl_[0-9a-f]{6}`
+- `workloads[].mantle_signals` (optional, Step 5C): every entry has `selector` ∈ `background_inference | web_search | server_side_tools | projects | workspaces`, a repo-relative `file`, a real `line` that contains the quoted `construct`, and no secret value; never `mantle_only_model_or_api` or `in_region_processing`
 - If `is_agentic: true`: `agentic_profile` section exists with all required fields
 - If `is_agentic: true`: `agentic_profile.agent_count` equals length of `agentic_profile.agents[]`
 - If `is_agentic: true`: `agentic_profile.tool_count` equals length of `tool_manifest[]` (deduplicated)

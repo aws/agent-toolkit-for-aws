@@ -212,6 +212,29 @@ def _check_v11(profile: dict, sources: dict[tuple[str, str], dict]) -> None:
             raise ProfileRejected("unmatched_tool_agent", f"tool {tool['name']} names unknown agents {unknown}")
 
 
+def _check_mantle_signals(profile: dict, sources: dict[tuple[str, str], dict]) -> None:
+    for signal in profile.get("mantle_signals", []):
+        key = (signal["provider"], signal["source_service"])
+        if key not in sources or signal["model"] not in sources[key]["models"]:
+            raise ProfileRejected(
+                "unmatched_mantle_signal",
+                f"{signal['selector']}: {key[0]}/{key[1]} {signal['model']} is not an observed model",
+            )
+
+
+def _mantle_signals_detected(profile: dict) -> list[dict]:
+    return [
+        {
+            "selector": signal["selector"],
+            "provider": signal["provider"],
+            "source_service": signal["source_service"],
+            "model": signal["model"],
+            "detail": signal["evidence"][0].get("detail"),
+        }
+        for signal in profile.get("mantle_signals", [])
+    ]
+
+
 def _framework_detected(profile: dict) -> list[str] | None:
     integration = profile.get("integration")
     if integration is None or "agentic_profile" in profile:
@@ -279,6 +302,7 @@ def _summary(profile: dict) -> dict:
         "models_extractable": all_high,
         "ai_framework_detected": _framework_detected(profile),
         "ai_vision_detected": _input_types_detected(profile),
+        "mantle_signals_detected": _mantle_signals_detected(profile),
     }
 
 
@@ -302,7 +326,9 @@ def validate_profile(profile: Any, schema: dict | None = None) -> dict:
     errors = _schema_errors(schema, profile, schema)
     if errors:
         raise ProfileRejected("schema_violation", "; ".join(errors[:5]))
-    _check_v11(profile, _check_semantics(profile))
+    sources = _check_semantics(profile)
+    _check_v11(profile, sources)
+    _check_mantle_signals(profile, sources)
     return _summary(profile)
 
 

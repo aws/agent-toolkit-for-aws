@@ -170,6 +170,40 @@ assign capability, collapse by `(model_id, sdk_method, structured_output)` into 
 structured_output else "plain"))[:6]`. Azure OpenAI apps call the SAME `openai.*` SDK methods, so the
 capability map covers them unchanged. Every `workloads[].model_id` must appear in `models[]`.
 
+## Step 5C: Mantle-only selector signals (ports from gcp)
+
+Five provider capabilities that decide the target endpoint later (`references/vendored/ai/bedrock-endpoint-policy.md`,
+§ How a selector is learned) are visible in code. For each call site grouped in Step 5B, scan the
+call arguments, the client construction it uses, and request headers. Azure OpenAI apps use the same
+`openai.*` SDK, so the OpenAI constructs apply unchanged. Active (non-commented) code only.
+
+- `background_inference` — `background=True` / `background: true` on `responses.create`, or a raw
+  `"background": true` Responses body. NOT: `store=True`, `stream=True`, polling `responses.retrieve`
+  without `background`.
+- `web_search` — `tools=[{"type": "web_search"}]`; `"type": "web_search_preview"` (any dated
+  `web_search_preview_*` form); Anthropic `"type": "web_search_20250305"`; OpenRouter
+  `plugins: [{"id": "web"}]` or a `:online` model suffix. NOT: a client-side `"type": "function"` tool
+  merely named `web_search`.
+- `server_side_tools` — a tools entry of `"type": "mcp"` (`server_url` / `server_label`),
+  `code_interpreter`, `file_search`, `computer_use_preview`, or `image_generation` used as a tool type;
+  Anthropic `code_execution_*` / `text_editor_*` / `computer_*` / `bash_*` tool types — any
+  provider-executed tool other than web search. NOT: `"type": "function"` tools, Gemini
+  `function_declarations=`, `@tool` decorators, `tool_choice` — client-side function tools never count.
+- `projects` — `OpenAI-Project` header (`default_headers={"OpenAI-Project": ...}`), `project=` kwarg
+  on the OpenAI client, or an `OPENAI_PROJECT_ID`-style env name read in code. NOT:
+  `OpenAI-Organization` alone; no header means the default project.
+- `workspaces` — `anthropic-workspace-id` header or an `ANTHROPIC_WORKSPACE_ID`-style env name. NOT:
+  OpenRouter's own `workspace_id` scoping.
+
+`mantle_only_model_or_api` is not a scanner output (Design derives it from the catalog) and
+`in_region_processing` is never code-detectable (Clarify always asks it). Never write either value.
+
+**Output:** append to that workload's entry `"mantle_signals": [{ "selector": "web_search",
+"file": "app/llm.py", "line": 14, "construct": "tools=[{\"type\": \"web_search\"}]" }]` — one entry
+per `(selector, call site)`; repo-relative POSIX `file`; `construct` is the matched source text (an env
+var NAME is fine, its value never is; no prompt or comment text). Omit the key or write `[]` when
+nothing matched. These are evidence for Clarify to confirm, not a decision; name no AWS endpoint here.
+
 ## Step 5.5: Agentic extraction (only if `is_agentic: true`) — ports unchanged
 
 Per agent: `agent_id` (snake-cased), `file`, `line`, `model_id`, `tools[]`, `memory_type`
@@ -231,6 +265,9 @@ The assembler (`discover-assemble.md`) writes the file; do not update `.phase-st
 - [ ] Every `models[]` entry has the exact-named fields; `detected_via` lists only analyzed sources.
 - [ ] `workloads[]` present; every `workloads[].model_id` ∈ `models[].model_id`; `workload_id`
       matches `wl_[0-9a-f]{6}`.
+- [ ] `workloads[].mantle_signals` (optional): `selector` ∈
+      `background_inference | web_search | server_side_tools | projects | workspaces`; cited lines
+      are real and contain the `construct`; no secret values.
 - [ ] `integration.gateway_type` set (or null); `capabilities_summary` consistent with
       `models[].capabilities_used`.
 - [ ] `is_agentic` cases: `agentic_profile`+`tool_manifest` present iff true; `agent_count` ==
