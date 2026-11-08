@@ -105,8 +105,9 @@ Traditional-AI capabilities (AWS AI service, not Bedrock): `document_extraction`
   `bedrock_price`, `price_comparison`, `migration_complexity`, `model_change` (bool),
   `migration_path` (see below), `quota_risk` (`low|medium|high`), `required_client_api`
   (see below), `mantle_selector` (REQUIRED on every `mantle_*` row, absent otherwise — see
-  below). Traditional-AI capabilities do NOT appear here — they are `design_blocks[]` rows
-  with `target_aws_service`.
+  below), `mantle_requirement` (REQUIRED on every `mantle_*` row) and `endpoint_assumption`
+  (REQUIRED on every non-`mantle_*` row) — see § mantle_selector. Traditional-AI capabilities do
+  NOT appear here — they are `design_blocks[]` rows with `target_aws_service`.
 - **`capability_mapping`** — per capability that is `true` in the profile's
   `integration.capabilities_summary`: `{ parity: "full|partial|none", notes }`.
 - **`code_migration`** — `migration_path` (the selected API/endpoint path consumed by Generate),
@@ -162,6 +163,23 @@ mantle_only_model_or_api | in_region_processing` — the verified Mantle-only ne
 leaving the `bedrock-runtime` default (definitions in `vendored/ai/bedrock-endpoint-policy.md`).
 API continuity (the app already calls Responses, Chat Completions or Messages) is not a selector.
 Absent on `runtime_*`, `converse`, `gpt-oss` and `direct` rows.
+
+**How it is derived (`mantle_requirement` / `endpoint_assumption`).** `design-ai.md` Step 0.8
+reads `preferences.json → ai_constraints.mantle_requirements.value[]` (Clarify Q22b / Q10.5;
+absent on older runs = no requirement recorded). A workload with a matching entry (its own
+`workload_id` or `*`) whose `selector` is one of `background_inference | server_side_tools |
+web_search | projects | workspaces | in_region_processing` and whose `source` is `detected` or
+`user` takes the Mantle path for its source API with that `mantle_selector`, and the row records
+`mantle_requirement` — object, REQUIRED on every `mantle_*` row, absent otherwise:
+`{ workload_id, selector, source, evidence?, region? }` (`selector` equals `mantle_selector`;
+`source` ∈ `detected | user | catalog`; `evidence` present when `source` is `detected` or
+`catalog`; `region` present iff `selector` is `in_region_processing`). `mantle_only_model_or_api`
+comes from the model catalog with `source: "catalog"`, never from Clarify. Every other row keeps
+`bedrock-runtime` and records `endpoint_assumption` — string, REQUIRED on every non-`mantle_*`
+row, exactly: `No Mantle-only requirement was recorded for <workload_id>; bedrock-runtime
+selected. If this workload needs background inference, server-side tools, Projects/Workspaces, or
+single-Region processing, re-run Clarify.` (`<workload_id>` = the `design_blocks[].workload_id`
+whose `model_id` equals the row's `source_model_id`; several → comma-joined).
 
 ## required_client_api (per `bedrock_models[]` entry)
 
@@ -250,6 +268,10 @@ rubric file (`ai.md`, `ai-azure-openai-to-bedrock.md`, or a `vendored/ai/*` ref)
       to a Claude/Nova substitute — and records `migration_path: "runtime_openai_cris"` by default.
 - [ ] Every `bedrock_models[]` row whose `migration_path` starts with `mantle_` carries a
       `mantle_selector` from the enum above; no `runtime_*`/`converse` row carries one.
+- [ ] Every `mantle_*` row carries `mantle_requirement` with `selector == mantle_selector`
+      (derived in Step 0.8 from `ai_constraints.mantle_requirements`, or the catalog for
+      `mantle_only_model_or_api`); every non-`mantle_*` row carries the `endpoint_assumption`
+      sentence naming its workload.
 - [ ] `regional_warnings` and `multi_model_warnings` are present (`[]` when clean).
 - [ ] If `agentic_profile.is_agentic == true`: `agentic_design` is present with
       `migration_approach` matching `preferences.json`; a `harness` source with an

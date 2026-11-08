@@ -509,6 +509,15 @@ continuity alone never selects Mantle — keeping the OpenAI or Anthropic SDK is
 lane. See `skills/shared/ai/bedrock-endpoint-policy.md` (vendored at
 `$ASSESS_BASE/references/vendored/ai/bedrock-endpoint-policy.md`) for the public sources.
 
+**How this skill learns a Mantle requirement.** Phase A's delegated Discover records
+code-visible selectors as `mantle_signals`; Clarify's Mantle-only requirements block (full flow
+Q22b, AI-only Q10.5) confirms them or asks outright and writes
+`preferences.json → ai_constraints.mantle_requirements`; Design derives
+`bedrock_models[].mantle_selector` only from that field (plus the catalog for
+`mantle_only_model_or_api`) and records `mantle_requirement` on Mantle rows and the
+`endpoint_assumption` sentence on every runtime row. A row with no recorded requirement is a
+runtime lane by design, not an inference.
+
 ---
 
 ## Phase A — Assess (runs $ASSESS_SKILL's own AI-path files, inline)
@@ -710,7 +719,9 @@ work to the telemetry hooks.
 Read `$MIGRATION_DIR/aws-design-ai.json` and extract:
 
 - `ai_architecture.bedrock_models[]` → array of `{source_model, aws_model_id, use_case,
-  migration_path, required_client_api, mantle_selector}` (the last three may be absent on older plans)
+  migration_path, required_client_api, mantle_selector, mantle_requirement, endpoint_assumption}`
+  (the last five may be absent on older plans; `mantle_requirement` sits on Mantle rows,
+  `endpoint_assumption` on runtime rows — keep both for the C6 `Endpoint basis:` line)
 - Collect all `aws_model_id` values into `$TARGET_MODELS` (array). Keep the `use_case` AND the
   `required_client_api` of each row: B4 passes every row to preflight as its own
   `<aws_model_id>=<required_client_api>` pair, so a Claude Messages primary and a GPT Chat or Nova
@@ -997,6 +1008,7 @@ Resolved target model id: <override for the primary chat model — omit if none>
 Scripts directory (pinned uv toolchain): <$SCRIPTS>
 Report date suffix: <saved suffix from run-context — C5/C6 dispatches only>
 Usage baseline path: <$BEDROCK_RUN_DIR/usage-baseline.json — C5/C6 dispatches only, omit line if the file is absent>
+Endpoint basis: <per target, semicolon-separated: "<aws_model_id>: bedrock-mantle (<mantle_selector>; <mantle_requirement.source>; <mantle_requirement.evidence>)" or the row's endpoint_assumption sentence verbatim — C6 dispatch only, omit line when every bedrock_models[] row lacks both fields (older plan)>
 Source baseline available: <true|false>
 Source provider env file: <path — omit if none>
 User-supplied log files: <comma-joined — omit if none>

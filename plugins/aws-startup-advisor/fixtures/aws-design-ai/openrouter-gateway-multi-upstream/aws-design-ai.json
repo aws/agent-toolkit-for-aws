@@ -129,6 +129,7 @@
         "migration_complexity": "medium",
         "model_change": true,
         "migration_path": "direct",
+        "endpoint_assumption": "No Mantle-only requirement was recorded for wl_router_chat_primary; bedrock-runtime selected. If this workload needs background inference, server-side tools, Projects/Workspaces, or single-Region processing, re-run Clarify.",
         "quota_risk": "low"
       },
       {
@@ -143,6 +144,7 @@
         "migration_complexity": "medium",
         "model_change": true,
         "migration_path": "direct",
+        "endpoint_assumption": "No Mantle-only requirement was recorded for wl_router_chat_cheap; bedrock-runtime selected. If this workload needs background inference, server-side tools, Projects/Workspaces, or single-Region processing, re-run Clarify.",
         "quota_risk": "low"
       },
       {
@@ -158,6 +160,12 @@
         "model_change": true,
         "migration_path": "mantle_openai_responses",
         "mantle_selector": "in_region_processing",
+        "mantle_requirement": {
+          "workload_id": "wl_router_fallback",
+          "selector": "in_region_processing",
+          "source": "user",
+          "region": "us-east-1"
+        },
         "quota_risk": "medium"
       }
     ],

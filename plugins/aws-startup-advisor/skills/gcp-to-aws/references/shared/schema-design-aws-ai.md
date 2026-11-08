@@ -95,6 +95,19 @@ same vocabulary as the shared contract (`references/vendored/ai/schema-design-aw
   endpoint; each such row MUST carry `mantle_selector`, one of `background_inference |
   server_side_tools | web_search | projects | workspaces | mantle_only_model_or_api |
   in_region_processing`. API continuity alone is not a selector.
+- `bedrock_models[].mantle_requirement` — object, REQUIRED on every `mantle_*` row, absent
+  otherwise: `{ workload_id, selector, source, evidence?, region? }` — `selector` equals the row's
+  `mantle_selector`; `source` ∈ `detected | user | catalog` (`detected`/`user` entries are copied
+  from `preferences.json → ai_constraints.mantle_requirements.value[]`, the Clarify Q22b / Q10.5
+  answer `design-ai.md` Step 0.8 reads; `catalog` only for `mantle_only_model_or_api`, derived by
+  Design from the model catalog); `evidence` present when `source` is `detected` or `catalog`;
+  `region` present iff `selector` is `in_region_processing`.
+- `bedrock_models[].endpoint_assumption` — string, REQUIRED on every row whose `migration_path`
+  does NOT start with `mantle_`, exactly: `No Mantle-only requirement was recorded for
+  <workload_id>; bedrock-runtime selected. If this workload needs background inference,
+  server-side tools, Projects/Workspaces, or single-Region processing, re-run Clarify.` where
+  `<workload_id>` is the `design_blocks[].workload_id` whose `model_id` equals the row's
+  `source_model_id` (several → comma-joined).
 - `converse`, `gpt-oss`, `direct` — Bedrock-native paths; never paired with a **bare**
   proprietary `openai.gpt-*` id.
 - `code_migration.openrouter_path` (router detected) — `same_model_runtime` (default same-model
@@ -106,6 +119,9 @@ same vocabulary as the shared contract (`references/vendored/ai/schema-design-aw
 - [ ] `metadata.ai_source` matches `summary.ai_source` from `ai-workload-profile.json`.
 - [ ] Every `bedrock_models[]` row whose `migration_path` starts with `mantle_` carries a
       `mantle_selector`; a same-model proprietary GPT row records `runtime_openai_cris` by default.
+- [ ] Every `mantle_*` row carries `mantle_requirement` with `selector == mantle_selector`
+      (derived from `ai_constraints.mantle_requirements` or the catalog); every non-`mantle_*`
+      row carries the `endpoint_assumption` sentence naming its workload.
 - [ ] Every `design_blocks[]` row has exactly one of `target_bedrock_model` /
       `target_aws_service` non-null (XOR).
 - [ ] Every traditional-AI row (`document_extraction`/`image_analysis`/`speech_transcription`)

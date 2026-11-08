@@ -98,6 +98,40 @@ region with geographic `eu.` inference profiles (`global.` forbidden); `pci`/`so
 CloudTrail on Bedrock API calls + the Part 5 logging lines. Every constraint that changed a
 choice adds a `regional_warnings[]` entry or a Part 5 line, and the summary names the regime.
 
+## Step 0.8: Endpoint selection from Clarify's Mantle requirements
+
+Read `preferences.json` → `ai_constraints.mantle_requirements` (Clarify Q22b, or Q10.5 in the
+AI-only flow; absent on older runs = no requirement recorded, treat as one
+`{ "workload_id": "*", "selector": "none", "source": "none" }` entry). The endpoint of every
+`bedrock_models[]` row is decided here and only here — never from the source API, the model
+family, or a guess (`references/vendored/ai/bedrock-endpoint-policy.md`). Full field shapes:
+`references/shared/schema-design-aws-ai.md` § mantle_selector.
+
+Per workload (`workloads[]` from `preferences.json`, else the profile; `*` applies to every row):
+
+1. Match `value[]` entries whose `workload_id` is the workload's id or `*`, whose `selector` is
+   one of `background_inference | server_side_tools | web_search | projects | workspaces |
+   in_region_processing`, and whose `source` is `detected` or `user`. `none` matches nothing.
+2. **Match → Mantle path for the source API** (`mantle_openai_responses` / `mantle_openai_chat` /
+   `mantle_messages`) with `mantle_selector` = the matched selector (several → first in the order
+   above, name the rest in `rationale`) and `mantle_requirement` copied from the entry:
+   `{ workload_id, selector, source, evidence? (when detected), region? (iff in_region_processing) }`.
+   `in_region_processing` still obeys the CRIS-only gate in
+   `references/vendored/ai/ai-openai-to-bedrock.md`: Mantle only when `bedrock-runtime` serves the
+   model in that `region` through a CRIS profile alone; otherwise runtime in-Region.
+3. **`mantle_only_model_or_api`** is never a Clarify value — Design derives it from the catalog
+   (`ai-openai-to-bedrock.md` / `openai-on-bedrock.md` access paths) and records
+   `mantle_requirement.source: "catalog"` with the catalog row as `evidence`.
+4. **No match → `bedrock-runtime` default** (`runtime_openai_cris` / `runtime_messages` /
+   `converse` / `gpt-oss` / `direct`) and the row records `endpoint_assumption`, exactly:
+   `No Mantle-only requirement was recorded for <workload_id>; bedrock-runtime selected. If this
+   workload needs background inference, server-side tools, Projects/Workspaces, or single-Region
+   processing, re-run Clarify.` — `<workload_id>` = the `design_blocks[].workload_id` whose
+   `model_id` equals the row's `source_model_id` (several → comma-joined).
+
+Exactly one of `mantle_requirement` / `endpoint_assumption` is present on every row; Generate
+echoes it in the script/adapter header and the llm-to-bedrock report quotes it.
+
 ## Part 1: Bedrock model selection
 
 **New-target eligibility — before every selection or same-model shortcut, including the
@@ -193,7 +227,7 @@ Partial/None.
 ## Part 3: Integration pattern → effort
 
 Map `integration.pattern`: `direct_sdk` (Azure OpenAI/OpenAI, model on Bedrock, region carries
-it) → Runtime OpenAI API on `bedrock-runtime` CRIS (Mantle only with a `mantle_selector`), minimal;
+it) → Runtime OpenAI API on `bedrock-runtime` CRIS (Mantle only with a `mantle_selector` from Step 0.8), minimal;
 `direct_sdk` → Bedrock SDK/Converse, medium; `framework`
 → LangChain/LlamaIndex + Bedrock, low; `rest_api` → Bedrock REST, medium; `mixed` → per-model.
 
@@ -223,8 +257,10 @@ base URL (`https://bedrock-runtime.{region}.amazonaws.com/openai/v1`), credentia
 Bedrock token or API key), model ID (the CRIS profile), and IAM (`bedrock:InvokeModel*`) change.
 The **Mantle** path (`migration_path: "mantle_openai_responses"` / `"mantle_openai_chat"`, base URL
 `.../openai/v1` on `bedrock-mantle`, `bedrock-mantle:*` IAM) is recorded only when the row also
-carries `bedrock_models[].mantle_selector` (`references/vendored/ai/bedrock-endpoint-policy.md`);
-API continuity alone never selects Mantle. Read `references/shared/openai-on-bedrock.md` for exact
+carries `bedrock_models[].mantle_selector` (from Step 0.8 — derived from
+`ai_constraints.mantle_requirements` and cited in `mantle_requirement`;
+`references/vendored/ai/bedrock-endpoint-policy.md`); API continuity alone never selects Mantle.
+Every runtime row carries the Step 0.8 `endpoint_assumption` sentence. Read `references/shared/openai-on-bedrock.md` for exact
 values. **A Chat Completions source is a
 supported near-drop-in for GPT-6 and GPT-5.6** (both list Chat Completions on mantle and runtime
 CRIS per their model cards) — keep `chat.completions.create` unless a Responses-only feature or
@@ -283,9 +319,9 @@ deployment names need verified model identity, not a guessed GPT family.
 Anthropic-SDK sources → keep the Anthropic SDK on the `bedrock-runtime` Messages endpoint:
 `migration_path: "runtime_messages"` with `required_client_api: "messages"` by default;
 `"converse"` (boto3 rewrite) only on explicit request or for a Converse-only feature;
-`"mantle_messages"` only with a `mantle_selector`. Record `code_migration.openrouter_path`
+`"mantle_messages"` only with a `mantle_selector` (from Step 0.8, a `workspaces` entry). Record `code_migration.openrouter_path`
 when a router was detected (`same_model_runtime|same_model_mantle|direct|litellm|keep_openrouter`;
-`same_model_runtime` is the default same-model route, `same_model_mantle` needs a `mantle_selector`).
+`same_model_runtime` is the default same-model route, `same_model_mantle` needs a `mantle_selector` from Step 0.8).
 
 ## Part 6: Write output
 
@@ -298,7 +334,14 @@ Write `aws-design-ai.json` to `$MIGRATION_DIR/` per `references/shared/schema-de
 ## Completion gate (fail closed)
 
 Before returning control to `design.md`, require `aws-design-ai.json` to exist and pass the
-Validation Checklist in `references/shared/schema-design-aws-ai.md`. If it fails: STOP and
+Validation Checklist in `references/shared/schema-design-aws-ai.md`, including:
+
+- Every `mantle_*` row's `mantle_selector` is derived from an `ai_constraints.mantle_requirements`
+  entry (or the catalog for `mantle_only_model_or_api`) and the row carries `mantle_requirement`
+  citing it (`selector` equal to `mantle_selector`).
+- Every non-`mantle_*` row carries the `endpoint_assumption` sentence naming its workload.
+
+If it fails: STOP and
 output "design-ai did not produce a valid aws-design-ai.json; do not complete Phase 3."
 
 > **`_assert` has no teeth.** This gate is prose the model both produces and evaluates — CI
@@ -309,7 +352,8 @@ output "design-ai did not produce a valid aws-design-ai.json; do not complete Ph
 
 Overall honest assessment; the source→Bedrock model comparison (price + assessment per model);
 integration pattern and complexity; capability gaps; and — prominently, if `weak_migrate`/
-`recommend_stay` — the reason. Name any compliance regime that shaped the design.
+`recommend_stay` — the reason. Name any compliance regime that shaped the design. Endpoint per
+workload — `bedrock-mantle (<selector>, <source>)` or the `endpoint_assumption` sentence verbatim.
 
 ## Status — implemented (AI design route)
 

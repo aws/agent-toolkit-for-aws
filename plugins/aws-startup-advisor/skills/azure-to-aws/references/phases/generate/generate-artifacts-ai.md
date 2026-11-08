@@ -48,6 +48,10 @@ Read `aws-design-ai.json → ai_architecture.code_migration.migration_path` and
 > adapter. Mantle is used only when Design recorded a `mantle_selector`
 > (`references/vendored/ai/bedrock-endpoint-policy.md`). The `direct` adapter path is the exception
 > (cross-family swap, or a Converse feature no same-model path can serve), not the default.
+> For a `runtime_openai_cris` or `runtime_messages` row, echo the row's `endpoint_assumption`
+> sentence in the generated script/adapter header comment; for a `mantle_*` row, echo that
+> selector and its `mantle_requirement` (workload, source, evidence) there instead, so the
+> endpoint choice stays traceable to the Clarify answer.
 
 ## Step 1M: `migrate_to_mantle.sh` (mantle path)
 

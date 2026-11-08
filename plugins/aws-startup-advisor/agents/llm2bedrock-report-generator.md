@@ -752,12 +752,13 @@ banner. Do NOT use the plain ✅ banner just because
 - **Migration Track:** Track 2 (AI-Only — no infrastructure changes)
 - **Deliverable:** Git branch `<branch_name>` (the rewriter's returned `branch_name` — may be collision-suffixed, e.g. `bedrock-migration-2`)
 - **Side-by-side validation:** <one of: `Yes — live same-model baseline` / `Yes — live substitute-model baseline (<live_source_baseline_used_model> instead of <source_model_id>)` / `No — static baselines only` / `N/A — connectivity only (same-family)` / `N/A — no golden cases`> (matches the banner block chosen above)
+- **Endpoint:** <from the `Endpoint basis:` context line — `bedrock-runtime` or `bedrock-mantle (<selector>, <source>)` per target; when a target is on bedrock-runtime, quote its `endpoint_assumption` sentence verbatim on the next line; when the context line is absent render `bedrock-runtime (plan predates mantle_requirements; re-run Clarify to record a Mantle-only requirement)`>
 
 ### Model Mapping
 
 | Source Model     | Bedrock Model     | Notes   |
 | ---------------- | ----------------- | ------- |
-| <source_model_1> | <bedrock_model_1> | <notes> |
+| <source_model_1> | <bedrock_model_1> | <notes — for a Mantle target: `mantle (<mantle_selector>; <mantle_requirement.source>; <mantle_requirement.evidence>)` from the `Endpoint basis:` line; for a runtime target: `bedrock-runtime`> |
 
 ### Overall Status: <READY TO MERGE / NEEDS REVIEW / BLOCKED>
 
@@ -974,6 +975,8 @@ This evaluation was based on **<coverage_level>**:
 ## Limitations
 
 <Honest list of what wasn't tested or verified>
+
+- **Endpoint choice:** the bedrock-runtime / bedrock-mantle decision above rests on the Mantle-only requirements Clarify recorded (a detected code signal the user confirmed, or the user's own answer) — not on an inspection of every request this app sends. bedrock-runtime rejects `background=true` with a 400 (https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html, read 2026-11-07); if a workload turns out to need background inference, server-side tools, Projects/Workspaces, or single-Region processing, re-run Clarify rather than editing the generated client.
 
 ### Evaluation methodology disclosure
 

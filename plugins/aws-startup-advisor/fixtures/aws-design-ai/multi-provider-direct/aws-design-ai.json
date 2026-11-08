@@ -58,7 +58,7 @@
       "target_aws_service": null,
       "capability": "text_generation",
       "capability_confidence": "high",
-      "rationale": "OpenAI-sourced support bot moves to GPT-5.6 Terra on Bedrock Mantle, same provider lineage.",
+      "rationale": "OpenAI-sourced support bot moves to GPT-5.6 Terra on Bedrock Mantle, same provider lineage; Discover detected the provider-run Web Search tool (src/ai/openai_client.py:14) and the user confirmed it in Clarify, so Mantle is required.",
       "confidence_warning": null
     }
   ],
@@ -79,6 +79,7 @@
         "migration_complexity": "low",
         "model_change": true,
         "migration_path": "direct",
+        "endpoint_assumption": "No Mantle-only requirement was recorded for wl_anthropic_chat; bedrock-runtime selected. If this workload needs background inference, server-side tools, Projects/Workspaces, or single-Region processing, re-run Clarify.",
         "quota_risk": "low"
       },
       {
@@ -93,7 +94,14 @@
         "migration_complexity": "low",
         "model_change": true,
         "migration_path": "mantle_openai_responses",
-        "mantle_selector": "in_region_processing",
+        "required_client_api": "responses",
+        "mantle_selector": "web_search",
+        "mantle_requirement": {
+          "workload_id": "wl_openai_support_bot",
+          "selector": "web_search",
+          "source": "detected",
+          "evidence": "src/ai/openai_client.py:14 tools=[{\"type\": \"web_search\"}]"
+        },
         "quota_risk": "low"
       }
     ],

@@ -27,7 +27,7 @@ Read `$MIGRATION_DIR/preferences.json` → `ai_constraints` (if present). If abs
   `references/shared/openai-on-bedrock.md` (the fact base: model IDs, endpoint paths, region matrix, quotas,
   caching). OpenAI's proprietary GPT models run on Bedrock, so the source model is often itself the target — the
   mapping guide's Tier 0 path is the default, not a cross-family swap.
-- `"anthropic"` → load `references/vendored/ai/ai-anthropic-to-bedrock.md` (Anthropic SDK → Bedrock Runtime Messages (default) / Converse alternative; the Anthropic SDK stays and is repointed at `https://bedrock-runtime.{region}.amazonaws.com/anthropic` — record `migration_path: "runtime_messages"` with `required_client_api: "messages"` by default, `"converse"` only on explicit request or for a Converse-only feature, `"mantle_messages"` only with a `mantle_selector`; do NOT use ai-openai-to-bedrock.md for Anthropic SDK users)
+- `"anthropic"` → load `references/vendored/ai/ai-anthropic-to-bedrock.md` (Anthropic SDK → Bedrock Runtime Messages (default) / Converse alternative; the Anthropic SDK stays and is repointed at `https://bedrock-runtime.{region}.amazonaws.com/anthropic` — record `migration_path: "runtime_messages"` with `required_client_api: "messages"` by default, `"converse"` only on explicit request or for a Converse-only feature, `"mantle_messages"` only with a `mantle_selector` **recorded by Step 0.8 (a `workspaces` entry in `ai_constraints.mantle_requirements`)**; do NOT use ai-openai-to-bedrock.md for Anthropic SDK users)
 - `"both"` → `both` never means exactly "Gemini+OpenAI" — per
   `discover-anthropic-api.md` Step 4.5, `both` is also reached when Anthropic
   usage joins a Gemini-or-OpenAI codebase, so it can mean "Gemini+Anthropic"
@@ -102,6 +102,26 @@ Read `preferences.json` → `design_constraints.compliance` (from full-flow Q2 o
 | `soc2` / `ccpa`  | Part 5 plan must include CloudTrail audit logging; CCPA additionally: prompt/completion retention policy + deletion workflow for logged content. Models whose Status is `restricted` with an `aws_review` or `provider_data_share` retention opt-in (Fable / Mythos) keep prompts outside the customer's deletion control — up to 30 days for AWS review, or shared with the provider — so exclude them under CCPA unless the plan documents that retention explicitly. |
 
 Record what was applied: every constraint that changed a model choice or region adds a `regional_warnings[]` entry (existing shape) or a Part 5 plan line naming the compliance value that forced it, and the Present Summary section MUST state which compliance regime(s) shaped the design. A design that ignores a declared compliance value is a validation failure (see Validation Checklist).
+
+---
+
+## Step 0.8: Endpoint Selection from Clarify's Mantle Requirements
+
+Read `preferences.json` → `ai_constraints.mantle_requirements` (written by Clarify Q22b, or Q10.5 in the AI-only flow). **Absent on older runs = no requirement recorded** — treat it like a single `{ "workload_id": "*", "selector": "none", "source": "none" }` entry. The endpoint of every `bedrock_models[]` row is decided HERE and only here; the source API, the model family, and your own judgment about what the app "probably" needs are not inputs (`references/vendored/ai/bedrock-endpoint-policy.md`: API continuity alone never selects Mantle).
+
+**Derivation rule — apply per workload (`workloads[]` from `preferences.json`, falling back to the profile; when the profile has no `workloads[]`, every entry is `*` and applies to every row):**
+
+1. Collect the `mantle_requirements.value[]` entries whose `workload_id` equals the workload's id or is `*`, and whose `selector` is one of `background_inference | server_side_tools | web_search | projects | workspaces | in_region_processing` with `source` ∈ `detected | user`. Entries with `selector: "none"` or `source: "none"` match nothing.
+2. **Any match → the Mantle path for the workload's source API:** `"mantle_openai_responses"` for a Responses source, `"mantle_openai_chat"` for a Chat Completions source, `"mantle_messages"` for an Anthropic SDK source. Set `bedrock_models[].mantle_selector` to the matched selector; when several entries match, take the first in the policy-table order `background_inference, server_side_tools, web_search, projects, workspaces, in_region_processing` and name the others in the row's `rationale`. Copy the matched entry into `bedrock_models[].mantle_requirement` — `{ workload_id, selector, source, evidence?, region? }` where `evidence` is present when `source` is `detected` (the Clarify entry's `file:line construct`) and `region` is present iff `selector` is `in_region_processing`.
+   - `in_region_processing` still obeys the existing CRIS-only gate in `references/vendored/ai/ai-openai-to-bedrock.md`: it selects Mantle only when `bedrock-runtime` serves the selected model in the entry's `region` through a CRIS profile alone; when a runtime in-Region form exists, the workload stays on `bedrock-runtime` in that Region and the row records the `endpoint_assumption` below with a `rationale` note that the Region need is met on runtime.
+3. **`mantle_only_model_or_api` is never a Clarify value.** When the selected model or API exists only on `bedrock-mantle` per the catalog (`references/vendored/ai/ai-openai-to-bedrock.md` / `references/shared/openai-on-bedrock.md` access-path tables), record the Mantle path with `mantle_selector: "mantle_only_model_or_api"` and `mantle_requirement: { "workload_id": "<id>", "selector": "mantle_only_model_or_api", "source": "catalog", "evidence": "<catalog file § row>" }`.
+4. **No match → the `bedrock-runtime` default** (`"runtime_openai_cris"` / `"runtime_messages"` / `"converse"` / `"gpt-oss"` / `"direct"` per Parts 1 and 5) and the row records `bedrock_models[].endpoint_assumption`, exactly:
+
+   > No Mantle-only requirement was recorded for `<workload_id>`; bedrock-runtime selected. If this workload needs background inference, server-side tools, Projects/Workspaces, or single-Region processing, re-run Clarify.
+
+   where `<workload_id>` is the `design_blocks[].workload_id` whose `model_id` equals the row's `source_model_id` (several workloads on one row → comma-joined ids). When the constraint was defaulted (`chosen_by: "default"`), the report caveat "Mantle-only requirements were not confirmed by the user; bedrock-runtime assumed" from Clarify stays in `metadata.report_caveats[]`.
+
+Exactly one of `mantle_requirement` / `endpoint_assumption` is present on every `bedrock_models[]` row. Generate echoes whichever is present in the generated script/adapter header, and the llm-to-bedrock report quotes it.
 
 ---
 
@@ -395,7 +415,7 @@ For each detected `integration.pattern` and `ai_source`, generate before/after m
 | Direct SDK (OpenAI), same model | OpenAI                    | Selected Mantle API (selector-gated) | Only with `mantle_selector`: base URL → `.../openai/v1` on Mantle, Bedrock credential, `openai.gpt-*` model ID, `bedrock-mantle:*` IAM |
 | Direct SDK                      | Vertex AI                 | boto3 Converse API  | `generate_content()` → `converse()`                                                                  |
 | Direct SDK                      | OpenAI                    | boto3 Converse API  | `completions.create()` → `converse()` (use only for a need no same-model path serves, e.g. Knowledge Bases) |
-| Direct SDK                      | Anthropic                 | Runtime Anthropic Messages (default) | Keep `anthropic.Anthropic`; base URL → `https://bedrock-runtime.{region}.amazonaws.com/anthropic`, string Bedrock token, `global.`/Geo Claude profile ID, `bedrock:InvokeModel*` IAM; `migration_path: "runtime_messages"` + `required_client_api: "messages"`. `"converse"` (boto3 `messages.create()` → `converse()`) only on explicit request / Converse-only feature; `"mantle_messages"` only with a `mantle_selector` |
+| Direct SDK                      | Anthropic                 | Runtime Anthropic Messages (default) | Keep `anthropic.Anthropic`; base URL → `https://bedrock-runtime.{region}.amazonaws.com/anthropic`, string Bedrock token, `global.`/Geo Claude profile ID, `bedrock:InvokeModel*` IAM; `migration_path: "runtime_messages"` + `required_client_api: "messages"`. `"converse"` (boto3 `messages.create()` → `converse()`) only on explicit request / Converse-only feature; `"mantle_messages"` only with a `mantle_selector` **recorded by Step 0.8 (a `workspaces` entry)** |
 | LangChain                       | ChatVertexAI / ChatOpenAI | ChatBedrock         | Swap import and model_id                                                                             |
 | LlamaIndex                      | Vertex / OpenAI LLM       | BedrockConverse     | Swap import                                                                                          |
 | LLM Router (LiteLLM)            | Any                       | Config change       | `model="bedrock/<model_id>"` (1 line)                                                                |
@@ -411,7 +431,9 @@ ID becomes the CRIS profile and IAM is `bedrock:InvokeModel*`. A `mantle_*` path
 (`"mantle_openai_chat"` for a Chat source, `"mantle_openai_responses"` for a Responses source — e.g.
 Astra on Standard Mantle in `us-east-1` or `us-west-2`) is recorded **only** when the row also
 records `bedrock_models[].mantle_selector` from `references/vendored/ai/bedrock-endpoint-policy.md`
-(the selector enum is defined there and only there); then keep the OpenAI SDK, use
+(the selector enum is defined there and only there), derived in Step 0.8 from
+`ai_constraints.mantle_requirements` (never from the source API, the model, or a guess) and cited
+in the row's `mantle_requirement`; then keep the OpenAI SDK, use
 `/openai/v1` on Mantle, Bedrock credentials and Mantle IAM. API continuity alone never selects
 Mantle. Do not reshape Astra Chat solely because it is proprietary GPT. Record `model_change: false` only when
 the exact source model is retained; a Pro-to-Astra upgrade is a model change requiring eval.
@@ -522,7 +544,7 @@ Write `aws-design-ai.json` to `$MIGRATION_DIR/`.
 | `ai_architecture.honest_assessment`        | string      | `"strong_migrate"`, `"moderate_migrate"`, `"weak_migrate"`, `"recommend_stay"`, `"not_applicable"` (per-workload only — traditional-AI capabilities `document_extraction`/`image_analysis`/`speech_transcription`; never the overall assessment) |
 | `ai_architecture.honest_assessment_reason` | string/null | Required when `honest_assessment == "recommend_stay"`. The specific non-cost blocker (region, Realtime API, separate-service capability, Assistants API feature, unsupported API surface). Null otherwise.                                       |
 | `ai_architecture.tiered_strategy`          | object/null | Tiered model routing (null for low/medium volume)                                                                                                                                                                                                |
-| `ai_architecture.bedrock_models`           | array       | Per-model: `gcp_model_id`, `aws_model_id`, `capabilities_matched[]`, `capability_gaps[]`, `honest_assessment`, `source_provider_price`, `bedrock_price`, `price_comparison`, `migration_complexity`                                              |
+| `ai_architecture.bedrock_models`           | array       | Per-model: `gcp_model_id`, `aws_model_id`, `capabilities_matched[]`, `capability_gaps[]`, `honest_assessment`, `source_provider_price`, `bedrock_price`, `price_comparison`, `migration_complexity`, `migration_path`, `mantle_selector` + `mantle_requirement` (every `mantle_*` row, from Step 0.8), `endpoint_assumption` (every non-`mantle_*` row, the Step 0.8 sentence) |
 | `ai_architecture.capability_mapping`       | object      | Per-capability: `parity` (full/partial/none), `notes`                                                                                                                                                                                            |
 | `ai_architecture.code_migration`           | object      | `primary_pattern`, `framework`, `files_to_modify[]`, `dependency_changes`, `migration_path`; per-model `required_client_api` selects the runtime API |
 | `ai_architecture.infrastructure`           | array       | GCP resource → AWS equivalent mappings with confidence                                                                                                                                                                                           |
@@ -545,6 +567,7 @@ Write `aws-design-ai.json` to `$MIGRATION_DIR/`.
 - [ ] If `ai_source` includes `"openai"`: every model that `shared/openai-on-bedrock.md` lists as available on Bedrock, and whose target region carries it, is mapped to **itself** with `model_change: false` — not to a Claude/Nova substitute
 - [ ] If `honest_assessment == "recommend_stay"`: `honest_assessment_reason` names a non-cost blocker (cost parity alone is never sufficient for an OpenAI source)
 - [ ] Every same-model proprietary GPT row records `migration_path: "runtime_openai_cris"` by default; every `bedrock_models[]` row whose `migration_path` starts with `mantle_` carries a `mantle_selector` from `references/vendored/ai/bedrock-endpoint-policy.md`, and no `runtime_*`/`converse` row carries one
+- [ ] Every `mantle_*` row's `mantle_selector` is derived from an `ai_constraints.mantle_requirements` entry (or the catalog for `mantle_only_model_or_api`) and the row carries `mantle_requirement` citing it; every non-`mantle_*` row carries the `endpoint_assumption` sentence naming its workload
 - [ ] No `bedrock_models[]` entry pairs a **bare** proprietary GPT id (including bare
       `openai.gpt-5.5` / `openai.gpt-5.4`) with a Converse/`bedrock-runtime` migration path.
       GPT-5.6, GPT-6, GPT-5.5 and GPT-5.4 MAY use `migration_path: "runtime_openai_cris"` on
@@ -581,3 +604,4 @@ After writing `aws-design-ai.json`, present under 25 lines:
 3. Integration pattern and migration complexity
 4. Capability gaps (if any)
 5. If weak_migrate or recommend_stay: flag prominently with cost justification
+6. Endpoint per workload — `bedrock-mantle (<selector>, <source>)` or the `endpoint_assumption` sentence verbatim
