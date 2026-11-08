@@ -502,7 +502,15 @@ do not manufacture a profile from the region. Keep each unit's model/API/profile
 For multiple advisor units, write `migration_path` and `required_client_api` on each corresponding
 `bedrock_models[]` row with its `aws_model_id`; `code_migration` remains the primary-unit default.
 
-<!-- TODO(PR 3 — agent-advisor runtime paths): when the advisor emits runtime OpenAI Responses/Chat or Runtime Messages path names, translate them here; names are owned by PR 3, do not invent them. -->
+Translate every other advisor `api_path` the same way: `runtime_openai_responses` →
+`migration_path: "runtime_openai_cris"` + `required_client_api: "responses"`; `runtime_openai_chat`
+→ `runtime_openai_cris` + `"chat_completions"`; `runtime_messages` →
+`migration_path: "runtime_messages"` + `required_client_api: "messages"` (keep the advisor
+`invocation_model_id` as `aws_model_id`); `mantle_openai_responses` / `mantle_openai_chat` /
+`mantle_messages` → the same `migration_path` with `required_client_api` `responses` /
+`chat_completions` / `messages` and `bedrock_models[].mantle_selector` copied verbatim from the
+advisor contract. An advisor `mantle_*` contract without a `mantle_selector` is a mismatch —
+return to Model Recommend rather than inventing one.
 
 **Throughput:** load `references/vendored/ai/ai-migration-guardrails.md` and apply the selected
 model/endpoint's quota rules. Astra runtime uses input TPM plus 10 times output TPM.

@@ -20,18 +20,23 @@ The per-workload `(model, api_path)` decision is deterministic and lives in code
 file — it is dispatched by source provider so the path vocabulary and rules differ per provider:
 
 - **Anthropic** → `scripts/anthropic_model_recommendation.py` + `references/vendored/ai/models/anthropic-bedrock.json`
-  (paths: `mantle_messages`, `runtime_converse`, `runtime_invoke`).
+  (paths: `mantle_messages`, `runtime_messages`, `runtime_converse`, `runtime_invoke`).
 - **OpenAI** → `scripts/openai_model_recommendation.py` + `references/vendored/ai/models/openai-bedrock.json`
-  (paths: `mantle_openai_chat`, `mantle_openai_responses`, `runtime_converse`; preserve Astra's
-  supported source API and apply each model's dated capability and region checks).
+  (paths: `mantle_openai_chat`, `mantle_openai_responses`, `runtime_openai_chat`,
+  `runtime_openai_responses`, `runtime_converse`; preserve the source API on the exact source
+  model and apply each model's dated capability and region checks).
 - **Azure OpenAI / other** → generic `provider_module_pending` until a dedicated module exists.
 
 Do not restate the per-provider path rules here — the dated catalogs and the engine are
 authoritative (a table here would drift). The engine applies these provider-neutral principles:
 
-- **Conflicts are not precedence.** When two hard requirements cannot share one path (e.g. API
-  continuity plus runtime-only governance), emit `decision_required` with both tradeoff options
-  and rerun after the user resolves the requirement — never silently let one side win.
+- **Endpoint policy.** The engine obeys `references/vendored/ai/bedrock-endpoint-policy.md`:
+  `bedrock-runtime` by default; a `mantle_*` path only with a recorded `mantle_selector` from
+  that file; API continuity alone never selects Mantle.
+- **Conflicts are not precedence.** When two hard requirements cannot share one path (e.g. a
+  verified Mantle selector plus Converse-only governance), emit `decision_required` with both
+  tradeoff options and rerun after the user resolves the requirement — never silently let one
+  side win.
 - **A dated snapshot is not a permanent claim.** Catalog data is point-in-time — e.g. Sonnet 4.6
   was runtime-only in the `2026-06-24` snapshot, and six days later Sonnet 5 launched with full
   Mantle Messages support, changing the default recommendation. Every recommendation

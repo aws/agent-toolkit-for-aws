@@ -356,34 +356,65 @@ are not modified and gcp never sees this step:
 For every matched, model-bearing unit, compare the plan's model and migration path with
 that unit's `design.json` model contract, including its separate `invocation_model_id`.
 Carry the injected invocation identifier into the corresponding GCP `aws_model_id` unchanged.
-For a proprietary GPT `runtime_converse` decision, GCP represents the same API as
-`migration_path: "runtime_openai_cris"` with `required_client_api: "converse"` on the matched model row.
+GCP represents each advisor `api_path` with the `migration_path` / `required_client_api`
+vocabulary of `references/vendored/ai/bedrock-endpoint-policy.md` on the matched model row:
+
+| Advisor `api_path` | GCP `migration_path` | `required_client_api` | Notes |
+| --- | --- | --- | --- |
+| `runtime_openai_responses` | `runtime_openai_cris` | `responses` | `aws_model_id` = advisor `invocation_model_id` (CRIS id) |
+| `runtime_openai_chat` | `runtime_openai_cris` | `chat_completions` | same |
+| `runtime_converse` on a proprietary GPT model (`openai.gpt-6*`, `openai.gpt-5.6-*`, `openai.gpt-5.5`, `openai.gpt-5.4`) | `runtime_openai_cris` | `converse` | same; `runtime_converse` on a Claude or open-weight model keeps the exact comparison |
+| `runtime_messages` | `runtime_messages` | `messages` | `aws_model_id` = advisor `invocation_model_id` |
+| `mantle_openai_responses` / `mantle_openai_chat` / `mantle_messages` | the same path name | `responses` / `chat_completions` / `messages` | `bedrock_models[].mantle_selector` copied verbatim from the advisor contract; an advisor Mantle contract whose `mantle_selector` is null is a mismatch (only a legacy contract written before the field existed keeps the exact model/path comparison) |
+
 An absent `runtime_api` on a legacy runtime plan means Converse; an explicit Chat/Responses
 choice is not equivalent. Do not replace a confirmed Global profile with US Geo or strip an ARN.
 Read each matched model row's `migration_path` and `required_client_api`; use legacy `runtime_api` and the `code_migration`
 defaults only for a single-unit legacy plan. A secondary unit must not inherit the primary's
 API or invocation profile. Missing per-unit data requires re-running Design with the injection.
 
-Pass the resolved per-model API to `runtime_api` below. A current Design plan with no
-explicit API defaults to Responses and cannot satisfy an advisor Converse decision.
+Pass the resolved per-model API to `runtime_api` below and the row's `mantle_selector` (when
+present) to `mantle_selector`. A current Design plan with no explicit API defaults to Responses
+and cannot satisfy an advisor Converse decision.
 
 Use this comparison for each unit (including the single-unit case). It separates logical model
 identity from the invocation identifier while preserving the existing exact comparison for other paths:
 
 ```python
-def matches_advisor_model(advisor, plan_model, migration_path, runtime_api=None):
+_RUNTIME_OPENAI = {"runtime_openai_responses": "responses",
+                   "runtime_openai_chat": "chat_completions",
+                   "runtime_converse": "converse"}
+# Proprietary GPT models reach bedrock-runtime through CRIS ids (open-weight gpt-oss keeps
+# the exact comparison below).
+_PROPRIETARY_GPT = ("openai.gpt-6", "openai.gpt-5.6-", "openai.gpt-5.5", "openai.gpt-5.4")
+
+
+def matches_advisor_model(advisor, plan_model, migration_path, runtime_api=None,
+                          mantle_selector=None):
     model = advisor["model"]
-    proprietary_runtime = model.startswith(("openai.gpt-6", "openai.gpt-5.6-"))
-    if advisor["api_path"] == "runtime_converse" and proprietary_runtime:
-        invocation = advisor.get("invocation_model_id")
+    path = advisor["api_path"]
+    proprietary = model.startswith(_PROPRIETARY_GPT)
+    invocation = advisor.get("invocation_model_id")
+    if path in _RUNTIME_OPENAI and proprietary:
         if not invocation:
             return False
         profile_id = invocation.rsplit("/", 1)[-1]
         logical_model = (profile_id.split(".", 1)[1]
                          if profile_id.startswith(("us.", "in.", "global.")) else profile_id)
+        resolved_api = runtime_api or ("converse" if path == "runtime_converse" else None)
         return (logical_model == model and plan_model == invocation
                 and migration_path == "runtime_openai_cris"
-                and (runtime_api or "converse") == "converse")
+                and resolved_api == _RUNTIME_OPENAI[path])
+    if path == "runtime_messages":
+        return (bool(invocation) and plan_model == invocation
+                and migration_path == "runtime_messages"
+                and (runtime_api or "messages") == "messages")
+    if path.startswith("mantle_"):
+        selector = advisor.get("mantle_selector")
+        if "mantle_selector" in advisor and selector is None:
+            return False  # a Mantle contract without a selector never validates
+        return (plan_model == model and migration_path == path
+                and mantle_selector == selector)
     return plan_model == model and migration_path == advisor["api_path"]
 ```
 

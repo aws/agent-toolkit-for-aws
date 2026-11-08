@@ -161,6 +161,7 @@ Stage 3 reads gcp-to-aws artifacts ONLY via this recorded path, never by re-glob
 | File                                                 | Purpose                                                                                                        |
 | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | `references/vendored/dsl/INTERPRETER.md`             | Vendored DSL execution contract (interpreter loop + gate protocol)                                             |
+| `references/vendored/ai/bedrock-endpoint-policy.md`  | Vendored Bedrock endpoint policy (bedrock-runtime default, mantle_selector enum) obeyed by Model Recommend     |
 | `references/phases/intake/intake.md`                 | Entry point + technical background + open context                                                              |
 | `references/phases/discover/discover.md`             | Lightweight code detection                                                                                     |
 | `references/phases/clarify/clarify.md`               | Clarify orchestrator + answer mapping to scoring keys                                                          |

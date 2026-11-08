@@ -15,6 +15,20 @@ model + services, coarse model family mapping (the source model from the user's 
 answer → the Bedrock family per `model-selection.md`; no prices), and the rationale (top scoring
 signals + eliminations, from design.json's `scores`/`eliminated`).
 
+The summary additionally carries, per model-bearing unit, the accepted `api_path`,
+`invocation_model_id` and `mantle_selector` from `confirm.json` / `design.json`
+(`model_decision` / `model_recommendation`), plus this translation table so that `gcp-to-aws`
+Design and `llm-to-bedrock` write `migration_path` / `required_client_api` / `mantle_selector`
+without re-deciding the endpoint (the vocabulary is
+`references/vendored/ai/bedrock-endpoint-policy.md`):
+
+- `runtime_openai_responses` → `migration_path: "runtime_openai_cris"`, `required_client_api: "responses"`
+- `runtime_openai_chat` → `migration_path: "runtime_openai_cris"`, `required_client_api: "chat_completions"`
+- `runtime_converse` on a proprietary GPT model (`openai.gpt-6*`, `openai.gpt-5.6-*`, `openai.gpt-5.5`, `openai.gpt-5.4`) → `migration_path: "runtime_openai_cris"`, `required_client_api: "converse"`
+- `runtime_messages` → `migration_path: "runtime_messages"`, `required_client_api: "messages"`, `aws_model_id` = the advisor `invocation_model_id`
+- `mantle_openai_responses` / `mantle_openai_chat` / `mantle_messages` → the same `migration_path`, `required_client_api` `responses` / `chat_completions` / `messages`, and `bedrock_models[].mantle_selector` copied verbatim (an advisor Mantle contract without a selector is a mismatch — return to Model Recommend)
+- any other path (`runtime_converse` on a Claude or open-weight model, `runtime_invoke`) → `migration_path` equal to the advisor `api_path`, no `mantle_selector`
+
 ## Step 2 — Check downstream availability
 
 Both downstream skills — `gcp-to-aws` and `llm-to-bedrock` — are part of this same plugin, so
