@@ -9,6 +9,8 @@ and multi-model Converse select runtime Converse.
 
 import json
 import pathlib
+import re
+import urllib.parse
 
 import jsonschema
 import pytest
@@ -19,6 +21,18 @@ import openai_model_recommendation as oai
 
 SCRIPTS = pathlib.Path(model_recommendation.__file__).parent
 OPENAI_CATALOG = model_recommendation.load_openai_catalog()
+_URL = re.compile(r"https?://[^\s)\]]+")
+
+
+def _cites_aws_docs(text):
+    """True when `text` contains an https URL whose host is exactly
+    docs.aws.amazon.com (hostname equality after urlparse, not a substring)."""
+    urls = _URL.findall(text or "")
+    return any(
+        urllib.parse.urlparse(url).scheme == "https"
+        and urllib.parse.urlparse(url).hostname == "docs.aws.amazon.com"
+        for url in urls
+    )
 
 
 def _workload(**overrides):
@@ -199,6 +213,11 @@ def test_runtime_converse_path_text_does_not_grant_in_profile_to_gpt54_gpt55():
     assert "GPT-5.6 Terra and Luna publish us./in./global. ids" in strengths
     assert "us./global. only for GPT-5.6 Sol, GPT-5.5 and GPT-5.4" in strengths
     assert "For GPT-5.6, runtime does not support server-side tool use" in constraints
+    # The GPT-5.6 cards (read 2026-11-08) document non-streaming JSON Schema on
+    # Responses/Chat Completions; the sentence must not deny structured outputs
+    # outright, nor claim them as catalog capabilities.
+    assert "does not support server-side tool use, structured outputs" not in constraints
+    assert "not yet carried as catalog capabilities" in constraints
     assert "GPT-5.5 / GPT-5.4 on runtime" in constraints
     assert "structured outputs and implicit prompt caching are Responses-only" in constraints
     assert "Guardrails and application inference profiles are Converse-only" in constraints
@@ -207,8 +226,8 @@ def test_runtime_converse_path_text_does_not_grant_in_profile_to_gpt54_gpt55():
 @pytest.mark.parametrize("source_id,requirements,path", [
     # A Chat source explicitly moved to bedrock-runtime Responses.
     ("gpt-5.4", {"preferred_api_path": "runtime_openai_responses"}, "runtime_openai_responses"),
-    # A Chat source on Mantle Responses by selector + preference (GPT-5.6 Sol's
-    # Mantle Chat row is unavailable, so Responses is its only Mantle API).
+    # A Chat source explicitly moved to Mantle Responses by selector + preference
+    # (GPT-5.6 Sol's card lists Mantle Chat too, so this reshape is a choice).
     ("gpt-5.6-sol", {"preferred_api_path": "mantle_openai_responses",
                      "mantle_selector": "background_inference"}, "mantle_openai_responses"),
 ])
@@ -231,20 +250,40 @@ def test_chat_completions_case_includes_full_reshape_deltas(source_id, requireme
     assert "chat_to_responses_state" in codes
 
 
-def test_chat_source_with_selector_keeps_chat_on_an_available_mantle_chat_model():
-    # GPT-5.6 Sol has no Mantle Chat row; the walk keeps the Chat surface on the
-    # next same-family model whose Mantle Chat row is in region, not a reshape.
+@pytest.mark.parametrize("source_id", ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"])
+def test_gpt56_chat_source_with_selector_keeps_its_own_model_on_mantle_chat(source_id):
+    # The GPT-5.6 Sol, Terra and Luna cards (read 2026-11-08) list Chat Completions
+    # on bedrock-mantle, so a Chat source with a selector stays on the same model
+    # and the same API — no fallback, no reshape.
     rec = _recommend(
         _workload(
-            source={"model_ids": ["gpt-5.6-sol"], "api_surface": "chat_completions"},
-            requirements={"mantle_selector": "background_inference"},
+            source={"model_ids": [source_id], "api_surface": "chat_completions"},
+            requirements={"mantle_selector": "projects"},
         ),
         region="us-east-1",
     )
+    assert rec["decision_status"] == "recommended"
     assert rec["api_path"] == "mantle_openai_chat"
-    assert rec["primary_model"] == "openai.gpt-5.5"
-    assert "fallback" in rec["rationale"][0]
+    assert rec["primary_model"] == f"openai.{source_id}"
+    assert rec["mantle_selector"] == "projects"
+    assert "fallback" not in rec["rationale"][0]
     assert "chat_completions_to_responses_required" not in _codes(rec["blocks"])
+
+
+def test_gpt56_sol_chat_with_selector_outside_its_mantle_footprint_falls_to_terra():
+    # The region gate is unchanged: Sol's Mantle footprint is us-east-1/us-east-2,
+    # so a GovCloud caller lands on Terra's in-region Mantle Chat row.
+    rec = _recommend(
+        _workload(
+            source={"model_ids": ["gpt-5.6-sol"], "api_surface": "chat_completions"},
+            requirements={"mantle_selector": "projects"},
+        ),
+        region="us-gov-west-1",
+    )
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "mantle_openai_chat"
+    assert rec["primary_model"] == "openai.gpt-5.6-terra"
+    assert "fallback" in rec["rationale"][0]
 
 
 def test_governance_selects_runtime_converse():
@@ -321,7 +360,7 @@ def test_detected_web_search_derives_the_mantle_selector():
     impacts = {a["feature"]: a["impact"] for a in rec["architecture_impacts"]}
     assert "bedrock-mantle" in impacts["web_search"]
     assert "passthrough" not in impacts["web_search"].lower()
-    assert "docs.aws.amazon.com" in impacts["web_search"]
+    assert _cites_aws_docs(impacts["web_search"])
     assert "web_search" not in rec["compatibility"]["rearchitecture"]
     assert "web_search" in rec["compatibility"]["portable"]
 
@@ -579,7 +618,8 @@ def test_gpt6_chat_with_selector_in_us_west_2_falls_back_to_same_family_astra(so
 @pytest.mark.parametrize("source_id", ["gpt-6-sol", "gpt-6.1-sol"])
 def test_gpt6_chat_with_selector_in_us_east_2_prefers_newest_gpt5_over_gpt54(source_id):
     # No GPT-6 model lists Mantle Chat in us-east-2 (Astra: us-east-1/us-west-2),
-    # so the walk falls to the GPT-5 family, newest first: 5.5, never 5.4.
+    # so the walk falls to the GPT-5 family, newest first: GPT-5.6 Sol (its card
+    # lists Mantle Chat in us-east-2, read 2026-11-08), never 5.4.
     rec = _recommend(
         _workload(
             source={"model_ids": [source_id], "api_surface": "chat_completions"},
@@ -590,7 +630,7 @@ def test_gpt6_chat_with_selector_in_us_east_2_prefers_newest_gpt5_over_gpt54(sou
     assert rec["decision_status"] == "recommended"
     assert rec["api_path"] == "mantle_openai_chat"
     assert rec["primary_model"] != "openai.gpt-5.4"
-    assert rec["primary_model"] == "openai.gpt-5.5"
+    assert rec["primary_model"] == "openai.gpt-5.6-sol"
     assert "us-east-2" not in OPENAI_CATALOG["models"]["openai_gpt_6_astra"]["region_availability"]["commercial"]
     assert "fallback" in rec["rationale"][0]
 
@@ -1101,13 +1141,14 @@ def test_g02_native_only_lists_catalog_evidenced_features():
 
 def test_g02_evidence_driven_fallback_skips_unevidenced_newer_models():
     # A gpt-5.1 source has no same-model identity; the walk starts at GPT-5.6 Sol
-    # (no structured-output evidence) and falls to GPT-5.4, which has it.
+    # (no structured-output evidence) and falls to GPT-5.5, whose runtime Responses
+    # row carries it (card read 2026-11-08), ahead of GPT-5.4.
     rec = _recommend(
         _workload(source={"model_ids": ["gpt-5.1"]},
                   detected_features=["structured_output_json"])
     )
     assert rec["decision_status"] == "recommended"
-    assert rec["primary_model"] == "openai.gpt-5.4"
+    assert rec["primary_model"] == "openai.gpt-5.5"
     assert "structured_output_json" in rec["compatibility"]["native"]
 
 
@@ -1703,3 +1744,160 @@ def test_astra_rejects_capacity_above_documented_limit(requirement, limit):
     )
     assert rec["decision_status"] == "decision_required"
     assert "unverified_capacity" in _codes(rec["blocks"])
+
+
+# --- CRIS profile matrices for GPT-5.6 Sol/Terra/Luna (cards read 2026-11-08) --
+#
+# Sol publishes us./global. only; Terra and Luna publish us./in./us-gov./global.
+# A runtime path must never echo a profile id the card does not publish, and when
+# no candidate publishes a callable profile the engine fails closed with a decision.
+
+def _invocation_ids(rec):
+    ids = {rec.get("invocation_model_id")}
+    ids |= {option["invocation_model_id"] for option in rec.get("decision_options") or []}
+    return ids
+
+
+def test_eu_geo_caller_on_us_only_models_fails_closed_without_fabricated_eu_profile():
+    workload = _workload(requirements={"data_residency": "geo_required", "cris_geography": "eu"})
+    out = _full_recommend(workload, region="eu-west-1")
+    jsonschema.validate(out, _OUT_SCHEMA)
+    rec = out["workloads"]["chat-svc"]
+    assert rec["decision_status"] == "decision_required"
+    assert "inference_profile_unverified" in _codes(rec["blocks"])
+    assert not any(
+        (invocation_id or "").startswith("eu.openai.") for invocation_id in _invocation_ids(rec)
+    )
+    options = {option["api_path"]: option for option in rec["decision_options"]}
+    assert options["runtime_openai_responses"]["invocation_model_id"] is None
+    assert "resolve a profile" in options["runtime_openai_responses"]["reason"]
+
+
+def test_explicit_eu_profile_for_gpt56_sol_is_never_echoed():
+    rec = _recommend(
+        _workload(
+            source={"model_ids": ["gpt-5.6-sol"]},
+            requirements={"inference_profile_id": "eu.openai.gpt-5.6-sol",
+                          "api_continuity": "required"},
+        ),
+        region="eu-west-1",
+    )
+    assert rec["invocation_model_id"] is None
+    if rec["decision_status"] == "recommended":
+        assert _codes(rec["blocks"]) & {"cris_residency_unresolved", "inference_profile_unverified"}
+    assert "eu.openai.gpt-5.6-sol" not in _invocation_ids(rec)
+
+
+def test_gpt56_terra_accepts_the_india_geo_profile_from_ap_south_1():
+    rec = _recommend(
+        _workload(
+            source={"model_ids": ["gpt-5.6-terra"]},
+            requirements={"data_residency": "geo_required",
+                          "inference_profile_id": "in.openai.gpt-5.6-terra"},
+        ),
+        region="ap-south-1",
+    )
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "runtime_openai_responses"
+    assert rec["primary_model"] == "openai.gpt-5.6-terra"
+    assert rec["invocation_model_id"] == "in.openai.gpt-5.6-terra"
+    assert "cris_residency_unresolved" not in _codes(rec["blocks"])
+
+
+def test_gpt56_luna_accepts_the_govcloud_profile_from_us_gov_west_1():
+    rec = _recommend(
+        _workload(
+            source={"model_ids": ["gpt-5.6-luna"]},
+            requirements={"inference_profile_id": "us-gov.openai.gpt-5.6-luna"},
+        ),
+        region="us-gov-west-1",
+    )
+    assert rec["decision_status"] == "recommended"
+    assert rec["invocation_model_id"] == "us-gov.openai.gpt-5.6-luna"
+
+
+def test_gpt56_luna_in_govcloud_has_no_global_profile():
+    # The Luna card lists no Global profile for GovCloud callers (read 2026-11-08).
+    rec = _recommend(
+        _workload(
+            source={"model_ids": ["gpt-5.6-luna"]},
+            requirements={"data_residency": "global_allowed"},
+        ),
+        region="us-gov-west-1",
+    )
+    assert rec["invocation_model_id"] is None
+    assert _codes(rec["blocks"]) & {"cris_residency_unresolved", "inference_profile_unverified"}
+    assert "global.openai.gpt-5.6-luna" not in _invocation_ids(rec)
+
+
+def test_gpt56_sol_global_profile_from_us_east_1_lists_both_us_and_global():
+    rec = _recommend(
+        _workload(
+            source={"model_ids": ["gpt-5.6-sol"]},
+            requirements={"data_residency": "global_allowed"},
+        ),
+        region="us-east-1",
+    )
+    assert rec["decision_status"] == "recommended"
+    assert rec["invocation_model_id"] == "global.openai.gpt-5.6-sol"
+    allowed = set(rec["verification"]["allowed_inference_profiles"])
+    assert {"us.openai.gpt-5.6-sol", "global.openai.gpt-5.6-sol"} <= allowed
+
+
+# --- GPT-5.4 / GPT-5.5 per-API capabilities (cards read 2026-11-08) ------------
+#
+# Both cards list 'Structured outputs (JSON Schema; Responses API)': the feature is
+# evidenced on runtime Responses only, never on Chat Completions or Converse.
+
+def test_gpt55_structured_output_stays_on_gpt55_runtime_responses():
+    rec = _recommend(
+        _workload(
+            source={"model_ids": ["gpt-5.5"]},
+            requirements={"critical_features": ["structured_output_json"],
+                          "data_residency": "global_allowed"},
+        )
+    )
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "runtime_openai_responses"
+    assert rec["primary_model"] == "openai.gpt-5.5"
+    assert "structured_output_json" in rec["compatibility"]["native"]
+
+
+@pytest.mark.parametrize("path,unmet", [
+    ("runtime_openai_chat", ["structured_output_json"]),
+    ("runtime_converse", ["structured_output_json"]),
+    ("runtime_openai_responses", []),
+])
+def test_gpt54_structured_output_is_evidenced_only_on_runtime_responses(path, unmet):
+    _hit, missing = oai._catalog_model_for_path(
+        OPENAI_CATALOG, path, ["structured_output_json"], {},
+        candidate_order=["openai_gpt_5_4"],
+    )
+    assert missing == unmet
+
+
+def test_gpt54_guardrails_plus_structured_output_has_no_evidenced_converse_candidate():
+    rec = _recommend(
+        _workload(
+            requirements={"governance": ["guardrails"],
+                          "critical_features": ["structured_output_json"],
+                          "data_residency": "global_allowed"},
+        )
+    )
+    assert rec["decision_status"] == "decision_required"
+    assert "unverified_capability" in _codes(rec["blocks"])
+    assert "structured_output_json" not in rec["compatibility"]["native"]
+
+
+def test_gpt54_chat_source_with_structured_output_does_not_claim_it_on_gpt54_chat():
+    rec = _recommend(
+        _workload(
+            source={"api_surface": "chat_completions"},
+            requirements={"critical_features": ["structured_output_json"]},
+        ),
+        region="us-east-2",
+    )
+    assert rec["primary_model"] != "openai.gpt-5.4"
+    if rec["decision_status"] == "recommended":
+        row = OPENAI_CATALOG["models"][rec["model_identity"]["model_key"]]["paths"]["runtime_openai_chat"]
+        assert "structured_output_json" in row["capabilities"]

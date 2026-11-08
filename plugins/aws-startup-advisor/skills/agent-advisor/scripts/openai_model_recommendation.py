@@ -307,7 +307,6 @@ def _catalog_model_for_path(catalog, path, detected_features=None, requirements=
                 continue
         if (
             path.startswith("runtime_")
-            and not path_config.get("inference_profile_regions")
             and path_config.get("requires_cris")
             and _hard_profile_requirement(requirements or {})
             and _resolve_invocation_model_id(
@@ -327,6 +326,38 @@ def _catalog_model_for_path(catalog, path, detected_features=None, requirements=
     return first, first_unmet
 
 
+_PROFILE_REQUIREMENT_KEYS = frozenset({"inference_profile_id", "data_residency", "cris_geography"})
+
+
+def _profile_relaxed_hit(catalog, path, detected, requirements, candidate_order, region):
+    """When every runtime candidate was skipped because no cataloged CRIS profile is
+    callable from `region` under the stated residency, re-walk the path without the
+    profile requirements so a decision can still show the candidate. The caller
+    leaves its invocation id unresolved (None); a profile id is never fabricated."""
+    if not (path.startswith("runtime_") and _hard_profile_requirement(requirements or {})):
+        return None
+    relaxed = {k: v for k, v in (requirements or {}).items() if k not in _PROFILE_REQUIREMENT_KEYS}
+    hit, _ = _catalog_model_for_path(
+        catalog, path, detected, relaxed, candidate_order=candidate_order, region=region,
+    )
+    return hit
+
+
+def _unresolved_profile_suffix(path, path_config, invocation_model_id, requirements, region):
+    """Reason suffix for a runtime option whose CRIS profile could not be resolved."""
+    if (
+        path.startswith("runtime_")
+        and path_config["requires_cris"]
+        and invocation_model_id is None
+        and _hard_profile_requirement(requirements)
+    ):
+        return (
+            f" No cataloged CRIS profile for this model is callable from {region} under "
+            "the stated residency; resolve a profile before this option is implementable."
+        )
+    return ""
+
+
 def _resolve_invocation_model_id(model_id, requires_cris, requirements, model=None, region=None):
     if (model or {}).get("inference_profiles"):
         return anthropic_model_recommendation._resolve_invocation_model_id(
@@ -336,7 +367,12 @@ def _resolve_invocation_model_id(model_id, requires_cris, requirements, model=No
         return model_id
     explicit = requirements.get("inference_profile_id")
     if explicit:
-        return explicit
+        # Without a cataloged profile matrix the explicit id cannot be verified, but a
+        # bare `<prefix>.<model_id>` form that names a different model is never this
+        # candidate's invocation id. ARNs are kept for the verifier to check.
+        if explicit.startswith("arn:") or explicit.endswith(f".{model_id}"):
+            return explicit
+        return None
     residency = requirements.get("data_residency", "unknown")
     if residency == "global_allowed":
         return f"global.{model_id}"
@@ -977,6 +1013,10 @@ def _decision_options(catalog, workload, region, selector=None):
             region="unknown",
         )
         requires_region_change = openai_hit is not None
+    if openai_hit is None and openai_path.startswith("runtime_openai_"):
+        openai_hit = _profile_relaxed_hit(
+            catalog, openai_path, detected, requirements, candidate_order, region
+        )
     if openai_hit:
         model_key, model, path_config = openai_hit
         api_label = (
@@ -1010,6 +1050,9 @@ def _decision_options(catalog, workload, region, selector=None):
         invocation_model_id = _resolve_invocation_model_id(
             path_config["model_id"], path_config["requires_cris"], requirements, model, region,
         )
+        reason += _unresolved_profile_suffix(
+            openai_path, path_config, invocation_model_id, requirements, region
+        )
         options.append(
             {
                 "model_key": model_key,
@@ -1023,16 +1066,33 @@ def _decision_options(catalog, workload, region, selector=None):
                 "mantle_selector": selector if openai_path.startswith("mantle_") else None,
             }
         )
+    converse_order = _converse_candidate_order(workload["source"], workload["requirements"])
     runtime, _ = _catalog_model_for_path(
         catalog, "runtime_converse", detected, workload["requirements"],
-        candidate_order=_converse_candidate_order(workload["source"], workload["requirements"]),
-        region=region,
+        candidate_order=converse_order, region=region,
     )
+    if runtime is None:
+        runtime = _profile_relaxed_hit(
+            catalog, "runtime_converse", detected, workload["requirements"], converse_order,
+            region,
+        )
     if runtime:
         model_key, model, path_config = runtime
         invocation_model_id = _resolve_invocation_model_id(
             path_config["model_id"], path_config["requires_cris"], workload["requirements"],
             model, region,
+        )
+        reason = (
+            "SAME-MODEL governance path: this OpenAI target runs on bedrock-runtime via a "
+            "CRIS id — Guardrails (Converse API only) and invocation logging without a "
+            "model change. Check the model's region/profile matrix and dated prices."
+            if model_key == _same_model_runtime_key(workload["source"])
+            else "Uses Bedrock-native Converse request/response shapes and a "
+            "cross-family model; requires rewriting the OpenAI integration."
+        )
+        reason += _unresolved_profile_suffix(
+            "runtime_converse", path_config, invocation_model_id, workload["requirements"],
+            region,
         )
         options.append(
             {
@@ -1043,14 +1103,7 @@ def _decision_options(catalog, workload, region, selector=None):
                 "requires_cris": anthropic_model_recommendation._invocation_requires_cris(
                     path_config, invocation_model_id
                 ),
-                "reason": (
-                    "SAME-MODEL governance path: this OpenAI target runs on bedrock-runtime via a "
-                    "CRIS id — Guardrails (Converse API only) and invocation logging without a "
-                    "model change. Check the model's region/profile matrix and dated prices."
-                    if model_key == _same_model_runtime_key(workload["source"])
-                    else "Uses Bedrock-native Converse request/response shapes and a "
-                    "cross-family model; requires rewriting the OpenAI integration."
-                ),
+                "reason": reason,
                 "mantle_selector": None,
             }
         )
@@ -1295,6 +1348,30 @@ def recommend_openai_workload(workload, region, catalog):
                     "Choose a region in the selected model's Mantle footprint, choose "
                     "runtime Converse, or update the continuity requirement, then rerun "
                     "Model Recommend.",
+                ),
+                path,
+            )
+        if _hard_profile_requirement(requirements):
+            # Every runtime candidate was skipped because its cataloged CRIS
+            # profile matrix has no profile callable from this region under the
+            # stated residency (e.g. an EU-Geo caller on models that publish
+            # us./global. only). Fail closed with a decision rather than raising.
+            return _unresolved(
+                rationale_head,
+                [
+                    f"No {path} candidate publishes a CRIS profile callable from {region} "
+                    "under the stated residency (data_residency / cris_geography / "
+                    "inference_profile_id)."
+                ],
+                _finding(
+                    "inference_profile_unverified",
+                    "[BLOCKS]",
+                    f"No {path} candidate has a cataloged CRIS profile for calls from "
+                    f"{region} under the stated residency.",
+                    "Choose a Geo or Global profile the selected model publishes for this "
+                    "source region, change the region or geography, supply a verified "
+                    "explicit inference_profile_id, or take the runtime Converse option, "
+                    "then rerun Model Recommend.",
                 ),
                 path,
             )

@@ -9,6 +9,7 @@ such row must cite its docs.aws.amazon.com source and a read date.
 import json
 import pathlib
 import re
+import urllib.parse
 
 import pytest
 
@@ -17,10 +18,24 @@ import model_recommendation
 
 SCHEMAS = pathlib.Path(model_recommendation.__file__).parent / "schemas"
 RUNTIME_SDK_PATHS = ("runtime_openai_responses", "runtime_openai_chat", "runtime_messages")
+GPT_56_MODELS = ("openai_gpt_5_6_sol", "openai_gpt_5_6_terra", "openai_gpt_5_6_luna")
+_URL = re.compile(r"https?://[^\s)\]]+")
+_READ_2026_11_07_OR_08 = re.compile(r"read 2026-11-0[78]")
 
 
 def _schema(name):
     return json.loads((SCHEMAS / name).read_text())
+
+
+def _cites_aws_docs(text):
+    """True when `text` contains an https URL whose host is exactly
+    docs.aws.amazon.com (hostname equality after urlparse, not a substring)."""
+    urls = _URL.findall(text or "")
+    return any(
+        urllib.parse.urlparse(url).scheme == "https"
+        and urllib.parse.urlparse(url).hostname == "docs.aws.amazon.com"
+        for url in urls
+    )
 
 
 @pytest.fixture(scope="module")
@@ -124,5 +139,78 @@ def test_new_runtime_rows_cite_public_docs_with_a_read_date(catalogs):
                 if path not in RUNTIME_SDK_PATHS:
                     continue
                 evidence = row.get("evidence", "")
-                assert "docs.aws.amazon.com" in evidence, f"{name}: {model_key}.{path}"
+                assert _cites_aws_docs(evidence), f"{name}: {model_key}.{path}"
                 assert read_date.search(evidence), f"{name}: {model_key}.{path} lacks a read date"
+
+
+# --- GPT-5.6 Sol/Terra/Luna re-read from their public model cards (2026-11-08) ---
+
+@pytest.mark.parametrize("model_key", GPT_56_MODELS)
+def test_gpt56_models_list_mantle_chat_with_dated_card_evidence(catalogs, model_key):
+    row = catalogs["openai"]["models"][model_key]["paths"]["mantle_openai_chat"]
+    assert row["available"] is True, model_key
+    assert row["requires_cris"] is False, model_key
+    assert _cites_aws_docs(row["evidence"]), model_key
+    assert _READ_2026_11_07_OR_08.search(row["evidence"]), model_key
+
+
+def test_gpt56_inference_profile_matrices_follow_the_cards(catalogs):
+    models = catalogs["openai"]["models"]
+    us_sources = models["openai_gpt_5_4"]["inference_profiles"]["us"]
+    sol = models["openai_gpt_5_6_sol"]["inference_profiles"]
+    assert set(sol) == {"us", "global"}
+    assert sol["us"] == us_sources
+    for model_key in ("openai_gpt_5_6_terra", "openai_gpt_5_6_luna"):
+        profiles = models[model_key]["inference_profiles"]
+        assert set(profiles) == {"us", "in", "us-gov", "global"}, model_key
+        assert profiles["us"] == us_sources, model_key
+        assert profiles["in"] == ["ap-south-1", "ap-south-2"], model_key
+        assert profiles["us-gov"] == ["us-gov-east-1", "us-gov-west-1"], model_key
+        assert not any(region.startswith("us-gov-") for region in profiles["global"]), model_key
+
+
+def test_every_gpt_path_row_carries_a_boolean_guardrails_flag(catalogs):
+    models = catalogs["openai"]["models"]
+    responses_true = set()
+    chat_true = set()
+    for model_key, model in models.items():
+        if model.get("generation") == "bedrock_native":
+            continue
+        for path, row in model["paths"].items():
+            assert isinstance(row.get("guardrails_supported"), bool), f"{model_key}.{path}"
+            if path.startswith("mantle_"):
+                assert row["guardrails_supported"] is False, f"{model_key}.{path}"
+            if path == "runtime_converse":
+                assert row["guardrails_supported"] is True, f"{model_key}.{path}"
+            if path == "runtime_openai_responses" and row["guardrails_supported"]:
+                responses_true.add(model_key)
+            if path == "runtime_openai_chat" and row["guardrails_supported"]:
+                chat_true.add(model_key)
+    assert responses_true == {"openai_gpt_6_sol", "openai_gpt_6_luna"}
+    assert chat_true == {"openai_gpt_6_sol", "openai_gpt_6_luna", "openai_gpt_6_1_sol"}
+
+
+def test_only_gpt61_sol_mantle_rows_deny_server_side_tools(catalogs):
+    models = catalogs["openai"]["models"]
+    denied = {
+        (model_key, path)
+        for model_key, model in models.items()
+        for path, row in model["paths"].items()
+        if row.get("server_side_tools_supported") is False
+    }
+    assert denied == {
+        ("openai_gpt_6_1_sol", "mantle_openai_responses"),
+        ("openai_gpt_6_1_sol", "mantle_openai_chat"),
+    }
+    for path in ("mantle_openai_responses", "mantle_openai_chat"):
+        row = models["openai_gpt_6_1_sol"]["paths"][path]
+        assert _cites_aws_docs(row["evidence"])
+        assert "read 2026-11-08" in row["evidence"]
+
+
+@pytest.mark.parametrize("model_key", ("openai_gpt_5_4", "openai_gpt_5_5"))
+def test_gpt54_gpt55_scope_structured_outputs_to_the_responses_api(catalogs, model_key):
+    paths = catalogs["openai"]["models"][model_key]["paths"]
+    assert "structured_output_json" in paths["runtime_openai_responses"]["capabilities"]
+    assert "structured_output_json" not in paths["runtime_openai_chat"]["capabilities"]
+    assert "structured_output_json" not in paths["runtime_converse"]["capabilities"]
