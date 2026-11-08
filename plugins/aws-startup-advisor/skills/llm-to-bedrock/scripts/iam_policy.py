@@ -110,9 +110,14 @@ def requires_default_project_grant(model_id: str) -> bool:
 def generate_policy(model_ids: list[str], region: str, account_id: str) -> dict:
     """Build a scoped IAM policy covering exactly the given model IDs.
 
-    Emits up to three statements, depending on which endpoints the targets use:
+    Emits up to four statements, depending on which endpoints the targets use:
     - `bedrock:InvokeModel*` scoped to foundation-model ARNs (plain IDs) and
       inference-profile ARNs (geo-prefixed IDs), for bedrock-runtime targets
+    - `bedrock:GetInferenceProfile` scoped to the inference-profile ARNs, when any
+      runtime target is a cross-region inference profile — the documented
+      prerequisite for invoking through a profile
+      (https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-prereq.html,
+      read 2026-11-07)
     - `bedrock-mantle:CreateInference` / `Get*` / `List*` scoped to the account's
       mantle projects, for mantle-only targets (SigV4 auth)
     - `bedrock-mantle:CallWithBearerToken` on `*`, for Bedrock API-key auth
@@ -154,6 +159,16 @@ def generate_policy(model_ids: list[str], region: str, account_id: str) -> dict:
                 "bedrock:InvokeModelWithResponseStream",
             ],
             "Resource": sorted(set(resources)),
+        })
+
+    profile_arns = [inference_profile_arn(mid, region, account_id)
+                    for mid in runtime_ids if is_inference_profile(mid)]
+    if profile_arns:
+        statements.append({
+            "Sid": "BedrockGetInferenceProfile",
+            "Effect": "Allow",
+            "Action": ["bedrock:GetInferenceProfile"],
+            "Resource": sorted(set(profile_arns)),
         })
 
     if mantle_ids:

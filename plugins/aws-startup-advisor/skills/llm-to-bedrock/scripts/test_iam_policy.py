@@ -221,13 +221,37 @@ def test_astra_cris_id_grants_runtime_foundation_and_profile_arns(prefix):
     mid = f"{prefix}.openai.gpt-6-astra"
     assert not is_mantle_model(mid)
     statements = generate_policy([mid], "us-west-2", ACCOUNT)["Statement"]
-    assert len(statements) == 1
+    assert len(statements) == 2
     assert statements[0]["Action"] == ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
     assert set(statements[0]["Resource"]) == {
         "arn:aws:bedrock:*::foundation-model/openai.gpt-6-astra",
         f"arn:aws:bedrock:us-west-2:{ACCOUNT}:inference-profile/{mid}",
         f"arn:aws:bedrock:us-west-2:{ACCOUNT}:project/default",
     }
+    # Invoking through a CRIS profile also needs GetInferenceProfile on the profile only
+    # (inference-profiles-prereq.html, read 2026-11-07).
+    assert statements[1]["Sid"] == "BedrockGetInferenceProfile"
+    assert statements[1]["Action"] == ["bedrock:GetInferenceProfile"]
+    assert statements[1]["Resource"] == [f"arn:aws:bedrock:us-west-2:{ACCOUNT}:inference-profile/{mid}"]
+
+
+def test_runtime_messages_profile_gets_invoke_and_get_inference_profile():
+    # A runtime_messages target (Anthropic SDK on bedrock-runtime /anthropic) is a plain
+    # CRIS profile for IAM: InvokeModel* on profile + foundation model, GetInferenceProfile
+    # on the profile, and no Mantle statement.
+    mid = "global.anthropic.claude-sonnet-5"
+    statements = generate_policy([mid], "us-west-2", ACCOUNT)["Statement"]
+    assert [s["Sid"] for s in statements] == ["BedrockInvokeModelScoped", "BedrockGetInferenceProfile"]
+    assert set(statements[0]["Resource"]) == {
+        "arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-5",
+        f"arn:aws:bedrock:us-west-2:{ACCOUNT}:inference-profile/{mid}",
+    }
+    assert statements[1]["Resource"] == [f"arn:aws:bedrock:us-west-2:{ACCOUNT}:inference-profile/{mid}"]
+
+
+def test_bare_foundation_model_emits_no_get_inference_profile():
+    statements = generate_policy(["anthropic.claude-haiku-4-5-20251001-v1:0"], REGION, ACCOUNT)["Statement"]
+    assert [s["Sid"] for s in statements] == ["BedrockInvokeModelScoped"]
 
 
 class TestGpt6CrisProjectArn:
@@ -317,7 +341,8 @@ class TestGpt54Gpt55CrisProjectArn:
     @pytest.mark.parametrize("model_id", _GPT54_55_CRIS_SHORT_IDS)
     def test_generate_policy_grants_project_default_for_short_id(self, model_id):
         pol = generate_policy([model_id], REGION, ACCOUNT)
-        assert [s["Sid"] for s in pol["Statement"]] == ["BedrockInvokeModelScoped"]
+        # A CRIS profile also carries the GetInferenceProfile statement (inference-profiles-prereq.html).
+        assert [s["Sid"] for s in pol["Statement"]] == ["BedrockInvokeModelScoped", "BedrockGetInferenceProfile"]
         base = model_id.split(".", 1)[1]
         assert set(pol["Statement"][0]["Resource"]) == {
             f"arn:aws:bedrock:*::foundation-model/{base}",

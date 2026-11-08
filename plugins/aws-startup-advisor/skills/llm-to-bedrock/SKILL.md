@@ -497,6 +497,20 @@ extrapolated cost table (`llm2bedrock-report-generator.md` §6.3) run exactly as
 
 ---
 
+## Endpoint policy (bedrock-runtime default)
+
+`bedrock-runtime` is the default endpoint for new applications and for every migration
+lane in this skill (Converse, the runtime OpenAI-compatible APIs and the runtime Anthropic
+Messages API). `bedrock-mantle` is selected only when the saved plan records a verified
+`mantle_selector`: background inference, server-side/preconfigured tools (including Web
+Search), customer-created Projects or Workspaces, a model or API that exists only on Mantle,
+or strict in-Region processing where Runtime offers only a cross-region profile. API
+continuity alone never selects Mantle — keeping the OpenAI or Anthropic SDK is a Runtime
+lane. See `skills/shared/ai/bedrock-endpoint-policy.md` (vendored at
+`$ASSESS_BASE/references/vendored/ai/bedrock-endpoint-policy.md`) for the public sources.
+
+---
+
 ## Phase A — Assess (runs $ASSESS_SKILL's own AI-path files, inline)
 
 **Do NOT read source code, detect AI SDKs, or ask Clarify questions yourself from scratch.**
@@ -817,10 +831,18 @@ reliably visible, and even that must be materialized to the file for the baselin
 ### B4 — Bedrock preflight
 
 ```bash
-uv run --project $SCRIPTS python $SCRIPTS/preflight_bedrock.py --region $REGION --models <comma-separated $TARGET_MODELS> --dataset-size 200 --runtime-api <selected bedrock_models[].required_client_api; legacy runtime_api or the saved-plan default>
+uv run --project $SCRIPTS python $SCRIPTS/preflight_bedrock.py --region $REGION --models <comma-separated $TARGET_MODELS> --dataset-size 200 --runtime-api <selected bedrock_models[].required_client_api; legacy runtime_api; converse only when the plan recorded it>
 ```
 
 (`--dataset-size 200` matches the golden-dataset cap, so the quota warning reflects the worst case. Prefix with `AWS_PROFILE=$AWS_PROFILE_CHOICE` if B2 chose a non-default profile.)
+
+`--runtime-api` is the selected row's `required_client_api`: pass `messages` when it is
+`"messages"` (a `runtime_messages` plan — the probe uses the Anthropic SDK against the runtime
+`/anthropic` endpoint), `responses` or `chat_completions` for the runtime OpenAI-compatible
+APIs, and `converse` only when the plan recorded `"converse"`. For a `runtime_openai_cris` plan
+ALWAYS pass the explicit source API (`responses` | `chat_completions`, or `converse` only when
+recorded) — never omit the flag to fall back to the Converse default; a plan with no recorded
+API is resolved first by the context-block rule below, not guessed here.
 
 Parse the JSON output. On failure the TOP LEVEL carries `reason`/`detail` (lifted from the
 first failing model) plus `failing_models` (all failing ids); per-model verdicts are in `models[]`:
@@ -830,6 +852,7 @@ first failing model) plus `failing_models` (all failing ids); per-model verdicts
 - `ok == false` + `reason: authz` → IAM denies inference. For a Converse/InvokeModel target the action to grant is `bedrock:InvokeModel`; for a bare proprietary GPT target (GPT-5.x or `openai.gpt-6-astra`) it is the `bedrock-mantle:*` set (see B4a). The `detail` names which. Tell the user the action to grant; stop.
 - `ok == false` + `reason: mantle_deps_missing` → the pinned scripts environment lacks `openai` / `aws-bedrock-token-generator`, so a mantle-only target could not be probed at all. This is an environment fault, not a Bedrock verdict: tell the user to re-sync (`uv sync --project $SCRIPTS`) and stop. Do NOT proceed — access was never verified.
 - `ok == false` + `reason: openai_deps_missing` → the selected runtime Chat/Responses API could not be probed because its SDK is missing. Re-sync the same scripts environment and stop; do not substitute Converse.
+- `ok == false` + `reason: messages_deps_missing` → the selected runtime Anthropic Messages API could not be probed because `anthropic` / `aws-bedrock-token-generator` is missing from the pinned scripts environment. Re-sync (`uv sync --project $SCRIPTS`) and stop; do not substitute Converse — access was never verified.
 - `ok == false` + `reason: model_unavailable` → Read the `resolve-bedrock-model-id` reference at `$HELPERS/resolve-bedrock-model-id/resolve-bedrock-model-id.md` and follow its procedure with each ID from `failing_models` + region. AskUserQuestion with the candidates: "Use `<candidate>` (cross-region inference profile)" / "Paste a different model ID" / "Abort". On a choice, replace the ID in `$TARGET_MODELS` and re-run B4.
 - `ok == false` + any other `reason` → show `detail` and stop.
 - `ok == true` → proceed. Surface any `quota_warning`, and any model whose `reason` is
@@ -881,11 +904,18 @@ resolved_api_path = normalize_api_path(
 
 Read `plan_runtime_api` from the selected model row's `required_client_api`. For older
 plans, fall back to that row's `runtime_api`, then `ai_architecture.code_migration.runtime_api`.
-A current Design CRIS plan without an explicit API uses `responses`; only a legacy
-Converse plan retains `None`. An explicit `invoke` surface is unsupported by this
-execution lane: stop for an explicit supported API decision rather than treating it as Converse. A `runtime_openai_cris`
-plan resolves to `runtime_openai_chat` or `runtime_openai_responses` when that API is explicit,
-and retains the Converse default otherwise. Do not ignore this field on dispatch or resume.
+An explicit `invoke` surface is unsupported by this execution lane: stop for an explicit
+supported API decision rather than treating it as Converse. A `runtime_openai_cris` plan
+resolves to `runtime_openai_chat` or `runtime_openai_responses` from that explicit API and
+**fails closed when none is recorded**: `normalize_api_path` raises `ValueError` ("Converse is
+never the implicit default"). When that happens, do not catch it and guess — AskUserQuestion
+"Which API does the source app call: Responses or Chat Completions?", record the answer in
+run-context as `resolved_runtime_api`, use it as `plan_runtime_api` and re-normalize (on
+resume, read `resolved_runtime_api` from run-context before asking again). An explicit
+`required_client_api: "converse"` is the ONLY route to a Converse rewrite for a
+`runtime_openai_cris` plan. `runtime_messages` (Anthropic SDK on the runtime `/anthropic`
+endpoint) and `mantle_messages` pass through `normalize_api_path` unchanged. Do not ignore
+this field on dispatch or resume.
 The legacy `migration_path: "mantle"` alias with bare proprietary GPT targets resolves to
 `mantle_openai_responses`, so evaluator and rewriter keep the documented Responses default.
 Other explicit `migration_path` values are preserved. With no path, an all-bare proprietary GPT target
@@ -903,7 +933,7 @@ AWS region: <$REGION>
 AWS profile (pass as --profile / AWS_PROFILE= inline on every aws/boto3 invocation): <$AWS_PROFILE_CHOICE — omit line if default>
 Target Bedrock model(s): <comma-joined $TARGET_MODELS, with any resolved overrides already applied>
 Target API path: <resolved_api_path from normalize_api_path above>
-Target API surface: <chat_completions for *_openai_chat, responses for *_openai_responses, otherwise converse>
+Target API surface: <chat_completions for *_openai_chat, responses for *_openai_responses, messages for runtime_messages, otherwise converse>
 Migration plan dir: <$MIGRATION_DIR>
 Resolved target model id: <override for the primary chat model — omit if none>
 Scripts directory (pinned uv toolchain): <$SCRIPTS>
@@ -1093,9 +1123,12 @@ Below, AskUserQuestion:
 **Gate (a.5) — Rewrite strategy (from the normalized API path).** Reuse
 `resolved_api_path` from the context-block normalization above. If it starts with `mantle`,
 set `rewrite_strategy = "mantle"`. For `runtime_openai_chat` or `runtime_openai_responses`,
-set `rewrite_strategy = "runtime_openai"`; otherwise set `rewrite_strategy = "converse"`.
+set `rewrite_strategy = "runtime_openai"`. For `runtime_messages`,
+set `rewrite_strategy = "runtime_messages"`; otherwise set `rewrite_strategy = "converse"`.
 An absent legacy plan field is not a second Converse default here: a validated bare Astra
-plan without that field has already resolved to Mantle Responses before C3. Explicit
+plan without that field has already resolved to Mantle Responses before C3, and a
+`runtime_openai_cris` plan without an API has already failed closed (and been resolved by
+the user) in the context-block normalization. Explicit
 `mantle_openai_chat`, `mantle_openai_responses`, and runtime CRIS choices stay unchanged.
 
 **Gate (b) — Behavior-delta resolution.** For each `analysis.behavior_deltas[]` with
@@ -1140,6 +1173,12 @@ When `rewrite_strategy == "mantle"`, C5's context block ALSO includes:
 When `rewrite_strategy == "runtime_openai"`, add `Rewrite strategy: runtime_openai`.
 C5 must use the shared `Target API surface` and exact target profile at the runtime
 `/openai/v1` endpoint; it must not use the Mantle client or a Converse rewrite.
+
+When `rewrite_strategy == "runtime_messages"`, add `Rewrite strategy: runtime_messages`.
+C5 keeps the Anthropic SDK and its Messages request/response shapes on the runtime
+`/anthropic` endpoint (`https://bedrock-runtime.{region}.amazonaws.com/anthropic`) with the
+exact validated profile ID and a STRING Bedrock token (`provide_token(region=...)` minted per
+client, never a callable); it must not use the Mantle URL or a Converse rewrite.
 
 Rebuild these context lines from the same normalized path on every dispatch/resume. The existing
 `assess_design_sha256` run-context check detects a changed model/API decision. If a bare
@@ -1197,6 +1236,10 @@ Tell the user, before collecting models:
 
 ### AC2 — Collect requested models and region (do NOT resolve friendly names yet)
 
+- **Default endpoint for new work is `bedrock-runtime`:** when the user has not yet chosen an
+  ID form, offer the runtime form (bare foundation-model ID or a supported `us.`/`global.`
+  cross-region profile) first; a bare proprietary GPT ID (`bedrock-mantle`) is checked only
+  when the user names it or has a verified Mantle-only need (see the Endpoint policy section).
 - **Models (raw request only):** if `$ARGUMENTS` names model IDs, use them directly — skip
   resolution, they're already IDs. Otherwise **AskUserQuestion**: "Which models do you want
   access to? Give Bedrock model IDs (e.g. `anthropic.claude-sonnet-4-5-v1:0`,

@@ -7,8 +7,7 @@ new applications and `bedrock-mantle` for capabilities available only there
 `skills/shared/ai/bedrock-endpoint-policy.md`, vendors it into gcp-to-aws and
 azure-to-aws, and requires every `mantle_*` design row to record a
 `mantle_selector`. These checks pin the policy file's contract and the design
-files that must point at it. The llm-to-bedrock SKILL.md reference is added by
-the execution-lane change and is asserted there, not here.
+files and the llm-to-bedrock orchestrator that must point at it.
 """
 from __future__ import annotations
 
@@ -24,6 +23,7 @@ POLICY_VENDORED = [
 ]
 
 ANTHROPIC_GUIDE = PLUGIN_ROOT / "skills" / "shared" / "ai" / "ai-anthropic-to-bedrock.md"
+LLM_TO_BEDROCK_SKILL = PLUGIN_ROOT / "skills" / "llm-to-bedrock" / "SKILL.md"
 
 DESIGN_AI_FILES = [
     PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "phases" / "design" / "design-ai.md",
@@ -86,6 +86,15 @@ def test_design_ai_files_reference_the_policy() -> None:
         text = f.read_text(encoding="utf-8")
         assert "bedrock-endpoint-policy.md" in text, f"{f}: does not point at the endpoint policy"
         assert "mantle_selector" in text, f"{f}: does not require mantle_selector on mantle_* rows"
+
+
+def test_llm_to_bedrock_skill_references_the_policy_and_defaults_to_runtime() -> None:
+    text = LLM_TO_BEDROCK_SKILL.read_text(encoding="utf-8")
+    assert "bedrock-endpoint-policy.md" in text, "llm-to-bedrock SKILL.md does not point at the endpoint policy"
+    assert "## Endpoint policy (bedrock-runtime default)" in text
+    assert "API continuity alone never selects Mantle" in _norm(text)
+    assert "retains the Converse default otherwise" not in text
+    assert "never the implicit default" in _norm(text)
 
 
 def test_schema_docs_carry_the_runtime_default_vocabulary() -> None:

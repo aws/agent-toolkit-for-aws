@@ -5,7 +5,7 @@ import sys
 import textwrap
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
 import pytest
 
@@ -28,22 +28,29 @@ def clients(monkeypatch):
     chat = Mock(return_value=SimpleNamespace(choices=[
         SimpleNamespace(message=SimpleNamespace(content="answer"))]))
     runtime = Mock(return_value={"output": {"message": {"content": [{"text": "answer"}]}}})
+    messages = Mock(return_value=SimpleNamespace(
+        content=[SimpleNamespace(type="text", text="answer")], stop_reason="end_turn"))
     client = SimpleNamespace(responses=SimpleNamespace(create=responses),
                              chat=SimpleNamespace(completions=SimpleNamespace(create=chat)))
+    # The Messages client is used as a context manager (`with create_messages_client(...)`).
+    anth = MagicMock()
+    anth.__enter__.return_value = anth
+    anth.messages.create = messages
     monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(
         BedrockOpenAI=lambda **k: client, OpenAI=lambda **k: client))
+    monkeypatch.setitem(sys.modules, "anthropic", SimpleNamespace(Anthropic=lambda **k: anth))
     monkeypatch.setitem(sys.modules, "aws_bedrock_token_generator",
                         SimpleNamespace(provide_token=lambda **k: "test-token"))
     import boto3
     monkeypatch.setattr(boto3, "client", lambda *a, **k: SimpleNamespace(converse=runtime))
-    return responses, chat, runtime
+    return responses, chat, runtime, messages
 
 
 @pytest.mark.parametrize("surface", ["responses", "chat_completions"])
 @pytest.mark.parametrize("mid", ["openai.gpt-6-astra", "us.openai.gpt-6-astra",
                                 "global.openai.gpt-6-astra"])
 def test_astra_connectivity_uses_selected_openai_api(surface, mid, monkeypatch):
-    responses, chat, runtime = clients(monkeypatch)
+    responses, chat, runtime, messages = clients(monkeypatch)
     code = snippet("# 6a. OpenAI-compatible connectivity", "# 7. Load golden")
     code = code.replace("<TARGET_MODEL_ID>", mid).replace("<TARGET_API_SURFACE>", surface)
     monkeypatch.setenv("AWS_REGION", "us-west-2")
@@ -52,6 +59,7 @@ def test_astra_connectivity_uses_selected_openai_api(surface, mid, monkeypatch):
     assert selected.call_args.kwargs["model"] == mid
     assert selected.call_count == 1
     runtime.assert_not_called()
+    messages.assert_not_called()
     (responses if surface == "chat_completions" else chat).assert_not_called()
 
 
@@ -66,14 +74,15 @@ def test_astra_connectivity_uses_selected_openai_api(surface, mid, monkeypatch):
     ("openai.gpt-6-astra", "legacy_mantle", "responses"),
     ("openai.gpt-5.6-sol", "legacy_mantle", "responses"),
     ("us.openai.gpt-5.6-sol", "converse", "runtime"),
+    ("global.anthropic.claude-sonnet-5", "messages", "messages"),
 ])
 def test_golden_loop_preserves_endpoint_images_and_resume(mid, surface, endpoint, monkeypatch, tmp_path):
-    responses, chat, runtime = clients(monkeypatch)
+    responses, chat, runtime, messages = clients(monkeypatch)
     if surface == "legacy_mantle":
         path = preflight_bedrock.normalize_api_path("mantle", [mid])
         surface = ("chat_completions" if path.endswith("_openai_chat") else
                    "responses" if path.endswith("_openai_responses") else "converse")
-    calls = {"responses": responses, "chat": chat, "runtime": runtime}
+    calls = {"responses": responses, "chat": chat, "runtime": runtime, "messages": messages}
     data = tmp_path / ".saws-migrate/golden-dataset"
     out = tmp_path / ".saws-migrate/eval-results"
     data.mkdir(parents=True)
@@ -98,6 +107,14 @@ def test_golden_loop_preserves_endpoint_images_and_resume(mid, surface, endpoint
     elif endpoint == "chat":
         assert call["messages"][0] == {"role": "system", "content": "be concise"}
         assert call["messages"][1]["content"][1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
+    elif endpoint == "messages":
+        # Anthropic Messages shape: base64 `source` block (not a data URL), top-level `system`.
+        image_block = call["messages"][0]["content"][0]
+        assert image_block["type"] == "image"
+        assert image_block["source"]["media_type"] == "image/jpeg"
+        assert image_block["source"]["type"] == "base64"
+        assert call["messages"][0]["content"][1] == {"type": "text", "text": "describe"}
+        assert call["system"] == "be concise"
     else:
         assert call["messages"][0]["content"][0]["image"]["format"] == "jpeg"
     for name, spy in calls.items():
@@ -109,7 +126,7 @@ def test_golden_loop_preserves_endpoint_images_and_resume(mid, surface, endpoint
 @pytest.mark.parametrize("mid", ["openai.gpt-6-astra", "global.openai.gpt-6-astra"])
 @pytest.mark.parametrize("surface", ["responses", "chat_completions"])
 def test_golden_openai_throttle_returns_partial_without_scoring_error(mid, surface, monkeypatch, tmp_path):
-    responses, chat, runtime = clients(monkeypatch)
+    responses, chat, runtime, messages = clients(monkeypatch)
     selected = chat if surface == "chat_completions" else responses
     error = RuntimeError("throttled")
     error.status_code = 429
@@ -134,7 +151,7 @@ def test_golden_openai_throttle_returns_partial_without_scoring_error(mid, surfa
 
 
 @pytest.mark.parametrize("surface,path", [
-    (None, "runtime_openai_cris"), ("converse", "runtime_openai_cris"),
+    ("converse", "runtime_openai_cris"),
     ("responses", "runtime_openai_responses"), ("chat_completions", "runtime_openai_chat"),
 ])
 def test_explicit_runtime_api_survives_normalization(surface, path):
@@ -144,17 +161,96 @@ def test_explicit_runtime_api_survives_normalization(surface, path):
         preflight_bedrock.normalize_api_path("runtime_openai_cris", [], "unknown")
 
 
-@pytest.mark.parametrize("surface", ["responses", "chat_completions"])
-def test_runtime_preflight_uses_selected_api(surface, monkeypatch, capsys):
-    responses, chat, runtime = clients(monkeypatch)
+def test_runtime_openai_cris_without_api_fails_closed():
+    """A runtime_openai_cris plan with no recorded API must never resolve to Converse."""
+    with pytest.raises(ValueError, match="never the implicit default"):
+        preflight_bedrock.normalize_api_path("runtime_openai_cris", ["us.openai.gpt-6-astra"], None)
+    # The same rule holds for the snippet SKILL.md tells the orchestrator to run.
+    skill = (PLUGIN / "skills/llm-to-bedrock/SKILL.md").read_text()
+    block = skill.split("### The context block", 1)[1]
+    code = re.search(r"```python\n(.*?)\n```", block, re.S).group(1)
+    code = code.replace("<absolute path to $SCRIPTS>", str(Path(__file__).parent))
+    ns = {"plan_migration_path": "runtime_openai_cris",
+          "validated_target_model_ids": ["us.openai.gpt-6-astra"], "plan_runtime_api": None}
+    with pytest.raises(ValueError, match="never the implicit default"):
+        exec(compile(code, "SKILL.md context block", "exec"), ns)  # nosec B102 - committed snippet
+    ns["plan_runtime_api"] = "responses"
+    exec(compile(code, "SKILL.md context block", "exec"), ns)  # nosec B102 - committed snippet
+    assert ns["resolved_api_path"] == "runtime_openai_responses"
+    assert "retains the Converse default otherwise" not in skill
+
+
+@pytest.mark.parametrize("surface,mid", [
+    ("responses", "global.openai.gpt-6-astra"),
+    ("chat_completions", "global.openai.gpt-6-astra"),
+    ("messages", "global.anthropic.claude-sonnet-5"),
+])
+def test_runtime_preflight_uses_selected_api(surface, mid, monkeypatch, capsys):
+    responses, chat, runtime, messages = clients(monkeypatch)
     monkeypatch.setattr(preflight_bedrock, "fetch_bedrock_quotas", lambda region: [])
-    mid = "global.openai.gpt-6-astra"
     assert preflight_bedrock.main(
         ["--region", "us-west-2", "--models", mid, "--runtime-api", surface]) == 0
-    selected = chat if surface == "chat_completions" else responses
+    selected = {"responses": responses, "chat_completions": chat, "messages": messages}[surface]
     assert selected.call_args.kwargs["model"] == mid
-    runtime.assert_not_called()
+    assert selected.call_count == 1
+    for spy in (responses, chat, runtime, messages):
+        if spy is not selected:
+            spy.assert_not_called()
     assert json.loads(capsys.readouterr().out)["ok"]
+
+
+def test_runtime_messages_client_uses_real_sdk_wire_contract(monkeypatch):
+    """Real Anthropic SDK + offline HTTP: the probe POSTs to the runtime /anthropic endpoint
+    with the minted token as a plain `x-api-key` string."""
+    import httpx
+    import aws_bedrock_token_generator
+    requests = []
+
+    def transport(request):
+        requests.append(request)
+        return httpx.Response(200, json={
+            "id": "msg_fixture", "type": "message", "role": "assistant",
+            "model": "global.anthropic.claude-sonnet-5",
+            "content": [{"type": "text", "text": "answer"}],
+            "stop_reason": "end_turn", "stop_sequence": None,
+            "usage": {"input_tokens": 1, "output_tokens": 1}})
+
+    real_factory = preflight_bedrock.create_messages_client
+    monkeypatch.setattr(aws_bedrock_token_generator, "provide_token", lambda **k: "fixture-token")
+    with httpx.Client(transport=httpx.MockTransport(transport)) as http_client:
+        monkeypatch.setattr(
+            preflight_bedrock, "create_messages_client",
+            lambda region, max_retries=0: real_factory(
+                region, http_client=http_client, max_retries=max_retries))
+        assert preflight_bedrock.probe_runtime_messages_model(
+            "global.anthropic.claude-sonnet-5", "us-west-2")["ok"]
+    assert len(requests) == 1
+    assert str(requests[0].url) == "https://bedrock-runtime.us-west-2.amazonaws.com/anthropic/v1/messages"
+    assert requests[0].headers["x-api-key"] == "fixture-token"
+    assert "anthropic-version" in requests[0].headers
+    body = json.loads(requests[0].content)
+    assert body["model"] == "global.anthropic.claude-sonnet-5"
+    assert body["messages"] == [{"role": "user", "content": "ping"}]
+
+
+def test_runtime_messages_token_is_minted_per_client(monkeypatch):
+    """The pinned Anthropic SDK takes a string credential: each client gets a fresh token
+    string from provide_token, never a callable."""
+    ctor = Mock(return_value=MagicMock())
+    provide_token = Mock(side_effect=["token-1", "token-2"])
+    monkeypatch.setitem(sys.modules, "anthropic", SimpleNamespace(Anthropic=ctor))
+    monkeypatch.setitem(sys.modules, "aws_bedrock_token_generator",
+                        SimpleNamespace(provide_token=provide_token))
+    preflight_bedrock.create_messages_client("us-west-2")
+    preflight_bedrock.create_messages_client("us-west-2")
+    keys = [call.kwargs["api_key"] for call in ctor.call_args_list]
+    assert keys == ["token-1", "token-2"]
+    assert all(isinstance(key, str) for key in keys)
+    assert provide_token.call_args_list[0].kwargs == {"region": "us-west-2"}
+    for call in ctor.call_args_list:
+        assert call.kwargs["base_url"] == "https://bedrock-runtime.us-west-2.amazonaws.com/anthropic"
+        assert call.kwargs["max_retries"] == 0
+        assert "http_client" not in call.kwargs
 
 
 @pytest.mark.parametrize("surface", ["responses", "chat_completions"])
@@ -162,7 +258,7 @@ def test_runtime_preflight_uses_selected_api(surface, monkeypatch, capsys):
 def test_vision_smoke_preserves_openai_endpoint_and_surface(surface, mid, monkeypatch):
     import io
     import urllib.request
-    responses, chat, runtime = clients(monkeypatch)
+    responses, chat, runtime, messages = clients(monkeypatch)
     monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: io.BytesIO(b"test-image"))
     code = snippet("# 9.5a OpenAI-compatible vision", "# 10. Run golden")
     code = code.replace("<TARGET_MODEL_ID>", mid).replace("<TARGET_API_SURFACE>", surface)
@@ -221,11 +317,27 @@ def test_dispatch_and_rewriter_preserve_runtime_openai_strategy():
     rewriter = (PLUGIN / "agents/llm2bedrock-code-rewriter.md").read_text()
     assert "validated_target_model_ids, plan_runtime_api" in skill
     assert 'set `rewrite_strategy = "runtime_openai"`' in skill
+    assert 'set `rewrite_strategy = "runtime_messages"`' in skill
+    assert "messages for runtime_messages" in skill
     assert "Target API surface:" in skill
-    lane = rewriter.split("### Runtime OpenAI lane", 1)[1].split("### Mantle express lane", 1)[0]
+    lane = rewriter.split("### Runtime OpenAI lane", 1)[1].split(
+        "### Runtime Anthropic Messages lane", 1)[0]
     assert "bedrock-runtime.{region}.amazonaws.com/openai/v1" in lane
     assert "chat.completions.create" in lane and "responses.create" in lane
     assert "OpenAI-to-boto3 dependency replacement" in lane
+    messages_lane = rewriter.split("### Runtime Anthropic Messages lane", 1)[1].split(
+        "### Mantle express lane", 1)[0]
+    assert "bedrock-runtime.{region}.amazonaws.com/anthropic" in messages_lane
+    assert 'base_url=f"https://bedrock-runtime.{REGION}.amazonaws.com/anthropic"' in messages_lane
+    assert "provide_token(region=" in messages_lane
+    assert "with bedrock_anthropic() as client" in messages_lane
+    assert "messages.stream(" in messages_lane
+    assert "bedrock:GetInferenceProfile" in messages_lane
+    assert "api_key=lambda" not in messages_lane and "auth_token=lambda" not in messages_lane
+    # Mantle is selector-gated now; the old 'default and smallest change' claim is gone.
+    assert "remains the default and smallest change" not in rewriter
+    assert "### Converse rewrite (default)" not in rewriter
+    assert "### Converse rewrite (explicit `converse` plans)" in rewriter
 
 
 def test_chat_image_helper_validates_missing_bytes():
@@ -269,7 +381,7 @@ def test_api_handoff_paths_and_real_evaluator_classifier_are_consistent():
     (None, ["global.openai.gpt-6-astra"], "converse"),
     ("mantle_openai_chat", ["openai.gpt-6-astra"], "mantle_openai_chat"),
     ("mantle_openai_responses", ["openai.gpt-6-astra"], "mantle_openai_responses"),
-    ("runtime_openai_cris", ["us.openai.gpt-6-astra"], "runtime_openai_cris"),
+    ("runtime_messages", ["global.anthropic.claude-sonnet-5"], "runtime_messages"),
     ("mantle_messages", ["anthropic.claude-sonnet-5"], "mantle_messages"),
 ])
 def test_dispatch_and_resume_share_api_default(path, ids, expected):

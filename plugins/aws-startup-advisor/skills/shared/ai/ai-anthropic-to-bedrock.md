@@ -89,8 +89,8 @@ Response parsing keeps the native shape: select text blocks by `type == "text"`,
 position, because thinking and tool-use blocks can appear first.
 
 ```python
-text = "".join(block.text for block in response.content if block.type == "text")
-if not text or response.stop_reason in ("max_tokens", "refusal", "tool_use"):
+answer = "".join(block.text for block in response.content if block.type == "text")
+if not answer or response.stop_reason in ("max_tokens", "refusal", "tool_use"):
     raise ValueError(f"No complete text response (stop_reason={response.stop_reason})")
 ```
 
@@ -154,15 +154,16 @@ metadata). This is a rewrite, not a repoint:
   Content becomes typed blocks `[{"text": "..."}]`; `max_tokens` moves to `inferenceConfig.maxTokens`;
   select text blocks by their `text` key because reasoning and tool blocks can appear first:
 
-  ```python
-  text = "".join(block["text"] for block in response["output"]["message"]["content"] if "text" in block)
-  stop_reason = response.get("stopReason", "unknown")
-  if not text or stop_reason in ("max_tokens", "model_context_window_exceeded", "guardrail_intervened", "content_filtered", "refusal", "tool_use"):
-      raise ValueError(f"No complete text response (stopReason={stop_reason})")
-  ```
+```python
+text = "".join(block["text"] for block in response["output"]["message"]["content"] if "text" in block)
+stop_reason = response.get("stopReason", "unknown")
+if not text or stop_reason in ("max_tokens", "model_context_window_exceeded", "guardrail_intervened", "content_filtered", "refusal", "tool_use"):
+    raise ValueError(f"No complete text response (stopReason={stop_reason})")
+```
 
-  For tool loops, retain the original `response["output"]["message"]` in assistant history,
-  including signed reasoning blocks, and handle every tool request before continuing.
+For tool loops on Converse, retain the original `response["output"]["message"]` in assistant
+history, including signed reasoning blocks, and handle every tool request before continuing.
+
 - System prompts: `system="You are helpful"` → `system=[{"text": "You are helpful"}]`.
 - Streaming: `client.messages.stream()` → `client.converse_stream()`; iterate `response["stream"]`
   for `contentBlockDelta` events.

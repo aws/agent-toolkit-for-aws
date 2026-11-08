@@ -6,12 +6,14 @@ Prints a JSON verdict to stdout; exit 0 if all models pass, 1 otherwise.
 Always prints JSON — including for missing credentials / bad region — so the
 caller can parse the verdict instead of a traceback. On failure the top level
 carries `reason`/`detail`/`failing_models` lifted from the first failing model.
-Chat models default to Converse; --runtime-api preserves an explicit proprietary
-GPT Chat/Responses selection. Embedding models (which don't speak
-Converse) via InvokeModel with their family's request body. Bare OpenAI
-proprietary GPT ids are mantle-served and probed via the OpenAI Responses API;
-GPT-6 Astra (us./global.) and GPT-5.6 (us./in./global.) CRIS ids are bedrock-runtime targets
-take the selected runtime API probe.
+Each model is probed on the API the plan selected (--runtime-api): `converse`
+(the default when no API was selected), `responses` / `chat_completions` for the
+runtime OpenAI-compatible APIs, or `messages` for the runtime Anthropic Messages
+API. Embedding models (which don't speak Converse) go via InvokeModel with their
+family's request body. Bare OpenAI proprietary GPT ids are the bedrock-mantle
+form and are probed via the OpenAI Responses API on that endpoint; GPT-6 Astra
+(us./global.) and GPT-5.6 (us./in./global.) CRIS ids are bedrock-runtime targets
+and take the selected runtime API probe.
 Probe output budgets and cost depend on the selected API.
 """
 import argparse, json, sys
@@ -78,8 +80,11 @@ def normalize_api_path(plan_path: str | None, model_ids: list[str],
                        runtime_api: str | None = None) -> str:
     """Resolve a missing legacy path once for evaluator and rewriter dispatch.
 
-    Explicit plans retain their chosen API. Legacy bare proprietary GPT targets
-    use Mantle Responses; runtime targets retain the existing Converse default.
+    Explicit plans retain their chosen API. A `runtime_openai_cris` plan must
+    name the source app's API (`responses` or `chat_completions`; `converse` only
+    when the plan recorded it explicitly) — it fails closed rather than silently
+    falling back to Converse. Legacy bare proprietary GPT targets use Mantle
+    Responses; legacy runtime targets with no path at all retain Converse.
     A mixed legacy target set needs an explicit plan rather than an unsafe guess.
     """
     if plan_path == "mantle" and model_ids and all(is_mantle_model(mid) for mid in model_ids):
@@ -87,9 +92,14 @@ def normalize_api_path(plan_path: str | None, model_ids: list[str],
     if plan_path == "runtime_openai_cris":
         paths = {"converse": plan_path, "responses": "runtime_openai_responses",
                  "chat_completions": "runtime_openai_chat"}
-        if runtime_api is not None and runtime_api not in paths:
+        if runtime_api is None:
+            raise ValueError(
+                "runtime_openai_cris plan has no explicit API — record the source app's API "
+                "(responses or chat_completions) as required_client_api; Converse is never "
+                "the implicit default")
+        if runtime_api not in paths:
             raise ValueError("Unknown runtime API; resolve the saved migration plan")
-        return paths[runtime_api or "converse"]
+        return paths[runtime_api]
     if plan_path:
         return plan_path
     if not model_ids:
@@ -132,6 +142,49 @@ def probe_runtime_openai_model(model_id: str, region: str, api_surface: str) -> 
         return {"ok": False, "reason": "openai_deps_missing",
                 "detail": f"Cannot verify the runtime OpenAI API: {e}. Re-sync scripts/pyproject.toml."}
     except Exception as e:
+        code = {401: "UnrecognizedClientException", 403: "AccessDeniedException",
+                 404: "ResourceNotFoundException", 429: "ThrottlingException"}.get(
+                     getattr(e, "status_code", None), "unknown")
+        return classify_invoke_error(code, str(e))
+
+
+def create_messages_client(region: str, http_client=None, max_retries: int = 0):
+    """Anthropic SDK client for the bedrock-runtime Messages endpoint.
+
+    Public basis: https://docs.aws.amazon.com/bedrock/latest/userguide/inference-messages-api.html
+    (read 2026-11-07) — base_url `https://bedrock-runtime.{region}.amazonaws.com/anthropic`
+    and a Bedrock bearer token passed as `api_key`. The pinned Anthropic SDK takes a
+    STRING credential only, so the token is minted here, once per client, and never
+    passed as a callable; callers create a client per request boundary and close it
+    (`with create_messages_client(region) as client:`)."""
+    import anthropic
+    from aws_bedrock_token_generator import provide_token
+    extra = {"http_client": http_client} if http_client is not None else {}
+    return anthropic.Anthropic(
+        base_url=f"https://bedrock-runtime.{region}.amazonaws.com/anthropic",
+        api_key=provide_token(region=region), max_retries=max_retries, **extra,
+    )
+
+
+def probe_runtime_messages_model(model_id: str, region: str) -> dict:
+    """Probe the runtime Anthropic Messages API for the exact validated profile.
+
+    Fails CLOSED when the Anthropic SDK or the token generator is missing, for the
+    same reason probe_mantle_model does: a missing dependency would otherwise turn
+    the preflight into an unconditional pass with access never verified."""
+    try:
+        with create_messages_client(region) as client:
+            client.messages.create(model=model_id, max_tokens=16,
+                                   messages=[{"role": "user", "content": "ping"}])
+        return {"ok": True, "reason": "ok", "detail": "Runtime Anthropic Messages API authorized."}
+    except ImportError as e:
+        return {"ok": False, "reason": "messages_deps_missing",
+                "detail": f"Cannot verify the runtime Anthropic Messages API for {model_id}: {e}. "
+                          f"This needs 'anthropic' and 'aws-bedrock-token-generator', both "
+                          f"declared in scripts/pyproject.toml — re-sync the pinned environment "
+                          f"(`uv sync --project <scripts dir>`). Access was NOT verified; "
+                          f"preflight fails closed rather than assuming it works."}
+    except Exception as e:  # noqa: BLE001 - SDK raises many types; status is what matters
         code = {401: "UnrecognizedClientException", 403: "AccessDeniedException",
                  404: "ResourceNotFoundException", 429: "ThrottlingException"}.get(
                      getattr(e, "status_code", None), "unknown")
@@ -315,7 +368,8 @@ def main(argv=None) -> int:
     ap.add_argument("--region", required=True)
     ap.add_argument("--models", required=True, help="comma-separated model ids")
     ap.add_argument("--dataset-size", type=int, default=0)
-    ap.add_argument("--runtime-api", choices=["converse", "responses", "chat_completions"],
+    ap.add_argument("--runtime-api",
+                    choices=["converse", "responses", "chat_completions", "messages"],
                     default="converse")
     args = ap.parse_args(argv)
 
@@ -357,7 +411,9 @@ def main(argv=None) -> int:
                     "Do not assume GPT-5.6's cached-input quota exemption or RPM rules "
                     "apply; Astra's documented 10x output burndown is runtime-specific.")
         else:
-            if (args.runtime_api != "converse" and ".openai.gpt-" in model_id
+            if args.runtime_api == "messages":
+                verdict = probe_runtime_messages_model(model_id, args.region)
+            elif (args.runtime_api != "converse" and ".openai.gpt-" in model_id
                     and "gpt-oss" not in model_id):
                 verdict = probe_runtime_openai_model(model_id, args.region, args.runtime_api)
             else:

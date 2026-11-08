@@ -322,3 +322,51 @@ def test_mantle_deps_are_declared_in_pinned_env():
     toml = (pathlib.Path(__file__).resolve().parent / "pyproject.toml").read_text()
     assert "openai>=2.45.0" in toml
     assert "aws-bedrock-token-generator" in toml
+    assert "anthropic>=" in toml
+
+
+def test_messages_missing_deps_fails_closed(monkeypatch):
+    # Same contract as the mantle probe: a missing Anthropic SDK must not turn the
+    # runtime Messages preflight into an unconditional pass.
+    import builtins
+    real_import = builtins.__import__
+
+    def no_anthropic(name, *a, **k):
+        if name in ("anthropic", "aws_bedrock_token_generator"):
+            raise ImportError(f"No module named {name!r}")
+        return real_import(name, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", no_anthropic)
+    v = p.probe_runtime_messages_model("global.anthropic.claude-sonnet-5", "us-west-2")
+    assert v["ok"] is False
+    assert v["reason"] == "messages_deps_missing"
+    assert "NOT verified" in v["detail"]
+
+
+def test_runtime_openai_cris_plan_without_api_fails_closed():
+    # Regression: a runtime_openai_cris plan with no recorded API used to resolve to
+    # Converse silently; the source app's API must be recorded (or explicit converse).
+    with pytest.raises(ValueError, match="never the implicit default"):
+        p.normalize_api_path("runtime_openai_cris", ["us.openai.gpt-5.5"], None)
+    assert p.normalize_api_path("runtime_openai_cris", ["us.openai.gpt-5.5"], "converse") == "runtime_openai_cris"
+    assert p.normalize_api_path("runtime_messages", ["global.anthropic.claude-sonnet-5"]) == "runtime_messages"
+
+
+def test_main_routes_messages_api_to_the_messages_probe(monkeypatch, capsys):
+    import boto3
+    import json
+    calls = []
+    monkeypatch.setattr(boto3, "client", lambda *a, **k: object())
+    monkeypatch.setattr(p, "fetch_bedrock_quotas", lambda region: [])
+    monkeypatch.setattr(p, "probe_runtime_messages_model",
+                        lambda mid, region: calls.append(("messages", mid, region)) or
+                        {"ok": True, "reason": "ok", "detail": "ok"})
+    monkeypatch.setattr(p, "probe_model",
+                        lambda client, mid: (_ for _ in ()).throw(AssertionError("Converse probe must not run")))
+    monkeypatch.setattr(p, "probe_runtime_openai_model",
+                        lambda *a: (_ for _ in ()).throw(AssertionError("OpenAI probe must not run")))
+    rc = p.main(["--region", "us-west-2", "--models", "global.anthropic.claude-sonnet-5",
+                 "--runtime-api", "messages"])
+    assert rc == 0
+    assert calls == [("messages", "global.anthropic.claude-sonnet-5", "us-west-2")]
+    assert json.loads(capsys.readouterr().out)["ok"] is True
