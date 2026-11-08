@@ -20,6 +20,7 @@ from iam_policy import (
     is_inference_profile,
     parse_targets,
     requires_default_project_grant,
+    target_apis_by_id,
 )
 
 REGION = "us-east-1"
@@ -603,6 +604,51 @@ class TestPerRowTargetApis:
         pol = generate_policy([self.CLAUDE, self.GPT], REGION, ACCOUNT, runtime_api="messages",
                               target_apis={self.GPT: "chat_completions"})
         assert default_project_arn(REGION, ACCOUNT) in self._invoke_resources(pol)
+
+    # PR 585 review round 1, B2: the same GPT CRIS id in two rows (a Converse row for a
+    # Guardrails call site, a Chat row for a second source model). `dict(pairs)` kept
+    # only the last row, so the grant depended on row order.
+    SOL = "us.openai.gpt-5.6-sol"
+
+    @pytest.mark.parametrize("specs", [
+        [f"{SOL}=chat_completions", f"{SOL}=converse"],
+        [f"{SOL}=converse", f"{SOL}=chat_completions"],
+        [f"{SOL}=converse", f"{SOL}=responses"],
+    ])
+    def test_same_id_on_chat_and_converse_rows_grants_once_in_either_order(self, specs):
+        pairs = parse_targets(specs)
+        pol = generate_policy([m for m, _ in pairs], REGION, ACCOUNT,
+                              target_apis=target_apis_by_id(pairs))
+        assert self._invoke_resources(pol).count(default_project_arn(REGION, ACCOUNT)) == 1
+
+    def test_same_id_on_two_converse_rows_grants_none(self):
+        pairs = parse_targets([f"{self.SOL}=converse", f"{self.SOL}=converse"])
+        pol = generate_policy([m for m, _ in pairs], REGION, ACCOUNT,
+                              target_apis=target_apis_by_id(pairs))
+        assert default_project_arn(REGION, ACCOUNT) not in self._invoke_resources(pol)
+
+    def test_target_apis_by_id_keeps_every_row_api(self):
+        assert target_apis_by_id([(self.SOL, "chat_completions"), (self.SOL, "converse"),
+                                  (self.CLAUDE, "messages")]) == {
+            self.SOL: {"chat_completions", "converse"}, self.CLAUDE: {"messages"},
+        }
+
+    def test_unknown_api_inside_a_row_set_fails_closed(self):
+        with pytest.raises(ValueError, match="Unknown runtime API 'grpc'"):
+            generate_policy([self.SOL], REGION, ACCOUNT, target_apis={self.SOL: {"converse", "grpc"}})
+
+    @pytest.mark.parametrize("order", [("chat_completions", "converse"), ("converse", "chat_completions")])
+    def test_cli_duplicate_id_rows_grant_once_regardless_of_order(self, order):
+        # The reviewer's spot-check: chat-then-converse used to emit 0 project/default.
+        result = subprocess.run(  # nosec B603
+            [sys.executable, str(Path(__file__).parent / "iam_policy.py"),
+             "--target", f"{self.SOL}={order[0]}", "--target", f"{self.SOL}={order[1]}",
+             "--region", REGION, "--account-id", ACCOUNT],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        policy = json.loads(result.stdout)
+        assert policy["Statement"][0]["Resource"].count(default_project_arn(REGION, ACCOUNT)) == 1
 
     def test_unknown_row_api_fails_closed(self):
         with pytest.raises(ValueError, match="Unknown runtime API 'grpc'"):

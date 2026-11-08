@@ -186,18 +186,35 @@ def parse_targets(specs: list[str]) -> list[tuple[str, str]]:
     return pairs
 
 
+def target_apis_by_id(pairs: list[tuple[str, str]]) -> dict[str, set[str]]:
+    """Pure: group parsed `(model_id, api)` pairs into EVERY API each id is called on.
+
+    One Bedrock id may sit in two `bedrock_models[]` rows with different APIs — a
+    `converse` row for a Guardrails / application-inference-profile call site and a
+    `chat_completions` / `responses` row for a second source model mapped to the same
+    target. `dict(pairs)` would keep only the last row, so the grant would depend on
+    row order; the set keeps every row and the grant is any-row-wins."""
+    by_id: dict[str, set[str]] = {}
+    for model_id, api in pairs:
+        by_id.setdefault(model_id, set()).add(api)
+    return by_id
+
+
 def generate_policy(model_ids: list[str], region: str, account_id: str,
                     runtime_api: str | None = None,
                     migration_path: str | None = None,
-                    target_apis: dict[str, str] | None = None) -> dict:
+                    target_apis: dict[str, str | set[str]] | None = None) -> dict:
     """Build a scoped IAM policy covering exactly the given model IDs.
 
     `runtime_api` is the plan's selected API (`responses`, `chat_completions`,
     `converse`, `messages`); it decides the default-project grant (see
     `requires_default_project_grant`). None keeps the id-only behaviour.
-    `target_apis` maps a model id to ITS OWN row's API and takes precedence over
-    `runtime_api` for that id, so a mixed plan (Claude Messages primary + GPT Chat
-    secondary) grants the default project to the GPT row and not to the Claude row.
+    `target_apis` maps a model id to ITS OWN row's API — a single API, or the set
+    of APIs from every row that names the id (see `target_apis_by_id`) — and takes
+    precedence over `runtime_api` for that id, so a mixed plan (Claude Messages
+    primary + GPT Chat secondary) grants the default project to the GPT row and not
+    to the Claude row. When one id carries several APIs, ANY row on `responses` /
+    `chat_completions` grants it, regardless of row order.
     `migration_path` is the plan's `code_migration.migration_path`; an
     UNSUPPORTED lane (`mantle_messages`) raises `ValueError` instead of emitting
     runtime `bedrock:InvokeModel*` for a bare Claude id that the lane would never
@@ -228,11 +245,13 @@ def generate_policy(model_ids: list[str], region: str, account_id: str,
     if runtime_api is not None and runtime_api not in RUNTIME_APIS:
         raise ValueError(f"Unknown runtime API {runtime_api!r}; expected one of "
                          f"{sorted(RUNTIME_APIS)}")
-    target_apis = dict(target_apis or {})
-    for mid, api in target_apis.items():
-        if api not in TARGET_APIS:
-            raise ValueError(f"Unknown runtime API {api!r} for target {mid!r}; expected one of "
-                             f"{sorted(TARGET_APIS)}")
+    target_apis = {mid: {apis} if isinstance(apis, str) else set(apis)
+                   for mid, apis in (target_apis or {}).items()}
+    for mid, apis in target_apis.items():
+        for api in sorted(apis):
+            if api not in TARGET_APIS:
+                raise ValueError(f"Unknown runtime API {api!r} for target {mid!r}; expected one of "
+                                 f"{sorted(TARGET_APIS)}")
     runtime_ids = [m for m in model_ids if not is_mantle_model(m, region)]
     mantle_ids = [m for m in model_ids if is_mantle_model(m, region)]
 
@@ -249,8 +268,11 @@ def generate_policy(model_ids: list[str], region: str, account_id: str,
             # InvokeModel on the inference-profile ARN AND the default project
             # ARN; both are required, neither replaces the other. Converse-only
             # routes, Anthropic ids and every other runtime target keep the
-            # 2-ARN shape above. The row's own API wins over the plan-wide one.
-            if requires_default_project_grant(mid, target_apis.get(mid, runtime_api)):
+            # 2-ARN shape above. The row's own API wins over the plan-wide one,
+            # and when the id sits in several rows ANY Responses / Chat row grants
+            # it (never last-row-wins, so row order cannot drop the grant).
+            row_apis = target_apis.get(mid) or {runtime_api}
+            if any(requires_default_project_grant(mid, api) for api in row_apis):
                 resources.append(default_project_arn(region, account_id))
         else:
             resources.append(foundation_model_arn(mid, region))
@@ -347,7 +369,7 @@ if __name__ == "__main__":
         except ValueError as e:
             _fail("unknown_runtime_api", str(e))
         model_ids = [m for m, _ in targets]
-        target_apis = dict(targets)
+        target_apis = target_apis_by_id(targets)
     else:
         model_ids = [m.strip() for m in args.models.split(",") if m.strip()]
     try:

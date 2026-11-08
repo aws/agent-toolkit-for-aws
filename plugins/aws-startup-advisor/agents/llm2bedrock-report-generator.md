@@ -578,7 +578,11 @@ uv run --project <scriptsDir> python <scriptsDir>/iam_policy.py \
 row's API is the `Target API surface` from your context (the value B4 resolved; use it when that row records
 no `required_client_api`). Do NOT apply the primary's surface to the other rows: the grant is decided per row,
 so a `runtime_messages` plan whose secondary is a GPT Chat / Responses CRIS id still gets `project/default`
-for that secondary, while a Nova Converse secondary does not. If any row's API is missing or unknown the
+for that secondary, while a Nova Converse secondary does not. Do not deduplicate rows: when one id appears in
+two rows with different APIs (a `converse` row for a Guardrails / application-inference-profile call site and
+a `chat_completions` / `responses` row for another source model), pass both pairs in any order — the helper
+grants `project/default` once if ANY of that id's rows is on `responses` / `chat_completions`, and never if
+none is. If any row's API is missing or unknown the
 helper exits 1 with `reason: unknown_runtime_api` and writes no policy — report that verbatim, do not
 substitute an API and do not hand-write a policy. The legacy single-API form
 `--models <comma-separated ids> --runtime-api <Target API surface>` is still accepted but applies ONE API to
