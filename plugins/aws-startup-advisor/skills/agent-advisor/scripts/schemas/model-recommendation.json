@@ -315,7 +315,8 @@
         "migration_deltas",
         "evaluation",
         "rollout",
-        "verification"
+        "verification",
+        "mantle_selector"
       ],
       "properties": {
         "workload_id": {
@@ -546,6 +547,24 @@
               },
               "decision_options": {
                 "minItems": 2
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "api_path": {
+                "type": "string",
+                "pattern": "^mantle_"
+              }
+            },
+            "required": ["api_path"]
+          },
+          "then": {
+            "properties": {
+              "mantle_selector": {
+                "type": "string"
               }
             }
           }
