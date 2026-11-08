@@ -150,7 +150,12 @@ move (no Guardrails or other client-surface need). A Guardrails-requiring worklo
 `runtime_openai_cris` sets it to the surface that is actually Guardrails-capable for that model:
 `converse` for GPT-6 Astra and GPT-6.1 Terra, or
 `converse`/`chat_completions`/`invoke` — never `responses` — for GPT-6.1 Sol and the other
-GPT-6/5.6 CRIS models except Astra and GPT-6.1 Terra. Terra also requires `converse` for application inference profiles. `generate-artifacts-ai.md`'s CRIS Step 1M reads this field and
+GPT-6/5.6 CRIS models except Astra and GPT-6.1 Terra. Application inference profiles also require
+`converse` on every model whose card lists them as Converse-only — GPT-6.1 Terra, Astra, and GPT-5.5 /
+GPT-5.4 (cards read 2026-11-07: "Converse API only; not supported with Responses or Chat Completions
+APIs") — so a workload needing them on `runtime_openai_cris` sets `converse`, never leaves the field
+absent; a same-workload Responses-only need (GPT-5.5 / GPT-5.4 structured outputs, implicit caching)
+is an explicit design decision, not a silent drop. `generate-artifacts-ai.md`'s CRIS Step 1M reads this field and
 emits that surface instead of defaulting to `responses.create`. Keep the existing Astra-no-Invoke
 migration_path note above — `required_client_api` never sets `invoke` for Astra.
 
@@ -209,6 +214,12 @@ rubric file (`ai.md`, `ai-azure-openai-to-bedrock.md`, or a `vendored/ai/*` ref)
       GPT-5.6, GPT-6, GPT-5.5 and GPT-5.4 MAY use `migration_path: "runtime_openai_cris"` on
       `bedrock-runtime` with a CRIS id (`us.`/`in.`/`global.` for GPT-5.6 Terra / Luna, `us.`/`global.`
       only for GPT-5.6 Sol, GPT-6, GPT-5.5 and GPT-5.4) — this is NOT a violation.
+- [ ] Every `runtime_openai_cris` entry whose driving need includes application inference profiles,
+      on a model whose card lists them as Converse-only (GPT-5.5, GPT-5.4, GPT-6.1 Terra, Astra),
+      records `required_client_api: "converse"` — not absent, `responses` or `chat_completions`.
+      A same-workload Responses-only need (GPT-5.5 / GPT-5.4 structured outputs or implicit
+      caching) is recorded as an explicit decision, not silently dropped. A region-only CRIS
+      move keeps the `responses` default.
 - [ ] If `ai_source` is `azure_openai` or `openai`: every source model that is available on
       Bedrock and carried by the target region maps to ITSELF with `model_change: false` — not
       to a Claude/Nova substitute.

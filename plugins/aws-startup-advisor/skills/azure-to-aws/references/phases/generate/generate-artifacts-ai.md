@@ -80,10 +80,14 @@ diffs outputs, so the user validates behavior before cutover.
 ## Step 3: `setup_bedrock.sh`
 
 Enables the chosen Bedrock model(s), sets up IAM, and (mantle path) the Bedrock API key. For a
-`runtime_openai_cris` target whose CRIS id is a GPT-6 model (Astra, Sol, Luna, 6.1 Sol, 6.1 Terra), the IAM
+`runtime_openai_cris` target whose CRIS id is a GPT-6 model (Astra, Sol, Luna, 6.1 Sol, 6.1 Terra) or
+GPT-5.5 / GPT-5.4 (`us.openai.gpt-5.5` / `global.openai.gpt-5.5`, `us.openai.gpt-5.4` /
+`global.openai.gpt-5.4`, or their `inference-profile/` ARNs), the IAM
 policy must grant `bedrock:InvokeModel` on `arn:aws:bedrock:{region}:{account}:project/default`
-in addition to the CRIS inference-profile ARN — both required per the GPT-6 model cards; the
-mantle `bedrock-mantle:*` policy is unaffected.
+in addition to the CRIS inference-profile ARN — both required per the GPT-6 model cards and the
+GPT-5.5 / GPT-5.4 cards (read 2026-11-07); `iam_policy.py` emits the third ARN for exactly these
+ids. The mantle `bedrock-mantle:*` policy (bare `openai.gpt-5.5` / `openai.gpt-5.4` ids included)
+is unaffected.
 
 ## Step 3B: `gateway_config.{yaml,py,json}` (gateway users)
 

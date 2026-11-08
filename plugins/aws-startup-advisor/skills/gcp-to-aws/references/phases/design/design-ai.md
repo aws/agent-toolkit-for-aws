@@ -436,7 +436,23 @@ must verify against Astra's model card per-feature, not assume parity with Sol/L
 switch, not model switch), it MUST also record `bedrock_models[].required_client_api` so the
 generated client uses a Guardrails-capable surface — `converse` for Astra and 6.1 Terra; `converse` /
 `chat_completions` / `invoke` (never `responses`) for 6.1 Sol and the other GPT-6/5.6 CRIS models except Astra and 6.1 Terra. Do not leave the client on `responses` when Guardrails is required.** `Responses`
-stays the default for a region-only CRIS move with no Guardrails need.
+stays the default for a region-only CRIS move with no Guardrails or application-inference-profile need.
+
+**Application inference profiles are Converse-only on GPT-5.5, GPT-5.4, GPT-6.1 Terra and Astra —
+the requirement MUST reach `required_client_api`.** The GPT-5.4 / GPT-5.5 model cards (read 2026-11-07)
+list "Application inference profiles (Converse API only; not supported with Responses or Chat
+Completions APIs)" on `bedrock-runtime`. When application inference profiles (cost attribution by
+app/environment) are the driving need and the design keeps `runtime_openai_cris`, record
+`bedrock_models[].required_client_api: "converse"` for GPT-5.5 / GPT-5.4 and for any other model
+whose card or catalog `runtime_converse` path entry lists the feature as Converse-only. Do not leave
+the field absent or on `responses` / `chat_completions`: Generate defaults an absent field to
+Responses and omits the application profile for an unsupported model/API pair, so the endpoint
+switch alone does not deliver the feature. If the same workload also needs a Responses-only
+feature on that model (GPT-5.5 / GPT-5.4: structured outputs, implicit prompt caching — see
+`openai-on-bedrock.md` § Access Paths), one client API cannot serve both: record the conflict as an
+explicit decision in the Part 5 plan and the Present Summary — name which feature the plan keeps
+and which is dropped, or split the workload into two `bedrock_models[]` rows with their own
+`required_client_api` — never silently drop either requirement.
 
 **GPT-6.1 Terra API constraints:** Guardrails and application inference profiles require
 `required_client_api: "converse"`. Converse rejects document blocks and images in tool
@@ -520,6 +536,12 @@ Write `aws-design-ai.json` to `$MIGRATION_DIR/`.
       GPT-5.6, GPT-6, GPT-5.5 and GPT-5.4 MAY use `migration_path: "runtime_openai_cris"` on
       `bedrock-runtime` with a CRIS id (`us.`/`in.`/`global.` for GPT-5.6 Terra and Luna;
       `us.`/`global.` only for GPT-5.6 Sol, GPT-6, GPT-5.5 and GPT-5.4) — this is NOT a violation.
+- [ ] Every `runtime_openai_cris` entry whose driving need includes application inference profiles,
+      on a model whose card lists them as Converse-only (GPT-5.5, GPT-5.4, GPT-6.1 Terra, Astra),
+      records `required_client_api: "converse"` — not absent, `responses` or `chat_completions`.
+      A same-workload Responses-only need (GPT-5.5 / GPT-5.4 structured outputs or implicit
+      caching) is recorded as an explicit decision in the Part 5 plan, not silently dropped.
+      A region-only CRIS move keeps the `responses` default.
 - [ ] `regional_warnings` is present (empty array `[]` if no issues; populated if any service unavailable in target region)
 - [ ] `multi_model_warnings` is present (empty array `[]` if single model or no coordination issues)
 - [ ] If `agentic_profile.is_agentic == true`: `agentic_design` object is present with `migration_approach` matching `preferences.json`

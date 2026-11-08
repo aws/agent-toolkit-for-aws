@@ -241,7 +241,23 @@ Sol/Luna/6.1 Sol. **When Guardrails is the driving need and the design keeps
 surface — `converse` for Astra and 6.1 Terra; `converse` / `chat_completions` / `invoke` (never `responses`)
 for 6.1 Sol and the other GPT-6/5.6 CRIS models except Astra and 6.1 Terra. Do not leave the client on
 `responses` when Guardrails is required.** `Responses` stays the default for a region-only
-CRIS move with no Guardrails need.
+CRIS move with no Guardrails or application-inference-profile need.
+
+**Application inference profiles are Converse-only on GPT-5.5, GPT-5.4, GPT-6.1 Terra and Astra —
+the requirement MUST reach `required_client_api`.** The GPT-5.4 / GPT-5.5 model cards (read 2026-11-07)
+list "Application inference profiles (Converse API only; not supported with Responses or Chat
+Completions APIs)" on `bedrock-runtime`. When application inference profiles (cost attribution by
+app/environment) are the driving need and the design keeps `runtime_openai_cris`, record
+`bedrock_models[].required_client_api: "converse"` for GPT-5.5 / GPT-5.4 and for any other model
+whose card or catalog `runtime_converse` path entry lists the feature as Converse-only. Do not leave
+the field absent or on `responses` / `chat_completions`: Generate defaults an absent field to
+Responses and omits the application profile for an unsupported model/API pair, so the endpoint
+switch alone does not deliver the feature. If the same workload also needs a Responses-only
+feature on that model (GPT-5.5 / GPT-5.4: structured outputs, implicit prompt caching — see
+`openai-on-bedrock.md` § Access Paths), one client API cannot serve both: record the conflict as an
+explicit decision in the plan and the Present Summary — name which feature the plan keeps and
+which is dropped, or split the workload into two `bedrock_models[]` rows with their own
+`required_client_api` — never silently drop either requirement.
 
 **GPT-6.1 Terra API constraints:** Guardrails and application inference profiles require
 `required_client_api: "converse"`. Converse rejects document blocks and images in tool

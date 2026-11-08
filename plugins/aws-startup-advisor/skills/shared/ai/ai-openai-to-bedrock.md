@@ -43,9 +43,14 @@ Two consequences that invert the previous decision logic:
    CRIS are priced at OpenAI's _data residency_ tier, exactly 1.10x the standard list price, so those moves cost
    ~10% more. **GPT-5.6 on Global CRIS is priced at the standard list price — cost parity** — available only when
    the workload has no data-residency constraint. GPT-5.5 / GPT-5.4 also have `us.`/`global.` CRIS ids on
-   `bedrock-runtime`, but their model cards (read 2026-11-06) publish In-Region pricing only, so quote the ~10%
-   figure for them on every inference option until a Global rate is published. See
-   `shared/openai-on-bedrock.md`. The non-cost case — AWS commitments, IAM/VPC/CloudTrail governance, residency,
+   `bedrock-runtime`, but their model cards (read 2026-11-07) publish **commercial In-Region prices only**
+   ("Commercial In-Region prices include a 10% fee over OpenAI rates") — nothing on either card establishes a
+   Geo or Global CRIS price. So the verified ~10% premium for GPT-5.5 / GPT-5.4 is scoped to the commercial
+   In-Region (mantle) option. For a GPT-5.5 / GPT-5.4 CRIS plan, either source the Geo/Global rate separately
+   (the card's inference-option table or [aws.amazon.com/bedrock/pricing](https://aws.amazon.com/bedrock/pricing/),
+   with URL and read date) or report the comparison unavailable; an In-Region rate used as a proxy is an
+   **unverified planning assumption**, labelled as such, and yields no verified premium or savings percentage.
+   Never report parity for them. See `shared/openai-on-bedrock.md`. The non-cost case — AWS commitments, IAM/VPC/CloudTrail governance, residency,
    prompt caching, one vendor relationship — carries the in-region path; never present that path as free or neutral.
    For Astra, use its separately dated Bedrock rates and verify the source provider's rate before comparing.
 
@@ -74,8 +79,8 @@ GPT-5.4, the target is **the same model on Bedrock**.
 | GPT-5.6 Sol   | GPT-5.6 Sol    | `openai.gpt-5.6-sol` / `us.` `global.` prefixed         | `strong_migrate` — same model; parity on Global CRIS, else +10% |
 | GPT-5.6 Terra | GPT-5.6 Terra  | `openai.gpt-5.6-terra` / `us.` `in.` `global.` prefixed | `strong_migrate` — same model; parity on Global CRIS, else +10% |
 | GPT-5.6 Luna  | GPT-5.6 Luna   | `openai.gpt-5.6-luna` / `us.` `in.` `global.` prefixed  | `strong_migrate` — same model; parity on Global CRIS, else +10% |
-| GPT-5.5       | GPT-5.5        | `openai.gpt-5.5` / `us.` `global.` prefixed             | `strong_migrate` — same model, ~10% over OpenAI std             |
-| GPT-5.4       | GPT-5.4        | `openai.gpt-5.4` / `us.` `global.` prefixed             | `strong_migrate` — same model, ~10% over OpenAI std             |
+| GPT-5.5       | GPT-5.5        | `openai.gpt-5.5` / `us.` `global.` prefixed             | `strong_migrate` — same model; ~10% over OpenAI std In-Region only (no Geo/Global price published) |
+| GPT-5.4       | GPT-5.4        | `openai.gpt-5.4` / `us.` `global.` prefixed             | `strong_migrate` — same model; ~10% over OpenAI std In-Region only (no Geo/Global price published) |
 
 Then apply the **region gate** below. Record `model_change: false` and the chosen path in
 `aws-design-ai.json` → `ai_architecture.code_migration`: `migration_path: "mantle_openai_chat"` for

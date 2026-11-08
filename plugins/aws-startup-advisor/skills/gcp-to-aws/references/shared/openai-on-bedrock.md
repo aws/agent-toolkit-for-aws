@@ -274,8 +274,13 @@ inference-option dimension:**
 
 So the honest cost statement is conditional, not flat: a same-model GPT-5.6 move on Global CRIS is
 **cost-neutral**; the same move in-region or Geo is **~10% more expensive**. The GPT-5.5 / GPT-5.4 cards publish
-In-Region pricing only (no Geo/Global rows as of 2026-11-06), so quote ~10% for them on every inference option. The
-same Global-CRIS-is-cost-neutral / in-Region-and-Geo-is-~10%-more pattern applies to the GPT-6 family below.
+**commercial In-Region pricing only** (no Geo/Global rows as of 2026-11-07; the cards say "Commercial In-Region
+prices include a 10% fee over OpenAI rates"), so for them the ~10% premium is verified for the In-Region (mantle)
+option alone — nothing establishes a Geo (`us.`) or Global CRIS price. For a GPT-5.5 / GPT-5.4 CRIS plan, source the
+Geo/Global rate separately (the card's inference-option table or the Bedrock pricing page, with URL and read date)
+or report the comparison unavailable; an In-Region rate used as a proxy is an **unverified planning assumption**,
+labelled as such, and must not be turned into a verified premium or savings percentage. Never report parity for
+them. The same Global-CRIS-is-cost-neutral / in-Region-and-Geo-is-~10%-more pattern applies to the GPT-6 family below.
 Never state either number without stating the inference option it belongs to.
 
 ### GPT-6 Astra / Sol / Luna / 6.1 Sol — short context (≤272K)
@@ -331,8 +336,10 @@ A workload above 272K context must be priced at the long-context tier.
 
 ### GPT-5.5 / GPT-5.4 — In-Region pricing only; short- and long-context tiers (model cards read 2026-11-06)
 
-The cards publish only the In-Region inference option (the `us.` / `global.` runtime CRIS ids exist but carry no
-separate price row). Long-context rates apply to all input and output tokens of a request above 272K input tokens.
+The cards publish only the commercial In-Region inference option (the `us.` / `global.` runtime CRIS ids exist but
+carry no separate price row). A `runtime_openai_cris` plan priced from this table is an unverified planning
+assumption, not a verified rate — `bedrock_pricing.lookup()` returns `available: false` for these CRIS ids on
+purpose. Long-context rates apply to all input and output tokens of a request above 272K input tokens.
 
 | Model   | Short context ≤272K (in · cache read · out) | Long context >272K (in · cache read · out) | Notes                                    |
 | ------- | ------------------------------------------- | ------------------------------------------ | ---------------------------------------- |
