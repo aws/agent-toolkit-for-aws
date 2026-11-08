@@ -225,9 +225,13 @@ that expires within 12 hours and is not refreshed. Do not recommend it for produ
 **IAM:** on the mantle path, the managed policy `AmazonBedrockMantleInferenceAccess` grants what inference needs,
 including `bedrock-mantle:CreateInference` and `bedrock-mantle:CallWithBearerToken` — `bedrock:InvokeModel` does not
 authorize mantle calls. On the GPT-5.6 / GPT-5.5 / GPT-5.4 `bedrock-runtime` path the usual `bedrock:InvokeModel*`
-against the CRIS inference-profile ARN applies, as for any other runtime model; the GPT-5.5 / GPT-5.4 cards add
-that the identity also needs `bedrock:InvokeModel` on the account's default project
-(`arn:aws:bedrock:{region}:{account-id}:project/default`).
+against the CRIS inference-profile ARN applies, as for any other runtime model, and every runtime Responses /
+Chat Completions target additionally needs `bedrock:InvokeModel` on the account's default project
+(`arn:aws:bedrock:{region}:{account-id}:project/default`): the Responses API authorizes the default project
+separately from the inference target
+(<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html>, read 2026-11-07), and the
+GPT-5.6 Sol / Terra / Luna cards as well as the GPT-5.5 / GPT-5.4 cards (read 2026-11-07) repeat it for their
+runtime CRIS ids. A Converse-only route needs no project grant.
 
 **Reasoning effort:** the five GPT-5.x models accept `none`, `low`, `medium`, `high`, `xhigh`, `max`. Because these models reason
 before responding, the model's output items (which may include reasoning items) must be passed back in the next

@@ -1,15 +1,28 @@
 # preflight_bedrock.py
 """Bedrock fail-fast preflight: authorization, region/model availability, quota.
 
-Usage: python preflight_bedrock.py --region <r> --models <id,id,...> [--dataset-size N]
+Usage:
+  python preflight_bedrock.py --region <r> --target <id>=<api> [--target ...] [--dataset-size N]
+  python preflight_bedrock.py --region <r> --models <id,id,...> [--runtime-api <api>] [--dataset-size N]
+  python preflight_bedrock.py --check-lanes <aws-design-ai.json>
 Prints a JSON verdict to stdout; exit 0 if all models pass, 1 otherwise.
 Always prints JSON — including for missing credentials / bad region — so the
 caller can parse the verdict instead of a traceback. On failure the top level
 carries `reason`/`detail`/`failing_models` lifted from the first failing model.
-Each model is probed on the API the plan selected (--runtime-api): `converse`
-(the default when no API was selected), `responses` / `chat_completions` for the
-runtime OpenAI-compatible APIs, or `messages` for the runtime Anthropic Messages
-API. Embedding models (which don't speak Converse) go via InvokeModel with their
+Each model is probed on the API ITS OWN design row selected. `--target ID=API`
+carries that per-row API (`bedrock_models[].required_client_api`): `converse`,
+`responses` / `chat_completions` for the runtime OpenAI-compatible APIs,
+`messages` for the runtime Anthropic Messages API, or `invoke` for an embedding
+row. A row whose API is missing or unknown fails CLOSED (`reason:
+unknown_runtime_api`) before any probe runs — a mixed plan (Claude Messages
+primary + GPT Chat or Nova Converse secondary) must never send every target to
+one endpoint. `--models` + `--runtime-api` is the legacy single-API form and
+applies that one API to every listed id (`converse` when omitted).
+`--check-lanes` reads the design's `bedrock_models[]` rows and stops with
+`reason: unsupported_lane` when any row's `migration_path` is a deferred lane
+(`mantle_messages`, the Workspaces selector's Anthropic-SDK-on-Mantle route);
+run it before preflight or any Phase C dispatch.
+Embedding models (which don't speak Converse) go via InvokeModel with their
 family's request body. Bare OpenAI proprietary GPT ids are the bedrock-mantle
 form and are probed via the OpenAI Responses API on that endpoint; GPT-6 Astra
 (us./global.), GPT-5.6 Terra and Luna (us./in./global.) and GPT-5.6 Sol
@@ -318,6 +331,122 @@ def probe_model(client, model_id: str) -> dict:
                           f"Run 'aws configure', refresh your SSO session, or check the region name."}
 
 
+RUNTIME_APIS = ("converse", "responses", "chat_completions", "messages", "invoke")
+
+# Execution lanes Design may emit that this skill has no preflight, evaluation or
+# rewrite route for. `mantle_messages` is the Anthropic SDK on the bedrock-mantle
+# `/anthropic` endpoint, recorded only with the `workspaces` mantle selector; its
+# bare Claude id must not be probed on runtime `/anthropic`, labelled Converse, or
+# granted runtime IAM. The lane is deferred, not implemented here.
+UNSUPPORTED_LANES = {
+    "mantle_messages": {
+        "lane": "Mantle Messages (Anthropic SDK on https://bedrock-mantle.{region}.api.aws/anthropic)",
+        "selector": "workspaces",
+    },
+}
+
+
+def unsupported_lane_stop(rows: list, migration_path: str | None = None) -> dict | None:
+    """Pure: structured stop when any design row (or the plan-level path) selects a
+    lane this skill does not execute. `rows` are `bedrock_models[]` dicts; each may
+    carry `migration_path`, `mantle_selector` and `aws_model_id`. Returns None when
+    every lane is supported."""
+    hits = []
+    for row in rows:
+        path = row.get("migration_path") or migration_path
+        if path in UNSUPPORTED_LANES:
+            hits.append({"aws_model_id": row.get("aws_model_id"), "migration_path": path,
+                         "mantle_selector": row.get("mantle_selector")
+                         or UNSUPPORTED_LANES[path]["selector"]})
+    if not hits and migration_path in UNSUPPORTED_LANES and not rows:
+        hits.append({"aws_model_id": None, "migration_path": migration_path,
+                     "mantle_selector": UNSUPPORTED_LANES[migration_path]["selector"]})
+    if not hits:
+        return None
+    path = hits[0]["migration_path"]
+    info = UNSUPPORTED_LANES[path]
+    selectors = sorted({h["mantle_selector"] for h in hits if h["mantle_selector"]})
+    return {
+        "ok": False,
+        "reason": "unsupported_lane",
+        "lane": path,
+        "lane_status": "deferred",
+        "lane_description": info["lane"],
+        "mantle_selector": selectors[0] if len(selectors) == 1 else selectors,
+        "failing_models": [h["aws_model_id"] for h in hits],
+        "rows": hits,
+        "detail": (
+            f"migration_path '{path}' selects the deferred {info['lane']} execution lane "
+            f"(Design records it only for the '{info['selector']}' mantle selector; this plan's "
+            f"selector: {', '.join(selectors) or 'absent'}). llm-to-bedrock has no preflight, "
+            f"evaluation or rewrite route for that lane: do not run the B4 preflight, do not "
+            f"dispatch Phase C, and do not generate runtime IAM for the bare Claude id. Stop "
+            f"and tell the user the lane is not yet supported; re-run Design without the "
+            f"Workspaces requirement to take the supported runtime_messages route."),
+    }
+
+
+def check_lanes(design_path: str) -> int:
+    """CLI entry for the lane gate: read aws-design-ai.json, print JSON, exit 1 on stop."""
+    try:
+        with open(design_path, encoding="utf-8") as fh:
+            design = json.load(fh)
+    except (OSError, ValueError) as e:
+        print(json.dumps({"ok": False, "reason": "design_unreadable",
+                          "detail": f"{type(e).__name__}: {e}"}, indent=2))
+        return 1
+    arch = design.get("ai_architecture", {}) if isinstance(design, dict) else {}
+    rows = arch.get("bedrock_models") or []
+    plan_path = (arch.get("code_migration") or {}).get("migration_path")
+    stop = unsupported_lane_stop(rows, plan_path)
+    if stop is not None:
+        print(json.dumps(stop, indent=2))
+        return 1
+    print(json.dumps({"ok": True, "reason": "lanes_supported",
+                      "models": [r.get("aws_model_id") for r in rows],
+                      "detail": "Every bedrock_models[] row is on an execution lane this skill supports."},
+                     indent=2))
+    return 0
+
+
+def parse_targets(specs: list[str]) -> tuple[list[tuple[str, str]], dict | None]:
+    """Pure: parse `--target ID=API` specs into (model_id, api) pairs.
+
+    Fails CLOSED: a spec without `=API`, or with an API outside RUNTIME_APIS, returns a
+    structured verdict and no pairs, so the caller probes nothing on a guessed endpoint.
+    `invoke` is accepted only for embedding ids (the chat lanes never use raw Invoke)."""
+    pairs: list[tuple[str, str]] = []
+    bad: list[tuple[str, str]] = []
+    for spec in specs:
+        for item in spec.split(","):
+            item = item.strip()
+            if not item:
+                continue
+            model_id, sep, api = item.rpartition("=")
+            if not sep or not model_id:
+                bad.append((item, "<missing>"))
+                continue
+            api = api.strip()
+            model_id = model_id.strip()
+            if api not in RUNTIME_APIS or (api == "invoke" and not is_embedding_model(model_id)):
+                bad.append((model_id, api))
+                continue
+            pairs.append((model_id, api))
+    if bad:
+        return [], {
+            "ok": False, "reason": "unknown_runtime_api",
+            "failing_models": [m for m, _ in bad],
+            "detail": (
+                "Every --target must be <aws_model_id>=<required_client_api> with the API from "
+                "that row (converse | responses | chat_completions | messages; invoke only for an "
+                "embedding id). Unknown or missing: "
+                + ", ".join(f"{m}={a}" for m, a in bad)
+                + ". Preflight fails closed rather than probing a guessed endpoint; resolve the "
+                  "row's API in the saved plan first."),
+        }
+    return pairs, None
+
+
 def aggregate_failure(results: list) -> dict:
     """Pure: lift the first failing model's reason/detail to the top level so the
     orchestrator can branch on a single top-level `reason` (its documented contract)."""
@@ -364,21 +493,85 @@ def fetch_bedrock_quotas(region: str) -> list:
         return []
 
 
+def probe_target(client, model_id: str, api: str, region: str, quotas: list,
+                 dataset_size: int) -> dict:
+    """Probe ONE target on ITS OWN selected API and attach its quota notes."""
+    if is_mantle_model(model_id):
+        verdict = probe_mantle_model(model_id, region)
+        verdict["model_id"] = model_id
+        # Mantle enforces per-model input/output TPM quotas and has no RPM
+        # quota, so an RPM-derived pacing warning would be meaningless here.
+        verdict["rpm_quota"] = None
+        verdict["quota_note"] = (
+            "Mantle quotas are per-model input/output tokens per minute; there is no RPM "
+            "quota. Pace on token throughput, and note that prompt-cached input tokens are "
+            "exempt from the input-TPM quota.")
+        if model_id.lower() == "openai.gpt-6-astra":
+            verdict["quota_note"] = (
+                f"Verify Astra's mantle quotas in the target account and {region}. "
+                "Do not assume GPT-5.6's cached-input quota exemption or RPM rules "
+                "apply; Astra's documented 10x output burndown is runtime-specific.")
+        return verdict
+    # Embedding ids never speak a chat API; they are always probed via InvokeModel
+    # (probe_model), whatever API their row or the plan carries.
+    if is_embedding_model(model_id):
+        verdict = probe_model(client, model_id)
+    elif api == "messages":
+        verdict = probe_runtime_messages_model(model_id, region)
+    elif api in ("responses", "chat_completions") and ".openai.gpt-" in model_id \
+            and "gpt-oss" not in model_id:
+        verdict = probe_runtime_openai_model(model_id, region, api)
+    else:
+        verdict = probe_model(client, model_id)
+    verdict["selected_api"] = api
+    rpm = quota_rpm(quotas, model_id)
+    verdict["model_id"] = model_id
+    verdict["rpm_quota"] = rpm
+    if model_id.rsplit("/", 1)[-1] in ("us.openai.gpt-6-astra", "global.openai.gpt-6-astra"):
+        verdict["quota_note"] = (
+            "Astra runtime TPM usage = input tokens + 10 * output tokens. "
+            "Check the selected CRIS profile's token quota; an RPM check alone "
+            "does not establish throughput capacity.")
+    if rpm is not None and dataset_size > rpm:
+        verdict["quota_warning"] = (
+            f"Dataset ({dataset_size}) exceeds ~{rpm} RPM quota — "
+            f"Eval will pace with backoff and may be slow.")
+    return verdict
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--region", required=True)
-    ap.add_argument("--models", required=True, help="comma-separated model ids")
+    ap.add_argument("--region")
+    group = ap.add_mutually_exclusive_group()
+    group.add_argument("--models", help="comma-separated model ids (legacy single-API form)")
+    group.add_argument("--target", action="append", default=[],
+                       help="<aws_model_id>=<required_client_api>; repeat per design row")
+    group.add_argument("--check-lanes", metavar="AWS_DESIGN_AI_JSON",
+                       help="stop with reason unsupported_lane when any bedrock_models[] row "
+                            "selects a deferred lane (mantle_messages); probes nothing")
     ap.add_argument("--dataset-size", type=int, default=0)
     ap.add_argument("--runtime-api",
                     choices=["converse", "responses", "chat_completions", "messages"],
-                    default="converse")
+                    default="converse",
+                    help="API applied to every --models id (ignored with --target)")
     args = ap.parse_args(argv)
 
-    model_ids = [m.strip() for m in args.models.split(",") if m.strip()]
-    if not model_ids:
+    if args.check_lanes:
+        return check_lanes(args.check_lanes)
+    if not args.region or not (args.models or args.target):
+        ap.error("--region and one of --models / --target are required")
+
+    if args.target:
+        targets, failure = parse_targets(args.target)
+        if failure is not None:
+            print(json.dumps({**failure, "region": args.region, "models": []}, indent=2))
+            return 1
+    else:
+        targets = [(m.strip(), args.runtime_api) for m in args.models.split(",") if m.strip()]
+    if not targets:
         print(json.dumps({"ok": False, "region": args.region, "models": [],
                           "reason": "no_models",
-                          "detail": "--models resolved to an empty list; nothing to probe."},
+                          "detail": "--models/--target resolved to an empty list; nothing to probe."},
                          indent=2))
         return 1
 
@@ -395,44 +588,8 @@ def main(argv=None) -> int:
     quotas = fetch_bedrock_quotas(args.region)
     results = []
     all_ok = True
-    for model_id in model_ids:
-        if is_mantle_model(model_id):
-            verdict = probe_mantle_model(model_id, args.region)
-            verdict["model_id"] = model_id
-            # Mantle enforces per-model input/output TPM quotas and has no RPM
-            # quota, so an RPM-derived pacing warning would be meaningless here.
-            verdict["rpm_quota"] = None
-            verdict["quota_note"] = (
-                "Mantle quotas are per-model input/output tokens per minute; there is no RPM "
-                "quota. Pace on token throughput, and note that prompt-cached input tokens are "
-                "exempt from the input-TPM quota.")
-            if model_id.lower() == "openai.gpt-6-astra":
-                verdict["quota_note"] = (
-                    f"Verify Astra's mantle quotas in the target account and {args.region}. "
-                    "Do not assume GPT-5.6's cached-input quota exemption or RPM rules "
-                    "apply; Astra's documented 10x output burndown is runtime-specific.")
-        else:
-            # Embedding ids in a chat plan's $TARGET_MODELS never speak the selected
-            # chat API; they are always probed via InvokeModel (probe_model).
-            if args.runtime_api == "messages" and not is_embedding_model(model_id):
-                verdict = probe_runtime_messages_model(model_id, args.region)
-            elif (args.runtime_api != "converse" and ".openai.gpt-" in model_id
-                    and "gpt-oss" not in model_id):
-                verdict = probe_runtime_openai_model(model_id, args.region, args.runtime_api)
-            else:
-                verdict = probe_model(client, model_id)
-            rpm = quota_rpm(quotas, model_id)
-            verdict["model_id"] = model_id
-            verdict["rpm_quota"] = rpm
-            if model_id.rsplit("/", 1)[-1] in ("us.openai.gpt-6-astra", "global.openai.gpt-6-astra"):
-                verdict["quota_note"] = (
-                    "Astra runtime TPM usage = input tokens + 10 * output tokens. "
-                    "Check the selected CRIS profile's token quota; an RPM check alone "
-                    "does not establish throughput capacity.")
-            if rpm is not None and args.dataset_size > rpm:
-                verdict["quota_warning"] = (
-                    f"Dataset ({args.dataset_size}) exceeds ~{rpm} RPM quota — "
-                    f"Eval will pace with backoff and may be slow.")
+    for model_id, api in targets:
+        verdict = probe_target(client, model_id, api, args.region, quotas, args.dataset_size)
         all_ok = all_ok and verdict["ok"]
         results.append(verdict)
 

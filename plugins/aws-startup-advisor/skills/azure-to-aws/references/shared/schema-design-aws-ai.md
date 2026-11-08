@@ -242,7 +242,9 @@ rubric file (`ai.md`, `ai-azure-openai-to-bedrock.md`, or a `vendored/ai/*` ref)
       records `required_client_api: "converse"` — not absent, `responses` or `chat_completions`.
       A same-workload Responses-only need (GPT-5.5 / GPT-5.4 structured outputs or implicit
       caching) is recorded as an explicit decision, not silently dropped. A region-only CRIS
-      move keeps the `responses` default.
+      move with no such need keeps the source app's own API as the default `required_client_api`
+      (`responses` for a Responses source, `chat_completions` for a Chat Completions source) —
+      never an implicit Converse.
 - [ ] If `ai_source` is `azure_openai` or `openai`: every source model that is available on
       Bedrock and carried by the target region maps to ITSELF with `model_change: false` — not
       to a Claude/Nova substitute — and records `migration_path: "runtime_openai_cris"` by default.

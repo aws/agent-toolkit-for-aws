@@ -14,6 +14,7 @@ from iam_policy import (
     is_gpt6_cris_model,
     is_gpt54_55_cris_model,
     is_mantle_model,
+    is_runtime_openai_cris_model,
     mantle_project_arn,
     inference_profile_arn,
     is_inference_profile,
@@ -327,16 +328,27 @@ class TestGpt54Gpt55CrisProjectArn:
         [
             "openai.gpt-5.4",  # bare — mantle, not CRIS
             "openai.gpt-5.5",
-            "us.openai.gpt-5.6-sol",  # GPT-5.6 cards do not add the grant
-            "global.openai.gpt-5.6-terra",
-            "us.openai.gpt-5.4-pro",  # not a published runtime id
             "us.anthropic.claude-sonnet-5",
             f"arn:aws:bedrock:{REGION}:{ACCOUNT}:inference-profile/us.anthropic.claude-sonnet-5",
         ],
     )
-    def test_predicates_exclude_bare_mantle_gpt56_and_unrelated_ids(self, model_id):
+    def test_predicates_exclude_bare_mantle_and_unrelated_ids(self, model_id):
         assert not is_gpt54_55_cris_model(model_id)
         assert not requires_default_project_grant(model_id)
+
+    @pytest.mark.parametrize(
+        "model_id",
+        [
+            "us.openai.gpt-5.6-sol",  # GPT-5.6 cards (read 2026-11-07) DO add the grant
+            "global.openai.gpt-5.6-terra",
+            "us.openai.gpt-5.4-pro",  # not a published id, but the id FORM is a runtime GPT CRIS id
+        ],
+    )
+    def test_family_predicate_excludes_other_gpt_ids_but_id_form_grant_covers_them(self, model_id):
+        # The GPT-5.4 / GPT-5.5 family predicate stays exact; the default-project grant
+        # is decided by id form (any runtime GPT CRIS id), not by this family predicate.
+        assert not is_gpt54_55_cris_model(model_id)
+        assert requires_default_project_grant(model_id)
 
     @pytest.mark.parametrize("model_id", _GPT54_55_CRIS_SHORT_IDS)
     def test_generate_policy_grants_project_default_for_short_id(self, model_id):
@@ -368,7 +380,7 @@ class TestGpt54Gpt55CrisProjectArn:
 
     @pytest.mark.parametrize(
         "model_id",
-        ["us.anthropic.claude-sonnet-5", "us.openai.gpt-5.6-sol", "global.openai.gpt-5.6-luna"],
+        ["us.anthropic.claude-sonnet-5", "global.anthropic.claude-opus-5-5", "us.amazon.nova-pro-v1:0"],
     )
     def test_unrelated_runtime_ids_do_not_get_project_default(self, model_id):
         pol = generate_policy([model_id], REGION, ACCOUNT)
@@ -382,3 +394,151 @@ class TestGpt54Gpt55CrisProjectArn:
         )
         resources = pol["Statement"][0]["Resource"]
         assert resources.count(default_project_arn(REGION, ACCOUNT)) == 1
+
+
+# Every runtime OpenAI-compatible target, by id form (PR 585 review, finding 1).
+# Public basis, read 2026-11-07: inference-responses-api.html ("Permissions": a
+# Responses request authorizes bedrock:InvokeModel on the inference target AND on
+# the account's default project) and the GPT-5.6 Sol / Terra / Luna cards, which
+# attach the same note to their runtime CRIS ids (in. exists for Terra and Luna).
+_RUNTIME_GPT_CRIS_IDS = [
+    "us.openai.gpt-5.6-sol",
+    "global.openai.gpt-5.6-sol",
+    "us.openai.gpt-5.6-terra",
+    "in.openai.gpt-5.6-terra",
+    "global.openai.gpt-5.6-terra",
+    "us.openai.gpt-5.6-luna",
+    "in.openai.gpt-5.6-luna",
+    "global.openai.gpt-5.6-luna",
+    "us.openai.gpt-6-astra",
+    "global.openai.gpt-6-sol",
+    "us.openai.gpt-6.1-sol",
+    "us.openai.gpt-5.4",
+    "global.openai.gpt-5.5",
+    f"arn:aws:bedrock:{REGION}:{ACCOUNT}:inference-profile/in.openai.gpt-5.6-terra",
+    f"arn:aws:bedrock:{REGION}:{ACCOUNT}:inference-profile/global.openai.gpt-5.6-sol",
+    f"arn:aws:bedrock:{REGION}:{ACCOUNT}:inference-profile/us.openai.gpt-5.5",
+]
+
+
+class TestDefaultProjectGrantByIdFormAndApi:
+    def _invoke_resources(self, pol):
+        return {s["Sid"]: s for s in pol["Statement"]}["BedrockInvokeModelScoped"]["Resource"]
+
+    @pytest.mark.parametrize("model_id", _RUNTIME_GPT_CRIS_IDS)
+    def test_runtime_gpt_cris_id_form_is_recognized(self, model_id):
+        assert is_inference_profile(model_id)
+        assert is_runtime_openai_cris_model(model_id)
+        assert not is_mantle_model(model_id)
+
+    @pytest.mark.parametrize("model_id", _RUNTIME_GPT_CRIS_IDS)
+    @pytest.mark.parametrize("runtime_api", [None, "responses", "chat_completions"])
+    def test_responses_and_chat_targets_emit_project_default(self, model_id, runtime_api):
+        pol = generate_policy([model_id], REGION, ACCOUNT, runtime_api=runtime_api)
+        resources = self._invoke_resources(pol)
+        short = model_id.rsplit("/", 1)[-1]
+        base = short.split(".", 1)[1]
+        assert set(resources) == {
+            f"arn:aws:bedrock:*::foundation-model/{base}",
+            inference_profile_arn(model_id, REGION, ACCOUNT),
+            default_project_arn(REGION, ACCOUNT),
+        }
+        assert [s["Sid"] for s in pol["Statement"]] == ["BedrockInvokeModelScoped", "BedrockGetInferenceProfile"]
+
+    @pytest.mark.parametrize("model_id", ["us.openai.gpt-6-astra", "in.openai.gpt-5.6-terra", "us.openai.gpt-5.4"])
+    def test_converse_only_route_emits_no_project_default(self, model_id):
+        # inference-prereq.html (read 2026-11-07): Converse through a profile needs
+        # bedrock:InvokeModel* on the target + bedrock:GetInferenceProfile; the project
+        # authorization belongs to Responses creation.
+        pol = generate_policy([model_id], REGION, ACCOUNT, runtime_api="converse")
+        resources = self._invoke_resources(pol)
+        assert default_project_arn(REGION, ACCOUNT) not in resources
+        assert len(resources) == 2
+        assert not requires_default_project_grant(model_id, "converse")
+
+    @pytest.mark.parametrize("model_id", ["openai.gpt-5.6-terra", "openai.gpt-5.6-sol", "openai.gpt-6-sol", "openai.gpt-5.5"])
+    @pytest.mark.parametrize("runtime_api", [None, "responses", "chat_completions"])
+    def test_bare_mantle_id_never_gets_project_default(self, model_id, runtime_api):
+        assert not is_runtime_openai_cris_model(model_id)
+        pol = generate_policy([model_id], REGION, ACCOUNT, runtime_api=runtime_api)
+        sids = {s["Sid"] for s in pol["Statement"]}
+        assert "BedrockInvokeModelScoped" not in sids
+        assert "BedrockMantleInference" in sids
+        assert default_project_arn(REGION, ACCOUNT) not in json.dumps(pol)
+
+    @pytest.mark.parametrize("model_id", [
+        "global.anthropic.claude-sonnet-5",
+        "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+        "anthropic.claude-opus-5-5",  # runtime in-region form (eu-west-2)
+        "openai.gpt-oss-120b-1:0",
+        "us.amazon.nova-lite-v1:0",
+    ])
+    @pytest.mark.parametrize("runtime_api", [None, "responses", "chat_completions", "messages", "converse"])
+    def test_anthropic_oss_and_other_runtime_ids_never_get_project_default(self, model_id, runtime_api):
+        assert not is_runtime_openai_cris_model(model_id)
+        pol = generate_policy([model_id], "eu-west-2", ACCOUNT, runtime_api=runtime_api)
+        assert default_project_arn("eu-west-2", ACCOUNT) not in self._invoke_resources(pol)
+
+    def test_mixed_messages_plan_with_gpt_secondary_grants_project_once(self):
+        # Chat/Responses decides the grant per policy call; the Anthropic primary never
+        # contributes it and the single GPT target adds it exactly once.
+        pol = generate_policy(["global.anthropic.claude-sonnet-5", "us.openai.gpt-5.6-sol"],
+                              REGION, ACCOUNT, runtime_api="chat_completions")
+        resources = self._invoke_resources(pol)
+        assert resources.count(default_project_arn(REGION, ACCOUNT)) == 1
+        assert "arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-5" in resources
+
+    def test_unknown_runtime_api_is_rejected(self):
+        with pytest.raises(ValueError, match="Unknown runtime API"):
+            generate_policy(["us.openai.gpt-5.6-sol"], REGION, ACCOUNT, runtime_api="invoke")
+
+    def test_us_gov_partition_project_arn(self):
+        pol = generate_policy(["us-gov.openai.gpt-5.6-terra"], "us-gov-west-1", ACCOUNT, runtime_api="responses")
+        resources = self._invoke_resources(pol)
+        assert f"arn:aws-us-gov:bedrock:us-gov-west-1:{ACCOUNT}:project/default" in resources
+        assert f"arn:aws-us-gov:bedrock:us-gov-west-1:{ACCOUNT}:inference-profile/us-gov.openai.gpt-5.6-terra" in resources
+
+    @pytest.mark.parametrize("runtime_api,expected", [
+        ("responses", True), ("chat_completions", True), ("converse", False),
+    ])
+    def test_cli_runtime_api_flag_controls_project_default(self, runtime_api, expected):
+        result = subprocess.run(  # nosec B603
+            [sys.executable, str(Path(__file__).parent / "iam_policy.py"),
+             "--models", "global.openai.gpt-5.6-sol", "--region", REGION, "--account-id", ACCOUNT,
+             "--runtime-api", runtime_api],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        policy = json.loads(result.stdout)
+        assert (default_project_arn(REGION, ACCOUNT) in policy["Statement"][0]["Resource"]) is expected
+
+
+class TestMantleMessagesLaneIsRefused:
+    """PR 585 review, finding 3: a `mantle_messages` plan (Workspaces selector) has no
+    execution lane here, and a bare Sonnet id on that path must not receive runtime
+    `bedrock:InvokeModel*` from the id-only helper."""
+
+    def test_generate_policy_raises_for_mantle_messages_path(self):
+        with pytest.raises(ValueError, match="mantle_messages.*deferred execution lane"):
+            generate_policy(["anthropic.claude-sonnet-5"], REGION, ACCOUNT,
+                            runtime_api="messages", migration_path="mantle_messages")
+
+    def test_runtime_messages_path_still_emits_runtime_policy(self):
+        pol = generate_policy(["global.anthropic.claude-sonnet-5"], REGION, ACCOUNT,
+                              runtime_api="messages", migration_path="runtime_messages")
+        assert [s["Sid"] for s in pol["Statement"]] == ["BedrockInvokeModelScoped", "BedrockGetInferenceProfile"]
+
+    def test_cli_mantle_messages_exits_with_structured_reason(self):
+        result = subprocess.run(  # nosec B603
+            [sys.executable, str(Path(__file__).parent / "iam_policy.py"),
+             "--models", "anthropic.claude-sonnet-5", "--region", REGION, "--account-id", ACCOUNT,
+             "--runtime-api", "messages", "--migration-path", "mantle_messages"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 1
+        out = json.loads(result.stdout)
+        assert out["ok"] is False
+        assert out["reason"] == "unsupported_lane"
+        assert out["lane"] == "mantle_messages"
+        assert "workspaces" in out["detail"]
+        assert "bedrock:InvokeModel" not in result.stdout.replace(out["detail"], "")

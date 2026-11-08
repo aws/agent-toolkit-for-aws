@@ -141,4 +141,3 @@ def test_runtime_subroutes_resolve_to_runtime_label() -> None:
         )
         # Mantle label remains for the selector-gated routes.
         assert "[C] Generate the Mantle migration script and A/B test harness" in section
-

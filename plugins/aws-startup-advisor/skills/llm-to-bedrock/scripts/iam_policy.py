@@ -8,7 +8,19 @@ import json
 import re
 import sys
 
-_GEO_PREFIX = re.compile(r"^(us|eu|apac|au|jp|global)\.")
+_GEO_PREFIX = re.compile(r"^(us|eu|apac|au|jp|in|us-gov|global)\.")
+
+# The runtime APIs a plan can select (bedrock_models[].required_client_api). The
+# OpenAI-compatible pair is what the default-project grant keys on.
+RUNTIME_APIS = frozenset({"converse", "responses", "chat_completions", "messages"})
+_OPENAI_COMPATIBLE_APIS = frozenset({"responses", "chat_completions"})
+
+# Execution lanes this helper refuses to authorize. `mantle_messages` (Anthropic SDK
+# on the bedrock-mantle `/anthropic` endpoint, selected by the `workspaces` mantle
+# selector) is deferred: llm-to-bedrock has no preflight, evaluation or rewrite route
+# for it, so emitting runtime `bedrock:InvokeModel*` for its bare Claude id would
+# authorize the wrong endpoint. Callers stop before dispatch instead.
+UNSUPPORTED_LANES = frozenset({"mantle_messages"})
 
 
 def is_inference_profile(model_id: str) -> bool:
@@ -61,10 +73,13 @@ def inference_profile_arn(model_id: str, region: str, account_id: str) -> str:
 def default_project_arn(region: str, account_id: str) -> str:
     """ARN for the default Bedrock project, scoped to the account/region.
 
-    Required alongside the inference-profile ARN for a GPT-6 CRIS id and for the
-    GPT-5.5 / GPT-5.4 CRIS ids on bedrock-runtime: every GPT-6 model card's "Call
-    the model" section, and the GPT-5.4 / GPT-5.5 cards (read 2026-11-07), grant
-    `bedrock:InvokeModel` on both the inference-profile ARN and this ARN."""
+    A Responses request on bedrock-runtime authorizes `bedrock:InvokeModel` on the
+    inference target AND on this ARN
+    (https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html,
+    "Permissions", read 2026-11-07). Every proprietary GPT model card — GPT-5.6 Sol /
+    Terra / Luna, GPT-6, GPT-5.5, GPT-5.4 (read 2026-11-07) — repeats it for its
+    runtime CRIS ids: the identity "also needs bedrock:InvokeModel on your account's
+    default project ... in addition to the inference profile"."""
     return f"arn:{_partition(region)}:bedrock:{region}:{account_id}:project/default"
 
 
@@ -94,21 +109,64 @@ _GPT54_55_CRIS_IDS = frozenset({
 def is_gpt54_55_cris_model(model_id: str) -> bool:
     """True for exactly `us.`/`global.openai.gpt-5.4` / `-5.5`, as a short id or as
     an `arn:...:inference-profile/<id>` ARN. The bare `openai.gpt-5.4` / `-5.5` ids
-    (mantle) and every other model, GPT-5.6 CRIS ids included, do NOT match."""
+    (mantle) and every other model, GPT-5.6 CRIS ids included, do NOT match. This
+    is a model-family predicate (the exact ids those two cards publish); the
+    default-project grant itself is decided by `requires_default_project_grant`."""
     if not is_inference_profile(model_id):
         return False
     return model_id.rsplit("/", 1)[-1].lower() in _GPT54_55_CRIS_IDS
 
 
-def requires_default_project_grant(model_id: str) -> bool:
-    """True when the model card for this runtime CRIS id requires
-    `bedrock:InvokeModel` on the default project ARN alongside the
-    inference-profile ARN: every GPT-6 CRIS id, and the GPT-5.5 / GPT-5.4 ones."""
-    return is_gpt6_cris_model(model_id) or is_gpt54_55_cris_model(model_id)
+def is_runtime_openai_cris_model(model_id: str) -> bool:
+    """True for every proprietary GPT id in its bedrock-runtime CRIS form: a
+    `us.` / `in.` / `us-gov.` / `global.` prefixed `openai.gpt-*` id (GPT-5.6 Sol,
+    Terra and Luna, the GPT-6 family, GPT-5.5, GPT-5.4) or its
+    `arn:...:inference-profile/<id>` ARN. Bare ids (mantle), the open-weight
+    gpt-oss models and every non-OpenAI id do NOT match — classification is by id
+    form, not by model family."""
+    if not is_inference_profile(model_id):
+        return False
+    base_id = _GEO_PREFIX.sub("", model_id.rsplit("/", 1)[-1]).lower()
+    return base_id.startswith("openai.gpt-") and "oss" not in base_id
 
 
-def generate_policy(model_ids: list[str], region: str, account_id: str) -> dict:
+def requires_default_project_grant(model_id: str, runtime_api: str | None = None) -> bool:
+    """True when the policy must grant `bedrock:InvokeModel` on the default project
+    ARN alongside the inference-profile ARN for this target.
+
+    The grant belongs to the runtime OpenAI-compatible path, not to a model
+    family: a Responses request on bedrock-runtime authorizes the default project
+    separately from the inference target (inference-responses-api.html,
+    "Permissions", read 2026-11-07), and every proprietary GPT card — GPT-5.6 Sol /
+    Terra / Luna, GPT-6, GPT-5.5, GPT-5.4 — attaches the same requirement to its
+    runtime CRIS ids for both the Responses and the Chat tab of its sample code.
+    Decided by the SELECTED API when the pipeline knows it:
+    - `responses` / `chat_completions` → grant for every runtime GPT CRIS target
+    - `converse` / `messages`         → no grant (inference-prereq.html lists only
+      `bedrock:InvokeModel*` + `bedrock:GetInferenceProfile` for Converse through a
+      profile; Anthropic Messages targets are not OpenAI-compatible)
+    - None (id-only caller)           → grant for every runtime GPT CRIS target, the
+      conservative reading of the cards when the path is unknown
+    Bare mantle ids, gpt-oss and every non-OpenAI id never get it."""
+    if not is_runtime_openai_cris_model(model_id):
+        return False
+    if runtime_api is None:
+        return True
+    return runtime_api in _OPENAI_COMPATIBLE_APIS
+
+
+def generate_policy(model_ids: list[str], region: str, account_id: str,
+                    runtime_api: str | None = None,
+                    migration_path: str | None = None) -> dict:
     """Build a scoped IAM policy covering exactly the given model IDs.
+
+    `runtime_api` is the plan's selected API (`responses`, `chat_completions`,
+    `converse`, `messages`); it decides the default-project grant (see
+    `requires_default_project_grant`). None keeps the id-only behaviour.
+    `migration_path` is the plan's `code_migration.migration_path`; an
+    UNSUPPORTED lane (`mantle_messages`) raises `ValueError` instead of emitting
+    runtime `bedrock:InvokeModel*` for a bare Claude id that the lane would never
+    send to bedrock-runtime.
 
     Emits up to four statements, depending on which endpoints the targets use:
     - `bedrock:InvokeModel*` scoped to foundation-model ARNs (plain IDs) and
@@ -126,6 +184,15 @@ def generate_policy(model_ids: list[str], region: str, account_id: str) -> dict:
     all-mantle run must not emit an InvokeModel statement with an empty Resource
     list, which is an invalid policy.
     """
+    if migration_path in UNSUPPORTED_LANES:
+        raise ValueError(
+            f"migration_path {migration_path!r} is a deferred execution lane (Anthropic SDK on "
+            f"the bedrock-mantle /anthropic endpoint, selected by the `workspaces` mantle "
+            f"selector); llm-to-bedrock has no preflight, evaluation or rewrite route for it "
+            f"and this helper emits no runtime permissions for its bare Claude id")
+    if runtime_api is not None and runtime_api not in RUNTIME_APIS:
+        raise ValueError(f"Unknown runtime API {runtime_api!r}; expected one of "
+                         f"{sorted(RUNTIME_APIS)}")
     runtime_ids = [m for m in model_ids if not is_mantle_model(m, region)]
     mantle_ids = [m for m in model_ids if is_mantle_model(m, region)]
 
@@ -137,12 +204,13 @@ def generate_policy(model_ids: list[str], region: str, account_id: str) -> dict:
             resources.append(inference_profile_arn(mid, region, account_id))
             base_id = _GEO_PREFIX.sub("", mid.rsplit("/", 1)[-1])
             resources.append(foundation_model_arn(base_id, region))
-            # A GPT-6 CRIS id's model card "Call the model" section, and the
-            # GPT-5.5 / GPT-5.4 cards for their us./global. CRIS ids, grant
+            # A runtime Responses / Chat Completions target (any proprietary GPT
+            # CRIS id — GPT-5.6, GPT-6, GPT-5.5, GPT-5.4 — by id form) needs
             # InvokeModel on the inference-profile ARN AND the default project
-            # ARN — both are required, neither replaces the other. GPT-5.6 CRIS
-            # ids and all other runtime targets keep the 2-ARN shape above.
-            if requires_default_project_grant(mid):
+            # ARN; both are required, neither replaces the other. Converse-only
+            # routes, Anthropic ids and every other runtime target keep the
+            # 2-ARN shape above.
+            if requires_default_project_grant(mid, runtime_api):
                 resources.append(default_project_arn(region, account_id))
         else:
             resources.append(foundation_model_arn(mid, region))
@@ -204,10 +272,26 @@ if __name__ == "__main__":
     parser.add_argument("--region", required=True, help="AWS region")
     parser.add_argument("--account-id", required=True, help="AWS account ID")
     parser.add_argument("--output", help="Output file (default: stdout)")
+    parser.add_argument("--runtime-api", choices=sorted(RUNTIME_APIS),
+                        help="Selected runtime API (bedrock_models[].required_client_api); "
+                             "responses/chat_completions add the default-project grant for "
+                             "runtime GPT CRIS ids, converse/messages do not. Omit for the "
+                             "id-only behaviour.")
+    parser.add_argument("--migration-path",
+                        help="Plan's code_migration.migration_path; an unsupported lane "
+                             "(mantle_messages) exits 1 with a JSON reason instead of a policy.")
     args = parser.parse_args()
 
     model_ids = [m.strip() for m in args.models.split(",") if m.strip()]
-    policy = generate_policy(model_ids, args.region, args.account_id)
+    try:
+        policy = generate_policy(model_ids, args.region, args.account_id,
+                                 runtime_api=args.runtime_api,
+                                 migration_path=args.migration_path)
+    except ValueError as e:
+        print(json.dumps({"ok": False, "reason": "unsupported_lane"
+                          if args.migration_path in UNSUPPORTED_LANES else "unknown_runtime_api",
+                          "lane": args.migration_path, "detail": str(e)}, indent=2))
+        sys.exit(1)
 
     output = json.dumps(policy, indent=2) + "\n"
     if args.output:

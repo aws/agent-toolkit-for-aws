@@ -555,7 +555,9 @@ Write `aws-design-ai.json` to `$MIGRATION_DIR/`.
       records `required_client_api: "converse"` — not absent, `responses` or `chat_completions`.
       A same-workload Responses-only need (GPT-5.5 / GPT-5.4 structured outputs or implicit
       caching) is recorded as an explicit decision in the Part 5 plan, not silently dropped.
-      A region-only CRIS move keeps the `responses` default.
+      A region-only CRIS move with no such need keeps the source app's own API as the default
+      `required_client_api` (`responses` for a Responses source, `chat_completions` for a Chat
+      Completions source) — never an implicit Converse.
 - [ ] `regional_warnings` is present (empty array `[]` if no issues; populated if any service unavailable in target region)
 - [ ] `multi_model_warnings` is present (empty array `[]` if single model or no coordination issues)
 - [ ] If `agentic_profile.is_agentic == true`: `agentic_design` object is present with `migration_approach` matching `preferences.json`

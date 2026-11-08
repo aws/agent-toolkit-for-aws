@@ -88,15 +88,21 @@ diffs outputs, so the user validates behavior before cutover.
 
 ## Step 3: `setup_bedrock.sh`
 
-Enables the chosen Bedrock model(s), sets up IAM, and (mantle path) the Bedrock API key. For a
-`runtime_openai_cris` target whose CRIS id is a GPT-6 model (Astra, Sol, Luna, 6.1 Sol, 6.1 Terra) or
-GPT-5.5 / GPT-5.4 (`us.openai.gpt-5.5` / `global.openai.gpt-5.5`, `us.openai.gpt-5.4` /
-`global.openai.gpt-5.4`, or their `inference-profile/` ARNs), the IAM
-policy must grant `bedrock:InvokeModel` on `arn:aws:bedrock:{region}:{account}:project/default`
-in addition to the CRIS inference-profile ARN — both required per the GPT-6 model cards and the
-GPT-5.5 / GPT-5.4 cards (read 2026-11-07); `iam_policy.py` emits the third ARN for exactly these
-ids. The mantle `bedrock-mantle:*` policy (bare `openai.gpt-5.5` / `openai.gpt-5.4` ids included)
-is unaffected.
+Enables the chosen Bedrock model(s), sets up IAM, and (mantle path) the Bedrock API key. For
+EVERY `runtime_openai_cris` target whose `required_client_api` is `responses` or
+`chat_completions` — by id form, not model family: any proprietary GPT CRIS id, so GPT-5.6 Sol /
+Terra / Luna, the GPT-6 family (Astra, Sol, Luna, 6.1 Sol, 6.1 Terra) and GPT-5.5 / GPT-5.4
+(`us.openai.gpt-5.5` / `global.openai.gpt-5.5`, `us.openai.gpt-5.4` / `global.openai.gpt-5.4`), or
+their `inference-profile/` ARNs — the IAM policy must grant `bedrock:InvokeModel` on
+`arn:aws:bedrock:{region}:{account}:project/default` in addition to the CRIS inference-profile
+ARN: a Responses request on `bedrock-runtime` authorizes the default project separately from the
+inference target (<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html>,
+"Permissions", read 2026-11-07), and each of those model cards (read 2026-11-07) repeats the
+requirement for its runtime CRIS ids. `iam_policy.py --runtime-api <required_client_api>` emits
+the third ARN for exactly those rows and omits it for a `converse` row (the Converse-only
+application-inference-profile route) and for every Anthropic / Nova / gpt-oss id. The mantle
+`bedrock-mantle:*` policy (bare `openai.gpt-5.5` / `openai.gpt-5.4` / `openai.gpt-5.6-*` /
+`openai.gpt-6-*` ids included) is unaffected.
 
 ## Step 3B: `gateway_config.{yaml,py,json}` (gateway users)
 

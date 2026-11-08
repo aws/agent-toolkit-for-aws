@@ -334,9 +334,15 @@ limited to:
    `aws-bedrock-token-generator`) or a Bedrock API key, **not** an OpenAI key
 3. Model ID → the CRIS inference-profile id (`us.`/`in.`/`global.` for GPT-5.6 Terra and Luna; `us.`/`global.` only
    for GPT-5.6 Sol, GPT-6, GPT-5.5 and GPT-5.4), never the bare `openai.gpt-*` form
-4. IAM → `bedrock:InvokeModel*` on the inference-profile and foundation-model ARNs (GPT-6 / GPT-5.5 / GPT-5.4
-   also need `bedrock:InvokeModel` on `arn:aws:bedrock:{region}:{account-id}:project/default`), plus
-   `bedrock:GetInferenceProfile` on the profile
+4. IAM → `bedrock:InvokeModel*` on the inference-profile and foundation-model ARNs, plus
+   `bedrock:GetInferenceProfile` on the profile, plus — for EVERY runtime Responses / Chat Completions target,
+   i.e. every proprietary GPT CRIS id above (GPT-5.6 Sol / Terra / Luna, GPT-6, GPT-5.5, GPT-5.4) or its
+   `inference-profile/` ARN — `bedrock:InvokeModel` on `arn:aws:bedrock:{region}:{account-id}:project/default`:
+   a Responses request on `bedrock-runtime` authorizes the default project separately from the inference target
+   (<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html>, "Permissions", read
+   2026-11-07), and each model card repeats the requirement for its runtime CRIS ids.
+   `iam_policy.py --runtime-api <required_client_api>` emits it for `responses` / `chat_completions` rows and
+   omits it for a `converse` row and for every non-OpenAI id
 
 **Mantle alternative (selector-gated).** Only when the row records a `mantle_selector`
 (`references/vendored/ai/bedrock-endpoint-policy.md`): base URL `https://bedrock-mantle.{region}.api.aws/openai/v1`,
