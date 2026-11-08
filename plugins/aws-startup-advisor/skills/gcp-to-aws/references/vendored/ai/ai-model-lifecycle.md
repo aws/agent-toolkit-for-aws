@@ -203,7 +203,7 @@ Apply the same four rules as for Bedrock models to **target eligibility**: users
 - **Vertex AI, any 2.5 model:** retired 2026-10-20. The customer cannot be billed for the retired model, so price the comparison against Google's named replacement in the table above (3.8 Flash with its 2027 step, 3.5 Flash-Lite, or Gemma 4).
 - **Any 2.0 model, either API:** past the 2026-06-01 shutdown. Price the comparison against the replacement in the table above; the 2.0 list prices in the mapping guides and pricing caches are historical figures only.
 
-When the serving API is not known from Discover (`ai-workload-profile.json` records `models[].service` as `vertex_ai_generative` only for Vertex AI evidence and has no Developer API value), Clarify asks for it (`gcp-to-aws` Q19b → `ai_constraints.ai_source_serving_api`) rather than the estimate guessing.
+When the serving API is not known from Discover, Clarify asks for it (`gcp-to-aws` Q19b → `ai_constraints.ai_source_serving_api`) rather than the estimate guessing. `ai-workload-profile.json` records `models[].service: vertex_ai_generative` for every Gemini generative model regardless of SDK (it is the Gemini category, not a serving-API signal) and has no Developer API value; only that row's `detected_via` evidence (`terraform`, `monitoring`) establishes Vertex AI. A code-only row is unresolved until Q19b answers.
 
 The plugin's `lint:model-id` task bans retired **Bedrock** ids by reading the Model ID column of the Legacy/EOL table above and the Removed list; this source-model table keeps its ids in the first column on purpose so retired Gemini ids remain recognizable in scanners, fixtures, and detection docs.
 

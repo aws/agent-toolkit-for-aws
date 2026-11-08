@@ -206,6 +206,10 @@ def test_lifecycle_ssot_prices_the_source_baseline_by_serving_api_and_date() -> 
     assert "https://aistudio.google.com/docs/pricing" in section
     # The consumer that needs the serving API is named, and so is the Clarify field that carries it.
     assert "ai_source_serving_api" in section and "Q19b" in section
+    # Discover's `vertex_ai_generative` is the Gemini category, not proof of Vertex AI serving.
+    assert "only for Vertex AI evidence" not in section
+    assert "regardless of SDK" in section and "not a serving-API signal" in section
+    assert "`detected_via` evidence (`terraform`, `monitoring`) establishes Vertex AI" in section
 
 
 def test_gemini_guide_legacy_rows_and_cost_note_carry_the_api_date_baselines() -> None:
@@ -248,6 +252,9 @@ def test_gcp_pricing_cache_marks_retired_rows_and_selects_the_baseline_by_api_an
     assert "Never use a 2.5 row" not in note
     assert "serving API" in note and "measured bill" in note
     assert "`vertex_ai_generative`" in note and "ai_source_serving_api" in note
+    assert "`ai_constraints.ai_source_serving_api` first" in note
+    assert "`detected_via` includes `terraform` or `monitoring`" in note
+    assert "not a Vertex AI serving signal" in note and "(`vertex_ai_generative` = Vertex AI)" not in note
     assert "**Vertex AI**" in note and "named replacement" in note
     assert "`gemini-2.5-flash-lite` is not deprecated" in note and "0.10 / 0.40 row is the correct baseline" in note
     assert "$45" in note and "$232.50" in note
@@ -268,11 +275,20 @@ def test_clarify_captures_the_serving_api_and_estimate_reads_it() -> None:
     # Discover only knows Vertex AI (`models[].service: vertex_ai_generative`); the Developer API
     # is asked, not guessed, and GCP-hosting alone never implies Vertex AI.
     assert "`vertex_ai_generative`" in q19b and "no Developer API value" in q19b
+    # `vertex_ai_generative` is the Gemini category Discover assigns to every Gemini SDK (code scan
+    # pattern 2.3 lumps google.generativeai with vertexai.generative_models); only `detected_via`
+    # evidence establishes Vertex AI, so the value alone never resolves Q19b.
+    assert "not a Vertex AI signal" in q19b
+    assert "**with** `terraform` or `monitoring` in `detected_via`" in q19b
+    assert "`[\"code\"]` only is unresolved" in q19b
     assert "never infer `vertex_ai` from the fact that the project is on GCP" in q19b
     assert "$0.10/$0.40 with no cutoff" in q19b and "Dec 1, 2026" in q19b and "Jan 1, 2027" in q19b
     # The 2.5 row of the Q19 table routes to Q19b and prices by API/date instead of banning 2.5 prices.
     row = next(ln for ln in clarify.splitlines() if ln.startswith("| Gemini 2.5 Pro / Flash / Flash-Lite"))
     assert "Ask Q19b" in row and "never use a 2.5 price" not in row, row
+    # The row's skip condition requires terraform/monitoring evidence, not the service value alone.
+    assert "`models[].service: vertex_ai_generative` **with** `terraform` or `monitoring`" in row, row
+    assert "unless Discover already shows `models[].service: vertex_ai_generative`" not in row, row
     assert "2.5 Flash-Lite $0.10/$0.40 with no cutoff" in row and "until Dec 1, 2026" in row and "measured bill always wins" in row, row
     # The AI-only flow asks the same question for a 2.5 baseline.
     assert "Q19b" in CLARIFY_AI_ONLY.read_text(encoding="utf-8")
@@ -283,6 +299,13 @@ def test_clarify_captures_the_serving_api_and_estimate_reads_it() -> None:
     part1 = _section(estimate, "## Part 1: Establish Current AI Costs", "## Part 2:")
     assert "pick the row by serving API and date" in part1
     assert "`vertex_ai_generative`" in part1 and "`ai_constraints.ai_source_serving_api`" in part1
+    # Clarify's answer wins; the Vertex branch needs terraform/monitoring evidence, never the
+    # `vertex_ai_generative` value alone (that would price code-scanned Developer API workloads
+    # at the replacement, e.g. 2.5 Flash-Lite $45 -> 3.5 Flash-Lite $232.50 at 150M / 75M).
+    assert "read `ai_constraints.ai_source_serving_api` from `preferences.json` first" in part1
+    assert "`detected_via` includes `terraform` or `monitoring`" in part1
+    assert "not a Vertex AI serving signal" in part1 and "a code-only row is `unknown`" in part1
+    assert "(`vertex_ai_generative` = Vertex AI)" not in part1
     assert "`gemini-2.5-flash-lite` uses its own 0.10 / 0.40 row with no cutoff" in part1
     assert "before 2026-12-01" in part1 and "on or after" in part1 and "2027-01-01" in part1
     assert "Gemini 2.0 rows are never a baseline on either API" in part1
