@@ -81,7 +81,7 @@ Before asking anything, present what discovery already answered and what will be
 | Task complexity | Moderate | Sonnet-class model |
 
 Reply "looks good" to continue to the remaining questions, correct any line
-("model: gemini-2.5-pro"), or describe the issue in plain words.
+("model: gemini-3.5-flash"), or describe the issue in plain words.
 ```
 
 Questions resolved on this sheet are **not** re-asked in the batches below; record them with `chosen_by: "extracted"` (detected rows) or `"default"` (assumed rows, sheet-confirmed), and skip their entries in Batch 1/2. Rows the user corrects become `chosen_by: "user"`. Rows with no detection signal stay in the batches as normal questions.
@@ -213,6 +213,8 @@ For sources without a Bedrock equivalent, present a same-vendor upgrade and a cr
 Override examples: GPT-4 + Q2=cost → Haiku; Flash + Q10=extended thinking → Sonnet; GPT-4o + Q10=speech → Nova 2 Sonic; GPT-5.5 + Q2=cost → Sonnet 5.
 
 Interpret → `ai_model_baseline`. Default: auto-detect, fallback Q2 priority-based.
+
+When the resolved baseline is a Gemini 2.5 model (`gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`), also ask full-flow **Q19b** from `clarify-ai.md` (serving API: Vertex AI vs Gemini Developer API) with the same auto-detect rule, and write `ai_constraints.ai_source_serving_api`. The 2.5 models are retired on Vertex AI but still billed on the Developer API, so the answer decides the source-price baseline.
 
 ### Batch 1 → Save Draft and Present Batch 2
 
