@@ -106,6 +106,21 @@ every Anthropic / Nova / gpt-oss id. The mantle
 `bedrock-mantle:*` policy (bare `openai.gpt-5.5` / `openai.gpt-5.4` / `openai.gpt-5.6-*` /
 `openai.gpt-6-*` ids included) is unaffected.
 
+**Retained stored-response operations.** When the source code keeps `client.responses.retrieve(id)`
+(or `.cancel(id)` / `.delete(id)`; scan for `responses.retrieve(` / `responses.cancel(` /
+`responses.delete(`), a runtime `responses` row ALSO needs `bedrock:GetInvoke` (and
+`bedrock:CancelInvoke` / `bedrock:DeleteInvoke` only for the ops actually retained) on the same
+`arn:aws:bedrock:{region}:{account}:project/default`: creating a response authorizes
+`bedrock:InvokeModel` on the target and the project, while retrieving, canceling or deleting a
+stored response authorizes those actions on the project (same page, "Permissions", read
+2026-11-08) — without them creation and the ping pass and the app's existing retrieve is denied.
+`iam_policy.py --stored-response-ops retrieve[,cancel,delete]` emits that `BedrockStoredResponseOps`
+statement for a runtime `responses` row only and refuses (`reason:
+stored_response_ops_no_responses_row`) for a `converse`, `messages` or `chat_completions` plan,
+which has no stored responses. `setup_bedrock.sh`'s verification then also retrieves the response it
+just created (`r = client.responses.create(...)`, then `client.responses.retrieve(r.id)`): a 403 on
+the second call means the grant is missing even though creation passed.
+
 ## Step 3B: `gateway_config.{yaml,py,json}` (gateway users)
 
 Format by framework: `llm_router` → `gateway_config.yaml` (LiteLLM); `framework` →

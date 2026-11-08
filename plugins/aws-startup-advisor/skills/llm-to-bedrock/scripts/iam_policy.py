@@ -18,6 +18,19 @@ _OPENAI_COMPATIBLE_APIS = frozenset({"responses", "chat_completions"})
 # value preflight accepts for those rows); it never selects the OpenAI-compatible path.
 TARGET_APIS = RUNTIME_APIS | {"invoke"}
 
+# Stored-response operations a source app may RETAIN after the rewrite, and the action
+# each one authorizes on the default project. Creating a response authorizes
+# `bedrock:InvokeModel` on the inference target and the project; retrieving, canceling
+# and deleting a stored response authorize these three, each on the project
+# (https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html,
+# "Permissions", read 2026-11-08). They exist only on the runtime Responses API:
+# Converse, Anthropic Messages and Chat Completions rows never get them.
+STORED_RESPONSE_OPS = {
+    "retrieve": "bedrock:GetInvoke",
+    "cancel": "bedrock:CancelInvoke",
+    "delete": "bedrock:DeleteInvoke",
+}
+
 # Execution lanes this helper refuses to authorize. `mantle_messages` (Anthropic SDK
 # on the bedrock-mantle `/anthropic` endpoint, selected by the `workspaces` mantle
 # selector) is deferred: llm-to-bedrock has no preflight, evaluation or rewrite route
@@ -200,10 +213,81 @@ def target_apis_by_id(pairs: list[tuple[str, str]]) -> dict[str, set[str]]:
     return by_id
 
 
+def parse_stored_response_ops(specs: list[str]) -> list[str]:
+    """Pure: parse repeatable `--stored-response-ops OP[,OP]` specs into an ordered,
+    de-duplicated list of `retrieve` / `cancel` / `delete`. Fails CLOSED on any other
+    value so an action is never granted on a guess."""
+    ops: list[str] = []
+    bad: list[str] = []
+    for spec in specs:
+        for item in spec.split(","):
+            item = item.strip()
+            if not item:
+                continue
+            if item not in STORED_RESPONSE_OPS:
+                bad.append(item)
+            elif item not in ops:
+                ops.append(item)
+    if bad:
+        raise ValueError(
+            "Every --stored-response-ops value must be one of "
+            f"{' | '.join(STORED_RESPONSE_OPS)} (the client.responses.<op>(id) calls the source "
+            f"app RETAINS). Unknown: {', '.join(bad)}.")
+    return ops
+
+
+def validated_target_pairs(rows: list[dict], validated_mapping: list[str] | dict[str, str],
+                           primary_model_id: str | None = None,
+                           primary_api: str | None = None) -> list[tuple[str, str]]:
+    """Pure: build the `--target ID=API` pairs for the report's IAM recipe by JOINING
+    each `bedrock_models[]` row to the FINAL validated source→target mapping.
+
+    The id comes from `validated_mapping` — the validated analysis `target_models`
+    entries (`"<source-model> -> <bedrock-model>"`, one per row, re-emitted after every
+    C4 `resolved_model_overrides` change) or an equivalent `{source: target}` dict —
+    never from the row's own `aws_model_id`, which `aws-design-ai.json` keeps as the
+    ORIGINAL design id after the user changes the target in C4 (a Sol → Terra change
+    must emit Terra's profile, not Sol's). The API comes from the row
+    (`required_client_api`, older plans `runtime_api`); the ONE row whose validated
+    target is `primary_model_id` may fall back to `primary_api` (B4's resolved surface)
+    when it records none. Fails CLOSED: a row with no validated mapping entry, or a
+    row with no API, raises `ValueError` instead of granting on the design's stale id."""
+    if isinstance(validated_mapping, dict):
+        mapping = dict(validated_mapping)
+    else:
+        mapping = {}
+        for entry in validated_mapping:
+            source, sep, target = entry.partition("->")
+            if not sep or not source.strip() or not target.strip():
+                raise ValueError(
+                    f"validated mapping entry {entry!r} is not '<source-model> -> <bedrock-model>'")
+            mapping[source.strip()] = target.strip()
+    pairs: list[tuple[str, str]] = []
+    for row in rows:
+        source = row.get("source_model") or row.get("source_model_id") or ""
+        if source not in mapping:
+            raise ValueError(
+                f"bedrock_models[] row for source {source!r} (design id "
+                f"{row.get('aws_model_id')!r}) has no entry in the validated target mapping; "
+                "re-run C1 so analysis.target_models covers every row — never grant the "
+                "design's original id on a guess.")
+        target = mapping[source]
+        api = row.get("required_client_api") or row.get("runtime_api")
+        if not api and primary_api and target == primary_model_id:
+            api = primary_api
+        if not api:
+            raise ValueError(
+                f"bedrock_models[] row for source {source!r} → {target!r} records no "
+                "required_client_api; resolve it in the saved plan instead of guessing it.")
+        pairs.append((target, api))
+    return pairs
+
+
 def generate_policy(model_ids: list[str], region: str, account_id: str,
                     runtime_api: str | None = None,
                     migration_path: str | None = None,
-                    target_apis: dict[str, str | set[str]] | None = None) -> dict:
+                    target_apis: dict[str, str | set[str]] | None = None,
+                    stored_response_ops: list[str] | None = None) -> dict:
     """Build a scoped IAM policy covering exactly the given model IDs.
 
     `runtime_api` is the plan's selected API (`responses`, `chat_completions`,
@@ -219,8 +303,16 @@ def generate_policy(model_ids: list[str], region: str, account_id: str,
     UNSUPPORTED lane (`mantle_messages`) raises `ValueError` instead of emitting
     runtime `bedrock:InvokeModel*` for a bare Claude id that the lane would never
     send to bedrock-runtime.
+    `stored_response_ops` lists the stored-response operations the source app
+    RETAINS (`retrieve` / `cancel` / `delete`, see STORED_RESPONSE_OPS). Each adds
+    its action — `bedrock:GetInvoke` / `CancelInvoke` / `DeleteInvoke` — on the
+    default project, which is what retrieving, canceling or deleting a stored
+    response authorizes (inference-responses-api.html, "Permissions", read
+    2026-11-08). Only a runtime GPT CRIS row on `responses` can carry stored
+    responses, so declaring ops when no such row exists raises `ValueError`: a
+    Converse, Anthropic Messages or Chat Completions plan never gets these grants.
 
-    Emits up to four statements, depending on which endpoints the targets use:
+    Emits up to five statements, depending on which endpoints the targets use:
     - `bedrock:InvokeModel*` scoped to foundation-model ARNs (plain IDs) and
       inference-profile ARNs (geo-prefixed IDs), for bedrock-runtime targets
     - `bedrock:GetInferenceProfile` scoped to the inference-profile ARNs, when any
@@ -228,6 +320,8 @@ def generate_policy(model_ids: list[str], region: str, account_id: str,
       prerequisite for invoking through a profile
       (https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-prereq.html,
       read 2026-11-07)
+    - `bedrock:GetInvoke` / `CancelInvoke` / `DeleteInvoke` (only the retained ones)
+      on the default project ARN, for a runtime Responses row with stored responses
     - `bedrock-mantle:CreateInference` / `Get*` / `List*` scoped to the account's
       mantle projects, for mantle-only targets (SigV4 auth)
     - `bedrock-mantle:CallWithBearerToken` on `*`, for Bedrock API-key auth
@@ -252,6 +346,11 @@ def generate_policy(model_ids: list[str], region: str, account_id: str,
             if api not in TARGET_APIS:
                 raise ValueError(f"Unknown runtime API {api!r} for target {mid!r}; expected one of "
                                  f"{sorted(TARGET_APIS)}")
+    stored_response_ops = list(stored_response_ops or [])
+    for op in stored_response_ops:
+        if op not in STORED_RESPONSE_OPS:
+            raise ValueError(f"Unknown stored-response op {op!r}; expected one of "
+                             f"{sorted(STORED_RESPONSE_OPS)}")
     runtime_ids = [m for m in model_ids if not is_mantle_model(m, region)]
     mantle_ids = [m for m in model_ids if is_mantle_model(m, region)]
 
@@ -299,6 +398,29 @@ def generate_policy(model_ids: list[str], region: str, account_id: str,
             "Effect": "Allow",
             "Action": ["bedrock:GetInferenceProfile"],
             "Resource": sorted(set(profile_arns)),
+        })
+
+    if stored_response_ops:
+        # Stored responses exist only on the runtime Responses API, so the grant is
+        # keyed on a row that is BOTH a runtime GPT CRIS target AND on `responses`
+        # (the same rows that get the default-project InvokeModel grant for
+        # creation). A Converse / Messages / Chat Completions plan, or a legacy
+        # id-only call with no API, fails closed instead of receiving GetInvoke.
+        responses_rows = [
+            mid for mid in runtime_ids
+            if "responses" in (target_apis.get(mid) or {runtime_api})
+            and requires_default_project_grant(mid, "responses")]
+        if not responses_rows:
+            raise ValueError(
+                f"stored-response ops {stored_response_ops} declared but no --target row is a "
+                "runtime GPT CRIS id on the `responses` API; retrieving / canceling / deleting a "
+                "stored response exists only there, so a converse / messages / chat_completions "
+                "plan never gets bedrock:GetInvoke / CancelInvoke / DeleteInvoke")
+        statements.append({
+            "Sid": "BedrockStoredResponseOps",
+            "Effect": "Allow",
+            "Action": sorted(STORED_RESPONSE_OPS[op] for op in stored_response_ops),
+            "Resource": [default_project_arn(region, account_id)],
         })
 
     if mantle_ids:
@@ -349,6 +471,12 @@ if __name__ == "__main__":
     parser.add_argument("--migration-path",
                         help="Plan's code_migration.migration_path; an unsupported lane "
                              "(mantle_messages) exits 1 with a JSON reason instead of a policy.")
+    parser.add_argument("--stored-response-ops", action="append", default=[],
+                        help="retrieve | cancel | delete (comma-joined or repeated): the "
+                             "client.responses.<op>(id) calls the source app RETAINS. Adds "
+                             "bedrock:GetInvoke / CancelInvoke / DeleteInvoke on project/default "
+                             "for a runtime GPT CRIS row on `responses`; exits 1 with reason "
+                             "stored_response_ops_no_responses_row when no such row exists.")
     args = parser.parse_args()
 
     def _fail(reason: str, detail: str) -> None:
@@ -373,11 +501,17 @@ if __name__ == "__main__":
     else:
         model_ids = [m.strip() for m in args.models.split(",") if m.strip()]
     try:
+        stored_response_ops = parse_stored_response_ops(args.stored_response_ops)
+    except ValueError as e:
+        _fail("unknown_stored_response_op", str(e))
+    try:
         policy = generate_policy(model_ids, args.region, args.account_id,
                                  runtime_api=args.runtime_api if not args.target else None,
-                                 migration_path=args.migration_path, target_apis=target_apis)
+                                 migration_path=args.migration_path, target_apis=target_apis,
+                                 stored_response_ops=stored_response_ops)
     except ValueError as e:
-        _fail("unknown_runtime_api", str(e))
+        _fail("stored_response_ops_no_responses_row" if "stored-response ops" in str(e)
+              else "unknown_runtime_api", str(e))
 
     output = json.dumps(policy, indent=2) + "\n"
     if args.output:

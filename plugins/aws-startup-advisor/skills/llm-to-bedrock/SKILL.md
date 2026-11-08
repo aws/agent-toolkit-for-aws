@@ -853,10 +853,26 @@ reliably visible, and even that must be materialized to the file for the baselin
 `required_client_api` (older plans: that row's `runtime_api`, then
 `ai_architecture.code_migration.runtime_api`) is the API B4, the context block and C0 all use.
 When the plan records one, `$RESOLVED_RUNTIME_API` is that value. When a `runtime_openai_cris`
-plan records none: on resume, read `resolved_runtime_api` from the saved
-`$REPO/.saws-migrate/phase-results/run-context.json` (C0's `$PHASE_DIR`) and reuse it without
-asking; otherwise AskUserQuestion "Which API does the source app call:
-Responses or Chat Completions?" and set `$RESOLVED_RUNTIME_API` to the answer. Other paths that
+plan records none, check the saved answer's identity BEFORE reusing it — the saved
+`resolved_runtime_api` in `$REPO/.saws-migrate/phase-results/run-context.json` (C0's
+`$PHASE_DIR`) belongs to the design it was given for, and C0's `assess_design_sha256`
+comparison runs only AFTER these probes:
+
+```bash
+uv run --project $SCRIPTS python $SCRIPTS/preflight_bedrock.py --resume-runtime-api $PHASE_DIR/run-context.json --design $MIGRATION_DIR/aws-design-ai.json
+```
+
+Exit 0 (`reason: saved_identity_match`) means the saved answer exists AND the saved
+`assess_design_sha256` equals the current design's sha256 AND the saved `target_models`
+(source model, `aws_model_id`) pairs equal the current `bedrock_models[]` rows: set
+`$RESOLVED_RUNTIME_API` to the printed `resolved_runtime_api` and reuse it without asking.
+Exit 1 (`no_saved_context`, `no_saved_runtime_api`, or `saved_identity_mismatch` with the
+differing fields) means the design, source model or target changed since the answer was
+recorded: do NOT read the saved value — AskUserQuestion "Which API does the source app call:
+Responses or Chat Completions?" now, before any probe, and set `$RESOLVED_RUNTIME_API` to the
+answer (C0 later archives the stale units per its table). A cached `messages` answer must never
+send a new GPT row to the Anthropic endpoint, and a stale `responses` answer must never override
+a Chat Completions source. Other paths that
 record no API resolve from the path itself: `runtime_messages` → `messages`;
 `mantle_openai_chat` → `chat_completions`; `mantle` / `mantle_openai_responses` → `responses`
 (a bare GPT id is probed on the Mantle Responses API either way); `converse` / `direct` /
@@ -948,8 +964,9 @@ stop for an explicit supported API decision rather than treating it as Converse.
 that explicit API and **fails closed when none is recorded**: `normalize_api_path` raises
 `ValueError` ("Converse is never the implicit default"). Reaching that error here means B4's
 resolution step was skipped — do not catch it and guess; go back to B4, resolve
-`$RESOLVED_RUNTIME_API` (on resume, read `resolved_runtime_api` from run-context before asking
-again), and re-normalize. The same value is written to current-context.json as
+`$RESOLVED_RUNTIME_API` (on resume, reuse the saved `resolved_runtime_api` only when B4's
+`--resume-runtime-api` gate reports `saved_identity_match`; otherwise ask), and re-normalize.
+The same value is written to current-context.json as
 `resolved_runtime_api` (C0), so an unchanged resume matches without re-asking. An explicit
 `required_client_api: "converse"` is the ONLY route to a Converse rewrite for a
 `runtime_openai_cris` plan. `runtime_messages` (Anthropic SDK on the runtime `/anthropic`

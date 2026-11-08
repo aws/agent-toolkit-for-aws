@@ -5,6 +5,7 @@ Usage:
   python preflight_bedrock.py --region <r> --target <id>=<api> [--target ...] [--dataset-size N]
   python preflight_bedrock.py --region <r> --models <id,id,...> [--runtime-api <api>] [--dataset-size N]
   python preflight_bedrock.py --check-lanes <aws-design-ai.json>
+  python preflight_bedrock.py --resume-runtime-api <run-context.json> --design <aws-design-ai.json>
 Prints a JSON verdict to stdout; exit 0 if all models pass, 1 otherwise.
 Always prints JSON — including for missing credentials / bad region — so the
 caller can parse the verdict instead of a traceback. On failure the top level
@@ -22,6 +23,12 @@ applies that one API to every listed id (`converse` when omitted).
 `reason: unsupported_lane` when any row's `migration_path` is a deferred lane
 (`mantle_messages`, the Workspaces selector's Anthropic-SDK-on-Mantle route);
 run it before preflight or any Phase C dispatch.
+`--resume-runtime-api` is B4's resume gate for a `runtime_openai_cris` plan that records
+no API: the saved `resolved_runtime_api` is reused (exit 0) only when the saved
+`assess_design_sha256` and `target_models` identity still match the current design;
+otherwise (exit 1) the current row's API is resolved BEFORE any probe, so a cached
+`messages` answer never sends a new GPT row to the Anthropic endpoint and a stale
+`responses` answer never overrides a Chat Completions source.
 Embedding models (which don't speak Converse) go via InvokeModel with their
 family's request body. Bare OpenAI proprietary GPT ids are the bedrock-mantle
 form and are probed via the OpenAI Responses API on that endpoint; GPT-6 Astra
@@ -409,6 +416,79 @@ def check_lanes(design_path: str) -> int:
     return 0
 
 
+def design_row_identity(rows: list) -> list[tuple[str, str]]:
+    """Pure: the (source model, aws_model_id) identity of every design row, in row order.
+    Accepts the design's `source_model_id` spelling and run-context's `source_model`."""
+    return [(str(r.get("source_model") or r.get("source_model_id") or ""),
+             str(r.get("aws_model_id") or "")) for r in rows]
+
+
+def resume_runtime_api(saved_context: dict | None, design_sha256: str, rows: list) -> dict:
+    """Pure: decide whether B4 may REUSE the saved `resolved_runtime_api` on a resume
+    without asking again, or must resolve the current API before any probe.
+
+    The saved answer belongs to the design it was given for. It is reused only when it
+    exists AND the saved identity still matches the current inputs: `assess_design_sha256`
+    equals the sha256 of the current `aws-design-ai.json`, and the saved `target_models`
+    (source_model, aws_model_id) pairs equal the current `bedrock_models[]` rows. A changed
+    design, a different source model, a different target id, or a saved context without
+    the field all return `ok: false` — a cached `messages` answer must never send a new
+    GPT row to the Anthropic endpoint, and a stale `responses` answer must never override
+    a Chat Completions source. C0's own identity check runs later; this gate is what
+    keeps B4's probes from dispatching on the previous design's answer first."""
+    if not saved_context:
+        return {"ok": False, "reason": "no_saved_context",
+                "detail": "No saved run-context.json: resolve the current row's API before B4 probes."}
+    saved_api = saved_context.get("resolved_runtime_api")
+    if not saved_api:
+        return {"ok": False, "reason": "no_saved_runtime_api",
+                "detail": "Saved run-context records no resolved_runtime_api; resolve it now."}
+    mismatches = []
+    saved_sha = saved_context.get("assess_design_sha256")
+    if saved_sha != design_sha256:
+        mismatches.append(f"assess_design_sha256 saved={saved_sha!r} current={design_sha256!r}")
+    saved_rows = design_row_identity(saved_context.get("target_models") or [])
+    current_rows = design_row_identity(rows)
+    if saved_rows != current_rows:
+        mismatches.append(f"target_models saved={saved_rows!r} current={current_rows!r}")
+    if mismatches:
+        return {"ok": False, "reason": "saved_identity_mismatch", "mismatches": mismatches,
+                "detail": ("Saved resolved_runtime_api belongs to a different design/source/target; "
+                           "resolve the current row's API before B4 probes (C0 will archive per its table).")}
+    return {"ok": True, "reason": "saved_identity_match", "resolved_runtime_api": saved_api,
+            "detail": "Saved design, source and target identity match; reuse without asking."}
+
+
+def check_resume_runtime_api(run_context_path: str, design_path: str) -> int:
+    """CLI entry for the B4 resume gate: print JSON, exit 0 when the saved API may be
+    reused, 1 when the current API must be resolved first."""
+    import hashlib
+    try:
+        with open(design_path, "rb") as fh:
+            design_bytes = fh.read()
+        design = json.loads(design_bytes.decode("utf-8"))
+    except (OSError, ValueError) as e:
+        print(json.dumps({"ok": False, "reason": "design_unreadable",
+                          "detail": f"{type(e).__name__}: {e}"}, indent=2))
+        return 1
+    saved = None
+    try:
+        with open(run_context_path, encoding="utf-8") as fh:
+            saved = json.load(fh)
+    except FileNotFoundError:
+        saved = None
+    except (OSError, ValueError) as e:
+        print(json.dumps({"ok": False, "reason": "run_context_unreadable",
+                          "detail": f"{type(e).__name__}: {e}"}, indent=2))
+        return 1
+    arch = design.get("ai_architecture", {}) if isinstance(design, dict) else {}
+    rows = arch.get("bedrock_models") or []
+    verdict = resume_runtime_api(saved if isinstance(saved, dict) else None,
+                                 hashlib.sha256(design_bytes).hexdigest(), rows)
+    print(json.dumps(verdict, indent=2))
+    return 0 if verdict["ok"] else 1
+
+
 def parse_targets(specs: list[str]) -> tuple[list[tuple[str, str]], dict | None]:
     """Pure: parse `--target ID=API` specs into (model_id, api) pairs.
 
@@ -549,6 +629,13 @@ def main(argv=None) -> int:
     group.add_argument("--check-lanes", metavar="AWS_DESIGN_AI_JSON",
                        help="stop with reason unsupported_lane when any bedrock_models[] row "
                             "selects a deferred lane (mantle_messages); probes nothing")
+    group.add_argument("--resume-runtime-api", metavar="RUN_CONTEXT_JSON",
+                       help="B4 resume gate: exit 0 and print the saved resolved_runtime_api "
+                            "only when the saved assess_design_sha256 and target_models still "
+                            "match --design; exit 1 (reason saved_identity_mismatch / "
+                            "no_saved_context) when the current API must be resolved first")
+    ap.add_argument("--design", metavar="AWS_DESIGN_AI_JSON",
+                    help="current aws-design-ai.json for --resume-runtime-api")
     ap.add_argument("--dataset-size", type=int, default=0)
     ap.add_argument("--runtime-api",
                     choices=["converse", "responses", "chat_completions", "messages"],
@@ -558,6 +645,10 @@ def main(argv=None) -> int:
 
     if args.check_lanes:
         return check_lanes(args.check_lanes)
+    if args.resume_runtime_api:
+        if not args.design:
+            ap.error("--resume-runtime-api requires --design <aws-design-ai.json>")
+        return check_resume_runtime_api(args.resume_runtime_api, args.design)
     if not args.region or not (args.models or args.target):
         ap.error("--region and one of --models / --target are required")
 

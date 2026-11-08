@@ -34,7 +34,7 @@ Read accumulated state from prompt context (forwarded from every prior Track 2 p
 - **`<REGION>`** — AWS region for Bedrock (the `AWS region:` line in your context).
 - **AWS profile** — the `AWS profile` line, when present: prepend `AWS_PROFILE=<profile>` inline to the §6.1 pricing-script invocation and any other aws/boto3 command; omit when absent.
 - **`<scriptsDir>`** — the pinned-toolchain scripts directory, the `Scripts directory (pinned uv toolchain):` line in your context. Used to run `bedrock_pricing.py`.
-- **From `llm2bedrock-code-analyzer` (`AiAnalysisData`)** — `source_provider`, `ai_framework`, `source_models`, `target_models` (`<source-model> -> <bedrock-model>` pairs), `coverage_level`, `use_case_type`, `errors`.
+- **From `llm2bedrock-code-analyzer` (`AiAnalysisData`)** — `source_provider`, `ai_framework`, `source_models`, `target_models` (`<source-model> -> <bedrock-model>` pairs — the FINAL validated ids §6.4's IAM recipe joins the plan rows to), `stored_response_ops` (optional: retained `responses.retrieve` / `cancel` / `delete` ops, §6.4), `coverage_level`, `use_case_type`, `errors`.
 - **From `llm2bedrock-log-ingestor` (`LogIngestionData`)** — `total_golden_cases`, `coverage_level`, `gaps`. Drives the Risk Assessment + Coverage sections.
 - **From `llm2bedrock-prompt-evaluator` (`EvalData` + `notes` prefixes)** — top-level fields:
   - `pass_rate` (fraction in [0,1]), `total_cases`, `failures`, `live_source_baseline` (bool), `judge_model`.
@@ -566,29 +566,62 @@ Generate a least-privilege IAM policy scoped to the exact model ARNs selected du
 ```bash
 uv run --project <scriptsDir> python <scriptsDir>/iam_policy.py \
   --target <aws_model_id>=<that row's required_client_api> [--target ... one per bedrock_models[] row] \
+  [--stored-response-ops <comma-joined analysis.stored_response_ops — omit when absent or empty>] \
   --region <REGION> \
   --account-id <AWS account id from run-context> \
   --migration-path <Target API path from your context> \
   --output <repo>/.saws-migrate/iam-policy.json
 ```
 
-**One `--target` pair per row, each with ITS OWN API.** Read `ai_architecture.bedrock_models[]` from
-`<Migration plan dir>/aws-design-ai.json` and emit `<aws_model_id>=<required_client_api>` for every row
-(`responses` | `chat_completions` | `converse` | `messages`; `invoke` for an embedding row). The primary chat
-row's API is the `Target API surface` from your context (the value B4 resolved; use it when that row records
-no `required_client_api`). Do NOT apply the primary's surface to the other rows: the grant is decided per row,
-so a `runtime_messages` plan whose secondary is a GPT Chat / Responses CRIS id still gets `project/default`
-for that secondary, while a Nova Converse secondary does not. Do not deduplicate rows: when one id appears in
-two rows with different APIs (a `converse` row for a Guardrails / application-inference-profile call site and
-a `chat_completions` / `responses` row for another source model), pass both pairs in any order — the helper
-grants `project/default` once if ANY of that id's rows is on `responses` / `chat_completions`, and never if
-none is. If any row's API is missing or unknown the
-helper exits 1 with `reason: unknown_runtime_api` and writes no policy — report that verbatim, do not
-substitute an API and do not hand-write a policy. The legacy single-API form
-`--models <comma-separated ids> --runtime-api <Target API surface>` is still accepted but applies ONE API to
-every id; use it only for a single-row plan. A `mantle_messages` path never reaches this agent (the
-orchestrator's lane gate stops it before Phase C); if it somehow does, the helper exits 1 with
-`reason: unsupported_lane` — report that verbatim and do not hand-write a policy.
+**The ids come from the VALIDATED mapping, the APIs from the plan rows — join them.** `<aws_model_id>` in the
+command above is the VALIDATED target id for that row, not the design row's own `aws_model_id`.
+`aws-design-ai.json` keeps the ORIGINAL design id after the user changes a target in C4 (recorded in run-context
+`resolved_model_overrides`; the dispatch context's `Target Bedrock model(s)` line and the re-run
+analysis already carry the new target), so re-reading `bedrock_models[].aws_model_id` would emit the old
+model's permissions — a Sol → Terra change would grant `us.openai.gpt-5.6-sol` and omit the Terra profile
+the rewritten app calls. Instead, for every `ai_architecture.bedrock_models[]` row in
+`<Migration plan dir>/aws-design-ai.json`, take the row's `source_model_id` (older plans `source_model`),
+look it up in the analyzer's validated `target_models` (`"<source-model> -> <bedrock-model>"`, one entry per
+row — the right-hand side is the FINAL validated id with every override applied), and emit
+`<that validated id>=<the row's required_client_api>`. This is exactly `iam_policy.validated_target_pairs(rows,
+analysis["target_models"], primary_model_id, primary_api)` in `<scriptsDir>`; use it when a row's API has to
+be filled in, and run `python -c` against it rather than hand-joining. Control: the set of ids you emit MUST
+equal the set on your context's `Target Bedrock model(s)` line; a row whose source model has no validated
+entry makes the helper raise — stop and report it, never fall back to the row's original `aws_model_id`.
+
+**One `--target` pair per row, each with ITS OWN API** (`responses` | `chat_completions` | `converse` |
+`messages`; `invoke` for an embedding row). The primary chat row's API is the `Target API surface` from
+your context (the value B4 resolved; use it when that row records no `required_client_api`). Do NOT apply
+the primary's surface to the other rows: the grant is decided per row, so a `runtime_messages` plan whose
+secondary is a GPT Chat / Responses CRIS id still gets `project/default` for that secondary, while a Nova
+Converse secondary does not. Do not deduplicate rows: when one id appears in two rows with different APIs (a
+`converse` row for a Guardrails / application-inference-profile call site and a `chat_completions` /
+`responses` row for another source model), pass both pairs in any order — the helper grants
+`project/default` once if ANY of that id's rows is on `responses` / `chat_completions`, and never if none
+is. If any row's API is missing or unknown the helper exits 1 with `reason: unknown_runtime_api` and writes
+no policy — report that verbatim, do not substitute an API and do not hand-write a policy. The legacy
+single-API form `--models <comma-separated ids> --runtime-api <Target API surface>` is still accepted but
+applies ONE API to every id; use it only for a single-row plan (and still with the validated id, not the
+design's). A `mantle_messages` path never reaches this agent (the orchestrator's lane gate stops it before
+Phase C); if it somehow does, the helper exits 1 with `reason: unsupported_lane` — report that verbatim and
+do not hand-write a policy.
+
+**Retained stored-response operations need their own grant.** Read `stored_response_ops` from
+`analysis.json` (the analyzer's §8.3 scan for `client.responses.retrieve(id)` / `.cancel(id)` /
+`.delete(id)` call sites the rewrite keeps). When it is non-empty, pass
+`--stored-response-ops <comma-joined values>` and the helper adds a `BedrockStoredResponseOps` statement
+on `arn:aws:bedrock:<region>:<account>:project/default` with ONLY the retained actions —
+`bedrock:GetInvoke` for `retrieve`, `bedrock:CancelInvoke` for `cancel`, `bedrock:DeleteInvoke` for
+`delete`: creating a response authorizes `bedrock:InvokeModel` on the inference target and the default
+project, while retrieving, canceling or deleting a stored response authorizes those three actions on the
+project (<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html>,
+"Permissions", read 2026-11-08). Without it, creation and the preflight ping pass while the app's
+existing `responses.retrieve(id)` is denied. Stored responses exist only on the runtime Responses API: the
+helper emits the statement only when a `--target` row is a runtime GPT CRIS id on `responses`, and exits 1
+with `reason: stored_response_ops_no_responses_row` for a Converse / Anthropic Messages / Chat Completions
+plan — report that verbatim (the analyzer should not have recorded ops for such a source) and do not add the
+actions by hand. When the field is absent or `[]`, omit the flag; the policy then carries no `GetInvoke` /
+`CancelInvoke` / `DeleteInvoke`.
 
 The script handles the dual-ARN pattern: foundation-model ARNs for plain model IDs and inference-profile ARNs for geo-prefixed IDs (e.g. `us.anthropic.claude-sonnet-4-6`). For any cross-region (CRIS) target it also emits a `BedrockGetInferenceProfile` statement (`bedrock:GetInferenceProfile` on the profile ARNs) — the documented prerequisite for invoking through a profile (<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-prereq.html>, read 2026-11-07). For every runtime Responses / Chat Completions target — any proprietary GPT CRIS id by id form (GPT-5.6 Sol / Terra / Luna, the GPT-6 family, GPT-5.5 / GPT-5.4: `us.openai.gpt-5.5` / `global.openai.gpt-5.5`, `us.openai.gpt-5.4` / `global.openai.gpt-5.4`, or their `inference-profile/` ARNs) whose own `--target` API is `responses` or `chat_completions` (legacy form: `--runtime-api` set to one of those, or omitted) — it adds a third resource, `arn:aws:bedrock:<region>:<account>:project/default`, because a Responses request on `bedrock-runtime` authorizes the default project separately from the inference target (<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html>, read 2026-11-07) and each of those model cards (read 2026-11-07) repeats the requirement; do not strip it from the report's policy excerpt. A row on `converse` or `messages` and every Anthropic / Nova / gpt-oss / embedding id get no project resource. The output is a ready-to-use IAM policy JSON file.
 
@@ -883,6 +916,14 @@ line `*Monthly estimate unavailable — sample has no time-span information.*`
    - `.env.example` sets `AWS_REGION` and the model id. Access keys stay commented. A Mantle bearer token, when present, is commented, expires within 12 hours, and is for a short local run — not an ECS task or a Lambda environment.
    - Apply the generated least-privilege IAM policy: `.saws-migrate/iam-policy.json`
      (scoped to the exact model ARNs used in this migration — review before attaching to a role)
+   - <Render ONLY when `analysis.stored_response_ops` is non-empty; delete this bullet otherwise.>
+     **Create-plus-retrieve permission check** (the preflight ping only exercises creation): under
+     the attached role, run `r = client.responses.create(model="<primary validated id>", input="ping")`
+     and then `client.responses.retrieve(r.id)` (<and `.cancel(r.id)` / `.delete(r.id)` for each other
+     retained op>). A 403 on the second call means the policy's `BedrockStoredResponseOps`
+     statement (`bedrock:GetInvoke` <, `CancelInvoke`, `DeleteInvoke`> on
+     `arn:aws:bedrock:<region>:<account>:project/default`) is not attached — creation passing does not
+     prove retrieval is authorized.
 
 3. **Run tests:**
 

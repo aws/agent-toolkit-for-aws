@@ -344,6 +344,16 @@ limited to:
    `iam_policy.py --target <aws_model_id>=<required_client_api>` (one pair per `bedrock_models[]` row, each
    row's own API) emits it for `responses` / `chat_completions` rows and omits it for a `converse` or
    `messages` row and for every non-OpenAI id — a GPT secondary beside a Claude Messages primary still gets it
+5. Retained stored-response operations → a source that keeps `client.responses.retrieve(id)` (or `.cancel(id)` /
+   `.delete(id)`) ALSO needs `bedrock:GetInvoke` (`bedrock:CancelInvoke` / `bedrock:DeleteInvoke`, only for the ops
+   actually retained) on the same `project/default` ARN: creating a response authorizes `bedrock:InvokeModel` on
+   the target and the project, while retrieving, canceling or deleting a stored response authorizes those actions
+   on the project (same page, "Permissions", read 2026-11-08) — without them creation and the preflight ping pass
+   and the app's existing retrieve is denied. `iam_policy.py --stored-response-ops retrieve[,cancel,delete]` emits
+   the `BedrockStoredResponseOps` statement for a runtime `responses` row only and refuses for a `converse` /
+   `messages` / `chat_completions` plan (`reason: stored_response_ops_no_responses_row`), which has no stored
+   responses. Verify with create-plus-retrieve: `r = client.responses.create(...)` then
+   `client.responses.retrieve(r.id)` under the attached role.
 
 **Mantle alternative (selector-gated).** Only when the row records a `mantle_selector`
 (`references/vendored/ai/bedrock-endpoint-policy.md`): base URL `https://bedrock-mantle.{region}.api.aws/openai/v1`,
