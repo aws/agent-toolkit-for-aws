@@ -721,7 +721,9 @@ Read `$MIGRATION_DIR/aws-design-ai.json` and extract:
 - `ai_architecture.bedrock_models[]` → array of `{source_model, aws_model_id, use_case,
   migration_path, required_client_api, mantle_selector, mantle_requirement, endpoint_assumption}`
   (the last five may be absent on older plans; `mantle_requirement` sits on Mantle rows,
-  `endpoint_assumption` on runtime rows — keep both for the C6 `Endpoint basis:` line)
+  `endpoint_assumption` on runtime rows — keep both for the C6 `Endpoint basis:` line, and keep
+  `migration_path` / `mantle_selector` so a Mantle row from a plan that predates
+  `mantle_requirement` is still reported as Mantle)
 - Collect all `aws_model_id` values into `$TARGET_MODELS` (array). Keep the `use_case` AND the
   `required_client_api` of each row: B4 passes every row to preflight as its own
   `<aws_model_id>=<required_client_api>` pair, so a Claude Messages primary and a GPT Chat or Nova
@@ -1008,7 +1010,7 @@ Resolved target model id: <override for the primary chat model — omit if none>
 Scripts directory (pinned uv toolchain): <$SCRIPTS>
 Report date suffix: <saved suffix from run-context — C5/C6 dispatches only>
 Usage baseline path: <$BEDROCK_RUN_DIR/usage-baseline.json — C5/C6 dispatches only, omit line if the file is absent>
-Endpoint basis: <per target, semicolon-separated: "<aws_model_id>: bedrock-mantle (<mantle_selector>; <mantle_requirement.source>; <mantle_requirement.evidence>)" or the row's endpoint_assumption sentence verbatim — C6 dispatch only, omit line when every bedrock_models[] row lacks both fields (older plan)>
+Endpoint basis: <per target, semicolon-separated: "<aws_model_id>: bedrock-mantle (<mantle_selector>; <mantle_requirement.source>; <mantle_requirement.evidence>)" or the row's endpoint_assumption sentence verbatim — C6 dispatch only; a Mantle row (migration_path mantle_* or mantle_selector present) that lacks mantle_requirement renders "<aws_model_id>: bedrock-mantle (<mantle_selector or 'selector unrecorded'>; source unknown — plan predates mantle_requirements)"; emit the line whenever any row carries migration_path mantle_*, mantle_selector, mantle_requirement or endpoint_assumption; omit it only when no row carries any of them (older runtime-only plan)>
 Source baseline available: <true|false>
 Source provider env file: <path — omit if none>
 User-supplied log files: <comma-joined — omit if none>

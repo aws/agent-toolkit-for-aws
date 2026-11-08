@@ -247,6 +247,12 @@ workload:
   `in_region_processing` applies only when `bedrock-runtime` serves the model in the entry's
   `region` through a CRIS profile alone (the CRIS-only gate in `ai-openai-to-bedrock.md`);
   otherwise the workload stays on `bedrock-runtime` in that Region.
+- A matching entry on a workload whose source API has no Mantle path (Gemini / Vertex AI, or a
+  workload whose target is a cross-family `direct` / `converse` / `gpt-oss` row) does not change
+  the endpoint: the row keeps `bedrock-runtime`, records `endpoint_assumption` verbatim (below),
+  and discloses the unhonored selector with its `source` and `evidence` in the row's `rationale`
+  and `capability_gaps[]` (a `regional_warnings[]` entry for `in_region_processing`). The answer
+  is never dropped silently and never satisfied by inventing a Mantle path for that source.
 - `mantle_only_model_or_api` is never a Clarify value: Design derives it from the catalog
   (`ai-openai-to-bedrock.md` / `openai-on-bedrock.md` access-path tables) when the selected model
   or API exists only on `bedrock-mantle`, and records `mantle_requirement.source: "catalog"`.

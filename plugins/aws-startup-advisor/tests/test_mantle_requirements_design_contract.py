@@ -87,6 +87,9 @@ def test_design_ai_derives_the_selector_from_clarify_and_discloses_the_runtime_a
     assert "in_region_processing" in step08 and "ai-openai-to-bedrock.md" in step08, (
         f"{skill}: Step 0.8 must keep in_region_processing on the CRIS-only gate"
     )
+    assert "no Mantle path" in step08 and "capability_gaps" in step08, (
+        f"{skill}: Step 0.8 must define the outcome for a matched entry on a source with no Mantle path"
+    )
 
 
 # --------------------------------------------------------------------------- (b) schema docs

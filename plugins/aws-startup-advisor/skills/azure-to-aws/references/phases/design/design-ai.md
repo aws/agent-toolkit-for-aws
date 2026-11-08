@@ -119,6 +119,11 @@ Per workload (`workloads[]` from `preferences.json`, else the profile; `*` appli
    `in_region_processing` still obeys the CRIS-only gate in
    `references/vendored/ai/ai-openai-to-bedrock.md`: Mantle only when `bedrock-runtime` serves the
    model in that `region` through a CRIS profile alone; otherwise runtime in-Region.
+   A match on a workload whose source API has no Mantle path (a cross-family `direct` /
+   `converse` / `gpt-oss` target) does not change the endpoint: the row keeps `bedrock-runtime`
+   and the verbatim `endpoint_assumption` sentence, and discloses the unhonored selector with its
+   `source` and `evidence` in `rationale` and `capability_gaps[]` (a `regional_warnings[]` entry
+   for `in_region_processing`). Never invent a Mantle path for that source; never drop the answer.
 3. **`mantle_only_model_or_api`** is never a Clarify value — Design derives it from the catalog
    (`ai-openai-to-bedrock.md` / `openai-on-bedrock.md` access paths) and records
    `mantle_requirement.source: "catalog"` with the catalog row as `evidence`.
@@ -319,7 +324,7 @@ deployment names need verified model identity, not a guessed GPT family.
 Anthropic-SDK sources → keep the Anthropic SDK on the `bedrock-runtime` Messages endpoint:
 `migration_path: "runtime_messages"` with `required_client_api: "messages"` by default;
 `"converse"` (boto3 rewrite) only on explicit request or for a Converse-only feature;
-`"mantle_messages"` only with a `mantle_selector` (from Step 0.8, a `workspaces` entry). Record `code_migration.openrouter_path`
+`"mantle_messages"` only with a `mantle_selector` (from Step 0.8 — any matched entry, typically `workspaces`). Record `code_migration.openrouter_path`
 when a router was detected (`same_model_runtime|same_model_mantle|direct|litellm|keep_openrouter`;
 `same_model_runtime` is the default same-model route, `same_model_mantle` needs a `mantle_selector` from Step 0.8).
 
@@ -353,7 +358,8 @@ output "design-ai did not produce a valid aws-design-ai.json; do not complete Ph
 Overall honest assessment; the source→Bedrock model comparison (price + assessment per model);
 integration pattern and complexity; capability gaps; and — prominently, if `weak_migrate`/
 `recommend_stay` — the reason. Name any compliance regime that shaped the design. Endpoint per
-workload — `bedrock-mantle (<selector>, <source>)` or the `endpoint_assumption` sentence verbatim.
+workload — `bedrock-mantle (<selector>, <source>)` or the `endpoint_assumption` sentence verbatim,
+plus any Step 0.8 requirement that could not be honored (no Mantle path) with its capability gap.
 
 ## Status — implemented (AI design route)
 

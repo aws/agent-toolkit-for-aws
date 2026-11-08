@@ -174,7 +174,10 @@ web_search | projects | workspaces | in_region_processing` and whose `source` is
 `{ workload_id, selector, source, evidence?, region? }` (`selector` equals `mantle_selector`;
 `source` ∈ `detected | user | catalog`; `evidence` present when `source` is `detected` or
 `catalog`; `region` present iff `selector` is `in_region_processing`). `mantle_only_model_or_api`
-comes from the model catalog with `source: "catalog"`, never from Clarify. Every other row keeps
+comes from the model catalog with `source: "catalog"`, never from Clarify. A matching entry on a
+workload whose source API has no Mantle path (a cross-family `direct` / `converse` / `gpt-oss`
+target) keeps `bedrock-runtime` and the verbatim `endpoint_assumption`, and discloses the
+unhonored selector in `rationale` and `capability_gaps[]`. Every other row keeps
 `bedrock-runtime` and records `endpoint_assumption` — string, REQUIRED on every non-`mantle_*`
 row, exactly: `No Mantle-only requirement was recorded for <workload_id>; bedrock-runtime
 selected. If this workload needs background inference, server-side tools, Projects/Workspaces, or

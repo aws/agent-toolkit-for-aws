@@ -79,7 +79,10 @@ models detected, capabilities, integration pattern + SDK, gateway/router, framew
   ∈ `detected | user | none`; `region` required for `in_region_processing`). "Use defaults for
   the rest" writes `[{ "workload_id": "*", "selector": "none", "source": "none" }]` with
   `chosen_by: "default"`, `source: "default:Q22b"` and the report caveat "Mantle-only
-  requirements were not confirmed by the user; bedrock-runtime assumed".
+  requirements were not confirmed by the user; bedrock-runtime assumed". For a workload whose
+  source has no Mantle path (one Design maps to a cross-family `direct` / `converse` / `gpt-oss`
+  target), say up front that a "yes" does not change the endpoint: Design keeps `bedrock-runtime`
+  and records the requirement as a capability gap (`rationale` + `capability_gaps[]`).
 
 ### Category G — Agentic (fires ONLY when `agentic_profile.is_agentic == true`)
 

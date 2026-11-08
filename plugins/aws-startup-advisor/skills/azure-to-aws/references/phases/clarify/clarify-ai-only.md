@@ -177,7 +177,10 @@ confirm; otherwise ask. Never dropped. → `ai_constraints.mantle_requirements` 
 server_side_tools | web_search | projects | workspaces | in_region_processing | none`, `source` ∈
 `detected | user | none`, `region` required for `in_region_processing`). Default: one
 `{ "workload_id": "*", "selector": "none", "source": "none" }` entry + report caveat
-("Mantle-only requirements were not confirmed by the user; bedrock-runtime assumed").
+("Mantle-only requirements were not confirmed by the user; bedrock-runtime assumed"). For a
+workload whose source has no Mantle path (a cross-family `direct` / `converse` / `gpt-oss`
+target), say up front that a "yes" does not change the endpoint: Design keeps `bedrock-runtime`
+and records the requirement as a capability gap (`rationale` + `capability_gaps[]`).
 
 **Q11 — AWS Activate credits** (**never dropped**; ≡ full-flow Q27). Never infer funding stage
 from Q3 spend. Options: have credits / self-funded (→ Activate Founders up to $5K) /

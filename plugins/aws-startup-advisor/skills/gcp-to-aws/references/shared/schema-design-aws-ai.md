@@ -107,7 +107,9 @@ same vocabulary as the shared contract (`references/vendored/ai/schema-design-aw
   <workload_id>; bedrock-runtime selected. If this workload needs background inference,
   server-side tools, Projects/Workspaces, or single-Region processing, re-run Clarify.` where
   `<workload_id>` is the `design_blocks[].workload_id` whose `model_id` equals the row's
-  `source_model_id` (several → comma-joined).
+  `source_model_id` (several → comma-joined). A Clarify entry on a workload whose source API has
+  no Mantle path (Gemini / Vertex AI, or a cross-family `direct` / `converse` / `gpt-oss` target)
+  keeps this sentence and is disclosed in the row's `rationale` and `capability_gaps[]` instead.
 - `converse`, `gpt-oss`, `direct` — Bedrock-native paths; never paired with a **bare**
   proprietary `openai.gpt-*` id.
 - `code_migration.openrouter_path` (router detected) — `same_model_runtime` (default same-model
