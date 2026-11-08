@@ -365,7 +365,12 @@ vocabulary of `references/vendored/ai/bedrock-endpoint-policy.md` on the matched
 | `runtime_openai_chat` | `runtime_openai_cris` | `chat_completions` | same |
 | `runtime_converse` on a proprietary GPT model (`openai.gpt-6*`, `openai.gpt-5.6-*`, `openai.gpt-5.5`, `openai.gpt-5.4`) | `runtime_openai_cris` | `converse` | same; `runtime_converse` on a Claude or open-weight model keeps the exact comparison |
 | `runtime_messages` | `runtime_messages` | `messages` | `aws_model_id` = advisor `invocation_model_id` |
-| `mantle_openai_responses` / `mantle_openai_chat` / `mantle_messages` | the same path name | `responses` / `chat_completions` / `messages` | `bedrock_models[].mantle_selector` copied verbatim from the advisor contract; an advisor Mantle contract whose `mantle_selector` is null is a mismatch (only a legacy contract written before the field existed keeps the exact model/path comparison) |
+| `mantle_openai_responses` / `mantle_openai_chat` / `mantle_messages` | the same path name | `responses` / `chat_completions` / `messages` | `bedrock_models[].mantle_selector` and `bedrock_models[].mantle_requirement` (`handoff-migration.md` Step 1 shape) copied verbatim from the advisor contract; an advisor Mantle contract whose `mantle_selector` is null is a mismatch (only a legacy contract written before the field existed keeps the exact model/path comparison) |
+
+Every `runtime_*` row carries the `endpoint_assumption` sentence of
+`references/vendored/ai/schema-design-aws-ai.md` with the advisor `unit_id` as `<workload_id>` and
+no `mantle_requirement`; a `mantle_*` row's `mantle_requirement` is not part of the comparison
+below.
 
 An absent `runtime_api` on a legacy runtime plan means Converse; an explicit Chat/Responses
 choice is not equivalent. Do not replace a confirmed Global profile with US Geo or strip an ARN.

@@ -508,9 +508,15 @@ Translate every other advisor `api_path` the same way: `runtime_openai_responses
 `migration_path: "runtime_messages"` + `required_client_api: "messages"` (keep the advisor
 `invocation_model_id` as `aws_model_id`); `mantle_openai_responses` / `mantle_openai_chat` /
 `mantle_messages` → the same `migration_path` with `required_client_api` `responses` /
-`chat_completions` / `messages` and `bedrock_models[].mantle_selector` copied verbatim from the
-advisor contract. An advisor `mantle_*` contract without a `mantle_selector` is a mismatch —
-return to Model Recommend rather than inventing one.
+`chat_completions` / `messages` and `bedrock_models[].mantle_selector` plus
+`bedrock_models[].mantle_requirement` copied verbatim from the advisor contract (the advisor's
+`mantle_requirement` — `{ workload_id, selector, source, evidence?, region? }`, `source` ∈
+`user | detected | catalog` — is the recorded requirement Step 0.8 would otherwise read from
+`ai_constraints.mantle_requirements`; do not re-derive the endpoint from the source API). An
+advisor `mantle_*` contract without a `mantle_selector` or without a `mantle_requirement` is a
+mismatch — return to Model Recommend rather than inventing one. Every advisor `runtime_*` unit
+keeps the Step 0.8 rule 4 outcome: the row records the `endpoint_assumption` sentence verbatim
+with the advisor `unit_id` as `<workload_id>`, and no `mantle_requirement`.
 
 **Throughput:** load `references/vendored/ai/ai-migration-guardrails.md` and apply the selected
 model/endpoint's quota rules. Astra runtime uses input TPM plus 10 times output TPM.
