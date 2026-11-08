@@ -51,6 +51,55 @@ defect: rewrite the row as the `bedrock-runtime` path (`runtime_openai_cris` wit
 app's `required_client_api`, or `runtime_messages`) or justify it with one of the values above.
 A `runtime_*` or `converse` row never carries `mantle_selector`.
 
+## How a selector is learned
+
+The seven values are learned in three different ways; no phase may guess one it cannot learn.
+
+- **Detected in code, confirmed by the user.** `background_inference`, `web_search`,
+  `server_side_tools`, `projects` and `workspaces` are the only code-detectable selectors.
+  Discover's app-code scanners record each match with file:line evidence — as
+  `workloads[].mantle_signals[]` in the gcp-to-aws / azure-to-aws profile
+  (`discover-app-code.md` Step 5C) and as top-level `mantle_signals[]` in the provider-neutral
+  profile (bedrock-migration-assessment `discover-app-code.md` Step 4.5); the usage-API discovery
+  files add `projects` / `workspaces` / `web_search` signals from the account's own scoping and
+  model strings. Clarify shows the detected signals and the user confirms or drops each one into
+  `ai_constraints.mantle_requirements` (full flow Q22b, AI-only Q10.5); when no code was
+  scanned, Clarify asks the same five outright. A detected signal is a prompt for the question,
+  never the answer. Design then derives `bedrock_models[].mantle_selector` from that field alone
+  and records `mantle_requirement` on every Mantle row and `endpoint_assumption` on every
+  runtime row (`schema-design-aws-ai.md`).
+  - `background_inference` — positive: `background=True` / `background: true` on
+    `responses.create`, or a raw `"background": true` Responses body. Not a signal: `store=True`,
+    `stream=True`, or polling `responses.retrieve` without `background`. `bedrock-runtime`
+    rejects `background=true` with a 400
+    (https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html, read
+    2026-11-07).
+  - `web_search` — positive: `tools=[{"type": "web_search"}]`, `"type": "web_search_preview"`
+    (any dated `web_search_preview_*` form), Anthropic `"type": "web_search_20250305"`,
+    OpenRouter `plugins: [{"id": "web"}]` or a `:online` model suffix. Not a signal: a
+    client-side `"type": "function"` tool merely named `web_search`.
+  - `server_side_tools` — positive: a tools entry of `"type": "mcp"` (`server_url` /
+    `server_label`), `code_interpreter`, `file_search`, `computer_use_preview`,
+    `image_generation` used as a tool type, or an Anthropic `code_execution_*` / `text_editor_*`
+    / `computer_*` / `bash_*` tool type — any provider-executed tool other than web search. Not a
+    signal: `"type": "function"` tools, Gemini `function_declarations=`, `@tool` decorators,
+    `tool_choice` — client-side function tools never count.
+  - `projects` — positive: an `OpenAI-Project` header
+    (`default_headers={"OpenAI-Project": ...}`), a `project=` kwarg on the OpenAI client, or an
+    `OPENAI_PROJECT_ID`-style environment name read in code; in usage discovery, a
+    `project_filter` naming more than one project or a non-default project. Not a signal:
+    `OpenAI-Organization` alone; no header means the default project.
+  - `workspaces` — positive: an `anthropic-workspace-id` header or an `ANTHROPIC_WORKSPACE_ID`-style
+    environment name; in usage discovery, `workspace_ids` naming more than one workspace or a
+    non-default workspace. Not a signal: OpenRouter's own `workspace_id` scoping, which is an
+    OpenRouter account concept.
+- **Derived by Design, never asked.** `mantle_only_model_or_api` is derived from the model id and
+  the required API against the access-path tables in `ai-openai-to-bedrock.md` /
+  `openai-on-bedrock.md`; it is not a scanner output and not a Clarify question.
+- **Always asked, never detected.** `in_region_processing` is never code-detectable: nothing in a
+  call site says whether cross-Region inference is acceptable. Clarify always asks it together
+  with the Region.
+
 ## Public comparison (read 2026-11-07)
 
 | Item                                           | `bedrock-runtime`                                                                 | `bedrock-mantle`                                                | Source page                                     |
