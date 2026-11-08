@@ -658,7 +658,7 @@ Q22b answers are stored in `preferences.json` → `ai_constraints.mantle_require
   "ai_constraints": {
     "mantle_requirements": {
       "value": [
-        { "workload_id": "wl_9532e7", "selector": "projects", "source": "detected", "evidence": "src/ai/openai_client.py:9 default_headers OpenAI-Project" },
+        { "workload_id": "wl_9532e7", "selector": "projects", "source": "detected", "evidence": "src/ai/openai_client.py:9 default_headers={\"OpenAI-Project\": os.environ[\"OPENAI_PROJECT_ID\"]}" },
         { "workload_id": "*", "selector": "in_region_processing", "source": "user", "region": "us-east-1" }
       ],
       "chosen_by": "user",

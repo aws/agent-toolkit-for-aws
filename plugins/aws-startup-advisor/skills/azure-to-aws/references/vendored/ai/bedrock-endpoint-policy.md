@@ -63,8 +63,11 @@ The seven values are learned in three different ways; no phase may guess one it 
   profile (bedrock-migration-assessment `discover-app-code.md` Step 4.5); the usage-API discovery
   files add `projects` / `workspaces` / `web_search` signals from the account's own scoping and
   model strings. Clarify shows the detected signals and the user confirms or drops each one into
-  `ai_constraints.mantle_requirements`; when no code was scanned, Clarify asks the same five
-  outright. A detected signal is a prompt for the question, never the answer.
+  `ai_constraints.mantle_requirements` (full flow Q22b, AI-only Q10.5); when no code was
+  scanned, Clarify asks the same five outright. A detected signal is a prompt for the question,
+  never the answer. Design then derives `bedrock_models[].mantle_selector` from that field alone
+  and records `mantle_requirement` on every Mantle row and `endpoint_assumption` on every
+  runtime row (`schema-design-aws-ai.md`).
   - `background_inference` — positive: `background=True` / `background: true` on
     `responses.create`, or a raw `"background": true` Responses body. Not a signal: `store=True`,
     `stream=True`, or polling `responses.retrieve` without `background`. `bedrock-runtime`

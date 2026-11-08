@@ -267,7 +267,8 @@ The assembler (`discover-assemble.md`) writes the file; do not update `.phase-st
       matches `wl_[0-9a-f]{6}`.
 - [ ] `workloads[].mantle_signals` (optional): `selector` ∈
       `background_inference | web_search | server_side_tools | projects | workspaces`; cited lines
-      are real and contain the `construct`; no secret values.
+      are real and contain the `construct` (only the usage-API Step 4 merges may append the
+      `"<usage_api>"` / `line: 0` sentinel later); no secret values.
 - [ ] `integration.gateway_type` set (or null); `capabilities_summary` consistent with
       `models[].capabilities_used`.
 - [ ] `is_agentic` cases: `agentic_profile`+`tool_manifest` present iff true; `agent_count` ==

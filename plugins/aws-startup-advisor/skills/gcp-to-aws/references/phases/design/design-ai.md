@@ -117,9 +117,9 @@ Read `preferences.json` → `ai_constraints.mantle_requirements` (written by Cla
 3. **`mantle_only_model_or_api` is never a Clarify value.** When the selected model or API exists only on `bedrock-mantle` per the catalog (`references/vendored/ai/ai-openai-to-bedrock.md` / `references/shared/openai-on-bedrock.md` access-path tables), record the Mantle path with `mantle_selector: "mantle_only_model_or_api"` and `mantle_requirement: { "workload_id": "<id>", "selector": "mantle_only_model_or_api", "source": "catalog", "evidence": "<catalog file § row>" }`.
 4. **No match → the `bedrock-runtime` default** (`"runtime_openai_cris"` / `"runtime_messages"` / `"converse"` / `"gpt-oss"` / `"direct"` per Parts 1 and 5) and the row records `bedrock_models[].endpoint_assumption`, exactly:
 
-   > No Mantle-only requirement was recorded for `<workload_id>`; bedrock-runtime selected. If this workload needs background inference, server-side tools, Projects/Workspaces, or single-Region processing, re-run Clarify.
+   > No Mantle-only requirement was recorded for <workload_id>; bedrock-runtime selected. If this workload needs background inference, server-side tools, Projects/Workspaces, or single-Region processing, re-run Clarify.
 
-   where `<workload_id>` is the `design_blocks[].workload_id` whose `model_id` equals the row's `source_model_id` (several workloads on one row → comma-joined ids). When the constraint was defaulted (`chosen_by: "default"`), the report caveat "Mantle-only requirements were not confirmed by the user; bedrock-runtime assumed" from Clarify stays in `metadata.report_caveats[]`.
+   where `<workload_id>` is the `design_blocks[].workload_id` whose `model_id` equals the row's `source_model_id` (several workloads on one row → comma-joined ids), written as a plain id with no backticks or quotes. When the constraint was defaulted (`chosen_by: "default"`), the report caveat "Mantle-only requirements were not confirmed by the user; bedrock-runtime assumed" from Clarify stays in `metadata.report_caveats[]`.
 
 Exactly one of `mantle_requirement` / `endpoint_assumption` is present on every `bedrock_models[]` row. Generate echoes whichever is present in the generated script/adapter header, and the llm-to-bedrock report quotes it.
 

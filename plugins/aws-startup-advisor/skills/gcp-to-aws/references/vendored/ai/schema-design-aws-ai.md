@@ -275,12 +275,13 @@ starts with `mantle_`, absent otherwise:
 `migration_path` does NOT start with `mantle_` (`runtime_openai_cris`, `runtime_messages`,
 `converse`, `gpt-oss`, `direct`), exactly:
 
-> No Mantle-only requirement was recorded for `<workload_id>`; bedrock-runtime selected. If this
+> No Mantle-only requirement was recorded for <workload_id>; bedrock-runtime selected. If this
 > workload needs background inference, server-side tools, Projects/Workspaces, or single-Region
 > processing, re-run Clarify.
 
 where `<workload_id>` is the `design_blocks[].workload_id` whose `model_id` equals the row's
-`source_model_id` (several workloads → comma-joined ids). Generate echoes the sentence in the
+`source_model_id` (several workloads → comma-joined ids), written as a plain id with no
+backticks or quotes (`No Mantle-only requirement was recorded for wl_3a1f2c; …`). Generate echoes the sentence in the
 generated script/adapter header and the llm-to-bedrock report quotes it, so the user sees that
 the runtime choice rests on a recorded answer, not on a silent default.
 

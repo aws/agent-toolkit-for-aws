@@ -676,7 +676,7 @@ After generating the output file, the parent `discover.md` handles the phase sta
 - Every `workloads[].model_id` also appears in `models[].model_id`
 - `workloads[].capability_confidence` is one of: `"high"`, `"medium"`, `"low"`
 - `workloads[].workload_id` matches pattern `wl_[0-9a-f]{6}`
-- `workloads[].mantle_signals` (optional, Step 5C): every entry has `selector` ∈ `background_inference | web_search | server_side_tools | projects | workspaces`, a repo-relative `file`, a real `line` that contains the quoted `construct`, and no secret value; never `mantle_only_model_or_api` or `in_region_processing`
+- `workloads[].mantle_signals` (optional, Step 5C): every entry has `selector` ∈ `background_inference | web_search | server_side_tools | projects | workspaces`, a repo-relative `file`, a real `line` that contains the quoted `construct` (the only exception is the `"<usage_api>"` / `line: 0` sentinel that the usage-API Step 4 merges append later), and no secret value; never `mantle_only_model_or_api` or `in_region_processing`
 - If `is_agentic: true`: `agentic_profile` section exists with all required fields
 - If `is_agentic: true`: `agentic_profile.agent_count` equals length of `agentic_profile.agents[]`
 - If `is_agentic: true`: `agentic_profile.tool_count` equals length of `tool_manifest[]` (deduplicated)
