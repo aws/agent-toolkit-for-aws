@@ -128,6 +128,9 @@ record the choice in `key_decisions_ahead` instead of silently selecting Nova. A
 | `gpt-3.5-turbo`, `gpt-4.1-nano`, `gpt-5.*-nano`         | Amazon Nova Micro                              | `amazon.nova-micro-v1:0`                                               |
 | `gpt-*-pro` (GPT-5.x Pro), `o1-pro`, `o3-pro`           | GPT-6 Astra; Sol for lower cost; or Nova 2 Pro | `openai.gpt-6-astra` / `openai.gpt-5.6-sol` / `amazon.nova-2-pro-v1:0` |
 | `o3`, `o4-mini`, reasoning models                       | Claude Sonnet 5                                | `anthropic.claude-sonnet-5`                                            |
+| `gemini-3.5-flash-lite`                                 | Amazon Nova Lite                               | `amazon.nova-lite-v1:0`                                                |
+| `gemini-3.5-flash` (not `-lite`)                        | Amazon Nova Lite                               | `amazon.nova-lite-v1:0`                                                |
+| `gemini-3.8-flash`                                      | Amazon Nova Pro; Nova Lite for lower cost      | `amazon.nova-pro-v1:0` / `amazon.nova-lite-v1:0`                       |
 | `gemini-3.*-pro`, `gemini-2.5-pro` (retired Oct 20, 2026 — flag) | Claude Sonnet 5                     | `anthropic.claude-sonnet-5`                                            |
 | `gemini-2.5-flash` (retired Oct 20, 2026 — flag), `gemini-2.0-flash` (retired Jun 1, 2026 — flag) | Claude Haiku 5.5                   | `anthropic.claude-haiku-5-5`                             |
 | `gemini-2.0-flash-lite` (retired Jun 1, 2026 — flag)    | Amazon Nova Lite                               | `amazon.nova-lite-v1:0`                                                |
@@ -141,6 +144,8 @@ record the choice in `key_decisions_ahead` instead of silently selecting Nova. A
 | Unknown / other                                         | Amazon Nova Pro                                | `amazon.nova-pro-v1:0`                                                 |
 
 **Haiku 5.5 preview:** The table names the base model. Resolve the supported runtime Geo/Global inference profile for the intended source region and residency requirement before quoting a price. Use its ≤100K or >100K prompt tier from the canonical cache; the 1M context window is not the pricing boundary. If the target profile or per-request size is still unknown, retain Haiku 4.5 as the provisional preview target with its own profile/rates and add a Haiku 5.5 profile/tier assessment to `key_decisions_ahead`. Do not fill a single 5.5 price or direction by assuming the cheapest tier. Design must apply the Haiku 5.5 target contract in `references/vendored/ai/ai-anthropic-to-bedrock.md` before selecting it.
+
+**Current Gemini preview:** the three current Gemini Flash rows use the same target and direction as Clarify Q19 and `references/vendored/ai/ai-gemini-to-bedrock.md`, so the preview never shows the opposite direction from the later estimate. `gemini-3.5-flash` ($1.50/$9.00) and `gemini-3.5-flash-lite` ($0.30/$2.50) → Nova Lite ($0.06/$0.24) is `"lower"` on both rates. `gemini-3.8-flash` ($0.75/$3.75 through Dec 31, 2026; $1.50/$7.50 from Jan 1, 2027) → Nova Pro ($0.80/$3.20) is `"lower"` (9% cheaper blended at the 2026 rate — input slightly higher, output lower — and ~54% cheaper at the 2027 rate); Nova Lite is `"lower"` on both rates. Gemini prices: [Gemini Developer API pricing](https://aistudio.google.com/docs/pricing), read 2026-11-08.
 
 For each mapped model pair, record `source_model`, `bedrock_equivalent`, both per-token
 prices, and `cost_direction` (`"higher"`, `"lower"`, or `"comparable"` — Bedrock relative
