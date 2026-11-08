@@ -98,9 +98,11 @@ their `inference-profile/` ARNs — the IAM policy must grant `bedrock:InvokeMod
 ARN: a Responses request on `bedrock-runtime` authorizes the default project separately from the
 inference target (<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html>,
 "Permissions", read 2026-11-07), and each of those model cards (read 2026-11-07) repeats the
-requirement for its runtime CRIS ids. `iam_policy.py --runtime-api <required_client_api>` emits
-the third ARN for exactly those rows and omits it for a `converse` row (the Converse-only
-application-inference-profile route) and for every Anthropic / Nova / gpt-oss id. The mantle
+requirement for its runtime CRIS ids. `iam_policy.py --target <aws_model_id>=<required_client_api>`
+(one pair per `bedrock_models[]` row, each with its own API — a GPT Chat / Responses secondary beside
+a Claude Messages primary still gets the grant) emits the third ARN for exactly those rows and omits
+it for a `converse` or `messages` row (Converse is the application-inference-profile route) and for
+every Anthropic / Nova / gpt-oss id. The mantle
 `bedrock-mantle:*` policy (bare `openai.gpt-5.5` / `openai.gpt-5.4` / `openai.gpt-5.6-*` /
 `openai.gpt-6-*` ids included) is unaffected.
 

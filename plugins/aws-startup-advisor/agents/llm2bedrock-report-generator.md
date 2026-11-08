@@ -565,19 +565,28 @@ Generate a least-privilege IAM policy scoped to the exact model ARNs selected du
 
 ```bash
 uv run --project <scriptsDir> python <scriptsDir>/iam_policy.py \
-  --models <comma-separated target model ids> \
+  --target <aws_model_id>=<that row's required_client_api> [--target ... one per bedrock_models[] row] \
   --region <REGION> \
   --account-id <AWS account id from run-context> \
-  --runtime-api <Target API surface from your context: responses | chat_completions | converse | messages> \
   --migration-path <Target API path from your context> \
   --output <repo>/.saws-migrate/iam-policy.json
 ```
 
-Omit `--runtime-api` only when the context carries no API surface (id-only behaviour). A `mantle_messages`
-path never reaches this agent (the orchestrator's lane gate stops it before Phase C); if it somehow does, the
-helper exits 1 with `reason: unsupported_lane` — report that verbatim and do not hand-write a policy.
+**One `--target` pair per row, each with ITS OWN API.** Read `ai_architecture.bedrock_models[]` from
+`<Migration plan dir>/aws-design-ai.json` and emit `<aws_model_id>=<required_client_api>` for every row
+(`responses` | `chat_completions` | `converse` | `messages`; `invoke` for an embedding row). The primary chat
+row's API is the `Target API surface` from your context (the value B4 resolved; use it when that row records
+no `required_client_api`). Do NOT apply the primary's surface to the other rows: the grant is decided per row,
+so a `runtime_messages` plan whose secondary is a GPT Chat / Responses CRIS id still gets `project/default`
+for that secondary, while a Nova Converse secondary does not. If any row's API is missing or unknown the
+helper exits 1 with `reason: unknown_runtime_api` and writes no policy — report that verbatim, do not
+substitute an API and do not hand-write a policy. The legacy single-API form
+`--models <comma-separated ids> --runtime-api <Target API surface>` is still accepted but applies ONE API to
+every id; use it only for a single-row plan. A `mantle_messages` path never reaches this agent (the
+orchestrator's lane gate stops it before Phase C); if it somehow does, the helper exits 1 with
+`reason: unsupported_lane` — report that verbatim and do not hand-write a policy.
 
-The script handles the dual-ARN pattern: foundation-model ARNs for plain model IDs and inference-profile ARNs for geo-prefixed IDs (e.g. `us.anthropic.claude-sonnet-4-6`). For any cross-region (CRIS) target it also emits a `BedrockGetInferenceProfile` statement (`bedrock:GetInferenceProfile` on the profile ARNs) — the documented prerequisite for invoking through a profile (<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-prereq.html>, read 2026-11-07). For every runtime Responses / Chat Completions target — any proprietary GPT CRIS id by id form (GPT-5.6 Sol / Terra / Luna, the GPT-6 family, GPT-5.5 / GPT-5.4: `us.openai.gpt-5.5` / `global.openai.gpt-5.5`, `us.openai.gpt-5.4` / `global.openai.gpt-5.4`, or their `inference-profile/` ARNs) when `--runtime-api` is `responses` or `chat_completions` (or omitted) — it adds a third resource, `arn:aws:bedrock:<region>:<account>:project/default`, because a Responses request on `bedrock-runtime` authorizes the default project separately from the inference target (<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html>, read 2026-11-07) and each of those model cards (read 2026-11-07) repeats the requirement; do not strip it from the report's policy excerpt. A `converse` surface and every Anthropic / Nova / gpt-oss id get no project resource. The output is a ready-to-use IAM policy JSON file.
+The script handles the dual-ARN pattern: foundation-model ARNs for plain model IDs and inference-profile ARNs for geo-prefixed IDs (e.g. `us.anthropic.claude-sonnet-4-6`). For any cross-region (CRIS) target it also emits a `BedrockGetInferenceProfile` statement (`bedrock:GetInferenceProfile` on the profile ARNs) — the documented prerequisite for invoking through a profile (<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-prereq.html>, read 2026-11-07). For every runtime Responses / Chat Completions target — any proprietary GPT CRIS id by id form (GPT-5.6 Sol / Terra / Luna, the GPT-6 family, GPT-5.5 / GPT-5.4: `us.openai.gpt-5.5` / `global.openai.gpt-5.5`, `us.openai.gpt-5.4` / `global.openai.gpt-5.4`, or their `inference-profile/` ARNs) whose own `--target` API is `responses` or `chat_completions` (legacy form: `--runtime-api` set to one of those, or omitted) — it adds a third resource, `arn:aws:bedrock:<region>:<account>:project/default`, because a Responses request on `bedrock-runtime` authorizes the default project separately from the inference target (<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html>, read 2026-11-07) and each of those model cards (read 2026-11-07) repeats the requirement; do not strip it from the report's policy excerpt. A row on `converse` or `messages` and every Anthropic / Nova / gpt-oss / embedding id get no project resource. The output is a ready-to-use IAM policy JSON file.
 
 **Runtime OpenAI and Runtime Messages lanes need no Mantle statement.** A `Rewrite strategy: runtime_openai` or `Rewrite strategy: runtime_messages` run keeps the source SDK but authorizes through `bedrock:InvokeModel*` (+ `GetInferenceProfile`, and the default-project ARN for every runtime Responses / Chat Completions GPT CRIS id above) on the `bedrock-runtime` endpoint; report exactly the statements the script produced and do not add `bedrock-mantle:*` for them. Per-token model pricing is the same on both endpoints (<https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints.html>, read 2026-11-07), so the endpoint choice does not change the §6.3 cost table.
 

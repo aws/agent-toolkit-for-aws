@@ -341,8 +341,9 @@ limited to:
    a Responses request on `bedrock-runtime` authorizes the default project separately from the inference target
    (<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html>, "Permissions", read
    2026-11-07), and each model card repeats the requirement for its runtime CRIS ids.
-   `iam_policy.py --runtime-api <required_client_api>` emits it for `responses` / `chat_completions` rows and
-   omits it for a `converse` row and for every non-OpenAI id
+   `iam_policy.py --target <aws_model_id>=<required_client_api>` (one pair per `bedrock_models[]` row, each
+   row's own API) emits it for `responses` / `chat_completions` rows and omits it for a `converse` or
+   `messages` row and for every non-OpenAI id — a GPT secondary beside a Claude Messages primary still gets it
 
 **Mantle alternative (selector-gated).** Only when the row records a `mantle_selector`
 (`references/vendored/ai/bedrock-endpoint-policy.md`): base URL `https://bedrock-mantle.{region}.api.aws/openai/v1`,

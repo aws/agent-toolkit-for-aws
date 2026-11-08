@@ -87,6 +87,41 @@ def test_setup_recipes_grant_project_default_to_every_runtime_openai_target() ->
         assert "GPT-6 / GPT-5.5 / GPT-5.4\n   also need" not in text, path
 
 
+def test_report_generator_iam_recipe_passes_one_target_pair_per_row() -> None:
+    """Round-1 review B1: the §6.4 recipe must not apply the primary's single
+    `Target API surface` to every id — a GPT Chat/Responses secondary under a
+    Claude Messages primary would lose its default-project grant."""
+    text = REPORT_GENERATOR.read_text()
+    raw = _section(text, "# 6.4 Generate scoped IAM policy artifact", "# 7. Generate report")
+    code = _section(raw, "```bash", "```\n")
+    recipe = " ".join(raw.split())
+    assert "--target <aws_model_id>=<that row's required_client_api>" in code
+    assert "one per bedrock_models[] row" in code
+    assert "--runtime-api" not in code, "the recipe command must not pass one plan-wide API"
+    assert "--migration-path <Target API path from your context>" in code
+    assert "ai_architecture.bedrock_models[]" in recipe and "aws-design-ai.json" in recipe
+    assert "Do NOT apply the primary's surface to the other rows" in recipe
+    assert "unknown_runtime_api" in recipe and "do not substitute an API" in recipe
+    assert "`invoke` for an embedding row" in recipe
+    # The legacy single-API form is documented as single-row only, never as the default.
+    assert "use it only for a single-row plan" in recipe
+    for path in (CANONICAL_GUIDE, GCP_GENERATE_AI, GCP_GENERATE_ARTIFACTS, AZURE_GENERATE_ARTIFACTS):
+        assert "iam_policy.py --target <aws_model_id>=<required_client_api>" in path.read_text(), path
+        assert "iam_policy.py --runtime-api" not in path.read_text(), path
+
+
+def test_iam_helper_grants_the_gpt_secondary_under_a_messages_primary_per_row() -> None:
+    iam = _load("iam_policy")
+    claude, gpt, nova = "global.anthropic.claude-sonnet-5", "us.openai.gpt-6-astra", "us.amazon.nova-lite-v1:0"
+    project = iam.default_project_arn("us-east-1", "123456789012")
+    mixed = iam.generate_policy([claude, gpt], "us-east-1", "123456789012", migration_path="runtime_messages",
+                                target_apis=dict(iam.parse_targets([f"{claude}=messages", f"{gpt}=chat_completions"])))
+    assert mixed["Statement"][0]["Resource"].count(project) == 1
+    converse = iam.generate_policy([claude, nova], "us-east-1", "123456789012", migration_path="runtime_messages",
+                                   target_apis={claude: "messages", nova: "converse"})
+    assert project not in converse["Statement"][0]["Resource"]
+
+
 def test_vendored_openai_guides_match_canonical() -> None:
     for vendored in VENDORED_GUIDES:
         assert vendored.read_bytes() == CANONICAL_GUIDE.read_bytes(), vendored

@@ -14,6 +14,9 @@ _GEO_PREFIX = re.compile(r"^(us|eu|apac|au|jp|in|us-gov|global)\.")
 # OpenAI-compatible pair is what the default-project grant keys on.
 RUNTIME_APIS = frozenset({"converse", "responses", "chat_completions", "messages"})
 _OPENAI_COMPATIBLE_APIS = frozenset({"responses", "chat_completions"})
+# A per-row `--target ID=API` spec may also say `invoke` for an embedding row (the
+# value preflight accepts for those rows); it never selects the OpenAI-compatible path.
+TARGET_APIS = RUNTIME_APIS | {"invoke"}
 
 # Execution lanes this helper refuses to authorize. `mantle_messages` (Anthropic SDK
 # on the bedrock-mantle `/anthropic` endpoint, selected by the `workspaces` mantle
@@ -155,14 +158,46 @@ def requires_default_project_grant(model_id: str, runtime_api: str | None = None
     return runtime_api in _OPENAI_COMPATIBLE_APIS
 
 
+def parse_targets(specs: list[str]) -> list[tuple[str, str]]:
+    """Pure: parse repeatable `--target ID=API` specs (comma-joined items allowed)
+    into (model_id, api) pairs, one per `bedrock_models[]` row.
+
+    Fails CLOSED: a spec without `=API`, or with an API outside TARGET_APIS, raises
+    `ValueError` before any policy is built, so a row whose API the plan does not
+    record is never granted (or denied) the default project on a guess."""
+    pairs: list[tuple[str, str]] = []
+    bad: list[str] = []
+    for spec in specs:
+        for item in spec.split(","):
+            item = item.strip()
+            if not item:
+                continue
+            model_id, sep, api = item.rpartition("=")
+            model_id, api = model_id.strip(), api.strip()
+            if not sep or not model_id or api not in TARGET_APIS:
+                bad.append(item if sep else f"{item}=<missing>")
+                continue
+            pairs.append((model_id, api))
+    if bad:
+        raise ValueError(
+            "Every --target must be <aws_model_id>=<required_client_api> with the API from that "
+            f"row ({' | '.join(sorted(TARGET_APIS))}). Unknown or missing: {', '.join(bad)}. "
+            "Resolve the row's API in the saved plan instead of guessing it.")
+    return pairs
+
+
 def generate_policy(model_ids: list[str], region: str, account_id: str,
                     runtime_api: str | None = None,
-                    migration_path: str | None = None) -> dict:
+                    migration_path: str | None = None,
+                    target_apis: dict[str, str] | None = None) -> dict:
     """Build a scoped IAM policy covering exactly the given model IDs.
 
     `runtime_api` is the plan's selected API (`responses`, `chat_completions`,
     `converse`, `messages`); it decides the default-project grant (see
     `requires_default_project_grant`). None keeps the id-only behaviour.
+    `target_apis` maps a model id to ITS OWN row's API and takes precedence over
+    `runtime_api` for that id, so a mixed plan (Claude Messages primary + GPT Chat
+    secondary) grants the default project to the GPT row and not to the Claude row.
     `migration_path` is the plan's `code_migration.migration_path`; an
     UNSUPPORTED lane (`mantle_messages`) raises `ValueError` instead of emitting
     runtime `bedrock:InvokeModel*` for a bare Claude id that the lane would never
@@ -193,6 +228,11 @@ def generate_policy(model_ids: list[str], region: str, account_id: str,
     if runtime_api is not None and runtime_api not in RUNTIME_APIS:
         raise ValueError(f"Unknown runtime API {runtime_api!r}; expected one of "
                          f"{sorted(RUNTIME_APIS)}")
+    target_apis = dict(target_apis or {})
+    for mid, api in target_apis.items():
+        if api not in TARGET_APIS:
+            raise ValueError(f"Unknown runtime API {api!r} for target {mid!r}; expected one of "
+                             f"{sorted(TARGET_APIS)}")
     runtime_ids = [m for m in model_ids if not is_mantle_model(m, region)]
     mantle_ids = [m for m in model_ids if is_mantle_model(m, region)]
 
@@ -209,8 +249,8 @@ def generate_policy(model_ids: list[str], region: str, account_id: str,
             # InvokeModel on the inference-profile ARN AND the default project
             # ARN; both are required, neither replaces the other. Converse-only
             # routes, Anthropic ids and every other runtime target keep the
-            # 2-ARN shape above.
-            if requires_default_project_grant(mid, runtime_api):
+            # 2-ARN shape above. The row's own API wins over the plan-wide one.
+            if requires_default_project_grant(mid, target_apis.get(mid, runtime_api)):
                 resources.append(default_project_arn(region, account_id))
         else:
             resources.append(foundation_model_arn(mid, region))
@@ -268,30 +308,54 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Generate scoped Bedrock IAM policy")
-    parser.add_argument("--models", required=True, help="Comma-separated model IDs")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--models", help="Comma-separated model IDs (legacy single-API form)")
+    group.add_argument("--target", action="append", default=[],
+                       help="<aws_model_id>=<required_client_api>; repeat once per "
+                            "bedrock_models[] row. Each row's API decides its own "
+                            "default-project grant (responses/chat_completions add it for a "
+                            "runtime GPT CRIS id; converse/messages/invoke do not). An unknown "
+                            "or missing API exits 1 with reason unknown_runtime_api.")
     parser.add_argument("--region", required=True, help="AWS region")
     parser.add_argument("--account-id", required=True, help="AWS account ID")
     parser.add_argument("--output", help="Output file (default: stdout)")
     parser.add_argument("--runtime-api", choices=sorted(RUNTIME_APIS),
-                        help="Selected runtime API (bedrock_models[].required_client_api); "
-                             "responses/chat_completions add the default-project grant for "
-                             "runtime GPT CRIS ids, converse/messages do not. Omit for the "
-                             "id-only behaviour.")
+                        help="Selected runtime API applied to every --models id "
+                             "(ignored with --target); responses/chat_completions add the "
+                             "default-project grant for runtime GPT CRIS ids, converse/messages "
+                             "do not. Omit for the id-only behaviour.")
     parser.add_argument("--migration-path",
                         help="Plan's code_migration.migration_path; an unsupported lane "
                              "(mantle_messages) exits 1 with a JSON reason instead of a policy.")
     args = parser.parse_args()
 
-    model_ids = [m.strip() for m in args.models.split(",") if m.strip()]
+    def _fail(reason: str, detail: str) -> None:
+        print(json.dumps({"ok": False, "reason": reason, "lane": args.migration_path,
+                          "detail": detail}, indent=2))
+        sys.exit(1)
+
+    if args.migration_path in UNSUPPORTED_LANES:
+        # The lane stop wins over every other check: nothing on this path is authorized.
+        try:
+            generate_policy([], args.region, args.account_id, migration_path=args.migration_path)
+        except ValueError as e:
+            _fail("unsupported_lane", str(e))
+    target_apis = None
+    if args.target:
+        try:
+            targets = parse_targets(args.target)
+        except ValueError as e:
+            _fail("unknown_runtime_api", str(e))
+        model_ids = [m for m, _ in targets]
+        target_apis = dict(targets)
+    else:
+        model_ids = [m.strip() for m in args.models.split(",") if m.strip()]
     try:
         policy = generate_policy(model_ids, args.region, args.account_id,
-                                 runtime_api=args.runtime_api,
-                                 migration_path=args.migration_path)
+                                 runtime_api=args.runtime_api if not args.target else None,
+                                 migration_path=args.migration_path, target_apis=target_apis)
     except ValueError as e:
-        print(json.dumps({"ok": False, "reason": "unsupported_lane"
-                          if args.migration_path in UNSUPPORTED_LANES else "unknown_runtime_api",
-                          "lane": args.migration_path, "detail": str(e)}, indent=2))
-        sys.exit(1)
+        _fail("unknown_runtime_api", str(e))
 
     output = json.dumps(policy, indent=2) + "\n"
     if args.output:

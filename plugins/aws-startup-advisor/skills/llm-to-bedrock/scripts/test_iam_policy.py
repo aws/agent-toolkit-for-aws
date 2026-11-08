@@ -18,6 +18,7 @@ from iam_policy import (
     mantle_project_arn,
     inference_profile_arn,
     is_inference_profile,
+    parse_targets,
     requires_default_project_grant,
 )
 
@@ -542,3 +543,111 @@ class TestMantleMessagesLaneIsRefused:
         assert out["lane"] == "mantle_messages"
         assert "workspaces" in out["detail"]
         assert "bedrock:InvokeModel" not in result.stdout.replace(out["detail"], "")
+
+
+class TestPerRowTargetApis:
+    """PR 585 review round 1, B1: the §6.4 recipe used to pass the primary's single
+    `--runtime-api` for every id, so a runtime_messages plan with a GPT Chat/Responses
+    secondary lost that secondary's default-project grant. `--target ID=API` carries
+    each row's own API, exactly like preflight."""
+
+    CLAUDE = "global.anthropic.claude-sonnet-5"
+    GPT = "us.openai.gpt-6-astra"
+    NOVA = "us.amazon.nova-lite-v1:0"
+    EMBED = "amazon.titan-embed-text-v2:0"
+
+    def _invoke_resources(self, pol):
+        return {s["Sid"]: s for s in pol["Statement"]}["BedrockInvokeModelScoped"]["Resource"]
+
+    def test_plan_wide_messages_api_is_the_regression_the_per_row_form_fixes(self):
+        # The reviewer's spot-check: one plan-wide `messages` drops the GPT secondary's grant.
+        pol = generate_policy([self.CLAUDE, self.GPT], REGION, ACCOUNT,
+                              runtime_api="messages", migration_path="runtime_messages")
+        assert default_project_arn(REGION, ACCOUNT) not in self._invoke_resources(pol)
+
+    def test_claude_messages_plus_gpt_chat_grants_project_default_exactly_once(self):
+        pol = generate_policy([self.CLAUDE, self.GPT], REGION, ACCOUNT,
+                              migration_path="runtime_messages",
+                              target_apis={self.CLAUDE: "messages", self.GPT: "chat_completions"})
+        resources = self._invoke_resources(pol)
+        assert resources.count(default_project_arn(REGION, ACCOUNT)) == 1
+        assert "arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-5" in resources
+        assert inference_profile_arn(self.GPT, REGION, ACCOUNT) in resources
+        assert [s["Sid"] for s in pol["Statement"]] == ["BedrockInvokeModelScoped", "BedrockGetInferenceProfile"]
+
+    @pytest.mark.parametrize("gpt_api", ["responses", "chat_completions"])
+    def test_gpt_secondary_grant_follows_its_own_row_api(self, gpt_api):
+        pol = generate_policy([self.CLAUDE, "in.openai.gpt-5.6-terra"], REGION, ACCOUNT,
+                              target_apis={self.CLAUDE: "messages", "in.openai.gpt-5.6-terra": gpt_api})
+        assert default_project_arn(REGION, ACCOUNT) in self._invoke_resources(pol)
+
+    def test_claude_messages_plus_nova_converse_plus_embeddings_emits_no_project_default(self):
+        pol = generate_policy([self.CLAUDE, self.NOVA, self.EMBED], REGION, ACCOUNT,
+                              migration_path="runtime_messages",
+                              target_apis={self.CLAUDE: "messages", self.NOVA: "converse", self.EMBED: "invoke"})
+        resources = self._invoke_resources(pol)
+        assert default_project_arn(REGION, ACCOUNT) not in resources
+        assert f"arn:aws:bedrock:*::foundation-model/{self.EMBED}" in resources
+
+    def test_gpt_row_on_converse_beside_a_gpt_row_on_chat_grants_once(self):
+        # Per-row decision, not per-family: the same policy call grants the Chat row and
+        # withholds for the Converse row; one project ARN results.
+        chat, conv = "us.openai.gpt-5.4", "global.openai.gpt-5.5"
+        pol = generate_policy([chat, conv], REGION, ACCOUNT,
+                              target_apis={chat: "chat_completions", conv: "converse"})
+        assert self._invoke_resources(pol).count(default_project_arn(REGION, ACCOUNT)) == 1
+        assert requires_default_project_grant(chat, "chat_completions")
+        assert not requires_default_project_grant(conv, "converse")
+
+    def test_row_api_overrides_plan_wide_runtime_api(self):
+        pol = generate_policy([self.CLAUDE, self.GPT], REGION, ACCOUNT, runtime_api="messages",
+                              target_apis={self.GPT: "chat_completions"})
+        assert default_project_arn(REGION, ACCOUNT) in self._invoke_resources(pol)
+
+    def test_unknown_row_api_fails_closed(self):
+        with pytest.raises(ValueError, match="Unknown runtime API 'grpc'"):
+            generate_policy([self.GPT], REGION, ACCOUNT, target_apis={self.GPT: "grpc"})
+
+    def test_parse_targets_builds_pairs_from_repeated_and_comma_joined_specs(self):
+        assert parse_targets([f"{self.CLAUDE}=messages", f"{self.GPT}=chat_completions,{self.EMBED}=invoke"]) == [
+            (self.CLAUDE, "messages"), (self.GPT, "chat_completions"), (self.EMBED, "invoke"),
+        ]
+
+    @pytest.mark.parametrize("spec", ["us.openai.gpt-6-astra", "us.openai.gpt-6-astra=", "us.openai.gpt-6-astra=grpc"])
+    def test_parse_targets_fails_closed_on_missing_or_unknown_api(self, spec):
+        with pytest.raises(ValueError, match="Every --target must be"):
+            parse_targets([spec])
+
+    def test_cli_target_pairs_grant_the_gpt_secondary_under_a_messages_primary(self):
+        result = subprocess.run(  # nosec B603
+            [sys.executable, str(Path(__file__).parent / "iam_policy.py"),
+             "--target", f"{self.CLAUDE}=messages", "--target", f"{self.GPT}=chat_completions",
+             "--region", REGION, "--account-id", ACCOUNT, "--migration-path", "runtime_messages"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        policy = json.loads(result.stdout)
+        assert policy["Statement"][0]["Resource"].count(default_project_arn(REGION, ACCOUNT)) == 1
+
+    def test_cli_target_with_unknown_api_exits_with_unknown_runtime_api(self):
+        result = subprocess.run(  # nosec B603
+            [sys.executable, str(Path(__file__).parent / "iam_policy.py"),
+             "--target", f"{self.CLAUDE}=messages", "--target", self.GPT,
+             "--region", REGION, "--account-id", ACCOUNT],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 1
+        out = json.loads(result.stdout)
+        assert out["ok"] is False and out["reason"] == "unknown_runtime_api"
+        assert "<missing>" in out["detail"]
+        assert "Statement" not in result.stdout
+
+    def test_cli_models_and_target_are_mutually_exclusive(self):
+        result = subprocess.run(  # nosec B603
+            [sys.executable, str(Path(__file__).parent / "iam_policy.py"),
+             "--models", self.GPT, "--target", f"{self.GPT}=responses",
+             "--region", REGION, "--account-id", ACCOUNT],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 2
+        assert "not allowed with" in result.stderr
