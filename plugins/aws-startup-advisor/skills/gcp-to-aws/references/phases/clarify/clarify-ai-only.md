@@ -81,7 +81,7 @@ Before asking anything, present what discovery already answered and what will be
 | Task complexity | Moderate | Sonnet-class model |
 
 Reply "looks good" to continue to the remaining questions, correct any line
-("model: gemini-2.5-pro"), or describe the issue in plain words.
+("model: gemini-3.5-flash"), or describe the issue in plain words.
 ```
 
 Questions resolved on this sheet are **not** re-asked in the batches below; record them with `chosen_by: "extracted"` (detected rows) or `"default"` (assumed rows, sheet-confirmed), and skip their entries in Batch 1/2. Rows the user corrects become `chosen_by: "user"`. Rows with no detection signal stay in the batches as normal questions.
