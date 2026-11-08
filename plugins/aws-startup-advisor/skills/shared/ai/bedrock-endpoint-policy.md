@@ -4,7 +4,8 @@
 > Vendored into each consuming skill as `references/vendored/ai/bedrock-endpoint-policy.md`
 > and kept byte-identical by `tools/sync-vendored.py`; edit HERE, then run the sync.
 > Every statement below comes from the public Amazon Bedrock User Guide pages listed in
-> § Sources (read 2026-11-07). Re-read those pages before changing a row.
+> § Sources (read 2026-11-07; the GPT-5.4 and GPT-5.5 model cards read 2026-11-08).
+> Re-read those pages before changing a row.
 
 ## The rule
 
@@ -28,8 +29,9 @@ Anthropic Messages source keeps its SDK on `bedrock-runtime` by changing the bas
 credential and the model ID. Choosing Mantle because "the app already speaks Responses" is not a
 selector.
 
-**Pricing never selects an endpoint.** Per-token pricing for the same model is identical on both
-endpoints; choose by API and capability need.
+**Pricing never selects an endpoint.** Choose by API and capability need. Read the per-token
+rate from that model's card for the inference option the endpoint serves. A card with no Geo or
+Global row has not published that price; do not use the In-Region rate in its place.
 
 ## `mantle_selector` — the recorded reason
 
@@ -148,6 +150,9 @@ engine (`endpoints.html`).
 All pages under `https://docs.aws.amazon.com/bedrock/latest/userguide/`, read 2026-11-07:
 
 - `endpoints.html` — https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints.html
+- `model-card-openai-gpt-54.html` and `model-card-openai-gpt-55.html` (read 2026-11-08) —
+  commercial In-Region prices only. Runtime lists `us.` and `global.` ids, and those rows
+  publish no price.
 - `models-endpoint-availability.html`
 - `inference-responses-api.html`
 - `inference-chat-completions.html`

@@ -68,6 +68,11 @@ def test_policy_states_the_runtime_default_and_selector_rule() -> None:
     text = _norm(POLICY_CANONICAL.read_text(encoding="utf-8"))
     assert "Use `bedrock-runtime` for new applications" in text
     assert "API continuity alone never selects Mantle" in text
+    assert "Pricing never selects an endpoint" in text
+    assert "identical on both" not in text
+    assert "do not use the In-Region rate in its place" in text
+    assert "model-card-openai-gpt-54.html" in text
+    assert "model-card-openai-gpt-55.html" in text
     for value in MANTLE_SELECTOR_ENUM:
         assert f"`{value}`" in text, f"mantle_selector enum value {value} missing from the policy"
     assert ENDPOINTS_URL in text, "policy must cite the public endpoints.html page"
