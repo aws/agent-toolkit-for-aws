@@ -119,8 +119,8 @@ running). → `ai_constraints.cross_cloud`. Default `"latency-acceptable"`.
 | GPT-6 (Astra/Sol/Luna) / GPT-6.1 Sol       | **Same model on Bedrock**              | ~10% over OpenAI std (data-residency tier); Astra/6.1 Sol also support Ultrafast (6x) |
 | GPT-6.1 Terra                              | **Same model on Bedrock**              | Use the model-specific endpoint and context-tier prices in `references/shared/openai-on-bedrock.md`; compare against measured source spend or verified source rates. |
 | GPT-5.6 (Sol/Terra/Luna)                  | **Same model on Bedrock**              | ~10% over OpenAI std (data-residency tier) |
-| GPT-5.5                                   | **Same model on Bedrock**              | ~10% over std                              |
-| GPT-5.4                                   | **Same model on Bedrock**              | ~10% over std                              |
+| GPT-5.5                                   | **Same model on Bedrock**              | In-Region (mantle) ~10% over OpenAI std; no Geo or Global price published |
+| GPT-5.4                                   | **Same model on Bedrock**              | In-Region (mantle) ~10% over OpenAI std; no Geo or Global price published |
 | GPT-4o                                    | GPT-5.6 Terra; or Claude Sonnet 5      | not on Bedrock — offer both                |
 | GPT-4 / 4 Turbo                           | GPT-5.6 Terra; or Sonnet 5             | not on Bedrock — offer both                |
 | GPT-4.1 / mini / nano                     | GPT-5.6 Terra/Luna; or Nova Lite/Micro | not on Bedrock — offer both                |

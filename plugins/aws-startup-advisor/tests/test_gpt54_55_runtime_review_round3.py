@@ -121,6 +121,35 @@ _INFERRED_CRIS_PRICE = re.compile(
 )
 
 
+def test_the_1_10x_geo_rate_names_gpt56_not_the_gpt5x_family() -> None:
+    """The GPT-5.4 and GPT-5.5 cards publish no Geo or Global price. A GPT-5.x
+    In-Region-and-Geo 1.10x bullet would price those CRIS ids at the In-Region rate.
+    """
+    for path in [CANONICAL_GUIDE, *VENDORED_GUIDES, *FACT_BASES]:
+        text = path.read_text()
+        assert "GPT-5.x In-Region and Geo" not in text, path
+        assert "GPT-5.6 In-Region and Geo" in text, path
+
+
+CLARIFY_AI_ONLY = [
+    SKILLS / "gcp-to-aws" / "references" / "phases" / "clarify" / "clarify-ai-only.md",
+    SKILLS / "azure-to-aws" / "references" / "phases" / "clarify" / "clarify-ai-only.md",
+    SKILLS / "bedrock-migration-assessment" / "references" / "phases" / "clarify" / "clarify-ai-only.md",
+]
+
+
+def test_clarify_ai_only_scopes_the_gpt54_55_premium_to_in_region() -> None:
+    for path in CLARIFY_AI_ONLY:
+        rows = [
+            line for line in path.read_text().splitlines()
+            if re.match(r"\| GPT-5\.5\s+\|", line) or re.match(r"\| GPT-5\.4\s+\|", line)
+        ]
+        assert len(rows) == 2, f"{path}: expected two GPT-5.5 / GPT-5.4 rows, got {rows}"
+        for line in rows:
+            assert "In-Region (mantle)" in line, line
+            assert "no Geo or Global price published" in line, line
+
+
 def test_no_file_infers_a_cris_price_for_gpt54_55_from_in_region() -> None:
     offenders = {}
     for path in [CANONICAL_GUIDE, *VENDORED_GUIDES, *FACT_BASES, REPORT_GENERATOR]:

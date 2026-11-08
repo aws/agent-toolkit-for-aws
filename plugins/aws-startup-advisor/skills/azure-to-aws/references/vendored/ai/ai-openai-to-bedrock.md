@@ -39,7 +39,7 @@ Two consequences that invert the previous decision logic:
 1. **When the source model is on Bedrock, keep it.** A same-model move has no behavior delta to validate, no prompt
    re-engineering, and no eval regression risk — the migration is an endpoint and credential change, not a model
    change. This is the default recommendation.
-2. **The cost of a same-model move depends on the inference option — state it conditionally.** GPT-5.x In-Region and Geo
+2. **The cost of a same-model move depends on the inference option — state it conditionally.** GPT-5.6 In-Region and Geo
    CRIS are priced at OpenAI's _data residency_ tier, exactly 1.10x the standard list price, so those moves cost
    ~10% more. **GPT-5.6 on Global CRIS is priced at the standard list price — cost parity** — available only when
    the workload has no data-residency constraint. GPT-5.5 / GPT-5.4 also have `us.`/`global.` CRIS ids on

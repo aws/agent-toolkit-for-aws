@@ -268,7 +268,7 @@ for these models). Sol rates reflect the Aug 21, 2026 reduction (−20% input / 
 the AWS What's New announcement lists as promotional through at least Nov 21, 2026. **Pricing now has an
 inference-option dimension:**
 
-- **GPT-5.x In-Region and Geo CRIS: 1.10x OpenAI's standard list price** (parity with OpenAI's _data residency_ tier).
+- **GPT-5.6 In-Region and Geo CRIS: 1.10x OpenAI's standard list price** (parity with OpenAI's _data residency_ tier).
 - **Global CRIS: OpenAI's standard list price** — cost parity for the GPT-5.6 rates verified above, and only when the
   workload has no data-residency constraint.
 
