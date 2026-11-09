@@ -261,7 +261,7 @@ def _input_types_detected(profile: dict) -> str | None:
     capabilities = integration["capabilities_summary"]
     if capabilities["speech_to_text"]:
         return "audio"
-    return "vision" if capabilities["vision"] else "text-only"
+    return "vision" if capabilities["vision"] else None
 
 
 def _summary(profile: dict) -> dict:

@@ -32,7 +32,7 @@ The SKILL.md secret-file rule applies before Step 1: to see whether the project 
    ```
 
 4. If validation fails, the scan wrote an inconsistent profile. Fix the profile from the scan results and validate again. Never pass a profile that fails validation to Clarify.
-5. Show the user a short summary of what the scan found: each source, its models, and any gateway.
+5. Show the user a short summary of what the scan found: each source, its models, and any gateway, then every agent, call, or endpoint the scan named as not recorded.
 
 ## Step 3: Validation errors
 

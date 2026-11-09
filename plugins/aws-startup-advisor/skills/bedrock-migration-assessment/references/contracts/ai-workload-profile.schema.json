@@ -127,7 +127,10 @@
       "properties": {
         "framework": {"$ref": "#/definitions/extensibleIdentity"},
         "agents": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/definitions/agent"}},
-        "orchestration_pattern": {"$ref": "#/definitions/extensibleIdentity"},
+        "orchestration_pattern": {
+          "description": "unknown when agents were found but no graph, handoff, sequence, or swarm connects them.",
+          "oneOf": [{"$ref": "#/definitions/extensibleIdentity"}, {"const": "unknown"}]
+        },
         "has_memory": {"type": "boolean"},
         "memory_backend": {"$ref": "#/definitions/nonEmpty"},
         "has_human_in_loop": {"type": "boolean"}
