@@ -224,3 +224,77 @@ def test_code_rewriter_carries_the_per_model_guardrails_and_caching_scope() -> N
     assert "cards read 2026-11-09" in text
 
 
+# --------------------------------------------------------------------------- F4 (cloud half): selector ↔ API validation
+
+STEP_08_PHRASES = [
+    "Validate the matched selector against the API it requires",
+    "require the Responses API",
+    "`workspaces` requires the Anthropic Messages API",
+    "`projects` requires an OpenAI-compatible API",
+    "explicit API-continuity decision",
+    "never a silent same-API Mantle row",
+    "`mantle_openai_chat` / `mantle_messages` is never recorded for a Responses-only selector",
+    "read 2026-11-09",
+]
+
+
+@pytest.mark.parametrize(("path", "end"), [(GCP_DESIGN_AI, "## Part 1"), (AZURE_DESIGN_AI, "Exactly one of")],
+                         ids=["gcp", "azure"])
+def test_step_08_validates_the_selector_against_its_api_before_choosing_a_path(path: Path, end: str) -> None:
+    step = _squash(_section(path.read_text(), "## Step 0.8", end))
+    for phrase in STEP_08_PHRASES:
+        assert phrase in step, f"{path}: {phrase!r} missing from Step 0.8"
+    assert "1b." in step
+    assert re.search(r"2\. \*\*(Any m|M)atch that passes 1b", step), f"{path}: rule 2 must depend on 1b"
+    assert "keep the source API on `bedrock-runtime` and drop the requirement" in step
+    assert "move to `mantle_openai_responses`" in step
+    assert "`workspaces` on an OpenAI SDK workload, `projects` on an Anthropic SDK workload" in step
+
+
+@pytest.mark.parametrize("path", ALL_SCHEMA_DOCS, ids=lambda p: str(p.relative_to(SKILLS)))
+def test_schema_docs_carry_the_responses_only_selector_decision(path: Path) -> None:
+    text = _squash(path.read_text())
+    assert "A matched selector is validated against the API it requires before the path is chosen" in text
+    assert "`web_search` and `background_inference` require the Responses API" in text
+    assert "explicit API-continuity decision" in text and "never a silent same-API Mantle row" in text
+    assert "`workspaces` on OpenAI, `projects` on Anthropic" in text
+
+
+def test_vendored_schema_docs_are_byte_identical_to_the_canonical() -> None:
+    for vendored in VENDORED_SCHEMA_DOCS:
+        assert vendored.read_bytes() == CANONICAL_SCHEMA_DOC.read_bytes(), vendored
+
+
+def _design_ai_findings(design: dict) -> list:
+    validator = _load_module("round3_artifact_validator", ARTIFACT_VALIDATOR)
+    schema = json.loads(DESIGN_AI_SCHEMA.read_text())
+    findings: list = []
+    validator.validate_json_schema(schema, design, "", "design", str(DESIGN_AI_SCHEMA), findings)
+    return findings
+
+
+def test_chat_source_web_search_fixture_keeps_the_api_and_discloses_the_dropped_selector() -> None:
+    design = json.loads(NEW_FIXTURE.read_text())
+    assert _design_ai_findings(design) == []
+    rows = design["ai_architecture"]["bedrock_models"]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["migration_path"] == "runtime_openai_cris"
+    assert row["required_client_api"] == "chat_completions"
+    assert "mantle_selector" not in row and "mantle_requirement" not in row
+    assert row["endpoint_assumption"].startswith("No Mantle-only requirement was recorded for wl_openai_research_bot; bedrock-runtime selected.")
+    assert any("web_search" in gap and "Responses API" in gap and "explicit decision" in gap for gap in row["capability_gaps"])
+    assert "Step 0.8 rule 1b" in design["design_blocks"][0]["rationale"]
+    assert design["metadata"]["ai_sources"][0]["models"] == ["gpt-5.5"]
+    assert design["metadata"]["bedrock_models_selected"] == [row["aws_model_id"]] == ["us.openai.gpt-5.5"]
+
+
+def test_design_fixture_corpus_never_records_a_responses_only_selector_on_a_same_api_mantle_row() -> None:
+    assert NEW_FIXTURE in DESIGN_FIXTURES
+    for path in DESIGN_FIXTURES:
+        for row in json.loads(path.read_text())["ai_architecture"]["bedrock_models"]:
+            selector = row.get("mantle_selector")
+            if row.get("migration_path") == "mantle_openai_chat":
+                assert selector not in {"web_search", "background_inference"}, f"{path}: Responses-only selector on a Chat Mantle row"
+            if row.get("migration_path") == "mantle_messages":
+                assert selector not in {"background_inference", "projects"}, f"{path}: OpenAI-only selector on a Messages Mantle row"

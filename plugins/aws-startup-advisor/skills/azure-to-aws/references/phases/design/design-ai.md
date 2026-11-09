@@ -112,7 +112,23 @@ Per workload (`workloads[]` from `preferences.json`, else the profile; `*` appli
 1. Match `value[]` entries whose `workload_id` is the workload's id or `*`, whose `selector` is
    one of `background_inference | server_side_tools | web_search | projects | workspaces |
    in_region_processing`, and whose `source` is `detected` or `user`. `none` matches nothing.
-2. **Match → Mantle path for the source API** (`mantle_openai_responses` / `mantle_openai_chat` /
+1b. **Validate the matched selector against the API it requires.** `web_search` and
+   `background_inference` require the Responses API (`web-search.html`;
+   `inference-responses-api.html` — read 2026-11-09); `workspaces` requires the Anthropic Messages
+   API (`anthropic-workspace-id`); `projects` requires an OpenAI-compatible API (`OpenAI-Project`).
+   A selector whose provider does not match the workload's source API — `workspaces` on an OpenAI
+   SDK workload, `projects` on an Anthropic SDK workload — is a mismatch: the row keeps
+   `bedrock-runtime`, records `endpoint_assumption`, discloses the mismatch in `rationale` and
+   `capability_gaps[]`, and Clarify is re-run; never invent a Mantle path. A Chat Completions
+   source (or an Anthropic Messages source) matched by a Responses-only selector (`web_search`,
+   `background_inference`) is an **explicit API-continuity decision** recorded in the plan and the
+   Present Summary, never a silent same-API Mantle row: (i) keep the source API on
+   `bedrock-runtime` and drop the requirement — the row stays `runtime_openai_cris` /
+   `runtime_messages` with `endpoint_assumption` and a `capability_gaps[]` entry naming the dropped
+   selector and the decision; or (ii) move to `mantle_openai_responses` with that
+   `mantle_selector`, `mantle_requirement`, and the Chat → Responses reshape delta in Generate.
+   `mantle_openai_chat` / `mantle_messages` is never recorded for a Responses-only selector.
+2. **Match that passes 1b → Mantle path for the source API** (`mantle_openai_responses` / `mantle_openai_chat` /
    `mantle_messages`) with `mantle_selector` = the matched selector (several → first in the order
    above, name the rest in `rationale`) and `mantle_requirement` copied from the entry:
    `{ workload_id, selector, source, evidence? (when detected), region? (iff in_region_processing) }`.

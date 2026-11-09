@@ -247,6 +247,7 @@ workload:
   `in_region_processing` applies only when `bedrock-runtime` serves the model in the entry's
   `region` through a CRIS profile alone (the CRIS-only gate in `ai-openai-to-bedrock.md`);
   otherwise the workload stays on `bedrock-runtime` in that Region.
+- A matched selector is validated against the API it requires before the path is chosen (`web_search` and `background_inference` require the Responses API; `workspaces` the Anthropic Messages API; `projects` an OpenAI-compatible API — read 2026-11-09): a Chat Completions or Anthropic Messages source matched by a Responses-only selector is an explicit API-continuity decision — keep the source API on `bedrock-runtime` and drop the requirement (disclosed in `capability_gaps[]`), or move to `mantle_openai_responses` — never a silent same-API Mantle row; a provider mismatch (`workspaces` on OpenAI, `projects` on Anthropic) keeps `bedrock-runtime` and re-runs Clarify.
 - A matching entry on a workload whose source API has no Mantle path (Gemini / Vertex AI, or a
   workload whose target is a cross-family `direct` / `converse` / `gpt-oss` row) does not change
   the endpoint: the row keeps `bedrock-runtime`, records `endpoint_assumption` verbatim (below),
