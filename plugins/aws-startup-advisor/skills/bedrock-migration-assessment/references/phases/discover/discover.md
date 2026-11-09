@@ -36,7 +36,7 @@ The SKILL.md secret-file rule applies before Step 1: to see whether the project 
 
 ## Step 2c: OpenAI usage (optional)
 
-After either route has a validated profile in `$MIGRATION_DIR`, load `references/phases/discover/discover-openai-api.md` when the profile has an `openai`/`openai_api` source, or when the user mentions OpenAI usage or spend; otherwise skip this step without asking. Its Step 0 is the only consent prompt for it. If `$MIGRATION_DIR/openai-capture/manifest.json` already exists, resume at its Step 3. After its merge, validate the profile again as in Step 2b.
+After either route has a validated profile in `$MIGRATION_DIR`, load `references/phases/discover/discover-openai-api.md` when the profile has an `openai`/`openai_api` source, or when the user mentions OpenAI usage or spend; otherwise skip this step without asking. Its Step 0 is the only consent prompt for it. If `$MIGRATION_DIR/openai-capture/manifest.json` already exists, follow the reader's resume rows in its Error Handling table: only a `result` of `complete` resumes at its Step 3. After its merge, validate the profile again as in Step 2b.
 
 ## Step 2d: Preview
 
@@ -54,7 +54,7 @@ Pass `--usage` only when Step 2c wrote that file. Show the user:
 | **Models** | [ai_summary.model_ids, joined by ", "] |
 | **Providers** | [ai_summary.providers] [+ " via " + gateways, when any] |
 | **Agents** | [agent_count agents, tool_count tools, or "None found"] |
-| **Measured spend** | [measured_usage.monthly_cost_usd over window_days days, or "Not measured"] |
+| **Measured spend** | ["Not measured" when measured_usage is null; "Not available (the cost request failed)" when cost_status is cost_unavailable; otherwise monthly_cost_usd over active_days days, adding "(partial window)" when partial_window is true] |
 | **Path** | [path_shape] |
 | **Decisions ahead** | [key_decisions_ahead, joined by "; "] |
 ```

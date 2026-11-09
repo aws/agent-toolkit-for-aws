@@ -95,9 +95,11 @@ def preview(profile: dict, usage: dict | None = None) -> dict:
         "key_decisions_ahead": decisions(profile, summary, models),
     }
     if usage:
-        out["measured_usage"] = {"source": usage["metadata"]["source"], "monthly_cost_usd": usage["summary"]["monthly_cost_usd"],
-                                 "window_days": usage["metadata"]["window_days"], "active_days": usage["metadata"]["active_days"],
-                                 "partial_window": usage["metadata"]["partial_window"]}
+        md = usage["metadata"]
+        out["measured_usage"] = {"source": md["source"], "monthly_cost_usd": usage["summary"]["monthly_cost_usd"],
+                                 "cost_status": md.get("cost_status", "partial_window" if md["partial_window"] else "complete"),
+                                 "window_days": md["window_days"], "active_days": md["active_days"], "partial_window": md["partial_window"],
+                                 "capture_warnings": md.get("capture_warnings", [])}
     return out
 
 

@@ -256,8 +256,8 @@ short-circuit it.
    `metadata.partial_window` exception: a
    partial-window profile's figures are a reference figure labeled with `active_days`, never
    blended into the monthly baseline (schema consequence specified below). **Second, parallel
-   exception — `metadata.cost_status` (Anthropic profile only, currently the only profile that
-   writes this field):** a profile whose `cost_status` is `"cost_unavailable"` has `null` for
+   exception — `metadata.cost_status` (written by the Anthropic usage profile and by
+   bedrock-migration-assessment's OpenAI usage profile):** a profile whose `cost_status` is `"cost_unavailable"` has `null` for
    `summary.monthly_cost_usd` — EXCLUDE it from this dollar SUM entirely (never add `null`,
    never substitute `0`), but STILL include its `usage_by_model[]` token totals in
    `usage_by_model[]` below — usage succeeded for that profile, only its cost side failed. This
@@ -450,9 +450,10 @@ representable):**
   `summary` into two separate top-level figures — the one `monthly_cost_usd` number remains
   the SUM step 6 computes, and the boolean tells the consumer how to present it.
 - **`windows.<provider>.cost_status`**: `"complete" | "partial_window" | "cost_unavailable"`,
-  copied straight from that provider's source usage-profile `metadata.cost_status` (currently
-  only the Anthropic usage profile writes this field — see `discover-anthropic-api.md` Step 3
-  in either sibling skill; OpenAI/OpenRouter profiles that don't yet write it default to
+  copied straight from that provider's source usage-profile `metadata.cost_status` (the
+  Anthropic usage profile writes this field — see `discover-anthropic-api.md` Step 3 in either
+  sibling skill — and so does bedrock-migration-assessment's OpenAI usage profile; profiles
+  that don't write it, such as the sibling skills' OpenAI and OpenRouter profiles, default to
   `"complete"` when `partial_window` is `false` and `"partial_window"` when it is `true`, since
   for those providers window-completeness and cost-completeness haven't been split apart yet).
   When ANY `windows.<provider>.cost_status` is `"cost_unavailable"`, that provider's dollars

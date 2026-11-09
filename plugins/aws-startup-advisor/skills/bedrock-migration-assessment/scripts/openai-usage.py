@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import importlib.util
 import json
 import math
@@ -30,7 +29,7 @@ DAILY_ROWS = [
 ]
 MINUTE_ROW = ("/v1/organization/usage/completions", {"bucket_width": "1m", "group_by": ["model", "batch", "service_tier"], "limit": 1440},
               "usage-completions-minute.json")
-PROBE_ROW = ("/v1/organization/costs", {"bucket_width": "1d", "group_by": ["project_id"], "limit": 180}, "costs-by-project.json")
+PROBE_ROW = ("/v1/organization/costs", {"bucket_width": "1d", "group_by": ["project_id"], "limit": 180}, None)
 ALLOWED_PATHS = {row[0] for row in DAILY_ROWS + [MINUTE_ROW, PROBE_ROW]}
 CACHE_FIELDS = ("input_cached_tokens", "input_cache_write_tokens", "input_text_tokens", "input_image_tokens", "input_audio_tokens")
 sleep = time.sleep
@@ -92,16 +91,20 @@ def cmd_check_key(args) -> int:
     return 0
 
 
+def delete_key(key_file: Path) -> None:
+    key_file.unlink(missing_ok=True)
+
+
 def cmd_probe(args) -> int:
+    """The one unfiltered read: per-project spend totals, printed for the picker and never written to disk."""
     key = read_key(args.key_file)
-    args.out_dir.mkdir(parents=True, exist_ok=True)
-    path, params, name = PROBE_ROW
+    path, params, _ = PROBE_ROW
     try:
         buckets = get(key, path, {**params, "start_time": _window(args.days)})
     except KeyRejected:
+        delete_key(args.key_file)
         print("KEY_REJECTED")
         return 2
-    (args.out_dir / name).write_text(json.dumps(buckets))
     spend: dict[str, float] = {}
     for bucket in buckets:
         for result in bucket.get("results", bucket.get("result", [])):
@@ -129,6 +132,8 @@ def cmd_capture(args) -> int:
     if not args.project:
         raise SystemExit("at least one --project is required; never capture the whole organization by default")
     args.out_dir.mkdir(parents=True, exist_ok=True)
+    for stale in [f for _, _, f in DAILY_ROWS + [MINUTE_ROW]] + ["manifest.json"]:
+        (args.out_dir / stale).unlink(missing_ok=True)
     start = _window(args.days)
     captures, status = [], 0
     hourly = None
@@ -161,20 +166,26 @@ def cmd_capture(args) -> int:
             hourly = buckets
         captures.append(entry)
         print(f"{name} ok {len(buckets)}")
-    manifest = {"captured_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "window_days": args.days,
-                "window_start": start, "admin_key_sha256": hashlib.sha256(args.key_file.read_bytes()).hexdigest(),
-                "project_filter": args.project, "captures": captures}
-    (args.out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     usage_ok = [c for c in captures if c["file"].startswith("usage-") and "hourly" not in c["file"] and "minute" not in c["file"] and c["status"] == "ok"]
     if status == 0 and not usage_ok:
         print("ALL_USAGE_FAILED")
         status = 4
+    result = {0: "complete", 3: "key_invalid_mid_run", 4: "all_usage_failed"}[status]
+    manifest = {"captured_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "window_days": args.days,
+                "window_start": start, "project_filter": args.project, "result": result, "captures": captures}
+    (args.out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    delete_key(args.key_file)
     return status
 
 
-def _load(capture_dir: Path, name: str) -> list | None:
-    path = capture_dir / name
-    return json.loads(path.read_text()) if path.is_file() else None
+def _loader(capture_dir: Path, manifest: dict):
+    """Load a capture file only when the current manifest records it as ok; leftovers from earlier attempts are ignored."""
+    ok = {c["file"] for c in manifest["captures"] if c["status"] == "ok"}
+
+    def load(name: str) -> list | None:
+        path = capture_dir / name
+        return json.loads(path.read_text()) if name in ok and path.is_file() else None
+    return load
 
 
 def _results(bucket: dict) -> list:
@@ -184,8 +195,13 @@ def _results(bucket: dict) -> list:
 def cmd_summarize(args) -> int:
     d = args.capture_dir
     manifest = json.loads((d / "manifest.json").read_text())
+    if manifest.get("result") != "complete":
+        print(f"CAPTURE_NOT_COMPLETE: {manifest.get('result')}")
+        return 7
+    _load = _loader(d, manifest)
     labels = dict(item.split("=", 1) for item in args.label)
-    costs = _load(d, "costs.json") or []
+    costs_rows = _load("costs.json")
+    costs = costs_rows or []
     line_items: dict[str, float] = {}
     currency = "usd"
     first_paid = None
@@ -202,7 +218,7 @@ def cmd_summarize(args) -> int:
     active_days = window_days if first_paid is None else min(window_days, max(1, math.ceil((end - first_paid) / 86400)))
     rows: dict[tuple, dict] = {}
     for endpoint in USAGE:
-        for bucket in _load(d, f"usage-{endpoint.replace('_', '-')}.json") or []:
+        for bucket in _load(f"usage-{endpoint.replace('_', '-')}.json") or []:
             day = bucket["start_time"] - bucket["start_time"] % 86400
             for r in _results(bucket):
                 batch = bool(r.get("batch")) if endpoint == "completions" else None
@@ -223,7 +239,7 @@ def cmd_summarize(args) -> int:
                 stats[0] += r.get("input_tokens", 0)
                 stats[1] += r.get("output_tokens", 0)
                 stats[2] += r.get("num_model_requests", 0)
-    hourly, minute = _load(d, "usage-completions-hourly.json"), _load(d, "usage-completions-minute.json")
+    hourly, minute = _load("usage-completions-hourly.json"), _load("usage-completions-minute.json")
 
     def per_key_max(buckets, key_of):
         out: dict[tuple, list] = {}
@@ -271,10 +287,12 @@ def cmd_summarize(args) -> int:
             usage.append(out)
     usage.sort(key=lambda r: -(r["input_tokens"] + r["output_tokens"]))
     warnings = [f"{c['file']} {c['status']}" + (f" ({c['note']})" if c.get("note") else "") for c in manifest["captures"] if c["status"] != "ok"]
-    total_cost = round(sum(line_items.values()), 2)
+    partial = active_days < window_days or not usage
+    cost_status = "cost_unavailable" if costs_rows is None else "partial_window" if partial else "complete"
+    total_cost = None if costs_rows is None else round(sum(line_items.values()), 2)
     profile = {
         "metadata": {"source": "openai_usage_api", "captured_at": manifest["captured_at"], "window_days": window_days, "active_days": active_days,
-                     "partial_window": active_days < window_days or not usage,
+                     "partial_window": partial, "cost_status": cost_status,
                      "projects": [{"id": p, **({"label": labels[p]} if p in labels else {})} for p in manifest["project_filter"]],
                      "capture_warnings": warnings},
         "summary": {"monthly_cost_usd": total_cost, "currency": currency.upper(), "models_seen": len({r["model"] for r in usage}),
@@ -347,8 +365,9 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("check-key", "probe", "capture"):
         p = sub.add_parser(name)
         p.add_argument("--key-file", type=Path, required=True)
-        if name != "check-key":
+        if name == "capture":
             p.add_argument("--out-dir", type=Path, required=True)
+        if name != "check-key":
             p.add_argument("--days", type=int, default=30)
         if name == "capture":
             p.add_argument("--project", action="append", default=[])

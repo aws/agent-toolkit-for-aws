@@ -10,8 +10,8 @@
 
 1. **Read-only, fixed endpoints.** Only `scripts/openai-usage.py` calls the API, and it sends only `GET` requests to the endpoints in the Step 2 Capture Endpoint Table, on `https://api.openai.com`. Never call the API another way, never call another endpoint, and never call management endpoints (projects, users, API keys).
 2. **The Admin key never enters this conversation.** Do not ask the user to paste it in chat, and never echo, print, or put its value in a command. If the user pastes a key in chat, do not use it: tell them it is now in the transcript, recommend rotating it, and continue with Step 1.
-3. **The key file is a secret file.** `$MIGRATION_DIR/.openai-admin-env` falls under the SKILL.md secret-file rule: never open it with any tool (`Read`, `cat`, `grep`, `sed`, and so on). Only `scripts/openai-usage.py` reads it, and Step 4 deletes it.
-4. **Scoped, aggregate data only.** The endpoints return bucketed token counts and costs: no prompts, completions, or files. Every capture is filtered to the projects the user selects in Step 2. Never group by user or API key.
+3. **The key file is a secret file.** `$MIGRATION_DIR/.openai-admin-env` falls under the SKILL.md secret-file rule: never open it with any tool (`Read`, `cat`, `grep`, `sed`, and so on). Only `scripts/openai-usage.py` reads it. The script deletes it after every capture, successful or not, and after a rejected probe. However this flow ends, including when the user skips at any step, finish with `rm -f "$MIGRATION_DIR/.openai-admin-env"`; keep the file only while a retry of Step 2 is in progress.
+4. **Scoped, aggregate data only.** The endpoints return bucketed token counts and costs: no prompts, completions, or files. The Step 2a probe is the one read that is not filtered by project: it prints each project's total spend so the user can pick, and writes nothing to disk. Every capture is filtered to the projects the user then selects. Never group by user or API key.
 5. **Consent first.** Nothing happens before the user answers `[A]` in Step 0: no key intake, no key file, no API call.
 
 ---
@@ -27,17 +27,20 @@ I can measure your OpenAI usage directly from the OpenAI Admin API.
 A helper script sends GET requests only, to a fixed list of usage
 and cost endpoints:
 
-  ✓ Captured: daily costs by line item; tokens and requests per model
-    (completions, embeddings, images, audio), including cached tokens,
-    batch, and service tier; and the busiest hour and minute, for the
-    OpenAI project(s) YOU select as this application.
+  ✓ First, to help you pick: each project's total spend for the window
+    (shown here, not saved).
+  ✓ Then, for the OpenAI project(s) YOU select as this application only:
+    daily costs by line item; tokens and requests per model (completions,
+    embeddings, images, audio), including cached tokens, batch, and
+    service tier; and the busiest hour and minute.
   ✗ Never captured: prompts or completions, files, API keys, members,
-    per-user or per-key data, or projects you don't select. Nothing is
-    created, changed, or deleted.
+    per-user or per-key data, or usage of projects you don't select.
+    Nothing is created, changed, or deleted in your OpenAI account.
 
 Window: last 30 days. You need an OpenAI ADMIN key with Usage set to
 Read. It goes into a chmod-600 file in the gitignored .migration/
-folder, is read only by the helper script, and is deleted after capture.
+folder, is read only by the helper script, and is deleted when capture
+ends or you skip.
 
 [A] Measure my OpenAI usage
 [B] Skip
@@ -82,20 +85,20 @@ folder, is read only by the helper script, and is deleted after capture.
 **2a. Probe and pick projects.**
 
 ```bash
-python3 <SKILL_BASE>/scripts/openai-usage.py probe --key-file "$MIGRATION_DIR/.openai-admin-env" --out-dir "$MIGRATION_DIR/openai-capture"
+python3 <SKILL_BASE>/scripts/openai-usage.py probe --key-file "$MIGRATION_DIR/.openai-admin-env"
 ```
 
-It prints one `{"project_id", "spend_usd"}` line per project, largest first, or `KEY_REJECTED`. On `KEY_REJECTED`, tell the user the key is not an Admin key with Usage set to Read, and offer intake again or skip.
+It prints one `{"project_id", "spend_usd"}` line per project, largest first, and writes nothing to disk. On `KEY_REJECTED` the script has deleted the key file: tell the user the key is not an Admin key with Usage set to Read, and offer intake again or skip.
 
 Show the list and ask: "Which of these OpenAI projects belong to THIS application? The API shows project IDs, not names (match them at platform.openai.com → Settings → Projects). List the IDs, or say `all` only if this organization runs nothing else." Never default to `all`. The user may label projects (`proj_abc=production`). Then confirm: "These projects spent $X of $Y in the window. Capture them? [Y] / [N] re-select."
 
-**2b. Capture.** One `--project` per selected ID:
+**2b. Capture.** One command, with one `--project` per selected ID:
 
 ```bash
-python3 <SKILL_BASE>/scripts/openai-usage.py capture --key-file "$MIGRATION_DIR/.openai-admin-env" --out-dir "$MIGRATION_DIR/openai-capture" --project proj_abc
+python3 <SKILL_BASE>/scripts/openai-usage.py capture --key-file "$MIGRATION_DIR/.openai-admin-env" --out-dir "$MIGRATION_DIR/openai-capture" --project proj_abc --project proj_def
 ```
 
-The script calls each row of the Capture Endpoint Table in order, follows `next_page`, retries a `429` once after 30 seconds, writes one file per row and a `manifest.json`, and prints `<file> ok|failed|skipped <buckets>`. Row 8 covers only the busiest on-demand UTC day found in row 7, and is `skipped` when there is none.
+The script first deletes capture files and the manifest from any earlier attempt, then calls each row of the Capture Endpoint Table in order, follows `next_page`, retries a `429` once after 30 seconds, writes one file per row and a `manifest.json` whose `result` is `complete`, `key_invalid_mid_run`, or `all_usage_failed`, deletes the key file, and prints `<file> ok|failed|skipped <buckets>`. Row 8 covers only the busiest on-demand UTC day found in row 7, and is `skipped` when there is none.
 
 **Capture Endpoint Table:**
 
@@ -110,9 +113,9 @@ The script calls each row of the Capture Endpoint Table in order, follows `next_
 | 7 | `/v1/organization/usage/completions`          | `bucket_width=1h`, `group_by=model,batch,service_tier`, `limit=168`                         | `usage-completions-hourly.json`   |
 | 8 | `/v1/organization/usage/completions`          | `bucket_width=1m`, the busiest on-demand day from row 7, `group_by=model,batch,service_tier`, `limit=1440` | `usage-completions-minute.json` |
 
-Every row also sends `start_time` (30 days ago) and one `project_ids` per selected project; the probe is row 1 grouped by `project_id`. The limits are each endpoint's maximum for that bucket width.
+Every row also sends `start_time` (30 days ago) and one `project_ids` per selected project. The Step 2a probe is row 1 grouped by `project_id`, without `project_ids`. The limits are each endpoint's maximum for that bucket width.
 
-Exit codes: `0` done; `3` `KEY_INVALID_MID_RUN` (the key stopped working; completed files are kept, so offer intake again and re-run 2b, or skip); `4` `ALL_USAGE_FAILED` (tell the user the key likely lacks Usage read, and exit with no profile).
+Exit codes: `0` done; `3` `KEY_INVALID_MID_RUN` (the key stopped working: offer Step 1 intake again and re-run 2b, or skip); `4` `ALL_USAGE_FAILED` (tell the user the key likely lacks Usage read, and exit with no usage profile).
 
 ## Step 3: Summarize
 
@@ -120,9 +123,10 @@ Exit codes: `0` done; `3` `KEY_INVALID_MID_RUN` (the key stopped working; comple
 python3 <SKILL_BASE>/scripts/openai-usage.py summarize --capture-dir "$MIGRATION_DIR/openai-capture" --out "$MIGRATION_DIR/openai-usage-profile.json" --label proj_abc=production
 ```
 
-The script writes `openai-usage-profile.json` and prints its `summary`:
+The script reads only files the current manifest records as `ok`, refuses with `CAPTURE_NOT_COMPLETE` unless its `result` is `complete`, writes `openai-usage-profile.json`, and prints its `summary`:
 
 - `summary.monthly_cost_usd` is the actual total for the window, never scaled up from fewer days; `metadata.active_days` and `partial_window` say when the organization has less than 30 days of spend.
+- `metadata.cost_status` is `cost_unavailable` when the Costs request failed: `summary.monthly_cost_usd` is then `null`, never `0`, and token usage is still reported. A Costs request that succeeded with no spend is a real `0`. Otherwise it is `partial_window` or `complete`, as for the Anthropic usage profile.
 - `usage_by_model[]` has one row per `(model, endpoint_type, batch, service_tier)` (`batch` and `service_tier` are `null` outside completions), with summed tokens and requests, the completions cache and modality fields, and a `peak`: the busiest UTC day, and for completions the busiest hour divided by 60, replaced by the sampled minute only when that minute is higher.
 - `metadata.capture_warnings` names every failed or skipped file. A failed hourly or minute file makes only the peak uncertain.
 
@@ -137,13 +141,9 @@ It adds each model from `usage_by_model` to the `openai`/`openai_api` source (cr
 - `GATEWAY_UPSTREAM_CONFLICT`: OpenAI is also reached through a gateway in this profile, so the source's models must match that gateway's upstream. The profile is left unchanged; tell the user the usage profile was written but its models were not added.
 - `MERGE_INVALID`: the profile is left unchanged; quote the message.
 
-Then delete the key file and tell the user they can also revoke the key if they created it for this run:
+The capture already deleted the key file; run `rm -f "$MIGRATION_DIR/.openai-admin-env"` anyway, and tell the user they can also revoke the key if they created it for this run.
 
-```bash
-rm -f "$MIGRATION_DIR/.openai-admin-env"
-```
-
-Report: "OpenAI usage: $X over the last N days across M models (projects: …)." Keep `openai-capture/` and `openai-usage-profile.json` in the run directory for later phases.
+Report: "OpenAI usage: $X over the last N days across M models (projects: …)." When `cost_status` is `cost_unavailable`, say "spend not available (the cost request failed)" instead of a dollar figure. Keep `openai-capture/` and `openai-usage-profile.json` in the run directory for later phases.
 
 ---
 
@@ -151,13 +151,16 @@ Report: "OpenAI usage: $X over the last N days across M models (projects: …)."
 
 | Situation                                         | Behavior                                                                                    |
 | ------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| User declines, or `python3` is missing            | Exit with no output                                                                         |
+| User declines or skips at any step, or `python3` is missing | `rm -f` the key file, then exit with no output                                    |
 | `KEY_FORMAT_BAD` or `KEY_REJECTED`                | Offer intake again once, or skip                                                            |
-| `KEY_INVALID_MID_RUN`                             | Keep completed files; offer intake and re-run Step 2b, or skip                              |
-| One row `failed`                                  | Continue; Step 3 lists it in `capture_warnings`                                             |
+| `KEY_INVALID_MID_RUN`                             | Offer Step 1 intake again and re-run Step 2b, or skip                                       |
+| One row `failed`                                  | Continue; Step 3 lists it in `capture_warnings` and ignores the file                        |
+| Costs row `failed`                                | Continue; `cost_status: "cost_unavailable"`, spend `null`, token usage kept                 |
 | `ALL_USAGE_FAILED`                                | Exit with no usage profile; say which permission is likely missing                          |
 | Selected projects show zero usage                 | Show the project list again once; if still zero, write the profile with zeros               |
-| A resumed run with `$MIGRATION_DIR/openai-capture/manifest.json` | Start at Step 3; consent and capture already happened                        |
+| Resumed run, `manifest.json` `result` is `complete` | Start at Step 3; consent and capture already happened                                    |
+| Resumed run, `result` is `key_invalid_mid_run`    | Consent was given: start at Step 1 intake, then Step 2                                      |
+| Resumed run, `result` is `all_usage_failed`       | Treat as skipped: exit with no usage profile                                                |
 
 ## Scope Boundary
 

@@ -56,7 +56,8 @@ Read `$MIGRATION_DIR/migration-preview.json`. Use the first line that matches:
    - Always: Q1.5, Q2, Q3, Q4, Q7, and Q11. Q1.5 and Q11 are never dropped, and Q7 is never skipped.
    - Q1 when `ai_framework_detected` is `null`, and Q6 when `ai_vision_detected` is `null`.
    - Q5 is extracted, because line 1 already required `models_extractable: true`.
-   - Q8, Q9, and Q10 take their documented defaults, recorded in `questions_defaulted` with `chosen_by: "default"`.
+   - Q10 when the Q2 answer is 4 (Specialized capability): ask it right after Q2 and record the answer with `chosen_by: "user"`, unless the user said "use defaults for the rest".
+   - Q8 and Q9, and Q10 when the previous bullet did not ask it, take their documented defaults, recorded in `questions_defaulted` with `chosen_by: "default"`.
 
    "Use defaults for the rest" works here as in Step 2. Then go to Step 3.
 

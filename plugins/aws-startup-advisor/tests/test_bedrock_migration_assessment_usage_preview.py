@@ -77,16 +77,24 @@ def test_capture_is_get_only_scoped_and_never_leaks_the_key(monkeypatch, tmp_pat
     assert not any(re.search(r"group_by=(user_id|api_key_id)", r.full_url) for r in api.requests)
     assert any("page=p2" in r.full_url for r in api.requests) and api.requests[-1].full_url.count("bucket_width=1m") == 1
     assert {c["file"]: c["status"] for c in manifest["captures"]}["usage-images.json"] == "failed"
+    assert manifest["result"] == "complete" and not key_file.exists() and "admin_key_sha256" not in manifest
     out = capsys.readouterr()
     everything = out.out + out.err + "".join(p.read_text() for p in (tmp_path / "cap").iterdir())
     assert KEY not in everything and KEY not in "".join(r.full_url for r in api.requests)
 
 
 def test_capture_stops_on_a_revoked_key_and_requires_a_project(monkeypatch, tmp_path, key_file) -> None:
+    (tmp_path / "cap").mkdir()
+    (tmp_path / "cap" / "usage-embeddings.json").write_text('[{"start_time": 0, "results": [{"model": "stale", "input_tokens": 123456}]}]')
     code, api, manifest = _capture(monkeypatch, tmp_path, key_file, {"/v1/organization/usage/completions": 401})
     assert code == 3 and manifest["captures"][-1] == {"endpoint": "/v1/organization/usage/completions", "file": "usage-completions.json", "status": "failed", "note": "401"}
+    assert manifest["result"] == "key_invalid_mid_run" and not key_file.exists() and not (tmp_path / "cap" / "usage-embeddings.json").exists()
+    assert USAGE.main(["summarize", "--capture-dir", str(tmp_path / "cap"), "--out", str(tmp_path / "u.json")]) == 7
+    key_file.write_text(f"OPENAI_ADMIN_KEY={KEY}\n")
     with pytest.raises(SystemExit):
         USAGE.main(["capture", "--key-file", str(key_file), "--out-dir", str(tmp_path / "c2")])
+    monkeypatch.setattr(USAGE, "opener", FakeAPI({"/v1/organization/costs": 401}))
+    assert USAGE.main(["probe", "--key-file", str(key_file)]) == 2 and not key_file.exists()
     (tmp_path / "bad").write_text("OPENAI_ADMIN_KEY=sk-proj-x\n")
     with pytest.raises(SystemExit, match="KEY_FORMAT_BAD"):
         USAGE.read_key(tmp_path / "bad")
@@ -98,6 +106,9 @@ def test_capture_rows_match_the_documented_endpoint_table() -> None:
     assert [re.search(r"limit=(\d+)", r).group(1) for r in table] == [str(q["limit"]) for _, q, _ in USAGE.DAILY_ROWS + [USAGE.MINUTE_ROW]]
     assert [re.search(r"`([a-z-]+\.json)`\s*\|$", r).group(1) for r in table] == [f for _, _, f in USAGE.DAILY_ROWS + [USAGE.MINUTE_ROW]]
     assert "never open it with any tool" in READER and "Only `scripts/openai-usage.py` reads it" in READER
+    for rule in ("each project's total spend for the window", "usage of projects you don't select", "in your OpenAI account",
+                 "However this flow ends, including when the user skips at any step", "only a `result` of `complete` resumes"):
+        assert rule in READER + CONTROLLER, rule
 
 
 def test_summarize_keeps_actual_totals_and_the_higher_peak(tmp_path) -> None:
@@ -112,6 +123,31 @@ def test_summarize_keeps_actual_totals_and_the_higher_peak(tmp_path) -> None:
     peak = on_demand["peak"]
     assert (peak["peak_input_tokens_per_minute"], peak["peak_output_tokens_per_minute"], peak["peak_source"]) == (40.0, 50, "minute")
     assert next(r for r in usage["usage_by_model"] if r["endpoint_type"] == "embeddings")["peak"]["peak_source"] == "day"
+    assert usage["metadata"]["cost_status"] == "partial_window"
+
+
+def _capture_copy(tmp_path, costs_status: str, costs_data: list | None = None) -> dict:
+    cap = tmp_path / "cap"
+    cap.mkdir()
+    for f in (FIXTURES / "bma-openai-usage/capture").iterdir():
+        (cap / f.name).write_text(f.read_text())
+    manifest = json.loads((cap / "manifest.json").read_text())
+    manifest["captures"][0]["status"] = costs_status
+    (cap / "manifest.json").write_text(json.dumps(manifest))
+    if costs_data is not None:
+        (cap / "costs.json").write_text(json.dumps(costs_data))
+    USAGE.main(["summarize", "--capture-dir", str(cap), "--out", str(tmp_path / "u.json")])
+    return json.loads((tmp_path / "u.json").read_text())
+
+
+@pytest.mark.parametrize(("status", "data", "cost", "cost_status"), [("failed", None, None, "cost_unavailable"), ("ok", [], 0, "complete")],
+                         ids=["costs-failed", "costs-empty"])
+def test_failed_costs_are_unavailable_but_empty_costs_are_zero(tmp_path, status, data, cost, cost_status) -> None:
+    usage = _capture_copy(tmp_path, status, data)
+    assert (usage["summary"]["monthly_cost_usd"], usage["metadata"]["cost_status"]) == (cost, cost_status)
+    assert usage["usage_by_model"] and usage["costs_by_line_item"] == []
+    measured = PREVIEW.preview(json.loads((FIXTURES / "bma-scan-openai-direct/ai-workload-profile.json").read_text()), usage)["measured_usage"]
+    assert (measured["monthly_cost_usd"], measured["cost_status"]) == (cost, cost_status)
 
 
 def _usage(tmp_path) -> Path:
@@ -177,6 +213,9 @@ def test_discover_and_clarify_wiring() -> None:
     assert "Step 2d wrote `migration-preview.json`" in CONTROLLER and "The preview names no Bedrock models or prices" in CONTROLLER
     fast = CLARIFY[CLARIFY.index("## Step 1.5"):CLARIFY.index("## Step 1.75")]
     for rule in ("Always: Q1.5, Q2, Q3, Q4, Q7, and Q11", "Q7 is never skipped", "does not report `models_extractable: true`",
+                 "Q10 when the Q2 answer is 4 (Specialized capability)",
                  "Q1 when `ai_framework_detected` is `null`, and Q6 when `ai_vision_detected` is `null`"):
         assert rule in fast, rule
     assert "does not produce yet" not in CLARIFY and "except `migration-preview.json` in Step 1.5" in CLARIFY
+    assert "bedrock-migration-assessment's OpenAI usage profile" in (BMA.parent / "llm-to-bedrock/SKILL.md").read_text()
+    assert "\"Not available (the cost request failed)\"" in CONTROLLER
