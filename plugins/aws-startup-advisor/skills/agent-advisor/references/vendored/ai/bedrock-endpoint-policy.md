@@ -4,7 +4,8 @@
 > Vendored into each consuming skill as `references/vendored/ai/bedrock-endpoint-policy.md`
 > and kept byte-identical by `tools/sync-vendored.py`; edit HERE, then run the sync.
 > Every statement below comes from the public Amazon Bedrock User Guide pages listed in
-> § Sources (read 2026-11-07). Re-read those pages before changing a row.
+> § Sources (read 2026-11-07; the GPT-5.4 and GPT-5.5 model cards read 2026-11-08).
+> Re-read those pages before changing a row.
 
 ## The rule
 
@@ -28,8 +29,9 @@ Anthropic Messages source keeps its SDK on `bedrock-runtime` by changing the bas
 credential and the model ID. Choosing Mantle because "the app already speaks Responses" is not a
 selector.
 
-**Pricing never selects an endpoint.** Per-token pricing for the same model is identical on both
-endpoints; choose by API and capability need.
+**Pricing never selects an endpoint.** Choose by API and capability need. Read the per-token
+rate from that model's card for the inference option the endpoint serves. A card with no Geo or
+Global row has not published that price; do not use the In-Region rate in its place.
 
 ## `mantle_selector` — the recorded reason
 
@@ -80,10 +82,10 @@ The seven values are learned in three different ways; no phase may guess one it 
     client-side `"type": "function"` tool merely named `web_search`.
   - `server_side_tools` — positive: a tools entry of `"type": "mcp"` (`server_url` /
     `server_label`), `code_interpreter`, `file_search`, `computer_use_preview`,
-    `image_generation` used as a tool type, or an Anthropic `code_execution_*` / `text_editor_*`
-    / `computer_*` / `bash_*` tool type — any provider-executed tool other than web search. Not a
-    signal: `"type": "function"` tools, Gemini `function_declarations=`, `@tool` decorators,
-    `tool_choice` — client-side function tools never count.
+    `image_generation` used as a tool type, or an Anthropic `code_execution_*` tool type — any
+    provider-executed tool other than web search. Not a signal: `"type": "function"` tools,
+    Gemini `function_declarations=`, `@tool` decorators, `tool_choice` — client-side function
+    tools never count; Anthropic `computer_*` (incl. `computer_toolset_*`), `browser_toolset_*`, `text_editor_*`, `bash_*` and `memory_*` are CLIENT-executed tools listed on both `bedrock-runtime` and `bedrock-mantle` by the Sonnet 5 and Opus 5.5 cards (`model-card-anthropic-claude-sonnet-5.html`, `model-card-anthropic-claude-opus-5-5.html`, read 2026-11-09) — a client-tool-only Anthropic app stays `runtime_messages`.
   - `projects` — positive: an `OpenAI-Project` header
     (`default_headers={"OpenAI-Project": ...}`), a `project=` kwarg on the OpenAI client, or an
     `OPENAI_PROJECT_ID`-style environment name read in code; in usage discovery, a
@@ -148,6 +150,14 @@ engine (`endpoints.html`).
 All pages under `https://docs.aws.amazon.com/bedrock/latest/userguide/`, read 2026-11-07:
 
 - `endpoints.html` — https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints.html
+- `model-card-openai-gpt-54.html` and `model-card-openai-gpt-55.html` (read 2026-11-08) —
+  commercial In-Region prices only. Runtime lists `us.` and `global.` ids, and those rows
+  publish no price.
+- `model-card-anthropic-claude-sonnet-5.html` and `model-card-anthropic-claude-opus-5-5.html`
+  (read 2026-11-09) — "Computer use" and "Client tools and toolsets using `bedrock-runtime` and
+  `bedrock-mantle` endpoints": `computer_20251124`, `computer_toolset_20260801`,
+  `browser_toolset_20260801`, `bash_20250124`, `text_editor_20250728`, `memory_20250818` are
+  client-executed on both endpoints.
 - `models-endpoint-availability.html`
 - `inference-responses-api.html`
 - `inference-chat-completions.html`
