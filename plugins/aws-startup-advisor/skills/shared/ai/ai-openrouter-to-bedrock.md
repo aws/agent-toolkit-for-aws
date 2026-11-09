@@ -35,7 +35,7 @@ Two consequences drive the whole routing approach:
 
 ## Reading OpenRouter Usage
 
-OpenRouter identifies models with a **namespaced id** of the form `provider/model`, e.g. `anthropic/claude-sonnet-5`, `openai/gpt-4.1`, `google/gemini-2.5-pro`. Keep the id verbatim through Discover and Estimate.
+OpenRouter identifies models with a **namespaced id** of the form `provider/model`, e.g. `anthropic/claude-sonnet-5`, `openai/gpt-4.1`, `google/gemini-3.5-flash`. Keep the id verbatim through Discover and Estimate.
 
 - **Provider segment** (before the `/`) picks which per-provider guide above does the mapping.
 - **Model segment** (after the `/`) picks the row within that guide.
