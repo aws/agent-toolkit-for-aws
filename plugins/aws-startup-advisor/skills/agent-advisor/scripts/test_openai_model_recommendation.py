@@ -209,8 +209,8 @@ def test_runtime_converse_path_text_does_not_grant_in_profile_to_gpt54_gpt55():
     strengths = "\n".join(path["strengths"])
     constraints = "\n".join(path["constraints"])
     assert "For GPT-5.6, GPT-5.5 and GPT-5.4" not in strengths
-    # in. exists for GPT-5.6 Terra/Luna only; Sol, 5.5 and 5.4 are us./global.
-    assert "GPT-5.6 Terra and Luna publish us./in./global. ids" in strengths
+    # in. and us-gov. exist for GPT-5.6 Terra/Luna only; Sol, 5.5 and 5.4 are us./global.
+    assert "GPT-5.6 Terra and Luna publish us./in./us-gov./global. ids" in strengths
     assert "us./global. only for GPT-5.6 Sol, GPT-5.5 and GPT-5.4" in strengths
     assert "For GPT-5.6, runtime does not support server-side tool use" in constraints
     # The GPT-5.6 cards (read 2026-11-08) document non-streaming JSON Schema on

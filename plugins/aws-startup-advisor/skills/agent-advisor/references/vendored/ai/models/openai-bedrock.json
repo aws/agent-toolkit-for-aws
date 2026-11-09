@@ -51,7 +51,7 @@
       "strengths": [
         "Bedrock-native multi-model request surface",
         "Supports Bedrock Guardrails (Converse API only) and model invocation logging — both bedrock-runtime-only; CloudWatch metrics exist on both endpoints (AWS/Bedrock on runtime, AWS/BedrockMantle on Mantle; https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-mantle-metrics.html, read 2026-11-07)",
-        "This is a SAME-MODEL governance path via CRIS. GPT-5.6 Terra and Luna publish us./in./global. ids; us./global. only for GPT-5.6 Sol, GPT-5.5 and GPT-5.4 (their model cards list no in. profile; cards read 2026-11-07). The base URL for the OpenAI-compatible APIs is bedrock-runtime.{region}.amazonaws.com/openai/v1. The model cards recommend runtime for new applications, and for GPT-5.6 Global CRIS is priced at OpenAI's standard rate (cost parity)"
+        "This is a SAME-MODEL governance path via CRIS. GPT-5.6 Terra and Luna publish us./in./us-gov./global. ids; us./global. only for GPT-5.6 Sol, GPT-5.5 and GPT-5.4 (their model cards list no in. or us-gov. profile; cards read 2026-11-08). The base URL for the OpenAI-compatible APIs is bedrock-runtime.{region}.amazonaws.com/openai/v1. The model cards recommend runtime for new applications, and for GPT-5.6 Global CRIS is priced at OpenAI's standard rate (cost parity)"
       ],
       "constraints": [
         "GPT-5.5 / GPT-5.4 on runtime are CRIS-only (us. and global. ids; no in-region form) per their model cards (read 2026-11-06); the cards publish In-Region (1.10x) pricing only, so do not assume Global CRIS price parity for them",
