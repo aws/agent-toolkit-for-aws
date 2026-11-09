@@ -2,7 +2,7 @@
 
 **Standalone flow** — Used when ONLY `ai-workload-profile.json` exists (no infrastructure or billing artifacts). Infrastructure stays where it runs today; only AI/LLM calls move to AWS Bedrock.
 
-**Input contract.** The only profile this flow reads is the provider-neutral `ai-workload-profile.json` (`schema_version`, `ai_sources[]`, `gateways[]`), already accepted by `scripts/validate-ai-profile.py`. Use that script's JSON summary for every detected value below. A 1.1 profile also carries `integration`; from it the summary reports `ai_framework_detected` and `ai_vision_detected`. Both are `null` for a 1.0 profile or when the evidence is not definitive, and then Q1 and Q6 are asked, not extracted. Do not scan application code or IaC, and do not read usage-profile files or any other file: only the validator summary can supply an extracted answer.
+**Input contract.** The only profile this flow reads is the provider-neutral `ai-workload-profile.json` (`schema_version`, `ai_sources[]`, `gateways[]`), already accepted by `scripts/validate-ai-profile.py`. Use that script's JSON summary for every detected value below. A 1.1 profile also carries `integration`; from it the summary reports `ai_framework_detected` and `ai_vision_detected`. Both are `null` for a 1.0 profile or when the evidence is not definitive, and then Q1 and Q6 are asked, not extracted. `ai_vision_detected` is only `"vision"` or `"audio"`: finding no image or audio input does not prove the app sends only text, so Q6 is then asked. Do not scan application code or IaC, and do not read usage-profile files or any other file: only the validator summary can supply an extracted answer.
 
 Produces the same `preferences.json` output but with `design_constraints` limited to region and compliance, `startup_constraints` populated, and `ai_constraints` fully populated. Questions are presented in **two progressive batches** with an intermediate save — partial answers persist across sessions.
 
@@ -68,7 +68,7 @@ Before asking anything, present what the profile already answered as a compact c
 | Input types | [ai_vision_detected, e.g. vision] | ai-workload-profile.json `integration.capabilities_summary` |
 
 Reply "looks good" to continue to the remaining questions, correct any line
-("model: gemini-2.5-pro"), or describe the issue in plain words.
+("model: gemini-3.5-flash"), or describe the issue in plain words.
 ```
 
 Questions resolved on this sheet are **not** re-asked in the batches below; record them with `chosen_by: "extracted"` and skip their entries in Batch 1/2. Rows the user corrects become `chosen_by: "user"`. The sheet never assumes a value: every question without a detected row stays in the batches, and only "use defaults for the rest" applies defaults.
