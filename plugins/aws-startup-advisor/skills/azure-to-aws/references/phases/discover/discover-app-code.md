@@ -186,9 +186,9 @@ call arguments, the client construction it uses, and request headers. Azure Open
   merely named `web_search`.
 - `server_side_tools` — a tools entry of `"type": "mcp"` (`server_url` / `server_label`),
   `code_interpreter`, `file_search`, `computer_use_preview`, or `image_generation` used as a tool type;
-  Anthropic `code_execution_*` / `text_editor_*` / `computer_*` / `bash_*` tool types — any
-  provider-executed tool other than web search. NOT: `"type": "function"` tools, Gemini
-  `function_declarations=`, `@tool` decorators, `tool_choice` — client-side function tools never count.
+  Anthropic `code_execution_*` tool types — any provider-executed tool other than web search. NOT:
+  `"type": "function"` tools, Gemini `function_declarations=`, `@tool` decorators, `tool_choice` —
+  client-side function tools never count; Anthropic `computer_*` (incl. `computer_toolset_*`), `browser_toolset_*`, `text_editor_*`, `bash_*` and `memory_*` are CLIENT-executed tools listed on both `bedrock-runtime` and `bedrock-mantle` by the Sonnet 5 and Opus 5.5 cards (`model-card-anthropic-claude-sonnet-5.html`, `model-card-anthropic-claude-opus-5-5.html`, read 2026-11-09) — a client-tool-only Anthropic app stays `runtime_messages`.
 - `projects` — `OpenAI-Project` header (`default_headers={"OpenAI-Project": ...}`), `project=` kwarg
   on the OpenAI client, or an `OPENAI_PROJECT_ID`-style env name read in code. NOT:
   `OpenAI-Organization` alone; no header means the default project.

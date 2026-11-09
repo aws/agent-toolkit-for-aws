@@ -183,3 +183,77 @@ def test_summary_lists_detected_signals() -> None:
         assert item["detail"].startswith("app/llm.py:")
     negative = json.loads((NEGATIVE_FIXTURE / "ai-workload-profile.json").read_text(encoding="utf-8"))
     assert VALIDATOR.validate_profile(negative)["mantle_signals_detected"] == []
+
+
+# --------------------------------------------------------------------------- (h) PR 588 F13: client tools
+# Anthropic computer_* / text_editor_* / bash_* (and computer_toolset_* / browser_toolset_* / memory_*) are
+# CLIENT-executed tools the Sonnet 5 and Opus 5.5 cards list on both bedrock-runtime and bedrock-mantle
+# (model-card-anthropic-claude-sonnet-5.html, model-card-anthropic-claude-opus-5-5.html, read 2026-11-09).
+# They must not produce a server_side_tools mantle_signal; only provider-executed tools do.
+CLIENT_TOOL_FIXTURE = PLUGIN_ROOT / "fixtures" / "bma-scan-anthropic-client-tools"
+CLIENT_TOOL_PATTERNS = ["`computer_*`", "`text_editor_*`", "`bash_*`"]
+
+
+def _server_side_tools_entry(text: str, name: str) -> tuple[str, str]:
+    """Return (positive, negative) halves of the server_side_tools entry in a scanner or the policy."""
+    if name in ("gcp", "bma"):
+        row = next(line for line in text.splitlines() if line.startswith("| `server_side_tools`"))
+        cells = [c.strip() for c in row.strip().strip("|").split("|")]
+        return cells[1], cells[2]
+    marker = "`server_side_tools` — "
+    start = text.index(marker) + len(marker)
+    end = text.index("`projects` — ", start)
+    entry = " ".join(text[start:end].split())
+    split = re.search(r"\b(NOT|Not a signal):", entry)
+    return entry[:split.start()], entry[split.start():]
+
+
+def test_policy_and_scanners_keep_anthropic_client_tools_out_of_server_side_tools() -> None:
+    targets = {**SCANNERS, "policy": POLICY_CANONICAL,
+               **{f"policy-vendored-{i}": p for i, p in enumerate(POLICY_VENDORED)}}
+    for name, path in targets.items():
+        text = path.read_text(encoding="utf-8")
+        kind = name if name in ("gcp", "bma") else "azure"
+        positive, negative = _server_side_tools_entry(text, kind)
+        assert "`code_execution_*`" in positive, f"{name}: provider-executed code_execution_* must stay positive"
+        assert '"type": "mcp"' in positive, name
+        for pattern in CLIENT_TOOL_PATTERNS:
+            assert pattern not in positive, f"{name}: {pattern} is client-executed and must not be a positive signal"
+            assert pattern in negative, f"{name}: {pattern} must be listed as not-a-signal"
+        assert "CLIENT-executed" in negative and "`bedrock-runtime` and `bedrock-mantle`" in negative, name
+        assert "model-card-anthropic-claude-sonnet-5.html" in negative, name
+        assert "model-card-anthropic-claude-opus-5-5.html" in negative, name
+        assert "read 2026-11-09" in negative, name
+        assert "stays `runtime_messages`" in negative, name
+    policy = POLICY_CANONICAL.read_text(encoding="utf-8")
+    sources = policy[policy.index("## Sources"):]
+    assert "model-card-anthropic-claude-sonnet-5.html" in sources and "model-card-anthropic-claude-opus-5-5.html" in sources
+
+
+def test_client_tool_only_anthropic_fixture_has_no_mantle_signal_and_reaches_runtime_messages() -> None:
+    profile = json.loads((CLIENT_TOOL_FIXTURE / "ai-workload-profile.json").read_text(encoding="utf-8"))
+    result = VALIDATOR.validate_profile(profile)
+    assert result["ok"] is True
+    assert result["mantle_signals_detected"] == []
+    assert "mantle_signals" not in profile
+    source = (CLIENT_TOOL_FIXTURE / "repo" / "app" / "agent.py").read_text(encoding="utf-8")
+    for tool_type in ('"type": "computer_20251124"', '"type": "text_editor_20250728"', '"type": "bash_20250124"'):
+        assert tool_type in source, tool_type
+    assert '"type": "mcp"' not in source and "web_search" not in source and "code_execution" not in source
+    for observation in profile["ai_sources"][0]["model_observations"]:
+        for entry in observation["evidence"]:
+            location = entry["detail"].split(" ", 1)[0]
+            path, line = location.split(":")
+            assert 'model="claude-sonnet-5"' in (CLIENT_TOOL_FIXTURE / "repo" / path).read_text(
+                encoding="utf-8").splitlines()[int(line) - 1]
+    # The runtime Messages lane reaches IAM / preflight instead of an unsupported-lane stop.
+    iam_spec = importlib.util.spec_from_file_location(
+        "iam_policy_client_tools", SKILLS / "llm-to-bedrock" / "scripts" / "iam_policy.py")
+    iam = importlib.util.module_from_spec(iam_spec)
+    iam_spec.loader.exec_module(iam)
+    claude = "global.anthropic.claude-sonnet-5"
+    policy = iam.generate_policy([claude], "us-east-1", "123456789012", migration_path="runtime_messages",
+                                 target_apis={claude: "messages"})
+    sids = [s["Sid"] for s in policy["Statement"]]
+    assert "BedrockInvokeModelScoped" in sids
+    assert not any(sid.startswith("BedrockMantle") for sid in sids)

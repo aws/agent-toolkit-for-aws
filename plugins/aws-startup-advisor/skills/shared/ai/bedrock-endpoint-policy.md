@@ -82,10 +82,10 @@ The seven values are learned in three different ways; no phase may guess one it 
     client-side `"type": "function"` tool merely named `web_search`.
   - `server_side_tools` — positive: a tools entry of `"type": "mcp"` (`server_url` /
     `server_label`), `code_interpreter`, `file_search`, `computer_use_preview`,
-    `image_generation` used as a tool type, or an Anthropic `code_execution_*` / `text_editor_*`
-    / `computer_*` / `bash_*` tool type — any provider-executed tool other than web search. Not a
-    signal: `"type": "function"` tools, Gemini `function_declarations=`, `@tool` decorators,
-    `tool_choice` — client-side function tools never count.
+    `image_generation` used as a tool type, or an Anthropic `code_execution_*` tool type — any
+    provider-executed tool other than web search. Not a signal: `"type": "function"` tools,
+    Gemini `function_declarations=`, `@tool` decorators, `tool_choice` — client-side function
+    tools never count; Anthropic `computer_*` (incl. `computer_toolset_*`), `browser_toolset_*`, `text_editor_*`, `bash_*` and `memory_*` are CLIENT-executed tools listed on both `bedrock-runtime` and `bedrock-mantle` by the Sonnet 5 and Opus 5.5 cards (`model-card-anthropic-claude-sonnet-5.html`, `model-card-anthropic-claude-opus-5-5.html`, read 2026-11-09) — a client-tool-only Anthropic app stays `runtime_messages`.
   - `projects` — positive: an `OpenAI-Project` header
     (`default_headers={"OpenAI-Project": ...}`), a `project=` kwarg on the OpenAI client, or an
     `OPENAI_PROJECT_ID`-style environment name read in code; in usage discovery, a
@@ -153,6 +153,11 @@ All pages under `https://docs.aws.amazon.com/bedrock/latest/userguide/`, read 20
 - `model-card-openai-gpt-54.html` and `model-card-openai-gpt-55.html` (read 2026-11-08) —
   commercial In-Region prices only. Runtime lists `us.` and `global.` ids, and those rows
   publish no price.
+- `model-card-anthropic-claude-sonnet-5.html` and `model-card-anthropic-claude-opus-5-5.html`
+  (read 2026-11-09) — "Computer use" and "Client tools and toolsets using `bedrock-runtime` and
+  `bedrock-mantle` endpoints": `computer_20251124`, `computer_toolset_20260801`,
+  `browser_toolset_20260801`, `bash_20250124`, `text_editor_20250728`, `memory_20250818` are
+  client-executed on both endpoints.
 - `models-endpoint-availability.html`
 - `inference-responses-api.html`
 - `inference-chat-completions.html`

@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "ai_sources": [
+    {
+      "provider": "anthropic",
+      "source_service": "anthropic_api",
+      "model_families": ["claude"],
+      "model_evidence": "observed",
+      "models": ["claude-sonnet-5"],
+      "model_observations": [
+        {"normalized_model": "claude-sonnet-5", "raw_model": "claude-sonnet-5", "model_family": "claude", "evidence": [{"provenance": "code", "confidence": "high", "detail": "app/agent.py:8 model=\"claude-sonnet-5\" in client.beta.messages.create"}]}
+      ]
+    }
+  ],
+  "gateways": []
+}
