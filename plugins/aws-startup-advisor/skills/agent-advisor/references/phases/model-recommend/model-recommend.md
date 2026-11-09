@@ -188,7 +188,7 @@ Write `$RUN_DIR/model-recommendation-input.json` with this shape:
       "workload_id": "support-agent",
       "source": {
         "provider": "anthropic",
-        "model_ids": ["claude-3-7-sonnet-latest"],
+        "model_ids": ["claude-sonnet-5"],
         "sdk": "anthropic",
         "api_surface": "messages",
         "source_paths": ["src/agent.py"]
