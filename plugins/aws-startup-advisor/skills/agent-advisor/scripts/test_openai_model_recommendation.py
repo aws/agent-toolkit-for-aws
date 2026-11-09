@@ -733,6 +733,68 @@ def test_chat_source_with_web_search_plus_logging_never_offers_a_mantle_chat_opt
     assert _option(rec, "mantle_openai_responses")["mantle_selector"] == "web_search"
 
 
+@pytest.mark.parametrize("selector", ["projects", "server_side_tools"])
+def test_required_chat_plus_another_selector_still_validates_critical_web_search(selector):
+    rec = _recommend(
+        _workload(source={"model_ids": ["gpt-5.5"], "api_surface": "chat_completions"},
+                  requirements={"api_continuity": "required", "mantle_selector": selector,
+                                "data_residency": "global_allowed",
+                                "critical_features": ["web_search"]}),
+        region="us-east-1",
+    )
+    assert rec["decision_status"] == "decision_required"
+    assert rec["api_path"] is None
+    assert "selector_api_incompatible" in _codes(rec["blocks"])
+    assert "web-search.html" in rec["blocks"][0]["message"]
+    assert f"mantle_selector {selector}" in rec["blocks"][0]["message"]
+    assert {o["api_path"] for o in rec["decision_options"]} == {
+        "mantle_openai_responses", "runtime_openai_chat",
+    }
+    assert _option(rec, "mantle_openai_responses")["mantle_selector"] == "web_search"
+    assert not any(o["api_path"] == "mantle_openai_chat" for o in rec["decision_options"])
+
+
+def test_server_side_tools_on_required_chat_is_a_responses_decision():
+    rec = _recommend(
+        _workload(source={"model_ids": ["gpt-5.6-terra"], "api_surface": "chat_completions"},
+                  requirements={"api_continuity": "required",
+                                "mantle_selector": "server_side_tools"}),
+        region="us-east-1",
+    )
+    assert rec["decision_status"] == "decision_required"
+    assert "tool-use-server-side.html" in rec["blocks"][0]["message"]
+    assert "Client function tools stay on Chat Completions" in rec["blocks"][0]["message"]
+    assert {o["api_path"] for o in rec["decision_options"]} == {
+        "mantle_openai_responses", "runtime_openai_chat",
+    }
+
+
+def test_client_function_tools_on_required_chat_stay_on_chat():
+    rec = _recommend(
+        _workload(source={"model_ids": ["gpt-5.6-terra"], "api_surface": "chat_completions"},
+                  requirements={"api_continuity": "required"},
+                  detected_features=["tool_or_function_calling"]),
+        region="us-east-1",
+    )
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "runtime_openai_chat"
+
+
+def test_gpt4o_guardrails_and_prompt_caching_keeps_the_claude_converse_fallback():
+    rec = _recommend(
+        _workload(source={"model_ids": ["gpt-4o"], "api_surface": "chat_completions"},
+                  requirements={"governance": ["guardrails"],
+                                "api_continuity": "not_required",
+                                "data_residency": "global_allowed",
+                                "critical_features": ["prompt_caching"]}),
+        region="us-east-1",
+    )
+    assert rec["decision_status"] == "recommended"
+    assert rec["primary_model"] == "anthropic.claude-sonnet-5"
+    assert rec["api_path"] == "runtime_converse"
+    assert "prompt_caching" in rec["compatibility"]["native"]
+
+
 def test_workspaces_selector_on_an_openai_source_is_a_provider_mismatch_decision():
     out = _full_recommend(_workload(requirements={"mantle_selector": "workspaces"}))
     jsonschema.validate(out, _OUT_SCHEMA)
@@ -757,7 +819,6 @@ def test_workspaces_selector_on_an_openai_source_is_a_provider_mismatch_decision
 
 @pytest.mark.parametrize(("surface", "selector", "path"), [
     ("responses", "server_side_tools", "mantle_openai_responses"),
-    ("chat_completions", "server_side_tools", "mantle_openai_chat"),
     # Web Search is Responses-only: the Chat source reshapes once continuity is free.
     ("chat_completions", "web_search", "mantle_openai_responses"),
 ])
@@ -997,7 +1058,7 @@ def test_active_catalog_contains_gpt6_profile_metadata_and_current_provenance():
 @pytest.mark.parametrize(("source_id", "target_id"), _GPT6_MODELS)
 @pytest.mark.parametrize(("selector", "path"), [
     (None, "runtime_openai_chat"),
-    ("server_side_tools", "mantle_openai_chat"),
+    ("projects", "mantle_openai_chat"),
 ])
 def test_gpt6_chat_completions_preserves_chat_surface(source_id, target_id, selector, path):
     requirements = {"api_continuity": "required"}
@@ -1010,13 +1071,7 @@ def test_gpt6_chat_completions_preserves_chat_surface(source_id, target_id, sele
         ),
         region="us-east-1",
     )
-    if selector and source_id == "gpt-6.1-sol":
-        # GPT-6.1 Sol lists server-side system tools as unsupported on bedrock-mantle
-        # (card read 2026-11-08): same-family fallback on the same Chat surface.
-        assert rec["primary_model"] == "openai.gpt-6-astra"
-        assert rec["mantle_selector"] == selector
-    else:
-        assert rec["primary_model"] == target_id
+    assert rec["primary_model"] == target_id
     assert rec["api_path"] == path
     assert "chat_completions_to_responses_required" not in _codes(rec["blocks"])
 
@@ -1063,7 +1118,7 @@ def test_gpt6_chat_with_selector_in_us_west_2_falls_back_to_same_family_astra(so
     rec = _recommend(
         _workload(
             source={"model_ids": [source_id], "api_surface": "chat_completions"},
-            requirements={"api_continuity": "required", "mantle_selector": "server_side_tools"},
+            requirements={"api_continuity": "required", "mantle_selector": "projects"},
         ),
         region="us-west-2",
     )
@@ -1071,7 +1126,7 @@ def test_gpt6_chat_with_selector_in_us_west_2_falls_back_to_same_family_astra(so
     assert rec["api_path"] == "mantle_openai_chat"
     assert rec["primary_model"] == "openai.gpt-6-astra"
     assert rec["primary_model"] != "openai.gpt-5.4"
-    assert rec["mantle_selector"] == "server_side_tools"
+    assert rec["mantle_selector"] == "projects"
     assert "fallback" in rec["rationale"][0]
 
 
@@ -1083,7 +1138,7 @@ def test_gpt6_chat_with_selector_in_us_east_2_prefers_newest_gpt5_over_gpt54(sou
     rec = _recommend(
         _workload(
             source={"model_ids": [source_id], "api_surface": "chat_completions"},
-            requirements={"api_continuity": "required", "mantle_selector": "server_side_tools"},
+            requirements={"api_continuity": "required", "mantle_selector": "projects"},
         ),
         region="us-east-2",
     )
@@ -1139,7 +1194,7 @@ def test_gpt56_sol_responses_in_us_west_2_stays_on_itself_or_falls_to_newest_ter
 def test_gpt6_chat_outside_every_mantle_footprint_returns_blocking_decision():
     workload = _workload(
         source={"model_ids": ["gpt-6-sol"], "api_surface": "chat_completions"},
-        requirements={"api_continuity": "required", "mantle_selector": "server_side_tools"},
+        requirements={"api_continuity": "required", "mantle_selector": "projects"},
     )
     out = _full_recommend(workload, region="eu-west-1")
     jsonschema.validate(out, _OUT_SCHEMA)
@@ -1173,7 +1228,7 @@ def test_gpt6_chat_conflict_option_names_chat_completions_surface():
             source={"model_ids": ["gpt-6-sol"], "api_surface": "chat_completions"},
             requirements={
                 "api_continuity": "required",
-                "mantle_selector": "server_side_tools",
+                "mantle_selector": "projects",
                 "governance": ["guardrails"],
             },
         ),
@@ -1185,14 +1240,14 @@ def test_gpt6_chat_conflict_option_names_chat_completions_surface():
         if option["api_path"] == "mantle_openai_chat"
     )
     assert "Chat Completions surface" in option["reason"]
-    assert "server_side_tools" in option["reason"]
+    assert "projects" in option["reason"]
     assert "Responses surface" not in option["reason"]
-    assert option["mantle_selector"] == "server_side_tools"
+    assert option["mantle_selector"] == "projects"
 
 
 @pytest.mark.parametrize(("selector", "path"), [
     (None, "runtime_openai_chat"),
-    ("server_side_tools", "mantle_openai_chat"),
+    ("projects", "mantle_openai_chat"),
 ])
 def test_gpt6_chat_findings_preserve_chat_request_shapes(selector, path):
     requirements = {"api_continuity": "required", "uses_n": True, "uses_hosted_state": True}
@@ -1222,7 +1277,7 @@ def test_gpt6_chat_findings_preserve_chat_request_shapes(selector, path):
     (None, "runtime_openai_chat", {"multi_model_converse": True}, "runtime_converse"),
     # GPT-6 Sol lists Guardrails on Chat Completions (card read 2026-11-08), so the
     # runtime side of the selector-vs-governance decision keeps the Chat API.
-    ("server_side_tools", "mantle_openai_chat", {"governance": ["guardrails"]},
+    ("projects", "mantle_openai_chat", {"governance": ["guardrails"]},
      "runtime_openai_chat"),
 ])
 def test_gpt6_chat_conflict_outside_mantle_region_is_schema_valid(
@@ -1920,15 +1975,16 @@ def test_astra_keeps_source_model_and_api_on_runtime(surface, path, region):
 ])
 @pytest.mark.parametrize("region", ["us-east-1", "us-west-2"])
 def test_astra_keeps_source_model_and_api_on_mantle_with_selector(surface, path, region):
+    selector = "server_side_tools" if surface == "responses" else "projects"
     rec = oai.recommend_openai_workload(
         _workload(source={"model_ids": ["gpt-6-astra"], "api_surface": surface},
-                  requirements={"mantle_selector": "server_side_tools"}),
+                  requirements={"mantle_selector": selector}),
         region, OPENAI_CATALOG,
     )
     assert rec["decision_status"] == "recommended"
     assert rec["primary_model"] == "openai.gpt-6-astra"
     assert rec["api_path"] == path
-    assert rec["mantle_selector"] == "server_side_tools"
+    assert rec["mantle_selector"] == selector
     assert "chat_completions_to_responses_required" not in _codes(rec["blocks"])
     assert "sampling_params_unverified" in _codes(rec["tuning"])
 
@@ -1938,7 +1994,7 @@ def test_astra_keeps_source_model_and_api_on_mantle_with_selector(surface, path,
 def test_astra_mantle_outside_supported_regions_requires_decision(region, surface):
     rec = oai.recommend_openai_workload(
         _workload(source={"model_ids": ["gpt-6-astra"], "api_surface": surface},
-                  requirements={"mantle_selector": "server_side_tools"}),
+                  requirements={"mantle_selector": "projects" if surface == "chat_completions" else "server_side_tools"}),
         region, OPENAI_CATALOG,
     )
     assert rec["decision_status"] == "decision_required"
@@ -1970,7 +2026,9 @@ def test_astra_mantle_outside_supported_regions_requires_decision(region, surfac
 def test_astra_explicit_api_preference_reaches_validated_output(surface, preferred, expected, delta):
     requirements = {"preferred_api_path": preferred, "data_residency": "global_allowed"}
     if preferred.startswith("mantle_"):
-        requirements["mantle_selector"] = "server_side_tools"
+        requirements["mantle_selector"] = (
+            "projects" if preferred == "mantle_openai_chat" else "server_side_tools"
+        )
     data = {
         "schema_version": 2, "region": "us-west-2", "primary_unit": "chat-svc",
         "workloads": [_workload(
@@ -1985,7 +2043,7 @@ def test_astra_explicit_api_preference_reaches_validated_output(surface, preferr
     assert rec["decision_status"] == "recommended"
     assert rec["api_path"] == expected
     assert rec["primary_model"] == "openai.gpt-6-astra"
-    assert rec["mantle_selector"] == ("server_side_tools" if expected.startswith("mantle_") else None)
+    assert rec["mantle_selector"] == (requirements.get("mantle_selector") if expected.startswith("mantle_") else None)
     if expected.startswith("runtime_"):
         assert rec["invocation_model_id"] == "global.openai.gpt-6-astra"
     if delta:
@@ -2036,10 +2094,10 @@ def test_mantle_preference_without_selector_fails_closed_for_every_source(prefer
 @pytest.mark.parametrize("surface,extra,expected", [
     ("chat_completions", {}, "runtime_openai_chat"),
     ("responses", {}, "runtime_openai_responses"),
-    ("chat_completions", {"mantle_selector": "server_side_tools"}, None),
+    ("chat_completions", {"mantle_selector": "projects"}, None),
     ("responses", {"mantle_selector": "server_side_tools"}, "mantle_openai_responses"),
     ("responses", {"preferred_api_path": "mantle_openai_chat",
-                   "mantle_selector": "server_side_tools"}, None),
+                   "mantle_selector": "projects"}, None),
     ("chat_completions", {"preferred_api_path": "mantle_openai_responses",
                           "mantle_selector": "server_side_tools"}, "mantle_openai_responses"),
 ])
@@ -2151,18 +2209,18 @@ def test_astra_decision_options_ignore_an_explicitly_absent_cache_signal():
     workload = _workload(
         source={"model_ids": ["gpt-6-astra"], "api_surface": "chat_completions"},
         requirements={"preferred_api_path": "mantle_openai_chat",
-                      "mantle_selector": "server_side_tools"},
+                      "mantle_selector": "projects"},
         detected_features=["prompt_caching"],
         feature_status={"prompt_caching": "absent"},
     )
-    options = oai._decision_options(OPENAI_CATALOG, workload, "us-west-2", "server_side_tools")
+    options = oai._decision_options(OPENAI_CATALOG, workload, "us-west-2", "projects")
     assert options[0]["api_path"] == "mantle_openai_chat"
-    assert options[0]["mantle_selector"] == "server_side_tools"
+    assert options[0]["mantle_selector"] == "projects"
 
 
 @pytest.mark.parametrize("extra,path", [
     ({}, "runtime_openai_chat"),
-    ({"mantle_selector": "server_side_tools"}, "mantle_openai_chat"),
+    ({"mantle_selector": "projects"}, "mantle_openai_chat"),
 ])
 @pytest.mark.parametrize("signals", [
     {"requirements": {"uses_n": True}},

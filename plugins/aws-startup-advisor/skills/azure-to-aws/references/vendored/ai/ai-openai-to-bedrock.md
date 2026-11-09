@@ -357,7 +357,7 @@ limited to:
    `bedrock-mantle:CreateInference`, same page, read 2026-11-09) and gets no `bedrock:GetInvoke`. Verify with
    create-plus-retrieve: `r = client.responses.create(...)` then `client.responses.retrieve(r.id)` under the
    attached role.
-6. Web Search → a row with `mantle_selector: web_search` needs `bedrock-websearch:InvokeSearch` and
+6. Web Search → a confirmed `web_search` requirement (the row's `mantle_selector`, or any other `detected`/`user` entry in `ai_constraints.mantle_requirements`, including when the primary selector is `background_inference`) needs `bedrock-websearch:InvokeSearch` and
    `bedrock-websearch:InvokeFetch` on `*` (`iam_policy.py --mantle-selector web_search` emits them with an
    `aws:RequestedRegion` condition); the client sets `"external_web_access": false` on the `web_search` tool
    unless the user explicitly confirmed external access, in which case `--external-web-access` also grants

@@ -853,7 +853,8 @@
           "model_id": "anthropic.claude-sonnet-5",
           "requires_cris": true,
           "guardrails_supported": true,
-          "evidence": "AWS model card (2026-07-21): Converse on bedrock-runtime checked; Geo (us/eu/au) and Global CRIS supported"
+          "prompt_caching_supported": true,
+          "evidence": "AWS model card (2026-07-21): Converse on bedrock-runtime checked; Geo (us/eu/au) and Global CRIS supported; prompt_caching_supported true: Claude explicit cache checkpoints (cachePoint) are supported on Converse (https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html, read 2026-11-09)"
         }
       }
     },
@@ -876,7 +877,8 @@
           "model_id": "anthropic.claude-haiku-4-5-20251001-v1:0",
           "requires_cris": true,
           "guardrails_supported": true,
-          "evidence": "anthropic-bedrock.json catalog (verified 2026-09-24) runtime_converse entry (requires CRIS profile)"
+          "prompt_caching_supported": true,
+          "evidence": "anthropic-bedrock.json catalog (verified 2026-09-24) runtime_converse entry (requires CRIS profile); prompt_caching_supported true: Claude explicit cache checkpoints (cachePoint) are supported on Converse (https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html, read 2026-11-09)"
         }
       }
     },
@@ -970,7 +972,9 @@
           "available": true,
           "model_id": "anthropic.claude-opus-5-5",
           "requires_cris": true,
-          "guardrails_supported": true
+          "guardrails_supported": true,
+          "prompt_caching_supported": true,
+          "evidence": "prompt_caching_supported true: Claude explicit cache checkpoints (cachePoint) are supported on Converse (https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html, read 2026-11-09)"
         }
       },
       "generation": "bedrock_native",

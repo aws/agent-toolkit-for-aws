@@ -150,14 +150,17 @@ Converse — the bedrock-runtime Responses and Chat Completions APIs reject it w
 (`https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html`, read
 2026-11-08) — so with required continuity it is a `decision_required` whose OpenAI-API option
 carries no invocation id; system, Geo and Global profiles are unaffected. Every selector is
-validated against the final provider and API before a path is chosen. `background_inference` and
-`web_search` are Responses API features on `bedrock-mantle` only
+validated against the final provider and API before a path is chosen, and a retained
+`critical_features` entry is checked the same way even when another selector is the primary
+reason. `background_inference`, `web_search`, and `server_side_tools` are Responses API features
+on `bedrock-mantle`
 (`https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html`,
-`https://docs.aws.amazon.com/bedrock/latest/userguide/web-search.html`, read 2026-11-09), so a
-Chat Completions source matched by either selector is a `decision_required`
-(`selector_api_incompatible`: `mantle_openai_responses` carrying the selector versus
-`runtime_openai_chat` without it) unless `api_continuity: not_required` allows the reshape;
-`mantle_openai_chat` is never recorded or offered for a Responses-only selector. A selector whose
+`https://docs.aws.amazon.com/bedrock/latest/userguide/web-search.html`,
+`https://docs.aws.amazon.com/bedrock/latest/userguide/tool-use-server-side.html`, read 2026-11-09),
+so a Chat Completions path that would carry one of them is a `decision_required`
+(`selector_api_incompatible`: `mantle_openai_responses` versus `runtime_openai_chat` without it)
+unless `api_continuity: not_required` allows the reshape; `mantle_openai_chat` is never recorded
+or offered for a Responses-only feature. Client function tools stay on Chat Completions. A selector whose
 provider does not match the workload is a `selector_provider_mismatch` decision whose options
 both stay on `bedrock-runtime`: `workspaces` (`anthropic-workspace-id`,
 `https://docs.aws.amazon.com/bedrock/latest/userguide/workspaces.html`) on an OpenAI SDK

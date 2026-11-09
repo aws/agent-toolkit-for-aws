@@ -320,6 +320,22 @@ def _mantle_selector(workload, feature_assessment):
     return None
 
 
+def _chat_responses_blocker(selector, requirements, detected):
+    """The Responses-only feature a Chat Mantle path would drop.
+
+    The primary selector is not the only input: a projects or server_side_tools
+    selector must not hide critical or detected web_search / background_inference.
+    """
+    needed = set(requirements.get("critical_features") or []) | set(detected or [])
+    if selector == "web_search" or "web_search" in needed:
+        return "web_search"
+    if selector == "background_inference" or "background_inference" in needed:
+        return "background_inference"
+    if selector == "server_side_tools":
+        return "server_side_tools"
+    return None
+
+
 def _openai_candidate_order(catalog, source):
     """[same model] + OpenAI-generation models, same family as the source's GPT major
     first, then version descending, then catalog order. Sources with no parseable
@@ -367,7 +383,10 @@ _SERVER_SIDE_TOOL_SELECTORS = frozenset({"server_side_tools", "web_search"})
 # (inference-responses-api.html) and the built-in Web Search tool (web-search.html),
 # both read 2026-11-09. Chat Completions has neither, so a Chat source matched by
 # one of these is an explicit reshape decision, never a same-API Mantle Chat row.
-_RESPONSES_ONLY_SELECTORS = frozenset({"background_inference", "web_search"})
+# server_side_tools joins this set: the documented Lambda/MCP server-tool flow uses
+# Responses items (tool-use-server-side.html, read 2026-11-09). Client function tools
+# are a capability, not this selector, and stay on Chat Completions.
+_RESPONSES_ONLY_SELECTORS = frozenset({"background_inference", "web_search", "server_side_tools"})
 
 
 def _catalog_model_for_path(catalog, path, detected_features=None, requirements=None,
@@ -1027,7 +1046,7 @@ def _compatibility(detected_features, requirements, path, target_model=None, pat
     unsupported = sorted(text_features - catalog_caps) if target_model else []
     hosted = detected.intersection(_HOSTED_TOOL_IMPACTS)
     portable_features = detected.intersection(_PORTABLE_FEATURES)
-    if (path or "").startswith("mantle_") and "web_search" in hosted:
+    if (path or "").startswith("mantle_") and path != "mantle_openai_chat" and "web_search" in hosted:
         # Web Search is a Mantle server-side tool: on a Mantle path it ports.
         hosted.discard("web_search")
         portable_features.add("web_search")
@@ -1593,18 +1612,19 @@ def recommend_openai_workload(workload, region, catalog):
             )
         path = preferred
 
-    # Background inference and Web Search are Responses API features on
-    # bedrock-mantle; a Chat Completions Mantle path cannot carry either, so the
-    # reshape is offered as a decision rather than selected silently.
-    if selector in _RESPONSES_ONLY_SELECTORS and path == "mantle_openai_chat":
-        if selector == "web_search":
+    # A Chat Completions Mantle path cannot carry a Responses-only feature. Check the
+    # retained features themselves, not only the primary selector: projects or
+    # server_side_tools must not hide a required web_search or background_inference.
+    blocker = _chat_responses_blocker(selector, requirements, detected)
+    if path == "mantle_openai_chat" and blocker:
+        if blocker == "web_search":
             message = (
                 "Web Search is a server-side tool served on the bedrock-mantle Responses API "
                 "(https://docs.aws.amazon.com/bedrock/latest/userguide/web-search.html, "
                 "read 2026-11-09); Chat Completions has no `web_search` tool."
             )
             dropped = "Web Search"
-        else:
+        elif blocker == "background_inference":
             message = (
                 "Background inference is a Responses API feature on bedrock-mantle; Chat "
                 "Completions has no background mode "
@@ -1612,8 +1632,22 @@ def recommend_openai_workload(workload, region, catalog):
                 "read 2026-11-08)."
             )
             dropped = "background inference"
+        else:
+            message = (
+                "Server-side tools (Lambda-backed and MCP tools) use Responses request and "
+                "response items on bedrock-mantle "
+                "(https://docs.aws.amazon.com/bedrock/latest/userguide/tool-use-server-side.html, "
+                "read 2026-11-09); Chat Completions has no server-side tool items. Client "
+                "function tools stay on Chat Completions."
+            )
+            dropped = "server-side tools"
+        if selector and selector != blocker:
+            message += (
+                f" mantle_selector {selector} does not satisfy this retained requirement."
+            )
+        option_selector = blocker if blocker in MANTLE_SELECTORS else selector
         return _unresolved(
-            f"mantle_selector {selector} conflicts with the Chat Completions API.",
+            f"{blocker} conflicts with the Chat Completions API.",
             [],
             _finding(
                 "selector_api_incompatible", "[BLOCKS]", message,
@@ -1623,7 +1657,7 @@ def recommend_openai_workload(workload, region, catalog):
             path,
             decision_options=[
                 option for option in _decision_options(
-                    catalog, workload, region, selector, openai_path="mantle_openai_responses"
+                    catalog, workload, region, option_selector, openai_path="mantle_openai_responses"
                 )
                 if option["api_path"] == "mantle_openai_responses"
             ] + _runtime_option("runtime_openai_chat"),
