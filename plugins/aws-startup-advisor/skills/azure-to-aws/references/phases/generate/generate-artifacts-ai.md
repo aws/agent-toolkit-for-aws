@@ -121,9 +121,32 @@ stored response authorizes those actions on the project (same page, "Permissions
 `iam_policy.py --stored-response-ops retrieve[,cancel,delete]` emits that `BedrockStoredResponseOps`
 statement for a runtime `responses` row only and refuses (`reason:
 stored_response_ops_no_responses_row`) for a `converse`, `messages` or `chat_completions` plan,
-which has no stored responses. `setup_bedrock.sh`'s verification then also retrieves the response it
-just created (`r = client.responses.create(...)`, then `client.responses.retrieve(r.id)`): a 403 on
-the second call means the grant is missing even though creation passed.
+which has no stored responses on either endpoint. A bare Mantle id on `responses` (a
+`mantle_openai_responses` row) satisfies retained ops through the `BedrockMantleInference` statement:
+stored responses are retrievable on Mantle at `GET /v1/responses/{id}` under
+`bedrock-mantle:CreateInference` (same page, "Permissions", read 2026-11-09), so no `bedrock:GetInvoke`
+is added and the helper does not refuse. `setup_bedrock.sh`'s verification then also retrieves the
+response it just created (`r = client.responses.create(...)`, then `client.responses.retrieve(r.id)`):
+a 403 on the second call means the grant is missing even though creation passed.
+
+**Web Search grants.** When a `bedrock_models[]` row has `mantle_selector: web_search`, pass
+`iam_policy.py --mantle-selector web_search` and the policy gains a `BedrockWebSearch` statement:
+`bedrock-websearch:InvokeSearch` and `bedrock-websearch:InvokeFetch` on resource `*` with an
+`aws:RequestedRegion` condition (all three `bedrock-websearch` actions take `*`; that is the service's
+only condition key — <https://docs.aws.amazon.com/bedrock/latest/userguide/security-web-search.html>,
+read 2026-11-09). The generated client sets `"external_web_access": false` on the `web_search` tool
+by default: the parameter defaults to `true`, and without `bedrock-websearch:ExternalWebAccess` every
+Fetch then fails authorization before the cache is read while the request still returns 200
+(<https://docs.aws.amazon.com/bedrock/latest/userguide/web-search.html>, "Controlling external web
+access", read 2026-11-09). Only when the user explicitly confirmed external web access in Clarify,
+pass `--external-web-access` as well (adds `bedrock-websearch:ExternalWebAccess`) and leave the
+parameter `true`. Web Search is served on `bedrock-mantle` Responses only, so the helper refuses
+(`reason: web_search_without_mantle_row`) when no row is a bare Mantle id; a plan without a
+`web_search` row gets no `bedrock-websearch:*` action. Step 5's verification then also runs a
+tool-level check: `client.responses.create(model=<bare Mantle id>, input=<time-sensitive question>,
+tools=[{"type": "web_search", "external_web_access": False}])`, confirm a `web_search_call` item or
+a `url_citation` annotation in the output, and check CloudTrail Web Search data events for a denied
+`InvokeSearch` / `InvokeFetch` — a plain model ping passing does not prove the grant.
 
 ## Step 3B: `gateway_config.{yaml,py,json}` (gateway users)
 

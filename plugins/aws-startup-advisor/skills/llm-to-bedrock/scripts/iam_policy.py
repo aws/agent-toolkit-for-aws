@@ -19,17 +19,49 @@ _OPENAI_COMPATIBLE_APIS = frozenset({"responses", "chat_completions"})
 TARGET_APIS = RUNTIME_APIS | {"invoke"}
 
 # Stored-response operations a source app may RETAIN after the rewrite, and the action
-# each one authorizes on the default project. Creating a response authorizes
-# `bedrock:InvokeModel` on the inference target and the project; retrieving, canceling
-# and deleting a stored response authorize these three, each on the project
-# (https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html,
-# "Permissions", read 2026-11-08). They exist only on the runtime Responses API:
-# Converse, Anthropic Messages and Chat Completions rows never get them.
+# each one authorizes on the default project for a bedrock-RUNTIME Responses row.
+# Creating a response on bedrock-runtime authorizes `bedrock:InvokeModel` on the
+# inference target and the project; retrieving, canceling and deleting a stored
+# response authorize these three, each on the project. Stored responses exist on the
+# Responses API of EITHER endpoint: on bedrock-mantle a stored response is retrieved
+# at `GET /v1/responses/{id}` and inference authorizes `bedrock-mantle:CreateInference`,
+# so a Mantle Responses row is covered by the Mantle statement and gets none of these
+# runtime actions (https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html,
+# "Prerequisites → Permissions" and "Using the Responses API on the bedrock-runtime
+# endpoint → Permissions", read 2026-11-09). Converse, Anthropic Messages and Chat
+# Completions rows never carry stored responses on any endpoint.
 STORED_RESPONSE_OPS = {
     "retrieve": "bedrock:GetInvoke",
     "cancel": "bedrock:CancelInvoke",
     "delete": "bedrock:DeleteInvoke",
 }
+
+# Mantle selectors a plan row may carry (bedrock_models[].mantle_selector); the
+# vocabulary of skills/shared/ai/bedrock-endpoint-policy.md. Only `web_search` adds a
+# grant — the others are satisfied by the Mantle statements and add nothing here.
+MANTLE_SELECTORS = frozenset({
+    "background_inference",
+    "server_side_tools",
+    "web_search",
+    "projects",
+    "workspaces",
+    "mantle_only_model_or_api",
+    "in_region_processing",
+})
+
+# Web Search on Amazon Bedrock is served on the bedrock-mantle Responses API only
+# (GPT-5.4 and later). Its IAM prefix is `bedrock-websearch`; InvokeSearch,
+# InvokeFetch and ExternalWebAccess are all ACTIONS on resource `*` and
+# `aws:RequestedRegion` is the only condition key. The request parameter
+# `external_web_access` defaults to `true`; without the ExternalWebAccess action every
+# Fetch then fails authorization before the cache is read while the request still
+# returns 200, so the generated client sets `"external_web_access": false` unless the
+# user confirmed external access and `--external-web-access` adds the third action
+# (https://docs.aws.amazon.com/bedrock/latest/userguide/web-search.html and
+# https://docs.aws.amazon.com/bedrock/latest/userguide/security-web-search.html,
+# read 2026-11-09).
+WEB_SEARCH_ACTIONS = ("bedrock-websearch:InvokeSearch", "bedrock-websearch:InvokeFetch")
+WEB_SEARCH_EXTERNAL_ACTION = "bedrock-websearch:ExternalWebAccess"
 
 # Execution lanes this helper refuses to authorize. `mantle_messages` (Anthropic SDK
 # on the bedrock-mantle `/anthropic` endpoint, selected by the `workspaces` mantle
@@ -236,6 +268,29 @@ def parse_stored_response_ops(specs: list[str]) -> list[str]:
     return ops
 
 
+def parse_mantle_selectors(specs: list[str]) -> list[str]:
+    """Pure: parse repeatable `--mantle-selector SEL[,SEL]` specs into an ordered,
+    de-duplicated list of MANTLE_SELECTORS values. Fails CLOSED on any other value so
+    a grant is never added on a misspelt selector."""
+    selectors: list[str] = []
+    bad: list[str] = []
+    for spec in specs:
+        for item in spec.split(","):
+            item = item.strip()
+            if not item:
+                continue
+            if item not in MANTLE_SELECTORS:
+                bad.append(item)
+            elif item not in selectors:
+                selectors.append(item)
+    if bad:
+        raise ValueError(
+            "Every --mantle-selector value must be one of "
+            f"{' | '.join(sorted(MANTLE_SELECTORS))} (bedrock_models[].mantle_selector of a "
+            f"mantle_* row). Unknown: {', '.join(bad)}.")
+    return selectors
+
+
 def validated_target_pairs(rows: list[dict], validated_mapping: list[str] | dict[str, str],
                            primary_model_id: str | None = None,
                            primary_api: str | None = None) -> list[tuple[str, str]]:
@@ -287,7 +342,9 @@ def generate_policy(model_ids: list[str], region: str, account_id: str,
                     runtime_api: str | None = None,
                     migration_path: str | None = None,
                     target_apis: dict[str, str | set[str]] | None = None,
-                    stored_response_ops: list[str] | None = None) -> dict:
+                    stored_response_ops: list[str] | None = None,
+                    mantle_selectors: list[str] | None = None,
+                    external_web_access: bool = False) -> dict:
     """Build a scoped IAM policy covering exactly the given model IDs.
 
     `runtime_api` is the plan's selected API (`responses`, `chat_completions`,
@@ -304,15 +361,27 @@ def generate_policy(model_ids: list[str], region: str, account_id: str,
     runtime `bedrock:InvokeModel*` for a bare Claude id that the lane would never
     send to bedrock-runtime.
     `stored_response_ops` lists the stored-response operations the source app
-    RETAINS (`retrieve` / `cancel` / `delete`, see STORED_RESPONSE_OPS). Each adds
-    its action — `bedrock:GetInvoke` / `CancelInvoke` / `DeleteInvoke` — on the
-    default project, which is what retrieving, canceling or deleting a stored
-    response authorizes (inference-responses-api.html, "Permissions", read
-    2026-11-08). Only a runtime GPT CRIS row on `responses` can carry stored
+    RETAINS (`retrieve` / `cancel` / `delete`, see STORED_RESPONSE_OPS). The grant
+    is dispatched by the endpoint of each `responses` row: a runtime GPT CRIS row
+    adds its action — `bedrock:GetInvoke` / `CancelInvoke` / `DeleteInvoke` — on
+    the default project, which is what retrieving, canceling or deleting a stored
+    response authorizes on bedrock-runtime; a bare Mantle id on `responses` is
+    already covered by the `BedrockMantleInference` statement (Mantle inference,
+    stored-response retrieval included, authorizes `bedrock-mantle:CreateInference`
+    — inference-responses-api.html, "Permissions", read 2026-11-09) and adds no
+    runtime action. Only a `responses` row on either endpoint can carry stored
     responses, so declaring ops when no such row exists raises `ValueError`: a
     Converse, Anthropic Messages or Chat Completions plan never gets these grants.
+    `mantle_selectors` lists the `bedrock_models[].mantle_selector` values of the
+    plan's `mantle_*` rows (see MANTLE_SELECTORS; unknown → `ValueError`). Only
+    `web_search` adds a statement: `bedrock-websearch:InvokeSearch` + `InvokeFetch`
+    on `*`, conditioned on `aws:RequestedRegion`, and — only when
+    `external_web_access` is True because the user explicitly confirmed external
+    web access — `bedrock-websearch:ExternalWebAccess`. Web Search is served on
+    the bedrock-mantle Responses API only, so `web_search` without a Mantle row,
+    or `external_web_access` without `web_search`, raises `ValueError`.
 
-    Emits up to five statements, depending on which endpoints the targets use:
+    Emits up to six statements, depending on which endpoints the targets use:
     - `bedrock:InvokeModel*` scoped to foundation-model ARNs (plain IDs) and
       inference-profile ARNs (geo-prefixed IDs), for bedrock-runtime targets
     - `bedrock:GetInferenceProfile` scoped to the inference-profile ARNs, when any
@@ -325,6 +394,8 @@ def generate_policy(model_ids: list[str], region: str, account_id: str,
     - `bedrock-mantle:CreateInference` / `Get*` / `List*` scoped to the account's
       mantle projects, for mantle-only targets (SigV4 auth)
     - `bedrock-mantle:CallWithBearerToken` on `*`, for Bedrock API-key auth
+    - `bedrock-websearch:InvokeSearch` / `InvokeFetch` (+ `ExternalWebAccess` when
+      confirmed) on `*` with the region condition, for a `web_search` Mantle row
 
     A statement is omitted entirely when no target needs it — notably, an
     all-mantle run must not emit an InvokeModel statement with an empty Resource
@@ -351,8 +422,23 @@ def generate_policy(model_ids: list[str], region: str, account_id: str,
         if op not in STORED_RESPONSE_OPS:
             raise ValueError(f"Unknown stored-response op {op!r}; expected one of "
                              f"{sorted(STORED_RESPONSE_OPS)}")
+    mantle_selectors = list(mantle_selectors or [])
+    for selector in mantle_selectors:
+        if selector not in MANTLE_SELECTORS:
+            raise ValueError(f"Unknown mantle selector {selector!r}; expected one of "
+                             f"{sorted(MANTLE_SELECTORS)}")
     runtime_ids = [m for m in model_ids if not is_mantle_model(m, region)]
     mantle_ids = [m for m in model_ids if is_mantle_model(m, region)]
+    web_search = "web_search" in mantle_selectors
+    if web_search and not mantle_ids:
+        raise ValueError(
+            "web_search selector declared but no --target row is a bare Mantle id; Web Search is "
+            "served on the bedrock-mantle Responses API only (web-search.html, read 2026-11-09), so "
+            "a bedrock-runtime plan never gets bedrock-websearch:InvokeSearch / InvokeFetch")
+    if external_web_access and not web_search:
+        raise ValueError(
+            "external web access confirmed but no web_search selector was declared; "
+            "bedrock-websearch:ExternalWebAccess is granted only alongside a Web Search row")
 
     statements = []
 
@@ -401,27 +487,36 @@ def generate_policy(model_ids: list[str], region: str, account_id: str,
         })
 
     if stored_response_ops:
-        # Stored responses exist only on the runtime Responses API, so the grant is
-        # keyed on a row that is BOTH a runtime GPT CRIS target AND on `responses`
-        # (the same rows that get the default-project InvokeModel grant for
-        # creation). A Converse / Messages / Chat Completions plan, or a legacy
-        # id-only call with no API, fails closed instead of receiving GetInvoke.
-        responses_rows = [
+        # Stored responses exist on the Responses API of either endpoint, so the grant
+        # is dispatched by the endpoint of each `responses` row. A runtime GPT CRIS
+        # row on `responses` (the same rows that get the default-project InvokeModel
+        # grant for creation) gets GetInvoke / CancelInvoke / DeleteInvoke on the
+        # project. A bare Mantle id on `responses` retrieves its stored responses at
+        # `GET /v1/responses/{id}` under `bedrock-mantle:CreateInference`, which the
+        # BedrockMantleInference statement below already grants — no runtime action is
+        # added for it. A Converse / Messages / Chat Completions plan, or a legacy
+        # id-only call with no API, has no Responses row on any endpoint and fails
+        # closed instead of receiving GetInvoke.
+        def _apis(mid: str) -> set:
+            return target_apis.get(mid) or {runtime_api}
+        runtime_responses_rows = [
             mid for mid in runtime_ids
-            if "responses" in (target_apis.get(mid) or {runtime_api})
-            and requires_default_project_grant(mid, "responses")]
-        if not responses_rows:
+            if "responses" in _apis(mid) and requires_default_project_grant(mid, "responses")]
+        mantle_responses_rows = [mid for mid in mantle_ids if "responses" in _apis(mid)]
+        if not runtime_responses_rows and not mantle_responses_rows:
             raise ValueError(
                 f"stored-response ops {stored_response_ops} declared but no --target row is a "
-                "runtime GPT CRIS id on the `responses` API; retrieving / canceling / deleting a "
-                "stored response exists only there, so a converse / messages / chat_completions "
-                "plan never gets bedrock:GetInvoke / CancelInvoke / DeleteInvoke")
-        statements.append({
-            "Sid": "BedrockStoredResponseOps",
-            "Effect": "Allow",
-            "Action": sorted(STORED_RESPONSE_OPS[op] for op in stored_response_ops),
-            "Resource": [default_project_arn(region, account_id)],
-        })
+                "runtime GPT CRIS id or a bare Mantle id on the `responses` API; retrieving / "
+                "canceling / deleting a stored response exists only there, so a converse / "
+                "messages / chat_completions plan never gets bedrock:GetInvoke / CancelInvoke / "
+                "DeleteInvoke")
+        if runtime_responses_rows:
+            statements.append({
+                "Sid": "BedrockStoredResponseOps",
+                "Effect": "Allow",
+                "Action": sorted(STORED_RESPONSE_OPS[op] for op in stored_response_ops),
+                "Resource": [default_project_arn(region, account_id)],
+            })
 
     if mantle_ids:
         statements.append({
@@ -443,6 +538,23 @@ def generate_policy(model_ids: list[str], region: str, account_id: str,
             "Effect": "Allow",
             "Action": ["bedrock-mantle:CallWithBearerToken"],
             "Resource": "*",
+        })
+
+    if web_search:
+        # All three bedrock-websearch actions take resource `*`; the service's own
+        # example scopes them with `aws:RequestedRegion`, its only condition key, and
+        # Web Search is strictly regional (security-web-search.html, web-search.html,
+        # read 2026-11-09). ExternalWebAccess is added only on explicit confirmation;
+        # otherwise the generated client must send `"external_web_access": false`.
+        actions = list(WEB_SEARCH_ACTIONS)
+        if external_web_access:
+            actions.append(WEB_SEARCH_EXTERNAL_ACTION)
+        statements.append({
+            "Sid": "BedrockWebSearch",
+            "Effect": "Allow",
+            "Action": sorted(actions),
+            "Resource": "*",
+            "Condition": {"StringEquals": {"aws:RequestedRegion": region}},
         })
 
     return {"Version": "2012-10-17", "Statement": statements}
@@ -475,8 +587,25 @@ if __name__ == "__main__":
                         help="retrieve | cancel | delete (comma-joined or repeated): the "
                              "client.responses.<op>(id) calls the source app RETAINS. Adds "
                              "bedrock:GetInvoke / CancelInvoke / DeleteInvoke on project/default "
-                             "for a runtime GPT CRIS row on `responses`; exits 1 with reason "
-                             "stored_response_ops_no_responses_row when no such row exists.")
+                             "for a runtime GPT CRIS row on `responses`; a bare Mantle id on "
+                             "`responses` is covered by the Mantle statement and adds nothing; "
+                             "exits 1 with reason stored_response_ops_no_responses_row when no "
+                             "`responses` row exists on either endpoint.")
+    parser.add_argument("--mantle-selector", action="append", default=[],
+                        help="bedrock_models[].mantle_selector of every mantle_* row (comma-joined "
+                             "or repeated). `web_search` adds bedrock-websearch:InvokeSearch + "
+                             "InvokeFetch on * with an aws:RequestedRegion condition; the other "
+                             "selectors add nothing. Exits 1 with reason unknown_mantle_selector "
+                             "for an unknown value, or web_search_without_mantle_row when no "
+                             "--target row is a bare Mantle id.")
+    parser.add_argument("--external-web-access", action="store_true",
+                        help="Pass ONLY when the user explicitly confirmed external web access: "
+                             "adds bedrock-websearch:ExternalWebAccess to the web_search "
+                             "statement. Without it the generated client must send "
+                             "\"external_web_access\": false (the parameter defaults to true and "
+                             "every Fetch then fails authorization). Exits 1 with reason "
+                             "external_web_access_without_web_search when no web_search selector "
+                             "is declared.")
     args = parser.parse_args()
 
     def _fail(reason: str, detail: str) -> None:
@@ -505,13 +634,27 @@ if __name__ == "__main__":
     except ValueError as e:
         _fail("unknown_stored_response_op", str(e))
     try:
+        mantle_selectors = parse_mantle_selectors(args.mantle_selector)
+    except ValueError as e:
+        _fail("unknown_mantle_selector", str(e))
+    try:
         policy = generate_policy(model_ids, args.region, args.account_id,
                                  runtime_api=args.runtime_api if not args.target else None,
                                  migration_path=args.migration_path, target_apis=target_apis,
-                                 stored_response_ops=stored_response_ops)
+                                 stored_response_ops=stored_response_ops,
+                                 mantle_selectors=mantle_selectors,
+                                 external_web_access=args.external_web_access)
     except ValueError as e:
-        _fail("stored_response_ops_no_responses_row" if "stored-response ops" in str(e)
-              else "unknown_runtime_api", str(e))
+        message = str(e)
+        if message.startswith("stored-response ops"):
+            reason = "stored_response_ops_no_responses_row"
+        elif message.startswith("web_search selector"):
+            reason = "web_search_without_mantle_row"
+        elif message.startswith("external web access"):
+            reason = "external_web_access_without_web_search"
+        else:
+            reason = "unknown_runtime_api"
+        _fail(reason, message)
 
     output = json.dumps(policy, indent=2) + "\n"
     if args.output:

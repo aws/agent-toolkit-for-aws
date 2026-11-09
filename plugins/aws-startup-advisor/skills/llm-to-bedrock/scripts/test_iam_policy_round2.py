@@ -23,9 +23,12 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from iam_policy import (  # noqa: E402
     STORED_RESPONSE_OPS,
+    WEB_SEARCH_ACTIONS,
+    WEB_SEARCH_EXTERNAL_ACTION,
     default_project_arn,
     generate_policy,
     inference_profile_arn,
+    parse_mantle_selectors,
     parse_stored_response_ops,
     parse_targets,
     target_apis_by_id,
@@ -36,6 +39,7 @@ REGION = "us-east-1"
 ACCOUNT = "123456789012"
 PROJECT = default_project_arn(REGION, ACCOUNT)
 SOL, TERRA = "us.openai.gpt-5.6-sol", "us.openai.gpt-5.6-terra"
+MANTLE_SOL, MANTLE_TERRA = "openai.gpt-6-sol", "openai.gpt-5.6-terra"
 CLAUDE = "global.anthropic.claude-sonnet-5"
 EMBED = "amazon.titan-embed-text-v2:0"
 
@@ -134,7 +138,7 @@ class TestStoredResponseOps:
         ({CLAUDE: "messages", EMBED: "invoke"}, [CLAUDE, EMBED]),
     ])
     def test_converse_messages_chat_and_embedding_rows_never_get_the_grant(self, target_apis, ids):
-        with pytest.raises(ValueError, match="stored-response ops .* no --target row is a runtime GPT CRIS id on the `responses` API"):
+        with pytest.raises(ValueError, match="stored-response ops .* no --target row is a runtime GPT CRIS id or a bare Mantle id on the `responses` API"):
             generate_policy(ids, REGION, ACCOUNT, target_apis=target_apis, stored_response_ops=["retrieve"])
 
     def test_mixed_plan_grants_once_for_the_responses_row_beside_a_messages_primary(self):
@@ -144,9 +148,40 @@ class TestStoredResponseOps:
             "Sid": "BedrockStoredResponseOps", "Effect": "Allow",
             "Action": ["bedrock:GetInvoke"], "Resource": [PROJECT]}
 
-    def test_bare_mantle_id_on_responses_never_gets_runtime_get_invoke(self):
-        with pytest.raises(ValueError, match="stored-response ops"):
-            generate_policy(["openai.gpt-5.6-sol"], REGION, ACCOUNT, target_apis={"openai.gpt-5.6-sol": "responses"},
+    # PR 588 F12: the grant is dispatched by endpoint. A Mantle Responses row retrieves its
+    # stored responses at GET /v1/responses/{id} under bedrock-mantle:CreateInference
+    # (inference-responses-api.html, "Permissions", read 2026-11-09), so the Mantle policy IS
+    # the stored-response policy — no runtime GetInvoke, and no fail-closed error.
+    def test_all_mantle_responses_plan_with_retained_retrieve_keeps_the_mantle_policy(self):
+        pol = generate_policy([MANTLE_SOL], REGION, ACCOUNT, target_apis={MANTLE_SOL: "responses"},
+                              stored_response_ops=["retrieve"])
+        assert _sids(pol) == ["BedrockMantleInference", "BedrockMantleCallWithBearerToken"]
+        assert "bedrock-mantle:CreateInference" in _stmt(pol, "BedrockMantleInference")["Action"]
+        assert not any("Invoke" in a and a.startswith("bedrock:") for s in pol["Statement"] for a in s["Action"])
+        legacy = generate_policy([MANTLE_SOL], REGION, ACCOUNT, runtime_api="responses",
+                                 stored_response_ops=["retrieve", "cancel", "delete"])
+        assert _sids(legacy) == ["BedrockMantleInference", "BedrockMantleCallWithBearerToken"]
+
+    def test_runtime_responses_row_still_gets_get_invoke_on_project_default(self):
+        pol = generate_policy([SOL], REGION, ACCOUNT, target_apis={SOL: "responses"},
+                              stored_response_ops=["retrieve"])
+        assert _stmt(pol, "BedrockStoredResponseOps") == {
+            "Sid": "BedrockStoredResponseOps", "Effect": "Allow",
+            "Action": ["bedrock:GetInvoke"], "Resource": [PROJECT]}
+        assert "BedrockMantleInference" not in _sids(pol)
+
+    def test_mixed_runtime_and_mantle_responses_rows_grant_get_invoke_once_and_keep_mantle(self):
+        pol = generate_policy([SOL, MANTLE_SOL], REGION, ACCOUNT,
+                              target_apis={SOL: "responses", MANTLE_SOL: "responses"},
+                              stored_response_ops=["retrieve"])
+        assert _sids(pol) == ["BedrockInvokeModelScoped", "BedrockGetInferenceProfile", "BedrockStoredResponseOps",
+                              "BedrockMantleInference", "BedrockMantleCallWithBearerToken"]
+        assert _stmt(pol, "BedrockStoredResponseOps")["Resource"] == [PROJECT]
+        assert sum(1 for s in pol["Statement"] if "bedrock:GetInvoke" in s["Action"]) == 1
+
+    def test_mantle_chat_only_plan_with_retained_ops_still_fails_closed(self):
+        with pytest.raises(ValueError, match="stored-response ops .* no --target row is a runtime GPT CRIS id or a bare Mantle id"):
+            generate_policy(["openai.gpt-5.5"], REGION, ACCOUNT, target_apis={"openai.gpt-5.5": "chat_completions"},
                             stored_response_ops=["retrieve"])
 
     def test_legacy_models_form_needs_an_explicit_responses_api(self):
@@ -188,3 +223,94 @@ class TestStoredResponseOps:
         result = self._cli("--target", f"{SOL}=responses", "--stored-response-ops", "list")
         assert result.returncode == 1
         assert json.loads(result.stdout)["reason"] == "unknown_stored_response_op"
+
+    def test_cli_all_mantle_responses_plan_with_retained_retrieve_exits_0_with_the_mantle_policy(self):
+        result = self._cli("--target", f"{MANTLE_SOL}=responses", "--stored-response-ops", "retrieve")
+        assert result.returncode == 0, result.stdout
+        pol = json.loads(result.stdout)
+        assert _sids(pol) == ["BedrockMantleInference", "BedrockMantleCallWithBearerToken"]
+        assert "GetInvoke" not in result.stdout
+
+
+# --- PR 588 F15: a confirmed web_search requirement is carried into IAM ---
+# https://docs.aws.amazon.com/bedrock/latest/userguide/web-search.html and
+# https://docs.aws.amazon.com/bedrock/latest/userguide/security-web-search.html (read 2026-11-09):
+# actions bedrock-websearch:InvokeSearch / InvokeFetch / ExternalWebAccess, all on resource `*`,
+# aws:RequestedRegion the only condition key; Web Search is served on bedrock-mantle Responses only.
+
+class TestWebSearchGrants:
+    def test_web_search_row_gets_search_and_fetch_on_star_with_the_region_condition(self):
+        pol = generate_policy([MANTLE_TERRA], REGION, ACCOUNT, target_apis={MANTLE_TERRA: "responses"},
+                              mantle_selectors=["web_search"])
+        assert _sids(pol) == ["BedrockMantleInference", "BedrockMantleCallWithBearerToken", "BedrockWebSearch"]
+        assert _stmt(pol, "BedrockWebSearch") == {
+            "Sid": "BedrockWebSearch", "Effect": "Allow",
+            "Action": ["bedrock-websearch:InvokeFetch", "bedrock-websearch:InvokeSearch"],
+            "Resource": "*",
+            "Condition": {"StringEquals": {"aws:RequestedRegion": REGION}}}
+        assert WEB_SEARCH_EXTERNAL_ACTION not in result_actions(pol)
+
+    def test_confirmed_external_web_access_adds_the_third_action(self):
+        pol = generate_policy([MANTLE_TERRA], REGION, ACCOUNT, target_apis={MANTLE_TERRA: "responses"},
+                              mantle_selectors=["web_search"], external_web_access=True)
+        assert _stmt(pol, "BedrockWebSearch")["Action"] == [
+            "bedrock-websearch:ExternalWebAccess", "bedrock-websearch:InvokeFetch", "bedrock-websearch:InvokeSearch"]
+        assert set(WEB_SEARCH_ACTIONS) | {WEB_SEARCH_EXTERNAL_ACTION} == set(_stmt(pol, "BedrockWebSearch")["Action"])
+
+    @pytest.mark.parametrize("selectors", [None, [], ["in_region_processing"], ["projects"],
+                                           ["background_inference", "server_side_tools"]])
+    def test_non_web_search_plans_get_no_bedrock_websearch_action(self, selectors):
+        pol = generate_policy([MANTLE_TERRA], REGION, ACCOUNT, target_apis={MANTLE_TERRA: "responses"},
+                              mantle_selectors=selectors)
+        assert "BedrockWebSearch" not in _sids(pol)
+        assert not any(a.startswith("bedrock-websearch:") for a in result_actions(pol))
+
+    def test_runtime_only_plan_with_web_search_fails_closed(self):
+        with pytest.raises(ValueError, match="web_search selector declared but no --target row is a bare Mantle id"):
+            generate_policy([SOL], REGION, ACCOUNT, target_apis={SOL: "responses"}, mantle_selectors=["web_search"])
+
+    def test_external_web_access_without_web_search_fails_closed(self):
+        with pytest.raises(ValueError, match="external web access confirmed but no web_search selector"):
+            generate_policy([MANTLE_TERRA], REGION, ACCOUNT, target_apis={MANTLE_TERRA: "responses"},
+                            external_web_access=True)
+
+    def test_unknown_selector_fails_closed(self):
+        with pytest.raises(ValueError, match="Unknown mantle selector 'web-search'"):
+            generate_policy([MANTLE_TERRA], REGION, ACCOUNT, target_apis={MANTLE_TERRA: "responses"},
+                            mantle_selectors=["web-search"])
+        with pytest.raises(ValueError, match="Every --mantle-selector value must be"):
+            parse_mantle_selectors(["web_search,web-search"])
+        assert parse_mantle_selectors(["web_search,projects", " web_search "]) == ["web_search", "projects"]
+
+    def _cli(self, *extra):
+        return subprocess.run(  # nosec B603
+            [sys.executable, str(Path(__file__).parent / "iam_policy.py"),
+             "--region", REGION, "--account-id", ACCOUNT, *extra],
+            capture_output=True, text=True)
+
+    def test_cli_web_search_selector_emits_the_statement_for_a_mantle_row(self):
+        result = self._cli("--target", f"{MANTLE_TERRA}=responses", "--mantle-selector", "web_search")
+        assert result.returncode == 0, result.stdout
+        stmt = _stmt(json.loads(result.stdout), "BedrockWebSearch")
+        assert stmt["Action"] == ["bedrock-websearch:InvokeFetch", "bedrock-websearch:InvokeSearch"]
+        assert stmt["Condition"] == {"StringEquals": {"aws:RequestedRegion": REGION}}
+        with_external = self._cli("--target", f"{MANTLE_TERRA}=responses", "--mantle-selector", "web_search",
+                                  "--external-web-access")
+        assert WEB_SEARCH_EXTERNAL_ACTION in _stmt(json.loads(with_external.stdout), "BedrockWebSearch")["Action"]
+
+    def test_cli_refuses_web_search_for_a_runtime_plan(self):
+        result = self._cli("--target", f"{SOL}=responses", "--mantle-selector", "web_search")
+        assert result.returncode == 1
+        assert json.loads(result.stdout)["reason"] == "web_search_without_mantle_row"
+        assert "Statement" not in result.stdout
+
+    def test_cli_refuses_an_unknown_selector_and_external_access_without_web_search(self):
+        unknown = self._cli("--target", f"{MANTLE_TERRA}=responses", "--mantle-selector", "web-search")
+        assert unknown.returncode == 1 and json.loads(unknown.stdout)["reason"] == "unknown_mantle_selector"
+        external = self._cli("--target", f"{MANTLE_TERRA}=responses", "--external-web-access")
+        assert external.returncode == 1
+        assert json.loads(external.stdout)["reason"] == "external_web_access_without_web_search"
+
+
+def result_actions(pol):
+    return [a for s in pol["Statement"] for a in s["Action"]]

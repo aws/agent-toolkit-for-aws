@@ -567,6 +567,8 @@ Generate a least-privilege IAM policy scoped to the exact model ARNs selected du
 uv run --project <scriptsDir> python <scriptsDir>/iam_policy.py \
   --target <aws_model_id>=<that row's required_client_api> [--target ... one per bedrock_models[] row] \
   [--stored-response-ops <comma-joined analysis.stored_response_ops — omit when absent or empty>] \
+  [--mantle-selector <bedrock_models[].mantle_selector of every mantle_* row — omit when no row has one>] \
+  [--external-web-access — ONLY when the user explicitly confirmed external web access for a web_search row] \
   --region <REGION> \
   --account-id <AWS account id from run-context> \
   --migration-path <Target API path from your context> \
@@ -616,12 +618,35 @@ on `arn:aws:bedrock:<region>:<account>:project/default` with ONLY the retained a
 project, while retrieving, canceling or deleting a stored response authorizes those three actions on the
 project (<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html>,
 "Permissions", read 2026-11-08). Without it, creation and the preflight ping pass while the app's
-existing `responses.retrieve(id)` is denied. Stored responses exist only on the runtime Responses API: the
-helper emits the statement only when a `--target` row is a runtime GPT CRIS id on `responses`, and exits 1
-with `reason: stored_response_ops_no_responses_row` for a Converse / Anthropic Messages / Chat Completions
-plan — report that verbatim (the analyzer should not have recorded ops for such a source) and do not add the
-actions by hand. When the field is absent or `[]`, omit the flag; the policy then carries no `GetInvoke` /
-`CancelInvoke` / `DeleteInvoke`.
+existing `responses.retrieve(id)` is denied. Stored responses exist on the Responses API of either endpoint
+and the grant is dispatched by endpoint: the helper emits the `BedrockStoredResponseOps` statement only when
+a `--target` row is a runtime GPT CRIS id on `responses`; a `--target` row that is a bare Mantle id on
+`responses` (a `mantle_openai_responses` plan) satisfies retained ops through the `BedrockMantleInference`
+statement — stored responses are retrievable on Mantle at `GET /v1/responses/{id}` and Mantle inference
+authorizes `bedrock-mantle:CreateInference` (same page, "Permissions", read 2026-11-09) — so no
+`bedrock:GetInvoke` is added for it and the helper does not exit 1. The helper exits 1 with
+`reason: stored_response_ops_no_responses_row` for a Converse / Anthropic Messages / Chat Completions
+plan, which has no Responses row on either endpoint — report that verbatim (the analyzer should not have
+recorded ops for such a source) and do not add the actions by hand. When the field is absent or `[]`, omit
+the flag; the policy then carries no `GetInvoke` / `CancelInvoke` / `DeleteInvoke`.
+
+**Web Search needs its own grants.** When any `bedrock_models[]` row has `mantle_selector: web_search`,
+pass `--mantle-selector web_search` (join every `mantle_*` row's `mantle_selector` with commas; the other
+selectors add nothing) and the helper adds a `BedrockWebSearch` statement: `bedrock-websearch:InvokeSearch`
+and `bedrock-websearch:InvokeFetch` on resource `*` with an `aws:RequestedRegion` condition — the three
+`bedrock-websearch` actions all take `*` and that global key is the service's only condition key
+(<https://docs.aws.amazon.com/bedrock/latest/userguide/security-web-search.html>, read 2026-11-09). The
+generated client MUST set `"external_web_access": false` on the `web_search` tool unless the user
+explicitly confirmed external web access in Clarify: the parameter defaults to `true`, and without the
+`bedrock-websearch:ExternalWebAccess` action every Fetch then fails authorization before the cache is read
+while the Responses request still returns 200 and may still carry `url_citation` annotations
+(<https://docs.aws.amazon.com/bedrock/latest/userguide/web-search.html>, "Controlling external web access",
+read 2026-11-09). Only when the user confirmed external access, pass `--external-web-access` too and the
+statement also grants `bedrock-websearch:ExternalWebAccess`; say in the report that request data may then
+leave the AWS boundary. Web Search is served on the `bedrock-mantle` Responses API only, so the helper exits
+1 with `reason: web_search_without_mantle_row` when no `--target` row is a bare Mantle id, and with
+`reason: external_web_access_without_web_search` when the flag is passed without the selector — report
+either verbatim. A plan with no `web_search` row gets no `bedrock-websearch:*` action; do not add one by hand.
 
 The script handles the dual-ARN pattern: foundation-model ARNs for plain model IDs and inference-profile ARNs for geo-prefixed IDs (e.g. `us.anthropic.claude-sonnet-4-6`). For any cross-region (CRIS) target it also emits a `BedrockGetInferenceProfile` statement (`bedrock:GetInferenceProfile` on the profile ARNs) — the documented prerequisite for invoking through a profile (<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-prereq.html>, read 2026-11-07). For every runtime Responses / Chat Completions target — any proprietary GPT CRIS id by id form (GPT-5.6 Sol / Terra / Luna, the GPT-6 family, GPT-5.5 / GPT-5.4: `us.openai.gpt-5.5` / `global.openai.gpt-5.5`, `us.openai.gpt-5.4` / `global.openai.gpt-5.4`, or their `inference-profile/` ARNs) whose own `--target` API is `responses` or `chat_completions` (legacy form: `--runtime-api` set to one of those, or omitted) — it adds a third resource, `arn:aws:bedrock:<region>:<account>:project/default`, because a Responses request on `bedrock-runtime` authorizes the default project separately from the inference target (<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html>, read 2026-11-07) and each of those model cards (read 2026-11-07) repeats the requirement; do not strip it from the report's policy excerpt. A row on `converse` or `messages` and every Anthropic / Nova / gpt-oss / embedding id get no project resource. The output is a ready-to-use IAM policy JSON file.
 
@@ -924,7 +949,17 @@ line `*Monthly estimate unavailable — sample has no time-span information.*`
      retained op>). A 403 on the second call means the policy's `BedrockStoredResponseOps`
      statement (`bedrock:GetInvoke` <, `CancelInvoke`, `DeleteInvoke`> on
      `arn:aws:bedrock:<region>:<account>:project/default`) is not attached — creation passing does not
-     prove retrieval is authorized.
+     prove retrieval is authorized. <For a `mantle_openai_responses` plan run the same
+     `responses.create` / `responses.retrieve(r.id)` pair against the Mantle base URL with the bare Mantle
+     id; a 403 there means the `BedrockMantleInference` statement is not attached.>
+   - <Render ONLY when a `bedrock_models[]` row has `mantle_selector: web_search`; delete this bullet otherwise.>
+     **Tool-level permission check** (a plain model ping passing does not prove the Web Search grant):
+     under the attached identity run `client.responses.create(model="<bare Mantle id>",
+     input="<a time-sensitive question>", tools=[{"type": "web_search", "external_web_access": False}])`
+     against the Mantle base URL, confirm the output contains a `web_search_call` item or a `url_citation`
+     annotation, and check CloudTrail Web Search data events for a denied `InvokeSearch` / `InvokeFetch` —
+     a denied call is not disclosed in the model response. <Only when the user confirmed external web
+     access: repeat with `"external_web_access": True` and confirm no denied `ExternalWebAccess`.>
 
 3. **Run tests:**
 

@@ -352,8 +352,19 @@ limited to:
    and the app's existing retrieve is denied. `iam_policy.py --stored-response-ops retrieve[,cancel,delete]` emits
    the `BedrockStoredResponseOps` statement for a runtime `responses` row only and refuses for a `converse` /
    `messages` / `chat_completions` plan (`reason: stored_response_ops_no_responses_row`), which has no stored
-   responses. Verify with create-plus-retrieve: `r = client.responses.create(...)` then
-   `client.responses.retrieve(r.id)` under the attached role.
+   responses on either endpoint; a bare Mantle id on `responses` is covered by the `BedrockMantleInference`
+   statement (stored responses are retrievable on Mantle at `GET /v1/responses/{id}` under
+   `bedrock-mantle:CreateInference`, same page, read 2026-11-09) and gets no `bedrock:GetInvoke`. Verify with
+   create-plus-retrieve: `r = client.responses.create(...)` then `client.responses.retrieve(r.id)` under the
+   attached role.
+6. Web Search → a row with `mantle_selector: web_search` needs `bedrock-websearch:InvokeSearch` and
+   `bedrock-websearch:InvokeFetch` on `*` (`iam_policy.py --mantle-selector web_search` emits them with an
+   `aws:RequestedRegion` condition); the client sets `"external_web_access": false` on the `web_search` tool
+   unless the user explicitly confirmed external access, in which case `--external-web-access` also grants
+   `bedrock-websearch:ExternalWebAccess` — the parameter defaults to `true` and every Fetch fails authorization
+   without that action (<https://docs.aws.amazon.com/bedrock/latest/userguide/web-search.html>,
+   <https://docs.aws.amazon.com/bedrock/latest/userguide/security-web-search.html>, read 2026-11-09). A plan
+   without a `web_search` row gets no `bedrock-websearch:*` action.
 
 **Mantle alternative (selector-gated).** Only when the row records a `mantle_selector`
 (`references/vendored/ai/bedrock-endpoint-policy.md`): base URL `https://bedrock-mantle.{region}.api.aws/openai/v1`,
