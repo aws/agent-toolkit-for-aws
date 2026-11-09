@@ -10,11 +10,11 @@
         "source_service": "openai_api",
         "model_families": ["gpt"],
         "model_evidence": "observed",
-        "models": ["gpt-5.5"],
+        "models": ["gpt-5.6-terra"],
         "model_observations": [
           {
-            "normalized_model": "gpt-5.5",
-            "raw_model": "gpt-5.5",
+            "normalized_model": "gpt-5.6-terra",
+            "raw_model": "gpt-5.6-terra",
             "model_family": "gpt",
             "evidence": [{"provenance": "code", "confidence": "high", "detail": "src/ai/openai_client.py:9 client.chat.completions.create"}]
           }
@@ -22,18 +22,18 @@
       }
     ],
     "gateways": [],
-    "bedrock_models_selected": ["us.openai.gpt-5.5"],
+    "bedrock_models_selected": ["us.openai.gpt-5.6-terra"],
     "regional_validation": "checked"
   },
   "design_blocks": [
     {
       "workload_id": "wl_openai_research_bot",
-      "model_id": "gpt-5.5",
-      "target_bedrock_model": "us.openai.gpt-5.5",
+      "model_id": "gpt-5.6-terra",
+      "target_bedrock_model": "us.openai.gpt-5.6-terra",
       "target_aws_service": null,
       "capability": "text_generation",
       "capability_confidence": "high",
-      "rationale": "OpenAI Chat Completions research bot moves to GPT-5.5 on the bedrock-runtime CRIS path. Clarify confirmed a web_search requirement (user), which requires the Responses API on bedrock-mantle; by explicit API-continuity decision (Step 0.8 rule 1b) the Chat Completions API is kept on bedrock-runtime and Web Search is dropped and disclosed as a capability gap rather than recorded as a silent mantle_openai_chat row.",
+      "rationale": "OpenAI Chat Completions research bot stays on GPT-5.6 Terra via the bedrock-runtime US Geo CRIS id (same model, no model change); the US Geo CRIS rate is 1.10x OpenAI's $2.00/$12.00 standard list price (model-card-openai-gpt-56-terra.html, read 2026-11-09), so the comparison is unfavorable in-Geo and parity only on Global CRIS. Clarify confirmed a web_search requirement (user), which requires the Responses API on bedrock-mantle; by explicit API-continuity decision (Step 0.8 rule 1b) the Chat Completions API is kept on bedrock-runtime and Web Search is dropped and disclosed as a capability gap rather than recorded as a silent mantle_openai_chat row.",
       "confidence_warning": null
     }
   ],
@@ -43,14 +43,14 @@
     "tiered_strategy": null,
     "bedrock_models": [
       {
-        "source_model_id": "gpt-5.5",
-        "aws_model_id": "us.openai.gpt-5.5",
+        "source_model_id": "gpt-5.6-terra",
+        "aws_model_id": "us.openai.gpt-5.6-terra",
         "capabilities_matched": ["text_generation"],
         "capability_gaps": ["web_search confirmed in Clarify (user) requires the Responses API on bedrock-mantle; the Chat Completions API was kept on bedrock-runtime by explicit decision (Step 0.8 rule 1b) and Web Search is not provided"],
         "honest_assessment": "strong_migrate",
-        "source_provider_price": "2.50/15.00 per 1M tokens",
-        "bedrock_price": "2.50/15.00 per 1M tokens",
-        "price_comparison": "parity",
+        "source_provider_price": "2.00/12.00 per 1M tokens",
+        "bedrock_price": "2.20/13.20 per 1M tokens",
+        "price_comparison": "unfavorable",
         "migration_complexity": "low",
         "model_change": false,
         "migration_path": "runtime_openai_cris",

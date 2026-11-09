@@ -285,8 +285,13 @@ def test_chat_source_web_search_fixture_keeps_the_api_and_discloses_the_dropped_
     assert row["endpoint_assumption"].startswith("No Mantle-only requirement was recorded for wl_openai_research_bot; bedrock-runtime selected.")
     assert any("web_search" in gap and "Responses API" in gap and "explicit decision" in gap for gap in row["capability_gaps"])
     assert "Step 0.8 rule 1b" in design["design_blocks"][0]["rationale"]
-    assert design["metadata"]["ai_sources"][0]["models"] == ["gpt-5.5"]
-    assert design["metadata"]["bedrock_models_selected"] == [row["aws_model_id"]] == ["us.openai.gpt-5.5"]
+    assert design["metadata"]["ai_sources"][0]["models"] == ["gpt-5.6-terra"]
+    assert design["metadata"]["bedrock_models_selected"] == [row["aws_model_id"]] == ["us.openai.gpt-5.6-terra"]
+    # The Geo CRIS rate is published on the GPT-5.6 Terra card; GPT-5.5 / GPT-5.4 publish no Geo/Global
+    # price, so a runtime CRIS row for them must never carry a verified-looking parity price.
+    assert row["bedrock_price"] == "2.20/13.20 per 1M tokens"
+    assert row["source_provider_price"] == "2.00/12.00 per 1M tokens"
+    assert row["price_comparison"] != "parity"
 
 
 def test_design_fixture_corpus_never_records_a_responses_only_selector_on_a_same_api_mantle_row() -> None:
