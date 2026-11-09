@@ -192,9 +192,14 @@ client-surface need) record the API the source app already calls — `responses`
 source, `chat_completions` for a Chat Completions source; Converse is never an implicit default
 for `runtime_openai_cris`. `messages` belongs to `runtime_messages`. A Guardrails-requiring workload on
 `runtime_openai_cris` sets it to the surface that is actually Guardrails-capable for that model:
-`converse` for GPT-6 Astra and GPT-6.1 Terra, or
-`converse`/`chat_completions`/`invoke` — never `responses` — for GPT-6.1 Sol and the other
-GPT-6/5.6 CRIS models except Astra and GPT-6.1 Terra. Application inference profiles also require
+`converse` for GPT-6 Astra, GPT-5.6 Sol / Terra / Luna, GPT-5.5, GPT-5.4 and GPT-6.1 Terra (their
+cards list Guardrails as Converse-only); `responses` / `chat_completions` / `invoke` / `converse` for
+GPT-6 Sol and GPT-6 Luna; `chat_completions` / `invoke` / `converse` (never `responses`) for GPT-6.1
+Sol — the Guardrails API scope is per model card, model cards read 2026-11-09 (`model-card-openai-gpt-6-sol.html`, `model-card-openai-gpt-6-luna.html`,
+`model-card-openai-gpt-6-1-sol.html`, `model-card-openai-gpt-6-astra.html`,
+`model-card-openai-gpt-56-sol.html`, `model-card-openai-gpt-56-terra.html`,
+`model-card-openai-gpt-56-luna.html`, `model-card-openai-gpt-55.html`, `model-card-openai-gpt-54.html`
+under `https://docs.aws.amazon.com/bedrock/latest/userguide/`). Application inference profiles also require
 `converse` on every model whose card lists them as Converse-only — GPT-6.1 Terra, Astra, and GPT-5.5 /
 GPT-5.4 (cards read 2026-11-07: "Converse API only; not supported with Responses or Chat Completions
 APIs") — so a workload needing them on `runtime_openai_cris` sets `converse`, never leaves the field

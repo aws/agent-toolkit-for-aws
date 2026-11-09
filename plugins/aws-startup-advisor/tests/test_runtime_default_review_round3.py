@@ -173,3 +173,54 @@ def test_vendored_openai_guides_match_canonical() -> None:
         assert vendored.read_bytes() == CANONICAL_GUIDE.read_bytes(), vendored
 
 
+# --------------------------------------------------------------------------- F3 (Azure half): per-model Guardrails rule
+
+BLANKET_GUARDRAILS = [
+    "never `responses`) for 6.1 Sol and the other GPT-6/5.6",
+    "the other GPT-6/5.6 CRIS models except Astra",
+    "note Guardrails are Converse-only",
+]
+NINE_CARDS = [
+    "model-card-openai-gpt-6-sol.html", "model-card-openai-gpt-6-luna.html", "model-card-openai-gpt-6-1-sol.html",
+    "model-card-openai-gpt-6-astra.html", "model-card-openai-gpt-56-sol.html", "model-card-openai-gpt-56-terra.html",
+    "model-card-openai-gpt-56-luna.html", "model-card-openai-gpt-55.html", "model-card-openai-gpt-54.html",
+]
+
+
+@pytest.mark.parametrize("path", [AZURE_DESIGN_AI, AZURE_SHADOW_SCHEMA, CANONICAL_SCHEMA_DOC, GCP_SHADOW_SCHEMA, CODE_REWRITER],
+                         ids=lambda p: p.name if p.suffix == ".md" and "agents" in p.parts else str(p.relative_to(SKILLS)))
+def test_blanket_converse_only_guardrails_wording_is_gone(path: Path) -> None:
+    text = _squash(path.read_text())
+    for blanket in BLANKET_GUARDRAILS:
+        assert blanket not in text, f"{path}: blanket wording {blanket!r} still present"
+
+
+@pytest.mark.parametrize("path", [AZURE_DESIGN_AI, AZURE_SHADOW_SCHEMA], ids=lambda p: p.parent.name)
+def test_azure_design_and_schema_carry_the_per_model_guardrails_api_rule(path: Path) -> None:
+    text = _squash(path.read_text())
+    assert "`converse` for GPT-6 Astra, GPT-5.6 Sol / Terra / Luna, GPT-5.5, GPT-5.4 and GPT-6.1 Terra" in text
+    assert "`responses` / `chat_completions` / `invoke` / `converse` for GPT-6 Sol and GPT-6 Luna" in text
+    assert "`chat_completions` / `invoke` / `converse` (never `responses`) for GPT-6.1 Sol" in text
+    assert "model cards read 2026-11-09" in text
+    for card in NINE_CARDS:
+        assert card in text, f"{path}: {card} not cited"
+
+
+def test_azure_design_closes_with_the_card_scoped_responses_rule() -> None:
+    azure = _squash(AZURE_DESIGN_AI.read_text())
+    assert "Do not leave the client on `responses` when Guardrails is required on a model whose card excludes Responses." in azure
+    assert "Do not leave the client on `responses` when Guardrails is required.**" not in azure
+    for name in ("GPT-6 Sol", "GPT-6 Luna", "GPT-6.1 Sol", "GPT-6 Astra", "GPT-5.5", "GPT-5.4", "GPT-6.1 Terra"):
+        assert name in azure, name
+
+
+def test_code_rewriter_carries_the_per_model_guardrails_and_caching_scope() -> None:
+    text = _squash(CODE_REWRITER.read_text())
+    assert "Guardrails and prompt-caching API scope are per model card and are carried by `bedrock_models[].required_client_api`" in text
+    assert "GPT-6 Sol / Luna list Guardrails on Responses, Chat Completions, InvokeModel and Converse" in text
+    assert "GPT-6.1 Sol on Chat Completions, InvokeModel and Converse (not Responses)" in text
+    assert "GPT-5.6 Sol / Terra / Luna, GPT-5.5, GPT-5.4 and GPT-6 Astra on Converse only" in text
+    assert "implicit prompt caching is Responses-only on runtime for GPT-5.5 / GPT-5.4" in text
+    assert "cards read 2026-11-09" in text
+
+
