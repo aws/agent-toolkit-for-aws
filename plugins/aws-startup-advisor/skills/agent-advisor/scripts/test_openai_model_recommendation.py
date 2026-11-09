@@ -145,7 +145,8 @@ def test_continuity_plus_logging_governance_stays_on_runtime_openai_api():
     assert rec["primary_model"] == "openai.gpt-5.4"
 
 
-@pytest.mark.parametrize("selector", oai.MANTLE_SELECTORS)
+# `workspaces` scopes the Anthropic Messages API and is a provider-mismatch decision below.
+@pytest.mark.parametrize("selector", [s for s in oai.MANTLE_SELECTORS if s != "workspaces"])
 def test_each_mantle_selector_selects_mantle_and_is_echoed(selector):
     rec = _recommend(_workload(requirements={"mantle_selector": selector}))
     assert rec["decision_status"] == "recommended"
@@ -677,12 +678,87 @@ def test_preferred_mantle_chat_with_background_inference_is_a_decision():
     assert _option(rec, "mantle_openai_responses")["mantle_selector"] == "background_inference"
 
 
+# --- Web Search is a bedrock-mantle Responses API tool (web-search.html, read
+# 2026-11-09); every selector is validated against the final provider and API ----
+
+def test_gpt55_chat_source_with_web_search_is_a_decision_between_mantle_responses_and_runtime_chat():
+    out = _full_recommend(
+        _workload(source={"model_ids": ["gpt-5.5"], "api_surface": "chat_completions"},
+                  requirements={"critical_features": ["web_search"]}),
+        region="us-east-1",
+    )
+    jsonschema.validate(out, _OUT_SCHEMA)
+    rec = out["workloads"]["chat-svc"]
+    assert rec["decision_status"] == "decision_required"
+    assert rec["api_path"] is None
+    assert "selector_api_incompatible" in _codes(rec["blocks"])
+    assert _cites_aws_docs(rec["blocks"][0]["message"])
+    assert "web-search.html" in rec["blocks"][0]["message"]
+    assert {o["api_path"] for o in rec["decision_options"]} == {
+        "mantle_openai_responses", "runtime_openai_chat",
+    }
+    assert _option(rec, "mantle_openai_responses")["mantle_selector"] == "web_search"
+    assert _option(rec, "runtime_openai_chat")["mantle_selector"] is None
+    assert not any(o["api_path"] == "mantle_openai_chat" for o in rec["decision_options"])
+
+
+def test_gpt55_chat_with_web_search_and_free_continuity_reshapes_to_mantle_responses():
+    rec = _recommend(
+        _workload(source={"model_ids": ["gpt-5.5"], "api_surface": "chat_completions"},
+                  requirements={"critical_features": ["web_search"],
+                                "api_continuity": "not_required"}),
+        region="us-east-1",
+    )
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "mantle_openai_responses"
+    assert rec["primary_model"] == "openai.gpt-5.5"
+    assert rec["mantle_selector"] == "web_search"
+    assert "chat_completions_to_responses_required" in _codes(rec["blocks"])
+    assert "web_search" in rec["compatibility"]["portable"]
+
+
+def test_chat_source_with_web_search_plus_logging_never_offers_a_mantle_chat_option():
+    out = _full_recommend(_workload(
+        source={"model_ids": ["gpt-5.5"], "api_surface": "chat_completions"},
+        requirements={"critical_features": ["web_search"],
+                      "governance": ["invocation_logging"]},
+    ), region="us-east-1")
+    jsonschema.validate(out, _OUT_SCHEMA)
+    rec = out["workloads"]["chat-svc"]
+    assert rec["decision_status"] == "decision_required"
+    assert {o["api_path"] for o in rec["decision_options"]} == {
+        "mantle_openai_responses", "runtime_openai_chat",
+    }
+    assert _option(rec, "mantle_openai_responses")["mantle_selector"] == "web_search"
+
+
+def test_workspaces_selector_on_an_openai_source_is_a_provider_mismatch_decision():
+    out = _full_recommend(_workload(requirements={"mantle_selector": "workspaces"}))
+    jsonschema.validate(out, _OUT_SCHEMA)
+    rec = out["workloads"]["chat-svc"]
+    assert rec["decision_status"] == "decision_required"
+    assert rec["api_path"] is None
+    assert rec["mantle_selector"] is None
+    assert "selector_provider_mismatch" in _codes(rec["blocks"])
+    block = next(b for b in rec["blocks"] if b["code"] == "selector_provider_mismatch")
+    assert _cites_aws_docs(block["message"])
+    assert "anthropic-workspace-id" in block["message"]
+    assert "`projects`" in block["message"]
+    # Both options stay on bedrock-runtime: the source API, or Converse governance.
+    assert {o["api_path"] for o in rec["decision_options"]} == {
+        "runtime_openai_responses", "runtime_converse",
+    }
+    assert not any(o["api_path"].startswith("mantle_") for o in rec["decision_options"])
+
+
 # --- GPT-6.1 Sol lists server-side system tools as unsupported on bedrock-mantle
 # (model-card-openai-gpt-6-1-sol.html, read 2026-11-08) -----------------------
 
 @pytest.mark.parametrize(("surface", "selector", "path"), [
     ("responses", "server_side_tools", "mantle_openai_responses"),
-    ("chat_completions", "web_search", "mantle_openai_chat"),
+    ("chat_completions", "server_side_tools", "mantle_openai_chat"),
+    # Web Search is Responses-only: the Chat source reshapes once continuity is free.
+    ("chat_completions", "web_search", "mantle_openai_responses"),
 ])
 def test_gpt61_sol_server_side_tool_selectors_fall_to_astra_and_keep_the_selector(
     surface, selector, path
@@ -690,6 +766,8 @@ def test_gpt61_sol_server_side_tool_selectors_fall_to_astra_and_keep_the_selecto
     requirements = {"mantle_selector": selector}
     if surface == "responses":
         requirements["api_continuity"] = "required"
+    if selector == "web_search":
+        requirements["api_continuity"] = "not_required"
     out = _full_recommend(
         _workload(source={"model_ids": ["gpt-6.1-sol"], "api_surface": surface},
                   requirements=requirements),

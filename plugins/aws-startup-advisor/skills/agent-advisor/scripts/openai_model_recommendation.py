@@ -340,6 +340,11 @@ def _hard_profile_requirement(requirements):
 
 
 _SERVER_SIDE_TOOL_SELECTORS = frozenset({"server_side_tools", "web_search"})
+# Selectors served on the bedrock-mantle Responses API only: background inference
+# (inference-responses-api.html) and the built-in Web Search tool (web-search.html),
+# both read 2026-11-09. Chat Completions has neither, so a Chat source matched by
+# one of these is an explicit reshape decision, never a same-API Mantle Chat row.
+_RESPONSES_ONLY_SELECTORS = frozenset({"background_inference", "web_search"})
 
 
 def _catalog_model_for_path(catalog, path, detected_features=None, requirements=None,
@@ -1094,6 +1099,9 @@ def _decision_options(catalog, workload, region, selector=None, openai_path=None
             needed = set(detected) | set(requirements.get("critical_features") or [])
             if "prompt_caching" in needed:
                 openai_path = "mantle_openai_responses"
+        if selector in _RESPONSES_ONLY_SELECTORS:
+            # A Responses-only selector is never offered on a Mantle Chat row.
+            openai_path = "mantle_openai_responses"
     else:
         openai_path = _runtime_openai_path(surface)
     candidate_order = (
@@ -1379,6 +1387,28 @@ def recommend_openai_workload(workload, region, catalog):
             decision_options=_mantle_options(mantle_selector) + _runtime_option(preferred),
         )
 
+    # --- Provider mismatch: `workspaces` scopes the Anthropic Messages API ---
+    if selector == "workspaces":
+        return _unresolved(
+            "mantle_selector workspaces does not apply to an OpenAI SDK workload.",
+            [],
+            _finding(
+                "selector_provider_mismatch", "[BLOCKS]",
+                "`workspaces` scopes the Anthropic Messages API (`anthropic-workspace-id`, "
+                "https://docs.aws.amazon.com/bedrock/latest/userguide/workspaces.html); an "
+                "OpenAI SDK workload has no Workspaces concept — the OpenAI equivalent is "
+                "`projects` (`OpenAI-Project`, "
+                "https://docs.aws.amazon.com/bedrock/latest/userguide/projects.html, "
+                "read 2026-11-09).",
+                "Record the applicable selector (or none) in Clarify and rerun Model Recommend.",
+            ),
+            openai_path_default,
+            # Both options stay on bedrock-runtime: the source API, or Converse governance.
+            decision_options=_decision_options(
+                catalog, workload, region, None, openai_path=openai_path_default
+            ),
+        )
+
     # --- Hard conflict: a verified Mantle-only need AND bedrock-runtime-only governance ---
     if selector and runtime_required:
         drivers = ", ".join(_runtime_only_drivers(requirements))
@@ -1525,21 +1555,32 @@ def recommend_openai_workload(workload, region, catalog):
             )
         path = preferred
 
-    # Background inference is a Responses API feature on bedrock-mantle; a Chat
-    # Completions Mantle path cannot carry it, so the reshape is offered as a
-    # decision rather than selected silently.
-    if selector == "background_inference" and path == "mantle_openai_chat":
-        return _unresolved(
-            "mantle_selector background_inference conflicts with the Chat Completions API.",
-            [],
-            _finding(
-                "selector_api_incompatible", "[BLOCKS]",
+    # Background inference and Web Search are Responses API features on
+    # bedrock-mantle; a Chat Completions Mantle path cannot carry either, so the
+    # reshape is offered as a decision rather than selected silently.
+    if selector in _RESPONSES_ONLY_SELECTORS and path == "mantle_openai_chat":
+        if selector == "web_search":
+            message = (
+                "Web Search is a server-side tool served on the bedrock-mantle Responses API "
+                "(https://docs.aws.amazon.com/bedrock/latest/userguide/web-search.html, "
+                "read 2026-11-09); Chat Completions has no `web_search` tool."
+            )
+            dropped = "Web Search"
+        else:
+            message = (
                 "Background inference is a Responses API feature on bedrock-mantle; Chat "
                 "Completions has no background mode "
                 "(https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html, "
-                "read 2026-11-08).",
+                "read 2026-11-08)."
+            )
+            dropped = "background inference"
+        return _unresolved(
+            f"mantle_selector {selector} conflicts with the Chat Completions API.",
+            [],
+            _finding(
+                "selector_api_incompatible", "[BLOCKS]", message,
                 "Accept the Mantle Responses reshape, or keep Chat Completions on "
-                "bedrock-runtime and drop background inference, then rerun Model Recommend.",
+                f"bedrock-runtime and drop {dropped}, then rerun Model Recommend.",
             ),
             path,
             decision_options=[

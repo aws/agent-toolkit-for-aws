@@ -99,7 +99,14 @@ def test_cost_priority_with_workspaces_selector_uses_clean_mantle_haiku_id():
     assert rec["mantle_selector"] == "workspaces"
 
 
-@pytest.mark.parametrize("selector", anthropic_model_recommendation.MANTLE_SELECTORS)
+# background_inference (Responses-only) and projects (OpenAI-only) are decisions below.
+_MESSAGES_ROUTABLE_SELECTORS = [
+    selector for selector in anthropic_model_recommendation.MANTLE_SELECTORS
+    if selector not in {"background_inference", "projects"}
+]
+
+
+@pytest.mark.parametrize("selector", _MESSAGES_ROUTABLE_SELECTORS)
 def test_every_mantle_selector_selects_mantle_messages_and_is_echoed(selector):
     rec = _recommend(_workload(requirements={"mantle_selector": selector}))
 
@@ -107,6 +114,75 @@ def test_every_mantle_selector_selects_mantle_messages_and_is_echoed(selector):
     assert rec["api_path"] == "mantle_messages"
     assert rec["mantle_selector"] == selector
     assert any(f"mantle_selector {selector}" in line for line in rec["rationale"])
+
+
+# --- Every selector is validated against the final provider and API (PR 588 F4) ---
+# Background inference is a Responses API feature on bedrock-mantle
+# (inference-responses-api.html, read 2026-11-09); `projects` scopes the
+# OpenAI-compatible APIs while Messages scopes by Workspaces (projects.html,
+# workspaces.html, read 2026-11-09).
+
+def test_anthropic_messages_with_background_inference_is_a_decision_not_mantle_messages():
+    workload = _workload(requirements={"mantle_selector": "background_inference"})
+    result = model_recommendation.recommend(_input(workload))
+    jsonschema.validate(result, _schema("model-recommendation.json"))
+    rec = result["workloads"]["support-agent"]
+
+    assert rec["decision_status"] == "decision_required"
+    assert rec["api_path"] is None
+    assert rec["mantle_selector"] is None
+    assert "selector_api_incompatible" in _codes(rec["blocks"])
+    assert "mantle_selector_vs_anthropic_api" in _decision_block(rec)["message"]
+    # Both options stay on bedrock-runtime; mantle_messages is never offered.
+    assert {option["api_path"] for option in rec["decision_options"]} == {
+        "runtime_messages", "runtime_converse",
+    }
+    block = next(b for b in rec["blocks"] if b["code"] == "selector_api_incompatible")
+    assert "inference-responses-api.html" in block["message"]
+    assert "Responses" in block["message"]
+
+
+def test_projects_selector_on_an_anthropic_source_is_a_provider_mismatch_decision():
+    workload = _workload(requirements={"mantle_selector": "projects"})
+    result = model_recommendation.recommend(_input(workload))
+    jsonschema.validate(result, _schema("model-recommendation.json"))
+    rec = result["workloads"]["support-agent"]
+
+    assert rec["decision_status"] == "decision_required"
+    assert rec["api_path"] is None
+    assert "selector_provider_mismatch" in _codes(rec["blocks"])
+    assert "mantle_selector_provider_mismatch" in _decision_block(rec)["message"]
+    assert {option["api_path"] for option in rec["decision_options"]} == {
+        "runtime_messages", "runtime_converse",
+    }
+    block = next(b for b in rec["blocks"] if b["code"] == "selector_provider_mismatch")
+    assert "anthropic-workspace-id" in block["message"]
+    assert "OpenAI-Project" in block["message"]
+
+
+def test_projects_with_a_preferred_mantle_path_still_never_offers_mantle_messages():
+    rec = _recommend(
+        _workload(requirements={"preferred_api_path": "mantle_messages",
+                                "mantle_selector": "projects"})
+    )
+
+    assert rec["decision_status"] == "decision_required"
+    assert "selector_provider_mismatch" in _codes(rec["blocks"])
+    assert not any(o["api_path"].startswith("mantle_") for o in rec["decision_options"])
+
+
+def test_background_inference_with_native_payload_offers_runtime_messages_or_invoke():
+    rec = _recommend(
+        _workload(requirements={"mantle_selector": "background_inference",
+                                "requires_native_payload": True})
+    )
+
+    assert rec["decision_status"] == "decision_required"
+    assert "selector_api_incompatible" in _codes(rec["blocks"])
+    assert "mantle_selector_vs_runtime" not in _decision_block(rec)["message"]
+    assert {option["api_path"] for option in rec["decision_options"]} == {
+        "runtime_messages", "runtime_invoke",
+    }
 
 
 def test_mantle_selectors_match_the_input_schema_enum():
@@ -320,12 +396,12 @@ def test_preferred_mantle_path_without_selector_fails_closed():
 def test_preferred_mantle_path_with_selector_is_honored():
     rec = _recommend(
         _workload(requirements={"preferred_api_path": "mantle_messages",
-                                "mantle_selector": "projects"})
+                                "mantle_selector": "workspaces"})
     )
 
     assert rec["decision_status"] == "recommended"
     assert rec["api_path"] == "mantle_messages"
-    assert rec["mantle_selector"] == "projects"
+    assert rec["mantle_selector"] == "workspaces"
 
 
 def test_preferred_runtime_messages_is_honored_and_does_not_conflict_with_required_messages():

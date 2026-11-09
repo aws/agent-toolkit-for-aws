@@ -138,10 +138,23 @@ read 2026-11-08). An application inference profile ARN in `inference_profile_id`
 Converse — the bedrock-runtime Responses and Chat Completions APIs reject it with HTTP 400
 (`https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html`, read
 2026-11-08) — so with required continuity it is a `decision_required` whose OpenAI-API option
-carries no invocation id; system, Geo and Global profiles are unaffected. `background_inference`
-is a Responses API feature on `bedrock-mantle` only, so a Chat Completions source with that
-selector is a `decision_required` (`selector_api_incompatible`: `mantle_openai_responses` versus
-`runtime_openai_chat`) unless `api_continuity: not_required` allows the reshape. The
+carries no invocation id; system, Geo and Global profiles are unaffected. Every selector is
+validated against the final provider and API before a path is chosen. `background_inference` and
+`web_search` are Responses API features on `bedrock-mantle` only
+(`https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html`,
+`https://docs.aws.amazon.com/bedrock/latest/userguide/web-search.html`, read 2026-11-09), so a
+Chat Completions source matched by either selector is a `decision_required`
+(`selector_api_incompatible`: `mantle_openai_responses` carrying the selector versus
+`runtime_openai_chat` without it) unless `api_continuity: not_required` allows the reshape;
+`mantle_openai_chat` is never recorded or offered for a Responses-only selector. A selector whose
+provider does not match the workload is a `selector_provider_mismatch` decision whose options
+both stay on `bedrock-runtime`: `workspaces` (`anthropic-workspace-id`,
+`https://docs.aws.amazon.com/bedrock/latest/userguide/workspaces.html`) on an OpenAI SDK
+workload, and `projects` (`OpenAI-Project`,
+`https://docs.aws.amazon.com/bedrock/latest/userguide/projects.html`) on an Anthropic SDK
+workload (read 2026-11-09). An Anthropic Messages source with `background_inference` is likewise
+a `selector_api_incompatible` decision between `runtime_messages` and the runtime governance path
+— the Messages API has no background mode and the Anthropic module has no Responses route. The
 `server_side_tools` / `web_search` selectors skip Mantle rows whose card lists server-side system
 tools as unsupported (`server_side_tools_supported: false` — GPT-6.1 Sol) and fall to the next
 same-family model with a fallback rationale; the selector is never dropped. An explicit runtime

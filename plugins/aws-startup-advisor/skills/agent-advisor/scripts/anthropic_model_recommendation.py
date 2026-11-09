@@ -262,20 +262,34 @@ def _path_constraints(workload):
     messages_option = "runtime_messages" if (source_messages or messages_required) else runtime_path
     conflicts = []
     option_paths = []
+    # A selector is validated against the API this module can route to. Background
+    # inference is a Responses API feature on bedrock-mantle (inference-responses-api.html,
+    # read 2026-11-09) and the Messages API has no background mode; `projects` scopes the
+    # OpenAI-compatible APIs (`OpenAI-Project`, projects.html) while Messages scopes by
+    # Workspaces (`anthropic-workspace-id`, workspaces.html). Neither can select
+    # mantle_messages: both options stay on bedrock-runtime (Messages, or the
+    # Converse/InvokeModel governance path) and drop the selector.
+    if selector == "background_inference":
+        conflicts.append("mantle_selector_vs_anthropic_api")
+        option_paths = ["runtime_messages", runtime_path]
+    if selector == "projects":
+        conflicts.append("mantle_selector_provider_mismatch")
+        option_paths = ["runtime_messages", runtime_path]
+    routable_selector = selector if selector not in {"background_inference", "projects"} else None
     if messages_required and (converse_required or native_required):
         conflicts.append("messages_vs_converse")
         option_paths = ["runtime_messages", runtime_path]
-    if selector and (converse_required or native_required):
+    if routable_selector and (converse_required or native_required):
         conflicts.append("mantle_selector_vs_runtime")
         option_paths = ["mantle_messages", runtime_path]
-    elif selector and logging_required:
+    elif routable_selector and logging_required:
         conflicts.append("mantle_selector_vs_invocation_logging")
         option_paths = ["mantle_messages", messages_option]
     if preferred:
         if preferred.startswith("mantle_") and (converse_required or native_required):
             conflicts.append("preferred_path_vs_runtime")
             option_paths = option_paths or ["mantle_messages", runtime_path]
-        if preferred.startswith("runtime_") and selector:
+        if preferred.startswith("runtime_") and routable_selector:
             conflicts.append("preferred_path_vs_mantle_selector")
             option_paths = option_paths or ["mantle_messages", preferred]
         if preferred == "runtime_messages" and converse_required:
@@ -835,6 +849,33 @@ def _decision_required(workload, region, catalog, constraints):
                 "selector from bedrock-endpoint-policy.md moves a workload off bedrock-runtime.",
                 "Record the applicable requirements.mantle_selector value or choose the "
                 "bedrock-runtime option, then rerun Model Recommend.",
+            )
+        )
+    if "mantle_selector_vs_anthropic_api" in constraints["conflicts"]:
+        blocks.append(
+            _finding(
+                "selector_api_incompatible",
+                "[BLOCKS]",
+                "Background inference is a Responses API feature on bedrock-mantle "
+                "(https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html, "
+                "read 2026-11-09); the Anthropic Messages API has no background mode and this "
+                "module has no OpenAI Responses route.",
+                "Keep the Messages API on bedrock-runtime and drop background_inference, or "
+                "move the workload to an OpenAI Responses source as a provider change, then "
+                "rerun Model Recommend.",
+            )
+        )
+    if "mantle_selector_provider_mismatch" in constraints["conflicts"]:
+        blocks.append(
+            _finding(
+                "selector_provider_mismatch",
+                "[BLOCKS]",
+                "`projects` scopes the OpenAI-compatible APIs (`OpenAI-Project`, "
+                "https://docs.aws.amazon.com/bedrock/latest/userguide/projects.html); the "
+                "Anthropic Messages API scopes by Workspaces (`anthropic-workspace-id`, "
+                "https://docs.aws.amazon.com/bedrock/latest/userguide/workspaces.html, "
+                "read 2026-11-09).",
+                "Record the applicable selector (or none) in Clarify and rerun Model Recommend.",
             )
         )
     return {
