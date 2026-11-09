@@ -13,9 +13,9 @@
 
 <!-- freshness-contract: enforced by plugins/aws-startup-advisor/tools/model-staleness.py -->
 
-**Last updated:** 2026-11-02
+**Last updated:** 2026-11-07
 
-GPT-6.1 Terra was added on this date; existing model rows retain their verification dates.
+The Gemini 2.0 and 2.5 source-model retirement section was added on this date (the Google pages were read 2026-11-08 UTC, the evening of 2026-11-07 US Pacific); existing Bedrock model rows retain their verification dates.
 
 **Staleness window:** 45 days
 
@@ -174,6 +174,41 @@ When `image_generation` capability is detected:
 
 ---
 
+## Source-Model Retirements — Gemini 2.0 and 2.5 (verified November 8, 2026)
+
+The Gemini 2.0 and 2.5 generations are retired on the source side. These are **source** models, not Bedrock targets: scanners, fixtures, and discovery docs must keep recognizing the ids because customer code still contains them. Two separate rules follow from a retirement, and this section keeps them apart:
+
+1. **Target eligibility and current-recommendation tables.** No 2.0 or 2.5 model appears as a current model in a recommendation, live-tier, or cost-comparison table. Mapping guides keep 2.0 and 2.5 rows only in their legacy-source tables so a customer still on one gets a Bedrock mapping.
+2. **Source baseline pricing** — what the customer actually pays today. This is decided by the serving API and the date, per the "Source baseline by serving API" list below, not by whether the model is retired somewhere. A retirement on Vertex AI does not change what a Gemini Developer API customer is billed.
+
+Status values use the pricing-cache enum below, computed with `days_to_eol` against the earliest hard cutoff.
+
+Sources, both read 2026-11-08: the [Vertex AI / Gemini Enterprise Agent Platform model versions page](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions) and the [Gemini Developer API deprecations page](https://aistudio.google.com/docs/deprecations). Prices in the mapping guides for the replacement models come from the [Gemini Developer API pricing page](https://aistudio.google.com/docs/pricing), read the same day.
+
+| Source model                                   | Vertex AI retirement | Gemini Developer API shutdown                                                            | Status                      | Google's named replacement                                                             | Bedrock mapping (see `ai-gemini-to-bedrock.md`) |
+| ---------------------------------------------- | -------------------- | ---------------------------------------------------------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Gemini 2.5 Pro (`gemini-2.5-pro`)              | 2026-10-20 (passed)  | 2026-12-01 — hidden in AI Studio, API limited to existing users, then auto-routes to `gemini-3.8-flash` | `excluded (EOL 2026-12-01)` | `gemini-3.8-flash` or `gemini-3.5-flash` (Vertex); `gemini-3.8-flash` (Developer API) | Claude Sonnet 5 / Nova 2 Pro; Nova Pro for cost  |
+| Gemini 2.5 Flash (`gemini-2.5-flash`)          | 2026-10-20 (passed)  | 2026-12-01 — hidden in AI Studio, API limited to existing users, then auto-routes to `gemini-3.5-flash-lite` | `excluded (EOL 2026-12-01)` | `gemini-3.8-flash` or `gemini-3.5-flash-lite`                                          | Nova Lite; Claude Sonnet 5 when thinking mode is required |
+| Gemini 2.5 Flash-Lite (`gemini-2.5-flash-lite`) | 2026-10-20 (passed)  | **Not deprecated** — no shutdown date announced; still served to Developer API users     | `excluded (EOL 2026-10-20)` on Vertex AI; `active` on the Developer API only | `gemini-3.8-flash`, `gemini-3.5-flash-lite`, or Gemma 4 (Vertex) | Nova Micro / Nova Lite                           |
+| Gemini 2.0 Flash (`gemini-2.0-flash`, `gemini-2.0-flash-001`) | 2026-06-01 (passed) | 2026-06-01 (passed) — listed under Deprecated models with a shutdown date, no auto-routing announced | `excluded (EOL 2026-06-01)` | `gemini-3.5-flash-lite` (Vertex); `gemini-3.6-flash` (Developer API — itself retired on Vertex AI 2026-11-19, upgrade `gemini-3.8-flash`) | Nova Micro; Claude Haiku 5.5 when quality matters more than cost |
+| Gemini 2.0 Flash-Lite (`gemini-2.0-flash-lite`, `gemini-2.0-flash-lite-001`) | 2026-06-01 (passed) | 2026-06-01 (passed) — listed under Deprecated models with a shutdown date, no auto-routing announced | `excluded (EOL 2026-06-01)` | `gemini-3.5-flash-lite` (Vertex); `gemini-3.1-flash-lite` (Developer API)               | Nova Micro / Nova Lite                           |
+
+Apply the same four rules as for Bedrock models to **target eligibility**: users on any 2.0 model are past the hard shutdown on both Vertex AI and the Developer API, so a workload that still names one is already failing or has been moved — treat the id as evidence of what the customer ran and map it from the legacy rows; Vertex AI users on any 2.5 model are already past EOL and must migrate the source model or move straight to Bedrock; Developer API users on 2.5 Pro or 2.5 Flash are inside the 90-day exclusion zone. A Developer API user on `gemini-2.5-flash-lite` has no forced cutoff. None of these models is a current model in a recommendation or comparison table.
+
+**Source baseline by serving API.** The baseline a cost comparison is priced against is what the customer pays today, so it depends on which API serves the model and on the date, not on the retirement status above. A measured bill (`current_costs.monthly_ai_spend`, a billing CSV, or a usage profile) is always authoritative over any list-price baseline below; use the list prices only when no measured spend exists. Prices read from the [Gemini Developer API pricing page](https://aistudio.google.com/docs/pricing) on 2026-11-08.
+
+- **Gemini Developer API, `gemini-2.5-flash-lite`:** not deprecated, no shutdown date. The baseline is its current list price, $0.10 / $0.40 per 1M tokens, with no forced cutoff. Do not substitute Gemini 3.5 Flash-Lite ($0.30 / $2.50) — at 150M input / 75M output per month that would turn a $45 baseline into $232.50 and overstate the Bedrock saving.
+- **Gemini Developer API, `gemini-2.5-pro` and `gemini-2.5-flash`, before 2026-12-01:** the baseline is the current list price — $1.25 / $10.00 for 2.5 Pro (prompts ≤200K tokens) and $0.30 / $2.50 for 2.5 Flash. At 150M / 75M, 2.5 Pro is $937.50 per month; Gemini 3.8 Flash at the 2026 rate would be $393.75, so substituting the successor understates what the customer pays today.
+- **Gemini Developer API, `gemini-2.5-pro` and `gemini-2.5-flash`, on or after 2026-12-01:** Google routes the request and bills the routed model, so the baseline is the routed model's rate — Gemini 3.8 Flash for 2.5 Pro ($0.75 / $3.75 through 2026-12-31; $1.50 / $7.50 from 2027-01-01) and Gemini 3.5 Flash-Lite for 2.5 Flash ($0.30 / $2.50, the same price). Keep the 2027-01-01 step explicit wherever a 3.8 Flash figure appears.
+- **Vertex AI, any 2.5 model:** retired 2026-10-20. The customer cannot be billed for the retired model, so price the comparison against Google's named replacement in the table above (3.8 Flash with its 2027 step, 3.5 Flash-Lite, or Gemma 4).
+- **Any 2.0 model, either API:** past the 2026-06-01 shutdown. Price the comparison against the replacement in the table above; the 2.0 list prices in the mapping guides and pricing caches are historical figures only.
+
+When the serving API is not known from Discover, Clarify asks for it (`gcp-to-aws` Q19b → `ai_constraints.ai_source_serving_api`) rather than the estimate guessing. `ai-workload-profile.json` records `models[].service: vertex_ai_generative` for every Gemini generative model regardless of SDK (it is the Gemini category, not a serving-API signal) and has no Developer API value; only that row's `detected_via` evidence (`terraform`, `monitoring`) establishes Vertex AI. A code-only row is unresolved until Q19b answers.
+
+The plugin's `lint:model-id` task bans retired **Bedrock** ids by reading the Model ID column of the Legacy/EOL table above and the Removed list; this source-model table keeps its ids in the first column on purpose so retired Gemini ids remain recognizable in scanners, fixtures, and detection docs.
+
+---
+
 ## Integration Points
 
 ### Design Phase (`design-ai.md`)
@@ -214,6 +249,7 @@ When refreshing the cache, recompute `days_to_eol` and refresh the `active` / `l
 - Exclusion-zone models must not appear in any recommendation row.
 - `restricted` models never appear as a default match; they may be named only as an explicit opt-in alternative with the access requirement stated.
 - Legacy models (>90 days) may appear in notes or legacy-source mapping rows but never as the primary recommendation.
+- Retired **source** models (the Gemini 2.0 and 2.5 generations, see the section above) appear only in legacy-source rows marked Legacy/retired with the retirement date; current-recommendation and cost-comparison tables list current source models. The baseline a specific customer is priced against follows the "Source baseline by serving API" rule in that section (measured bill first; otherwise the price the serving API bills on the estimate date), not the table membership.
 
 ---
 

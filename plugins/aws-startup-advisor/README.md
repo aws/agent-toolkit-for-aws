@@ -222,7 +222,7 @@ npx skills add aws/agent-toolkit-for-aws/plugins/aws-startup-advisor/skills --sk
 
 When the sibling's Discover captured real spend from the OpenAI Admin API, the OpenRouter API, or the Anthropic Admin API (consent-gated, read-only), `llm-to-bedrock` reuses that usage profile as the cost baseline instead of extrapolating from the golden prompt set.
 
-`bedrock-migration-assessment` is the provider-neutral AI engine that will take over this work from `gcp-to-aws` ([#389](https://github.com/aws/agent-toolkit-for-aws/issues/389)). Today it scans application code for AI providers, models, gateways, workloads, and agents and their tools, or accepts a provider-neutral `ai-workload-profile.json` (rejecting the older GCP-shaped profile by name), can measure OpenAI usage through the read-only Admin API with consent, and stops after Clarify. It does not depend on any infrastructure skill.
+`bedrock-migration-assessment` is the provider-neutral AI engine that will take over this work from `gcp-to-aws` ([#389](https://github.com/aws/agent-toolkit-for-aws/issues/389)). Today it scans application code for AI providers, models, gateways, workloads, and agents and their tools, or accepts a provider-neutral `ai-workload-profile.json` (rejecting the older GCP-shaped profile by name), and stops after Clarify. It does not depend on any infrastructure skill.
 
 Model mapping is compatibility-guided rather than one-to-one parity. Validate prompts, tool-calling behavior, and evaluation metrics before cutover.
 
