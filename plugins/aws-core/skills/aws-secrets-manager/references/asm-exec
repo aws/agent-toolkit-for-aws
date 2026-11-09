@@ -254,9 +254,12 @@ def _mcp_session():
     """
     global _mcp_session_id
     if _mcp_session_id is None:
+        # 2025-03-26 is the first MCP version that defines the Streamable HTTP
+        # transport this client uses (Mcp-Session-Id, session DELETE). 2025-06-18
+        # and later also require an MCP-Protocol-Version header on every request.
         init_resp, session_id = _mcp_post(
             {"jsonrpc": "2.0", "id": 1, "method": "initialize",
-             "params": {"protocolVersion": "2024-11-05",
+             "params": {"protocolVersion": "2025-03-26",
                         "clientInfo": {"name": "asm-exec", "version": "1.0.0"},
                         "capabilities": {}}})
         err = _mcp_error(init_resp)
