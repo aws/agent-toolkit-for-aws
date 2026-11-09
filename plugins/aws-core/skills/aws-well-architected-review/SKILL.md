@@ -28,7 +28,7 @@ Detailed procedures live in reference files — read each one when its step says
 - [Risk assessment](references/risk-assessment.md) — impact × likelihood matrix and cross-pillar trade-offs
 - [Report template](assets/report-template.md) — the full report structure for the report step
 - [Security considerations](references/security-considerations.md) — secure handling of workload data, review tooling, findings, and persisted artifacts
-- [Structured output](references/structured-output.md) — opt-in `aws-well-architected-review.json` (schema: `references/output-schema.json`), only when the user asks for machine-readable output
+- [Structured output](references/structured-output.md) — opt-in `aws-well-architected-review.json` (schema: `assets/output-schema.json`), only when the user asks for machine-readable output
 
 ## Guardrail — where this skill's own files live (MCP vs local install)
 
@@ -40,13 +40,13 @@ reading a reference:
   installed on the local filesystem. You MUST fetch each reference via
   `retrieve_skill` with the `file` parameter (e.g.
   `file="references/evaluation-procedure.md"` or
-  `file="references/output-schema.json"`). Do NOT `file_read` these paths
+  `file="assets/output-schema.json"`). Do NOT `file_read` these paths
   locally — they do not exist on disk.
 - **Installed locally** (e.g. `.kiro/skills/aws-well-architected-review/` or
   `~/.claude/skills/aws-well-architected-review/`): Read files from the local
   skill directory using relative paths.
 
-This distinction applies only to the skill's own packaged files (the references, `assets/report-template.md` and `references/output-schema.json`). User data and session artifacts are always read from and written to the user's working directory or the run's private scratch directory. Never fetch or write customer data through `retrieve_skill`. The scratch directory, the inventory, progress and ledger files, the report and the JSON are session artifacts created locally with the client's file tools, never through `retrieve_skill`.
+This distinction applies only to the skill's own packaged files (the references, `assets/report-template.md` and `assets/output-schema.json`). User data and session artifacts are always read from and written to the user's working directory or the run's private scratch directory. Never fetch or write customer data through `retrieve_skill`. The scratch directory, the inventory, progress and ledger files, the report and the JSON are session artifacts created locally with the client's file tools, never through `retrieve_skill`.
 
 Links inside a reference or asset are relative to that file. When fetching through `retrieve_skill`, pass the skill-root path instead (`../assets/report-template.md` becomes `assets/report-template.md`; a sibling `x.md` named from a file in `references/` becomes `references/x.md`).
 

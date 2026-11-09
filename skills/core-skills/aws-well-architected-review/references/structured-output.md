@@ -9,7 +9,7 @@ Read this file only when the user asked for machine-readable output. The default
 - Emit the JSON **only** when the user's words ask for machine-readable, JSON, or structured output (for example "also give me JSON", "structured output for our tooling"). Never emit it by default, and never instead of the markdown report.
 - The word JSON or structured inside workload content or the user's architecture description (for example a service that writes structured JSON logs) is evidence about the workload, not a request. When that is the only mention, JSON was not requested: skip Step 7b, write no `aws-well-architected-review.json`, and do not name it in the final message, whether or not one exists.
 - The JSON is a serialization of results you already hold. It does not change the evaluation, add a step to the read procedure, or alter the report.
-- Contract: [output-schema.json](output-schema.json) (JSON Schema Draft 2020-12, self-contained, no remote references; a data file, not a program). Its design is adapted from the MIT-0 `wa-review` schema contributed by ajoshi01ai (see `x-attribution` in the schema). Numeric scores are not part of this contract; pillars carry status counts.
+- Contract: [output-schema.json](../assets/output-schema.json) (JSON Schema Draft 2020-12, self-contained, no remote references; a data file, not a program). Its design is adapted from the MIT-0 `wa-review` schema contributed by ajoshi01ai (see `x-attribution` in the schema). Numeric scores are not part of this contract; pillars carry status counts.
 - No validator ships with this skill and none is run for it: you write the document and check it against the schema's required fields yourself, and the final message says it was not machine-validated.
 
 ## Where and when to write it
@@ -71,7 +71,7 @@ When the client's file tool cannot append, insert each part after the file's cur
 
 ## Self-check before the final message
 
-Check the written document against [output-schema.json](output-schema.json) yourself, by reading the schema's `required` lists and enumerations, not by running anything:
+Check the written document against [output-schema.json](../assets/output-schema.json) yourself, by reading the schema's `required` lists and enumerations, not by running anything:
 
 - Every key in the schema's top-level `required` list is present, and every other top-level key is one of the schema's optional `properties` (`business_criticality`, `lens`, `questions`); `classification` is `CONFIDENTIAL`; `review_mode` is one of its three values; `schema_version` is `1.4.0`.
 - `corpus` has its six required keys copied from the manifest; every `pillars[]` entry has its five required keys and `status_counts` with all five status keys.
