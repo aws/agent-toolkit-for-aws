@@ -190,6 +190,54 @@ def test_every_gpt_path_row_carries_a_boolean_guardrails_flag(catalogs):
     assert chat_true == {"openai_gpt_6_sol", "openai_gpt_6_luna", "openai_gpt_6_1_sol"}
 
 
+def test_every_gpt_path_row_carries_a_boolean_prompt_caching_flag(catalogs):
+    # Per-API prompt-caching scope from the nine GPT cards (read 2026-11-09): GPT-5.5 /
+    # GPT-5.4 list implicit caching on the bedrock-runtime Responses API only and no
+    # caching on bedrock-mantle; GPT-5.6 Sol/Terra/Luna cache on every runtime API and
+    # on Mantle Responses only; GPT-6 Sol/Luna and GPT-6.1 Sol cache on every runtime
+    # API and on both Mantle APIs; GPT-6 Astra mirrors its per-path capabilities.
+    models = catalogs["openai"]["models"]
+    runtime_responses_true = set()
+    runtime_chat_true = set()
+    runtime_converse_true = set()
+    mantle_responses_true = set()
+    mantle_chat_true = set()
+    gpt_keys = set()
+    for model_key, model in models.items():
+        if model.get("generation") == "bedrock_native":
+            continue
+        gpt_keys.add(model_key)
+        for path, row in model["paths"].items():
+            assert isinstance(row.get("prompt_caching_supported"), bool), f"{model_key}.{path}"
+            assert "prompt_caching_supported" in row["evidence"], f"{model_key}.{path}"
+            assert "read 2026-11-09" in row["evidence"], f"{model_key}.{path}"
+            assert _cites_aws_docs(row["evidence"]), f"{model_key}.{path}"
+            if row["prompt_caching_supported"]:
+                {
+                    "runtime_openai_responses": runtime_responses_true,
+                    "runtime_openai_chat": runtime_chat_true,
+                    "runtime_converse": runtime_converse_true,
+                    "mantle_openai_responses": mantle_responses_true,
+                    "mantle_openai_chat": mantle_chat_true,
+                }[path].add(model_key)
+            if "prompt_caching" in (row.get("capabilities") or []):
+                # A row whose capability list names prompt_caching (Astra) carries the flag.
+                assert row["prompt_caching_supported"] is True, f"{model_key}.{path}"
+    assert runtime_responses_true == gpt_keys
+    assert runtime_chat_true == {
+        "openai_gpt_5_6_sol", "openai_gpt_5_6_terra", "openai_gpt_5_6_luna",
+        "openai_gpt_6_sol", "openai_gpt_6_luna", "openai_gpt_6_1_sol", "openai_gpt_6_astra",
+    }
+    assert runtime_converse_true == {
+        "openai_gpt_5_6_sol", "openai_gpt_5_6_terra", "openai_gpt_5_6_luna",
+        "openai_gpt_6_sol", "openai_gpt_6_luna", "openai_gpt_6_1_sol",
+    }
+    assert mantle_responses_true == gpt_keys - {"openai_gpt_5_5", "openai_gpt_5_4"}
+    assert mantle_chat_true == {"openai_gpt_6_sol", "openai_gpt_6_luna", "openai_gpt_6_1_sol"}
+    for model_key in ("openai_gpt_5_5", "openai_gpt_5_4"):
+        assert "Responses API only" in models[model_key]["paths"]["runtime_openai_chat"]["evidence"]
+
+
 def test_only_gpt61_sol_mantle_rows_deny_server_side_tools(catalogs):
     models = catalogs["openai"]["models"]
     denied = {

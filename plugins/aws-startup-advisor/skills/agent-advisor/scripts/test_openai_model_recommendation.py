@@ -7,6 +7,7 @@ derived from a detected Web Search tool / strict in-Region processing); Guardrai
 and multi-model Converse select runtime Converse.
 """
 
+import copy
 import json
 import pathlib
 import re
@@ -2058,6 +2059,92 @@ def test_astra_required_caching_is_checked_on_the_selected_api(region, surface, 
     else:
         assert rec["decision_status"] == "recommended"
         assert "prompt_caching" in rec["compatibility"]["native"]
+
+
+# --- Required prompt caching is checked on the selected API for EVERY candidate via
+# the catalog `prompt_caching_supported` row flag (GPT-5.5 / GPT-5.4 cards: implicit
+# caching on the bedrock-runtime Responses API only; read 2026-11-09) -------------
+
+def test_gpt55_chat_with_required_continuity_and_critical_prompt_caching_never_recommends_a_cache_less_row():
+    out = _full_recommend(
+        _workload(source={"model_ids": ["gpt-5.5"], "api_surface": "chat_completions"},
+                  requirements={"api_continuity": "required",
+                                "data_residency": "global_allowed",
+                                "critical_features": ["prompt_caching"]}),
+        region="us-east-1",
+    )
+    jsonschema.validate(out, _OUT_SCHEMA)
+    rec = out["workloads"]["chat-svc"]
+    # Never a clean GPT-5.5 Chat row with empty buckets.
+    assert not (
+        rec["decision_status"] == "recommended"
+        and rec["primary_model"] == "openai.gpt-5.5"
+    )
+    if rec["decision_status"] == "recommended":
+        assert rec["api_path"] == "runtime_openai_chat"
+        assert "prompt_caching" in rec["compatibility"]["native"]
+        assert rec["compatibility"]["unsupported"] == []
+        row = OPENAI_CATALOG["models"][rec["model_identity"]["model_key"]]["paths"]["runtime_openai_chat"]
+        assert row["prompt_caching_supported"] is True
+        assert rec["model_identity"]["family"] == "openai_gpt_5"
+        # The fallback is explained by the caching scope, not a false "unavailable".
+        assert "prompt caching on the Responses API only" in rec["rationale"][0]
+        assert "unavailable" not in rec["rationale"][0]
+    else:
+        assert rec["decision_status"] == "decision_required"
+        assert "unverified_capability" in _codes(rec["blocks"])
+        assert "prompt_caching" in rec["blocks"][0]["message"]
+
+
+def test_gpt55_responses_with_critical_prompt_caching_is_recommended_natively():
+    rec = _recommend(
+        _workload(source={"model_ids": ["gpt-5.5"], "api_surface": "responses"},
+                  requirements={"critical_features": ["prompt_caching"]}),
+        region="us-east-1",
+    )
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "runtime_openai_responses"
+    assert rec["primary_model"] == "openai.gpt-5.5"
+    assert "prompt_caching" in rec["compatibility"]["native"]
+    assert rec["compatibility"]["unsupported"] == []
+
+
+def test_prompt_caching_decision_names_the_responses_tradeoff_when_no_chat_candidate_has_it():
+    catalog = copy.deepcopy(OPENAI_CATALOG)
+    catalog["models"] = {
+        key: model for key, model in catalog["models"].items()
+        if key == "openai_gpt_5_5" or model.get("generation") == "bedrock_native"
+    }
+    rec = oai.recommend_openai_workload(
+        _workload(source={"model_ids": ["gpt-5.5"], "api_surface": "chat_completions"},
+                  requirements={"api_continuity": "required",
+                                "critical_features": ["prompt_caching"]}),
+        "us-east-1", catalog,
+    )
+    assert rec["decision_status"] == "decision_required"
+    assert rec["api_path"] is None
+    assert "unverified_capability" in _codes(rec["blocks"])
+    block = rec["blocks"][0]
+    assert "prompt_caching" in block["message"]
+    assert "Responses" in block["message"]
+    assert "GPT-5.5" in block["message"]
+    assert "read 2026-11-09" in block["message"]
+    assert "reshape to Responses" in block["message"]
+    assert "drop prompt_caching" in block["remediation"]
+    assert rec["compatibility"]["native"] == []
+
+
+def test_gpt55_chat_without_a_caching_requirement_is_still_a_clean_recommendation():
+    rec = _recommend(
+        _workload(source={"model_ids": ["gpt-5.5"], "api_surface": "chat_completions"},
+                  requirements={"api_continuity": "required"}),
+        region="us-east-1",
+    )
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "runtime_openai_chat"
+    assert rec["primary_model"] == "openai.gpt-5.5"
+    assert "prompt_caching" not in rec["compatibility"]["native"]
+    assert rec["compatibility"]["unsupported"] == []
 
 
 def test_astra_decision_options_ignore_an_explicitly_absent_cache_signal():

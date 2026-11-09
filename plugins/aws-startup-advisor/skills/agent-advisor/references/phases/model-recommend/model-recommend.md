@@ -122,7 +122,18 @@ GPT-6.1 Sol keeps `runtime_openai_chat`, because their cards list Guardrails on 
 catalog row flag `guardrails_supported`; cards read 2026-11-08:
 `https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-sol.html`,
 `model-card-openai-gpt-6-luna.html`, `model-card-openai-gpt-6-1-sol.html`). A GPT-6.1 Sol
-Responses source with Guardrails is a `decision_required` because its card excludes Responses. A
+Responses source with Guardrails is a `decision_required` because its card excludes Responses.
+The catalog row flag `prompt_caching_supported` carries the per-API prompt-caching scope the same way
+(GPT-5.5 / GPT-5.4: implicit caching on the bedrock-runtime Responses API only, none on
+`bedrock-mantle`; GPT-5.6 Sol / Terra / Luna: every runtime API and Mantle Responses only; GPT-6 Sol /
+Luna and GPT-6.1 Sol: every API on both endpoints; cards read 2026-11-09:
+`https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html`,
+`model-card-openai-gpt-54.html`). A required `prompt_caching` is checked on the selected API row for
+every candidate: a GPT-5.5 Chat Completions source with required continuity and critical
+`prompt_caching` lands on the same-family candidate whose Chat row caches (GPT-5.6) with the reason
+in `rationale`, or — when no candidate's row caches — is an `unverified_capability` decision that
+names the Chat-versus-Responses continuity trade-off. It is never a clean `runtime_openai_chat`
+recommendation with empty compatibility buckets. A
 shared multi-model Converse surface always selects `runtime_converse`. Required API continuity
 plus Converse-only governance is a `decision_required` between two bedrock-runtime options
 (`runtime_openai_<api>` and `runtime_converse`); Mantle is never offered without a selector.

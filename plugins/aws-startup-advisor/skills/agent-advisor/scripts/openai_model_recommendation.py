@@ -237,6 +237,29 @@ def _guardrails_on_openai_api(catalog, source, openai_path):
     return row.get("guardrails_supported") is True
 
 
+def _other_runtime_api_with_prompt_caching(catalog, source, path):
+    """The recognized source model's OTHER bedrock-runtime OpenAI API when its
+    catalog row carries `prompt_caching_supported: true` and the selected `path`
+    row does not (GPT-5.5 / GPT-5.4 Chat sources: Responses caches, Chat does not).
+    None when `path` is not a runtime OpenAI API or no such row exists."""
+    if path not in {"runtime_openai_responses", "runtime_openai_chat"}:
+        return None
+    same = _same_model_catalog_key(source)
+    if not same or catalog is None:
+        return None
+    paths = catalog["models"].get(same, {}).get("paths", {})
+    other = (
+        "runtime_openai_chat" if path == "runtime_openai_responses" else "runtime_openai_responses"
+    )
+    if (
+        paths.get(path, {}).get("prompt_caching_supported") is False
+        and paths.get(other, {}).get("available") is True
+        and paths.get(other, {}).get("prompt_caching_supported") is True
+    ):
+        return other
+    return None
+
+
 def _converse_required(requirements, catalog=None, source=None, openai_path=None):
     """Converse is required by multi-model Converse, by an application inference
     profile, and by Guardrails when the source model's card scopes them to Converse
@@ -405,7 +428,7 @@ def _catalog_model_for_path(catalog, path, detected_features=None, requirements=
         ):
             continue
         unmet = _unsupported_required_capabilities(
-            model, detected_features, requirements or {}
+            model, detected_features, requirements or {}, path_config
         )
         if first is None:
             first = (model_key, model, path_config)
@@ -952,12 +975,26 @@ def _unknown_required_features(feature_assessment, requirements):
     return sorted(f for f in required if feature_assessment.get(f) == "unknown")
 
 
-def _unsupported_required_capabilities(target_model, detected_features, requirements):
+def _evidenced_capabilities(target_model, path_config):
+    """The target's catalog capabilities for the selected row, plus `prompt_caching`
+    when that row's `prompt_caching_supported` flag is true. Prompt caching is scoped
+    per API by every GPT card (GPT-5.5 / GPT-5.4: implicit caching on the bedrock-runtime
+    Responses API only; cards read 2026-11-09), so it is evidenced on the selected row
+    only, never inherited from the model."""
+    caps = set((target_model or {}).get("capabilities") or [])
+    if (path_config or {}).get("prompt_caching_supported") is True:
+        caps.add("prompt_caching")
+    return caps
+
+
+def _unsupported_required_capabilities(target_model, detected_features, requirements,
+                                       path_config=None):
     """Required/detected text-model features NOT evidenced by the target's catalog
-    capabilities. Hosted tools/modalities are handled as architecture impacts, not here."""
+    capabilities on the selected path row. Hosted tools/modalities are handled as
+    architecture impacts, not here."""
     if target_model is None:
         return []
-    catalog_caps = set(target_model.get("capabilities") or [])
+    catalog_caps = _evidenced_capabilities(target_model, path_config)
     needed = set(requirements.get("critical_features") or [])
     needed.update(detected_features or [])
     checkable = needed.intersection(
@@ -967,24 +1004,25 @@ def _unsupported_required_capabilities(target_model, detected_features, requirem
             "streaming",
             "image_input_vision",
             "reasoning",
+            "prompt_caching",
         }
     )
-    if target_model.get("display_name") == "OpenAI GPT-6 Astra (on Bedrock)" and "prompt_caching" in needed:
-        checkable.add("prompt_caching")
     return sorted(checkable - catalog_caps)
 
 
-def _compatibility(detected_features, requirements, path, target_model=None):
-    """native = only features the SELECTED target's catalog evidences; features
-    needed but not evidenced go to unsupported (never derive native from the name)."""
+def _compatibility(detected_features, requirements, path, target_model=None, path_config=None):
+    """native = only features the SELECTED target's catalog evidences on the selected
+    path row; features needed but not evidenced go to unsupported (never derive native
+    from the name)."""
     detected = set(detected_features or [])
     detected.update(requirements.get("critical_features") or [])
     text_features = detected.intersection(
-        {"tool_or_function_calling", "structured_output_json", "streaming", "image_input_vision", "reasoning"}
+        {
+            "tool_or_function_calling", "structured_output_json", "streaming",
+            "image_input_vision", "reasoning", "prompt_caching",
+        }
     )
-    if (target_model or {}).get("display_name") == "OpenAI GPT-6 Astra (on Bedrock)" and "prompt_caching" in detected:
-        text_features.add("prompt_caching")
-    catalog_caps = set((target_model or {}).get("capabilities") or [])
+    catalog_caps = _evidenced_capabilities(target_model, path_config)
     native = sorted(text_features.intersection(catalog_caps)) if target_model else []
     unsupported = sorted(text_features - catalog_caps) if target_model else []
     hosted = detected.intersection(_HOSTED_TOOL_IMPACTS)
@@ -1726,6 +1764,18 @@ def recommend_openai_workload(workload, region, catalog):
                     else " (bedrock-endpoint-policy.md default)."
                 )
             )
+        elif (
+            "prompt_caching" in (set(detected) | set(requirements.get("critical_features") or []))
+            and _other_runtime_api_with_prompt_caching(catalog, source, path)
+        ):
+            same_name = catalog["models"][_same_model_catalog_key(source)]["display_name"]
+            rationale_head = (
+                f"{same_name} lists implicit prompt caching on the Responses API only on "
+                "bedrock-runtime (model card, read 2026-11-09), so its Chat Completions row "
+                f"cannot evidence the required prompt_caching; {model['display_name']} is the "
+                f"same-family {endpoint} Chat Completions candidate whose card lists caching on "
+                "this API."
+            )
         else:
             rationale_head = (
                 f"The exact source model is unavailable in {region}; "
@@ -1750,20 +1800,36 @@ def recommend_openai_workload(workload, region, catalog):
             f"that serves mantle_selector {selector}."
         )
     if unsupported:
+        message = (
+            f"No {path} candidate is evidenced to support required features: "
+            + ", ".join(unsupported)
+        )
+        remediation = (
+            "Add dated capability evidence for a candidate, choose a different path/model, "
+            "or drop the requirement, then rerun Model Recommend."
+        )
+        caching_api = _other_runtime_api_with_prompt_caching(catalog, source, path)
+        if unsupported == ["prompt_caching"] and caching_api:
+            # The source model does cache on its other bedrock-runtime OpenAI API: the
+            # open decision is the API-continuity trade-off, not a missing model.
+            same_name = catalog["models"][_same_model_catalog_key(source)]["display_name"]
+            message += (
+                f". {same_name} lists implicit prompt caching on the {_api_label(caching_api)} "
+                f"API only on bedrock-runtime (model card, read 2026-11-09); keep "
+                f"{_api_label(path)} without caching or reshape to {_api_label(caching_api)}."
+            )
+            remediation = (
+                f"Keep {_api_label(path)} on bedrock-runtime and drop prompt_caching, or set "
+                f"api_continuity to not_required (or preferred_api_path {caching_api}) to "
+                f"reshape to {_api_label(caching_api)}, then rerun Model Recommend."
+            )
         return _unresolved(
             rationale_head,
             [
                 f"No {path} candidate has catalog capability evidence for: "
                 + ", ".join(unsupported)
             ],
-            _finding(
-                "unverified_capability",
-                "[BLOCKS]",
-                f"No {path} candidate is evidenced to support required features: "
-                + ", ".join(unsupported),
-                "Add dated capability evidence for a candidate, choose a different path/model, "
-                "or drop the requirement, then rerun Model Recommend.",
-            ),
+            _finding("unverified_capability", "[BLOCKS]", message, remediation),
             path,
         )
 
@@ -1972,7 +2038,7 @@ def recommend_openai_workload(workload, region, catalog):
             "rationale": rationale,
             "blocks": blocks,
             "tuning": tuning,
-            "compatibility": _compatibility(detected, requirements, path, model),
+            "compatibility": _compatibility(detected, requirements, path, model, path_config),
             "architecture_impacts": impacts,
             "additional_targets": _additional_targets(detected, requirements),
             "migration_deltas": deltas,

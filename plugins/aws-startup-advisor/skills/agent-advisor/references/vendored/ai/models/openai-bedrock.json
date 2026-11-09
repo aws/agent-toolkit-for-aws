@@ -142,35 +142,40 @@
           "model_id": "openai.gpt-5.6-sol",
           "requires_cris": false,
           "guardrails_supported": false,
-          "evidence": "AWS model card (2026-08-21): bedrock-mantle at /openai/v1, in-region only; Responses supported; In-Region pricing at 1.10x OpenAI standard"
+          "prompt_caching_supported": true,
+          "evidence": "AWS model card (2026-08-21): bedrock-mantle at /openai/v1, in-region only; Responses supported; In-Region pricing at 1.10x OpenAI standard; prompt_caching_supported true: the card lists implicit prompt caching on the Responses API only on bedrock-mantle (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-sol.html, read 2026-11-09)"
         },
         "mantle_openai_chat": {
           "available": true,
           "model_id": "openai.gpt-5.6-sol",
           "requires_cris": false,
           "guardrails_supported": false,
-          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-sol.html (read 2026-11-08): bedrock-mantle lists Chat Completions supported at /openai/v1/chat/completions; in-region us-east-1, us-east-2"
+          "prompt_caching_supported": false,
+          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-sol.html (read 2026-11-08): bedrock-mantle lists Chat Completions supported at /openai/v1/chat/completions; in-region us-east-1, us-east-2; prompt_caching_supported false: the card lists implicit prompt caching on the Responses API only on bedrock-mantle (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-sol.html, read 2026-11-09)"
         },
         "runtime_converse": {
           "available": true,
           "model_id": "openai.gpt-5.6-sol",
           "requires_cris": true,
           "guardrails_supported": true,
-          "evidence": "AWS model card (2026-08-21): bedrock-runtime row with Geo (us.) and Global CRIS ids; APIs listed: Responses/Chat Completions/Invoke/Converse; Guardrails Converse-only, prompt caching Responses-only; Global CRIS priced at OpenAI standard (parity), In-Region/Geo at 1.10x. Profile matrix (inference_profiles) from https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-sol.html (read 2026-11-08): us. from six US/Canada source regions, global. from every listed commercial region; no eu./in./us-gov. profile"
+          "prompt_caching_supported": true,
+          "evidence": "AWS model card (2026-08-21): bedrock-runtime row with Geo (us.) and Global CRIS ids; APIs listed: Responses/Chat Completions/Invoke/Converse; Guardrails Converse-only, prompt caching Responses-only; Global CRIS priced at OpenAI standard (parity), In-Region/Geo at 1.10x. Profile matrix (inference_profiles) from https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-sol.html (read 2026-11-08): us. from six US/Canada source regions, global. from every listed commercial region; no eu./in./us-gov. profile; prompt_caching_supported true: the card now lists implicit prompt caching on Responses, Chat Completions, InvokeModel and Converse on bedrock-runtime, superseding the 2026-08-21 Responses-only note (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-sol.html, read 2026-11-09)"
         },
         "runtime_openai_responses": {
           "available": true,
           "model_id": "openai.gpt-5.6-sol",
           "requires_cris": true,
           "guardrails_supported": false,
-          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-sol.html (read 2026-11-08): bedrock-runtime lists Responses supported (base URL bedrock-runtime.{region}.amazonaws.com/openai/v1); no in-region form; Geo id us.openai.gpt-5.6-sol, Global id global.openai.gpt-5.6-sol; the card's runtime table is the source of this model's inference_profiles matrix (us. and global. only); Guardrails Converse-only"
+          "prompt_caching_supported": true,
+          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-sol.html (read 2026-11-08): bedrock-runtime lists Responses supported (base URL bedrock-runtime.{region}.amazonaws.com/openai/v1); no in-region form; Geo id us.openai.gpt-5.6-sol, Global id global.openai.gpt-5.6-sol; the card's runtime table is the source of this model's inference_profiles matrix (us. and global. only); Guardrails Converse-only; prompt_caching_supported true: the card lists implicit prompt caching on Responses, Chat Completions, InvokeModel and Converse on bedrock-runtime (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-sol.html, read 2026-11-09)"
         },
         "runtime_openai_chat": {
           "available": true,
           "model_id": "openai.gpt-5.6-sol",
           "requires_cris": true,
           "guardrails_supported": false,
-          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-sol.html (read 2026-11-08): bedrock-runtime lists Chat Completions supported (/openai/v1/chat/completions); no in-region form; Geo id us.openai.gpt-5.6-sol, Global id global.openai.gpt-5.6-sol; the card's runtime table is the source of this model's inference_profiles matrix (us. and global. only); Guardrails Converse-only"
+          "prompt_caching_supported": true,
+          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-sol.html (read 2026-11-08): bedrock-runtime lists Chat Completions supported (/openai/v1/chat/completions); no in-region form; Geo id us.openai.gpt-5.6-sol, Global id global.openai.gpt-5.6-sol; the card's runtime table is the source of this model's inference_profiles matrix (us. and global. only); Guardrails Converse-only; prompt_caching_supported true: the card lists implicit prompt caching on Responses, Chat Completions, InvokeModel and Converse on bedrock-runtime (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-sol.html, read 2026-11-09)"
         }
       }
     },
@@ -209,38 +214,43 @@
           "model_id": "openai.gpt-5.5",
           "requires_cris": false,
           "guardrails_supported": false,
-          "evidence": "AWS model card model-card-openai-gpt-55 (read 2026-11-06): bedrock-mantle supports Responses at /openai/v1/responses; in-region us-east-1 and us-east-2 only; Geo/Global not supported on mantle"
+          "prompt_caching_supported": false,
+          "evidence": "AWS model card model-card-openai-gpt-55 (read 2026-11-06): bedrock-mantle supports Responses at /openai/v1/responses; in-region us-east-1 and us-east-2 only; Geo/Global not supported on mantle; prompt_caching_supported false: the card's bedrock-mantle feature list names no prompt caching (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html, read 2026-11-09)"
         },
         "mantle_openai_chat": {
           "available": true,
           "model_id": "openai.gpt-5.5",
           "requires_cris": false,
           "guardrails_supported": false,
-          "evidence": "AWS model card model-card-openai-gpt-55 (read 2026-11-06): Chat Completions listed as supported on bedrock-mantle at /openai/v1/chat/completions, with sample code"
+          "prompt_caching_supported": false,
+          "evidence": "AWS model card model-card-openai-gpt-55 (read 2026-11-06): Chat Completions listed as supported on bedrock-mantle at /openai/v1/chat/completions, with sample code; prompt_caching_supported false: the card's bedrock-mantle feature list names no prompt caching (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html, read 2026-11-09)"
         },
         "runtime_converse": {
           "available": true,
           "model_id": "openai.gpt-5.5",
           "requires_cris": true,
           "guardrails_supported": true,
+          "prompt_caching_supported": false,
           "capabilities": ["reasoning", "tool_or_function_calling", "image_input_vision", "streaming"],
-          "evidence": "AWS model card model-card-openai-gpt-55 (read 2026-11-06): bedrock-runtime supported with Responses, Chat Completions and Converse (Messages and Invoke unsupported); no in-region form — requests must name us.openai.gpt-5.5 (Geo) or global.openai.gpt-5.5 (Global); base URL bedrock-runtime.{region}.amazonaws.com/openai/v1 for the OpenAI-compatible APIs. Per-API capabilities from https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html (read 2026-11-08): 'Response streaming' listed for runtime; 'Structured outputs (JSON Schema; Responses API)' is scoped to Responses, so structured_output_json is not carried on Converse; Guardrails Converse-only"
+          "evidence": "AWS model card model-card-openai-gpt-55 (read 2026-11-06): bedrock-runtime supported with Responses, Chat Completions and Converse (Messages and Invoke unsupported); no in-region form — requests must name us.openai.gpt-5.5 (Geo) or global.openai.gpt-5.5 (Global); base URL bedrock-runtime.{region}.amazonaws.com/openai/v1 for the OpenAI-compatible APIs. Per-API capabilities from https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html (read 2026-11-08): 'Response streaming' listed for runtime; 'Structured outputs (JSON Schema; Responses API)' is scoped to Responses, so structured_output_json is not carried on Converse; Guardrails Converse-only; prompt_caching_supported false: the card lists 'Implicit Prompt Caching (Responses API only; automatic, no request parameters)' on bedrock-runtime and Explicit Prompt Caching as not supported (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html, read 2026-11-09)"
         },
         "runtime_openai_responses": {
           "available": true,
           "model_id": "openai.gpt-5.5",
           "requires_cris": true,
           "guardrails_supported": false,
+          "prompt_caching_supported": true,
           "capabilities": ["reasoning", "tool_or_function_calling", "image_input_vision", "structured_output_json", "streaming"],
-          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html (read 2026-11-08): bedrock-runtime lists Responses supported; 'Structured outputs (JSON Schema; Responses API)' and 'Response streaming' listed for runtime, implicit prompt caching Responses-only; Guardrails Converse-only; no in-region form; Geo id us.openai.gpt-5.5, Global id global.openai.gpt-5.5"
+          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html (read 2026-11-08): bedrock-runtime lists Responses supported; 'Structured outputs (JSON Schema; Responses API)' and 'Response streaming' listed for runtime, implicit prompt caching Responses-only; Guardrails Converse-only; no in-region form; Geo id us.openai.gpt-5.5, Global id global.openai.gpt-5.5; prompt_caching_supported true: the card lists 'Implicit Prompt Caching (Responses API only; automatic, no request parameters)' on bedrock-runtime and Explicit Prompt Caching as not supported (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html, read 2026-11-09)"
         },
         "runtime_openai_chat": {
           "available": true,
           "model_id": "openai.gpt-5.5",
           "requires_cris": true,
           "guardrails_supported": false,
+          "prompt_caching_supported": false,
           "capabilities": ["reasoning", "tool_or_function_calling", "image_input_vision", "streaming"],
-          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html (read 2026-11-08): bedrock-runtime lists Chat Completions supported; 'Response streaming' listed for runtime; the card scopes 'Structured outputs (JSON Schema; Responses API)' and implicit prompt caching to Responses, so structured_output_json is not carried on Chat Completions; Guardrails Converse-only; no in-region form; Geo id us.openai.gpt-5.5, Global id global.openai.gpt-5.5"
+          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html (read 2026-11-08): bedrock-runtime lists Chat Completions supported; 'Response streaming' listed for runtime; the card scopes 'Structured outputs (JSON Schema; Responses API)' and implicit prompt caching to Responses, so structured_output_json is not carried on Chat Completions; Guardrails Converse-only; no in-region form; Geo id us.openai.gpt-5.5, Global id global.openai.gpt-5.5; prompt_caching_supported false: the card lists 'Implicit Prompt Caching (Responses API only; automatic, no request parameters)' on bedrock-runtime and Explicit Prompt Caching as not supported (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html, read 2026-11-09)"
         }
       }
     },
@@ -281,35 +291,40 @@
           "model_id": "openai.gpt-5.6-terra",
           "requires_cris": false,
           "guardrails_supported": false,
-          "evidence": "AWS model card (2026-08-21): bedrock-mantle at /openai/v1, in-region only; Responses supported; In-Region pricing at 1.10x OpenAI standard"
+          "prompt_caching_supported": true,
+          "evidence": "AWS model card (2026-08-21): bedrock-mantle at /openai/v1, in-region only; Responses supported; In-Region pricing at 1.10x OpenAI standard; prompt_caching_supported true: the card lists implicit prompt caching on the Responses API only on bedrock-mantle (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-terra.html, read 2026-11-09)"
         },
         "mantle_openai_chat": {
           "available": true,
           "model_id": "openai.gpt-5.6-terra",
           "requires_cris": false,
           "guardrails_supported": false,
-          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-terra.html (read 2026-11-08): bedrock-mantle lists Chat Completions supported at /openai/v1/chat/completions; in-region us-east-1, us-east-2, us-west-2, us-gov-west-1, us-gov-east-1"
+          "prompt_caching_supported": false,
+          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-terra.html (read 2026-11-08): bedrock-mantle lists Chat Completions supported at /openai/v1/chat/completions; in-region us-east-1, us-east-2, us-west-2, us-gov-west-1, us-gov-east-1; prompt_caching_supported false: the card lists implicit prompt caching on the Responses API only on bedrock-mantle (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-terra.html, read 2026-11-09)"
         },
         "runtime_converse": {
           "available": true,
           "model_id": "openai.gpt-5.6-terra",
           "requires_cris": true,
           "guardrails_supported": true,
-          "evidence": "AWS model card (2026-08-21): bedrock-runtime row with Geo (us./in.) and Global CRIS ids; APIs listed: Responses/Chat Completions/Invoke/Converse; Guardrails Converse-only, prompt caching Responses-only; Global CRIS priced at OpenAI standard (parity), In-Region/Geo at 1.10x. Profile matrix (inference_profiles) from https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-terra.html (read 2026-11-08): us. from six US/Canada source regions, in. from ap-south-1/ap-south-2, us-gov. from us-gov-east-1/us-gov-west-1 (Global not supported there), global. from every listed commercial region"
+          "prompt_caching_supported": true,
+          "evidence": "AWS model card (2026-08-21): bedrock-runtime row with Geo (us./in.) and Global CRIS ids; APIs listed: Responses/Chat Completions/Invoke/Converse; Guardrails Converse-only, prompt caching Responses-only; Global CRIS priced at OpenAI standard (parity), In-Region/Geo at 1.10x. Profile matrix (inference_profiles) from https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-terra.html (read 2026-11-08): us. from six US/Canada source regions, in. from ap-south-1/ap-south-2, us-gov. from us-gov-east-1/us-gov-west-1 (Global not supported there), global. from every listed commercial region; prompt_caching_supported true: the card now lists implicit prompt caching on Responses, Chat Completions, InvokeModel and Converse on bedrock-runtime, superseding the 2026-08-21 Responses-only note (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-terra.html, read 2026-11-09)"
         },
         "runtime_openai_responses": {
           "available": true,
           "model_id": "openai.gpt-5.6-terra",
           "requires_cris": true,
           "guardrails_supported": false,
-          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-terra.html (read 2026-11-08): bedrock-runtime lists Responses supported; no in-region form; Geo ids us.openai.gpt-5.6-terra (commercial), in.openai.gpt-5.6-terra (India), us-gov.openai.gpt-5.6-terra (GovCloud); Global id global.openai.gpt-5.6-terra; the card's runtime table is the source of this model's inference_profiles matrix; Guardrails Converse-only"
+          "prompt_caching_supported": true,
+          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-terra.html (read 2026-11-08): bedrock-runtime lists Responses supported; no in-region form; Geo ids us.openai.gpt-5.6-terra (commercial), in.openai.gpt-5.6-terra (India), us-gov.openai.gpt-5.6-terra (GovCloud); Global id global.openai.gpt-5.6-terra; the card's runtime table is the source of this model's inference_profiles matrix; Guardrails Converse-only; prompt_caching_supported true: the card lists implicit prompt caching on Responses, Chat Completions, InvokeModel and Converse on bedrock-runtime (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-terra.html, read 2026-11-09)"
         },
         "runtime_openai_chat": {
           "available": true,
           "model_id": "openai.gpt-5.6-terra",
           "requires_cris": true,
           "guardrails_supported": false,
-          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-terra.html (read 2026-11-08): bedrock-runtime lists Chat Completions supported; no in-region form; Geo ids us.openai.gpt-5.6-terra (commercial), in.openai.gpt-5.6-terra (India), us-gov.openai.gpt-5.6-terra (GovCloud); Global id global.openai.gpt-5.6-terra; the card's runtime table is the source of this model's inference_profiles matrix; Guardrails Converse-only"
+          "prompt_caching_supported": true,
+          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-terra.html (read 2026-11-08): bedrock-runtime lists Chat Completions supported; no in-region form; Geo ids us.openai.gpt-5.6-terra (commercial), in.openai.gpt-5.6-terra (India), us-gov.openai.gpt-5.6-terra (GovCloud); Global id global.openai.gpt-5.6-terra; the card's runtime table is the source of this model's inference_profiles matrix; Guardrails Converse-only; prompt_caching_supported true: the card lists implicit prompt caching on Responses, Chat Completions, InvokeModel and Converse on bedrock-runtime (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-terra.html, read 2026-11-09)"
         }
       }
     },
@@ -350,35 +365,40 @@
           "model_id": "openai.gpt-5.6-luna",
           "requires_cris": false,
           "guardrails_supported": false,
-          "evidence": "AWS model card (2026-08-21): bedrock-mantle at /openai/v1, in-region only; Responses supported; In-Region pricing at 1.10x OpenAI standard"
+          "prompt_caching_supported": true,
+          "evidence": "AWS model card (2026-08-21): bedrock-mantle at /openai/v1, in-region only; Responses supported; In-Region pricing at 1.10x OpenAI standard; prompt_caching_supported true: the card lists implicit prompt caching on the Responses API only on bedrock-mantle (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-luna.html, read 2026-11-09)"
         },
         "mantle_openai_chat": {
           "available": true,
           "model_id": "openai.gpt-5.6-luna",
           "requires_cris": false,
           "guardrails_supported": false,
-          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-luna.html (read 2026-11-08): bedrock-mantle lists Chat Completions supported at /openai/v1/chat/completions; in-region us-east-1, us-east-2, us-west-2, us-gov-west-1, us-gov-east-1"
+          "prompt_caching_supported": false,
+          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-luna.html (read 2026-11-08): bedrock-mantle lists Chat Completions supported at /openai/v1/chat/completions; in-region us-east-1, us-east-2, us-west-2, us-gov-west-1, us-gov-east-1; prompt_caching_supported false: the card lists implicit prompt caching on the Responses API only on bedrock-mantle (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-luna.html, read 2026-11-09)"
         },
         "runtime_converse": {
           "available": true,
           "model_id": "openai.gpt-5.6-luna",
           "requires_cris": true,
           "guardrails_supported": true,
-          "evidence": "AWS model card (2026-08-21): bedrock-runtime row with Geo (us./in.) and Global CRIS ids; APIs listed: Responses/Chat Completions/Invoke/Converse; Guardrails Converse-only, prompt caching Responses-only; Global CRIS priced at OpenAI standard (parity), In-Region/Geo at 1.10x. Profile matrix (inference_profiles) from https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-luna.html (read 2026-11-08): us. from six US/Canada source regions, in. from ap-south-1/ap-south-2, us-gov. from us-gov-east-1/us-gov-west-1 (Global not supported there), global. from every listed commercial region"
+          "prompt_caching_supported": true,
+          "evidence": "AWS model card (2026-08-21): bedrock-runtime row with Geo (us./in.) and Global CRIS ids; APIs listed: Responses/Chat Completions/Invoke/Converse; Guardrails Converse-only, prompt caching Responses-only; Global CRIS priced at OpenAI standard (parity), In-Region/Geo at 1.10x. Profile matrix (inference_profiles) from https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-luna.html (read 2026-11-08): us. from six US/Canada source regions, in. from ap-south-1/ap-south-2, us-gov. from us-gov-east-1/us-gov-west-1 (Global not supported there), global. from every listed commercial region; prompt_caching_supported true: the card now lists implicit prompt caching on Responses, Chat Completions, InvokeModel and Converse on bedrock-runtime, superseding the 2026-08-21 Responses-only note (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-luna.html, read 2026-11-09)"
         },
         "runtime_openai_responses": {
           "available": true,
           "model_id": "openai.gpt-5.6-luna",
           "requires_cris": true,
           "guardrails_supported": false,
-          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-luna.html (read 2026-11-08): bedrock-runtime lists Responses supported; no in-region form; Geo ids us.openai.gpt-5.6-luna (commercial), in.openai.gpt-5.6-luna (India), us-gov.openai.gpt-5.6-luna (GovCloud); Global id global.openai.gpt-5.6-luna; the card's runtime table is the source of this model's inference_profiles matrix; Guardrails Converse-only"
+          "prompt_caching_supported": true,
+          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-luna.html (read 2026-11-08): bedrock-runtime lists Responses supported; no in-region form; Geo ids us.openai.gpt-5.6-luna (commercial), in.openai.gpt-5.6-luna (India), us-gov.openai.gpt-5.6-luna (GovCloud); Global id global.openai.gpt-5.6-luna; the card's runtime table is the source of this model's inference_profiles matrix; Guardrails Converse-only; prompt_caching_supported true: the card lists implicit prompt caching on Responses, Chat Completions, InvokeModel and Converse on bedrock-runtime (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-luna.html, read 2026-11-09)"
         },
         "runtime_openai_chat": {
           "available": true,
           "model_id": "openai.gpt-5.6-luna",
           "requires_cris": true,
           "guardrails_supported": false,
-          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-luna.html (read 2026-11-08): bedrock-runtime lists Chat Completions supported; no in-region form; Geo ids us.openai.gpt-5.6-luna (commercial), in.openai.gpt-5.6-luna (India), us-gov.openai.gpt-5.6-luna (GovCloud); Global id global.openai.gpt-5.6-luna; the card's runtime table is the source of this model's inference_profiles matrix; Guardrails Converse-only"
+          "prompt_caching_supported": true,
+          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-luna.html (read 2026-11-08): bedrock-runtime lists Chat Completions supported; no in-region form; Geo ids us.openai.gpt-5.6-luna (commercial), in.openai.gpt-5.6-luna (India), us-gov.openai.gpt-5.6-luna (GovCloud); Global id global.openai.gpt-5.6-luna; the card's runtime table is the source of this model's inference_profiles matrix; Guardrails Converse-only; prompt_caching_supported true: the card lists implicit prompt caching on Responses, Chat Completions, InvokeModel and Converse on bedrock-runtime (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-luna.html, read 2026-11-09)"
         }
       }
     },
@@ -420,39 +440,44 @@
           "model_id": "openai.gpt-5.4",
           "requires_cris": false,
           "guardrails_supported": false,
-          "evidence": "AWS model card model-card-openai-gpt-54 (read 2026-11-06): bedrock-mantle supports Responses at /openai/v1/responses; in-region us-east-1, us-east-2, us-west-2 and us-gov-west-1; Geo/Global not supported on mantle"
+          "prompt_caching_supported": false,
+          "evidence": "AWS model card model-card-openai-gpt-54 (read 2026-11-06): bedrock-mantle supports Responses at /openai/v1/responses; in-region us-east-1, us-east-2, us-west-2 and us-gov-west-1; Geo/Global not supported on mantle; prompt_caching_supported false: the card's bedrock-mantle feature list names no prompt caching (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html, read 2026-11-09)"
         },
         "mantle_openai_chat": {
           "available": true,
           "model_id": "openai.gpt-5.4",
           "requires_cris": false,
           "guardrails_supported": false,
+          "prompt_caching_supported": false,
           "capabilities": ["tool_or_function_calling", "reasoning", "streaming", "image_input_vision"],
-          "evidence": "AWS model card model-card-openai-gpt-54 (read 2026-11-06): Chat Completions listed as supported on bedrock-mantle at /openai/v1/chat/completions, with sample code. Per-API capabilities from https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html (read 2026-11-08): structured outputs are evidenced on the Responses API only, so structured_output_json is not carried on Mantle Chat Completions"
+          "evidence": "AWS model card model-card-openai-gpt-54 (read 2026-11-06): Chat Completions listed as supported on bedrock-mantle at /openai/v1/chat/completions, with sample code. Per-API capabilities from https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html (read 2026-11-08): structured outputs are evidenced on the Responses API only, so structured_output_json is not carried on Mantle Chat Completions; prompt_caching_supported false: the card's bedrock-mantle feature list names no prompt caching (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html, read 2026-11-09)"
         },
         "runtime_converse": {
           "available": true,
           "model_id": "openai.gpt-5.4",
           "requires_cris": true,
           "guardrails_supported": true,
+          "prompt_caching_supported": false,
           "capabilities": ["tool_or_function_calling", "reasoning", "streaming", "image_input_vision"],
-          "evidence": "AWS model card model-card-openai-gpt-54 (read 2026-11-06): bedrock-runtime supported with Responses, Chat Completions and Converse (Messages and Invoke unsupported); no in-region form — requests must name us.openai.gpt-5.4 (Geo) or global.openai.gpt-5.4 (Global); base URL bedrock-runtime.{region}.amazonaws.com/openai/v1 for the OpenAI-compatible APIs. Per-API capabilities from https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html (read 2026-11-08): 'Response streaming' listed for runtime; 'Structured outputs (JSON Schema; Responses API)' is scoped to Responses, so structured_output_json is not carried on Converse; Guardrails Converse-only"
+          "evidence": "AWS model card model-card-openai-gpt-54 (read 2026-11-06): bedrock-runtime supported with Responses, Chat Completions and Converse (Messages and Invoke unsupported); no in-region form — requests must name us.openai.gpt-5.4 (Geo) or global.openai.gpt-5.4 (Global); base URL bedrock-runtime.{region}.amazonaws.com/openai/v1 for the OpenAI-compatible APIs. Per-API capabilities from https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html (read 2026-11-08): 'Response streaming' listed for runtime; 'Structured outputs (JSON Schema; Responses API)' is scoped to Responses, so structured_output_json is not carried on Converse; Guardrails Converse-only; prompt_caching_supported false: the card lists 'Implicit Prompt Caching (Responses API only; automatic, no request parameters)' on bedrock-runtime and Explicit Prompt Caching as not supported (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html, read 2026-11-09)"
         },
         "runtime_openai_responses": {
           "available": true,
           "model_id": "openai.gpt-5.4",
           "requires_cris": true,
           "guardrails_supported": false,
+          "prompt_caching_supported": true,
           "capabilities": ["tool_or_function_calling", "structured_output_json", "reasoning", "streaming", "image_input_vision"],
-          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html (read 2026-11-08): bedrock-runtime lists Responses supported; 'Structured outputs (JSON Schema; Responses API)' and 'Response streaming' listed for runtime, implicit prompt caching Responses-only; Guardrails Converse-only; no in-region form; Geo id us.openai.gpt-5.4, Global id global.openai.gpt-5.4"
+          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html (read 2026-11-08): bedrock-runtime lists Responses supported; 'Structured outputs (JSON Schema; Responses API)' and 'Response streaming' listed for runtime, implicit prompt caching Responses-only; Guardrails Converse-only; no in-region form; Geo id us.openai.gpt-5.4, Global id global.openai.gpt-5.4; prompt_caching_supported true: the card lists 'Implicit Prompt Caching (Responses API only; automatic, no request parameters)' on bedrock-runtime and Explicit Prompt Caching as not supported (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html, read 2026-11-09)"
         },
         "runtime_openai_chat": {
           "available": true,
           "model_id": "openai.gpt-5.4",
           "requires_cris": true,
           "guardrails_supported": false,
+          "prompt_caching_supported": false,
           "capabilities": ["tool_or_function_calling", "reasoning", "streaming", "image_input_vision"],
-          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html (read 2026-11-08): bedrock-runtime lists Chat Completions supported; 'Response streaming' listed for runtime; the card scopes 'Structured outputs (JSON Schema; Responses API)' and implicit prompt caching to Responses, so structured_output_json is not carried on Chat Completions; Guardrails Converse-only; no in-region form; Geo id us.openai.gpt-5.4, Global id global.openai.gpt-5.4"
+          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html (read 2026-11-08): bedrock-runtime lists Chat Completions supported; 'Response streaming' listed for runtime; the card scopes 'Structured outputs (JSON Schema; Responses API)' and implicit prompt caching to Responses, so structured_output_json is not carried on Chat Completions; Guardrails Converse-only; no in-region form; Geo id us.openai.gpt-5.4, Global id global.openai.gpt-5.4; prompt_caching_supported false: the card lists 'Implicit Prompt Caching (Responses API only; automatic, no request parameters)' on bedrock-runtime and Explicit Prompt Caching as not supported (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html, read 2026-11-09)"
         }
       }
     },
@@ -511,6 +536,7 @@
           "model_id": "openai.gpt-6-astra",
           "requires_cris": false,
           "guardrails_supported": false,
+          "prompt_caching_supported": true,
           "supported_regions": [
             "us-east-1",
             "us-west-2"
@@ -521,13 +547,14 @@
             "tool_or_function_calling",
             "prompt_caching"
           ],
-          "evidence": "AWS model card 2026-09-30: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. Responses supported at /openai/v1/responses; Standard mantle is available in us-east-1 and us-west-2. Server-side tool calling and implicit/explicit Responses caching supported; application inference profiles unsupported."
+          "evidence": "AWS model card 2026-09-30: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. Responses supported at /openai/v1/responses; Standard mantle is available in us-east-1 and us-west-2. Server-side tool calling and implicit/explicit Responses caching supported; application inference profiles unsupported.; prompt_caching_supported mirrors this row's cataloged capabilities (prompt_caching present or absent; https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html, read 2026-11-09)"
         },
         "mantle_openai_chat": {
           "available": true,
           "model_id": "openai.gpt-6-astra",
           "requires_cris": false,
           "guardrails_supported": false,
+          "prompt_caching_supported": false,
           "supported_regions": [
             "us-east-1",
             "us-west-2"
@@ -536,13 +563,14 @@
             "reasoning",
             "image_input_vision"
           ],
-          "evidence": "AWS model card 2026-09-30: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. Chat Completions supported at /openai/v1/chat/completions in us-east-1 and us-west-2; prompt caching is Responses-only. Tool behavior on Chat Completions remains unprobed."
+          "evidence": "AWS model card 2026-09-30: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. Chat Completions supported at /openai/v1/chat/completions in us-east-1 and us-west-2; prompt caching is Responses-only. Tool behavior on Chat Completions remains unprobed.; prompt_caching_supported mirrors this row's cataloged capabilities (prompt_caching present or absent; https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html, read 2026-11-09)"
         },
         "runtime_converse": {
           "available": true,
           "model_id": "openai.gpt-6-astra",
           "requires_cris": true,
           "guardrails_supported": true,
+          "prompt_caching_supported": false,
           "supported_regions": [
             "us-east-1",
             "us-east-2",
@@ -596,13 +624,14 @@
             "streaming",
             "structured_output_json"
           ],
-          "evidence": "AWS model card, runtime JSON Schema reverified 2026-10-03: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. Runtime APIs: Responses, Chat Completions, Converse; Invoke and Messages unsupported. US Geo/Global CRIS only, no in-region or EU/India Geo form. Guardrails and application inference profiles are Converse-only. Non-streaming JSON Schema outputs supported: Converse requires outputConfig.textFormat.structure.jsonSchema and additionalModelRequestFields.text.format.strict=true. Streaming structured output and server-side tool use are not evidenced. Runtime TPM accounting uses 10x output-token burndown."
+          "evidence": "AWS model card, runtime JSON Schema reverified 2026-10-03: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. Runtime APIs: Responses, Chat Completions, Converse; Invoke and Messages unsupported. US Geo/Global CRIS only, no in-region or EU/India Geo form. Guardrails and application inference profiles are Converse-only. Non-streaming JSON Schema outputs supported: Converse requires outputConfig.textFormat.structure.jsonSchema and additionalModelRequestFields.text.format.strict=true. Streaming structured output and server-side tool use are not evidenced. Runtime TPM accounting uses 10x output-token burndown.; prompt_caching_supported mirrors this row's cataloged capabilities (prompt_caching present or absent; https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html, read 2026-11-09)"
         },
         "runtime_openai_responses": {
           "available": true,
           "model_id": "openai.gpt-6-astra",
           "requires_cris": true,
           "guardrails_supported": false,
+          "prompt_caching_supported": true,
           "supported_regions": [
             "us-east-1",
             "us-east-2",
@@ -657,13 +686,14 @@
             "structured_output_json",
             "prompt_caching"
           ],
-          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html (read 2026-11-07): bedrock-runtime lists Responses supported; runtime features: response streaming, structured outputs (JSON Schema), implicit and explicit prompt caching on Responses, reasoning summaries; application inference profiles are InvokeModel/Converse-only and server-side tool use is unsupported; no in-region form; Geo id us.openai.gpt-6-astra, Global id global.openai.gpt-6-astra"
+          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html (read 2026-11-07): bedrock-runtime lists Responses supported; runtime features: response streaming, structured outputs (JSON Schema), implicit and explicit prompt caching on Responses, reasoning summaries; application inference profiles are InvokeModel/Converse-only and server-side tool use is unsupported; no in-region form; Geo id us.openai.gpt-6-astra, Global id global.openai.gpt-6-astra; prompt_caching_supported mirrors this row's cataloged capabilities (prompt_caching present or absent; https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html, read 2026-11-09)"
         },
         "runtime_openai_chat": {
           "available": true,
           "model_id": "openai.gpt-6-astra",
           "requires_cris": true,
           "guardrails_supported": false,
+          "prompt_caching_supported": true,
           "supported_regions": [
             "us-east-1",
             "us-east-2",
@@ -718,7 +748,7 @@
             "structured_output_json",
             "prompt_caching"
           ],
-          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html (read 2026-11-07): bedrock-runtime lists Chat Completions supported; runtime features: response streaming, structured outputs (JSON Schema), implicit and explicit prompt caching on Chat Completions; application inference profiles are InvokeModel/Converse-only and server-side tool use is unsupported; no in-region form; Geo id us.openai.gpt-6-astra, Global id global.openai.gpt-6-astra"
+          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html (read 2026-11-07): bedrock-runtime lists Chat Completions supported; runtime features: response streaming, structured outputs (JSON Schema), implicit and explicit prompt caching on Chat Completions; application inference profiles are InvokeModel/Converse-only and server-side tool use is unsupported; no in-region form; Geo id us.openai.gpt-6-astra, Global id global.openai.gpt-6-astra; prompt_caching_supported mirrors this row's cataloged capabilities (prompt_caching present or absent; https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html, read 2026-11-09)"
         }
       }
     },
@@ -742,11 +772,11 @@
       "capabilities": ["reasoning", "tool_or_function_calling", "image_input_vision"],
       "capability_source": "AWS GPT-6 Sol model card, retrieved 2026-10-10: text and image input, tool calling, 1.05M context and 128K output.",
       "paths": {
-        "mantle_openai_responses": {"available": true, "model_id": "openai.gpt-6-sol", "requires_cris": false, "guardrails_supported": false, "evidence": "AWS model card: Mantle Responses in us-east-1."},
-        "mantle_openai_chat": {"available": true, "model_id": "openai.gpt-6-sol", "requires_cris": false, "guardrails_supported": false, "evidence": "AWS model card: Mantle Chat Completions supported."},
-        "runtime_converse": {"available": true, "model_id": "openai.gpt-6-sol", "requires_cris": true, "guardrails_supported": true, "evidence": "AWS model card: US and Global CRIS support Responses, Chat Completions, Converse, and Invoke; EU/AU Geo profiles are unsupported. (Guardrails: Responses/Chat Completions/InvokeModel/Converse per https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-sol.html; card read 2026-11-08)"},
-        "runtime_openai_responses": {"available": true, "model_id": "openai.gpt-6-sol", "requires_cris": true, "guardrails_supported": true, "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-sol.html (read 2026-11-08): bedrock-runtime lists Responses supported; Guardrails on Responses/Chat Completions/InvokeModel/Converse, application inference profiles InvokeModel/Converse-only; no in-region form; Geo id us.openai.gpt-6-sol, Global id global.openai.gpt-6-sol"},
-        "runtime_openai_chat": {"available": true, "model_id": "openai.gpt-6-sol", "requires_cris": true, "guardrails_supported": true, "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-sol.html (read 2026-11-08): bedrock-runtime lists Chat Completions supported; Guardrails on Responses/Chat Completions/InvokeModel/Converse, application inference profiles InvokeModel/Converse-only; no in-region form; Geo id us.openai.gpt-6-sol, Global id global.openai.gpt-6-sol"}
+        "mantle_openai_responses": {"available": true, "model_id": "openai.gpt-6-sol", "requires_cris": false, "guardrails_supported": false, "prompt_caching_supported": true, "evidence": "AWS model card: Mantle Responses in us-east-1.; prompt_caching_supported true: the card lists implicit prompt caching on Responses and Chat Completions on bedrock-mantle (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-sol.html, read 2026-11-09)"},
+        "mantle_openai_chat": {"available": true, "model_id": "openai.gpt-6-sol", "requires_cris": false, "guardrails_supported": false, "prompt_caching_supported": true, "evidence": "AWS model card: Mantle Chat Completions supported.; prompt_caching_supported true: the card lists implicit prompt caching on Responses and Chat Completions on bedrock-mantle (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-sol.html, read 2026-11-09)"},
+        "runtime_converse": {"available": true, "model_id": "openai.gpt-6-sol", "requires_cris": true, "guardrails_supported": true, "prompt_caching_supported": true, "evidence": "AWS model card: US and Global CRIS support Responses, Chat Completions, Converse, and Invoke; EU/AU Geo profiles are unsupported. (Guardrails: Responses/Chat Completions/InvokeModel/Converse per https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-sol.html; card read 2026-11-08); prompt_caching_supported true: the card lists implicit prompt caching on Responses, Chat Completions, InvokeModel and Converse on bedrock-runtime (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-sol.html, read 2026-11-09)"},
+        "runtime_openai_responses": {"available": true, "model_id": "openai.gpt-6-sol", "requires_cris": true, "guardrails_supported": true, "prompt_caching_supported": true, "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-sol.html (read 2026-11-08): bedrock-runtime lists Responses supported; Guardrails on Responses/Chat Completions/InvokeModel/Converse, application inference profiles InvokeModel/Converse-only; no in-region form; Geo id us.openai.gpt-6-sol, Global id global.openai.gpt-6-sol; prompt_caching_supported true: the card lists implicit prompt caching on Responses, Chat Completions, InvokeModel and Converse on bedrock-runtime (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-sol.html, read 2026-11-09)"},
+        "runtime_openai_chat": {"available": true, "model_id": "openai.gpt-6-sol", "requires_cris": true, "guardrails_supported": true, "prompt_caching_supported": true, "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-sol.html (read 2026-11-08): bedrock-runtime lists Chat Completions supported; Guardrails on Responses/Chat Completions/InvokeModel/Converse, application inference profiles InvokeModel/Converse-only; no in-region form; Geo id us.openai.gpt-6-sol, Global id global.openai.gpt-6-sol; prompt_caching_supported true: the card lists implicit prompt caching on Responses, Chat Completions, InvokeModel and Converse on bedrock-runtime (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-sol.html, read 2026-11-09)"}
       }
     },
     "openai_gpt_6_luna": {
@@ -769,11 +799,11 @@
       "capabilities": ["reasoning", "tool_or_function_calling", "image_input_vision"],
       "capability_source": "AWS GPT-6 Luna model card, retrieved 2026-10-10: text and image input, tool calling, 1.05M context and 128K output.",
       "paths": {
-        "mantle_openai_responses": {"available": true, "model_id": "openai.gpt-6-luna", "requires_cris": false, "guardrails_supported": false, "evidence": "AWS model card: Mantle Responses in us-east-1."},
-        "mantle_openai_chat": {"available": true, "model_id": "openai.gpt-6-luna", "requires_cris": false, "guardrails_supported": false, "evidence": "AWS model card: Mantle Chat Completions supported."},
-        "runtime_converse": {"available": true, "model_id": "openai.gpt-6-luna", "requires_cris": true, "guardrails_supported": true, "evidence": "AWS model card: US and Global CRIS support Responses, Chat Completions, Converse, and Invoke. (Guardrails: Responses/Chat Completions/InvokeModel/Converse per https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html; card read 2026-11-08)"},
-        "runtime_openai_responses": {"available": true, "model_id": "openai.gpt-6-luna", "requires_cris": true, "guardrails_supported": true, "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html (read 2026-11-08): bedrock-runtime lists Responses supported; Guardrails on Responses/Chat Completions/InvokeModel/Converse, application inference profiles InvokeModel/Converse-only; no in-region form; Geo id us.openai.gpt-6-luna, Global id global.openai.gpt-6-luna"},
-        "runtime_openai_chat": {"available": true, "model_id": "openai.gpt-6-luna", "requires_cris": true, "guardrails_supported": true, "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html (read 2026-11-08): bedrock-runtime lists Chat Completions supported; Guardrails on Responses/Chat Completions/InvokeModel/Converse, application inference profiles InvokeModel/Converse-only; no in-region form; Geo id us.openai.gpt-6-luna, Global id global.openai.gpt-6-luna"}
+        "mantle_openai_responses": {"available": true, "model_id": "openai.gpt-6-luna", "requires_cris": false, "guardrails_supported": false, "prompt_caching_supported": true, "evidence": "AWS model card: Mantle Responses in us-east-1.; prompt_caching_supported true: the card lists implicit prompt caching on Responses and Chat Completions on bedrock-mantle (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html, read 2026-11-09)"},
+        "mantle_openai_chat": {"available": true, "model_id": "openai.gpt-6-luna", "requires_cris": false, "guardrails_supported": false, "prompt_caching_supported": true, "evidence": "AWS model card: Mantle Chat Completions supported.; prompt_caching_supported true: the card lists implicit prompt caching on Responses and Chat Completions on bedrock-mantle (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html, read 2026-11-09)"},
+        "runtime_converse": {"available": true, "model_id": "openai.gpt-6-luna", "requires_cris": true, "guardrails_supported": true, "prompt_caching_supported": true, "evidence": "AWS model card: US and Global CRIS support Responses, Chat Completions, Converse, and Invoke. (Guardrails: Responses/Chat Completions/InvokeModel/Converse per https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html; card read 2026-11-08); prompt_caching_supported true: the card lists implicit prompt caching on Responses, Chat Completions, InvokeModel and Converse on bedrock-runtime (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html, read 2026-11-09)"},
+        "runtime_openai_responses": {"available": true, "model_id": "openai.gpt-6-luna", "requires_cris": true, "guardrails_supported": true, "prompt_caching_supported": true, "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html (read 2026-11-08): bedrock-runtime lists Responses supported; Guardrails on Responses/Chat Completions/InvokeModel/Converse, application inference profiles InvokeModel/Converse-only; no in-region form; Geo id us.openai.gpt-6-luna, Global id global.openai.gpt-6-luna; prompt_caching_supported true: the card lists implicit prompt caching on Responses, Chat Completions, InvokeModel and Converse on bedrock-runtime (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html, read 2026-11-09)"},
+        "runtime_openai_chat": {"available": true, "model_id": "openai.gpt-6-luna", "requires_cris": true, "guardrails_supported": true, "prompt_caching_supported": true, "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html (read 2026-11-08): bedrock-runtime lists Chat Completions supported; Guardrails on Responses/Chat Completions/InvokeModel/Converse, application inference profiles InvokeModel/Converse-only; no in-region form; Geo id us.openai.gpt-6-luna, Global id global.openai.gpt-6-luna; prompt_caching_supported true: the card lists implicit prompt caching on Responses, Chat Completions, InvokeModel and Converse on bedrock-runtime (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html, read 2026-11-09)"}
       }
     },
     "openai_gpt_6_1_sol": {
@@ -796,11 +826,11 @@
       "capabilities": ["reasoning", "tool_or_function_calling", "image_input_vision"],
       "capability_source": "AWS GPT-6.1 Sol model card, retrieved 2026-10-10: text and image input, tool calling, 1.05M context and 131072 output.",
       "paths": {
-        "mantle_openai_responses": {"available": true, "model_id": "openai.gpt-6.1-sol", "requires_cris": false, "guardrails_supported": false, "server_side_tools_supported": false, "evidence": "AWS model card: Mantle Responses in us-east-1. https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-sol.html (read 2026-11-08): Server-side system tools listed as Not Supported on bedrock-mantle"},
-        "mantle_openai_chat": {"available": true, "model_id": "openai.gpt-6.1-sol", "requires_cris": false, "guardrails_supported": false, "server_side_tools_supported": false, "evidence": "AWS model card: Mantle Chat Completions supported. https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-sol.html (read 2026-11-08): Server-side system tools listed as Not Supported on bedrock-mantle"},
-        "runtime_converse": {"available": true, "model_id": "openai.gpt-6.1-sol", "requires_cris": true, "guardrails_supported": true, "evidence": "AWS model card: US and Global CRIS support Responses, Chat Completions, Converse, and Invoke; EU/AU Geo profiles are unsupported. (Guardrails: Chat Completions/InvokeModel/Converse, not Responses, per https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-sol.html; card read 2026-11-08)"},
-        "runtime_openai_responses": {"available": true, "model_id": "openai.gpt-6.1-sol", "requires_cris": true, "guardrails_supported": false, "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-sol.html (read 2026-11-08): bedrock-runtime lists Responses supported; Guardrails are listed for Chat Completions/InvokeModel/Converse but not Responses, application inference profiles InvokeModel/Converse-only; no in-region form; Geo id us.openai.gpt-6.1-sol, Global id global.openai.gpt-6.1-sol"},
-        "runtime_openai_chat": {"available": true, "model_id": "openai.gpt-6.1-sol", "requires_cris": true, "guardrails_supported": true, "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-sol.html (read 2026-11-08): bedrock-runtime lists Chat Completions supported; Guardrails listed on Chat Completions/InvokeModel/Converse, application inference profiles InvokeModel/Converse-only; no in-region form; Geo id us.openai.gpt-6.1-sol, Global id global.openai.gpt-6.1-sol"}
+        "mantle_openai_responses": {"available": true, "model_id": "openai.gpt-6.1-sol", "requires_cris": false, "guardrails_supported": false, "prompt_caching_supported": true, "server_side_tools_supported": false, "evidence": "AWS model card: Mantle Responses in us-east-1. https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-sol.html (read 2026-11-08): Server-side system tools listed as Not Supported on bedrock-mantle; prompt_caching_supported true: the card lists implicit prompt caching on Responses and Chat Completions on bedrock-mantle (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-sol.html, read 2026-11-09)"},
+        "mantle_openai_chat": {"available": true, "model_id": "openai.gpt-6.1-sol", "requires_cris": false, "guardrails_supported": false, "prompt_caching_supported": true, "server_side_tools_supported": false, "evidence": "AWS model card: Mantle Chat Completions supported. https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-sol.html (read 2026-11-08): Server-side system tools listed as Not Supported on bedrock-mantle; prompt_caching_supported true: the card lists implicit prompt caching on Responses and Chat Completions on bedrock-mantle (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-sol.html, read 2026-11-09)"},
+        "runtime_converse": {"available": true, "model_id": "openai.gpt-6.1-sol", "requires_cris": true, "guardrails_supported": true, "prompt_caching_supported": true, "evidence": "AWS model card: US and Global CRIS support Responses, Chat Completions, Converse, and Invoke; EU/AU Geo profiles are unsupported. (Guardrails: Chat Completions/InvokeModel/Converse, not Responses, per https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-sol.html; card read 2026-11-08); prompt_caching_supported true: the card lists implicit prompt caching on Responses, Chat Completions, InvokeModel and Converse on bedrock-runtime (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-sol.html, read 2026-11-09)"},
+        "runtime_openai_responses": {"available": true, "model_id": "openai.gpt-6.1-sol", "requires_cris": true, "guardrails_supported": false, "prompt_caching_supported": true, "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-sol.html (read 2026-11-08): bedrock-runtime lists Responses supported; Guardrails are listed for Chat Completions/InvokeModel/Converse but not Responses, application inference profiles InvokeModel/Converse-only; no in-region form; Geo id us.openai.gpt-6.1-sol, Global id global.openai.gpt-6.1-sol; prompt_caching_supported true: the card lists implicit prompt caching on Responses, Chat Completions, InvokeModel and Converse on bedrock-runtime (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-sol.html, read 2026-11-09)"},
+        "runtime_openai_chat": {"available": true, "model_id": "openai.gpt-6.1-sol", "requires_cris": true, "guardrails_supported": true, "prompt_caching_supported": true, "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-sol.html (read 2026-11-08): bedrock-runtime lists Chat Completions supported; Guardrails listed on Chat Completions/InvokeModel/Converse, application inference profiles InvokeModel/Converse-only; no in-region form; Geo id us.openai.gpt-6.1-sol, Global id global.openai.gpt-6.1-sol; prompt_caching_supported true: the card lists implicit prompt caching on Responses, Chat Completions, InvokeModel and Converse on bedrock-runtime (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-sol.html, read 2026-11-09)"}
       }
     },
     "anthropic_claude_sonnet_5": {
