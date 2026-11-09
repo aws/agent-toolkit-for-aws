@@ -209,12 +209,75 @@ def _api_label(path):
     return "Chat Completions" if path.endswith("_chat") else "Responses"
 
 
-def _converse_required(requirements):
-    """Converse is the only API every card evidences for Guardrails / application
-    inference profiles; multi-model Converse is Converse by definition."""
-    return "guardrails" in (requirements.get("governance") or []) or bool(
-        requirements.get("multi_model_converse", False)
+def _logging_required(requirements):
+    """Model invocation logging is captured only on bedrock-runtime (including its
+    OpenAI-compatible APIs): model-invocation-logging.html, read 2026-11-08. CloudWatch
+    metrics exist on both endpoints (AWS/BedrockMantle) and never constrain the path."""
+    return "invocation_logging" in (requirements.get("governance") or [])
+
+
+def _guardrails_required(requirements):
+    return "guardrails" in (requirements.get("governance") or [])
+
+
+def _application_profile_requested(requirements):
+    """An application inference profile ARN is accepted by Converse only; the
+    bedrock-runtime Responses and Chat Completions APIs reject it with HTTP 400
+    (inference-responses-api.html, read 2026-11-08)."""
+    return ":application-inference-profile/" in (requirements.get("inference_profile_id") or "")
+
+
+def _guardrails_on_openai_api(catalog, source, openai_path):
+    """True iff the recognized source model's catalog row for `openai_path` lists
+    Guardrails on that API (per model card). Unrecognized sources keep Converse."""
+    same = _same_model_catalog_key(source)
+    if not same or not openai_path or catalog is None:
+        return False
+    row = catalog["models"].get(same, {}).get("paths", {}).get(openai_path, {})
+    return row.get("guardrails_supported") is True
+
+
+def _converse_required(requirements, catalog=None, source=None, openai_path=None):
+    """Converse is required by multi-model Converse, by an application inference
+    profile, and by Guardrails when the source model's card scopes them to Converse
+    (the GPT-6 Sol / GPT-6 Luna / GPT-6.1 Sol cards list Guardrails on some runtime
+    OpenAI APIs, so those sources keep their API)."""
+    return (
+        bool(requirements.get("multi_model_converse", False))
+        or _application_profile_requested(requirements)
+        or (
+            _guardrails_required(requirements)
+            and not _guardrails_on_openai_api(catalog, source, openai_path)
+        )
     )
+
+
+def _converse_only_drivers(requirements, guardrails_on_api=False):
+    """Human-readable list of the requirements that pin this workload to Converse."""
+    drivers = []
+    if _guardrails_required(requirements) and not guardrails_on_api:
+        drivers.append("Guardrails, which the model card lists as Converse-only for this model")
+    if _application_profile_requested(requirements):
+        drivers.append(
+            "the application inference profile, which bedrock-runtime accepts only on Converse"
+        )
+    if requirements.get("multi_model_converse"):
+        drivers.append("multi-model Converse")
+    return drivers
+
+
+def _runtime_only_drivers(requirements):
+    """Human-readable list of the governance requirements that pin bedrock-runtime."""
+    drivers = []
+    if _guardrails_required(requirements):
+        drivers.append("Guardrails")
+    if _logging_required(requirements):
+        drivers.append("invocation logging")
+    if _application_profile_requested(requirements):
+        drivers.append("application inference profiles")
+    if requirements.get("multi_model_converse"):
+        drivers.append("multi-model Converse")
+    return drivers
 
 
 def _mantle_selector(workload, feature_assessment):
@@ -276,13 +339,21 @@ def _hard_profile_requirement(requirements):
     )
 
 
+_SERVER_SIDE_TOOL_SELECTORS = frozenset({"server_side_tools", "web_search"})
+
+
 def _catalog_model_for_path(catalog, path, detected_features=None, requirements=None,
-                            candidate_order=None, region=None):
+                            candidate_order=None, region=None, selector=None,
+                            enforce_guardrails=True):
     """Pick the first available catalog model for `path` whose capability evidence
     covers the required/detected text features (evidence-driven fallback: a newer
     model without feature-level evidence is skipped in favor of an older probed
     one). Mantle candidates with cataloged region availability are skipped outside
     that footprint; runtime Converse availability remains governed by CRIS resolution.
+    When Guardrails are required, runtime rows whose card does not list Guardrails on
+    that API are skipped (`enforce_guardrails=False` lets a decision option show the
+    API that gives Guardrails up). A server-side-tool selector skips Mantle rows whose
+    card lists server-side tools as unsupported (GPT-6.1 Sol).
     When no candidate covers the requirements, return the first available model together
     with its unmet-capability list so the caller can fail closed. Deterministic:
     iterates `candidate_order` when given (e.g. the Converse tier map), else
@@ -290,12 +361,25 @@ def _catalog_model_for_path(catalog, path, detected_features=None, requirements=
     first = None
     first_unmet = None
     keys = candidate_order if candidate_order is not None else list(catalog["models"])
+    guardrails = enforce_guardrails and _guardrails_required(requirements or {})
     for model_key in keys:
         model = catalog["models"].get(model_key)
         if model is None:
             continue
         path_config = model["paths"].get(path, {})
         if path_config.get("available") is not True:
+            continue
+        if (
+            guardrails
+            and path.startswith("runtime_")
+            and path_config.get("guardrails_supported") is not True
+        ):
+            continue
+        if (
+            selector in _SERVER_SIDE_TOOL_SELECTORS
+            and path.startswith("mantle_")
+            and path_config.get("server_side_tools_supported") is False
+        ):
             continue
         if "capabilities" in path_config:
             model = {**model, "capabilities": path_config["capabilities"]}
@@ -329,7 +413,8 @@ def _catalog_model_for_path(catalog, path, detected_features=None, requirements=
 _PROFILE_REQUIREMENT_KEYS = frozenset({"inference_profile_id", "data_residency", "cris_geography"})
 
 
-def _profile_relaxed_hit(catalog, path, detected, requirements, candidate_order, region):
+def _profile_relaxed_hit(catalog, path, detected, requirements, candidate_order, region,
+                         enforce_guardrails=True):
     """When every runtime candidate was skipped because no cataloged CRIS profile is
     callable from `region` under the stated residency, re-walk the path without the
     profile requirements so a decision can still show the candidate. The caller
@@ -339,6 +424,7 @@ def _profile_relaxed_hit(catalog, path, detected, requirements, candidate_order,
     relaxed = {k: v for k, v in (requirements or {}).items() if k not in _PROFILE_REQUIREMENT_KEYS}
     hit, _ = _catalog_model_for_path(
         catalog, path, detected, relaxed, candidate_order=candidate_order, region=region,
+        enforce_guardrails=enforce_guardrails,
     )
     return hit
 
@@ -397,9 +483,14 @@ def _api_continuity(requirements):
     return "unknown"
 
 
-def _runtime_required(requirements):
-    return bool(requirements.get("governance")) or requirements.get(
-        "multi_model_converse", False
+def _runtime_required(requirements, converse_required):
+    """bedrock-runtime is pinned by anything Converse-only, by invocation logging
+    (runtime-only capture) and by Guardrails (no Mantle row lists them). CloudWatch
+    metrics exist on both endpoints and never pin the path."""
+    return bool(
+        converse_required
+        or _logging_required(requirements)
+        or _guardrails_required(requirements)
     )
 
 
@@ -972,10 +1063,12 @@ def _verification(region, catalog, path, requires_cris, invocation_model_id, sel
     }
 
 
-def _decision_options(catalog, workload, region, selector=None):
+def _decision_options(catalog, workload, region, selector=None, openai_path=None):
     """Two-sided option set. Option A preserves the OpenAI SDK and the source API:
     the Mantle path when a mantle_selector exists, else the bedrock-runtime
-    OpenAI path. Option B is runtime Converse governance."""
+    OpenAI path (`openai_path` overrides that choice). Option B is runtime Converse
+    governance. An application inference profile is never emitted as the invocation
+    id of an OpenAI-API option: bedrock-runtime Responses/Chat reject it with HTTP 400."""
     options = []
     source = workload["source"]
     requirements = workload["requirements"]
@@ -983,7 +1076,12 @@ def _decision_options(catalog, workload, region, selector=None):
                 if status == "detected"]
     astra = _same_model_runtime_key(source) == "openai_gpt_6_astra"
     surface = source.get("api_surface")
-    if selector:
+    application_profile = _application_profile_requested(requirements)
+    if openai_path:
+        # Caller-fixed option path (an explicit runtime preference, or the Mantle
+        # Responses reshape offered for background inference).
+        pass
+    elif selector:
         openai_path = _mantle_path(source, requirements)
         if astra:
             preferred = requirements.get("preferred_api_path")
@@ -1001,21 +1099,25 @@ def _decision_options(catalog, workload, region, selector=None):
     candidate_order = (
         ["openai_gpt_6_astra"] if astra else _openai_candidate_order(catalog, source)
     )
+    # The OpenAI-API option is the side of the decision that may give Guardrails up,
+    # so the walk shows the source-preserving model rather than skipping it.
     openai_hit, _ = _catalog_model_for_path(
         catalog, openai_path, detected, requirements,
-        candidate_order=candidate_order, region=region,
+        candidate_order=candidate_order, region=region, selector=selector,
+        enforce_guardrails=False,
     )
     requires_region_change = False
     if openai_hit is None and selector and region != "unknown":
         openai_hit, _ = _catalog_model_for_path(
             catalog, openai_path, detected, requirements,
             candidate_order=_openai_candidate_order(catalog, source),
-            region="unknown",
+            region="unknown", selector=selector, enforce_guardrails=False,
         )
         requires_region_change = openai_hit is not None
     if openai_hit is None and openai_path.startswith("runtime_openai_"):
         openai_hit = _profile_relaxed_hit(
-            catalog, openai_path, detected, requirements, candidate_order, region
+            catalog, openai_path, detected, requirements, candidate_order, region,
+            enforce_guardrails=False,
         )
     if openai_hit:
         model_key, model, path_config = openai_hit
@@ -1024,17 +1126,23 @@ def _decision_options(catalog, workload, region, selector=None):
             if openai_path in {"mantle_openai_chat", "runtime_openai_chat"}
             else "Responses"
         )
-        if selector:
+        if openai_path.startswith("mantle_"):
             reason = (
                 f"Preserves the OpenAI SDK and the {api_label} surface on bedrock-mantle, "
                 f"selected by mantle_selector {selector}; gives up bedrock-runtime-only "
-                "governance (Guardrails, invocation logging)."
+                "governance (Guardrails, invocation logging, application inference profiles)."
+            )
+        elif _guardrails_required(requirements) and path_config.get("guardrails_supported") is True:
+            reason = (
+                f"Keeps the OpenAI SDK and the {api_label} API on bedrock-runtime via a CRIS id "
+                "(invocation logging included); Guardrails are listed on this API for this "
+                "model (see its model card)."
             )
         else:
             reason = (
                 "Keeps the OpenAI SDK and the source API on bedrock-runtime via a CRIS id "
-                "(invocation logging and CloudWatch included); Guardrails and application "
-                "inference profiles are evidenced only on Converse for this model — see its card."
+                "(invocation logging included); Guardrails and application inference "
+                "profiles are evidenced only on Converse for this model — see its card."
             )
         if requires_region_change:
             availability = model.get("region_availability") or {}
@@ -1047,12 +1155,22 @@ def _decision_options(catalog, workload, region, selector=None):
                 f" Requires changing from {region} to a catalog-supported Mantle region "
                 f"({region_label})."
             )
-        invocation_model_id = _resolve_invocation_model_id(
-            path_config["model_id"], path_config["requires_cris"], requirements, model, region,
-        )
-        reason += _unresolved_profile_suffix(
-            openai_path, path_config, invocation_model_id, requirements, region
-        )
+        if application_profile:
+            invocation_model_id = None
+            reason += (
+                " Application inference profiles are rejected with HTTP 400 on the "
+                "bedrock-runtime Responses and Chat Completions APIs "
+                "(https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html, "
+                "read 2026-11-08); Converse is the supported API for this profile."
+            )
+        else:
+            invocation_model_id = _resolve_invocation_model_id(
+                path_config["model_id"], path_config["requires_cris"], requirements, model,
+                region,
+            )
+            reason += _unresolved_profile_suffix(
+                openai_path, path_config, invocation_model_id, requirements, region
+            )
         options.append(
             {
                 "model_key": model_key,
@@ -1082,14 +1200,24 @@ def _decision_options(catalog, workload, region, selector=None):
             path_config["model_id"], path_config["requires_cris"], workload["requirements"],
             model, region,
         )
-        reason = (
-            "SAME-MODEL governance path: this OpenAI target runs on bedrock-runtime via a "
-            "CRIS id — Guardrails (Converse API only) and invocation logging without a "
-            "model change. Check the model's region/profile matrix and dated prices."
-            if model_key == _same_model_runtime_key(workload["source"])
-            else "Uses Bedrock-native Converse request/response shapes and a "
-            "cross-family model; requires rewriting the OpenAI integration."
+        same_model = model_key == _same_model_runtime_key(workload["source"])
+        guardrails_on_openai_api = _guardrails_on_openai_api(
+            catalog, source,
+            openai_path if openai_path.startswith("runtime_openai_") else _runtime_openai_path(surface),
         )
+        if same_model:
+            reason = (
+                "SAME-MODEL governance path: this OpenAI target runs on bedrock-runtime via a "
+                "CRIS id — "
+                + ("Guardrails" if guardrails_on_openai_api else "Guardrails (Converse API only)")
+                + ", invocation logging and application inference profiles without a "
+                "model change. Check the model's region/profile matrix and dated prices."
+            )
+        else:
+            reason = (
+                "Uses Bedrock-native Converse request/response shapes and a "
+                "cross-family model; requires rewriting the OpenAI integration."
+            )
         reason += _unresolved_profile_suffix(
             "runtime_converse", path_config, invocation_model_id, workload["requirements"],
             region,
@@ -1125,8 +1253,19 @@ def recommend_openai_workload(workload, region, catalog):
     requirements = workload["requirements"]
     surface = source.get("api_surface")
     continuity = _api_continuity(requirements)
-    runtime_required = _runtime_required(requirements)
-    converse_required = _converse_required(requirements)
+    preferred = requirements.get("preferred_api_path")
+    # The bedrock-runtime OpenAI API this workload would keep: an explicit runtime
+    # OpenAI preference, else the API that preserves the source surface. Guardrails
+    # are checked against the source model's row for exactly this API.
+    openai_path_default = (
+        preferred if (preferred or "").startswith("runtime_openai_")
+        else _runtime_openai_path(surface)
+    )
+    converse_required = _converse_required(requirements, catalog, source, openai_path_default)
+    runtime_required = _runtime_required(requirements, converse_required)
+    guardrails_on_api = _guardrails_required(requirements) and _guardrails_on_openai_api(
+        catalog, source, openai_path_default
+    )
     continuity_required = continuity == "required"
 
     feature_assessment = _feature_assessment(workload)
@@ -1207,28 +1346,65 @@ def recommend_openai_workload(workload, region, catalog):
             "", decision_options=options,
         )
 
+    def _mantle_options(mantle_selector):
+        return [
+            option for option in _decision_options(catalog, workload, region, mantle_selector)
+            if option["api_path"].startswith("mantle_")
+        ]
+
+    def _runtime_option(runtime_path):
+        # The single bedrock-runtime option that keeps `runtime_path`.
+        if runtime_path == "runtime_converse":
+            candidates = _decision_options(catalog, workload, region, None)
+        else:
+            candidates = _decision_options(
+                catalog, workload, region, None, openai_path=runtime_path
+            )
+        return [option for option in candidates if option["api_path"] == runtime_path][:1]
+
+    def _preferred_path_conflict(mantle_selector, message):
+        # An explicit bedrock-runtime preference cannot carry a Mantle selector
+        # (explicit, web_search-derived or derived in_region_processing): the user
+        # chooses between the Mantle option and the preferred runtime API.
+        return _unresolved(
+            "The explicit bedrock-runtime API preference conflicts with the recorded "
+            "Mantle selector.",
+            [],
+            _finding(
+                "preferred_api_path_conflict", "[BLOCKS]", message,
+                "Keep the preference and drop the selector, or accept the Mantle option, "
+                "then rerun Model Recommend.",
+            ),
+            preferred,
+            decision_options=_mantle_options(mantle_selector) + _runtime_option(preferred),
+        )
+
     # --- Hard conflict: a verified Mantle-only need AND bedrock-runtime-only governance ---
     if selector and runtime_required:
-        options = _decision_options(catalog, workload, region, selector)
-        if not converse_required:
-            # Logging/CloudWatch governance is satisfied on any bedrock-runtime path, so
-            # the runtime option keeps the OpenAI API rather than switching to Converse.
-            options = [
-                option for option in options if option["api_path"].startswith("mantle_")
-            ] + [
-                option for option in _decision_options(catalog, workload, region, None)
+        drivers = ", ".join(_runtime_only_drivers(requirements))
+        if converse_required:
+            options = _decision_options(catalog, workload, region, selector)
+        else:
+            # Invocation logging and Guardrails listed on the OpenAI API are satisfied
+            # on the bedrock-runtime OpenAI path, so the runtime option keeps the
+            # source API rather than switching to Converse.
+            options = _mantle_options(selector) + [
+                option for option in _decision_options(
+                    catalog, workload, region, None, openai_path=openai_path_default
+                )
                 if option["api_path"].startswith("runtime_openai_")
             ]
         return _decision_conflict(
             f"A verified Mantle-only need (mantle_selector {selector}) conflicts with a "
-            "bedrock-runtime-only governance requirement.",
+            f"bedrock-runtime-only governance requirement ({drivers}).",
             [
-                "bedrock-mantle serves the selected capability; bedrock-runtime provides "
-                "Guardrails, invocation logging and application inference profiles "
-                "(bedrock-endpoint-policy.md)."
+                "bedrock-mantle serves the selected capability; bedrock-runtime alone "
+                "provides Guardrails, invocation logging and application inference "
+                "profiles (bedrock-endpoint-policy.md; model-invocation-logging.html, read "
+                "2026-11-08)."
             ],
             f"A verified Mantle-only need (mantle_selector {selector}) and "
-            "bedrock-runtime-only governance cannot both be satisfied by one path.",
+            f"bedrock-runtime-only governance ({drivers}) cannot both be satisfied by one path.",
             "Choose the Mantle option or the bedrock-runtime governance option, update "
             "requirements, and rerun Model Recommend.",
             options,
@@ -1236,20 +1412,21 @@ def recommend_openai_workload(workload, region, catalog):
 
     # --- Hard conflict: OpenAI continuity required AND Converse-only governance ---
     if continuity_required and converse_required:
+        drivers = "; ".join(_converse_only_drivers(requirements, guardrails_on_api))
         return _decision_conflict(
-            "Required OpenAI API continuity conflicts with Converse-only governance "
-            "(Guardrails / multi-model Converse).",
+            f"Required OpenAI API continuity conflicts with Converse-only governance ({drivers}).",
             [
                 "bedrock-runtime Responses/Chat Completions keep the OpenAI SDK and the "
-                "source API via a CRIS id; runtime Converse provides Guardrails and the "
-                "multi-model surface and keeps an exact same-model runtime candidate when "
-                "the catalog provides one."
+                "source API via a CRIS id; runtime Converse provides Guardrails (where the "
+                "model card lists them as Converse-only), application inference profiles "
+                "and the multi-model surface and keeps an exact same-model runtime candidate "
+                "when the catalog provides one."
             ],
-            "Required OpenAI API continuity and Converse-only governance (Guardrails / "
-            "multi-model Converse) cannot both be satisfied by one bedrock-runtime API.",
+            f"Required OpenAI API continuity and Converse-only governance ({drivers}) "
+            "cannot both be satisfied by one bedrock-runtime API.",
             "Choose the bedrock-runtime OpenAI API option or the runtime Converse "
             "governance option, update requirements, and rerun Model Recommend.",
-            _decision_options(catalog, workload, region, None),
+            _decision_options(catalog, workload, region, None, openai_path=openai_path_default),
         )
 
     # --- Select a path ---
@@ -1279,6 +1456,16 @@ def recommend_openai_workload(workload, region, catalog):
             f"Mantle {_api_label(path)} selected by mantle_selector {selector} "
             "(bedrock-endpoint-policy.md); the exact source model is evaluated first."
         )
+    elif guardrails_on_api:
+        path = openai_path_default
+        candidate_order = _openai_candidate_order(catalog, source)
+        same_name = catalog["models"][_same_model_catalog_key(source)]["display_name"]
+        rationale_head = (
+            f"Guardrails are listed on {_api_label(path)} for {same_name} (model card, read "
+            "2026-11-08), so the source API stays on bedrock-runtime; the exact source "
+            "model is evaluated first and only candidates whose card lists Guardrails on "
+            "this API are considered."
+        )
     else:
         path = _runtime_openai_path(surface)
         candidate_order = _openai_candidate_order(catalog, source)
@@ -1298,7 +1485,6 @@ def recommend_openai_workload(workload, region, catalog):
             "otherwise the source-compatible API or required runtime Converse path; "
             "apply Astra's own region and feature evidence."
         )
-    preferred = requirements.get("preferred_api_path")
     if preferred:
         first = catalog["models"].get(candidate_order[0], {}) if candidate_order else {}
         available = first.get("paths", {}).get(preferred, {})
@@ -1318,12 +1504,51 @@ def recommend_openai_workload(workload, region, catalog):
                         "(bedrock-endpoint-policy.md)."
                         if preferred.startswith("mantle_") and not selector
                         else ""
+                    )
+                    + (
+                        " The requested application inference profile is accepted only on "
+                        "Converse; the bedrock-runtime Responses and Chat Completions APIs "
+                        "reject it with HTTP 400 (inference-responses-api.html, read 2026-11-08)."
+                        if _application_profile_requested(requirements)
+                        and preferred.startswith("runtime_openai_")
+                        else ""
                     ),
                     "Choose a supported API or revise the conflicting requirements, "
                     "then rerun Model Recommend.",
                 ), preferred,
             )
+        if preferred.startswith("runtime_") and selector:
+            return _preferred_path_conflict(
+                selector,
+                f"The requested {preferred} path cannot satisfy mantle_selector {selector}; "
+                "that capability is served on bedrock-mantle only (bedrock-endpoint-policy.md).",
+            )
         path = preferred
+
+    # Background inference is a Responses API feature on bedrock-mantle; a Chat
+    # Completions Mantle path cannot carry it, so the reshape is offered as a
+    # decision rather than selected silently.
+    if selector == "background_inference" and path == "mantle_openai_chat":
+        return _unresolved(
+            "mantle_selector background_inference conflicts with the Chat Completions API.",
+            [],
+            _finding(
+                "selector_api_incompatible", "[BLOCKS]",
+                "Background inference is a Responses API feature on bedrock-mantle; Chat "
+                "Completions has no background mode "
+                "(https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html, "
+                "read 2026-11-08).",
+                "Accept the Mantle Responses reshape, or keep Chat Completions on "
+                "bedrock-runtime and drop background inference, then rerun Model Recommend.",
+            ),
+            path,
+            decision_options=[
+                option for option in _decision_options(
+                    catalog, workload, region, selector, openai_path="mantle_openai_responses"
+                )
+                if option["api_path"] == "mantle_openai_responses"
+            ] + _runtime_option("runtime_openai_chat"),
+        )
 
     # Evidence-driven selection: pick the first candidate on the path whose catalog
     # capabilities cover the required/detected text features (a newer model without
@@ -1331,7 +1556,7 @@ def recommend_openai_workload(workload, region, catalog):
     # only when NO candidate on the path has the evidence.
     catalog_hit, unsupported = _catalog_model_for_path(
         catalog, path, detected, requirements, candidate_order=candidate_order,
-        region=region,
+        region=region, selector=selector,
     )
     if not catalog_hit:
         if path.startswith("mantle_"):
@@ -1379,23 +1604,50 @@ def recommend_openai_workload(workload, region, catalog):
     model_key, model, path_config = catalog_hit
 
     # Derived selector: strict in-Region processing on a CRIS-only runtime candidate
-    # is a Mantle-only need (bedrock-endpoint-policy.md in_region_processing), unless
-    # bedrock-runtime-only governance pins the workload to runtime.
-    if (
+    # is a Mantle-only need (bedrock-endpoint-policy.md in_region_processing). An
+    # explicit runtime preference or invocation logging turns it into a decision;
+    # Converse-only governance keeps the runtime path (and its residency block).
+    derivable = (
         path.startswith("runtime_")
         and requirements.get("data_residency") == "in_region_required"
         and path_config["requires_cris"]
         and not anthropic_model_recommendation._runtime_in_region_allowed(
             path_config["model_id"], model, region, requirements
         )
-        and not runtime_required
-    ):
+    )
+    if derivable and preferred and preferred.startswith("runtime_"):
+        return _preferred_path_conflict(
+            "in_region_processing",
+            f"The requested {preferred} path serves this model only through a CRIS profile, "
+            "which conflicts with data_residency in_region_required (derived mantle_selector "
+            "in_region_processing).",
+        )
+    if derivable and _logging_required(requirements) and not converse_required:
+        return _decision_conflict(
+            "Strict in-Region processing (derived mantle_selector in_region_processing) "
+            "conflicts with invocation logging, which bedrock-runtime alone provides.",
+            [
+                f"bedrock-runtime serves this model from {region} only through a CRIS "
+                "profile; model invocation logging is captured only on bedrock-runtime "
+                "(model-invocation-logging.html, read 2026-11-08)."
+            ],
+            "in_region_processing and invocation logging cannot both be satisfied by one path.",
+            "Choose the Mantle in-Region option or the bedrock-runtime logging option, "
+            "update requirements, and rerun Model Recommend.",
+            _mantle_options("in_region_processing") + [
+                option for option in _decision_options(
+                    catalog, workload, region, None, openai_path=openai_path_default
+                )
+                if option["api_path"].startswith("runtime_openai_")
+            ],
+        )
+    if derivable and not runtime_required:
         selector = "in_region_processing"
         path = _mantle_path(source, requirements)
         candidate_order = ["openai_gpt_6_astra"] if astra else _openai_candidate_order(catalog, source)
         catalog_hit, unsupported = _catalog_model_for_path(
             catalog, path, detected, requirements, candidate_order=candidate_order,
-            region=region,
+            region=region, selector=selector,
         )
         if not catalog_hit:
             return _unresolved(
@@ -1438,6 +1690,24 @@ def recommend_openai_workload(workload, region, catalog):
                 f"The exact source model is unavailable in {region}; "
                 f"{model['display_name']} is the in-region {endpoint} Chat Completions fallback."
             )
+    same_key = _same_model_catalog_key(source)
+    if (
+        path.startswith("mantle_")
+        and selector in _SERVER_SIDE_TOOL_SELECTORS
+        and same_key
+        and model_key != same_key
+        and catalog["models"][same_key]["paths"].get(path, {}).get("server_side_tools_supported")
+        is False
+    ):
+        # The selector is never dropped: the source model's card lists server-side
+        # system tools as unsupported on bedrock-mantle, so the same-family walk
+        # supplies the model that serves them.
+        rationale_head = (
+            f"{catalog['models'][same_key]['display_name']} lists server-side system tools as "
+            "unsupported on bedrock-mantle (model card, read 2026-11-08); "
+            f"{model['display_name']} is the same-family Mantle {_api_label(path)} fallback "
+            f"that serves mantle_selector {selector}."
+        )
     if unsupported:
         return _unresolved(
             rationale_head,
@@ -1457,13 +1727,17 @@ def recommend_openai_workload(workload, region, catalog):
         )
 
     needed = set(detected) | set(requirements.get("critical_features") or [])
-    if (model_key == "openai_gpt_6_astra" and path == "runtime_converse"
+    if (model_key == "openai_gpt_6_astra"
+            and path in {"runtime_converse", "runtime_openai_responses", "runtime_openai_chat"}
             and {"structured_output_json", "streaming"} <= needed):
         return _unresolved(
             rationale_head, [],
             _finding(
                 "structured_output_streaming_unverified", "[BLOCKS]",
-                "Astra runtime JSON Schema output is documented only for non-streaming calls.",
+                "Astra JSON Schema output on bedrock-runtime applies to non-streaming calls "
+                "on Chat Completions, Responses and Converse "
+                "(https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html, "
+                "read 2026-11-08).",
                 "Use non-streaming structured output or separate the streaming workload, "
                 "then update requirements and rerun Model Recommend.",
             ), path,
@@ -1629,6 +1903,18 @@ def recommend_openai_workload(workload, region, catalog):
         rationale.append(
             f"{model['display_name']} path is evidenced by the reference, but its context/output "
             "limits are unknown in the catalog and must be probed."
+        )
+    # Invariants: a set selector is only ever satisfied on a Mantle path (every other
+    # combination returned a decision above), and a runtime path carries no selector.
+    if selector and not path.startswith("mantle_"):
+        raise ValueError(
+            f"mantle_selector {selector} cannot be recommended on {path} for workload "
+            f"{workload['workload_id']}"
+        )
+    if _application_profile_requested(requirements) and path != "runtime_converse":
+        raise ValueError(
+            f"an application inference profile cannot be recommended on {path} for workload "
+            f"{workload['workload_id']}"
         )
     rec = _base(workload, "recommended")
     rec.update(

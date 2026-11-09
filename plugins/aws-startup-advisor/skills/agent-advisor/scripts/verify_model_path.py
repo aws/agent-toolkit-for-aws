@@ -239,6 +239,21 @@ def verify_workload(
         return result
 
     path = result["api_path"]
+    if (":application-inference-profile/" in model_id
+            and path in {"runtime_openai_responses", "runtime_openai_chat"}):
+        # No client is built: the API rejects this profile before any probe could run.
+        result["status"] = "needs_resolution"
+        result["error"] = {
+            "type": "ApplicationProfileUnsupportedOnApi",
+            "message": (
+                "Application inference profiles are rejected with HTTP 400 on the "
+                "bedrock-runtime Responses and Chat Completions APIs "
+                "(https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html, "
+                "read 2026-11-08); select Converse for this profile or a system / Geo / Global "
+                "inference profile for the OpenAI API."
+            ),
+        }
+        return result
     try:
         if (":application-inference-profile/" in model_id
                 and result["path_model_id"] == "anthropic.claude-opus-5-5"):

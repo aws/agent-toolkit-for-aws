@@ -429,6 +429,356 @@ def test_in_region_required_with_guardrails_stays_on_runtime_and_blocks():
     assert "cris_residency_unresolved" in _codes(rec["blocks"])
 
 
+# --- Invocation logging vs. a Mantle selector (model-invocation-logging.html,
+# read 2026-11-08: logging is captured only on bedrock-runtime) --------------
+
+def _option(rec, api_path):
+    return next(o for o in rec["decision_options"] if o["api_path"] == api_path)
+
+
+def test_logging_plus_explicit_selector_is_a_decision_between_mantle_and_runtime_openai_api():
+    out = _full_recommend(_workload(requirements={
+        "governance": ["invocation_logging"], "mantle_selector": "projects",
+    }))
+    jsonschema.validate(out, _OUT_SCHEMA)
+    rec = out["workloads"]["chat-svc"]
+    assert rec["decision_status"] == "decision_required"
+    assert rec["mantle_selector"] is None
+    assert {o["api_path"] for o in rec["decision_options"]} == {
+        "mantle_openai_responses", "runtime_openai_responses",
+    }
+    assert _option(rec, "mantle_openai_responses")["mantle_selector"] == "projects"
+    assert _option(rec, "runtime_openai_responses")["mantle_selector"] is None
+    assert "invocation logging" in rec["blocks"][0]["message"]
+    assert "CloudWatch" not in rec["blocks"][0]["message"]
+
+
+def test_logging_plus_derived_in_region_is_a_decision_carrying_the_derived_selector():
+    out = _full_recommend(_workload(requirements={
+        "governance": ["invocation_logging"], "data_residency": "in_region_required",
+    }))
+    jsonschema.validate(out, _OUT_SCHEMA)
+    rec = out["workloads"]["chat-svc"]
+    assert rec["decision_status"] == "decision_required"
+    assert "model_path_decision_required" in _codes(rec["blocks"])
+    assert {o["api_path"] for o in rec["decision_options"]} == {
+        "mantle_openai_responses", "runtime_openai_responses",
+    }
+    assert _option(rec, "mantle_openai_responses")["mantle_selector"] == "in_region_processing"
+    assert "in_region_processing" in rec["blocks"][0]["message"]
+    assert "invocation logging" in rec["blocks"][0]["message"]
+
+
+# --- CloudWatch never constrains the endpoint (monitoring-mantle-metrics.html,
+# read 2026-11-08: Mantle publishes AWS/BedrockMantle metrics) ---------------
+
+def test_cloudwatch_plus_selector_lands_on_mantle_with_the_selector():
+    rec = _recommend(_workload(requirements={
+        "governance": ["cloudwatch"], "mantle_selector": "projects",
+    }))
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "mantle_openai_responses"
+    assert rec["mantle_selector"] == "projects"
+
+
+def test_cloudwatch_plus_in_region_derives_the_mantle_selector():
+    rec = _recommend(_workload(requirements={
+        "governance": ["cloudwatch"], "data_residency": "in_region_required",
+    }))
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "mantle_openai_responses"
+    assert rec["mantle_selector"] == "in_region_processing"
+
+
+def test_cloudwatch_plus_logging_plus_selector_is_still_a_decision():
+    rec = _recommend(_workload(requirements={
+        "governance": ["cloudwatch", "invocation_logging"], "mantle_selector": "projects",
+    }))
+    assert rec["decision_status"] == "decision_required"
+    assert "model_path_decision_required" in _codes(rec["blocks"])
+
+
+# --- Guardrails follow the model card's API scope ---------------------------
+#
+# GPT-6 Sol / GPT-6 Luna list Guardrails on Responses, Chat Completions, Invoke
+# and Converse; GPT-6.1 Sol on Chat Completions, Invoke and Converse (not
+# Responses); every other GPT card lists Converse only (cards read 2026-11-08).
+
+@pytest.mark.parametrize(("source_id", "surface", "path"), [
+    ("gpt-6-sol", "responses", "runtime_openai_responses"),
+    ("gpt-6-sol", "chat_completions", "runtime_openai_chat"),
+    ("gpt-6-luna", "responses", "runtime_openai_responses"),
+    ("gpt-6.1-sol", "chat_completions", "runtime_openai_chat"),
+])
+def test_guardrails_listed_on_the_openai_api_keep_the_source_api_and_model(
+    source_id, surface, path
+):
+    out = _full_recommend(
+        _workload(
+            source={"model_ids": [source_id], "api_surface": surface},
+            requirements={
+                "api_continuity": "required", "governance": ["guardrails"],
+                "data_residency": "global_allowed",
+            },
+        ),
+        region="us-east-1",
+    )
+    jsonschema.validate(out, _OUT_SCHEMA)
+    rec = out["workloads"]["chat-svc"]
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == path
+    assert rec["primary_model"] == f"openai.{source_id}"
+    assert rec["invocation_model_id"] == f"global.openai.{source_id}"
+    assert rec["mantle_selector"] is None
+    assert "model_path_decision_required" not in _codes(rec["blocks"])
+    assert OPENAI_CATALOG["models"][oai._SOURCE_MODEL_KEYS[source_id]]["paths"][path][
+        "guardrails_supported"] is True
+
+
+def test_gpt61_sol_responses_with_guardrails_and_continuity_is_a_decision():
+    # The GPT-6.1 Sol card scopes Guardrails away from Responses.
+    rec = _recommend(
+        _workload(
+            source={"model_ids": ["gpt-6.1-sol"]},
+            requirements={"api_continuity": "required", "governance": ["guardrails"],
+                          "data_residency": "global_allowed"},
+        ),
+        region="us-east-1",
+    )
+    assert rec["decision_status"] == "decision_required"
+    assert "model_path_decision_required" in _codes(rec["blocks"])
+    assert {o["api_path"] for o in rec["decision_options"]} == {
+        "runtime_openai_responses", "runtime_converse",
+    }
+    assert "Converse" in _option(rec, "runtime_openai_responses")["reason"]
+    assert _option(rec, "runtime_converse")["model"] == "openai.gpt-6.1-sol"
+
+
+def test_guardrails_without_continuity_keep_converse_only_models_on_converse():
+    rec = _recommend(_workload(requirements={"governance": ["guardrails"]}))
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "runtime_converse"
+    assert rec["primary_model"] == "openai.gpt-5.4"
+
+
+def test_guardrails_on_the_openai_api_plus_selector_offers_the_runtime_openai_api():
+    rec = _recommend(
+        _workload(
+            source={"model_ids": ["gpt-6-sol"]},
+            requirements={"governance": ["guardrails"], "mantle_selector": "server_side_tools"},
+        ),
+        region="us-east-1",
+    )
+    assert rec["decision_status"] == "decision_required"
+    assert {o["api_path"] for o in rec["decision_options"]} == {
+        "mantle_openai_responses", "runtime_openai_responses",
+    }
+    assert "Guardrails are listed on this API" in _option(rec, "runtime_openai_responses")["reason"]
+    assert _option(rec, "mantle_openai_responses")["mantle_selector"] == "server_side_tools"
+
+
+# --- An explicit bedrock-runtime preference never coexists with a selector ----
+
+def test_preferred_runtime_path_plus_explicit_selector_is_a_preference_conflict():
+    out = _full_recommend(_workload(requirements={
+        "preferred_api_path": "runtime_openai_responses",
+        "mantle_selector": "background_inference",
+    }))
+    jsonschema.validate(out, _OUT_SCHEMA)
+    rec = out["workloads"]["chat-svc"]
+    assert rec["decision_status"] == "decision_required"
+    assert "preferred_api_path_conflict" in _codes(rec["blocks"])
+    assert {o["api_path"] for o in rec["decision_options"]} == {
+        "mantle_openai_responses", "runtime_openai_responses",
+    }
+    assert _option(rec, "mantle_openai_responses")["mantle_selector"] == "background_inference"
+    assert "background_inference" in rec["blocks"][0]["message"]
+
+
+def test_preferred_runtime_path_plus_derived_in_region_is_a_preference_conflict():
+    out = _full_recommend(_workload(requirements={
+        "preferred_api_path": "runtime_openai_responses",
+        "data_residency": "in_region_required",
+    }))
+    jsonschema.validate(out, _OUT_SCHEMA)
+    rec = out["workloads"]["chat-svc"]
+    assert rec["decision_status"] == "decision_required"
+    assert "preferred_api_path_conflict" in _codes(rec["blocks"])
+    assert _option(rec, "mantle_openai_responses")["mantle_selector"] == "in_region_processing"
+    assert _option(rec, "runtime_openai_responses")["mantle_selector"] is None
+    assert "in_region_required" in rec["blocks"][0]["message"]
+
+
+def test_preferred_runtime_path_plus_detected_web_search_is_a_preference_conflict():
+    rec = _recommend(_workload(
+        detected_features=["web_search"],
+        requirements={"preferred_api_path": "runtime_openai_responses"},
+    ))
+    assert rec["decision_status"] == "decision_required"
+    assert "preferred_api_path_conflict" in _codes(rec["blocks"])
+    assert _option(rec, "mantle_openai_responses")["mantle_selector"] == "web_search"
+
+
+@pytest.mark.parametrize("requirements", [
+    {"mantle_selector": "projects"},
+    {"mantle_selector": "background_inference"},
+    {"data_residency": "in_region_required"},
+    {"mantle_selector": "web_search", "governance": ["cloudwatch"]},
+])
+def test_a_recommended_runtime_path_never_carries_a_selector(requirements):
+    rec = _recommend(_workload(requirements=requirements))
+    if rec["decision_status"] == "recommended":
+        assert rec["api_path"].startswith("mantle_")
+        assert rec["mantle_selector"] is not None
+    else:
+        assert any(o["api_path"].startswith("mantle_") for o in rec["decision_options"])
+
+
+# --- Background inference is a Mantle Responses API feature
+# (inference-responses-api.html, read 2026-11-08) ----------------------------
+
+def test_chat_source_with_background_inference_is_a_decision_between_mantle_responses_and_runtime_chat():
+    out = _full_recommend(_workload(
+        source={"api_surface": "chat_completions"},
+        requirements={"mantle_selector": "background_inference"},
+    ))
+    jsonschema.validate(out, _OUT_SCHEMA)
+    rec = out["workloads"]["chat-svc"]
+    assert rec["decision_status"] == "decision_required"
+    assert "selector_api_incompatible" in _codes(rec["blocks"])
+    assert _cites_aws_docs(rec["blocks"][0]["message"])
+    assert {o["api_path"] for o in rec["decision_options"]} == {
+        "mantle_openai_responses", "runtime_openai_chat",
+    }
+    assert _option(rec, "mantle_openai_responses")["mantle_selector"] == "background_inference"
+    assert _option(rec, "runtime_openai_chat")["mantle_selector"] is None
+
+
+def test_chat_source_with_background_inference_and_free_continuity_reshapes_to_mantle_responses():
+    rec = _recommend(_workload(
+        source={"api_surface": "chat_completions"},
+        requirements={"mantle_selector": "background_inference",
+                      "api_continuity": "not_required"},
+    ))
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "mantle_openai_responses"
+    assert rec["mantle_selector"] == "background_inference"
+    assert "chat_completions_to_responses_required" in _codes(rec["blocks"])
+
+
+def test_preferred_mantle_chat_with_background_inference_is_a_decision():
+    rec = _recommend(_workload(
+        source={"api_surface": "chat_completions"},
+        requirements={"preferred_api_path": "mantle_openai_chat",
+                      "mantle_selector": "background_inference"},
+    ))
+    assert rec["decision_status"] == "decision_required"
+    assert _codes(rec["blocks"]) & {"preferred_api_path_conflict", "selector_api_incompatible"}
+    assert _option(rec, "mantle_openai_responses")["mantle_selector"] == "background_inference"
+
+
+# --- GPT-6.1 Sol lists server-side system tools as unsupported on bedrock-mantle
+# (model-card-openai-gpt-6-1-sol.html, read 2026-11-08) -----------------------
+
+@pytest.mark.parametrize(("surface", "selector", "path"), [
+    ("responses", "server_side_tools", "mantle_openai_responses"),
+    ("chat_completions", "web_search", "mantle_openai_chat"),
+])
+def test_gpt61_sol_server_side_tool_selectors_fall_to_astra_and_keep_the_selector(
+    surface, selector, path
+):
+    requirements = {"mantle_selector": selector}
+    if surface == "responses":
+        requirements["api_continuity"] = "required"
+    out = _full_recommend(
+        _workload(source={"model_ids": ["gpt-6.1-sol"], "api_surface": surface},
+                  requirements=requirements),
+        region="us-east-1",
+    )
+    jsonschema.validate(out, _OUT_SCHEMA)
+    rec = out["workloads"]["chat-svc"]
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == path
+    assert rec["primary_model"] == "openai.gpt-6-astra"
+    assert rec["mantle_selector"] == selector
+    assert "fallback" in rec["rationale"][0]
+    assert "server-side system tools" in rec["rationale"][0]
+
+
+def test_catalog_walk_skips_mantle_rows_that_deny_server_side_tools_only_for_tool_selectors():
+    order = ["openai_gpt_6_1_sol", "openai_gpt_6_astra"]
+    for selector in ("server_side_tools", "web_search"):
+        hit, _ = oai._catalog_model_for_path(
+            OPENAI_CATALOG, "mantle_openai_responses", [], {}, candidate_order=order,
+            region="us-east-1", selector=selector,
+        )
+        assert hit[0] == "openai_gpt_6_astra"
+    hit, _ = oai._catalog_model_for_path(
+        OPENAI_CATALOG, "mantle_openai_responses", [], {}, candidate_order=order,
+        region="us-east-1", selector="projects",
+    )
+    assert hit[0] == "openai_gpt_6_1_sol"
+
+
+# --- Application inference profiles are Converse-only on bedrock-runtime
+# (inference-responses-api.html, read 2026-11-08: Responses/Chat return HTTP 400) --
+
+_APP_PROFILE = "arn:aws:bedrock:us-east-2:123456789012:application-inference-profile/app1"
+
+
+def test_application_profile_without_continuity_is_recommended_on_converse_with_the_arn():
+    out = _full_recommend(_workload(requirements={
+        "data_residency": "geo_required", "cris_geography": "us",
+        "inference_profile_id": _APP_PROFILE,
+    }))
+    jsonschema.validate(out, _OUT_SCHEMA)
+    rec = out["workloads"]["chat-svc"]
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "runtime_converse"
+    assert rec["primary_model"] == "openai.gpt-5.4"
+    assert rec["invocation_model_id"] == _APP_PROFILE
+
+
+def test_application_profile_with_continuity_is_a_decision_whose_openai_option_has_no_id():
+    out = _full_recommend(_workload(requirements={
+        "api_continuity": "required", "data_residency": "geo_required",
+        "cris_geography": "us", "inference_profile_id": _APP_PROFILE,
+    }))
+    jsonschema.validate(out, _OUT_SCHEMA)
+    rec = out["workloads"]["chat-svc"]
+    assert rec["decision_status"] == "decision_required"
+    assert "application inference profile" in rec["blocks"][0]["message"]
+    openai_option = _option(rec, "runtime_openai_responses")
+    assert openai_option["invocation_model_id"] is None
+    assert "400" in openai_option["reason"]
+    assert _cites_aws_docs(openai_option["reason"])
+    assert _option(rec, "runtime_converse")["invocation_model_id"] == _APP_PROFILE
+
+
+def test_application_profile_with_a_preferred_openai_api_is_a_preference_conflict():
+    rec = _recommend(_workload(requirements={
+        "preferred_api_path": "runtime_openai_responses", "data_residency": "geo_required",
+        "cris_geography": "us", "inference_profile_id": _APP_PROFILE,
+    }))
+    assert rec["decision_status"] == "decision_required"
+    assert "preferred_api_path_conflict" in _codes(rec["blocks"])
+    assert "application inference profile" in rec["blocks"][0]["message"]
+    assert all(
+        o["invocation_model_id"] != _APP_PROFILE
+        for o in rec["decision_options"] if o["api_path"] != "runtime_converse"
+    )
+
+
+def test_system_profile_with_continuity_stays_on_runtime_responses_with_that_id():
+    rec = _recommend(_workload(requirements={
+        "inference_profile_id": "us.openai.gpt-5.4", "api_continuity": "required",
+        "data_residency": "geo_required", "cris_geography": "us",
+    }))
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "runtime_openai_responses"
+    assert rec["invocation_model_id"] == "us.openai.gpt-5.4"
+
+
 # --- GPT-6 exact-model routing --------------------------------------------
 
 _GPT6_MODELS = (
@@ -457,7 +807,14 @@ def test_gpt6_supported_region_selects_exact_model_and_validates_schema(
     rec = out["workloads"]["chat-svc"]
     assert oai.detect_family(source_id) == "reasoning"
     assert rec["decision_status"] == "recommended"
-    assert rec["primary_model"] == target_id
+    if selector and source_id == "gpt-6.1-sol":
+        # The GPT-6.1 Sol card lists server-side system tools as unsupported on
+        # bedrock-mantle (read 2026-11-08): the selector is kept and the walk falls
+        # to the next same-family model that serves them.
+        assert rec["primary_model"] == "openai.gpt-6-astra"
+        assert "fallback" in rec["rationale"][0]
+    else:
+        assert rec["primary_model"] == target_id
     assert rec["api_path"] == path
     assert rec["mantle_selector"] == selector
     if critical:
@@ -485,11 +842,19 @@ def test_gpt6_governance_selects_exact_runtime_model_and_cris_id(
     )
     assert rec["decision_status"] == "recommended"
     assert rec["primary_model"] == target_id
-    assert rec["api_path"] == "runtime_converse"
     assert rec["invocation_model_id"] == prefix + target_id
-    delta = _delta_by_code(rec, "openai_sdk_to_converse")
-    assert "identity is preserved" in delta["description"]
-    assert "Bedrock-native model" not in delta["description"]
+    if source_id in {"gpt-6-sol", "gpt-6-luna"}:
+        # Their cards list Guardrails on the Responses API (read 2026-11-08), so the
+        # source API stays on bedrock-runtime with the same model and CRIS id.
+        assert rec["api_path"] == "runtime_openai_responses"
+        assert "Guardrails are listed on Responses" in rec["rationale"][0]
+        assert "openai_sdk_to_converse" not in _delta_codes(rec)
+    else:
+        # GPT-6 Astra and GPT-6.1 Sol scope Guardrails to Converse for a Responses source.
+        assert rec["api_path"] == "runtime_converse"
+        delta = _delta_by_code(rec, "openai_sdk_to_converse")
+        assert "identity is preserved" in delta["description"]
+        assert "Bedrock-native model" not in delta["description"]
 
 
 @pytest.mark.parametrize(
@@ -511,11 +876,21 @@ def test_gpt6_unsupported_geo_profile_falls_back_without_fabricated_id(
         _workload(source={"model_ids": [source_id]}, requirements=requirements),
         region=region,
     )
-    assert rec["decision_status"] == "recommended"
-    assert rec["invocation_model_id"] != unsupported_id
-    assert not rec["invocation_model_id"].endswith(
-        f"openai.{source_id}"
-    )
+    if source_id == "gpt-6-sol":
+        # Guardrails are on the Responses API for GPT-6 Sol, so the path stays
+        # runtime_openai_responses; no OpenAI model publishes an EU profile, so the
+        # engine fails closed instead of fabricating one or switching families silently.
+        assert rec["decision_status"] == "decision_required"
+        assert "inference_profile_unverified" in _codes(rec["blocks"])
+        assert unsupported_id not in {
+            option["invocation_model_id"] for option in rec["decision_options"]
+        }
+    else:
+        assert rec["decision_status"] == "recommended"
+        assert rec["invocation_model_id"] != unsupported_id
+        assert not rec["invocation_model_id"].endswith(
+            f"openai.{source_id}"
+        )
 
     conflict = _recommend(
         _workload(
@@ -556,7 +931,13 @@ def test_gpt6_chat_completions_preserves_chat_surface(source_id, target_id, sele
         ),
         region="us-east-1",
     )
-    assert rec["primary_model"] == target_id
+    if selector and source_id == "gpt-6.1-sol":
+        # GPT-6.1 Sol lists server-side system tools as unsupported on bedrock-mantle
+        # (card read 2026-11-08): same-family fallback on the same Chat surface.
+        assert rec["primary_model"] == "openai.gpt-6-astra"
+        assert rec["mantle_selector"] == selector
+    else:
+        assert rec["primary_model"] == target_id
     assert rec["api_path"] == path
     assert "chat_completions_to_responses_required" not in _codes(rec["blocks"])
 
@@ -757,12 +1138,18 @@ def test_gpt6_chat_findings_preserve_chat_request_shapes(selector, path):
     assert "previous_response_id" not in state_delta["description"]
 
 
-@pytest.mark.parametrize(("selector", "openai_path"), [
-    (None, "runtime_openai_chat"),
-    ("server_side_tools", "mantle_openai_chat"),
+@pytest.mark.parametrize(("selector", "openai_path", "governance", "other_path"), [
+    # multi-model Converse is Converse by definition: continuity vs Converse decision.
+    (None, "runtime_openai_chat", {"multi_model_converse": True}, "runtime_converse"),
+    # GPT-6 Sol lists Guardrails on Chat Completions (card read 2026-11-08), so the
+    # runtime side of the selector-vs-governance decision keeps the Chat API.
+    ("server_side_tools", "mantle_openai_chat", {"governance": ["guardrails"]},
+     "runtime_openai_chat"),
 ])
-def test_gpt6_chat_conflict_outside_mantle_region_is_schema_valid(selector, openai_path):
-    requirements = {"api_continuity": "required", "governance": ["guardrails"]}
+def test_gpt6_chat_conflict_outside_mantle_region_is_schema_valid(
+    selector, openai_path, governance, other_path
+):
+    requirements = {"api_continuity": "required", **governance}
     if selector:
         requirements["mantle_selector"] = selector
     workload = _workload(
@@ -775,7 +1162,7 @@ def test_gpt6_chat_conflict_outside_mantle_region_is_schema_valid(selector, open
     assert rec["decision_status"] == "decision_required"
     assert {option["api_path"] for option in rec["decision_options"]} == {
         openai_path,
-        "runtime_converse",
+        other_path,
     }
     option = next(
         option for option in rec["decision_options"]
@@ -1712,6 +2099,68 @@ def test_astra_json_schema_does_not_claim_streaming_support(status, expected):
     assert rec["decision_status"] == expected
     if expected == "decision_required":
         assert "structured_output_streaming_unverified" in _codes(rec["blocks"])
+
+
+# The Astra card scopes bedrock-runtime JSON Schema output to non-streaming calls on
+# Chat Completions, Responses and Converse alike (model-card-openai-gpt-6-astra.html,
+# read 2026-11-08), so the guard covers every runtime API, not only Converse.
+@pytest.mark.parametrize("surface,path", [
+    ("responses", "runtime_openai_responses"),
+    ("chat_completions", "runtime_openai_chat"),
+])
+@pytest.mark.parametrize("status,expected", [
+    ("detected", "decision_required"), ("absent", "recommended"),
+])
+def test_astra_runtime_openai_apis_apply_the_non_streaming_json_schema_guard(
+    surface, path, status, expected
+):
+    out = _full_recommend(_workload(
+        source={"model_ids": ["gpt-6-astra"], "api_surface": surface},
+        requirements={"api_continuity": "required", "data_residency": "global_allowed",
+                      "critical_features": ["structured_output_json"]},
+        detected_features=["streaming"], feature_status={"streaming": status},
+    ), region="us-east-1")
+    jsonschema.validate(out, _OUT_SCHEMA)
+    rec = out["workloads"]["chat-svc"]
+    assert rec["decision_status"] == expected
+    if expected == "decision_required":
+        block = next(b for b in rec["blocks"] if b["code"] == "structured_output_streaming_unverified")
+        assert "non-streaming" in block["message"]
+        assert _cites_aws_docs(block["message"])
+        assert _option(rec, path)["model"] == "openai.gpt-6-astra"
+    else:
+        assert rec["api_path"] == path
+        assert rec["primary_model"] == "openai.gpt-6-astra"
+
+
+def test_astra_runtime_responses_structured_output_alone_is_recommended_with_the_text_format_delta():
+    rec = _recommend(_workload(
+        source={"model_ids": ["gpt-6-astra"]},
+        requirements={"api_continuity": "required", "data_residency": "global_allowed",
+                      "critical_features": ["structured_output_json"]},
+    ), region="us-east-1")
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "runtime_openai_responses"
+    assert "structured_output_json" in rec["compatibility"]["native"]
+    assert "structured_output_text_format" in _delta_codes(rec)
+    assert "structured_output_streaming_unverified" not in _codes(rec["blocks"])
+
+
+def test_non_streaming_json_schema_guard_is_keyed_on_astra_not_on_the_source():
+    # The guard is Astra-specific. A GPT-6.1 Sol source needing both features has no
+    # GPT-6.1 Sol capability evidence for them, so the walk falls to Astra; any block
+    # is then about the Astra target, never about GPT-6.1 Sol.
+    rec = _recommend(_workload(
+        source={"model_ids": ["gpt-6.1-sol"]},
+        requirements={"api_continuity": "required", "data_residency": "global_allowed",
+                      "critical_features": ["structured_output_json"]},
+        detected_features=["streaming"],
+    ), region="us-east-1")
+    if "structured_output_streaming_unverified" in _codes(rec["blocks"]):
+        assert _option(rec, "runtime_openai_responses")["model"] == "openai.gpt-6-astra"
+        assert "GPT-6.1" not in rec["blocks"][0]["message"]
+    else:
+        assert rec["primary_model"] != "openai.gpt-6-astra"
 
 
 @pytest.mark.parametrize("profile", [

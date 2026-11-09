@@ -253,7 +253,13 @@ def _path_constraints(workload):
         and requirements.get("preserve_messages_api") is not False
     )
 
+    # Model invocation logging is captured only on bedrock-runtime
+    # (model-invocation-logging.html, read 2026-11-08); CloudWatch metrics exist on
+    # both endpoints (AWS/BedrockMantle) and never constrain the path.
+    logging_required = "invocation_logging" in requirements.get("governance", [])
+
     runtime_path = "runtime_invoke" if native_required else "runtime_converse"
+    messages_option = "runtime_messages" if (source_messages or messages_required) else runtime_path
     conflicts = []
     option_paths = []
     if messages_required and (converse_required or native_required):
@@ -262,10 +268,19 @@ def _path_constraints(workload):
     if selector and (converse_required or native_required):
         conflicts.append("mantle_selector_vs_runtime")
         option_paths = ["mantle_messages", runtime_path]
+    elif selector and logging_required:
+        conflicts.append("mantle_selector_vs_invocation_logging")
+        option_paths = ["mantle_messages", messages_option]
     if preferred:
         if preferred.startswith("mantle_") and (converse_required or native_required):
             conflicts.append("preferred_path_vs_runtime")
             option_paths = option_paths or ["mantle_messages", runtime_path]
+        if preferred.startswith("runtime_") and selector:
+            conflicts.append("preferred_path_vs_mantle_selector")
+            option_paths = option_paths or ["mantle_messages", preferred]
+        if preferred == "runtime_messages" and converse_required:
+            conflicts.append("preferred_path_vs_converse")
+            option_paths = option_paths or ["runtime_messages", runtime_path]
         if preferred in {"runtime_converse", "runtime_invoke"} and messages_required:
             conflicts.append("preferred_path_vs_messages")
             option_paths = option_paths or ["runtime_messages", runtime_path]
@@ -483,9 +498,10 @@ def _resolve_invocation_model_id(model_id, requires_cris, requirements, model=No
     return candidate if profile_id in allowed else None
 
 
-def _decision_options(catalog, workload, option_paths, region=None):
+def _decision_options(catalog, workload, option_paths, region=None, selector=None):
     requirements = workload["requirements"]
-    selector = requirements.get("mantle_selector")
+    if selector is None:
+        selector = requirements.get("mantle_selector")
     options = []
     for path in dict.fromkeys(option_paths):
         candidates = _build_candidates(catalog, [path], requirements, region)
@@ -493,8 +509,8 @@ def _decision_options(catalog, workload, option_paths, region=None):
             continue
         if path == "runtime_messages":
             tradeoff = (
-                "Keeps the Anthropic Messages API on bedrock-runtime (IAM, invocation logging, "
-                "CloudWatch); Converse-only features such as Guardrails and the multi-model "
+                "Keeps the Anthropic Messages API on bedrock-runtime (IAM, invocation "
+                "logging); Converse-only features such as Guardrails and the multi-model "
                 "surface are not on this API."
             )
         elif path == "mantle_messages":
@@ -792,7 +808,8 @@ def _verification(candidate, region, catalog, invocation_model_id, requirements=
 def _decision_required(workload, region, catalog, constraints):
     feature_status = _feature_assessment(workload, _source_version(workload["source"]), None)
     decision_options = _decision_options(
-        catalog, workload, constraints["option_paths"], region
+        catalog, workload, constraints["option_paths"], region,
+        selector=constraints.get("mantle_selector"),
     )
     if len(decision_options) != len(set(constraints["option_paths"])):
         raise ValueError(
@@ -883,13 +900,34 @@ def recommend_anthropic_workload(workload, region, catalog):
     requirements = workload["requirements"]
     rationale = list(constraints["rationale"])
     mantle_selector = constraints["mantle_selector"] if path == "mantle_messages" else None
-    if (
+    logging_required = "invocation_logging" in requirements.get("governance", [])
+    runtime_pinned = _converse_required(requirements) or requirements.get("requires_native_payload")
+    derivable = (
         requirements.get("data_residency") == "in_region_required"
         and path.startswith("runtime_")
         and path_config["requires_cris"]
         and not _runtime_in_region_allowed(path_config["model_id"], model, region, requirements)
-        and not (_converse_required(requirements) or requirements.get("requires_native_payload"))
-    ):
+    )
+    in_region_conflict = None
+    if derivable and requirements.get("preferred_api_path"):
+        in_region_conflict = "in_region_processing_vs_preferred_api_path"
+    elif derivable and logging_required and not runtime_pinned:
+        in_region_conflict = "in_region_processing_vs_invocation_logging"
+    if in_region_conflict and _build_candidates(catalog, ["mantle_messages"], requirements, region):
+        # Derived in_region_processing conflicts with an explicit runtime preference or
+        # with invocation logging (captured only on bedrock-runtime): the user decides.
+        return _decision_required(workload, region, catalog, {
+            "paths": [],
+            "conflicts": [in_region_conflict],
+            "option_paths": ["mantle_messages", path],
+            "rationale": [
+                "Strict in-Region processing was requested and bedrock-runtime serves this "
+                "model only through a CRIS profile here (derived mantle_selector "
+                "in_region_processing); the recorded requirements cannot share one path."
+            ],
+            "mantle_selector": "in_region_processing",
+        })
+    if derivable and not runtime_pinned:
         # Derived selector (bedrock-endpoint-policy.md in_region_processing): bedrock-runtime
         # serves this model here only through a CRIS profile, which may route out of the Region.
         in_region = _build_candidates(catalog, ["mantle_messages"], requirements, region)

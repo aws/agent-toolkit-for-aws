@@ -651,6 +651,9 @@ def test_changed_in_region_allowance_invalidates_same_arn_verification(tmp_path)
 
 # Mantle OpenAI paths are probed only when a mantle_selector put the workload there.
 MANTLE_OPENAI = {"api_continuity": "required", "mantle_selector": "background_inference"}
+# Background inference is a Responses API feature on bedrock-mantle, so a Chat
+# Completions source needs a Chat-compatible selector to land on mantle_openai_chat.
+MANTLE_OPENAI_CHAT = {"api_continuity": "required", "mantle_selector": "projects"}
 
 
 def test_mantle_responses_probe_calls_responses_create_with_exact_id():
@@ -703,7 +706,7 @@ def test_default_openai_recommendation_probes_runtime_responses_not_mantle():
 def test_mantle_chat_probe_calls_chat_completions_with_exact_id():
     client = FakeOpenAIClient()
     result = _verify_openai(
-        MANTLE_OPENAI,
+        MANTLE_OPENAI_CHAT,
         source={"model_ids": ["gpt-6-sol"], "api_surface": "chat_completions"},
         region="us-east-1",
         openai_chat_client_factory=lambda region: client,
@@ -734,7 +737,7 @@ def test_mantle_chat_failure_does_not_substitute_model():
     completions = FakeCompletions(error=RuntimeError("access denied"))
     client = FakeOpenAIClient(chat=FakeChat(completions))
     result = _verify_openai(
-        MANTLE_OPENAI,
+        MANTLE_OPENAI_CHAT,
         source={"model_ids": ["gpt-6-sol"], "api_surface": "chat_completions"},
         region="us-east-1",
         openai_chat_client_factory=lambda region: client,
@@ -890,6 +893,32 @@ def test_runtime_chat_failure_does_not_substitute_model():
     assert verification["error"] == {"type": "RuntimeError", "message": "access denied"}
     assert verification["invocation_model_id"] == "us.openai.gpt-6-sol"
     assert [call["model"] for call in completions.calls] == ["us.openai.gpt-6-sol"]
+
+
+@pytest.mark.parametrize("path,factory_kwarg", [
+    ("runtime_openai_responses", "runtime_openai_responses_client_factory"),
+    ("runtime_openai_chat", "runtime_openai_chat_client_factory"),
+])
+def test_application_profile_on_a_runtime_openai_api_needs_resolution_without_a_client(
+    path, factory_kwarg
+):
+    # bedrock-runtime Responses/Chat Completions reject application inference profiles
+    # with HTTP 400 (inference-responses-api.html, read 2026-11-08): the verifier says
+    # so before building any client, instead of probing an id the API cannot accept.
+    recommendation = _runtime_recommendation("openai", path, "openai.gpt-5.4", APPLICATION_ARN)
+    result = verify_model_path.verify_recommendation(
+        recommendation, now=NOW,
+        **{factory_kwarg: lambda region: pytest.fail("client must not be built")},
+    )
+    jsonschema.validate(result, VERIFICATION_SCHEMA, format_checker=jsonschema.FormatChecker())
+    verification = result["workloads"]["openai-svc"]
+
+    assert verification["status"] == "needs_resolution"
+    assert verification["error"]["type"] == "ApplicationProfileUnsupportedOnApi"
+    assert "inference-responses-api" in verification["error"]["message"]
+    assert "Converse" in verification["error"]["message"]
+    assert verification["invocation_model_id"] == APPLICATION_ARN
+    assert verification["response_model_id"] is None
 
 
 def test_runtime_messages_probe_calls_messages_create_with_exact_cris_id():

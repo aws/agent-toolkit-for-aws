@@ -187,6 +187,101 @@ def test_selector_and_guardrails_require_user_decision_with_mantle_option():
     assert "mantle_selector_vs_runtime" in block["message"]
 
 
+def _decision_block(rec):
+    return next(item for item in rec["blocks"] if item["code"] == "model_path_decision_required")
+
+
+# Invocation logging is captured only on bedrock-runtime (model-invocation-logging.html,
+# read 2026-11-08); CloudWatch metrics exist on both endpoints (AWS/BedrockMantle,
+# monitoring-mantle-metrics.html, read 2026-11-08) and never constrain the path.
+
+def test_logging_plus_selector_is_a_decision_between_mantle_and_runtime_messages():
+    workload = _workload(requirements={"governance": ["invocation_logging"],
+                                       "mantle_selector": "workspaces"})
+    result = model_recommendation.recommend(_input(workload))
+    jsonschema.validate(result, _schema("model-recommendation.json"))
+    rec = result["workloads"]["support-agent"]
+
+    assert rec["decision_status"] == "decision_required"
+    options = {option["api_path"]: option for option in rec["decision_options"]}
+    assert set(options) == {"mantle_messages", "runtime_messages"}
+    assert options["mantle_messages"]["mantle_selector"] == "workspaces"
+    assert "mantle_selector_vs_invocation_logging" in _decision_block(rec)["message"]
+    assert "CloudWatch" not in _decision_block(rec)["message"]
+
+
+def test_logging_plus_derived_in_region_is_a_decision_carrying_the_derived_selector():
+    workload = _workload(requirements={"governance": ["invocation_logging"],
+                                       "data_residency": "in_region_required"})
+    result = model_recommendation.recommend(_input(workload))
+    jsonschema.validate(result, _schema("model-recommendation.json"))
+    rec = result["workloads"]["support-agent"]
+
+    assert rec["decision_status"] == "decision_required"
+    options = {option["api_path"]: option for option in rec["decision_options"]}
+    assert set(options) == {"mantle_messages", "runtime_messages"}
+    assert options["mantle_messages"]["mantle_selector"] == "in_region_processing"
+    assert "in_region_processing_vs_invocation_logging" in _decision_block(rec)["message"]
+    assert "runtime_messages" in _decision_block(rec)["remediation"]
+
+
+def test_cloudwatch_plus_selector_is_recommended_on_mantle_messages():
+    rec = _recommend(_workload(requirements={"governance": ["cloudwatch"],
+                                             "mantle_selector": "workspaces"}))
+
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "mantle_messages"
+    assert rec["mantle_selector"] == "workspaces"
+
+
+def test_cloudwatch_plus_in_region_derives_the_mantle_selector():
+    rec = _recommend(_workload(requirements={"governance": ["cloudwatch"],
+                                             "data_residency": "in_region_required"}))
+
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "mantle_messages"
+    assert rec["mantle_selector"] == "in_region_processing"
+
+
+# An explicit bedrock-runtime preference never coexists with a Mantle selector or a
+# Converse-only requirement; both are decisions.
+
+def test_preferred_runtime_messages_plus_selector_is_a_decision():
+    rec = _recommend(_workload(requirements={"preferred_api_path": "runtime_messages",
+                                             "mantle_selector": "workspaces"}))
+
+    assert rec["decision_status"] == "decision_required"
+    options = {option["api_path"]: option for option in rec["decision_options"]}
+    assert set(options) == {"mantle_messages", "runtime_messages"}
+    assert options["mantle_messages"]["mantle_selector"] == "workspaces"
+    assert "preferred_path_vs_mantle_selector" in _decision_block(rec)["message"]
+
+
+def test_preferred_runtime_messages_plus_guardrails_is_a_decision():
+    rec = _recommend(_workload(requirements={"preferred_api_path": "runtime_messages",
+                                             "governance": ["guardrails"]}))
+
+    assert rec["decision_status"] == "decision_required"
+    assert {option["api_path"] for option in rec["decision_options"]} == {
+        "runtime_messages", "runtime_converse",
+    }
+    assert "preferred_path_vs_converse" in _decision_block(rec)["message"]
+
+
+def test_preferred_runtime_messages_plus_derived_in_region_is_a_decision():
+    workload = _workload(requirements={"preferred_api_path": "runtime_messages",
+                                       "data_residency": "in_region_required"})
+    result = model_recommendation.recommend(_input(workload))
+    jsonschema.validate(result, _schema("model-recommendation.json"))
+    rec = result["workloads"]["support-agent"]
+
+    assert rec["decision_status"] == "decision_required"
+    options = {option["api_path"]: option for option in rec["decision_options"]}
+    assert set(options) == {"mantle_messages", "runtime_messages"}
+    assert options["mantle_messages"]["mantle_selector"] == "in_region_processing"
+    assert "in_region_processing_vs_preferred_api_path" in _decision_block(rec)["message"]
+
+
 def test_in_region_required_on_a_cris_only_runtime_candidate_derives_mantle():
     rec = _recommend(_workload(requirements={"data_residency": "in_region_required"}))
 
