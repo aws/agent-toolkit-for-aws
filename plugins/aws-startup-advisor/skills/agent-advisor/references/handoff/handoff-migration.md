@@ -29,6 +29,9 @@ with `evidence` = the `file:line construct` behind the `detected` feature status
 module derived `web_search` from a detected Web Search tool; `"catalog"` with `evidence` = the
 catalog file and row for `mantle_only_model_or_api`. A unit on any `runtime_*` path carries no
 `mantle_requirement`; downstream Design writes the `endpoint_assumption` sentence for it.
+Migration Plan Step 2 writes the same per-unit `mantle_selector` and `mantle_requirement` into
+`migration-plan-injection.json` `units[]`, so the downstream engine reads them from the saved
+artifact rather than from conversation context.
 
 The summary also carries this translation table so that `gcp-to-aws` Design and
 `llm-to-bedrock` write `migration_path` / `required_client_api` / `mantle_selector` /

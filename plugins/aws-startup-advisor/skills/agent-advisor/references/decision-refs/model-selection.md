@@ -34,9 +34,11 @@ authoritative (a table here would drift). The engine applies these provider-neut
   `bedrock-runtime` by default; a `mantle_*` path only with a recorded `mantle_selector` from
   that file; API continuity alone never selects Mantle.
 - **Conflicts are not precedence.** When two hard requirements cannot share one path (e.g. a
-  verified Mantle selector plus Converse-only governance), emit `decision_required` with both
-  tradeoff options and rerun after the user resolves the requirement — never silently let one
-  side win.
+  verified Mantle selector plus Converse-only governance such as Guardrails on a model whose
+  card lists them as Converse-only, or plus invocation logging, which only `bedrock-runtime`
+  captures), emit `decision_required` with both tradeoff options and rerun after the user
+  resolves the requirement — never silently let one side win. CloudWatch metrics exist on both
+  endpoints (`AWS/Bedrock`, `AWS/BedrockMantle`) and never create a conflict.
 - **A dated snapshot is not a permanent claim.** Catalog data is point-in-time — e.g. Sonnet 4.6
   was runtime-only in the `2026-06-24` snapshot, and six days later Sonnet 5 launched with full
   Mantle Messages support, changing the default recommendation. Every recommendation

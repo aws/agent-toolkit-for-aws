@@ -1950,7 +1950,7 @@ def test_mantle_preference_without_selector_fails_closed_for_every_source(prefer
     assert not any(o["api_path"].startswith("mantle_") for o in rec["decision_options"])
 
 
-# Astra caching evidence (FEAT-001 rows): runtime_openai_responses and
+# Astra caching evidence (catalog per-path rows): runtime_openai_responses and
 # runtime_openai_chat carry prompt_caching; on Mantle only Responses does. The
 # invariant: a required cache is checked on the API actually selected.
 @pytest.mark.parametrize("region", ["us-east-1", "us-west-2"])

@@ -244,6 +244,8 @@ Write the injection context to `$RUN_DIR/migration-plan-injection.json`:
       "model": "<from unit.model_recommendation.model>",
       "api_path": "<from unit.model_recommendation.api_path>",
       "invocation_model_id": "<from unit.model_recommendation.invocation_model_id; null until resolved>",
+      "mantle_selector": "<from unit.model_recommendation.mantle_selector; null on every runtime_* path>",
+      "mantle_requirement": "<the unit's mantle_requirement object from handoff-summary.md Step 1 — { workload_id, selector, source, evidence?, region? }; null on every runtime_* path>",
       "source": "<from unit.model_recommendation.source>",
       "services": "<from unit.agentcore_services[]>",
       "evidence": "<from context-signals.json.units[].evidence, matched by unit.id>"
@@ -365,12 +367,14 @@ vocabulary of `references/vendored/ai/bedrock-endpoint-policy.md` on the matched
 | `runtime_openai_chat` | `runtime_openai_cris` | `chat_completions` | same |
 | `runtime_converse` on a proprietary GPT model (`openai.gpt-6*`, `openai.gpt-5.6-*`, `openai.gpt-5.5`, `openai.gpt-5.4`) | `runtime_openai_cris` | `converse` | same; `runtime_converse` on a Claude or open-weight model keeps the exact comparison |
 | `runtime_messages` | `runtime_messages` | `messages` | `aws_model_id` = advisor `invocation_model_id` |
-| `mantle_openai_responses` / `mantle_openai_chat` / `mantle_messages` | the same path name | `responses` / `chat_completions` / `messages` | `bedrock_models[].mantle_selector` and `bedrock_models[].mantle_requirement` (`handoff-migration.md` Step 1 shape) copied verbatim from the advisor contract; an advisor Mantle contract whose `mantle_selector` is null is a mismatch (only a legacy contract written before the field existed keeps the exact model/path comparison) |
+| `mantle_openai_responses` / `mantle_openai_chat` / `mantle_messages` | the same path name | `responses` / `chat_completions` / `messages` | `bedrock_models[].mantle_selector` and `bedrock_models[].mantle_requirement` (`handoff-migration.md` Step 1 shape) copied verbatim from `units[].mantle_selector` / `units[].mantle_requirement` in `migration-plan-injection.json` (the saved handoff), never from live conversation context; an injection unit on a `mantle_*` path whose `mantle_selector` is null is a mismatch (only a legacy contract written before the field existed keeps the exact model/path comparison) |
 
 Every `runtime_*` row carries the `endpoint_assumption` sentence of
 `references/vendored/ai/schema-design-aws-ai.md` with the advisor `unit_id` as `<workload_id>` and
 no `mantle_requirement`; a `mantle_*` row's `mantle_requirement` is not part of the comparison
-below.
+below. GCP reads both Mantle fields from the injection file written in Step 2, so a
+`mantle_*` unit whose injection entry lacks `mantle_selector` cannot validate: fix the
+handoff (rerun Model Recommend and the handoff) rather than typing the selector into Design.
 
 An absent `runtime_api` on a legacy runtime plan means Converse; an explicit Chat/Responses
 choice is not equivalent. Do not replace a confirmed Global profile with US Geo or strip an ARN.
@@ -405,7 +409,8 @@ def matches_advisor_model(advisor, plan_model, migration_path, runtime_api=None,
             return False
         profile_id = invocation.rsplit("/", 1)[-1]
         logical_model = (profile_id.split(".", 1)[1]
-                         if profile_id.startswith(("us.", "in.", "global.")) else profile_id)
+                         if profile_id.startswith(("us.", "in.", "us-gov.", "global."))
+                         else profile_id)
         resolved_api = runtime_api or ("converse" if path == "runtime_converse" else None)
         return (logical_model == model and plan_model == invocation
                 and migration_path == "runtime_openai_cris"

@@ -408,7 +408,10 @@ logs, Guardrails and application inference profiles (both Converse API only), an
 prompt caching (both Responses API only) — per the GPT-5.4 / GPT-5.5 model cards read 2026-11-06. Knowledge
 Bases and intelligent prompt routing still require a Bedrock-native model. The same-model `bedrock-runtime` path
 is the default; the Bedrock-native path is the most feature-complete; the mantle GPT path is reserved for a
-recorded `mantle_selector`.
+recorded `mantle_selector`. Guardrails API scope is per model card (read 2026-11-08): GPT-6 Sol and
+GPT-6 Luna list Guardrails on Responses, Chat Completions, InvokeModel and Converse; GPT-6.1 Sol on
+Chat Completions, InvokeModel and Converse (not Responses); GPT-5.6 Sol/Terra/Luna, GPT-5.5, GPT-5.4
+and GPT-6 Astra on Converse only — the catalog row flag `guardrails_supported` carries this.
 
 ### High-spend tiering
 

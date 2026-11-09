@@ -103,6 +103,7 @@ def _comparator():
     ("runtime_openai_chat", "chat_completions", "openai.gpt-5.5", "us.openai.gpt-5.5"),
     ("runtime_converse", "converse", "openai.gpt-5.4", "us.openai.gpt-5.4"),
     ("runtime_converse", "converse", "openai.gpt-6-astra", "global.openai.gpt-6-astra"),
+    ("runtime_openai_responses", "responses", "openai.gpt-5.6-terra", "us-gov.openai.gpt-5.6-terra"),
 ])
 def test_comparator_translates_runtime_openai_paths_to_runtime_openai_cris(path, api, model, invocation):
     matches = _comparator()
@@ -146,6 +147,43 @@ def test_comparator_requires_an_equal_non_null_mantle_selector(path, model):
     # an advisor Mantle contract that carries a null selector never validates
     assert not matches({**advisor, "mantle_selector": None}, model, path, None, "background_inference")
     assert not matches({**advisor, "mantle_selector": None}, model, path)
+
+
+def _injection_template():
+    section = MIGRATION_PLAN_MD.read_text().split("migration-plan-injection.json`:", 1)[1]
+    return re.search(r"```json\n(.*?)\n```", section, re.S).group(1)
+
+
+def test_injection_template_carries_selector_and_requirement():
+    template = _injection_template()
+    units = template.split('"units"', 1)[1].split('"platform"', 1)[0]
+    for key in ('"mantle_selector"', '"mantle_requirement"'):
+        assert key in units, f"migration-plan-injection.json units[] must carry {key}"
+    assert units.index('"invocation_model_id"') < units.index('"mantle_selector"') \
+        < units.index('"mantle_requirement"') < units.index('"source"')
+
+
+def test_injection_round_trip_preserves_accepted_selector():
+    matches = _comparator()
+    advisor = {"model": "openai.gpt-5.6-sol", "api_path": "mantle_openai_chat",
+               "invocation_model_id": "openai.gpt-5.6-sol", "mantle_selector": "projects",
+               "mantle_requirement": {"workload_id": "chat-svc", "selector": "projects",
+                                      "source": "user"}}
+    injection_unit = {k: advisor[k] for k in ("model", "api_path", "invocation_model_id",
+                                              "mantle_selector", "mantle_requirement")}
+    gcp_row = {"aws_model_id": injection_unit["model"],
+               "migration_path": injection_unit["api_path"],
+               "required_client_api": "chat_completions",
+               "mantle_selector": injection_unit["mantle_selector"],
+               "mantle_requirement": injection_unit["mantle_requirement"]}
+    assert matches(advisor, gcp_row["aws_model_id"], gcp_row["migration_path"], None,
+                   gcp_row["mantle_selector"]) is True
+    assert gcp_row["mantle_requirement"] == advisor["mantle_requirement"]
+    # a legacy injection unit without the selector yields a GCP row without one
+    legacy_unit = {k: advisor[k] for k in ("model", "api_path", "invocation_model_id")}
+    assert matches(advisor, legacy_unit["model"], legacy_unit["api_path"], None, None) is False
+    assert matches(advisor, gcp_row["aws_model_id"], gcp_row["migration_path"], None,
+                   "web_search") is False
 
 
 def test_gcp_design_ai_todo_is_resolved():

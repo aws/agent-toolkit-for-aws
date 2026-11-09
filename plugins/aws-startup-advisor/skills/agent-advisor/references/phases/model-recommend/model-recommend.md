@@ -115,10 +115,39 @@ their same-model catalog entry before capability/numeric fallbacks. A `mantle_op
 selected only with a `mantle_selector`: explicit, or derived from a detected `web_search` tool
 (the built-in Web Search tool is served on `bedrock-mantle` only) or from
 `data_residency: in_region_required` on a runtime model that is CRIS-only in the region. Guardrails
-or a shared multi-model Converse surface select `runtime_converse` (same model first, Claude tier
-as fallback); invocation logging or CloudWatch alone do not change the path. Required API
-continuity plus Guardrails is a `decision_required` between two bedrock-runtime options
+select `runtime_converse` (same model first, Claude tier as fallback) only when the source
+model's card lists Guardrails as Converse-only — GPT-5.6 Sol / Terra / Luna, GPT-5.5, GPT-5.4 and
+GPT-6 Astra. GPT-6 Sol and GPT-6 Luna keep `runtime_openai_responses` / `runtime_openai_chat`, and
+GPT-6.1 Sol keeps `runtime_openai_chat`, because their cards list Guardrails on those APIs (the
+catalog row flag `guardrails_supported`; cards read 2026-11-08:
+`https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-sol.html`,
+`model-card-openai-gpt-6-luna.html`, `model-card-openai-gpt-6-1-sol.html`). A GPT-6.1 Sol
+Responses source with Guardrails is a `decision_required` because its card excludes Responses. A
+shared multi-model Converse surface always selects `runtime_converse`. Required API continuity
+plus Converse-only governance is a `decision_required` between two bedrock-runtime options
 (`runtime_openai_<api>` and `runtime_converse`); Mantle is never offered without a selector.
+Invocation logging pins `bedrock-runtime` (model invocation logging captures only that endpoint,
+including its OpenAI-compatible APIs:
+`https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html`, read
+2026-11-08), so logging plus any `mantle_selector` — explicit, or `in_region_processing` derived
+from `in_region_required` — is a `decision_required` between the Mantle option (carrying the
+selector) and the runtime option that keeps the source API. CloudWatch alone never changes the
+path: `bedrock-runtime` publishes `AWS/Bedrock` metrics and `bedrock-mantle` publishes
+`AWS/BedrockMantle` (`https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-mantle-metrics.html`,
+read 2026-11-08). An application inference profile ARN in `inference_profile_id` requires
+Converse — the bedrock-runtime Responses and Chat Completions APIs reject it with HTTP 400
+(`https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html`, read
+2026-11-08) — so with required continuity it is a `decision_required` whose OpenAI-API option
+carries no invocation id; system, Geo and Global profiles are unaffected. `background_inference`
+is a Responses API feature on `bedrock-mantle` only, so a Chat Completions source with that
+selector is a `decision_required` (`selector_api_incompatible`: `mantle_openai_responses` versus
+`runtime_openai_chat`) unless `api_continuity: not_required` allows the reshape. The
+`server_side_tools` / `web_search` selectors skip Mantle rows whose card lists server-side system
+tools as unsupported (`server_side_tools_supported: false` — GPT-6.1 Sol) and fall to the next
+same-family model with a fallback rationale; the selector is never dropped. An explicit runtime
+`preferred_api_path` plus any selector (explicit or derived) is a `preferred_api_path_conflict`
+decision between the Mantle option and the preferred runtime option. A recommended `runtime_*`
+record never carries a selector.
 Fallbacks walk same-family candidates first, newest version first, so a GPT-6 Chat Completions
 source never falls to GPT-5.4 while Astra or GPT-5.5 is available in the region. Governance
 selects the exact same GPT model through `runtime_converse` only when the requested Global or
@@ -129,7 +158,23 @@ region. Azure OpenAI remains an explicit `provider_module_pending` generic resul
 
 For Astra, preserve a compatible explicit API preference before the source default.
 Keep Astra selected and require a decision when its path, region or feature evidence
-cannot satisfy the request; do not silently substitute another model.
+cannot satisfy the request; do not silently substitute another model. Astra's JSON Schema output
+on `bedrock-runtime` applies to non-streaming calls on Chat Completions, Responses and Converse
+(`https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html`, read
+2026-11-08), so `structured_output_json` plus `streaming` on any of those runtime paths is a
+`structured_output_streaming_unverified` decision.
+
+The Anthropic module applies the same governance rules to its paths: invocation logging plus a
+`mantle_selector` (explicit, or derived `in_region_processing`) is a `decision_required` between
+`mantle_messages` and the runtime path that keeps the source API (`runtime_messages` for a
+Messages source); CloudWatch alone never changes the path; an explicit
+`preferred_api_path: runtime_messages` plus Guardrails or a shared multi-model Converse surface is
+a `decision_required` between `runtime_messages` and `runtime_converse`; an explicit runtime
+preference plus any selector is a `decision_required` between `mantle_messages` and the preferred
+path. The conflict name (`mantle_selector_vs_invocation_logging`,
+`in_region_processing_vs_invocation_logging`, `preferred_path_vs_mantle_selector`,
+`preferred_path_vs_converse`, `in_region_processing_vs_preferred_api_path`) appears in the
+`model_path_decision_required` message.
 
 **OpenRouter/LiteLLM-sourced OpenAI models still use the OpenAI module.** Discover records the
 underlying `provider` (e.g. `openai`) even when the calls transit a gateway — see `discover.md`'s

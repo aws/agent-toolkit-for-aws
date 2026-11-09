@@ -467,8 +467,16 @@ Profiles (Converse-only features that also require Invoke-adjacent plumbing on s
 must verify against Astra's model card per-feature, not assume parity with Sol/Luna/6.1 Sol.
 **When Guardrails is the driving need and the design keeps `runtime_openai_cris` (endpoint
 switch, not model switch), it MUST also record `bedrock_models[].required_client_api` so the
-generated client uses a Guardrails-capable surface — `converse` for Astra and 6.1 Terra; `converse` /
-`chat_completions` / `invoke` (never `responses`) for 6.1 Sol and the other GPT-6/5.6 CRIS models except Astra and 6.1 Terra. Do not leave the client on `responses` when Guardrails is required.** For a
+generated client uses a Guardrails-capable surface — `converse` for GPT-6 Astra, GPT-5.6 Sol /
+Terra / Luna, GPT-5.5, GPT-5.4 and GPT-6.1 Terra (their cards list Guardrails as Converse-only);
+`responses` / `chat_completions` / `invoke` / `converse` for GPT-6 Sol and GPT-6 Luna;
+`chat_completions` / `invoke` / `converse` (never `responses`) for GPT-6.1 Sol — model cards read
+2026-11-08 (`model-card-openai-gpt-6-sol.html`, `model-card-openai-gpt-6-luna.html`,
+`model-card-openai-gpt-6-1-sol.html`, `model-card-openai-gpt-6-astra.html`,
+`model-card-openai-gpt-56-sol.html`, `model-card-openai-gpt-56-terra.html`,
+`model-card-openai-gpt-56-luna.html`, `model-card-openai-gpt-55.html`, `model-card-openai-gpt-54.html`
+under `https://docs.aws.amazon.com/bedrock/latest/userguide/`). Do not leave the client on
+`responses` when Guardrails is required on a model whose card excludes Responses.** For a
 region-only CRIS move with no Guardrails or application-inference-profile need, the default
 `required_client_api` is the API the source app already calls (`responses` or `chat_completions`)
 — never an implicit Converse.
