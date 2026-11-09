@@ -17,6 +17,7 @@ values are never re-scanned). SecretBinary is not supported.
 import datetime
 import hashlib
 import hmac
+import http.client
 import json
 import os
 import re
@@ -278,8 +279,10 @@ def _close_mcp_session():
         return
     try:
         _mcp_post(None, _mcp_session_id, method='DELETE')
-    except (urllib.error.URLError, OSError, RuntimeError, ValueError):
-        # ValueError covers a non-JSON response body (json.JSONDecodeError).
+    except (urllib.error.URLError, http.client.HTTPException, OSError,
+            RuntimeError, ValueError):
+        # HTTPException covers a malformed or truncated response (e.g.
+        # IncompleteRead); ValueError covers a non-JSON body (JSONDecodeError).
         pass
     _mcp_session_id = None
 

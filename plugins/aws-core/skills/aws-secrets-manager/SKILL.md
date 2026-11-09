@@ -6,7 +6,7 @@ description: >
   and teaches runtime dynamic references with asm-exec so plaintext never enters
   the LLM context window.
 metadata:
-  version: "1"
+  version: "2"
 ---
 
 # Using Secrets Safely with Agents
