@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "ai_sources": [
     {
       "provider": "anthropic",
@@ -12,5 +12,34 @@
       ]
     }
   ],
-  "gateways": []
+  "gateways": [],
+  "workloads": [
+    {
+      "workload_id": "anthropic_api.claude-sonnet-5.anthropic.messages.create.plain",
+      "provider": "anthropic",
+      "source_service": "anthropic_api",
+      "model": "claude-sonnet-5",
+      "sdk_method": "anthropic.messages.create",
+      "capability": "text_generation",
+      "capability_confidence": "high",
+      "structured_output": false,
+      "call_sites": [{"file": "app/agent.py", "line": 7}]
+    }
+  ],
+  "integration": {
+    "pattern": "direct_sdk",
+    "languages": ["python"],
+    "frameworks": [],
+    "capabilities_summary": {
+      "text_generation": true,
+      "streaming": false,
+      "function_calling": true,
+      "vision": false,
+      "embeddings": false,
+      "batch_processing": false,
+      "speech_to_text": false,
+      "text_to_speech": false,
+      "image_generation": false
+    }
+  }
 }

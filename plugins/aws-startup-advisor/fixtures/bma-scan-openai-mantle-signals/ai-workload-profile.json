@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "ai_sources": [
     {
       "provider": "openai",
@@ -13,6 +13,51 @@
     }
   ],
   "gateways": [],
+  "workloads": [
+    {
+      "workload_id": "openai_api.gpt-4o.openai.chat.completions.create.plain",
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model": "gpt-4o",
+      "sdk_method": "openai.chat.completions.create",
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "structured_output": false,
+      "call_sites": [{"file": "app/llm.py", "line": 28}]
+    },
+    {
+      "workload_id": "openai_api.gpt-4o.openai.responses.create.plain",
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model": "gpt-4o",
+      "sdk_method": "openai.responses.create",
+      "capability": "text_generation",
+      "capability_confidence": "high",
+      "structured_output": false,
+      "call_sites": [
+        {"file": "app/llm.py", "line": 9},
+        {"file": "app/llm.py", "line": 14},
+        {"file": "app/llm.py", "line": 19},
+        {"file": "app/llm.py", "line": 37}
+      ]
+    }
+  ],
+  "integration": {
+    "pattern": "direct_sdk",
+    "languages": ["python"],
+    "frameworks": [],
+    "capabilities_summary": {
+      "text_generation": true,
+      "streaming": false,
+      "function_calling": true,
+      "vision": false,
+      "embeddings": false,
+      "batch_processing": false,
+      "speech_to_text": false,
+      "text_to_speech": false,
+      "image_generation": false
+    }
+  },
   "mantle_signals": [
     {"selector": "background_inference", "provider": "openai", "source_service": "openai_api", "model": "gpt-4o", "evidence": [{"provenance": "code", "confidence": "high", "detail": "app/llm.py:9 background=True"}]},
     {"selector": "web_search", "provider": "openai", "source_service": "openai_api", "model": "gpt-4o", "evidence": [{"provenance": "code", "confidence": "high", "detail": "app/llm.py:14 \"type\": \"web_search\""}]},
