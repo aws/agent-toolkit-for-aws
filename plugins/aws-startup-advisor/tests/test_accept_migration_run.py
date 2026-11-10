@@ -566,6 +566,14 @@ class AcceptanceTests(unittest.TestCase):
                 self.assertEqual("FAIL", result["status"])
                 self.assertIn("scripts/migrate-redis.sh", result["detail"]["missing"])
 
+    def test_memcached_design_does_not_require_the_redis_migration_script(self):
+        # Memcachier maps to ElastiCache Memcached — a different protocol; no Redis script.
+        with tempfile.TemporaryDirectory() as temp:
+            root = heroku_execution_run(Path(temp))
+            write_json(root / "aws-design.json", {"services": [{"aws_service": "ElastiCache Memcached"}]})
+            result = by_name(acceptance.accept(root, "heroku-to-aws"), "conditional_outputs")
+            self.assertNotIn("scripts/migrate-redis.sh", result["detail"].get("missing", []))
+
     def test_heroku_decision_does_not_require_execution_outputs(self):
         with tempfile.TemporaryDirectory() as temp:
             root = heroku_decision_run(Path(temp))

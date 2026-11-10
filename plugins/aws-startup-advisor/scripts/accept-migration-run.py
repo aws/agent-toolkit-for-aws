@@ -198,9 +198,10 @@ def heroku_conditional_outputs(
     names = []
     errors = []
     limitations = []
-    # Any ElastiCache engine label ("ElastiCache Valkey" by default, "ElastiCache Redis" on the
-    # recorded Redis OSS exception) needs the data-migration script Generate is told to write.
-    if any(service.startswith("elasticache") for service in services):
+    # The Redis-protocol ElastiCache labels ("ElastiCache Valkey" by default, "ElastiCache Redis"
+    # on the recorded Redis OSS exception) need the data-migration script Generate is told to
+    # write. "ElastiCache Memcached" (Memcachier) is a different protocol and gets no script.
+    if services & {"elasticache valkey", "elasticache redis"}:
         names.append("scripts/migrate-redis.sh")
     if any("beanstalk" in service for service in services):
         names.append("terraform/beanstalk.tf")

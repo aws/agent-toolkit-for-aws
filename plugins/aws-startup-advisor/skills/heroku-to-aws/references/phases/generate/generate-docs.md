@@ -28,7 +28,7 @@ Scan `aws-design.json`.services[] to determine which compute and data store type
 | Fargate web present   | Any service with `aws_service == "ALB"`, or `aws_service == "Fargate"` and `aws_config.process_type == "web"` (workers alone never count) | `has_fargate_web = true` |
 | EKS present           | Any service with `aws_service == "EKS"` (`design-eks.md` "All-or-Nothing Rule": then no EB or Fargate web service exists) | `has_eks = true`           |
 | Postgres present      | Any service with `aws_service` containing `"RDS PostgreSQL"` or `"Aurora PostgreSQL"`        | `has_postgres = true`      |
-| Redis present         | Any service with `aws_service` starting with `"ElastiCache"` (`ElastiCache Valkey` by default) | `has_redis = true`         |
+| Redis present         | Any service with `aws_service` of `"ElastiCache Valkey"` (default) or `"ElastiCache Redis"` — not `ElastiCache Memcached` | `has_redis = true`         |
 | Kafka present         | Any service with `aws_service == "Amazon MSK"`                                               | `has_kafka = true`         |
 
 Also extract:
@@ -1632,7 +1632,7 @@ Follow the verification checklist in `MIGRATION_GUIDE.md` Phase 4, then perform 
 - `eb_deploy_method`: `preferences.design_constraints.eb_deploy_method.value`; default to `"github_actions"` when absent and `has_beanstalk` is true
 - `has_fargate`: True if any service in design has `aws_service == "Fargate"`
 - `has_postgres`: True if any service has `aws_service` containing `"RDS PostgreSQL"` or `"Aurora PostgreSQL"`
-- `has_redis`: True if any service has an `aws_service` starting with `"ElastiCache"`
+- `has_redis`: True if any service has `aws_service == "ElastiCache Valkey"` or `"ElastiCache Redis"` (Memcached is a different protocol and gets no Redis script)
 - `has_kafka`: True if any service has `aws_service == "Amazon MSK"`
 - `generation_warnings_exist`: True if `generation-warnings.json` has a NON-EMPTY `warnings` array (the file is always written, so test its contents, not its existence)
 

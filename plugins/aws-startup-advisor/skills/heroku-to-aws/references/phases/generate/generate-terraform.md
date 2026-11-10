@@ -2035,7 +2035,7 @@ resource "aws_iam_role_policy" "rds_proxy_secrets" {
 
 ## Step 8: Generate `cache.tf`
 
-For each service in `aws-design.json` where `aws_service` starts with "ElastiCache" (`ElastiCache Valkey` by default; `ElastiCache Redis` only when Design recorded `aws_config.engine: "redis"`):
+For each service in `aws-design.json` where `aws_service` is "ElastiCache Valkey" (default) or "ElastiCache Redis" (only when Design recorded `aws_config.engine: "redis"`); `ElastiCache Memcached` stays a no-Terraform warning:
 
 ```hcl
 # ElastiCache <Valkey|Redis> — <heroku_app>
