@@ -24,10 +24,8 @@
 > Execute commands using available tools from the AWS MCP server when connected — it provides sandboxed execution, audit logging, and observability. When the MCP server is not available, fall back to the AWS CLI or shell as needed.
 
 - You MUST resolve `aws_account_id` by running `aws sts get-caller-identity` and extracting the `Account` field
-- You MUST present exactly one phase at a time. Ask only the current phase's questions, then stop and wait for the customer's answer. Do NOT mention or collect inputs from later phases, even to be efficient. Never gather the essential inputs up front.
-- When project selection finds no migration projects, explicitly ask whether to create one and wait for the customer's answer. Do not infer consent from the original conversion request.
+- You MUST present one phase at a time — do NOT ask for all parameters at once
 - You MUST confirm each resource was created successfully before moving to the next phase
-- **Mutation approval:** Immediately before each create, modify, delete, upload, IAM, or S3 write operation, show the exact planned action and wait for explicit customer confirmation. Approval applies only to that action. Do not infer approval from the original migration request or from confirmation of an input value.
 - You MUST show a running summary of collected values at the start of each new phase
 - You MUST handle `ResourceAlreadyExistsFault` and similar errors by reusing the existing resource
 - You MUST NOT display or log passwords at any point
@@ -244,7 +242,7 @@ Store the selected S3 URI as `ddl_s3_path` and extract `ddl_bucket_name`. If the
 
 1. Get the bucket Region with `aws s3api head-bucket --bucket <ddl_bucket_name> --query BucketRegion --output text`. Compare the returned Region with `aws_region`, the migration project Region. If they differ, stop before upload and ask the customer for an S3 path whose bucket is in `aws_region`.
 2. Verify the bucket belongs to `aws_account_id`. Cross-account offline DDL access is not supported by this flow.
-3. If upload is required, show the exact planned upload to `ddl_s3_path` and wait for explicit customer confirmation. After approval, upload only the extracted `.sql` files with `--sse AES256`. Verify that every expected `.sql` file appears under `ddl_s3_path`.
+3. If upload is required, upload only the extracted `.sql` files to `ddl_s3_path` with `--sse AES256`. Verify that every expected `.sql` file appears under `ddl_s3_path`.
 4. Confirm the selected S3 location contains `.sql` objects. If empty or path not found, inform the customer and ask to correct.
 5. For a pre-existing S3 location, ask whether the selected `.sql` objects are encrypted with a customer-managed KMS key. If yes, ask for the key ARN and store it as `s3_kms_key_arn`. If no, set `s3_kms_key_arn = null`.
 6. For files uploaded by this flow, set `s3_kms_key_arn = null` because the upload uses SSE-S3.
@@ -350,8 +348,6 @@ Store final `vpc_id`, `subnet_ids`, `security_group_ids`.
 
 **Goal:** Create the subnet group for the DMS instance profile.
 
-Show this create command and wait for explicit customer confirmation. After approval, create or reuse the subnet group:
-
 ```
 
 aws dms create-replication-subnet-group \
@@ -408,8 +404,6 @@ Set `secrets_role_required = true` when the source or target is non-virtual; oth
 ## Phase 7 — Create Data Providers
 
 **Goal:** Register source and target data providers in DMS.
-
-For each provider, show the exact create action and wait for explicit customer confirmation before calling `CreateDataProvider`.
 
 ### 7a — Source data provider
 
@@ -524,7 +518,7 @@ Ask whether the customer wants to reuse an existing artifacts bucket or create a
 - **Existing bucket:** Validate it with `head-bucket`, confirm it is in `aws_region`, verify versioning is enabled, and inspect default encryption with `get-bucket-encryption`. If it uses a customer-managed KMS key, resolve the configured key ID or alias to a full key ARN and store it as `artifacts_kms_key_arn`.
 - **New bucket:** Plan `<project_name>-sc-bucket-<aws_account_id>-<aws_region>`. Ask whether to use the recommended default SSE-S3 encryption or SSE-KMS with a customer-managed key. For SSE-KMS, request a key, resolve it to a full key ARN, validate it is in `aws_region`, and store it as `artifacts_kms_key_arn`.
 
-Before creating or modifying the bucket, show the exact planned bucket changes and wait for explicit customer confirmation before each write operation. For a new bucket, use the Region-specific `create-bucket` form, then enable versioning and block public access:
+For a new bucket, use the Region-specific `create-bucket` form, then enable versioning and block public access:
 
 ```
 
@@ -601,15 +595,13 @@ aws s3api put-bucket-policy --bucket <bucket_name> --policy '{
 
 When an S3 permission error occurs during import, the problem is almost always the **S3 Access Role** (9e) — not the S3 Role (9b). When an S3 error occurs during project creation or export, the problem is the **S3 Role** (9b).
 
-Apply the mutation-approval rule separately immediately before each role creation or policy change. Reusing a valid existing role does not require mutation approval.
-
 ### 9a — Secrets Manager Role
 
 **Skip this phase if `secrets_role_required = false`.** Optional fields supplied for a virtual provider do not require the wizard to create or modify a role.
 
 Ask if an existing role is available. If yes, validate with `aws iam get-role`. If no, create:
 
-1. Show the exact role creation and wait for explicit customer confirmation. After approval, create the role with trust policy (includes condition keys to prevent confused deputy):
+1. Create the role with trust policy (includes condition keys to prevent confused deputy):
 
    ```
 
@@ -619,7 +611,7 @@ Ask if an existing role is available. If yes, validate with `aws iam get-role`. 
 
    ```
 
-2. Prepare a policy granting access to the secret ARNs used by the migration project. See [IAM policies for DMS](https://docs.aws.amazon.com/dms/latest/userguide/set-up.html#set-up-iam-policies) for the required permissions (Secrets Manager and KMS actions). Scope the resource only to `required_secret_arns`. Show the exact policy change and wait for separate explicit customer confirmation, then attach it.
+2. Attach a policy granting access to the secret ARNs used by the migration project. See [IAM policies for DMS](https://docs.aws.amazon.com/dms/latest/userguide/set-up.html#set-up-iam-policies) for the required permissions (Secrets Manager and KMS actions). Scope the resource only to `required_secret_arns`.
 
 Store `secrets_role_arn`, then set `source_secrets_role_arn` and/or `target_secrets_role_arn` to this ARN for each non-virtual provider.
 
@@ -627,7 +619,7 @@ Store `secrets_role_arn`, then set `source_secrets_role_arn` and/or `target_secr
 
 Ask if an existing role is available. If yes, validate its trust policy and required S3 and KMS permissions. If no, create:
 
-1. Show the exact role creation and wait for explicit customer confirmation. After approval, create the role with trust policy (includes condition keys to prevent confused deputy):
+1. Create the role with trust policy (includes condition keys to prevent confused deputy):
 
    ```
 
@@ -639,7 +631,7 @@ Ask if an existing role is available. If yes, validate its trust policy and requ
 
 2. Prepare a policy granting S3 access to the artifacts bucket. Follow the exact policy from [IAM policies for DMS SC](https://docs.aws.amazon.com/dms/latest/userguide/set-up.html#set-up-iam): two statements — bucket-level (`s3:ListBucket`, `s3:GetBucketLocation`, `s3:GetBucketVersioning` on `arn:aws:s3:::<bucket_name>`) and object-level (`s3:PutObject`, `s3:GetObject`, `s3:GetObjectVersion` on `arn:aws:s3:::<bucket_name>/*`). Add `aws:ResourceAccount` condition for least-privilege.
 3. If `artifacts_kms_key_arn` is set, add the documented SSE-KMS statement to this policy: allow `kms:Decrypt` and `kms:GenerateDataKey` on that key with `kms:ViaService` set to `s3.<aws_region>.amazonaws.com`. Confirm the KMS key policy delegates access to IAM or explicitly permits this role.
-4. Show the exact completed policy change and wait for separate explicit customer confirmation, then attach it.
+4. Attach the completed policy.
 
 Store `s3_role_arn`.
 
@@ -657,7 +649,7 @@ aws iam get-role --role-name dms-vpc-role
 
 If the role already exists (found in Phase 1 lookup or via the check above), skip creation. Otherwise create it:
 
-1. Show the exact role creation and wait for explicit customer confirmation. After approval, create the role with trust policy for `dms.amazonaws.com` (includes condition keys to prevent confused deputy):
+1. Create the role with trust policy for `dms.amazonaws.com` (includes condition keys to prevent confused deputy):
 
    ```
 
@@ -667,7 +659,7 @@ If the role already exists (found in Phase 1 lookup or via the check above), ski
 
    ```
 
-2. Show the exact managed-policy attachment and wait for separate explicit customer confirmation. After approval, attach the AWS managed policy:
+2. Attach the AWS managed policy:
 
    ```
 
@@ -691,7 +683,7 @@ aws iam get-role --role-name dms-cloudwatch-logs-role
 
 If the role already exists (found in Phase 1 lookup or via the check above), skip creation. Otherwise create it:
 
-1. Show the exact role creation and wait for explicit customer confirmation. After approval, create the role with trust policy for `dms.amazonaws.com` (includes condition keys to prevent confused deputy):
+1. Create the role with trust policy for `dms.amazonaws.com` (includes condition keys to prevent confused deputy):
 
    ```
 
@@ -701,7 +693,7 @@ If the role already exists (found in Phase 1 lookup or via the check above), ski
 
    ```
 
-2. Show the exact managed-policy attachment and wait for separate explicit customer confirmation. After approval, attach the AWS managed policy:
+2. Attach the AWS managed policy:
 
    ```
 
@@ -719,7 +711,7 @@ Ask if an existing role is available. If yes, validate its trust policy and atta
 
 Otherwise, create an IAM role allowing DMS to read DDL scripts from the customer's S3 bucket (the bucket from `ddl_s3_path`, NOT the migration artifacts bucket from Phase 8):
 
-1. Show the exact role creation and wait for explicit customer confirmation. After approval, create the role with trust policy:
+1. Create the role with trust policy:
 
    ```
 
@@ -729,7 +721,7 @@ Otherwise, create an IAM role allowing DMS to read DDL scripts from the customer
 
    ```
 
-2. Show the exact S3 policy change and wait for separate explicit customer confirmation. After approval, attach the policy for the selected S3 location:
+2. Attach the policy for the selected S3 location:
 
    - **If `ddl_prefix` is non-empty**, scope `s3:ListBucket` and `s3:GetObject` to that prefix:
 
@@ -753,7 +745,7 @@ Otherwise, create an IAM role allowing DMS to read DDL scripts from the customer
 
      ```
 
-3. **If `s3_kms_key_arn` is set**, show the exact KMS policy change and wait for separate explicit customer confirmation. After approval, add KMS decrypt:
+3. **If `s3_kms_key_arn` is set**, add KMS decrypt:
 
    ```
 

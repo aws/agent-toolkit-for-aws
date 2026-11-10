@@ -49,8 +49,6 @@ Before starting, check that AWS CLI commands can be executed.
 
 **Setup-reference routing:** Whenever the customer asks to create, plan, explain, or review a migration-project setup or any setup component, load [setup-wizard.md](references/setup-wizard.md) before answering. For a read-only planning or review request, use its decision and validation requirements but do not run project selection or any mutation.
 
-**Interaction contract:** Present one decision at a time and stop for the customer's answer. Do not infer consent to create, modify, or delete resources from the customer's migration request or from confirmation of an input value. Immediately before each mutation, show the exact planned action and wait for explicit customer confirmation. Approval applies only to that action.
-
 Check for existing migration projects:
 
 ```
@@ -59,7 +57,7 @@ aws dms describe-migration-projects
 
 - **If exactly one project exists** → ask the customer: "Found migration project `<name>`. Would you like to use it, or create a new one?" If they confirm, store `migration_project_identifier` and proceed to [Actions Menu](#actions-menu). If they want a new one, run the setup wizard.
 - **If multiple projects exist** → list them and ask the customer to pick one, or offer to create a new project. Store `migration_project_identifier`, proceed to [Actions Menu](#actions-menu).
-- **If no projects exist** → ask: "No migration projects found. Would you like to create one?" **STOP and wait for the customer's answer.** If yes, load [setup-wizard.md](references/setup-wizard.md) and run the full setup wizard from Phase 1. After wizard completes, run [Auto Import](#auto-import), then proceed to [Actions Menu](#actions-menu).
+- **If no projects exist** → ask: "No migration projects found. Would you like to create one?" If yes, load [setup-wizard.md](references/setup-wizard.md) and run the full setup wizard from Phase 1. After wizard completes, run [Auto Import](#auto-import), then proceed to [Actions Menu](#actions-menu).
 
 ---
 
