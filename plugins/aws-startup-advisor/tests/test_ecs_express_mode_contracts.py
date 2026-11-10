@@ -238,9 +238,16 @@ def test_heroku_blue_green_block_is_safe_for_two_web_apps_and_opens_the_test_lis
     assert "aws_lb_listener.<app_sanitized>_web_test.arn" in block
     assert "Emitted ONCE per design" in block, "the shared CodeDeploy role must be declared once, not once per blue/green app"
     assert 'variable "codedeploy_test_cidrs"' in block
-    assert 'resource "aws_security_group_rule" "alb_codedeploy_test"' in block, "the 8443 test-listener ingress must be HCL, not prose"
-    assert re.search(r"from_port\s*=\s*8443", block)
-    assert "aws_security_group.alb.id" in block
+    # Single owner for ALB ingress: aws_security_group.alb uses inline rules, so 8443 must be inline too.
+    assert 'resource "aws_security_group_rule" "alb_codedeploy_test"' not in text, "no standalone rule on a group that owns inline rules"
+    alb_sg = text[text.index('resource "aws_security_group" "alb"') :]
+    alb_sg = alb_sg[: alb_sg.index("\n}\n")]
+    assert "{{IF has_blue_green}}" in alb_sg and re.search(r"from_port\s*=\s*8443", alb_sg), "8443 ingress must be an inline block in aws_security_group.alb"
+    assert "cidr_blocks = var.codedeploy_test_cidrs" in alb_sg
+    # AWS names, not only Terraform labels, must carry the app identity.
+    assert '-${var.environment}-<app_sanitized>-tg-green"' in block
+    assert 'name             = "${var.project_name}-${var.environment}-<app_sanitized>-web"' in block
+    assert 'deployment_group_name  = "${var.project_name}-${var.environment}-<app_sanitized>-web"' in block
 
 
 def test_heroku_design_template_and_alb_rate_row_match_the_express_prose() -> None:
@@ -249,3 +256,32 @@ def test_heroku_design_template_and_alb_rate_row_match_the_express_prose() -> No
     estimate = ESTIMATE_FILES["heroku"].read_text(encoding="utf-8")
     alb_row = next(line for line in estimate.splitlines() if line.startswith("| **ALB**"))
     assert 'ecs_mode != "express"' in alb_row, "the ALB rate row must exclude Express web entries so they are not priced twice"
+
+
+def test_heroku_express_block_has_unique_names_a_shared_role_and_a_verified_stop() -> None:
+    text = GENERATE_FILES["heroku"].read_text(encoding="utf-8")
+    block = _express_block(text)
+    assert 'service_name            = "${var.project_name}-${var.environment}-<app_sanitized>-web"' in block
+    assert "wait_for_steady_state   = true" in block
+    assert "shared infrastructure role. Emitted ONCE per design" in block
+    assert 'output "<app_sanitized>_web_service_arn"' in block
+    assert "register-scalable-target" in block and "describe-services" in block, "the writer-freeze rule must name the explicit stop check and scaling suspension"
+    docs = HEROKU_GENERATE_DOCS.read_text(encoding="utf-8")
+    # Health check: the endpoint output is already an https:// URL
+    assert "https://$(terraform -chdir=terraform output -raw <app_sanitized>_web_endpoint)" not in docs, "never prefix the Express endpoint URL with another https://"
+    assert "already a full `https://…` URL" in docs
+    # Phase 6: explicit stop + suspended scaling for Express services
+    assert "--suspended-state DynamicScalingInSuspended=true,DynamicScalingOutSuspended=true,ScheduledScalingSuspended=true" in docs
+    assert "services[0].[runningCount,pendingCount]" in docs
+    # Phase 3: deployment branches on the release strategy
+    assert "aws deploy create-deployment" in docs and "appspec.yaml" in docs, "blue/green apps need the CodeDeploy/AppSpec handoff"
+    assert "`has_blue_green = true`" in docs
+
+
+def test_gcp_and_azure_guard_code_deploy_to_load_balanced_shapes() -> None:
+    for skill in ("gcp", "azure"):
+        text = GENERATE_FILES[skill].read_text(encoding="utf-8")
+        assert "`blue_green` on a load-balanced shape" in text, skill
+        assert "`blue_green` on a `worker`" in text and "no** CodeDeploy resources" in text, f"{skill}: a worker cannot carry a CodeDeploy target-group pair"
+        assert "one IAM role per design, emitted once and shared by every Express service" in text, skill
+        assert "`wait_for_steady_state = true`" in text, skill

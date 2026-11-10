@@ -28,6 +28,7 @@ Scan `aws-design.json`.services[] to determine which compute and data store type
 | Fargate web present   | Any service with `aws_service == "ALB"`, or `aws_service == "Fargate"` and `aws_config.process_type == "web"` (workers alone never count) | `has_fargate_web = true` |
 | Standard ALB present  | Any service with `aws_service == "ALB"` (a standard-mode Fargate web formation; a Fargate entry with no `ecs_mode` key is standard and always has one) | `has_alb = true`           |
 | Express web present   | Any service with `aws_service == "Fargate"`, `aws_config.process_type == "web"`, and `aws_config.ecs_mode == "express"` | `has_express = true`       |
+| Blue/green web present | Any service with `aws_service == "Fargate"`, `aws_config.process_type == "web"`, `aws_config.ecs_mode == "standard"`, and `preferences.design_constraints.release_strategy == "blue_green"` | `has_blue_green = true`    |
 | EKS present           | Any service with `aws_service == "EKS"` (`design-eks.md` "All-or-Nothing Rule": then no EB or Fargate web service exists) | `has_eks = true`           |
 | Postgres present      | Any service with `aws_service` containing `"RDS PostgreSQL"` or `"Aurora PostgreSQL"`        | `has_postgres = true`      |
 | Redis present         | Any service with `aws_service == "ElastiCache Redis"`                                        | `has_redis = true`         |
@@ -856,16 +857,64 @@ docker push {{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com/{{app_nam
 ```
 
 ### Deploy to Fargate
+The Terraform configuration creates ECS services automatically. How an image update reaches a service depends on the shape Design chose for it (`aws-design.json` → `aws_config.ecs_mode`, and `preferences.design_constraints.release_strategy`); render only the branches the design uses.
 
-The Terraform configuration creates ECS services automatically. After pushing the image, force a new deployment:
+**Standard ECS service, rolling or canary release (`ecs_mode: "standard"`, `release_strategy` absent or `canary`):** the service uses the ECS deployment controller, so force a new deployment after pushing the image:
 
 ```bash
 aws ecs update-service \
   --cluster {{app_name}}-cluster \
-  --service {{app_name}}-web \
+  --service {{app_name}}-<process_type> \
   --force-new-deployment \
   --region {{target_region}}
 ```
+
+Repeat per formation (`-web`, `-worker`, …); the service names are the standard `aws_ecs_service` names from `generate-terraform.md` Step 6.
+
+{{IF has_blue_green}}
+**Standard ECS service, blue/green release (`release_strategy == "blue_green"`, web formations only):** the service is emitted with `deployment_controller { type = "CODE_DEPLOY" }` and `ignore_changes = [task_definition, load_balancer]`, so neither `terraform apply` nor `update-service --force-new-deployment` ships a new image — `update-service` is rejected for a CodeDeploy-controlled service. Register a new task definition revision and start a CodeDeploy deployment with an AppSpec, one per blue/green web app:
+
+```bash
+# 1. New task definition revision pointing at the pushed image
+TD_ARN=$(aws ecs describe-services --cluster {{app_name}}-cluster --service {{app_name}}-<app_sanitized>-web \
+  --region {{target_region}} --query 'services[0].taskDefinition' --output text)
+aws ecs describe-task-definition --task-definition "$TD_ARN" --region {{target_region}} \
+  --query 'taskDefinition' > td.json
+# Replace the image, drop the read-only fields, register
+jq --arg img "{{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com/{{app_name}}:latest" \
+  '.containerDefinitions[0].image = $img
+   | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' \
+  td.json > td-new.json
+NEW_TD=$(aws ecs register-task-definition --cli-input-json file://td-new.json --region {{target_region}} \
+  --query 'taskDefinition.taskDefinitionArn' --output text)
+
+# 2. AppSpec for CodeDeploy (ECS compute platform)
+cat > appspec.yaml <<EOF
+version: 0.0
+Resources:
+  - TargetService:
+      Type: AWS::ECS::Service
+      Properties:
+        TaskDefinition: "$NEW_TD"
+        LoadBalancerInfo:
+          ContainerName: "<container name from the task definition>"
+          ContainerPort: 8080
+EOF
+
+# 3. Deploy — CodeDeploy shifts traffic blue -> green on the 443 listener after the 8443 test listener passes
+aws deploy create-deployment \
+  --application-name {{app_name}}-<app_sanitized>-web \
+  --deployment-group-name {{app_name}}-<app_sanitized>-web \
+  --revision "revisionType=AppSpecContent,appSpecContent={content=$(jq -Rs . < appspec.yaml)}" \
+  --region {{target_region}}
+```
+
+The CodeDeploy application and deployment group names are the per-app names `generate-terraform.md` emits (`${project_name}-${environment}-<app_sanitized>-web`). The test listener on 8443 admits only `var.codedeploy_test_cidrs`; run the deployment from an address in that list (or set `terraform.tfvars` `codedeploy_test_cidrs` to the CI egress CIDR first).
+{{ENDIF}}
+
+{{IF has_express}}
+**ECS Express Mode service (`ecs_mode: "express"`):** Express Mode owns the deployment (canary). Push the image to the tag the service references and force a new deployment the same way as the rolling branch, using the Express service name `{{app_name}}-<app_sanitized>-web`; the service ARN is in the `<app_sanitized>_web_service_arn` output.
+{{ENDIF}}
 
 ### Fargate Config Var Migration
 
@@ -893,7 +942,7 @@ Web formations routed to Fargate with `aws_config.ecs_mode: "express"` are emitt
 - [ ] Health check endpoint returns 200: `https://{{ALB_DNS_NAME}}/health`
       {{ENDIF}}
       {{IF has_express}}
-- [ ] Each Express Mode web app responds on its AWS-provided endpoint: `https://$(terraform -chdir=terraform output -raw <app_sanitized>_web_endpoint)/` (one line per Express app; there is no `ALB_DNS_NAME` for these — Express Mode owns the ALB)
+- [ ] Each Express Mode web app responds on its AWS-provided endpoint: `curl -fsS -o /dev/null -w '%{http_code}' "$(terraform -chdir=terraform output -raw <app_sanitized>_web_endpoint)/"` (one line per Express app). The output is already a full `https://…` URL (`ingress_paths[0].endpoint`), so never prefix it with another `https://`; there is no `ALB_DNS_NAME` for these — Express Mode owns the ALB
 - [ ] Health check path returns 200 on that endpoint: `https://<endpoint>/` (the `health_check_path` the Express service was generated with)
       {{ENDIF}}
       {{IF has_postgres}}
@@ -1197,8 +1246,8 @@ Until the Phase 5 flip the primary is Heroku Postgres, frozen under `maintenance
    ```bash
    set -euo pipefail
    # Persist before any apply. Fargate desired_count is `var.writers_quiesced ? 0 : <formation quantity>`,
-   # and an Express Mode service's scaling_target min/max are `var.writers_quiesced ? 0 : …`,
-   # so a later apply keeps those services at 0 (and autoscaling cannot scale them back out).
+   # and an Express Mode service's scaling_target.min_task_count is `var.writers_quiesced ? 0 : …`,
+   # so a later apply keeps those services at 0.
    # Leave this true until the next intentional handoff.
    # The assignment is in terraform.tfvars.example for every design, including external DNS and EKS.
    sed -i.bak 's/^writers_quiesced *=.*/writers_quiesced = true/' terraform/terraform.tfvars
@@ -1221,6 +1270,23 @@ Until the Phase 5 flip the primary is Heroku Postgres, frozen under `maintenance
    )
    {{ELSE}}
    ( cd terraform && terraform apply -input=false )
+   {{ENDIF}}
+   {{IF has_express}}
+   # Express Mode: the apply above sets min_task_count to 0 and (wait_for_steady_state = true) returns
+   # once the service is steady — but confirm the stop and suspend Application Auto Scaling for the
+   # whole handoff, so neither a still-draining task nor a scale-out can write after the check.
+   # Express scaling is an Application Auto Scaling scalable target on ecs:service:DesiredCount
+   # (https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html, "Application scaling target defaults").
+   # One block per Express web app:
+   SVC_ARN=$(terraform -chdir=terraform output -raw <app_sanitized>_web_service_arn)
+   CLUSTER=$(echo "$SVC_ARN" | cut -d/ -f2); SVC=$(echo "$SVC_ARN" | cut -d/ -f3)
+   aws application-autoscaling register-scalable-target --service-namespace ecs \
+     --scalable-dimension ecs:service:DesiredCount --resource-id "service/$CLUSTER/$SVC" \
+     --suspended-state DynamicScalingInSuspended=true,DynamicScalingOutSuspended=true,ScheduledScalingSuspended=true \
+     --region {{target_region}}
+   until [ "$(aws ecs describe-services --cluster "$CLUSTER" --services "$SVC" --region {{target_region}} \
+     --query 'services[0].[runningCount,pendingCount]' --output text | tr -s '\t' '+' )" = "0+0" ]; do sleep 10; done
+   # Step 6 (or the next intentional handoff) re-registers the target with every *Suspended=false.
    {{ENDIF}}
    {{ENDIF}}
    {{IF has_beanstalk}}
@@ -1286,7 +1352,7 @@ Until the Phase 5 flip the primary is Heroku Postgres, frozen under `maintenance
 {{ELSE}}
 5. Heroku was never repointed: `DATABASE_URL` still names Heroku Postgres. Nothing to re-attach.
 {{ENDIF}}
-6. **Restore the Heroku formation recorded in step 1, confirm web is ready, send DNS back to Heroku, then — and only then — `heroku maintenance:off`.** Leave `writers_quiesced = true` on AWS until the next intentional handoff. Turn the Scheduler jobs step 1 wrote down back on. Scale back to `heroku-formation-before-failback.txt`. `heroku ps` must show the web dynos at that quantity, and the health path must answer, before maintenance comes off.
+6. **Restore the Heroku formation recorded in step 1, confirm web is ready, send DNS back to Heroku, then — and only then — `heroku maintenance:off`.** Leave `writers_quiesced = true` on AWS until the next intentional handoff.{{IF has_express}} Leave each Express service's Application Auto Scaling target suspended as well; the next intentional handoff re-registers it with `DynamicScalingInSuspended=false,DynamicScalingOutSuspended=false,ScheduledScalingSuspended=false` after `writers_quiesced` goes back to `false`.{{ENDIF}} Turn the Scheduler jobs step 1 wrote down back on. Scale back to `heroku-formation-before-failback.txt`. `heroku ps` must show the web dynos at that quantity, and the health path must answer, before maintenance comes off.
 
    ```bash
    heroku ps:scale <web=N worker=N ... from heroku-formation-before-failback.txt> -a {{app_name}}

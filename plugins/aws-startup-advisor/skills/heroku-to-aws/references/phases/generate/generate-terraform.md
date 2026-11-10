@@ -795,6 +795,18 @@ resource "aws_security_group" "alb" {
     description = "HTTP from internet (redirects to HTTPS)"
   }
 
+  # {{IF has_blue_green}}  (any standard-mode Fargate web entry with release_strategy == "blue_green")
+  # Inline on purpose: this group owns its rules inline, and the provider documents that mixing
+  # inline rules with standalone aws_security_group_rule on one group produces conflicting plans.
+  ingress {
+    from_port   = 8443
+    to_port     = 8443
+    protocol    = "tcp"
+    cidr_blocks = var.codedeploy_test_cidrs
+    description = "CodeDeploy blue/green test listener"
+  }
+  # {{ENDIF}}
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -1226,7 +1238,7 @@ resource "aws_ecs_service" "<app_sanitized>_<process_type>" {
 ```hcl
 # Blue/green — <heroku_app>:web (release_strategy == "blue_green")
 resource "aws_lb_target_group" "<app_sanitized>_web_green" {
-  name        = "${var.project_name}-${var.environment}-tg-green"
+  name        = "${var.project_name}-${var.environment}-<app_sanitized>-tg-green"
   port        = 8080
   protocol    = "HTTP"
   vpc_id      = <vpc_id_reference>
@@ -1257,7 +1269,10 @@ resource "aws_lb_listener" "<app_sanitized>_web_test" {
 }
 
 # Admit CodeDeploy test traffic on the ALB. Emitted once per design alongside the
-# first blue/green block; a second blue/green web app reuses this rule and variable.
+# first blue/green block; a second blue/green web app reuses this variable. The 8443
+# ingress itself lives INLINE in aws_security_group.alb (Step 5, `{{IF has_blue_green}}`):
+# that group already owns inline 80/443 rules, and the provider forbids mixing inline
+# rules with standalone aws_security_group_rule on the same group.
 variable "codedeploy_test_cidrs" {
   description = "CIDRs allowed to reach the CodeDeploy test listener (port 8443) during blue/green validation. Operator / CI egress addresses only; 0.0.0.0/0 is rejected."
   type        = list(string)
@@ -1265,16 +1280,6 @@ variable "codedeploy_test_cidrs" {
     condition     = length(var.codedeploy_test_cidrs) > 0 && !contains(var.codedeploy_test_cidrs, "0.0.0.0/0")
     error_message = "codedeploy_test_cidrs must list at least one specific CIDR; 0.0.0.0/0 is not permitted for the test listener."
   }
-}
-
-resource "aws_security_group_rule" "alb_codedeploy_test" {
-  type              = "ingress"
-  security_group_id = aws_security_group.alb.id
-  from_port         = 8443
-  to_port           = 8443
-  protocol          = "tcp"
-  cidr_blocks       = var.codedeploy_test_cidrs
-  description       = "CodeDeploy blue/green test listener"
 }
 
 # Shared CodeDeploy service role. Emitted ONCE per design (with the first blue/green
@@ -1301,12 +1306,12 @@ resource "aws_iam_role_policy_attachment" "codedeploy_ecs" {
 
 resource "aws_codedeploy_app" "<app_sanitized>_web" {
   compute_platform = "ECS"
-  name             = "${var.project_name}-${var.environment}-web"
+  name             = "${var.project_name}-${var.environment}-<app_sanitized>-web"
 }
 
 resource "aws_codedeploy_deployment_group" "<app_sanitized>_web" {
   app_name               = aws_codedeploy_app.<app_sanitized>_web.name
-  deployment_group_name  = "${var.project_name}-${var.environment}-web"
+  deployment_group_name  = "${var.project_name}-${var.environment}-<app_sanitized>-web"
   service_role_arn       = aws_iam_role.codedeploy_ecs.arn
   deployment_config_name = "CodeDeployDefault.ECSAllAtOnce"
 
@@ -1356,15 +1361,15 @@ resource "aws_codedeploy_deployment_group" "<app_sanitized>_web" {
 }
 ```
 
-`aws_iam_role.codedeploy_ecs`, its policy attachment, `variable "codedeploy_test_cidrs"`, and `aws_security_group_rule.alb_codedeploy_test` are design-wide: emit them exactly once (with the first `blue_green` web app) and let any further `blue_green` web app's block reference them, so a two-app design never declares the same address twice. The per-app resources (`_web_green` target group, `_web_test` listener, CodeDeploy app and deployment group) are suffixed with `<app_sanitized>`. The README's "Deploying with CodeDeploy" note tells the user that image updates go through `aws deploy create-deployment` with an `appspec.yaml`, not `terraform apply`.
+`aws_iam_role.codedeploy_ecs`, its policy attachment, and `variable "codedeploy_test_cidrs"` are design-wide: emit them exactly once (with the first `blue_green` web app) and let any further `blue_green` web app's block reference them, so a two-app design never declares the same address twice. The 8443 test-listener ingress is the `{{IF has_blue_green}}` inline block inside `aws_security_group.alb` (Step 5), never a standalone `aws_security_group_rule` on that group. The per-app resources (`_web_green` target group, `_web_test` listener, CodeDeploy app and deployment group) carry `<app_sanitized>` in BOTH the Terraform address and the AWS name (`-<app_sanitized>-tg-green`, `-<app_sanitized>-web`): two web apps sharing `project_name`/`environment` must not request the same AWS name. The README's "Deploying with CodeDeploy" note tells the user that image updates go through `aws deploy create-deployment` with an `appspec.yaml`, not `terraform apply`.
 
 ### Express Mode web services (`aws_config.ecs_mode == "express"`)
 
 For a Fargate entry with `aws_config.ecs_mode == "express"`, emit the following **instead of** the task definition, `aws_ecs_service`, and ALB resources above (the log group and the `ecs_execution` / `ecs_task` IAM roles from Step 5 are still emitted). Every reference below resolves to a resource this skill emits: the infrastructure role carries its own inline `jsonencode` trust policy like the other ECS roles in Step 5 (there is no `data.aws_iam_policy_document.ecs_assume` in this skill), the task security group is `aws_security_group.app` from Step 5 (there is no `aws_security_group.ecs_tasks`), and the infrastructure role's managed policy is the documented `service-role/` ARN.
 
 ```hcl
-# ECS Express Mode — <heroku_app>:web
-# Heroku source: <dyno_type> dyno, quantity <desired_count>
+# ECS Express Mode — shared infrastructure role. Emitted ONCE per design (with the first
+# Express entry); every Express service references the same address.
 resource "aws_iam_role" "ecs_infrastructure_express" {
   name = "${var.project_name}-${var.environment}-ecs-express-infra"
 
@@ -1390,9 +1395,14 @@ resource "aws_iam_role_policy_attachment" "ecs_infrastructure_express" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSInfrastructureRoleforExpressGatewayServices"
 }
 
+# ECS Express Mode — <heroku_app>:web (one block per Express entry)
+# Heroku source: <dyno_type> dyno, quantity <desired_count>
 resource "aws_ecs_express_gateway_service" "<app_sanitized>_web" {
-  service_name            = "${var.project_name}-${var.environment}-web"
+  service_name            = "${var.project_name}-${var.environment}-<app_sanitized>-web"
   cluster                 = aws_ecs_cluster.main.name
+  # Make apply block until the service is steady, so an apply with writers_quiesced=true
+  # returns only once running+pending tasks are 0 (not merely once the service is ACTIVE).
+  wait_for_steady_state   = true
   execution_role_arn      = aws_iam_role.ecs_execution.arn
   task_role_arn           = aws_iam_role.ecs_task.arn
   infrastructure_role_arn = aws_iam_role.ecs_infrastructure_express.arn
@@ -1420,8 +1430,8 @@ resource "aws_ecs_express_gateway_service" "<app_sanitized>_web" {
 
   scaling_target {
     # 0 while var.writers_quiesced is true, the same freeze the standard aws_ecs_service applies
-    # through desired_count. Both bounds go to 0 so target tracking cannot scale the service back
-    # out during a Phase 6 failback, and a later apply keeps it at 0.
+    # through desired_count (Express maps desired count onto min_task_count). A later apply keeps
+    # it at 0 until the variable is set back to false.
     min_task_count            = var.writers_quiesced ? 0 : <aws_config.desired_count>
     max_task_count            = <max(aws_config.desired_count * 2, 2)>
     auto_scaling_metric       = "AVERAGE_CPU"
@@ -1431,14 +1441,19 @@ resource "aws_ecs_express_gateway_service" "<app_sanitized>_web" {
   depends_on = [aws_iam_role_policy_attachment.ecs_infrastructure_express]
 
   tags = {
-    Name      = "${var.project_name}-${var.environment}-web"
+    Name      = "${var.project_name}-${var.environment}-<app_sanitized>-web"
     HerokuApp = "<heroku_app>"
   }
 }
 
 output "<app_sanitized>_web_endpoint" {
-  description = "AWS-provided HTTPS endpoint for the Express Mode service"
+  description = "AWS-provided HTTPS endpoint URL for the Express Mode service (already includes the https:// scheme)"
   value       = aws_ecs_express_gateway_service.<app_sanitized>_web.ingress_paths[0].endpoint
+}
+
+output "<app_sanitized>_web_service_arn" {
+  description = "ECS service ARN of the Express Mode service (for describe-services during the Phase 6 writer freeze)"
+  value       = aws_ecs_express_gateway_service.<app_sanitized>_web.service_arn
 }
 ```
 
@@ -1447,7 +1462,8 @@ output "<app_sanitized>_web_endpoint" {
 - Requires `hashicorp/aws ~> 6.71` in `main.tf` (`aws_ecs_express_gateway_service` from 6.23.0, `cpu_architecture` from 6.71.0; a `~> 5.80` pin cannot select it, so Step 1 must switch the pin when this section emits). `cpu` must be 256–4096 and `memory` 512–8192; Design already routes larger tasks to `standard`.
 - No `aws_lb`, target group, or listener is emitted for this service — Express Mode provisions and manages them (one ALB shared by up to 25 Express services per VPC). Deployments are canary; `release_strategy` other than `canary` means Design chose `standard`.
 - A custom domain is not wired by Terraform here. `dns_strategy == "route53"` forces `standard` at Design time so `dns.tf` keeps a Terraform-owned ALB to alias. For `external` DNS the guide's manual branch (`generate-docs.md` Phase 5, `target_kind == "express"`) adds the hostname and certificate to the Express listener and CNAMEs the hostname to the `<app_sanitized>_web_endpoint` host.
-- **Writer freeze:** `scaling_target.min_task_count` is `var.writers_quiesced ? 0 : …`, so the Express service honors the same `writers_quiesced` variable as the standard `aws_ecs_service` (Express maps the service's desired count onto `min_task_count`) and stays at 0 across later applies until the variable is set back to `false`. `max_task_count` keeps its normal value: target tracking has no metric data from zero running tasks, so it cannot scale out from 0, and neither the ECS API reference nor the provider documents 0 as an accepted `maxTaskCount`.
+- **Writer freeze:** `scaling_target.min_task_count` is `var.writers_quiesced ? 0 : …`, so the Express service honors the same `writers_quiesced` variable as the standard `aws_ecs_service` (Express maps the service's desired count onto `min_task_count`) and stays at 0 across later applies until the variable is set back to `false`. `wait_for_steady_state = true` makes that apply block until the service is steady, so it returns only when running and pending tasks are 0 rather than when the service is merely `ACTIVE`. `max_task_count` keeps its normal value: target tracking has no metric data from zero running tasks, so it cannot scale out from 0, and neither the ECS API reference nor the provider documents 0 as an accepted `maxTaskCount`. The guide's Phase 6 failback (`generate-docs.md`) still verifies the stop explicitly — `aws ecs describe-services` on each `<app_sanitized>_web_service_arn` must report `runningCount` and `pendingCount` of 0 — and suspends the service's Application Auto Scaling scalable target (`aws application-autoscaling register-scalable-target --suspended-state`) for the duration of the handoff, so neither a draining task nor a scaling action can write to the database after the check.
+- **Names:** `service_name` and the `Name` tag carry `<app_sanitized>`; two Express web apps in one cluster must not request the same ECS service name. `aws_iam_role.ecs_infrastructure_express` and its attachment are emitted once per design, not once per Express entry.
 - **Subnets and scheme ([Express Mode network defaults](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html#express-service-network-defaults)):** public subnets give an internet-facing ALB with `assignPublicIp` on the tasks; private subnets give an internal ALB. Heroku web dynos are internet-facing, so the Express block places tasks in the **public** subnets. This is the single accepted deviation from the `tf-best-practices` "Fargate tasks run in private subnets" rule: ingress to the task is still only the Express-created ALB security group on port 8080, and the deviation is recorded in `generation-warnings.json` (`"<app>:web — ECS Express Mode places tasks in public subnets to provision an internet-facing ALB"`) and the README. A design whose web tasks must stay in private subnets (Private Space, § 3D restricted inbound rules) is `standard` at Design time (`ecs_mode_reason: "private_space"`), never Express.
 - The ALB security group is created by Express Mode. `aws_security_group.app` is passed as the task security group so the database, cache, and messaging SGs that already admit `aws_security_group.app` keep working; when any Express entry exists, Step 5 adds one ingress rule to `aws_security_group.app` for port 8080 from the VPC CIDR (`aws_vpc.main.cidr_block`) so the Express-managed ALB can reach the tasks.
 
