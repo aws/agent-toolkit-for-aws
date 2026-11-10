@@ -41,8 +41,8 @@ A resource with an AWS target.
   "service_id": "<derived slug — see § service_id; unique within the artifact>",
   "azure_id": "<ARM resource ID from the inventory>",
   "azure_type": "Microsoft.Cache/Redis",
-  "aws_service": "ElastiCache Redis",
-  "aws_config": {}, // target-shaped config; also where a consumed child's contribution lands
+  "aws_service": "ElastiCache Valkey",
+  "aws_config": {}, // target-shaped config; also where a consumed child's contribution lands. ElastiCache entries carry "engine": "valkey" (default) or "redis"
   "confidence": "deterministic", // deterministic | measured | inferred | billing_inferred
   "fast_path_row": "Microsoft.Cache/Redis", // REQUIRED when confidence is deterministic
   "rubric_applied": "compute.md", // REQUIRED when pass 2 ran
