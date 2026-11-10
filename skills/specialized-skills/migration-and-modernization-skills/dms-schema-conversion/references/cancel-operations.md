@@ -4,8 +4,8 @@
 
 | Running command | Cancel command | Wait for cancellation |
 |----------------|---------------|----------------------|
-| `start-metadata-model-conversion` | `cancel-metadata-model-conversion` | `aws dms wait metadata-model-conversion-cancelled` |
-| `start-metadata-model-creation` | `cancel-metadata-model-creation` | `aws dms wait metadata-model-creation-cancelled` |
+| `start-metadata-model-conversion` | `cancel-metadata-model-conversion` | `aws dms wait metadata-model-conversion-cancelled --filter 'Name=request-id,Values=<RequestIdentifier>'` |
+| `start-metadata-model-creation` | `cancel-metadata-model-creation` | `aws dms wait metadata-model-creation-cancelled --filter 'Name=request-id,Values=<RequestIdentifier>'` |
 
 ### cancel-metadata-model-conversion
 
