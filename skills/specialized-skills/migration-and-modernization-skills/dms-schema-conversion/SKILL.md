@@ -97,7 +97,7 @@ After each action completes, return to this menu by presenting the same selectio
 
 1. **Ask what to convert:** Ask the customer what they want to convert (e.g., "all schemas", "schema public", "tables starting with PROD_").
 
-2. **Build selection rules:** Translate the customer's natural language to selection rules JSON. Load [schema-conversion-operations.md](references/schema-conversion-operations.md) and follow **Selection Scope** before building the rules. Refer to [Selection rules in DMS Schema Conversion](https://docs.aws.amazon.com/dms/latest/userguide/sc-selection-rules.html) for format, wildcards, and vendor-specific locators.
+2. **Build selection rules:** Translate the customer's natural language to selection rules JSON. Load [schema-conversion-operations.md](references/schema-conversion-operations.md) and follow **Selection Scope** before building the rules. Refer to [Selection rules in DMS Schema Conversion](https://docs.aws.amazon.com/dms/latest/userguide/sc-selection-rules.html) for format, wildcards, and vendor-specific locators. Store the result as `source_selection_rules`.
 
 3. **Run conversion:** Call `start-metadata-model-conversion` with the migration project and selection rules. Extract `RequestIdentifier` from the response.
 
@@ -122,9 +122,11 @@ After each action completes, return to this menu by presenting the same selectio
    > 3. **Apply to target** — apply converted objects to the target database *(live targets only)*
    > 4. **Back** — return to actions menu"
 
+   Before **Export as script** or **Apply to target**, call `aws dms describe-metadata-model --migration-project-identifier <migration_project_identifier> --origin SOURCE --selection-rules '<source_selection_rules>'`. Extract `TargetMetadataModels[0].SelectionRules` as `target_selection_rules`. If no target model is returned, report that the selected source scope has no converted target model and stop that action.
+
    - **Fix Action Items:** Load [action-items.md](references/action-items.md) and follow the fixing workflow there.
-   - **Export as script:** Run `aws dms start-metadata-model-export-as-script --migration-project-identifier <migration_project_identifier> --origin TARGET --selection-rules '<json>'`. Use the exact target `SelectionRules` returned by DMS; never reuse source rules for a TARGET export. Extract `RequestIdentifier`. Wait via `aws dms wait metadata-model-exported-as-script --migration-project-identifier <id> --filter 'Name=request-id,Values=<RequestIdentifier>'`. Provide the S3 link on completion.
-   - **Apply to target:** Run `aws dms start-metadata-model-export-to-target --migration-project-identifier <migration_project_identifier> --selection-rules '<json>'`. Optionally pass `--overwrite-extension-pack` if the customer confirms. Extract `RequestIdentifier`. Wait via `aws dms wait metadata-model-exported-to-target --migration-project-identifier <id> --filter 'Name=request-id,Values=<RequestIdentifier>'`. Inform the customer on completion.
+   - **Export as script:** Run `aws dms start-metadata-model-export-as-script --migration-project-identifier <migration_project_identifier> --origin TARGET --selection-rules '<target_selection_rules>'`. Pass the service-returned target rules unchanged. Extract `RequestIdentifier`. Wait via `aws dms wait metadata-model-exported-as-script --migration-project-identifier <id> --filter 'Name=request-id,Values=<RequestIdentifier>'`. Provide the S3 link on completion.
+   - **Apply to target:** Run `aws dms start-metadata-model-export-to-target --migration-project-identifier <migration_project_identifier> --selection-rules '<target_selection_rules>'`. Optionally pass `--overwrite-extension-pack` if the customer confirms. Extract `RequestIdentifier`. Wait via `aws dms wait metadata-model-exported-to-target --migration-project-identifier <id> --filter 'Name=request-id,Values=<RequestIdentifier>'`. Inform the customer on completion.
    - **Back:** Return to [Actions Menu](#actions-menu).
 
 After completing, ask the customer what they'd like to do next.

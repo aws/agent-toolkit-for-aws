@@ -240,12 +240,11 @@ Ask for the S3 path based on the customer's Step 1 selection:
 
 Store the selected S3 URI as `ddl_s3_path` and extract `ddl_bucket_name`. If the path identifies a prefix, store it as `ddl_prefix`; otherwise set `ddl_prefix = ""` for the bucket root.
 
-1. Get the bucket Region with `aws s3api head-bucket --bucket <ddl_bucket_name> --query BucketRegion --output text`. Compare the returned Region with `aws_region`, the migration project Region. If they differ, stop before upload and ask the customer for an S3 path whose bucket is in `aws_region`.
-2. Verify the bucket belongs to `aws_account_id`. Cross-account offline DDL access is not supported by this flow.
-3. If upload is required, upload only the extracted `.sql` files to `ddl_s3_path` with `--sse AES256`. Verify that every expected `.sql` file appears under `ddl_s3_path`.
-4. Confirm the selected S3 location contains `.sql` objects. If empty or path not found, inform the customer and ask to correct.
-5. For a pre-existing S3 location, ask whether the selected `.sql` objects are encrypted with a customer-managed KMS key. If yes, ask for the key ARN and store it as `s3_kms_key_arn`. If no, set `s3_kms_key_arn = null`.
-6. For files uploaded by this flow, set `s3_kms_key_arn = null` because the upload uses SSE-S3.
+1. Get the bucket Region and enforce ownership with `aws s3api head-bucket --bucket <ddl_bucket_name> --expected-bucket-owner <aws_account_id> --query BucketRegion --output text`. Compare the returned Region with `aws_region`, the migration project Region. If the ownership check fails or the Regions differ, stop before upload and ask the customer for an S3 path whose bucket belongs to `aws_account_id` and is in `aws_region`.
+2. If upload is required, upload only the extracted `.sql` files to `ddl_s3_path` with `--sse AES256`. Verify that every expected `.sql` file appears under `ddl_s3_path`.
+3. Confirm the selected S3 location contains `.sql` objects. If empty or path not found, inform the customer and ask to correct.
+4. For a pre-existing S3 location, ask whether the selected `.sql` objects are encrypted with a customer-managed KMS key. If yes, ask for the key ARN and store it as `s3_kms_key_arn`. If no, set `s3_kms_key_arn = null`.
+5. For files uploaded by this flow, set `s3_kms_key_arn = null` because the upload uses SSE-S3.
 
 #### Step 3 — DDL Validation (Offline Source)
 
