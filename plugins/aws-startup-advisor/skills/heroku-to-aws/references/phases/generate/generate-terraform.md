@@ -1189,11 +1189,80 @@ resource "aws_ecs_service" "<app_sanitized>_<process_type>" {
 **Service rules:**
 
 - `desired_count` from `aws_config.desired_count` (maps directly from Heroku formation quantity, 0–100)
-- `load_balancer` block included ONLY when `aws_config.load_balancer == true` (web process types)
+- `load_balancer` block included ONLY when `aws_config.load_balancer == true` (web process types) AND `aws_config.ecs_mode == "standard"`; an `express` web formation is emitted by the Express Mode section below instead of this service
 - Workers, clock, and custom processes: omit `load_balancer` block and `depends_on`. Release process types are skipped because they are run-once hooks.
 - `assign_public_ip = false` — tasks run in private subnets behind NAT
 
-### Application Load Balancer (web process types only)
+### Express Mode web services (`aws_config.ecs_mode == "express"`)
+
+For a Fargate entry with `aws_config.ecs_mode == "express"`, emit the following **instead of** the task definition, `aws_ecs_service`, and ALB resources above (the log group and IAM roles are still emitted):
+
+```hcl
+# ECS Express Mode — <heroku_app>:web
+# Heroku source: <dyno_type> dyno, quantity <desired_count>
+resource "aws_iam_role" "ecs_infrastructure_express" {
+  name               = "${var.project_name}-${var.environment}-ecs-express-infra"
+  assume_role_policy = data.aws_iam_policy_document.ecs_assume.json   # trusts ecs.amazonaws.com
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_infrastructure_express" {
+  role       = aws_iam_role.ecs_infrastructure_express.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonECSInfrastructureRoleforExpressGatewayServices"
+}
+
+resource "aws_ecs_express_gateway_service" "<app_sanitized>_web" {
+  service_name            = "${var.project_name}-${var.environment}-web"
+  cluster                 = aws_ecs_cluster.main.name
+  execution_role_arn      = aws_iam_role.ecs_execution.arn
+  task_role_arn           = aws_iam_role.ecs_task.arn
+  infrastructure_role_arn = aws_iam_role.ecs_infrastructure_express.arn
+  cpu                     = "<aws_config.task_cpu>"
+  memory                  = "<aws_config.task_memory>"
+  cpu_architecture        = "<aws_config.cpu_architecture>"
+  health_check_path       = "/"
+
+  primary_container {
+    image          = var.<container_image_variable>
+    container_port = 8080
+    aws_logs_configuration {
+      log_group = aws_cloudwatch_log_group.app.name
+    }
+  }
+
+  network_configuration {
+    subnets         = <private_subnet_references>   # private subnets -> internal ALB; use public subnets for an internet-facing endpoint
+    security_groups = [aws_security_group.ecs_tasks.id]
+  }
+
+  scaling_target {
+    min_task_count            = <aws_config.desired_count>
+    max_task_count            = <max(aws_config.desired_count * 2, 2)>
+    auto_scaling_metric       = "AVERAGE_CPU"
+    auto_scaling_target_value = 60
+  }
+
+  depends_on = [aws_iam_role_policy_attachment.ecs_infrastructure_express]
+
+  tags = {
+    Name      = "${var.project_name}-${var.environment}-web"
+    HerokuApp = "<heroku_app>"
+  }
+}
+
+output "<app_sanitized>_web_endpoint" {
+  description = "AWS-provided HTTPS endpoint for the Express Mode service"
+  value       = aws_ecs_express_gateway_service.<app_sanitized>_web.ingress_paths[0].endpoint
+}
+```
+
+**Express Mode rules:**
+
+- Requires AWS provider 6.x (`aws_ecs_express_gateway_service`). `cpu` must be 256–4096 and `memory` 512–8192; Design already routes larger tasks to `standard`.
+- No `aws_lb`, target group, or listener is emitted for this service — Express Mode provisions and manages them (one ALB shared by up to 25 Express services per VPC). Deployments are canary; `release_strategy` other than `canary` means Design chose `standard`.
+- A custom domain is not wired by Terraform here. `dns_strategy == "route53"` forces `standard` at Design time so `dns.tf` keeps a Terraform-owned ALB to alias.
+- The ALB security group is created by Express Mode; keep the task security group's ingress open to the VPC CIDR on the container port, or let Express Mode create the service security group by omitting `security_groups`.
+
+### Application Load Balancer (standard-mode web process types only)
 
 Generate ALB resources only when `aws-design.json` contains ALB service entries:
 

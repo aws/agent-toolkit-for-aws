@@ -147,6 +147,25 @@ and a `rationale` naming **which criterion fired**. "Elastic Beanstalk, because 
 is a managed App Service Plan (criterion 2.2) and no compute-target preference was
 recorded" is auditable. "Elastic Beanstalk is a good fit" is not.
 
+## 7. ECS mode — Express vs standard (Fargate entries only)
+
+**ECS Express Mode is the default shape for an HTTP(S) web service on Fargate.** Express Mode is a standard ECS service that AWS provisions for you — Fargate cluster, task definition, Application Load Balancer with an HTTPS listener and ACM certificate, security groups, target-tracking auto scaling, CloudWatch log group, canary deployments, and an AWS-provided HTTPS endpoint — with no additional charge beyond the resources ([Express Mode](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html); it is also AWS's named replacement for App Runner). Up to 25 Express services share one ALB per VPC; private subnets yield an internal ALB. Record the decision on every Fargate entry as `aws_config.ecs_mode` (`"express"` or `"standard"`) with a one-line `aws_config.ecs_mode_reason`.
+
+Select `"standard"` (a hand-written `aws_ecs_service` + ALB/NLB) when **any** of these holds; otherwise select `"express"`:
+
+| Eliminator                                                                                                                    | Source                                                                                              |
+| ----------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Not an HTTP(S) web service — a worker, scheduled job, queue consumer, or anything with no inbound HTTP listener               | `compute_shape != "http_service"` (derived from inventory; Clarify asks only when it cannot be derived) |
+| Needs TCP/UDP passthrough, gRPC without HTTP/2 termination, an NLB, or no load balancer at all                                 | `compute_shape == "tcp_or_grpc_passthrough"`                                                        |
+| Release process requires rolling or blue/green deployments (Express Mode deploys canary only)                                  | `design_constraints.release_strategy` is `"rolling"` or `"blue_green"`                               |
+| Task size outside Express limits: CPU > 4096 units or memory > 8192 MiB                                                        | sizing table / `aws_config.task_cpu`, `aws_config.task_memory`                                      |
+| Generated Terraform must own a custom-domain ALB (Route 53 alias to the ALB, customer certificate on the listener)             | skill-specific DNS/cutover preference (heroku: `dns_strategy == "route53"`)                          |
+| Sidecars or a custom task definition the generator must author (Express Mode accepts a custom task definition only via the API/CLI, not the Terraform resource) | detected multi-container task                                                 |
+
+Express Mode is a shape of Fargate, not a new service: `aws_service` stays `"Fargate"`, sizing and cost come from the same tables, and the entry is still priced as Fargate tasks plus one ALB. It does **not** displace Elastic Beanstalk for PaaS sources (App Engine, App Service, Heroku web dynos); it applies once Fargate is the selected target or the source is already a container.
+
+Derive `compute_shape` from the inventory: `Microsoft.App/containerApps` with `ingress.external` or `ingress.targetPort` → `http_service`, without ingress → `worker`; `Microsoft.ContainerInstance/containerGroups` with no public port → `worker`; a `DOCKER|` App Service site → `http_service`; `transport: tcp` ingress → `tcp_or_grpc_passthrough`. A `Microsoft.Web/sites/slots` child on a plan routed to Fargate is a blue/green signal (Q-C7). Read `design_constraints.release_strategy` (default `canary`) and, when present, `design_constraints.compute_shape[<service>]`.
+
 ## Status — build step 5
 
 Implemented for App Service Plans, VMs, VMSS, container apps, container instances, and

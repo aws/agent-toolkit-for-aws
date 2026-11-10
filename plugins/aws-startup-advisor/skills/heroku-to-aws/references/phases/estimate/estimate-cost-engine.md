@@ -232,7 +232,7 @@ When `aws-design.json` contains EKS services (`aws_service: "EKS"`):
 
 1. **EKS Control Plane**: `eks.control_plane_monthly` (fixed, one cluster regardless of node count)
 2. **EC2 Node Group**: Look up the node instance type's monthly rate in `eks.node_rates_monthly[type]` × `desired_size` nodes. The monthly rates (m6i.large, m6i.xlarge, m6i.4xlarge, r6i.4xlarge, m6i.8xlarge, m6i.16xlarge) are maintained in `aws-infra-pricing.json` — do not hardcode them here.
-3. **ALB for web services**: Same as Fargate ALB pricing (`alb.monthly_fixed` per web service)
+3. **ALB for web services**: Same as Fargate ALB pricing (`alb.monthly_fixed` per standard-mode web service). Web formations with `aws_config.ecs_mode == "express"` have no ALB entry of their own: price **one** `alb.monthly_fixed` line shared by all Express services in the design (Express Mode shares an ALB across up to 25 services) and attribute LCU estimates per service
 4. **NAT Gateway** (if private subnets): Same as Fargate path (`nat_gateway.monthly_fixed` + data processing)
 
 **Total EKS monthly cost** = `eks.control_plane_monthly` + (node_monthly_rate × node_count) + ALB_costs + NAT_costs. Pods are NOT charged a per-task cost (compute is billed via the EC2 nodes); ALB and NAT are the separate lines above, not re-added here.

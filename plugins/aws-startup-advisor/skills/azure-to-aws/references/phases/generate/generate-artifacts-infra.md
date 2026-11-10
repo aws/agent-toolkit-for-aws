@@ -453,3 +453,12 @@ Secrets Manager references, x86 default, and the `tf-best-practices` authoring h
 now live in the orchestrator (`generate.md`, main window), not this worker fragment — the
 `rw` worker cannot invoke skills or run terraform/python. The `tf-best-practices`
 invocation is by contract; verify it is installed alongside this skill.
+
+## Fargate services: Express Mode vs standard
+
+Branch on each Fargate entry's `aws_config.ecs_mode` (set by Design per `design-refs/compute.md` § 7):
+
+- **`"express"`** — emit one `aws_ecs_express_gateway_service` (AWS provider ≥ 6.x) in place of the task definition + `aws_ecs_service` + ALB/target group/listener set: `cluster`, `execution_role_arn`, a new `infrastructure_role_arn` (trusts `ecs.amazonaws.com`; permissions for ALB, target groups, security groups, ACM, Application Auto Scaling), `cpu` / `memory` (256–4096 / 512–8192), `cpu_architecture`, `primary_container { image, container_port, aws_logs_configuration, environment, secret }`, `network_configuration { subnets, security_groups }` (private subnets → internal ALB), `scaling_target` from the Container Apps `minReplicas` / `maxReplicas`, `health_check_path`. Output `ingress_paths[0].endpoint`. No separate ALB for the service (Express shares one ALB per VPC, up to 25 services). Add `depends_on` to the infrastructure role's policy attachment.
+- **`"standard"`** — the existing task definition + `aws_ecs_service` with ALB (`http_service`), NLB (`tcp_or_grpc_passthrough`), or none (`worker`), and `deployment_controller` / `deployment_configuration` per `release_strategy`.
+
+Record `ecs_mode` per service in `generation-infra.json`.

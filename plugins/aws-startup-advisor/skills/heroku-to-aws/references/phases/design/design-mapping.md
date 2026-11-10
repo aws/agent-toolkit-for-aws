@@ -220,12 +220,16 @@ Continue with the next resource after the Fargate entry is appended. This guard 
        "desired_count": <desired_count>,
        "container_image": "placeholder:{heroku_app}-{process_type}",
        "process_type": "{process_type}",
-       "load_balancer": <true if process_type == "web", false otherwise>
+       "load_balancer": <true if process_type == "web", false otherwise>,
+       "ecs_mode": "<express|standard>",
+       "ecs_mode_reason": "<one line>"
      }
    }
    ```
 
-6. **ALB for web process types**: If `process_type == "web"`, produce an additional ALB entry:
+   **`ecs_mode`:** `"express"` when ALL of: `process_type == "web"`; `fargate_cpu <= 4096` and `fargate_memory <= 8192`; `preferences.design_constraints.release_strategy` is absent or `"canary"`; `dns_strategy != "route53"` (a Route 53 cutover needs a Terraform-owned ALB). Otherwise `"standard"`, with the first failing condition as the reason (`worker`, `task_size`, `release_strategy`, `route53_cutover`). ECS Express Mode is a standard ECS service AWS provisions — Fargate cluster, ALB with HTTPS and ACM certificate, auto scaling, logs, canary deployments, AWS-provided endpoint — at no extra charge; up to 25 Express services share one ALB ([docs](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html)).
+
+6. **ALB for web process types**: If `process_type == "web"` AND `aws_config.ecs_mode == "standard"`, produce an additional ALB entry (an `express` web formation gets its ALB from Express Mode — do not emit one):
 
    ```json
    {

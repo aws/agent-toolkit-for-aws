@@ -962,3 +962,7 @@ in this file before emitting it** — an improvised code is indistinguishable fr
 typo to whatever groups the report.
 
 When Parts 1–8 are complete, control passes to `estimate-assemble.md`.
+
+## ECS Express Mode pricing note
+
+A Fargate entry with `aws_config.ecs_mode: "express"` is priced like a standard Fargate service (task vCPU/GB-hours) plus one ALB; Express Mode has no service charge. Its ALB is shared by up to 25 Express services per VPC, so emit one `alb.monthly_fixed` line for all Express services in a VPC and attribute LCU estimates per service. Standard-mode HTTP services keep one ALB line each.

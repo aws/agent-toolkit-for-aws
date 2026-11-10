@@ -377,6 +377,15 @@ source for both the database and the application. For a JSON secret containing
 `valueFrom = "${aws_secretsmanager_secret.db_master.arn}:password::"`.
 The bare ARN injects the whole JSON object and breaks database authentication.
 Keep the task execution role's secret-read permission scoped to the same secret.
+### Fargate services: Express Mode vs standard
+
+Branch on each Fargate entry's `aws_config.ecs_mode` (set by Design per `design-refs/compute.md` § ECS Fargate Mode):
+
+- **`"express"`** — emit one `aws_ecs_express_gateway_service` (AWS provider ≥ 6.x) instead of the `aws_ecs_task_definition` + `aws_ecs_service` + `aws_lb` / target group / listener set. Pass `cluster` (the skill's ECS cluster), `execution_role_arn`, `infrastructure_role_arn` (a new IAM role trusting `ecs.amazonaws.com` with the managed policy `AmazonECSInfrastructureRoleforExpressGatewayServices` — ALB, target groups, security groups, ACM, and Application Auto Scaling), `cpu` / `memory` (256–4096 units / 512–8192 MiB), `cpu_architecture` from the Graviton block, `primary_container { image, container_port, aws_logs_configuration { log_group }, environment, secret }`, `network_configuration { subnets = <private subnets>, security_groups }` (private subnets produce an internal ALB; use the public subnets when the service must be internet-facing with no CloudFront in front), `scaling_target { min_task_count, max_task_count, auto_scaling_metric }` from `desired_count` and the Cloud Run `min_instances` / `max_instances`, and `health_check_path`. Output `ingress_paths[0].endpoint` as the service URL. Do **not** also emit an ALB for this service; Express Mode provisions and shares one (up to 25 services per VPC). Add `depends_on` to the infrastructure role's policy attachment so deletion does not strand the service in `DRAINING`.
+- **`"standard"`** — emit the existing task definition + `aws_ecs_service` (+ ALB when `compute_shape == "http_service"`, NLB when `tcp_or_grpc_passthrough`, no load balancer for `worker`), with `deployment_controller` and `deployment_configuration` matching `release_strategy` (`rolling` → ECS rolling update; `blue_green` → CodeDeploy).
+
+Record the branch taken in `generation-infra.json` per service (`ecs_mode`) so the report and the migration guide can explain why a service got an AWS-provided HTTPS endpoint rather than a hand-built ALB.
+
 For Fargate Linux, select platform version `1.4.0` or later (or `LATEST`) because
 JSON-key injection is not supported on earlier platform versions.
 

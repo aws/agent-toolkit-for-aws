@@ -897,3 +897,7 @@ The Generate phase (`generate.md`) uses `estimation-infra.json` as follows:
 6. **Cost tier vs Terraform** — Generated **`terraform/`** implements **one** baseline aligned with the **Balanced** scenario; **Premium** and **Optimized** are **estimate-only** bands unless the user changes IaC. See `generate-artifacts-infra.md` (`terraform/README.md`, `migration_summary` output).
 
 The generated artifacts reference the cost estimates to set per-cluster cost monitoring thresholds and validate that actual AWS spend aligns with projections after each cluster migration.
+
+## ECS Express Mode pricing note
+
+A Fargate entry with `aws_config.ecs_mode: "express"` is priced exactly like a standard Fargate service: task vCPU/GB-hours from the same tables plus one ALB. Express Mode has no service charge, but its ALB is **shared** — up to 25 Express services in the same VPC sit behind one ALB — so emit a single `alb.monthly_fixed` line for all Express services in a VPC and attribute LCU estimates per service, instead of one ALB line per service. Standard-mode HTTP services keep one ALB line each.
