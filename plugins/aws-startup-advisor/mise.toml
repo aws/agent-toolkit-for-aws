@@ -16,7 +16,7 @@ run = "python3 scripts/consent-disclosure-audit.py"
 
 [tasks.ci]
 description = "Run startup advisor CI checks"
-depends = ["lint:md", "lint:model-id", "lint:model-staleness", "lint:model-catalog-drift", "lint:startup-model-pricing", "lint:artifacts", "lint:vendored-parity", "lint:skill-refs", "lint:consent-disclosure", "test", "test:agent-advisor", "test:telemetry", "test:heroku-source-review"]
+depends = ["lint:md", "lint:model-id", "lint:model-staleness", "lint:model-catalog-drift", "lint:startup-model-pricing", "lint:artifacts", "lint:vendored-parity", "lint:skill-refs", "lint:consent-disclosure", "test", "test:agent-advisor", "test:llm-to-bedrock", "test:skill-scripts", "test:telemetry", "test:heroku-source-review"]
 
 [tasks."lint:md"]
 description = "Lint startup advisor markdown using the shared rules"
@@ -36,11 +36,19 @@ run = "uv run --no-project python scripts/model-id-lint.py"
 
 [tasks.test]
 description = "Run plugin contract tests"
-run = "uv run --no-project --with pytest python -m pytest tests -q"
+run = "uv run --no-project --python 3.12 --with pytest python -m pytest tests -q"
 
 [tasks."test:agent-advisor"]
 description = "Run agent-advisor engine tests (its own uv project, with jsonschema)"
 run = "uv run --directory skills/agent-advisor/scripts python -m pytest -q"
+
+[tasks."test:llm-to-bedrock"]
+description = "Run llm-to-bedrock script tests (its own uv project)"
+run = "uv run --directory skills/llm-to-bedrock/scripts python -m pytest -q"
+
+[tasks."test:skill-scripts"]
+description = "Run stdlib-only skill script tests (heroku-to-aws, tf-best-practices)"
+run = "uv run --no-project --python 3.12 --with pytest python -m pytest -q --import-mode=importlib skills/heroku-to-aws/scripts skills/tf-best-practices/scripts"
 
 [tasks."test:telemetry"]
 description = "Run Startup Advisor telemetry tests"
