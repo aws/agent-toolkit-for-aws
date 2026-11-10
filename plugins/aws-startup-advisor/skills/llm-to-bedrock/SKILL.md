@@ -1324,7 +1324,7 @@ Tell the user, before collecting models:
   when the user names it or has a verified Mantle-only need (see the Endpoint policy section).
 - **Models (raw request only):** if `$ARGUMENTS` names model IDs, use them directly — skip
   resolution, they're already IDs. Otherwise **AskUserQuestion**: "Which models do you want
-  access to? Give Bedrock model IDs (e.g. `anthropic.claude-sonnet-4-5-v1:0`,
+  access to? Give Bedrock model IDs (e.g. `anthropic.claude-sonnet-5`,
   `openai.gpt-oss-120b-1:0`) or provider + name and I'll resolve the ID." Collect whatever the
   user gave (IDs and/or friendly names) into `$REQUESTED_MODELS` — **do NOT invoke the
   friendly-name resolver here.** The resolver's own commands
