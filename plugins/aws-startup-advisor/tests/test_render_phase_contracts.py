@@ -287,8 +287,13 @@ def test_render_is_registered_without_mcp_or_plan_handoff_drift() -> None:
     cursor_marketplace = json.loads((REPO_ROOT / ".cursor-plugin/marketplace.json").read_text())
     for marketplace in (claude_marketplace, cursor_marketplace):
         entry = next(item for item in marketplace["plugins"] if item["name"] == "aws-startup-advisor")
-        assert {"render", "render-to-aws"} <= set(entry["keywords"])
         assert "Render" in entry["description"]
+    # Cursor's marketplace entry schema allows only name/source/description/minClientVersions
+    # (cursor/plugins#281); keywords live in .cursor-plugin/plugin.json, checked above.
+    claude_entry = next(item for item in claude_marketplace["plugins"] if item["name"] == "aws-startup-advisor")
+    assert {"render", "render-to-aws"} <= set(claude_entry["keywords"])
+    cursor_entry = next(item for item in cursor_marketplace["plugins"] if item["name"] == "aws-startup-advisor")
+    assert "keywords" not in cursor_entry
 
     codex = json.loads((PLUGIN_ROOT / ".codex-plugin/plugin.json").read_text())
     assert "Migrate my Render services to AWS" in codex["interface"]["defaultPrompt"]
