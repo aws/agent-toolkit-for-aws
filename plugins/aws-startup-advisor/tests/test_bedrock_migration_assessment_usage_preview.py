@@ -217,5 +217,15 @@ def test_discover_and_clarify_wiring() -> None:
                  "Q1 when `ai_framework_detected` is `null`, and Q6 when `ai_vision_detected` is `null`"):
         assert rule in fast, rule
     assert "does not produce yet" not in CLARIFY and "except `migration-preview.json` in Step 1.5" in CLARIFY
-    assert "bedrock-migration-assessment's OpenAI usage profile" in (BMA.parent / "llm-to-bedrock/SKILL.md").read_text()
+    skill = (BMA / "SKILL.md").read_text(encoding="utf-8")
+    step0 = skill[skill.index("## Step 0"):skill.index("## Step 1:")]
+    for rule in ("phases.discover` set to `\"in_progress\"`", "all_usage_failed` starts at Step 1 intake",
+                 "Do not create a second run directory", "Never write into a run directory another skill created"):
+        assert rule in step0, rule
+    assert "Treat as skipped: exit with no usage profile" not in READER
+    assert "start at Step 1 intake, then Step 2. The next capture replaces these files." in READER
+    bedrock = (BMA.parent / "llm-to-bedrock/SKILL.md").read_text(encoding="utf-8")
+    assert "bedrock-migration-assessment's OpenAI usage profile" in bedrock
+    assert "subtract it from the baseline row's `input_tokens` and copy it to" in bedrock
+    assert "`cache_write_unsplit`" in bedrock
     assert "\"Not available (the cost request failed)\"" in CONTROLLER

@@ -160,7 +160,7 @@ Report: "OpenAI usage: $X over the last N days across M models (projects: …)."
 | Selected projects show zero usage                 | Show the project list again once; if still zero, write the profile with zeros               |
 | Resumed run, `manifest.json` `result` is `complete` | Start at Step 3; consent and capture already happened                                    |
 | Resumed run, `result` is `key_invalid_mid_run`    | Consent was given: start at Step 1 intake, then Step 2                                      |
-| Resumed run, `result` is `all_usage_failed`       | Treat as skipped: exit with no usage profile                                                |
+| Resumed run, `result` is `all_usage_failed`       | Consent was given: start at Step 1 intake, then Step 2. The next capture replaces these files. |
 
 ## Scope Boundary
 

@@ -249,7 +249,13 @@ short-circuit it.
    baseline row as `cache_write_5m` and `cache_write_1h`. They are the split of
    `cache_creation_tokens`; do not add them on top of that sum. When only the
    aggregate `cache_creation_tokens` is present (an older profile), copy it as
-   `cache_write_unsplit` and do not price it at the ordinary input rate. See
+   `cache_write_unsplit` and do not price it at the ordinary input rate. OpenAI
+   `input_tokens` already includes `input_cache_write_tokens`. When that field is
+   present, subtract it from the baseline row's `input_tokens` and copy it to
+   `cache_write_unsplit`. Do not leave those tokens in `input_tokens`, and do not
+   add them on top. The usage response does not name a 5-minute or 1-hour write
+   duration, so this stays the unpriced component rather than an ordinary-input
+   price. `input_cached_tokens` stay inside `input_tokens`. See
    `estimate-ai.md`'s Prerequisites section in either sibling skill for the
    `uncached_input_tokens + cache_read_input_tokens + cache_creation_input_tokens`
    contract). Apply the
@@ -425,6 +431,7 @@ representable):**
       "output_tokens": 0,
       "cache_write_5m": 0,
       "cache_write_1h": 0,
+      "cache_write_unsplit": 0,
       "num_model_requests": 0
     }
   ]
