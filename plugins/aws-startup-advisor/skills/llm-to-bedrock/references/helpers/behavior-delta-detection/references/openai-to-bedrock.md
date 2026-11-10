@@ -324,7 +324,7 @@ Use Pattern A only when the model and thinking mode are verified to support forc
 ```python
 # Before
 response = client.chat.completions.create(
-    model="gpt-4o",
+    model="gpt-5.4",
     messages=messages,
     response_format={"type": "json_schema", "json_schema": {"name": "Result", "schema": {"type": "object", "properties": {"answer": {"type": "string"}}}}},
 )
@@ -345,7 +345,7 @@ result = tool_use_block["toolUse"]["input"]
 ```python
 # Before
 response = client.chat.completions.create(
-    model="gpt-4o",
+    model="gpt-5.4",
     messages=messages,
     response_format={"type": "json_object"},
 )

@@ -36,7 +36,7 @@ In the provided path, look for:
   `anthropic | openai | azure_openai | google_genai | bedrock | none | unknown`. API surfaces
   include Anthropic `messages`, OpenAI `chat_completions` / `responses`, and Bedrock
   `converse` / `invoke_model`. Do not collapse exact IDs such as
-  `claude-3-7-sonnet-latest` into a coarse `claude` family.
+  `claude-sonnet-5` into a coarse `claude` family.
   - **Gateway/router detection (OpenRouter, LiteLLM):** a `base_url` (or `OPENAI_BASE_URL` env
     var) containing `openrouter.ai`, or an `OPENROUTER_API_KEY` / `OR_API_KEY` present, means
     the calls are routed through OpenRouter, not the provider's direct API. This is a transport
@@ -133,7 +133,7 @@ Write `$RUN_DIR/context-signals.json` mapping detected signals onto scoring keys
       "framework": "langgraph",
       "model_source": {
         "provider": "anthropic",
-        "model_ids": ["claude-3-7-sonnet-latest"],
+        "model_ids": ["claude-sonnet-5"],
         "sdk": "anthropic",
         "api_surface": "messages",
         "source_paths": ["src/agent.py"],
