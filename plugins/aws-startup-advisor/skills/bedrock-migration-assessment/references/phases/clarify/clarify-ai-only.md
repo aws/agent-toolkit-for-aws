@@ -2,7 +2,7 @@
 
 **Standalone flow** — Used when ONLY `ai-workload-profile.json` exists (no infrastructure or billing artifacts). Infrastructure stays where it runs today; only AI/LLM calls move to AWS Bedrock.
 
-**Input contract.** The only profile this flow reads is the provider-neutral `ai-workload-profile.json` (`schema_version`, `ai_sources[]`, `gateways[]`), already accepted by `scripts/validate-ai-profile.py`. Use that script's JSON summary for every detected value below. A 1.1 profile also carries `integration`; from it the summary reports `ai_framework_detected` and `ai_vision_detected`. Both are `null` for a 1.0 profile or when the evidence is not definitive, and then Q1 and Q6 are asked, not extracted. `ai_vision_detected` is only `"vision"` or `"audio"`: finding no image or audio input does not prove the app sends only text, so Q6 is then asked. Do not scan application code or IaC, and do not read usage-profile files or any other file: only the validator summary can supply an extracted answer.
+**Input contract.** The only profile this flow reads is the provider-neutral `ai-workload-profile.json` (`schema_version`, `ai_sources[]`, `gateways[]`), already accepted by `scripts/validate-ai-profile.py`. Use that script's JSON summary for every detected value below. A 1.1 profile also carries `integration`; from it the summary reports `ai_framework_detected` and `ai_vision_detected`. Both are `null` for a 1.0 profile or when the evidence is not definitive, and then Q1 and Q6 are asked, not extracted. `ai_vision_detected` is only `"vision"` or `"audio"`: finding no image or audio input does not prove the app sends only text, so Q6 is then asked. Do not scan application code or IaC, and do not read usage-profile files or any other file except `migration-preview.json` in Step 1.5: only the validator summary can supply an extracted answer.
 
 Produces the same `preferences.json` output but with `design_constraints` limited to region and compliance, `startup_constraints` populated, and `ai_constraints` fully populated. Questions are presented in **two progressive batches** with an intermediate save — partial answers persist across sessions.
 
@@ -49,7 +49,17 @@ Check `$MIGRATION_DIR/` for existing state:
 
 ## Step 1.5: Fast-Path Check
 
-The fast path is gated on `migration-preview.json`, which this skill does not produce yet. Continue to Step 1.75 (mini assumption sheet), then Step 2.
+Read `$MIGRATION_DIR/migration-preview.json`. Use the first line that matches:
+
+1. The file is missing, `eligible_for_clarify_fast_path` is not `true`, or the validator summary does not report `models_extractable: true`: continue to Step 1.75, then Step 2.
+2. Otherwise (the preview found nothing in `fast_path_blocked_by`): say "Your AI migration looks straightforward: one model to move to Bedrock. I need only a few answers." Run Step 1.75, then ask one batch instead of Step 2's two:
+   - Always: Q1.5, Q2, Q3, Q4, Q7, and Q11. Q1.5 and Q11 are never dropped, and Q7 is never skipped.
+   - Q1 when `ai_framework_detected` is `null`, and Q6 when `ai_vision_detected` is `null`.
+   - Q5 is extracted, because line 1 already required `models_extractable: true`.
+   - Q10 when the Q2 answer is 4 (Specialized capability): ask it right after Q2 and record the answer with `chosen_by: "user"`, unless the user said "use defaults for the rest".
+   - Q8 and Q9, and Q10 when the previous bullet did not ask it, take their documented defaults, recorded in `questions_defaulted` with `chosen_by: "default"`.
+
+   "Use defaults for the rest" works here as in Step 2. Then go to Step 3.
 
 ---
 
