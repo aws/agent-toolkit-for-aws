@@ -29,18 +29,21 @@ ANTHROPIC_PATHS = (
 ANTHROPIC_POOL = frozenset({"anthropic", "none", "unknown"})
 
 # New migrations use Opus 5.5; older Opus models are not automatic fallback candidates.
+# Haiku 5.5 is the fast/low-cost tier (Active since 2026-10-07, 1M context, adaptive thinking);
+# Haiku 4.5 stays last as an explicit alternative for workloads that must keep pre-5.5 behavior.
 _PRIORITY_ORDER = {
-    "quality": ["claude_opus_5_5", "claude_sonnet_5", "claude_haiku_4_5"],
-    "balanced": ["claude_sonnet_5", "claude_opus_5_5", "claude_haiku_4_5"],
-    "speed": ["claude_haiku_4_5", "claude_sonnet_5", "claude_opus_5_5"],
-    "cost": ["claude_haiku_4_5", "claude_sonnet_5", "claude_opus_5_5"],
-    "unknown": ["claude_sonnet_5", "claude_opus_5_5", "claude_haiku_4_5"],
+    "quality": ["claude_opus_5_5", "claude_sonnet_5", "claude_haiku_5_5", "claude_haiku_4_5"],
+    "balanced": ["claude_sonnet_5", "claude_opus_5_5", "claude_haiku_5_5", "claude_haiku_4_5"],
+    "speed": ["claude_haiku_5_5", "claude_sonnet_5", "claude_opus_5_5", "claude_haiku_4_5"],
+    "cost": ["claude_haiku_5_5", "claude_sonnet_5", "claude_opus_5_5", "claude_haiku_4_5"],
+    "unknown": ["claude_sonnet_5", "claude_opus_5_5", "claude_haiku_5_5", "claude_haiku_4_5"],
 }
 
 _FEATURE_ORDER = {
     "agentic": [
         "claude_sonnet_5",
         "claude_opus_5_5",
+        "claude_haiku_5_5",
         "claude_haiku_4_5",
     ],
 }

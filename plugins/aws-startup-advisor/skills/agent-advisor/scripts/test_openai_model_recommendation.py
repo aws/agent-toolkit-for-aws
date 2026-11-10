@@ -231,7 +231,7 @@ def test_gpt6_unsupported_geo_profile_falls_back_without_fabricated_id(
 
 
 def test_active_catalog_contains_gpt6_profile_metadata_and_current_provenance():
-    assert OPENAI_CATALOG["verified_at"] == "2026-09-24"
+    assert OPENAI_CATALOG["verified_at"] == "2026-11-09"
     for model_key, _ in _GPT6_MODELS:
         catalog_key = oai._SOURCE_MODEL_KEYS[model_key]
         assert set(OPENAI_CATALOG["models"][catalog_key]["inference_profiles"]) == {
@@ -887,7 +887,8 @@ def test_tier_map_luna_source_maps_to_haiku_on_converse():
     from openai_model_recommendation import _converse_candidate_order
     order = _converse_candidate_order({"model_ids": ["gpt-5.6-luna"]})
     assert order[0] == "openai_gpt_5_6_luna"
-    assert order[1] == "anthropic_claude_haiku_4_5"
+    assert order[1] == "anthropic_claude_haiku_5_5"
+    assert order[-1] == "anthropic_claude_haiku_4_5"  # explicit alternative, never first
 
 def test_tier_map_terra_and_55_sources_map_to_sonnet_on_converse():
     # Terra (5.6) keeps itself — same-model runtime path exists. GPT-5.5 has NO

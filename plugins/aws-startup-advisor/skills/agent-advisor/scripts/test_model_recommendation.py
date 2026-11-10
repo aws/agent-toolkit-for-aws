@@ -78,11 +78,15 @@ def test_default_anthropic_messages_prefers_mantle_and_sonnet5():
 
 
 def test_cost_priority_on_messages_uses_clean_mantle_haiku_id():
+    # Haiku 5.5 (Active 2026-10-07) is the fast/low-cost tier; Haiku 4.5 is kept as an
+    # explicit alternative and must never be the automatic pick.
     rec = _recommend(_workload(requirements={"priority": "cost"}))
 
     assert rec["api_path"] == "mantle_messages"
-    assert rec["primary_model"] == "anthropic.claude-haiku-4-5"
+    assert rec["primary_model"] == "anthropic.claude-haiku-5-5"
     assert rec["model_identity"]["requires_cris"] is False
+    assert "claude_haiku_4_5" in {option["model_key"] for option in rec["alternatives"]}
+    assert rec["alternatives"][0]["model_key"] != "claude_haiku_4_5"
 
 
 def test_governance_selects_runtime_converse_when_messages_is_a_preference():
@@ -149,7 +153,7 @@ def test_context_and_output_limits_filter_candidates():
         )
     )
 
-    assert rec["model_identity"]["model_key"] == "claude_sonnet_5"
+    assert rec["model_identity"]["model_key"] == "claude_haiku_5_5"  # 1M / 128K; Haiku 4.5 (200K / 64K) is filtered out
     assert all(
         option["model_key"] != "claude_haiku_4_5"
         for option in rec["alternatives"]
@@ -166,7 +170,8 @@ def test_thinking_requirement_filters_haiku():
         )
     )
 
-    assert rec["model_identity"]["model_key"] == "claude_sonnet_5"
+    assert rec["model_identity"]["model_key"] == "claude_haiku_5_5"  # adaptive thinking; Haiku 4.5 lacks extended_thinking and is filtered out
+    assert all(option["model_key"] != "claude_haiku_4_5" for option in rec["alternatives"])
 
 
 def test_source_version_hop_requires_explicit_feature_scan():
@@ -400,7 +405,11 @@ def test_input_and_output_match_schemas():
 def test_catalog_records_path_specific_ids_and_limits():
     catalog = model_recommendation.load_catalog()
 
-    assert catalog["verified_at"] == "2026-09-24"
+    assert catalog["verified_at"] == "2026-11-09"
+    assert catalog["models"]["claude_haiku_5_5"]["paths"]["mantle_messages"]["model_id"] == "anthropic.claude-haiku-5-5"
+    assert catalog["models"]["claude_haiku_5_5"]["paths"]["runtime_converse"]["requires_cris"] is True
+    assert catalog["models"]["claude_haiku_5_5"]["context_window"] == 1000000
+    assert "extended_thinking" in catalog["models"]["claude_haiku_5_5"]["capabilities"]
     assert catalog["verified_region"] == "us-east-1"
     assert (
         catalog["models"]["claude_sonnet_5"]["paths"]["mantle_messages"][

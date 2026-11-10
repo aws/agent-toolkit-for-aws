@@ -1,10 +1,10 @@
 {
   "schema_version": 2,
   "provider": "anthropic",
-  "verified_at": "2026-09-24",
+  "verified_at": "2026-11-09",
   "verified_region": "us-east-1",
-  "source": "Opus 5.5: AWS Bedrock model card retrieved 2026-09-24, https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html. Other entries retain their explicitly dated evidence from the superseded 2026-07-21 catalog (removed; see git history).",
-  "disclaimer": "Point-in-time model-card evidence, not an account invocation. Re-probe the chosen model, API and inference profile in the target account and region. Opus 5.5 is Active, uses always-on adaptive thinking, and has no Batch tier. Global profiles are unavailable in GovCloud. Unchanged prior-generation entries retain their earlier evidence dates; Fable and Mythos are excluded from default selection. Opus 5.5 is the only Opus model in the automatic selection pool; older Opus snapshots and pricing records are historical references. The runtime in-region exception in eu-west-2 was verified 2026-10-03; the original catalog and other model evidence dates remain unchanged.",
+  "source": "Haiku 5.5: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-5-5.html (read 2026-11-09). Opus 5.5: AWS Bedrock model card retrieved 2026-09-24, https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html. Other entries retain their explicitly dated evidence from the superseded 2026-07-21 catalog (removed; see git history).",
+  "disclaimer": "Haiku 5.5 is the fast tier for new migrations; Haiku 4.5 remains an explicit alternative for workloads that must keep pre-5.5 behavior (tokenizer recount, thinking-history constraints). Point-in-time model-card evidence, not an account invocation. Re-probe the chosen model, API and inference profile in the target account and region. Opus 5.5 is Active, uses always-on adaptive thinking, and has no Batch tier. Global profiles are unavailable in GovCloud. Unchanged prior-generation entries retain their earlier evidence dates; Fable and Mythos are excluded from default selection. Opus 5.5 is the only Opus model in the automatic selection pool; older Opus snapshots and pricing records are historical references. The runtime in-region exception in eu-west-2 was verified 2026-10-03; the original catalog and other model evidence dates remain unchanged.",
   "paths": {
     "mantle_messages": {
       "sdk": "anthropic[bedrock]",
@@ -206,7 +206,7 @@
       }
     },
     "claude_haiku_4_5": {
-      "display_name": "Claude Haiku 4.5",
+      "display_name": "Claude Haiku 4.5 (explicit alternative; superseded by Haiku 5.5 as the fast tier)",
       "family": "claude_haiku",
       "version": "4.5",
       "class": "fast",
@@ -230,6 +230,41 @@
         "runtime_invoke": {
           "available": true,
           "model_id": "anthropic.claude-haiku-4-5-20251001-v1:0",
+          "requires_cris": true
+        }
+      }
+    },
+    "claude_haiku_5_5": {
+      "display_name": "Claude Haiku 5.5",
+      "family": "claude_haiku",
+      "version": "5.5",
+      "class": "fast",
+      "context_window": 1000000,
+      "output_token_ceiling": 128000,
+      "lifecycle_status": "active",
+      "launch_date": "2026-10-07",
+      "eol_no_sooner_than": "2027-10-07",
+      "capabilities": [
+        "tool_use",
+        "extended_thinking",
+        "vision",
+        "long_context"
+      ],
+      "evidence": "AWS model card model-card-anthropic-claude-haiku-5-5 (read 2026-11-09): launch 2026-10-07, Active, EOL no sooner than 2027-10-07; Messages/Converse/Invoke on bedrock-runtime via Geo (us./ca./eu./au./jp.) and Global CRIS, Messages on bedrock-mantle with the bare id; 1M context, 128K max output; adaptive thinking on by default with configurable effort; image input; explicit prompt caching; tiered pricing above 100K prompt tokens (US Geo $0.11/$0.55 up to 100K, $0.55/$2.75 above; Global $0.10/$0.50 and $0.50/$2.50). Supersedes Haiku 4.5 as the fast/low-cost Claude tier; Haiku 4.5 (200K, no thinking) stays an explicit alternative for workloads that must keep pre-5.5 behavior — see ai-anthropic-to-bedrock.md for the ~30% tokenizer recount and thinking-history constraints.",
+      "paths": {
+        "mantle_messages": {
+          "available": true,
+          "model_id": "anthropic.claude-haiku-5-5",
+          "requires_cris": false
+        },
+        "runtime_converse": {
+          "available": true,
+          "model_id": "anthropic.claude-haiku-5-5",
+          "requires_cris": true
+        },
+        "runtime_invoke": {
+          "available": true,
+          "model_id": "anthropic.claude-haiku-5-5",
           "requires_cris": true
         }
       }
