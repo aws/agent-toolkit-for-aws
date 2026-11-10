@@ -943,7 +943,7 @@ Web formations routed to Fargate with `aws_config.ecs_mode: "express"` are emitt
       {{ENDIF}}
       {{IF has_express}}
 - [ ] Each Express Mode web app responds on its AWS-provided endpoint: `curl -fsS -o /dev/null -w '%{http_code}' "$(terraform -chdir=terraform output -raw <app_sanitized>_web_endpoint)/"` (one line per Express app). The output is already a full `https://…` URL (`ingress_paths[0].endpoint`), so never prefix it with another `https://`; there is no `ALB_DNS_NAME` for these — Express Mode owns the ALB
-- [ ] Health check path returns 200 on that endpoint: `https://<endpoint>/` (the `health_check_path` the Express service was generated with)
+- [ ] Health check path returns 200 on that same URL with the generated `health_check_path` appended once. The output is already `https://…`; do not add another scheme
       {{ENDIF}}
       {{IF has_postgres}}
 - [ ] Database connectivity confirmed (application can read/write)
@@ -1313,12 +1313,12 @@ Until the Phase 5 flip the primary is Heroku Postgres, frozen under `maintenance
    {{ENDIF}}
    ```
 
-   Confirm the AWS database has no application writer before the dump. Repeat until the query returns zero rows:
+   Confirm the AWS database has no application session before the dump, including idle ones. A draining task whose connection is `idle` can still issue a write after a check that skips that state. Repeat until the query returns zero rows. `rdsadmin` is the only excluded role.
 
    ```bash
    PGPASSWORD="{{TARGET_DB_PASSWORD}}" psql -h {{TARGET_DB_HOST}} -p {{TARGET_DB_PORT}} \
      -U {{TARGET_DB_USER}} -d {{TARGET_DB_NAME}} -v ON_ERROR_STOP=1 -c \
-     "SELECT pid, usename, application_name, state FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND state <> 'idle' AND backend_type = 'client backend';"
+     "SELECT pid, usename, application_name, state FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND backend_type = 'client backend' AND usename IS DISTINCT FROM 'rdsadmin';"
    ```
 
 2. **Dump the current primary (the AWS database) completely.** Do not dump while the query above still returns rows.

@@ -269,7 +269,10 @@ def test_heroku_express_block_has_unique_names_a_shared_role_and_a_verified_stop
     docs = HEROKU_GENERATE_DOCS.read_text(encoding="utf-8")
     # Health check: the endpoint output is already an https:// URL
     assert "https://$(terraform -chdir=terraform output -raw <app_sanitized>_web_endpoint)" not in docs, "never prefix the Express endpoint URL with another https://"
+    assert "https://<endpoint>/" not in docs, "the health-check line must not add a scheme to the endpoint URL"
     assert "already a full `https://…` URL" in docs
+    assert "state <> 'idle'" not in docs, "an idle application session can still write; the failback query must count it"
+    assert "usename IS DISTINCT FROM 'rdsadmin'" in docs
     # Phase 6: explicit stop + suspended scaling for Express services
     assert "--suspended-state DynamicScalingInSuspended=true,DynamicScalingOutSuspended=true,ScheduledScalingSuspended=true" in docs
     assert "services[0].[runningCount,pendingCount]" in docs
