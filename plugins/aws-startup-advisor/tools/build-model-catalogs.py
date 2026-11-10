@@ -58,7 +58,8 @@ MODEL_ORDER = ("display_name", "selection_status", "family", "generation", "vers
                "default_effort", "adaptive_thinking_only", "batch_supported",
                "forced_tool_choice_supported", "native_structured_output_supported",
                "sampling_parameters_supported", "runtime_in_region_regions",
-               "runtime_in_region_verified_at", "inference_profiles", "region_availability",
+               "runtime_in_region_verified_at", "mantle_regions", "service_tiers",
+               "inference_profiles", "region_availability",
                "paths")
 PATH_ORDER = ("available", "model_id", "requires_cris", "evidence", "capabilities", "regions", "supported_regions", "inference_profile_regions")
 REGISTRY_ONLY = ("provider",)  # registry bookkeeping, never rendered

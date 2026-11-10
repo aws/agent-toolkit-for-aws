@@ -84,6 +84,8 @@
         "sampling_parameters_supported": { "type": "boolean" },
         "runtime_in_region_regions": { "$ref": "#/definitions/stringList" },
         "runtime_in_region_verified_at": { "$ref": "#/definitions/isoDate" },
+        "mantle_regions": { "$ref": "#/definitions/stringList" },
+        "service_tiers": { "$ref": "#/definitions/stringList" },
         "inference_profiles": {
           "type": "object",
           "additionalProperties": { "$ref": "#/definitions/stringList" }
