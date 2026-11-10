@@ -222,7 +222,8 @@ Continue with the next resource after the Fargate entry is appended. This guard 
        "process_type": "{process_type}",
        "load_balancer": <true if process_type == "web", false otherwise>,
        "ecs_mode": "<express|standard>",
-       "ecs_mode_reason": "<one line>"
+       "ecs_mode_reason": "<one line>",
+       "placement": "<public_subnets when ecs_mode == \"express\", otherwise omit>"
      }
    }
    ```

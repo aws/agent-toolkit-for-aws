@@ -131,7 +131,7 @@ def test_heroku_express_block_honors_the_writer_freeze() -> None:
     """Phase 6 failback sets writers_quiesced=true; the Express scaling target must go to 0 like aws_ecs_service.desired_count."""
     block = _express_block(GENERATE_FILES["heroku"].read_text(encoding="utf-8"))
     assert re.search(r"min_task_count\s*=\s*var\.writers_quiesced \? 0 :", block), "Express min_task_count must follow var.writers_quiesced"
-    assert re.search(r"max_task_count\s*=\s*var\.writers_quiesced \? 0 :", block), "Express max_task_count must follow var.writers_quiesced"
+    assert not re.search(r"max_task_count\s*=\s*var\.writers_quiesced", block), "max_task_count keeps its normal value; 0 is not a documented maxTaskCount"
     docs = HEROKU_GENERATE_DOCS.read_text(encoding="utf-8")
     assert "aws_ecs(_express_gateway)?_service" in docs, "the mixed EB/Fargate failback must target Express services too"
 
@@ -227,3 +227,25 @@ def test_no_file_still_calls_express_mode_a_forward_look() -> None:
             if re.search(r"(?i)express mode[^.\n]{0,80}forward-?look|forward-?look[^.\n]{0,80}express mode", line):
                 offenders.append(f"{path.relative_to(PLUGIN_ROOT)}:{lineno}")
     assert not offenders, offenders
+
+
+def test_heroku_blue_green_block_is_safe_for_two_web_apps_and_opens_the_test_listener() -> None:
+    text = GENERATE_FILES["heroku"].read_text(encoding="utf-8")
+    start = text.index("# Blue/green — <heroku_app>:web")
+    block = text[start : text.index("### Express Mode web services", start)]
+    assert 'resource "aws_lb_listener" "<app_sanitized>_web_test"' in block, "the test listener is per-app and must carry the app suffix"
+    assert 'resource "aws_lb_listener" "test"' not in block
+    assert "aws_lb_listener.<app_sanitized>_web_test.arn" in block
+    assert "Emitted ONCE per design" in block, "the shared CodeDeploy role must be declared once, not once per blue/green app"
+    assert 'variable "codedeploy_test_cidrs"' in block
+    assert 'resource "aws_security_group_rule" "alb_codedeploy_test"' in block, "the 8443 test-listener ingress must be HCL, not prose"
+    assert re.search(r"from_port\s*=\s*8443", block)
+    assert "aws_security_group.alb.id" in block
+
+
+def test_heroku_design_template_and_alb_rate_row_match_the_express_prose() -> None:
+    design = DESIGN_FILES["heroku"].read_text(encoding="utf-8")
+    assert '"placement": "<public_subnets when ecs_mode == \\"express\\", otherwise omit>"' in design, "the JSON template must carry the placement key the prose asks for"
+    estimate = ESTIMATE_FILES["heroku"].read_text(encoding="utf-8")
+    alb_row = next(line for line in estimate.splitlines() if line.startswith("| **ALB**"))
+    assert 'ecs_mode != "express"' in alb_row, "the ALB rate row must exclude Express web entries so they are not priced twice"

@@ -1243,7 +1243,7 @@ resource "aws_lb_target_group" "<app_sanitized>_web_green" {
   }
 }
 
-resource "aws_lb_listener" "test" {
+resource "aws_lb_listener" "<app_sanitized>_web_test" {
   load_balancer_arn = aws_lb.<app_sanitized>_web.arn
   port              = 8443
   protocol          = "HTTPS"
@@ -1256,6 +1256,29 @@ resource "aws_lb_listener" "test" {
   }
 }
 
+# Admit CodeDeploy test traffic on the ALB. Emitted once per design alongside the
+# first blue/green block; a second blue/green web app reuses this rule and variable.
+variable "codedeploy_test_cidrs" {
+  description = "CIDRs allowed to reach the CodeDeploy test listener (port 8443) during blue/green validation. Operator / CI egress addresses only; 0.0.0.0/0 is rejected."
+  type        = list(string)
+  validation {
+    condition     = length(var.codedeploy_test_cidrs) > 0 && !contains(var.codedeploy_test_cidrs, "0.0.0.0/0")
+    error_message = "codedeploy_test_cidrs must list at least one specific CIDR; 0.0.0.0/0 is not permitted for the test listener."
+  }
+}
+
+resource "aws_security_group_rule" "alb_codedeploy_test" {
+  type              = "ingress"
+  security_group_id = aws_security_group.alb.id
+  from_port         = 8443
+  to_port           = 8443
+  protocol          = "tcp"
+  cidr_blocks       = var.codedeploy_test_cidrs
+  description       = "CodeDeploy blue/green test listener"
+}
+
+# Shared CodeDeploy service role. Emitted ONCE per design (with the first blue/green
+# block); every later blue/green deployment group references the same address.
 resource "aws_iam_role" "codedeploy_ecs" {
   name = "${var.project_name}-${var.environment}-codedeploy-ecs"
 
@@ -1318,7 +1341,7 @@ resource "aws_codedeploy_deployment_group" "<app_sanitized>_web" {
         listener_arns = [aws_lb_listener.https.arn]
       }
       test_traffic_route {
-        listener_arns = [aws_lb_listener.test.arn]
+        listener_arns = [aws_lb_listener.<app_sanitized>_web_test.arn]
       }
       target_group {
         name = aws_lb_target_group.<app_sanitized>_web.name
@@ -1333,7 +1356,7 @@ resource "aws_codedeploy_deployment_group" "<app_sanitized>_web" {
 }
 ```
 
-The ALB security group must also admit 8443 from the operator's CIDR (not `0.0.0.0/0`) when the test listener is emitted; the README's "Deploying with CodeDeploy" note tells the user that image updates go through `aws deploy create-deployment` with an `appspec.yaml`, not `terraform apply`.
+`aws_iam_role.codedeploy_ecs`, its policy attachment, `variable "codedeploy_test_cidrs"`, and `aws_security_group_rule.alb_codedeploy_test` are design-wide: emit them exactly once (with the first `blue_green` web app) and let any further `blue_green` web app's block reference them, so a two-app design never declares the same address twice. The per-app resources (`_web_green` target group, `_web_test` listener, CodeDeploy app and deployment group) are suffixed with `<app_sanitized>`. The README's "Deploying with CodeDeploy" note tells the user that image updates go through `aws deploy create-deployment` with an `appspec.yaml`, not `terraform apply`.
 
 ### Express Mode web services (`aws_config.ecs_mode == "express"`)
 
@@ -1400,7 +1423,7 @@ resource "aws_ecs_express_gateway_service" "<app_sanitized>_web" {
     # through desired_count. Both bounds go to 0 so target tracking cannot scale the service back
     # out during a Phase 6 failback, and a later apply keeps it at 0.
     min_task_count            = var.writers_quiesced ? 0 : <aws_config.desired_count>
-    max_task_count            = var.writers_quiesced ? 0 : <max(aws_config.desired_count * 2, 2)>
+    max_task_count            = <max(aws_config.desired_count * 2, 2)>
     auto_scaling_metric       = "AVERAGE_CPU"
     auto_scaling_target_value = 60
   }
@@ -1424,7 +1447,7 @@ output "<app_sanitized>_web_endpoint" {
 - Requires `hashicorp/aws ~> 6.71` in `main.tf` (`aws_ecs_express_gateway_service` from 6.23.0, `cpu_architecture` from 6.71.0; a `~> 5.80` pin cannot select it, so Step 1 must switch the pin when this section emits). `cpu` must be 256–4096 and `memory` 512–8192; Design already routes larger tasks to `standard`.
 - No `aws_lb`, target group, or listener is emitted for this service — Express Mode provisions and manages them (one ALB shared by up to 25 Express services per VPC). Deployments are canary; `release_strategy` other than `canary` means Design chose `standard`.
 - A custom domain is not wired by Terraform here. `dns_strategy == "route53"` forces `standard` at Design time so `dns.tf` keeps a Terraform-owned ALB to alias. For `external` DNS the guide's manual branch (`generate-docs.md` Phase 5, `target_kind == "express"`) adds the hostname and certificate to the Express listener and CNAMEs the hostname to the `<app_sanitized>_web_endpoint` host.
-- **Writer freeze:** `scaling_target.min_task_count` and `max_task_count` are `var.writers_quiesced ? 0 : …`, so the Express service honors the same `writers_quiesced` variable as the standard `aws_ecs_service` and stays at 0 across later applies until the variable is set back to `false`.
+- **Writer freeze:** `scaling_target.min_task_count` is `var.writers_quiesced ? 0 : …`, so the Express service honors the same `writers_quiesced` variable as the standard `aws_ecs_service` (Express maps the service's desired count onto `min_task_count`) and stays at 0 across later applies until the variable is set back to `false`. `max_task_count` keeps its normal value: target tracking has no metric data from zero running tasks, so it cannot scale out from 0, and neither the ECS API reference nor the provider documents 0 as an accepted `maxTaskCount`.
 - **Subnets and scheme ([Express Mode network defaults](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html#express-service-network-defaults)):** public subnets give an internet-facing ALB with `assignPublicIp` on the tasks; private subnets give an internal ALB. Heroku web dynos are internet-facing, so the Express block places tasks in the **public** subnets. This is the single accepted deviation from the `tf-best-practices` "Fargate tasks run in private subnets" rule: ingress to the task is still only the Express-created ALB security group on port 8080, and the deviation is recorded in `generation-warnings.json` (`"<app>:web — ECS Express Mode places tasks in public subnets to provision an internet-facing ALB"`) and the README. A design whose web tasks must stay in private subnets (Private Space, § 3D restricted inbound rules) is `standard` at Design time (`ecs_mode_reason: "private_space"`), never Express.
 - The ALB security group is created by Express Mode. `aws_security_group.app` is passed as the task security group so the database, cache, and messaging SGs that already admit `aws_security_group.app` keep working; when any Express entry exists, Step 5 adds one ingress rule to `aws_security_group.app` for port 8080 from the VPC CIDR (`aws_vpc.main.cidr_block`) so the Express-managed ALB can reach the tasks.
 
