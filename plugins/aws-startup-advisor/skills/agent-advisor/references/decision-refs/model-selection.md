@@ -36,8 +36,8 @@ authoritative (a table here would drift). The engine applies these provider-neut
 - **Conflicts are not precedence.** When two hard requirements cannot share one path (e.g. API
   continuity plus runtime-only governance), emit `decision_required` with both tradeoff options
   and rerun after the user resolves the requirement — never silently let one side win. When
-  fewer than two real options exist (a side's only models are `reference_only`), emit `blocked`
-  with the `[BLOCKS]` reason instead; options are never invented.
+  fewer than two real options exist (for example a side's only models are `reference_only`), emit
+  `blocked` with the `[BLOCKS]` reason and its remediation instead; options are never invented.
 - **A dated snapshot is not a permanent claim.** Catalog data is point-in-time — e.g. Sonnet 4.6
   was runtime-only in the `2026-06-24` snapshot, and six days later Sonnet 5 launched with full
   Mantle Messages support, changing the default recommendation. Every recommendation

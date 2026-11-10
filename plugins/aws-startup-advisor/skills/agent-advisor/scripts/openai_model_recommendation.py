@@ -998,7 +998,7 @@ def recommend_openai_workload(workload, region, catalog):
                     "gate": (
                         "Resolve the open decision before implementation."
                         if status == "decision_required"
-                        else "Resolve the blocking finding (catalog or requirements) and rerun."
+                        else "Resolve each [BLOCKS] finding as its remediation says, then rerun."
                     ),
                 },
                 "verification": _verification(region, catalog, None, False, None, selected=False),
@@ -1050,24 +1050,33 @@ def recommend_openai_workload(workload, region, catalog):
     if continuity_required and runtime_required:
         options = _decision_options(catalog, workload, region)
         if len(options) < 2:
-            skipped = sorted(k for k, m in catalog["models"].items()
-                             if not anthropic_model_recommendation.is_selectable(m))
-            if not skipped:
-                # Every model selectable and still one side empty: unchanged fail-closed raise.
+            # Blocked only when reference_only entries emptied the side: with them counted as
+            # selectable (every other filter unchanged) both options exist. Otherwise the
+            # requirement is unsatisfiable and the fail-closed raise is unchanged.
+            counterfactual = _decision_options(
+                anthropic_model_recommendation.with_all_selectable(catalog), workload, region
+            )
+            if len(counterfactual) < 2:
                 raise ValueError(
                     f"catalog cannot supply both decision options for workload "
                     f"{workload['workload_id']}"
                 )
-            # A side lost its only candidates to reference_only: blocked, never padded.
+            offered = {option["api_path"] for option in options}
+            blamed = sorted(
+                option["model_key"] for option in counterfactual
+                if option["api_path"] not in offered
+                and not anthropic_model_recommendation.is_selectable(catalog["models"][option["model_key"]])
+            )
             return _unresolved(
                 "Required OpenAI API continuity conflicts with a runtime-only Bedrock "
                 "governance requirement, and one side has no selectable model.",
-                [f"reference_only entries skipped: {', '.join(skipped)}."],
+                [f"That side is available only from reference_only entries: {', '.join(blamed)}."],
                 _finding(
                     "decision_option_unavailable",
                     "[BLOCKS]",
                     "One side of the continuity-versus-governance decision has no selectable "
-                    f"catalog model (reference_only entries skipped: {', '.join(skipped)}).",
+                    f"catalog model; it is available only from reference_only entries: "
+                    f"{', '.join(blamed)}.",
                     "Mark a verified model selectable for that path, or update the conflicting "
                     "requirement, then rerun Model Recommend.",
                 ),

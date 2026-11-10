@@ -259,10 +259,11 @@ tradeoffs. Ask the user to resolve the conflicting requirement, update
 edit the output, or mark this phase completed while any workload remains unresolved.
 
 If any workload has `decision_status: blocked`, there is no automatic target and fewer than two
-real options (for example the source model, or every model on one side of a conflict, is
-`reference_only` in the catalog). Present its `[BLOCKS]` findings and any remaining option; the
-fix is a catalog change (marking a verified model `selectable`) or a requirement change, then a
-rerun. Do not invent an option or treat a lone remaining option as the answer.
+real options. Causes include a `reference_only` source model or conflict side in the catalog, and
+other no-target results such as an incomplete feature scan. Present its `[BLOCKS]` findings and any
+remaining option, apply each finding's own remediation (for example a feature rescan, a
+requirement change, or marking a verified model `selectable`), then rerun. Do not invent an option
+or treat a lone remaining option as the answer.
 
 ## Step 7 — Optionally probe the selected path
 
