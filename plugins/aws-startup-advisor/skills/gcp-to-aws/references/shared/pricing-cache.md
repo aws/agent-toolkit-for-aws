@@ -201,7 +201,7 @@ For Multi-AZ, approximately double these rates.
 
 ### ElastiCache Valkey (On-Demand)
 
-Single-AZ pricing, Valkey engine (the default target; verified via the AWS Pricing MCP server 2026-11-09). For Multi-AZ, approximately double. Redis OSS node rates are 1.25x these values; use them only when `aws_config.engine` is `"redis"`.
+Single-AZ pricing, Valkey engine (the default target). All seven rows were read from the AWS Price List API via the AWS Pricing MCP server on 2026-11-09 (`AmazonElastiCache`, `cacheEngine=Valkey`, standard `NodeUsage` SKUs, us-east-1; `cache.r6g.large` is SKU `RV2VBCDBY8RZE2WZ`, $0.1648, against $0.206 for Redis OSS). For Multi-AZ, approximately double. Redis OSS node rates are 1.25x these values; use them only when `aws_config.engine` is `"redis"`.
 
 | Node             | $/hour | $/month |
 | ---------------- | ------ | ------- |
