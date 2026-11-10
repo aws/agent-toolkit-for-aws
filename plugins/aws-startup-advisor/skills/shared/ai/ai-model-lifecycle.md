@@ -13,9 +13,9 @@
 
 <!-- freshness-contract: enforced by plugins/aws-startup-advisor/tools/model-staleness.py -->
 
-**Last updated:** 2026-11-07
+**Last updated:** 2026-11-09
 
-The Gemini 2.0 and 2.5 source-model retirement section was added on this date (the Google pages were read 2026-11-08 UTC, the evening of 2026-11-07 US Pacific); existing Bedrock model rows retain their verification dates.
+2026-11-09 refresh: the Legacy/EOL table was re-verified against the legacy lifecycle page and model cards — Gemma 3 4B/12B/27B and MiniMax M2/M2.1 added as Legacy (EOL 2027-03-30), Nova 2 Pro removed as a named replacement (it is a gated preview with no model card, never a target), and the Gemini 3.x Developer-API routings (3.5 Flash → 3.6 Flash, 3.7 Flash → 3.8 Flash) added to the source-model section. The Gemini 2.0 and 2.5 source-model retirement section was added 2026-11-07 (Google pages read 2026-11-08 UTC); existing Bedrock model rows retain their verification dates.
 
 **Staleness window:** 45 days
 
@@ -118,24 +118,29 @@ Table notes (all from the cited cards unless stated):
 
 10. GPT-6.1 Terra uses the bare ID on Mantle (us-east-1 only), or `us.openai.gpt-6.1-terra` / `global.openai.gpt-6.1-terra` on runtime. Guardrails and application inference profiles are Converse-only. Converse accepts text/image user content, not documents or images in tool results; documents require Responses `input_file`. Runtime JSON Schema outputs require the model card's API-specific configuration; Converse also needs `additionalModelRequestFields.text.format.strict: true`. The card states a Legacy period of at least 6 months.
 
-## Legacy / EOL Models (as of October 26, 2026)
+## Legacy / EOL Models (as of November 9, 2026)
 
 For models launched before 2026-09-07, the [legacy lifecycle table](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html) is authoritative. For models launched on or after that date, the model card and the runtime `modelLifecycle.status` field are authoritative — they will not appear in the table below. The table captures pre-policy-change models referenced elsewhere in this plugin (plus Claude Sonnet 4.5, which the legacy page lists with a dated ID). **Recompute the Status column on each run** using `days_to_eol = EOL date − today`.
 
 | Model              | Model ID                                    | EOL Date   | Days to EOL | Status       | Active Replacement                                      |
 | ------------------ | ------------------------------------------- | ---------- | ----------- | ------------ | ------------------------------------------------------- |
-| Jamba 1.5 Large    | `ai21.jamba-1-5-large-v1:0`                 | 2026-11-26 | 31          | **excluded** | —                                                       |
-| Jamba 1.5 Mini     | `ai21.jamba-1-5-mini-v1:0`                  | 2026-11-26 | 31          | **excluded** | —                                                       |
-| Marengo Embed v2.7 | `twelvelabs.marengo-embed-2-7-v1:0`         | 2026-11-30 | 35          | **excluded** | Marengo Embed 3.0 (Active outside `ap-northeast-2`; verify target region) |
-| Claude Opus 4.1    | `anthropic.claude-opus-4-1-20250805-v1:0`   | 2027-01-08 | 74          | **excluded** | Claude Opus 5.5; Opus 4.6 for Batch                     |
-| Llama 4 Maverick   | `meta.llama4-maverick-17b-instruct-v1:0`    | 2027-03-30 | 155         | legacy       | Nova Lite / Nova Pro; Claude Haiku 4.5 / Sonnet 5       |
-| Llama 4 Scout      | `meta.llama4-scout-17b-instruct-v1:0`       | 2027-03-30 | 155         | legacy       | Nova Micro / Nova Lite; Claude Haiku 4.5                |
-| Llama 3.3 70B      | `meta.llama3-3-70b-instruct-v1:0`           | 2027-03-30 | 155         | legacy       | Nova Lite / Nova Pro; Claude Haiku 4.5 / Sonnet 5       |
-| DeepSeek-R1        | `deepseek.r1-v1:0`                          | 2027-03-30 | 155         | legacy       | Claude Opus 5.5 / Nova 2 Pro (reasoning)                |
-| DeepSeek-V3.1      | `deepseek.v3-v1:0` / `deepseek.v3.1`        | 2027-03-30 | 155         | legacy       | DeepSeek V3.2 (`deepseek.v3.2`); else gpt-oss-120b / Sonnet 5 |
-| Claude Sonnet 4.5  | `anthropic.claude-sonnet-4-5-20250929-v1:0` | 2027-04-08 | 164         | legacy       | Claude Sonnet 5 / Sonnet 4.6                            |
+| Jamba 1.5 Large    | `ai21.jamba-1-5-large-v1:0`                 | 2026-11-26 | 17          | **excluded** | —                                                       |
+| Jamba 1.5 Mini     | `ai21.jamba-1-5-mini-v1:0`                  | 2026-11-26 | 17          | **excluded** | —                                                       |
+| Marengo Embed v2.7 | `twelvelabs.marengo-embed-2-7-v1:0`         | 2026-11-30 | 21          | **excluded** | Marengo Embed 3.0 (Active outside `ap-northeast-2`; verify target region) |
+| Claude Opus 4.1    | `anthropic.claude-opus-4-1-20250805-v1:0`   | 2027-01-08 | 60          | **excluded** | Claude Opus 5.5; Opus 4.6 for Batch                     |
+| Llama 4 Maverick   | `meta.llama4-maverick-17b-instruct-v1:0`    | 2027-03-30 | 141         | legacy       | Nova Lite / Nova Pro; Claude Haiku 4.5 / Sonnet 5       |
+| Llama 4 Scout      | `meta.llama4-scout-17b-instruct-v1:0`       | 2027-03-30 | 141         | legacy       | Nova Micro / Nova Lite; Claude Haiku 4.5                |
+| Llama 3.3 70B      | `meta.llama3-3-70b-instruct-v1:0`           | 2027-03-30 | 141         | legacy       | Nova Lite / Nova Pro; Claude Haiku 4.5 / Sonnet 5       |
+| DeepSeek-R1        | `deepseek.r1-v1:0`                          | 2027-03-30 | 141         | legacy       | Claude Opus 5.5 (reasoning); Nova 2 Lite for cost       |
+| Gemma 3 4B IT      | `google.gemma-3-4b-it`                      | 2027-03-30 | 141         | legacy       | Gemma 4 E2B (Mantle only); Nova Micro                   |
+| Gemma 3 12B IT     | `google.gemma-3-12b-it`                     | 2027-03-30 | 141         | legacy       | Gemma 4 26B-A4B (Mantle only); Nova Lite                |
+| Gemma 3 27B IT     | `google.gemma-3-27b-it`                     | 2027-03-30 | 141         | legacy       | Gemma 4 31B (Mantle only); Nova 2 Lite                  |
+| MiniMax M2         | `minimax.minimax-m2`                        | 2027-03-30 | 141         | legacy       | MiniMax M2.5 (`minimax.minimax-m2.5`)                   |
+| MiniMax M2.1       | `minimax.minimax-m2.1`                      | 2027-03-30 | 141         | legacy       | MiniMax M2.5 (`minimax.minimax-m2.5`)                   |
+| DeepSeek-V3.1      | `deepseek.v3-v1:0` / `deepseek.v3.1`        | 2027-03-30 | 141         | legacy       | DeepSeek V3.2 (`deepseek.v3.2`); else gpt-oss-120b / Sonnet 5 |
+| Claude Sonnet 4.5  | `anthropic.claude-sonnet-4-5-20250929-v1:0` | 2027-04-08 | 150         | legacy       | Claude Sonnet 5 / Sonnet 4.6                            |
 
-**Notes (as of Oct 26, 2026):** Verified against the [legacy lifecycle page](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html). **Exclusion zone:** Jamba 1.5 Large / Mini, Marengo Embed v2.7, and Claude Opus 4.1 — omit from recommendation and comparison tables. Jamba is in public extended access (pricing may rise). **New Legacy rows this refresh** (still >90 days — annotate, never primary when an Active alternative exists): Llama 4 Maverick / Scout, Llama 3.3 70B, DeepSeek-R1 / V3.1, Claude Sonnet 4.5. Mapping guides that still list Llama 4 or DeepSeek-R1 under "Best Bedrock Match" must prefer the Active Replacement column above for new migrations. Marengo Embed 3.0 remains the Active replacement for Marengo Embed v2.7 in supported non-Seoul Regions (including the skills' default `us-east-1`); its [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-twelvelabs-marengo-embed-3-0.html) states **“Legacy in ap-northeast-2; Active in other Regions,”** and the [legacy lifecycle page](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html) lists the March 22, 2027 EOL only for `ap-northeast-2`. Do not treat Marengo 3.0 as globally Legacy — limit the Legacy/EOL warning to Seoul and verify the migration's target region before recommending it. TwelveLabs Pegasus is also Legacy on the AWS page (EOL 2027-03-22) but is not a recommendation default in this plugin, so it stays out of the table. Claude Sonnet 4 reached EOL on 2026-10-14 and moved to Removed.
+**Notes (as of Nov 9, 2026):** Verified against the [legacy lifecycle page](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html) and the Gemma 3 / MiniMax model cards (Legacy since 2026-09-30, EOL 2027-03-30). The AWS page also lists Legacy rows this registry does not price (Devstral 2, Mistral 7B, Mixtral 8x7B, Voxtral, Kimi K2 Thinking, Nemotron Nano, Qwen3 Coder, GLM 4.7, Palmyra X4/X5, Pegasus 1.2, and region-scoped Claude 3.x rows); if a candidate is not in this table, read its card before recommending it. **Exclusion zone:** Jamba 1.5 Large / Mini, Marengo Embed v2.7, and Claude Opus 4.1 — omit from recommendation and comparison tables. Jamba is in public extended access (pricing may rise). **New Legacy rows this refresh** (still >90 days — annotate, never primary when an Active alternative exists): Llama 4 Maverick / Scout, Llama 3.3 70B, DeepSeek-R1 / V3.1, Claude Sonnet 4.5. Mapping guides that still list Llama 4 or DeepSeek-R1 under "Best Bedrock Match" must prefer the Active Replacement column above for new migrations. Marengo Embed 3.0 remains the Active replacement for Marengo Embed v2.7 in supported non-Seoul Regions (including the skills' default `us-east-1`); its [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-twelvelabs-marengo-embed-3-0.html) states **“Legacy in ap-northeast-2; Active in other Regions,”** and the [legacy lifecycle page](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html) lists the March 22, 2027 EOL only for `ap-northeast-2`. Do not treat Marengo 3.0 as globally Legacy — limit the Legacy/EOL warning to Seoul and verify the migration's target region before recommending it. TwelveLabs Pegasus is also Legacy on the AWS page (EOL 2027-03-22) but is not a recommendation default in this plugin, so it stays out of the table. Claude Sonnet 4 reached EOL on 2026-10-14 and moved to Removed.
 
 **Removed (past EOL as of Oct 26, 2026):**
 
@@ -150,7 +155,7 @@ For models launched before 2026-09-07, the [legacy lifecycle table](https://docs
 - Claude 3.5 Sonnet v2 (`anthropic.claude-3-5-sonnet-20241022-v2:0`) — EOL 2026-07-30
 - Command R / R+ (`cohere.command-r-v1:0` / `cohere.command-r-plus-v1:0`) — EOL 2026-08-19
 - Claude 3 Haiku (`anthropic.claude-3-haiku-20240307-v1:0`) — EOL 2026-09-10 (replacement: Claude Haiku 4.5)
-- Nova Premier v1 (`amazon.nova-premier-v1:0`) — EOL 2026-09-14 (replacement: Nova 2 Pro)
+- Nova Premier v1 (`amazon.nova-premier-v1:0`) — EOL 2026-09-14 (replacement: Claude Opus 5.5 for reasoning, Nova 2 Lite for cost; Nova 2 Pro is a gated preview and not a target)
 - Nova Sonic v1 (`amazon.nova-sonic-v1:0`) — EOL 2026-09-14 (replacement: Nova 2 Sonic)
 
 > **AWS page lag:** The legacy lifecycle page may still list region-specific rows whose published EOL date has already passed in other Regions, or retain past-EOL models in the live table briefly. This file treats the **EOL date as authoritative** for the Regions this plugin estimates against and keeps past-EOL models in Removed rather than the live table, so users already on them still see a warning. Never recommend or invoke a model listed in Removed.
@@ -174,7 +179,7 @@ When `image_generation` capability is detected:
 
 ---
 
-## Source-Model Retirements — Gemini 2.0 and 2.5 (verified November 8, 2026)
+## Source-Model Retirements — Gemini 2.0 and 2.5, plus 3.x Flash routing (verified November 9, 2026)
 
 The Gemini 2.0 and 2.5 generations are retired on the source side. These are **source** models, not Bedrock targets: scanners, fixtures, and discovery docs must keep recognizing the ids because customer code still contains them. Two separate rules follow from a retirement, and this section keeps them apart:
 
@@ -183,11 +188,14 @@ The Gemini 2.0 and 2.5 generations are retired on the source side. These are **s
 
 Status values use the pricing-cache enum below, computed with `days_to_eol` against the earliest hard cutoff.
 
-Sources, both read 2026-11-08: the [Vertex AI / Gemini Enterprise Agent Platform model versions page](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions) and the [Gemini Developer API deprecations page](https://aistudio.google.com/docs/deprecations). Prices in the mapping guides for the replacement models come from the [Gemini Developer API pricing page](https://aistudio.google.com/docs/pricing), read the same day.
+Sources, read 2026-11-08 and re-read 2026-11-09: the [Vertex AI / Gemini Enterprise Agent Platform model versions page](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions) and the [Gemini Developer API deprecations page](https://aistudio.google.com/docs/deprecations). Prices in the mapping guides for the replacement models come from the [Gemini Developer API pricing page](https://aistudio.google.com/docs/pricing), read the same day.
 
 | Source model                                   | Vertex AI retirement | Gemini Developer API shutdown                                                            | Status                      | Google's named replacement                                                             | Bedrock mapping (see `ai-gemini-to-bedrock.md`) |
 | ---------------------------------------------- | -------------------- | ---------------------------------------------------------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| Gemini 2.5 Pro (`gemini-2.5-pro`)              | 2026-10-20 (passed)  | 2026-12-01 — hidden in AI Studio, API limited to existing users, then auto-routes to `gemini-3.8-flash` | `excluded (EOL 2026-12-01)` | `gemini-3.8-flash` or `gemini-3.5-flash` (Vertex); `gemini-3.8-flash` (Developer API) | Claude Sonnet 5 / Nova 2 Pro; Nova Pro for cost  |
+| Gemini 3.7 Flash (`gemini-3.7-flash`)          | 2027-01-28           | Removed from AI Studio; the endpoint stays up and auto-routes to `gemini-3.8-flash`      | `legacy (EOL 2027-01-28)`   | `gemini-3.8-flash`                                                                     | Nova Lite; Nova Pro (use the 3.8 Flash rows)     |
+| Gemini 3.6 Flash (`gemini-3.6-flash`)          | 2026-11-19           | Still served ("previous generation Flash", $0.75 / $3.75 through 2026-12-31, $1.50 / $7.50 from 2027-01-01) | `excluded (EOL 2026-11-19)` on Vertex AI; `active` on the Developer API | `gemini-3.8-flash`                                | Nova Lite; Nova Pro (use the 3.8 Flash rows)     |
+| Gemini 3.5 Flash (`gemini-3.5-flash`)          | 2027-05-19 or later (GA) | Removed from AI Studio; the endpoint stays up and auto-routes to `gemini-3.6-flash`, billed at 3.6 Flash's rate | `active` on Vertex AI; routed on the Developer API | `gemini-3.8-flash` (Google's upgrade for 3.5 / 3.6 / 3.7 Flash) | Nova Lite; Claude Sonnet 5 when agentic reliability matters |
+| Gemini 2.5 Pro (`gemini-2.5-pro`)              | 2026-10-20 (passed)  | 2026-12-01 — hidden in AI Studio, API limited to existing users, then auto-routes to `gemini-3.8-flash` | `excluded (EOL 2026-12-01)` | `gemini-3.8-flash` or `gemini-3.5-flash` (Vertex); `gemini-3.8-flash` (Developer API) | Claude Sonnet 5; Nova Pro for cost               |
 | Gemini 2.5 Flash (`gemini-2.5-flash`)          | 2026-10-20 (passed)  | 2026-12-01 — hidden in AI Studio, API limited to existing users, then auto-routes to `gemini-3.5-flash-lite` | `excluded (EOL 2026-12-01)` | `gemini-3.8-flash` or `gemini-3.5-flash-lite`                                          | Nova Lite; Claude Sonnet 5 when thinking mode is required |
 | Gemini 2.5 Flash-Lite (`gemini-2.5-flash-lite`) | 2026-10-20 (passed)  | **Not deprecated** — no shutdown date announced; still served to Developer API users     | `excluded (EOL 2026-10-20)` on Vertex AI; `active` on the Developer API only | `gemini-3.8-flash`, `gemini-3.5-flash-lite`, or Gemma 4 (Vertex) | Nova Micro / Nova Lite                           |
 | Gemini 2.0 Flash (`gemini-2.0-flash`, `gemini-2.0-flash-001`) | 2026-06-01 (passed) | 2026-06-01 (passed) — listed under Deprecated models with a shutdown date, no auto-routing announced | `excluded (EOL 2026-06-01)` | `gemini-3.5-flash-lite` (Vertex); `gemini-3.6-flash` (Developer API — itself retired on Vertex AI 2026-11-19, upgrade `gemini-3.8-flash`) | Nova Micro; Claude Haiku 5.5 when quality matters more than cost |

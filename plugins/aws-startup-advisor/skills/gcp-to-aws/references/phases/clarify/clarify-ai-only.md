@@ -81,7 +81,7 @@ Before asking anything, present what discovery already answered and what will be
 | Task complexity | Moderate | Sonnet-class model |
 
 Reply "looks good" to continue to the remaining questions, correct any line
-("model: gemini-3.5-flash"), or describe the issue in plain words.
+("model: gemini-3.8-flash"), or describe the issue in plain words.
 ```
 
 Questions resolved on this sheet are **not** re-asked in the batches below; record them with `chosen_by: "extracted"` (detected rows) or `"default"` (assumed rows, sheet-confirmed), and skip their entries in Batch 1/2. Rows the user corrects become `chosen_by: "user"`. Rows with no detection signal stay in the batches as normal questions.
@@ -197,7 +197,7 @@ _Skip when:_ `models[].model_id` is populated in `ai-workload-profile.json` **wi
 | GPT-4o        | GPT-5.6 Terra; or Sonnet 5     | Not on Bedrock — offer both        |
 | GPT-5.4 Mini  | GPT-5.6 Luna; or Nova Lite     | Mini not on Bedrock — offer both   |
 | GPT-5.4 Nano  | GPT-5.6 Luna; or Nova Micro    | Nano not on Bedrock — offer both   |
-| GPT-5.x Pro   | GPT-5.6 Sol; or Nova 2 Pro     | Pro not on Bedrock — offer both    |
+| GPT-5.x Pro   | GPT-5.6 Sol; or Claude Opus 5.5 | Pro not on Bedrock — offer both    |
 | GPT-5/5.1/5.2 | GPT-5.6 Terra; or Sonnet 5     | Not on Bedrock — offer both        |
 | o-series      | GPT-5.6 Sol/Terra; or Sonnet 5 | Not on Bedrock — offer both        |
 | Claude (any)  | Same model on Bedrock          | Client swap only — no model change |

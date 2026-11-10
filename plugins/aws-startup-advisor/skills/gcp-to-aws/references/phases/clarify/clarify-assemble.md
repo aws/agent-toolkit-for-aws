@@ -63,7 +63,7 @@ each consequence to one line — use the consequence text supplied by each row's
 | Database size | up to 10 GB allocated (actual data may be less) | Terraform `disk_size` | Migration tool ceiling; script measures actual size |
 | DB traffic / I/O | Steady / Low (dev-tier `db-f1-micro`) | Terraform tier + ZONAL | gp3 storage, no replicas |
 | Cloud SQL HA | Zonal (1 instance) | billing-profile.json | No Aurora Multi-AZ failover |
-| AI model | gemini-3.5-flash | ai-workload-profile.json | Bedrock mapping baseline |
+| AI model | gemini-3.8-flash | ai-workload-profile.json | Bedrock mapping baseline |
 
 **Assumed (documented defaults — correct anything that's wrong):**
 
@@ -551,7 +551,7 @@ the draft-specific metadata fields (`draft`, `wizard_stage`, `batches_completed`
       "question_id": "Q18"
     },
     "ai_model_baseline": {
-      "value": "gemini-3.5-flash",
+      "value": "gemini-3.8-flash",
       "chosen_by": "extracted",
       "source": "ai-profile:models[0].model_id",
       "prompt": "Detected: primary production model from ai-workload-profile.json",
