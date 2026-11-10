@@ -115,7 +115,8 @@ STATUS_CELL = re.compile(r"`(legacy|excluded) \(EOL (\d{4}-\d{2}-\d{2})\)`")
 OPENAI_SHUT_DOWN = {
     "o1": "o1",
     "o1-pro": "o1-pro",
-    "o3-mini": "o4-mini / o3-mini / o1-mini",
+    "o3-mini": "o3-mini",
+    "o4-mini": "o4-mini / o1-mini",
     "gpt-4": "GPT-4",
     "gpt-4-turbo": "GPT-4 Turbo",
     "gpt-4.1-nano": "GPT-4.1 Nano",
@@ -165,6 +166,11 @@ def test_openai_rows_for_shut_down_sources_carry_the_marker() -> None:
         delta = by_label[label][4]
         assert "Shut down" in delta and "2026-10-23" in delta, f"{model_id}: {delta[:80]!r}"
         assert not re.search(r"Bedrock \d+% cheaper", delta), f"{model_id} still quotes a live delta"
+    # The Bedrock-price cell must be the named target's own rate, not a neighbour's.
+    prices = {"GPT-5.6 Terra": "2.20 / 13.20", "GPT-5.6 Sol": "4.40 / 22.00", "GPT-5.6 Luna": "0.22 / 1.32"}
+    for label in ("o4-mini / o1-mini", "o3-mini"):
+        target, price = by_label[label][2], by_label[label][3]
+        assert prices[target] == price, f"{label}: {target} priced {price}"
 
 
 def test_gcp_clarify_rows_for_shut_down_sources_quote_no_live_saving() -> None:
