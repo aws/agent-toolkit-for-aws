@@ -441,15 +441,27 @@ def _reasoning_findings(source, requirements, target_model, path, detected_featu
 
     # Sampling acceptance is a property of the TARGET model and the selected path.
     if target_model and target_model.get("sampling_parameters_supported") is False:
-        remediation = (
-            "Remove temperature/top_p/top_k from requests to this target; do not rescale them "
-            "or disable thinking. Route user-visible controls through the existing "
-            "parameter_removed confirmation before changing them."
-        )
+        if target_model.get("adaptive_thinking_only"):
+            # Opus 5.5: thinking is always on, so the controls cannot come back by disabling it.
+            remediation = (
+                "Remove temperature/top_p/top_k from requests to this target; do not rescale them "
+                "or disable thinking. Route user-visible controls through the existing "
+                "parameter_removed confirmation before changing them."
+            )
+            description = f"{target_name} does not support sampling controls with its required thinking mode."
+        else:
+            # Haiku 5.5 and similar: sampling controls are rejected whether adaptive thinking is on
+            # or off (the model card lets it be turned off); never tell the user thinking is required.
+            remediation = (
+                "Remove temperature/top_p/top_k from requests to this target (including Converse "
+                "inferenceConfig temperature/topP); do not rescale them. Route user-visible controls "
+                "through the existing parameter_removed confirmation before changing them."
+            )
+            description = f"{target_name} does not support sampling controls in any thinking mode."
         finding = _finding(
             "sampling_parameters_removed",
             "[BLOCKS]" if "sampling_params" in detected_features else "[TUNE]",
-            f"{target_name} does not support sampling controls with its required thinking mode.",
+            description,
             remediation,
         )
         (blocks if finding["tag"] == "[BLOCKS]" else tuning).append(finding)

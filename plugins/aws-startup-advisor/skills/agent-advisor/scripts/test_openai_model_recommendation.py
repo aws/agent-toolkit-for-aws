@@ -1231,3 +1231,37 @@ def test_haiku_5_5_fallback_removes_sampling_instead_of_moving_it_to_converse():
     assert rec["primary_model"].endswith("anthropic.claude-haiku-5-5")
     assert "sampling_parameters_removed" in _codes(rec["blocks"])
     assert "sampling_via_converse" not in _codes(rec["tuning"])
+
+
+def test_haiku_5_5_sampling_removal_does_not_claim_thinking_is_required():
+    rec = _recommend(
+        _workload(
+            source={"model_ids": ["gpt-5.6-luna"]},
+            requirements={"governance": ["guardrails"], "critical_features": ["image_input_vision"],
+                          "data_residency": "global_allowed", "thinking_enabled": False},
+            detected_features=["sampling_params"],
+        ),
+        region="us-east-1",
+    )
+    assert rec["primary_model"].endswith("anthropic.claude-haiku-5-5")
+    finding = next(f for f in rec["blocks"] if f["code"] == "sampling_parameters_removed")
+    assert "required thinking mode" not in finding["description"] if "description" in finding else True
+    text = " ".join(str(v) for v in finding.values())
+    assert "required thinking mode" not in text
+    assert "disable thinking" not in text
+    assert "Remove temperature/top_p/top_k" in finding["remediation"]
+
+
+def test_opus_5_5_sampling_removal_keeps_the_always_on_thinking_wording():
+    # Opus 5.5 (adaptive_thinking_only) keeps the "do not disable thinking" instruction; Haiku 5.5 does not.
+    opus = OPENAI_CATALOG["models"]["anthropic_claude_opus_5_5"]
+    haiku = OPENAI_CATALOG["models"]["anthropic_claude_haiku_5_5"]
+    source = {"model_ids": ["gpt-5.6-luna"], "provider": "openai"}
+    blocks, _, _ = oai._reasoning_findings(source, {}, opus, "runtime_converse", ["sampling_params"])
+    opus_finding = next(f for f in blocks if f["code"] == "sampling_parameters_removed")
+    assert "do not rescale them or disable thinking" in opus_finding["remediation"]
+    blocks, _, _ = oai._reasoning_findings(source, {}, haiku, "runtime_converse", ["sampling_params"])
+    haiku_finding = next(f for f in blocks if f["code"] == "sampling_parameters_removed")
+    assert "disable thinking" not in haiku_finding["remediation"]
+    assert "required thinking mode" not in " ".join(str(v) for v in haiku_finding.values())
+

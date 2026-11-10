@@ -501,3 +501,59 @@ def test_current_catalog_readers_match_engine_defaults(relative_path):
         frontmatter = text.split("---", 2)[1]
         loaded = set(re.findall(r"\bfile:\s*references/vendored/ai/models/(" + catalog_pattern + r")", frontmatter))
         assert loaded == expected
+
+
+# --- review on #600, round 2: explicit profile pin, Canadian geography ----------------------
+
+
+def test_explicit_haiku_4_5_profile_pin_is_preserved_over_the_ranked_haiku_5_5():
+    rec = _recommend(
+        _workload(
+            requirements={
+                "priority": "cost",
+                "governance": ["guardrails"],
+                "inference_profile_id": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            }
+        )
+    )
+    assert rec["model_identity"]["model_key"] == "claude_haiku_4_5"
+    assert rec["invocation_model_id"] == "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    assert "inference_profile_unresolved" not in _codes(rec["blocks"])
+
+
+def test_unpinned_cost_runtime_still_defaults_to_haiku_5_5():
+    rec = _recommend(
+        _workload(requirements={"priority": "cost", "governance": ["guardrails"], "data_residency": "global_allowed"})
+    )
+    assert rec["model_identity"]["model_key"] == "claude_haiku_5_5"
+
+
+def test_profile_pin_matching_no_candidate_is_still_rejected():
+    rec = _recommend(
+        _workload(
+            requirements={
+                "priority": "cost",
+                "governance": ["guardrails"],
+                "inference_profile_id": "eu.anthropic.claude-haiku-5-5",
+            }
+        )
+    )
+    # eu. is not a Haiku 5.5 profile reachable from us-east-1 and names no other candidate; blocker stays.
+    assert rec["model_identity"]["model_key"] == "claude_haiku_5_5"
+    assert rec["invocation_model_id"] is None
+    assert "inference_profile_unresolved" in _codes(rec["blocks"])
+
+
+def test_canadian_geography_validates_and_resolves_the_ca_profile():
+    for region in ("ca-central-1", "ca-west-1"):
+        inp = _input(
+            _workload(
+                requirements={"priority": "cost", "governance": ["guardrails"],
+                              "data_residency": "geo_required", "cris_geography": "ca"}
+            )
+        )
+        inp["region"] = region
+        rec = model_recommendation.recommend(inp)["workloads"]["support-agent"]  # validates against the input schema
+        assert rec["model_identity"]["model_key"] == "claude_haiku_5_5"
+        assert rec["invocation_model_id"] == "ca.anthropic.claude-haiku-5-5", region
+

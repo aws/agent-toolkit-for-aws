@@ -403,6 +403,29 @@ def _invocation_requires_cris(path_config, invocation_model_id):
     return path_config["requires_cris"] and invocation_model_id != path_config["model_id"]
 
 
+def _honor_explicit_profile(candidates, requirements, region):
+    """An explicit `inference_profile_id` names a model as well as a profile. When a lower-ranked
+    candidate (e.g. the retained Haiku 4.5 alternative) is the one that profile resolves against,
+    select it instead of blocking the top-ranked model on a mismatched profile. When no candidate
+    resolves the pin, keep the ranked choice so the mismatch is still reported as a blocker."""
+    explicit = requirements.get("inference_profile_id")
+    if not explicit:
+        return candidates[0]
+    for candidate in candidates:
+        path_config = candidate["path_config"]
+        # The pin must name this candidate's model (profile id or ARN tail); a profile for
+        # another model must not be "resolved" against a candidate that lacks a profile matrix.
+        if not explicit.endswith(path_config["model_id"]) and f"/{path_config['model_id']}" not in explicit \
+                and f".{path_config['model_id']}" not in explicit:
+            continue
+        resolved = _resolve_invocation_model_id(
+            path_config["model_id"], path_config["requires_cris"], requirements, candidate["model"], region
+        )
+        if resolved:
+            return candidate
+    return candidates[0]
+
+
 def _resolve_invocation_model_id(model_id, requires_cris, requirements, model=None, region=None):
     if not requires_cris:
         return model_id
@@ -802,7 +825,7 @@ def recommend_anthropic_workload(workload, region, catalog):
             f"catalog has no model/path candidate satisfying workload "
             f"{workload['workload_id']} requirements"
         )
-    chosen = candidates[0]
+    chosen = _honor_explicit_profile(candidates, workload["requirements"], region)
     model = chosen["model"]
     path = chosen["path"]
     path_config = chosen["path_config"]

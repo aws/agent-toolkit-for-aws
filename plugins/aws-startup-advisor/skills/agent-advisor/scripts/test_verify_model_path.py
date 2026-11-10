@@ -350,7 +350,6 @@ def test_system_profile_id_and_arn_reach_the_selected_probe(provider, path, prof
     PROFILE_ARN.replace("us-east-1", "eu-west-1"),
     PROFILE_ARN.replace("arn:aws:", "arn:aws-us-gov:"),
     PROFILE_ARN.replace("us.anthropic", "global.anthropic"),
-    PROFILE_ARN.replace("opus-5-5", "sonnet-5"),
 ])
 def test_system_profile_arn_mismatches_do_not_reach_inference(profile):
     client = FakeRuntimeClient()
@@ -360,6 +359,22 @@ def test_system_profile_arn_mismatches_do_not_reach_inference(profile):
     )
     assert next(iter(result["workloads"].values()))["status"] == "needs_resolution"
     assert not client.converse_calls
+
+
+def test_system_profile_arn_for_another_candidate_selects_that_candidate():
+    # An explicit pin names a model as well as a profile: a Sonnet 5 ARN under quality priority
+    # selects Sonnet 5 (a ranked candidate) rather than blocking Opus 5.5 on a mismatched profile,
+    # and the probe is called with exactly that ARN.
+    profile = PROFILE_ARN.replace("opus-5-5", "sonnet-5")
+    client = FakeRuntimeClient()
+    recommendation = _opus_recommendation("anthropic", "runtime_converse", profile)
+    workload = next(iter(recommendation["workloads"].values()))
+    assert workload["primary_model"] == "anthropic.claude-sonnet-5"
+    result = verify_model_path.verify_recommendation(
+        recommendation, runtime_client_factory=lambda region: client,
+    )
+    assert next(iter(result["workloads"].values()))["status"] == "passed"
+    assert client.converse_calls[0]["modelId"] == profile
 
 
 def _profile_metadata(regions=("us-east-1", "us-west-2"), model=OPUS55, status="ACTIVE"):
