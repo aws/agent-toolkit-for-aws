@@ -115,6 +115,109 @@ def test_generate_pins_a_provider_that_has_the_express_resource() -> None:
         assert "6.23.0" in text, f"{skill}: must record the version that introduced the resource"
 
 
+HEROKU_GENERATE_DOCS = SKILLS / "heroku-to-aws" / "references" / "phases" / "generate" / "generate-docs.md"
+GCP_FAST_PATH = SKILLS / "gcp-to-aws" / "references" / "design-refs" / "fast-path.md"
+GCP_DESIGN_INFRA = SKILLS / "gcp-to-aws" / "references" / "phases" / "design" / "design-infra.md"
+EXPRESS_INFRA_POLICY_ARN = "arn:aws:iam::aws:policy/service-role/AmazonECSInfrastructureRoleforExpressGatewayServices"
+
+
+def _express_block(text: str) -> str:
+    start = text.index('### Express Mode web services (`aws_config.ecs_mode == "express"`)')
+    end = text.index("### Application Load Balancer (standard-mode web process types only)")
+    return text[start:end]
+
+
+def test_heroku_express_block_honors_the_writer_freeze() -> None:
+    """Phase 6 failback sets writers_quiesced=true; the Express scaling target must go to 0 like aws_ecs_service.desired_count."""
+    block = _express_block(GENERATE_FILES["heroku"].read_text(encoding="utf-8"))
+    assert re.search(r"min_task_count\s*=\s*var\.writers_quiesced \? 0 :", block), "Express min_task_count must follow var.writers_quiesced"
+    assert re.search(r"max_task_count\s*=\s*var\.writers_quiesced \? 0 :", block), "Express max_task_count must follow var.writers_quiesced"
+    docs = HEROKU_GENERATE_DOCS.read_text(encoding="utf-8")
+    assert "aws_ecs(_express_gateway)?_service" in docs, "the mixed EB/Fargate failback must target Express services too"
+
+
+def test_heroku_express_block_references_only_declared_resources() -> None:
+    text = GENERATE_FILES["heroku"].read_text(encoding="utf-8")
+    hcl = "\n".join(re.findall(r"```hcl\n(.*?)```", text, flags=re.S))
+    assert "data.aws_iam_policy_document.ecs_assume" not in hcl, "heroku declares no ecs_assume policy document; ECS trust policies are inline jsonencode"
+    assert "aws_security_group.ecs_tasks" not in hcl, "the heroku task security group is aws_security_group.app"
+    block = _express_block(text)
+    assert "aws_security_group.app.id" in block
+    assert 'Service = "ecs.amazonaws.com"' in block, "infrastructure role trust policy must be inline jsonencode like the other roles"
+    assert "<public_subnet_references>" in block, "a public Heroku web dyno needs public subnets for an internet-facing Express ALB"
+    for skill, path in GENERATE_FILES.items():
+        assert EXPRESS_INFRA_POLICY_ARN in path.read_text(encoding="utf-8"), f"{skill}: infrastructure role policy ARN must be the documented service-role/ ARN"
+    assert "arn:aws:iam::aws:policy/AmazonECSInfrastructureRoleforExpressGatewayServices" not in text
+
+
+def test_heroku_guide_recognizes_the_express_web_target() -> None:
+    docs = HEROKU_GENERATE_DOCS.read_text(encoding="utf-8")
+    assert '`aws_config.ecs_mode == "express"` → `"express"`' in docs, "Step 0 target_kind must resolve an Express web app"
+    assert '`output_name: "<app_sanitized>_web_endpoint"`' in docs
+    assert "`alb` / `express` / `eb` / `eks` / `none`" in docs
+    assert "{{IF has_express}}" in docs and "{{IF has_alb}}" in docs
+    assert "terraform -chdir=terraform output -raw <app_sanitized>_web_endpoint" in docs, "Phase 4 must read the Express endpoint output, not ALB_DNS_NAME"
+    assert 'target_kind == "express"' in docs
+    assert "express-service-add-custom-domain" in docs, "the manual DNS branch must carry the Express listener host-header + certificate step"
+
+
+def test_heroku_express_alb_pricing_runs_on_the_fargate_path_not_only_eks() -> None:
+    text = ESTIMATE_FILES["heroku"].read_text(encoding="utf-8")
+    fargate = text.index("### Fargate Cost Calculation — ECS Express Mode ALB")
+    eks = text.index("### EKS Cost Calculation")
+    assert fargate < eks, "Express ALB pricing must be a common Fargate step, before (and independent of) the EKS section"
+    eks_section = text[eks:text.index("### Elastic Beanstalk Cost Calculation")]
+    assert "ecs_mode == \"express\"" not in eks_section, "the EKS section must not own Express pricing"
+
+
+def test_estimators_price_the_shared_express_alb_per_25_services() -> None:
+    for skill, path in ESTIMATE_FILES.items():
+        text = path.read_text(encoding="utf-8")
+        assert "ceil(count / 25)" in text, f"{skill}: fixed ALB charge must be ceil(count / 25) per group"
+        assert re.search(r"(?i)VPC and (ALB )?scheme", text), f"{skill}: Express ALB groups are per VPC and scheme"
+        assert re.search(r"(?i)never combine the two", text), f"{skill}: internal and internet-facing ALBs must not share a group"
+        assert "express-service-resource-sharing" in text, f"{skill}: cite the Express resource-sharing docs"
+
+
+def test_gcp_cloud_run_v2_and_design_infra_finalize_ecs_mode() -> None:
+    fast_path = GCP_FAST_PATH.read_text(encoding="utf-8")
+    v2_row = next(line for line in fast_path.splitlines() if line.startswith("| `google_cloud_run_v2_service`"))
+    assert "aws_config.ecs_mode" in v2_row, "the Cloud Run v2 direct mapping must invoke the mode selector like v1"
+    design = GCP_DESIGN_INFRA.read_text(encoding="utf-8")
+    assert "### Finalize `ecs_mode`" in design, "design-infra needs a common finalize step for fast-path and rubric Fargate mappings"
+    assert "google_cloud_run_v2_service" in design and "No Fargate mapping leaves Design without `ecs_mode`" in design
+
+
+def test_selectors_and_generators_reconcile_public_ingress_with_subnet_placement() -> None:
+    for skill, path in DESIGN_FILES.items():
+        text = path.read_text(encoding="utf-8")
+        assert "express-service-network-defaults" in text, f"{skill}: cite the Express network defaults for the subnet → ALB scheme rule"
+        assert re.search(r"(?i)public\*{0,2} subnets", text), f"{skill}: public Express services must be placed in public subnets"
+    for skill, path in GENERATE_FILES.items():
+        text = path.read_text(encoding="utf-8")
+        assert "express-service-network-defaults" in text, skill
+        assert re.search(r"(?i)deviation from the `tf-best-practices`", text), f"{skill}: the public-subnet placement must be named as the accepted deviation"
+
+
+def test_generators_normalize_an_absent_ecs_mode_to_standard() -> None:
+    for skill, path in GENERATE_FILES.items():
+        text = path.read_text(encoding="utf-8")
+        assert re.search(r"no `ecs_mode` key[^.\n]*(is|treated as) `\"standard\"`", text), f"{skill}: absent ecs_mode must normalize to standard"
+        assert re.search(r"(?i)never (an error|error)[^.\n]*never (default it to |)`\"express\"`", text), f"{skill}: absent ecs_mode must not error or become express"
+
+
+def test_standard_branch_emits_code_deploy_for_blue_green_and_never_silently_rolls() -> None:
+    heroku = GENERATE_FILES["heroku"].read_text(encoding="utf-8")
+    assert 'deployment_controller {\n    type = "CODE_DEPLOY"\n  }' in heroku
+    assert 'resource "aws_codedeploy_deployment_group"' in heroku and 'deployment_type   = "BLUE_GREEN"' in heroku
+    for skill, path in GENERATE_FILES.items():
+        text = path.read_text(encoding="utf-8")
+        assert 'deployment_controller { type = "CODE_DEPLOY" }' in text or 'type = "CODE_DEPLOY"' in text, f"{skill}: blue_green must emit the CodeDeploy controller"
+        assert "aws_codedeploy_deployment_group" in text, skill
+        assert re.search(r"(?i)never (a )?silent(ly)?", text), f"{skill}: a non-rolling choice must never silently become rolling"
+        assert re.search(r"requested canary releases; Express Mode was not selected", text), f"{skill}: canary on a standard service must be warned, not downgraded quietly"
+
+
 def test_no_file_still_calls_express_mode_a_forward_look() -> None:
     offenders = []
     for path in sorted(SKILLS.rglob("*.md")):

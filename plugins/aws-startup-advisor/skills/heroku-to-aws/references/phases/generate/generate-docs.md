@@ -26,6 +26,8 @@ Scan `aws-design.json`.services[] to determine which compute and data store type
 | Beanstalk web present | Any service with `aws_service == "Elastic Beanstalk"` and `aws_config.process_type == "web"` | `has_beanstalk_web = true` |
 | Fargate present       | Any service with `aws_service == "Fargate"` or `aws_service == "ALB"`                        | `has_fargate = true`       |
 | Fargate web present   | Any service with `aws_service == "ALB"`, or `aws_service == "Fargate"` and `aws_config.process_type == "web"` (workers alone never count) | `has_fargate_web = true` |
+| Standard ALB present  | Any service with `aws_service == "ALB"` (a standard-mode Fargate web formation; a Fargate entry with no `ecs_mode` key is standard and always has one) | `has_alb = true`           |
+| Express web present   | Any service with `aws_service == "Fargate"`, `aws_config.process_type == "web"`, and `aws_config.ecs_mode == "express"` | `has_express = true`       |
 | EKS present           | Any service with `aws_service == "EKS"` (`design-eks.md` "All-or-Nothing Rule": then no EB or Fargate web service exists) | `has_eks = true`           |
 | Postgres present      | Any service with `aws_service` containing `"RDS PostgreSQL"` or `"Aurora PostgreSQL"`        | `has_postgres = true`      |
 | Redis present         | Any service with `aws_service == "ElastiCache Redis"`                                        | `has_redis = true`         |
@@ -44,8 +46,8 @@ Also extract:
 - `target_exit_date` — from `preferences.json`.global.target_exit_date (ISO date or null)
 - `dns_strategy` — from `preferences.json`.data.dns_strategy (Clarify Q10 writes it inside the `"data"` block — `clarify-assemble.md`; there is no `global.dns_strategy`). `"route53"` or `"external"`; treat any other or missing value (e.g. a legacy `"manual_cutover"`) as `"external"`.
 - `custom_domains[]` — every `resource_type == "domain"` resource's `config.hostname` from `heroku-resource-inventory.json` (deduplicated).
-- `dns_hostnames[]` — one entry per `custom_domains[]` hostname, preserving the associations the inventory and design already carry: `{ hostname, heroku_app, app_sanitized, target_kind, output_name }`. `heroku_app` is the domain resource's `heroku_app` (the `{app_name}` segment of `domain:{app_name}:{hostname}`); `app_sanitized` replaces `-` with `_`. `target_kind` is resolved from that app's **web** formation in `aws-design.json`.services[] — not from any worker: `alb:{heroku_app}:web` present → `"alb"` (`output_name: "alb_dns_name_<app_sanitized>"`); else `eb:{heroku_app}:web` present → `"eb"` (`output_name: "eb_environment_url_<app_sanitized>"` — the per-app output Step 3 of `generate-terraform.md` actually emits; there is no `eb_environment_cname`); else `eks:{heroku_app}:web` present → `"eks"` (`output_name: null` — the endpoint is the Kubernetes Service's `EXTERNAL-IP`, known only after Phase 3); else `"none"` (worker-only app, or its formations were deferred).
-- `eligible_hostnames[]` — the `dns_hostnames[]` entries with `target_kind` `"alb"` or `"eb"`: the only hostnames `dns.tf` can route. `has_route53_dns = true` when `dns_strategy == "route53"` AND `eligible_hostnames` is non-empty — the same condition under which `generate-terraform.md` Step 9.5 emits `dns.tf`. An EKS design therefore always has `has_route53_dns = false`. Entries with `target_kind` `"eks"` or `"none"` are rendered only in the manual DNS branch (and `generate-terraform.md` Step 9.5 records them in `generation-warnings.json`). Whether a hostname is a zone apex is not known at generation time (it depends on the zone the user supplies), so `dns.tf` decides it at plan time and the guide covers the apex unconditionally inside the Route 53 branch.
+- `dns_hostnames[]` — one entry per `custom_domains[]` hostname, preserving the associations the inventory and design already carry: `{ hostname, heroku_app, app_sanitized, target_kind, output_name }`. `heroku_app` is the domain resource's `heroku_app` (the `{app_name}` segment of `domain:{app_name}:{hostname}`); `app_sanitized` replaces `-` with `_`. `target_kind` is resolved from that app's **web** formation in `aws-design.json`.services[] — not from any worker: `alb:{heroku_app}:web` present → `"alb"` (`output_name: "alb_dns_name_<app_sanitized>"`); else `fargate:{heroku_app}:web` present with `aws_config.ecs_mode == "express"` → `"express"` (`output_name: "<app_sanitized>_web_endpoint"` — the AWS-provided HTTPS endpoint `generate-terraform.md` Step 6 emits for the `aws_ecs_express_gateway_service`; an Express web formation has no `alb:` entry, so without this branch it would be misread as `"none"`); else `eb:{heroku_app}:web` present → `"eb"` (`output_name: "eb_environment_url_<app_sanitized>"` — the per-app output Step 3 of `generate-terraform.md` actually emits; there is no `eb_environment_cname`); else `eks:{heroku_app}:web` present → `"eks"` (`output_name: null` — the endpoint is the Kubernetes Service's `EXTERNAL-IP`, known only after Phase 3); else `"none"` (worker-only app, or its formations were deferred).
+- `eligible_hostnames[]` — the `dns_hostnames[]` entries with `target_kind` `"alb"` or `"eb"`: the only hostnames `dns.tf` can route. `has_route53_dns = true` when `dns_strategy == "route53"` AND `eligible_hostnames` is non-empty — the same condition under which `generate-terraform.md` Step 9.5 emits `dns.tf`. An EKS design therefore always has `has_route53_dns = false`, and so does an all-Express design (Design forces `standard` when `dns_strategy == "route53"`, so `"express"` only occurs with external DNS). Entries with `target_kind` `"express"`, `"eks"`, or `"none"` are rendered only in the manual DNS branch (and `generate-terraform.md` Step 9.5 records them in `generation-warnings.json`). Whether a hostname is a zone apex is not known at generation time (it depends on the zone the user supplies), so `dns.tf` decides it at plan time and the guide covers the apex unconditionally inside the Route 53 branch.
 
 ---
 
@@ -886,9 +888,13 @@ Web formations routed to Fargate with `aws_config.ecs_mode: "express"` are emitt
 - [ ] Each customer-supplied `eb_health_check_path_<app_sanitized>_web` returns a successful response on its app's EB environment URL
       {{ENDIF}}
       {{ENDIF}}
-      {{IF has_fargate}}
+      {{IF has_alb}}
 - [ ] Application responds on ALB endpoint: `https://{{ALB_DNS_NAME}}/`
 - [ ] Health check endpoint returns 200: `https://{{ALB_DNS_NAME}}/health`
+      {{ENDIF}}
+      {{IF has_express}}
+- [ ] Each Express Mode web app responds on its AWS-provided endpoint: `https://$(terraform -chdir=terraform output -raw <app_sanitized>_web_endpoint)/` (one line per Express app; there is no `ALB_DNS_NAME` for these — Express Mode owns the ALB)
+- [ ] Health check path returns 200 on that endpoint: `https://<endpoint>/` (the `health_check_path` the Express service was generated with)
       {{ENDIF}}
       {{IF has_postgres}}
 - [ ] Database connectivity confirmed (application can read/write)
@@ -947,7 +953,7 @@ Each hostname has its own target; a hostname is never pointed at another app's e
 <!-- markdownlint-disable MD055 MD056 -->
 
 {{FOR host IN dns_hostnames}}
-| `{{host.hostname}}` | `{{host.heroku_app}}` | {{IF host.target_kind == "alb"}}ALB DNS name{{ENDIF}}{{IF host.target_kind == "eb"}}Elastic Beanstalk environment CNAME{{ENDIF}}{{IF host.target_kind == "eks"}}Service `EXTERNAL-IP` hostname from `kubectl get svc -n {{host.heroku_app}} web` (exists only after Phase 3){{ENDIF}}{{IF host.target_kind == "none"}}none — `{{host.heroku_app}}` has no web process; this hostname is not routed{{ENDIF}} | {{IF host.output_name}}`{{host.output_name}}`{{ELSE}}—{{ENDIF}} |
+| `{{host.hostname}}` | `{{host.heroku_app}}` | {{IF host.target_kind == "alb"}}ALB DNS name{{ENDIF}}{{IF host.target_kind == "eb"}}Elastic Beanstalk environment CNAME{{ENDIF}}{{IF host.target_kind == "express"}}ECS Express Mode endpoint host (the hostname part of the `https://…` output){{ENDIF}}{{IF host.target_kind == "eks"}}Service `EXTERNAL-IP` hostname from `kubectl get svc -n {{host.heroku_app}} web` (exists only after Phase 3){{ENDIF}}{{IF host.target_kind == "none"}}none — `{{host.heroku_app}}` has no web process; this hostname is not routed{{ENDIF}} | {{IF host.output_name}}`{{host.output_name}}`{{ELSE}}—{{ENDIF}} |
 {{ENDFOR}}
 
 <!-- markdownlint-enable MD055 MD056 -->
@@ -1008,11 +1014,15 @@ No `dns.tf` was generated ({{IF custom_domains is empty}}no custom domain was di
    {{FOR host IN dns_hostnames}}
    {{IF host.target_kind == "alb"}}{{host.hostname}}  CNAME  <terraform output {{host.output_name}}>          (was: <heroku DNS target>){{ENDIF}}
    {{IF host.target_kind == "eb"}}{{host.hostname}}  CNAME  <terraform output {{host.output_name}}>          (was: <heroku DNS target>){{ENDIF}}
+   {{IF host.target_kind == "express"}}{{host.hostname}}  CNAME  <host of terraform output {{host.output_name}}>   (was: <heroku DNS target>) — after the listener step below{{ENDIF}}
    {{IF host.target_kind == "eks"}}{{host.hostname}}  CNAME  <EXTERNAL-IP hostname of Service web in namespace {{host.heroku_app}}>  (was: <heroku DNS target>){{ENDIF}}
    {{IF host.target_kind == "none"}}{{host.hostname}}  — not routed: {{host.heroku_app}} has no web process on AWS; decide what should answer for it before cutover{{ENDIF}}
    {{ENDFOR}}
    ```
 
+   {{IF has_express}}
+   An ECS Express Mode ALB routes by **host header**, so a CNAME alone returns the ALB's default 404 for your hostname. Before changing the record for each `express` hostname, follow [Adding a custom domain to your service](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-advanced-customization.html#express-service-add-custom-domain): request an ACM certificate for the hostname and validate it at your DNS provider; in the ECS console open the Express service → **Resources** → listener rule, add the hostname as an **OR** host-header value next to the AWS-provided one; add the certificate to the ALB's HTTPS listener (**Certificates** tab). Then set the CNAME to the host part of `terraform output -raw <app_sanitized>_web_endpoint` (strip `https://`). Verify before and after: `curl -fsS --connect-to '<hostname>:443:<endpoint-host>:443' -o /dev/null -w '%{http_code}' https://<hostname>`. Express Mode does not overwrite these listener edits on later `terraform apply` runs.
+   {{ENDIF}}
    {{IF has_eks}}
    The EKS Service address is known only after Phase 3 (`kubectl get svc -n <app> web -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'`), so this step cannot run before the deploy. The generated Service already declares port 80 and port 443, both targeting 8080, with `service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"`. Before any DNS change, request an ACM certificate for these hostnames, validate it at your DNS provider, set `service.beta.kubernetes.io/aws-load-balancer-ssl-cert` to that ARN on `kubernetes/<app>-web-service.yaml`, and apply the Service. Confirm the load balancer has a listener on 443 (`aws elbv2 describe-listeners --load-balancer-arn <arn>`). Then request the application hostname, and connect that request to the load balancer, so SNI and certificate validation use the name on the certificate: `curl -fsS --connect-to '<hostname>:443:<load-balancer-hostname>:443' -o /dev/null -w '%{http_code}' https://<hostname>`. A request to `https://<load-balancer-hostname>` fails hostname validation even when the certificate is valid for the application domain. The certificate annotation does not create a listener; without port 443 there is nothing for HTTPS to land on.
    {{ENDIF}}
@@ -1187,21 +1197,24 @@ Until the Phase 5 flip the primary is Heroku Postgres, frozen under `maintenance
    ```bash
    set -euo pipefail
    # Persist before any apply. Fargate desired_count is `var.writers_quiesced ? 0 : <formation quantity>`,
-   # so a later apply keeps those services at 0. Leave this true until the next intentional handoff.
+   # and an Express Mode service's scaling_target min/max are `var.writers_quiesced ? 0 : …`,
+   # so a later apply keeps those services at 0 (and autoscaling cannot scale them back out).
+   # Leave this true until the next intentional handoff.
    # The assignment is in terraform.tfvars.example for every design, including external DNS and EKS.
    sed -i.bak 's/^writers_quiesced *=.*/writers_quiesced = true/' terraform/terraform.tfvars
    grep -q '^writers_quiesced *= *true$' terraform/terraform.tfvars
    {{IF has_fargate}}
    {{IF has_beanstalk}}
-   # A full apply would also restore the Beanstalk environment. Target only ECS services.
+   # A full apply would also restore the Beanstalk environment. Target only ECS services —
+   # standard (aws_ecs_service) and Express Mode (aws_ecs_express_gateway_service) alike.
    # The pipe would hide `targets` in a subshell, so read it with process substitution.
    ( cd terraform
      targets=()
      while read -r addr; do
        targets+=("-target=$addr")
-     done < <(terraform state list | grep '^aws_ecs_service\.')
+     done < <(terraform state list | grep -E '^aws_ecs(_express_gateway)?_service\.')
      if [ "${#targets[@]}" -eq 0 ]; then
-       echo "No aws_ecs_service in state — do not apply; a full apply would start Beanstalk writers" >&2
+       echo "No aws_ecs_service / aws_ecs_express_gateway_service in state — do not apply; a full apply would start Beanstalk writers" >&2
        exit 1
      fi
      terraform apply -input=false "${targets[@]}"
@@ -1414,14 +1427,14 @@ Replace template variables using these sources:
 | `{{SOURCE_KAFKA_*}}` | Placeholder — user fills from `heroku kafka:info` output |
 | `{{TARGET_MSK_*}}` | Placeholder — user fills from Terraform output |
 | `{{AWS_ACCOUNT_ID}}` | Placeholder — user fills with their AWS account ID |
-| `{{ALB_DNS_NAME}}` | Placeholder — user fills from Terraform output |
+| `{{ALB_DNS_NAME}}` | Placeholder — user fills from Terraform output (`alb_dns_name_<app_sanitized>`); rendered only when `has_alb` (a standard-mode Fargate web formation). Express Mode web apps use the `<app_sanitized>_web_endpoint` output instead |
 | `{{EB_ENVIRONMENT_URL}}` | Elastic Beanstalk web environment CNAME output |
 | `{{EB_ENVIRONMENT_NAMES}}` | Space-separated generated Elastic Beanstalk environment names for all EB process types |
 | `{{MSK_CLUSTER_ARN}}` | Placeholder — user fills from Terraform output |
 | `{{MIGRATION_BUCKET}}` | Placeholder — user creates an S3 bucket for migration artifacts |
 | `{{app_domain}}` | First hostname in `custom_domains[]` when the inventory has `domain` resources; otherwise a placeholder the user fills |
 | `{{custom_domains}}` | Comma-separated `custom_domains[]` (inventory `domain` resources' `config.hostname`) |
-| `{{FOR host IN dns_hostnames}}` / `{{FOR host IN eligible_hostnames}}` | Step 0 `dns_hostnames[]` / `eligible_hostnames[]`; `host.hostname`, `host.heroku_app`, `host.target_kind` (`alb` / `eb` / `eks` / `none`), `host.output_name` (`alb_dns_name_<app_sanitized>` / `eb_environment_url_<app_sanitized>` / null) — one table row or record line per hostname, each with its own app's endpoint |
+| `{{FOR host IN dns_hostnames}}` / `{{FOR host IN eligible_hostnames}}` | Step 0 `dns_hostnames[]` / `eligible_hostnames[]`; `host.hostname`, `host.heroku_app`, `host.target_kind` (`alb` / `express` / `eb` / `eks` / `none`), `host.output_name` (`alb_dns_name_<app_sanitized>` / `<app_sanitized>_web_endpoint` / `eb_environment_url_<app_sanitized>` / null) — one table row or record line per hostname, each with its own app's endpoint |
 | `{{health_check_path}}` | `eb_health_check_path_<app_sanitized>_web` for the first Beanstalk web app; `/` for a Fargate web service (the ALB target group default) — the same path Phase 4 checks |
 
 ### Conditional Section Rules
@@ -2048,7 +2061,7 @@ Verify all generated files:
    - If `has_beanstalk_web`: Explains that each web app's `eb_application_port_<app>_web` and `eb_health_check_path_<app>_web` are required before planning
    - If `has_beanstalk`: Contains selected EB deploy method instructions and the EB DNS cutover target, and emits no CodePipeline artifact unless `eb_deploy_method` is `"codepipeline"`
    - If `has_route53_dns`: Phase 1 contains "DNS preparation (Route 53)" with this order: authority check, then `terraform init` and required inputs, then existing-record conversion + `terraform import`, then zone adoption, then `heroku_apex_ips`, and only then the plan/apply block. No Route 53 write is instructed before the authority check. The Phase 1 rollback after adoption runs `terraform state rm` on `aws_route53_record.heroku` and `aws_route53_record.apex_heroku` before `terraform destroy`
-   - Phase 5 lists every `dns_hostnames[]` hostname with its own Heroku app and its own AWS endpoint/output name (`alb_dns_name_<app_sanitized>` or `eb_environment_url_<app_sanitized>`; never a shared `alb_dns_name`/`eb_environment_url`, never `eb_environment_cname`); no two apps share a target. If `has_eks`: the manual branch names the Kubernetes Service `EXTERNAL-IP` as the target, and the Service ships with port 443 (`targetPort` 8080) plus `aws-load-balancer-ssl-ports: "443"`, with an apply-and-verify step (`describe-listeners` on 443) before any DNS change
+   - Phase 5 lists every `dns_hostnames[]` hostname with its own Heroku app and its own AWS endpoint/output name (`alb_dns_name_<app_sanitized>`, `<app_sanitized>_web_endpoint` for an Express Mode web app, or `eb_environment_url_<app_sanitized>`; never a shared `alb_dns_name`/`eb_environment_url`, never `eb_environment_cname`); no two apps share a target. If `has_express`: an Express web app is never rendered as `target_kind "none"`, Phase 4 checks its `<app_sanitized>_web_endpoint` rather than `ALB_DNS_NAME`, and the manual branch carries the listener host-header + certificate step before the CNAME. If `has_eks`: the manual branch names the Kubernetes Service `EXTERNAL-IP` as the target, and the Service ships with port 443 (`targetPort` 8080) plus `aws-load-balancer-ssl-ports: "443"`, with an apply-and-verify step (`describe-listeners` on 443) before any DNS change
    - Every `cutover_weight` change in Phases 5 and 6 edits `terraform.tfvars` and never passes `-var cutover_weight`. The apply is plain, except the Phase 6 database-failback DNS move when Elastic Beanstalk is in the design: that move is `aws route53 change-resource-record-sets`, and a saved plan that changes `aws_elastic_beanstalk_environment` is not applied
    - Does NOT hard-code a health check path for Elastic Beanstalk verification; use the applicable per-app `eb_health_check_path_<app>_web` instead
    - Contains "Verification" section with data-store-appropriate checks

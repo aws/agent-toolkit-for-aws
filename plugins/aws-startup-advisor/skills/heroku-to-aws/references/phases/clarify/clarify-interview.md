@@ -152,7 +152,7 @@ Before generating questions, scan the inventory to determine which questions app
 | Q12b — Containerization status       | Always                                                           | Never                                     |
 | Q12c — Compute target recommendation | Always                                                           | Never                                     |
 | Q12d — EB deploy method              | **Deferred to Generate** — defaulted here when the Q12c plan includes EB, asked at [C] Generate | All-Fargate/EKS plan, or never asked in Clarify |
-| Q12e — Release strategy              | Q12c plan routes a `web` formation to Fargate AND `dns_strategy` is `external` | No Fargate web formation, or `dns_strategy` is `route53` (standard ECS forced) |
+| Q12e — Release strategy              | Q12c plan routes a `web` formation to Fargate AND `dns_strategy` is `external` AND no Private Space | No Fargate web formation, or `dns_strategy` is `route53`, or a Private Space is detected (standard ECS forced) |
 | Q12 — Container registry             | Always                                                           | Never                                     |
 | Q13 — Log retention                  | Always                                                           | Never                                     |
 | Q14 — Alerting preference            | Always                                                           | Never                                     |
@@ -746,7 +746,7 @@ Validate: must be valid ISO 8601 date, must be in the future.
 
 #### Q12e — Release Strategy for Fargate Web Formations
 
-> _Fires when the resolved Q12c plan routes at least one `web` formation to `ecs-fargate` AND `dns_strategy` is `"external"`. Skipped (defaulted to `canary`) when no web formation lands on Fargate; skipped as N/A when `dns_strategy` is `"route53"`, because the generated Route 53 cutover needs a Terraform-owned ALB and that already forces standard ECS services._
+> _Fires when the resolved Q12c plan routes at least one `web` formation to `ecs-fargate` AND `dns_strategy` is `"external"`. Skipped (defaulted to `canary`) when no web formation lands on Fargate; skipped as N/A when `dns_strategy` is `"route53"`, because the generated Route 53 cutover needs a Terraform-owned ALB and that already forces standard ECS services, and when a Private Space is detected, because its restricted inbound rules keep tasks in private subnets behind a Terraform-owned ALB (`design-mapping.md` 2A `private_space`)._
 
 Ask:
 

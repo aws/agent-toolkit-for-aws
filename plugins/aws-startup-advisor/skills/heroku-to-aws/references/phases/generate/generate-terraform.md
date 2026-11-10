@@ -699,7 +699,7 @@ resource "aws_route_table_association" "private" {
 **VPC rules:**
 
 - Always use at least 2 subnets across separate AZs (per Requirement 9.4)
-- Public subnets host ALBs; private subnets host Fargate, databases, caches, and messaging
+- Public subnets host ALBs; private subnets host Fargate, databases, caches, and messaging. The one exception is an ECS Express Mode web formation (`ecs_mode == "express"`), whose tasks sit in the public subnets because Express Mode derives the internet-facing ALB scheme from them (Step 6 Express Mode rules)
 - Single NAT gateway for cost optimization (user can expand for HA post-apply)
 
 ---
@@ -825,6 +825,15 @@ resource "aws_security_group" "app" {
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
     description     = "Traffic from Terraform-managed ALB (Fargate path only)"
+  }
+  # {{ENDIF}}
+  # {{IF has_express}}  (any Fargate entry with aws_config.ecs_mode == "express")
+  ingress {
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = [aws_vpc.main.cidr_block]
+    description = "Container port from the Express Mode-managed ALB (lives in this VPC)"
   }
   # {{ENDIF}}
   # For EB-only designs, omit ingress here. EB manages load balancer-to-instance ingress;
@@ -1064,6 +1073,8 @@ resource "aws_iam_role" "ecs_task" {
 
 For each service in `aws-design.json` where `aws_service` is "Fargate" or "ALB":
 
+**Normalize `aws_config.ecs_mode` first.** A Fargate entry with no `ecs_mode` key (a design saved before Express Mode existed, reused by the decide-complete resume path) is treated as `"standard"`: its task definition, `aws_ecs_service`, `load_balancer` block, and ALB entry are emitted exactly as before. Never error on the missing key and never default it to `"express"`. Every `ecs_mode == "standard"` test below is satisfied by an absent key.
+
 ### ECS Cluster
 
 ```hcl
@@ -1176,6 +1187,19 @@ resource "aws_ecs_service" "<app_sanitized>_<process_type>" {
     container_port   = 8080
   }
 
+  # {{IF release_strategy == "blue_green"}}  (web process types only)
+  deployment_controller {
+    type = "CODE_DEPLOY"
+  }
+  deployment_maximum_percent         = 200
+  deployment_minimum_healthy_percent = 100
+
+  lifecycle {
+    # CodeDeploy owns the task definition revision and the active target group after the first apply.
+    ignore_changes = [task_definition, load_balancer]
+  }
+  # {{ENDIF}}
+
   depends_on = [aws_lb_listener.https]
 
   tags = {
@@ -1189,25 +1213,158 @@ resource "aws_ecs_service" "<app_sanitized>_<process_type>" {
 **Service rules:**
 
 - `desired_count` from `aws_config.desired_count` (maps directly from Heroku formation quantity, 0–100)
-- `load_balancer` block included ONLY when `aws_config.load_balancer == true` (web process types) AND `aws_config.ecs_mode == "standard"`; an `express` web formation is emitted by the Express Mode section below instead of this service
+- `load_balancer` block included ONLY when `aws_config.load_balancer == true` (web process types) AND `aws_config.ecs_mode == "standard"` (an absent `ecs_mode` is `standard`); an `express` web formation is emitted by the Express Mode section below instead of this service
 - Workers, clock, and custom processes: omit `load_balancer` block and `depends_on`. Release process types are skipped because they are run-once hooks.
 - `assign_public_ip = false` — tasks run in private subnets behind NAT
+- **Deployment strategy follows `preferences.design_constraints.release_strategy`** (absent → `canary`). The provider defaults are controller `ECS` with a rolling update, so a non-rolling choice must be emitted, not assumed:
+  - `rolling` → no `deployment_controller` block (controller `ECS`, rolling update). Nothing else to add.
+  - `blue_green` (web process types) → `deployment_controller { type = "CODE_DEPLOY" }` plus the `lifecycle.ignore_changes` above, and the **CodeDeploy blue/green set** below (second target group, test listener, CodeDeploy application, deployment group, and role). The ECS rolling controller is never emitted for a `blue_green` web formation. Workers have no load balancer, so CodeDeploy blue/green does not apply to them: they stay on the rolling controller and `generation-warnings.json` records `"release_strategy blue_green applies to web formations; <app>:<process_type> deploys with a rolling update"`.
+  - `canary` on a **standard** web formation (Express Mode was ruled out by `ecs_mode_reason`, e.g. `route53_cutover`, `task_size`, `private_space`) → the service deploys with the rolling controller, and `generation-warnings.json` records `"<app>:web requested canary releases; Express Mode was not selected (<ecs_mode_reason>), so the standard ECS service deploys with a rolling update"`. The README's compute section repeats that line. A canary request is never silently downgraded.
+
+**CodeDeploy blue/green set (`release_strategy == "blue_green"`, standard web formations only):**
+
+```hcl
+# Blue/green — <heroku_app>:web (release_strategy == "blue_green")
+resource "aws_lb_target_group" "<app_sanitized>_web_green" {
+  name        = "${var.project_name}-${var.environment}-tg-green"
+  port        = 8080
+  protocol    = "HTTP"
+  vpc_id      = <vpc_id_reference>
+  target_type = "ip"
+
+  health_check {
+    enabled             = true
+    healthy_threshold   = 3
+    unhealthy_threshold = 3
+    timeout             = 5
+    interval            = 30
+    path                = "/"
+    matcher             = "200-399"
+  }
+}
+
+resource "aws_lb_listener" "test" {
+  load_balancer_arn = aws_lb.<app_sanitized>_web.arn
+  port              = 8443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = <same certificate reference as aws_lb_listener.https below>
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.<app_sanitized>_web_green.arn
+  }
+}
+
+resource "aws_iam_role" "codedeploy_ecs" {
+  name = "${var.project_name}-${var.environment}-codedeploy-ecs"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "codedeploy.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "codedeploy_ecs" {
+  role       = aws_iam_role.codedeploy_ecs.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSCodeDeployRoleForECS"
+}
+
+resource "aws_codedeploy_app" "<app_sanitized>_web" {
+  compute_platform = "ECS"
+  name             = "${var.project_name}-${var.environment}-web"
+}
+
+resource "aws_codedeploy_deployment_group" "<app_sanitized>_web" {
+  app_name               = aws_codedeploy_app.<app_sanitized>_web.name
+  deployment_group_name  = "${var.project_name}-${var.environment}-web"
+  service_role_arn       = aws_iam_role.codedeploy_ecs.arn
+  deployment_config_name = "CodeDeployDefault.ECSAllAtOnce"
+
+  deployment_style {
+    deployment_option = "WITH_TRAFFIC_CONTROL"
+    deployment_type   = "BLUE_GREEN"
+  }
+
+  blue_green_deployment_config {
+    deployment_ready_option {
+      action_on_timeout = "CONTINUE_DEPLOYMENT"
+    }
+    terminate_blue_instances_on_deployment_success {
+      action                           = "TERMINATE"
+      termination_wait_time_in_minutes = 5
+    }
+  }
+
+  auto_rollback_configuration {
+    enabled = true
+    events  = ["DEPLOYMENT_FAILURE"]
+  }
+
+  ecs_service {
+    cluster_name = aws_ecs_cluster.main.name
+    service_name = aws_ecs_service.<app_sanitized>_web.name
+  }
+
+  load_balancer_info {
+    target_group_pair_info {
+      prod_traffic_route {
+        listener_arns = [aws_lb_listener.https.arn]
+      }
+      test_traffic_route {
+        listener_arns = [aws_lb_listener.test.arn]
+      }
+      target_group {
+        name = aws_lb_target_group.<app_sanitized>_web.name
+      }
+      target_group {
+        name = aws_lb_target_group.<app_sanitized>_web_green.name
+      }
+    }
+  }
+
+  depends_on = [aws_iam_role_policy_attachment.codedeploy_ecs]
+}
+```
+
+The ALB security group must also admit 8443 from the operator's CIDR (not `0.0.0.0/0`) when the test listener is emitted; the README's "Deploying with CodeDeploy" note tells the user that image updates go through `aws deploy create-deployment` with an `appspec.yaml`, not `terraform apply`.
 
 ### Express Mode web services (`aws_config.ecs_mode == "express"`)
 
-For a Fargate entry with `aws_config.ecs_mode == "express"`, emit the following **instead of** the task definition, `aws_ecs_service`, and ALB resources above (the log group and IAM roles are still emitted):
+For a Fargate entry with `aws_config.ecs_mode == "express"`, emit the following **instead of** the task definition, `aws_ecs_service`, and ALB resources above (the log group and the `ecs_execution` / `ecs_task` IAM roles from Step 5 are still emitted). Every reference below resolves to a resource this skill emits: the infrastructure role carries its own inline `jsonencode` trust policy like the other ECS roles in Step 5 (there is no `data.aws_iam_policy_document.ecs_assume` in this skill), the task security group is `aws_security_group.app` from Step 5 (there is no `aws_security_group.ecs_tasks`), and the infrastructure role's managed policy is the documented `service-role/` ARN.
 
 ```hcl
 # ECS Express Mode — <heroku_app>:web
 # Heroku source: <dyno_type> dyno, quantity <desired_count>
 resource "aws_iam_role" "ecs_infrastructure_express" {
-  name               = "${var.project_name}-${var.environment}-ecs-express-infra"
-  assume_role_policy = data.aws_iam_policy_document.ecs_assume.json   # trusts ecs.amazonaws.com
+  name = "${var.project_name}-${var.environment}-ecs-express-infra"
+
+  # Express Mode's infrastructure role is assumed by the ECS service principal, not ecs-tasks.
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "ecs.amazonaws.com"
+      }
+    }]
+  })
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-ecs-express-infra"
+  }
 }
 
 resource "aws_iam_role_policy_attachment" "ecs_infrastructure_express" {
   role       = aws_iam_role.ecs_infrastructure_express.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonECSInfrastructureRoleforExpressGatewayServices"
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSInfrastructureRoleforExpressGatewayServices"
 }
 
 resource "aws_ecs_express_gateway_service" "<app_sanitized>_web" {
@@ -1230,13 +1387,20 @@ resource "aws_ecs_express_gateway_service" "<app_sanitized>_web" {
   }
 
   network_configuration {
-    subnets         = <private_subnet_references>   # private subnets -> internal ALB; use public subnets for an internet-facing endpoint
-    security_groups = [aws_security_group.ecs_tasks.id]
+    # Express Mode derives the ALB scheme from the subnets: public subnets -> internet-facing ALB
+    # and public task IPs; private subnets -> internal ALB. A Heroku web dyno is internet-facing,
+    # so an Express web formation uses the PUBLIC subnets (the one documented exception to the
+    # private-subnet rule — see Express Mode rules). Private Space designs never reach this block.
+    subnets         = <public_subnet_references>
+    security_groups = [aws_security_group.app.id]
   }
 
   scaling_target {
-    min_task_count            = <aws_config.desired_count>
-    max_task_count            = <max(aws_config.desired_count * 2, 2)>
+    # 0 while var.writers_quiesced is true, the same freeze the standard aws_ecs_service applies
+    # through desired_count. Both bounds go to 0 so target tracking cannot scale the service back
+    # out during a Phase 6 failback, and a later apply keeps it at 0.
+    min_task_count            = var.writers_quiesced ? 0 : <aws_config.desired_count>
+    max_task_count            = var.writers_quiesced ? 0 : <max(aws_config.desired_count * 2, 2)>
     auto_scaling_metric       = "AVERAGE_CPU"
     auto_scaling_target_value = 60
   }
@@ -1259,8 +1423,10 @@ output "<app_sanitized>_web_endpoint" {
 
 - Requires `hashicorp/aws ~> 6.71` in `main.tf` (`aws_ecs_express_gateway_service` from 6.23.0, `cpu_architecture` from 6.71.0; a `~> 5.80` pin cannot select it, so Step 1 must switch the pin when this section emits). `cpu` must be 256–4096 and `memory` 512–8192; Design already routes larger tasks to `standard`.
 - No `aws_lb`, target group, or listener is emitted for this service — Express Mode provisions and manages them (one ALB shared by up to 25 Express services per VPC). Deployments are canary; `release_strategy` other than `canary` means Design chose `standard`.
-- A custom domain is not wired by Terraform here. `dns_strategy == "route53"` forces `standard` at Design time so `dns.tf` keeps a Terraform-owned ALB to alias.
-- The ALB security group is created by Express Mode; keep the task security group's ingress open to the VPC CIDR on the container port, or let Express Mode create the service security group by omitting `security_groups`.
+- A custom domain is not wired by Terraform here. `dns_strategy == "route53"` forces `standard` at Design time so `dns.tf` keeps a Terraform-owned ALB to alias. For `external` DNS the guide's manual branch (`generate-docs.md` Phase 5, `target_kind == "express"`) adds the hostname and certificate to the Express listener and CNAMEs the hostname to the `<app_sanitized>_web_endpoint` host.
+- **Writer freeze:** `scaling_target.min_task_count` and `max_task_count` are `var.writers_quiesced ? 0 : …`, so the Express service honors the same `writers_quiesced` variable as the standard `aws_ecs_service` and stays at 0 across later applies until the variable is set back to `false`.
+- **Subnets and scheme ([Express Mode network defaults](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html#express-service-network-defaults)):** public subnets give an internet-facing ALB with `assignPublicIp` on the tasks; private subnets give an internal ALB. Heroku web dynos are internet-facing, so the Express block places tasks in the **public** subnets. This is the single accepted deviation from the `tf-best-practices` "Fargate tasks run in private subnets" rule: ingress to the task is still only the Express-created ALB security group on port 8080, and the deviation is recorded in `generation-warnings.json` (`"<app>:web — ECS Express Mode places tasks in public subnets to provision an internet-facing ALB"`) and the README. A design whose web tasks must stay in private subnets (Private Space, § 3D restricted inbound rules) is `standard` at Design time (`ecs_mode_reason: "private_space"`), never Express.
+- The ALB security group is created by Express Mode. `aws_security_group.app` is passed as the task security group so the database, cache, and messaging SGs that already admit `aws_security_group.app` keep working; when any Express entry exists, Step 5 adds one ingress rule to `aws_security_group.app` for port 8080 from the VPC CIDR (`aws_vpc.main.cidr_block`) so the Express-managed ALB can reach the tasks.
 
 ### Application Load Balancer (standard-mode web process types only)
 
@@ -2553,6 +2719,8 @@ If every service mapped successfully, still write the file with an empty
 - Amazon MQ (CloudAMQP mapping)
 - Amazon OpenSearch (Bonsai Elasticsearch mapping)
 - S3 + CloudFront composite (Cloudinary mapping)
+- ECS Express Mode web formation placed in public subnets for an internet-facing ALB (Step 6 Express Mode rules — `recommendation`: "Documented Express Mode topology; keep tasks private by selecting a standard ECS service if this is not acceptable")
+- Standard web formation whose `release_strategy` is `canary` (Express Mode ruled out by `ecs_mode_reason`) or a worker under `blue_green` — deploys with a rolling update (Step 6 Service rules)
 
 **Exception:** If `aws_service == "CloudWatch Logs"` and it maps from a logging add-on (Papertrail, Rollbar, Sentry), the log group is already emitted in `compute.tf` Step 6. Do NOT log a warning for this case.
 
