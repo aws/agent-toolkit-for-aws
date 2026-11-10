@@ -88,6 +88,9 @@ def test_default_anthropic_messages_lands_on_runtime_messages():
 
 
 def test_cost_priority_with_workspaces_selector_uses_clean_mantle_haiku_id():
+    # Haiku 5.5 is the fast/low-cost tier, but the model card lists bedrock-mantle for it only in
+    # us-gov-west-1. In us-east-1 the Messages path (selected here by the workspaces selector)
+    # therefore falls to Haiku 4.5, the Batch-listed explicit alternative, rather than to Sonnet 5.
     rec = _recommend(
         _workload(requirements={"priority": "cost", "mantle_selector": "workspaces"})
     )
@@ -97,6 +100,10 @@ def test_cost_priority_with_workspaces_selector_uses_clean_mantle_haiku_id():
     assert rec["invocation_model_id"] == "anthropic.claude-haiku-4-5"
     assert rec["model_identity"]["requires_cris"] is False
     assert rec["mantle_selector"] == "workspaces"
+    # Haiku 5.5 may still appear as a runtime_converse alternative; it must not be a Mantle option here.
+    assert not any(
+        o["model_key"] == "claude_haiku_5_5" and o["api_path"] == "mantle_messages" for o in rec["alternatives"]
+    )
 
 
 # background_inference (Responses-only) and projects (OpenAI-only) are decisions below.
@@ -191,6 +198,51 @@ def test_mantle_selectors_match_the_input_schema_enum():
     assert list(anthropic_model_recommendation.MANTLE_SELECTORS) == enum
     with pytest.raises(ValueError, match="unsupported mantle_selector"):
         _recommend(_workload(requirements={"mantle_selector": "because"}))
+
+
+
+
+def test_cost_priority_on_messages_in_govcloud_selects_haiku_5_5():
+    # Messages is selected by a verified selector; cost priority alone stays on bedrock-runtime.
+    inp = _input(_workload(requirements={"priority": "cost", "mantle_selector": "workspaces"}))
+    inp["region"] = "us-gov-west-1"
+    rec = model_recommendation.recommend(inp)["workloads"]["support-agent"]
+    assert rec["api_path"] == "mantle_messages"
+    assert rec["primary_model"] == "anthropic.claude-haiku-5-5"
+
+
+def test_cost_priority_on_runtime_selects_haiku_5_5_via_profile():
+    rec = _recommend(
+        _workload(requirements={"priority": "cost", "governance": ["guardrails"], "data_residency": "global_allowed"})
+    )
+    assert rec["api_path"] == "runtime_converse"
+    assert rec["model_identity"]["model_key"] == "claude_haiku_5_5"
+    assert rec["invocation_model_id"] == "global.anthropic.claude-haiku-5-5"
+    geo = _recommend(
+        _workload(requirements={"priority": "cost", "governance": ["guardrails"],
+                                "data_residency": "geo_required", "cris_geography": "us"})
+    )
+    assert geo["invocation_model_id"] == "us.anthropic.claude-haiku-5-5"
+
+
+def test_govcloud_runtime_does_not_receive_a_global_haiku_profile():
+    # Global profiles are unavailable in GovCloud; the us. Geo profile covers us-gov-* source Regions.
+    inp = _input(_workload(requirements={"priority": "cost", "governance": ["guardrails"], "data_residency": "global_allowed"}))
+    inp["region"] = "us-gov-west-1"
+    rec = model_recommendation.recommend(inp)["workloads"]["support-agent"]
+    assert rec["model_identity"]["model_key"] == "claude_haiku_5_5"
+    assert rec["invocation_model_id"] != "global.anthropic.claude-haiku-5-5"
+
+
+def test_haiku_5_5_batch_remediation_names_the_selected_model_not_opus():
+    rec = _recommend(
+        _workload(requirements={"priority": "cost", "governance": ["guardrails"]}, detected_features=["message_batches"])
+    )
+    assert rec["model_identity"]["model_key"] == "claude_haiku_5_5"
+    finding = next(f for f in rec["blocks"] if f["code"] == "message_batches_not_portable")
+    assert "Claude Haiku 5.5 does not support Bedrock Batch" in finding["remediation"]
+    assert "Opus" not in finding["remediation"]
+    assert "Claude Haiku 4.5" in finding["remediation"]
 
 
 def test_governance_selects_runtime_converse_when_messages_is_a_preference():
@@ -445,34 +497,36 @@ def test_native_payload_selects_runtime_invoke():
 
 
 def test_context_and_output_limits_filter_candidates():
-    rec = _recommend(
-        _workload(
-            requirements={
-                "priority": "cost",
-                "min_context_tokens": 1000000,
-                "expected_output_tokens": 100000,
-            }
-        )
-    )
-
-    assert rec["model_identity"]["model_key"] == "claude_sonnet_5"
-    assert all(
-        option["model_key"] != "claude_haiku_4_5"
-        for option in rec["alternatives"]
-    )
+    limits = {"priority": "cost", "min_context_tokens": 1000000, "expected_output_tokens": 100000}
+    # Default path is bedrock-runtime: Haiku 5.5 (1M / 128K) satisfies the limits and is the
+    # fast/low-cost tier, while Haiku 4.5 (200K / 64K) is filtered out.
+    rec = _recommend(_workload(requirements=limits))
+    assert rec["api_path"].startswith("runtime_")
+    assert rec["model_identity"]["model_key"] == "claude_haiku_5_5"
+    assert all(option["model_key"] != "claude_haiku_4_5" for option in rec["alternatives"])
+    # On Mantle (selected by a verified selector) in us-east-1 Haiku 5.5 is not served, and
+    # Haiku 4.5 is filtered by the limits, so the cost order lands on Sonnet 5 (1M / 128K).
+    mantle = _recommend(_workload(requirements={**limits, "mantle_selector": "workspaces"}))
+    assert mantle["api_path"] == "mantle_messages"
+    assert mantle["model_identity"]["model_key"] == "claude_sonnet_5"
+    assert all(option["model_key"] != "claude_haiku_4_5" for option in mantle["alternatives"])
 
 
 def test_thinking_requirement_filters_haiku():
-    rec = _recommend(
-        _workload(
-            requirements={
-                "priority": "cost",
-                "thinking_enabled": True,
-            }
-        )
+    # Default path is bedrock-runtime: Haiku 5.5 has extended_thinking and is the cost tier;
+    # Haiku 4.5 has no extended_thinking and is excluded.
+    rec = _recommend(_workload(requirements={"priority": "cost", "thinking_enabled": True}))
+    assert rec["api_path"].startswith("runtime_")
+    assert rec["model_identity"]["model_key"] == "claude_haiku_5_5"
+    assert all(option["model_key"] != "claude_haiku_4_5" for option in rec["alternatives"])
+    # On Mantle in us-east-1 Haiku 5.5 is not served and Haiku 4.5 has no extended_thinking,
+    # so thinking_enabled lands on Sonnet 5; the Haiku 4.5 exclusion is the real check.
+    mantle = _recommend(
+        _workload(requirements={"priority": "cost", "thinking_enabled": True, "mantle_selector": "workspaces"})
     )
-
-    assert rec["model_identity"]["model_key"] == "claude_sonnet_5"
+    assert mantle["api_path"] == "mantle_messages"
+    assert mantle["model_identity"]["model_key"] == "claude_sonnet_5"
+    assert all(option["model_key"] != "claude_haiku_4_5" for option in mantle["alternatives"])
 
 
 def test_source_version_hop_requires_explicit_feature_scan():
@@ -597,9 +651,9 @@ def test_agent_features_produce_architecture_and_trajectory_requirements():
         ),
         (
             {
-                "inference_profile_id": "arn:aws:bedrock:us-east-1:123:inference-profile/custom"
+                "inference_profile_id": "arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-sonnet-5"
             },
-            "arn:aws:bedrock:us-east-1:123:inference-profile/custom",
+            "arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-sonnet-5",
         ),
     ],
 )
@@ -610,6 +664,57 @@ def test_runtime_cris_resolution(requirements, expected):
     assert rec["api_path"] == "runtime_converse"
     assert rec["invocation_model_id"] == expected
     assert rec["verification"]["invocation_model_id"] == expected
+
+
+@pytest.mark.parametrize(
+    "pin,requirements",
+    [
+        # Global profile under US-only residency: Sonnet 5 has no profile matrix, but the
+        # geography constraint must still reject the pin.
+        (
+            "global.anthropic.claude-sonnet-5",
+            {"data_residency": "geo_required", "cris_geography": "us"},
+        ),
+        # EU profile under US-only residency.
+        (
+            "eu.anthropic.claude-sonnet-5",
+            {"data_residency": "geo_required", "cris_geography": "us"},
+        ),
+        # Profile for another model.
+        ("us.anthropic.claude-opus-4-1", {}),
+        # Right model, wrong region in the ARN.
+        (
+            "arn:aws:bedrock:eu-west-1:123456789012:inference-profile/eu.anthropic.claude-sonnet-5",
+            {},
+        ),
+        # Wrong partition for us-east-1.
+        (
+            "arn:aws-us-gov:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-sonnet-5",
+            {},
+        ),
+        # Not a system profile id at all.
+        ("arn:aws:bedrock:us-east-1:123456789012:inference-profile/custom", {}),
+    ],
+)
+def test_explicit_pin_on_matrixless_model_still_validates_identity_region_and_geography(
+    pin, requirements
+):
+    requirements = {**requirements, "governance": ["guardrails"], "inference_profile_id": pin}
+    rec = _recommend(_workload(requirements=requirements))
+    assert rec["api_path"] == "runtime_converse"
+    assert rec["invocation_model_id"] is None
+    assert "inference_profile_unresolved" in _codes(rec["blocks"])
+
+
+def test_explicit_pin_on_matrixless_model_is_kept_when_it_matches():
+    requirements = {
+        "governance": ["guardrails"],
+        "data_residency": "geo_required",
+        "cris_geography": "us",
+        "inference_profile_id": "us.anthropic.claude-sonnet-5",
+    }
+    rec = _recommend(_workload(requirements=requirements))
+    assert rec["invocation_model_id"] == "us.anthropic.claude-sonnet-5"
 
 
 # The intended treatment of every provider the input schema allows, written here rather than derived
@@ -706,7 +811,11 @@ def test_input_and_output_match_schemas():
 def test_catalog_records_path_specific_ids_and_limits():
     catalog = model_recommendation.load_catalog()
 
-    assert catalog["verified_at"] == "2026-09-24"
+    assert catalog["verified_at"] == "2026-11-09"
+    assert catalog["models"]["claude_haiku_5_5"]["paths"]["mantle_messages"]["model_id"] == "anthropic.claude-haiku-5-5"
+    assert catalog["models"]["claude_haiku_5_5"]["paths"]["runtime_converse"]["requires_cris"] is True
+    assert catalog["models"]["claude_haiku_5_5"]["context_window"] == 1000000
+    assert "extended_thinking" in catalog["models"]["claude_haiku_5_5"]["capabilities"]
     assert catalog["verified_region"] == "us-east-1"
     assert (
         catalog["models"]["claude_sonnet_5"]["paths"]["mantle_messages"][
@@ -749,3 +858,59 @@ def test_current_catalog_readers_match_engine_defaults(relative_path):
         frontmatter = text.split("---", 2)[1]
         loaded = set(re.findall(r"\bfile:\s*references/vendored/ai/models/(" + catalog_pattern + r")", frontmatter))
         assert loaded == expected
+
+
+# --- review on #600, round 2: explicit profile pin, Canadian geography ----------------------
+
+
+def test_explicit_haiku_4_5_profile_pin_is_preserved_over_the_ranked_haiku_5_5():
+    rec = _recommend(
+        _workload(
+            requirements={
+                "priority": "cost",
+                "governance": ["guardrails"],
+                "inference_profile_id": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            }
+        )
+    )
+    assert rec["model_identity"]["model_key"] == "claude_haiku_4_5"
+    assert rec["invocation_model_id"] == "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    assert "inference_profile_unresolved" not in _codes(rec["blocks"])
+
+
+def test_unpinned_cost_runtime_still_defaults_to_haiku_5_5():
+    rec = _recommend(
+        _workload(requirements={"priority": "cost", "governance": ["guardrails"], "data_residency": "global_allowed"})
+    )
+    assert rec["model_identity"]["model_key"] == "claude_haiku_5_5"
+
+
+def test_profile_pin_matching_no_candidate_is_still_rejected():
+    rec = _recommend(
+        _workload(
+            requirements={
+                "priority": "cost",
+                "governance": ["guardrails"],
+                "inference_profile_id": "eu.anthropic.claude-haiku-5-5",
+            }
+        )
+    )
+    # eu. is not a Haiku 5.5 profile reachable from us-east-1 and names no other candidate; blocker stays.
+    assert rec["model_identity"]["model_key"] == "claude_haiku_5_5"
+    assert rec["invocation_model_id"] is None
+    assert "inference_profile_unresolved" in _codes(rec["blocks"])
+
+
+def test_canadian_geography_validates_and_resolves_the_ca_profile():
+    for region in ("ca-central-1", "ca-west-1"):
+        inp = _input(
+            _workload(
+                requirements={"priority": "cost", "governance": ["guardrails"],
+                              "data_residency": "geo_required", "cris_geography": "ca"}
+            )
+        )
+        inp["region"] = region
+        rec = model_recommendation.recommend(inp)["workloads"]["support-agent"]  # validates against the input schema
+        assert rec["model_identity"]["model_key"] == "claude_haiku_5_5"
+        assert rec["invocation_model_id"] == "ca.anthropic.claude-haiku-5-5", region
+

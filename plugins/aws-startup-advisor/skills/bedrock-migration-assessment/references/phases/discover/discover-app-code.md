@@ -330,6 +330,7 @@ When agents use more than one framework, set `framework` to the one with the mos
 - **`transport`**: `mcp` for a tool served by an MCP server (one entry per server, named after the server); `a2a` for an A2A client; `api` when the tool body makes an HTTP request (`requests`, `httpx`, `aiohttp`, `fetch`) or calls a cloud SDK; `function` for a local function without either; `other` when the implementation is in another package and cannot be read.
 - **`auth_hint`**: `api_key`, `oauth`, or `iam` from the names the tool's code uses (an `os.environ["…_API_KEY"]` name, an `Authorization` or `x-api-key` header, `client_id`/`client_secret`, `boto3`); `none` when its code uses none of them; omitted when its implementation cannot be read. Never copy a key, token, or header value. Do not open MCP config files (`.mcp.json`, `mcp.json`, and similar), which often hold tokens: record only MCP servers created in code (for example `MCPServerStdio(name=…)` or `MultiServerMCPClient({…})`), and name servers that only a config file defines in the summary.
 - **`used_by_agents`**: the `agent_id` of every recorded agent that uses it.
+
 ## Step 4.8: Mantle-only selector signals
 
 A few provider capabilities decide the target endpoint later (`skills/shared/ai/bedrock-endpoint-policy.md`, § How a selector is learned). Five of them are visible in code. For every call site whose model was observed in Step 4, scan the call arguments, the client construction that the call site uses, and any request headers for the constructs below. Active (non-commented) code only.

@@ -1046,7 +1046,7 @@ def test_gpt6_unsupported_geo_profile_falls_back_without_fabricated_id(
 
 
 def test_active_catalog_contains_gpt6_profile_metadata_and_current_provenance():
-    assert OPENAI_CATALOG["verified_at"] == "2026-09-24"
+    assert OPENAI_CATALOG["verified_at"] == "2026-11-09"
     for model_key, _ in _GPT6_MODELS:
         catalog_key = oai._SOURCE_MODEL_KEYS[model_key]
         assert set(OPENAI_CATALOG["models"][catalog_key]["inference_profiles"]) == {
@@ -1897,7 +1897,8 @@ def test_tier_map_luna_source_maps_to_haiku_on_converse():
     from openai_model_recommendation import _converse_candidate_order
     order = _converse_candidate_order({"model_ids": ["gpt-5.6-luna"]})
     assert order[0] == "openai_gpt_5_6_luna"
-    assert order[1] == "anthropic_claude_haiku_4_5"
+    assert order[1] == "anthropic_claude_haiku_5_5"
+    assert order[-1] == "anthropic_claude_haiku_4_5"  # explicit alternative, never first
 
 def test_tier_map_terra_and_55_sources_keep_themselves_on_converse():
     # Terra (5.6) and GPT-5.5 are recognized same-model identities with a cataloged
@@ -2573,3 +2574,83 @@ def test_gpt54_chat_source_with_structured_output_does_not_claim_it_on_gpt54_cha
     if rec["decision_status"] == "recommended":
         row = OPENAI_CATALOG["models"][rec["model_identity"]["model_key"]]["paths"]["runtime_openai_chat"]
         assert "structured_output_json" in row["capabilities"]
+
+
+# --- Haiku 5.5 as the Luna Converse fallback: profiles, sampling (review on #600) --------------
+
+
+def test_luna_governance_global_allowed_resolves_a_haiku_5_5_profile():
+    # inference_profiles must hold SOURCE regions, not profile ids: with governance, vision and
+    # worldwide routing allowed in us-east-1, the Converse fallback is Haiku 5.5 on its Global profile.
+    rec = _recommend(
+        _workload(
+            source={"model_ids": ["gpt-5.6-luna"]},
+            requirements={"governance": ["guardrails"], "critical_features": ["image_input_vision"],
+                          "data_residency": "global_allowed"},
+        ),
+        region="us-east-1",
+    )
+    assert rec["primary_model"].endswith("anthropic.claude-haiku-5-5")
+    assert rec["invocation_model_id"] == "global.anthropic.claude-haiku-5-5"
+
+
+def test_luna_governance_eu_residency_resolves_the_eu_haiku_profile():
+    rec = _recommend(
+        _workload(
+            source={"model_ids": ["gpt-5.6-luna"]},
+            requirements={"governance": ["guardrails"], "critical_features": ["image_input_vision"],
+                          "data_residency": "geo_required", "cris_geography": "eu"},
+        ),
+        region="eu-west-1",
+    )
+    assert rec["primary_model"].endswith("anthropic.claude-haiku-5-5")
+    assert rec["invocation_model_id"] == "eu.anthropic.claude-haiku-5-5"
+
+
+def test_haiku_5_5_fallback_removes_sampling_instead_of_moving_it_to_converse():
+    rec = _recommend(
+        _workload(
+            source={"model_ids": ["gpt-5.6-luna"]},
+            requirements={"governance": ["guardrails"], "critical_features": ["image_input_vision"],
+                          "data_residency": "global_allowed"},
+            detected_features=["sampling_params"],
+        ),
+        region="us-east-1",
+    )
+    assert rec["primary_model"].endswith("anthropic.claude-haiku-5-5")
+    assert "sampling_parameters_removed" in _codes(rec["blocks"])
+    assert "sampling_via_converse" not in _codes(rec["tuning"])
+
+
+def test_haiku_5_5_sampling_removal_does_not_claim_thinking_is_required():
+    rec = _recommend(
+        _workload(
+            source={"model_ids": ["gpt-5.6-luna"]},
+            requirements={"governance": ["guardrails"], "critical_features": ["image_input_vision"],
+                          "data_residency": "global_allowed", "thinking_enabled": False},
+            detected_features=["sampling_params"],
+        ),
+        region="us-east-1",
+    )
+    assert rec["primary_model"].endswith("anthropic.claude-haiku-5-5")
+    finding = next(f for f in rec["blocks"] if f["code"] == "sampling_parameters_removed")
+    assert "required thinking mode" not in finding["description"] if "description" in finding else True
+    text = " ".join(str(v) for v in finding.values())
+    assert "required thinking mode" not in text
+    assert "disable thinking" not in text
+    assert "Remove temperature/top_p/top_k" in finding["remediation"]
+
+
+def test_opus_5_5_sampling_removal_keeps_the_always_on_thinking_wording():
+    # Opus 5.5 (adaptive_thinking_only) keeps the "do not disable thinking" instruction; Haiku 5.5 does not.
+    opus = OPENAI_CATALOG["models"]["anthropic_claude_opus_5_5"]
+    haiku = OPENAI_CATALOG["models"]["anthropic_claude_haiku_5_5"]
+    source = {"model_ids": ["gpt-5.6-luna"], "provider": "openai"}
+    blocks, _, _ = oai._reasoning_findings(source, {}, opus, "runtime_converse", ["sampling_params"])
+    opus_finding = next(f for f in blocks if f["code"] == "sampling_parameters_removed")
+    assert "do not rescale them or disable thinking" in opus_finding["remediation"]
+    blocks, _, _ = oai._reasoning_findings(source, {}, haiku, "runtime_converse", ["sampling_params"])
+    haiku_finding = next(f for f in blocks if f["code"] == "sampling_parameters_removed")
+    assert "disable thinking" not in haiku_finding["remediation"]
+    assert "required thinking mode" not in " ".join(str(v) for v in haiku_finding.values())
+
