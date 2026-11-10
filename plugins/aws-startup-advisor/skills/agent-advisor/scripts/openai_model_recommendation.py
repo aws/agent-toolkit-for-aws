@@ -118,10 +118,12 @@ _HOSTED_TOOL_IMPACTS = {
 # Converse tier map: a governance workload keeps its capability tier when moving
 # from the (Mantle-only) GPT-5.x family to Claude on runtime Converse.
 #   GPT-5.6 Sol (frontier)      -> Claude Opus 5.5
-#   GPT-5.6 Terra / 5.5 / 5.4   -> Claude Sonnet 5 (also the default tier)
+#   GPT-5.6 Terra / 6.1 Terra / 5.5 / 5.4 -> Claude Sonnet 5.5 (also the default tier; Sonnet 5
+#                                  follows it as the forced tool_choice / Batch alternative)
 #   GPT-5.6 Luna (fast/low-cost)-> Claude Haiku 5.5 (Haiku 4.5 stays an explicit alternative, last in the order)
-_CONVERSE_TIER_DEFAULT = "anthropic_claude_sonnet_5"
+_CONVERSE_TIER_DEFAULT = "anthropic_claude_sonnet_5_5"
 _CONVERSE_TIER_ORDER = (
+    "anthropic_claude_sonnet_5_5",
     "anthropic_claude_sonnet_5",
     "anthropic_claude_opus_5_5",
     "anthropic_claude_haiku_5_5",
@@ -147,6 +149,7 @@ _SOURCE_MODEL_KEYS = {
     "gpt-6-sol": "openai_gpt_6_sol",
     "gpt-6-luna": "openai_gpt_6_luna",
     "gpt-6.1-sol": "openai_gpt_6_1_sol",
+    "gpt-6.1-terra": "openai_gpt_6_1_terra",
 }
 
 
@@ -442,7 +445,8 @@ def _reasoning_findings(source, requirements, target_model, path, detected_featu
     # Sampling acceptance is a property of the TARGET model and the selected path.
     if target_model and target_model.get("sampling_parameters_supported") is False:
         if target_model.get("adaptive_thinking_only"):
-            # Opus 5.5: thinking is always on, so the controls cannot come back by disabling it.
+            # Opus 5.5 / Sonnet 5.5: thinking is always on, so the controls cannot come back by
+            # disabling it.
             remediation = (
                 "Remove temperature/top_p/top_k from requests to this target; do not rescale them "
                 "or disable thinking. Route user-visible controls through the existing "
@@ -1315,8 +1319,8 @@ def recommend_openai_workload(workload, region, catalog):
         finding = _finding(
             "adaptive_thinking_required",
             "[BLOCKS]" if requirements.get("thinking_enabled") is False else "[TUNE]",
-            "Opus 5.5 always uses adaptive thinking and does not support disabled thinking, manual budgets, or forced any/tool choice.",
-            "Set output_config.effort as needed (default medium), and size max_tokens "
+            f"{anthropic_model_recommendation._short_name(model)} always uses adaptive thinking and does not support disabled thinking, manual budgets, or forced any/tool choice.",
+            f"Set output_config.effort as needed (default {model.get('default_effort', 'medium')}), and size max_tokens "
             "for thinking plus response text. Use auto/none tool choice; a hard forced-tool "
             "requirement needs a verified compatible target. Verify billed usage on the workload.",
         )

@@ -97,11 +97,11 @@ def test_governance_selects_runtime_converse():
     )
     assert rec["decision_status"] == "recommended"
     assert rec["api_path"] == "runtime_converse"
-    assert rec["primary_model"] == "anthropic.claude-sonnet-5"
+    assert rec["primary_model"] == "anthropic.claude-sonnet-5-5"
     assert rec["model_identity"]["display_name"] == (
-        "Claude Sonnet 5 (Converse tier match for GPT-5.6 Terra / 5.5 / 5.4)"
+        "Claude Sonnet 5.5 (Converse tier match for GPT-5.6 Terra / 6.1 Terra / 5.5 / 5.4)"
     )
-    assert rec["model_identity"]["version"] == "5"
+    assert rec["model_identity"]["version"] == "5.5"
 
 
 def test_continuity_plus_runtime_only_returns_decision_required():
@@ -231,7 +231,7 @@ def test_gpt6_unsupported_geo_profile_falls_back_without_fabricated_id(
 
 
 def test_active_catalog_contains_gpt6_profile_metadata_and_current_provenance():
-    assert OPENAI_CATALOG["verified_at"] == "2026-11-09"
+    assert OPENAI_CATALOG["verified_at"] == "2026-11-10"
     for model_key, _ in _GPT6_MODELS:
         catalog_key = oai._SOURCE_MODEL_KEYS[model_key]
         assert set(OPENAI_CATALOG["models"][catalog_key]["inference_profiles"]) == {
@@ -646,7 +646,7 @@ def test_g01_runtime_target_is_not_reported_as_gpt5():
     # A Bedrock-native (Nova) target must not carry target_version gpt-5.x.
     rec = _recommend(_workload(requirements={"governance": ["guardrails"]}))
     assert rec["api_path"] == "runtime_converse"
-    assert rec["source_analysis"]["target_version"] == "5"  # Claude Sonnet 5, not gpt-5.x
+    assert rec["source_analysis"]["target_version"] == "5.5"  # Claude Sonnet 5.5, not gpt-5.x
     assert rec["source_analysis"]["target_version"] != "gpt-5.x"
 
 
@@ -835,7 +835,7 @@ def test_n03_tool_requirement_never_lands_on_unevidenced_nova():
         )
     )
     assert rec["decision_status"] == "recommended"
-    assert rec["primary_model"] == "anthropic.claude-sonnet-5"
+    assert rec["primary_model"] == "anthropic.claude-sonnet-5-5"
     assert "tool_or_function_calling" in rec["compatibility"]["native"]
 
 
@@ -903,7 +903,7 @@ def test_tier_map_terra_and_55_sources_map_to_sonnet_on_converse():
         _workload(source={"model_ids": ["gpt-5.5"]},
                   requirements={"governance": ["guardrails"]})
     )
-    assert rec_55["primary_model"] == "anthropic.claude-sonnet-5"
+    assert rec_55["primary_model"] == "anthropic.claude-sonnet-5-5"
 
 def test_tier_map_falls_back_across_tiers_on_capability_evidence():
     # The capability-evidence fallback mechanism: when the first candidate in the
