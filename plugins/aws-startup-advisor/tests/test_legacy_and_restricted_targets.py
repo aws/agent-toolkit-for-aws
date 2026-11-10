@@ -163,5 +163,21 @@ def test_openai_rows_for_shut_down_sources_carry_the_marker() -> None:
     for model_id, label in OPENAI_SHUT_DOWN.items():
         assert label in by_label, f"no cross-family row {label!r} for {model_id}"
         delta = by_label[label][4]
-        assert "Shut down 2026-10-23" in delta, f"{model_id}: {delta[:80]!r}"
+        assert "Shut down" in delta and "2026-10-23" in delta, f"{model_id}: {delta[:80]!r}"
         assert not re.search(r"Bedrock \d+% cheaper", delta), f"{model_id} still quotes a live delta"
+
+
+def test_gcp_clarify_rows_for_shut_down_sources_quote_no_live_saving() -> None:
+    """(d) gcp-to-aws Clarify Q19 and confirmation-sheet rows for shut-down OpenAI sources say so and quote no live %."""
+    clarify = SKILLS / "gcp-to-aws" / "references" / "phases" / "clarify"
+    rows = []
+    for name in ("clarify-ai.md", "clarify-assemble.md"):
+        for line in (clarify / name).read_text(encoding="utf-8").splitlines():
+            first = line.strip().strip("|").split("|")[0].strip() if line.startswith("|") else ""
+            if first.startswith(("GPT-3.5 Turbo", "GPT-4 / GPT-4 Turbo", "GPT-4 Turbo migration", "o-series")):
+                rows.append((name, first, line))
+    assert len(rows) >= 4, [r[:2] for r in rows]
+    for name, first, line in rows:
+        assert re.search(r"[Ss]hut down", line), f"{name}: {first!r} has no shut-down marker"
+        # o3 is still live until 2026-12-11, so its "source 14% cheaper" figure is allowed; shut-down ids may not carry a saving.
+        assert not re.search(r"(?<!source )\b\d+(?:\.\d+)?% cheaper", line), f"{name}: {first!r} still quotes a live saving"
