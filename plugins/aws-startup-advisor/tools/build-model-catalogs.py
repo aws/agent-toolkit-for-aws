@@ -199,6 +199,9 @@ def render_all(registry: dict) -> dict[str, str]:
         filename = view["catalog"]
         if Path(filename).name != filename:
             raise RegistryError(f"views.{name}.catalog must be a plain file name, got {filename!r}")
+        if filename in out:
+            # Two views writing one file would silently drop the first; fail before writing.
+            raise RegistryError(f"views.{name}.catalog {filename!r} is already rendered by another view")
         catalog = render_view(registry, name)
         _validate_schema(CATALOG_SCHEMA, catalog, f"rendered {filename}")
         out[filename] = json.dumps(catalog, indent=2, ensure_ascii=False) + "\n"

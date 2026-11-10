@@ -196,3 +196,24 @@ def test_write_mode_creates_missing_catalogs_and_check_reports_them(tmp_path, ca
     assert BUILD.main(["--models-dir", str(tmp_path)]) == 0
     for name in ("anthropic-bedrock.json", "openai-bedrock.json"):
         assert (tmp_path / name).read_text() == (MODELS_DIR / name).read_text()
+
+
+def test_duplicate_catalog_filenames_are_rejected():
+    registry = _registry()
+    registry["views"]["anthropic"]["catalog"] = "openai-bedrock.json"
+    with pytest.raises(BUILD.RegistryError, match="already rendered by another view"):
+        BUILD.render_all(registry)
+
+
+@pytest.mark.parametrize("mode", [["--check"], []])
+def test_duplicate_catalog_filename_fails_check_and_write_without_writing(tmp_path, mode):
+    for name in ("bedrock-model-registry.json", "anthropic-bedrock.json", "openai-bedrock.json"):
+        shutil.copy(MODELS_DIR / name, tmp_path / name)
+    registry = json.loads((tmp_path / "bedrock-model-registry.json").read_text())
+    registry["views"]["anthropic"]["catalog"] = "openai-bedrock.json"
+    # Gen's reproduction: a registry change that only the dropped view would render.
+    registry["models"]["claude_opus_5_5"]["paths"]["runtime_invoke"]["available"] = False
+    (tmp_path / "bedrock-model-registry.json").write_text(json.dumps(registry, indent=2) + "\n")
+    before = {n: (tmp_path / n).read_text() for n in ("anthropic-bedrock.json", "openai-bedrock.json")}
+    assert BUILD.main([*mode, "--models-dir", str(tmp_path)]) == 1
+    assert {n: (tmp_path / n).read_text() for n in before} == before
