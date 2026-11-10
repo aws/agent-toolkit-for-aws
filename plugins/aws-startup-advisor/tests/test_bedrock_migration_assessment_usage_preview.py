@@ -181,6 +181,24 @@ def test_merge_adds_usage_models_only_when_the_profile_stays_valid(tmp_path, fix
     assert PREVIEW.validator.validate_profile(merged)["ok"] is True
 
 
+
+def test_merge_keeps_the_verbatim_model_string(tmp_path) -> None:
+    ft = "ft:gpt-4o-mini-2024-07-18:Acme:Support:AbC123"
+    usage = json.loads(_usage(tmp_path).read_text())
+    template = usage["usage_by_model"][0]
+    usage["usage_by_model"] += [{**template, "model": ft}, {**template, "model": ft.lower()}, {**template, "model": "GPT-4o"}]
+    (tmp_path / "u.json").write_text(json.dumps(usage))
+    profile = tmp_path / "p.json"
+    profile.write_text((FIXTURES / "bma-scan-openai-direct/ai-workload-profile.json").read_text())
+    assert USAGE.main(["merge", "--usage", str(tmp_path / "u.json"), "--profile", str(profile)]) == 0
+    merged = json.loads(profile.read_text())
+    openai = next(s for s in merged["ai_sources"] if s["source_service"] == "openai_api")
+    raws = {o["normalized_model"]: o["raw_model"] for o in openai["model_observations"]}
+    assert raws[ft.lower()] == ft and raws["gpt-4o"] == "gpt-4o"
+    assert sum(o["normalized_model"] == ft.lower() for o in openai["model_observations"]) == 1
+    summary = next(s for s in PREVIEW.validator.validate_profile(merged)["ai_sources"] if s["source_service"] == "openai_api")
+    assert {"model": ft.lower(), "raw_model": ft, "high_confidence": True} in summary["models"]
+
 def _caps(**on) -> dict:
     keys = ("text_generation", "streaming", "function_calling", "vision", "embeddings", "batch_processing", "speech_to_text", "text_to_speech", "image_generation")
     return {k: k in on or k == "text_generation" for k in keys}
@@ -229,3 +247,16 @@ def test_discover_and_clarify_wiring() -> None:
     assert "subtract it from the baseline row's `input_tokens` and copy it to" in bedrock
     assert "`cache_write_unsplit`" in bedrock
     assert "\"Not available (the cost request failed)\"" in CONTROLLER
+
+
+def test_resume_rules_apply_only_to_this_skills_runs() -> None:
+    skill = (BMA / "SKILL.md").read_text(encoding="utf-8")
+    step0 = skill[skill.index("## Step 0"):skill.index("## Step 1:")]
+    gate = "Rules 1 to 3 apply only to a run this skill created: the user names an existing `$MIGRATION_DIR` whose `.phase-status.json` has a `migration_id` starting with `bma-` and no `owning_skill`."
+    assert step0.index(gate) < step0.index("1. If that file") < step0.index("4. Otherwise start a new run")
+    assert '"migration_id": "bma-MMDD-HHMM"' in CONTROLLER and "Do not write `owning_skill`" in CONTROLLER
+    others = [p for p in (PLUGIN_ROOT / "skills").rglob("*.md") if BMA not in p.parents]
+    ids = {m for p in others for m in re.findall(r'"migration_id": "([^"]+)"', p.read_text(encoding="utf-8"))}
+    assert ids and not any(i.startswith("bma-") for i in ids), ids
+    gcp = (PLUGIN_ROOT / "skills/gcp-to-aws/references/phases/discover/discover.md").read_text(encoding="utf-8")
+    assert '"owning_skill": "GCP_TO_AWS"' in gcp and '"discover": "in_progress"' in gcp

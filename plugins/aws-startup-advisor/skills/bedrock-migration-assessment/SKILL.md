@@ -30,10 +30,12 @@ Never open `.env*`, private keys, credential files, or other secret files in the
 
 ## Step 0: Resume or start
 
-1. If the user names an existing `$MIGRATION_DIR` whose `.phase-status.json` has `phases.clarify` set to `"in_progress"` or `"completed"`, resume at Clarify. `clarify-ai-only.md` Step 0 handles saved and draft answers. Do not change `run_id`.
+Rules 1 to 3 apply only to a run this skill created: the user names an existing `$MIGRATION_DIR` whose `.phase-status.json` has a `migration_id` starting with `bma-` and no `owning_skill`.
+
+1. If that file has `phases.clarify` set to `"in_progress"` or `"completed"`, resume at Clarify. `clarify-ai-only.md` Step 0 handles saved and draft answers. Do not change `run_id`.
 2. If that file has `phases.discover` set to `"completed"` and `phases.clarify` still `"pending"`, resume at Clarify in the same directory. Keep `run_id` and the profile. Do not scan again.
 3. If that file has `phases.discover` set to `"in_progress"`, resume Discover in that directory. Keep `run_id`. When `ai-workload-profile.json` is already there, load `discover.md` at Step 2c and follow the usage reader's resume rows: `complete` starts at summarize, and `key_invalid_mid_run` or `all_usage_failed` starts at Step 1 intake. When the profile is not there yet, continue Step 2 in that same directory. Do not create a second run directory.
-4. Otherwise start a new run. Never write into a run directory another skill created.
+4. Otherwise start a new run. Never write into a run directory another skill created; if the user named one, say that this skill did not create it and that this run starts fresh.
 
 ## Step 1: Discover
 

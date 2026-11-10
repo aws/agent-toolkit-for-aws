@@ -320,10 +320,12 @@ def cmd_merge(args) -> int:
     profile = json.loads(args.profile.read_text())
     days = usage["metadata"]["window_days"]
     seen: dict[str, int] = {}
+    raw: dict[str, str] = {}
     for row in usage["usage_by_model"]:
         model = row["model"].lower()
         if model != "unknown-model":
             seen[model] = seen.get(model, 0) + row["num_model_requests"]
+            raw.setdefault(model, row["model"])
     if not seen:
         print("NOTHING_TO_MERGE")
         return 0
@@ -340,7 +342,7 @@ def cmd_merge(args) -> int:
         entry = {"provenance": "usage_api", "confidence": "high", "detail": f"OpenAI usage API: {requests} requests in the last {days} days"}
         obs = next((o for o in source["model_observations"] if o["normalized_model"] == model), None)
         if obs is None:
-            source["model_observations"].append({"normalized_model": model, "raw_model": model, "model_family": model_family(model), "evidence": [entry]})
+            source["model_observations"].append({"normalized_model": model, "raw_model": raw[model], "model_family": model_family(model), "evidence": [entry]})
         elif entry not in obs["evidence"]:
             obs["evidence"].append(entry)
     source["model_evidence"] = "observed"
