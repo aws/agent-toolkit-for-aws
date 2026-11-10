@@ -107,7 +107,7 @@
         "multi_az": true,
         "automatic_failover": true,
         "transit_encryption": true,
-        "engine_version": "7.0"
+        "engine_version": "7.2"
       }
     },
     {

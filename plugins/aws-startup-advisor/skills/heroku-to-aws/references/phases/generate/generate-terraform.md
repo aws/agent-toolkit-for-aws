@@ -2107,7 +2107,7 @@ resource "aws_elasticache_parameter_group" "<app_sanitized>_redis" {
 - `transit_encryption_enabled`: Set to `true` if and only if source has encryption-in-transit (`aws_config.transit_encryption == true`)
 - `at_rest_encryption_enabled`: Always `true` (security best practice)
 - `num_cache_clusters`: 2 when Multi-AZ enabled, 1 when single-AZ
-- `engine`: From `aws_config.engine` — `valkey` by default (Redis OSS-compatible, 20% cheaper, Database-SP-eligible); `redis` only when Design recorded that exception
+- `engine`: From `aws_config.engine` — `valkey` by default (Redis OSS-compatible, 20% cheaper, Database-SP-eligible); `redis` only when Design recorded that exception. **Legacy resume:** a saved `aws-design.json` written before this field existed has no `engine`; derive it from the label before applying any rule — `"ElastiCache Redis"` → `engine = "redis"` and keep its `engine_version` (e.g. `7.0`) and `redis<major>` family unchanged; `"ElastiCache Valkey"` → `valkey`. Never drop the cache or switch engines on a design that already passed Estimate; note the derivation in `generation-infra.json`
 - `engine_version`: From `aws_config.engine_version` (a Valkey version such as `7.2` when the engine is Valkey)
 - `family`: `<engine><major>` — `valkey7` for Valkey 7.2, `valkey8` for 8.x, `redis7` for Redis OSS 7.x
 - `node_type`: From `aws_config.node_type` (mapped from Redis Plan Table)

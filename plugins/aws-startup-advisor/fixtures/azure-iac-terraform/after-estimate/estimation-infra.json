@@ -283,7 +283,7 @@
     "per_cluster": [
       {
         "cluster_id": "rg-app-tf-web",
-        "right_sized_monthly": 421.92,
+        "right_sized_monthly": 416.96,
         "is_floor": false,
         "lines": [
           "elastic-beanstalk-web",
@@ -346,7 +346,7 @@
         "note": "Estate-wide, so not attributable to any one cluster. cluster_id is null rather than assigned arbitrarily."
       }
     ],
-    "_per_cluster_note": "Every non-null cluster_id above appears in aws-design.json clusters[]; the design declares five and all five are present. The per-cluster figures plus the unattributed observability line sum to right_sized.monthly (421.92 + 5.00 + 0 + 0 + 0 + 38.17 = 460.13). Three clusters show $0.00 and NONE of them is free — each is a cluster whose every line was excluded, which is why is_floor and the note are required rather than optional."
+    "_per_cluster_note": "Every non-null cluster_id above appears in aws-design.json clusters[]; the design declares five and all five are present. The per-cluster figures plus the unattributed observability line sum to right_sized.monthly (416.96 + 5.00 + 0 + 0 + 0 + 38.17 = 460.13). Three clusters show $0.00 and NONE of them is free — each is a cluster whose every line was excluded, which is why is_floor and the note are required rather than optional."
   },
   "licensing_delta": {
     "fired": true,

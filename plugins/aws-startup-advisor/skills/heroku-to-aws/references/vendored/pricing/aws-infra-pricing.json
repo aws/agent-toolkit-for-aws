@@ -111,8 +111,9 @@
     },
     "_nodes_note": "Re-verified via the AWS Pricing MCP server on 2026-11-09 (AmazonElastiCache, cacheEngine=Valkey, standard on-demand NodeUsage SKUs, excluding SyncDurability and Extended Support SKUs). Every Valkey rate is exactly 0.8x the Redis OSS rate verified 2026-10-05 for the same node type.",
     "engine": "valkey",
-    "_engine_note": "Node rates are ElastiCache for Valkey (cacheEngine=Valkey, standard NodeUsage SKUs, us-east-1). Valkey is the default target engine; Redis OSS node rates are 1.25x these values (Valkey is priced 20% lower). When a design records aws_config.engine = \"redis\", multiply the node rate by redis_oss_multiplier.",
-    "redis_oss_multiplier": 1.25
+    "_engine_note": "Node rates are ElastiCache for Valkey (cacheEngine=Valkey, standard NodeUsage SKUs, us-east-1). Valkey is the default target engine. Redis OSS and Memcached node rates are both 1.25x these values (Valkey is priced 20% lower than either; the Price List returns identical Redis and Memcached NodeUsage rates, e.g. cache.t3.small 0.034, cache.m6g.large 0.149, verified 2026-11-09). When a design records aws_config.engine = \"redis\", multiply by redis_oss_multiplier; for an ElastiCache Memcached entry (Memcachier), multiply by memcached_multiplier.",
+    "redis_oss_multiplier": 1.25,
+    "memcached_multiplier": 1.25
   },
   "msk": {
     "multi_az_handling": "intrinsic",
@@ -224,7 +225,7 @@
       "_basis": "assumes ~3 secrets @ per_secret_month + light API calls"
     },
     "elasticache_memcached": {
-      "_use": "same node rates as elasticache (Memcachier mapping)"
+      "_use": "elasticache.nodes[node_type] x elasticache.memcached_multiplier (1.25) — the node table holds Valkey rates; Memcached NodeUsage rates equal the Redis OSS rates (Memcachier mapping)"
     }
   },
   "cloudwatch": {

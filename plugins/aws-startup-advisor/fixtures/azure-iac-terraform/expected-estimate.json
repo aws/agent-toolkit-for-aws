@@ -37,8 +37,8 @@
       {
         "service_id": "elasticache-redis-session",
         "expected": 19.86,
-        "min": 22.34,
-        "max": 27.3,
+        "min": 17.87,
+        "max": 21.85,
         "basis": "rate_times_count",
         "must_not_be": 39.71,
         "must_not_be_why": "39.71 is the x2 multi-AZ multiplier applied. elasticache carries multi_az_handling multiplier_x2, but preferences.data.availability is single-az, so it must NOT be applied. Doubling here is the single easiest cost error in the estate."

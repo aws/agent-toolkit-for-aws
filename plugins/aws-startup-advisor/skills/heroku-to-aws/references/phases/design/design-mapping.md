@@ -340,7 +340,7 @@ Continue with the next resource after the Fargate entry is appended. This guard 
      - Set `automatic_failover: false`
 
 5. **Engine**: `valkey`. Valkey is ElastiCache's default engine for new clusters, is compatible with Redis OSS commands, data structures, and clients, costs 20% less per node (33% less on ElastiCache Serverless), and is the only ElastiCache engine Database Savings Plans cover. Select Redis OSS only when the source depends on a Redis module or feature Valkey does not provide, and record why in the rationale. Heroku Key-Value Store (Heroku Redis) exposes no modules, so Valkey is always the default here; set `aws_config.engine: "redis"` only on an explicit user request and record the reason.
-6. **Engine version**: Pick the current ElastiCache Valkey version that is at least as new as the source Redis version's feature set — source Redis `6.2` or `7.0` → Valkey `7.2` (or the latest 8.x when the user wants the newest engine). The source `redis_version` is provenance, not the target value.
+6. **Engine version**: engine-aware. For `engine: "valkey"` pick the current ElastiCache Valkey version that is at least as new as the source Redis version's feature set — source Redis `6.2` or `7.0` → Valkey `7.2` (or the latest 8.x when the user wants the newest engine). For the explicit `engine: "redis"` exception pick a supported ElastiCache Redis OSS version with the same major as the source (`7.0` → `7.1`; ElastiCache Redis OSS supports 7.1 and earlier) and label the entry `aws_service: "ElastiCache Redis"`. The source `redis_version` is provenance, not the target value.
 
 7. **Encryption in-transit**: If `config.encryption_in_transit == true` (or table Encryption column is "Yes"), set `transit_encryption: true`.
 
@@ -351,16 +351,16 @@ Continue with the next resource after the Fargate entry is appended. This guard 
      "service_id": "elasticache:{heroku_app}:redis",
      "source_resource_id": "{resource_id}",
      "heroku_app": "{heroku_app}",
-     "aws_service": "ElastiCache Valkey",
+     "aws_service": "<ElastiCache Valkey | ElastiCache Redis — matches aws_config.engine>",
      "confidence": "deterministic",
      "aws_config": {
        "region": "{target_region}",
-       "engine": "valkey",
+       "engine": "<valkey | redis>",
        "node_type": "<from table>",
        "multi_az": <true|false>,
        "automatic_failover": <true|false>,
        "transit_encryption": <true|false>,
-       "engine_version": "<Valkey version, e.g. 7.2>"
+       "engine_version": "<engine-aware version, e.g. Valkey 7.2 or Redis OSS 7.1>"
      }
    }
    ```
