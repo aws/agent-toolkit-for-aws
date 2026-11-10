@@ -869,9 +869,9 @@ aws ecs update-service \
 
 Export all Heroku config vars and import to AWS Secrets Manager / Parameter Store, then reference them in your ECS task definition.
 
-### ECS Express Mode (Forward-Look)
+### ECS Express Mode (web dynos on Fargate)
 
-This generated path uses standard ECS/Fargate Terraform. If an ECS Express Mode path becomes available in this skill, treat it as an optional simplification for the Fargate override path, not as a replacement for the Elastic Beanstalk default without explicit user choice.
+Web formations routed to Fargate with `aws_config.ecs_mode: "express"` are emitted as `aws_ecs_express_gateway_service` (see `generate-terraform.md` Step 6): AWS provisions the ALB, HTTPS listener and certificate, auto scaling, and logs, and exposes an AWS-provided HTTPS endpoint (`<app>_web_endpoint` output). Workers, Route 53-cutover designs, oversized tasks, and non-canary release strategies use the standard ECS/Fargate Terraform. Express Mode is a shape of the Fargate override, not a replacement for the Elastic Beanstalk default without explicit user choice.
 
 {{ENDIF}}
 

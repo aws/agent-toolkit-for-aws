@@ -104,3 +104,23 @@ def test_preference_schemas_record_the_new_keys() -> None:
         text = path.read_text(encoding="utf-8")
         assert "release_strategy" in text, skill
         assert "compute_shape" in text, skill
+
+
+def test_generate_pins_a_provider_that_has_the_express_resource() -> None:
+    """aws_ecs_express_gateway_service exists from hashicorp/aws 6.23.0 (cpu_architecture from 6.71.0);
+    a ~> 5.80 pin can never select it, so every generator that emits it must name the 6.71 pin."""
+    for skill, path in GENERATE_FILES.items():
+        text = path.read_text(encoding="utf-8")
+        assert "~> 6.71" in text, f"{skill}: Express Mode emission without the 6.71 provider pin"
+        assert "6.23.0" in text, f"{skill}: must record the version that introduced the resource"
+
+
+def test_no_file_still_calls_express_mode_a_forward_look() -> None:
+    offenders = []
+    for path in sorted(SKILLS.rglob("*.md")):
+        if "vendored" in path.parts:
+            continue
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if re.search(r"(?i)express mode[^.\n]{0,80}forward-?look|forward-?look[^.\n]{0,80}express mode", line):
+                offenders.append(f"{path.relative_to(PLUGIN_ROOT)}:{lineno}")
+    assert not offenders, offenders

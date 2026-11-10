@@ -102,7 +102,7 @@ Rules:
   Premium / Balanced / Optimized figures are **three pricing scenarios** on the same
   map from `estimation-infra.json`, not three stacks; (3) this Terraform is aligned
   with the **Balanced** scenario; (4) Premium/Optimized require editing the IaC.
-- `terraform` block: `required_version >= 1.5.0`, `hashicorp/aws ~> 5.80`, and an
+- `terraform` block: `required_version >= 1.5.0`, `hashicorp/aws ~> 5.80` (**`~> 6.71` when any Fargate entry is `ecs_mode: "express"`** — see § Fargate services: Express Mode vs standard), and an
   **active** (not commented-out) S3 backend block (bucket/key/region/dynamodb_table
   with `# TODO` substitution comments). The state bucket and lock table are created by
   the delimited **Remote State** section of `baseline.tf` (`aws_s3_bucket.tfstate`,
@@ -458,7 +458,9 @@ invocation is by contract; verify it is installed alongside this skill.
 
 Branch on each Fargate entry's `aws_config.ecs_mode` (set by Design per `design-refs/compute.md` § 7):
 
-- **`"express"`** — emit one `aws_ecs_express_gateway_service` (AWS provider ≥ 6.x) in place of the task definition + `aws_ecs_service` + ALB/target group/listener set: `cluster`, `execution_role_arn`, a new `infrastructure_role_arn` (trusts `ecs.amazonaws.com`; permissions for ALB, target groups, security groups, ACM, Application Auto Scaling), `cpu` / `memory` (256–4096 / 512–8192), `cpu_architecture`, `primary_container { image, container_port, aws_logs_configuration, environment, secret }`, `network_configuration { subnets, security_groups }` (private subnets → internal ALB), `scaling_target` from the Container Apps `minReplicas` / `maxReplicas`, `health_check_path`. Output `ingress_paths[0].endpoint`. No separate ALB for the service (Express shares one ALB per VPC, up to 25 services). Add `depends_on` to the infrastructure role's policy attachment.
+- **`"express"`** — emit one `aws_ecs_express_gateway_service` (provider 6.23.0+, `cpu_architecture` 6.71.0+) in place of the task definition + `aws_ecs_service` + ALB/target group/listener set: `cluster`, `execution_role_arn`, a new `infrastructure_role_arn` (trusts `ecs.amazonaws.com`; permissions for ALB, target groups, security groups, ACM, Application Auto Scaling), `cpu` / `memory` (256–4096 / 512–8192), `cpu_architecture`, `primary_container { image, container_port, aws_logs_configuration, environment, secret }`, `network_configuration { subnets, security_groups }` (private subnets → internal ALB), `scaling_target` from the Container Apps `minReplicas` / `maxReplicas`, `health_check_path`. Output `ingress_paths[0].endpoint`. No separate ALB for the service (Express shares one ALB per VPC, up to 25 services). Add `depends_on` to the infrastructure role's policy attachment.
 - **`"standard"`** — the existing task definition + `aws_ecs_service` with ALB (`http_service`), NLB (`tcp_or_grpc_passthrough`), or none (`worker`), and `deployment_controller` / `deployment_configuration` per `release_strategy`.
+
+**Provider pin when any Fargate entry has `aws_config.ecs_mode: "express"`:** the `terraform` block must pin `hashicorp/aws ~> 6.71` (`aws_ecs_express_gateway_service` exists from provider 6.23.0, its `cpu_architecture` argument from 6.71.0; the current release is 6.72.0). A `~> 5.80` pin can never select a 6.x provider, so `terraform init` would not find the resource. Designs with no Express entry keep the skill's standard pin.
 
 Record `ecs_mode` per service in `generation-infra.json`.

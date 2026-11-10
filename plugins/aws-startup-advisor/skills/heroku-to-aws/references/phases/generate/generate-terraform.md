@@ -108,7 +108,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.80"
+      version = "~> 5.80"   # "~> 6.71" when any Fargate entry has aws_config.ecs_mode == "express" (aws_ecs_express_gateway_service needs 6.23.0+, cpu_architecture 6.71.0+)
     }
   }
 }
@@ -1257,7 +1257,7 @@ output "<app_sanitized>_web_endpoint" {
 
 **Express Mode rules:**
 
-- Requires AWS provider 6.x (`aws_ecs_express_gateway_service`). `cpu` must be 256–4096 and `memory` 512–8192; Design already routes larger tasks to `standard`.
+- Requires `hashicorp/aws ~> 6.71` in `main.tf` (`aws_ecs_express_gateway_service` from 6.23.0, `cpu_architecture` from 6.71.0; a `~> 5.80` pin cannot select it, so Step 1 must switch the pin when this section emits). `cpu` must be 256–4096 and `memory` 512–8192; Design already routes larger tasks to `standard`.
 - No `aws_lb`, target group, or listener is emitted for this service — Express Mode provisions and manages them (one ALB shared by up to 25 Express services per VPC). Deployments are canary; `release_strategy` other than `canary` means Design chose `standard`.
 - A custom domain is not wired by Terraform here. `dns_strategy == "route53"` forces `standard` at Design time so `dns.tf` keeps a Terraform-owned ALB to alias.
 - The ALB security group is created by Express Mode; keep the task security group's ingress open to the VPC CIDR on the container port, or let Express Mode create the service security group by omitting `security_groups`.
