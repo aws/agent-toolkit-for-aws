@@ -319,7 +319,7 @@ Establishes baseline Bedrock recommendation. **Override hierarchy:** Q17 special
 
 > 1. Gemini 3.8 Flash (GA Sep 2026 — current Flash; Google's upgrade for 3.5 / 3.6 / 3.7 Flash and the retired 2.5 Pro / 2.5 Flash)
 > 2. Gemini 3.5 Flash / 3.5 Flash Thinking (still GA on Vertex AI; the Developer API routes it to 3.6 Flash)
-> 3. Gemini 4 Argon (flagship reasoning; $2/$10 through Nov 30, 2026, $4/$20 after) or Gemini 3.1 Pro Preview
+> 3. Gemini 4 Argon (flagship reasoning; $2/$10 through Nov 30, 2026, $4/$20 after on the Developer API or the Vertex AI Global endpoint — 10% more on a regional Vertex AI endpoint, Q19c) or Gemini 3.1 Pro Preview
 > 4. Gemini 3.1 Flash-Lite (high-volume, low-cost)
 > 5. Gemini 3.6 Flash / 3.7 Flash (Developer API only; Vertex AI retires them Nov 19, 2026 / Jan 28, 2027 — upgrade to 3.8 Flash)
 > 6. Gemini 3.5 Flash-Lite (Google's replacement for 2.5 Flash and 2.5 Flash-Lite)
@@ -347,7 +347,7 @@ Establishes baseline Bedrock recommendation. **Override hierarchy:** Q17 special
 | Gemini 3.8 Flash               | Nova Pro ($0.80/$3.20) — 9% cheaper; or Nova Lite ($0.06/$0.24) — 93% cheaper                                                                                                   | Gemini 3.8 Flash is $0.75/$3.75 through Dec 31, 2026 and $1.50/$7.50 from Jan 1, 2027 — Nova Pro's edge grows to ~54% at the 2027 rate; Google's named replacement for the retired 2.5 Pro and 2.5 Flash                                                                                                                             |
 | Gemini 3.5 Flash-Lite          | Nova Lite ($0.06/$0.24) — 88% cheaper; or Nova Micro ($0.035/$0.14) — 93% cheaper                                                                                               | Gemini 3.5 Flash-Lite is $0.30/$2.50 (the retired 2.5 Flash price); Google's named replacement for the retired 2.5 Flash and 2.5 Flash-Lite; strong migration case                                                                                                                                                                      |
 | Gemini 2.5 Pro / Flash / Flash-Lite (retired on Vertex AI) | **Retired on Vertex AI** Oct 20, 2026; Developer API shutdown Dec 1, 2026 for Pro and Flash (Flash-Lite not deprecated there). Map 2.5 Pro → Claude Sonnet 5 ($2/$10) or Nova Pro ($0.80/$3.20); 2.5 Flash → Nova Lite ($0.06/$0.24), Sonnet 5 with extended thinking when thinking mode is required; 2.5 Flash-Lite → Nova Micro ($0.035/$0.14). **Ask Q19b** (serving API) unless Discover already resolved it per Q19b's auto-detect rule (`models[].service: vertex_ai_generative` **with** `terraform` or `monitoring` in that row's `detected_via`; the value alone is the Gemini category, not Vertex AI) | Vertex AI users must leave the source model regardless — go straight to Bedrock rather than via 3.8 Flash / 3.5 Flash-Lite, and price against the replacement. Developer API users are priced at what they pay today: 2.5 Flash-Lite $0.10/$0.40 with no cutoff (Nova Micro 65% cheaper); 2.5 Pro $1.25/$10 and 2.5 Flash $0.30/$2.50 until Dec 1, 2026, then 3.8 Flash ($0.75/$3.75; $1.50/$7.50 from Jan 1, 2027) and 3.5 Flash-Lite rates. A measured bill always wins. Legacy rows are in `references/design-refs/ai-gemini-to-bedrock.md` § Legacy/Specialized |
-| Gemini 4 Argon / 3.1 Pro       | Claude Sonnet 5 ($2/$10) — agentic reliability; or Nova 2 Lite ($0.33/$2.75) — cost | Gemini 4 Argon is $2/$10 through Nov 30, 2026 and $4/$20 from Dec 1, 2026 — Sonnet 5 is parity now and 50% cheaper after the step-up. Gemini 3.1 Pro is $2/$12 — Sonnet 5 at $2/$10 is ~13% cheaper blended, a modest edge; the migration case is agentic reliability and AWS ecosystem more than cost. Be honest: Gemini 3.1 Pro leads on general benchmarks.                                                                                               |
+| Gemini 4 Argon / 3.1 Pro       | Claude Sonnet 5 ($2/$10) — agentic reliability; or Nova 2 Lite ($0.33/$2.75) — cost | Gemini 4 Argon is $2/$10 through Nov 30, 2026 and $4/$20 from Dec 1, 2026 on the Developer API or the Vertex AI Global endpoint ($2.20/$11 → $4.40/$22 on a regional Vertex AI endpoint — ask Q19b and Q19c, or label both); against the Global rate Sonnet 5 is parity now and 50% cheaper after the step-up, against the regional rate Sonnet 5 is already 9% cheaper. Gemini 3.1 Pro is $2/$12 — Sonnet 5 at $2/$10 is ~13% cheaper blended, a modest edge; the migration case is agentic reliability and AWS ecosystem more than cost. Be honest: Gemini 3.1 Pro leads on general benchmarks.                                                                                               |
 | Gemini Flash 1.5 / 2.0 Flash / 2.0 Flash-Lite (retired) | Nova Lite ($0.06/$0.24) or Nova Micro ($0.035/$0.14) — **flag Gemini 1.5 Flash as EOL (Sep 2025) and Gemini 2.0 Flash / Flash-Lite as retired (Vertex AI and Developer API Jun 1, 2026); recommend upgrading source model to 3.8 Flash or 3.5 Flash-Lite before or alongside migration** | Strong Bedrock cost savings; 1.5 Flash and 2.0 Flash / Flash-Lite are past hard shutdowns so migration is doubly urgent; price the comparison against the replacement (3.5 Flash-Lite $0.30/$2.50), not the retired 2.0 rate |
 | Gemini Pro 1.5 (older)         | Claude Sonnet 5 ($2/$10) — **flag Gemini 1.5 Pro as EOL (Sep 2025); recommend upgrading source model to 3.1 Pro before or alongside migration**                                 | 1.5 Pro is past EOL; migration to Bedrock and source model upgrade should be planned together                                                                                                                                                                                                                          |
 | GPT-6 Astra / Sol / Luna / 6.1 Sol | **The same model on Bedrock** (`openai.gpt-6-astra` / `-sol` / `-luna` / `-6.1-sol`)                                                                                        | Bedrock Global CRIS is at parity with OpenAI standard; `us.`-prefixed Geo CRIS and the mantle in-region endpoint run ~10% over standard. Default recommendation on risk grounds; no behavior delta. Astra's mantle endpoint reaches us-east-1 and us-west-2; Sol, Luna, and 6.1 Sol's mantle is us-east-1 only — all four also reach broader regions via `bedrock-runtime` CRIS. The 1M context tier costs 2.0x input / 1.5x output.                             |
@@ -393,6 +393,30 @@ Interpret → `ai_model_baseline`. Default: auto-detect from code, fallback Q16 
 | 3. Both / not sure     | `"unknown"`              | Estimate presents both baselines for the actual model (Vertex AI list or replacement rate, and the Developer API list or routed rate) side by side and says the serving API is unconfirmed; it must not pick one silently                                                                            |
 
 Interpret → `ai_constraints.ai_source_serving_api`. Default when the question cannot be asked: `"unknown"` (never infer `vertex_ai` from the fact that the project is on GCP).
+
+---
+
+## Q19c — Is your Vertex AI Gemini traffic on the Global endpoint or a regional endpoint?
+
+**Fire only when** `ai_model_baseline` resolves to Gemini 4 Argon (or another model whose Vertex AI price differs by endpoint) AND `ai_source_serving_api` is `vertex_ai` or `unknown` AND the endpoint scope is not already known. Vertex AI bills Argon 10% more on a non-global (regional) endpoint than on the Global endpoint ($2.20/$11 vs $2/$10 through Nov 30, 2026; $4.40/$22 vs $4/$20 after). The Developer API has no regional endpoint, so a `gemini_developer_api` answer skips this question.
+
+**Auto-detect signal:** a Terraform or code `location` / endpoint host of `global` (`aiplatform.googleapis.com` with `location=global`) → `global`; a Region-pinned endpoint (`us-central1-aiplatform.googleapis.com`, `location="europe-west4"`) → `regional`. Discover's `ai-workload-profile.json` does not record this today; read `detected_via` evidence or ask.
+
+> Which Vertex AI endpoint serves your Gemini 4 Argon traffic?
+>
+> 1. Global endpoint (`location: global`) — lowest price, no residency guarantee
+> 2. A regional endpoint (pinned to a Google Cloud region for data residency or latency)
+> 3. Not sure
+
+Interpret → `ai_constraints.ai_source_endpoint_scope`:
+
+```
+1 -> "global"    — Estimate uses the Global/Developer rate
+2 -> "regional"  — Estimate uses the Vertex AI non-global rate (10% higher)
+3 -> "unknown"   — Estimate presents both rates as labeled alternatives; never an unqualified Global baseline
+```
+
+**Default when the question cannot be asked:** `"unknown"`.
 
 ---
 

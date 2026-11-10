@@ -412,7 +412,8 @@ Prices per 1M tokens. Source: [ai.google.dev/gemini-api/docs/pricing](https://ai
 
 | Model                 | Input $/1M | Output $/1M | Context | Tier                                                                                                       |
 | --------------------- | ---------- | ----------- | ------- | ---------------------------------------------------------------------------------------------------------- |
-| Gemini 4 Argon        | 2.00       | 10.00       | 1M      | flagship reasoning (rate through 2026-11-30; **4.00 / 20.00 from 2026-12-01**; no free tier; thinking tokens billed) — read 2026-11-09 |
+| Gemini 4 Argon (Global endpoint / Developer API) | 2.00 | 10.00 | 1M | flagship reasoning (rate through 2026-11-30; **4.00 / 20.00 from 2026-12-01**; no free tier; thinking tokens billed) — Developer API pricing and Vertex AI **Global** endpoint, read 2026-11-09 / 2026-11-10 |
+| Gemini 4 Argon (Vertex AI non-global / regional endpoint) | 2.20 | 11.00 | 1M | flagship reasoning (rate through 2026-11-30; **4.40 / 22.00 from 2026-12-01**) — [Vertex AI pricing](https://cloud.google.com/vertex-ai/generative-ai/pricing) non-global rows, read 2026-11-10. A Vertex AI workload pinned to a Region (data residency, regional endpoint) is billed here, 10% above Global; serving endpoint unknown → present both as labeled alternatives |
 | Gemini 3.8 Flash      | 0.75       | 3.75        | 1M      | flagship Flash (rate through 2026-12-31; 1.50 / 7.50 from 2027-01-01)                                      |
 | Gemini 3.6 Flash      | 0.75       | 3.75        | 1M      | previous-generation Flash on the Developer API (rate through 2026-12-31; 1.50 / 7.50 from 2027-01-01); **retired on Vertex AI 2026-11-19** → 3.8 Flash |
 | Gemini 3.7 Flash      | _unverified_ | _unverified_ | 1M    | Developer API routes `gemini-3.7-flash` to 3.8 Flash (bill at the 3.8 Flash row); Vertex AI retires it 2027-01-28 — no standalone list rate published |

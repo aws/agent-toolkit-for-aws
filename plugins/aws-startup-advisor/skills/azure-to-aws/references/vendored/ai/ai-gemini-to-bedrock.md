@@ -24,7 +24,7 @@ Verify Bedrock pricing against `references/vendored/ai/bedrock-pricing-cache.md`
 
 Gemini 4 Argon (released Oct 13, 2026) is Google's flagship reasoning model; Gemini 3.1 Pro remains a preview-only Pro tier; Gemini 3.8 Flash (GA Sep 2, 2026) is the current Flash model. Be honest with users:
 
-- Gemini 4 Argon costs $2/$10 per 1M tokens through Nov 30, 2026 and $4/$20 from Dec 1, 2026 (no free tier; thinking tokens billed) — parity with Claude Sonnet 5 now and with Claude Opus 5.5 (Global) after the step-up ([Gemini Developer API pricing](https://aistudio.google.com/docs/pricing), read 2026-11-09)
+- Gemini 4 Argon costs $2/$10 per 1M tokens through Nov 30, 2026 and $4/$20 from Dec 1, 2026 on the Developer API and the Vertex AI **Global** endpoint (no free tier; thinking tokens billed); a **regional (non-global) Vertex AI endpoint** bills 10% more — $2.20/$11, then $4.40/$22 ([Vertex AI pricing](https://cloud.google.com/vertex-ai/generative-ai/pricing), read 2026-11-10). Against the Global rate: parity with Claude Sonnet 5 now and with Claude Opus 5.5 (Global) after the step-up; against the regional rate Sonnet 5 is already 9% cheaper. Price a Vertex AI customer by the endpoint they use (Clarify Q19c); unknown → both figures, labeled ([Gemini Developer API pricing](https://aistudio.google.com/docs/pricing), read 2026-11-09)
 - Gemini 3.1 Pro leads 13/16 Google-reported benchmarks and 6/10 on the Artificial Analysis Intelligence Index
 - ARC-AGI-2: 77.1%, SWE-Bench: 80.6% (tied with Opus 4.6 at 80.8%)
 - Gemini 3.1 Pro costs $2/$12 per 1M tokens — less than half of Opus 4.6 ($5/$25), and slightly above Sonnet 5 ($2/$10, ~13% cheaper blended)
@@ -42,7 +42,7 @@ Gemini 4 Argon (released Oct 13, 2026) is Google's flagship reasoning model; Gem
 
 **Migration case by tier:**
 
-- Gemini 4 Argon → Bedrock: not cost-led at the 2026 rate (Sonnet 5 is price parity, Opus 5.5 Global is 2x); from Dec 1, 2026 Sonnet 5 is 50% cheaper and Opus 5.5 Global is parity — the case is agentic reliability, prompt caching, and AWS service breadth
+- Gemini 4 Argon → Bedrock: not cost-led at the 2026 Global/Developer rate (Sonnet 5 is price parity, Opus 5.5 Global is 2x); from Dec 1, 2026 Sonnet 5 is 50% cheaper and Opus 5.5 Global is parity. On a regional Vertex AI endpoint ($2.20/$11 → $4.40/$22) Sonnet 5 is 9% cheaper now and 55% cheaper after the step — the case is agentic reliability, prompt caching, and AWS service breadth
 - Gemini 3.5 Flash → Bedrock: **strong cost case** on Vertex AI — Nova Lite is 94% cheaper against the $1.50/$9.00 list price; a Developer API customer is already billed at 3.6 Flash's $0.75/$3.75, so use the 3.8 Flash rows for that baseline
 - Gemini 3.1 Pro → Bedrock: driven by AWS consolidation, agentic reliability, or AWS service breadth; Sonnet 5 at $2/$10 adds a modest (~13%) cost edge, but the case is not cost-led and not general benchmarks
 - Gemini 3.1 Flash-Lite → Nova Lite/Micro: still 76-88% cheaper, strong cost case
@@ -81,8 +81,10 @@ Gemini 4 Argon (released Oct 13, 2026) is Google's flagship reasoning model; Gem
 | Gemini 3.1 Pro | $2.00 / $12.00        | Claude Opus 5.5 (Global)         | $4.00 / $20.00 | Gemini 43% cheaper  |
 | Gemini 3.1 Pro | $2.00 / $12.00        | Claude Opus 5.5 (commercial Geo) | $4.40 / $22.00 | Gemini 48% cheaper  |
 | Gemini 3.1 Pro | $2.00 / $12.00        | Nova 2 Lite                      | $0.33 / $2.75  | Bedrock 79% cheaper — cost-first option; validate quality on the workload |
-| Gemini 4 Argon | $2.00 / $10.00 (through Nov 30, 2026; $4.00 / $20.00 from Dec 1, 2026) | Claude Opus 5.5 (Global) | $4.00 / $20.00 | Gemini 50% cheaper at the 2026 rate; parity from Dec 1, 2026 |
-| Gemini 4 Argon | $2.00 / $10.00 (through Nov 30, 2026; $4.00 / $20.00 from Dec 1, 2026) | Claude Sonnet 5          | $2.00 / $10.00 | Parity at the 2026 rate; Bedrock 50% cheaper from Dec 1, 2026 |
+| Gemini 4 Argon (Developer API / Vertex AI Global endpoint) | $2.00 / $10.00 (through Nov 30, 2026; $4.00 / $20.00 from Dec 1, 2026) | Claude Opus 5.5 (Global) | $4.00 / $20.00 | Gemini 50% cheaper at the 2026 rate; parity from Dec 1, 2026 |
+| Gemini 4 Argon (Vertex AI regional endpoint) | $2.20 / $11.00 (through Nov 30, 2026; $4.40 / $22.00 from Dec 1, 2026) | Claude Opus 5.5 (Global) | $4.00 / $20.00 | Gemini 45% cheaper at the 2026 rate; Bedrock 9% cheaper from Dec 1, 2026 |
+| Gemini 4 Argon (Developer API / Vertex AI Global endpoint) | $2.00 / $10.00 (through Nov 30, 2026; $4.00 / $20.00 from Dec 1, 2026) | Claude Sonnet 5          | $2.00 / $10.00 | Parity at the 2026 rate; Bedrock 50% cheaper from Dec 1, 2026 |
+| Gemini 4 Argon (Vertex AI regional endpoint) | $2.20 / $11.00 (through Nov 30, 2026; $4.40 / $22.00 from Dec 1, 2026) | Claude Sonnet 5          | $2.00 / $10.00 | Bedrock 9% cheaper at the 2026 rate; 55% cheaper from Dec 1, 2026 |
 
 > **Gemini 3.1 Pro breakpoint:** $4.00/$18.00 per 1M for prompts >200k tokens. Table above uses ≤200k rates.
 >
@@ -147,7 +149,7 @@ Haiku 5.5 has a 1M context window, but its price changes above 100K input tokens
 
 ### Balanced
 
-- Gemini 4 Argon → **Claude Sonnet 5** (parity at the 2026 rate, -50% from Dec 1, 2026; stronger agentic reliability) or **Claude Opus 5.5 (Global)** (2x at the 2026 rate, parity from Dec 1, 2026)
+- Gemini 4 Argon → **Claude Sonnet 5** (parity at the 2026 Global/Developer rate, -9% against a regional Vertex AI endpoint; -50% / -55% from Dec 1, 2026; stronger agentic reliability) or **Claude Opus 5.5 (Global)** (2x at the 2026 Global rate, parity from Dec 1, 2026)
 - Gemini 3.1 Pro → **Claude Sonnet 5** (-13% cost, stronger agentic reliability) or **Nova 2 Lite** (-79% cost, AWS-native)
 - Gemini 3.8 Flash → **Nova Pro** (-9% cost at the 2026 rate, AWS-native) or **Nova Lite** (-93% cost)
 
@@ -185,10 +187,13 @@ Haiku 5.5 has a 1M context window, but its price changes above 100K input tokens
 | Gemini 3.1 Pro Preview ($2/$12) | $1,200  | Claude Opus 5.5 Global ($4/$20)            | $2,100  | +75%       |
 | Gemini 3.1 Pro Preview ($2/$12) | $1,200  | Claude Opus 5.5 commercial Geo ($4.40/$22) | $2,310  | +92.5%     |
 | Gemini 3.1 Pro Preview ($2/$12) | $1,200  | Nova 2 Lite ($0.33/$2.75)                  | $256    | -79%       |
-| Gemini 4 Argon ($2/$10 through Nov 30, 2026) | $1,050 | Claude Sonnet 5 ($2/$10)          | $1,050  | 0%         |
-| Gemini 4 Argon ($2/$10 through Nov 30, 2026) | $1,050 | Claude Opus 5.5 Global ($4/$20)   | $2,100  | +100%      |
-| Gemini 4 Argon ($4/$20 from Dec 1, 2026) | $2,100 | Claude Sonnet 5 ($2/$10)              | $1,050  | -50%       |
-| Gemini 4 Argon ($4/$20 from Dec 1, 2026) | $2,100 | Claude Opus 5.5 Global ($4/$20)       | $2,100  | 0%         |
+| Gemini 4 Argon, Global/Developer ($2/$10 through Nov 30, 2026) | $1,050 | Claude Sonnet 5 ($2/$10)          | $1,050  | 0%         |
+| Gemini 4 Argon, Global/Developer ($2/$10 through Nov 30, 2026) | $1,050 | Claude Opus 5.5 Global ($4/$20)   | $2,100  | +100%      |
+| Gemini 4 Argon, Global/Developer ($4/$20 from Dec 1, 2026) | $2,100 | Claude Sonnet 5 ($2/$10)              | $1,050  | -50%       |
+| Gemini 4 Argon, Global/Developer ($4/$20 from Dec 1, 2026) | $2,100 | Claude Opus 5.5 Global ($4/$20)       | $2,100  | 0%         |
+| Gemini 4 Argon, Vertex AI regional ($2.20/$11 through Nov 30, 2026) | $1,155 | Claude Sonnet 5 ($2/$10)     | $1,050  | -9%        |
+| Gemini 4 Argon, Vertex AI regional ($4.40/$22 from Dec 1, 2026) | $2,310 | Claude Sonnet 5 ($2/$10)         | $1,050  | -55%       |
+| Gemini 4 Argon, Vertex AI regional ($4.40/$22 from Dec 1, 2026) | $2,310 | Claude Opus 5.5 Global ($4/$20)  | $2,100  | -9%        |
 | Gemini 3.8 Flash ($0.75/$3.75)  | $394    | Nova Pro ($0.80/$3.20)                     | $360    | -9%        |
 | Gemini 3.8 Flash ($0.75/$3.75)  | $394    | Nova Lite ($0.06/$0.24)                    | $27     | -93%       |
 | Gemini 3.5 Flash-Lite ($0.30/$2.50) | $233 | Nova Lite ($0.06/$0.24)                    | $27     | -88%       |
