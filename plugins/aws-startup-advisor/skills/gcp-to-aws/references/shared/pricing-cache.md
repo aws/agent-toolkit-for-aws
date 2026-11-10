@@ -199,19 +199,19 @@ For Multi-AZ, approximately double these rates.
 | Write per million WRU | $0.625 |
 | Storage per GB-month  | $0.25  |
 
-### ElastiCache Redis (On-Demand)
+### ElastiCache Valkey (On-Demand)
 
-Single-AZ pricing. For Multi-AZ, approximately double.
+Single-AZ pricing, Valkey engine (the default target; verified via the AWS Pricing MCP server 2026-11-09). For Multi-AZ, approximately double. Redis OSS node rates are 1.25x these values; use them only when `aws_config.engine` is `"redis"`.
 
 | Node             | $/hour | $/month |
 | ---------------- | ------ | ------- |
-| cache.t3.micro   | 0.017  | 12.41   |
-| cache.t3.small   | 0.034  | 24.82   |
-| cache.t3.medium  | 0.068  | 49.64   |
-| cache.t4g.micro  | 0.016  | —       |
-| cache.t4g.small  | 0.032  | —       |
-| cache.t4g.medium | 0.065  | —       |
-| cache.r6g.large  | 0.206  | 150.38  |
+| cache.t3.micro   | 0.0136 | 9.93    |
+| cache.t3.small   | 0.0272 | 19.86   |
+| cache.t3.medium  | 0.0544 | 39.71   |
+| cache.t4g.micro  | 0.0128 | 9.34    |
+| cache.t4g.small  | 0.0256 | 18.69   |
+| cache.t4g.medium | 0.052  | 37.96   |
+| cache.r6g.large  | 0.1648 | 120.30  |
 
 ---
 

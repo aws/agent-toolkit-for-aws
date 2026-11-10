@@ -63,7 +63,7 @@ Generate `$MIGRATION_DIR/terraform/` with the following file organization. Only 
 | Fargate, ALB                       | `compute.tf`                                                                                                    |
 | Elastic Beanstalk                  | `beanstalk.tf`; plus `.github/workflows/deploy-eb.yml` for `github_actions` or `pipeline.tf` for `codepipeline` |
 | RDS PostgreSQL, Aurora PostgreSQL  | `database.tf`                                                                                                   |
-| ElastiCache Redis                  | `cache.tf`                                                                                                      |
+| ElastiCache Valkey (or ElastiCache Redis when `aws_config.engine` is `redis`) | `cache.tf` |
 | Amazon MSK                         | `messaging.tf`                                                                                                  |
 | VPC, Subnet, Route Table, IGW, NAT | `vpc.tf`                                                                                                        |
 | Security Group, IAM Role/Policy    | `security.tf`                                                                                                   |
@@ -507,7 +507,7 @@ output "rds_proxy_endpoint" {
 
 # Cache outputs
 output "elasticache_endpoint" {
-  description = "ElastiCache Redis primary endpoint"
+  description = "ElastiCache primary endpoint (Valkey by default)"
   value       = aws_elasticache_replication_group.redis.primary_endpoint_address
   sensitive   = true
 }
@@ -2035,10 +2035,10 @@ resource "aws_iam_role_policy" "rds_proxy_secrets" {
 
 ## Step 8: Generate `cache.tf`
 
-For each service in `aws-design.json` where `aws_service` is "ElastiCache Redis":
+For each service in `aws-design.json` where `aws_service` starts with "ElastiCache" (`ElastiCache Valkey` by default; `ElastiCache Redis` only when Design recorded `aws_config.engine: "redis"`):
 
 ```hcl
-# ElastiCache Redis — <heroku_app>
+# ElastiCache <Valkey|Redis> — <heroku_app>
 # Heroku source: heroku-redis:<plan>
 
 resource "aws_elasticache_subnet_group" "main" {
@@ -2052,9 +2052,9 @@ resource "aws_elasticache_subnet_group" "main" {
 
 resource "aws_elasticache_replication_group" "<app_sanitized>_redis" {
   replication_group_id = "${var.project_name}-${var.environment}-redis"
-  description          = "Redis cluster for ${var.project_name} (migrated from Heroku Redis)"
+  description          = "Cache for ${var.project_name} (migrated from Heroku Redis / Key-Value Store)"
 
-  engine               = "redis"
+  engine               = "<aws_config.engine>" # "valkey" by default
   engine_version       = "<aws_config.engine_version>"
   node_type            = "<aws_config.node_type>"
   num_cache_clusters   = <2 if multi_az else 1>
@@ -2088,7 +2088,7 @@ resource "aws_elasticache_replication_group" "<app_sanitized>_redis" {
 
 resource "aws_elasticache_parameter_group" "<app_sanitized>_redis" {
   name   = "${var.project_name}-${var.environment}-redis-params"
-  family = "redis<major_version>"
+  family = "<engine><major_version>" # valkey7, valkey8; redis7 only when engine is redis
 
   parameter {
     name  = "maxmemory-policy"
@@ -2107,7 +2107,9 @@ resource "aws_elasticache_parameter_group" "<app_sanitized>_redis" {
 - `transit_encryption_enabled`: Set to `true` if and only if source has encryption-in-transit (`aws_config.transit_encryption == true`)
 - `at_rest_encryption_enabled`: Always `true` (security best practice)
 - `num_cache_clusters`: 2 when Multi-AZ enabled, 1 when single-AZ
-- `engine_version`: Matches source Redis version from `aws_config.engine_version`
+- `engine`: From `aws_config.engine` — `valkey` by default (Redis OSS-compatible, 20% cheaper, Database-SP-eligible); `redis` only when Design recorded that exception
+- `engine_version`: From `aws_config.engine_version` (a Valkey version such as `7.2` when the engine is Valkey)
+- `family`: `<engine><major>` — `valkey7` for Valkey 7.2, `valkey8` for 8.x, `redis7` for Redis OSS 7.x
 - `node_type`: From `aws_config.node_type` (mapped from Redis Plan Table)
 
 ---

@@ -43,23 +43,23 @@
   "reservation_substitutions": [],
   "_reservation_note": "Empty, and correctly so: a $0 consumption figure only appears in Cost Management or RDfA data, and both sources are deferred. A user_stated baseline carries no per-resource figures, so there is nothing for the reservation rule to act on. The empty array is written rather than omitted so its emptiness is visible.",
   "projected_costs": {
-    "aws_monthly_premium": 489.91,
-    "aws_monthly_balanced": 465.09,
-    "aws_monthly_optimized": 366.15,
-    "aws_annual_optimized": 4393.8,
+    "aws_monthly_premium": 479.99,
+    "aws_monthly_balanced": 460.13,
+    "aws_monthly_optimized": 362.68,
+    "aws_annual_optimized": 4352.16,
     "_scenarios_note": "The three scenario keys are REQUIRED by the shared estimation-infra.schema.json and vary resilience and pricing model for ONE design. lift/right_sized below vary SIZING and are the azure addition the schema permits (it has no additionalProperties: false). Balanced IS right_sized.monthly by definition, emitted equal rather than recomputed. ALL THREE ARE FLOORS: five lines are excluded, and Optimized is the most misleading of them because a discounted floor reads as the cheapest credible figure here when it is the least complete.",
-    "_premium_basis": "Balanced 465.09 + 24.82 multi-AZ uplift on elasticache-redis-session, the only line whose multi_az_handling is multiplier_x2 and which is not already multi-AZ. RDS gets NO uplift (baked_in — the rate already includes Multi-AZ) and MSK gets none (intrinsic). The two Windows lines and FSx would also cost more at higher resilience but are excluded, so the Premium figure understates the gap by more than Balanced does.",
-    "_optimized_basis": "RI/SP-eligible subtotal 329.79 (elastic-beanstalk-web EC2 component 30.37, rds-postgresql-store 274.60, elasticache-redis-session 24.82) x (1 - 0.30) = 230.85, plus the ineligible subtotal 135.3 unchanged = 366.15. 30% is the mid-point of the applicable ranges in estimate-defaults.json. The discount is applied ONLY to the eligible subtotal: MSK has no RI or Savings Plan product, and neither do ALB, EBS, S3, Secrets Manager or CloudWatch, so a blanket percentage would have discounted 135.3 of ineligible spend.",
+    "_premium_basis": "Balanced 460.13 + 19.86 multi-AZ uplift on elasticache-redis-session, the only line whose multi_az_handling is multiplier_x2 and which is not already multi-AZ. RDS gets NO uplift (baked_in — the rate already includes Multi-AZ) and MSK gets none (intrinsic). The two Windows lines and FSx would also cost more at higher resilience but are excluded, so the Premium figure understates the gap by more than Balanced does.",
+    "_optimized_basis": "RI/SP-eligible subtotal 324.83 (elastic-beanstalk-web EC2 component 30.37, rds-postgresql-store 274.60, elasticache-redis-session 19.86) x (1 - 0.30) = 227.38, plus the ineligible subtotal 135.3 unchanged = 362.68. 30% is the mid-point of the applicable ranges in estimate-defaults.json. The discount is applied ONLY to the eligible subtotal: MSK has no RI or Savings Plan product, and neither do ALB, EBS, S3, Secrets Manager or CloudWatch, so a blanket percentage would have discounted 135.3 of ineligible spend.",
     "lift": {
-      "monthly": 465.09,
+      "monthly": 460.13,
       "is_floor": true
     },
     "right_sized": {
-      "monthly": 465.09,
+      "monthly": 460.13,
       "is_floor": true
     },
     "breakdown": {
-      "total": 465.09,
+      "total": 460.13,
       "vpc-core": {
         "aws_service": "VPC",
         "lift_monthly": 0.0,
@@ -117,11 +117,11 @@
         "no_crr_line": "The source account_replication_type is LRS, not GRS or GZRS, so no Cross-Region Replication line is added."
       },
       "elasticache-redis-session": {
-        "aws_service": "ElastiCache Redis",
-        "lift_monthly": 24.82,
-        "right_sized_monthly": 24.82,
+        "aws_service": "ElastiCache Valkey",
+        "lift_monthly": 19.86,
+        "right_sized_monthly": 19.86,
         "pricing_source": "cached",
-        "basis": "elasticache.nodes['cache.t3.small'] 0.034 x 730 x 1 node.",
+        "basis": "elasticache.nodes['cache.t3.small'] 0.0272 x 730 (Valkey engine rate) x 1 node.",
         "multi_az_handling": "multiplier_x2 NOT applied — preferences.data.availability is single-az."
       },
       "msk-telemetry": {
@@ -255,18 +255,18 @@
     "azure_monthly_baseline": 4200,
     "baseline_source": "user_stated",
     "lift": {
-      "aws_monthly": 465.09,
+      "aws_monthly": 460.13,
       "is_floor": true,
-      "monthly_difference": -3734.91,
-      "annual_difference": -44818.92,
-      "percent_change": "-88.9%"
+      "monthly_difference": -3739.87,
+      "annual_difference": -44878.44,
+      "percent_change": "-89.0%"
     },
     "right_sized": {
-      "aws_monthly": 465.09,
+      "aws_monthly": 460.13,
       "is_floor": true,
-      "monthly_difference": -3734.91,
-      "annual_difference": -44818.92,
-      "percent_change": "-88.9%"
+      "monthly_difference": -3739.87,
+      "annual_difference": -44878.44,
+      "percent_change": "-89.0%"
     },
     "sign_convention": "difference = AWS minus Azure, so NEGATIVE means AWS is cheaper. Never print a bare signed value: this one reads 'AWS is $3,734.91/mo cheaper than the stated Azure figure' — and that sentence must not be used without the floor and baseline caveats below.",
     "credibility_caveat": "An 89% reduction is not a credible finding and must not be presented as one. The errors run in BOTH directions: the AWS side excludes five services including both Windows compute lines (understating), while its largest single line is priced from a Multi-AZ rate table against a single-AZ design (overstating by roughly 2x). The Azure side is a figure the customer stated, which may cover more than this estate. Do not net these off — state them.",
@@ -346,7 +346,7 @@
         "note": "Estate-wide, so not attributable to any one cluster. cluster_id is null rather than assigned arbitrarily."
       }
     ],
-    "_per_cluster_note": "Every non-null cluster_id above appears in aws-design.json clusters[]; the design declares five and all five are present. The per-cluster figures plus the unattributed observability line sum to right_sized.monthly (421.92 + 5.00 + 0 + 0 + 0 + 38.17 = 465.09). Three clusters show $0.00 and NONE of them is free — each is a cluster whose every line was excluded, which is why is_floor and the note are required rather than optional."
+    "_per_cluster_note": "Every non-null cluster_id above appears in aws-design.json clusters[]; the design declares five and all five are present. The per-cluster figures plus the unattributed observability line sum to right_sized.monthly (421.92 + 5.00 + 0 + 0 + 0 + 38.17 = 460.13). Three clusters show $0.00 and NONE of them is free — each is a cluster whose every line was excluded, which is why is_floor and the note are required rather than optional."
   },
   "licensing_delta": {
     "fired": true,
@@ -398,10 +398,10 @@
   },
   "roi_analysis": {
     "recurring_difference": {
-      "monthly_difference_lift": -3734.91,
-      "monthly_difference_right_sized": -3734.91,
-      "annual_difference_lift": -44818.92,
-      "annual_difference_right_sized": -44818.92,
+      "monthly_difference_lift": -3739.87,
+      "monthly_difference_right_sized": -3739.87,
+      "annual_difference_lift": -44878.44,
+      "annual_difference_right_sized": -44878.44,
       "note": "Sign convention: difference = AWS minus Azure, so negative = AWS cheaper. Both figures are FLOORS against a customer-stated baseline and must not be quoted without that caveat — see cost_comparison.credibility_caveat."
     },
     "operational_efficiency_factors": [
@@ -485,7 +485,7 @@
   "complexity_inputs": {
     "service_count": 17,
     "cluster_count": 5,
-    "monthly_spend": 465.09,
+    "monthly_spend": 460.13,
     "monthly_spend_is_floor": true,
     "has_databases": true,
     "has_stateful_storage": true,
@@ -497,13 +497,13 @@
     "_why_large": "service_count 16 is >= 9, and complexity-tiers.json makes service_count_gte 9 a LARGE condition with match: 'any'. Evaluation runs large -> medium -> small and the first match wins, so nothing below it is consulted. Spend under $10,000, one region and compliance 'none' are all TRUE and all irrelevant: they would only matter if no large condition had fired. The floor total did NOT pull the tier down -- the tier never depended on spend here.",
     "timeline_weeks": "12-18",
     "_compliance_note": "null, not 'none'. NO Clarify fragment produces a compliance row -- clarify-global.md emits target_region, environment_scope, migration_window, cost_optimization and azure_monthly_spend. 'none' would be an answer and nobody was asked. Consequence: complexity-tiers.json's compliance_present condition can never be evaluated on this skill, and Part 8's hard trigger 1 has a permanently-true first clause. Capability run 6 got this right where the fixture author wrote 'none'.",
-    "_tier_driven_by": "service_count_gte 9 -- the ONLY large condition that fired. Note it is a ROW COUNT: 5 of the 16 services are $0 networking primitives, and monthly_spend_gt 10000 is missed by a factor of ~21. A $465/mo estate classifying 'large' is the shared table's literal behaviour, not a miscalculation, but the artifact must say which condition fired so a reader does not infer the estate is expensive."
+    "_tier_driven_by": "service_count_gte 9 -- the ONLY large condition that fired. Note it is a ROW COUNT: 5 of the 16 services are $0 networking primitives, and monthly_spend_gt 10000 is missed by a factor of ~21. A $460/mo estate classifying 'large' is the shared table's literal behaviour, not a miscalculation, but the artifact must say which condition fired so a reader does not infer the estate is expensive."
   },
   "financial_summary": {
     "azure_monthly": 4200,
-    "aws_monthly_right_sized": 465.09,
+    "aws_monthly_right_sized": 460.13,
     "aws_monthly_is_floor": true,
-    "monthly_savings_right_sized": 3734.91,
+    "monthly_savings_right_sized": 3739.87,
     "_sign_note": "financial_summary uses savings = Azure minus AWS (positive = AWS cheaper), which is the OPPOSITE sign of roi_analysis and cost_comparison, where difference = AWS minus Azure. Same fact, two framings. Never print either as a bare signed value."
   },
   "recommendation": {
@@ -511,7 +511,7 @@
     "path_label": "Phased Migration",
     "outcome": "conditional_go",
     "outcome_label": "Go, with conditions",
-    "roi_justification": "AWS can host every workload in this estate and the priced portion comes to roughly $465/mo against a stated $4,200 Azure figure — but five of seventeen services are unpriced, so that gap is a floor comparison and not yet a business case.",
+    "roi_justification": "AWS can host every workload in this estate and the priced portion comes to roughly $460/mo against a stated $4,200 Azure figure — but five of seventeen services are unpriced, so that gap is a floor comparison and not yet a business case.",
     "confidence": "low",
     "migrate_if": [
       "Windows licensing on AWS is confirmed to cost less than the Azure equivalent — 6 vCPU of Windows compute is currently unpriced on the AWS side",
@@ -554,7 +554,7 @@
     },
     "would_flip_if": [
       "Repricing the RDS line for single-AZ roughly halves 59% of the priced total, which moves the AWS figure down by around $130/mo — in the OPPOSITE direction to pricing the five excluded services, so the two corrections partly offset and the net direction is genuinely unknown until both are done.",
-      "Pricing the five excluded services pushes the AWS total materially higher — the two Windows lines alone are a $210/mo floor whose licence component is unpriced, so the true total is meaningfully above $465",
+      "Pricing the five excluded services pushes the AWS total materially higher — the two Windows lines alone are a $210/mo floor whose licence component is unpriced, so the true total is meaningfully above $460",
       "The stated $4,200 turns out to include other subscriptions, which would shrink or erase the apparent saving",
       "The availability answer changes to multi-az, roughly doubling the $274.60 database line"
     ],

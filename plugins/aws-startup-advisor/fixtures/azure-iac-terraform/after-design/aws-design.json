@@ -179,8 +179,9 @@
       "service_id": "elasticache-redis-session",
       "azure_id": "/subscriptions/<subscription-unknown>/resourceGroups/rg-data/providers/Microsoft.Cache/Redis/tf:session",
       "azure_type": "Microsoft.Cache/Redis",
-      "aws_service": "ElastiCache Redis",
+      "aws_service": "ElastiCache Valkey",
       "aws_config": {
+        "engine": "valkey",
         "node_type": "cache.t3.small",
         "num_cache_nodes": 1,
         "source_sku": "Standard C1 (family C, capacity 1)",
@@ -191,7 +192,7 @@
       "routing_provenance": "table",
       "sizing_provenance": "model_prior",
       "sizing_note": "There is NO knowledge/design/*.json sizing table for Microsoft.Cache/Redis - the repo ships appservice-eb, vm-ec2, aks-eks, flexible-server-rds, cosmos-dynamodb and disk-ebs tables and nothing for Redis. cache.t3.small came from the model's own knowledge that Standard C1 is a 1 GB cache and cache.t3.small is the nearest-not-smaller ElastiCache node. The t3 (x86) family rather than t4g was chosen because design_constraints.cpu_architecture is x86_64; note that constraint was forced by a Windows VM and no file says whether it should reach a managed cache at all.",
-      "rationale": "Azure Cache for Redis maps to ElastiCache Redis unconditionally - the target does not depend on the surrounding architecture. The source is plain Microsoft.Cache/Redis, not redisEnterprise, so there are no Redis modules (RediSearch, RedisJSON, RedisTimeSeries) to lose and this is a drop-in. The storefront app addresses it today through a CACHE_ENDPOINT app setting, which becomes an ElastiCache endpoint on the target."
+      "rationale": "Azure Cache for Redis maps to ElastiCache Valkey unconditionally (Redis OSS-compatible, ElastiCache's default engine) - the target does not depend on the surrounding architecture. The source is plain Microsoft.Cache/Redis, not redisEnterprise, so there are no Redis modules (RediSearch, RedisJSON, RedisTimeSeries) to lose and this is a drop-in. The storefront app addresses it today through a CACHE_ENDPOINT app setting, which becomes an ElastiCache endpoint on the target."
     },
     {
       "service_id": "documentdb-catalog",

@@ -28,7 +28,7 @@ Scan `aws-design.json`.services[] to determine which compute and data store type
 | Fargate web present   | Any service with `aws_service == "ALB"`, or `aws_service == "Fargate"` and `aws_config.process_type == "web"` (workers alone never count) | `has_fargate_web = true` |
 | EKS present           | Any service with `aws_service == "EKS"` (`design-eks.md` "All-or-Nothing Rule": then no EB or Fargate web service exists) | `has_eks = true`           |
 | Postgres present      | Any service with `aws_service` containing `"RDS PostgreSQL"` or `"Aurora PostgreSQL"`        | `has_postgres = true`      |
-| Redis present         | Any service with `aws_service == "ElastiCache Redis"`                                        | `has_redis = true`         |
+| Redis present         | Any service with `aws_service` starting with `"ElastiCache"` (`ElastiCache Valkey` by default) | `has_redis = true`         |
 | Kafka present         | Any service with `aws_service == "Amazon MSK"`                                               | `has_kafka = true`         |
 
 Also extract:
@@ -655,9 +655,9 @@ heroku config:get DATABASE_URL -a {{app_name}}   # must show {{TARGET_DB_HOST}}
 {{ENDIF}}
 {{IF has_redis}}
 
-### Redis Migration (Heroku Redis → ElastiCache)
+### Redis Migration (Heroku Redis → ElastiCache Valkey)
 
-**Strategy:** Export Redis data using `DUMP`/`RESTORE` or `redis-cli --rdb` depending on dataset size.
+**Strategy:** Export Redis data using `DUMP`/`RESTORE` or `redis-cli --rdb` depending on dataset size. ElastiCache Valkey accepts Redis OSS RDB files and `redis-cli`/Redis client libraries unchanged.
 
 #### Pre-Migration Steps
 
@@ -1490,7 +1490,7 @@ This directory contains all artifacts needed to migrate your Heroku application(
 | `terraform/rds.tf` | RDS/Aurora PostgreSQL database configuration |
 {{ENDIF}}
 {{IF has_redis}}
-| `terraform/elasticache.tf` | ElastiCache Redis cluster configuration |
+| `terraform/elasticache.tf` | ElastiCache Valkey cluster configuration |
 {{ENDIF}}
 {{IF has_kafka}}
 | `terraform/msk.tf` | Amazon MSK Kafka cluster configuration |
@@ -1632,7 +1632,7 @@ Follow the verification checklist in `MIGRATION_GUIDE.md` Phase 4, then perform 
 - `eb_deploy_method`: `preferences.design_constraints.eb_deploy_method.value`; default to `"github_actions"` when absent and `has_beanstalk` is true
 - `has_fargate`: True if any service in design has `aws_service == "Fargate"`
 - `has_postgres`: True if any service has `aws_service` containing `"RDS PostgreSQL"` or `"Aurora PostgreSQL"`
-- `has_redis`: True if any service has `aws_service == "ElastiCache Redis"`
+- `has_redis`: True if any service has an `aws_service` starting with `"ElastiCache"`
 - `has_kafka`: True if any service has `aws_service == "Amazon MSK"`
 - `generation_warnings_exist`: True if `generation-warnings.json` has a NON-EMPTY `warnings` array (the file is always written, so test its contents, not its existence)
 
@@ -1867,7 +1867,7 @@ set -euo pipefail
 
 ###############################################################################
 # Redis Migration Script
-# Migrates data from Heroku Redis to AWS ElastiCache Redis
+# Migrates data from Heroku Redis to AWS ElastiCache (Valkey, Redis OSS-compatible)
 #
 # Prerequisites:
 #   - redis-cli installed (Redis client tools)

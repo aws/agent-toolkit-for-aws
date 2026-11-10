@@ -401,7 +401,7 @@ class AcceptanceTests(unittest.TestCase):
     def test_non_postgres_designs_do_not_require_a_postgres_script(self):
         for service in (
             {"aws_service": "Fargate"},
-            {"aws_service": "ElastiCache Redis"},
+            {"aws_service": "ElastiCache Valkey"},
             {"aws_service": "RDS MySQL"},
             {"aws_service": "RDS", "aws_config": {"engine": "mysql"}},
             {"aws_service": "Aurora", "aws_config": {"engine": "aurora-mysql"}},
