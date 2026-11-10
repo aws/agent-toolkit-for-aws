@@ -5,11 +5,13 @@ Why
 ---
 Two shared sources describe Bedrock models:
 
-- `skills/shared/ai/ai-model-lifecycle.md` is the canonical Active/Legacy/EOL registry. It is
-  kept current (the knowledge auto-update pipeline edits it, and `model-staleness.py` fails it
-  after its staleness window).
+- `skills/shared/ai/ai-model-lifecycle.md` is the canonical Active/Legacy/EOL lifecycle registry.
+  It is kept current (the knowledge auto-update pipeline edits it, and `model-staleness.py` fails
+  it after its staleness window).
 - `skills/shared/ai/models/*-bedrock.json` are the machine-readable selection catalogs that the
-  agent-advisor engine reads (vendored into the skill by `sync-vendored.py`).
+  agent-advisor engine reads (vendored into the skill by `sync-vendored.py`). They are rendered
+  from `bedrock-model-registry.json` by `build-model-catalogs.py`, so fixes belong in that model
+  registry, not in the catalogs.
 
 Nothing tied the two together, so a model could launch, land in the registry, and never reach
 the catalog the engine actually selects from. `model-id-lint.py` already keeps retired IDs out of
@@ -153,9 +155,11 @@ def check(plugin: Path, today: dt.date) -> tuple[list[str], list[str]]:
         if model_id not in covered[provider]:
             warnings.append(
                 f"{CATALOG_DIR_REL / f'{provider}-bedrock.json'}: `{model_id}` is Active in "
-                f"{REGISTRY_REL.name} but missing from the catalog; add a complete model entry "
-                f"(selection_status `selectable`, or `reference_only` to keep it out of automatic "
-                f"selection) or record it under registry_exclusions with a reason")
+                f"the lifecycle registry ({REGISTRY_REL.name}) but missing from the catalog; add it to "
+                f"the model registry (bedrock-model-registry.json) "
+                f"(a record with selection_status `selectable`, or `reference_only` to keep it out of "
+                f"automatic selection, plus a view entry) or record it under the view header's "
+                f"registry_exclusions with a reason")
     return errors, warnings
 
 
