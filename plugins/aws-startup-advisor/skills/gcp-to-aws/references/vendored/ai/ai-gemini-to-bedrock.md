@@ -66,7 +66,6 @@ Gemini 4 Argon (released Oct 13, 2026) is Google's flagship reasoning model; Gem
 | Nova Pro         | AWS balanced                                                        | Medium     | High    | 300K    |
 | Nova Lite        | AWS fast + cheapest                                                 | Medium     | High    | 300K    |
 | Nova Micro       | AWS fastest, text-only                                              | Low        | High    | 128K    |
-| Nova Premier     | **Past EOL** (Sep 14, 2026) — prefer Nova 2 Lite or Claude Opus 5.5 | High       | Medium  | 1M      |
 | DeepSeek-R1      | **Legacy** (EOL Mar 30, 2027) — annotate only, never primary         | High       | Medium  | 128K    |
 | Mistral Large 3  | EU/Multilingual                                                     | High       | Medium  | 256K    |
 

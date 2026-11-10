@@ -510,7 +510,7 @@ Per 1M tokens. **Nova 2 Omni** and **Nova 2 Pro** are **Preview** (Nova 2 Pro is
 | Model                        | Text in | Image in | Video in | Audio in | Text out | Image out |
 | ---------------------------- | ------- | -------- | -------- | -------- | -------- | --------- |
 | Amazon Nova 2 Omni (Preview) | 0.30    | 0.30     | 0.30     | 1.10     | 2.80     | 44.00     |
-| Amazon Nova 2 Pro (Preview)  | 1.375   | 1.375    | 1.375    | 1.375    | 11.00    | N/A       |
+| Amazon Nova 2 Pro (Preview — restricted, gated preview, not a target) | 1.375   | 1.375    | 1.375    | 1.375    | 11.00    | N/A       |
 
 **Global cross-region inference (Ohio), Standard** uses different multimodal numbers on the same page — e.g. **Nova 2 Omni (Preview)** audio in **$1.00**, text out **$2.50**, image out **$40.00** (text/image/video in **$0.30** each). Use the Bedrock pricing page for the deployment you select.
 
@@ -558,7 +558,7 @@ Per 1M tokens. **Nova 2 Omni** and **Nova 2 Pro** are **Preview** (Nova 2 Pro is
 | Model                        | Price                  |
 | ---------------------------- | ---------------------- |
 | Amazon Nova 2 Omni (Preview) | $30.00 per 1K requests |
-| Amazon Nova 2 Pro (Preview)  | $30.00 per 1K requests |
+| Amazon Nova 2 Pro (Preview — restricted, gated preview, not a target) | $30.00 per 1K requests |
 
 #### Creative — US East (N. Virginia)
 

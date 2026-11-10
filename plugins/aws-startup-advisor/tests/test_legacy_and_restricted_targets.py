@@ -102,3 +102,66 @@ def test_gemini_guide_names_3_8_flash_as_the_flash_successor() -> None:
     assert "Migrate to Gemini 3.5 Flash" not in text
     assert "Migrate to Gemini 3.8 Flash" in text
     assert "auto-route to `gemini-3.6-flash`" in text
+
+
+# --- regressions for the surfaces the first version of this file did not cover ----------------
+
+import datetime as _dt
+
+SKILLS = PLUGIN_ROOT / "skills"
+STATUS_CELL = re.compile(r"`(legacy|excluded) \(EOL (\d{4}-\d{2}-\d{2})\)`")
+# OpenAI ids whose access ended before this file's date (deprecations page, 2026-04-22 notice),
+# keyed to the first-cell label the cross-family table uses.
+OPENAI_SHUT_DOWN = {
+    "o1": "o1",
+    "o1-pro": "o1-pro",
+    "o3-mini": "o4-mini / o3-mini / o1-mini",
+    "gpt-4": "GPT-4",
+    "gpt-4-turbo": "GPT-4 Turbo",
+    "gpt-4.1-nano": "GPT-4.1 Nano",
+    "gpt-3.5-turbo": "GPT-3.5 Turbo",
+}
+
+
+def _last_updated() -> _dt.date:
+    m = re.search(r"\*\*Last updated:\*\* (\d{4}-\d{2}-\d{2})", LIFECYCLE.read_text(encoding="utf-8"))
+    assert m, "lifecycle file has no Last updated line"
+    return _dt.date.fromisoformat(m.group(1))
+
+
+def test_lifecycle_status_buckets_agree_with_days_to_eol() -> None:
+    """(a) `legacy` means >90 days to EOL and `excluded` means <=90, measured from Last updated."""
+    today = _last_updated()
+    problems = []
+    for line in LIFECYCLE.read_text(encoding="utf-8").splitlines():
+        if not line.startswith("|"):
+            continue
+        for status, eol in STATUS_CELL.findall(line):
+            days = (_dt.date.fromisoformat(eol) - today).days
+            if (status == "legacy" and days <= 90) or (status == "excluded" and days > 90):
+                problems.append((status, eol, days, line[:70]))
+    assert not problems, problems
+
+
+def test_nova_2_pro_only_appears_as_restricted_or_not_a_target() -> None:
+    """(b) Nova 2 Pro is never offered as a recommendation; every mention carries the gated/restricted annotation."""
+    allowed = re.compile(r"restricted|gated preview|never a (?:recommended )?target|not a target|is not a target", re.I)
+    offenders = []
+    for path in sorted(SKILLS.rglob("*.md")) + sorted(SKILLS.rglob("*.json")):
+        if "vendored" in path.parts:
+            continue
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if re.search(r"Nova 2 Pro|nova-2-pro", line) and not allowed.search(line):
+                offenders.append(f"{path.relative_to(PLUGIN_ROOT)}:{lineno}")
+    assert not offenders, offenders
+
+
+def test_openai_rows_for_shut_down_sources_carry_the_marker() -> None:
+    """(c) Every cross-family row whose OpenAI source shut down on 2026-10-23 says so and quotes no live delta."""
+    rows = _live_rows(OPENAI_GUIDE, "### Sources with no Bedrock equivalent", "### Open-weight gpt-oss")
+    by_label = {r[0]: r for r in rows}
+    for model_id, label in OPENAI_SHUT_DOWN.items():
+        assert label in by_label, f"no cross-family row {label!r} for {model_id}"
+        delta = by_label[label][4]
+        assert "Shut down 2026-10-23" in delta, f"{model_id}: {delta[:80]!r}"
+        assert not re.search(r"Bedrock \d+% cheaper", delta), f"{model_id} still quotes a live delta"
