@@ -440,12 +440,14 @@ def _resolve_invocation_model_id(model_id, requires_cris, requirements, model=No
             candidate = f"global.{model_id}"
         elif residency == "geo_required" and requirements.get("cris_geography"):
             candidate = f"{requirements['cris_geography']}.{model_id}"
-    profiles = (model or {}).get("inference_profiles")
-    if not candidate or not profiles:
+    if not candidate:
         return candidate
-    allowed = _allowed_inference_profiles(model_id, model, region, requirements)
+    profiles = (model or {}).get("inference_profiles")
+    allowed = _allowed_inference_profiles(model_id, model, region, requirements) if profiles else None
     profile_id = candidate
     if candidate.startswith("arn:"):
+        # Partition and region are validated for every pin, matrix or not: an ARN from another
+        # region/partition is never callable from this region.
         arn = re.fullmatch(
             r"arn:(aws(?:-[a-z-]+)?):bedrock:([a-z0-9-]+):[0-9]{12}:"
             r"(inference-profile|application-inference-profile)/([a-zA-Z0-9:.-]+)",
@@ -457,9 +459,34 @@ def _resolve_invocation_model_id(model_id, requires_cris, requirements, model=No
         if arn[3] == "application-inference-profile":
             # Preserve the callable ARN. The verifier checks its model destinations
             # against allowed_inference_profiles before making an inference call.
-            return candidate if allowed else None
+            if profiles:
+                return candidate if allowed else None
+            return candidate
         profile_id = arn[4]
+    if not _explicit_profile_matches(profile_id, model_id, requirements):
+        return None
+    if not profiles:
+        # No profile matrix for this model: identity, geography, partition and region were
+        # checked above; the live verifier confirms the profile exists in the region.
+        return candidate
     return candidate if profile_id in allowed else None
+
+
+def _explicit_profile_matches(profile_id, model_id, requirements):
+    """Identity + geography check for an explicit system inference profile id, independent of
+    whether the model carries a profile matrix. `profile_id` is `<model_id>` or `<prefix>.<model_id>`."""
+    if profile_id == model_id:
+        return True
+    if not profile_id.endswith(f".{model_id}"):
+        return False
+    prefix = profile_id[: -len(model_id) - 1]
+    if not re.fullmatch(r"[a-z]{2,3}(?:-[a-z]+)*|global", prefix):
+        return False
+    if requirements.get("data_residency") == "geo_required":
+        geography = requirements.get("cris_geography")
+        if prefix == "global" or (geography and prefix != geography):
+            return False
+    return True
 
 
 def _decision_options(catalog, workload, option_paths, region=None):
@@ -854,7 +881,11 @@ def recommend_anthropic_workload(workload, region, catalog):
         model,
         region,
     )
-    if model.get("inference_profiles") and path_config["requires_cris"] and not invocation_model_id:
+    # Unresolved profile blocks when the model has a profile matrix, or whenever an explicit pin
+    # was given and failed identity/geography/region validation (matrix or not): an invalid pin
+    # must fail before inference, never pass through unvalidated.
+    pin_given = bool(workload["requirements"].get("inference_profile_id"))
+    if (model.get("inference_profiles") or pin_given) and path_config["requires_cris"] and not invocation_model_id:
         blocks.append(_finding(
             "inference_profile_unresolved", "[BLOCKS]",
             "The selected model has no verified inference profile matching the region and residency requirements.",

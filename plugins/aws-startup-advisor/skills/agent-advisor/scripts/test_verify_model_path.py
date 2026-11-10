@@ -450,6 +450,86 @@ def test_application_profile_metadata_denial_does_not_create_runtime_client():
     assert not calls
 
 
+HAIKU55 = "anthropic.claude-haiku-5-5"
+CA_APPLICATION_ARN = "arn:aws:bedrock:ca-central-1:123456789012:application-inference-profile/ca-haiku"
+
+
+def _ca_haiku_recommendation(profile=CA_APPLICATION_ARN):
+    data = _input()
+    data["region"] = "ca-central-1"
+    data["workloads"][0]["requirements"].update(
+        priority="cost", governance=["guardrails"], data_residency="geo_required",
+        cris_geography="ca", inference_profile_id=profile,
+    )
+    recommendation = model_recommendation.recommend(data)
+    workload = next(iter(recommendation["workloads"].values()))
+    assert workload["primary_model"] == HAIKU55
+    assert workload["verification"]["allowed_inference_profiles"] == [f"ca.{HAIKU55}"]
+    return recommendation
+
+
+def test_canada_only_haiku_application_profile_is_verified_before_inference():
+    # The destination check is not Opus-only: a Haiku 5.5 application profile under
+    # Canada-only residency must prove Canadian destinations before the probe runs.
+    client = FakeRuntimeClient()
+    reads = []
+
+    class Control:
+        def get_inference_profile(self, inferenceProfileIdentifier):
+            assert not client.converse_calls
+            reads.append(inferenceProfileIdentifier)
+            return _profile_metadata(regions=("ca-central-1", "ca-west-1"), model=HAIKU55)
+
+    result = verify_model_path.verify_recommendation(
+        _ca_haiku_recommendation(), runtime_client_factory=lambda region: client,
+        control_client_factory=lambda region: Control(),
+    )
+    assert next(iter(result["workloads"].values()))["status"] == "passed"
+    assert reads == [CA_APPLICATION_ARN, f"ca.{HAIKU55}"]
+    assert client.converse_calls[0]["modelId"] == CA_APPLICATION_ARN
+
+
+@pytest.mark.parametrize("metadata", [
+    # US Geo destinations as seen from Canada (Canada + US regions): outside the CA policy.
+    _profile_metadata(regions=("ca-central-1", "ca-west-1", "us-east-1", "us-west-2"), model=HAIKU55),
+    _profile_metadata(regions=("us-east-1", "us-west-2"), model=HAIKU55),
+    _profile_metadata(regions=("ca-central-1", "ca-west-1"), model="anthropic.claude-haiku-4-5"),
+    _profile_metadata(regions=("ca-central-1", "ca-west-1"), model=HAIKU55, status="INACTIVE"),
+    _profile_metadata(regions=(), model=HAIKU55),
+])
+def test_canada_only_haiku_application_profile_outside_ca_fails_before_inference(metadata):
+    client = FakeRuntimeClient()
+
+    class Control:
+        def get_inference_profile(self, inferenceProfileIdentifier):
+            if inferenceProfileIdentifier == CA_APPLICATION_ARN:
+                return metadata
+            return _profile_metadata(regions=("ca-central-1", "ca-west-1"), model=HAIKU55)
+
+    result = verify_model_path.verify_recommendation(
+        _ca_haiku_recommendation(), runtime_client_factory=lambda region: client,
+        control_client_factory=lambda region: Control(),
+    )
+    assert next(iter(result["workloads"].values()))["status"] == "failed"
+    assert not client.converse_calls
+
+
+def test_canada_only_haiku_application_profile_denied_metadata_fails_closed():
+    class Control:
+        def get_inference_profile(self, **kwargs):
+            raise PermissionError("GetInferenceProfile denied")
+
+    calls = []
+    result = verify_model_path.verify_recommendation(
+        _ca_haiku_recommendation(), runtime_client_factory=lambda region: calls.append(region),
+        control_client_factory=lambda region: Control(),
+    )
+    verification = next(iter(result["workloads"].values()))
+    assert verification["status"] == "failed"
+    assert verification["error"]["type"] == "PermissionError"
+    assert not calls
+
+
 def test_application_profile_without_constraints_is_not_invoked():
     recommendation = _opus_recommendation("anthropic", "runtime_converse", APPLICATION_ARN)
     next(iter(recommendation["workloads"].values()))["verification"].pop("allowed_inference_profiles")

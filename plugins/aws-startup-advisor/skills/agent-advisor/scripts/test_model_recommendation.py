@@ -345,9 +345,9 @@ def test_agent_features_produce_architecture_and_trajectory_requirements():
         ),
         (
             {
-                "inference_profile_id": "arn:aws:bedrock:us-east-1:123:inference-profile/custom"
+                "inference_profile_id": "arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-sonnet-5"
             },
-            "arn:aws:bedrock:us-east-1:123:inference-profile/custom",
+            "arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-sonnet-5",
         ),
     ],
 )
@@ -358,6 +358,57 @@ def test_runtime_cris_resolution(requirements, expected):
     assert rec["api_path"] == "runtime_converse"
     assert rec["invocation_model_id"] == expected
     assert rec["verification"]["invocation_model_id"] == expected
+
+
+@pytest.mark.parametrize(
+    "pin,requirements",
+    [
+        # Global profile under US-only residency: Sonnet 5 has no profile matrix, but the
+        # geography constraint must still reject the pin.
+        (
+            "global.anthropic.claude-sonnet-5",
+            {"data_residency": "geo_required", "cris_geography": "us"},
+        ),
+        # EU profile under US-only residency.
+        (
+            "eu.anthropic.claude-sonnet-5",
+            {"data_residency": "geo_required", "cris_geography": "us"},
+        ),
+        # Profile for another model.
+        ("us.anthropic.claude-opus-4-1", {}),
+        # Right model, wrong region in the ARN.
+        (
+            "arn:aws:bedrock:eu-west-1:123456789012:inference-profile/eu.anthropic.claude-sonnet-5",
+            {},
+        ),
+        # Wrong partition for us-east-1.
+        (
+            "arn:aws-us-gov:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-sonnet-5",
+            {},
+        ),
+        # Not a system profile id at all.
+        ("arn:aws:bedrock:us-east-1:123456789012:inference-profile/custom", {}),
+    ],
+)
+def test_explicit_pin_on_matrixless_model_still_validates_identity_region_and_geography(
+    pin, requirements
+):
+    requirements = {**requirements, "governance": ["guardrails"], "inference_profile_id": pin}
+    rec = _recommend(_workload(requirements=requirements))
+    assert rec["api_path"] == "runtime_converse"
+    assert rec["invocation_model_id"] is None
+    assert "inference_profile_unresolved" in _codes(rec["blocks"])
+
+
+def test_explicit_pin_on_matrixless_model_is_kept_when_it_matches():
+    requirements = {
+        "governance": ["guardrails"],
+        "data_residency": "geo_required",
+        "cris_geography": "us",
+        "inference_profile_id": "us.anthropic.claude-sonnet-5",
+    }
+    rec = _recommend(_workload(requirements=requirements))
+    assert rec["invocation_model_id"] == "us.anthropic.claude-sonnet-5"
 
 
 # The intended treatment of every provider the input schema allows, written here rather than derived
