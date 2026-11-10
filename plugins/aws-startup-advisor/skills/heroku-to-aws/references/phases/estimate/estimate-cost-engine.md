@@ -148,6 +148,35 @@ Use the best available source for Heroku monthly baseline (first match wins):
    - Set `current_costs.source: "unavailable"`
    - Note: "Heroku baseline unavailable — AWS costs shown without comparison."
 
+### Right-sizing candidates (whenever any Postgres add-on carries `data_size_gb`)
+
+Large estates usually carry databases on plans chosen years ago. Before comparing Heroku
+to AWS, show the customer what they could stop paying for on Heroku today:
+
+1. For every `heroku-postgresql` add-on with `data_size_gb` and `pg_role != "follower"`
+   (followers mirror the leader's size), look up the plan's Storage and $/month in
+   `references/shared/heroku-pricing-cache.md`. Skip Advanced-tier add-ons (usage-billed).
+2. `utilization_pct = data_size_gb / plan_storage_gb × 100`. A database is a candidate
+   when `utilization_pct ≤ 25`.
+3. `fitting_plan` = within the same tier family, the smallest plan whose Storage is ≥
+   `data_size_gb × 2` (never below the family's smallest plan).
+   `monthly_saving_usd = plan $/mo − fitting_plan $/mo`.
+4. Write `current_costs.rightsizing_candidates[]`, largest saving first:
+
+   ```json
+   { "resource_id": "...", "heroku_app": "...", "plan": "private-4", "plan_storage_gb": 768,
+     "data_size_gb": 0.07, "utilization_pct": 0.01, "plan_monthly_usd": 1500,
+     "fitting_plan": "private-0", "fitting_plan_monthly_usd": 300, "monthly_saving_usd": 1200 }
+   ```
+
+   and `current_costs.rightsizing_monthly_saving_usd` (sum). Leave the Heroku baseline
+   itself unchanged — it is what they pay today — and add to `baseline_note`: "Of the
+   Heroku baseline, ${sum}/mo is on Postgres plans holding 25% or less of their storage;
+   see right-sizing candidates." This saving is available on Heroku before any migration
+   and is independent of the AWS figure, except that `database_sizing_basis: "measured"`
+   (Clarify Q6d) also shrinks the AWS side for the same databases.
+5. Redis add-ons are not assessed: live discovery captures plan memory, not used memory.
+
 ### Contract reconciliation (when `preferences.commercial.heroku_contract` exists)
 
 The baseline above is what discovery can see at list or live plan prices. An Enterprise

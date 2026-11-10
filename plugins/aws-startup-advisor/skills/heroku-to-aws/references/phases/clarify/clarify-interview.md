@@ -144,6 +144,7 @@ Before generating questions, scan the inventory to determine which questions app
 | Q6b — Migration approach             | Postgres add-on present                                          | No Postgres in inventory                  |
 | Q6c — DB migration method            | **Deferred to Generate** — defaulted here when Postgres present, asked at [C] Generate | No Postgres, or never asked in Clarify |
 | Q7 — Redis HA                        | Redis add-on present                                             | No Redis in inventory                     |
+| Q6d — Database sizing basis          | Any Postgres add-on with `data_size_gb` at or below 25% of its plan's Storage (pricing cache) | No measured sizes, or every database uses most of its plan |
 | Q8 — Kafka retention                 | Kafka add-on present                                             | No Kafka in inventory                     |
 | Q9 — VPC subnet IDs                  | Private Space with peering detected BUT subnet IDs not available | No Private Space or subnets already known |
 | Q9b — VPC ID                         | Peering detected but VPC ID not found in Terraform               | VPC ID already available or no peering    |
@@ -553,6 +554,37 @@ Re-prompt Q9b until valid input is provided.
 
 ---
 
+#### Q6d — Database Sizing Basis
+
+> _Fires only when at least one Heroku Postgres database holds 25% or less of its plan's
+> storage (measured `data_size_gb` vs the plan's Storage column in
+> `references/shared/heroku-pricing-cache.md`). Show the list first:_
+>
+> These databases are on plans far larger than the data they hold:
+>
+> | Database | Plan | Plan storage | Data | Used |
+> | --- | --- | --- | --- | --- |
+> | `<heroku_app>` | `<plan>` | `<storage>` | `<data_size_gb> GB` | `<pct>%` |
+>
+> How should we size their AWS targets?
+>
+> 1. From measured data, with 2× headroom (recommended) — the AWS instance and storage match what the database actually holds. Pick this if the plan was chosen for storage, or you intend to right-size before moving.
+> 2. From the current Heroku plan — match plan RAM and storage one-for-one. Pick this if the plan was chosen for query load or cache size, not data volume.
+
+**Interpret:**
+
+- 1 → `preferences.data.database_sizing_basis: "measured"`
+- 2 → `preferences.data.database_sizing_basis: "plan"`
+
+**Default:** 1 → `database_sizing_basis: "measured"`. The question only fires when the gap is
+large, and oversizing is the usual reason an estate's AWS estimate looks inflated.
+
+**Design impact:** `measured` makes Design step 2B look the sizing row up by required storage
+instead of by plan name (2B step 2a). `plan` keeps the plan-name lookup. Either way the
+Estimate lists the oversized databases as Heroku-side right-sizing candidates.
+
+---
+
 #### Q6b — Migration Approach
 
 > _Fires only when Heroku Postgres add-on is present in inventory._
@@ -899,6 +931,7 @@ only.
 | Q6 — Database HA          | 4 (match Q3)                            | `database_ha: <Q3 value>`                                                                                   |
 | Q6b — Migration approach  | 1 (full cutover)                        | `migration_approach: "full_cutover"`                                                                        |
 | Q6c — DB migration method | 1 (pg_dump)                             | `migration_method: "pg_dump_restore"`                                                                       |
+| Q6d — DB sizing basis     | 1 (measured)                            | `database_sizing_basis: "measured"` (only when the question fired)                                       |
 | Q7 — Redis HA             | 1 (yes) if source plan has HA, else 2 (no) | `redis_ha: true` for a `premium-*` source tier; `false` for `mini`/hobby (Q7 § Default)                     |
 | Q8 — Kafka retention      | 3 (7 days)                              | `kafka_retention_days: 7`                                                                                   |
 | Q9 — Subnet IDs           | _(no default — must ask if applicable)_ | —                                                                                                           |

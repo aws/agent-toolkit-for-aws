@@ -278,6 +278,27 @@ Continue with the next resource after the Fargate entry is appended. This guard 
    - `single-az` or `multi-az` → **RDS PostgreSQL** (use "Recommended RDS Instance Class" column)
    - `multi-az-ha` or `multi-region` → **Aurora PostgreSQL** (use "Recommended Aurora Instance Class" column)
 
+   2a. **Sizing basis** (after the plan row is found). If
+   `preferences.data.database_sizing_basis == "measured"` AND `config.data_size_gb` is
+   present AND it is at or below 25% of the matched row's `storage_gb`:
+   - `required_storage_gb` = `data_size_gb` × 2, rounded UP to the next multiple of 20,
+     minimum 20.
+   - Re-select the row: within the SAME tier family as the source plan (`essential-*`,
+     `standard-*`, `premium-*`, `private-*`, `shield-*` — this keeps the HA and compliance
+     semantics of the plan), take the row with the smallest `storage_gb` that is ≥
+     `required_storage_gb`. Use that row for steps 5–6 below instead of the plan-name row.
+     This is still a direct lookup — by storage instead of by name — not a recomputation
+     of instance class from RAM.
+   - Set `aws_config.sizing_basis: "measured"`, `aws_config.sized_as_plan: "<re-selected row key>"`,
+     and keep `aws_config.source_plan: "<config.plan>"`.
+   - Add one warning per app: "`{heroku_app}` Postgres sized from measured data
+     ({data_size_gb} GB on a {plan} plan with {storage_gb} GB): using the {sized_as_plan}
+     row. Confirm the plan was not chosen for query load."
+
+   Otherwise set `aws_config.sizing_basis: "plan"` and continue with the plan-name row.
+   Never apply this to Advanced-tier add-ons (`tier: "advanced"`), which are sized from
+   `advanced_pools[]`.
+
 5. **Instance class**: Read directly from the matched table row. The table already provides the minimum adequate instance class.
 
 6. **Storage**: Read the Storage column from the matched row. Configure storage allocation ≥ this value.

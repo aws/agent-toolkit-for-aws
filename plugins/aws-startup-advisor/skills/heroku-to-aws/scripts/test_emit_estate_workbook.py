@@ -87,7 +87,13 @@ ESTIMATE = {
                       "contract": {"term_start": "2026-01-01", "term_end": "2027-12-31", "monthly_run_rate": 1000,
                                    "discovered_monthly": 700, "gap_monthly": 300,
                                    "gap_explanation": "Support and credits are not visible to discovery.",
-                                   "lines": [{"category": "support", "monthly_usd": 100, "note": "24-month line"}]}},
+                                   "lines": [{"category": "support", "monthly_usd": 100, "note": "24-month line"}]},
+                      "rightsizing_monthly_saving_usd": 150,
+                      "rightsizing_candidates": [
+                          {"resource_id": "addon:shop-prod-api:heroku-postgresql:standard-2", "heroku_app": "shop-prod-api",
+                           "plan": "standard-2", "plan_storage_gb": 256, "data_size_gb": 40.5, "utilization_pct": 15.8,
+                           "plan_monthly_usd": 200, "fitting_plan": "standard-0", "fitting_plan_monthly_usd": 50,
+                           "monthly_saving_usd": 150}]},
     "projected_costs": {"aws_monthly_premium": 500, "aws_monthly_balanced": 400, "aws_monthly_optimized": 300},
     "cost_comparison": {"heroku_monthly_baseline": 700, "baseline_source": "live_prices_plus_cache",
                         "heroku_monthly_like_for_like": 140,
@@ -126,7 +132,8 @@ def test_writes_workbook_with_all_tabs_and_mapping_status():
         assert out.startswith("ESTATE_OK | path=") and "apps=3" in out and "resources=8" in out
         wb = sheets(tmp / "heroku-estate.xlsx")
         assert list(wb) == ["Read Me", "Summary", "Apps", "Formations", "Postgres", "Redis", "Kafka",
-                            "Other add-ons", "Shared data stores", "Cost estimate"]
+                            "Other add-ons", "Shared data stores", "Cost estimate", "Right-sizing"]
+        assert "standard-0" in wb["Right-sizing"] and "<v>150</v>" in wb["Right-sizing"]
         assert "db.m6g.large Multi-AZ" in wb["Postgres"]
         assert "Deferred - Not found in Fast_Path_Table" in wb["Other add-ons"]
         assert "t3.small 1-2 instances" in wb["Formations"]
@@ -164,7 +171,7 @@ def test_design_and_estimate_are_optional():
         code, out = run(tmp)
         assert code == 0 and out.startswith("ESTATE_OK")
         wb = sheets(tmp / "heroku-estate.xlsx")
-        assert "Cost estimate" not in wb
+        assert "Cost estimate" not in wb and "Right-sizing" not in wb
         assert "Design not run" in wb["Formations"]
 
 

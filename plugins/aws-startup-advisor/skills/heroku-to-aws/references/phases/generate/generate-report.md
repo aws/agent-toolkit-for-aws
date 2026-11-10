@@ -67,6 +67,15 @@ production by name or pipeline stage"; the field is written by the environment-t
 discovery, which is not part of this change — when it is absent, omit the line, never
 derive the counts here).
 
+From `estimation-infra.json` `current_costs.rightsizing_candidates[]` (present when any
+Postgres database holds 25% or less of its plan's storage): render a **Right-size before
+you move** table inside `exec-costs`, below the Heroku-vs-AWS table — top ten by saving,
+columns Database / Plan / Plan storage / Data / Used % / Fitting plan / Saving per month,
+then one line with the total `rightsizing_monthly_saving_usd` and the sentence: "This is
+a Heroku-side saving available today, before any migration; it is not counted in the AWS
+figure." When `database_sizing_basis` is `measured`, add: "AWS targets for these
+databases are sized from measured data (Clarify Q6d)."
+
 From `estimation-infra.json` `current_costs.contract` (present only when the user
 supplied a Heroku order form in Clarify): render a **Contract reconciliation** table
 inside `exec-costs`, below the Heroku-vs-AWS table — rows per contract category
