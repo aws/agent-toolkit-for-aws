@@ -6,16 +6,25 @@
     "bonsai": "bonsai elasticsearch",
     "scout": "scout apm",
     "newrelic": "new relic",
-    "new-relic": "new relic"
+    "new-relic": "new relic",
+    "heroku scheduler": "scheduler",
+    "jawsdb-maria": "jawsdb maria",
+    "heroku-connect": "herokuconnect",
+    "heroku connect": "herokuconnect"
   },
   "_on_not_found": "route to the specialist gate: append a deferred[] entry {addon_name, addon_plan, provider, reason: 'Not found in Fast_Path_Table', recommendation: 'Engage AWS account team for replacement selection'}; produce NO service entry; continue",
   "rows": {
     "papertrail": { "type": "single", "aws_services": ["CloudWatch Logs"], "notes": "Log aggregation and search" },
     "sendgrid": { "type": "single", "aws_services": ["Amazon SES"], "notes": "Transactional and marketing email" },
-    "heroku scheduler": {
+    "scheduler": {
       "type": "single",
       "aws_services": ["EventBridge Scheduler"],
-      "notes": "Cron-style scheduled jobs"
+      "notes": "Heroku Scheduler (CLI slug `scheduler`, display name 'Heroku Scheduler'). Cron-style scheduled jobs"
+    },
+    "advanced scheduler": {
+      "type": "single",
+      "aws_services": ["EventBridge Scheduler"],
+      "notes": "Advanced Scheduler add-on (slug `advanced-scheduler`). Cron-style jobs with finer intervals; EventBridge Scheduler supports one-minute and one-off schedules"
     },
     "memcachier": {
       "type": "single",
@@ -42,6 +51,36 @@
       "aws_services": ["S3", "CloudFront"],
       "notes": "Media storage + CDN delivery"
     },
-    "sentry": { "type": "single", "aws_services": ["CloudWatch"], "notes": "Error tracking via structured logs" }
+    "sentry": { "type": "single", "aws_services": ["CloudWatch"], "notes": "Error tracking via structured logs" },
+    "rediscloud": {
+      "type": "single",
+      "aws_services": ["ElastiCache Redis"],
+      "notes": "Redis Cloud (Redis Ltd.) third-party Redis. Plan name encodes memory (e.g. 30, 100, 250, 1000 MB): use the redis-elasticache-sizing row whose memory_limit meets or exceeds it; above 100 GB defer to the specialist gate"
+    },
+    "jawsdb": {
+      "type": "single",
+      "aws_services": ["RDS MySQL"],
+      "notes": "JawsDB MySQL. No RDS MySQL rate rows in aws-infra-pricing.json yet — the Estimate marks this line unpriced and excludes it from totals rather than inventing a rate"
+    },
+    "jawsdb maria": {
+      "type": "single",
+      "aws_services": ["RDS MariaDB"],
+      "notes": "JawsDB MariaDB. Unpriced in the Estimate until a rate row exists"
+    },
+    "auth0": {
+      "type": "single",
+      "aws_services": ["Amazon Cognito"],
+      "notes": "Identity provider. Auth0 is SaaS and can be retained unchanged; Cognito is the AWS-native target. User-store migration (password hashes, social connections, rules/actions) is a project in itself — surface it in the report, do not imply a lift-and-shift"
+    },
+    "herokuconnect": {
+      "type": "single",
+      "aws_services": ["Amazon AppFlow"],
+      "notes": "Heroku Connect: bidirectional Salesforce <-> Postgres sync. AppFlow's Salesforce connector covers scheduled/event-driven sync into RDS/Aurora via S3 or a custom connector; true bidirectional write-back needs validation per object. Unpriced in the Estimate"
+    },
+    "inference": {
+      "type": "single",
+      "aws_services": ["Amazon Bedrock"],
+      "notes": "Heroku Inference (slug `heroku-inference`, Bedrock-backed on Heroku). Map to Bedrock directly; model IDs carry over. Unpriced in the Estimate (token-based)"
+    }
   }
 }

@@ -40,7 +40,8 @@ Create the `aws-design.json` output structure in memory:
     "total_services": 0,
     "total_apps_migrated": 0,
     "fir_workloads_detected": [],
-    "fir_generation_note": ""
+    "fir_generation_note": "",
+    "postgres_followers_collapsed": []
   },
   "services": [],
   "deferred": [],
@@ -256,7 +257,14 @@ Continue with the next resource after the Fargate entry is appended. This guard 
 
 **Mapping logic:**
 
-1. Extract `config.plan`, `config.connection_pooling` from the resource.
+1. Extract `config.plan`, `config.connection_pooling`, and (when live discovery ran) `config.pg_role` from the resource.
+   - **Follower collapse.** If `config.pg_role == "follower"`: do NOT design a separate database. A Heroku follower is a read replica of a leader on the same app; on AWS that role is served by the leader's Aurora reader or RDS Multi-AZ standby / read replica. Add to `warnings[]`:
+     > "`{resource_id}` is a Heroku follower of `{config.pg_leader}` — no separate RDS/Aurora instance designed; read traffic is served by the leader's reader/replica. Its `data_size_gb` duplicates the leader's and is excluded from data-volume totals."
+
+   - Then record `{ "resource_id", "leader": config.pg_leader, "plan": config.plan }` in `metadata.postgres_followers_collapsed[]` and continue to the next resource.
+   - **Fork.** If `config.pg_role == "fork"`: a fork is an independent point-in-time copy that may have diverged. Design it as a normal database (continue below) but add to `warnings[]`:
+     > "`{resource_id}` is a Heroku fork of `{config.pg_leader}`. Confirm with the customer whether it is still needed on AWS; forks are often stale experiment or reporting copies and inflate the data-volume total."
+   - **No `pg_role`** (Terraform-only discovery): apply no collapse — Terraform cannot express follow relationships. If one app owns more than one `heroku-postgresql` add-on, add one warning per app: "App `{heroku_app}` owns {n} Heroku Postgres add-ons; live discovery was not available to tell leaders from followers, so each is designed as a separate database."
 
 2. **Plan lookup**: Match `config.plan` (case-insensitive) against the Postgres Plan Table.
 
@@ -451,7 +459,14 @@ Continue with the next resource after the Fargate entry is appended. This guard 
    | ------------------------ | ------------------------------ |
    | `papertrail`             | `papertrail`                   |
    | `sendgrid`               | `sendgrid`                     |
-   | `heroku-scheduler`       | `heroku scheduler`             |
+   | `scheduler`              | `scheduler` **                 |
+   | `advanced-scheduler`     | `advanced scheduler`           |
+   | `heroku-inference`       | `inference`                    |
+   | `herokuconnect`          | `herokuconnect`                |
+   | `rediscloud`             | `rediscloud`                   |
+   | `jawsdb`                 | `jawsdb`                       |
+   | `jawsdb-maria`           | `jawsdb maria`                 |
+   | `auth0`                  | `auth0`                        |
    | `memcachier`             | `memcachier`                   |
    | `bucketeer`              | `bucketeer`                    |
    | `cloudamqp`              | `cloudamqp`                    |
@@ -467,6 +482,11 @@ Continue with the next resource after the Fargate entry is appended. This guard 
    - `bonsai` → `bonsai elasticsearch`
    - `scout` → `scout apm`
    - `newrelic` or `new-relic` → `new relic`
+   - `heroku scheduler` → `scheduler`
+   - `heroku-connect` or `heroku connect` → `herokuconnect`
+   - `jawsdb-maria` → `jawsdb maria`
+
+   \*\* The Heroku CLI (`heroku addons --json`) reports Heroku Scheduler under the slug `scheduler` — there is no `heroku-` prefix to strip — so the fast-path row is keyed `scheduler`; the display name 'Heroku Scheduler' reaches the same row through the alias above. A run that defers `scheduler` as "Not found in Fast_Path_Table" is a normalization bug, not a missing mapping.
 
 3. **Exact case-insensitive match** the normalized name against the Fast-Path Table "Heroku Add-On" column.
 

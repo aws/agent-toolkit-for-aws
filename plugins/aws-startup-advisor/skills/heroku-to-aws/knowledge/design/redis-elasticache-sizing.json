@@ -6,6 +6,14 @@
   "_transit_encryption": "if config.encryption_in_transit == true OR row encryption == true -> transit_encryption: true",
   "_engine_version": "engine-aware (design-mapping.md 2C steps 5-6): the default engine is Valkey — emit a Valkey engine_version (7.2 or later) that covers the source feature set; the explicit Redis OSS exception emits a supported Redis OSS version with the same major (7.0 -> 7.1) and the ElastiCache Redis label; the row redis_version is PROVENANCE only (why the node meets the source) — do not derive the engine from it",
   "rows": {
+    "mini": {
+      "memory_limit": "25 MB",
+      "ha": false,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.t4g.micro",
+      "note": "Current entry-level plan (replaced hobby); no HA, no persistence"
+    },
     "hobby": {
       "memory_limit": "25 MB",
       "ha": false,
@@ -49,11 +57,11 @@
       "node_type": "cache.t4g.small"
     },
     "premium-5": {
-      "memory_limit": "2.5 GB",
+      "memory_limit": "1 GB",
       "ha": true,
       "encryption": true,
       "redis_version": "7.0",
-      "node_type": "cache.t4g.medium"
+      "node_type": "cache.t4g.small"
     },
     "premium-6": {
       "memory_limit": "5 GB",
@@ -63,7 +71,7 @@
       "node_type": "cache.m6g.large"
     },
     "premium-7": {
-      "memory_limit": "10 GB",
+      "memory_limit": "7 GB",
       "ha": true,
       "encryption": true,
       "redis_version": "7.0",
@@ -77,18 +85,18 @@
       "node_type": "cache.m6g.xlarge"
     },
     "premium-9": {
+      "memory_limit": "10 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.m6g.xlarge"
+    },
+    "premium-10": {
       "memory_limit": "25 GB",
       "ha": true,
       "encryption": true,
       "redis_version": "7.0",
       "node_type": "cache.m6g.2xlarge"
-    },
-    "premium-10": {
-      "memory_limit": "50 GB",
-      "ha": true,
-      "encryption": true,
-      "redis_version": "7.0",
-      "node_type": "cache.m6g.4xlarge"
     },
     "premium-11": {
       "memory_limit": "75 GB",
@@ -98,11 +106,11 @@
       "node_type": "cache.m6g.8xlarge"
     },
     "premium-12": {
-      "memory_limit": "100 GB",
+      "memory_limit": "50 GB",
       "ha": true,
       "encryption": true,
       "redis_version": "7.0",
-      "node_type": "cache.m6g.8xlarge"
+      "node_type": "cache.m6g.4xlarge"
     },
     "premium-13": {
       "memory_limit": "150 GB",
@@ -112,11 +120,11 @@
       "node_type": "cache.m6g.12xlarge"
     },
     "premium-14": {
-      "memory_limit": "200 GB",
+      "memory_limit": "100 GB",
       "ha": true,
       "encryption": true,
       "redis_version": "7.0",
-      "node_type": "cache.m6g.16xlarge"
+      "node_type": "cache.m6g.8xlarge"
     },
     "private-1": {
       "memory_limit": "1 GB",
@@ -133,11 +141,11 @@
       "node_type": "cache.t4g.medium"
     },
     "private-3": {
-      "memory_limit": "5 GB",
+      "memory_limit": "500 MB",
       "ha": true,
       "encryption": true,
       "redis_version": "7.0",
-      "node_type": "cache.m6g.large"
+      "node_type": "cache.t4g.small"
     },
     "private-4": {
       "memory_limit": "10 GB",
@@ -147,11 +155,11 @@
       "node_type": "cache.m6g.xlarge"
     },
     "private-5": {
-      "memory_limit": "25 GB",
+      "memory_limit": "750 MB",
       "ha": true,
       "encryption": true,
       "redis_version": "7.0",
-      "node_type": "cache.m6g.2xlarge"
+      "node_type": "cache.t4g.small"
     },
     "private-6": {
       "memory_limit": "50 GB",
@@ -161,11 +169,97 @@
       "node_type": "cache.m6g.4xlarge"
     },
     "private-7": {
+      "memory_limit": "7 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.m6g.xlarge"
+    },
+    "private-9": {
+      "memory_limit": "10 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.m6g.xlarge"
+    },
+    "private-10": {
+      "memory_limit": "25 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.m6g.2xlarge"
+    },
+    "private-12": {
+      "memory_limit": "50 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.m6g.4xlarge"
+    },
+    "private-14": {
       "memory_limit": "100 GB",
       "ha": true,
       "encryption": true,
       "redis_version": "7.0",
       "node_type": "cache.m6g.8xlarge"
+    },
+    "shield-3": {
+      "memory_limit": "500 MB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.t4g.small",
+      "compliance": "hipaa/pci"
+    },
+    "shield-5": {
+      "memory_limit": "750 MB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.t4g.small",
+      "compliance": "hipaa/pci"
+    },
+    "shield-7": {
+      "memory_limit": "7 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.m6g.xlarge",
+      "compliance": "hipaa/pci"
+    },
+    "shield-9": {
+      "memory_limit": "10 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.m6g.xlarge",
+      "compliance": "hipaa/pci"
+    },
+    "shield-10": {
+      "memory_limit": "25 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.m6g.2xlarge",
+      "compliance": "hipaa/pci"
+    },
+    "shield-12": {
+      "memory_limit": "50 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.m6g.4xlarge",
+      "compliance": "hipaa/pci"
+    },
+    "shield-14": {
+      "memory_limit": "100 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.m6g.8xlarge",
+      "compliance": "hipaa/pci"
     }
-  }
+  },
+  "_shield_note": "shield-* plans are the Shield Space equivalents of private-*; map identically but note the compliance requirement",
+  "_plan_memory_note": "memory_limit values are the plan sizes Heroku publishes today (elements.heroku.com/addons/heroku-redis) and match references/shared/heroku-pricing-cache.md. Earlier versions of this table carried ~10x larger values for premium-5..14 and private-3..7 (e.g. private-7 as 100 GB; it is 7 GB), which over-sized ElastiCache by two to three instance classes. premium-4/6/8/11/13 and private-1/2/4/6 are legacy plan numbers no longer sold; kept for older accounts."
 }

@@ -122,6 +122,33 @@
       "rds_instance_class": "db.m6g.16xlarge",
       "aurora_instance_class": "db.r6g.16xlarge"
     },
+    "standard-8": {
+      "ram": "488 GB",
+      "storage_gb": 3072,
+      "connections": 500,
+      "ha": false,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.r6g.16xlarge",
+      "aurora_instance_class": "db.r6g.16xlarge"
+    },
+    "standard-9": {
+      "ram": "768 GB",
+      "storage_gb": 4096,
+      "connections": 500,
+      "ha": false,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.x2g.16xlarge",
+      "aurora_instance_class": "db.r6g.16xlarge"
+    },
+    "standard-10": {
+      "ram": "1 TB",
+      "storage_gb": 8192,
+      "connections": 500,
+      "ha": false,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.x2g.16xlarge",
+      "aurora_instance_class": "db.r6g.16xlarge"
+    },
     "premium-0": {
       "ram": "4 GB",
       "storage_gb": 64,
@@ -176,6 +203,24 @@
       "rds_instance_class": "db.m6g.8xlarge",
       "aurora_instance_class": "db.r6g.8xlarge"
     },
+    "premium-l-6": {
+      "ram": "122 GB",
+      "storage_gb": 2048,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.8xlarge",
+      "aurora_instance_class": "db.r6g.8xlarge"
+    },
+    "premium-xl-6": {
+      "ram": "122 GB",
+      "storage_gb": 3072,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.8xlarge",
+      "aurora_instance_class": "db.r6g.8xlarge"
+    },
     "premium-7": {
       "ram": "244 GB",
       "storage_gb": 2048,
@@ -198,6 +243,33 @@
       "ram": "768 GB",
       "storage_gb": 4096,
       "connections": 1500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.x2g.16xlarge",
+      "aurora_instance_class": "db.r6g.16xlarge"
+    },
+    "premium-l-9": {
+      "ram": "768 GB",
+      "storage_gb": 5120,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.x2g.16xlarge",
+      "aurora_instance_class": "db.r6g.16xlarge"
+    },
+    "premium-xl-9": {
+      "ram": "768 GB",
+      "storage_gb": 6144,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.x2g.16xlarge",
+      "aurora_instance_class": "db.r6g.16xlarge"
+    },
+    "premium-10": {
+      "ram": "1 TB",
+      "storage_gb": 8192,
+      "connections": 500,
       "ha": true,
       "src_connection_pooling": true,
       "rds_instance_class": "db.x2g.16xlarge",
@@ -257,6 +329,24 @@
       "rds_instance_class": "db.m6g.8xlarge",
       "aurora_instance_class": "db.r6g.8xlarge"
     },
+    "private-l-6": {
+      "ram": "122 GB",
+      "storage_gb": 2048,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.8xlarge",
+      "aurora_instance_class": "db.r6g.8xlarge"
+    },
+    "private-xl-6": {
+      "ram": "122 GB",
+      "storage_gb": 3072,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.8xlarge",
+      "aurora_instance_class": "db.r6g.8xlarge"
+    },
     "private-7": {
       "ram": "244 GB",
       "storage_gb": 2048,
@@ -264,6 +354,51 @@
       "ha": true,
       "src_connection_pooling": true,
       "rds_instance_class": "db.m6g.16xlarge",
+      "aurora_instance_class": "db.r6g.16xlarge"
+    },
+    "private-8": {
+      "ram": "488 GB",
+      "storage_gb": 3072,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.r6g.16xlarge",
+      "aurora_instance_class": "db.r6g.16xlarge"
+    },
+    "private-9": {
+      "ram": "768 GB",
+      "storage_gb": 4096,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.x2g.16xlarge",
+      "aurora_instance_class": "db.r6g.16xlarge"
+    },
+    "private-l-9": {
+      "ram": "768 GB",
+      "storage_gb": 5120,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.x2g.16xlarge",
+      "aurora_instance_class": "db.r6g.16xlarge"
+    },
+    "private-xl-9": {
+      "ram": "768 GB",
+      "storage_gb": 6144,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.x2g.16xlarge",
+      "aurora_instance_class": "db.r6g.16xlarge"
+    },
+    "private-10": {
+      "ram": "1 TB",
+      "storage_gb": 8192,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.x2g.16xlarge",
       "aurora_instance_class": "db.r6g.16xlarge"
     },
     "shield-0": {
@@ -326,6 +461,26 @@
       "aurora_instance_class": "db.r6g.8xlarge",
       "compliance": "hipaa/pci"
     },
+    "shield-l-6": {
+      "ram": "122 GB",
+      "storage_gb": 2048,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.8xlarge",
+      "aurora_instance_class": "db.r6g.8xlarge",
+      "compliance": "hipaa/pci"
+    },
+    "shield-xl-6": {
+      "ram": "122 GB",
+      "storage_gb": 3072,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.8xlarge",
+      "aurora_instance_class": "db.r6g.8xlarge",
+      "compliance": "hipaa/pci"
+    },
     "shield-7": {
       "ram": "244 GB",
       "storage_gb": 2048,
@@ -335,6 +490,57 @@
       "rds_instance_class": "db.m6g.16xlarge",
       "aurora_instance_class": "db.r6g.16xlarge",
       "compliance": "hipaa/pci"
+    },
+    "shield-8": {
+      "ram": "488 GB",
+      "storage_gb": 3072,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.r6g.16xlarge",
+      "aurora_instance_class": "db.r6g.16xlarge",
+      "compliance": "hipaa/pci"
+    },
+    "shield-9": {
+      "ram": "768 GB",
+      "storage_gb": 4096,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.x2g.16xlarge",
+      "aurora_instance_class": "db.r6g.16xlarge",
+      "compliance": "hipaa/pci"
+    },
+    "shield-l-9": {
+      "ram": "768 GB",
+      "storage_gb": 5120,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.x2g.16xlarge",
+      "aurora_instance_class": "db.r6g.16xlarge",
+      "compliance": "hipaa/pci"
+    },
+    "shield-xl-9": {
+      "ram": "768 GB",
+      "storage_gb": 6144,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.x2g.16xlarge",
+      "aurora_instance_class": "db.r6g.16xlarge",
+      "compliance": "hipaa/pci"
+    },
+    "shield-10": {
+      "ram": "1 TB",
+      "storage_gb": 8192,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.x2g.16xlarge",
+      "aurora_instance_class": "db.r6g.16xlarge",
+      "compliance": "hipaa/pci"
     }
-  }
+  },
+  "_large_plan_note": "The -8/-9/-10 and -l-/-xl- rows (3-8 TB) are the plans large Heroku Enterprise estates actually run; a miss here defers the biggest databases in the estate. storage_gb is the plan's allocated storage, not measured data — Aurora bills on measured storage, so the Estimate should prefer config.data_size_gb when present. Note Heroku Postgres Advanced plan levels (e.g. '4G-Performance') are a separate product and are not in this table."
 }
