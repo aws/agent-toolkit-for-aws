@@ -1185,3 +1185,49 @@ def test_astra_rejects_capacity_above_documented_limit(requirement, limit):
     )
     assert rec["decision_status"] == "decision_required"
     assert "unverified_capacity" in _codes(rec["blocks"])
+
+
+# --- Haiku 5.5 as the Luna Converse fallback: profiles, sampling (review on #600) --------------
+
+
+def test_luna_governance_global_allowed_resolves_a_haiku_5_5_profile():
+    # inference_profiles must hold SOURCE regions, not profile ids: with governance, vision and
+    # worldwide routing allowed in us-east-1, the Converse fallback is Haiku 5.5 on its Global profile.
+    rec = _recommend(
+        _workload(
+            source={"model_ids": ["gpt-5.6-luna"]},
+            requirements={"governance": ["guardrails"], "critical_features": ["image_input_vision"],
+                          "data_residency": "global_allowed"},
+        ),
+        region="us-east-1",
+    )
+    assert rec["primary_model"].endswith("anthropic.claude-haiku-5-5")
+    assert rec["invocation_model_id"] == "global.anthropic.claude-haiku-5-5"
+
+
+def test_luna_governance_eu_residency_resolves_the_eu_haiku_profile():
+    rec = _recommend(
+        _workload(
+            source={"model_ids": ["gpt-5.6-luna"]},
+            requirements={"governance": ["guardrails"], "critical_features": ["image_input_vision"],
+                          "data_residency": "geo_required", "cris_geography": "eu"},
+        ),
+        region="eu-west-1",
+    )
+    assert rec["primary_model"].endswith("anthropic.claude-haiku-5-5")
+    assert rec["invocation_model_id"] == "eu.anthropic.claude-haiku-5-5"
+
+
+def test_haiku_5_5_fallback_removes_sampling_instead_of_moving_it_to_converse():
+    rec = _recommend(
+        _workload(
+            source={"model_ids": ["gpt-5.6-luna"]},
+            requirements={"governance": ["guardrails"], "critical_features": ["image_input_vision"],
+                          "data_residency": "global_allowed"},
+            detected_features=["sampling_params"],
+        ),
+        region="us-east-1",
+    )
+    assert rec["primary_model"].endswith("anthropic.claude-haiku-5-5")
+    assert "sampling_parameters_removed" in _codes(rec["blocks"])
+    assert "sampling_via_converse" not in _codes(rec["tuning"])

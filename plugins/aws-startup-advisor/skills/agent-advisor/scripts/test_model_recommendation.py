@@ -78,15 +78,60 @@ def test_default_anthropic_messages_prefers_mantle_and_sonnet5():
 
 
 def test_cost_priority_on_messages_uses_clean_mantle_haiku_id():
-    # Haiku 5.5 (Active 2026-10-07) is the fast/low-cost tier; Haiku 4.5 is kept as an
-    # explicit alternative and must never be the automatic pick.
+    # Haiku 5.5 is the fast/low-cost tier, but the model card lists bedrock-mantle for it only in
+    # us-gov-west-1. In us-east-1 the Messages path therefore falls to Haiku 4.5, the Batch-listed
+    # explicit alternative, rather than to Sonnet 5.
     rec = _recommend(_workload(requirements={"priority": "cost"}))
 
     assert rec["api_path"] == "mantle_messages"
-    assert rec["primary_model"] == "anthropic.claude-haiku-5-5"
+    assert rec["primary_model"] == "anthropic.claude-haiku-4-5"
     assert rec["model_identity"]["requires_cris"] is False
-    assert "claude_haiku_4_5" in {option["model_key"] for option in rec["alternatives"]}
-    assert rec["alternatives"][0]["model_key"] != "claude_haiku_4_5"
+    # Haiku 5.5 may still appear as a runtime_converse alternative; it must not be a Mantle option here.
+    assert not any(
+        o["model_key"] == "claude_haiku_5_5" and o["api_path"] == "mantle_messages" for o in rec["alternatives"]
+    )
+
+
+def test_cost_priority_on_messages_in_govcloud_selects_haiku_5_5():
+    inp = _input(_workload(requirements={"priority": "cost"}))
+    inp["region"] = "us-gov-west-1"
+    rec = model_recommendation.recommend(inp)["workloads"]["support-agent"]
+    assert rec["api_path"] == "mantle_messages"
+    assert rec["primary_model"] == "anthropic.claude-haiku-5-5"
+
+
+def test_cost_priority_on_runtime_selects_haiku_5_5_via_profile():
+    rec = _recommend(
+        _workload(requirements={"priority": "cost", "governance": ["guardrails"], "data_residency": "global_allowed"})
+    )
+    assert rec["api_path"] == "runtime_converse"
+    assert rec["model_identity"]["model_key"] == "claude_haiku_5_5"
+    assert rec["invocation_model_id"] == "global.anthropic.claude-haiku-5-5"
+    geo = _recommend(
+        _workload(requirements={"priority": "cost", "governance": ["guardrails"],
+                                "data_residency": "geo_required", "cris_geography": "us"})
+    )
+    assert geo["invocation_model_id"] == "us.anthropic.claude-haiku-5-5"
+
+
+def test_govcloud_runtime_does_not_receive_a_global_haiku_profile():
+    # Global profiles are unavailable in GovCloud; the us. Geo profile covers us-gov-* source Regions.
+    inp = _input(_workload(requirements={"priority": "cost", "governance": ["guardrails"], "data_residency": "global_allowed"}))
+    inp["region"] = "us-gov-west-1"
+    rec = model_recommendation.recommend(inp)["workloads"]["support-agent"]
+    assert rec["model_identity"]["model_key"] == "claude_haiku_5_5"
+    assert rec["invocation_model_id"] != "global.anthropic.claude-haiku-5-5"
+
+
+def test_haiku_5_5_batch_remediation_names_the_selected_model_not_opus():
+    rec = _recommend(
+        _workload(requirements={"priority": "cost", "governance": ["guardrails"]}, detected_features=["message_batches"])
+    )
+    assert rec["model_identity"]["model_key"] == "claude_haiku_5_5"
+    finding = next(f for f in rec["blocks"] if f["code"] == "message_batches_not_portable")
+    assert "Claude Haiku 5.5 does not support Bedrock Batch" in finding["remediation"]
+    assert "Opus" not in finding["remediation"]
+    assert "Claude Haiku 4.5" in finding["remediation"]
 
 
 def test_governance_selects_runtime_converse_when_messages_is_a_preference():
@@ -153,7 +198,9 @@ def test_context_and_output_limits_filter_candidates():
         )
     )
 
-    assert rec["model_identity"]["model_key"] == "claude_haiku_5_5"  # 1M / 128K; Haiku 4.5 (200K / 64K) is filtered out
+    # On Mantle in us-east-1 Haiku 5.5 is not served, and Haiku 4.5 (200K / 64K) is filtered
+    # by the limits, so the cost order lands on Sonnet 5 (1M / 128K).
+    assert rec["model_identity"]["model_key"] == "claude_sonnet_5"
     assert all(
         option["model_key"] != "claude_haiku_4_5"
         for option in rec["alternatives"]
@@ -170,7 +217,9 @@ def test_thinking_requirement_filters_haiku():
         )
     )
 
-    assert rec["model_identity"]["model_key"] == "claude_haiku_5_5"  # adaptive thinking; Haiku 4.5 lacks extended_thinking and is filtered out
+    # On Mantle in us-east-1 Haiku 5.5 is not served and Haiku 4.5 has no extended_thinking,
+    # so thinking_enabled lands on Sonnet 5; the Haiku 4.5 exclusion below is the real check.
+    assert rec["model_identity"]["model_key"] == "claude_sonnet_5"
     assert all(option["model_key"] != "claude_haiku_4_5" for option in rec["alternatives"])
 
 

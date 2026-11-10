@@ -29,14 +29,21 @@ ANTHROPIC_PATHS = (
 ANTHROPIC_POOL = frozenset({"anthropic", "none", "unknown"})
 
 # New migrations use Opus 5.5; older Opus models are not automatic fallback candidates.
-# Haiku 5.5 is the fast/low-cost tier (Active since 2026-10-07, 1M context, adaptive thinking);
-# Haiku 4.5 stays last as an explicit alternative for workloads that must keep pre-5.5 behavior.
+# Haiku 5.5 is the fast/low-cost tier (Active since 2026-10-07, 1M context, adaptive thinking).
+# Haiku 4.5 is never the automatic pick while Haiku 5.5 is selectable; it follows Haiku 5.5 in the
+# speed/cost orders only so that a path/region Haiku 5.5 does not serve (Mantle outside
+# us-gov-west-1) still gets the fast tier rather than Sonnet, and stays last everywhere else.
 _PRIORITY_ORDER = {
     "quality": ["claude_opus_5_5", "claude_sonnet_5", "claude_haiku_5_5", "claude_haiku_4_5"],
     "balanced": ["claude_sonnet_5", "claude_opus_5_5", "claude_haiku_5_5", "claude_haiku_4_5"],
-    "speed": ["claude_haiku_5_5", "claude_sonnet_5", "claude_opus_5_5", "claude_haiku_4_5"],
-    "cost": ["claude_haiku_5_5", "claude_sonnet_5", "claude_opus_5_5", "claude_haiku_4_5"],
+    "speed": ["claude_haiku_5_5", "claude_haiku_4_5", "claude_sonnet_5", "claude_opus_5_5"],
+    "cost": ["claude_haiku_5_5", "claude_haiku_4_5", "claude_sonnet_5", "claude_opus_5_5"],
     "unknown": ["claude_sonnet_5", "claude_opus_5_5", "claude_haiku_5_5", "claude_haiku_4_5"],
+}
+# Models with no Bedrock Batch tier and the explicitly chosen, Batch-listed alternative to name.
+_BATCH_CAPABLE_ALTERNATIVE = {
+    "claude_opus_5_5": "Claude Opus 4.6",
+    "claude_haiku_5_5": "Claude Haiku 4.5",
 }
 
 _FEATURE_ORDER = {
@@ -845,9 +852,11 @@ def recommend_anthropic_workload(workload, region, catalog):
     if model.get("batch_supported") is False:
         for finding in blocks:
             if finding["code"] == "message_batches_not_portable":
+                alternative = _BATCH_CAPABLE_ALTERNATIVE.get(chosen["model_key"], "a verified batch-capable model")
                 finding["remediation"] = (
-                    "Opus 5.5 does not support Bedrock Batch. Use on-demand inference, "
-                    "or select a verified batch-capable alternative such as Opus 4.6."
+                    f"{model['display_name']} does not support Bedrock Batch (Standard tier only). "
+                    "Use on-demand inference, or explicitly select "
+                    f"{alternative} after verifying its Batch support and rates."
                 )
     rationale = list(constraints["rationale"])
     rationale.append(
