@@ -1,6 +1,6 @@
-# Compute Decision Edge Cases (Tier 4)
+# Compute Decision Edge Cases (Tier 3)
 
-Tier 4 of the compute decision flow in `SKILL.md`: feature-level questions that are decided **after** the form factor and capacity provider are locked. Each section gives the question to ask, the decision, and the thresholds and caveats that the one-line summary in `SKILL.md` leaves out. Read this file when a request raises duration limits, cold starts or first-request latency, stream or queue lag, or tenant isolation.
+Tier 3 of the compute decision flow in `SKILL.md`: feature-level questions that are decided **after** the form factor and capacity provider are locked. Each section gives the question to ask, the decision, and the thresholds and caveats that the one-line summary in `SKILL.md` leaves out. Read this file when a request raises duration limits, cold starts or first-request latency, stream or queue lag, or tenant isolation.
 
 ## Contents
 
@@ -43,6 +43,7 @@ Ask for the overall duration and, if the work splits into tasks, the per-task du
 Decide form factor, programming model, and capacity first. Infer the symptom from metrics or the request when possible. If it is still unclear, ask in customer-observable terms: *"Is only the first request after an idle period slow, or is a queue/stream backlog growing while traffic is being processed?"*
 
 - **Stream/queue lag** (consumer backlog, `ApproximateAgeOfOldestRecord` or `IteratorAge` climbing, Kafka consumer lag) → **provisioned mode for the event source mapping** (minimum and maximum pollers / event poller units), on either Event Functions capacity provider. Provisioned mode controls input delivery: how quickly the event source mapping reads the source and hands records to Lambda. Provisioned Concurrency controls environment availability and does nothing for a backlog. Details: [concurrency.md](concurrency.md).
+- **Protecting a downstream resource from an SQS consumer** (spikes must not overwhelm a database; processing should stay steady or predictable) is Leaning: lead with **maximum concurrency on the SQS event source mapping** (`ScalingConfig.MaximumConcurrency`, 2–1,000) and ask: *"Is the goal to cap throughput so the database is never overloaded, or to guarantee a minimum processing rate during spikes?"* Maximum concurrency caps how many concurrent invocations that queue drives; the rest of the messages wait in the queue. It reserves nothing. A guaranteed floor needs **provisioned mode** for the event source mapping (minimum pollers) instead, and the two cannot be combined on the same mapping. Reserved concurrency caps the whole function across all triggers. "Steady" or "predictable" processing here is a throughput goal, not a traffic-shape signal, so it is not a Managed Instances signal. Details: [concurrency.md](concurrency.md).
 - **First-request latency** → next section.
 
 ---

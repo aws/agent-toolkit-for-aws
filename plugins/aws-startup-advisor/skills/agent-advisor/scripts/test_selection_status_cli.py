@@ -131,3 +131,79 @@ def test_schema_rejects_decision_required_with_fewer_than_two_options(options):
     rec["workloads"]["w"]["decision_options"] = rec["workloads"]["w"]["decision_options"][:options]
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(rec, schema)
+
+
+# --- blocked only when reference_only entries emptied the side (review on #567) ----------------
+
+def _workload_input(provider, source_model, api_surface, **requirements):
+    return {
+        "schema_version": 2, "region": "us-east-1", "primary_unit": "w",
+        "workloads": [{
+            "workload_id": "w",
+            "source": {"provider": provider, "model_ids": [source_model], "sdk": provider,
+                       "api_surface": api_surface, "source_paths": ["src/app.py"]},
+            "requirements": {"priority": "balanced", "critical_features": [],
+                             "data_residency": "global_allowed", **requirements},
+            "detected_features": [],
+        }],
+    }
+
+
+def test_unrelated_reference_only_does_not_turn_an_unsatisfiable_conflict_into_blocked():
+    # Same unsatisfiable 2M-token conflict as above, but one model is reference_only. That
+    # entry cannot fill either side (no Claude has a 2M window), so the raise must stand.
+    catalog = _reference_only(mr.load_catalog(), ["claude_haiku_4_5"])
+    data = _workload_input("anthropic", "claude-opus-4-8", "messages", preserve_messages_api=True,
+                           governance=["guardrails"], min_context_tokens=2_000_000)
+    with pytest.raises(ValueError, match="no candidate for every conflicting"):
+        mr.recommend(data, catalog=catalog)
+
+
+def test_anthropic_blocked_names_only_the_entries_that_would_fill_the_side():
+    catalog = mr.load_catalog()
+    # Remove the Mantle Messages side from everything except Opus, then hide Opus: only Opus
+    # could fill that side, so it alone is named; Sonnet and Haiku stay selectable for runtime.
+    for key, model in catalog["models"].items():
+        if key != "claude_opus_5_5":
+            model["paths"]["mantle_messages"]["available"] = False
+    catalog = _reference_only(catalog, ["claude_opus_5_5"])
+    rec = mr.recommend(_workload_input("anthropic", "claude-opus-4-8", "messages",
+                                       preserve_messages_api=True, governance=["guardrails"]),
+                       catalog=catalog)["workloads"]["w"]
+    assert rec["decision_status"] == "blocked"
+    finding = next(b for b in rec["blocks"] if b["code"] == "decision_option_unavailable")
+    assert "mantle_messages" in finding["message"]
+    assert "claude_opus_5_5" in finding["message"]
+    assert "claude_sonnet_5" not in finding["message"] and "claude_haiku_4_5" not in finding["message"]
+
+
+def test_openai_unrelated_reference_only_keeps_the_unsatisfiable_raise():
+    catalog = copy.deepcopy(_REAL_OPENAI_LOADER())
+    # No model offers a Mantle path at all, so the continuity side is unsatisfiable regardless
+    # of selection_status; one unrelated reference_only entry must not change that.
+    for model in catalog["models"].values():
+        for path_id, path in model["paths"].items():
+            if path_id.startswith("mantle_"):
+                path["available"] = False
+    catalog = _reference_only(catalog, ["anthropic_claude_haiku_4_5"])
+    data = _workload_input("openai", "gpt-6-sol", "responses",
+                           preserve_openai_api=True, governance=["guardrails"])
+    with pytest.raises(ValueError, match="cannot supply both decision options"):
+        mr.recommend(data, catalog=mr.load_catalog(), openai_catalog=catalog)
+
+
+def test_openai_blocked_names_only_mantle_side_entries(tmp_path, monkeypatch, capsys):
+    catalog = _REAL_OPENAI_LOADER()
+    mantle_keys = [k for k, m in catalog["models"].items()
+                   if any(p.startswith("mantle_") for p in m["paths"])]
+    # Also hide a runtime-only Claude target: it cannot fill the Mantle side, so it must not
+    # be named.
+    hidden = _reference_only(catalog, mantle_keys + ["anthropic_claude_haiku_4_5"])
+    rec = mr.recommend(_workload_input("openai", "gpt-6-sol", "responses",
+                                       preserve_openai_api=True, governance=["guardrails"]),
+                       catalog=mr.load_catalog(), openai_catalog=hidden)["workloads"]["w"]
+    assert rec["decision_status"] == "blocked"
+    message = next(b for b in rec["blocks"] if b["code"] == "decision_option_unavailable")["message"]
+    named = {k for k in mantle_keys + ["anthropic_claude_haiku_4_5"] if k in message}
+    assert named and named <= set(mantle_keys)
+    assert "anthropic_claude_haiku_4_5" not in message

@@ -23,6 +23,13 @@ SUPPORTED_PATHS = {
 SELECTION_STATUSES = ("selectable", "reference_only")
 
 
+def with_all_selectable(catalog):
+    """The same catalog with every entry selectable: used to ask whether reference_only entries,
+    and not some other filter, are what left a decision side empty."""
+    return {**catalog, "models": {k: {**m, "selection_status": "selectable"}
+                                  for k, m in catalog["models"].items()}}
+
+
 def is_selectable(model):
     status = model.get("selection_status", "selectable")
     if status not in SELECTION_STATUSES:
@@ -748,27 +755,32 @@ def _decision_required(workload, region, catalog, constraints):
             "update requirements, and rerun Model Recommend.",
         )
     ]
-    # A real choice needs a candidate on every conflicting side. When a side has none (for
-    # example its only models are reference_only), the result is blocked: options are never
-    # invented to fill the gap.
+    # A real choice needs a candidate on every conflicting side. A side is blocked only when
+    # reference_only entries are what emptied it: with them counted as selectable (every other
+    # filter unchanged) the side has a candidate. Otherwise the requirement is unsatisfiable and
+    # the fail-closed raise is unchanged. Options are never invented to fill the gap.
     status = "decision_required"
     if len(decision_options) != len(set(constraints["option_paths"])):
-        skipped = sorted(k for k, m in catalog["models"].items() if not is_selectable(m))
-        if not skipped:
-            # Unsatisfiable requirements with every model selectable: unchanged fail-closed raise.
-            raise ValueError(
-                "catalog has no candidate for every conflicting model/path option "
-                f"for workload {workload['workload_id']}"
-            )
-        status = "blocked"
         offered = {option["api_path"] for option in decision_options}
         missing = sorted(set(constraints["option_paths"]) - offered)
+        counterfactual = with_all_selectable(catalog)
+        blamed = set()
+        for path in missing:
+            candidates = _build_candidates(counterfactual, [path], workload["requirements"], region)
+            if not candidates:
+                raise ValueError(
+                    "catalog has no candidate for every conflicting model/path option "
+                    f"for workload {workload['workload_id']}"
+                )
+            blamed |= {c["model_key"] for c in candidates
+                       if not is_selectable(catalog["models"][c["model_key"]])}
+        status = "blocked"
         blocks.append(
             _finding(
                 "decision_option_unavailable",
                 "[BLOCKS]",
-                f"No selectable catalog model satisfies the {', '.join(missing)} option "
-                f"(reference_only entries skipped: {', '.join(skipped)}).",
+                f"No selectable catalog model satisfies the {', '.join(missing)} option; it is "
+                f"available only from reference_only entries: {', '.join(sorted(blamed))}.",
                 "Mark a verified model selectable for that path, or update the conflicting "
                 "requirement, then rerun Model Recommend.",
             )
@@ -802,7 +814,7 @@ def _decision_required(workload, region, catalog, constraints):
             "gate": (
                 "Resolve the model/path conflict before implementation."
                 if status == "decision_required"
-                else "Resolve the blocking finding (catalog or requirements) and rerun."
+                else "Resolve each [BLOCKS] finding as its remediation says, then rerun."
             ),
         },
         "verification": {

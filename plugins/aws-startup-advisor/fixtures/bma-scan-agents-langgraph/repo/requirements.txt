@@ -1,0 +1,5 @@
+langgraph>=0.4
+langchain-anthropic>=0.3
+langchain-openai>=0.3
+langchain-google-genai>=4.0
+httpx>=0.27

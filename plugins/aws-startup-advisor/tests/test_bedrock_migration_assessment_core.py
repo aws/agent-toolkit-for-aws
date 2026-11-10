@@ -533,7 +533,7 @@ def test_v11_fixtures_are_accepted_and_summarized() -> None:
     vision = BMA_VALIDATOR.validate_profile(V11["v11-framework-vision"])
     assert (vision["ai_framework_detected"], vision["ai_vision_detected"]) == (["framework"], "vision")
     agentic = BMA_VALIDATOR.validate_profile(V11["v11-agentic-tools"])
-    assert (agentic["ai_framework_detected"], agentic["ai_vision_detected"]) == (None, "text-only")
+    assert (agentic["ai_framework_detected"], agentic["ai_vision_detected"]) == (None, None)
 
 
 @pytest.mark.parametrize("fixture_path", PROFILE_FIXTURES, ids=lambda p: p.parent.name)
@@ -562,10 +562,11 @@ def _caps(**on) -> dict:
     ([{"type": "llm_router"}], "direct_sdk", [], ["llm_router"]),
     ([], "framework", ["langchain"], ["framework"]),
     ([], "mixed", ["llama_index"], ["direct", "framework"]),
+    ([{"type": "llm_router"}], "framework", ["langchain"], ["framework", "llm_router"]),
     ([], "framework", ["crewai"], None),
     ([{"type": "custom_proxy"}], "direct_sdk", [], None),
     ([], "framework", [], None),
-], ids=["direct", "rest", "gateway", "langchain", "mixed", "agent-framework", "unknown-gateway", "framework-without-name"])
+], ids=["direct", "rest", "gateway", "langchain", "mixed", "framework-gateway", "agent-framework", "unknown-gateway", "framework-without-name"])
 def test_framework_detection_is_conservative(gateways, pattern, frameworks, expected) -> None:
     profile = _v11("v11-framework-vision", lambda p: p["integration"].update(pattern=pattern, frameworks=frameworks))
     profile["gateways"] = [{"product": "openrouter", "type": g["type"], "upstream_evidence": "unresolved", "upstreams": []} for g in gateways]
@@ -577,7 +578,7 @@ def test_agents_suppress_framework_detection() -> None:
 
 
 @pytest.mark.parametrize(("caps", "expected"), [
-    ({"text_generation": True}, "text-only"),
+    ({"text_generation": True}, None),
     ({"vision": True}, "vision"),
     ({"vision": True, "speech_to_text": True}, "audio"),
 ], ids=["text", "vision", "audio-wins"])
