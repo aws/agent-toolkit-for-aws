@@ -298,7 +298,7 @@ def test_render_is_registered_without_mcp_or_plan_handoff_drift() -> None:
     codex = json.loads((PLUGIN_ROOT / ".codex-plugin/plugin.json").read_text())
     assert "Migrate my Render services to AWS" in codex["interface"]["defaultPrompt"]
     readme = (PLUGIN_ROOT / "README.md").read_text(encoding="utf-8")
-    assert "Install all 13 skills together" in readme
+    assert "Install all 14 skills together" in readme
     assert "| 7 | `render-to-aws` |" in readme
     assert "Render CLI 2.35.0" in readme
     assert "neither configures nor invokes a Render MCP server" in readme

@@ -70,7 +70,7 @@ For standalone skill installs — Kiro, fx, and other hosts that consume skills 
 npx skills add aws/agent-toolkit-for-aws/plugins/aws-startup-advisor/skills --skill '*'
 ```
 
-Install all 13 skills together rather than a subset: `agent-advisor` delegates to `gcp-to-aws`, and the migration skills share vendored fragments. A standalone install covers the skills only — it does not configure the `aws-mcp` server declared in `.mcp.json`, which the host needs separately.
+Install all 14 skills together rather than a subset: `agent-advisor` delegates to `gcp-to-aws`, and the migration skills share vendored fragments. A standalone install covers the skills only — it does not configure the `aws-mcp` server declared in `.mcp.json`, which the host needs separately.
 
 ## Development checks
 
