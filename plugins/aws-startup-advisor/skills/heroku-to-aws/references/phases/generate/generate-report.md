@@ -60,6 +60,23 @@ From `estimation-infra.json`:
 From design + preferences: region, primary compute (EB / Fargate / EKS),
 service count.
 
+From the inventory: `shared_data_stores.cohorts` (for the conditional
+`shared-data-stores` section) and `metadata.apps_by_environment_tier` (one line in
+`decision-summary` when present: "N apps, of which M are production by name or
+pipeline stage").
+
+From `estimation-infra.json` `current_costs.contract` (present only when the user
+supplied a Heroku order form in Clarify): render a **Contract reconciliation** table
+inside `exec-costs`, below the Heroku-vs-AWS table — rows per contract category
+(dynos, add-on credits, support, Private Spaces, Connect rows, other) with Contract
+$/mo, Discovered $/mo, Gap, and the `gap_explanation`. Follow it with this sentence,
+verbatim in substance: "The contract comparison overstates savings: the contract
+includes support, credits and committed headroom that discovery cannot see, while
+the AWS figure leaves out any add-ons marked Deferred, AWS Support and data
+transfer. Use the discovered like-for-like figure for a scope-matched comparison and
+treat both as floors on AWS cost." Never present "contract minus AWS" as the
+headline saving.
+
 ---
 
 ## Step 2: Write `migration-report.html`
@@ -72,6 +89,7 @@ Write a **self-contained** HTML file to `$MIGRATION_DIR/migration-report.html`
 | `decision-summary`  | Typography-first verdict (see below), cost one-liner, next action                                                                                                                                                                                                                            |
 | `exec-costs`        | Heroku-vs-AWS side-by-side when a Heroku baseline exists (`current_costs.source != "unavailable"`); otherwise the AWS three-tier table with a one-line note that no Heroku baseline was available. Estimated monthly; Balanced primary. **When `current_costs.baseline_note` is present (any derived — not invoiced — source, including the Postgres Advanced per-pool formula), render it as a visible caveat line directly beside the Heroku current-monthly figure — never only in the accuracy band.** This is mandatory, not conditional on which derived source produced the note. **When `cost_comparison.comparison_status == "incomplete_unmatched_services"`, render the same mandatory caveat-beside-the-figure treatment, naming `cost_comparison.unmatched_deferred_services` and `unmatched_deferred_cost` directly beside the savings/difference figure — never present that dollar delta as decision-grade savings without it.** This file is the single source of truth for `exec-costs` content rules, so `report-decision-core.md`'s reuse of these rules picks this up automatically. |
 | `cost-optimization` | Reserved Instance / Savings Plan opportunities table, or the explicit no-eligible-commitment statement — see below. Always present, never omitted                                                                                                                                            |
+| `shared-data-stores` | **Conditional** — only when the inventory has `shared_data_stores.cohorts` with at least one entry. One table: Cohort / Apps (count) / Shared stores (count) / App names. One sentence above it: apps in a cohort read the same database, cache or Kafka cluster and cannot be cut over strictly one at a time without cross-cloud access to that store; sequence them as a group or plan the interim connectivity. No ordering, no recommendation of which cohort goes first |
 | `next-steps`        | Ordered list pointing to `MIGRATION_GUIDE.md` phases (not a procedure dump). Include one bullet noting the Terraform ships with `baseline.tf` (account security baseline — GuardDuty, CloudTrail, budget alerts) and that three contact emails must be set in tfvars before `terraform plan` |
 
 **Cost-figure anchor (machine-checkable).** In `exec-costs`, wrap the recommended AWS

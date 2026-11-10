@@ -156,6 +156,7 @@ Before generating questions, scan the inventory to determine which questions app
 | Q13 — Log retention                  | Always                                                           | Never                                     |
 | Q14 — Alerting preference            | Always                                                           | Never                                     |
 | Q15 — Cost optimization              | Always                                                           | Never                                     |
+| Q16 — Heroku contract                | `billing_profile.available == false` (no invoice data)           | Billing data present, or user says "none" |
 
 ### Extraction Rules (answer from the inventory before asking)
 
@@ -841,6 +842,49 @@ Validate: must be valid ISO 8601 date, must be in the future.
 
 ---
 
+#### Q16 — Heroku Contract (Enterprise order form)
+
+> Do you have a Heroku Enterprise contract or order form? If so, share the committed
+> lines (totals only — no unit prices needed): term start and end, and the total for
+> each of: dyno units, add-on credits, support plan, Private Spaces, Connect rows,
+> anything else. Say "none" if you pay list price month to month.
+
+**Why:** discovery prices what the CLI can see at list rates. An Enterprise contract
+commits spend that discovery cannot see (support, credits, headroom, apps outside the
+CLI's view). Without the contract the Heroku baseline looks too low and the AWS
+saving looks too high; with it the Estimate can reconcile the two and say which
+part of the gap is scope and which is price.
+
+**Interpret:** write `preferences.commercial.heroku_contract`:
+
+```json
+{
+  "term_start": "YYYY-MM-DD",
+  "term_end": "YYYY-MM-DD",
+  "lines": [
+    {
+      "category": "dynos|addon_credits|support|private_spaces|connect|other",
+      "label": "<as written on the order form>",
+      "total_usd": 0,
+      "months": 12
+    }
+  ],
+  "prior_term_annual_usd": null
+}
+```
+
+- A line that spans the whole term (e.g. support, Private Spaces) gets `months` equal
+  to the term length; a per-year line gets `12`. Monthly run-rate is
+  `total_usd / months`, computed in the Estimate, not here.
+- Record totals exactly as given. Do NOT ask for or record unit prices, quantities,
+  discounts, or the counterparty's name.
+- "none" / no contract → omit `preferences.commercial` entirely.
+
+**Default:** omitted (no contract) — the Estimate then shows the discovered baseline
+only.
+
+---
+
 ## Defaults Table
 
 | Question                  | Default                                 | Constraint                                                                                                  |
@@ -866,6 +910,7 @@ Validate: must be valid ISO 8601 date, must be in the future.
 | Q13 — Log retention       | 3 (30 days)                             | `log_retention_days: 30`                                                                                    |
 | Q14 — Alerting            | 1 (CloudWatch)                          | `alerting: "cloudwatch"`                                                                                    |
 | Q15 — Cost optimization   | 2 (balanced)                            | `cost_optimization: "balanced"`                                                                             |
+| Q16 — Heroku contract     | none                                    | `preferences.commercial` omitted                                                                            |
 
 **Important:** Q9 and Q9b have no default — they are only asked when Private Space peering exists and required data is missing. If they fire, they must be answered (the system cannot proceed without subnet/VPC information for existing VPC references).
 

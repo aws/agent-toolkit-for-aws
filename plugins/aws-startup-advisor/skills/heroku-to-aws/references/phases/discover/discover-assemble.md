@@ -43,6 +43,33 @@ the path and retry before assembly; do not continue with an unread schema.
    source provenance, as well as its `apps[]` metadata entry. These are two views
    of one app, not two apps; `total_apps_discovered` counts unique `apps[].app_name`.
    App rows carry metadata and do not create an additional compute cost.
+10. **Shared data stores.** When live discovery wrote `attached_apps` on any
+    `heroku-postgresql`, `heroku-redis` or `heroku-kafka` add-on, write the top-level
+    `shared_data_stores` section (schema § `shared_data_stores`):
+    - For each such add-on with a non-empty `attached_apps`, the set
+      `{ heroku_app } ∪ attached_apps` is one link. Apps that share any link are in the
+      same cohort (take the connected components over those sets).
+    - Name cohorts `C1`, `C2`, … ordered by app count descending, then by first app
+      name. `shared_stores` lists the linking add-ons' `resource_id`s.
+    - Set `apps_in_cohorts` to the number of distinct apps across all cohorts.
+    - Apps whose data stores are attached to no other app form no cohort — do not
+      emit single-app cohorts.
+
+    This is a label for the report and the estate workbook, not a dependency graph:
+    no `cluster_id` on resources, no edges, no ordering. It tells a reviewer which apps
+    cannot move strictly one at a time without cross-cloud access to a shared store.
+    Skip the section entirely when no add-on carries `attached_apps` (Terraform-only
+    runs cannot see attachments).
+
+11. **Estate workbook (fail-open).** After the inventory is written, run
+    `python3 "<SKILL_BASE>/scripts/emit-estate-workbook.py" --migration-dir "$MIGRATION_DIR"`
+    (absolute paths). It copies the inventory into `$MIGRATION_DIR/heroku-estate.xlsx`,
+    one tab per resource family plus Summary and Shared data stores, so the customer can
+    review what was found in a spreadsheet before any AWS design exists. It prints
+    `ESTATE_OK | …` or `ESTATE_SKIP | reason=…`; on skip, continue — the inventory is
+    the artifact, the workbook is a convenience. Mention the file in the phase output
+    only when it printed `ESTATE_OK`. Later phases re-run the same script to add the
+    AWS mapping and cost tabs.
 
 ## Merge & Drift Rules (when BOTH terraform and live fragments contributed)
 

@@ -148,6 +148,44 @@ Use the best available source for Heroku monthly baseline (first match wins):
    - Set `current_costs.source: "unavailable"`
    - Note: "Heroku baseline unavailable — AWS costs shown without comparison."
 
+### Contract reconciliation (when `preferences.commercial.heroku_contract` exists)
+
+The baseline above is what discovery can see at list or live plan prices. An Enterprise
+order form commits spend discovery cannot see. Reconcile the two rather than picking one:
+
+1. For each contract line, `monthly_usd = total_usd / months`. Sum to
+   `contract.monthly_run_rate`.
+2. Bucket the discovered baseline by category: dynos (formations × dyno rate),
+   add-ons (every add-on resource), Private Spaces (space base fees, when spaces exist
+   in the inventory). Support, Connect rows and credits have no discovered counterpart —
+   their discovered value is 0.
+3. Write `current_costs.contract`:
+
+   ```json
+   {
+     "term_start": "...", "term_end": "...",
+     "monthly_run_rate": <sum of contract lines>,
+     "discovered_monthly": <Part 1 baseline total>,
+     "gap_monthly": <monthly_run_rate - discovered_monthly>,
+     "lines": [
+       { "category": "dynos", "monthly_usd": <contract>, "discovered_usd": <discovered>, "gap_usd": <diff>, "note": "<one-line explanation>" }
+     ],
+     "gap_explanation": "<two sentences, see below>",
+     "prior_term_annual_usd": <copied when given, else null>
+   }
+   ```
+
+4. `gap_explanation` must name the mechanisms, not just the number: negotiated vs
+   list rates; committed headroom and scaled-to-zero formations; apps or accounts
+   outside the CLI's view; usage-based add-ons; support and Connect being invisible to
+   discovery. Say plainly that the gap is **not** evidence of unused commitment.
+5. Also compute `discovered_like_for_like_monthly` = discovered baseline minus the
+   list price of every add-on the Design marked Deferred. This is the only Heroku
+   figure that is scope-matched to the AWS estimate; Part 3 uses it.
+
+The contract run-rate is never the baseline used for savings headlines. It is shown
+beside the discovered figure so the reader can see both and why they differ.
+
 Whenever a baseline was determined (any source except `"unavailable"`), present it as:
 
 - Total monthly cost, with its source and accuracy stated plainly (invoice data vs actual plan prices vs rate card vs user estimate)
@@ -361,6 +399,8 @@ Include in `estimation-infra.json`:
 "cost_comparison": {
   "heroku_monthly_baseline": "<Part 1 baseline total>",
   "baseline_source": "<current_costs.source>",
+  "heroku_monthly_like_for_like": "<Part 1 § Contract reconciliation step 5, when a contract exists; else omit>",
+  "heroku_monthly_contract": "<current_costs.contract.monthly_run_rate, when a contract exists; else omit>",
   "option_a_premium": {
     "aws_monthly": "<premium total>",
     "monthly_difference": "<premium - heroku>",

@@ -70,6 +70,31 @@ Report-level information about the discovery run.
 | `confidence`            | string            | ✅       | `"full"` (primary source(s) parsed/captured successfully) or `"reduced"` (partial data, e.g., Terraform parse errors, failed/skipped live captures, missing expected resources) |
 | `confidence_note`       | string            | ❌       | Explanation when confidence is `"reduced"`                                                                                                                                      |
 
+### `shared_data_stores` (OPTIONAL — written by assemble rule 9 when any data-store add-on has `attached_apps`)
+
+```json
+{
+  "cohorts": [
+    {
+      "cohort_id": "C1",
+      "apps": ["shop-api", "shop-worker", "shop-reports"],
+      "shared_stores": ["addon:shop-api:heroku-postgresql:standard-2"]
+    }
+  ],
+  "apps_in_cohorts": 3
+}
+```
+
+| Field             | Type     | Required | Description                                                                                                              |
+| ----------------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `cohorts`         | object[] | ✅       | Groups of apps linked by at least one shared `heroku-postgresql` / `heroku-redis` / `heroku-kafka` add-on; largest first |
+| `apps_in_cohorts` | integer  | ✅       | Distinct apps appearing in any cohort                                                                                    |
+
+A cohort is a **reporting label**, not a migration unit: it says which apps read the same
+store, so a reviewer can see that they cannot be cut over strictly one at a time without
+cross-cloud access to that store. It carries no ordering, no edges, and no
+`must_migrate_together` — resources stay flat.
+
 ### `apps[]` (REQUIRED)
 
 Per-app metadata entries. One entry per discovered Heroku app.
@@ -259,6 +284,7 @@ unavailable region/stack rather than inventing a provider default.
 - **heroku-redis**: `ha_enabled` (boolean), `encryption_in_transit` (boolean), `redis_version` (string)
 - **heroku-kafka**: `topic_count` (integer), `partitions_per_topic` (integer), `replication_factor` (integer)
 - **Other add-ons**: No additional required fields
+- **Any add-on (live discovery)**: `attached_apps` (string[] — other apps the add-on is attached to; `[]` when none). Feeds the `shared_data_stores` section.
 
 **Optional live-enrichment fields** (present only when live discovery ran):
 
