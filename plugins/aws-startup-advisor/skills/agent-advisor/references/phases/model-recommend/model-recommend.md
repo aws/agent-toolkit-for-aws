@@ -188,7 +188,7 @@ Write `$RUN_DIR/model-recommendation-input.json` with this shape:
       "workload_id": "support-agent",
       "source": {
         "provider": "anthropic",
-        "model_ids": ["claude-3-7-sonnet-latest"],
+        "model_ids": ["claude-sonnet-5"],
         "sdk": "anthropic",
         "api_surface": "messages",
         "source_paths": ["src/agent.py"]
@@ -288,10 +288,14 @@ model ARN set changed. An unchanged
 invocation contract retains its verification. After invalidation, treat verification as
 `not_run`; do not restore a passed result from an older design or report.
 
-For an Opus 5.5 application-profile ARN, the verifier first reads `GetInferenceProfile`
+For any application-profile ARN (every model and region — Opus 5.5 under US residency and a
+Canada-only Haiku 5.5 profile alike), the verifier first reads `GetInferenceProfile`
 for that ARN and the recommendation's `verification.allowed_inference_profiles`. It requires
 active destinations matching the selected model and an allowed regional profile before
-invoking the original ARN. The caller needs `bedrock:GetInferenceProfile` for these metadata
+invoking the original ARN; a passed probe alone never establishes residency. An explicit
+`inference_profile_id` is also validated for model identity, ARN partition/region, and the
+required geography before any candidate is accepted, including models without a profile matrix;
+an invalid pin blocks with `inference_profile_unresolved` rather than passing through. The caller needs `bedrock:GetInferenceProfile` for these metadata
 reads; a failed or inconclusive check prevents inference and does not establish access.
 For London in-region profiles, `verification.allowed_in_region_model_arns` carries the
 exact permitted foundation-model destination. An ACTIVE application profile with only that

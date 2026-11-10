@@ -214,7 +214,7 @@ grep -rnl "import openai\|from openai\|import anthropic\|from anthropic\|import 
 For EACH file found, `Read` it and extract:
 
 - Import statements (which SDK modules)
-- Model IDs used (`gpt-4o`, `claude-3-sonnet`, `gemini-1.5-pro`, etc.)
+- Model IDs used (`gpt-5.4`, `claude-sonnet-5`, `gemini-3.8-flash`, etc.)
 - API call patterns (chat completions, embeddings, tool use, streaming)
 - Prompt locations (hardcoded strings, template files, dynamic construction)
 - Response parsing patterns (how the code reads the LLM response)

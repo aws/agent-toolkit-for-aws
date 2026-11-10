@@ -1,0 +1,23 @@
+[
+ {
+  "object": "bucket",
+  "start_time": 1792919220,
+  "end_time": 1792919280,
+  "results": [
+   {
+    "object": "organization.usage.completions.result",
+    "model": "gpt-4o-2024-08-06",
+    "batch": false,
+    "service_tier": "default",
+    "input_tokens": 30,
+    "output_tokens": 50,
+    "num_model_requests": 1,
+    "input_cached_tokens": 0,
+    "input_cache_write_tokens": 0,
+    "input_text_tokens": 30,
+    "input_image_tokens": 0,
+    "input_audio_tokens": 0
+   }
+  ]
+ }
+]

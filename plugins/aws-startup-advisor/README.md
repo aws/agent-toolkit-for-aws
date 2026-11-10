@@ -30,7 +30,7 @@ The fourteen skills below are the catalog. Install them together.
 | 11 | `knowledge-base-for-startups` | AWS Activate FAQ, credits guide, programs, partner offers, sample architectures, and AWS-curated learn articles | [SKILL.md](skills/knowledge-base-for-startups/SKILL.md) |
 | 12 | `prompt-library-for-startups` | AWS-curated copy-paste prompts for AI coding agents, plus downloadable installable agents | [SKILL.md](skills/prompt-library-for-startups/SKILL.md) |
 | 13 | `contextual-offers-for-startups` | Appends at most one relevant AWS Activate partner offer as optional context after another skill's output is final | [SKILL.md](skills/contextual-offers-for-startups/SKILL.md) |
-| 14 | `bedrock-migration-assessment` | Scans your code for OpenAI, Anthropic, Gemini, and OpenRouter calls (or validates a provider-neutral `ai-workload-profile.json`) and runs the AI-only migration questions. Needs no infrastructure skill. This release stops after Clarify; Design, Estimate, and Generate land in later releases | [SKILL.md](skills/bedrock-migration-assessment/SKILL.md) |
+| 14 | `bedrock-migration-assessment` | Scans your code for OpenAI, Anthropic, Gemini, and OpenRouter calls (or validates a provider-neutral `ai-workload-profile.json`), can measure OpenAI usage read-only with your consent, and runs the AI-only migration questions. Needs no infrastructure skill. This release stops after Clarify; Design, Estimate, and Generate land in later releases | [SKILL.md](skills/bedrock-migration-assessment/SKILL.md) |
 
 `contextual-offers-for-startups` is consulted by the other skills rather than invoked directly: it runs only after a recommendation, plan, or build is already final, and it never influences the technical advice.
 
@@ -225,7 +225,7 @@ npx skills add aws/agent-toolkit-for-aws/plugins/aws-startup-advisor/skills --sk
 
 When the sibling's Discover captured real spend from the OpenAI Admin API, the OpenRouter API, or the Anthropic Admin API (consent-gated, read-only), `llm-to-bedrock` reuses that usage profile as the cost baseline instead of extrapolating from the golden prompt set.
 
-`bedrock-migration-assessment` is the provider-neutral AI engine that will take over this work from `gcp-to-aws` ([#389](https://github.com/aws/agent-toolkit-for-aws/issues/389)). Today it scans application code for AI providers, models, gateways, workloads, and agents and their tools, or accepts a provider-neutral `ai-workload-profile.json` (rejecting the older GCP-shaped profile by name), and stops after Clarify. It does not depend on any infrastructure skill.
+`bedrock-migration-assessment` is the provider-neutral AI engine that will take over this work from `gcp-to-aws` ([#389](https://github.com/aws/agent-toolkit-for-aws/issues/389)). Today it scans application code for AI providers, models, gateways, workloads, and agents and their tools, or accepts a provider-neutral `ai-workload-profile.json` (rejecting the older GCP-shaped profile by name), can measure OpenAI usage through the read-only Admin API with consent, and stops after Clarify. It does not depend on any infrastructure skill.
 
 Model mapping is compatibility-guided rather than one-to-one parity. Validate prompts, tool-calling behavior, and evaluation metrics before cutover.
 
