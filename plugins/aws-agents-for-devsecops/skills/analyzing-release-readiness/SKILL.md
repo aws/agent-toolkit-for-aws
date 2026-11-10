@@ -315,6 +315,7 @@ aws_devops_agent__cancel_code_change_risk_analysis(task_id=TASK_ID)
 2. If job does not reach `IN_PROGRESS` within 5 minutes — cancel with `cancel_code_change_risk_analysis`.
 3. If throttled (`429` or `ThrottlingException`) — wait 30 seconds, retry up to 3 times.
 4. If the error does not match any known pattern above, present the raw error output to the user.
+5. If a tool is missing, rejected or behaves differently from these instructions, read the plugin's [CHANGELOG.md](../../CHANGELOG.md) for recent changes (renamed tools, `review_depth`) and how to resolve them.
 
 ## Fallback (aws-mcp)
 
