@@ -67,7 +67,31 @@ def decisions(profile: dict, summary: dict, models: list[str]) -> list[str]:
     return out[:4]
 
 
-def preview(profile: dict, usage: dict | None = None) -> dict:
+COST_STATUS_ORDER = ("complete", "partial_window", "cost_unavailable")
+
+
+def measured(profiles: list[dict]) -> dict | None:
+    """Per-source usage plus totals; the total spend is null when any source's spend is unknown."""
+    if not profiles:
+        return None
+    sources = []
+    for usage in profiles:
+        md = usage["metadata"]
+        tokens = sum(r.get(f, 0) for r in usage["usage_by_model"] for f in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens"))
+        sources.append({"source": md["source"], "monthly_cost_usd": usage["summary"]["monthly_cost_usd"],
+                        "cost_status": md.get("cost_status", "partial_window" if md["partial_window"] else "complete"),
+                        "window_days": md["window_days"], "active_days": md["active_days"], "partial_window": md["partial_window"],
+                        "total_tokens": tokens, "uncosted_service_tiers": md.get("uncosted_service_tiers", []),
+                        "capture_warnings": md.get("capture_warnings", [])})
+    costs = [s["monthly_cost_usd"] for s in sources]
+    return {"sources": sources, "monthly_cost_usd": None if None in costs else round(sum(costs), 2),
+            "cost_status": max((s["cost_status"] for s in sources), key=COST_STATUS_ORDER.index),
+            "total_tokens": sum(s["total_tokens"] for s in sources), "window_days": max(s["window_days"] for s in sources),
+            "active_days": min(s["active_days"] for s in sources), "partial_window": any(s["partial_window"] for s in sources),
+            "capture_warnings": [f"{s['source']}: {w}" for s in sources for w in s["capture_warnings"]]}
+
+
+def preview(profile: dict, usage: list[dict] | None = None) -> dict:
     summary = validator.validate_profile(profile)
     models = sorted({m["model"] for s in summary["ai_sources"] for m in s["models"]})
     signal, reasons = classify(profile, summary)
@@ -76,7 +100,7 @@ def preview(profile: dict, usage: dict | None = None) -> dict:
         reasons = ["the model is not high-confidence evidence, so Q5 must be asked"]
     agents = (profile.get("agentic_profile") or {}).get("agents", [])
     out = {
-        "preview_version": 1,
+        "preview_version": 2,
         "computed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "route": "ai_only",
         "ai_complexity_signal": signal,
@@ -90,27 +114,21 @@ def preview(profile: dict, usage: dict | None = None) -> dict:
             "agent_count": len(agents),
             "tool_count": len(profile.get("tool_manifest", [])),
         },
-        "measured_usage": None,
+        "measured_usage": measured(usage or []),
         "path_shape": PATH_SHAPE[signal],
         "key_decisions_ahead": decisions(profile, summary, models),
     }
-    if usage:
-        md = usage["metadata"]
-        out["measured_usage"] = {"source": md["source"], "monthly_cost_usd": usage["summary"]["monthly_cost_usd"],
-                                 "cost_status": md.get("cost_status", "partial_window" if md["partial_window"] else "complete"),
-                                 "window_days": md["window_days"], "active_days": md["active_days"], "partial_window": md["partial_window"],
-                                 "capture_warnings": md.get("capture_warnings", [])}
     return out
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("profile", type=Path)
-    ap.add_argument("--usage", type=Path, help="openai-usage-profile.json, when usage was captured")
+    ap.add_argument("--usage", type=Path, action="append", default=[], help="a <provider>-usage-profile.json; repeat once per captured provider")
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args(argv)
     try:
-        result = preview(json.loads(args.profile.read_text()), json.loads(args.usage.read_text()) if args.usage else None)
+        result = preview(json.loads(args.profile.read_text()), [json.loads(u.read_text()) for u in args.usage])
     except validator.ProfileRejected as err:
         print(json.dumps({"ok": False, "error": err.code, "detail": err.detail}))
         return 1

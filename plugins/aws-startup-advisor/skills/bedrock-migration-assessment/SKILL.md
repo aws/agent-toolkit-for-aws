@@ -1,6 +1,6 @@
 ---
 name: bedrock-migration-assessment
-description: "Source-cloud-neutral assessment of AI/LLM usage for a migration to Amazon Bedrock. Use when the user wants to find which OpenAI (direct or Azure OpenAI), Anthropic, Google/Gemini, or OpenRouter calls their code makes, or already has a provider-neutral ai-workload-profile.json (schema 1.0 or 1.1), and wants to answer the AI migration questions. It scans the code or validates the profile, can measure OpenAI usage read-only with the user's consent and an Admin key, shows a short preview, then runs Clarify, and needs no infrastructure skill installed. This release stops after Clarify: it does not design, estimate, generate artifacts, or rewrite code. To rewrite SDK calls to Bedrock and get a branch, use llm-to-bedrock; for infrastructure migrations use gcp-to-aws, azure-to-aws, or heroku-to-aws."
+description: "Source-cloud-neutral assessment of AI/LLM usage for a migration to Amazon Bedrock. Use when the user wants to find which OpenAI (direct or Azure OpenAI), Anthropic, Google/Gemini, or OpenRouter calls their code makes, or already has a provider-neutral ai-workload-profile.json (schema 1.0 or 1.1), and wants to answer the AI migration questions. It scans the code or validates the profile, can measure OpenAI and Anthropic usage read-only with the user's consent and an Admin key, shows a short preview, then runs Clarify, and needs no infrastructure skill installed. This release stops after Clarify: it does not design, estimate, generate artifacts, or rewrite code. To rewrite SDK calls to Bedrock and get a branch, use llm-to-bedrock; for infrastructure migrations use gcp-to-aws, azure-to-aws, or heroku-to-aws."
 ---
 
 # Bedrock Migration Assessment
@@ -11,7 +11,7 @@ This release covers two phases:
 
 | Phase    | What it does                                                                                   | Output                                         |
 | -------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| Discover | Runs `references/phases/discover/discover.md`: scans the code or accepts a supplied profile, validates it with `scripts/validate-ai-profile.py`, optionally measures OpenAI usage, and writes a preview | `ai-workload-profile.json`, `migration-preview.json`, `.phase-status.json`, and `openai-usage-profile.json` when usage was measured |
+| Discover | Runs `references/phases/discover/discover.md`: scans the code or accepts a supplied profile, validates it with `scripts/validate-ai-profile.py`, optionally measures OpenAI and Anthropic usage, and writes a preview | `ai-workload-profile.json`, `migration-preview.json`, `.phase-status.json`, and `openai-usage-profile.json` when usage was measured |
 | Clarify  | Runs `references/phases/clarify/clarify-ai-only.md`                                            | `preferences.json`                             |
 
 Design, Estimate, and Generate are not in this skill yet. After Clarify, tell the user their answers are saved and stop. Do not load phase files from any other skill.
@@ -34,7 +34,7 @@ Rules 1 to 3 apply only to a run this skill created: the user names an existing 
 
 1. If that file has `phases.clarify` set to `"in_progress"` or `"completed"`, resume at Clarify. `clarify-ai-only.md` Step 0 handles saved and draft answers. Do not change `run_id`.
 2. If that file has `phases.discover` set to `"completed"` and `phases.clarify` still `"pending"`, resume at Clarify in the same directory. Keep `run_id` and the profile. Do not scan again.
-3. If that file has `phases.discover` set to `"in_progress"`, resume Discover in that directory. Keep `run_id`. When `ai-workload-profile.json` is already there, load `discover.md` at Step 2c and follow the usage reader's resume rows: `complete` starts at summarize, and `key_invalid_mid_run` or `all_usage_failed` starts at Step 1 intake. When the profile is not there yet, continue Step 2 in that same directory. Do not create a second run directory.
+3. If that file has `phases.discover` set to `"in_progress"`, resume Discover in that directory. Keep `run_id`. When `ai-workload-profile.json` is already there, load `discover.md` at Step 2c and follow each usage reader's resume rows: `complete` starts at summarize, and `key_invalid_mid_run` or `all_usage_failed` starts at Step 1 intake. When the profile is not there yet, continue Step 2 in that same directory. Do not create a second run directory.
 4. Otherwise start a new run. Never write into a run directory another skill created; if the user named one, say that this skill did not create it and that this run starts fresh.
 
 ## Step 1: Discover

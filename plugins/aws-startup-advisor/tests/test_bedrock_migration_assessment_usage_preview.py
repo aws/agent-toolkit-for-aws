@@ -146,8 +146,9 @@ def test_failed_costs_are_unavailable_but_empty_costs_are_zero(tmp_path, status,
     usage = _capture_copy(tmp_path, status, data)
     assert (usage["summary"]["monthly_cost_usd"], usage["metadata"]["cost_status"]) == (cost, cost_status)
     assert usage["usage_by_model"] and usage["costs_by_line_item"] == []
-    measured = PREVIEW.preview(json.loads((FIXTURES / "bma-scan-openai-direct/ai-workload-profile.json").read_text()), usage)["measured_usage"]
+    measured = PREVIEW.preview(json.loads((FIXTURES / "bma-scan-openai-direct/ai-workload-profile.json").read_text()), [usage])["measured_usage"]
     assert (measured["monthly_cost_usd"], measured["cost_status"]) == (cost, cost_status)
+    assert (measured["sources"][0]["monthly_cost_usd"], measured["sources"][0]["cost_status"]) == (cost, cost_status)
 
 
 def _usage(tmp_path) -> Path:
@@ -227,14 +228,14 @@ def test_preview_on_scan_fixtures(fixture, signal) -> None:
 
 
 def test_discover_and_clarify_wiring() -> None:
-    assert CONTROLLER.index("## Step 2c: OpenAI usage") < CONTROLLER.index("## Step 2d: Preview") < CONTROLLER.index("## Step 3")
+    assert CONTROLLER.index("## Step 2c: Usage APIs") < CONTROLLER.index("## Step 2d: Preview") < CONTROLLER.index("## Step 3")
     assert "Step 2d wrote `migration-preview.json`" in CONTROLLER and "The preview names no Bedrock models or prices" in CONTROLLER
     fast = CLARIFY[CLARIFY.index("## Step 1.5"):CLARIFY.index("## Step 1.75")]
     for rule in ("Always: Q1.5, Q2, Q3, Q4, Q7, and Q11", "Q7 is never skipped", "does not report `models_extractable: true`",
                  "Q10 when the Q2 answer is 4 (Specialized capability)",
                  "Q1 when `ai_framework_detected` is `null`, and Q6 when `ai_vision_detected` is `null`"):
         assert rule in fast, rule
-    assert "does not produce yet" not in CLARIFY and "except `migration-preview.json` in Step 1.5" in CLARIFY
+    assert "does not produce yet" not in CLARIFY and "except `migration-preview.json`, for the fast-path check in Step 1.5" in CLARIFY
     skill = (BMA / "SKILL.md").read_text(encoding="utf-8")
     step0 = skill[skill.index("## Step 0"):skill.index("## Step 1:")]
     for rule in ("phases.discover` set to `\"in_progress\"`", "all_usage_failed` starts at Step 1 intake",
