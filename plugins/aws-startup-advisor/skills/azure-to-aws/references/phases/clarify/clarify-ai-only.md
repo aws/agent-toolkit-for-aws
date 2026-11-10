@@ -126,7 +126,7 @@ running). → `ai_constraints.cross_cloud`. Default `"latency-acceptable"`.
 | GPT-4o                                    | GPT-5.6 Terra; or Claude Sonnet 5      | not on Bedrock — offer both                |
 | GPT-4 / 4 Turbo                           | GPT-5.6 Terra; or Sonnet 5             | not on Bedrock — offer both                |
 | GPT-4.1 / mini / nano                     | GPT-5.6 Terra/Luna; or Nova Lite/Micro | not on Bedrock — offer both                |
-| GPT-3.5 Turbo                             | GPT-5.6 Luna; or Haiku 4.5             | Luna cheaper                               |
+| GPT-3.5 Turbo                             | GPT-5.6 Luna; or Haiku 5.5             | Haiku 5.5 cheaper up to 100K prompt tokens |
 | o-series (o3/o4-mini)                     | GPT-5.6 Sol/Terra; or Sonnet 5         | not on Bedrock — offer both                |
 | Claude (Anthropic SDK)                    | Same model on Bedrock                  | client swap only — no model change         |
 | Other / multiple / don't know             | ask / infer                            | —                                          |

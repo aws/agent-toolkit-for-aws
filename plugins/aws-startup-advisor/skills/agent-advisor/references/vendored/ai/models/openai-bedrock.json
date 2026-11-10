@@ -1,10 +1,10 @@
 {
   "schema_version": 2,
   "provider": "openai",
-  "verified_at": "2026-09-24",
+  "verified_at": "2026-11-09",
   "verified_region": "us-east-2",
-  "source": "Opus 5.5 cross-family target: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html (retrieved 2026-09-24). GPT-5.5 and GPT-5.4 rows re-read from their public model cards on 2026-11-06 (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html, https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html): both now list bedrock-runtime (Responses, Chat Completions, Converse via us./global. CRIS ids) and Chat Completions on bedrock-mantle. Other OpenAI entries retain their evidence from the superseded 2026-08-21 catalog (removed; see git history).",
-  "disclaimer": "The Opus cross-family target is updated to Opus 5.5; the GPT-5.5 and GPT-5.4 entries were re-read from their public model cards on 2026-11-06 (runtime CRIS paths, Chat Completions on mantle, 1.05M context, long-context pricing); the other same-model OpenAI paths and their earlier evidence remain unchanged. This is a migration target catalog, not an account-availability claim. Verify the chosen model, API, region and CRIS profile before implementation. Opus 5.5 uses CRIS on runtime outside eu-west-2, has 1M context/128K output, always-on adaptive thinking, and no Batch tier. Fable and Mythos remain excluded from default selection. Opus 5.5 is the only Opus model in the automatic selection pool; older Opus snapshots and pricing records are historical references. The runtime in-region exception in eu-west-2 was verified 2026-10-03; the original catalog and other model evidence dates remain unchanged.",
+  "source": "Haiku 5.5 Converse tier: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-5-5.html (read 2026-11-09). Opus 5.5 cross-family target: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html (retrieved 2026-09-24). GPT-5.5 and GPT-5.4 rows re-read from their public model cards on 2026-11-06 (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html, https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html): both now list bedrock-runtime (Responses, Chat Completions, Converse via us./global. CRIS ids) and Chat Completions on bedrock-mantle. Other OpenAI entries retain their evidence from the superseded 2026-08-21 catalog (removed; see git history).",
+  "disclaimer": "Haiku 5.5 is the fast/low-cost Converse tier (the GPT-5.6 Luna cross-family fallback); Haiku 4.5 remains an explicit alternative, not an automatic fallback. The Opus cross-family target is updated to Opus 5.5. The GPT-5.5 and GPT-5.4 entries were re-read from their public model cards on 2026-11-06 (runtime CRIS paths, Chat Completions on mantle, 1.05M context, long-context pricing); the other same-model OpenAI paths and their earlier evidence remain unchanged. This is a migration target catalog, not an account-availability claim. Verify the chosen model, API, region and CRIS profile before implementation. Opus 5.5 uses CRIS on runtime outside eu-west-2, has 1M context/128K output, always-on adaptive thinking, and no Batch tier. Fable and Mythos remain excluded from default selection. Opus 5.5 is the only Opus model in the automatic selection pool; older Opus snapshots and pricing records are historical references. The runtime in-region exception in eu-west-2 was verified 2026-10-03; the original catalog and other model evidence dates remain unchanged.",
   "paths": {
     "mantle_openai_responses": {
       "sdk": "openai",
@@ -439,20 +439,51 @@
       "context_window": 1050000,
       "output_token_ceiling": 128000,
       "inference_profiles": {
-        "us": ["us-east-1", "us-east-2", "us-west-1", "us-west-2"],
-        "global": ["us-east-1", "us-east-2", "us-west-1", "us-west-2"]
+        "us": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2"
+        ],
+        "global": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2"
+        ]
       },
       "region_availability": {
-        "commercial": ["us-east-1"],
+        "commercial": [
+          "us-east-1"
+        ],
         "govcloud": [],
         "evidence": "AWS GPT-6 Sol model card and regional table, retrieved 2026-10-10."
       },
-      "capabilities": ["reasoning", "tool_or_function_calling", "image_input_vision"],
+      "capabilities": [
+        "reasoning",
+        "tool_or_function_calling",
+        "image_input_vision"
+      ],
       "capability_source": "AWS GPT-6 Sol model card, retrieved 2026-10-10: text and image input, tool calling, 1.05M context and 128K output.",
       "paths": {
-        "mantle_openai_responses": {"available": true, "model_id": "openai.gpt-6-sol", "requires_cris": false, "evidence": "AWS model card: Mantle Responses in us-east-1."},
-        "mantle_openai_chat": {"available": true, "model_id": "openai.gpt-6-sol", "requires_cris": false, "evidence": "AWS model card: Mantle Chat Completions supported."},
-        "runtime_converse": {"available": true, "model_id": "openai.gpt-6-sol", "requires_cris": true, "evidence": "AWS model card: US and Global CRIS support Responses, Chat Completions, Converse, and Invoke; EU/AU Geo profiles are unsupported."}
+        "mantle_openai_responses": {
+          "available": true,
+          "model_id": "openai.gpt-6-sol",
+          "requires_cris": false,
+          "evidence": "AWS model card: Mantle Responses in us-east-1."
+        },
+        "mantle_openai_chat": {
+          "available": true,
+          "model_id": "openai.gpt-6-sol",
+          "requires_cris": false,
+          "evidence": "AWS model card: Mantle Chat Completions supported."
+        },
+        "runtime_converse": {
+          "available": true,
+          "model_id": "openai.gpt-6-sol",
+          "requires_cris": true,
+          "evidence": "AWS model card: US and Global CRIS support Responses, Chat Completions, Converse, and Invoke; EU/AU Geo profiles are unsupported."
+        }
       }
     },
     "openai_gpt_6_luna": {
@@ -464,20 +495,51 @@
       "context_window": 1050000,
       "output_token_ceiling": 128000,
       "inference_profiles": {
-        "us": ["us-east-1", "us-east-2", "us-west-1", "us-west-2"],
-        "global": ["us-east-1", "us-east-2", "us-west-1", "us-west-2"]
+        "us": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2"
+        ],
+        "global": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2"
+        ]
       },
       "region_availability": {
-        "commercial": ["us-east-1"],
+        "commercial": [
+          "us-east-1"
+        ],
         "govcloud": [],
         "evidence": "AWS GPT-6 Luna model card and regional table, retrieved 2026-10-10."
       },
-      "capabilities": ["reasoning", "tool_or_function_calling", "image_input_vision"],
+      "capabilities": [
+        "reasoning",
+        "tool_or_function_calling",
+        "image_input_vision"
+      ],
       "capability_source": "AWS GPT-6 Luna model card, retrieved 2026-10-10: text and image input, tool calling, 1.05M context and 128K output.",
       "paths": {
-        "mantle_openai_responses": {"available": true, "model_id": "openai.gpt-6-luna", "requires_cris": false, "evidence": "AWS model card: Mantle Responses in us-east-1."},
-        "mantle_openai_chat": {"available": true, "model_id": "openai.gpt-6-luna", "requires_cris": false, "evidence": "AWS model card: Mantle Chat Completions supported."},
-        "runtime_converse": {"available": true, "model_id": "openai.gpt-6-luna", "requires_cris": true, "evidence": "AWS model card: US and Global CRIS support Responses, Chat Completions, Converse, and Invoke."}
+        "mantle_openai_responses": {
+          "available": true,
+          "model_id": "openai.gpt-6-luna",
+          "requires_cris": false,
+          "evidence": "AWS model card: Mantle Responses in us-east-1."
+        },
+        "mantle_openai_chat": {
+          "available": true,
+          "model_id": "openai.gpt-6-luna",
+          "requires_cris": false,
+          "evidence": "AWS model card: Mantle Chat Completions supported."
+        },
+        "runtime_converse": {
+          "available": true,
+          "model_id": "openai.gpt-6-luna",
+          "requires_cris": true,
+          "evidence": "AWS model card: US and Global CRIS support Responses, Chat Completions, Converse, and Invoke."
+        }
       }
     },
     "openai_gpt_6_1_sol": {
@@ -489,20 +551,51 @@
       "context_window": 1050000,
       "output_token_ceiling": 131072,
       "inference_profiles": {
-        "us": ["us-east-1", "us-east-2", "us-west-1", "us-west-2"],
-        "global": ["us-east-1", "us-east-2", "us-west-1", "us-west-2"]
+        "us": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2"
+        ],
+        "global": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2"
+        ]
       },
       "region_availability": {
-        "commercial": ["us-east-1"],
+        "commercial": [
+          "us-east-1"
+        ],
         "govcloud": [],
         "evidence": "AWS GPT-6.1 Sol model card and regional table, retrieved 2026-10-10."
       },
-      "capabilities": ["reasoning", "tool_or_function_calling", "image_input_vision"],
+      "capabilities": [
+        "reasoning",
+        "tool_or_function_calling",
+        "image_input_vision"
+      ],
       "capability_source": "AWS GPT-6.1 Sol model card, retrieved 2026-10-10: text and image input, tool calling, 1.05M context and 131072 output.",
       "paths": {
-        "mantle_openai_responses": {"available": true, "model_id": "openai.gpt-6.1-sol", "requires_cris": false, "evidence": "AWS model card: Mantle Responses in us-east-1."},
-        "mantle_openai_chat": {"available": true, "model_id": "openai.gpt-6.1-sol", "requires_cris": false, "evidence": "AWS model card: Mantle Chat Completions supported."},
-        "runtime_converse": {"available": true, "model_id": "openai.gpt-6.1-sol", "requires_cris": true, "evidence": "AWS model card: US and Global CRIS support Responses, Chat Completions, Converse, and Invoke; EU/AU Geo profiles are unsupported."}
+        "mantle_openai_responses": {
+          "available": true,
+          "model_id": "openai.gpt-6.1-sol",
+          "requires_cris": false,
+          "evidence": "AWS model card: Mantle Responses in us-east-1."
+        },
+        "mantle_openai_chat": {
+          "available": true,
+          "model_id": "openai.gpt-6.1-sol",
+          "requires_cris": false,
+          "evidence": "AWS model card: Mantle Chat Completions supported."
+        },
+        "runtime_converse": {
+          "available": true,
+          "model_id": "openai.gpt-6.1-sol",
+          "requires_cris": true,
+          "evidence": "AWS model card: US and Global CRIS support Responses, Chat Completions, Converse, and Invoke; EU/AU Geo profiles are unsupported."
+        }
       }
     },
     "anthropic_claude_sonnet_5": {
@@ -529,7 +622,7 @@
       }
     },
     "anthropic_claude_haiku_4_5": {
-      "display_name": "Claude Haiku 4.5 (Converse tier match for GPT-5.6 Luna)",
+      "display_name": "Claude Haiku 4.5 (explicit alternative to Haiku 5.5 when a workload must keep pre-5.5 behavior)",
       "family": "anthropic_claude",
       "generation": "bedrock_native",
       "version": "4.5",
@@ -540,7 +633,7 @@
         "tool_or_function_calling",
         "image_input_vision"
       ],
-      "capability_source": "anthropic-bedrock.json catalog (verified 2026-09-24) (runtime_converse available; tool_use/vision mapped to this provider's feature vocabulary; no extended-thinking evidence, so reasoning-requiring workloads fall back to a higher Claude tier). Fast/low-cost Claude tier — the Converse target for GPT-5.6 Luna.",
+      "capability_source": "anthropic-bedrock.json catalog (verified 2026-09-24) (runtime_converse available; tool_use/vision mapped to this provider's feature vocabulary; no extended-thinking evidence, so reasoning-requiring workloads fall back to a higher Claude tier). Superseded as the fast/low-cost Converse tier by Claude Haiku 5.5 (2026-11-09); kept as an explicit alternative, never the automatic Luna fallback.",
       "paths": {
         "runtime_converse": {
           "available": true,
@@ -549,6 +642,110 @@
           "evidence": "anthropic-bedrock.json catalog (verified 2026-09-24) runtime_converse entry (requires CRIS profile)"
         }
       }
+    },
+    "anthropic_claude_haiku_5_5": {
+      "display_name": "Claude Haiku 5.5 (Converse tier match for GPT-5.6 Luna)",
+      "family": "anthropic_claude",
+      "generation": "bedrock_native",
+      "version": "5.5",
+      "class": "runtime_native",
+      "context_window": 1000000,
+      "output_token_ceiling": 128000,
+      "lifecycle_status": "active",
+      "launch_date": "2026-10-07",
+      "eol_no_sooner_than": "2027-10-07",
+      "inference_profiles": {
+        "us": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2",
+          "ca-central-1",
+          "ca-west-1",
+          "us-gov-east-1",
+          "us-gov-west-1"
+        ],
+        "ca": [
+          "ca-central-1",
+          "ca-west-1"
+        ],
+        "eu": [
+          "eu-central-1",
+          "eu-central-2",
+          "eu-north-1",
+          "eu-south-1",
+          "eu-south-2",
+          "eu-west-1",
+          "eu-west-2",
+          "eu-west-3"
+        ],
+        "au": [
+          "ap-southeast-2",
+          "ap-southeast-4"
+        ],
+        "jp": [
+          "ap-northeast-1",
+          "ap-northeast-3"
+        ],
+        "global": [
+          "af-south-1",
+          "ap-east-2",
+          "ap-northeast-1",
+          "ap-northeast-2",
+          "ap-northeast-3",
+          "ap-south-1",
+          "ap-south-2",
+          "ap-southeast-1",
+          "ap-southeast-2",
+          "ap-southeast-3",
+          "ap-southeast-4",
+          "ap-southeast-5",
+          "ap-southeast-6",
+          "ap-southeast-7",
+          "ca-central-1",
+          "ca-west-1",
+          "eu-central-1",
+          "eu-central-2",
+          "eu-north-1",
+          "eu-south-1",
+          "eu-south-2",
+          "eu-west-1",
+          "eu-west-2",
+          "eu-west-3",
+          "il-central-1",
+          "me-central-1",
+          "me-south-1",
+          "mx-central-1",
+          "sa-east-1",
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2"
+        ]
+      },
+      "capabilities": [
+        "tool_or_function_calling",
+        "reasoning",
+        "image_input_vision"
+      ],
+      "capability_source": "AWS model card model-card-anthropic-claude-haiku-5-5 (read 2026-11-09): launch 2026-10-07, Active, EOL no sooner than 2027-10-07; Messages/Converse/Invoke on bedrock-runtime via Geo (us./ca./eu./au./jp.) and Global CRIS, Messages on bedrock-mantle with the bare id; 1M context, 128K max output; adaptive thinking on by default with configurable effort; image input; explicit prompt caching; tiered pricing above 100K prompt tokens (US Geo $0.11/$0.55 up to 100K, $0.55/$2.75 above; Global $0.10/$0.50 and $0.50/$2.50). Supersedes Haiku 4.5 as the fast/low-cost Claude tier; Haiku 4.5 (200K, no thinking) stays an explicit alternative for workloads that must keep pre-5.5 behavior — see ai-anthropic-to-bedrock.md for the ~30% tokenizer recount and thinking-history constraints. AWS model card model-card-anthropic-claude-haiku-5-5 (re-read 2026-11-10): Regional Availability lists bedrock-runtime in 35 commercial Regions plus us-gov-east-1/us-gov-west-1 and bedrock-mantle in us-gov-west-1 only; Geo source-region tables for us./ca./eu./au./jp. copied verbatim; Global profiles are unavailable in GovCloud. Service Tiers: Standard only (no Batch, Priority, Flex, or Reserved) per the Haiku 5.5 target contract in ai-anthropic-to-bedrock.md. Migration guide: omit temperature/top_p/top_k (including Converse temperature/topP); forced tool choice is accepted; adaptive thinking is on by default and can be turned off (not Opus 5.5's always-on rule).",
+      "paths": {
+        "runtime_converse": {
+          "available": true,
+          "model_id": "anthropic.claude-haiku-5-5",
+          "requires_cris": true,
+          "evidence": "AWS model card (read 2026-11-09): Converse on bedrock-runtime via us./ca./eu./au./jp. Geo or global. CRIS; the bare id is the Mantle Messages id"
+        }
+      },
+      "sampling_parameters_supported": false,
+      "batch_supported": false,
+      "forced_tool_choice_supported": true,
+      "service_tiers": [
+        "standard"
+      ],
+      "mantle_regions": [
+        "us-gov-west-1"
+      ]
     },
     "anthropic_claude_opus_5_5": {
       "display_name": "Claude Opus 5.5",

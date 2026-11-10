@@ -249,15 +249,21 @@ short-circuit it.
    baseline row as `cache_write_5m` and `cache_write_1h`. They are the split of
    `cache_creation_tokens`; do not add them on top of that sum. When only the
    aggregate `cache_creation_tokens` is present (an older profile), copy it as
-   `cache_write_unsplit` and do not price it at the ordinary input rate. See
+   `cache_write_unsplit` and do not price it at the ordinary input rate. OpenAI
+   `input_tokens` already includes `input_cache_write_tokens`. When that field is
+   present, subtract it from the baseline row's `input_tokens` and copy it to
+   `cache_write_unsplit`. Do not leave those tokens in `input_tokens`, and do not
+   add them on top. The usage response does not name a 5-minute or 1-hour write
+   duration, so this stays the unpriced component rather than an ordinary-input
+   price. `input_cached_tokens` stay inside `input_tokens`. See
    `estimate-ai.md`'s Prerequisites section in either sibling skill for the
    `uncached_input_tokens + cache_read_input_tokens + cache_creation_input_tokens`
    contract). Apply the
    `metadata.partial_window` exception: a
    partial-window profile's figures are a reference figure labeled with `active_days`, never
    blended into the monthly baseline (schema consequence specified below). **Second, parallel
-   exception — `metadata.cost_status` (Anthropic profile only, currently the only profile that
-   writes this field):** a profile whose `cost_status` is `"cost_unavailable"` has `null` for
+   exception — `metadata.cost_status` (written by the Anthropic usage profile and by
+   bedrock-migration-assessment's OpenAI usage profile):** a profile whose `cost_status` is `"cost_unavailable"` has `null` for
    `summary.monthly_cost_usd` — EXCLUDE it from this dollar SUM entirely (never add `null`,
    never substitute `0`), but STILL include its `usage_by_model[]` token totals in
    `usage_by_model[]` below — usage succeeded for that profile, only its cost side failed. This
@@ -425,6 +431,7 @@ representable):**
       "output_tokens": 0,
       "cache_write_5m": 0,
       "cache_write_1h": 0,
+      "cache_write_unsplit": 0,
       "num_model_requests": 0
     }
   ]
@@ -450,9 +457,10 @@ representable):**
   `summary` into two separate top-level figures — the one `monthly_cost_usd` number remains
   the SUM step 6 computes, and the boolean tells the consumer how to present it.
 - **`windows.<provider>.cost_status`**: `"complete" | "partial_window" | "cost_unavailable"`,
-  copied straight from that provider's source usage-profile `metadata.cost_status` (currently
-  only the Anthropic usage profile writes this field — see `discover-anthropic-api.md` Step 3
-  in either sibling skill; OpenAI/OpenRouter profiles that don't yet write it default to
+  copied straight from that provider's source usage-profile `metadata.cost_status` (the
+  Anthropic usage profile writes this field — see `discover-anthropic-api.md` Step 3 in either
+  sibling skill — and so does bedrock-migration-assessment's OpenAI usage profile; profiles
+  that don't write it, such as the sibling skills' OpenAI and OpenRouter profiles, default to
   `"complete"` when `partial_window` is `false` and `"partial_window"` when it is `true`, since
   for those providers window-completeness and cost-completeness haven't been split apart yet).
   When ANY `windows.<provider>.cost_status` is `"cost_unavailable"`, that provider's dollars
@@ -1316,7 +1324,7 @@ Tell the user, before collecting models:
   when the user names it or has a verified Mantle-only need (see the Endpoint policy section).
 - **Models (raw request only):** if `$ARGUMENTS` names model IDs, use them directly — skip
   resolution, they're already IDs. Otherwise **AskUserQuestion**: "Which models do you want
-  access to? Give Bedrock model IDs (e.g. `anthropic.claude-sonnet-4-5-v1:0`,
+  access to? Give Bedrock model IDs (e.g. `anthropic.claude-sonnet-5`,
   `openai.gpt-oss-120b-1:0`) or provider + name and I'll resolve the ID." Collect whatever the
   user gave (IDs and/or friendly names) into `$REQUESTED_MODELS` — **do NOT invoke the
   friendly-name resolver here.** The resolver's own commands

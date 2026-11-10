@@ -1,18 +1,19 @@
 ---
 name: analyzing-release-readiness
 description: >-
-  Trigger a pre-merge release readiness review on a GitHub PR, GitLab MR, or local branch.
+  Trigger a pre-merge code change risk analysis on a GitHub PR, GitLab MR, or local branch.
   Use when the user wants to analyze code changes for risk, correctness, and potential
-  rollback issues before merging. Trigger words include release readiness, analyze PR,
+  rollback issues before merging. Formerly called a release readiness review. Trigger words
+  include code change risk analysis, CCRA, release readiness, code review, change review, analyze PR,
   analyze MR, review PR, risk analysis, pre-merge, safe to ship, ready to merge,
   ready to commit, any risks, before merging, validate changes, release management.
 ---
 
-# Release Readiness Review
+# Code Change Risk Analysis
 
 > **AgentSpace routing (SigV4 only):** If `list_agent_spaces` is available in your tool list and the multi-space orchestration skill has NOT been invoked yet this session, invoke it first to determine which `agent_space_id` to use. Then pass `agent_space_id` on all tool calls below. For bearer token auth this is unnecessary — the token is already scoped to one space.
 
-Run a release readiness review via the AWS DevOps Agent. Analyzes a code change for risk, correctness, and potential rollback issues. Returns a structured report with actionable findings.
+Run a code change risk analysis via the AWS DevOps Agent. Analyzes a code change for risk, correctness, and potential rollback issues. Returns a structured report with actionable findings.
 
 **Rules:**
 
@@ -41,7 +42,7 @@ Has the user provided a pull request/merge request link or ID?
 - `repository` (required): `owner/repo` from the PR URL
 - At least one of the following is required: `headSha` (commit SHA), `headBranch` (branch name), `prNumber` (PR number as a **string**, e.g. `"8"` not `8`)
 - `hostname`: Extract from the URL (e.g., `github.com` or a self-hosted hostname)
-- Pass these fields to `create_release_readiness_review` under `content.githubPrContent` as an **array of objects** (even for a single PR).
+- Pass these fields to `create_code_change_risk_analysis` under `content.githubPrContent` as an **array of objects** (even for a single PR).
 
 **Example:**
 
@@ -69,7 +70,7 @@ Has the user provided a pull request/merge request link or ID?
 - `repository` (required): `owner/repo` from the MR URL
 - At least one of the following is required: `headSha` (commit SHA), `headBranch` (branch name), `mergeRequestIid` (MR number as a **string**, e.g. `"1"` not `1`)
 - `hostname`: Extract from the URL (e.g., `gitlab.com` or a self-hosted hostname)
-- Pass these fields to `create_release_readiness_review` under `content.gitlabMrContent` as an **array of objects** (even for a single MR).
+- Pass these fields to `create_code_change_risk_analysis` under `content.gitlabMrContent` as an **array of objects** (even for a single MR).
 
 **Example:**
 
@@ -114,28 +115,28 @@ Has the user provided a pull request/merge request link or ID?
      - If there are one or more unpushed commits (rev-list count >= 1), tell the user:
        > "You have uncommitted changes and N unpushed commits. I'll commit your uncommitted changes on top, then push all N+1 commits to a new branch for analysis. All changes will appear as a single diff against the base branch. Shall I proceed?"
      - If there are no other unpushed commits (rev-list count = 0), tell the user:
-       > "I'll commit your uncommitted changes and push them to a new branch for release readiness review. Shall I proceed?"
+       > "I'll commit your uncommitted changes and push them to a new branch for code change risk analysis. Shall I proceed?"
      - **Do NOT proceed until the user approves.** If they decline, stop.
 
    - **Clean but ahead of remote (rev-list count > 0, no uncommitted changes)**:
      - If ahead by more than 1 commit, tell the user:
        > "You have N unpushed commits. I'll push all of them to a new branch for analysis. All changes will appear as a single diff against the base branch. Shall I proceed?"
      - If ahead by exactly 1 commit, tell the user:
-       > "I'll push your latest commit to a new branch for release readiness review. Shall I proceed?"
+       > "I'll push your latest commit to a new branch for code change risk analysis. Shall I proceed?"
      - **Do NOT proceed until the user approves.** If they decline, stop.
 
 4. **Stash uncommitted changes** (skip this step if working directory is clean):
 
    ```bash
-   git stash push --include-untracked -m "release-analysis: preserve working changes"
+   git stash push --include-untracked -m "code-change-risk-analysis: preserve working changes"
    ```
 
 5. **Create review branch** (do this BEFORE committing so the snapshot commit only lives on the disposable branch):
 
    ```bash
    ORIGINAL_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-   BRANCH_NAME="feat/release-readiness-review"
-   git checkout -b $BRANCH_NAME 2>/dev/null || { BRANCH_NAME="feat/release-readiness-review-$(date +%Y%m%d-%H%M%S)"; git checkout -b $BRANCH_NAME; }
+   BRANCH_NAME="feat/code-change-risk-analysis"
+   git checkout -b $BRANCH_NAME 2>/dev/null || { BRANCH_NAME="feat/code-change-risk-analysis-$(date +%Y%m%d-%H%M%S)"; git checkout -b $BRANCH_NAME; }
    ```
 
 6. **Apply stashed changes and commit on the review branch** (skip this step if working directory was clean — go straight to step 7):
@@ -160,7 +161,7 @@ Has the user provided a pull request/merge request link or ID?
 
    ```bash
    git add -A
-   git commit -m "chore: snapshot for release readiness review"
+   git commit -m "chore: snapshot for code change risk analysis"
    ```
 
 7. **Push all unpushed commits** (requires prior user approval):
@@ -179,8 +180,8 @@ Has the user provided a pull request/merge request link or ID?
    - GitLab URLs (gitlab.com or self-hosted) → use `gitlabMrContent`, hostname from URL
 
 9. **Build the content**: Set `headBranch` to `$BRANCH_NAME`, `repository` to the extracted `owner/repo`, and `hostname` to the value from step 8. Wrap the object in an array:
-   - GitHub: `{"githubPrContent": [{"repository": "owner/repo", "headBranch": "feat/release-readiness-review", "hostname": "github.com"}]}`
-   - GitLab: `{"gitlabMrContent": [{"repository": "namespace/repo", "headBranch": "feat/release-readiness-review", "hostname": "gitlab.com"}]}`
+   - GitHub: `{"githubPrContent": [{"repository": "owner/repo", "headBranch": "feat/code-change-risk-analysis", "hostname": "github.com"}]}`
+   - GitLab: `{"gitlabMrContent": [{"repository": "namespace/repo", "headBranch": "feat/code-change-risk-analysis", "hostname": "gitlab.com"}]}`
 
 10. **Inform the user**: Tell them which branch was created and pushed, then proceed with the core workflow below.
 11. **After analysis completes**: Clean up and restore working state:
@@ -197,7 +198,7 @@ Has the user provided a pull request/merge request link or ID?
     git stash pop
     ```
 
-**Important**: Do NOT create a PR/MR — only push the branch. The release readiness review agent will read the branch directly.
+**Important**: Do NOT create a PR/MR — only push the branch. The code change risk analysis agent will read the branch directly.
 
 ## Core workflow
 
@@ -223,12 +224,12 @@ Present the choice and wait for a response:
 
 ### 2. Check tool availability
 
-Verify that the following tools are available: `aws_devops_agent__create_release_readiness_review`, `aws_devops_agent__get_task`, `aws_devops_agent__list_journal_records`, `aws_devops_agent__get_release_readiness_report`. These tools are NOT deferred/lazy-loaded — if they do not appear in your tool list, they are unavailable. Do NOT search for them via ToolSearch. If any are missing, skip the remaining steps in this section and use the "Fallback (aws-mcp)" path below instead. Tell the user: "Remote server unavailable — using direct aws-mcp server fallback."
+Verify that the following tools are available: `aws_devops_agent__create_code_change_risk_analysis`, `aws_devops_agent__get_task`, `aws_devops_agent__list_journal_records`, `aws_devops_agent__get_code_change_risk_analysis_report`. These tools are NOT deferred/lazy-loaded — if they do not appear in your tool list, they are unavailable. Do NOT search for them via ToolSearch. If any are missing, skip the remaining steps in this section and use the "Fallback (aws-mcp)" path below instead. Tell the user: "Remote server unavailable — using direct aws-mcp server fallback."
 
 ### 3. Start the Job
 
 ```
-aws_devops_agent__create_release_readiness_review(
+aws_devops_agent__create_code_change_risk_analysis(
     content={...},
     skip_automated_testing=true/false
 )
@@ -256,11 +257,11 @@ Once `IN_PROGRESS`, poll for progress in a loop:
 Once the job reaches a terminal status:
 
 - If `COMPLETED`:
-  1. Call `aws_devops_agent__get_release_readiness_report(execution_id=EXEC_ID)` to retrieve the full report.
+  1. Call `aws_devops_agent__get_code_change_risk_analysis_report(execution_id=EXEC_ID)` to retrieve the full report.
   2. Write the report contents to a markdown file:
 
      ```
-     release-readiness-review-<YYYY-MM-DD-HHmmss>.md
+     code-change-risk-analysis-<YYYY-MM-DD-HHmmss>.md
      ```
 
   3. Inform the user that the report was saved, including the file path.
@@ -274,19 +275,19 @@ Once the job reaches a terminal status:
      - If **found locally**:
        - **Verify branch**: Run `git -C <repo-directory> branch --show-current` to confirm you're on the expected branch. If not on the expected branch, check out the correct one before proceeding.
        - Scan the relevant code, interpret the risks/issues from the report. Then tell the user:
-         > "The report identified N actionable issues. I can generate the fixes in your local repository, and push them to a new branch `feat/release-readiness-fix`. Shall I proceed?"
+         > "The report identified N actionable issues. I can generate the fixes in your local repository, and push them to a new branch `feat/code-change-risk-analysis-fix`. Shall I proceed?"
        - **Do NOT proceed until the user approves.** If they decline, stop.
        - Once approved, generate the fixes. Then:
 
          ```bash
          cd <repo-directory>
-         git checkout -b feat/release-readiness-fix 2>/dev/null || { git checkout -b "feat/release-readiness-fix-$(date +%Y%m%d-%H%M%S)"; }
+         git checkout -b feat/code-change-risk-analysis-fix 2>/dev/null || { git checkout -b "feat/code-change-risk-analysis-fix-$(date +%Y%m%d-%H%M%S)"; }
          # Apply the fixes
          git add -A
-         git commit -m "fix: Address issues identified by release readiness review"
+         git commit -m "fix: Address issues identified by code change risk analysis"
          ```
 
-       - **Before pushing, verify branch again**: Run `git branch --show-current` and confirm it shows `feat/release-readiness-fix*`. Do NOT push if you're on any other branch.
+       - **Before pushing, verify branch again**: Run `git branch --show-current` and confirm it shows `feat/code-change-risk-analysis-fix*`. Do NOT push if you're on any other branch.
 
          ```bash
          git push -u origin HEAD
@@ -298,16 +299,20 @@ Once the job reaches a terminal status:
 - If `FAILED` or `TIMED_OUT`: Present the error information and suggest next steps.
 - If `CANCELED`: Inform the user the job was canceled and no report is available.
 
+## Finding an earlier analysis
+
+If the user asks about an earlier analysis and its task ID isn't in context, call `aws_devops_agent__list_code_change_risk_analyses()`. It returns analyses newest first, including ones created as release readiness reviews. Pick the one that matches (by title, or by repository in its `description`), then use its `taskId` with `aws_devops_agent__get_task` and its `executionId` with `aws_devops_agent__get_code_change_risk_analysis_report`.
+
 ## Cancelling a job
 
 ```
-aws_devops_agent__cancel_release_readiness_review(task_id=TASK_ID)
+aws_devops_agent__cancel_code_change_risk_analysis(task_id=TASK_ID)
 ```
 
 ## Error handling
 
 1. If `FAILED` or `TIMED_OUT` — stop and present the error. If the job failed quickly (within the first poll or two), call `aws_devops_agent__list_associations()` to check whether the target repository's hosting service (GitHub/GitLab hostname) is associated with the agent space.
-2. If job does not reach `IN_PROGRESS` within 5 minutes — cancel with `cancel_release_readiness_review`.
+2. If job does not reach `IN_PROGRESS` within 5 minutes — cancel with `cancel_code_change_risk_analysis`.
 3. If throttled (`429` or `ThrottlingException`) — wait 30 seconds, retry up to 3 times.
 4. If the error does not match any known pattern above, present the raw error output to the user.
 
@@ -332,8 +337,8 @@ Present the list to the user and ask which agent space they'd like to use. **Do 
 ```
 aws devops-agent create-backlog-task \
   --agent-space-id SPACE_ID \
-  --task-type RELEASE_READINESS_REVIEW \
-  --title 'Release Readiness Review' \
+  --task-type CODE_CHANGE_RISK_ANALYSIS \
+  --title 'Code Change Risk Analysis' \
   --priority MEDIUM \
   --description '{\"agentInput\": {\"content\": <CONTENT_JSON>, \"metadata\": {\"skipAutomatedTesting\": true}}}' \
   --region us-east-1
@@ -390,11 +395,11 @@ Once the job reaches a terminal status:
   2. Write the report contents to a markdown file:
 
      ```
-     release-readiness-review-<YYYY-MM-DD-HHmmss>.md
+     code-change-risk-analysis-<YYYY-MM-DD-HHmmss>.md
      ```
 
   3. Inform the user that the report was saved, including the file path.
-  4. **Auto-fix flow (MANDATORY)**: After saving the report, you MUST attempt to generate and present fixes for all actionable risks — this is the primary value of the review workflow, not an optional step. Follow the same auto-fix flow described in the Core workflow section above (locate repo, verify branch, generate fixes, push to `feat/release-readiness-fix`).
+  4. **Auto-fix flow (MANDATORY)**: After saving the report, you MUST attempt to generate and present fixes for all actionable risks — this is the primary value of the review workflow, not an optional step. Follow the same auto-fix flow described in the Core workflow section above (locate repo, verify branch, generate fixes, push to `feat/code-change-risk-analysis-fix`).
 - If `FAILED` or `TIMED_OUT`: Present the error information and suggest next steps.
 - If `CANCELED`: Inform the user the job was canceled and no report is available.
 

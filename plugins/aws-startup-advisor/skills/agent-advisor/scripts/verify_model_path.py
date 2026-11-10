@@ -193,8 +193,10 @@ def verify_workload(
 
     path = result["api_path"]
     try:
-        if (":application-inference-profile/" in model_id
-                and result["path_model_id"] == "anthropic.claude-opus-5-5"):
+        if ":application-inference-profile/" in model_id:
+            # Every application profile (any model, any region) must prove its destinations
+            # match the selected model and an allowed Geo/Global/in-region reference before the
+            # inference call; a passed probe alone does not establish residency.
             allowed = recommendation["verification"].get("allowed_inference_profiles")
             in_region = recommendation["verification"].get("allowed_in_region_model_arns", [])
             if not allowed and not in_region:
