@@ -160,7 +160,14 @@ match wins:**
    "OpenAI / Azure OpenAI" table (Azure OpenAI serves the same GPT models and reads those same
    OpenAI rows — there is no separate Azure-OpenAI table); **Anthropic-direct** → the "Anthropic
    (Standard Tier, 1P API)" table (Claude Haiku 4.5 / Sonnet 4.5 / Sonnet 5). Apply the 60/40
-   input/output ratio if the actual ratio is unknown. **`shared/pricing-cache.md` still has no
+   input/output ratio if the actual ratio is unknown. **Shut-down OpenAI sources:** for a
+   **direct OpenAI** source (`ai_source: openai`, not Azure OpenAI) whose row carries an OpenAI
+   shutdown date on or before the estimate date, do not price the retired row — use the
+   substitute's source row named in the gcp-to-aws source cache's OpenAI shutdown note
+   (`gpt-4.1-nano` → GPT-5.6 Luna; `o4-mini` → GPT-5.6 Terra, whose rate is `_unverified_`, so
+   that baseline is **unavailable** and falls to level 4). Measured spend always wins; keep the
+   raw source id. An **Azure OpenAI** deployment of the same model follows Microsoft's
+   retirement schedule, so its row stays until that schedule is confirmed. **`shared/pricing-cache.md` still has no
    source-side listed-price row for OpenRouter** — level 3 does not apply to an OpenRouter
    workload with no usage profile and no `current_costs`; fall straight through to level 4
    (multi-tier, no dollar comparison) for that case. Do not add new fallback pricing as a side
