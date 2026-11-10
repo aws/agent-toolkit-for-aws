@@ -255,13 +255,13 @@ The selected S3 location must contain separate Unicode-encoded `.sql` files for 
 
 Apply the selected engine's current export requirements:
 
-**SQL Server**
+##### SQL Server
 
 - Require a separate file containing `CREATE DATABASE [<database_name>]` and require each object file to start with `USE [<database_name>];`. Treat unqualified objects as belonging to `dbo`.
 - Collect every database name from `CREATE DATABASE` and `USE` statements in the selected S3 location. Require one consistent name because each data provider has one `DatabaseName`.
 - If no name is present, ask the customer to correct the DDL set. If multiple names are present, ask for an S3 path scoped to one database.
 
-**Oracle**
+##### Oracle
 
 - Require a separate file containing `CREATE USER <schema_name> NO AUTHENTICATION;` for each schema and require object names to be schema-qualified.
 - Collect schema names from the `CREATE USER` statements and schema-qualified object names. Require every schema referenced by an object file to have a corresponding `CREATE USER` file.
