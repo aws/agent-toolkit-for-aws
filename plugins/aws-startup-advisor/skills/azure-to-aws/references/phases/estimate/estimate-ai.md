@@ -163,7 +163,7 @@ match wins:**
    input/output ratio if the actual ratio is unknown. **Shut-down OpenAI sources:** for a
    **direct OpenAI** source (`ai_source: openai`, not Azure OpenAI) whose row carries an OpenAI
    shutdown date on or before the estimate date, do not price the retired row — use the
-   substitute's source row named in the gcp-to-aws source cache's OpenAI shutdown note
+   substitute's source row named in this skill's `shared/pricing-cache.md` OpenAI shutdown note
    (`gpt-4.1-nano` → GPT-5.6 Luna; `o4-mini` → GPT-5.6 Terra, whose rate is `_unverified_`, so
    that baseline is **unavailable** and falls to level 4). Measured spend always wins; keep the
    raw source id. An **Azure OpenAI** deployment of the same model follows Microsoft's
