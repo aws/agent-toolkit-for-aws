@@ -16,6 +16,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import record
+import client
 from sharing import policy, ui
 
 
@@ -103,9 +104,37 @@ def test_default_release_does_not_start_account_setup(home):
         assert record.read_state() is None
 
 
+def test_anonymous_acceptance_emits_one_consent_event_after_saving(home, monkeypatch, collector):
+    monkeypatch.setenv(client.ENDPOINT_ENV, collector.url)
+    with page() as server:
+        request(server)
+        assert collector.received == []
+        _, result, _ = request(server, "/choice", {"choice": "ANONYMOUS"})
+        assert result == {"status": "READY", "reportingMode": "ANONYMOUS"}
+        assert record.read_state()["consentStatus"] == record.ACCEPTED
+        assert server.finished.is_set()
+        assert request(server, "/choice", {"choice": "ANONYMOUS"})[1]["reasonCode"] == "CHOICE_EXPIRED"
+        assert len(collector.received) == 1
+        payload = json.loads(collector.received[0]["body"])
+        assert payload["pluginTelemetryEvent"] == {"consentRecorded": {}}
+        assert payload["installId"] == record.read_state()["installId"]
+        assert "awsIdentityProof" not in payload
+
+
 def test_account_setup_shows_account_locally_and_returns_only_mode(home, monkeypatch, account_policy):
     from sharing import credentials
+    sent = []
     monkeypatch.setattr(credentials, "prepare_account", lambda *a, **kw: {"status": "READY", "awsAccountId": "123456789012"})
+    monkeypatch.setenv(client.ENDPOINT_ENV, account_policy["endpoint"])
+    def prepare_report(payload, selected, configured, timeout):
+        assert record.read_state() == selected
+        assert selected["consentStatus"] == record.ACCEPTED
+        return {"status": "READY", "requestBody": json.dumps(payload).encode()}
+    def send_report(body, url, timeout):
+        sent.append((json.loads(body), url))
+        return {"status": "SENT", "httpStatus": 200}
+    monkeypatch.setattr(credentials, "prepare_report", prepare_report)
+    monkeypatch.setattr(credentials, "send_report", send_report)
     def opener(url):
         origin, token = url.split("/#")
         with urllib.request.urlopen(urllib.request.Request(origin + "/state", headers={"X-Sharing-Token": token})):
@@ -118,6 +147,83 @@ def test_account_setup_shows_account_locally_and_returns_only_mode(home, monkeyp
     result = ui.open_sharing(change=True, timeout=5, opener=opener)
     assert result == {"status": "READY", "reportingMode": "AWS_ACCOUNT"}
     assert record.read_state()["expectedAwsAccountId"] == "123456789012"
+    assert len(sent) == 1
+    payload, url = sent[0]
+    assert url == account_policy["endpoint"]
+    assert payload["pluginTelemetryEvent"] == {"consentRecorded": {}}
+    assert payload["reportingMode"] == "AWS_ACCOUNT"
+    assert payload["expectedAwsAccountId"] == "123456789012"
+
+
+@pytest.mark.parametrize("failure", [False, OSError("synthetic transport failure")])
+def test_consent_transport_failure_keeps_saved_browser_choice(home, monkeypatch, failure):
+    calls = []
+    def send():
+        calls.append(record.read_state())
+        if isinstance(failure, Exception):
+            raise failure
+        return failure
+    monkeypatch.setattr(client, "send_consent_recorded", send)
+    with page() as server:
+        request(server)
+        result = request(server, "/choice", {"choice": "ANONYMOUS"})[1]
+        assert result == {"status": "READY", "reportingMode": "ANONYMOUS"}
+        assert server.finished.is_set()
+        assert record.read_state()["consentStatus"] == record.ACCEPTED
+        assert calls == [record.read_state()]
+
+
+def test_duplicate_choice_during_acknowledgement_does_not_send_again(home, monkeypatch):
+    started, release = threading.Event(), threading.Event()
+    calls = []
+    def send():
+        calls.append(record.read_state())
+        started.set()
+        assert release.wait(3)
+        return True
+    monkeypatch.setattr(client, "send_consent_recorded", send)
+    with page() as server, ThreadPoolExecutor(max_workers=1) as pool:
+        request(server)
+        future = pool.submit(request, server, "/choice", {"choice": "ANONYMOUS"})
+        try:
+            assert started.wait(2)
+            assert not server.finished.is_set()
+            assert server.choice_lock.acquire(timeout=.1)
+            server.choice_lock.release()
+            assert request(server, "/choice", {"choice": "ANONYMOUS"})[1]["reasonCode"] == "CHOICE_EXPIRED"
+            assert len(calls) == 1
+        finally:
+            release.set()
+        assert future.result()[1]["status"] == "READY"
+        assert server.finished.is_set()
+
+
+@pytest.mark.parametrize("outcome", ["display", "opt_out", "cancel", "failed_setup", "failed_save"])
+def test_unaccepted_browser_outcomes_emit_no_consent_event(home, monkeypatch, account_policy, outcome):
+    from sharing import credentials
+    monkeypatch.setattr(client, "send_consent_recorded", lambda: pytest.fail("unaccepted choice reported"))
+    if outcome == "cancel":
+        result = ui.open_sharing(change=True, timeout=.05, opener=lambda _: True)
+        assert result["reasonCode"] == "CHOICE_CANCELLED"
+        return
+    with page() as server:
+        request(server)
+        if outcome == "opt_out":
+            assert request(server, "/choice", {"choice": "OPT_OUT"})[1]["reasonCode"] == "OPT_OUT"
+        elif outcome == "failed_setup":
+            monkeypatch.setattr(credentials, "prepare_account", lambda *a, **kw: {
+                "status": "SIGN_IN_REQUIRED", "reasonCode": "SIGN_IN_REQUIRED",
+            })
+            assert request(server, "/choice", {"choice": "AWS_ACCOUNT"})[1]["status"] == "SIGN_IN_REQUIRED"
+            assert record.read_state()["consentStatus"] == record.PENDING
+        elif outcome == "failed_save":
+            def fail_save():
+                raise OSError("synthetic preference write failure")
+            monkeypatch.setattr(record, "write_anonymous", fail_save)
+            with pytest.raises(urllib.error.HTTPError) as error:
+                request(server, "/choice", {"choice": "ANONYMOUS"})
+            assert error.value.code == 400
+            assert record.read_state() is None
 
 
 def test_opt_out_wins_over_slow_account_lookup(home, monkeypatch, account_policy):

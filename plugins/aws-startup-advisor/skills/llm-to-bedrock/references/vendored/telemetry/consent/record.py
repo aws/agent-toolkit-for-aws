@@ -21,6 +21,7 @@ cannot report success it did not achieve.
 is the seam between the two.
 """
 
+import errno
 import json
 import os
 import re
@@ -115,6 +116,11 @@ def state_path():
 
 def _valid_install_id(value):
     return isinstance(value, str) and bool(_UUID_PATTERN.fullmatch(value))
+
+
+def normalize_install_id(value):
+    """Canonical wire/comparison spelling, without rewriting the user's record."""
+    return value.lower() if _valid_install_id(value) else None
 
 
 def _valid_notice_version(value):
@@ -276,12 +282,14 @@ class StateBusyError(OSError):
 
 
 @contextmanager
-def state_guard(timeout=0.25):
-    """Serialize writers and the final submission check, with a bounded wait.
+def state_guard(timeout=0.25, *, shared=False):
+    """Exclude preference writers while allowing simultaneous shared submissions.
 
     The stable lock inode contains no preferences. OS locks are released on
     process exit, including a killed credential worker. Never unlink the lock
-    file: another process may already be waiting on that same inode.
+    file: another process may already be waiting on that same inode. Writers
+    keep the exclusive default; senders hold a shared lock from their final
+    consent check through submission. Acquisition always has a bounded wait.
     """
     timeout = max(0.0, float(timeout))
     flags = os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
@@ -289,22 +297,47 @@ def state_guard(timeout=0.25):
     acquired = False
     try:
         if os.name == "nt":
+            import ctypes
             import msvcrt
-            if os.fstat(fd).st_size == 0:
-                os.write(fd, b"\0")
-            os.lseek(fd, 0, os.SEEK_SET)
+            from ctypes import wintypes
+
+            # CRT _locking modes do not offer shared locks. LockFileEx does,
+            # including on an empty file, and coordinates separate processes.
+            class Overlapped(ctypes.Structure):
+                _fields_ = [
+                    ("Internal", ctypes.c_size_t), ("InternalHigh", ctypes.c_size_t),
+                    ("Offset", wintypes.DWORD), ("OffsetHigh", wintypes.DWORD),
+                    ("hEvent", wintypes.HANDLE),
+                ]
+
+            kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel.LockFileEx.argtypes = [
+                wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD,
+                wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(Overlapped),
+            ]
+            kernel.LockFileEx.restype = wintypes.BOOL
+            kernel.UnlockFileEx.argtypes = [
+                wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD,
+                wintypes.DWORD, ctypes.POINTER(Overlapped),
+            ]
+            kernel.UnlockFileEx.restype = wintypes.BOOL
+            handle = msvcrt.get_osfhandle(fd)
+            overlapped = Overlapped()
+            lock_flags = 0x1 | (0 if shared else 0x2)  # fail immediately; exclusive
 
             def lock():
-                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                if not kernel.LockFileEx(handle, lock_flags, 0, 1, 0, ctypes.byref(overlapped)):
+                    raise ctypes.WinError(ctypes.get_last_error())
 
             def unlock():
-                os.lseek(fd, 0, os.SEEK_SET)
-                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+                if not kernel.UnlockFileEx(handle, 0, 1, 0, ctypes.byref(overlapped)):
+                    raise ctypes.WinError(ctypes.get_last_error())
         else:
             import fcntl
 
             def lock():
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                mode = fcntl.LOCK_SH if shared else fcntl.LOCK_EX
+                fcntl.flock(fd, mode | fcntl.LOCK_NB)
 
             def unlock():
                 fcntl.flock(fd, fcntl.LOCK_UN)
@@ -314,16 +347,23 @@ def state_guard(timeout=0.25):
                 lock()
                 acquired = True
                 break
-            except OSError:
+            except OSError as error:
+                if os.name == "nt":
+                    if error.winerror != 33:  # ERROR_LOCK_VIOLATION
+                        raise
+                elif error.errno not in (errno.EAGAIN, errno.EWOULDBLOCK, errno.EINTR):
+                    raise
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise StateBusyError("SHARING_STATE_BUSY") from None
                 time.sleep(min(0.01, remaining))
         yield
     finally:
-        if acquired:
-            unlock()
-        os.close(fd)
+        try:
+            if acquired:
+                unlock()
+        finally:
+            os.close(fd)
 
 
 def _new_record(status, notice_version):
@@ -420,7 +460,7 @@ def complete_account(pending_state, account_id):
         return _save_record(written)
 
 
-def mark_recovery(selected_state, status, reason):
+def mark_recovery(selected_state, status, reason, *, timeout=0.25):
     """Pause reporting after a bounded account error while keeping its choice.
 
     A concurrent opt-out or account selection takes precedence over the error
@@ -437,7 +477,7 @@ def mark_recovery(selected_state, status, reason):
         or sharing_mode(selected_state) != AWS_ACCOUNT
     ):
         raise ValueError("INVALID_ACCOUNT_STATE")
-    with state_guard():
+    with state_guard(timeout=timeout):
         if read_state() != selected_state:
             return None
         written = dict(selected_state)

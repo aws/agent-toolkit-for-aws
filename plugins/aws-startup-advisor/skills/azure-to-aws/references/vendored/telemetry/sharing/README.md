@@ -19,6 +19,11 @@ closed after a choice or its two-minute deadline. Browser failure or closing the
 page before choosing leaves the existing choice unchanged. Failed account setup
 leaves it pending.
 
+Successful anonymous or account acceptance saves the choice, then makes one
+best-effort `consentRecorded` submission through the shared sender. A reporting
+failure does not undo the choice. Display, cancellation, opt-out, and failed
+setup do not send an acknowledgement.
+
 The three buttons select account sharing, anonymous sharing, or no sharing.
 Starting account setup clears the previous account and records a unique pending
 setup. Completion uses that setup ID, so a late lookup cannot overwrite a later
@@ -79,16 +84,22 @@ Then retry account setup on the page. Startup Advisor creates no credential stor
 
 Hooks and CLI call `client.send_event_result` through the existing sender adapters.
 It validates the preference itself, prepares the account proof privately, and
-rechecks the same record under the writer lock immediately before submission.
+rechecks the same record under a shared lock immediately before submission.
+Sends may overlap, while preference writers require an exclusive lock until
+those submissions finish. Installation UUIDs are compared and sent in lowercase;
+their spelling in the local preference file is preserved.
 Account lookup/signing run with a total subprocess deadline and closed stdin.
 The caller suppresses raw worker output and terminates provider descendants.
 Worker and network deadlines share the hook's remaining time budget.
 
 The sender returns `SENT`, `SKIPPED`, `SIGN_IN_REQUIRED`, `SETUP_REQUIRED`, or
-`ERROR`, plus a bounded reason. Account mismatch and expired sign-in save bounded
-recovery metadata while retaining the accepted account and notice. Background
-reporting pauses; the next interactive invocation offers setup. Explicit new
-setup clears that metadata. There is no automatic anonymous fallback.
+`ERROR`, plus a bounded reason. Account mismatch and expired sign-in attempt to
+save bounded recovery metadata while retaining the accepted account and notice.
+Recovery writes wait for other sends within the remaining deadline. When the
+metadata is saved, background reporting pauses and the next interactive invocation
+offers setup. If the local write fails or times out, the caller still receives
+the original account error, but subsequent invocations may try reporting again.
+Explicit new setup clears that metadata. There is no automatic anonymous fallback.
 
 Unknown HTTP outcomes and account-proof rejection are not retried automatically.
 No proofs, credential values, or event bodies are persisted. A later opt-out

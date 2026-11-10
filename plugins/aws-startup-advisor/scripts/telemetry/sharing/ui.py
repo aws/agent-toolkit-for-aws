@@ -13,8 +13,9 @@ import time
 from pathlib import Path
 
 TELEMETRY = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(TELEMETRY), str(TELEMETRY / "consent")]
+sys.path[:0] = [str(TELEMETRY), str(TELEMETRY / "consent"), str(TELEMETRY / "metric_emission")]
 
+import client
 import notice
 import record
 from sharing import policy
@@ -97,6 +98,7 @@ class SharingServer(http.server.ThreadingHTTPServer):
         self.choice_lock = threading.Lock()
         self.account_policy = policy.account_policy()
         self.notice_served = False
+        self.choice_saved = False
 
     def handle_error(self, request, client_address):
         pass  # Raw request/provider errors must not reach agent-visible stderr.
@@ -120,7 +122,7 @@ class SharingServer(http.server.ThreadingHTTPServer):
         # this lock so a user can opt out while a provider is still responding.
         mode = body.get("choice")
         with self.choice_lock:
-            if self.finished.is_set() or time.monotonic() >= self.deadline:
+            if self.choice_saved or time.monotonic() >= self.deadline:
                 return {"status": "SKIPPED", "reasonCode": "CHOICE_EXPIRED"}
             if mode == "OPT_OUT":
                 record.write_state(record.OPT_OUT)
@@ -144,8 +146,10 @@ class SharingServer(http.server.ThreadingHTTPServer):
                 return {"status": "ERROR", "reasonCode": "INVALID_CHOICE"}
             if result is not None:
                 self.result = result
-                self.finished.set()
-                return result
+                self.choice_saved = True
+
+        if result is not None:
+            return self.finish_choice(result)
 
         # This is the only UI path that loads the credential adapter.
         from sharing import credentials
@@ -154,7 +158,7 @@ class SharingServer(http.server.ThreadingHTTPServer):
             return {"status": "SKIPPED", "reasonCode": "CHOICE_EXPIRED"}
         prepared = credentials.prepare_account(body.get("awsProfile"), timeout=remaining)
         with self.choice_lock:
-            if self.finished.is_set() or time.monotonic() >= self.deadline:
+            if self.choice_saved or time.monotonic() >= self.deadline:
                 return {"status": "SKIPPED", "reasonCode": "CHOICE_EXPIRED"}
             if prepared.get("status") != "READY":
                 return {key: prepared[key] for key in ("status", "reasonCode") if key in prepared}
@@ -163,9 +167,24 @@ class SharingServer(http.server.ThreadingHTTPServer):
             if not record.complete_account(pending, prepared["awsAccountId"]):
                 return {"status": "SETUP_REQUIRED", "reasonCode": "CHOICE_CHANGED"}
             self.result = {"status": "READY", "reportingMode": "AWS_ACCOUNT"}
+            self.choice_saved = True
+        # Private local browser response, never returned by open_sharing.
+        return self.finish_choice({**self.result, "awsAccountId": prepared["awsAccountId"]})
+
+    def finish_choice(self, response):
+        # The choice is saved before reporting. Claim it under choice_lock, but
+        # leave that lock free during transport. Duplicate clicks cannot send a
+        # second acknowledgement, and a failed report cannot undo acceptance.
+        try:
+            if self.result["status"] == "READY":
+                client.send_consent_recorded()
+        except Exception:
+            pass
+        finally:
+            # Normal completion follows the attempt; the page deadline still
+            # bounds open_sharing if acknowledgement takes too long.
             self.finished.set()
-            # Private local browser response, never returned by open_sharing.
-            return {**self.result, "awsAccountId": prepared["awsAccountId"]}
+        return response
 
 
 class SharingHandler(http.server.BaseHTTPRequestHandler):

@@ -119,16 +119,17 @@ def test_interrupted_replace_keeps_previous_complete_record_and_cleans_temp(home
     assert list(record.state_dir().iterdir()) == [record.state_path()]
 
 
-def test_state_lock_timeout_is_bounded_and_released_after_process_death(home):
+@pytest.mark.parametrize("shared", [False, True])
+def test_state_lock_timeout_is_bounded_and_released_after_process_death(home, shared):
     module_path = Path(record.__file__).parent
     code = (
         "import sys,time; sys.path.insert(0,sys.argv[1]); import record; "
-        "guard=record.state_guard(); guard.__enter__(); "
+        "guard=record.state_guard(shared=sys.argv[2]=='True'); guard.__enter__(); "
         "print('locked',flush=True); time.sleep(10)"
     )
     env = {"HOME": str(home), "USERPROFILE": str(home)}
     proc = subprocess.Popen(
-        [sys.executable, "-c", code, str(module_path)],
+        [sys.executable, "-c", code, str(module_path), str(shared)],
         env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL, text=True,
     )
@@ -156,7 +157,7 @@ def test_final_submission_guard_excludes_concurrent_writer(home):
         "import sys; sys.path.insert(0,sys.argv[1]); import record; "
         "record.write_state(record.OPT_OUT)"
     )
-    with record.state_guard():
+    with record.state_guard(shared=True):
         proc = subprocess.run(
             [sys.executable, "-c", code, str(module_path)],
             env={"HOME": str(home), "USERPROFILE": str(home)},
@@ -167,6 +168,31 @@ def test_final_submission_guard_excludes_concurrent_writer(home):
         assert record.is_accepted()
     record.write_state(record.OPT_OUT)
     assert not record.is_accepted()
+
+
+@pytest.mark.parametrize("holder_shared", [False, True])
+@pytest.mark.parametrize("contender_shared", [False, True])
+def test_shared_submissions_and_writers_coordinate_across_processes(home, holder_shared, contender_shared):
+    code = """
+import sys
+sys.path.insert(0, sys.argv[1])
+import record
+try:
+    with record.state_guard(timeout=.04, shared=sys.argv[2]=='True'):
+        print('acquired')
+except record.StateBusyError:
+    print('busy')
+"""
+    with record.state_guard(shared=holder_shared):
+        contender = subprocess.run(
+            [sys.executable, "-c", code, str(Path(record.__file__).parent), str(contender_shared)],
+            env={"HOME": str(home), "USERPROFILE": str(home)},
+            capture_output=True, text=True, timeout=2,
+        )
+    assert contender.returncode == 0, contender.stderr
+    expected = "acquired" if holder_shared and contender_shared else "busy"
+    assert contender.stdout.strip() == expected
+    assert not contender.stderr
 
 
 def test_write_permissions_keep_preference_file_private(home):

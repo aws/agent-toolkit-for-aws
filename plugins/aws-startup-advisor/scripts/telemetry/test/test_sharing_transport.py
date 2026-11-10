@@ -4,6 +4,8 @@ import io
 import json
 import subprocess
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 import urllib.error
 
 import pytest
@@ -304,3 +306,65 @@ def test_legacy_caller_with_stale_install_id_cannot_submit(home, collector):
     record.write_anonymous()
     assert client.post_event_status(EVENT, "11111111-2222-3333-4444-555555555555", collector.url) == client.UNREACHABLE
     assert not collector.received
+
+
+def test_account_recovery_waits_for_other_submissions_within_remaining_budget(home, account_policy, monkeypatch):
+    account_choice()
+    slow_started = threading.Event()
+    release_slow = threading.Event()
+    recovery_attempted = threading.Event()
+    mark_recovery = record.mark_recovery
+
+    def prepare(payload, *args):
+        skill = payload["pluginTelemetryEvent"]["skillInvoked"]["skill"]
+        return {"status": "READY", "requestBody": skill.encode()}
+
+    def send(body, url, timeout):
+        if body == b"GCP_TO_AWS":
+            slow_started.set()
+            assert release_slow.wait(2)
+            return {"status": "SENT", "httpStatus": 200}
+        return {"status": "SETUP_REQUIRED", "reasonCode": "ACCOUNT_MISMATCH"}
+
+    def recover(*args, **kwargs):
+        recovery_attempted.set()
+        return mark_recovery(*args, **kwargs)
+
+    monkeypatch.setattr(credentials, "prepare_report", prepare)
+    monkeypatch.setattr(credentials, "send_report", send)
+    monkeypatch.setattr(record, "mark_recovery", recover)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        slow = pool.submit(client.send_event_result, EVENT, timeout=2)
+        try:
+            assert slow_started.wait(1)
+            rejected = pool.submit(client.send_event_result, {
+                "skillInvoked": {"skill": "HEROKU_TO_AWS", "eventName": "SKILL_INVOKED"},
+            }, timeout=2)
+            assert recovery_attempted.wait(1)
+            # Exceed the previous fixed 250ms writer wait. The recovery writer
+            # must still be pending while a successful submission holds its lock.
+            assert not release_slow.wait(.35)
+            assert not rejected.done()
+        finally:
+            release_slow.set()
+        assert slow.result(timeout=1)["status"] == "SENT"
+        assert rejected.result(timeout=1) == {
+            "status": "SETUP_REQUIRED", "reasonCode": "ACCOUNT_MISMATCH", "reportingMode": "AWS_ACCOUNT",
+        }
+    assert record.read_state()["recoveryReason"] == "ACCOUNT_MISMATCH"
+
+
+@pytest.mark.parametrize("phase", ["prepare", "send"])
+def test_busy_recovery_write_preserves_known_failure(home, account_policy, monkeypatch, phase):
+    selected = account_choice()
+    failure = {"status": "SIGN_IN_REQUIRED", "reasonCode": "SIGN_IN_REQUIRED"} if phase == "prepare" else {
+        "status": "SETUP_REQUIRED", "reasonCode": "ACCOUNT_MISMATCH",
+    }
+    monkeypatch.setattr(credentials, "prepare_report", lambda *args: failure if phase == "prepare" else {
+        "status": "READY", "requestBody": b'{}',
+    })
+    monkeypatch.setattr(credentials, "send_report", lambda *args, **kwargs: failure)
+    with record.state_guard(shared=True):
+        result = client.send_event_result(EVENT, timeout=.05)
+    assert result == {**failure, "reportingMode": "AWS_ACCOUNT"}
+    assert record.read_state() == selected

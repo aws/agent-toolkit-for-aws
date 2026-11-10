@@ -242,6 +242,19 @@ def _result(status, reason=None, mode=None):
     return result
 
 
+def _mark_recovery(selected, result, deadline):
+    # Other submissions may still hold shared locks. Wait within this send's
+    # remaining budget, but never replace a known error with an unknown outcome
+    # just because its local recovery marker could not be saved.
+    try:
+        record.mark_recovery(
+            selected, result["status"], result["reasonCode"],
+            timeout=max(0, deadline - time.monotonic()),
+        )
+    except OSError:
+        pass
+
+
 def _send_event(event, url=None, timeout=TIMEOUT_SECONDS, selected_install_id=None):
     """The sole send path, with private transport status kept out of CLI results."""
     mode = None
@@ -260,11 +273,13 @@ def _send_event(event, url=None, timeout=TIMEOUT_SECONDS, selected_install_id=No
             return _result("SKIPPED", reason, mode), UNREACHABLE
         if selected.get("recoveryStatus"):
             return _result(selected["recoveryStatus"], selected["recoveryReason"], mode), UNREACHABLE
-        if selected_install_id is not None and selected.get("installId") != selected_install_id:
+        install_id = record.normalize_install_id(selected.get("installId"))
+        if (selected_install_id is not None
+                and record.normalize_install_id(selected_install_id) != install_id):
             return _result("SKIPPED", "CHOICE_CHANGED", mode), UNREACHABLE
         if _event_has_private_fields(event):
             return _result("ERROR", "PAYLOAD_INVALID", mode), None
-        payload = build_payload(event, selected["installId"])
+        payload = build_payload(event, install_id)
         if payload is None:
             return _result("ERROR", "PLUGIN_VERSION_UNAVAILABLE", mode), None
         if mode == "AWS_ACCOUNT":
@@ -292,7 +307,7 @@ def _send_event(event, url=None, timeout=TIMEOUT_SECONDS, selected_install_id=No
             if prepared.get("status") != "READY":
                 result = _result(prepared["status"], prepared["reasonCode"], mode)
                 if prepared["status"] in ("SIGN_IN_REQUIRED", "SETUP_REQUIRED"):
-                    record.mark_recovery(selected, prepared["status"], prepared["reasonCode"])
+                    _mark_recovery(selected, result, deadline)
                 return result, UNREACHABLE
             body = prepared["requestBody"]
         elif mode == "ANONYMOUS":
@@ -306,9 +321,10 @@ def _send_event(event, url=None, timeout=TIMEOUT_SECONDS, selected_install_id=No
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             return _result("SKIPPED", "DEADLINE_EXCEEDED", mode), UNREACHABLE
-        # Lock only the final comparison and submission. Signing happens before
-        # this lock, so opt-out and switching remain available during providers.
-        with record.state_guard(timeout=min(0.25, remaining)):
+        # Shared senders can submit a whole batch concurrently. Preference
+        # writers stay excluded through the final comparison and HTTP call.
+        # Signing remains outside the lock so setup and opt-out can proceed.
+        with record.state_guard(timeout=min(0.25, remaining), shared=True):
             if record.read_state() != selected:
                 return _result("SKIPPED", "CHOICE_CHANGED", mode), UNREACHABLE
             if mode == "AWS_ACCOUNT" and policy.account_policy() != configured:
@@ -341,7 +357,7 @@ def _send_event(event, url=None, timeout=TIMEOUT_SECONDS, selected_install_id=No
                         return _result("ERROR", "PUBLICATION_UNKNOWN", mode), None
                     return _result("ERROR", "NETWORK_UNAVAILABLE", mode), UNREACHABLE
         if result["status"] == "SETUP_REQUIRED":
-            record.mark_recovery(selected, result["status"], result["reasonCode"])
+            _mark_recovery(selected, result, deadline)
         # Account backend failures do not flow through the legacy HTTP retry
         # rules. Unknown publication outcomes and rejected proofs are dropped.
         return result, None
