@@ -307,7 +307,7 @@
           "enum": ["anthropic", "openai", "generic"]
         },
         "decision_status": {
-          "enum": ["recommended", "decision_required"]
+          "enum": ["recommended", "decision_required", "blocked"]
         },
         "source": {
           "$ref": "#/$defs/source"
@@ -472,7 +472,7 @@
           "required": ["strategy", "gate"],
           "properties": {
             "strategy": {
-              "enum": ["canary", "decision_required"]
+              "enum": ["canary", "decision_required", "blocked"]
             },
             "gate": {
               "type": "string"
@@ -522,9 +522,42 @@
               },
               "invocation_model_id": {
                 "type": "null"
-              },
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "decision_status": {
+                "const": "decision_required"
+              }
+            }
+          },
+          "then": {
+            "properties": {
               "decision_options": {
                 "minItems": 2
+              }
+            }
+          }
+        },
+        {
+          "$comment": "blocked: no automatic target and fewer than two real options (e.g. a reference_only pinned source); [BLOCKS] findings explain why. Options are never invented to reach two.",
+          "if": {
+            "properties": {
+              "decision_status": {
+                "const": "blocked"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "decision_options": {
+                "maxItems": 1
+              },
+              "blocks": {
+                "minItems": 1
               }
             }
           }

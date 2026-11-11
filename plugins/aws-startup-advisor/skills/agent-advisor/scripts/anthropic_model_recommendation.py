@@ -16,6 +16,29 @@ SUPPORTED_PATHS = {
     "runtime_converse",
     "runtime_invoke",
 }
+# Catalog selection state (scripts/contracts/model-selection-catalog.schema.json). Only
+# `selectable` entries are automatic-selection candidates; `reference_only` entries stay in the
+# catalog for lookups but every candidate enumerator skips them. A missing status counts as
+# selectable so in-memory test catalogs keep working; the loaders require the field on disk.
+SELECTION_STATUSES = ("selectable", "reference_only")
+
+
+def with_all_selectable(catalog):
+    """The same catalog with every entry selectable: used to ask whether reference_only entries,
+    and not some other filter, are what left a decision side empty."""
+    return {**catalog, "models": {k: {**m, "selection_status": "selectable"}
+                                  for k, m in catalog["models"].items()}}
+
+
+def is_selectable(model):
+    status = model.get("selection_status", "selectable")
+    if status not in SELECTION_STATUSES:
+        raise ValueError(
+            f"selection_status must be one of {list(SELECTION_STATUSES)}, got {status!r}"
+        )
+    return status == "selectable"
+
+
 ANTHROPIC_PATHS = (
     "mantle_messages",
     "runtime_converse",
@@ -318,7 +341,7 @@ def _build_candidates(catalog, paths, requirements, region=None):
     for path_rank, path in enumerate(paths):
         for model_rank, model_key in enumerate(model_order):
             model = catalog["models"].get(model_key)
-            if model is None:
+            if model is None or not is_selectable(model):
                 continue
             path_config = model["paths"].get(path, {})
             if path_config.get("available") is not True:
@@ -783,11 +806,6 @@ def _decision_required(workload, region, catalog, constraints):
     decision_options = _decision_options(
         catalog, workload, constraints["option_paths"], region
     )
-    if len(decision_options) != len(set(constraints["option_paths"])):
-        raise ValueError(
-            "catalog has no candidate for every conflicting model/path option "
-            f"for workload {workload['workload_id']}"
-        )
     blocks = [
         _finding(
             "model_path_decision_required",
@@ -797,10 +815,40 @@ def _decision_required(workload, region, catalog, constraints):
             "update requirements, and rerun Model Recommend.",
         )
     ]
+    # A real choice needs a candidate on every conflicting side. A side is blocked only when
+    # reference_only entries are what emptied it: with them counted as selectable (every other
+    # filter unchanged) the side has a candidate. Otherwise the requirement is unsatisfiable and
+    # the fail-closed raise is unchanged. Options are never invented to fill the gap.
+    status = "decision_required"
+    if len(decision_options) != len(set(constraints["option_paths"])):
+        offered = {option["api_path"] for option in decision_options}
+        missing = sorted(set(constraints["option_paths"]) - offered)
+        counterfactual = with_all_selectable(catalog)
+        blamed = set()
+        for path in missing:
+            candidates = _build_candidates(counterfactual, [path], workload["requirements"], region)
+            if not candidates:
+                raise ValueError(
+                    "catalog has no candidate for every conflicting model/path option "
+                    f"for workload {workload['workload_id']}"
+                )
+            blamed |= {c["model_key"] for c in candidates
+                       if not is_selectable(catalog["models"][c["model_key"]])}
+        status = "blocked"
+        blocks.append(
+            _finding(
+                "decision_option_unavailable",
+                "[BLOCKS]",
+                f"No selectable catalog model satisfies the {', '.join(missing)} option; it is "
+                f"available only from reference_only entries: {', '.join(sorted(blamed))}.",
+                "Mark a verified model selectable for that path, or update the conflicting "
+                "requirement, then rerun Model Recommend.",
+            )
+        )
     return {
         "workload_id": workload["workload_id"],
         "provider_module": "anthropic",
-        "decision_status": "decision_required",
+        "decision_status": status,
         "source": workload["source"],
         "source_analysis": {
             "detected_version": _source_version(workload["source"]),
@@ -822,8 +870,12 @@ def _decision_required(workload, region, catalog, constraints):
         "migration_deltas": [],
         "evaluation": _evaluation_requirements(workload, feature_status),
         "rollout": {
-            "strategy": "decision_required",
-            "gate": "Resolve the model/path conflict before implementation.",
+            "strategy": status,
+            "gate": (
+                "Resolve the model/path conflict before implementation."
+                if status == "decision_required"
+                else "Resolve each [BLOCKS] finding as its remediation says, then rerun."
+            ),
         },
         "verification": {
             "region": region,
@@ -848,9 +900,11 @@ def recommend_anthropic_workload(workload, region, catalog):
         catalog, constraints["paths"], workload["requirements"], region
     )
     if not candidates:
+        skipped = sorted(k for k, m in catalog["models"].items() if not is_selectable(m))
         raise ValueError(
             f"catalog has no model/path candidate satisfying workload "
             f"{workload['workload_id']} requirements"
+            + (f" (reference_only entries skipped: {', '.join(skipped)})" if skipped else "")
         )
     chosen = _honor_explicit_profile(candidates, workload["requirements"], region)
     model = chosen["model"]
