@@ -251,12 +251,15 @@ def test_runtime_rationale_names_the_selected_model_when_the_tier_is_reference_o
     requirements = {"preferred_api_path": "runtime_converse", "preserve_openai_api": False,
                     "governance": ["guardrails"]}
     catalog = mr.load_openai_catalog()
-    tier_name = catalog["models"]["anthropic_claude_sonnet_5"]["display_name"]
+    # The default Converse tier for a gpt-4o source, read from the module so the test follows it.
+    tier_key = mr.openai_model_recommendation._CONVERSE_TIER_DEFAULT
+    tier_name = catalog["models"][tier_key]["display_name"]
+    tier_model = catalog["models"][tier_key]["paths"]["runtime_converse"]["model_id"]
     baseline = " ".join(_openai_rec(catalog, "gpt-4o", **requirements)["rationale"])
     assert f"maps to {tier_name}" in baseline
-    hidden = _with_reference_only(catalog, "anthropic_claude_sonnet_5")
+    hidden = _with_reference_only(catalog, tier_key)
     rec = _openai_rec(hidden, "gpt-4o", **requirements)
-    assert rec["primary_model"] != "anthropic.claude-sonnet-5"
+    assert rec["primary_model"] != tier_model
     text = " ".join(rec["rationale"])
     assert f"maps to {tier_name}" not in text
     selected_name = next(
@@ -423,10 +426,14 @@ def test_duplicated_claude_records_agree(openai_key, openai_model, anthropic_key
     strip = lambda path: {k: v for k, v in path.items() if k != "evidence"}  # noqa: E731
     assert strip(openai_model["paths"]["runtime_converse"]) == strip(anthropic_model["paths"]["runtime_converse"])
 
-    unmapped = sorted(set(openai_model["capabilities"]) - set(_OPENAI_TO_ANTHROPIC_CAPABILITY))
+    # Terms the Anthropic module has no word for (the registry maps them to null in its view) are
+    # rendered only in the OpenAI view, so they are not compared.
+    openai_only = {"streaming", "structured_output_json", "prompt_caching"}
+    shared_caps = [c for c in openai_model["capabilities"] if c not in openai_only]
+    unmapped = sorted(set(shared_caps) - set(_OPENAI_TO_ANTHROPIC_CAPABILITY))
     assert unmapped == [], (f"{openai_key} uses capabilities with no Anthropic-vocabulary mapping: "
                             f"{unmapped}; extend _OPENAI_TO_ANTHROPIC_CAPABILITY")
-    mapped = {_OPENAI_TO_ANTHROPIC_CAPABILITY[c] for c in openai_model["capabilities"]}
+    mapped = {_OPENAI_TO_ANTHROPIC_CAPABILITY[c] for c in shared_caps}
     if anthropic_model["context_window"] >= 1_000_000:
         mapped.add("long_context")
     assert mapped == set(anthropic_model["capabilities"]), f"{openai_key} capabilities drifted from {anthropic_key}"
