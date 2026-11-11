@@ -401,7 +401,7 @@ class AcceptanceTests(unittest.TestCase):
     def test_non_postgres_designs_do_not_require_a_postgres_script(self):
         for service in (
             {"aws_service": "Fargate"},
-            {"aws_service": "ElastiCache Redis"},
+            {"aws_service": "ElastiCache Valkey"},
             {"aws_service": "RDS MySQL"},
             {"aws_service": "RDS", "aws_config": {"engine": "mysql"}},
             {"aws_service": "Aurora", "aws_config": {"engine": "aurora-mysql"}},
@@ -489,7 +489,7 @@ class AcceptanceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = heroku_execution_run(Path(temp))
             write_json(root / "aws-design.json", {
-                "services": [{"aws_service": "ElastiCache Redis"}],
+                "services": [{"aws_service": "ElastiCache Valkey"}],
             })
             path = root / "scripts/migrate-redis.sh"
             for exists in (False, True):
@@ -554,11 +554,31 @@ class AcceptanceTests(unittest.TestCase):
             result = by_name(acceptance.accept(root, "heroku-to-aws"), "conditional_outputs")
             self.assertEqual("UNVERIFIED", result["status"])
 
+    def test_every_elasticache_engine_label_requires_the_redis_migration_script(self):
+        # The default design emits "ElastiCache Valkey"; the Redis OSS exception emits
+        # "ElastiCache Redis". Both need scripts/migrate-redis.sh, and a Valkey design
+        # without it must FAIL rather than pass by a label mismatch.
+        for label in ("ElastiCache Valkey", "ElastiCache Redis", "elasticache valkey"):
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as temp:
+                root = heroku_execution_run(Path(temp))
+                write_json(root / "aws-design.json", {"services": [{"aws_service": label}]})
+                result = by_name(acceptance.accept(root, "heroku-to-aws"), "conditional_outputs")
+                self.assertEqual("FAIL", result["status"])
+                self.assertIn("scripts/migrate-redis.sh", result["detail"]["missing"])
+
+    def test_memcached_design_does_not_require_the_redis_migration_script(self):
+        # Memcachier maps to ElastiCache Memcached — a different protocol; no Redis script.
+        with tempfile.TemporaryDirectory() as temp:
+            root = heroku_execution_run(Path(temp))
+            write_json(root / "aws-design.json", {"services": [{"aws_service": "ElastiCache Memcached"}]})
+            result = by_name(acceptance.accept(root, "heroku-to-aws"), "conditional_outputs")
+            self.assertNotIn("scripts/migrate-redis.sh", result["detail"].get("missing", []))
+
     def test_heroku_decision_does_not_require_execution_outputs(self):
         with tempfile.TemporaryDirectory() as temp:
             root = heroku_decision_run(Path(temp))
             write_json(root / "aws-design.json", {
-                "services": [{"aws_service": "EKS"}, {"aws_service": "ElastiCache Redis"},
+                "services": [{"aws_service": "EKS"}, {"aws_service": "ElastiCache Valkey"},
                              {"aws_service": "Elastic Beanstalk"}],
             })
             report = acceptance.accept(root, "heroku-to-aws")

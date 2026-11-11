@@ -81,15 +81,17 @@ the resulting rates).
 | GPT-5.4 Nano  | 0.20         | 1.25         | —       | budget    |
 | GPT-5.4 Pro   | 30.00        | 180.00       | 1.05M   | premium   |
 | GPT-5.2       | 1.75         | 14.00        | 200K    | flagship  |
-| GPT-5.1       | 1.25         | 10.00        | 200K    | flagship  |
-| GPT-5 Mini    | 0.25         | 2.00         | 200K    | fast      |
-| GPT-5 Nano    | 0.05         | 0.40         | 128K    | budget    |
-| GPT-4.1       | 2.00         | 8.00         | 1M      | flagship  |
-| GPT-4.1 Mini  | 0.40         | 1.60         | 1M      | fast      |
-| GPT-4.1 Nano  | 0.10         | 0.40         | 1M      | budget    |
-| GPT-4o        | 2.50         | 10.00        | 128K    | flagship  |
-| o3            | 2.00         | 8.00         | 200K    | reasoning |
-| o4-mini       | 1.10         | 4.40         | 200K    | reasoning |
+| GPT-5.1       | 1.25         | 10.00        | 200K    | flagship — OpenAI shutdown 2027-04-01 → `gpt-6-sol` |
+| GPT-5 Mini    | 0.25         | 2.00         | 200K    | fast — OpenAI shutdown 2026-12-11 → `gpt-5.6-terra` |
+| GPT-5 Nano    | 0.05         | 0.40         | 128K    | budget — OpenAI shutdown 2026-12-11 → `gpt-5.6-luna` |
+| GPT-4.1       | 2.00         | 8.00         | 1M      | flagship — OpenAI shutdown 2027-01-14 → `gpt-6-luna` |
+| GPT-4.1 Mini  | 0.40         | 1.60         | 1M      | fast — OpenAI shutdown 2027-01-14 → `gpt-6-luna` |
+| GPT-4.1 Nano  | 0.10         | 0.40         | 1M      | **shut down 2026-10-23** on OpenAI → `gpt-5.6-luna` (historical row; see the shutdown note below) |
+| GPT-4o        | 2.50         | 10.00        | 128K    | flagship — OpenAI shutdown 2027-01-14 → `gpt-6-luna` |
+| o3            | 2.00         | 8.00         | 200K    | reasoning — OpenAI shutdown 2026-12-11 → `gpt-5.6-sol` |
+| o4-mini       | 1.10         | 4.40         | 200K    | **shut down 2026-10-23** on OpenAI → `gpt-5.6-terra` (historical row; see the shutdown note below) |
+
+> **OpenAI shutdowns — which row is the source baseline depends on the serving provider and the date** ([OpenAI deprecations](https://developers.openai.com/api/docs/deprecations), read 2026-11-09). A measured bill always wins. For a **direct OpenAI** source (`ai_source: openai`) with token volume only: before the row's shutdown date, use the row; on or after it, use the **substitute's** source row (`gpt-4.1-nano` → GPT-5.6 Luna 0.20 / 1.20; `o4-mini` → GPT-5.6 Terra, which is `_unverified_` here, so the baseline is **unavailable** — fall to the multi-tier presentation, never the retired row). Already past shutdown (2026-10-23): `o1`, `o1-pro`, `o3-mini`, `o4-mini`, `gpt-4`, `gpt-4-turbo`, `gpt-4.1-nano`, `gpt-3.5-turbo`; `o1-mini` since 2025-10-27. These are OpenAI-hosted dates only — an **Azure OpenAI** deployment of the same model follows Microsoft's retirement schedule, so keep the row until that schedule is confirmed. Estimate Part 1 level 3 consumes this note.
 
 *GPT-6 rows: 1.05M is the model's max window, not this rate's valid range. Requests >272,000 input tokens reprice input/cache 2x and output 1.5x — see the breakpoint note above and pricing-cache.md's long-context tables.
 
