@@ -39,7 +39,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import re
 import sys
 import zipfile
 from collections import Counter, defaultdict
@@ -48,12 +47,17 @@ from pathlib import Path
 # Characters XML 1.0 forbids outside escapes (C0 controls except TAB/LF/CR, the two
 # non-characters, and lone surrogates — json.load accepts "\ud800" escapes). A cell
 # carrying one would make the worksheet part unparseable, so they are stripped.
-_XML_BAD = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff\ud800-\udfff]")
+def _xml_char_ok(ch: str) -> bool:
+    """XML 1.0 Char production: TAB, LF, CR, U+0020-U+D7FF, U+E000-U+FFFD, U+10000-U+10FFFF.
+    Everything else (other C0 controls, lone surrogates, U+FFFE/U+FFFF) cannot be carried
+    in a worksheet even when escaped, and would make the sheet XML unparseable."""
+    o = ord(ch)
+    return o in (0x9, 0xA, 0xD) or 0x20 <= o <= 0xD7FF or 0xE000 <= o <= 0xFFFD or 0x10000 <= o <= 0x10FFFF
 
 
 def escape(text: str) -> str:
     """XML-escape a cell value after dropping characters XML cannot carry at all."""
-    text = _XML_BAD.sub("", text)
+    text = "".join(ch for ch in text if _xml_char_ok(ch))
     return (text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             .replace('"', "&quot;"))
 
