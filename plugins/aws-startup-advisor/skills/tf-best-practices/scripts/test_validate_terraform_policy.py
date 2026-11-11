@@ -929,7 +929,7 @@ def test_every_fixture_matches_its_good_bad_prefix() -> None:
     # Exact, not `>=`: a floor cannot detect fixtures being deleted down to it,
     # which is the removal this assertion exists to catch. Update deliberately
     # when adding or removing a fixture.
-    assert len(fixture_dirs) == 31, f"fixture count changed: {[d.name for d in fixture_dirs]}"
+    assert len(fixture_dirs) == 32, f"fixture count changed: {[d.name for d in fixture_dirs]}"
     for fixture in fixture_dirs:
         code, out = run_policy_validator(fixture)
         if fixture.name.startswith("bad-"):

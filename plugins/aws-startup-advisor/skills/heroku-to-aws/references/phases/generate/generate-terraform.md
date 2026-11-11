@@ -1177,7 +1177,8 @@ resource "aws_ecs_service" "<app_sanitized>_<process_type>" {
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.<app_sanitized>_<process_type>.arn
   # ECS Exec is the `heroku run bash` equivalent (MIGRATION_GUIDE.md § Day-to-day commands).
-  # It needs the ssmmessages permissions on the task role below.
+  # It needs the ssmmessages permissions that aws_iam_role_policy.ecs_task_exec grants
+  # the task role in security.tf (Step 5).
   enable_execute_command = true
   # 0 while var.writers_quiesced is true, so a later apply (DNS rollback, a repair)
   # cannot restart tasks that Phase 6 scaled to zero. Set the variable back to false
@@ -1503,6 +1504,15 @@ resource "aws_iam_role" "eb_instance_<app_name>" {
 resource "aws_iam_role_policy_attachment" "eb_web_tier_<app_name>" {
   role       = aws_iam_role.eb_instance_<app_name>.name
   policy_arn = "arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier"
+}
+
+# Session Manager access for `aws ssm start-session` (the `heroku run bash` equivalent in
+# MIGRATION_GUIDE.md § Day-to-day commands). The environment has no EC2 key pair and no
+# :22 ingress, so `eb ssh` cannot reach an instance; AWSElasticBeanstalkWebTier grants no
+# ssm:*/ssmmessages:* either. The SSM agent is preinstalled on the AL2023 Docker platform.
+resource "aws_iam_role_policy_attachment" "eb_ssm_<app_name>" {
+  role       = aws_iam_role.eb_instance_<app_name>.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
 resource "aws_iam_role_policy" "eb_read_secrets_<app_name>" {
