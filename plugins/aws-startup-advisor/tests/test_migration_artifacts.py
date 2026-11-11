@@ -633,9 +633,98 @@ module "network" {
         text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
         section = text.split("### `.github/workflows/deploy-eb.yml`", 1)[1]
         workflow = section.split("```yaml\n", 1)[1].split("\n```", 1)[0]
-        workflow = workflow.replace("<space-separated EB environment names from aws-design.json>", "app-web app-worker")
+        workflow = workflow.replace(
+            "<space-separated EB environment names of the push target from aws-design.json>", "app-web app-worker",
+        )
         self.write(".github/workflows/deploy-eb.yml", workflow)
         self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK", self.report())
+
+    def test_source_deploy_and_promote_pair_passes_as_emitted(self) -> None:
+        text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
+        deploy = text.split("### `.github/workflows/deploy-eb.yml`", 1)[1].split("```yaml\n", 1)[1].split("\n```", 1)[0]
+        deploy = deploy.replace("<target_region>", "us-east-1").replace(
+            "<push target's generated EB application name>", "app-staging",
+        ).replace(
+            "<space-separated EB environment names of the push target from aws-design.json>",
+            "app-staging-web app-staging-worker",
+        )
+        promote = text.split("### `.github/workflows/promote.yml`", 1)[1].split("```yaml\n", 1)[1].split("\n```", 1)[0]
+        promote = promote.replace("<target_region>", "us-east-1").replace(
+            "<staging app's generated EB application name>", "app-staging",
+        ).replace(
+            "<one generated EB environment of the staging app, web if present>", "app-staging-web",
+        ).replace(
+            "<this app's generated EB application name>", "app",
+        ).replace(
+            "<space-separated generated EB environment names for this app>", "app-web app-worker",
+        )
+        self.assertNotIn("<", deploy + promote.replace("Settings -> Environments", ""))
+        self.write(".github/workflows/deploy-eb.yml", deploy)
+        self.write(".github/workflows/promote.yml", promote)
+        report = validator.validate(self.root, require_eb_workflow=True)
+        self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
+        # The fallback variant (no generated staging source) drops the
+        # {{IF promote_pair}} blocks and the staging bindings and must verify too.
+        fallback: list[str] = []
+        skipping = False
+        for line in promote.splitlines():
+            if "{{IF promote_pair}}" in line:
+                skipping = True
+            if not skipping and not line.lstrip().startswith(("STAGING_APP:", "STAGING_ENVIRONMENT:", "STAGING_LABEL:")):
+                fallback.append(line.replace("required: false", "required: true"))
+            if "{{ENDIF}}" in line:
+                skipping = False
+        self.assertNotIn("{{IF", "\n".join(fallback))
+        self.assertNotIn("{{ENDIF", "\n".join(fallback))
+        self.assertNotIn("describe-environments", "\n".join(fallback))
+        self.assertIn("REQUESTED_LABEL: ${{ inputs.version_label }}", "\n".join(fallback))
+        self.write(".github/workflows/promote.yml", "\n".join(fallback) + "\n")
+        report = validator.validate(self.root, require_eb_workflow=True)
+        self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
+
+    def test_promote_lookup_and_publish_shapes_are_bounded(self) -> None:
+        deploy = "aws elasticbeanstalk update-environment --environment-name app-web --version-label \"${LABEL}\""
+        accepted = [
+            'LABEL="$(aws elasticbeanstalk describe-environments --environment-names "${STAGING}" --query \'Environments[0].VersionLabel\' --output text)"\n'
+            'echo "label=${LABEL}" >> "$GITHUB_OUTPUT"\n' + deploy,
+            'BUNDLE="$(aws elasticbeanstalk describe-application-versions --application-name app --version-labels "${LABEL}" --query \'ApplicationVersions[0].SourceBundle\' --output json)"\n'
+            'echo "BUNDLE=${BUNDLE}" >> "$GITHUB_ENV"\n' + deploy,
+        ]
+        rejected = [
+            # Not read-only, not Elastic Beanstalk, or more than one command.
+            'LABEL="$(aws elasticbeanstalk update-environment --environment-name app-web --version-label abc)"\n' + deploy,
+            'LABEL="$(aws s3 ls)"\n' + deploy,
+            'LABEL="$(aws elasticbeanstalk describe-environments; kill -TERM $$)"\n' + deploy,
+            'LABEL="$(aws elasticbeanstalk describe-environments && kill -TERM $$)"\n' + deploy,
+            'LABEL="$(aws elasticbeanstalk describe-environments "$(kill -TERM $$)")"\n' + deploy,
+            'LABEL="$(aws elasticbeanstalk describe-environments `kill -TERM $$`)"\n' + deploy,
+            'LABEL="$(aws elasticbeanstalk describe-environments)" ; kill -TERM $$\n' + deploy,
+            'LABEL="$(aws elasticbeanstalk describe-environments "${PATH:=/tmp}")"\n' + deploy,
+            'PATH="$(aws elasticbeanstalk describe-environments --query \'Environments[0].VersionLabel\' --output text)"\n' + deploy,
+            # Publishing may not reach reserved execution-environment names or
+            # arbitrary files, and may not carry substitutions.
+            'echo "PATH=/tmp/unverified" >> "$GITHUB_ENV"\n' + deploy,
+            'echo "LABEL=${LABEL}" >> "$GITHUB_PATH"\n' + deploy,
+            'echo "LABEL=${LABEL}" >> /etc/environment\n' + deploy,
+            'echo "LABEL=$(kill -TERM $$)" >> "$GITHUB_ENV"\n' + deploy,
+            'echo "LABEL=${LABEL}" > "$GITHUB_ENV"\n' + deploy,
+            'echo "LABEL=${LABEL}" >> "$GITHUB_ENV" ; kill -TERM $$\n' + deploy,
+        ]
+        for body, expected in [(b, True) for b in accepted] + [(b, False) for b in rejected]:
+            with self.subTest(body=body):
+                workflow = """env:
+  STAGING: app-staging-web
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+""" + "\n".join("          " + line for line in body.splitlines()) + "\n"
+                self.write(".github/workflows/deploy-eb.yml", workflow)
+                if expected:
+                    self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK", self.report())
+                else:
+                    self.assertIn("workflow_run_unverified", self.rules())
 
     def test_loop_environment_reassignment_must_remain_provably_nonempty(self) -> None:
         for assignment in ['EB_ENVIRONMENTS=""', "EB_ENVIRONMENTS=$MISSING", 'export EB_ENVIRONMENTS=""', "read EB_ENVIRONMENTS", 'EB_ENVIRONMENTS+=""']:

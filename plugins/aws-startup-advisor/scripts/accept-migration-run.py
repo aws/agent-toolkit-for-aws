@@ -209,7 +209,7 @@ def heroku_conditional_outputs(
         row = constraints.get("eb_deploy_method") if isinstance(constraints, dict) else None
         method = row.get("value") if isinstance(row, dict) else None
         if method in (None, "github_actions"):
-            names.append(".github/workflows/deploy-eb.yml")
+            names.extend([".github/workflows/deploy-eb.yml", ".github/workflows/promote.yml"])
         elif method == "codepipeline":
             names.append("terraform/pipeline.tf")
         elif method != "manual":

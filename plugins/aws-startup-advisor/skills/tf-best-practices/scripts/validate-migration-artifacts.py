@@ -1708,6 +1708,55 @@ def _logical_shell_lines(script: str) -> list[str]:
     return lines
 
 
+_READ_ONLY_EB_LOOKUPS = {
+    "create-storage-location", "describe-environments", "describe-application-versions",
+}
+
+
+def _reviewed_lookup(line: str) -> str | None:
+    """Accept NAME="$(aws elasticbeanstalk <read-only verb> ...)" and nothing else.
+
+    The source deploy and promote templates capture one direct, read-only
+    Elastic Beanstalk query per assignment (storage bucket, running version
+    label, existing production versions, source bundle). Such a substitution
+    cannot suppress or redirect a later deploy command; the caller still checks
+    the assigned name against the reserved execution-environment keys.
+    """
+    match = re.fullmatch(r'([A-Za-z_]\w*)="\$\((aws elasticbeanstalk .*)\)"', line)
+    if not match:
+        return None
+    name, inner = match.groups()
+    if "`" in inner or "$[" in inner or "$(" in inner:
+        raise ValueError("Nested shell substitution requires review.")
+    for expansion in re.finditer(r"\$\{([^}]*)\}", inner):
+        if not re.fullmatch(r"[A-Za-z_]\w*", expansion.group(1)):
+            raise ValueError("Only plain shell variable interpolation is supported.")
+    if inner.count("${") != len(re.findall(r"\$\{[^}]*\}", inner)):
+        raise ValueError("Unresolved shell parameter expansion requires review.")
+    if re.search(r"[&|<>{}();]", _shell_mask(inner)):
+        raise ValueError("Shell grouping, conditions, pipelines, and redirections require review.")
+    command = shlex.split(inner)
+    if command[:2] != ["aws", "elasticbeanstalk"] or command[2:3] == [] or (
+        command[2] not in _READ_ONLY_EB_LOOKUPS
+    ):
+        raise ValueError("Only reviewed read-only Elastic Beanstalk lookups may be substituted.")
+    return name
+
+
+def _reviewed_publish(line: str) -> str | None:
+    """Accept echo "NAME=<plain text>" >> "$GITHUB_ENV" (or "$GITHUB_OUTPUT") only.
+
+    Called after the plain-interpolation checks, so the published value holds
+    literal text and plain ${VAR} expansions. The caller rejects reserved
+    execution-environment names, which would otherwise reach later steps.
+    """
+    match = re.fullmatch(
+        r'echo "([A-Za-z_]\w*)=([^"`$\\]*(?:\$\{[A-Za-z_]\w*\}[^"`$\\]*)*)" >> "\$GITHUB_(?:ENV|OUTPUT)"',
+        line,
+    )
+    return match.group(1) if match else None
+
+
 def _direct_commands(
     lines: list[str], environment: dict[str, str], *, allow_assignments: bool = True,
 ) -> list[list[str]]:
@@ -1724,19 +1773,30 @@ def _direct_commands(
         line = lines[i]
         # Shell expansions can mutate the parent execution context even in an
         # echo argument or assignment. Support plain variable interpolation and
-        # the source template's one reviewed AWS lookup, not arbitrary shell
-        # programs hidden inside arguments.
-        bucket_lookup = (
-            'BUCKET="$(aws elasticbeanstalk create-storage-location '
-            '--query S3Bucket --output text)"'
-        )
-        if "`" in line or "$[" in line or ("$(" in line and line != bucket_lookup):
+        # the source templates' reviewed read-only AWS lookups, not arbitrary
+        # shell programs hidden inside arguments.
+        lookup = _reviewed_lookup(line)
+        if lookup is not None:
+            if not allow_assignments:
+                raise ValueError("Assignments inside shell loops require review.")
+            if lookup in _EXECUTION_ENVIRONMENT_KEYS:
+                raise ValueError("Shell execution-environment mutation requires review.")
+            environment.pop(lookup, None)
+            i += 1
+            continue
+        if "`" in line or "$[" in line or "$(" in line:
             raise ValueError("Shell command/arithmetic substitution requires review.")
         for expansion in re.finditer(r"\$\{([^}]*)\}", line):
             if not re.fullmatch(r"[A-Za-z_]\w*", expansion.group(1)):
                 raise ValueError("Only plain shell variable interpolation is supported.")
         if line.count("${") != len(re.findall(r"\$\{[^}]*\}", line)):
             raise ValueError("Unresolved shell parameter expansion requires review.")
+        published = _reviewed_publish(line)
+        if published is not None:
+            if published in _EXECUTION_ENVIRONMENT_KEYS:
+                raise ValueError("Shell execution-environment mutation requires review.")
+            i += 1
+            continue
         loop = re.fullmatch(r"for\s+([A-Za-z_]\w*)\s+in(?:\s+(.*?))?\s*;\s*do", line)
         if loop:
             variable, values = loop.groups()
