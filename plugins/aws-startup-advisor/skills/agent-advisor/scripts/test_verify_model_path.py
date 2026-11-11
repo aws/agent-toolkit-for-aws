@@ -103,7 +103,7 @@ def test_converse_probe_uses_resolved_cris_without_substitution():
     assert verification["status"] == "passed"
     assert (
         client.converse_calls[0]["modelId"]
-        == "global.anthropic.claude-sonnet-5"
+        == "global.anthropic.claude-sonnet-5-5"
     )
 
 
