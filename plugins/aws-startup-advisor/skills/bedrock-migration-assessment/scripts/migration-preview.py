@@ -128,7 +128,8 @@ def measured(profiles: list[dict]) -> dict | None:
         else:
             total_cost += source["monthly_cost_usd"]
     warnings = [f"{s['source']}: {w}" for s in sources for w in s["capture_warnings"]]
-    warnings += [f"{d['model']} left out because a direct provider's usage also counts it; {d['note']}" for d in excluded if d["note"]]
+    warnings += [f"{d['model']} left out so its BYOK traffic, which a direct provider's usage also counts, is not counted twice; {d['note']}"
+                 for d in excluded if d["note"]]
     return {"sources": sources, "monthly_cost_usd": round(total_cost, 2) if cost_known else None,
             "cost_status": max((s["cost_status"] for s in sources), key=COST_STATUS_ORDER.index),
             "total_tokens": total_tokens, "window_days": max(s["window_days"] for s in sources), "overlap_excluded": excluded,

@@ -11,7 +11,7 @@ This release covers two phases:
 
 | Phase    | What it does                                                                                   | Output                                         |
 | -------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| Discover | Runs `references/phases/discover/discover.md`: scans the code or accepts a supplied profile, validates it with `scripts/validate-ai-profile.py`, optionally measures OpenAI, Anthropic, and OpenRouter usage, and writes a preview | `ai-workload-profile.json`, `migration-preview.json`, `.phase-status.json`, and `openai-usage-profile.json` when usage was measured |
+| Discover | Runs `references/phases/discover/discover.md`: scans the code or accepts a supplied profile, validates it with `scripts/validate-ai-profile.py`, optionally measures OpenAI, Anthropic, and OpenRouter usage, and writes a preview | `ai-workload-profile.json`, `migration-preview.json`, `.phase-status.json`, and `openai-usage-profile.json`, `anthropic-usage-profile.json`, and `openrouter-usage-profile.json` when that usage was measured |
 | Clarify  | Runs `references/phases/clarify/clarify-ai-only.md`                                            | `preferences.json`                             |
 
 Design, Estimate, and Generate are not in this skill yet. After Clarify, tell the user their answers are saved and stop. Do not load phase files from any other skill.

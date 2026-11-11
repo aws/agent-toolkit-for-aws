@@ -264,7 +264,7 @@ def test_merge_adds_upstream_models_to_source_and_gateway(tmp_path) -> None:
 
 @pytest.mark.parametrize(("fixture", "keep", "change", "message"), [
     ("bma-scan-openrouter-gemini", lambda r: True, None, "GATEWAY_NOT_OBSERVED"),
-    ("bma-scan-openrouter-google-pinned", lambda r: True, None, "UPSTREAM_NOT_IN_PROFILE"),
+    ("bma-scan-openrouter-google-pinned", lambda r: r["model"].startswith("openai/"), None, "SOURCE_NOT_ESTABLISHED"),
     ("bma-scan-openrouter-google-pinned", lambda r: r["model"].startswith("google/"), lambda r: r.update(provider_name=None), "SOURCE_NOT_ESTABLISHED"),
     ("bma-scan-openrouter-google-pinned", lambda r: r["model"].startswith("anthropic/"), lambda r: r.update(model="mistralai/mistral-large"), "SOURCE_NOT_ESTABLISHED"),
 ], ids=["gateway-unresolved", "openai-not-an-upstream", "google-served-by-two-services", "other-prefix"])
@@ -293,7 +293,7 @@ def test_preview_leaves_out_openrouter_rows_a_direct_profile_also_counts(tmp_pat
                                              "router_fee_kept_usd": 0.0, "charge_dropped_usd": 0.15, "note": "its $0.15 OpenRouter charge is not in the total"}]
     assert measured["total_tokens"] == 1000 + 4800 + 900 and measured["monthly_cost_usd"] == round(10.0 + 4.0 + 0.5, 2) and measured["spend_excludes_usd"] == 0.15
     assert (measured["sources"][1]["byok_inference_cost_usd"], measured["sources"][1]["byok_inference_included_usd"]) == (2.0, 0.0)
-    assert any("anthropic/claude-sonnet-5 left out" in w for w in measured["capture_warnings"])
+    assert any(w.startswith("anthropic/claude-sonnet-5 left out so its BYOK traffic") for w in measured["capture_warnings"])
     alone = PREVIEW.preview(profile, [openrouter])["measured_usage"]
     assert alone["overlap_excluded"] == [] and alone["monthly_cost_usd"] == round(4.65 + 2.0, 2) and alone["total_tokens"] == 8210
     for row in openrouter["usage_by_model"]:
@@ -428,3 +428,62 @@ def test_merge_normalizes_gemini_aliases_and_keeps_distinct_variants(tmp_path) -
 ])
 def test_gemini_normalization_matches_the_scanner(raw, normalized) -> None:
     assert USAGE.normalize_gemini(raw) == normalized
+
+
+def test_merge_places_what_it_can_and_names_the_rest(tmp_path, capsys) -> None:
+    usage_data = _summarize(tmp_path)
+    usage_data["usage_by_model"] += [{**usage_data["usage_by_model"][1], "model": "mistralai/mistral-large", "provider_name": "Mistral"}]
+    usage = tmp_path / "mixed.json"
+    usage.write_text(json.dumps(usage_data))
+    profile = tmp_path / "p.json"
+    profile.write_text((FIXTURES / "bma-scan-openrouter-google-pinned/ai-workload-profile.json").read_text())
+    capsys.readouterr()
+    assert USAGE.main(["merge", "--usage", str(usage), "--profile", str(profile)]) == 0
+    out = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert out == {"merged_models": ["anthropic/claude-sonnet-5", "google/gemini-2.5-flash"], "not_merged": ["mistralai/mistral-large", "openai/gpt-4.1"]}
+    sources = {(x["provider"], x["source_service"]): x for x in json.loads(profile.read_text())["ai_sources"]}
+    assert "claude-sonnet-5" in sources[("anthropic", "anthropic_api")]["models"] and ("openai", "openai_api") not in sources
+
+
+def test_hourly_peak_reads_date_hour_and_adds_permaslugs_in_the_same_hour(tmp_path) -> None:
+    def two_slugs(cap):
+        _edit(cap / "analytics-hourly.json", lambda d: d.update(data=[
+            {"model_permaslug": "anthropic/claude-sonnet-5-20260901", "response": {"data": {"data": [
+                {"date__hour": "2026-10-25T03:00:00.000Z", "tokens_prompt": 600, "tokens_completion": 60, "request_count": 2}], "metadata": {"truncated": False}}}},
+            {"model_permaslug": "anthropic/claude-sonnet-5-20261001", "response": {"data": {"data": [
+                {"date__hour": "2026-10-25T03:00:00.000Z", "tokens_prompt": 600, "tokens_completion": 60, "request_count": 1}], "metadata": {"truncated": False}}}}]))
+        _edit(cap / "manifest.json", lambda m: [c.update(note=None) for c in m["captures"] if c["file"] == "analytics-hourly.json"])
+    usage = _summarize(tmp_path, _copy(tmp_path, two_slugs))
+    claude = next(r for r in usage["usage_by_model"] if r["model"] == "anthropic/claude-sonnet-5")
+    assert (claude["peak"]["peak_source"], claude["peak"]["peak_input_tokens_per_minute"], claude["peak"]["peak_requests_per_minute"]) == ("hour", 20.0, 0.05)
+
+
+@pytest.mark.parametrize(("script", "function", "path", "params"), [
+    ("openrouter-usage.py", "call", "/credits", {}),
+    ("anthropic-usage.py", "get", "/v1/organizations/cost_report", {}),
+    ("openai-usage.py", "get", "/v1/organization/costs", {}),
+])
+def test_an_error_body_with_a_string_error_is_reported_not_raised(monkeypatch, script, function, path, params) -> None:
+    module = _module(f"bma_error_body_{script.split('-')[0]}", script)
+
+    def opener(request, timeout=None):
+        raise urllib.error.HTTPError(request.full_url, 500, "err", {}, io.BytesIO(b'{"error": "upstream down"}'))
+    monkeypatch.setattr(module, "opener", opener)
+    with pytest.raises(RuntimeError, match="HTTP 500 upstream down"):
+        getattr(module, function)("k", path, params)
+
+
+def test_a_rejected_key_on_the_optional_key_row_is_skipped(monkeypatch, tmp_path, key_file) -> None:
+    code, _, manifest = _capture(monkeypatch, tmp_path, key_file, {**_full_answers(), "/key": 403})
+    assert code == 0 and {c["file"]: c["status"] for c in manifest["captures"]}["key.json"] == "skipped"
+
+
+def test_preview_matches_llm_to_bedrock_for_a_fee_and_a_mixed_row() -> None:
+    direct = {"metadata": {"source": "anthropic_usage_api", "window_days": 30, "active_days": 30, "partial_window": False, "cost_status": "complete"},
+              "summary": {"monthly_cost_usd": 100.0},
+              "usage_by_model": [{"model": "claude-sonnet-5", "input_tokens": 1000, "output_tokens": 0}, {"model": "claude-haiku-5", "input_tokens": 10, "output_tokens": 0}]}
+    rows = (_row("anthropic/claude-sonnet-5", "byok_passthrough", 4.0, 90.0, fee=4.0), _row("anthropic/claude-haiku-5", "mixed", 7.0, 5.0))
+    profile = json.loads((FIXTURES / "bma-scan-workloads-mixed/ai-workload-profile.json").read_text())
+    measured = PREVIEW.preview(profile, [direct, _openrouter(*rows)])["measured_usage"]
+    assert measured["monthly_cost_usd"] == 104.0
+    assert any("anthropic/claude-haiku-5" in w and "independent OpenRouter usage is dropped too" in w for w in measured["capture_warnings"])

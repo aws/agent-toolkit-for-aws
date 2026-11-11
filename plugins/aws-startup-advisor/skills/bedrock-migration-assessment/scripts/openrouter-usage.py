@@ -79,9 +79,10 @@ def call(key: str, path: str, params: dict | None = None, body: dict | None = No
                 sleep(30)
                 continue
             try:
-                message = json.loads(err.read()).get("error", {}).get("message", "")
-            except ValueError:
-                message = ""
+                error = json.loads(err.read()).get("error")
+            except (ValueError, AttributeError):
+                error = None
+            message = error.get("message", "") if isinstance(error, dict) else str(error or "")
             raise RuntimeError(f"HTTP {err.code} {_redact(str(message).replace(key, '[redacted]'))}".strip()) from None
 
 
@@ -160,7 +161,7 @@ def _capture(args, key: str) -> int:
         try:
             data = fetch()
         except KeyRejected as err:
-            entry.update(status="failed", note=str(err))
+            entry.update(status="skipped" if optional else "failed", note=str(err))
             if name in ("credits.json", "activity.json"):
                 status = 3
             print(f"{name} failed 0")
@@ -315,7 +316,7 @@ def cmd_summarize(args) -> int:
         per_hour: dict = {}
         for slug in slugs:
             for i, r in enumerate(hourly[slug]):
-                hour = next((r[k] for k in ("hour", "time", "timestamp", "date", "period", "bucket") if k in r), None)
+                hour = next((v for k, v in r.items() if k == "hour" or k.startswith("date__")), None)
                 if hour is None and len(slugs) > 1:
                     per_hour = None
                     break
@@ -454,19 +455,20 @@ def cmd_merge(args) -> int:
         print("GATEWAY_NOT_OBSERVED: the profile has no OpenRouter gateway with observed upstreams; usage models were not merged")
         return 5
     resolved = [(row, _source_of(row)) for row in usage["usage_by_model"]]
-    unresolved = sorted(row["model"] for row, src in resolved if src is None)
-    if unresolved:
-        print(f"SOURCE_NOT_ESTABLISHED: {', '.join(unresolved)}; usage models were not merged")
-        return 5
+    skipped = sorted(row["model"] for row, src in resolved if src is None)
     family_of = _sibling("bma_openai_usage_for_openrouter", "openai-usage.py").model_family
     days = usage["metadata"]["window_days"]
     touched: set[tuple[str, str]] = set()
-    for row, (provider, service, model) in resolved:
+    merged: list[str] = []
+    for row, src in resolved:
+        if src is None:
+            continue
+        provider, service, model = src
         key = (provider, service)
         source = next((s for s in profile["ai_sources"] if (s["provider"], s["source_service"]) == key), None)
         if source is None or not any(_references(u, key, profile["ai_sources"]) for u in gateway["upstreams"]):
-            print(f"UPSTREAM_NOT_IN_PROFILE: {provider}/{service} is not an observed OpenRouter upstream; usage models were not merged")
-            return 5
+            skipped.append(row["model"])
+            continue
         entry = {"provenance": "usage_api", "confidence": "high",
                  "detail": f"OpenRouter usage API: {row['requests']} requests as {row['model']} in the last {days} days"}
         obs = next((o for o in source["model_observations"] if o["normalized_model"] == model), None)
@@ -478,6 +480,10 @@ def cmd_merge(args) -> int:
         source["models"] = sorted({o["normalized_model"] for o in source["model_observations"]})
         source["model_families"] = sorted({o["model_family"] for o in source["model_observations"]})
         touched.add(key)
+        merged.append(row["model"])
+    if not merged:
+        print(f"SOURCE_NOT_ESTABLISHED: {', '.join(sorted(skipped))}; no usage model was merged")
+        return 5
     for key in touched:
         source = next(s for s in profile["ai_sources"] if (s["provider"], s["source_service"]) == key)
         by_family: dict[str, list] = {}
@@ -495,7 +501,7 @@ def cmd_merge(args) -> int:
         print(f"MERGE_INVALID: {err}")
         return 6
     args.profile.write_text(json.dumps(profile, indent=2) + "\n")
-    print(json.dumps({"merged_models": sorted(row["model"] for row in usage["usage_by_model"])}))
+    print(json.dumps({"merged_models": sorted(merged), "not_merged": sorted(skipped)}))
     return 0
 
 
