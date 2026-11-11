@@ -148,3 +148,89 @@ def test_sonnet_5_5_profile_follows_residency_in_the_eu(residency, expected):
     rec = _rec("anthropic", "claude-3-7-sonnet-latest", "messages", region="eu-west-1", priority="balanced",
                governance=["guardrails"], data_residency=residency, cris_geography="eu")
     assert rec["invocation_model_id"] == expected
+
+
+# --- review on #607 ---------------------------------------------------------------------------
+
+def _with_feature_status(data, status):
+    data["workloads"][0]["feature_status"] = status
+    return data
+
+
+@pytest.mark.parametrize(("detected", "status"), [
+    pytest.param(["message_batches"], None, id="array"),
+    pytest.param([], {"message_batches": "detected"}, id="feature_status"),
+    pytest.param(["message_batches"], {"message_batches": "detected"}, id="both"),
+])
+def test_batch_yield_reads_every_feature_encoding(detected, status):
+    data = _workload("anthropic", "claude-3-7-sonnet-latest", "messages", detected=detected,
+                     priority="balanced", governance=["guardrails"])
+    if status:
+        _with_feature_status(data, status)
+    assert mr.recommend(data)["workloads"]["w"]["primary_model"] == "anthropic.claude-sonnet-5"
+
+
+def test_batch_feature_marked_absent_does_not_yield():
+    data = _workload("anthropic", "claude-3-7-sonnet-latest", "messages", priority="balanced",
+                     governance=["guardrails"])
+    _with_feature_status(data, {"message_batches": "absent"})
+    assert mr.recommend(data)["workloads"]["w"]["primary_model"] == "anthropic.claude-sonnet-5-5"
+
+
+def _gpt4o(**requirements):
+    return _rec("openai", "gpt-4o", "chat_completions", priority="balanced", governance=["guardrails"],
+                preserve_openai_api=False, **requirements)
+
+
+def test_openai_converse_default_yields_to_sonnet_5_when_thinking_is_disabled():
+    rec = _gpt4o(thinking_enabled=False)
+    assert rec["primary_model"] == "anthropic.claude-sonnet-5"
+    assert "adaptive_thinking_required" not in {b["code"] for b in rec["blocks"] + rec["tuning"]}
+
+
+def test_openai_converse_keeps_an_explicitly_pinned_sonnet_5_5():
+    rec = _gpt4o(thinking_enabled=False, inference_profile_id="global.anthropic.claude-sonnet-5-5")
+    assert rec["primary_model"] == "anthropic.claude-sonnet-5-5"
+
+
+def test_openai_converse_quality_tier_is_unchanged_by_the_yield():
+    rec = _rec("openai", "gpt-4o", "chat_completions", priority="quality", governance=["guardrails"],
+               preserve_openai_api=False, thinking_enabled=False)
+    assert rec["primary_model"] == "anthropic.claude-opus-5-5"
+
+
+def test_openai_decision_options_use_the_yielded_converse_model():
+    rec = _rec("openai", "gpt-6-sol", "responses", priority="balanced", governance=["guardrails"],
+               preserve_openai_api=True, thinking_enabled=False)
+    runtime = [o["model"] for o in rec["decision_options"] if o["api_path"] == "runtime_converse"]
+    assert "anthropic.claude-sonnet-5-5" not in runtime
+
+
+@pytest.mark.parametrize("feature", ["streaming", "structured_output_json"])
+def test_gpt_6_1_terra_serves_documented_runtime_capabilities(feature):
+    rec = _rec("openai", "gpt-6.1-terra", "responses", priority="balanced", governance=["guardrails"],
+               critical_features=[feature])
+    assert rec["decision_status"] == "recommended"
+    assert (rec["primary_model"], rec["api_path"]) == ("openai.gpt-6.1-terra", "runtime_converse")
+
+
+def test_gpt_6_1_terra_structured_output_carries_the_converse_request_shape():
+    rec = _rec("openai", "gpt-6.1-terra", "responses", priority="balanced", governance=["guardrails"],
+               critical_features=["structured_output_json"])
+    delta = next(d for d in rec["migration_deltas"] if d["code"] == "structured_output_text_format")
+    assert delta["description"].startswith("GPT-6.1 Terra runtime JSON Schema output is documented for non-streaming calls")
+    assert "additionalModelRequestFields.text.format.strict=true" in delta["description"]
+
+
+def test_gpt_6_1_terra_keeps_the_non_streaming_json_schema_restriction():
+    rec = _rec("openai", "gpt-6.1-terra", "responses", priority="balanced", governance=["guardrails"],
+               critical_features=["structured_output_json", "streaming"])
+    assert rec["primary_model"] is None
+    assert "structured_output_streaming_unverified" in {b["code"] for b in rec["blocks"]}
+
+
+@pytest.mark.parametrize("feature", ["streaming", "structured_output_json"])
+def test_sonnet_5_5_converse_target_serves_documented_capabilities(feature):
+    rec = _gpt4o(critical_features=[feature])
+    assert rec["decision_status"] == "recommended"
+    assert rec["primary_model"] == "anthropic.claude-sonnet-5-5"

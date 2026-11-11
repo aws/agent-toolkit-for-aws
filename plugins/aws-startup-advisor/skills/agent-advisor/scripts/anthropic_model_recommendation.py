@@ -80,11 +80,19 @@ _BATCH_CAPABLE_ALTERNATIVE = {
 _CAPABILITY_YIELD = {"claude_sonnet_5_5": "claude_sonnet_5"}
 
 
+def _effectively_detected(workload):
+    """Features detected through either accepted encoding: the `detected_features` array or a
+    `feature_status` value of "detected" (the same merge `_feature_assessment` applies)."""
+    detected = set(workload.get("detected_features", []))
+    detected.update(f for f, status in (workload.get("feature_status") or {}).items() if status == "detected")
+    return detected
+
+
 def _unmet_needs(model, workload):
     needs = []
     if workload["requirements"].get("thinking_enabled") is False and model.get("adaptive_thinking_only"):
         needs.append("disabled thinking")
-    if "message_batches" in workload.get("detected_features", []) and model.get("batch_supported") is False:
+    if "message_batches" in _effectively_detected(workload) and model.get("batch_supported") is False:
         needs.append("Message Batches")
     return needs
 

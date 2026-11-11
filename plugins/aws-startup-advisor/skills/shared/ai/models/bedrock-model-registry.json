@@ -730,7 +730,9 @@
         "tool_calling",
         "reasoning",
         "image_input",
-        "long_context"
+        "long_context",
+        "streaming",
+        "structured_output_json"
       ],
       "inference_profiles": {
         "us": [
@@ -894,7 +896,14 @@
         "runtime_converse": {
           "available": true,
           "model_id": "openai.gpt-6.1-terra",
-          "requires_cris": true
+          "requires_cris": true,
+          "capabilities": [
+            "reasoning",
+            "tool_calling",
+            "image_input",
+            "streaming",
+            "structured_output_json"
+          ]
         }
       }
     }

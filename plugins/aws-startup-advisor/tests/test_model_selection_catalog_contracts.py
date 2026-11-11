@@ -426,10 +426,14 @@ def test_duplicated_claude_records_agree(openai_key, openai_model, anthropic_key
     strip = lambda path: {k: v for k, v in path.items() if k != "evidence"}  # noqa: E731
     assert strip(openai_model["paths"]["runtime_converse"]) == strip(anthropic_model["paths"]["runtime_converse"])
 
-    unmapped = sorted(set(openai_model["capabilities"]) - set(_OPENAI_TO_ANTHROPIC_CAPABILITY))
+    # Terms the Anthropic module has no word for (the registry maps them to null in its view) are
+    # rendered only in the OpenAI view, so they are not compared.
+    openai_only = {"streaming", "structured_output_json", "prompt_caching"}
+    shared_caps = [c for c in openai_model["capabilities"] if c not in openai_only]
+    unmapped = sorted(set(shared_caps) - set(_OPENAI_TO_ANTHROPIC_CAPABILITY))
     assert unmapped == [], (f"{openai_key} uses capabilities with no Anthropic-vocabulary mapping: "
                             f"{unmapped}; extend _OPENAI_TO_ANTHROPIC_CAPABILITY")
-    mapped = {_OPENAI_TO_ANTHROPIC_CAPABILITY[c] for c in openai_model["capabilities"]}
+    mapped = {_OPENAI_TO_ANTHROPIC_CAPABILITY[c] for c in shared_caps}
     if anthropic_model["context_window"] >= 1_000_000:
         mapped.add("long_context")
     assert mapped == set(anthropic_model["capabilities"]), f"{openai_key} capabilities drifted from {anthropic_key}"

@@ -638,7 +638,14 @@
           "available": true,
           "model_id": "openai.gpt-6.1-terra",
           "requires_cris": true,
-          "evidence": "AWS model card: bedrock-runtime via us. Geo and Global CRIS (not me-south-1, not GovCloud); Responses, Chat Completions, Converse and Invoke; Guardrails Converse-only."
+          "evidence": "AWS model card: bedrock-runtime via us. Geo and Global CRIS (not me-south-1, not GovCloud); Responses, Chat Completions, Converse and Invoke; Guardrails Converse-only.",
+          "capabilities": [
+            "reasoning",
+            "tool_or_function_calling",
+            "image_input_vision",
+            "streaming",
+            "structured_output_json"
+          ]
         }
       }
     },
@@ -654,7 +661,9 @@
       "capabilities": [
         "tool_or_function_calling",
         "reasoning",
-        "image_input_vision"
+        "image_input_vision",
+        "streaming",
+        "structured_output_json"
       ],
       "capability_source": "AWS model card model-card-anthropic-claude-sonnet-5-5 (read 2026-11-10): launch 2026-09-28, Active, EOL no sooner than 2027-09-28; Messages/Converse/Invoke on bedrock-runtime via Geo (us. from six US/Canada source Regions, eu. from eight EU Regions, au. from Sydney and Melbourne) and Global CRIS (every commercial runtime Region; not GovCloud); Messages on bedrock-mantle In-Region in us-gov-west-1 only; 1M context, 128K max output; adaptive thinking on by default and cannot be disabled (default effort high); client-side tool calling with tool_choice auto/none only (no forced any or named tool); structured outputs; explicit prompt caching; Batch tier not supported. Global $2/$10 and Geo $2.20/$11 per 1M tokens, cache read $0.10 Global. The card names Claude Sonnet 5 as the valid fallback model. The card marks GovCloud Geo availability but documents no GovCloud profile id, so GovCloud is left out of the matrix (fail closed). Sampling-parameter support is not stated on the card.",
       "lifecycle_status": "active",

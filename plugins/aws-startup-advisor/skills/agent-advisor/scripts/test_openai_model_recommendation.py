@@ -38,10 +38,25 @@ def _workload(**overrides):
     return workload
 
 
-def _recommend(workload=None, region="us-east-2"):
+def _recommend(workload=None, region="us-east-2", catalog=None):
     return oai.recommend_openai_workload(
-        workload or _workload(), region, OPENAI_CATALOG
+        workload or _workload(), region, catalog or OPENAI_CATALOG
     )
+
+
+def _without_converse_streaming_evidence():
+    """A catalog where no runtime Converse tier model evidences streaming, to exercise the
+    fail-closed branch (in the shipped catalog the Sonnet 5.5 tier evidences every checkable
+    capability)."""
+    import copy
+    catalog = copy.deepcopy(OPENAI_CATALOG)
+    for key in oai._CONVERSE_TIER_ORDER:
+        model = catalog["models"][key]
+        model["capabilities"] = [c for c in model["capabilities"] if c != "streaming"]
+        path = model["paths"]["runtime_converse"]
+        if "capabilities" in path:
+            path["capabilities"] = [c for c in path["capabilities"] if c != "streaming"]
+    return catalog
 
 
 def _codes(items):
@@ -391,7 +406,12 @@ def test_runtime_unresolved_branches_outside_mantle_region_are_schema_valid(
         source={"model_ids": ["gpt-6-sol"], "api_surface": "chat_completions"},
         requirements=requirements,
     )
-    out = _full_recommend(workload, region="eu-west-1")
+    # Without Converse streaming evidence, the streaming case still reaches the unresolved branch.
+    out = model_recommendation.recommend(
+        {"schema_version": 2, "region": "eu-west-1", "primary_unit": workload["workload_id"],
+         "workloads": [workload]},
+        openai_catalog=_without_converse_streaming_evidence(),
+    )
     jsonschema.validate(out, _OUT_SCHEMA)
     rec = out["workloads"]["chat-svc"]
     assert rec["decision_status"] == "decision_required"
@@ -667,15 +687,27 @@ def test_g01_legacy_source_to_reasoning_target_marks_generation_change():
 
 
 def test_g02_runtime_selection_fails_closed_on_unproven_capability():
-    # No runtime_converse candidate has streaming evidence in the catalog, so a
-    # workload requiring it must NOT get a silent native claim — it fails closed.
+    # With no runtime_converse tier model evidencing streaming, a workload requiring it must NOT
+    # get a silent native claim — it fails closed.
+    rec = _recommend(
+        _workload(
+            requirements={"governance": ["guardrails"], "critical_features": ["streaming"]}
+        ),
+        catalog=_without_converse_streaming_evidence(),
+    )
+    assert rec["decision_status"] == "decision_required"
+    assert "unverified_capability" in _codes(rec["blocks"])
+
+
+def test_g02_streaming_now_resolves_to_an_evidenced_converse_target():
+    # The Sonnet 5.5 card documents response streaming, so the default Converse tier serves it.
     rec = _recommend(
         _workload(
             requirements={"governance": ["guardrails"], "critical_features": ["streaming"]}
         )
     )
-    assert rec["decision_status"] == "decision_required"
-    assert "unverified_capability" in _codes(rec["blocks"])
+    assert rec["decision_status"] == "recommended"
+    assert rec["primary_model"] == "anthropic.claude-sonnet-5-5"
 
 
 def test_g02_native_only_lists_catalog_evidenced_features():
