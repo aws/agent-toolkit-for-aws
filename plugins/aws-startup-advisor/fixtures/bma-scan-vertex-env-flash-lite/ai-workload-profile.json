@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.1",
+  "ai_sources": [
+    {
+      "provider": "google",
+      "source_service": "vertex_ai",
+      "model_families": [
+        "gemini"
+      ],
+      "model_evidence": "observed",
+      "models": [
+        "gemini-2.5-flash-lite"
+      ],
+      "model_observations": [
+        {
+          "normalized_model": "gemini-2.5-flash-lite",
+          "raw_model": "gemini-2.5-flash-lite",
+          "model_family": "gemini",
+          "evidence": [
+            {
+              "provenance": "code",
+              "confidence": "high",
+              "detail": "app/classify.py:7 client.models.generate_content; Vertex via GOOGLE_GENAI_USE_VERTEXAI in Dockerfile:2"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "gateways": [],
+  "workloads": [
+    {
+      "workload_id": "vertex_ai.gemini-2.5-flash-lite.genai.models.generate_content.plain",
+      "provider": "google",
+      "source_service": "vertex_ai",
+      "model": "gemini-2.5-flash-lite",
+      "sdk_method": "genai.models.generate_content",
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "structured_output": false,
+      "call_sites": [
+        {
+          "file": "app/classify.py",
+          "line": 7
+        }
+      ]
+    }
+  ],
+  "integration": {
+    "pattern": "direct_sdk",
+    "languages": [
+      "python"
+    ],
+    "frameworks": [],
+    "capabilities_summary": {
+      "text_generation": true,
+      "streaming": false,
+      "function_calling": false,
+      "vision": false,
+      "embeddings": false,
+      "batch_processing": false,
+      "speech_to_text": false,
+      "text_to_speech": false,
+      "image_generation": false
+    }
+  }
+}

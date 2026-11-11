@@ -173,7 +173,7 @@
                 "enum": ["global_allowed", "geo_required", "unknown"]
               },
               "cris_geography": {
-                "enum": ["us", "eu", "jp", "au"]
+                "enum": ["us", "ca", "eu", "jp", "au"]
               },
               "inference_profile_id": {
                 "type": "string",

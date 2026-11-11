@@ -16,6 +16,29 @@ SUPPORTED_PATHS = {
     "runtime_converse",
     "runtime_invoke",
 }
+# Catalog selection state (scripts/contracts/model-selection-catalog.schema.json). Only
+# `selectable` entries are automatic-selection candidates; `reference_only` entries stay in the
+# catalog for lookups but every candidate enumerator skips them. A missing status counts as
+# selectable so in-memory test catalogs keep working; the loaders require the field on disk.
+SELECTION_STATUSES = ("selectable", "reference_only")
+
+
+def with_all_selectable(catalog):
+    """The same catalog with every entry selectable: used to ask whether reference_only entries,
+    and not some other filter, are what left a decision side empty."""
+    return {**catalog, "models": {k: {**m, "selection_status": "selectable"}
+                                  for k, m in catalog["models"].items()}}
+
+
+def is_selectable(model):
+    status = model.get("selection_status", "selectable")
+    if status not in SELECTION_STATUSES:
+        raise ValueError(
+            f"selection_status must be one of {list(SELECTION_STATUSES)}, got {status!r}"
+        )
+    return status == "selectable"
+
+
 ANTHROPIC_PATHS = (
     "mantle_messages",
     "runtime_converse",
@@ -29,18 +52,28 @@ ANTHROPIC_PATHS = (
 ANTHROPIC_POOL = frozenset({"anthropic", "none", "unknown"})
 
 # New migrations use Opus 5.5; older Opus models are not automatic fallback candidates.
+# Haiku 5.5 is the fast/low-cost tier (Active since 2026-10-07, 1M context, adaptive thinking).
+# Haiku 4.5 is never the automatic pick while Haiku 5.5 is selectable; it follows Haiku 5.5 in the
+# speed/cost orders only so that a path/region Haiku 5.5 does not serve (Mantle outside
+# us-gov-west-1) still gets the fast tier rather than Sonnet, and stays last everywhere else.
 _PRIORITY_ORDER = {
-    "quality": ["claude_opus_5_5", "claude_sonnet_5", "claude_haiku_4_5"],
-    "balanced": ["claude_sonnet_5", "claude_opus_5_5", "claude_haiku_4_5"],
-    "speed": ["claude_haiku_4_5", "claude_sonnet_5", "claude_opus_5_5"],
-    "cost": ["claude_haiku_4_5", "claude_sonnet_5", "claude_opus_5_5"],
-    "unknown": ["claude_sonnet_5", "claude_opus_5_5", "claude_haiku_4_5"],
+    "quality": ["claude_opus_5_5", "claude_sonnet_5", "claude_haiku_5_5", "claude_haiku_4_5"],
+    "balanced": ["claude_sonnet_5", "claude_opus_5_5", "claude_haiku_5_5", "claude_haiku_4_5"],
+    "speed": ["claude_haiku_5_5", "claude_haiku_4_5", "claude_sonnet_5", "claude_opus_5_5"],
+    "cost": ["claude_haiku_5_5", "claude_haiku_4_5", "claude_sonnet_5", "claude_opus_5_5"],
+    "unknown": ["claude_sonnet_5", "claude_opus_5_5", "claude_haiku_5_5", "claude_haiku_4_5"],
+}
+# Models with no Bedrock Batch tier and the explicitly chosen, Batch-listed alternative to name.
+_BATCH_CAPABLE_ALTERNATIVE = {
+    "claude_opus_5_5": "Claude Opus 4.6",
+    "claude_haiku_5_5": "Claude Haiku 4.5",
 }
 
 _FEATURE_ORDER = {
     "agentic": [
         "claude_sonnet_5",
         "claude_opus_5_5",
+        "claude_haiku_5_5",
         "claude_haiku_4_5",
     ],
 }
@@ -308,7 +341,7 @@ def _build_candidates(catalog, paths, requirements, region=None):
     for path_rank, path in enumerate(paths):
         for model_rank, model_key in enumerate(model_order):
             model = catalog["models"].get(model_key)
-            if model is None:
+            if model is None or not is_selectable(model):
                 continue
             path_config = model["paths"].get(path, {})
             if path_config.get("available") is not True:
@@ -393,6 +426,29 @@ def _invocation_requires_cris(path_config, invocation_model_id):
     return path_config["requires_cris"] and invocation_model_id != path_config["model_id"]
 
 
+def _honor_explicit_profile(candidates, requirements, region):
+    """An explicit `inference_profile_id` names a model as well as a profile. When a lower-ranked
+    candidate (e.g. the retained Haiku 4.5 alternative) is the one that profile resolves against,
+    select it instead of blocking the top-ranked model on a mismatched profile. When no candidate
+    resolves the pin, keep the ranked choice so the mismatch is still reported as a blocker."""
+    explicit = requirements.get("inference_profile_id")
+    if not explicit:
+        return candidates[0]
+    for candidate in candidates:
+        path_config = candidate["path_config"]
+        # The pin must name this candidate's model (profile id or ARN tail); a profile for
+        # another model must not be "resolved" against a candidate that lacks a profile matrix.
+        if not explicit.endswith(path_config["model_id"]) and f"/{path_config['model_id']}" not in explicit \
+                and f".{path_config['model_id']}" not in explicit:
+            continue
+        resolved = _resolve_invocation_model_id(
+            path_config["model_id"], path_config["requires_cris"], requirements, candidate["model"], region
+        )
+        if resolved:
+            return candidate
+    return candidates[0]
+
+
 def _resolve_invocation_model_id(model_id, requires_cris, requirements, model=None, region=None):
     if not requires_cris:
         return model_id
@@ -407,12 +463,14 @@ def _resolve_invocation_model_id(model_id, requires_cris, requirements, model=No
             candidate = f"global.{model_id}"
         elif residency == "geo_required" and requirements.get("cris_geography"):
             candidate = f"{requirements['cris_geography']}.{model_id}"
-    profiles = (model or {}).get("inference_profiles")
-    if not candidate or not profiles:
+    if not candidate:
         return candidate
-    allowed = _allowed_inference_profiles(model_id, model, region, requirements)
+    profiles = (model or {}).get("inference_profiles")
+    allowed = _allowed_inference_profiles(model_id, model, region, requirements) if profiles else None
     profile_id = candidate
     if candidate.startswith("arn:"):
+        # Partition and region are validated for every pin, matrix or not: an ARN from another
+        # region/partition is never callable from this region.
         arn = re.fullmatch(
             r"arn:(aws(?:-[a-z-]+)?):bedrock:([a-z0-9-]+):[0-9]{12}:"
             r"(inference-profile|application-inference-profile)/([a-zA-Z0-9:.-]+)",
@@ -424,9 +482,34 @@ def _resolve_invocation_model_id(model_id, requires_cris, requirements, model=No
         if arn[3] == "application-inference-profile":
             # Preserve the callable ARN. The verifier checks its model destinations
             # against allowed_inference_profiles before making an inference call.
-            return candidate if allowed else None
+            if profiles:
+                return candidate if allowed else None
+            return candidate
         profile_id = arn[4]
+    if not _explicit_profile_matches(profile_id, model_id, requirements):
+        return None
+    if not profiles:
+        # No profile matrix for this model: identity, geography, partition and region were
+        # checked above; the live verifier confirms the profile exists in the region.
+        return candidate
     return candidate if profile_id in allowed else None
+
+
+def _explicit_profile_matches(profile_id, model_id, requirements):
+    """Identity + geography check for an explicit system inference profile id, independent of
+    whether the model carries a profile matrix. `profile_id` is `<model_id>` or `<prefix>.<model_id>`."""
+    if profile_id == model_id:
+        return True
+    if not profile_id.endswith(f".{model_id}"):
+        return False
+    prefix = profile_id[: -len(model_id) - 1]
+    if not re.fullmatch(r"[a-z]{2,3}(?:-[a-z]+)*|global", prefix):
+        return False
+    if requirements.get("data_residency") == "geo_required":
+        geography = requirements.get("cris_geography")
+        if prefix == "global" or (geography and prefix != geography):
+            return False
+    return True
 
 
 def _decision_options(catalog, workload, option_paths, region=None):
@@ -723,11 +806,6 @@ def _decision_required(workload, region, catalog, constraints):
     decision_options = _decision_options(
         catalog, workload, constraints["option_paths"], region
     )
-    if len(decision_options) != len(set(constraints["option_paths"])):
-        raise ValueError(
-            "catalog has no candidate for every conflicting model/path option "
-            f"for workload {workload['workload_id']}"
-        )
     blocks = [
         _finding(
             "model_path_decision_required",
@@ -737,10 +815,40 @@ def _decision_required(workload, region, catalog, constraints):
             "update requirements, and rerun Model Recommend.",
         )
     ]
+    # A real choice needs a candidate on every conflicting side. A side is blocked only when
+    # reference_only entries are what emptied it: with them counted as selectable (every other
+    # filter unchanged) the side has a candidate. Otherwise the requirement is unsatisfiable and
+    # the fail-closed raise is unchanged. Options are never invented to fill the gap.
+    status = "decision_required"
+    if len(decision_options) != len(set(constraints["option_paths"])):
+        offered = {option["api_path"] for option in decision_options}
+        missing = sorted(set(constraints["option_paths"]) - offered)
+        counterfactual = with_all_selectable(catalog)
+        blamed = set()
+        for path in missing:
+            candidates = _build_candidates(counterfactual, [path], workload["requirements"], region)
+            if not candidates:
+                raise ValueError(
+                    "catalog has no candidate for every conflicting model/path option "
+                    f"for workload {workload['workload_id']}"
+                )
+            blamed |= {c["model_key"] for c in candidates
+                       if not is_selectable(catalog["models"][c["model_key"]])}
+        status = "blocked"
+        blocks.append(
+            _finding(
+                "decision_option_unavailable",
+                "[BLOCKS]",
+                f"No selectable catalog model satisfies the {', '.join(missing)} option; it is "
+                f"available only from reference_only entries: {', '.join(sorted(blamed))}.",
+                "Mark a verified model selectable for that path, or update the conflicting "
+                "requirement, then rerun Model Recommend.",
+            )
+        )
     return {
         "workload_id": workload["workload_id"],
         "provider_module": "anthropic",
-        "decision_status": "decision_required",
+        "decision_status": status,
         "source": workload["source"],
         "source_analysis": {
             "detected_version": _source_version(workload["source"]),
@@ -762,8 +870,12 @@ def _decision_required(workload, region, catalog, constraints):
         "migration_deltas": [],
         "evaluation": _evaluation_requirements(workload, feature_status),
         "rollout": {
-            "strategy": "decision_required",
-            "gate": "Resolve the model/path conflict before implementation.",
+            "strategy": status,
+            "gate": (
+                "Resolve the model/path conflict before implementation."
+                if status == "decision_required"
+                else "Resolve each [BLOCKS] finding as its remediation says, then rerun."
+            ),
         },
         "verification": {
             "region": region,
@@ -788,11 +900,13 @@ def recommend_anthropic_workload(workload, region, catalog):
         catalog, constraints["paths"], workload["requirements"], region
     )
     if not candidates:
+        skipped = sorted(k for k, m in catalog["models"].items() if not is_selectable(m))
         raise ValueError(
             f"catalog has no model/path candidate satisfying workload "
             f"{workload['workload_id']} requirements"
+            + (f" (reference_only entries skipped: {', '.join(skipped)})" if skipped else "")
         )
-    chosen = candidates[0]
+    chosen = _honor_explicit_profile(candidates, workload["requirements"], region)
     model = chosen["model"]
     path = chosen["path"]
     path_config = chosen["path_config"]
@@ -821,7 +935,11 @@ def recommend_anthropic_workload(workload, region, catalog):
         model,
         region,
     )
-    if model.get("inference_profiles") and path_config["requires_cris"] and not invocation_model_id:
+    # Unresolved profile blocks when the model has a profile matrix, or whenever an explicit pin
+    # was given and failed identity/geography/region validation (matrix or not): an invalid pin
+    # must fail before inference, never pass through unvalidated.
+    pin_given = bool(workload["requirements"].get("inference_profile_id"))
+    if (model.get("inference_profiles") or pin_given) and path_config["requires_cris"] and not invocation_model_id:
         blocks.append(_finding(
             "inference_profile_unresolved", "[BLOCKS]",
             "The selected model has no verified inference profile matching the region and residency requirements.",
@@ -842,9 +960,11 @@ def recommend_anthropic_workload(workload, region, catalog):
     if model.get("batch_supported") is False:
         for finding in blocks:
             if finding["code"] == "message_batches_not_portable":
+                alternative = _BATCH_CAPABLE_ALTERNATIVE.get(chosen["model_key"], "a verified batch-capable model")
                 finding["remediation"] = (
-                    "Opus 5.5 does not support Bedrock Batch. Use on-demand inference, "
-                    "or select a verified batch-capable alternative such as Opus 4.6."
+                    f"{model['display_name']} does not support Bedrock Batch (Standard tier only). "
+                    "Use on-demand inference, or explicitly select "
+                    f"{alternative} after verifying its Batch support and rates."
                 )
     rationale = list(constraints["rationale"])
     rationale.append(
