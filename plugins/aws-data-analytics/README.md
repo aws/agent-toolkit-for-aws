@@ -38,7 +38,7 @@ This plugin brings AWS data engineering expertise directly into your coding assi
 | 16 | `developing-applications-on-managed-service-for-apache-flink` | Develop, deploy, and tune Apache Flink applications on Amazon Managed Service for Apache Flink, including checkpointing, connectors, and Flink 2.x migration | [SKILL.md](skills/developing-applications-on-managed-service-for-apache-flink/SKILL.md) |
 | 17 | `managing-data-catalog` | Write and curate business metadata in Amazon SageMaker Catalog or the AWS Glue Data Catalog: descriptions, READMEs, glossaries, metadata forms, publishing, and safe asset retirement | [SKILL.md](skills/managing-data-catalog/SKILL.md) |
 | 18 | `managing-data-asset-access` | Request, approve, share, audit, and revoke access to Amazon SageMaker Catalog assets through subscriptions, and confirm grants have settled | [SKILL.md](skills/managing-data-asset-access/SKILL.md) |
-| 19 | `managing-glue-jobs` | Assess AWS Glue Spark ETL jobs for auto upgrade, turn it on for the jobs you confirm, set up upgrade email notifications, and review and approve or decline pending upgrades one job at a time | [SKILL.md](skills/managing-glue-jobs/SKILL.md) |
+| 19 | `managing-glue-jobs` | Assess AWS Glue Spark ETL jobs for auto upgrade, turn it on for the jobs you confirm, set up upgrade email notifications, and review and approve or decline pending upgrades, by job name or on a blocking-issue condition | [SKILL.md](skills/managing-glue-jobs/SKILL.md) |
 
 ## MCP Servers
 
