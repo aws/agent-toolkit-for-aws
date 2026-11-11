@@ -128,7 +128,7 @@ def test_old_catalog_does_not_restore_opus48_to_the_current_pool():
         "requirements": {"priority": "quality"},
     }
     rec = mr.recommend({"region": "us-east-1", "primary_unit": "old", "workloads": [workload]}, catalog)
-    assert rec["workloads"]["old"]["primary_model"] == "anthropic.claude-sonnet-5"
+    assert rec["workloads"]["old"]["primary_model"] == "anthropic.claude-sonnet-5-5"
 
 
 def test_openai_quality_cross_family_path_uses_the_same_opus55_contract():
@@ -169,7 +169,7 @@ def test_openai_quality_does_not_restore_opus48_when_opus55_is_unavailable():
         catalog, "runtime_converse", [], requirements,
         candidate_order=oai._converse_candidate_order(source, requirements),
     )
-    assert chosen[0] == "anthropic_claude_sonnet_5"
+    assert chosen[0] == "anthropic_claude_sonnet_5_5"
     assert not unmet
 
 

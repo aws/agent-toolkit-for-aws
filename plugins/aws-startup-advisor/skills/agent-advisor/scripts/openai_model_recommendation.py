@@ -118,10 +118,12 @@ _HOSTED_TOOL_IMPACTS = {
 # Converse tier map: a governance workload keeps its capability tier when moving
 # from the (Mantle-only) GPT-5.x family to Claude on runtime Converse.
 #   GPT-5.6 Sol (frontier)      -> Claude Opus 5.5
-#   GPT-5.6 Terra / 5.5 / 5.4   -> Claude Sonnet 5 (also the default tier)
+#   GPT-5.6 Terra / 6.1 Terra / 5.5 / 5.4 -> Claude Sonnet 5.5 (also the default tier; Sonnet 5
+#                                  follows it as the forced tool_choice / Batch alternative)
 #   GPT-5.6 Luna (fast/low-cost)-> Claude Haiku 5.5 (Haiku 4.5 stays an explicit alternative, last in the order)
-_CONVERSE_TIER_DEFAULT = "anthropic_claude_sonnet_5"
+_CONVERSE_TIER_DEFAULT = "anthropic_claude_sonnet_5_5"
 _CONVERSE_TIER_ORDER = (
+    "anthropic_claude_sonnet_5_5",
     "anthropic_claude_sonnet_5",
     "anthropic_claude_opus_5_5",
     "anthropic_claude_haiku_5_5",
@@ -139,6 +141,17 @@ def _converse_tier_for_source(source):
     return _CONVERSE_TIER_DEFAULT
 
 
+# Models whose cards document runtime JSON Schema output for non-streaming calls only, with the
+# Converse request shape in the structured_output_text_format delta. Short names keep Astra's text.
+_RUNTIME_JSON_SCHEMA_NON_STREAMING = {
+    "openai_gpt_6_astra": "Astra",
+    "openai_gpt_6_1_terra": "GPT-6.1 Terra",
+}
+_RUNTIME_JSON_SCHEMA_NON_STREAMING_NAMES = {
+    "OpenAI GPT-6 Astra (on Bedrock)": "Astra",
+    "OpenAI GPT-6.1 Terra (on Bedrock)": "GPT-6.1 Terra",
+}
+
 _SOURCE_MODEL_KEYS = {
     "gpt-5.6-sol": "openai_gpt_5_6_sol",
     "gpt-5.6-terra": "openai_gpt_5_6_terra",
@@ -147,6 +160,7 @@ _SOURCE_MODEL_KEYS = {
     "gpt-6-sol": "openai_gpt_6_sol",
     "gpt-6-luna": "openai_gpt_6_luna",
     "gpt-6.1-sol": "openai_gpt_6_1_sol",
+    "gpt-6.1-terra": "openai_gpt_6_1_terra",
 }
 
 
@@ -164,13 +178,26 @@ def _same_model_runtime_key(source):
     return _same_model_catalog_key(source)
 
 
+# Sonnet 5.5 is adaptive-thinking only; a workload that disables thinking gets Sonnet 5 first,
+# unless an explicit inference profile names Sonnet 5.5 (same scoped yield as the Anthropic module).
+_CONVERSE_THINKING_YIELD = ("anthropic_claude_sonnet_5_5", "anthropic_claude_sonnet_5")
+
+
 def _converse_candidate_order(source, requirements=None):
+    requirements = requirements or {}
     tier = (
         "anthropic_claude_opus_5_5"
-        if (requirements or {}).get("priority") == "quality"
+        if requirements.get("priority") == "quality"
         else _converse_tier_for_source(source)
     )
     order = [tier] + [k for k in _CONVERSE_TIER_ORDER if k != tier]
+    preferred, alternative = _CONVERSE_THINKING_YIELD
+    pinned = requirements.get("inference_profile_id") or ""
+    if (requirements.get("thinking_enabled") is False and "claude-sonnet-5-5" not in pinned
+            and preferred in order and alternative in order
+            and order.index(preferred) < order.index(alternative)):
+        order.remove(alternative)
+        order.insert(order.index(preferred), alternative)
     same = _same_model_runtime_key(source)
     if same:
         # Same model outranks any cross-family tier: keeping the model removes
@@ -442,7 +469,8 @@ def _reasoning_findings(source, requirements, target_model, path, detected_featu
     # Sampling acceptance is a property of the TARGET model and the selected path.
     if target_model and target_model.get("sampling_parameters_supported") is False:
         if target_model.get("adaptive_thinking_only"):
-            # Opus 5.5: thinking is always on, so the controls cannot come back by disabling it.
+            # Opus 5.5 / Sonnet 5.5: thinking is always on, so the controls cannot come back by
+            # disabling it.
             remediation = (
                 "Remove temperature/top_p/top_k from requests to this target; do not rescale them "
                 "or disable thinking. Route user-visible controls through the existing "
@@ -563,12 +591,13 @@ def _feature_findings(detected_features, requirements, path=None, target_model=N
     blocks, tuning, deltas, impacts = [], [], [], []
 
     if "structured_output_json" in detected:
-        if path == "runtime_converse" and (target_model or {}).get("display_name") == "OpenAI GPT-6 Astra (on Bedrock)":
+        json_schema_name = _RUNTIME_JSON_SCHEMA_NON_STREAMING_NAMES.get((target_model or {}).get("display_name"))
+        if path == "runtime_converse" and json_schema_name:
             deltas.append(
                 _delta(
                     "structured_output_text_format",
                     "feature",
-                    "Astra runtime JSON Schema output is documented for non-streaming calls. "
+                    f"{json_schema_name} runtime JSON Schema output is documented for non-streaming calls. "
                     "Set outputConfig.textFormat.type=json_schema and put name plus schema "
                     "(encoded as a JSON string) in outputConfig.textFormat.structure.jsonSchema. "
                     "Also set additionalModelRequestFields.text.format.strict=true. Use an "
@@ -1255,13 +1284,14 @@ def recommend_openai_workload(workload, region, catalog):
         )
 
     needed = set(detected) | set(requirements.get("critical_features") or [])
-    if (model_key == "openai_gpt_6_astra" and path == "runtime_converse"
+    if (model_key in _RUNTIME_JSON_SCHEMA_NON_STREAMING and path == "runtime_converse"
             and {"structured_output_json", "streaming"} <= needed):
         return _unresolved(
             rationale_head, [],
             _finding(
                 "structured_output_streaming_unverified", "[BLOCKS]",
-                "Astra runtime JSON Schema output is documented only for non-streaming calls.",
+                f"{_RUNTIME_JSON_SCHEMA_NON_STREAMING[model_key]} runtime JSON Schema output is documented "
+                "only for non-streaming calls.",
                 "Use non-streaming structured output or separate the streaming workload, "
                 "then update requirements and rerun Model Recommend.",
             ), path,
@@ -1327,8 +1357,8 @@ def recommend_openai_workload(workload, region, catalog):
         finding = _finding(
             "adaptive_thinking_required",
             "[BLOCKS]" if requirements.get("thinking_enabled") is False else "[TUNE]",
-            "Opus 5.5 always uses adaptive thinking and does not support disabled thinking, manual budgets, or forced any/tool choice.",
-            "Set output_config.effort as needed (default medium), and size max_tokens "
+            f"{anthropic_model_recommendation._short_name(model)} always uses adaptive thinking and does not support disabled thinking, manual budgets, or forced any/tool choice.",
+            f"Set output_config.effort as needed (default {model.get('default_effort', 'medium')}), and size max_tokens "
             "for thinking plus response text. Use auto/none tool choice; a hard forced-tool "
             "requirement needs a verified compatible target. Verify billed usage on the workload.",
         )
