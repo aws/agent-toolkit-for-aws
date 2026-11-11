@@ -22,7 +22,10 @@ see a new `skills/shared/` file no skill vendors yet — adding one here means t
 
 This skill vendors the DSL interpreter contract, the provider-neutral Bedrock pricing
 cache, and the Anthropic/OpenAI model-selection catalogs read by
-`scripts/model_recommendation.py`. It does not vendor the shared state schema
+`scripts/model_recommendation.py`. The catalogs are themselves rendered from
+`skills/shared/ai/models/bedrock-model-registry.json` by `tools/build-model-catalogs.py`: change the
+registry, rebuild, then sync. Both the registry and the tool live in the plugin repository; a
+standalone install of this skill carries only the rendered catalogs. It does not vendor the shared state schema
 (`skills/shared/state/phase-status.schema.json`) — agent-advisor's
 `.phase-status.json` carries advisor-specific keys and statuses, declared in
 SKILL.md § State file per INTERPRETER.md § Skill bindings.
