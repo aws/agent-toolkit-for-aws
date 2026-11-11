@@ -62,8 +62,10 @@ service count.
 
 From the inventory: `shared_data_stores.cohorts` (for the conditional
 `shared-data-stores` section) and `metadata.apps_by_environment_tier` (one line in
-`decision-summary` when present: "N apps, of which M are production by name or
-pipeline stage").
+`decision-summary` **only when the field is present**: "N apps, of which M are
+production by name or pipeline stage"; the field is written by the environment-tier
+discovery, which is not part of this change — when it is absent, omit the line, never
+derive the counts here).
 
 From `estimation-infra.json` `current_costs.contract` (present only when the user
 supplied a Heroku order form in Clarify): render a **Contract reconciliation** table

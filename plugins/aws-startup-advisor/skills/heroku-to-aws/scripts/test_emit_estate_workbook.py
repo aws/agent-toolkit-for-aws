@@ -14,6 +14,7 @@ import re
 import subprocess  # nosec B404
 import sys
 import tempfile
+import xml.etree.ElementTree as ET  # nosec B405 — parses only XML this test suite just wrote
 import zipfile
 from pathlib import Path
 
@@ -214,6 +215,64 @@ def test_fail_open_on_undecodable_inputs():
         code, out = run(tmp)
         assert code == 0 and out.startswith("ESTATE_OK")
         assert "Design not run" in sheets(tmp / "heroku-estate.xlsx")["Formations"]
+
+
+def _parse_every_worksheet(path: Path) -> None:
+    """Every worksheet part must be well-formed XML, or spreadsheet readers reject the file."""
+    with zipfile.ZipFile(path) as z:
+        parts = [n for n in z.namelist() if n.startswith("xl/worksheets/")]
+        assert parts
+        for n in parts:
+            ET.fromstring(z.read(n))
+
+
+def test_xml_illegal_characters_are_stripped_and_every_sheet_parses():
+    with tempfile.TemporaryDirectory() as t:
+        tmp = Path(t)
+        inv = json.loads(json.dumps(INVENTORY))
+        inv["metadata"]["confidence_note"] = "bad\x01char\x0bhere"
+        inv["apps"][0]["app_name"] = "shop-prod-api\ud800"  # lone surrogate: json.load accepts the \ud800 escape
+        inv["resources"][6]["config"]["plan"] = "standard\x1f"
+        (tmp / "heroku-resource-inventory.json").write_text(json.dumps(inv))
+        code, out = run(tmp)
+        assert code == 0 and out.startswith("ESTATE_OK")
+        _parse_every_worksheet(tmp / "heroku-estate.xlsx")
+        wb = sheets(tmp / "heroku-estate.xlsx")
+        assert "badcharhere" in wb["Summary"]
+        assert "shop-prod-api" in wb["Apps"] and "\ud800" not in wb["Apps"]
+        assert "standard" in wb["Other add-ons"] and "\x1f" not in wb["Other add-ons"]
+        assert not (tmp / "heroku-estate.xlsx.tmp").exists()
+
+
+def test_non_finite_numbers_become_empty_cells():
+    with tempfile.TemporaryDirectory() as t:
+        tmp = Path(t)
+        inv = json.loads(json.dumps(INVENTORY))
+        inv["resources"][3]["config"]["monthly_price_usd"] = float("nan")
+        inv["resources"][4]["config"]["data_size_gb"] = float("inf")
+        (tmp / "heroku-resource-inventory.json").write_text(json.dumps(inv))  # json emits NaN / Infinity tokens
+        code, out = run(tmp)
+        assert code == 0 and out.startswith("ESTATE_OK")
+        _parse_every_worksheet(tmp / "heroku-estate.xlsx")
+        blob = "\n".join(sheets(tmp / "heroku-estate.xlsx").values())
+        assert "<v>nan</v>" not in blob and "<v>inf</v>" not in blob
+        # the leaders-only total still sums the finite leader value
+        assert "<v>40.5</v>" in sheets(tmp / "heroku-estate.xlsx")["Summary"]
+
+
+def test_tmp_file_removed_when_write_fails():
+    with tempfile.TemporaryDirectory() as t:
+        tmp = Path(t)
+        (tmp / "heroku-resource-inventory.json").write_text(json.dumps(INVENTORY))
+        # the zip is written to <out>.tmp, then renamed over <out>; a non-empty directory at
+        # <out> makes that rename raise after the .tmp exists
+        blocker = tmp / "blocked.xlsx"
+        blocker.mkdir()
+        (blocker / "keep").write_text("x")
+        code, out = run(tmp, "--out", str(blocker))
+        assert code == 0 and out.startswith("ESTATE_SKIP | reason=")
+        assert not (tmp / "blocked.xlsx.tmp").exists()
+        assert blocker.is_dir()
 
 
 def test_out_override():

@@ -38,14 +38,22 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import re
 import sys
 import zipfile
 from collections import Counter, defaultdict
 from pathlib import Path
 
+# Characters XML 1.0 forbids outside escapes (C0 controls except TAB/LF/CR, the two
+# non-characters, and lone surrogates — json.load accepts "\ud800" escapes). A cell
+# carrying one would make the worksheet part unparseable, so they are stripped.
+_XML_BAD = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff\ud800-\udfff]")
+
 
 def escape(text: str) -> str:
-    """XML-escape a cell value (we only WRITE XML here; nothing is parsed)."""
+    """XML-escape a cell value after dropping characters XML cannot carry at all."""
+    text = _XML_BAD.sub("", text)
     return (text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             .replace('"', "&quot;"))
 
@@ -75,6 +83,8 @@ def _cell(ref: str, v) -> str:
         return ""
     if isinstance(v, bool):
         return f'<c r="{ref}" t="b"><v>{1 if v else 0}</v></c>'
+    if isinstance(v, float) and not math.isfinite(v):
+        return ""  # json.load accepts NaN/Infinity; a <v>nan</v> cell is rejected by spreadsheet readers
     if isinstance(v, (int, float)):
         return f'<c r="{ref}"><v>{v}</v></c>'
     return f'<c r="{ref}" t="inlineStr"><is><t xml:space="preserve">{escape(str(v))}</t></is></c>'
@@ -124,14 +134,18 @@ def write_xlsx(path: Path, sheets: list[tuple[str, list[list]]]) -> None:
             '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
             'Target="xl/workbook.xml"/></Relationships>')
     tmp = path.with_suffix(path.suffix + ".tmp")
-    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("[Content_Types].xml", "".join(ct))
-        z.writestr("_rels/.rels", rels)
-        z.writestr("xl/workbook.xml", "".join(wb))
-        z.writestr("xl/_rels/workbook.xml.rels", "".join(wbrels))
-        for n, body in files:
-            z.writestr(n, body)
-    tmp.replace(path)
+    try:
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr("[Content_Types].xml", "".join(ct))
+            z.writestr("_rels/.rels", rels)
+            z.writestr("xl/workbook.xml", "".join(wb))
+            z.writestr("xl/_rels/workbook.xml.rels", "".join(wbrels))
+            for n, body in files:
+                z.writestr(n, body)
+        tmp.replace(path)
+    except BaseException:  # never leave a half-written .tmp in $MIGRATION_DIR
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 # ----------------------------------------------------------------------------
@@ -418,6 +432,7 @@ def build_sheets(inv: dict, design, est) -> tuple[list[tuple[str, list[list]]], 
               ["Read this before relying on the numbers"],
               ["Dyno counts and database sizes are point-in-time values from the discovery timestamp. Formations scaled to zero are not visible to live discovery."],
               ["Environment tier is inferred from pipeline stage or the app name; it is a label, not a fact."],
+              ["Environment tier columns populate once the discovery that writes them is present; they are blank otherwise."],
               ["'Deferred' rows have no AWS sizing yet and are excluded from any AWS cost shown."],
               [EXCLUDED_NOTE]]
     for lim in live.get("limitations") or []:

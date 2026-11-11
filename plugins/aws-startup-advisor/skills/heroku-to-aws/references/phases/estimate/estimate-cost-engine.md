@@ -155,10 +155,22 @@ order form commits spend discovery cannot see. Reconcile the two rather than pic
 
 1. For each contract line, `monthly_usd = total_usd / months`. Sum to
    `contract.monthly_run_rate`.
-2. Bucket the discovered baseline by category: dynos (formations × dyno rate),
-   add-ons (every add-on resource), Private Spaces (space base fees, when spaces exist
-   in the inventory). Support, Connect rows and credits have no discovered counterpart —
-   their discovered value is 0.
+2. Bucket the discovered baseline into the contract categories (the same enum Q16
+   records: `dynos|addon_credits|support|private_spaces|connect|other`):
+   - `dynos` — formations × dyno rate.
+   - `addon_credits` — every add-on resource's priced contribution. Contract add-on
+     credits are what the order form pre-pays for add-ons, so discovered add-on spend
+     is the only discovered counterpart it has; there is no separate "credits" bucket.
+   - `private_spaces` — space base fees, when spaces exist in the inventory.
+   - `support`, `connect` — no discovered counterpart; `discovered_usd` is 0.
+   - `other` — any priced baseline component none of the above claims (write 0 when
+     there is none), so that every discovered dollar lands in exactly one line.
+
+   One line per category that appears on the contract OR carries discovered spend;
+   `monthly_usd` is 0 for a category the contract has no line for. The per-line
+   `discovered_usd` values MUST sum to `discovered_monthly` (the Part 1 baseline), and
+   the per-line `monthly_usd` values to `monthly_run_rate`; if they do not, the
+   bucketing is wrong — fix it rather than writing the lines.
 3. Write `current_costs.contract`:
 
    ```json
@@ -179,17 +191,20 @@ order form commits spend discovery cannot see. Reconcile the two rather than pic
    list rates; committed headroom and scaled-to-zero formations; apps or accounts
    outside the CLI's view; usage-based add-ons; support and Connect being invisible to
    discovery. Say plainly that the gap is **not** evidence of unused commitment.
-5. Also compute `discovered_like_for_like_monthly` = discovered baseline minus
-   `current_costs.deferred_resource_cost` — Part 1b's sum of what the **selected
-   baseline actually counted** for the Deferred add-ons (invoice amounts under
-   `billing_data`, live plan prices under `live_prices_plus_cache`, cache prices under
-   `pricing_cache`). Never substitute list prices: with a $150 invoice baseline that
-   includes $50 of deferred spend whose list price is $100, the matched baseline is $100
-   and the removed amount disclosed is $50. If the selected baseline cannot attribute an
-   amount to a deferred add-on (e.g. a billing line that does not break it out), leave
-   that add-on out of the subtraction and say so in `like_for_like_comparison.note`
-   rather than inventing a figure. This is the only Heroku figure that is scope-matched
-   to the AWS estimate; Part 3 uses it.
+5. The scope-matched Heroku figure is **not** a contract field. It is
+   `cost_comparison.heroku_monthly_like_for_like` (Part 3) = the Part 1 baseline minus
+   `current_costs.deferred_resource_cost`, written whenever any add-on is Deferred,
+   contract or not. `heroku_monthly_baseline` keeps the full figure unchanged — the
+   like-for-like value is an ADDITIONAL field shown beside it, never a replacement
+   (Part 3 § "Keep the full baseline"). `deferred_resource_cost` is Part 1b's sum of
+   what the **selected baseline actually counted** for the Deferred add-ons (invoice
+   amounts under `billing_data`, live plan prices under `live_prices_plus_cache`, cache
+   prices under `pricing_cache`); do not re-derive it here. Never substitute list
+   prices: with a $150 invoice baseline that includes $50 of deferred spend whose list
+   price is $100, the matched baseline is $100 and the removed amount disclosed is $50.
+   If the selected baseline cannot attribute an amount to a deferred add-on (e.g. a
+   billing line that does not break it out), leave that add-on out of the subtraction
+   and say so in `like_for_like_comparison.note` rather than inventing a figure.
 
 The contract run-rate is never the baseline used for savings headlines. It is shown
 beside the discovered figure so the reader can see both and why they differ.
@@ -416,7 +431,7 @@ Include in `estimation-infra.json`:
 "cost_comparison": {
   "heroku_monthly_baseline": "<Part 1 baseline total>",
   "baseline_source": "<current_costs.source>",
-  "heroku_monthly_like_for_like": "<Part 1 baseline minus the priced contribution of every add-on the Design marked Deferred (same figure Part 1b/§ Contract reconciliation step 5 uses); present whenever deferred add-ons exist, contract or not>",
+  "heroku_monthly_like_for_like": "<heroku_monthly_baseline minus current_costs.deferred_resource_cost (Part 1b; § Contract reconciliation step 5 points here). An ADDITIONAL field: heroku_monthly_baseline above stays the full figure. Present whenever deferred add-ons exist, contract or not>",
   "heroku_monthly_contract": "<current_costs.contract.monthly_run_rate, when a contract exists; else omit>",
   "like_for_like_comparison": {
     "aws_monthly_balanced": "<projected_costs.aws_monthly_balanced>",
@@ -457,7 +472,12 @@ This mirrors the existing `found`/`available`-style status flag convention
 already used in `billing_profile` / `terraform_metadata` / `live_metadata`.
 
 **Keep the full baseline — do not subtract or hide the deferred resource's
-cost.** When `comparison_status == "incomplete_unmatched_services"`, every
+cost.** `heroku_monthly_baseline` and the three option differences are always
+computed on the full figure. The scope-matched `heroku_monthly_like_for_like` /
+`like_for_like_comparison` above is an additional view shown beside them — it
+does not replace or reduce the full baseline, and the amount it removes is
+disclosed as `deferred_contribution_monthly`. When
+`comparison_status == "incomplete_unmatched_services"`, every
 presentation of the savings/difference figures (chat summary,
 `financial_summary`, `migration-report.html`/`decision-report.html`
 `exec-costs`) MUST render a caveat naming the unmatched service and its

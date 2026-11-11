@@ -70,7 +70,7 @@ Report-level information about the discovery run.
 | `confidence`            | string            | ✅       | `"full"` (primary source(s) parsed/captured successfully) or `"reduced"` (partial data, e.g., Terraform parse errors, failed/skipped live captures, missing expected resources) |
 | `confidence_note`       | string            | ❌       | Explanation when confidence is `"reduced"`                                                                                                                                      |
 
-### `shared_data_stores` (OPTIONAL — written by assemble rule 9 when any data-store add-on has `attached_apps`)
+### `shared_data_stores` (OPTIONAL — written by assemble rule 10 when any data-store add-on has `attached_apps`)
 
 ```json
 {
