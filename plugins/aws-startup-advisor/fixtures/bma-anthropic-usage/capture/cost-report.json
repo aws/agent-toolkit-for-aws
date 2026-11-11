@@ -1,0 +1,72 @@
+[
+ {
+  "starting_at": "2026-10-19T00:00:00Z",
+  "ending_at": "2026-10-20T00:00:00Z",
+  "results": [
+   {
+    "amount": "0",
+    "currency": "USD",
+    "workspace_id": "wrkspc_app",
+    "description": "Claude Sonnet 5 Usage - Input Tokens",
+    "model": "claude-sonnet-5",
+    "cost_type": "tokens",
+    "inference_geo": "us",
+    "context_window": "0-200k",
+    "service_tier": "standard",
+    "token_type": null,
+    "speed": null
+   }
+  ]
+ },
+ {
+  "starting_at": "2026-10-20T00:00:00Z",
+  "ending_at": "2026-10-21T00:00:00Z",
+  "results": [
+   {
+    "amount": "1250.4",
+    "currency": "USD",
+    "workspace_id": "wrkspc_app",
+    "description": "Claude Sonnet 5 Usage - Input Tokens",
+    "model": "claude-sonnet-5",
+    "cost_type": "tokens",
+    "inference_geo": "us",
+    "context_window": "0-200k",
+    "service_tier": "standard",
+    "token_type": null,
+    "speed": null
+   }
+  ]
+ },
+ {
+  "starting_at": "2026-10-25T00:00:00Z",
+  "ending_at": "2026-10-26T00:00:00Z",
+  "results": [
+   {
+    "amount": "300",
+    "currency": "USD",
+    "workspace_id": null,
+    "description": "Claude Haiku 5 Usage - Input Tokens",
+    "model": "claude-haiku-5",
+    "cost_type": "tokens",
+    "inference_geo": "not_available",
+    "context_window": "0-200k",
+    "service_tier": "standard",
+    "token_type": null,
+    "speed": null
+   },
+   {
+    "amount": "100",
+    "currency": "USD",
+    "workspace_id": "wrkspc_app",
+    "description": "Web Search",
+    "model": null,
+    "cost_type": "web_search",
+    "inference_geo": null,
+    "context_window": null,
+    "service_tier": null,
+    "token_type": null,
+    "speed": null
+   }
+  ]
+ }
+]

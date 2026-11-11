@@ -1,6 +1,6 @@
 ---
 name: timestream-influxdb
-version: 2
+version: 3
 description: Retrieves authoritative guidance on Amazon Timestream for InfluxDB across its supported engine variants. Applicable to any InfluxDB-on-AWS request including engine variant and licensing selection, provisioning and IAM, encryption at rest (AWS-owned and customer-managed KMS keys, key policies, and key lifecycle), schema design (tags vs fields, cardinality, HTTP/sensor/metric data modeling), migration from LiveAnalytics, Processing Engine plugins, connectivity (database endpoints and private or public access), and write/query errors.
 ---
 
@@ -24,7 +24,7 @@ Before any guidance, confirm tooling and engine variant.
 
 **Constraints:**
 
-- You MUST confirm which engine variant the user runs (V2, V2 Read Replica, or V3) before giving advice specific to that engine variant — APIs and defaults differ.
+- You MUST confirm which engine variant the user runs (V2, V2 Read Replica, or V3) before giving advice specific to that engine variant — APIs and defaults differ. When the request already names the variant or asks for a comparison, answer directly for Amazon Timestream for InfluxDB instead of asking a clarifying question.
 - You MUST NOT mix V2 APIs (Flux, orgs, buckets, port 8086) with V3 APIs (SQL/InfluxQL, databases, tables, port 8181).
 - You MUST verify the AWS CLI (or `call_aws`) is available before provisioning guidance.
 - You MUST inspect the Create API and ask for all required parameters upfront, including engine variant, Region, VPC/subnet IDs, name, instance type, and a supported encryption choice. For production V3 workloads, verify customer-managed KMS key support in that API before recommending it for customer-controlled policy, rotation, revocation, and CloudTrail visibility. Collect an identifier in a form that API accepts.
@@ -66,7 +66,8 @@ For V3 encryption choices, customer-managed KMS key policy, migration, or key li
 - **Encryption scope and key loss:** Retrieve the Data protection documentation and report only the details the user requests; follow "Response Scope" and "Existing Clusters and Key Loss" in [encryption guidance](references/encryption.md).
 - **Key verification:** Confirm a specific customer-managed KMS key only by matching the returned ARN to the requested key ARN. Interpret an absent `kmsKeyId` only when the current `GetDbCluster` response documentation explicitly defines its semantics; never use absence to identify a specific customer-managed KMS key. Follow "Verify the Key" in [encryption guidance](references/encryption.md).
 - **Creation completion:** After `create-db-cluster` returns, poll `get-db-cluster` until it reports `AVAILABLE` or a terminal failure. Do not report creation complete or ask the user to take over polling while the cluster remains `CREATING`. For a customer-managed key request, success also requires the returned `kmsKeyId` ARN to match the requested key ARN; an absent value while the cluster is transitioning is unverified and MUST be checked again at `AVAILABLE`.
-- **Retrieve the V3 initial-token secret by ARN:** Inspect the `GetDbCluster` output or API reference for the token-secret ARN field, then pass the returned ARN to AWS Secrets Manager. Never derive the secret identifier from a naming convention. V3 uses `Authorization: Bearer <token>` (NOT `Token`). V2 uses `Authorization: Token <token>`.
+- **Retrieve the V3 initial-token secret by ARN:** Run `aws timestream-influxdb get-db-cluster --db-cluster-id <id> --query influxAuthParametersSecretArn --output text`, then pass the returned ARN to `aws secretsmanager get-secret-value --secret-id <arn>`. Never derive the secret identifier from a naming convention. V3 uses `Authorization: Bearer <token>` (NOT `Token`). V2 uses `Authorization: Token <token>`.
+- **Connect to V3:** Use the endpoint and `port` returned by `get-db-cluster`; the V3 default is 8181 (8086 is the V2 default). Write with `POST /api/v3/write_lp?db=<database>` and query with `POST /api/v3/query_sql` or `POST /api/v3/query_influxql`. Load the [getting-started guide](references/getting-started.md) for request examples. Clusters are private by default: a client must reach the cluster's VPC unless the cluster was created with `publiclyAccessible`, and even then its security group must allow inbound traffic on the port from the client. For connection errors, load the [troubleshooting runbook](references/troubleshooting-runbook.md).
 - **`reboot-db-cluster`** supports `--instance-ids` for targeting specific nodes. Before using it, verify the current maximum number of IDs and all request constraints in the `RebootDbCluster` API model and Timestream for InfluxDB documentation. Do NOT say no reboot command exists or assume a fixed node-count limit.
 - **Before asserting S3 log-delivery availability or configuration paths, verify the create and update API request parameters and the Timestream for InfluxDB log-delivery documentation.** Use only the operations, service principal, and bucket-policy requirements those sources document.
 - **Do NOT invent CloudWatch metric names.** Load [monitoring operations](references/monitoring-operations.md) and [metric discovery](references/monitoring-metrics.md), then verify availability for the selected engine variant and deployment type. If unsure whether a metric exists, say so explicitly.
@@ -81,18 +82,26 @@ For V3 encryption choices, customer-managed KMS key policy, migration, or key li
 
 **InfluxDB 3** handles high cardinality better than V2, but tag design affects query performance. Load the [schema-design guide](references/schema-design-guide.md) for patterns including deduplication and retention.
 
-### 4. Migrate from LiveAnalytics
+### 4. Migrate to InfluxDB 3
 
-LiveAnalytics is in maintenance mode. For migration to InfluxDB 3:
+**From LiveAnalytics** (in maintenance mode):
 
 - **<1B records / <125GB**: Use the **certified LiveAnalytics Migration plugin** with the migration client. Exports to S3 (Parquet), re-ingests into V3.
 - **>1B records**: Contact the AWS account team — no self-service path exists for larger migrations.
+
+**From InfluxDB 2 to InfluxDB 3:** No in-place upgrade path exists. Export the data and re-ingest it into a new V3 cluster. Flux is not supported on V3, so rewrite queries in SQL or InfluxQL. V3 uses databases instead of buckets, and port 8181 instead of 8086.
 
 Load the [migration guide](references/migration-guide.md) for the procedure.
 
 ### 5. Use Processing Engine plugins (V3 only)
 
-Before listing plugins or describing custom-plugin support, retrieve the certified plugin catalog and support statement from the Timestream for InfluxDB Processing Engine documentation or a documented catalog API. State only what the retrieved source confirms: do not assert a fixed plugin count, name a plugin absent from the retrieved catalog, or infer service availability from a general InfluxDB plugin repository. Load the [processing-engine guide](references/processing-engine-guide.md) for verified trigger and configuration guidance.
+InfluxDB 3 Processing Engine can use InfluxData certified plugins and customer-authored custom Python plugins when the retrieved Timestream for InfluxDB documentation confirms support for the selected engine edition.
+
+- **Certified plugins:** Retrieve the managed catalog before naming an available plugin. Do not assert a fixed plugin count or infer managed-service availability from a general InfluxDB repository.
+- **Custom plugins:** Configure the repository in a new, immutable DB parameter group, apply it with `update-db-cluster`, and use only trigger syntax confirmed by `influxdb3 create trigger --help`. Follow the custom-plugin rules and checklist in the processing-engine guide.
+- **Custom-plugin confirmation:** You MUST obtain explicit user confirmation before `create-db-parameter-group` or `update-db-cluster`, after showing the cluster ID, Region, repository URL, and secret ARN and stating that the parameter group is permanent and that applying it runs a cluster maintenance action. Follow the processing-engine guide's confirmation and repository-token rules.
+
+Load the [processing-engine guide](references/processing-engine-guide.md) before providing plugin configuration or trigger guidance. For a custom-plugin request, you MUST also retrieve the linked custom-plugin documentation before composing the answer.
 
 ### 6. Monitor and operate
 
@@ -107,10 +116,11 @@ Confirm the engine variant and deployment/access type, then load the [troublesho
 Apply these baseline controls in every environment:
 
 - **Over-privileged IAM:** Use least-privilege roles and remove temporary broad permissions immediately after activation.
-- **Password or token exposure:** Store the V2 initial password and V3 initial token in AWS Secrets Manager; never place them in source, logs, shell history, or literal command arguments. Rotate or replace each through the workflow documented for its engine variant, and issue a scoped application token per workload.
+- **Password or token exposure:** Store the V2 initial password and V3 initial token in AWS Secrets Manager; never place them in source, logs, shell history, or literal command arguments. A shell variable or command substitution such as `--password "$DB_PASSWORD"` still puts the value in process arguments; pass V2 credentials with `--cli-input-json file://` from a mode-600 file, as shown in the [getting-started guide](references/getting-started.md). The same applies to a custom-plugin repository token: the user stores it in an `InfluxDB-RepoToken-*` secret, and you never accept it in chat or pass its value in a command. Rotate or replace each through the workflow documented for its engine variant, and issue a scoped application token per workload.
 - **VPC misconfiguration:** Prefer private networking and restrict every security-group rule to trusted CIDRs or security-group IDs; never allow `0.0.0.0/0`.
 - **Encryption gaps:** Require encryption at rest and TLS in transit. Verify supported key options in the Data protection documentation and API model before selecting a customer-managed KMS key.
 - **Audit gaps:** Enable CloudTrail, supported service log delivery, and operational alarms. Protect CloudTrail S3 objects, CloudWatch Logs, and alarm topics with SSE-KMS, and enable CloudTrail log-file validation.
+- **Custom-plugin supply chain:** Treat a plugin repository as executable production code. Require verified provenance, review and test the exact code, pin an owner-, repository-, and branch-scoped base URL on a protected branch, and authenticate and validate every HTTP-trigger request. Use a fine-grained, read-only, expiring repository token, rotate it, and attach the documented resource policies so only the `AWSServiceRoleForTimestreamInfluxDB` service-linked role can read the token secret and decrypt its customer-managed KMS key.
 
 You MUST load and follow [security best practices](references/security-best-practices.md) for every deployment, including development, experimentation, and production, before providing provisioning or operational guidance.
 
@@ -122,7 +132,8 @@ You MUST load and follow [security best practices](references/security-best-prac
 - [Timestream for InfluxDB Pricing](https://aws.amazon.com/timestream/pricing/)
 - [InfluxDB 3 Documentation](https://docs.influxdata.com/influxdb3/)
 - [Schema Design Best Practices](https://docs.aws.amazon.com/timestream/latest/developerguide/schema-design-best-practices.html)
-- [Processing Engine Documentation](https://docs.influxdata.com/influxdb3/cloud-dedicated/process-data/process-engine/)
+- [Processing Engine Documentation](https://docs.aws.amazon.com/timestream/latest/developerguide/processing-engine.html)
+- [Use custom plugins with the Processing Engine](https://docs.aws.amazon.com/timestream/latest/developerguide/influxdb3-custom-plugins.html)
 
 ## Handoff from aws-database-selection
 

@@ -32,6 +32,7 @@ _contributes:
 | `preferences.json`                                                                                                             | Region, HA, arch (active scenario = working tree)                                                                                                                               |
 | `scenarios/index.json` + manifests **+ each scenario's `scenarios/scenario-NNN.preferences.json` / `.aws-design.json` copies** | What-if table when ≥2 scenarios — manifests carry the cost tiers/complexity; the per-scenario Region/HA/Compute/Arch columns come from the scenario's preferences/design copies |
 | `MIGRATION_GUIDE.md`                                                                                                           | Must already exist (docs fragment ran first)                                                                                                                                    |
+| `heroku-resource-inventory.json`                                                                                               | `metadata.apps_by_stack_status` / `metadata.eol_stack_apps` for the end-of-life stack line (tolerate absence on older inventories)                                               |
 
 ---
 
@@ -58,7 +59,31 @@ From `estimation-infra.json`:
   the savings/difference figure, not just gathered — see `exec-costs` below.
 
 From design + preferences: region, primary compute (EB / Fargate / EKS),
-service count.
+service count, `global.dx_priority`, and `design_constraints.compute_target.recommendation.scale_note`
+when present. For the `developer-workflow` status rules: the resolved compute target
+per app (`compute_target.default` plus matching `overrides[]`, as Design resolved it —
+read it from `aws-design.json`'s per-formation `aws_service`, not from
+`recommendation.value`) and `design_constraints.eb_deploy_method.value`
+(`github_actions` when absent and EB is present).
+
+From the inventory, for the `developer-workflow` section: apps by stack
+(`container` vs buildpack stacks), count of `pipeline` resources and of apps that
+appear in any `stages[]`, whether any pipeline has `review_apps_enabled: true`, total
+`config_var_keys` across `config` resources, count of `release` process types, and the
+number of non-data-store add-ons that are mapped vs deferred in `aws-design.json`.
+For the Scheduler row specifically: the scheduler-family add-ons (`addon_service`
+normalizing to `heroku scheduler`, `scheduler` or `advanced scheduler`) split into those
+whose `resource_id` appears as a `source_resource_id` in `aws-design.json` `services[]`
+(mapped to EventBridge Scheduler) and those whose `resource_id` appears in `deferred[]`
+(no replacement selected). Both counts are inputs to the row's status — on this
+branch `advanced-scheduler` has no fast-path row or alias, so Design defers it.
+
+From `heroku-resource-inventory.json` (when present — older inventories omit
+these keys; treat absence as no finding):
+
+- `metadata.apps_by_stack_status` (`eol` / `deprecated` / `supported` /
+  `container` / `unknown` counts)
+- `metadata.eol_stack_apps` (sorted app names on end-of-life stacks)
 
 ---
 
@@ -72,6 +97,7 @@ Write a **self-contained** HTML file to `$MIGRATION_DIR/migration-report.html`
 | `decision-summary`  | Typography-first verdict (see below), cost one-liner, next action                                                                                                                                                                                                                            |
 | `exec-costs`        | Heroku-vs-AWS side-by-side when a Heroku baseline exists (`current_costs.source != "unavailable"`); otherwise the AWS three-tier table with a one-line note that no Heroku baseline was available. Estimated monthly; Balanced primary. **When `current_costs.baseline_note` is present (any derived — not invoiced — source, including the Postgres Advanced per-pool formula), render it as a visible caveat line directly beside the Heroku current-monthly figure — never only in the accuracy band.** This is mandatory, not conditional on which derived source produced the note. **When `cost_comparison.comparison_status == "incomplete_unmatched_services"`, render the same mandatory caveat-beside-the-figure treatment, naming `cost_comparison.unmatched_deferred_services` and `unmatched_deferred_cost` directly beside the savings/difference figure — never present that dollar delta as decision-grade savings without it.** This file is the single source of truth for `exec-costs` content rules, so `report-decision-core.md`'s reuse of these rules picks this up automatically. |
 | `cost-optimization` | Reserved Instance / Savings Plan opportunities table, or the explicit no-eligible-commitment statement — see below. Always present, never omitted                                                                                                                                            |
+| `developer-workflow` | Always render — in both report modes (`report-decision-core.md` renders it in `decision-report.html` / `DECISION.md` too, with its pre-execution wording override). Heading "Developer workflow: what stays, what changes, what you build". One line stating the Q5c answer. Then the table defined in § `developer-workflow` below. Then the closing paragraph(s) defined there. Reader vocabulary only — no file names or resource IDs |
 | `next-steps`        | Ordered list pointing to `MIGRATION_GUIDE.md` phases (not a procedure dump). Include one bullet noting the Terraform ships with `baseline.tf` (account security baseline — GuardDuty, CloudTrail, budget alerts) and that three contact emails must be set in tfvars before `terraform plan` |
 
 **Cost-figure anchor (machine-checkable).** In `exec-costs`, wrap the recommended AWS
@@ -109,8 +135,18 @@ Only untagged _illustrative_ numbers are skipped.
    (estimated monthly), else AWS Balanced alone.
 4. **What would flip this (v2):** from `recommendation.would_flip_if[]` when
    present — short unordered list. Skip silently when absent.
+   - **End-of-life stacks (conditional):** when
+     `metadata.apps_by_stack_status.eol > 0`, add one line stating that N apps
+     run on Heroku stacks that have reached end-of-life and no longer receive
+     operating-system security patches on Heroku, then list
+     `metadata.eol_stack_apps` (all names when ≤ 10; otherwise the first 10
+     followed by "and N more"). Skip silently when the key is absent or zero.
 5. **One-sentence next action** — the single most useful next step for the
    reader (Generate artifacts, confirm a condition, or gather named evidence).
+6. **Developer workflow pointer (when `global.dx_priority == "critical"`):** one
+   line — `Developer workflow was rated critical; see
+   <a href="#developer-workflow">Developer workflow</a> for what stays, what changes
+   and what must be built.`
 
 ### `decision-basis` (end of summary, when v2 fields exist)
 
@@ -125,6 +161,80 @@ either order is fine as long as the confidence pointer's href resolves):
 - One-line pricing provenance from `pricing_source` + accuracy band.
 
 Omit the section when `decision_basis` is absent (pre-extension artifacts).
+
+### `developer-workflow` (always render)
+
+The customer's developers will judge the migration by their daily workflow, not by
+the architecture diagram. Say plainly what maps, what is generated, what they must
+build, and what has no equivalent. One table, one row per Heroku primitive, columns
+**Heroku today / On AWS / Status / Your estate**. Status is exactly one of four words:
+**Covered** (an AWS feature or a generated artifact does this; the command differs),
+**Generated** (this migration emits it per app), **Build** (not generated; the platform
+team writes it once and reuses it), **No equivalent**. A status describes what this
+migration **actually emits for the selected target**, never what the stack or the
+`recommendation.value` implies — when the estate mixes targets, give one status per
+target group ("**Generated** for the {n} Beanstalk apps; **Build** for the {m} Fargate
+apps") rather than the most favourable one. Likewise a status that depends on what
+Design mapped is **computed from `aws-design.json`'s `services[]` and `deferred[]`
+entries, never asserted** — a row never says "Covered — mapped" while any of its
+source add-ons sits in `deferred[]`.
+
+**Status rules for the target- and design-dependent rows** (resolved target per app
+from `aws-design.json`, deploy method from `eb_deploy_method.value`, `github_actions`
+when absent; mapped/deferred counts from `aws-design.json` as gathered in Step 1):
+
+| Row                | Resolved target / design state                     | Status                                                                                                                                                                                                                 |
+| ------------------ | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Push to deploy     | EB + `github_actions` or `codepipeline`            | **Generated** — the generated workflow (or CodePipeline) builds and deploys per app                                                                                                                                    |
+| Push to deploy     | EB + `manual`                                      | **Build** — no CI is generated; the guide documents a CLI deploy                                                                                                                                                       |
+| Push to deploy     | Fargate or EKS (any method)                        | **Build** — no push-to-deploy workflow is generated for container services; the team writes the image build + deploy pipeline                                                                                           |
+| Push to deploy     | any target, buildpack apps                         | add "**Build** — a Dockerfile per buildpack app" as a separate clause; every target runs a container image (EB uses the Docker platform), so Dockerfile work is independent of whether CI is generated                   |
+| Config vars        | EB                                                 | **Covered** — one `environmentsecrets` binding per sensitive key is generated; you import the values                                                                                                                   |
+| Config vars        | Fargate                                            | **Build** — the generated task definition carries no environment/secrets bindings; you export the values, import them to Secrets Manager / Parameter Store, and wire each key into the task definition yourselves (the migration guide's Fargate config-var section is the procedure; in the rendered row say "the migration guide", not the file name) |
+| Config vars        | EKS                                                | **Build** — the generated Kubernetes Deployments carry `PORT` plus `DATABASE_URL` and `REDIS_URL` `secretKeyRef` bindings only (reading a per-app Kubernetes Secret that is not generated); you create that Secret from the exported values and add an env entry per remaining key to each Deployment (the migration guide's EKS section shows the `kubectl create secret` and `secretKeyRef` steps). There is no task definition for EKS apps and the Fargate config-var procedure does not apply to them — never point EKS apps at it |
+| One-off commands   | EB / Fargate (ECS)                                 | **Covered** — ECS Exec or `eb ssh`; one-off tasks as a run-task call |
+| One-off commands   | EKS                                                | **Covered** — `kubectl exec` into a running pod, or `kubectl run` / a Kubernetes Job for a one-off task; there are no ECS services or Beanstalk environments for EKS apps, so never give them ECS Exec, `eb ssh` or run-task |
+| Log tailing        | EB / Fargate (ECS)                                 | **Covered** — CloudWatch Logs live tail |
+| Log tailing        | EKS                                                | **Covered** — `kubectl logs -f` against the pods. CloudWatch live tail is **Build**: `generate-eks.md` configures no application-log forwarding (no Fluent Bit and no CloudWatch Observability add-on), so you install one and then tail the log group |
+| Scheduler add-ons  | every scheduler-family add-on in `services[]`      | **Covered** — mapped to EventBridge Scheduler; disclose that no Terraform is emitted for the schedules themselves (Generate records them in its unsupported-resource warnings), so each job is recreated as a schedule by you                                                                                   |
+| Scheduler add-ons  | one or more scheduler-family add-ons in `deferred[]` | **Build** for those — "{S_deferred} scheduler add-on(s) deferred — replacement selection pending"; when others are mapped, render both statuses with their counts ("**Covered** for {S_mapped}; **Build** for {S_deferred}")                                                                              |
+
+| Heroku today                              | On AWS                                                                                      | Status                                                                            | Your estate (from the inventory)                                     |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `git push heroku main` + buildpacks       | CI builds a container image and deploys it                                                  | Per the status rules above: **Generated** only for Beanstalk apps with a generated deploy method; **Build** for Fargate/EKS apps and manual Beanstalk; plus **Build** (a Dockerfile per app) for buildpack apps | "{N} buildpack apps, {M} already containerized; {n} on Beanstalk, {m} on Fargate/EKS" |
+| Pipelines and promote                     | Environments per stage with the same image promoted between them, approval-gated            | **Build** — pipelines are detected, not generated                                 | "{P} pipelines covering {A} apps"                                    |
+| Review apps                               | An ephemeral environment per pull request, torn down on merge                               | **Build** (or buy — see below)                                                    | "enabled on {R} pipelines" or "not enabled"                          |
+| Config vars                               | Parameter Store / Secrets Manager, injected at deploy; `config:set` becomes one CLI call      | Per the status rules above: **Covered** for Beanstalk apps (bindings generated, values by you); **Build** for Fargate apps (values imported and task-definition bindings written by you); **Build** for EKS apps (database/cache bindings generated, Kubernetes Secret and the remaining keys' env entries written by you) | "{K} config var keys across {N} apps"                                |
+| `heroku run` / one-off dynos              | Per target: ECS Exec or `eb ssh`, run-task for one-off tasks (Beanstalk/Fargate); `kubectl exec`, `kubectl run` or a Kubernetes Job (EKS) | Per the status rules above: **Covered** — different command for the target | —                                                                    |
+| `heroku logs --tail`                      | Per target: CloudWatch Logs live tail (Beanstalk/Fargate); `kubectl logs -f` (EKS)           | Per the status rules above: **Covered** for Beanstalk/Fargate apps; **Covered** for EKS apps via `kubectl logs -f`, with CloudWatch tailing **Build** (log forwarding such as Fluent Bit or the CloudWatch Observability add-on is additional setup) | —                                                                    |
+| Release phase                             | A pre-deploy job in the workflow that runs before traffic shifts                             | **Build**                                                                         | "{L} release process types"                                          |
+| Scheduler add-ons                         | EventBridge Scheduler                                                                       | Per the status rules above, computed from `aws-design.json`: **Covered** for the mapped add-ons (schedules recreated by you); **Build** for any in `deferred[]` ("{S_deferred} scheduler add-on(s) deferred — replacement selection pending") | "{S_mapped} scheduler add-ons mapped, {S_deferred} deferred"         |
+| `ps:scale`                                | Autoscaling policy or one CLI call                                                          | **Covered**                                                                       | —                                                                    |
+| Add-on marketplace                        | Each add-on becomes an AWS service or a retained SaaS, wired by Terraform                   | **No equivalent** to the marketplace itself                                       | "{X} add-ons mapped, {Y} deferred for manual selection"              |
+
+Fill the last column from the inventory and design counts gathered in Step 1; write
+"—" where there is nothing to count. Do not invent rows. Do not soften "Build" into
+"Covered" because a how-to exists in `MIGRATION_GUIDE.md`.
+
+**Closing paragraph (always):** "The rows marked Build are a platform layer your team
+owns: a deploy pipeline with promote and release steps, review-app automation, and a
+thin command wrapper. It is weeks of platform work, not months, and it is the same for
+every app." When `compute_target.recommendation.scale_note` exists and
+`compute_target.default` is `"ecs-fargate"`, add: "Compute was recommended as shared
+ECS clusters rather than one Beanstalk environment per process type ({scale_note}) so
+that day-to-day operation stays at least as simple as Heroku." When the note exists but
+`default` is `"elastic_beanstalk"` (the user took the EB override), add instead:
+"Shared ECS clusters were recommended ({scale_note}); you chose one Beanstalk
+environment per process type, so the Build rows above repeat per environment."
+
+**Build-vs-buy paragraph (when `dx_priority` is `critical`, or more than 40
+formations):** "Two shapes for that layer: build it yourselves on the generated
+scaffolding (lowest cost, you own it, needs platform-engineering time), or run a
+platform product on your AWS account that provides Heroku-style push-to-deploy,
+pipelines and review apps from day one (products in this space include Flightcontrol,
+Porter and Coherence; another vendor, another contract, faster start). The AWS cost
+below is the same either way; the difference is people and time." Name the products
+plainly, make no recommendation between them, and never present a product's price.
 
 ### `cost-optimization` (REQUIRED — always render, never omit)
 
@@ -228,6 +338,7 @@ stakeholders, not a design system.
       </table>
     </section>
     <section id="cost-optimization">…</section>
+    <section id="developer-workflow">…</section>
     <!-- <section id="what-if-scenarios"> when ≥2 scenarios -->
     <section id="next-steps">…</section>
     <footer>Generated by Heroku to AWS Migration Advisor — draft for review; verify figures before executive sign-off.</footer>
