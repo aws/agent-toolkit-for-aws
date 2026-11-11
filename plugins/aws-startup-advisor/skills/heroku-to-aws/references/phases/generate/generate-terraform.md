@@ -1444,6 +1444,22 @@ resource "aws_elastic_beanstalk_environment" "<app_name>_<process_type>" {
     value     = var.eb_deployment_policy
   }
 
+  # Stream instance logs to CloudWatch Logs so `aws logs tail` works (the
+  # `heroku logs --tail` equivalent in MIGRATION_GUIDE.md § Day-to-day commands).
+  # The Docker application log lands in
+  # /aws/elasticbeanstalk/<environment>/var/log/eb-docker/containers/eb-current-app/stdouterr.log
+  setting {
+    namespace = "aws:elasticbeanstalk:cloudwatch:logs"
+    name      = "StreamLogs"
+    value     = "true"
+  }
+
+  setting {
+    namespace = "aws:elasticbeanstalk:cloudwatch:logs"
+    name      = "RetentionInDays"
+    value     = "<preferences.json.operational.log_retention_days || 30>"
+  }
+
   # {{IF process_type == "web"}}
   setting {
     namespace = "aws:elasticbeanstalk:application:environment"

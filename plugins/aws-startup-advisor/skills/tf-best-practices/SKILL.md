@@ -223,9 +223,11 @@ for the caller, so a false positive would block a real migration).
 `aws_iam_user_policy`):
 
 - **`no_wildcard_iam`** — an `Allow` statement must not use `Action`/`Resource` `"*"`.
-  The one narrow exception is an isolated
-  `elasticbeanstalk:CreateStorageLocation` statement with `Resource = "*"` because
-  AWS does not support resource-level permissions for that action.
+  Two narrow exceptions, for actions AWS defines no resource-level permissions for:
+  an isolated `elasticbeanstalk:CreateStorageLocation` statement, and an ECS Exec
+  statement listing only the four `ssmmessages` channel actions
+  (`CreateControlChannel`, `CreateDataChannel`, `OpenControlChannel`, `OpenDataChannel`).
+  Any other action in the same statement disqualifies it.
   `aws_iam_policy_document` data sources and assume-role trust policies fail open.
 
 > The checker is a zero-dependency static HCL reader (no `terraform init`, no provider

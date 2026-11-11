@@ -38,6 +38,9 @@ Also extract:
 - `target_region` — from `preferences.json`.global.target_region (default: `us-east-1`)
 - `heroku_apps[]` — list of unique app names from design services
 - `beanstalk_web_apps[]` — unique app names from Elastic Beanstalk web services, plus each name sanitized by replacing `-` with `_`
+- `eb_processes[]` — per app, one entry per Elastic Beanstalk service in `aws-design.json`.services[]: `{ heroku_app, process_type, environment_name }` where `environment_name` is the generated `${project_name}-<process_type>` (the same names `EB_ENVIRONMENT_NAMES` lists). `app_has_eb_web` is true when that app's `web` formation is among them.
+- `fargate_processes[]` — per app, one entry per Fargate service in `aws-design.json`.services[]: `{ heroku_app, process_type, service_name, log_group }` where `service_name` is the generated service and task family name `<cluster>-<process_type>`, the container name is `<process_type>`, and `log_group` is `/ecs/<cluster>/<process_type>`. `app_has_fargate_web` is true when that app's `web` formation is among them (an `ALB` service exists). A web app whose `worker` formation was routed to Fargate by the Horizontal Non-Web Capacity Guard (`design-mapping.md`) has `app_has_eb_web = true`, `app_has_fargate_web = false`, and a `fargate_processes[]` entry only for `worker`.
+- `postgres_engine` — `"aurora"` when the Postgres service's `aws_service == "Aurora PostgreSQL"`, else `"rds"` (only meaningful when `has_postgres`)
 - `migration_approach` — from `preferences.json`.global.migration_approach (`"full_cutover"` or `"interim_cutover_data_first"`)
 - `migration_method` — from `preferences.json`.data.migration_method (`"pg_dump_restore"`, `"dms"`, `"bucardo"`, `"wal_g"`)
 - `containerization_status` — from `preferences.json`.operational.containerization_status (`"containerized"`, `"buildpack_only"`, `"partial"`)
@@ -1363,58 +1366,98 @@ Only after the Phase 6 rollback window (72 hours at 100 % on AWS with no trigger
    heroku apps:destroy --confirm {{app_name}}
    ```
 
-{{IF deferred_addons.length > 0}}
-
 ---
 
 ## Day-to-day commands: Heroku → AWS
 
 What your developers type every week, and what it becomes. Every row is the same
 capability with a different command; nothing here needs to be built. Names are filled
-in for `{{app_name}}` — repeat per app.
+in for `{{app_name}}` — repeat per app, and render each table only for the compute
+target that runs one of this app's process types.
+
+Three rows depend on where Phase 3 put each config var. `config:set` on the wrong store
+changes a value the application never reads, so check the reference first: in
+`terraform/beanstalk.tf` the `aws:elasticbeanstalk:application:environmentsecrets`
+settings (one per sensitive var, value = the Secrets Manager secret ARN or the SSM
+parameter ARN) and the `aws:elasticbeanstalk:application:environment` settings (plain
+values); in `terraform/ecs.tf` the container definition's `secrets[]` (`valueFrom` ARN)
+and `environment[]` (plain values). `<secret-arn>` and `<parameter-name>` below are those
+identifiers.
 
 {{IF has_beanstalk}}
 
+Elastic Beanstalk runs one environment per process type:{{FOR proc IN eb_processes}} `{{proc.process_type}}` → `{{proc.environment_name}}`;{{ENDFOR}} app-wide actions (restart, config change, rollback) run once per environment, so they loop over `{{EB_ENVIRONMENT_NAMES}}`.
+
+<!-- markdownlint-disable MD055 MD056 -->
+
 | Heroku | AWS (Elastic Beanstalk) |
 | --- | --- |
-| `heroku logs --tail -a {{app_name}}` | `aws logs tail /aws/elasticbeanstalk/{{EB_WEB_ENVIRONMENT}}/var/log/eb-docker/containers/eb-current-app --follow` |
-| `heroku run bash -a {{app_name}}` | `eb ssh {{EB_WEB_ENVIRONMENT}}` then `sudo docker exec -it $(sudo docker ps -q) bash` — or an SSM session: `aws ssm start-session --target <instance-id>` |
+{{FOR proc IN eb_processes}}
+| `heroku logs --tail --dyno {{proc.process_type}} -a {{app_name}}` | `aws logs tail /aws/elasticbeanstalk/{{proc.environment_name}}/var/log/eb-docker/containers/eb-current-app/stdouterr.log --follow` (`beanstalk.tf` streams this group with `aws:elasticbeanstalk:cloudwatch:logs` `StreamLogs=true`) |
+{{ENDFOR}}
+| `heroku run bash -a {{app_name}}` | `eb ssh {{EB_RUN_ENVIRONMENT}}` then `sudo docker exec -it $(sudo docker ps -q) /bin/sh` — or an SSM session: `aws ssm start-session --target <instance-id>`. Use `/bin/sh`: the Alpine image patterns in Phase 1 (`node:20-alpine`, `alpine`) have no `bash`; `bash` works only when your Dockerfile installs it |
 | `heroku run rake db:migrate -a {{app_name}}` (one-off task) | `eb ssh` as above, then `sudo docker exec $(sudo docker ps -q) <command>`; for repeatable jobs prefer a scheduled EventBridge target or an ECS one-off task |
-| `heroku config -a {{app_name}}` | `aws ssm get-parameters-by-path --path /{{app_name}}/ --with-decryption --query 'Parameters[].[Name,Value]' --output table` |
-| `heroku config:get KEY -a {{app_name}}` | `aws ssm get-parameter --name /{{app_name}}/KEY --with-decryption --query Parameter.Value --output text` |
-| `heroku config:set KEY=value -a {{app_name}}` | `aws ssm put-parameter --name /{{app_name}}/KEY --type SecureString --value 'value' --overwrite`, then restart: `aws elasticbeanstalk restart-app-server --environment-name {{EB_WEB_ENVIRONMENT}}` |
-| `heroku ps -a {{app_name}}` | `aws elasticbeanstalk describe-environment-health --environment-name {{EB_WEB_ENVIRONMENT}} --attribute-names All` |
-| `heroku ps:scale web=3 -a {{app_name}}` | `aws elasticbeanstalk update-environment --environment-name {{EB_WEB_ENVIRONMENT}} --option-settings Namespace=aws:autoscaling:asg,OptionName=MinSize,Value=3 Namespace=aws:autoscaling:asg,OptionName=MaxSize,Value=3` |
-| `heroku restart -a {{app_name}}` | `aws elasticbeanstalk restart-app-server --environment-name {{EB_WEB_ENVIRONMENT}}` |
+| `heroku config -a {{app_name}}` | Plain values: `aws elasticbeanstalk describe-configuration-settings --application-name {{app_name}} --environment-name {{EB_RUN_ENVIRONMENT}} --query "ConfigurationSettings[0].OptionSettings[?Namespace=='aws:elasticbeanstalk:application:environment'].[OptionName,Value]" --output table`. Secret references: the same query with `environmentsecrets` lists `KEY` → ARN; resolve each with the `config:get` row |
+| `heroku config:get KEY -a {{app_name}}` | Plain value: the `heroku config` query filtered with `?OptionName=='KEY'`. Secrets Manager: `aws secretsmanager get-secret-value --secret-id <secret-arn> --query SecretString --output text`. SSM: `aws ssm get-parameter --name <parameter-name> --with-decryption --query Parameter.Value --output text` |
+| `heroku config:set KEY=value -a {{app_name}}` | Plain value: edit the `aws:elasticbeanstalk:application:environment` setting in `terraform/beanstalk.tf` and `terraform apply` (EB restarts the app; a CLI `update-environment --option-settings Namespace=aws:elasticbeanstalk:application:environment,OptionName=KEY,Value='value'` works too, but the next apply reverts it). Secrets Manager: `aws secretsmanager put-secret-value --secret-id <secret-arn> --secret-string 'value'`. SSM: `aws ssm put-parameter --name <parameter-name> --type SecureString --value 'value' --overwrite`. After either store changes, refetch: `for env in {{EB_ENVIRONMENT_NAMES}}; do aws elasticbeanstalk restart-app-server --environment-name $env; done` (EB reads secrets only at bootstrap and on restart/update) |
+| `heroku ps -a {{app_name}}` | `aws elasticbeanstalk describe-environments --application-name {{app_name}} --query 'Environments[].[EnvironmentName,Health,Status]' --output table` |
+{{FOR proc IN eb_processes}}
+| `heroku ps:scale {{proc.process_type}}=3 -a {{app_name}}` | {{IF proc.process_type == "web"}}`aws elasticbeanstalk update-environment --environment-name {{proc.environment_name}} --option-settings Namespace=aws:autoscaling:asg,OptionName=MinSize,Value=3 Namespace=aws:autoscaling:asg,OptionName=MaxSize,Value=3`{{ELSE}}not applicable: `{{proc.environment_name}}` is a SingleInstance environment (one `{{proc.process_type}}` process). A count above 1 is what Design routes to Fargate; change the formation and re-run Design rather than scaling here{{ENDIF}} |
+{{ENDFOR}}
+| `heroku restart -a {{app_name}}` | `for env in {{EB_ENVIRONMENT_NAMES}}; do aws elasticbeanstalk restart-app-server --environment-name $env; done` |
 | `heroku releases -a {{app_name}}` | `aws elasticbeanstalk describe-application-versions --application-name {{app_name}} --query 'ApplicationVersions[].[VersionLabel,DateCreated]' --output table` |
-| `heroku rollback -a {{app_name}}` | `aws elasticbeanstalk update-environment --environment-name {{EB_WEB_ENVIRONMENT}} --version-label <previous label>` (run once per EB environment of the app) |
-| `heroku maintenance:on -a {{app_name}}` | Point the ALB listener at a fixed 503 response: `aws elbv2 modify-listener --listener-arn <arn> --default-actions Type=fixed-response,FixedResponseConfig='{StatusCode=503,ContentType=text/plain,MessageBody="Maintenance"}'`; `maintenance:off` = restore the forward action |
-| `heroku pg:psql -a {{app_name}}` | `psql "$(aws secretsmanager get-secret-value --secret-id {{app_name}}/DATABASE_URL --query SecretString --output text)"` from a host inside the VPC (bastion or SSM session) |
-| `heroku pg:info` / `pg:backups:capture` | `aws rds describe-db-instances --db-instance-identifier <id>` / `aws rds create-db-snapshot --db-instance-identifier <id> --db-snapshot-identifier manual-$(date +%Y%m%d)` |
+| `heroku rollback -a {{app_name}}` | `for env in {{EB_ENVIRONMENT_NAMES}}; do aws elasticbeanstalk update-environment --environment-name $env --version-label <previous label>; done` |
+{{IF app_has_eb_web}}
+| `heroku maintenance:on -a {{app_name}}` | Point the web environment's load-balancer listener at a fixed 503 response: `aws elbv2 modify-listener --listener-arn <listener-arn> --default-actions Type=fixed-response,FixedResponseConfig='{StatusCode=503,ContentType=text/plain,MessageBody="Maintenance"}'`; `maintenance:off` = restore the forward action. Find the listener: `aws elasticbeanstalk describe-environment-resources --environment-name {{EB_RUN_ENVIRONMENT}} --query 'EnvironmentResources.LoadBalancers[0].Name'`, then `aws elbv2 describe-listeners --load-balancer-arn <that arn>` |
+{{ENDIF}}
+{{IF has_postgres}}
+| `heroku pg:psql -a {{app_name}}` | `psql "postgres://{{TARGET_DB_USER}}@{{TARGET_DB_HOST}}:{{TARGET_DB_PORT}}/{{TARGET_DB_NAME}}?sslmode=verify-full&sslrootcert=config/rds-ca-bundle.pem"` from a host inside the VPC (`eb ssh` or an SSM session); the password is the value Phase 3 stored for `DATABASE_URL` — read it with the `config:get` row |
+| `heroku pg:info` / `pg:backups:capture` | {{IF postgres_engine == "aurora"}}`aws rds describe-db-clusters --db-cluster-identifier {{DB_CLUSTER_IDENTIFIER}}` / `aws rds create-db-cluster-snapshot --db-cluster-identifier {{DB_CLUSTER_IDENTIFIER}} --db-cluster-snapshot-identifier manual-$(date +%Y%m%d)` (Aurora snapshots are cluster-level; `create-db-snapshot` does not apply){{ELSE}}`aws rds describe-db-instances --db-instance-identifier {{DB_INSTANCE_IDENTIFIER}}` / `aws rds create-db-snapshot --db-instance-identifier {{DB_INSTANCE_IDENTIFIER}} --db-snapshot-identifier manual-$(date +%Y%m%d)`{{ENDIF}} |
+{{ENDIF}}
 | `heroku addons -a {{app_name}}` | `terraform state list` in `terraform/` — every former add-on is a resource there |
-| `heroku open -a {{app_name}}` | `open https://{{EB_ENVIRONMENT_URL}}` (or your custom domain after cutover) |
+{{IF app_has_eb_web}}
+| `heroku open -a {{app_name}}` | {{IF has_route53_dns}}`open https://{{app_domain}}` — the HTTPS listener in `beanstalk.tf` carries the certificate for your custom domains, not for the EB CNAME, so `https://{{EB_ENVIRONMENT_URL}}` fails certificate verification{{ELSE}}`open http://{{EB_ENVIRONMENT_URL}}` — the generated environment serves plain HTTP (no HTTPS listener is emitted without Route 53 DNS); after cutover, `open https://{{app_domain}}` through your own TLS termination{{ENDIF}} |
+{{ENDIF}}
+
+<!-- markdownlint-enable MD055 MD056 -->
 
 {{ENDIF}}
 {{IF has_fargate}}
 
+Fargate runs one service per process type:{{FOR proc IN fargate_processes}} `{{proc.process_type}}` → service and task family `{{proc.service_name}}`, container `{{proc.process_type}}`, log group `{{proc.log_group}}`;{{ENDFOR}} app-wide actions (restart, config change, rollback) loop over `{{FARGATE_SERVICE_NAMES}}`.
+
+<!-- markdownlint-disable MD055 MD056 -->
+
 | Heroku | AWS (ECS Fargate) |
 | --- | --- |
-| `heroku logs --tail -a {{app_name}}` | `aws logs tail /ecs/{{ECS_CLUSTER}}/web --follow` (one log group per process type: replace `web`) |
-| `heroku run bash -a {{app_name}}` | `aws ecs execute-command --cluster {{ECS_CLUSTER}} --task <task-id> --container web --interactive --command bash` (ECS Exec is enabled on the generated services; needs the Session Manager plugin locally) |
-| `heroku run rake db:migrate -a {{app_name}}` (one-off task) | `aws ecs run-task --cluster {{ECS_CLUSTER}} --launch-type FARGATE --task-definition {{ECS_CLUSTER}}-web --network-configuration "awsvpcConfiguration={subnets=[...],securityGroups=[...]}" --overrides '{"containerOverrides":[{"name":"web","command":["rake","db:migrate"]}]}'` |
-| `heroku config -a {{app_name}}` | `aws ssm get-parameters-by-path --path /{{app_name}}/ --with-decryption --query 'Parameters[].[Name,Value]' --output table` |
-| `heroku config:get KEY -a {{app_name}}` | `aws ssm get-parameter --name /{{app_name}}/KEY --with-decryption --query Parameter.Value --output text` |
-| `heroku config:set KEY=value -a {{app_name}}` | `aws ssm put-parameter --name /{{app_name}}/KEY --type SecureString --value 'value' --overwrite`, then `aws ecs update-service --cluster {{ECS_CLUSTER}} --service {{ECS_CLUSTER}}-web --force-new-deployment` |
-| `heroku ps -a {{app_name}}` | `aws ecs describe-services --cluster {{ECS_CLUSTER}} --services {{ECS_CLUSTER}}-web --query 'services[].[serviceName,runningCount,desiredCount]' --output table` |
-| `heroku ps:scale web=3 -a {{app_name}}` | `aws ecs update-service --cluster {{ECS_CLUSTER}} --service {{ECS_CLUSTER}}-web --desired-count 3` |
-| `heroku restart -a {{app_name}}` | `aws ecs update-service --cluster {{ECS_CLUSTER}} --service {{ECS_CLUSTER}}-web --force-new-deployment` |
+{{FOR proc IN fargate_processes}}
+| `heroku logs --tail --dyno {{proc.process_type}} -a {{app_name}}` | `aws logs tail {{proc.log_group}} --follow` |
+{{ENDFOR}}
+| `heroku run bash -a {{app_name}}` | `aws ecs execute-command --cluster {{ECS_CLUSTER}} --task $(aws ecs list-tasks --cluster {{ECS_CLUSTER}} --service-name {{FARGATE_RUN_SERVICE}} --query 'taskArns[0]' --output text) --container {{FARGATE_RUN_PROCESS}} --interactive --command /bin/sh` (ECS Exec is enabled on the generated services; needs the Session Manager plugin locally). Use `/bin/sh`: the Alpine image patterns in Phase 1 have no `bash`; `bash` works only when your Dockerfile installs it |
+| `heroku run rake db:migrate -a {{app_name}}` (one-off task) | `aws ecs run-task --cluster {{ECS_CLUSTER}} --launch-type FARGATE --task-definition {{FARGATE_RUN_SERVICE}} --network-configuration "awsvpcConfiguration={subnets=[...],securityGroups=[...]}" --overrides '{"containerOverrides":[{"name":"{{FARGATE_RUN_PROCESS}}","command":["rake","db:migrate"]}]}'` |
+| `heroku config -a {{app_name}}` | `aws ecs describe-task-definition --task-definition {{FARGATE_RUN_SERVICE}} --query 'taskDefinition.containerDefinitions[0].[environment,secrets]'` — `environment` holds plain values, `secrets` holds `KEY` → `valueFrom` ARN; resolve each with the `config:get` row |
+| `heroku config:get KEY -a {{app_name}}` | Plain value: in the `environment` list above. Secrets Manager: `aws secretsmanager get-secret-value --secret-id <secret-arn> --query SecretString --output text`. SSM: `aws ssm get-parameter --name <parameter-name> --with-decryption --query Parameter.Value --output text` |
+| `heroku config:set KEY=value -a {{app_name}}` | Plain value: edit the `environment` entry in `terraform/ecs.tf` and `terraform apply` (a new task revision rolls out). Secrets Manager: `aws secretsmanager put-secret-value --secret-id <secret-arn> --secret-string 'value'`. SSM: `aws ssm put-parameter --name <parameter-name> --type SecureString --value 'value' --overwrite`. After either store changes: `for svc in {{FARGATE_SERVICE_NAMES}}; do aws ecs update-service --cluster {{ECS_CLUSTER}} --service $svc --force-new-deployment; done` (tasks read secrets at start) |
+| `heroku ps -a {{app_name}}` | `aws ecs describe-services --cluster {{ECS_CLUSTER}} --services {{FARGATE_SERVICE_NAMES}} --query 'services[].[serviceName,runningCount,desiredCount]' --output table` |
+{{FOR proc IN fargate_processes}}
+| `heroku ps:scale {{proc.process_type}}=3 -a {{app_name}}` | `aws ecs update-service --cluster {{ECS_CLUSTER}} --service {{proc.service_name}} --desired-count 3` |
+{{ENDFOR}}
+| `heroku restart -a {{app_name}}` | `for svc in {{FARGATE_SERVICE_NAMES}}; do aws ecs update-service --cluster {{ECS_CLUSTER}} --service $svc --force-new-deployment; done` |
 | `heroku releases -a {{app_name}}` | `aws ecr describe-images --repository-name <repo> --query 'sort_by(imageDetails,&imagePushedAt)[].[imageTags[0],imagePushedAt]' --output table` |
-| `heroku rollback -a {{app_name}}` | Register the task definition with the previous image tag, then `aws ecs update-service --cluster {{ECS_CLUSTER}} --service {{ECS_CLUSTER}}-web --task-definition <previous revision>` |
-| `heroku maintenance:on -a {{app_name}}` | Point the ALB listener at a fixed 503 response: `aws elbv2 modify-listener --listener-arn <arn> --default-actions Type=fixed-response,FixedResponseConfig='{StatusCode=503,ContentType=text/plain,MessageBody="Maintenance"}'`; `maintenance:off` = restore the forward action |
-| `heroku pg:psql -a {{app_name}}` | `psql "$(aws secretsmanager get-secret-value --secret-id {{app_name}}/DATABASE_URL --query SecretString --output text)"` from a host inside the VPC (bastion, SSM session, or `ecs execute-command` into a task) |
-| `heroku pg:info` / `pg:backups:capture` | `aws rds describe-db-instances --db-instance-identifier <id>` / `aws rds create-db-snapshot --db-instance-identifier <id> --db-snapshot-identifier manual-$(date +%Y%m%d)` |
+| `heroku rollback -a {{app_name}}` | Register each task family with the previous image tag, then `aws ecs update-service --cluster {{ECS_CLUSTER}} --service <service> --task-definition <previous revision>` for every service in `{{FARGATE_SERVICE_NAMES}}` |
+{{IF app_has_fargate_web}}
+| `heroku maintenance:on -a {{app_name}}` | Point the ALB HTTPS listener at a fixed 503 response: `aws elbv2 modify-listener --listener-arn <listener-arn> --default-actions Type=fixed-response,FixedResponseConfig='{StatusCode=503,ContentType=text/plain,MessageBody="Maintenance"}'`; `maintenance:off` = restore the forward action. The listener is `aws_lb_listener.https` in `terraform/alb.tf` (`terraform state show aws_lb_listener.https`) |
+{{ENDIF}}
+{{IF has_postgres}}
+| `heroku pg:psql -a {{app_name}}` | `psql "postgres://{{TARGET_DB_USER}}@{{TARGET_DB_HOST}}:{{TARGET_DB_PORT}}/{{TARGET_DB_NAME}}?sslmode=verify-full&sslrootcert=config/rds-ca-bundle.pem"` from a host inside the VPC (bastion, SSM session, or `ecs execute-command` into a task); the password is the value Phase 3 stored for `DATABASE_URL` — read it with the `config:get` row |
+| `heroku pg:info` / `pg:backups:capture` | {{IF postgres_engine == "aurora"}}`aws rds describe-db-clusters --db-cluster-identifier {{DB_CLUSTER_IDENTIFIER}}` / `aws rds create-db-cluster-snapshot --db-cluster-identifier {{DB_CLUSTER_IDENTIFIER}} --db-cluster-snapshot-identifier manual-$(date +%Y%m%d)` (Aurora snapshots are cluster-level; `create-db-snapshot` does not apply){{ELSE}}`aws rds describe-db-instances --db-instance-identifier {{DB_INSTANCE_IDENTIFIER}}` / `aws rds create-db-snapshot --db-instance-identifier {{DB_INSTANCE_IDENTIFIER}} --db-snapshot-identifier manual-$(date +%Y%m%d)`{{ENDIF}} |
+{{ENDIF}}
 | `heroku addons -a {{app_name}}` | `terraform state list` in `terraform/` — every former add-on is a resource there |
-| `heroku open -a {{app_name}}` | `open https://{{ALB_DNS_NAME}}` (or your custom domain after cutover) |
+{{IF app_has_fargate_web}}
+| `heroku open -a {{app_name}}` | `open https://{{app_domain}}` — the ALB certificate (`dns.tf` or `var.acm_certificate_arn`) covers your custom domains, not the ALB DNS name, so `https://{{ALB_DNS_NAME}}` fails certificate verification; before DNS cutover test with `curl -sk -H "Host: {{app_domain}}" https://{{ALB_DNS_NAME}}/` |
+{{ENDIF}}
+
+<!-- markdownlint-enable MD055 MD056 -->
 
 {{ENDIF}}
 
@@ -1423,6 +1466,10 @@ Two things have no one-line equivalent and are covered elsewhere: `git push hero
 see the Developer workflow section of `migration-report.html`). Wrapping the rows above in
 a `bin/` directory of short shell scripts named after the Heroku commands is a common
 first platform-team task; the commands are stable enough to copy as-is.
+
+{{IF deferred_addons.length > 0}}
+
+---
 
 ## Manual Migration Items
 
@@ -1475,8 +1522,13 @@ Replace template variables using these sources:
 | `{{ALB_DNS_NAME}}` | Placeholder — user fills from Terraform output |
 | `{{EB_ENVIRONMENT_URL}}` | Elastic Beanstalk web environment CNAME output |
 | `{{EB_ENVIRONMENT_NAMES}}` | Space-separated generated Elastic Beanstalk environment names for all EB process types |
-| `{{EB_WEB_ENVIRONMENT}}` | The generated Elastic Beanstalk environment name for the app's `web` process type (`${project_name}-web`); for an app without a web process, the first EB environment |
+| `{{FOR proc IN eb_processes}}` / `{{FOR proc IN fargate_processes}}` | Step 0 `eb_processes[]` / `fargate_processes[]` for the app being rendered — one table row per process type (`proc.process_type`, `proc.environment_name` / `proc.service_name`, `proc.log_group`) |
+| `{{EB_RUN_ENVIRONMENT}}` | The EB environment where `heroku run` / `config` equivalents land: the app's `web` environment (`${project_name}-web`) when `app_has_eb_web`, else the app's first `eb_processes[]` entry |
 | `{{ECS_CLUSTER}}` | `${var.project_name}-${var.environment}` — the generated ECS cluster name; service names and log groups are `<cluster>-<process_type>` and `/ecs/<cluster>/<process_type>` |
+| `{{FARGATE_SERVICE_NAMES}}` | Space-separated `service_name` of every `fargate_processes[]` entry for the app |
+| `{{FARGATE_RUN_SERVICE}}` / `{{FARGATE_RUN_PROCESS}}` | The service/task family and container (`process_type`) where `heroku run` / `config` equivalents land: the app's `web` entry when `app_has_fargate_web`, else its first `fargate_processes[]` entry |
+| `{{DB_INSTANCE_IDENTIFIER}}` | `identifier` of the generated `aws_db_instance` (`${var.project_name}-${var.environment}-postgres`); used when `postgres_engine == "rds"` |
+| `{{DB_CLUSTER_IDENTIFIER}}` | `cluster_identifier` of the generated `aws_rds_cluster` (`${var.project_name}-${var.environment}-aurora`); used when `postgres_engine == "aurora"` |
 | `{{MSK_CLUSTER_ARN}}` | Placeholder — user fills from Terraform output |
 | `{{MIGRATION_BUCKET}}` | Placeholder — user creates an S3 bucket for migration artifacts |
 | `{{app_domain}}` | First hostname in `custom_domains[]` when the inventory has `domain` resources; otherwise a placeholder the user fills |
@@ -1499,6 +1551,7 @@ Replace template variables using these sources:
 - If `has_kafka == false`: Omit the entire "Kafka Migration" subsection under Phase 2 (heading + content)
 - If ALL data store flags are false: Omit the entire "Phase 2: Data Migration" section and its Table of Contents entry
 - If `deferred_addons.length == 0`: Omit the entire "Manual Migration Items" section and its Table of Contents entry
+- "Day-to-day commands: Heroku → AWS" is ALWAYS rendered (it sits outside the `deferred_addons` guard) and renders exactly the per-target tables for which the app has an `eb_processes[]` / `fargate_processes[]` entry. Inside each table: one `logs --tail` and one `ps:scale` row per process type; the `maintenance:on` and `open` rows render only when that target runs the app's `web` process (`app_has_eb_web` / `app_has_fargate_web`), so a worker-only app and the EB-web + Fargate-worker split get no ALB or `open` row on the worker target; the `pg:psql` and `pg:info` rows render only when `has_postgres`, with the Aurora cluster-snapshot branch when `postgres_engine == "aurora"`; the `open` row uses `https://{{app_domain}}` when a custom hostname is configured (`has_route53_dns`, or always for an ALB) and `http://{{EB_ENVIRONMENT_URL}}` for a default Elastic Beanstalk environment, which has no HTTPS listener.
 - Verification section (Phase 4) checkboxes: Only include data-store-specific checks for present data stores
 
 ---

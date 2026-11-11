@@ -188,10 +188,17 @@ either string form (`"*"`) or single-element list form (`["*"]`). Scope to speci
 and resource ARNs. A list that also contains scoped entries (e.g. `["s3:GetObject", ...]`) is
 not a blanket wildcard and is allowed.
 
-The narrow exception is an isolated `elasticbeanstalk:CreateStorageLocation`
-statement with `Resource = "*"`. AWS does not define resource-level permissions
-for that action; combining it with any other action does not qualify for the
-exception.
+Two narrow exceptions exist, both for actions that AWS defines no resource-level
+permissions for, so `Resource = "*"` is the only way to write them:
+
+- an isolated `elasticbeanstalk:CreateStorageLocation` statement;
+- an ECS Exec statement whose `Action` list contains only the four `ssmmessages` channel
+  actions (`CreateControlChannel`, `CreateDataChannel`, `OpenControlChannel`,
+  `OpenDataChannel`) — the task-role grant behind `aws ecs execute-command`.
+
+The exception is statement-shaped: combining either with any other action (for example
+`ssmmessages:*`, `ssm:*`, or `s3:*` in the same list) does not qualify, and that statement
+is flagged.
 
 **Gate mapping:** `no_wildcard_iam`. The gate scans literal policy JSON (heredoc or
 `jsonencode({...})`) in the resources above. `aws_iam_policy_document` **data sources** fail
