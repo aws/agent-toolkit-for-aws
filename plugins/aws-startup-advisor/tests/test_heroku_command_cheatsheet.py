@@ -100,8 +100,11 @@ def test_eb_shell_uses_ssm_session_not_eb_ssh() -> None:
     assert "GetParameter" not in ssm
     read = beanstalk[beanstalk.index('resource "aws_iam_role_policy" "eb_read_secrets_<app_name>"'):]
     assert ":parameter/${var.project_name}/*" in read
+    # The only managed policies on the role: the web tier, plus read-only ECR pull that the
+    # CNB path attaches so the Docker platform can fetch the pack-built image.
     assert re.findall(r'policy_arn\s+= "([^"]+)"', beanstalk) == [
-        "arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier"
+        "arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier",
+        "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
     ]
 
 
