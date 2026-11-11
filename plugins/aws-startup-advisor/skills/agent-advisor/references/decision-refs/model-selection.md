@@ -26,12 +26,20 @@ file — it is dispatched by source provider so the path vocabulary and rules di
   supported source API and apply each model's dated capability and region checks).
 - **Azure OpenAI / other** → generic `provider_module_pending` until a dedicated module exists.
 
+Both catalogs are rendered from the shared `bedrock-model-registry.json` (one record per model;
+edit the registry, never the catalogs) and follow `scripts/contracts/model-selection-catalog.schema.json`
+(plugin root). Each model carries a `selection_status`: only `selectable` entries are
+automatic-selection candidates; `reference_only` entries stay readable for lookups but the engine
+never picks them.
+
 Do not restate the per-provider path rules here — the dated catalogs and the engine are
 authoritative (a table here would drift). The engine applies these provider-neutral principles:
 
 - **Conflicts are not precedence.** When two hard requirements cannot share one path (e.g. API
   continuity plus runtime-only governance), emit `decision_required` with both tradeoff options
-  and rerun after the user resolves the requirement — never silently let one side win.
+  and rerun after the user resolves the requirement — never silently let one side win. When
+  fewer than two real options exist (for example a side's only models are `reference_only`), emit
+  `blocked` with the `[BLOCKS]` reason and its remediation instead; options are never invented.
 - **A dated snapshot is not a permanent claim.** Catalog data is point-in-time — e.g. Sonnet 4.6
   was runtime-only in the `2026-06-24` snapshot, and six days later Sonnet 5 launched with full
   Mantle Messages support, changing the default recommendation. Every recommendation
