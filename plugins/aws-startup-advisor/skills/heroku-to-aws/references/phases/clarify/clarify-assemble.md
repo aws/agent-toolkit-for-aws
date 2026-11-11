@@ -87,7 +87,8 @@ Write `$MIGRATION_DIR/preferences.json`:
       "recommendation": {
         "value": "elastic_beanstalk|ecs-fargate|eks-managed|eks-or-ecs|mixed",
         "confidence": "high|medium|low",
-        "reasons": ["<short reason strings>"]
+        "reasons": ["<short reason strings>"],
+        "scale_note": "<optional: '{N} formations' when Q12c step 4a flipped the recommendation to Fargate; omit otherwise>"
       }
     },
     "eb_deploy_method": { "value": "<Q12d value; omit when resolved compute plan has no EB formations>", "chosen_by": "user|default" }
@@ -116,7 +117,7 @@ Do **not** write a `workshop` object from Clarify. The what-if workshop
 5. `global.fir_intent` is `null` when no Fir apps detected (Q11 not fired).
 6. `network.existing_vpc_id` and `network.subnet_ids` are `null`/empty when no Private Space peering exists.
 7. `data.database_ha`, `data.redis_ha`, `data.kafka_retention_days` are omitted entirely when those services are not present in the inventory.
-8. `design_constraints.compute_target` uses the structured Q12c shape (`default`, `overrides`, `chosen_by`, `recommendation`). Existing reused preferences with legacy `compute_target.value` may be read by Design for backward compatibility, but newly assembled preferences MUST write the structured shape.
+8. `design_constraints.compute_target` uses the structured Q12c shape (`default`, `overrides`, `chosen_by`, `recommendation`). Existing reused preferences with legacy `compute_target.value` may be read by Design for backward compatibility, but newly assembled preferences MUST write the structured shape. `recommendation.scale_note` is optional: Q12c step 4a writes it (`"{N} formations"`) when the non-release formation count is above 40, and it is preserved unchanged when the user takes option 2 (EB override), on reuse (interview Step 0), and in workshop snapshots (`scenarios/scenario-NNN.preferences.json` is a copy of this file). Preferences written before the field existed simply lack it; never synthesize it.
 9. `design_constraints.eb_deploy_method` is required when the resolved compute plan includes at least one Elastic Beanstalk formation; omit it for all-Fargate or all-EKS targets.
 10. Omit `workshop` on Clarify assemble — workshop mode owns that object.
 
@@ -146,6 +147,7 @@ Before handing off to Design:
 - [ ] `design_constraints.compute_target.recommendation.value` is one of: `"elastic_beanstalk"`, `"ecs-fargate"`, `"eks-managed"`, `"eks-or-ecs"`, `"mixed"`
 - [ ] `design_constraints.compute_target.recommendation.confidence` is one of: `"high"`, `"medium"`, `"low"`
 - [ ] `design_constraints.compute_target.recommendation.reasons` is a non-empty array
+- [ ] `design_constraints.compute_target.recommendation.scale_note`, when present, is a string; when present and `chosen_by` is `"system_recommended"`, `compute_target.default` is `"ecs-fargate"` (the accepted recommendation is written, not just described)
 - [ ] If the resolved compute plan includes Elastic Beanstalk → `design_constraints.eb_deploy_method.value` is one of: `"github_actions"`, `"codepipeline"`, `"manual"`
 - [ ] If `design_constraints.eb_deploy_method` is present → `design_constraints.eb_deploy_method.chosen_by` is `"user"` or `"default"`
 - [ ] All entries in `sources` have a value of `"user"`, `"extracted"`, or `"default"`

@@ -224,7 +224,7 @@ After determining active questions, organize them into **three progressive batch
 
 | Batch | Name                      | Questions              | Content                                                                                                                                               |
 | ----- | ------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1** | Global / Strategic        | Q1–Q3, Q5, Q12c        | Region, compliance, availability, environment naming, compute target recommendation                                                                   |
+| **1** | Global / Strategic        | Q1–Q3, Q5, Q5c, Q12c   | Region, compliance, availability, environment naming, developer workflow priority, compute target recommendation (Q5c before Q12c — Q12c reads it)   |
 | **2** | Data / Network            | Q6, Q6b, Q7–Q10        | Database HA, migration approach, Redis HA, Kafka retention, VPC subnets, DNS strategy                                                                 |
 
 **Not in any batch — Generate-time questions:** Q4 (maintenance window), Q6c (DB migration method), Q12d (EB deploy method). Nothing before Generate reads their fields; asking them in Clarify makes a user who stops at the decision answer questions they will never use. Clarify writes their documented defaults and lists them in `metadata.questions_deferred_to_generate`; `estimate-assemble.md` § Confirm execution choices asks them when the user chooses **[C] Generate**.
@@ -259,7 +259,7 @@ Let's start with your strategic requirements.
 
 --- Global / Strategic ---
 
-[Present active questions Q1–Q3, Q5, Q12c — never Q4]
+[Present active questions Q1–Q3, Q5, Q5c, Q12c in that order — never Q4. Six when nothing was resolved on the sheet; Q5c precedes Q12c because Q12c's presentation reads its answer]
 ```
 
 **Batch 2 — Data / Network (if active):**
@@ -502,8 +502,19 @@ built.
    that to a handful of clusters with one service per process type." Set
    `recommendation.value: "ecs-fargate"`, `confidence: "high"`, and add
    `recommendation.scale_note: "{N} formations"`. The user can still pick option 2 to
-   force EB. Below the threshold, step 4 stands: EB's managed-environment model is the
-   better fit for a small estate.
+   force EB. At or below the threshold, step 4 stands: EB's managed-environment model is
+   the better fit for a small estate. The boundary is exact: 40 non-release formations
+   keep the EB default; 41 flip it to Fargate.
+
+   The flipped plan is the **computed plan** that option 1 and the default path write
+   (see **Interpret** below): `compute_target.default` becomes `"ecs-fargate"`, not
+   `"elastic_beanstalk"` with a `recommendation.value` that Design never reads
+   (`design-mapping.md` resolves each formation from `default` + `overrides[]` only).
+   Rows that step 3 already marked `system_forced` (scaled non-web workers) need no
+   `overrides[]` entry when the default is Fargate — they resolve to Fargate through the
+   default; keep their reason text in `recommendation.reasons`. Only when the user picks
+   option 2 (EB override) are they written back as `system_forced` Fargate overrides,
+   because the default is EB again and they must not downgrade.
 
    The threshold is about operability, not cost: the Estimate prices either shape, but a
    large EB-per-formation estate is a worse day-to-day experience than Heroku, which is
@@ -512,8 +523,8 @@ built.
    target: "Keeping the Heroku workflow depends on the deploy pipeline layer (the
    report's Developer workflow section), not on Beanstalk versus ECS."
 5. Derive the recommendation summary:
+   - If step 4a set the Fargate default → `recommendation.value: "ecs-fargate"`, `confidence: "high"` (reasons include the scale reason; `system_forced` rows do not make this `"mixed"` — every row is Fargate). This rule wins over the two below.
    - If all non-release rows recommend EB → `recommendation.value: "elastic_beanstalk"`, `confidence: "high"`
-   - If step 4a set the Fargate default → `recommendation.value: "ecs-fargate"`, `confidence: "high"` (reasons include the scale note)
    - If any row is system-forced to Fargate while others remain EB → `recommendation.value: "mixed"`, `confidence: "high"`
    - If the user explicitly chooses all-Fargate or EKS below → record that user choice as the default with no system recommendation override, except scaled non-web EB downgrades remain forbidden.
 
@@ -528,7 +539,7 @@ built.
 >
 > Which compute target plan should we use?
 >
-> 1. Use this recommendation — EB default with per-formation Fargate overrides where needed (default)
+> 1. Use this recommendation (default)
 > 2. Use Elastic Beanstalk for all EB-compatible formations; keep system-forced Fargate overrides for scaled non-web workers
 > 3. Use ECS Fargate for all dyno formations
 > 4. Use EKS — team has Kubernetes expertise and wants full K8s control
@@ -537,14 +548,16 @@ built.
 
 **Interpret:**
 
-- 1 → `design_constraints.compute_target: { "default": "elastic_beanstalk", "overrides": [<system_forced Fargate overrides>], "chosen_by": "system_recommended", "recommendation": { "value": "elastic_beanstalk|mixed", "confidence": "high|medium|low", "reasons": [<summary reasons>] } }`
-- 2 → same as 1, but `chosen_by: "user"` and `recommendation.reasons` MUST include "user selected EB for all EB-compatible formations". Scaled non-web `quantity > 1` formations remain `system_forced` Fargate overrides.
+- 1 → write the **computed plan** from steps 3–5, whichever shape it took:
+  - step 4a did **not** fire (40 or fewer non-release formations) → `design_constraints.compute_target: { "default": "elastic_beanstalk", "overrides": [<system_forced Fargate overrides>], "chosen_by": "system_recommended", "recommendation": { "value": "elastic_beanstalk|mixed", "confidence": "high|medium|low", "reasons": [<summary reasons>] } }`
+  - step 4a **fired** (41 or more) → `design_constraints.compute_target: { "default": "ecs-fargate", "overrides": [], "chosen_by": "system_recommended", "recommendation": { "value": "ecs-fargate", "confidence": "high", "reasons": [<scale reason from step 4a>, <system_forced worker reasons, if any>], "scale_note": "{N} formations" } }`. Never write `"default": "elastic_beanstalk"` for an accepted Fargate recommendation — Design resolves the target from `default`/`overrides[]`, so that would silently rebuild the per-formation EB estate the recommendation exists to avoid.
+- 2 → `design_constraints.compute_target: { "default": "elastic_beanstalk", "overrides": [<system_forced Fargate overrides for every non-web quantity > 1 formation>], "chosen_by": "user", "recommendation": <the computed recommendation from steps 3–5, unchanged — including "value": "ecs-fargate" and "scale_note" when step 4a fired> }`, and `recommendation.reasons` MUST include "user selected EB for all EB-compatible formations". This is the explicit EB override: it is the only path that keeps an EB default above the threshold, and the preserved `scale_note` lets the report say the recommendation was declined.
 - 3 → `design_constraints.compute_target: { "default": "ecs-fargate", "overrides": [], "chosen_by": "user", "recommendation": { "value": "ecs-fargate", "confidence": "high", "reasons": ["user selected direct managed containers for all dyno formations"] } }`
 - 4 → `design_constraints.compute_target: { "default": "eks-managed", "overrides": [], "chosen_by": "user", "recommendation": { "value": "eks-managed", "confidence": "high", "reasons": ["user selected Kubernetes control"] } }`
 - 5 → `design_constraints.compute_target: { "default": "eks-or-ecs", "overrides": [], "chosen_by": "user", "recommendation": { "value": "eks-or-ecs", "confidence": "medium", "reasons": ["user can operate Kubernetes but prefers managed node groups"] } }`
 - 6 → ask a short follow-up listing each formation and write `overrides[]` for user-selected deviations from the default. Do not allow EB for scaled non-web formations unless the user first changes the Heroku quantity to 1 or accepts a manual non-generated exception; generated artifacts must keep those formations on Fargate.
 
-**Default:** 1 — use the computed recommendation. "I don't know" maps to 1, not to a blind EB-only default.
+**Default:** 1 — use the computed recommendation. "I don't know", a skipped question, "use defaults for the rest" and the fast path all map to 1 — the computed plan, including the Fargate default when step 4a fired — never to a blind EB-only default.
 
 **Design impact:** Design resolves each formation from `compute_target.default` plus matching `overrides[]`. EB-compatible web dynos map to LoadBalanced EB environments. EB-compatible persistent non-web dynos with `quantity == 1` map to SingleInstance WebServer environments. Persistent non-web dynos with `quantity > 1` map to Fargate to preserve horizontal worker count. `"ecs-fargate"` maps formations to Fargate services. `"eks-managed"` or `"eks-or-ecs"` maps formations to EKS Deployments. Non-formation resources (Postgres, Redis, Kafka, add-ons) are unaffected.
 
@@ -910,7 +923,7 @@ Validate: must be valid ISO 8601 date, must be in the future.
 | Q10 — DNS                 | 1 (Route 53)                            | `dns_strategy: "route53"`                                                                                   |
 | Q11 — Fir intent          | 1 (exit Heroku)                         | `fir_intent: "exit_heroku"`                                                                                 |
 | Q12b — Containerization   | 2 (buildpack_only)                      | `containerization_status: "buildpack_only"`                                                                 |
-| Q12c — Compute target     | 1 (use computed recommendation)         | `design_constraints.compute_target.default: "elastic_beanstalk"` plus any `system_forced` Fargate overrides |
+| Q12c — Compute target     | 1 (use computed recommendation)         | `design_constraints.compute_target` follows the computed plan: `default: "elastic_beanstalk"` plus any `system_forced` Fargate overrides at 40 or fewer non-release formations; `default: "ecs-fargate"` with `recommendation.scale_note` at 41 or more |
 | Q12d — EB deploy method   | 1 (GitHub Actions)                      | `eb_deploy_method: "github_actions"` when resolved compute plan includes EB                                 |
 | Q12 — Registry            | 1 (ECR)                                 | `container_registry: "ecr"`                                                                                 |
 | Q13 — Log retention       | 3 (30 days)                             | `log_retention_days: 30`                                                                                    |
