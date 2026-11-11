@@ -2,9 +2,9 @@
   "schema_version": 2,
   "provider": "openai",
   "generated_from": "bedrock-model-registry.json (rendered by tools/build-model-catalogs.py; edit the registry, not this file)",
-  "verified_at": "2026-11-09",
+  "verified_at": "2026-11-10",
   "verified_region": "us-east-2",
-  "source": "Haiku 5.5 Converse tier: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-5-5.html (read 2026-11-09). Opus 5.5 cross-family target: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html (retrieved 2026-09-24). OpenAI and other unchanged entries retain their evidence from the superseded 2026-08-21 catalog (removed; see git history).",
+  "source": "Haiku 5.5 Converse tier: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-5-5.html (read 2026-11-09). Opus 5.5 cross-family target: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html (retrieved 2026-09-24). OpenAI and other unchanged entries retain their evidence from the superseded 2026-08-21 catalog (removed; see git history). Claude Sonnet 5.5 and OpenAI GPT-6.1 Terra: AWS model cards read 2026-11-10.",
   "disclaimer": "Haiku 5.5 is the fast/low-cost Converse tier (the GPT-5.6 Luna cross-family fallback); Haiku 4.5 remains an explicit alternative, not an automatic fallback. The Opus cross-family target is updated to Opus 5.5; same-model OpenAI paths and their earlier evidence remain unchanged. This is a migration target catalog, not an account-availability claim. Verify the chosen model, API, region and CRIS profile before implementation. Opus 5.5 uses CRIS on runtime outside eu-west-2, has 1M context/128K output, always-on adaptive thinking, and no Batch tier. Fable and Mythos remain excluded from default selection. Opus 5.5 is the only Opus model in the automatic selection pool; older Opus snapshots and pricing records are historical references. The runtime in-region exception in eu-west-2 was verified 2026-10-03; the original catalog and other model evidence dates remain unchanged.",
   "paths": {
     "mantle_openai_responses": {
@@ -553,6 +553,195 @@
           "model_id": "openai.gpt-6.1-sol",
           "requires_cris": true,
           "evidence": "AWS model card: US and Global CRIS support Responses, Chat Completions, Converse, and Invoke; EU/AU Geo profiles are unsupported."
+        }
+      }
+    },
+    "openai_gpt_6_1_terra": {
+      "display_name": "OpenAI GPT-6.1 Terra (on Bedrock)",
+      "selection_status": "selectable",
+      "family": "openai_gpt_6",
+      "generation": "reasoning",
+      "version": "6.1",
+      "class": "reasoning",
+      "context_window": 1050000,
+      "output_token_ceiling": 128000,
+      "capabilities": [
+        "reasoning",
+        "tool_or_function_calling",
+        "image_input_vision"
+      ],
+      "capability_source": "AWS model card model-card-openai-gpt-6-1-terra (read 2026-11-10): launch 2026-10-26, Active, EOL no sooner than 2027-10-26; 1.05M context, 128K max output; bedrock-mantle In-Region at /openai/v1 (Responses and Chat Completions) in us-east-1 only; bedrock-runtime Responses/Chat Completions/Converse/Invoke via us. Geo (six US/Canada source Regions) and Global CRIS (every listed runtime Region except me-south-1), no in-Region runtime; no GovCloud; Guardrails and application inference profiles on Converse only; JSON Schema structured outputs on bedrock-runtime; Global $1.00/$5.00 per 1M tokens (short context).",
+      "inference_profiles": {
+        "us": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2",
+          "ca-central-1",
+          "ca-west-1"
+        ],
+        "global": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2",
+          "ca-central-1",
+          "ca-west-1",
+          "eu-central-1",
+          "eu-central-2",
+          "eu-north-1",
+          "eu-south-1",
+          "eu-south-2",
+          "eu-west-1",
+          "eu-west-2",
+          "eu-west-3",
+          "ap-east-2",
+          "ap-northeast-1",
+          "ap-northeast-2",
+          "ap-northeast-3",
+          "ap-south-1",
+          "ap-south-2",
+          "ap-southeast-1",
+          "ap-southeast-2",
+          "ap-southeast-3",
+          "ap-southeast-4",
+          "ap-southeast-5",
+          "ap-southeast-6",
+          "ap-southeast-7",
+          "il-central-1",
+          "mx-central-1",
+          "af-south-1",
+          "sa-east-1"
+        ]
+      },
+      "region_availability": {
+        "commercial": [
+          "us-east-1"
+        ],
+        "govcloud": [],
+        "evidence": "AWS GPT-6.1 Terra model card regional tables, read 2026-11-10: bedrock-mantle In-Region in us-east-1 only (us-east-2, us-west-2 and both GovCloud rows unsupported); no GovCloud on either endpoint."
+      },
+      "paths": {
+        "mantle_openai_responses": {
+          "available": true,
+          "model_id": "openai.gpt-6.1-terra",
+          "requires_cris": false,
+          "evidence": "AWS model card: Mantle Responses In-Region in us-east-1 only."
+        },
+        "mantle_openai_chat": {
+          "available": true,
+          "model_id": "openai.gpt-6.1-terra",
+          "requires_cris": false,
+          "evidence": "AWS model card: Mantle Chat Completions supported at /openai/v1/chat/completions."
+        },
+        "runtime_converse": {
+          "available": true,
+          "model_id": "openai.gpt-6.1-terra",
+          "requires_cris": true,
+          "evidence": "AWS model card: bedrock-runtime via us. Geo and Global CRIS (not me-south-1, not GovCloud); Responses, Chat Completions, Converse and Invoke; Guardrails Converse-only.",
+          "capabilities": [
+            "reasoning",
+            "tool_or_function_calling",
+            "image_input_vision",
+            "streaming",
+            "structured_output_json"
+          ]
+        }
+      }
+    },
+    "anthropic_claude_sonnet_5_5": {
+      "display_name": "Claude Sonnet 5.5 (Converse tier match for GPT-5.6 Terra / 6.1 Terra / 5.5 / 5.4)",
+      "selection_status": "selectable",
+      "family": "anthropic_claude",
+      "generation": "bedrock_native",
+      "version": "5.5",
+      "class": "runtime_native",
+      "context_window": 1000000,
+      "output_token_ceiling": 128000,
+      "capabilities": [
+        "tool_or_function_calling",
+        "reasoning",
+        "image_input_vision",
+        "streaming",
+        "structured_output_json"
+      ],
+      "capability_source": "AWS model card model-card-anthropic-claude-sonnet-5-5 (read 2026-11-10): launch 2026-09-28, Active, EOL no sooner than 2027-09-28; Messages/Converse/Invoke on bedrock-runtime via Geo (us. from six US/Canada source Regions, eu. from eight EU Regions, au. from Sydney and Melbourne) and Global CRIS (every commercial runtime Region; not GovCloud); Messages on bedrock-mantle In-Region in us-gov-west-1 only; 1M context, 128K max output; adaptive thinking on by default and cannot be disabled (default effort high); client-side tool calling with tool_choice auto/none only (no forced any or named tool); structured outputs; explicit prompt caching; Batch tier not supported. Global $2/$10 and Geo $2.20/$11 per 1M tokens, cache read $0.10 Global. The card names Claude Sonnet 5 as the valid fallback model. The card marks GovCloud Geo availability but documents no GovCloud profile id, so GovCloud is left out of the matrix (fail closed). Sampling-parameter support is not stated on the card.",
+      "lifecycle_status": "active",
+      "launch_date": "2026-09-28",
+      "eol_no_sooner_than": "2027-09-28",
+      "default_effort": "high",
+      "adaptive_thinking_only": true,
+      "batch_supported": false,
+      "forced_tool_choice_supported": false,
+      "native_structured_output_supported": true,
+      "mantle_regions": [
+        "us-gov-west-1"
+      ],
+      "inference_profiles": {
+        "us": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2",
+          "ca-central-1",
+          "ca-west-1"
+        ],
+        "eu": [
+          "eu-central-1",
+          "eu-central-2",
+          "eu-north-1",
+          "eu-south-1",
+          "eu-south-2",
+          "eu-west-1",
+          "eu-west-2",
+          "eu-west-3"
+        ],
+        "au": [
+          "ap-southeast-2",
+          "ap-southeast-4"
+        ],
+        "global": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2",
+          "ca-central-1",
+          "ca-west-1",
+          "eu-central-1",
+          "eu-central-2",
+          "eu-north-1",
+          "eu-south-1",
+          "eu-south-2",
+          "eu-west-1",
+          "eu-west-2",
+          "eu-west-3",
+          "ap-east-2",
+          "ap-northeast-1",
+          "ap-northeast-2",
+          "ap-northeast-3",
+          "ap-south-1",
+          "ap-south-2",
+          "ap-southeast-1",
+          "ap-southeast-2",
+          "ap-southeast-3",
+          "ap-southeast-4",
+          "ap-southeast-5",
+          "ap-southeast-6",
+          "ap-southeast-7",
+          "il-central-1",
+          "me-central-1",
+          "me-south-1",
+          "af-south-1",
+          "sa-east-1",
+          "mx-central-1"
+        ]
+      },
+      "paths": {
+        "runtime_converse": {
+          "available": true,
+          "model_id": "anthropic.claude-sonnet-5-5",
+          "requires_cris": true,
+          "evidence": "AWS model card (read 2026-11-10): Converse on bedrock-runtime via Geo (us./eu./au.) and Global CRIS."
         }
       }
     },
