@@ -278,30 +278,48 @@ Continue with the next resource after the Fargate entry is appended. This guard 
    - `single-az` or `multi-az` → **RDS PostgreSQL** (use "Recommended RDS Instance Class" column)
    - `multi-az-ha` or `multi-region` → **Aurora PostgreSQL** (use "Recommended Aurora Instance Class" column)
 
-   2a. **Sizing basis** (after the plan row is found). If
-   `preferences.data.database_sizing_basis == "measured"` AND `config.data_size_gb` is
-   present AND it is at or below 25% of the matched row's `storage_gb`:
-   - `required_storage_gb` = `data_size_gb` × 2, rounded UP to the next multiple of 20,
-     minimum 20.
-   - Re-select the row: within the SAME tier family as the source plan (`essential-*`,
-     `standard-*`, `premium-*`, `private-*`, `shield-*` — this keeps the HA and compliance
-     semantics of the plan), take the row with the smallest `storage_gb` that is ≥
-     `required_storage_gb`. Use that row for steps 5–6 below instead of the plan-name row.
-     This is still a direct lookup — by storage instead of by name — not a recomputation
-     of instance class from RAM.
-   - Set `aws_config.sizing_basis: "measured"`, `aws_config.sized_as_plan: "<re-selected row key>"`,
-     and keep `aws_config.source_plan: "<config.plan>"`.
+   2a. **Sizing basis** (after the plan row is found). Applies only when ALL of:
+   `preferences.data.database_sizing_basis == "measured"` (written only with
+   `sources.Q6d: "user"`); this add-on's `resource_id` is in
+   `preferences.data.rightsizing_candidates_shown[]` (the databases the user saw in Q6d —
+   never re-size one they did not see); and the add-on is still a candidate under the
+   Clarify Q6d **Right-sizing rule** (`clarify-interview.md` § Q6d — the one rule set,
+   repeated here only for the lookup):
+   - `plan_storage_gb` is the plan's Storage column in
+     `references/shared/heroku-pricing-cache.md`, NOT the matched row's `storage_gb`.
+   - `data_size_gb > 0` and `data_size_gb / plan_storage_gb × 100 ≤ 25` (compare before
+     rounding).
+   - `fitting_plan` = within the SAME plan family as the source plan (`essential-*`,
+     `standard-*`, `premium-*`, `private-*`, `shield-*`; `hobby-*` as its `essential-*`
+     successor — this keeps the HA and compliance semantics of the plan), the plan with the
+     smallest pricing-cache Storage that is ≥ `data_size_gb × 2`, never a plan with more
+     Storage than the source plan. If `fitting_plan == plan` the add-on is not a candidate.
+   - Use the `fitting_plan` row of `postgres-rds-sizing.json` for steps 5–6 below instead
+     of the plan-name row. This is still a direct lookup — by storage instead of by name —
+     not a recomputation of instance class from RAM. No rounding and no 20 GB minimum is
+     applied when choosing the row; the RDS storage minimum applies to allocated storage
+     in step 6 only.
+   - Set `aws_config.sizing_basis: "measured"`, `aws_config.sized_as_plan: "<fitting_plan>"`,
+     and keep `aws_config.source_plan: "<config.plan>"`. These three keys are provenance
+     for the report and workbook; nothing else reads them.
    - Add one warning per app: "`{heroku_app}` Postgres sized from measured data
-     ({data_size_gb} GB on a {plan} plan with {storage_gb} GB): using the {sized_as_plan}
-     row. Confirm the plan was not chosen for query load."
+     ({data_size_gb} GB on a {plan} plan with {plan_storage_gb} GB): using the
+     {sized_as_plan} row. The row was chosen by storage only; confirm the plan was not
+     chosen for memory, connections or query load."
 
    Otherwise set `aws_config.sizing_basis: "plan"` and continue with the plan-name row.
    Never apply this to Advanced-tier add-ons (`tier: "advanced"`), which are sized from
    `advanced_pools[]`.
 
+   Worked cases (pricing-cache Storage): `standard-4` (768 GB) holding 200 GB is 26.04% →
+   not a candidate, `plan` row. `standard-2` (256 GB) holding 31 GB is 12.11%, 62 GB fits
+   `standard-0` (64 GB) → `standard-0` row. `standard-2` holding 40.5 GB is 15.82% but 81 GB
+   does not fit `standard-0`, so `fitting_plan == plan` → not a candidate. `essential-0`
+   (1 GB) holding 0.1 GB → no smaller row exists → not a candidate.
+
 5. **Instance class**: Read directly from the matched table row. The table already provides the minimum adequate instance class.
 
-6. **Storage**: Read the Storage column from the matched row. Configure storage allocation ≥ this value.
+6. **Storage**: Read the Storage column from the matched row. Configure storage allocation ≥ this value and ≥ 20 GB (the RDS minimum for gp3; this floor applies to allocated storage only, never to the row selection in step 2a).
 
 7. **Multi-AZ deployment**: If availability is `multi-az`, `multi-az-ha`, or `multi-region`, set `multi_az: true`.
 

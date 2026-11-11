@@ -40,12 +40,12 @@ INVENTORY = {
         {"resource_id": "addon:shop-prod-api:heroku-postgresql:standard-2", "resource_type": "addon",
          "heroku_app": "shop-prod-api",
          "config": {"addon_service": "heroku-postgresql", "plan": "standard-2", "provider": "heroku",
-                    "connection_pooling": True, "data_size_gb": 40.5, "pg_role": "leader", "pg_leader": None,
+                    "connection_pooling": True, "data_size_gb": 20.5, "pg_role": "leader", "pg_leader": None,
                     "attached_apps": ["shop-prod-worker"], "monthly_price_usd": 200}},
         {"resource_id": "addon:shop-prod-api:heroku-postgresql:standard-2:follower", "resource_type": "addon",
          "heroku_app": "shop-prod-api",
          "config": {"addon_service": "heroku-postgresql", "plan": "standard-2", "provider": "heroku",
-                    "connection_pooling": False, "data_size_gb": 40.5, "pg_role": "follower",
+                    "connection_pooling": False, "data_size_gb": 20.5, "pg_role": "follower",
                     "pg_leader": "HEROKU_POSTGRESQL_TEAL", "attached_apps": [], "monthly_price_usd": 200}},
         {"resource_id": "addon:shop-dev-api:scheduler:standard", "resource_type": "addon", "heroku_app": "shop-dev-api",
          "config": {"addon_service": "scheduler", "plan": "standard", "provider": "scheduler"}},
@@ -90,8 +90,10 @@ ESTIMATE = {
                                    "lines": [{"category": "support", "monthly_usd": 100, "note": "24-month line"}]},
                       "rightsizing_monthly_saving_usd": 150,
                       "rightsizing_candidates": [
+                          # 20.5 / 256 = 8.0%; 41 GB fits standard-0 (64 GB) -> saving 200 - 50 = 150
                           {"resource_id": "addon:shop-prod-api:heroku-postgresql:standard-2", "heroku_app": "shop-prod-api",
-                           "plan": "standard-2", "plan_storage_gb": 256, "data_size_gb": 40.5, "utilization_pct": 15.8,
+                           "role": "leader",
+                           "plan": "standard-2", "plan_storage_gb": 256, "data_size_gb": 20.5, "utilization_pct": 8.0,
                            "plan_monthly_usd": 200, "fitting_plan": "standard-0", "fitting_plan_monthly_usd": 50,
                            "monthly_saving_usd": 150}]},
     "projected_costs": {"aws_monthly_premium": 500, "aws_monthly_balanced": 400, "aws_monthly_optimized": 300},
@@ -144,9 +146,12 @@ def test_writes_workbook_with_all_tabs_and_mapping_status():
         assert "Scope-matched comparison" in wb["Cost estimate"] and "<v>140</v>" in wb["Cost estimate"]
         assert "<v>260</v>" in wb["Cost estimate"]
         assert "C1" in wb["Shared data stores"] and "shop-prod-worker" in wb["Shared data stores"]
-        # follower is listed with its role but excluded from the leaders-only data total (40.5, not 81)
+        # follower is listed with its role but excluded from the leaders-only data total (20.5, not 41)
         assert "follower" in wb["Postgres"] and "HEROKU_POSTGRESQL_TEAL" in wb["Postgres"]
-        assert "<v>40.5</v>" in wb["Summary"] and "<v>81" not in wb["Summary"]
+        assert "leaders only" in wb["Summary"] and "<v>20.5</v>" in wb["Summary"] and "<v>41" not in wb["Summary"]
+        # right-sizing rows carry the add-on id, the role and the storage-only caveat
+        assert "addon:shop-prod-api:heroku-postgresql:standard-2" in wb["Right-sizing"]
+        assert "leader" in wb["Right-sizing"] and "chosen by storage only" in wb["Right-sizing"]
         # contract reconciliation block present
         assert "Contract reconciliation" in wb["Cost estimate"] and "<v>300</v>" in wb["Cost estimate"]
 
@@ -338,6 +343,47 @@ def test_tmp_file_removed_when_write_fails():
         assert code == 0 and out.startswith("ESTATE_SKIP | reason=")
         assert not (tmp / "blocked.xlsx.tmp").exists()
         assert blocker.is_dir()
+
+
+def test_malformed_rightsizing_candidates_do_not_drop_the_workbook():
+    with tempfile.TemporaryDirectory() as t:
+        tmp = Path(t)
+        (tmp / "heroku-resource-inventory.json").write_text(json.dumps(INVENTORY))
+        # a string where a candidate dict belongs: the good row is kept, the bad one skipped
+        est = json.loads(json.dumps(ESTIMATE))
+        est["current_costs"]["rightsizing_candidates"].append("oops")
+        (tmp / "estimation-infra.json").write_text(json.dumps(est))
+        code, out = run(tmp)
+        assert code == 0 and out.startswith("ESTATE_OK"), out
+        wb = sheets(tmp / "heroku-estate.xlsx")
+        assert "Right-sizing" in wb and "standard-0" in wb["Right-sizing"]
+        # a dict instead of a list: no Right-sizing tab, everything else written
+        est["current_costs"]["rightsizing_candidates"] = {"plan": "standard-2"}
+        (tmp / "estimation-infra.json").write_text(json.dumps(est))
+        code, out = run(tmp)
+        assert code == 0 and out.startswith("ESTATE_OK"), out
+        wb = sheets(tmp / "heroku-estate.xlsx")
+        assert "Right-sizing" not in wb and "Cost estimate" in wb
+
+
+def test_discovery_without_pg_role_is_labelled_roles_unknown():
+    """Classic discovery writes no pg_role; the total must not claim to be leaders-only."""
+    with tempfile.TemporaryDirectory() as t:
+        tmp = Path(t)
+        inv = json.loads(json.dumps(INVENTORY))
+        for r in inv["resources"]:
+            r.get("config", {}).pop("pg_role", None)
+            r.get("config", {}).pop("pg_leader", None)
+        (tmp / "heroku-resource-inventory.json").write_text(json.dumps(inv))
+        est = json.loads(json.dumps(ESTIMATE))
+        del est["current_costs"]["rightsizing_candidates"][0]["role"]
+        (tmp / "estimation-infra.json").write_text(json.dumps(est))
+        code, out = run(tmp)
+        assert code == 0 and out.startswith("ESTATE_OK"), out
+        wb = sheets(tmp / "heroku-estate.xlsx")
+        assert "all databases (roles unknown)" in wb["Summary"] and "leaders only" not in wb["Summary"]
+        assert "<v>41" in wb["Summary"]  # both databases counted (41.0), nothing silently excluded
+        assert "unknown" in wb["Right-sizing"]
 
 
 def test_out_override():

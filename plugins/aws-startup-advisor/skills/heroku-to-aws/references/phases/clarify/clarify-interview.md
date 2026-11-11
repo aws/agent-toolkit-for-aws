@@ -109,6 +109,7 @@ Compute `fast_path_question_count` from this table against the inventory and use
 
 - `migration_approach`: `full_cutover`
 - `migration_method`: `pg_dump_restore`
+- `database_sizing_basis`: `plan` (only when Q6d would have fired; write `rightsizing_candidates_shown[]` too and record `Q6d` in `metadata.questions_defaulted` — the measured basis is never applied without the user seeing the list)
 - `containerization_status`: `buildpack_only`
 - `database_ha`: matches Q3 availability
 - `redis_ha`: `true` (unless § Extraction Rules read a `mini`/hobby Redis tier — then the proposed `false` is the applied default, still recorded under `Q7` in `metadata.questions_defaulted`)
@@ -144,7 +145,7 @@ Before generating questions, scan the inventory to determine which questions app
 | Q6b — Migration approach             | Postgres add-on present                                          | No Postgres in inventory                  |
 | Q6c — DB migration method            | **Deferred to Generate** — defaulted here when Postgres present, asked at [C] Generate | No Postgres, or never asked in Clarify |
 | Q7 — Redis HA                        | Redis add-on present                                             | No Redis in inventory                     |
-| Q6d — Database sizing basis          | Any Postgres add-on with `data_size_gb` at or below 25% of its plan's Storage (pricing cache) | No measured sizes, or every database uses most of its plan |
+| Q6d — Database sizing basis          | Any Postgres add-on is a right-sizing candidate (§ Q6d Right-sizing rule: `data_size_gb > 0`, at or below 25% of the plan's Storage in the pricing cache, AND a smaller same-family plan fits 2× the data) | No measured sizes (`data_size_gb` absent or `≤ 0`), or no database has a smaller fitting plan |
 | Q8 — Kafka retention                 | Kafka add-on present                                             | No Kafka in inventory                     |
 | Q9 — VPC subnet IDs                  | Private Space with peering detected BUT subnet IDs not available | No Private Space or subnets already known |
 | Q9b — VPC ID                         | Peering detected but VPC ID not found in Terraform               | VPC ID already available or no peering    |
@@ -225,7 +226,7 @@ After determining active questions, organize them into **three progressive batch
 | Batch | Name                      | Questions              | Content                                                                                                                                               |
 | ----- | ------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **1** | Global / Strategic        | Q1–Q3, Q5, Q12c        | Region, compliance, availability, environment naming, compute target recommendation                                                                   |
-| **2** | Data / Network            | Q6, Q6b, Q7–Q10        | Database HA, migration approach, Redis HA, Kafka retention, VPC subnets, DNS strategy                                                                 |
+| **2** | Data / Network            | Q6, Q6b, Q6d, Q7–Q10   | Database HA, migration approach, database sizing basis (only when a right-sizing candidate exists), Redis HA, Kafka retention, VPC subnets, DNS strategy |
 
 **Not in any batch — Generate-time questions:** Q4 (maintenance window), Q6c (DB migration method), Q12d (EB deploy method). Nothing before Generate reads their fields; asking them in Clarify makes a user who stops at the decision answer questions they will never use. Clarify writes their documented defaults and lists them in `metadata.questions_deferred_to_generate`; `estimate-assemble.md` § Confirm execution choices asks them when the user chooses **[C] Generate**.
 | **3** | Operational / Conditional | Q11, Q12b, Q12–Q16     | Fir intent, containerization status, container registry, log retention, alerting, cost optimization                                                   |
@@ -272,7 +273,7 @@ You can answer each, skip individual ones, or say "use defaults for the rest."
 
 --- Data / Network ---
 
-[Present active questions Q6, Q6b, Q7–Q10 — never Q6c]
+[Present active questions Q6, Q6b, Q6d, Q7–Q10 — Q6d only when it fired, with its candidate table; never Q6c]
 ```
 
 **Batch 3 — Operational / Conditional:**
@@ -556,32 +557,66 @@ Re-prompt Q9b until valid input is provided.
 
 #### Q6d — Database Sizing Basis
 
-> _Fires only when at least one Heroku Postgres database holds 25% or less of its plan's
-> storage (measured `data_size_gb` vs the plan's Storage column in
-> `references/shared/heroku-pricing-cache.md`). Show the list first:_
+> _Fires only when at least one Heroku Postgres database is a right-sizing candidate under
+> the rule below. Show the list first:_
 >
 > These databases are on plans far larger than the data they hold:
 >
-> | Database | Plan | Plan storage | Data | Used |
-> | --- | --- | --- | --- | --- |
-> | `<heroku_app>` | `<plan>` | `<storage>` | `<data_size_gb> GB` | `<pct>%` |
+> | Database | Plan | Plan storage | Data | Used | Fitting plan |
+> | --- | --- | --- | --- | --- | --- |
+> | `<heroku_app>` | `<plan>` | `<storage>` | `<data_size_gb> GB` | `<pct>%` | `<fitting_plan>` |
 >
-> How should we size their AWS targets?
+> The fitting plan is chosen by storage only; a plan sized for memory, connections or
+> query load may be correct as it is. How should we size their AWS targets?
 >
-> 1. From measured data, with 2× headroom (recommended) — the AWS instance and storage match what the database actually holds. Pick this if the plan was chosen for storage, or you intend to right-size before moving.
-> 2. From the current Heroku plan — match plan RAM and storage one-for-one. Pick this if the plan was chosen for query load or cache size, not data volume.
+> 1. From measured data, with 2× headroom — the AWS instance and storage match what the database actually holds. Pick this if the plan was chosen for storage, or you intend to right-size before moving.
+> 2. From the current Heroku plan (default) — match plan RAM and storage one-for-one. Pick this if the plan was chosen for query load or cache size, not data volume, or if you are not sure.
+
+**Right-sizing rule** (the one rule set shared by this question, Design 2B step 2a and the
+Estimate's right-sizing candidates — change it here and nowhere else):
+
+- `plan_storage_gb` is the plan's **Storage** column in
+  `references/shared/heroku-pricing-cache.md` (never `storage_gb` from
+  `knowledge/design/postgres-rds-sizing.json`, which exists for AWS row lookup and may
+  differ for some plans).
+- Assess only `heroku-postgresql` add-ons with `data_size_gb > 0` and `pg_role` other than
+  `"follower"` (a missing `pg_role` is treated as a leader). Skip Advanced-tier add-ons
+  (`tier: "advanced"`, usage-billed) and treat `data_size_gb` absent or `≤ 0` as "no
+  measurement" — such a database is never a candidate.
+- `utilization_pct = data_size_gb / plan_storage_gb × 100`, compared against 25 **before**
+  rounding; record it rounded to 2 decimal places.
+- `fitting_plan` = within the same plan family (`essential-*`, `standard-*`, `premium-*`,
+  `private-*`, `shield-*`; legacy `hobby-*` is assessed as its `essential-*` successor),
+  the row with the smallest Storage that is `≥ data_size_gb × 2`. Never pick a row with
+  more Storage than the current plan: if no smaller or equal row fits, `fitting_plan` is
+  the current plan.
+- A database is a **candidate** when `utilization_pct ≤ 25` AND `fitting_plan != plan`.
+  A database whose fitting plan is its own plan (for example a `*-0` plan, or a `*-2`
+  plan holding 32–64 GB) is not a candidate and is not listed.
+- No RDS storage minimum applies here; the 20 GB floor applies only to the allocated AWS
+  storage in Design 2B step 6.
 
 **Interpret:**
 
-- 1 → `preferences.data.database_sizing_basis: "measured"`
-- 2 → `preferences.data.database_sizing_basis: "plan"`
+- 1 → `preferences.data.database_sizing_basis: "measured"`, `sources.Q6d: "user"`
+- 2 → `preferences.data.database_sizing_basis: "plan"`, `sources.Q6d: "user"`
+- Either way write `preferences.data.rightsizing_candidates_shown[]` = the `resource_id` of
+  every database in the table above. Design applies the measured basis to these add-ons
+  only, so the user never has a database re-sized that they did not see.
 
-**Default:** 1 → `database_sizing_basis: "measured"`. The question only fires when the gap is
-large, and oversizing is the usual reason an estate's AWS estimate looks inflated.
+**Default:** 2 → `database_sizing_basis: "plan"`. The measured basis re-selects the sizing
+row, which changes the instance class as well as the storage, and one point-in-time
+`data_size_gb` is no evidence about CPU, memory, connections or query load (the shared
+cost-appetite rule: right-size only where utilization data supports it). So `measured` is
+written only when `sources.Q6d` is `"user"`: a skipped question, "use defaults for the
+rest", or the fast path all write `plan` (fast path: record `Q6d` in
+`metadata.questions_defaulted` when it would have fired). The candidates are still listed
+by the Estimate either way.
 
 **Design impact:** `measured` makes Design step 2B look the sizing row up by required storage
-instead of by plan name (2B step 2a). `plan` keeps the plan-name lookup. Either way the
-Estimate lists the oversized databases as Heroku-side right-sizing candidates.
+instead of by plan name (2B step 2a), for the add-ons in `rightsizing_candidates_shown`
+only. `plan` keeps the plan-name lookup. Either way the Estimate lists the candidates as
+Heroku-side right-sizing candidates.
 
 ---
 
@@ -931,7 +966,7 @@ only.
 | Q6 — Database HA          | 4 (match Q3)                            | `database_ha: <Q3 value>`                                                                                   |
 | Q6b — Migration approach  | 1 (full cutover)                        | `migration_approach: "full_cutover"`                                                                        |
 | Q6c — DB migration method | 1 (pg_dump)                             | `migration_method: "pg_dump_restore"`                                                                       |
-| Q6d — DB sizing basis     | 1 (measured)                            | `database_sizing_basis: "measured"` (only when the question fired)                                       |
+| Q6d — DB sizing basis     | 2 (plan)                                | `database_sizing_basis: "plan"` + `rightsizing_candidates_shown[]` (only when the question fired; `measured` needs `sources.Q6d: "user"`) |
 | Q7 — Redis HA             | 1 (yes) if source plan has HA, else 2 (no) | `redis_ha: true` for a `premium-*` source tier; `false` for `mini`/hobby (Q7 § Default)                     |
 | Q8 — Kafka retention      | 3 (7 days)                              | `kafka_retention_days: 7`                                                                                   |
 | Q9 — Subnet IDs           | _(no default — must ask if applicable)_ | —                                                                                                           |

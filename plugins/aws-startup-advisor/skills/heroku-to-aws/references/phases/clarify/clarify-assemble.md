@@ -57,7 +57,24 @@ Write `$MIGRATION_DIR/preferences.json`:
     "db_size_source": "live_capture|plan_derived|user_override",
     "redis_ha": "<Q7 value>",
     "kafka_retention_days": "<Q8 value>",
-    "dns_strategy": "<Q10 value>"
+    "dns_strategy": "<Q10 value>",
+    "database_sizing_basis": "measured|plan", // Q6d; omit when Q6d did not fire
+    "rightsizing_candidates_shown": ["<resource_id of each Postgres add-on listed in the Q6d table>"] // Q6d; omit when Q6d did not fire
+  },
+  "commercial": {
+    "heroku_contract": { // Q16; omit the whole "commercial" object when the user has no contract
+      "term_start": "YYYY-MM-DD",
+      "term_end": "YYYY-MM-DD",
+      "lines": [
+        {
+          "category": "dynos|addon_credits|support|private_spaces|connect|other",
+          "label": "<as written on the order form>",
+          "total_usd": 0,
+          "months": 12
+        }
+      ],
+      "prior_term_annual_usd": null
+    }
   },
   "network": {
     "existing_vpc_id": "<Q9b value or null>",
@@ -136,6 +153,8 @@ Do **not** write a `workshop` object from Clarify. The what-if workshop
 5. `global.fir_intent` is `null` when no Fir apps detected (Q11 not fired).
 6. `network.existing_vpc_id` and `network.subnet_ids` are `null`/empty when no Private Space peering exists.
 7. `data.database_ha`, `data.redis_ha`, `data.kafka_retention_days` are omitted entirely when those services are not present in the inventory.
+7a. `data.database_sizing_basis` and `data.rightsizing_candidates_shown` are written together, and only when Q6d fired (interview § Q6d). `rightsizing_candidates_shown` lists the `resource_id` of every Postgres add-on shown in the Q6d table; Design 2B step 2a applies the measured basis to those add-ons only. `sources.Q6d` is `"user"` only when the user picked an option; a skipped or fast-pathed Q6d is `"default"` with `database_sizing_basis: "plan"`.
+7b. `commercial.heroku_contract` is written only when Q16 was answered with a contract (interview § Q16); "none" or an invoice-backed inventory omits `commercial` entirely.
 8. `design_constraints.compute_target` uses the structured Q12c shape (`default`, `overrides`, `chosen_by`, `recommendation`). Existing reused preferences with legacy `compute_target.value` may be read by Design for backward compatibility, but newly assembled preferences MUST write the structured shape.
 9. `design_constraints.eb_deploy_method` is required when the resolved compute plan includes at least one Elastic Beanstalk formation; omit it for all-Fargate or all-EKS targets.
 10. Omit `workshop` on Clarify assemble — workshop mode owns that object.
@@ -152,6 +171,8 @@ Before handing off to Design:
 - [ ] If Postgres in inventory → `data.database_ha` is populated
 - [ ] If Postgres in inventory → `global.migration_approach` is populated
 - [ ] If Postgres in inventory → `data.migration_method` is populated
+- [ ] If Q6d fired → `data.database_sizing_basis` is `"measured"` or `"plan"`, `data.rightsizing_candidates_shown` is a non-empty array of inventory `resource_id`s, and `sources.Q6d` is present; `"measured"` only with `sources.Q6d` = `"user"`. If Q6d did not fire → both keys absent
+- [ ] If Q16 was answered with a contract → `commercial.heroku_contract` has `term_start`, `term_end` and a non-empty `lines[]`; otherwise `commercial` is absent
 - [ ] If `migration_approach` is `interim_cutover_data_first` → `global.target_exit_date` is a valid future ISO date
 - [ ] If `migration_approach` is `interim_cutover_data_first` → `global.interim_cutover` is `true`
 - [ ] If Private Space peering detected → `network.subnet_ids` contains 1–6 valid IDs

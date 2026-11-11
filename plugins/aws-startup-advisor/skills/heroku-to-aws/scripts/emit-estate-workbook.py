@@ -352,9 +352,15 @@ def build_sheets(inv: dict, design, est) -> tuple[list[tuple[str, list[list]]], 
     n_other = sum(1 for r in resources if r.get("resource_type") == "addon"
                   and (r.get("config") or {}).get("addon_service") not in DATA_STORES)
     n_deferred = sum(1 for r in resources if r.get("resource_type") == "addon" and status_for(r)[0].startswith("Deferred"))
-    pg_total_gb = round(sum(float((r.get("config") or {}).get("data_size_gb") or 0) for r in resources
-                            if (r.get("config") or {}).get("addon_service") == "heroku-postgresql"
-                            and (r.get("config") or {}).get("pg_role") != "follower"), 2)
+    pg_cfgs = [(r.get("config") or {}) for r in resources
+               if (r.get("config") or {}).get("addon_service") == "heroku-postgresql"]
+    pg_total_gb = round(sum(float(c.get("data_size_gb") or 0) for c in pg_cfgs if c.get("pg_role") != "follower"), 2)
+    # Classic discovery writes no pg_role: then nothing can be excluded as a follower and the
+    # total must not claim to be leaders-only.
+    pg_roles_known = any(c.get("pg_role") for c in pg_cfgs)
+    pg_total_label = "  measured data, leaders only (GB)" if pg_roles_known else "  measured data, all databases (roles unknown) (GB)"
+    pg_total_note = ("Followers excluded; forks included" if pg_roles_known
+                     else "Discovery recorded no database roles; followers, if any, are counted with their leaders")
     cohorts = (inv.get("shared_data_stores") or {}).get("cohorts") or []
     summary = [["Heroku estate summary", "", ""],
                ["Discovery timestamp", meta.get("discovery_timestamp", ""), ""],
@@ -365,7 +371,7 @@ def build_sheets(inv: dict, design, est) -> tuple[list[tuple[str, list[list]]], 
                ["Process types (formations)", n_form, ""],
                ["Running dynos", n_dyno, "Point-in-time; formations scaled to zero are not visible to live discovery"],
                ["Heroku Postgres databases", n_pg, ""],
-               ["  measured data, leaders only (GB)", pg_total_gb, "Followers excluded; forks included"],
+               [pg_total_label, pg_total_gb, pg_total_note],
                ["Heroku Redis instances", n_rd, ""],
                ["Heroku Kafka add-ons", n_kf, ""],
                ["Other add-ons", n_other, ""],
@@ -439,18 +445,23 @@ def build_sheets(inv: dict, design, est) -> tuple[list[tuple[str, list[list]]], 
     # ---- Right-sizing candidates (optional; copied from the Estimate)
     rs_rows: list[list] = []
     if isinstance(est, dict):
-        cands = (est.get("current_costs") or {}).get("rightsizing_candidates") or []
+        cur = est.get("current_costs") if isinstance(est.get("current_costs"), dict) else {}
+        cands = cur.get("rightsizing_candidates")
+        cands = [c for c in cands if isinstance(c, dict)] if isinstance(cands, list) else []
         if cands:
-            rs_rows = [["Heroku-side right-sizing candidates: Postgres databases holding 25% or less of their plan's storage. "
-                        "Savings are on Heroku, available before migration, and are not counted in the AWS figure.", "", "", "", "", "", "", "", ""],
-                       ["Owning Heroku app", "Plan", "Plan storage (GB)", "Data size (GB, measured)", "Used %",
-                        "Plan $/mo", "Fitting plan", "Fitting plan $/mo", "Saving $/mo"]]
+            rs_rows = [["Heroku-side right-sizing candidates: Postgres databases holding 25% or less of their plan's storage "
+                        "with a smaller same-family plan that fits twice the data. "
+                        "Savings are on Heroku, available before migration, and are not counted in the AWS figure. "
+                        "Fitting plan is chosen by storage only; a plan sized for memory, connections or query load may be correct as it is.",
+                        "", "", "", "", "", "", "", "", "", ""],
+                       ["Owning Heroku app", "Add-on (resource id)", "Role", "Plan", "Plan storage (GB)", "Data size (GB, measured)",
+                        "Used %", "Plan $/mo", "Fitting plan", "Fitting plan $/mo", "Saving $/mo"]]
             for c in cands:
-                rs_rows.append([c.get("heroku_app"), c.get("plan"), c.get("plan_storage_gb"), c.get("data_size_gb"),
-                                c.get("utilization_pct"), c.get("plan_monthly_usd"), c.get("fitting_plan"),
-                                c.get("fitting_plan_monthly_usd"), c.get("monthly_saving_usd")])
-            rs_rows.append(["Total", "", "", "", "", "", "", "",
-                            (est.get("current_costs") or {}).get("rightsizing_monthly_saving_usd")])
+                rs_rows.append([c.get("heroku_app"), c.get("resource_id", ""), c.get("role") or "unknown", c.get("plan"),
+                                c.get("plan_storage_gb"), c.get("data_size_gb"), c.get("utilization_pct"),
+                                c.get("plan_monthly_usd"), c.get("fitting_plan"), c.get("fitting_plan_monthly_usd"),
+                                c.get("monthly_saving_usd")])
+            rs_rows.append(["Total", "", "", "", "", "", "", "", "", "", cur.get("rightsizing_monthly_saving_usd")])
 
     readme = [["Heroku estate data for AWS"],
               ["Generated by the heroku-to-aws migration skill from the run's discovery, design and estimate artifacts. Draft for review — every figure is copied from those artifacts, none is computed here."],
@@ -462,7 +473,7 @@ def build_sheets(inv: dict, design, est) -> tuple[list[tuple[str, list[list]]], 
               ["Postgres / Redis / Kafka / Other add-ons: every add-on, its plan, measured size where captured, and AWS mapping status."],
               ["Shared data stores: apps linked by an add-on attached to more than one app (cohorts). Apps in a cohort cannot move strictly one at a time without cross-cloud access to the shared store."],
               ["Cost estimate: present only when the Estimate phase ran."],
-              ["Right-sizing: present only when the Estimate found Postgres databases holding 25% or less of their plan storage. Heroku-side savings, not AWS."],
+              ["Right-sizing: present only when the Estimate found Postgres databases holding 25% or less of their plan storage with a smaller plan that fits. Heroku-side savings, not AWS; chosen by storage only."],
               [""],
               ["Read this before relying on the numbers"],
               ["Dyno counts and database sizes are point-in-time values from the discovery timestamp. Formations scaled to zero are not visible to live discovery."],
