@@ -1,6 +1,6 @@
 ---
 name: llm-to-bedrock
-description: "Use when the user wants to migrate code that calls OpenAI, Gemini/Google AI, or the Anthropic API to Amazon Bedrock — a pure model/SDK rewrite. End-to-end: assesses the codebase, rewrites SDK calls, evaluates output quality against Bedrock, and delivers a ready-to-merge git branch. Also has an access-only mode for checking or enabling Bedrock model access for specific models (e.g. 'request access to Claude on Bedrock', 'which models do I turn on') with no code migration — it checks each model and walks the right access step, then stops. Not for agent runtime selection or agent migration planning (use agent-advisor), nor standalone cost estimates or infra-only migration. The full migration REQUIRES gcp-to-aws OR azure-to-aws installed alongside this skill (gcp-to-aws preferred when both are present); access-only mode needs neither."
+description: "Use when the user wants to migrate code that calls OpenAI, Gemini/Google AI, or the Anthropic API to Amazon Bedrock — a pure model/SDK rewrite. End-to-end: assesses the codebase, optionally captures aggregate OpenAI, OpenRouter, or Anthropic cost and token usage through consent-gated provider APIs, rewrites SDK calls, evaluates output quality against Bedrock, and delivers a ready-to-merge git branch. Also has an access-only mode for checking or enabling Bedrock model access for specific models (e.g. 'request access to Claude on Bedrock', 'which models do I turn on') with no code migration — it checks each model and walks the right access step, then stops. Not for agent runtime selection or agent migration planning (use agent-advisor), nor standalone cost estimates or infra-only migration. The full migration REQUIRES gcp-to-aws OR azure-to-aws installed alongside this skill (gcp-to-aws preferred when both are present); access-only mode needs neither."
 ---
 
 # Migrate to Bedrock (Assess + Execute)
@@ -133,6 +133,17 @@ which is exactly why Phase A no longer uses it.)
 
 ## Step 1 — Collect source code path
 
+Before using a path from `$ARGUMENTS` or asking for one, tell the user once:
+
+> I need your source repository to identify call sites, capabilities, and migration
+> behavior. You do not need to export provider usage reports manually: for direct
+> OpenAI, OpenRouter, and direct Anthropic workloads, the assessment can also offer
+> consent-gated provider API discovery for aggregate cost and token usage. The
+> provider-specific consent screen appears before any API call.
+
+Then continue immediately. This notice advertises the optional capability; it is not
+consent and does not replace any provider-specific consent gate.
+
 First inspect any `handoff-summary.md` path in `$ARGUMENTS`. If the file's first line is exactly
 `initiated_by: AGENT_ADVISOR`, set `$INVOCATION_ORIGIN=AGENT_ADVISOR`; this durable marker is
 how the Fresh-only offer in A1 distinguishes an agent-advisor delegation. Do not treat the
@@ -227,22 +238,37 @@ short-circuit it.
    have multiple providers' profiles simultaneously — including a mix of gcp-produced and
    azure-produced profiles — B1 does not need to distinguish which skill wrote which file,
    since the profile schema itself is identical regardless of producer).
-5. For each profile: check `metadata.capture_warnings` first — non-empty means some endpoint
-   failed and that category's volume is UNKNOWN, not zero; propagate the caveat forward.
+5. For each profile: check `metadata.capture_warnings` first. A warning that names
+   `usage-completions-hourly.json`, `usage-completions-minute.json`,
+   `usage-messages-hourly.json`, `usage-messages-minute.json`, or
+   `analytics-hourly.json` means the peak is uncertain. Keep that profile's daily
+   volume and cost. Any other non-empty warning means some endpoint failed and
+   that category's volume is UNKNOWN, not zero; propagate the caveat forward.
 6. Compute `summary.monthly_cost_usd` SUMMED across every profile in the winning run (never
    max/pick-one, reusing `estimate-ai.md`'s documented SUM discipline from both skills —
    gcp's and azure's `estimate-ai.md` apply the identical rule), combining `usage_by_model[]`
    with the same normalization rules (OpenRouter `prompt_tokens`/`completion_tokens` →
-   `input_tokens`/`output_tokens`; Anthropic `cache_read_tokens`/`cache_creation_tokens`
-   INCLUDED in volume sums — these are additional token pools the Admin API reports
-   separately from `input_tokens`, not a sub-accounting of it; see `estimate-ai.md`'s
-   Prerequisites section in either sibling skill for the full `uncached_input_tokens +
-   cache_read_input_tokens + cache_creation_input_tokens` contract). Apply the
+   `input_tokens`/`output_tokens`; Anthropic `cache_read_tokens` stay in the volume
+   sum. `cache_creation_tokens` is NOT folded into `input_tokens`. When the row has
+   `cache_creation_5m_tokens` and `cache_creation_1h_tokens`, copy both onto the
+   baseline row as `cache_write_5m` and `cache_write_1h`. They are the split of
+   `cache_creation_tokens`; do not add them on top of that sum. When only the
+   aggregate `cache_creation_tokens` is present (an older profile), copy it as
+   `cache_write_unsplit` and do not price it at the ordinary input rate. OpenAI
+   `input_tokens` already includes `input_cache_write_tokens`. When that field is
+   present, subtract it from the baseline row's `input_tokens` and copy it to
+   `cache_write_unsplit`. Do not leave those tokens in `input_tokens`, and do not
+   add them on top. The usage response does not name a 5-minute or 1-hour write
+   duration, so this stays the unpriced component rather than an ordinary-input
+   price. `input_cached_tokens` stay inside `input_tokens`. See
+   `estimate-ai.md`'s Prerequisites section in either sibling skill for the
+   `uncached_input_tokens + cache_read_input_tokens + cache_creation_input_tokens`
+   contract). Apply the
    `metadata.partial_window` exception: a
    partial-window profile's figures are a reference figure labeled with `active_days`, never
    blended into the monthly baseline (schema consequence specified below). **Second, parallel
-   exception — `metadata.cost_status` (Anthropic profile only, currently the only profile that
-   writes this field):** a profile whose `cost_status` is `"cost_unavailable"` has `null` for
+   exception — `metadata.cost_status` (written by the Anthropic usage profile and by
+   bedrock-migration-assessment's OpenAI usage profile):** a profile whose `cost_status` is `"cost_unavailable"` has `null` for
    `summary.monthly_cost_usd` — EXCLUDE it from this dollar SUM entirely (never add `null`,
    never substitute `0`), but STILL include its `usage_by_model[]` token totals in
    `usage_by_model[]` below — usage succeeded for that profile, only its cost side failed. This
@@ -289,11 +315,14 @@ short-circuit it.
        excluded, already-duplicated) token figures; this fee is a real charge NOT reflected in
        the figure above."` When `monthly_cost_usd` is zero (or negligible, same $0.005
        threshold `discover-openrouter-api.md`'s classification already uses), no disclosure is
-       needed — there is no fee to lose, matching today's behavior exactly. Do NOT add this
-       fee back INTO the baseline sum (option (a) from the task brief) — `monthly_cost_usd` for
-       this row is captured as one combined inference+fee figure, not split into a separate
-       fee sub-amount, so adding "just the fee" back in is not representable from this schema
-       without re-deriving it; disclosure (option (b)) is the simpler, schema-accurate fix.
+       needed — there is no fee to lose, matching today's behavior exactly. When the row
+       has `byok_fees_usd` greater than the same $0.005 threshold, ADD `byok_fees_usd` to
+       the dollar sum and do not emit the exclusion warning for that amount: tokens stay
+       excluded (they are already on the direct profile) and `byok_fees_usd` is the router
+       fee alone, which `monthly_cost_usd` is not. When `byok_fees_usd` is absent — a
+       profile written before that field — Do NOT add this fee back INTO the baseline sum.
+       That older `monthly_cost_usd` is one combined figure, so disclosure is the accurate
+       fix and adding it would double-count inference.
      - row's `cost_provenance` is `"mixed"` → EXCLUDE this row's dollar AND token figures from
        this SUM entirely, for the same double-counting reason as `byok_passthrough` above.
        **UNLIKE `byok_passthrough`, do NOT silently drop the independent portion:** a `"mixed"`
@@ -305,9 +334,12 @@ short-circuit it.
        `capture_warnings` — see below) and the user-facing summary: `"<model> classified mixed
        (BYOK + independent OpenRouter usage) — excluded entirely to avoid double-counting the
        BYOK portion, but this also drops its independent OpenRouter-funded usage from the
-       baseline, which is NOT reflected in the figure above."` Do NOT attempt to estimate or
+       baseline, which is NOT reflected in the figure above."`        Do NOT attempt to estimate or
        back out the independent portion's dollar/token split from the enum alone — the enum has
-       no signal for how much of the row's usage is which; only disclose that it is missing. Do
+       no signal for how much of the row's usage is which; only disclose that it is missing.
+       If `byok_request_count` and `analytics_request_count` are both present, you may state
+       the request share in that same disclosure. Do not apply that ratio to tokens or to
+       inference dollars. Do
        NOT make any unsupported "complete cost" or "savings" claim when this warning fires —
        match the honest-disclosure pattern already used for `cost_unavailable`/
        `partial_window` above.
@@ -402,6 +434,9 @@ representable):**
       "partial_window": true,
       "input_tokens": 0,
       "output_tokens": 0,
+      "cache_write_5m": 0,
+      "cache_write_1h": 0,
+      "cache_write_unsplit": 0,
       "num_model_requests": 0
     }
   ]
@@ -427,9 +462,10 @@ representable):**
   `summary` into two separate top-level figures — the one `monthly_cost_usd` number remains
   the SUM step 6 computes, and the boolean tells the consumer how to present it.
 - **`windows.<provider>.cost_status`**: `"complete" | "partial_window" | "cost_unavailable"`,
-  copied straight from that provider's source usage-profile `metadata.cost_status` (currently
-  only the Anthropic usage profile writes this field — see `discover-anthropic-api.md` Step 3
-  in either sibling skill; OpenAI/OpenRouter profiles that don't yet write it default to
+  copied straight from that provider's source usage-profile `metadata.cost_status` (the
+  Anthropic usage profile writes this field — see `discover-anthropic-api.md` Step 3 in either
+  sibling skill — and so does bedrock-migration-assessment's OpenAI usage profile; profiles
+  that don't write it, such as the sibling skills' OpenAI and OpenRouter profiles, default to
   `"complete"` when `partial_window` is `false` and `"partial_window"` when it is `true`, since
   for those providers window-completeness and cost-completeness haven't been split apart yet).
   When ANY `windows.<provider>.cost_status` is `"cost_unavailable"`, that provider's dollars
@@ -1228,7 +1264,7 @@ Tell the user, before collecting models:
 
 - **Models (raw request only):** if `$ARGUMENTS` names model IDs, use them directly — skip
   resolution, they're already IDs. Otherwise **AskUserQuestion**: "Which models do you want
-  access to? Give Bedrock model IDs (e.g. `anthropic.claude-sonnet-4-5-v1:0`,
+  access to? Give Bedrock model IDs (e.g. `anthropic.claude-sonnet-5`,
   `openai.gpt-oss-120b-1:0`) or provider + name and I'll resolve the ID." Collect whatever the
   user gave (IDs and/or friendly names) into `$REQUESTED_MODELS` — **do NOT invoke the
   friendly-name resolver here.** The resolver's own commands

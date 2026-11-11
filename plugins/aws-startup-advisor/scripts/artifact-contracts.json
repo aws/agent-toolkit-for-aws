@@ -3,7 +3,8 @@
   "fixture_prefixes": {
     "gcp-": "gcp-to-aws",
     "heroku-": "heroku-to-aws",
-    "azure-": "azure-to-aws"
+    "azure-": "azure-to-aws",
+    "bma-": "bedrock-migration-assessment"
   },
   "shared": {
     ".phase-status.json": {
@@ -368,6 +369,12 @@
       "scenarios/scenario-NNN.estimation-infra.json": {
         "json_schema": "skills/shared/estimate/estimation-infra.schema.json",
         "_alias_why": "Workshop baseline capture copies estimation-infra.json to scenarios/scenario-NNN.estimation-infra.json. The active file's contract is this JSON Schema."
+      }
+    },
+    "bedrock-migration-assessment": {
+      "preferences.json": {
+        "shape": "skills/bedrock-migration-assessment/references/shared/schema-preferences.md",
+        "root_heading": "Top-level shape"
       }
     }
   }

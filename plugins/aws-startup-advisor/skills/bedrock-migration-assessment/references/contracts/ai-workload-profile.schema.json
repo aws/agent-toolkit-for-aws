@@ -1,0 +1,260 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:awslabs:startups:migration:ai-workload-profile",
+  "title": "AI workload profile (provider-neutral observation contract)",
+  "description": "Provider-neutral ai-workload-profile.json observation contract. bedrock-migration-assessment consumes it; no skill produces it yet. Structural validity does NOT imply an implemented detector, adapter, route, model mapping, or runtime-supported identity.",
+  "type": "object",
+  "required": ["schema_version", "ai_sources", "gateways"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"description": "1.1 adds the optional integration, workloads, agentic_profile and tool_manifest fields; a 1.0 profile must not carry them.", "enum": ["1.0", "1.1"]},
+    "ai_sources": {
+      "description": "Retained AI sources. Semantic uniqueness is the provider and source_service pair; duplicate or overlapping pairs are invalid, while one provider through distinct services is valid. Projects verbatim (provider, source_service, model_families, model_evidence, models) into ai-migration-scenario.schema.json's aiSource.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/definitions/aiSource"}
+    },
+    "gateways": {
+      "description": "Gateways independent of direct providers and infrastructure. OpenRouter is representable only here, never as a provider or infrastructure source. Projects verbatim into ai-migration-scenario.schema.json's gateway.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/definitions/gateway"}
+    },
+    "integration": {"$ref": "#/definitions/integration"},
+    "workloads": {
+      "description": "One entry per distinct (provider, source_service, model, sdk_method, structured_output) call pattern.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/definitions/workload"}
+    },
+    "agentic_profile": {"$ref": "#/definitions/agenticProfile"},
+    "tool_manifest": {
+      "description": "Present only with agentic_profile.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/definitions/tool"}
+    }
+  },
+  "definitions": {
+    "extensibleIdentity": {"type": "string", "pattern": "^(?!(?:both|openrouter|unknown)$)[a-z][a-z0-9_]*$"},
+    "modelFamily": {"type": "string", "pattern": "^(?!(?:both|unknown)$)[a-z][a-z0-9_.-]*$"},
+    "normalizedModel": {"type": "string", "pattern": "^(?!(?:both|unknown)$)[a-z0-9][a-z0-9._:/-]*$"},
+    "gatewayIdentity": {"type": "string", "pattern": "^(?!(?:both|unknown)$)[a-z][a-z0-9_]*$"},
+    "provenance": {"enum": ["code", "iac", "live_api", "usage_api", "user_confirmed"]},
+    "nonEmpty": {"type": "string", "minLength": 1},
+    "callSite": {
+      "type": "object",
+      "required": ["file", "line"],
+      "additionalProperties": false,
+      "properties": {"file": {"$ref": "#/definitions/nonEmpty"}, "line": {"type": "integer", "minimum": 0}}
+    },
+    "integration": {
+      "type": "object",
+      "required": ["pattern", "languages", "frameworks", "capabilities_summary"],
+      "additionalProperties": false,
+      "properties": {
+        "pattern": {"enum": ["direct_sdk", "framework", "rest_api", "mixed"]},
+        "primary_sdk": {"$ref": "#/definitions/nonEmpty"},
+        "sdk_version": {"$ref": "#/definitions/nonEmpty"},
+        "languages": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/definitions/extensibleIdentity"}},
+        "frameworks": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/definitions/extensibleIdentity"}},
+        "capabilities_summary": {
+          "description": "true only with code evidence that the capability is used.",
+          "type": "object",
+          "required": ["text_generation", "streaming", "function_calling", "vision", "embeddings", "batch_processing", "speech_to_text", "text_to_speech", "image_generation"],
+          "additionalProperties": false,
+          "properties": {
+            "text_generation": {"type": "boolean"}, "streaming": {"type": "boolean"}, "function_calling": {"type": "boolean"},
+            "vision": {"type": "boolean"}, "embeddings": {"type": "boolean"}, "batch_processing": {"type": "boolean"},
+            "speech_to_text": {"type": "boolean"}, "text_to_speech": {"type": "boolean"}, "image_generation": {"type": "boolean"}
+          }
+        }
+      }
+    },
+    "workload": {
+      "type": "object",
+      "required": ["workload_id", "provider", "source_service", "model", "sdk_method", "capability", "capability_confidence", "structured_output", "call_sites"],
+      "additionalProperties": false,
+      "properties": {
+        "workload_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]*$"},
+        "provider": {"$ref": "#/definitions/extensibleIdentity"},
+        "source_service": {"$ref": "#/definitions/extensibleIdentity"},
+        "model": {"$ref": "#/definitions/normalizedModel"},
+        "sdk_method": {"$ref": "#/definitions/nonEmpty"},
+        "capability": {"$ref": "#/definitions/extensibleIdentity"},
+        "capability_confidence": {"enum": ["high", "medium", "low"]},
+        "structured_output": {"type": "boolean"},
+        "call_sites": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/callSite"}}
+      }
+    },
+    "agent": {
+      "type": "object",
+      "required": ["agent_id", "file", "line", "model", "tools", "memory_type"],
+      "additionalProperties": false,
+      "properties": {
+        "agent_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]*$"},
+        "file": {"$ref": "#/definitions/nonEmpty"},
+        "line": {"type": "integer", "minimum": 0},
+        "model": {"$ref": "#/definitions/normalizedModel"},
+        "tools": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/definitions/nonEmpty"}},
+        "memory_type": {"enum": ["conversation_buffer", "rag", "none", "unknown"]},
+        "role": {"$ref": "#/definitions/nonEmpty"}
+      }
+    },
+    "agenticProfile": {
+      "description": "Present only when agents were detected; absent otherwise.",
+      "type": "object",
+      "required": ["framework", "agents", "orchestration_pattern", "has_memory", "has_human_in_loop"],
+      "additionalProperties": false,
+      "properties": {
+        "framework": {"$ref": "#/definitions/extensibleIdentity"},
+        "agents": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/definitions/agent"}},
+        "orchestration_pattern": {
+          "description": "unknown when agents were found but no graph, handoff, sequence, or swarm connects them.",
+          "oneOf": [{"$ref": "#/definitions/extensibleIdentity"}, {"const": "unknown"}]
+        },
+        "has_memory": {"type": "boolean"},
+        "memory_backend": {"$ref": "#/definitions/nonEmpty"},
+        "has_human_in_loop": {"type": "boolean"}
+      }
+    },
+    "tool": {
+      "type": "object",
+      "required": ["name", "file", "line", "transport", "used_by_agents"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"$ref": "#/definitions/nonEmpty"},
+        "file": {"$ref": "#/definitions/nonEmpty"},
+        "line": {"type": "integer", "minimum": 0},
+        "transport": {"enum": ["function", "api", "mcp", "a2a", "other"]},
+        "auth_hint": {"$ref": "#/definitions/nonEmpty"},
+        "used_by_agents": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/definitions/nonEmpty"}}
+      }
+    },
+    "confidence": {"description": "User confirmation is provenance user_confirmed with confidence high; there is no confirmed confidence level.", "enum": ["high", "medium", "low"]},
+    "evidenceEntry": {
+      "type": "object",
+      "required": ["provenance", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "provenance": {"$ref": "#/definitions/provenance"},
+        "confidence": {"$ref": "#/definitions/confidence"},
+        "detail": {"type": "string", "minLength": 1}
+      }
+    },
+    "modelObservation": {
+      "description": "One exact normalized model's raw/observed alias and evidence trail. raw_model is the verbatim observed string and is never discarded even when it equals normalized_model.",
+      "type": "object",
+      "required": ["normalized_model", "raw_model", "model_family", "evidence"],
+      "additionalProperties": false,
+      "properties": {
+        "normalized_model": {"$ref": "#/definitions/normalizedModel"},
+        "raw_model": {"type": "string", "minLength": 1},
+        "model_family": {"$ref": "#/definitions/modelFamily"},
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/definitions/evidenceEntry"}
+        }
+      }
+    },
+    "aiSource": {
+      "description": "A provider-neutral AI source keyed semantically by provider and source_service (e.g. direct openai vs azure_openai is a distinct source_service on the same provider). model_families/model_evidence/models mirror ai-migration-scenario.schema.json's aiSource exactly; model_observations carries the richer raw-alias/evidence trail and is cross-checked against models[] by the test suite, not by this schema (no $data support in the enforced subset).",
+      "type": "object",
+      "required": ["provider", "source_service", "model_families", "model_evidence", "models", "model_observations"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": {"$ref": "#/definitions/extensibleIdentity"},
+        "source_service": {"$ref": "#/definitions/extensibleIdentity"},
+        "model_families": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/modelFamily"}
+        },
+        "model_evidence": {"enum": ["observed", "not_observed"]},
+        "models": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/normalizedModel"}
+        },
+        "model_observations": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/modelObservation"}
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "model_evidence": {"const": "observed"},
+            "models": {"minItems": 1},
+            "model_observations": {"minItems": 1}
+          }
+        },
+        {
+          "properties": {
+            "model_evidence": {"const": "not_observed"},
+            "models": {"maxItems": 0},
+            "model_observations": {"maxItems": 0}
+          }
+        }
+      ]
+    },
+    "upstreamModelFamily": {
+      "description": "Byte-identical in shape to ai-migration-scenario.schema.json's upstreamModelFamily.",
+      "type": "object",
+      "required": ["family", "model_evidence", "models"],
+      "additionalProperties": false,
+      "properties": {
+        "family": {"$ref": "#/definitions/modelFamily"},
+        "model_evidence": {"enum": ["observed", "not_observed"]},
+        "models": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/normalizedModel"}
+        }
+      },
+      "oneOf": [
+        {"properties": {"model_evidence": {"const": "observed"}, "models": {"minItems": 1}}},
+        {"properties": {"model_evidence": {"const": "not_observed"}, "models": {"maxItems": 0}}}
+      ]
+    },
+    "gatewayUpstream": {
+      "description": "Byte-identical in shape to ai-migration-scenario.schema.json's gatewayUpstream.",
+      "type": "object",
+      "required": ["provider", "model_families"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": {"$ref": "#/definitions/extensibleIdentity"},
+        "source_service": {"$ref": "#/definitions/extensibleIdentity"},
+        "model_families": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/upstreamModelFamily"}
+        }
+      }
+    },
+    "gateway": {
+      "description": "Byte-identical in shape to ai-migration-scenario.schema.json's gateway. An observed gateway cannot have an empty upstreams array; an unresolved gateway cannot invent upstreams.",
+      "type": "object",
+      "required": ["product", "type", "upstream_evidence", "upstreams"],
+      "additionalProperties": false,
+      "properties": {
+        "product": {"$ref": "#/definitions/gatewayIdentity"},
+        "type": {"$ref": "#/definitions/extensibleIdentity"},
+        "upstream_evidence": {"enum": ["observed", "unresolved"]},
+        "upstreams": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/gatewayUpstream"}
+        }
+      },
+      "oneOf": [
+        {"properties": {"upstream_evidence": {"const": "observed"}, "upstreams": {"minItems": 1}}},
+        {"properties": {"upstream_evidence": {"const": "unresolved"}, "upstreams": {"maxItems": 0}}}
+      ]
+    }
+  }
+}

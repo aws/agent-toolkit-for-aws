@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.1",
+  "ai_sources": [
+    {
+      "provider": "anthropic",
+      "source_service": "anthropic_api",
+      "model_families": ["claude"],
+      "model_evidence": "observed",
+      "models": ["claude-3-5-sonnet-20240620"],
+      "model_observations": [
+        {"normalized_model": "claude-3-5-sonnet-20240620", "raw_model": "claude-3-5-sonnet-20240620", "model_family": "claude", "evidence": [{"provenance": "code", "confidence": "high"}]}
+      ]
+    }
+  ],
+  "gateways": [],
+  "integration": {
+    "pattern": "framework",
+    "languages": ["python"],
+    "frameworks": ["langgraph"],
+    "capabilities_summary": {
+      "text_generation": true, "streaming": false, "function_calling": true, "vision": false, "embeddings": false,
+      "batch_processing": false, "speech_to_text": false, "text_to_speech": false, "image_generation": false
+    }
+  },
+  "workloads": [
+    {"workload_id": "research-agent", "provider": "anthropic", "source_service": "anthropic_api", "model": "claude-3-5-sonnet-20240620", "sdk_method": "messages.create", "capability": "function_calling", "capability_confidence": "high", "structured_output": false, "call_sites": [{"file": "agents/research.py", "line": 30}]}
+  ],
+  "agentic_profile": {
+    "framework": "langgraph",
+    "agents": [
+      {"agent_id": "research-agent", "file": "agents/research.py", "line": 22, "model": "claude-3-5-sonnet-20240620", "tools": ["web_search", "read_document"], "memory_type": "conversation_buffer", "role": "Researches a topic and drafts notes"}
+    ],
+    "orchestration_pattern": "single",
+    "has_memory": true,
+    "memory_backend": "in_memory",
+    "has_human_in_loop": false
+  },
+  "tool_manifest": [
+    {"name": "web_search", "file": "agents/tools.py", "line": 8, "transport": "api", "auth_hint": "api_key", "used_by_agents": ["research-agent"]},
+    {"name": "read_document", "file": "agents/tools.py", "line": 25, "transport": "function", "used_by_agents": ["research-agent"]}
+  ]
+}

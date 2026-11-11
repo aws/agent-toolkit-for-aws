@@ -1,0 +1,36 @@
+{
+  "captured_at": "2026-10-31T12:00:00Z",
+  "window_days": 30,
+  "window_start": "2026-10-01T00:00:00Z",
+  "workspace_filter": [
+    "default",
+    "wrkspc_app"
+  ],
+  "result": "complete",
+  "captures": [
+    {
+      "endpoint": "/v1/organizations/cost_report",
+      "file": "cost-report.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "endpoint": "/v1/organizations/usage_report/messages",
+      "file": "usage-messages.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "endpoint": "/v1/organizations/usage_report/messages",
+      "file": "usage-messages-hourly.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "endpoint": "/v1/organizations/usage_report/messages",
+      "file": "usage-messages-minute.json",
+      "status": "ok",
+      "note": null
+    }
+  ]
+}

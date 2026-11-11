@@ -77,10 +77,10 @@ def test_azure_infra_run_emits_plan(tmp_path: Path) -> None:
     assert data["sourcePlatform"] == "AZURE"
     assert data["scope"] == "INFRA_ONLY"
     assert data["cost"]["awsMonthlyBasis"] == "BALANCED"
-    assert data["cost"]["awsMonthly"] == 465.09
+    assert data["cost"]["awsMonthly"] == 460.13
     assert data["cost"]["sourceMonthly"] == 4200
     assert len(data["cost"]["awsServiceItems"]) == 12
-    assert round(sum(item["monthlyCost"] for item in data["cost"]["awsServiceItems"]), 2) == 465.09
+    assert round(sum(item["monthlyCost"] for item in data["cost"]["awsServiceItems"]), 2) == 460.13
 
 
 def test_invalid_or_missing_azure_estimates_still_fail_open(tmp_path: Path) -> None:
@@ -133,14 +133,14 @@ def test_azure_service_items_use_azure_field_names_and_exclude_floors() -> None:
     Rollups and rows marked excluded_from_total/exclusion_reason (3 no-rate/
     no-quantity nulls, 2 Windows licensing floors) must not appear in
     awsServiceItems; the row sum must equal the fixture's declared total of
-    $465.09 across the 12 eligible rows (PR #435 review, databaseId 4240400321)."""
+    $460.13 across the 12 eligible rows (PR #435 review, databaseId 4240400321)."""
     module = _load_writer_module()
     golden = PLUGIN_ROOT / "fixtures" / "azure-iac-terraform" / "after-estimate"
     infra = json.loads((golden / "estimation-infra.json").read_text())
     projected = infra["projected_costs"]
     items = module._service_items(projected)
     assert len(items) == 12, f"expected 12 eligible rows, got {len(items)}: {items}"
-    assert round(sum(i["monthlyCost"] for i in items), 2) == 465.09
+    assert round(sum(i["monthlyCost"] for i in items), 2) == 460.13
     names = {i["serviceName"] for i in items}
     assert "FSx for Windows File Server" not in names
     assert "DocumentDB" not in names

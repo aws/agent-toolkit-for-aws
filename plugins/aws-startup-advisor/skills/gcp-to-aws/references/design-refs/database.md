@@ -52,9 +52,10 @@ The sections below are **background for humans** after engagement — not for th
 
 ### Memorystore (Redis)
 
-- **In-memory cache** → ElastiCache Redis (fast-path, 1:1 mapping)
-- **Cluster mode enabled** → ElastiCache Redis with cluster mode
-- **High availability required** → ElastiCache Redis Multi-AZ with auto-failover
+- **In-memory cache** → ElastiCache Valkey (fast-path, 1:1 mapping). Valkey is ElastiCache's default engine for new clusters, is compatible with Redis OSS commands, data structures, and clients, costs 20% less per node (33% less on ElastiCache Serverless), and is the only ElastiCache engine Database Savings Plans cover. Select Redis OSS only when the source depends on a Redis module or feature Valkey does not provide, and record why in the rationale. Emit `aws_config.engine: "valkey"` (or `"redis"` on the exception) and a Valkey `engine_version` (7.2 or later)
+- **Cluster mode enabled** → ElastiCache Valkey with cluster mode
+- **High availability required** → ElastiCache Valkey Multi-AZ with auto-failover
+- **Redis module or Valkey-incompatible feature required** → ElastiCache Redis OSS (`aws_config.engine: "redis"`); note that Database Savings Plans then do not apply and Reserved Nodes are the commitment lever
 
 ### Cloud Spanner
 

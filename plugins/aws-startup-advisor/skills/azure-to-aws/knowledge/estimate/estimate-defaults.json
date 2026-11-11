@@ -43,7 +43,7 @@
       "timing": "Post-migration (after a 30-90 day usage baseline)"
     },
     "database_savings_plans": {
-      "_comment": "The full Database-SP-eligible list per ri-sp-eligibility.md. ElastiCache belongs here ONLY when the target engine is Valkey; azure-to-aws maps Azure Cache for Redis to Redis OSS by default, which is Database-SP-INELIGIBLE and falls through to elasticache_reserved_nodes instead.",
+      "_comment": "The full Database-SP-eligible list per ri-sp-eligibility.md. ElastiCache belongs here ONLY when the target engine is Valkey; azure-to-aws maps Azure Cache for Redis to ElastiCache Valkey by default (aws_config.engine = valkey), which qualifies; a Redis OSS exception is Database-SP-INELIGIBLE and falls through to elasticache_reserved_nodes instead.",
       "savings_percent": "up to 35% (serverless) / ~20% (provisioned)",
       "target_services": [
         "RDS",

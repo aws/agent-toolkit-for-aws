@@ -107,6 +107,14 @@ The script prints JSON keyed by model id with `{input_per_1k_usd, output_per_1k_
 
 If a model's `available` is false, render that model's cost line with a "(pricing unavailable)" banner using the `note` — do NOT fabricate numbers. Also flag this for the user in the Risk Assessment section and skip that model's cost calculation.
 
+**GPT-6.1 Terra:** carry the helper's Standard/≤272K qualification into the report.
+For requests above 272,000 input tokens, reprice the full request at 2x input and 1.5x output
+for the selected inference option. If per-request sizes are unknown, present short- and
+long-context scenarios instead of one unqualified estimate. The 1.05M window is not the
+short-context price boundary. Use measured source spend or verified source-provider rates
+for the comparison; otherwise mark source cost and savings unavailable. Do not use the
+closest-model fallback in §6.2 for Terra's unverified source prices.
+
 ## 6.2 Source provider pricing (static table)
 
 The pricing script only covers Bedrock models. For the source provider (OpenAI, Gemini, Azure, etc.), use this static table (update periodically):
@@ -159,8 +167,22 @@ written, extrapolating from the golden-dataset sample.** If the line is present,
   populate its `BASELINE_TOKENS_BY_SOURCE` dict from `usage_by_model[]`, summing
   `input_tokens + output_tokens` per model id (normalizing OpenRouter's
   `prompt_tokens`/`completion_tokens`, and including Anthropic's
-  `cache_read_tokens`/`cache_creation_tokens` in the sum — same rule as `estimate-ai.md`'s
-  Prerequisites section). A model pair whose source model is absent from `usage_by_model[]`
+  `cache_read_tokens` in the input sum. Do **not** put cache-write tokens into
+  that input sum. `usage-baseline.json` already stores `cache_write_5m`,
+  `cache_write_1h`, and `cache_write_unsplit`. Copy those keys straight into
+  `BASELINE_TOKENS_BY_SOURCE`. Do not read `cache_creation_*` from the baseline.
+  Fill `CACHE_WRITE_RATES_BY_TARGET` from the Bedrock cache-write table for the
+  target (Sonnet 5 is 2.50 for 5-minute writes and 4.00 for 1-hour writes, per
+  1M tokens). Fill `SOURCE_CACHE_WRITE_RATES` only from a verified source price
+  for that same duration. One million 5-minute write tokens then cost $2.50 on
+  Bedrock, and one million 1-hour write tokens cost $4.00. Pricing either at
+  the ordinary input rate ($2 for that Sonnet 5 row) is the bug this avoids.
+  A missing Bedrock rate, an aggregate with no duration, or a source write
+  price that is not verified does not fall back to zero or to the input rate.
+  The script then prints the known input/output subtotal and
+  `Estimated savings: unavailable — a cache-write component is unpriced`.
+  A `source_cost_usd` value on the baseline row is a measured source bill that
+  already includes writes; use it as that pair's source cost. A model pair whose source model is absent from `usage_by_model[]`
   still falls back to the golden-dataset-sample aggregation (unchanged, current behavior) —
   §6.1 (Bedrock pricing lookup) is unchanged either way; only the TOKEN VOLUME each pair is
   priced over changes source, per pair.
@@ -192,7 +214,11 @@ written, extrapolating from the golden-dataset sample.** If the line is present,
   model whose cost_provenance resolved `"uncertain"`) — this can be true even when the window
   is full (`monthly_cost_usd_is_blended_estimate: false`) and every provider's `cost_status` is
   `"complete"`, since those two checks are about window length and dollar availability, not
-  about completeness of WHICH usage was included. When `capture_warnings` is non-empty:
+  about completeness of WHICH usage was included. A warning that only names
+  `usage-completions-hourly.json`, `usage-completions-minute.json`,
+  `usage-messages-hourly.json`, `usage-messages-minute.json`, or
+  `analytics-hourly.json` is peak uncertainty. Keep the daily dollar comparison
+  and say the peak is uncertain. Any other non-empty `capture_warnings`:
   surface every entry verbatim in the report's cost-comparison section (e.g. under a "Data
   completeness note:" heading), and do NOT print an unqualified savings/premium percentage —
   either omit the percentage line entirely and state why, or prefix it with "approximate,
@@ -208,7 +234,9 @@ If the golden dataset records which source model each prompt used (e.g., a `sour
 
 **Per-request tier distribution, when known, takes precedence over the single-breakpoint-decision above.** `PER_REQUEST_TOKENS` records only ONE "typical" request size per source model, so when the pair's actual traffic mixes short and long requests, applying that single breakpoint decision to the whole aggregated volume either overstates or understates the true cost. When a per-request tier BREAKDOWN is known (not just one typical size) — e.g. `ai_workload_profile.json`'s per-request token distribution, or a usage-baseline that buckets requests by tier — populate `cost_compare.py`'s `TIER_DISTRIBUTION_BY_SOURCE` entry for that source model instead of (not in addition to) `PER_REQUEST_TOKENS`/`BASELINE_TOKENS_BY_SOURCE`; the script partitions that pair's requests into their true tiers and prices each tier independently before summing, rather than blending all requests into one average and applying one all-or-nothing breakpoint decision to the blended total. **When only an aggregate total is known** (no `TIER_DISTRIBUTION_BY_SOURCE` entry) for a source model whose requests plausibly span the 272,000-token breakpoint (e.g. `ai_workload_profile.json` shows high variance in `typical_request_tokens`, or the workload type suggests mixed short/long usage), disclose this in the report as an unresolved context-tier distribution rather than presenting the single-breakpoint-decision total as exact — render a note in the Cost Comparison section: "Context-tier distribution unknown for `<model>` — this estimate applies a single breakpoint decision to the full aggregate volume and may overstate or understate cost versus the workload's actual mix of short/long requests."
 
-**Source-side and target-side long-context decisions are independent of each other.** A flat-priced Bedrock target with no long-context tier (absent from `BEDROCK_LONG_CONTEXT`) must stay flat on its own side regardless of the source-side decision — it must never suppress a known, independently-applicable source-side breakpoint. Likewise a target that DOES have a long-context tier only applies it when the SOURCE side's own breakpoint fired; the two sides are never coupled through a single combined condition.
+**Source-side and target-side long-context decisions are independent of each other.** A flat-priced Bedrock target with no long-context tier (absent from `BEDROCK_LONG_CONTEXT`) stays flat regardless of the source-side decision. A target with a documented 272K breakpoint applies its long rates when the per-request input exceeds 272,000 tokens, even when the source has no surcharge. Populate `PER_REQUEST_TOKENS` or `TIER_DISTRIBUTION_BY_SOURCE` for either side's breakpoint, and `BEDROCK_LONG_CONTEXT` from the selected target's model card.
+
+Use `None` for unverified source rates in `MODEL_PAIRS`. Copy measured `source_cost_usd` into the baseline row only when it covers the same traffic and period as the chosen token volume or distribution. That bill takes precedence over rate arithmetic, including service-tier multipliers. Without measured spend or verified source rates, the script retains the target cost and marks source cost and overall savings unavailable.
 
 **GPT-6 Ultrafast service tier.** When the plan/profile records `service_tier: "ultrafast"` for a same-model GPT-6 rewrite, populate `cost_compare.py`'s `SERVICE_TIER_BY_SOURCE[src] = "ultrafast"` for that source model id. The script applies the documented 6x-Standard multiplier for GPT-6 Astra and GPT-6.1 Sol — the only two model cards that support Ultrafast — and reports that pair's cost as **UNAVAILABLE** (excluded from `TOTAL`/savings, never silently priced at Standard) for GPT-6 Sol and GPT-6 Luna, which are Standard-only. An omitted entry, or a tier of `"standard"`, leaves pricing unchanged. See `openai-on-bedrock.md`'s "GPT-6 family: Ultrafast tier" section for the ground truth (Ultrafast = 6x Standard, Astra and 6.1 Sol only).
 
@@ -226,11 +254,11 @@ from collections import defaultdict
 
 # One tuple per source → bedrock mapping from the migration plan.
 # Fill in pricing from §6.1 (Bedrock, per-1M = per-1k * 1000) and §6.2 (source).
+# Use None for unverified source rates; never substitute zero or a sibling's rates.
 # The 7th/8th elements (source_input_long, source_output_long) are OPTIONAL and only
 # needed for a pair whose source model has a 272K-token breakpoint (GPT-6/5.6/5.5/5.4)
-# AND whose per-request size is known to exceed it (see PER_REQUEST_TOKENS below) —
-# omit them (5-tuple... err, 6-tuple) for every other pair; they are never consulted
-# unless the pair also has a PER_REQUEST_TOKENS entry.
+# AND whose per-request size is known to exceed it (see PER_REQUEST_TOKENS and
+# TIER_DISTRIBUTION_BY_SOURCE below). Omit them for every other pair.
 MODEL_PAIRS = [
     # (source_model_id, bedrock_model_id, source_input, source_output, bedrock_input, bedrock_output, source_input_long, source_output_long)
     # ("gpt-4o",      "anthropic.claude-sonnet-4-6", 2.50, 10.00, 3.00, 15.00),
@@ -243,15 +271,28 @@ MODEL_PAIRS = [
 # (matching MODEL_PAIRS[i][0]); value = that model's real monthly {"input": N, "output": N}
 # token totals (sum of usage_by_model[] rows for that model id across all contributing
 # providers — normalize OpenRouter's prompt_tokens/completion_tokens and include Anthropic's
-# cache_read_tokens/cache_creation_tokens, per estimate-ai.md's Prerequisites rule). A model
-# pair whose source model is NOT a key here falls back to the golden-dataset sample below —
+# cache_read_tokens in "input". Do NOT put cache-write tokens in "input". Optional keys
+# cache_write_5m, cache_write_1h, and cache_write_unsplit carry that volume instead.
+# A model pair whose source model is NOT a key here falls back to the golden-dataset sample below —
 # both sides of a pair always share the SAME volume source, never mixed.
 BASELINE_TOKENS_BY_SOURCE = {
-    # "gpt-4o": {"input": 42_000_000, "output": 9_000_000},
+    # "claude-sonnet-5": {"input": 0, "output": 0, "cache_write_5m": 1_000_000, "cache_write_1h": 0},
 }
 
-# Populate ONLY for a source model with a documented 272K-token breakpoint
-# (GPT-6/5.6/5.5/5.4) whose TYPICAL single-request token size is known (from
+# Bedrock cache-write rates per 1M tokens, from the committed cache table.
+# Absent target, or a baseline that only has cache_write_unsplit: do not price those
+# tokens at the ordinary input rate.
+CACHE_WRITE_RATES_BY_TARGET = {
+    # "anthropic.claude-sonnet-5": {"5m": 2.50, "1h": 4.00},
+}
+
+# Verified source cache-write rates per 1M tokens, keyed by source model id.
+# Leave empty when the source price is unknown. Do not copy the input rate here.
+SOURCE_CACHE_WRITE_RATES = {
+}
+
+# Populate when either side has a documented 272K-token breakpoint
+# and the TYPICAL single-request token size is known (from
 # ai_workload_profile.json -> workloads[].typical_request_tokens, or measured
 # per-request usage-profile stats) to exceed 272,000 input tokens. Key = source_model_id
 # (matching MODEL_PAIRS[i][0]); value = {"input": N, "output": N} for ONE typical request.
@@ -282,6 +323,7 @@ TIER_DISTRIBUTION_BY_SOURCE = {
 # carrying that model's long-context {"input": $/1M, "output": $/1M} rate. Populate only
 # for a Bedrock model that actually has a long-context tier (see pricing-cache.md's
 # "GPT-6 family -- long context" / GPT-5.6/5.5/5.4 long-context tables).
+# Use the selected inference option; Terra US Geo is 2.20/8.25, Global 2.00/7.50.
 BEDROCK_LONG_CONTEXT = {
     # "openai.gpt-6-sol": {"input": 4.40, "output": 16.50},
 }
@@ -323,11 +365,15 @@ if unattributed and MODEL_PAIRS and MODEL_PAIRS[0][0] not in BASELINE_TOKENS_BY_
 
 total_source_cost = 0.0
 total_bedrock_cost = 0.0
+any_cache_write_unpriced = False
+any_source_cost_unavailable = False
 rows = []
 for pair in MODEL_PAIRS:
     # The breakpoint elements are optional — a 6-tuple pair has no long-context rate.
     src, tgt, s_in, s_out, b_in, b_out = pair[:6]
     s_in_long, s_out_long = (pair[6], pair[7]) if len(pair) > 6 else (None, None)
+    measured_source = BASELINE_TOKENS_BY_SOURCE.get(src, {}).get("source_cost_usd")
+    source_rates_known = s_in is not None and s_out is not None
 
     if src in TIER_DISTRIBUTION_BY_SOURCE:
         # A known per-request tier BREAKDOWN takes precedence over both the baseline
@@ -338,25 +384,24 @@ for pair in MODEL_PAIRS:
         basis = "tier-distribution"
         in_tok = sum(b["count"] * b["input"] for b in buckets)
         out_tok = sum(b["count"] * b["output"] for b in buckets)
-        source_cost = 0.0
+        source_cost = 0.0 if source_rates_known and measured_source is None else None
         bedrock_cost = 0.0
         for b in buckets:
             count, b_in_tok, b_out_tok = b["count"], b["input"], b["output"]
             # Source-side breakpoint: independent per bucket.
-            if b_in_tok > 272_000 and s_in_long is not None:
-                bucket_source_cost = (b_in_tok * s_in_long + b_out_tok * s_out_long) / 1_000_000
-                bucket_source_is_long = True
-            else:
-                bucket_source_cost = (b_in_tok * s_in + b_out_tok * s_out) / 1_000_000
-                bucket_source_is_long = False
+            if source_cost is not None:
+                if b_in_tok > 272_000 and s_in_long is not None:
+                    bucket_source_cost = (b_in_tok * s_in_long + b_out_tok * s_out_long) / 1_000_000
+                else:
+                    bucket_source_cost = (b_in_tok * s_in + b_out_tok * s_out) / 1_000_000
+                source_cost += count * bucket_source_cost
             # Target-side breakpoint: independent decision. A flat-priced target with
             # no long-context tier ALWAYS stays flat, regardless of the source side.
-            if bucket_source_is_long and tgt in BEDROCK_LONG_CONTEXT:
+            if b_in_tok > 272_000 and tgt in BEDROCK_LONG_CONTEXT:
                 long_rates = BEDROCK_LONG_CONTEXT[tgt]
                 bucket_bedrock_cost = (b_in_tok * long_rates["input"] + b_out_tok * long_rates["output"]) / 1_000_000
             else:
                 bucket_bedrock_cost = (b_in_tok * b_in + b_out_tok * b_out) / 1_000_000
-            source_cost += count * bucket_source_cost
             bedrock_cost += count * bucket_bedrock_cost
     else:
         if src in BASELINE_TOKENS_BY_SOURCE:
@@ -376,7 +421,9 @@ for pair in MODEL_PAIRS:
         # tokens, is UNCHANGED by this check and keeps the flat short-context rate.
         per_request = PER_REQUEST_TOKENS.get(src)
         source_is_long = bool(per_request and per_request["input"] > 272_000 and s_in_long is not None)
-        if source_is_long:
+        if measured_source is not None or not source_rates_known:
+            source_cost = None
+        elif source_is_long:
             source_cost = (in_tok * s_in_long + out_tok * s_out_long) / 1_000_000
         else:
             source_cost = (in_tok * s_in + out_tok * s_out) / 1_000_000
@@ -385,13 +432,66 @@ for pair in MODEL_PAIRS:
         # long-context tier (tgt not in BEDROCK_LONG_CONTEXT) ALWAYS stays flat,
         # regardless of the source-side decision above -- it must never be suppressed
         # by, nor suppress, the source-side breakpoint.
-        if source_is_long and tgt in BEDROCK_LONG_CONTEXT:
+        target_is_long = bool(per_request and per_request["input"] > 272_000 and tgt in BEDROCK_LONG_CONTEXT)
+        if target_is_long:
             long_rates = BEDROCK_LONG_CONTEXT[tgt]
             bedrock_cost = (in_tok * long_rates["input"] + out_tok * long_rates["output"]) / 1_000_000
         else:
             bedrock_cost = (in_tok * b_in + out_tok * b_out) / 1_000_000
 
-        if source_is_long and tgt in BEDROCK_LONG_CONTEXT:
+        cache_5m = bucket.get("cache_write_5m", 0)
+        cache_1h = bucket.get("cache_write_1h", 0)
+        cache_unsplit = bucket.get("cache_write_unsplit", 0)
+        cache_rates = CACHE_WRITE_RATES_BY_TARGET.get(tgt)
+        source_cache_rates = SOURCE_CACHE_WRITE_RATES.get(src)
+        used_durations = (("5m", cache_5m), ("1h", cache_1h))
+
+        def _duration_charge(rate_map, durations):
+            # Price only durations that have tokens. A missing rate for an
+            # unused duration is not a price, and must not raise KeyError.
+            if not rate_map:
+                return None
+            total = 0.0
+            for duration, tokens in durations:
+                if not tokens:
+                    continue
+                rate = rate_map.get(duration)
+                if rate is None:
+                    return None
+                total += tokens * rate
+            return total
+
+        has_split = not cache_unsplit and (cache_5m or cache_1h)
+        bedrock_write_tokens = _duration_charge(cache_rates, used_durations) if has_split else None
+        source_write_tokens = _duration_charge(source_cache_rates, used_durations) if has_split else None
+        split_known = bedrock_write_tokens is not None
+        if cache_5m or cache_1h or cache_unsplit:
+            bedrock_write = (bedrock_write_tokens or 0.0) / 1_000_000
+            if measured_source is not None and split_known:
+                source_cost = measured_source
+                bedrock_cost += bedrock_write
+                basis = f"{basis}-cache-write-split"
+            elif source_cost is not None and source_write_tokens is not None and split_known:
+                source_cost += source_write_tokens / 1_000_000
+                bedrock_cost += bedrock_write
+                basis = f"{basis}-cache-write-split"
+            else:
+                any_cache_write_unpriced = True
+                if cache_unsplit:
+                    basis = f"{basis}-cache-write-duration-unknown"
+                elif not cache_rates:
+                    basis = f"{basis}-cache-write-rates-missing"
+                else:
+                    basis = f"{basis}-cache-write-source-unknown"
+                if split_known:
+                    print(
+                        f"cache-write {src}: bedrock=${bedrock_write:.4f} "
+                        "source unavailable — excluded from the comparison"
+                    )
+                else:
+                    print(f"cache-write {src}: unpriced — excluded from the comparison")
+
+        if target_is_long:
             basis = f"{basis}-long-context"
         elif source_is_long:
             # Source-side breakpoint fired but the target has no long-context tier
@@ -407,30 +507,45 @@ for pair in MODEL_PAIRS:
     cost_unavailable = False
     if SERVICE_TIER_BY_SOURCE.get(src) == "ultrafast":
         if any(name in src for name in ULTRAFAST_SUPPORTED):
-            source_cost *= 6
+            if source_cost is not None and measured_source is None:
+                source_cost *= 6
             bedrock_cost *= 6
             basis = f"{basis}-ultrafast"
         else:
             cost_unavailable = True
             basis = f"{basis}-ultrafast-unavailable"
 
+    if measured_source is not None:
+        source_cost = measured_source
     if cost_unavailable:
         rows.append((src, tgt, basis, in_tok, out_tok, None, None))
     else:
-        total_source_cost += source_cost
+        if source_cost is None:
+            any_source_cost_unavailable = True
+        else:
+            total_source_cost += source_cost
         total_bedrock_cost += bedrock_cost
         rows.append((src, tgt, basis, in_tok, out_tok, source_cost, bedrock_cost))
 
 for src, tgt, basis, in_tok, out_tok, sc, bc in rows:
-    if sc is None or bc is None:
+    if bc is None:
         print(
             f"{src} -> {tgt} ({basis}): input={in_tok} output={out_tok} "
             "ultrafast not supported for this model — cost unavailable"
         )
         continue
+    if sc is None:
+        print(f"{src} -> {tgt} ({basis}): input={in_tok} output={out_tok} source=unavailable bedrock=${bc:.4f}")
+        continue
     print(f"{src} -> {tgt} ({basis}): input={in_tok} output={out_tok} source=${sc:.4f} bedrock=${bc:.4f}")
-print(f"TOTAL source=${total_source_cost:.4f} bedrock=${total_bedrock_cost:.4f}")
-if total_source_cost > 0:
+if any_source_cost_unavailable:
+    print(f"TOTAL source=unavailable bedrock=${total_bedrock_cost:.4f}")
+    print("Estimated savings: unavailable — source pricing is unverified")
+else:
+    print(f"TOTAL source=${total_source_cost:.4f} bedrock=${total_bedrock_cost:.4f}")
+if any_cache_write_unpriced and not any_source_cost_unavailable:
+    print("Estimated savings: unavailable — a cache-write component is unpriced")
+elif total_source_cost > 0 and not any_source_cost_unavailable:
     savings_pct = (total_source_cost - total_bedrock_cost) / total_source_cost * 100
     print(f"Estimated savings: {savings_pct:+.1f}%")
 ```

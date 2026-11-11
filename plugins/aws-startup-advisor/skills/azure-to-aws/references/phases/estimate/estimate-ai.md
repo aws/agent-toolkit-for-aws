@@ -111,6 +111,16 @@ excluded rather than assumed free.
 
 ---
 
+## Observed capacity
+
+When a usage profile carries the fields below, use them. When a field is absent, the profile is a 30-day sum only — say that, and do not divide the month by the number of minutes and call the result a peak.
+
+- **On-demand quota** uses `peak.peak_input_tokens_per_minute` and `peak.peak_output_tokens_per_minute` on rows whose `batch` is not true and whose `service_tier` is not `batch`. Batch and other tiers stay visible and are not added into that peak. `day_to_average_ratio` is the burst hint. Design persists `quota_risk` from this peak before Generate reads `aws-design-ai.json`, using the observed-peak rule in `references/vendored/ai/bedrock-quotas.md`. A low monthly volume tier does not stay `quota_risk: "low"` when that weighted on-demand peak is above the bar in that rule. Profiles with no usable peak keep the monthly table.
+- A `capture_warnings` entry that names only `usage-completions-hourly.json`, `usage-completions-minute.json`, `usage-messages-hourly.json`, `usage-messages-minute.json`, or `analytics-hourly.json` means the peak is uncertain. Price the daily volume and cost. Do not treat that warning as a failed daily usage endpoint. A warning that names a daily usage or cost file still makes that capability's volume UNKNOWN.
+- **OpenAI cache fields are already inside `input_tokens`.** Do not add `input_cached_tokens` or `input_cache_write_tokens` on top. Text, image, and audio splits describe modality. They are not extra volume.
+- **Anthropic cache fields stay additional volume**, as in the prerequisites. `cache_creation_5m_tokens` and `cache_creation_1h_tokens` are the split of `cache_creation_tokens`. Price them separately when both are present, and do not add them on top of the sum. `context_window` `200k-1M` is long-context pricing. `inference_geo` is where the provider ran the call, not the AWS region the customer requires. `web_search_requests` means the workload uses server-side web search.
+- **OpenRouter** `p95_latency_ms` and `p95_throughput_tokens_per_sec` are observed speed, not a latency SLO. `byok_fees_usd` is the router fee, not inference. `cached_tokens` is a subset of prompt tokens. `web_search_cost_usd` and `guardrail_invoked_count` are feature flags. Do not split a mixed model's tokens with `byok_request_count`.
+
 ## Part 1: Establish Current AI Costs
 
 Determine current AI spending from the best available source. **Four-level precedence, first
@@ -150,7 +160,14 @@ match wins:**
    "OpenAI / Azure OpenAI" table (Azure OpenAI serves the same GPT models and reads those same
    OpenAI rows — there is no separate Azure-OpenAI table); **Anthropic-direct** → the "Anthropic
    (Standard Tier, 1P API)" table (Claude Haiku 4.5 / Sonnet 4.5 / Sonnet 5). Apply the 60/40
-   input/output ratio if the actual ratio is unknown. **`shared/pricing-cache.md` still has no
+   input/output ratio if the actual ratio is unknown. **Shut-down OpenAI sources:** for a
+   **direct OpenAI** source (`ai_source: openai`, not Azure OpenAI) whose row carries an OpenAI
+   shutdown date on or before the estimate date, do not price the retired row — use the
+   substitute's source row named in this skill's `shared/pricing-cache.md` OpenAI shutdown note
+   (`gpt-4.1-nano` → GPT-5.6 Luna; `o4-mini` → GPT-5.6 Terra, whose rate is `_unverified_`, so
+   that baseline is **unavailable** and falls to level 4). Measured spend always wins; keep the
+   raw source id. An **Azure OpenAI** deployment of the same model follows Microsoft's
+   retirement schedule, so its row stays until that schedule is confirmed. **`shared/pricing-cache.md` still has no
    source-side listed-price row for OpenRouter** — level 3 does not apply to an OpenRouter
    workload with no usage profile and no `current_costs`; fall straight through to level 4
    (multi-tier, no dollar comparison) for that case. Do not add new fallback pricing as a side

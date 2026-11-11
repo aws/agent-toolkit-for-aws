@@ -7,8 +7,8 @@ _input:
   - scoring-result.json
   - context-signals.json
 _knowledge:
-  - { file: references/models/anthropic-bedrock-2026-09-24.json }
-  - { file: references/models/openai-bedrock-2026-09-24.json }
+  - { file: references/vendored/ai/models/anthropic-bedrock.json }
+  - { file: references/vendored/ai/models/openai-bedrock.json }
 _assemble:
   _file: phases/model-recommend/model-recommend-assemble.md
 _produces:
@@ -92,7 +92,7 @@ reuse the Anthropic `preserve_messages_api` switch):
 - minimum context window and expected output-token ceiling?
 - allow Global CRIS or require a geography-scoped profile (runtime Converse only)?
 
-OpenAI is handled by a dedicated provider module (`openai-bedrock-2026-09-24.json` catalog).
+OpenAI is handled by a dedicated provider module (`openai-bedrock.json` catalog).
 Recognized GPT-5.6 and GPT-6 source identities are evaluated against their exact same-model
 catalog entry before capability/numeric fallbacks. GPT-5.x on Mantle is Responses-only, so a Chat
 Completions source is reshaped rather than routed to `mantle_openai_chat`. GPT-6 Chat Completions
@@ -188,7 +188,7 @@ Write `$RUN_DIR/model-recommendation-input.json` with this shape:
       "workload_id": "support-agent",
       "source": {
         "provider": "anthropic",
-        "model_ids": ["claude-3-7-sonnet-latest"],
+        "model_ids": ["claude-sonnet-5"],
         "sdk": "anthropic",
         "api_surface": "messages",
         "source_paths": ["src/agent.py"]
@@ -251,12 +251,19 @@ dated catalog. Azure OpenAI and Google sources remain the generic provisional br
 `provider_module_pending` in `[BLOCKS]`; do not present those as provider-complete. All modules
 share one artifact shape, so downstream phases consume every provider identically.
 
-## Step 6 — Resolve decision_required before advancing
+## Step 6 — Resolve decision_required and blocked before advancing
 
 If any workload has `decision_status: decision_required`, present its `decision_options` and
 tradeoffs. Ask the user to resolve the conflicting requirement, update
 `model-recommendation-input.json`, and rerun the deterministic engine. Do not pick an option,
 edit the output, or mark this phase completed while any workload remains unresolved.
+
+If any workload has `decision_status: blocked`, there is no automatic target and fewer than two
+real options. Causes include a `reference_only` source model or conflict side in the catalog, and
+other no-target results such as an incomplete feature scan. Present its `[BLOCKS]` findings and any
+remaining option, apply each finding's own remediation (for example a feature rescan, a
+requirement change, or marking a verified model `selectable`), then rerun. Do not invent an option
+or treat a lone remaining option as the answer.
 
 ## Step 7 — Optionally probe the selected path
 
@@ -288,10 +295,14 @@ model ARN set changed. An unchanged
 invocation contract retains its verification. After invalidation, treat verification as
 `not_run`; do not restore a passed result from an older design or report.
 
-For an Opus 5.5 application-profile ARN, the verifier first reads `GetInferenceProfile`
+For any application-profile ARN (every model and region — Opus 5.5 under US residency and a
+Canada-only Haiku 5.5 profile alike), the verifier first reads `GetInferenceProfile`
 for that ARN and the recommendation's `verification.allowed_inference_profiles`. It requires
 active destinations matching the selected model and an allowed regional profile before
-invoking the original ARN. The caller needs `bedrock:GetInferenceProfile` for these metadata
+invoking the original ARN; a passed probe alone never establishes residency. An explicit
+`inference_profile_id` is also validated for model identity, ARN partition/region, and the
+required geography before any candidate is accepted, including models without a profile matrix;
+an invalid pin blocks with `inference_profile_unresolved` rather than passing through. The caller needs `bedrock:GetInferenceProfile` for these metadata
 reads; a failed or inconclusive check prevents inference and does not establish access.
 For London in-region profiles, `verification.allowed_in_region_model_arns` carries the
 exact permitted foundation-model destination. An ACTIVE application profile with only that

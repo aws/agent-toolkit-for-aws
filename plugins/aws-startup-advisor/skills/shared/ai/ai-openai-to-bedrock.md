@@ -21,7 +21,7 @@ recommend Legacy models as primary selections for new migrations.
 
 **Recommend defaults (Sep 2026):** Claude Sonnet 5 (`anthropic.claude-sonnet-5`) for balanced/flagship; Claude Opus 5.5 for demanding reasoning (20% lower standard input/output token prices than Opus 5; [Anthropic reports improved token efficiency](https://claude.com/blog/what-a-task-costs-on-opus-5-5), with actual usage varying by task and effort setting); Claude Haiku 5.5 for cost/speed. Sonnet 5 is **$2/$10** — the launch rate became the standard price on Sep 1, 2026 (the scheduled increase to $3/$15 was cancelled); comparison tables below use $2/$10. Do not default to any Claude Fable / Mythos frontier model.
 
-**Sonnet 5.5 release (2026-09-28):** [Claude Sonnet 5.5](https://platform.claude.com/docs/en/models/sonnet-5-5/overview) is a separate model. Its Amazon Bedrock ID is `anthropic.claude-sonnet-5-5`; `claude-sonnet-5-5` is the Claude API / Claude Platform on AWS ID. The defaults, mapping tables, and cached prices in this guide still describe Sonnet 5. Do not relabel those records or promote 5.5 from the release announcement alone; a 5.5 recommendation needs its own model/path, lifecycle, pricing, and compatibility evidence.
+**Sonnet 5.5 release (2026-09-28):** [Claude Sonnet 5.5](https://platform.claude.com/docs/en/models/sonnet-5-5/overview) is a separate model. Its Amazon Bedrock ID is `anthropic.claude-sonnet-5-5`; `claude-sonnet-5-5` is the Claude API / Claude Platform on AWS ID. That evidence is now recorded: the model card, lifecycle row, and pricing rows, plus its own record in `skills/shared/ai/models/bedrock-model-registry.json`. agent-advisor's selectors use Sonnet 5.5 as the balanced default, and route workloads that disable thinking or use Batch to Sonnet 5; forced `tool_choice` needs a verified target (Sonnet 5 is the card-named fallback, but its forced `tool_choice` support is still unverified). The defaults, mapping tables, and cached comparison prices in this guide still describe Sonnet 5 until the migration skills adopt the shared registry (stage 4 of #566); do not relabel those records ad hoc.
 
 For an explicitly requested 5.5 assessment, read its [Bedrock model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5-5.html) and [migration guide](https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide). Turning off up-front thinking uses `thinking: {"type": "between_tools"}` at `high` effort or below; forced `tool_choice` values `any` and `tool` are rejected, and thinking-history reuse has model/conversation constraints. These are model-specific requirements, not a client-only ID swap. The `computer_20251124` removal applies to the Claude API and Google Cloud; Bedrock still accepts that tool.
 
@@ -59,7 +59,7 @@ Apply in order. Stop at the first tier that resolves.
 
 ### Tier 0 — Source model is on Bedrock (default path)
 
-If the detected model is GPT-6 Astra, GPT-6 Sol, GPT-6 Luna, GPT-6.1 Sol, GPT-5.6 Sol / Terra / Luna, GPT-5.5, or
+If the detected model is GPT-6 Astra, GPT-6 Sol, GPT-6 Luna, GPT-6.1 Sol, GPT-6.1 Terra, GPT-5.6 Sol / Terra / Luna, GPT-5.5, or
 GPT-5.4, the target is **the same model on Bedrock**.
 
 | Source model  | Bedrock target | Model ID (mantle / runtime CRIS)                        | Assessment                                                      |
@@ -68,6 +68,7 @@ GPT-5.4, the target is **the same model on Bedrock**.
 | GPT-6 Sol     | GPT-6 Sol      | `openai.gpt-6-sol` / `us.` `global.` prefixed           | `strong_migrate` — same model; parity on Global CRIS, else +10% |
 | GPT-6 Luna    | GPT-6 Luna     | `openai.gpt-6-luna` / `us.` `global.` prefixed          | `strong_migrate` — same model; parity on Global CRIS, else +10% |
 | GPT-6.1 Sol   | GPT-6.1 Sol    | `openai.gpt-6.1-sol` / `us.` `global.` prefixed         | `strong_migrate` — same model; parity on Global CRIS, else +10% |
+| GPT-6.1 Terra | GPT-6.1 Terra  | `openai.gpt-6.1-terra` / `us.` `global.` prefixed       | `strong_migrate` after the model-specific region/API gate; compare against measured source spend or verified source rates |
 | GPT-5.6 Sol   | GPT-5.6 Sol    | `openai.gpt-5.6-sol` / `us.` `global.` prefixed         | `strong_migrate` — same model; parity on Global CRIS, else +10% |
 | GPT-5.6 Terra | GPT-5.6 Terra  | `openai.gpt-5.6-terra` / `us.` `in.` `global.` prefixed | `strong_migrate` — same model; parity on Global CRIS, else +10% |
 | GPT-5.6 Luna  | GPT-5.6 Luna   | `openai.gpt-5.6-luna` / `us.` `in.` `global.` prefixed  | `strong_migrate` — same model; parity on Global CRIS, else +10% |
@@ -77,7 +78,7 @@ GPT-5.4, the target is **the same model on Bedrock**.
 Then apply the **region gate** below. Record `model_change: false` and the chosen path in
 `aws-design-ai.json` → `ai_architecture.code_migration`: `migration_path: "mantle_openai_chat"` for
 Astra sources using Chat Completions, or `"mantle_openai_responses"` for a selected Mantle Responses
-path. Use `migration_path: "runtime_openai_cris"` when a GPT-6 Astra / GPT-5.6 target is served via
+path. Use `migration_path: "runtime_openai_cris"` when a GPT-6 / GPT-5.6 target is served via
 `bedrock-runtime` with a CRIS id (the model cards recommend runtime for new applications).
 
 Report the assessment honestly: `strong_migrate` here means "low-risk, well-supported move", not "cheaper".
@@ -91,8 +92,8 @@ in-region residency, the mantle region must match. Otherwise offer a supported r
 with explicit routing consent; a Global-only caller region cannot satisfy a Geo-only requirement.
 If neither path meets the constraints, offer a supported region or a model change under Tier 1.
 Do not assume GPT-5.6's broader regional footprint applies to Astra.
-**GPT-6 Astra / Sol / Luna / 6.1 Sol:** same shape as GPT-5.6 — if the target region is in the mantle in-region
-matrix (narrower than GPT-5.6's: us-east-1 + us-west-2 for Astra only, us-east-1 only for Sol/Luna/6.1 Sol — see
+**GPT-6 Astra / Sol / Luna / 6.1 Sol / 6.1 Terra:** same shape as GPT-5.6 — if the target region is in the mantle in-region
+matrix (narrower than GPT-5.6's: us-east-1 + us-west-2 for Astra only, us-east-1 only for Sol/Luna/6.1 Sol/6.1 Terra — see
 `openai-on-bedrock.md` § Regional Availability), either endpoint works; otherwise the `bedrock-runtime` CRIS path
 (`us.`/`global.` prefixed) covers broad commercial regions. GPT-6 Astra's CRIS path additionally lacks `Invoke`
 support (Responses/Chat Completions/Converse only) — verify per-feature before assuming parity with Sol/Luna/6.1
@@ -202,34 +203,35 @@ Findings worth surfacing to users:
 
 ### Sources with no Bedrock equivalent (cross-family reference)
 
-Used for Tier 1 Option B. Source prices are OpenAI's own; Bedrock prices are the target.
+Used for Tier 1 Option B. Source prices are OpenAI's own; Bedrock prices are the target. Deltas use the 150M input / 75M output monthly volume of the cost table above. The Pro / o-series rows map to Claude Opus 5.5 (Global) because Nova 2 Pro is a gated preview (Nova Forge early access only, no Bedrock model card) and is never a target; Global CRIS pricing applies only when worldwide routing is allowed — use the commercial Geo rate (4.40 / 22.00) otherwise. Rows marked **Shut down** (`o1`, `o1-pro`, `o3-mini`, `o4-mini`, `gpt-4`, `gpt-4-turbo`, `gpt-4.1-nano`, `gpt-3.5-turbo` on 2026-10-23; `o1-mini` on 2025-10-27) are past-EOL sources: the listed rate is historical, so no "Bedrock N% cheaper" figure is given — price against a measured bill or OpenAI's substitute model, as the lifecycle file's "Source baseline by serving API" rule does for retired Gemini 2.0 sources. Rows whose source shuts down within 90 days (`gpt-5`, `gpt-5-pro`, `gpt-5-mini`, `gpt-5-nano`, `o3`, `o3-pro` on 2026-12-11) are inside this file's exclusion window as a baseline: price the comparison against what the customer pays today only until that date, and present the same-model Bedrock path (Tier 1 Option A) as the default.
 
 | OpenAI Model                | Source price    | Cross-family target  | Bedrock price | Delta                                    |
 | --------------------------- | --------------- | -------------------- | ------------- | ---------------------------------------- |
-| GPT-5.5 Pro                 | 30.00 / 180.00  | Nova 2 Pro (Preview) | 1.375 / 11.00 | Bedrock 94% cheaper                      |
-| GPT-5.4 Pro                 | 30.00 / 180.00  | Nova 2 Pro (Preview) | 1.375 / 11.00 | Bedrock 94% cheaper                      |
-| GPT-5.2 Pro                 | 21.00 / 168.00  | Nova 2 Pro (Preview) | 1.375 / 11.00 | Bedrock 93% cheaper                      |
-| GPT-5 Pro                   | 15.00 / 120.00  | Nova 2 Pro (Preview) | 1.375 / 11.00 | Bedrock 91% cheaper                      |
-| o1-pro                      | 150.00 / 600.00 | Nova 2 Pro (Preview) | 1.375 / 11.00 | Bedrock 98% cheaper                      |
-| o3-pro                      | 20.00 / 80.00   | Nova 2 Pro (Preview) | 1.375 / 11.00 | Bedrock 89% cheaper                      |
-| o1                          | 15.00 / 60.00   | Nova 2 Pro (Preview) | 1.375 / 11.00 | Bedrock 85% cheaper                      |
-| o3                          | 2.00 / 8.00     | DeepSeek-R1          | 1.35 / 5.40   | Bedrock 32% cheaper                      |
-| o4-mini / o3-mini / o1-mini | 1.10 / 4.40     | GPT-5.6 Luna         | 0.22 / 1.32   | Bedrock 73% cheaper                      |
+| GPT-5.5 Pro                 | 30.00 / 180.00  | Claude Opus 5.5 (Global) | 4.00 / 20.00  | Bedrock 88% cheaper                      |
+| GPT-5.4 Pro                 | 30.00 / 180.00  | Claude Opus 5.5 (Global) | 4.00 / 20.00  | Bedrock 88% cheaper                      |
+| GPT-5.2 Pro                 | 21.00 / 168.00  | Claude Opus 5.5 (Global) | 4.00 / 20.00  | Bedrock 87% cheaper                      |
+| GPT-5 Pro                   | 15.00 / 120.00  | Claude Opus 5.5 (Global) | 4.00 / 20.00  | Bedrock 81% cheaper; OpenAI shutdown 2026-12-11 → `gpt-5.6-sol` ([OpenAI deprecations](https://developers.openai.com/api/docs/deprecations), verified 2026-11-09) |
+| o1-pro                      | 150.00 / 600.00 | Claude Opus 5.5 (Global) | 4.00 / 20.00  | **Shut down 2026-10-23** → `gpt-5.6-sol` ([OpenAI deprecations](https://developers.openai.com/api/docs/deprecations), 2026-04-22 notice, verified 2026-11-09). Nobody is billed at the listed rate any more: price the comparison against a measured bill or against `gpt-5.6-sol`'s rate, not against this row (`reasoning.mode: pro`) |
+| o3-pro                      | 20.00 / 80.00   | Claude Opus 5.5 (Global) | 4.00 / 20.00  | Bedrock 77% cheaper; OpenAI shutdown 2026-12-11 → `gpt-5.6-sol` ([OpenAI deprecations](https://developers.openai.com/api/docs/deprecations), verified 2026-11-09) |
+| o1                          | 15.00 / 60.00   | Claude Opus 5.5 (Global) | 4.00 / 20.00  | **Shut down 2026-10-23** → `gpt-5.6-sol` ([OpenAI deprecations](https://developers.openai.com/api/docs/deprecations), 2026-04-22 notice, verified 2026-11-09). Nobody is billed at the listed rate any more: price the comparison against a measured bill or against `gpt-5.6-sol`'s rate, not against this row |
+| o3                          | 2.00 / 8.00     | Claude Sonnet 5      | 2.00 / 10.00  | Source 14% cheaper; OpenAI shutdown 2026-12-11 → `gpt-5.6-sol` ([OpenAI deprecations](https://developers.openai.com/api/docs/deprecations), verified 2026-11-09). DeepSeek-R1 (formerly listed here) is Legacy (EOL 2027-03-30) and is not a target |
+| o4-mini / o1-mini           | 1.10 / 4.40     | GPT-5.6 Terra        | 2.20 / 13.20  | **Shut down** — `o1-mini` 2025-10-27 → `o4-mini`; `o4-mini` 2026-10-23 → `gpt-5.6-terra` ([OpenAI deprecations](https://developers.openai.com/api/docs/deprecations), 2025-04-28 and 2026-04-22 notices, verified 2026-11-09). Price against a measured bill or Terra's rate, not $1.10/$4.40 |
+| o3-mini                     | 1.10 / 4.40     | GPT-5.6 Sol          | 4.40 / 22.00  | **Shut down 2026-10-23** → `gpt-5.6-sol` ([OpenAI deprecations](https://developers.openai.com/api/docs/deprecations), 2025-04-28 and 2026-04-22 notices, verified 2026-11-09). Price against a measured bill or Sol's rate, not $1.10/$4.40 |
 | GPT-5.2                     | 1.75 / 14.00    | Claude Sonnet 5      | 2.00 / 10.00  | Bedrock 20% cheaper                      |
-| GPT-5.1 / GPT-5             | 1.25 / 10.00    | Claude Sonnet 5      | 2.00 / 10.00  | Source 11% cheaper                       |
-| GPT-5 Mini                  | 0.25 / 2.00     | Nova Lite            | 0.06 / 0.24   | Bedrock 86% cheaper                      |
-| GPT-5 Nano                  | 0.05 / 0.40     | Nova Micro           | 0.035 / 0.14  | Bedrock 58% cheaper                      |
-| GPT-4.1                     | 2.00 / 8.00     | Claude Sonnet 5      | 2.00 / 10.00  | Source 14% cheaper                       |
-| GPT-4.1 Mini                | 0.40 / 1.60     | Nova Lite            | 0.06 / 0.24   | Bedrock 85% cheaper                      |
-| GPT-4.1 Nano                | 0.10 / 0.40     | Nova Micro           | 0.035 / 0.14  | Bedrock 65% cheaper                      |
+| GPT-5.1 / GPT-5             | 1.25 / 10.00    | Claude Sonnet 5      | 2.00 / 10.00  | Source 11% cheaper; GPT-5 OpenAI shutdown 2026-12-11 → `gpt-5.6-sol` ([OpenAI deprecations](https://developers.openai.com/api/docs/deprecations), verified 2026-11-09); GPT-5.1 shutdown 2027-04-01 → `gpt-6-sol` |
+| GPT-5 Mini                  | 0.25 / 2.00     | Nova Lite            | 0.06 / 0.24   | Bedrock 86% cheaper; OpenAI shutdown 2026-12-11 → `gpt-5.6-terra` ([OpenAI deprecations](https://developers.openai.com/api/docs/deprecations), verified 2026-11-09) |
+| GPT-5 Nano                  | 0.05 / 0.40     | Nova Micro           | 0.035 / 0.14  | Bedrock 58% cheaper; OpenAI shutdown 2026-12-11 → `gpt-5.6-luna` ([OpenAI deprecations](https://developers.openai.com/api/docs/deprecations), verified 2026-11-09) |
+| GPT-4.1                     | 2.00 / 8.00     | Claude Sonnet 5      | 2.00 / 10.00  | Source 14% cheaper; OpenAI shutdown 2027-01-14 → `gpt-6-luna` ([OpenAI deprecations](https://developers.openai.com/api/docs/deprecations), verified 2026-11-09) |
+| GPT-4.1 Mini                | 0.40 / 1.60     | Nova Lite            | 0.06 / 0.24   | Bedrock 85% cheaper; OpenAI shutdown 2027-01-14 → `gpt-6-luna` ([OpenAI deprecations](https://developers.openai.com/api/docs/deprecations), verified 2026-11-09) |
+| GPT-4.1 Nano                | 0.10 / 0.40     | Nova Micro           | 0.035 / 0.14  | **Shut down 2026-10-23** → `gpt-5.6-luna` ([OpenAI deprecations](https://developers.openai.com/api/docs/deprecations), 2026-04-22 notice, verified 2026-11-09). Nobody is billed at the listed rate any more: price the comparison against a measured bill or against `gpt-5.6-luna`'s rate, not against this row |
 | GPT-4o                      | 2.50 / 10.00    | Claude Sonnet 5      | 2.00 / 10.00  | Bedrock 7% cheaper; OpenAI deprecated GPT-4o on 2026-10-14 (shutdown 2027-01-14) and names `gpt-6-luna` as the replacement ([OpenAI deprecations](https://developers.openai.com/api/docs/deprecations), verified 2026-10-26); GPT-6 Luna is Active on Bedrock as `openai.gpt-6-luna` ([model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html)) |
-| GPT-4o Mini                 | 0.15 / 0.60     | Nova Lite            | 0.06 / 0.24   | Bedrock 60% cheaper                      |
-| GPT-4 Turbo                 | 10.00 / 30.00   | Claude Sonnet 5      | 2.00 / 10.00  | Bedrock 72% cheaper                      |
-| GPT-4                       | 30.00 / 60.00   | Claude Sonnet 5      | 2.00 / 10.00  | Bedrock 88% cheaper                      |
-| GPT-3.5 Turbo               | 0.50 / 1.50     | GPT-5.6 Luna         | 0.22 / 1.32   | Bedrock 30% cheaper + far better quality |
+| GPT-4o Mini                 | 0.15 / 0.60     | Nova Lite            | 0.06 / 0.24   | Bedrock 60% cheaper; OpenAI shutdown 2027-01-14 → `gpt-6-luna` ([OpenAI deprecations](https://developers.openai.com/api/docs/deprecations), verified 2026-11-09) |
+| GPT-4 Turbo                 | 10.00 / 30.00   | Claude Sonnet 5      | 2.00 / 10.00  | **Shut down 2026-10-23** → `gpt-5.6-sol` ([OpenAI deprecations](https://developers.openai.com/api/docs/deprecations), 2026-04-22 notice, verified 2026-11-09). Nobody is billed at the listed rate any more: price the comparison against a measured bill or against `gpt-5.6-sol`'s rate, not against this row |
+| GPT-4                       | 30.00 / 60.00   | Claude Sonnet 5      | 2.00 / 10.00  | **Shut down 2026-10-23** → `gpt-5.6-sol` ([OpenAI deprecations](https://developers.openai.com/api/docs/deprecations), 2026-04-22 notice, verified 2026-11-09). Nobody is billed at the listed rate any more: price the comparison against a measured bill or against `gpt-5.6-sol`'s rate, not against this row |
+| GPT-3.5 Turbo               | 0.50 / 1.50     | GPT-5.6 Luna         | 0.22 / 1.32   | **Shut down 2026-10-23** → `gpt-5.6-terra` ([OpenAI deprecations](https://developers.openai.com/api/docs/deprecations), 2026-04-22 notice, verified 2026-11-09). Nobody is billed at the listed rate any more: price the comparison against a measured bill or against `gpt-5.6-terra`'s rate, not against this row |
 
-For the rows where the source is still cheaper (GPT-5.1/5, GPT-4.1), note that these models are on a
-vendor deprecation path anyway; Option A (GPT-5.6 on Bedrock) is usually the better framing than defending a stale
+For the rows where the source is still cheaper (GPT-5.1/5, GPT-4.1, o3), note that these models have announced
+shutdown dates, and the Oct 23, 2026 rows are already gone; Option A (GPT-5.6 on Bedrock) is usually the better framing than defending a stale
 model on price.
 
 ### Open-weight gpt-oss
@@ -285,7 +287,7 @@ rather than dismissing it. For a long-context (>272K) workload the gap is much w
 | Reasoning effort                           | `reasoning={"effort": ...}` on mantle                       | `none` / `low` / `medium` / `high` / `xhigh` / `max`                                                 |
 | Prompt caching                             | GPT-5.6 only (90% off cached input)                         | Not listed for GPT-5.5 / 5.4; Claude has its own caching                                             |
 | Streaming                                  | Supported                                                   | Verify per surface                                                                                   |
-| Vision                                     | GPT-5.x (image input) or Claude / Llama 4                   | Same-model preserves behavior                                                                        |
+| Vision                                     | GPT-5.x (image input) or Claude / Nova                      | Same-model preserves behavior                                                                        |
 | JSON mode                                  | Claude (excellent), Nova Pro (good)                         | Most models via prompt                                                                               |
 | Embeddings (ada-002, `text-embedding-3-*`) | Titan Embeddings v2                                         | No OpenAI embedding model on Bedrock; must re-embed all documents                                    |
 | DALL-E / gpt-image                         | Stability AI                                                | Nova Canvas v1 is past EOL (2026-09-30); see `ai-model-lifecycle.md`                                 |

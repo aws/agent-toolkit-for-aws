@@ -58,9 +58,9 @@
     {
       "key": "registry_regions",
       "verification_key": "agent_registry.regions",
-      "value": ["us-east-1", "us-west-2", "ap-northeast-1", "ap-southeast-2", "eu-west-1"],
-      "as_of": "2026-08-31",
-      "source": "https://aws.amazon.com/about-aws/whats-new/2026/08/aws-agent-registry-generally-available",
+      "value": ["us-east-1", "us-west-2", "ap-northeast-1", "ap-southeast-2", "eu-west-1", "eu-west-2", "eu-central-1", "us-east-2", "ca-central-1"],
+      "as_of": "2026-10-28",
+      "source": "https://aws.amazon.com/about-aws/whats-new/2026/10/aws-agent-registry-four-regions/",
       "verify_via_mcp": true
     },
     {
