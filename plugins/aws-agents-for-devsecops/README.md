@@ -12,7 +12,7 @@ Investigate incidents, review code and execute UAT for release readiness, scan c
 | **Skill** `investigating-incidents-with-aws-devops-agent` | `skills/investigating-incidents-with-aws-devops-agent/` | Model auto-invokes on incident keywords (5xx, OOM, alarm, sev1, "investigate", "root cause"...) |
 | **Skill** `chatting-with-aws-devops-agent` | `skills/chatting-with-aws-devops-agent/` | Model auto-invokes for cost / architecture / topology / knowledge questions |
 | **Skill** `running-release-tests` | `skills/running-release-tests/` | Model auto-invokes for release testing (run tests, test profile, UI test, API test, QA, regression) |
-| **Skill** `analyzing-release-readiness` | `skills/analyzing-release-readiness/` | Model auto-invokes for pre-merge release readiness reviews (review PR, risk analysis, safe to ship, ready to merge) |
+| **Skill** `analyzing-release-readiness` | `skills/analyzing-release-readiness/` | Model auto-invokes for pre-merge code change risk analyses (review PR, risk analysis, safe to ship, ready to merge) |
 | **Skill** `coordinating-multi-space-devops-agent` | `skills/coordinating-multi-space-devops-agent/` | Model auto-invokes when the user has more than one AgentSpace or asks across accounts |
 | **Skill** `scanning-with-aws-security-agent` | `skills/scanning-with-aws-security-agent/` | Model auto-invokes for full code security scans |
 | **Skill** `diff-scanning-with-aws-security-agent` | `skills/diff-scanning-with-aws-security-agent/` | Model auto-invokes for diff-only security scans (pre-commit, pre-PR) |
@@ -38,7 +38,7 @@ Investigate incidents, review code and execute UAT for release readiness, scan c
 | **Investigation** | `investigate`, `create_investigation`, `get_task`, `list_tasks`, `list_journal_records`, `list_executions` |
 | **Recommendations** | `list_recommendations`, `get_recommendation`, `update_recommendation` |
 | **Release Testing** | `create_release_testing_job`, `cancel_release_testing_job`, `get_release_ui_testing_report`, `get_release_api_testing_report` |
-| **Release Readiness** | `create_release_readiness_review`, `cancel_release_readiness_review`, `get_release_readiness_report` |
+| **Code Change Risk Analysis** | `create_code_change_risk_analysis`, `list_code_change_risk_analyses`, `cancel_code_change_risk_analysis`, `get_code_change_risk_analysis_report` |
 | **Agent Spaces** | `list_agent_spaces`, `get_agent_space`, `create_agent_space`, `update_agent_space`, `list_associations` |
 | **Access Tokens** | `create_access_token`, `get_access_token`, `list_access_tokens`, `revoke_access_token`, `rotate_access_token` |
 | **Services** | `list_services`, `get_service` |

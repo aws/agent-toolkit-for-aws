@@ -1,6 +1,6 @@
 # Amazon Bedrock Pricing Cache
 
-**Last updated:** 2026-10-26 (fact re-verify 2026-10-26: Stable Image Core N. Virginia source note, Titan Text Embeddings v2 lifecycle check, GPT-6 Luna card re-verify incl. the 272K short/long boundary, Sonnet 5.5 Geo note; added Claude Sonnet 5.5 / Haiku 5.5 Global+Geo rows and DeepSeek V3.2 quick-ref from Bedrock pricing US East (Ohio) + model cards; Haiku 5.5 ≤100K / >100K long-context tiers + cache; lifecycle Status refresh — Claude Sonnet 4 → past EOL; Opus 4.1 → excluded; Llama 4 Maverick/Scout, Llama 3.3 70B, DeepSeek-R1/V3.1, Claude Sonnet 4.5 → legacy; Marengo 3.0 replacement scoped to non-Seoul; other rates unchanged from the 2026-10-05 pricing re-verify)
+**Last updated:** 2026-11-09 (lifecycle Status re-verify 2026-11-09 against the legacy lifecycle page and model cards: Gemma 3 4B/12B/27B and MiniMax M2/M2.1 → legacy (EOL 2027-03-30); DeepSeek-V3.1 region note removed (eight Regions on its card); Nova 2 Pro → restricted — still a gated preview for Nova Forge customers with no Bedrock model card, so it is never a recommended or backup target; rates unchanged. Prior re-verify 2026-10-26: Stable Image Core N. Virginia source note, Titan Text Embeddings v2 lifecycle check, GPT-6 Luna card re-verify incl. the 272K short/long boundary, Sonnet 5.5 Geo note; added Claude Sonnet 5.5 / Haiku 5.5 Global+Geo rows and DeepSeek V3.2 quick-ref from Bedrock pricing US East (Ohio) + model cards; Haiku 5.5 ≤100K / >100K long-context tiers + cache; lifecycle Status refresh — Claude Sonnet 4 → past EOL; Opus 4.1 → excluded; Llama 4 Maverick/Scout, Llama 3.3 70B, DeepSeek-R1/V3.1, Claude Sonnet 4.5 → legacy; Marengo 3.0 replacement scoped to non-Seoul; other rates unchanged from the 2026-10-05 pricing re-verify)
 **Region:** us-east-1
 **Currency:** USD
 **Accuracy:** ±15-25% for AI/Bedrock models and services (sourced from public pricing pages)
@@ -61,6 +61,18 @@ full-cache date at the top of this file.
 
 **Sonnet 5.5 / Haiku 5.5 (`anthropic.claude-sonnet-5-5` / `anthropic.claude-haiku-5-5` on Bedrock), rates verified 2026-10-25.** Source: [Amazon Bedrock pricing](https://aws.amazon.com/bedrock/pricing/), Anthropic models table, Global and Geo/In-region Cross-region Inference, US East (Ohio); model cards confirm Active lifecycle and 1M context. Per 1M tokens — **Sonnet 5.5** Global: input $2.00, output $10.00, 5m cache write $2.50, 1h cache write $4.00, cache read $0.10; Geo (US): $2.20 / $11.00, 5m $2.75, 1h $4.40, cache read $0.11. **Haiku 5.5** uses **tiered long-context pricing** at a **100,000-token prompt boundary** ([model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-5-5.html#model-card-anthropic-claude-haiku-5-5-pricing); Bedrock pricing "Claude Haiku 5.5 - Long Context" row). Prompt length counts all input tokens including cache reads and cache writes. When the prompt exceeds 100,000 tokens, the higher Long Context rates apply to the **whole qualifying request** (input, output, and cache read/write) — not only the tokens past the boundary. Per 1M tokens — **≤100K** Global: input $0.10, output $0.50, 5m cache write $0.125, 1h cache write $0.20, cache read $0.01; US Geo: $0.11 / $0.55, 5m $0.1375, 1h $0.22, cache read $0.011. **>100K** Global: $0.50 / $2.50, 5m $0.625, 1h $1.00, cache read $0.05; US Geo: $0.55 / $2.75, 5m $0.6875, 1h $1.10, cache read $0.055. When per-request prompt size is unknown, do **not** silently quote the ≤100K row — follow the existing unavailable / dual-scenario handling in `estimate-ai.md` (flag `pricing_tier: "approximate — request-size distribution unknown"` and present both ≤100K and >100K rows, or set `pricing_source: "unavailable"`). Batch is N/A for both Sonnet 5.5 and Haiku 5.5. **Cache-read note:** Sonnet 5.5 cache read is reduced 50% from the prior rate starting October 7, 2026 (prior Global $0.20). Sonnet 5 keeps its own $0.20 Global cache-read row. Do not silently reuse Sonnet 5 or Haiku 4.5 rates for 5.5 estimates. Read the [Sonnet 5.5 migration guide](https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide) before recommending Sonnet 5.5 request/response handling.
 
+**GPT-6.1 Terra rates verified 2026-11-02.** Source: [AWS model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-terra.html).
+The quick-reference row is Standard pricing for requests with at most 272,000 input tokens,
+using Mantle in-region in us-east-1 or runtime US Geo CRIS. Global CRIS is $1.00/$5.00
+per 1M input/output tokens. Above 272,000 input tokens, reprice the full request:
+In-Region/US Geo $2.20/$8.25, Global $2.00/$7.50. The context window is 1,050,000 tokens,
+not 272K. Cache write/read rates per 1M tokens are $1.375/$0.055 (short In-Region/Geo),
+$1.25/$0.05 (short Global), $2.75/$0.11 (long In-Region/Geo), and $2.50/$0.10 (long Global).
+Cache writes retain the prefix for 30 minutes. These rates already include the applicable
+inference-option premium; do not apply another 1.10 multiplier. If request-size distribution
+is unknown, show both context scenarios or mark the estimate unavailable. Source-provider
+prices require separate verification; do not infer them from these Bedrock rates.
+
 ### Multi-provider quick reference (per 1M tokens)
 
 See `vendored/ai/ai-model-lifecycle.md` for lifecycle details. **Do not recommend Legacy models for new migrations.** Rows whose Status is `restricted (…)` are never `recommended_model` / `backup_model` and never a default (Covered Models, gated previews).
@@ -101,7 +113,7 @@ See `vendored/ai/ai-model-lifecycle.md` for lifecycle details. **Do not recommen
 | Llama 3.3 70B                    | meta.llama3-3-70b-instruct-v1:0          | Meta      | 0.72       | 0.72        | 128K    | mid       | legacy (EOL Mar 30, 2027)                                    |
 | Llama 3.2 90B                    | meta.llama3-2-90b-instruct-v1:0          | Meta      | 0.72       | 0.72        | 128K    | mid       | EOL (Jul 7, 2026)                                            |
 | Nova 2 Lite                      | amazon.nova-2-lite-v1:0                  | Amazon    | 0.33       | 2.75        | 1M      | mid       | active                                                       |
-| Nova 2 Pro (Preview)             | amazon.nova-2-pro-v1:0                   | Amazon    | 1.375      | 11.00       | 1M      | flagship  | active                                                       |
+| Nova 2 Pro (Preview)             | amazon.nova-2-pro-v1:0                   | Amazon    | 1.375      | 11.00       | 1M      | flagship  | restricted (gated preview — Nova Forge early access only; no model card; verified 2026-11-09)                                                       |
 | Nova Pro                         | amazon.nova-pro-v1:0                     | Amazon    | 0.80       | 3.20        | 300K    | mid       | active                                                       |
 | Nova Pro (latency optimized)     | —                                        | Amazon    | 1.00       | 4.00        | 300K    | mid       | active                                                       |
 | Nova Lite                        | amazon.nova-lite-v1:0                    | Amazon    | 0.06       | 0.24        | 300K    | fast      | active                                                       |
@@ -109,12 +121,13 @@ See `vendored/ai/ai-model-lifecycle.md` for lifecycle details. **Do not recommen
 | Nova Premier                     | amazon.nova-premier-v1:0                 | Amazon    | 2.50       | 12.50       | 1M      | reasoning | EOL (2026-09-14)                                             |
 | Mistral Large 3                  | mistral.mistral-large-3-675b-instruct    | Mistral   | 0.50       | 1.50        | 256K    | flagship  | active                                                       |
 | DeepSeek-R1                      | deepseek.r1-v1:0                         | DeepSeek  | 1.35       | 5.40        | 128K    | reasoning | legacy (EOL Mar 30, 2027)                                    |
-| DeepSeek-V3.1                    | deepseek.v3-v1:0                         | DeepSeek  | 0.58       | 1.68        | —       | mid       | legacy (EOL Mar 30, 2027; Sydney only)                       |
+| DeepSeek-V3.1                    | deepseek.v3-v1:0                         | DeepSeek  | 0.58       | 1.68        | —       | mid       | legacy (EOL Mar 30, 2027)                       |
 | DeepSeek V3.2                    | deepseek.v3.2                            | DeepSeek  | 0.62       | 1.85        | 164K    | mid       | active (US East N. Virginia/Ohio + Oregon; prefer over V3.1 for US) |
 | gpt-oss-20b                      | openai.gpt-oss-20b-1:0                   | OpenAI    | 0.07       | 0.30        | 128K    | budget    | active                                                       |
 | gpt-oss-120b                     | openai.gpt-oss-120b-1:0                  | OpenAI    | 0.15       | 0.60        | 128K    | efficient | active                                                       |
 | GPT-6 Astra                      | openai.gpt-6-astra                       | OpenAI    | 11.00      | 55.00       | 272K    | frontier  | active (mantle in-region us-east-1/us-west-2 + runtime CRIS; Global CRIS 10.00/50.00; 1M-tier 22.00/82.50; Ultrafast 6x available) |
 | GPT-6.1 Sol                      | openai.gpt-6.1-sol                       | OpenAI    | 2.20       | 11.00       | 272K    | flagship  | active (mantle in-region us-east-1 + runtime CRIS; Global CRIS 2.00/10.00; 1M-tier 4.40/16.50; Ultrafast 6x available) |
+| GPT-6.1 Terra                    | openai.gpt-6.1-terra                     | OpenAI    | 1.10       | 5.50        | 272K    | balanced  | active (Mantle us-east-1 or US Geo CRIS; Global 1.00/5.00; >272K In-Region/Geo 2.20/8.25, Global 2.00/7.50; Standard only) |
 | GPT-6 Sol                        | openai.gpt-6-sol                         | OpenAI    | 2.20       | 11.00       | 272K    | flagship  | active (mantle in-region us-east-1 + runtime CRIS; Global CRIS 2.00/10.00; 1M-tier 4.40/16.50) |
 | GPT-6 Luna                       | openai.gpt-6-luna                        | OpenAI    | 0.11       | 0.55        | 272K    | fast      | active (mantle in-region us-east-1 + runtime CRIS; Global CRIS 0.10/0.50; 1M-tier 0.22/0.825; rates and the 272K short/long boundary re-verified against the [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html) 2026-10-26) |
 | GPT-5.6 Sol                      | openai.gpt-5.6-sol                       | OpenAI    | 4.40       | 22.00       | 272K    | frontier  | active (mantle in-region + runtime CRIS; 1M tier 8.80/33.00) |
@@ -125,11 +138,11 @@ See `vendored/ai/ai-model-lifecycle.md` for lifecycle details. **Do not recommen
 | Gemma 4 31B                      | google.gemma-4-31b                       | Google    | 0.14       | 0.40        | 256K    | mid       | active (Mantle only)                                         |
 | Gemma 4 26B-A4B                  | google.gemma-4-26b-a4b                   | Google    | 0.13       | 0.40        | 256K    | efficient | active (Mantle only)                                         |
 | Gemma 4 E2B                      | google.gemma-4-e2b                       | Google    | 0.04       | 0.08        | 128K    | budget    | active (Mantle only)                                         |
-| Gemma 3 4B IT                    | google.gemma-3-4b-it                     | Google    | 0.04       | 0.08        | 128K    | budget    | active                                                       |
-| Gemma 3 12B IT                   | google.gemma-3-12b-it                    | Google    | 0.09       | 0.29        | 128K    | budget    | active                                                       |
-| Gemma 3 27B IT                   | google.gemma-3-27b-it                    | Google    | 0.23       | 0.38        | 128K    | efficient | active                                                       |
-| MiniMax M2                       | minimax.minimax-m2                       | MiniMax   | 0.30       | 1.20        | 1M      | mid       | active                                                       |
-| MiniMax M2.1                     | minimax.minimax-m2.1                     | MiniMax   | 0.30       | 1.20        | 196K    | mid       | active                                                       |
+| Gemma 3 4B IT                    | google.gemma-3-4b-it                     | Google    | 0.04       | 0.08        | 128K    | budget    | legacy (EOL Mar 30, 2027)                                                       |
+| Gemma 3 12B IT                   | google.gemma-3-12b-it                    | Google    | 0.09       | 0.29        | 128K    | budget    | legacy (EOL Mar 30, 2027)                                                       |
+| Gemma 3 27B IT                   | google.gemma-3-27b-it                    | Google    | 0.23       | 0.38        | 128K    | efficient | legacy (EOL Mar 30, 2027)                                                       |
+| MiniMax M2                       | minimax.minimax-m2                       | MiniMax   | 0.30       | 1.20        | 1M      | mid       | legacy (EOL Mar 30, 2027)                                                       |
+| MiniMax M2.1                     | minimax.minimax-m2.1                     | MiniMax   | 0.30       | 1.20        | 196K    | mid       | legacy (EOL Mar 30, 2027)                                                       |
 | MiniMax M2.5                     | minimax.minimax-m2.5                     | MiniMax   | 0.30       | 1.20        | 196K    | mid       | active                                                       |
 | Jamba 1.5 Large                  | ai21.jamba-1-5-large-v1:0                | AI21 Labs | 2.00       | 8.00        | —       | mid       | excluded (EOL 2026-11-26)                                    |
 | Jamba 1.5 Mini                   | ai21.jamba-1-5-mini-v1:0                 | AI21 Labs | 0.20       | 0.40        | —       | efficient | excluded (EOL 2026-11-26)                                    |
@@ -324,8 +337,8 @@ Full request — input, cache, and output — is repriced at 2x input/cache and 
 | GPT-6.1 Sol | 4.40 · 5.50 · 0.22 · 16.50                               | 4.00 · 5.00 · 0.20 · 15.00                          |
 
 GPT-6 Astra and GPT-6.1 Sol also support a 6x-Standard **Ultrafast** service tier (`service_tier: "ultrafast"`),
-confirmed on both model cards' "Service Tiers" sections; GPT-6 Sol and GPT-6 Luna are Standard-only. None of the
-four GPT-6 models support Priority, Flex, or Reserved. See `shared/openai-on-bedrock.md` for the full breakdown,
+confirmed on both model cards' "Service Tiers" sections; GPT-6 Sol, GPT-6 Luna, and GPT-6.1 Terra are Standard-only. None of the
+five GPT-6 models support Priority, Flex, or Reserved. See `shared/openai-on-bedrock.md` for the full breakdown,
 including per-model Ultrafast availability by region.
 
 #### Proprietary GPT models — short context (272K), in-region
@@ -492,12 +505,12 @@ Per 1M input / output tokens unless noted.
 
 #### US East (Ohio) — Standard tier, text / image / video / audio (Geo cross-region and in-region)
 
-Per 1M tokens. **Nova 2 Omni** and **Nova 2 Pro** are **Preview**. Image column is **output** image pricing where listed.
+Per 1M tokens. **Nova 2 Omni** and **Nova 2 Pro** are **Preview** (Nova 2 Pro is gated to Nova Forge early-access customers — `restricted`, never a recommended target). Image column is **output** image pricing where listed.
 
 | Model                        | Text in | Image in | Video in | Audio in | Text out | Image out |
 | ---------------------------- | ------- | -------- | -------- | -------- | -------- | --------- |
 | Amazon Nova 2 Omni (Preview) | 0.30    | 0.30     | 0.30     | 1.10     | 2.80     | 44.00     |
-| Amazon Nova 2 Pro (Preview)  | 1.375   | 1.375    | 1.375    | 1.375    | 11.00    | N/A       |
+| Amazon Nova 2 Pro (Preview — restricted, gated preview, not a target) | 1.375   | 1.375    | 1.375    | 1.375    | 11.00    | N/A       |
 
 **Global cross-region inference (Ohio), Standard** uses different multimodal numbers on the same page — e.g. **Nova 2 Omni (Preview)** audio in **$1.00**, text out **$2.50**, image out **$40.00** (text/image/video in **$0.30** each). Use the Bedrock pricing page for the deployment you select.
 
@@ -545,7 +558,7 @@ Per 1M tokens. **Nova 2 Omni** and **Nova 2 Pro** are **Preview**. Image column 
 | Model                        | Price                  |
 | ---------------------------- | ---------------------- |
 | Amazon Nova 2 Omni (Preview) | $30.00 per 1K requests |
-| Amazon Nova 2 Pro (Preview)  | $30.00 per 1K requests |
+| Amazon Nova 2 Pro (Preview — restricted, gated preview, not a target) | $30.00 per 1K requests |
 
 #### Creative — US East (N. Virginia)
 

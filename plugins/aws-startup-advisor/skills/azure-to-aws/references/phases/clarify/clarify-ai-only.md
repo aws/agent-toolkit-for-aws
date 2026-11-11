@@ -117,13 +117,14 @@ running). → `ai_constraints.cross_cloud`. Default `"latency-acceptable"`.
 | Source (Azure OpenAI / OpenAI deployment) | Baseline recommendation                | Pricing context                            |
 | ----------------------------------------- | -------------------------------------- | ------------------------------------------ |
 | GPT-6 (Astra/Sol/Luna) / GPT-6.1 Sol       | **Same model on Bedrock**              | ~10% over OpenAI std (data-residency tier); Astra/6.1 Sol also support Ultrafast (6x) |
+| GPT-6.1 Terra                              | **Same model on Bedrock**              | Use the model-specific endpoint and context-tier prices in `references/shared/openai-on-bedrock.md`; compare against measured source spend or verified source rates. |
 | GPT-5.6 (Sol/Terra/Luna)                  | **Same model on Bedrock**              | ~10% over OpenAI std (data-residency tier) |
 | GPT-5.5                                   | **Same model on Bedrock**              | ~10% over std                              |
 | GPT-5.4                                   | **Same model on Bedrock**              | ~10% over std                              |
 | GPT-4o                                    | GPT-5.6 Terra; or Claude Sonnet 5      | not on Bedrock — offer both                |
 | GPT-4 / 4 Turbo                           | GPT-5.6 Terra; or Sonnet 5             | not on Bedrock — offer both                |
 | GPT-4.1 / mini / nano                     | GPT-5.6 Terra/Luna; or Nova Lite/Micro | not on Bedrock — offer both                |
-| GPT-3.5 Turbo                             | GPT-5.6 Luna; or Haiku 4.5             | Luna cheaper                               |
+| GPT-3.5 Turbo                             | GPT-5.6 Luna; or Haiku 5.5             | Haiku 5.5 cheaper up to 100K prompt tokens |
 | o-series (o3/o4-mini)                     | GPT-5.6 Sol/Terra; or Sonnet 5         | not on Bedrock — offer both                |
 | Claude (Anthropic SDK)                    | Same model on Bedrock                  | client swap only — no model change         |
 | Other / multiple / don't know             | ask / infer                            | —                                          |

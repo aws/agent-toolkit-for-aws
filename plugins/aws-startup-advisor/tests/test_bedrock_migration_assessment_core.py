@@ -85,7 +85,8 @@ def test_user_confirmed_evidence_must_be_high_confidence() -> None:
 def test_every_neutral_fixture_is_accepted_without_a_sidecar(fixture_path: Path) -> None:
     result = BMA_VALIDATOR.validate_profile(_load(fixture_path))
     assert result["ok"] is True
-    assert set(result) == {"ok", "schema_version", "ai_sources", "gateways", "models_extractable"}
+    assert set(result) == {"ok", "schema_version", "ai_sources", "gateways", "models_extractable",
+                           "ai_framework_detected", "ai_vision_detected"}
 
 
 @pytest.mark.parametrize("fixture_path", PROFILE_FIXTURES, ids=lambda p: p.parent.name)
@@ -233,7 +234,8 @@ def test_skill_never_reaches_into_another_skill() -> None:
 
 def test_clarify_reads_no_legacy_profile_field() -> None:
     text = BMA_CLARIFY.read_text(encoding="utf-8")
-    for legacy in ("summary.ai_source", "models[].model_id", "integration.", "capabilities_summary", "confidence ≥ 0.8"):
+    for legacy in ("summary.ai_source", "models[].model_id", "integration.pattern", "integration.gateway_type",
+                   "integration.frameworks", "confidence ≥ 0.8"):
         assert legacy not in text, legacy
 
 
@@ -277,6 +279,7 @@ BMA_QUESTIONS = _question_sections(BMA_CLARIFY)
 NEUTRALIZED_ROWS = {
     ("Q1.5", "| GDPR"): "document cross-border transfer from your current EU provider",
     ("Q4", "| Latency critical"): "closest region to current deployment",
+    ("Q5", "| GPT-6.1 Terra"): '**Same model on Bedrock** | Use the model-specific endpoint and context-tier prices in the [GPT-6.1 Terra model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-terra.html); compare against measured source spend or verified source rates.',
 }
 
 
@@ -284,8 +287,18 @@ def test_same_question_set_in_the_same_order() -> None:
     assert list(BMA_QUESTIONS) == list(GCP_QUESTIONS)
 
 
+# Interpret lines that name the stored value explicitly; GCP leaves it implicit.
+EXPLICIT_INTERPRET = {
+    "Q6": 'Interpret → `ai_vision`: 1 → `"text-only"`, 2 → `"vision"`, 3 → `"audio"`. Default: 1 → `"text-only"` (no constraint).',
+}
+
+
 @pytest.mark.parametrize("qid", list(GCP_QUESTIONS))
 def test_interpretation_is_identical(qid: str) -> None:
+    if qid in EXPLICIT_INTERPRET:
+        assert _interpret_lines(BMA_QUESTIONS[qid]) == [EXPLICIT_INTERPRET[qid]]
+        assert _interpret_lines(GCP_QUESTIONS[qid]) == ["Interpret → `ai_vision`. Default: 1 → no constraint."]
+        return
     assert _interpret_lines(BMA_QUESTIONS[qid]) == _interpret_lines(GCP_QUESTIONS[qid])
     assert _interpret_lines(GCP_QUESTIONS[qid]), f"{qid} has no Interpret line to compare"
 
@@ -404,10 +417,11 @@ def test_gateway_rows_that_misplace_a_model_are_rejected(rows: list[dict]) -> No
 
 def test_only_q5_can_be_skipped_and_only_through_the_validator_summary() -> None:
     skippable = [qid for qid, body in BMA_QUESTIONS.items() if "_Skip when:_" in body]
-    assert skippable == ["Q5"]
+    assert skippable == ["Q1", "Q5", "Q6"]
     assert "models_extractable: true" in BMA_QUESTIONS["Q5"]
-    for qid in ("Q1", "Q6", "Q7"):
-        assert "_Never skipped:_" in BMA_QUESTIONS[qid], qid
+    assert "non-null `ai_framework_detected`" in BMA_QUESTIONS["Q1"]
+    assert "non-null `ai_vision_detected`" in BMA_QUESTIONS["Q6"]
+    assert "_Never skipped:_" in BMA_QUESTIONS["Q7"]
 
 
 def test_clarify_never_reads_project_files_or_usage_profiles() -> None:
@@ -438,16 +452,17 @@ def test_sheet_shows_models_only_when_extractable_and_lists_all_of_them() -> Non
     assert "ask Q5 in Batch 1" in sheet
 
 
-SHEET_ROW_QUESTIONS = {"Models": "Q5", "Usage volume": "Q7", "Response speed": "Q8", "Task complexity": "Q9"}
+SHEET_ROW_QUESTIONS = {"Models": "Q5", "Framework": "Q1", "Input types": "Q6", "Usage volume": "Q7",
+                       "Response speed": "Q8", "Task complexity": "Q9"}
 
 
 def _sheet_rows() -> set[str]:
-    return set(re.findall(r"^\| (Models|Usage volume|Response speed|Task complexity) \|", _sheet(), flags=re.M))
+    return set(re.findall(r"^\| (" + "|".join(SHEET_ROW_QUESTIONS) + r") \|", _sheet(), flags=re.M))
 
 
 def test_sheet_never_assumes_a_value() -> None:
     assert "Will be assumed" not in _sheet()
-    assert _sheet_rows() == {"Models"}
+    assert _sheet_rows() == {"Models", "Framework", "Input types"}
 
 
 def test_sheet_rows_and_asked_questions_are_disjoint_in_the_run_fixture() -> None:
@@ -507,3 +522,93 @@ def test_assembly_merges_into_a_draft_only_when_it_was_resumed() -> None:
     step3 = text[text.index("## Step 3"):text.index("## Step 4")]
     assert "If `preferences-draft.json` exists and was resumed in Step 0 Case 2, use it as the base" in step3
     assert "- If 1: load the draft, skip Batch 1 in Step 2, present Batch 2 directly." in _step0()
+
+
+# --------------------------------------------------------------------------- schema 1.1: integration, workloads, agents, tools
+
+V11 = {name: _fixture(name) for name in ("v11-framework-vision", "v11-agentic-tools")}
+
+
+def test_v11_fixtures_are_accepted_and_summarized() -> None:
+    vision = BMA_VALIDATOR.validate_profile(V11["v11-framework-vision"])
+    assert (vision["ai_framework_detected"], vision["ai_vision_detected"]) == (["framework"], "vision")
+    agentic = BMA_VALIDATOR.validate_profile(V11["v11-agentic-tools"])
+    assert (agentic["ai_framework_detected"], agentic["ai_vision_detected"]) == (None, None)
+
+
+@pytest.mark.parametrize("fixture_path", PROFILE_FIXTURES, ids=lambda p: p.parent.name)
+def test_v10_profiles_detect_nothing(fixture_path: Path) -> None:
+    profile = _load(fixture_path)
+    if profile["schema_version"] == "1.0":
+        result = BMA_VALIDATOR.validate_profile(profile)
+        assert (result["ai_framework_detected"], result["ai_vision_detected"]) == (None, None)
+
+
+def _v11(name: str, mutate) -> dict:
+    profile = copy.deepcopy(V11[name])
+    mutate(profile)
+    return profile
+
+
+def _caps(**on) -> dict:
+    caps = {k: False for k in V11["v11-framework-vision"]["integration"]["capabilities_summary"]}
+    caps.update(on)
+    return caps
+
+
+@pytest.mark.parametrize(("gateways", "pattern", "frameworks", "expected"), [
+    ([], "direct_sdk", [], ["direct"]),
+    ([], "rest_api", [], ["direct"]),
+    ([{"type": "llm_router"}], "direct_sdk", [], ["llm_router"]),
+    ([], "framework", ["langchain"], ["framework"]),
+    ([], "mixed", ["llama_index"], ["direct", "framework"]),
+    ([{"type": "llm_router"}], "framework", ["langchain"], ["framework", "llm_router"]),
+    ([], "framework", ["crewai"], None),
+    ([{"type": "custom_proxy"}], "direct_sdk", [], None),
+    ([], "framework", [], None),
+], ids=["direct", "rest", "gateway", "langchain", "mixed", "framework-gateway", "agent-framework", "unknown-gateway", "framework-without-name"])
+def test_framework_detection_is_conservative(gateways, pattern, frameworks, expected) -> None:
+    profile = _v11("v11-framework-vision", lambda p: p["integration"].update(pattern=pattern, frameworks=frameworks))
+    profile["gateways"] = [{"product": "openrouter", "type": g["type"], "upstream_evidence": "unresolved", "upstreams": []} for g in gateways]
+    assert BMA_VALIDATOR.validate_profile(profile)["ai_framework_detected"] == expected
+
+
+def test_agents_suppress_framework_detection() -> None:
+    assert BMA_VALIDATOR.validate_profile(V11["v11-agentic-tools"])["ai_framework_detected"] is None
+
+
+@pytest.mark.parametrize(("caps", "expected"), [
+    ({"text_generation": True}, None),
+    ({"vision": True}, "vision"),
+    ({"vision": True, "speech_to_text": True}, "audio"),
+], ids=["text", "vision", "audio-wins"])
+def test_input_type_detection(caps, expected) -> None:
+    profile = _v11("v11-framework-vision", lambda p: p["integration"].update(capabilities_summary=_caps(**caps)))
+    assert BMA_VALIDATOR.validate_profile(profile)["ai_vision_detected"] == expected
+
+
+@pytest.mark.parametrize(("name", "mutate", "code"), [
+    ("v11-framework-vision", lambda p: p.update(schema_version="1.0"), "version_mismatch"),
+    ("v11-framework-vision", lambda p: p["workloads"].append(copy.deepcopy(p["workloads"][0])), "schema_violation"),
+    ("v11-framework-vision", lambda p: p["workloads"][1].update(workload_id="summarize"), "duplicate_workload"),
+    ("v11-framework-vision", lambda p: p["workloads"][0].update(model="gpt-4.1"), "unmatched_workload"),
+    ("v11-framework-vision", lambda p: p["workloads"][0].update(source_service="azure_openai"), "unmatched_workload"),
+    ("v11-framework-vision", lambda p: p["workloads"][0]["call_sites"].clear(), "schema_violation"),
+    ("v11-framework-vision", lambda p: p["workloads"][0]["call_sites"][0].update(line=True), "schema_violation"),
+    ("v11-framework-vision", lambda p: p["integration"]["capabilities_summary"].pop("vision"), "schema_violation"),
+    ("v11-agentic-tools", lambda p: p.pop("agentic_profile"), "tool_manifest_without_agents"),
+    ("v11-agentic-tools", lambda p: p["agentic_profile"]["agents"][0].update(model="gpt-4o"), "unmatched_agent_model"),
+    ("v11-agentic-tools", lambda p: p["tool_manifest"].pop(), "unmatched_agent_tool"),
+    ("v11-agentic-tools", lambda p: p["tool_manifest"][0].update(used_by_agents=["planner"]), "unmatched_tool_agent"),
+    ("v11-agentic-tools", lambda p: p["tool_manifest"][1].update(name="web_search"), "duplicate_tool"),
+    ("v11-agentic-tools", lambda p: p["agentic_profile"]["agents"].append(
+        {**copy.deepcopy(p["agentic_profile"]["agents"][0]), "line": 99}), "duplicate_agent"),
+], ids=["fields-on-1.0", "duplicate-row", "duplicate-workload-id", "unobserved-workload-model", "wrong-workload-service",
+        "no-call-sites", "boolean-line", "missing-capability", "tools-without-agents", "unobserved-agent-model",
+        "agent-tool-not-listed", "tool-names-unknown-agent", "duplicate-tool", "duplicate-agent"])
+def test_inconsistent_v11_profiles_are_rejected(name, mutate, code) -> None:
+    assert _rejection(_v11(name, mutate)) == code
+
+
+def test_gcp_shaped_keys_are_still_rejected_on_a_v11_profile() -> None:
+    assert _rejection(_v11("v11-framework-vision", lambda p: p.update(summary={"ai_source": "openai"}))) == "legacy_profile_rejected"

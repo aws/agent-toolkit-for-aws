@@ -53,6 +53,7 @@ This plugin includes the following default skills:
 | aws-emulator | Run AWS service APIs locally with AWS Emulator and check whether an app works on it |
 | aws-database | Route any AWS database task to the right service and skill |
 | aws-well-architected-review | Review a workload against the Well-Architected Framework across all six pillars |
+| aws-investigation | Investigate an AWS account from evidence: deployed artifacts, multi-service logs, and data |
 
 ### Rules files
 
