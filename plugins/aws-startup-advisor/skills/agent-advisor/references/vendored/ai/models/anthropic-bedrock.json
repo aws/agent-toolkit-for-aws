@@ -1,6 +1,7 @@
 {
   "schema_version": 2,
   "provider": "anthropic",
+  "generated_from": "bedrock-model-registry.json (rendered by tools/build-model-catalogs.py; edit the registry, not this file)",
   "verified_at": "2026-11-09",
   "verified_region": "us-east-1",
   "source": "Haiku 5.5: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-5-5.html (read 2026-11-09). Opus 5.5: AWS Bedrock model card retrieved 2026-09-24, https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html. Other entries retain their explicitly dated evidence from the superseded 2026-07-21 catalog (removed; see git history).",
@@ -60,24 +61,32 @@
   "models": {
     "claude_opus_5_5": {
       "display_name": "Claude Opus 5.5",
+      "selection_status": "selectable",
       "family": "claude_opus",
       "version": "5.5",
       "class": "premium",
       "context_window": 1000000,
       "output_token_ceiling": 128000,
-      "lifecycle_status": "active",
-      "launch_date": "2026-09-22",
-      "eol_no_sooner_than": "2027-09-22",
       "capabilities": [
         "tool_use",
         "extended_thinking",
         "vision",
         "long_context"
       ],
-      "adaptive_thinking_only": true,
-      "sampling_parameters_supported": false,
+      "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html (retrieved 2026-09-24); runtime in-region eu-west-2 confirmed from the same model card on 2026-10-03.",
+      "lifecycle_status": "active",
+      "launch_date": "2026-09-22",
+      "eol_no_sooner_than": "2027-09-22",
       "default_effort": "medium",
+      "adaptive_thinking_only": true,
       "batch_supported": false,
+      "forced_tool_choice_supported": false,
+      "native_structured_output_supported": false,
+      "sampling_parameters_supported": false,
+      "runtime_in_region_regions": [
+        "eu-west-2"
+      ],
+      "runtime_in_region_verified_at": "2026-10-03",
       "inference_profiles": {
         "us": [
           "us-east-1",
@@ -143,7 +152,6 @@
           "us-west-2"
         ]
       },
-      "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html (retrieved 2026-09-24); runtime in-region eu-west-2 confirmed from the same model card on 2026-10-03.",
       "paths": {
         "mantle_messages": {
           "available": true,
@@ -165,16 +173,11 @@
           "model_id": "anthropic.claude-opus-5-5",
           "requires_cris": true
         }
-      },
-      "forced_tool_choice_supported": false,
-      "native_structured_output_supported": false,
-      "runtime_in_region_regions": [
-        "eu-west-2"
-      ],
-      "runtime_in_region_verified_at": "2026-10-03"
+      }
     },
     "claude_sonnet_5": {
       "display_name": "Claude Sonnet 5",
+      "selection_status": "selectable",
       "family": "claude_sonnet",
       "version": "5.0",
       "class": "balanced",
@@ -207,6 +210,7 @@
     },
     "claude_haiku_4_5": {
       "display_name": "Claude Haiku 4.5 (explicit alternative; superseded by Haiku 5.5 as the fast tier)",
+      "selection_status": "selectable",
       "family": "claude_haiku",
       "version": "4.5",
       "class": "fast",
@@ -236,14 +240,12 @@
     },
     "claude_haiku_5_5": {
       "display_name": "Claude Haiku 5.5",
+      "selection_status": "selectable",
       "family": "claude_haiku",
       "version": "5.5",
       "class": "fast",
       "context_window": 1000000,
       "output_token_ceiling": 128000,
-      "lifecycle_status": "active",
-      "launch_date": "2026-10-07",
-      "eol_no_sooner_than": "2027-10-07",
       "capabilities": [
         "tool_use",
         "extended_thinking",
@@ -251,26 +253,18 @@
         "long_context"
       ],
       "evidence": "AWS model card model-card-anthropic-claude-haiku-5-5 (read 2026-11-09): launch 2026-10-07, Active, EOL no sooner than 2027-10-07; Messages/Converse/Invoke on bedrock-runtime via Geo (us./ca./eu./au./jp.) and Global CRIS, Messages on bedrock-mantle with the bare id; 1M context, 128K max output; adaptive thinking on by default with configurable effort; image input; explicit prompt caching; tiered pricing above 100K prompt tokens (US Geo $0.11/$0.55 up to 100K, $0.55/$2.75 above; Global $0.10/$0.50 and $0.50/$2.50). Supersedes Haiku 4.5 as the fast/low-cost Claude tier; Haiku 4.5 (200K, no thinking) stays an explicit alternative for workloads that must keep pre-5.5 behavior — see ai-anthropic-to-bedrock.md for the ~30% tokenizer recount and thinking-history constraints. AWS model card model-card-anthropic-claude-haiku-5-5 (re-read 2026-11-10): Regional Availability lists bedrock-runtime in 35 commercial Regions plus us-gov-east-1/us-gov-west-1 and bedrock-mantle in us-gov-west-1 only; Geo source-region tables for us./ca./eu./au./jp. copied verbatim; Global profiles are unavailable in GovCloud. Service Tiers: Standard only (no Batch, Priority, Flex, or Reserved) per the Haiku 5.5 target contract in ai-anthropic-to-bedrock.md. Migration guide: omit temperature/top_p/top_k (including Converse temperature/topP); forced tool choice is accepted; adaptive thinking is on by default and can be turned off (not Opus 5.5's always-on rule).",
-      "paths": {
-        "mantle_messages": {
-          "available": true,
-          "model_id": "anthropic.claude-haiku-5-5",
-          "requires_cris": false,
-          "regions": [
-            "us-gov-west-1"
-          ]
-        },
-        "runtime_converse": {
-          "available": true,
-          "model_id": "anthropic.claude-haiku-5-5",
-          "requires_cris": true
-        },
-        "runtime_invoke": {
-          "available": true,
-          "model_id": "anthropic.claude-haiku-5-5",
-          "requires_cris": true
-        }
-      },
+      "lifecycle_status": "active",
+      "launch_date": "2026-10-07",
+      "eol_no_sooner_than": "2027-10-07",
+      "batch_supported": false,
+      "forced_tool_choice_supported": true,
+      "sampling_parameters_supported": false,
+      "mantle_regions": [
+        "us-gov-west-1"
+      ],
+      "service_tiers": [
+        "standard"
+      ],
       "inference_profiles": {
         "us": [
           "us-east-1",
@@ -340,15 +334,26 @@
           "us-west-2"
         ]
       },
-      "sampling_parameters_supported": false,
-      "batch_supported": false,
-      "forced_tool_choice_supported": true,
-      "service_tiers": [
-        "standard"
-      ],
-      "mantle_regions": [
-        "us-gov-west-1"
-      ]
+      "paths": {
+        "mantle_messages": {
+          "available": true,
+          "model_id": "anthropic.claude-haiku-5-5",
+          "requires_cris": false,
+          "regions": [
+            "us-gov-west-1"
+          ]
+        },
+        "runtime_converse": {
+          "available": true,
+          "model_id": "anthropic.claude-haiku-5-5",
+          "requires_cris": true
+        },
+        "runtime_invoke": {
+          "available": true,
+          "model_id": "anthropic.claude-haiku-5-5",
+          "requires_cris": true
+        }
+      }
     }
   }
 }

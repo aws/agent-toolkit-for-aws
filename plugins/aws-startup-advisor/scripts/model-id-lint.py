@@ -203,7 +203,7 @@ def lint(plugin: Path) -> tuple[list[str], list[str], int]:
         if not path.is_file() or path.suffix not in EXTS or path.resolve() == SELF:
             continue
         rel = str(path.relative_to(plugin))
-        if "node_modules" in rel:
+        if "node_modules" in rel or ".venv" in path.relative_to(plugin).parts:
             continue
         canonical = canonicalize(rel)
         try:
