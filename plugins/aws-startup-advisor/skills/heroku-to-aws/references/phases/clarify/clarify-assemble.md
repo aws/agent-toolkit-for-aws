@@ -67,6 +67,7 @@ Write `$MIGRATION_DIR/preferences.json`:
   "operational": {
     "container_registry": "<Q12 value>",
     "containerization_status": "<Q12b value>",
+    "dockerfile_apps": ["<Q12b follow-up, partial estates only: inventory app names that already have a Dockerfile>"],
     "containerization_method": "<Q12e value: cnb_heroku_builder|dockerfile>",
     "log_retention_days": "<Q13 value>",
     "alerting": "<Q14 value>",
@@ -119,6 +120,7 @@ Do **not** write a `workshop` object from Clarify. The what-if workshop
 8. `design_constraints.compute_target` uses the structured Q12c shape (`default`, `overrides`, `chosen_by`, `recommendation`). Existing reused preferences with legacy `compute_target.value` may be read by Design for backward compatibility, but newly assembled preferences MUST write the structured shape.
 9. `design_constraints.eb_deploy_method` is required when the resolved compute plan includes at least one Elastic Beanstalk formation; omit it for all-Fargate or all-EKS targets.
 10. Omit `workshop` on Clarify assemble — workshop mode owns that object.
+11. `operational.dockerfile_apps` is written only when `operational.containerization_status` is `"partial"` (Q12b follow-up): a non-empty array of inventory `apps[].name` values that already have a Dockerfile, including every `container`-stack app. Omit it for `containerized` and `buildpack_only`. Generate resolves each app's containerization method as `stack == "container"` or listed here → `dockerfile`, otherwise `operational.containerization_method`; an app's resolution is **never** inferred from its stack alone.
 
 ---
 
@@ -148,7 +150,9 @@ Before handing off to Design:
 - [ ] `design_constraints.compute_target.recommendation.reasons` is a non-empty array
 - [ ] If the resolved compute plan includes Elastic Beanstalk → `design_constraints.eb_deploy_method.value` is one of: `"github_actions"`, `"codepipeline"`, `"manual"`
 - [ ] If `design_constraints.eb_deploy_method` is present → `design_constraints.eb_deploy_method.chosen_by` is `"user"` or `"default"`
-- [ ] If `operational.containerization_method` is `"cnb_heroku_builder"` → `operational.container_registry` is `"ecr"`, and `design_constraints.eb_deploy_method.value` (when present) is not `"codepipeline"` (Q12 / Q12d validation; Generate halts on either combination)
+- [ ] If `operational.containerization_method` is `"cnb_heroku_builder"` → `operational.container_registry` is `"ecr"` (Q12 validation; Generate halts on the combination)
+- [ ] If `operational.containerization_method` is `"cnb_heroku_builder"` and `design_constraints.eb_deploy_method.value` is `"codepipeline"` → no app with an Elastic Beanstalk formation in the resolved compute plan resolves to CNB per app (an EB app resolves to CNB when its inventory `stack` is not `"container"` and it is not listed in `operational.dockerfile_apps[]` — the Q12d / `pipeline.tf` rule). A container-stack or `dockerfile_apps` EB app on CodePipeline beside a buildpack app on Fargate is valid; an actual CNB EB app on CodePipeline is not (Generate halts on it)
+- [ ] If `operational.containerization_status` is `"partial"` → `operational.dockerfile_apps` is a non-empty array of inventory app names that includes every `container`-stack app; otherwise the key is absent
 - [ ] All entries in `sources` have a value of `"user"`, `"extracted"`, or `"default"`
 - [ ] Every ID in `metadata.questions_skipped_extracted` has `sources.<QID>` = `"extracted"`, and its field holds a catalog enum value (`data.database_ha` ∈ `"single-az"` / `"multi-az"` / `"multi-az-ha"`; `operational.containerization_status` ∈ `"containerized"` / `"buildpack_only"` / `"partial"`; `data.redis_ha` Boolean) — never a raw inventory signal such as a Boolean `database_ha`
 - [ ] `metadata.clarify_mode` is set to `"fast_path"` or `"full"`

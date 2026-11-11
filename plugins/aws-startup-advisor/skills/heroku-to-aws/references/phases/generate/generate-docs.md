@@ -42,7 +42,7 @@ Also extract:
 - `migration_method` — from `preferences.json`.data.migration_method (`"pg_dump_restore"`, `"dms"`, `"bucardo"`, `"wal_g"`)
 - `containerization_status` — from `preferences.json`.operational.containerization_status (`"containerized"`, `"buildpack_only"`, `"partial"`)
 - `containerization_method` — from `preferences.json`.operational.containerization_method; **default `"dockerfile"` when absent** (preferences written before Q12e existed have no field — the same fallback `generate-terraform.md` Step 5.5 applies, so the Dockerfile branches below still render for them). `"cnb_heroku_builder"` or `"dockerfile"`.
-- `app_containerization_method` — per app, resolved as in `generate-terraform.md` Step 5.5 § "Containerization method per app": `"dockerfile"` when the app's inventory `stack` is `"container"` (it already has a Dockerfile), otherwise `containerization_method`. `has_cnb_app = true` when any app resolves to `"cnb_heroku_builder"`; `has_dockerfile_app = true` when any app resolves to `"dockerfile"`. Per-app blocks (`{{app_name}}` sections) test `app_containerization_method`; estate-level sections test these two flags.
+- `app_containerization_method` — per app, resolved as in `generate-terraform.md` Step 5.5 § "Containerization method per app": `"dockerfile"` when the app's inventory `stack` is `"container"` **or** its name is in `preferences.json`.operational.dockerfile_apps (the Q12b follow-up: apps that already have a Dockerfile, whatever stack they run on today), or when `containerization_status` is `"containerized"`; otherwise `containerization_method`. `has_cnb_app = true` when any app resolves to `"cnb_heroku_builder"`; `has_dockerfile_app = true` when any app resolves to `"dockerfile"`. Per-app blocks (`{{app_name}}` sections) test `app_containerization_method`; estate-level sections test these two flags.
 - `cnb_builder_tag` — per app: `22` for stack `heroku-22`, `24` for `heroku-24`, otherwise `26`
 - `target_exit_date` — from `preferences.json`.global.target_exit_date (ISO date or null)
 - `dns_strategy` — from `preferences.json`.data.dns_strategy (Clarify Q10 writes it inside the `"data"` block — `clarify-assemble.md`; there is no `global.dns_strategy`). `"route53"` or `"external"`; treat any other or missing value (e.g. a legacy `"manual_cutover"`) as `"external"`.
@@ -123,7 +123,8 @@ Before beginning the migration, ensure the following are in place:
 
 {{IF has_cnb_app}}
 - [ ] `pack` CLI installed locally for the first manual build (CI installs it itself); `pack build` of each buildpack app succeeds with the Heroku builder
-- [ ] `EB_WEB_PORT` in each buildpack app's `deploy-eb.yml` equals that app's `eb_application_port_<app_sanitized>_web` in `terraform.tfvars`
+- [ ] Publishing builds run on a host that can build `linux/amd64` images (an x86 machine or CI's `ubuntu-latest`); every publishing `pack build` passes `--platform linux/amd64` because the AWS compute for these apps is x86_64
+- [ ] `EB_CONTAINER_PORT` in each buildpack app's `deploy-eb.yml` equals that app's `eb_application_port_<app_sanitized>_web` in `terraform.tfvars` (apps with an EB web environment), or is `8080` (worker-only apps, which have no such variable)
 {{ENDIF}}
 {{IF has_dockerfile_app}}
 - [ ] Source bundle contains a Dockerfile at the repository root for Elastic Beanstalk Docker deployment (every app that already ships one, plus every buildpack app when the containerization method is `dockerfile`)
@@ -134,7 +135,7 @@ Before beginning the migration, ensure the following are in place:
 - [ ] HTTP health check path identified for every Beanstalk web app's `eb_health_check_path_<app_sanitized>_web` input
       {{ENDIF}}
       {{IF has_fargate}}
-- [ ] Application Docker image built and pushed to ECR (or container registry)
+- [ ] Application Docker image built and pushed to ECR (or container registry) — Dockerfile apps only; a buildpack (CNB) app's image is published in Phase 3, after Phase 1 has created its repository (leave `image_tag_<app_sanitized>` unset until then)
       {{ENDIF}}
 - [ ] Environment variables documented and mapped to AWS Secrets Manager / Parameter Store
 - [ ] Health check endpoints identified for each web service
@@ -158,6 +159,14 @@ docker run --rm -e PORT=8080 -p 8080:8080 {{app_name}}:local                    
 docker run --rm --entrypoint /cnb/process/worker {{app_name}}:local               # any other Procfile process type
 ```
 
+This local check builds for your machine's architecture (`heroku/builder:24` and `:26`
+are published for both amd64 and arm64; `:22` is amd64 only). The AWS compute for these
+apps is x86_64, so every build that **publishes** to ECR (Phase 3 and the deploy workflow)
+passes `--platform linux/amd64`. Cross-architecture builds are not supported by
+Cloud Native Buildpacks: on an ARM machine that cannot run amd64 containers the flagged
+build fails — stop and publish from an x86 machine or from CI (`ubuntu-latest` is amd64)
+instead of dropping the flag.
+
 **How process types map:** the image's entrypoint is its default process, `web`. Another
 Procfile entry (`worker`, `scheduler`, …) is selected by overriding the **entrypoint** with
 `/cnb/process/<process_type>`; a bare container _command_ does not select a process, it is
@@ -169,8 +178,10 @@ passed as an argument to `web`. Elastic Beanstalk environments get it through
 
 - `PORT` is not injected by the platform. Each web app has exactly one listen port: on
   Elastic Beanstalk it is `eb_application_port_<app_sanitized>_web` (set as the EB `PORT`
-  property and as `EB_WEB_PORT`/`ContainerPort` in the deploy workflow); on Fargate the
-  task definition sets `PORT=8080` and maps 8080.
+  property and as `EB_CONTAINER_PORT`/`ContainerPort` in the deploy workflow); on Fargate
+  the task definition sets `PORT=8080` and maps 8080. A worker-only Elastic Beanstalk app
+  has no such variable; its bundles carry `ContainerPort` `8080` because the EB Docker
+  platform requires one, and nothing listens on it.
 - The `release` process type is not run automatically before a deploy; the generated
   workflow does not yet include a release step — run it as a one-off task before cutover
   (see Phase 4) until a release job is added to your pipeline.
@@ -274,6 +285,26 @@ These variables have no defaults. If any required assignment is absent,
 diagnostic naming the missing customer input. Do not continue to apply until both
 values are set for every Beanstalk web app. Worker-only Beanstalk apps do not need
 these web runtime inputs.
+
+{{ENDIF}}
+
+{{IF has_cnb_app AND has_fargate}}
+
+**First deployment of buildpack (CNB) apps on Fargate.** `terraform/ecr.tf` creates the
+repository each buildpack app publishes to, so no image can exist before this first apply.
+Do **not** set `image_tag_<app_sanitized>` yet (it defaults to `""`): with the tag unset
+the apply creates the repository and the ECS service with `desired_count = 0`, and the task
+definition points at the never-pulled placeholder tag `bootstrap`. The order is:
+
+1. Phase 1 (this step): `terraform apply` with `image_tag_<app_sanitized>` unset → repository and
+   zero-task service exist.
+2. Phase 3 § "Build and Push Container Image": `pack build … --platform linux/amd64 --publish`
+   into that repository, tagged with the commit SHA.
+3. Phase 3: set `image_tag_<app_sanitized> = "<that SHA>"` in `terraform.tfvars` and
+   `terraform apply` again → the service scales to its designed count.
+
+Never set the tag before the image exists; `terraform plan -input=false` accepts both
+the empty default and a published tag, and rejects anything that is not a valid ECR tag.
 
 {{ENDIF}}
 
@@ -851,7 +882,7 @@ The generated EB path deploys a source bundle containing your Dockerfile. GitHub
 ### GitHub Actions Deploy (Default)
 
 {{IF app_containerization_method == "cnb_heroku_builder"}}
-The generated `.github/workflows/deploy-eb.yml` workflow uses GitHub OIDC role assumption, builds the image with `pack` and the Heroku builder, publishes it to ECR tagged with the commit SHA (reusing the image when a rerun finds that tag already published), writes one `Dockerrun.aws.json` bundle per process type, creates one Elastic Beanstalk application version per bundle, and updates each generated EB environment. Keep `EB_WEB_PORT` in the workflow equal to `eb_application_port_{{app_sanitized}}_web` in `terraform.tfvars`: it is the port the EB `PORT` property and the Dockerrun `ContainerPort` both carry.
+The generated `.github/workflows/deploy-eb.yml` workflow uses GitHub OIDC role assumption, builds the image with `pack` and the Heroku builder for `linux/amd64` (the architecture of the generated compute), publishes it to ECR tagged with the commit SHA (reusing the image when a rerun finds that tag already published and verified as `amd64`; a tag of another architecture fails the run and names the tag to delete), writes one `Dockerrun.aws.json` bundle per process type, creates one Elastic Beanstalk application version per bundle (label `<sha>-<run number>-<run attempt>-<process>`, so a rerun after a failed environment update gets a fresh label), and updates each generated EB environment. Keep `EB_CONTAINER_PORT` in the workflow equal to `eb_application_port_{{app_sanitized}}_web` in `terraform.tfvars` when this app has an EB web environment: it is the port the EB `PORT` property and the Dockerrun `ContainerPort` both carry. A worker-only app has no such variable and uses `8080` (EB's Docker platform requires a `ContainerPort`; nothing listens on it).
 
 Before first run, create or provide a GitHub OIDC IAM role with permissions to call `elasticbeanstalk create-storage-location`, `elasticbeanstalk create-application-version`, `elasticbeanstalk update-environment`, and upload the bundles to the EB storage bucket. Because this app's image is built by `pack` and pushed to ECR, the same role also needs two ECR statements:
 
@@ -882,16 +913,28 @@ No automated deploy artifact was generated. Package and deploy manually:
 {{IF app_containerization_method == "cnb_heroku_builder"}}
 
 ```bash
-# 1. Build with Heroku buildpacks (no Dockerfile) and publish to ECR, tagged by commit.
-#    The repository has immutable tags: skip the build when this commit is already published.
+# 1. Build with Heroku buildpacks (no Dockerfile) for linux/amd64 (the generated compute is
+#    x86_64; builders 24/26 would otherwise build for this machine's architecture) and publish
+#    to ECR, tagged by commit. The repository has immutable tags: reuse the commit's image when
+#    it is already published AND is amd64; stop if it is another architecture. Run this on an
+#    x86 machine or in CI: cross-architecture buildpack builds are not supported.
 IMAGE="{{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com/{{project_name}}/{{app_name}}:$(git rev-parse HEAD)"
 aws ecr get-login-password --region {{target_region}} | docker login --username AWS --password-stdin {{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com
-aws ecr describe-images --repository-name {{project_name}}/{{app_name}} --image-ids "imageTag=$(git rev-parse HEAD)" --region {{target_region}} > /dev/null 2>&1 \
-  || pack build "${IMAGE}" --builder heroku/builder:{{cnb_builder_tag}} --publish
+if aws ecr describe-images --repository-name {{project_name}}/{{app_name}} --image-ids "imageTag=$(git rev-parse HEAD)" --region {{target_region}} > /dev/null 2>&1; then
+  ARCHES="$(docker manifest inspect --verbose "${IMAGE}" | jq -r 'if type == "array" then map(.Descriptor.platform.architecture) | join(" ") else .Descriptor.platform.architecture end')"
+  case " ${ARCHES} " in
+    *" amd64 "*) echo "Reusing existing linux/amd64 image ${IMAGE}" ;;
+    *) echo "${IMAGE} exists but is '${ARCHES}', not amd64: delete the tag (aws ecr batch-delete-image) and rebuild" >&2; exit 1 ;;
+  esac
+else
+  pack build "${IMAGE}" --builder heroku/builder:{{cnb_builder_tag}} --platform linux/amd64 --publish
+fi
 
 # 2. One Dockerrun.aws.json bundle per process type; the Entrypoint selects the process.
-#    EB_WEB_PORT must equal eb_application_port_{{app_sanitized}}_web in terraform.tfvars.
-EB_WEB_PORT="<eb_application_port_{{app_sanitized}}_web>"
+#    EB_CONTAINER_PORT: the value of eb_application_port_{{app_sanitized}}_web in terraform.tfvars when
+#    this app has an EB web environment; the literal 8080 for a worker-only app (no such variable;
+#    EB's Docker platform still requires a ContainerPort and nothing listens on it).
+EB_CONTAINER_PORT="<eb_application_port_{{app_sanitized}}_web | 8080 when the app has no EB web environment>"
 VERSION_BASE="v$(date +%Y%m%d%H%M%S)"
 BUCKET="$(aws elasticbeanstalk create-storage-location --query S3Bucket --output text --region {{target_region}})"
 for PROCESS in {{EB_PROCESS_TYPES}}; do          # e.g. web worker — never release
@@ -900,7 +943,7 @@ for PROCESS in {{EB_PROCESS_TYPES}}; do          # e.g. web worker — never rel
 {
   "AWSEBDockerrunVersion": "1",
   "Image": { "Name": "${IMAGE}", "Update": "true" },
-  "Ports": [{ "ContainerPort": "${EB_WEB_PORT}" }],
+  "Ports": [{ "ContainerPort": "${EB_CONTAINER_PORT}" }],
   "Entrypoint": "/cnb/process/${PROCESS}"
 }
 JSON
@@ -952,14 +995,28 @@ Export all Heroku config vars and import sensitive values to AWS Secrets Manager
 
 ```bash
 {{IF app_containerization_method == "cnb_heroku_builder"}}
-# Build with Heroku buildpacks (no Dockerfile) and publish straight to ECR, tagged by commit.
-# The repository has immutable tags: a commit that is already published is reused, not rebuilt.
+# Build with Heroku buildpacks (no Dockerfile) for linux/amd64 — the generated Fargate tasks are
+# x86_64 and builders 24/26 would otherwise build for this machine's architecture — and publish
+# straight to ECR, tagged by commit. Run this on an x86 machine or in CI (cross-architecture
+# buildpack builds are not supported). The repository (terraform/ecr.tf) exists since the Phase 1
+# apply, which ran with image_tag_{{app_sanitized}} unset and the service at desired_count 0.
+# Immutable tags: a commit that is already published is reused only when it is amd64.
+IMAGE="{{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com/{{project_name}}/{{app_name}}:{{git_sha}}"
 aws ecr get-login-password --region {{target_region}} | docker login --username AWS --password-stdin {{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com
-aws ecr describe-images --repository-name {{project_name}}/{{app_name}} --image-ids imageTag={{git_sha}} --region {{target_region}} > /dev/null 2>&1 \
-  || pack build {{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com/{{project_name}}/{{app_name}}:{{git_sha}} --builder heroku/builder:{{cnb_builder_tag}} --publish
+if aws ecr describe-images --repository-name {{project_name}}/{{app_name}} --image-ids imageTag={{git_sha}} --region {{target_region}} > /dev/null 2>&1; then
+  ARCHES="$(docker manifest inspect --verbose "${IMAGE}" | jq -r 'if type == "array" then map(.Descriptor.platform.architecture) | join(" ") else .Descriptor.platform.architecture end')"
+  case " ${ARCHES} " in
+    *" amd64 "*) echo "Reusing existing linux/amd64 image ${IMAGE}" ;;
+    *) echo "${IMAGE} exists but is '${ARCHES}', not amd64: delete the tag (aws ecr batch-delete-image) and rebuild" >&2; exit 1 ;;
+  esac
+else
+  pack build "${IMAGE}" --builder heroku/builder:{{cnb_builder_tag}} --platform linux/amd64 --publish
+fi
 # The task definition selects the process type with entryPoint = ["/cnb/process/<process_type>"]
 # and sets PORT=8080 on the web container. Its image is the repository from terraform/ecr.tf
-# plus this tag: set image_tag_{{app_sanitized}} = "{{git_sha}}" in terraform.tfvars and apply.
+# plus this tag. Now that the image exists, set image_tag_{{app_sanitized}} = "{{git_sha}}" in
+# terraform.tfvars and run `terraform apply`: the service leaves desired_count 0 and starts
+# its designed number of tasks (Phase 1 § "First deployment of buildpack (CNB) apps on Fargate").
 {{ELSE}}
 # Build Docker image
 docker build -t {{app_name}}:latest .
@@ -975,7 +1032,7 @@ docker push {{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com/{{app_nam
 
 ### Deploy to Fargate
 
-The Terraform configuration creates ECS services automatically. After pushing the image, force a new deployment:
+The Terraform configuration creates ECS services automatically. For a buildpack (CNB) app the deployment is the `terraform apply` that sets `image_tag_{{app_sanitized}}` (above); for a Dockerfile app, after pushing the image, force a new deployment:
 
 ```bash
 aws ecs update-service \
