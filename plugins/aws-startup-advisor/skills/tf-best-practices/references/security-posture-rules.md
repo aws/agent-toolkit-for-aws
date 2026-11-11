@@ -196,9 +196,10 @@ permissions for, so `Resource = "*"` is the only way to write them:
   actions (`CreateControlChannel`, `CreateDataChannel`, `OpenControlChannel`,
   `OpenDataChannel`) — the task-role grant behind `aws ecs execute-command`.
 
-The exception is statement-shaped: combining either with any other action (for example
-`ssmmessages:*`, `ssm:*`, or `s3:*` in the same list) does not qualify, and that statement
-is flagged.
+The exception is statement-shaped and literal-only: combining either with any other action
+(for example `ssmmessages:*`, `ssm:*`, or `s3:*` in the same list) does not qualify, and
+neither does a list with a non-literal member (`local.extra_action`, `var.x`, a function
+call) — the checker cannot see what it resolves to, so that statement is flagged.
 
 **Gate mapping:** `no_wildcard_iam`. The gate scans literal policy JSON (heredoc or
 `jsonencode({...})`) in the resources above. `aws_iam_policy_document` **data sources** fail

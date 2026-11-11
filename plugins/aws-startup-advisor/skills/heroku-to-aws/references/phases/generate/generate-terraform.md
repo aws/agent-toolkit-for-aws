@@ -1455,10 +1455,15 @@ resource "aws_elastic_beanstalk_environment" "<app_name>_<process_type>" {
     value     = "true"
   }
 
+  # RetentionInDays accepts only 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400,
+  # 545, 731, 1827, 3653. Clarify Q13 allows any integer 1–3653 (including a reused
+  # preferences.json), so the generator emits the smallest accepted value that is
+  # >= operational.log_retention_days (2 → 3, 45 → 60, 30 → 30; default 30). Never copy
+  # the raw preference: an unlisted value fails environment creation/update.
   setting {
     namespace = "aws:elasticbeanstalk:cloudwatch:logs"
     name      = "RetentionInDays"
-    value     = "<preferences.json.operational.log_retention_days || 30>"
+    value     = "<smallest EB-accepted RetentionInDays >= preferences.json.operational.log_retention_days || 30>"
   }
 
   # {{IF process_type == "web"}}

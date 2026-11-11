@@ -784,7 +784,9 @@ def _remove_allowed_resource_wildcard_statements(body: str) -> str:
     Two shapes are approved:
       - an isolated elasticbeanstalk:CreateStorageLocation statement;
       - an ECS Exec statement whose Action list contains ONLY the four
-        ssmmessages channel actions (any subset, any order, nothing else).
+        ssmmessages channel actions as string literals (any subset, any order,
+        nothing else — a non-literal member such as `local.extra_action`
+        disqualifies the statement).
     """
     body = re.sub(
         r"""
@@ -800,10 +802,19 @@ def _remove_allowed_resource_wildcard_statements(body: str) -> str:
     )
 
     def _drop_if_only_ssmmessages(m: re.Match[str]) -> str:
-        actions = re.findall(r'"([^"]*)"', m.group("actions"))
-        if actions and all(a in _ECS_EXEC_SSMMESSAGES_ACTIONS for a in actions):
-            return ""
-        return m.group(0)
+        # Every list member must be a quoted string literal from the allowlist.
+        # An expression member (local.x, var.y, a function call) is kept — the
+        # checker cannot know what it resolves to, so the statement stays
+        # subject to the wildcard rule.
+        members = [p.strip() for p in m.group("actions").split(",")]
+        members = [p for p in members if p]  # tolerate a trailing comma
+        if not members:
+            return m.group(0)
+        for member in members:
+            lit = re.fullmatch(r'"([^"]*)"', member)
+            if lit is None or lit.group(1) not in _ECS_EXEC_SSMMESSAGES_ACTIONS:
+                return m.group(0)
+        return ""
 
     return re.sub(
         r"""

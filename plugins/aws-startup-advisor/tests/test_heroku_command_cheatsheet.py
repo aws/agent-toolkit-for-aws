@@ -171,9 +171,13 @@ def test_pg_psql_reads_the_generated_db_credentials_secret() -> None:
         "aws secretsmanager get-secret-value --secret-id {{DB_CREDENTIALS_SECRET}}"
         " --query SecretString --output text"
     ) == 2
+    # The advertised session shell is /bin/sh; `<<<` is a bash/zsh here-string that
+    # dash rejects ("Syntax error: redirection unexpected"), so no row may use it.
+    assert "<<<" not in section
+    assert section.count("""jq -rn --argjson c "$creds" '$c.username, $c.password'""") == 2
     assert section.count(
-        'PGPASSWORD=$(jq -r .password <<<"$creds") psql "postgres://$(jq -r .username <<<"$creds")@'
-        "{{TARGET_DB_HOST}}:{{TARGET_DB_PORT}}/{{TARGET_DB_NAME}}?sslmode=verify-full"
+        'psql "postgres://<username>@{{TARGET_DB_HOST}}:{{TARGET_DB_PORT}}/{{TARGET_DB_NAME}}'
+        '?sslmode=verify-full'
     ) == 2
     assert (
         "| `{{DB_CREDENTIALS_SECRET}}` | `name` of the generated"
@@ -242,9 +246,9 @@ def test_open_row_uses_configured_protocol_and_hostname() -> None:
     section = _section()
     assert "open https://{{EB_ENVIRONMENT_URL}}" not in section
     assert "open https://{{ALB_DNS_NAME}}" not in section
-    assert "{{IF has_route53_dns}}`open https://{{app_domain}}`" in section
+    assert "{{IF has_route53_dns}}`open https://{{APP_HTTPS_HOSTNAME}}`" in section
     assert "{{ELSE}}`open http://{{EB_ENVIRONMENT_URL}}`" in section
-    assert "`open https://{{app_domain}}` — the ALB certificate" in section
+    assert "`open https://{{APP_HTTPS_HOSTNAME}}` — the ALB certificate" in section
 
 
 def test_step0_and_variable_table_define_the_new_inputs() -> None:
@@ -260,7 +264,174 @@ def test_step0_and_variable_table_define_the_new_inputs() -> None:
         "| `{{PROJECT_NAME}}` |",
         "| `{{EB_APPLICATION}}` |",
         "| `{{DB_CREDENTIALS_SECRET}}` |",
+        "| `{{APP_HTTPS_HOSTNAME}}` |",
         '- "Day-to-day commands: Heroku → AWS" is ALWAYS rendered',
     ):
         assert token in DOCS, token
     assert "EB_WEB_ENVIRONMENT" not in DOCS
+
+
+def _emitted_terraform_files() -> set[str]:
+    # The file inventory table at the top of generate-terraform.md is the list of
+    # files Step 1..9.5 actually write; every `terraform/<x>.tf` the guide points
+    # an operator at must be one of them (Fargate resources live in compute.tf —
+    # there is no ecs.tf or alb.tf).
+    inventory = TERRAFORM[: TERRAFORM.index("## Step 0:")]
+    files = set(re.findall(r"^\| `([a-z_]+\.tf)`\s+\|", inventory, re.MULTILINE))
+    assert {"compute.tf", "beanstalk.tf", "security.tf", "dns.tf"} <= files, files
+    return files
+
+
+def test_terraform_file_references_match_the_emitted_inventory() -> None:
+    section = _section()
+    referenced = set(re.findall(r"`terraform/([a-z_]+\.tf)`", section))
+    assert referenced, "the cheat sheet should point at generated Terraform files"
+    unknown = referenced - _emitted_terraform_files()
+    assert not unknown, unknown
+    for bare in re.findall(r"`([a-z_]+\.tf)`", section):
+        assert bare in _emitted_terraform_files(), bare
+    assert "ecs.tf" not in section and "alb.tf" not in section
+    assert "`aws_lb_listener.https` in `terraform/compute.tf`" in section
+    assert "grant `aws_iam_role.ecs_execution` (`terraform/security.tf`)" in section
+
+
+def test_pg_psql_credential_path_is_the_operator_not_the_session_role() -> None:
+    # Neither generated session role can read `<project>-<env>/db-credentials`: the
+    # EB instance role is scoped to `secret:<project>/*`, and the ECS task role has
+    # only the ssmmessages channel actions. The rows therefore read the secret on
+    # the operator's workstation and only the DSN (password at the prompt) enters
+    # the session. The no-RDS-Proxy fallback stays explicit.
+    section = _section()
+    eb = section[section.index("{{IF has_beanstalk}}"):section.index("{{IF has_fargate}}")]
+    fargate = section[section.index("{{IF has_fargate}}"):section.index(DEFERRED_GUARD)]
+    for table in (eb, fargate):
+        assert "read it on your workstation with your own AWS CLI credentials" in table
+        assert "type the password at the prompt" in table
+        assert "without RDS Proxy there is no secret to read" in table
+        assert "PGPASSWORD=" not in table
+    assert "the EB instance role reads only `secret:{{PROJECT_NAME}}/*`" in eb
+    assert "the task role carries only the `ssmmessages` channel actions" in fargate
+    # Those two claims are true of the templates.
+    eb_policy = TERRAFORM[TERRAFORM.index('resource "aws_iam_role_policy" "eb_read_secrets_<app_name>"'):]
+    eb_policy = eb_policy[: eb_policy.index("\n}\n")]
+    assert ":secret:${var.project_name}/*" in eb_policy
+    assert "db-credentials" not in eb_policy
+    task_exec = TERRAFORM[TERRAFORM.index('resource "aws_iam_role_policy" "ecs_task_exec"'):]
+    task_exec = task_exec[: task_exec.index("\n}\n")]
+    assert "secretsmanager" not in task_exec
+    # Every shell line the rows propose parses under a POSIX sh (dash when present).
+    import shutil
+    import subprocess  # nosec B404 — test-only, inputs are literals from the guide
+
+    sh = shutil.which("dash") or shutil.which("sh")
+    script = "\n".join(
+        [
+            'creds=$(printf %s \'{"username":"u","password":"p"}\')',
+            """jq -rn --argjson c "$creds" '$c.username, $c.password'""",
+            "lb_name=$(printf %s awseb-e-x)",
+            'lb_arn=$(printf %s "$lb_name")',
+            'printf %s "$lb_arn"',
+        ]
+    )
+    for cmd in ("creds=", "jq -rn --argjson", "lb_name=$(", "lb_arn=$("):
+        assert cmd in section, cmd
+    result = subprocess.run([sh, "-n"], input=script, text=True, capture_output=True)  # nosec B603
+    assert result.returncode == 0, result.stderr
+
+
+def test_eb_maintenance_row_branches_on_the_actual_load_balancer_type() -> None:
+    # Outside has_route53_dns beanstalk.tf omits LoadBalancerType (API default:
+    # classic) — no ELBv2 listener to point at a fixed response. With Route 53 DNS
+    # it sets LoadBalancerType=application and EB reports the load balancer by
+    # NAME, so the ARN must be resolved before describe-listeners.
+    section = _section()
+    eb = section[section.index("{{IF has_beanstalk}}"):section.index("{{IF has_fargate}}")]
+    row = [line for line in eb.splitlines() if line.startswith("| `heroku maintenance:on")]
+    assert len(row) == 1
+    row = row[0]
+    assert row.count("{{IF has_route53_dns}}") == 1 and row.count("{{ELSE}}") == 1
+    alb, classic = row.split("{{ELSE}}")
+    assert "`beanstalk.tf` sets `LoadBalancerType=application`" in alb
+    assert "aws elbv2 modify-listener --listener-arn <listener-arn>" in alb
+    name = alb.index("EnvironmentResources.LoadBalancers[0].Name")
+    arn = alb.index("aws elbv2 describe-load-balancers --names \"$lb_name\"")
+    listeners = alb.index("aws elbv2 describe-listeners --load-balancer-arn \"$lb_arn\"")
+    assert name < arn < listeners
+    assert "Classic Load Balancer" in classic
+    assert "aws elbv2" not in classic.split("do not exist")[1]
+    assert (
+        "aws elasticbeanstalk update-environment --environment-name {{EB_RUN_ENVIRONMENT}}"
+        " --version-label <maintenance-version>"
+    ) in classic
+    assert "`LoadBalancerType=application` in `beanstalk.tf`" in classic
+    # The template really does gate LoadBalancerType on has_route53_dns.
+    eb_env = TERRAFORM[TERRAFORM.index('resource "aws_elastic_beanstalk_environment"'):]
+    eb_env = eb_env[: eb_env.index('resource "aws_iam_instance_profile"')]
+    gated = eb_env[eb_env.index("# {{IF has_route53_dns}}"):eb_env.index("# {{ENDIF}}")]
+    assert 'name      = "LoadBalancerType"' in gated
+    assert eb_env.count('name      = "LoadBalancerType"') == 1
+
+
+def test_open_hostname_is_the_rendered_apps_own_dns_hostname() -> None:
+    # `app_domain` is the FIRST global custom domain; the tables render per app, so
+    # a prod/stage pair with two hostnames would send both `open` rows to prod.
+    section = _section()
+    assert "{{app_domain}}" not in section
+    assert section.count("open https://{{APP_HTTPS_HOSTNAME}}") == 3
+    definition = [l for l in DOCS.splitlines() if l.startswith("| `{{APP_HTTPS_HOSTNAME}}` |")][0]
+    assert "first `dns_hostnames[]` entry whose `heroku_app` is the app being rendered" in definition
+    assert "`<your-custom-domain>` placeholder when that app has no `domain` resource" in definition
+    assert "Never `{{app_domain}}`" in definition
+
+    # Resolution rule as the variable table states it, exercised on two apps.
+    def resolve(app: str, dns_hostnames: list[dict[str, str]]) -> str:
+        for host in dns_hostnames:
+            if host["heroku_app"] == app:
+                return host["hostname"]
+        return "<your-custom-domain>"
+
+    hosts = [
+        {"hostname": "prod.example.com", "heroku_app": "prod-app"},
+        {"hostname": "stage.example.com", "heroku_app": "stage-app"},
+    ]
+    assert resolve("prod-app", hosts) == "prod.example.com"
+    assert resolve("stage-app", hosts) == "stage.example.com"
+    assert resolve("worker-only-app", hosts) == "<your-custom-domain>"
+
+
+EB_RETENTION_IN_DAYS = (
+    1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653,
+)
+
+
+def _eb_retention(requested: int) -> int:
+    return min(v for v in EB_RETENTION_IN_DAYS if v >= requested)
+
+
+def test_eb_retention_is_mapped_to_the_accepted_domain() -> None:
+    # Clarify Q13 accepts any integer 1–3653; EB RetentionInDays accepts a discrete
+    # list. The template documents the exact list and the round-up rule, Q13 tells
+    # the user, and the assemble checklist validates reused preferences too.
+    eb_env = TERRAFORM[TERRAFORM.index('resource "aws_elastic_beanstalk_environment"'):]
+    eb_env = eb_env[: eb_env.index('resource "aws_iam_instance_profile"')]
+    comment = eb_env[eb_env.index("# RetentionInDays accepts only"):eb_env.index('name      = "RetentionInDays"')]
+    documented = tuple(int(n) for n in re.findall(r"\b\d+\b", comment.split("Clarify Q13")[0]))
+    assert documented == EB_RETENTION_IN_DAYS
+    assert "smallest accepted value that is\n  # >= operational.log_retention_days" in comment
+    assert "(2 → 3, 45 → 60, 30 → 30; default 30)" in comment
+    assert 'value     = "<preferences.json.operational.log_retention_days || 30>"' not in eb_env
+    assert (
+        'value     = "<smallest EB-accepted RetentionInDays >= '
+        'preferences.json.operational.log_retention_days || 30>"'
+    ) in eb_env
+    assert _eb_retention(2) == 3
+    assert _eb_retention(45) == 60
+    assert _eb_retention(30) == 30
+    assert _eb_retention(3653) == 3653
+    for standard in (7, 14, 30, 90, 365):
+        assert _eb_retention(standard) == standard
+    clarify = PLUGIN_ROOT / "skills" / "heroku-to-aws" / "references" / "phases" / "clarify"
+    interview = (clarify / "clarify-interview.md").read_text(encoding="utf-8")
+    assemble = (clarify / "clarify-assemble.md").read_text(encoding="utf-8")
+    assert "smallest accepted value that is >= the\npreference (2 → 3, 45 → 60)" in interview
+    assert "`operational.log_retention_days`, when present (fresh or reused preferences alike), is an integer 1–3653" in assemble

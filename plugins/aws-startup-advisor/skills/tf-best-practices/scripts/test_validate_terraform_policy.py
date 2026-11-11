@@ -203,6 +203,33 @@ resource "aws_iam_role_policy" "mixed" {{
         assert "no_wildcard_iam" in out, (extra, out)
 
 
+def test_ssmmessages_exception_requires_every_member_to_be_a_literal() -> None:
+    # A non-literal list member (local/var/function) may resolve to anything —
+    # here `local.extra_action = "s3:*"` — so the statement must keep failing
+    # no_wildcard_iam even though every quoted literal in the list is allowlisted.
+    for extra in ("local.extra_action", "var.extra_action", 'format("%s", "s3:*")'):
+        with tempfile.TemporaryDirectory() as tmp:
+            terraform_dir = Path(tmp)
+            (terraform_dir / "policy.tf").write_text(
+                f'''
+locals {{ extra_action = "s3:*" }}
+resource "aws_iam_role_policy" "mixed_expression" {{
+  role = "example-role"
+  policy = jsonencode({{
+    Statement = [{{
+      Effect   = "Allow"
+      Action   = ["ssmmessages:CreateControlChannel", {extra}]
+      Resource = "*"
+    }}]
+  }})
+}}
+'''
+            )
+            code, out = run_policy_validator(terraform_dir)
+        assert code == 1, (extra, out)
+        assert "no_wildcard_iam" in out, (extra, out)
+
+
 def test_unrelated_wildcard_list_still_fails_alongside_ecs_exec() -> None:
     # A second, over-broad statement in the same policy is still flagged even
     # when the approved ECS Exec statement sits next to it.

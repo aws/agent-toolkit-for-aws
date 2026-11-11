@@ -226,8 +226,9 @@ for the caller, so a false positive would block a real migration).
   Two narrow exceptions, for actions AWS defines no resource-level permissions for:
   an isolated `elasticbeanstalk:CreateStorageLocation` statement, and an ECS Exec
   statement listing only the four `ssmmessages` channel actions
-  (`CreateControlChannel`, `CreateDataChannel`, `OpenControlChannel`, `OpenDataChannel`).
-  Any other action in the same statement disqualifies it.
+  (`CreateControlChannel`, `CreateDataChannel`, `OpenControlChannel`, `OpenDataChannel`)
+  as string literals. Any other action, or any non-literal member (`local.x`, `var.y`),
+  in the same statement disqualifies it.
   `aws_iam_policy_document` data sources and assume-role trust policies fail open.
 
 > The checker is a zero-dependency static HCL reader (no `terraform init`, no provider
