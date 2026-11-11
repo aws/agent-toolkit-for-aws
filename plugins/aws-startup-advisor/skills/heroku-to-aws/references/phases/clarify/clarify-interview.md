@@ -110,6 +110,7 @@ Compute `fast_path_question_count` from this table against the inventory and use
 - `migration_approach`: `full_cutover`
 - `migration_method`: `pg_dump_restore`
 - `containerization_status`: `buildpack_only`
+- `containerization_method`: `cnb_heroku_builder`
 - `database_ha`: matches Q3 availability
 - `redis_ha`: `true` (unless § Extraction Rules read a `mini`/hobby Redis tier — then the proposed `false` is the applied default, still recorded under `Q7` in `metadata.questions_defaulted`)
 - `dns_strategy`: `route53`
@@ -150,6 +151,7 @@ Before generating questions, scan the inventory to determine which questions app
 | Q10 — DNS strategy                   | Always                                                           | Never                                     |
 | Q11 — Fir intent                     | At least one app has `heroku_generation == "fir"`                | No Fir-generation apps                    |
 | Q12b — Containerization status       | Always                                                           | Never                                     |
+| Q12e — Containerization method       | Q12b answer is `buildpack_only` or `partial`                     | Every app already has a Dockerfile        |
 | Q12c — Compute target recommendation | Always                                                           | Never                                     |
 | Q12d — EB deploy method              | **Deferred to Generate** — defaulted here when the Q12c plan includes EB, asked at [C] Generate | All-Fargate/EKS plan, or never asked in Clarify |
 | Q12 — Container registry             | Always                                                           | Never                                     |
@@ -763,6 +765,38 @@ Validate: must be valid ISO 8601 date, must be in the future.
 
 ---
 
+#### Q12e — Containerization Method
+
+> _Fires only when Q12b is `buildpack_only` or `partial`._
+>
+> Your apps are built by Heroku buildpacks today. AWS compute runs container images, so
+> each app needs one. Two ways to get there:
+>
+> 1. Cloud Native Buildpacks with the Heroku builder (recommended) — `pack build` with
+>    the Heroku builder image that matches the app's stack (`heroku/builder:22`, `:24` or `:26`) produces a container image using the same buildpacks Heroku
+>    uses, from the same source, with no Dockerfile. The Procfile process types become
+>    the image's processes. The generated deploy workflow does this for every app.
+> 2. Write a Dockerfile per app — full control over the base image and build; one file
+>    to author and maintain for each app.
+
+**Interpret:**
+
+- 1 → `containerization_method: "cnb_heroku_builder"`
+- 2 → `containerization_method: "dockerfile"`
+
+**Default:** 1 → `containerization_method: "cnb_heroku_builder"`. When Q12b is
+`containerized`, write `containerization_method: "dockerfile"` without asking.
+
+**Design impact:** `cnb_heroku_builder` makes Generate emit `pack build` instead of
+`docker build` in the deploy workflow and the Fargate build steps, an `ecr.tf` with one
+repository per app, and Elastic Beanstalk `Dockerrun.aws.json` bundles that reference the
+image in ECR with the process type as the container command. The Containerization
+Prerequisites section of `MIGRATION_GUIDE.md` then explains `pack` instead of
+Procfile-to-Dockerfile patterns. This is unrelated to Fir-generation detection: Fir apps
+stay detect-only; this option concerns how Cedar apps are containerized for AWS.
+
+---
+
 #### Q12 — Container Registry
 
 > Where should container images be stored for your containerized workloads?
@@ -860,6 +894,7 @@ Validate: must be valid ISO 8601 date, must be in the future.
 | Q10 — DNS                 | 1 (Route 53)                            | `dns_strategy: "route53"`                                                                                   |
 | Q11 — Fir intent          | 1 (exit Heroku)                         | `fir_intent: "exit_heroku"`                                                                                 |
 | Q12b — Containerization   | 2 (buildpack_only)                      | `containerization_status: "buildpack_only"`                                                                 |
+| Q12e — Containerization method | 1 (CNB, Heroku builder)            | `containerization_method: "cnb_heroku_builder"` (`"dockerfile"` without asking when Q12b is `containerized`) |
 | Q12c — Compute target     | 1 (use computed recommendation)         | `design_constraints.compute_target.default: "elastic_beanstalk"` plus any `system_forced` Fargate overrides |
 | Q12d — EB deploy method   | 1 (GitHub Actions)                      | `eb_deploy_method: "github_actions"` when resolved compute plan includes EB                                 |
 | Q12 — Registry            | 1 (ECR)                                 | `container_registry: "ecr"`                                                                                 |

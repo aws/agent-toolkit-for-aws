@@ -118,7 +118,11 @@ Before beginning the migration, ensure the following are in place:
 
 {{IF has_beanstalk}}
 
+{{IF containerization_method == "cnb_heroku_builder"}}
+- [ ] `pack` CLI installed locally for the first manual build (CI installs it itself); `pack build` of each app succeeds with the Heroku builder
+{{ELSE}}
 - [ ] Source bundle contains a Dockerfile at the repository root for Elastic Beanstalk Docker deployment
+{{ENDIF}}
       {{ENDIF}}
       {{IF has_beanstalk_web}}
 - [ ] Application listen port identified for every Beanstalk web app's `eb_application_port_<app_sanitized>_web` input
@@ -130,7 +134,43 @@ Before beginning the migration, ensure the following are in place:
 - [ ] Environment variables documented and mapped to AWS Secrets Manager / Parameter Store
 - [ ] Health check endpoints identified for each web service
 
-{{IF containerization_status == "buildpack_only" OR containerization_status == "partial"}}
+{{IF containerization_method == "cnb_heroku_builder"}}
+
+### Containerization: Cloud Native Buildpacks (no Dockerfile)
+
+Your apps are built by Heroku buildpacks today. On AWS they run as container images, built
+by the **same buildpacks** through the `pack` CLI and the Heroku builder image. Nothing
+about the application changes: same `Procfile`, same dependency files, same build output.
+
+**One-time local check (per app):**
+
+```bash
+# Install pack: https://buildpacks.io/docs/for-platform-operators/how-to/integrate-ci/pack/
+pack build {{app_name}}:local --builder heroku/builder:{{cnb_builder_tag}}   # 22 / 24 / 26 to match the app's Heroku stack; 26 is Heroku's recommended builder
+docker run --rm -e PORT=8080 -p 8080:8080 {{app_name}}:local          # runs the `web` process
+docker run --rm {{app_name}}:local worker                              # any other Procfile process type
+```
+
+**How process types map:** the image's default process is `web`; any other Procfile entry
+runs when its name is passed as the container command (`worker`, `scheduler`, `release`).
+Elastic Beanstalk environments get it through `Dockerrun.aws.json` `Command`; ECS task
+definitions through `command = ["<process_type>"]`.
+
+**Key differences from Heroku:**
+
+- `PORT` is not injected by the platform; the generated environments set `PORT=8080` and
+  expose 8080.
+- The `release` process type is not run automatically before a deploy; the generated
+  workflow does not yet include a release step — run it as a one-off task before cutover
+  (see Phase 4) until a release job is added to your pipeline.
+- Custom buildpack URLs (`heroku buildpacks:add https://…`) are not known to the Heroku
+  builder. For those apps pass `--buildpack <url>` to `pack build`, or fall back to a
+  Dockerfile for that app only.
+- Images are immutable and tagged by commit; rollbacks redeploy an earlier tag instead of
+  `heroku rollback`.
+
+{{ENDIF}}
+{{IF containerization_method == "dockerfile" AND (containerization_status == "buildpack_only" OR containerization_status == "partial")}}
 
 ### Containerization Prerequisites
 
@@ -842,6 +882,11 @@ Export all Heroku config vars and import sensitive values to AWS Secrets Manager
 ### Build and Push Container Image
 
 ```bash
+{{IF containerization_method == "cnb_heroku_builder"}}
+# Build with Heroku buildpacks (no Dockerfile) and publish straight to ECR
+aws ecr get-login-password --region {{target_region}} | docker login --username AWS --password-stdin {{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com
+pack build {{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com/{{project_name}}/{{app_name}}:{{git_sha}} --builder heroku/builder:{{cnb_builder_tag}} --publish
+{{ELSE}}
 # Build Docker image
 docker build -t {{app_name}}:latest .
 
@@ -851,6 +896,7 @@ docker tag {{app_name}}:latest {{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amaz
 # Push to ECR
 aws ecr get-login-password --region {{target_region}} | docker login --username AWS --password-stdin {{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com
 docker push {{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com/{{app_name}}:latest
+{{ENDIF}}
 ```
 
 ### Deploy to Fargate
@@ -1476,7 +1522,10 @@ This directory contains all artifacts needed to migrate your Heroku application(
 {{IF has_beanstalk}}
 | `terraform/beanstalk.tf` | Elastic Beanstalk applications and environments |
 {{IF eb_deploy_method == "github_actions"}}
-| `.github/workflows/deploy-eb.yml` | GitHub Actions source-to-EB deploy workflow |
+| `.github/workflows/deploy-eb.yml` | GitHub Actions deploy workflow (buildpack image build via `pack` when the containerization method is CNB; source bundle otherwise) |
+{{ENDIF}}
+{{IF containerization_method == "cnb_heroku_builder"}}
+| `terraform/ecr.tf` | One ECR repository per app for the pack-built images |
 {{ENDIF}}
 {{IF eb_deploy_method == "codepipeline"}}
 | `terraform/pipeline.tf` | Optional CodePipeline source-to-EB deploy path |

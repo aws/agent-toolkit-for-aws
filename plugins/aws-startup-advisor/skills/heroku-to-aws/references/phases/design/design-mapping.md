@@ -699,14 +699,14 @@ After all resources are mapped:
 
 2. **If Fir workloads exist**:
    - Add each Fir app name to `metadata.fir_workloads_detected[]`.
-   - Set `metadata.fir_generation_note`: "Fir-generation workloads detected. No Fir-specific Terraform (ARM/Graviton instance targeting, CNB buildpack configuration) is generated in v1. These workloads are deferred to a future version."
+   - Set `metadata.fir_generation_note`: "Fir-generation workloads detected. No Fir-specific Terraform (ARM/Graviton instance targeting, Fir builder `project.toml` configuration) is generated in v1. These workloads are deferred to a future version."
    - Add a warning: "Fir-generation workloads deferred to future version: {comma-separated app names}"
 
 3. **If NO Fir workloads**:
    - Set `metadata.fir_workloads_detected` to `[]`.
    - Set `metadata.fir_generation_note`: "No Fir workloads detected; all Cedar generation."
 
-4. **CRITICAL CONSTRAINT**: Do NOT produce ARM/Graviton instance targeting or CNB buildpack configuration in ANY output, regardless of `heroku_generation` value. Fir detection is **detect-only** in v1.
+4. **CRITICAL CONSTRAINT**: Do NOT produce ARM/Graviton instance targeting or Fir-specific buildpack configuration (Fir builder `project.toml`, Fir-only process definitions) in ANY output, regardless of `heroku_generation` value. Fir detection is **detect-only** in v1. This constraint is about Fir. It does not cover `preferences.operational.containerization_method == "cnb_heroku_builder"`, which uses Cloud Native Buildpacks on x86 to containerize **Cedar** apps for AWS compute; Generate emits that path normally.
 
 ---
 
