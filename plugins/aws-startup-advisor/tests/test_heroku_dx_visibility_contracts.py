@@ -117,6 +117,35 @@ def test_config_vars_row_gives_eks_its_own_kubernetes_rule() -> None:
     assert "| Fargate or EKS" not in "\n".join(eks_rule + fargate_rule)
 
 
+def test_one_off_and_log_rows_follow_selected_target() -> None:
+    text = REPORT.read_text(encoding="utf-8")
+    section = text[text.index("### `developer-workflow`") :]
+    rules = section[: section.index("| Heroku today")].splitlines()
+    for row in ("One-off commands", "Log tailing"):
+        eks = [line for line in rules if line.startswith(f"| {row}") and "| EKS " in line]
+        ecs = [line for line in rules if line.startswith(f"| {row}") and "| EB / Fargate" in line]
+        assert len(eks) == 1 and len(ecs) == 1, f"{row}: one EKS rule and one EB/Fargate rule"
+        assert "kubectl" in eks[0]
+        assert "kubectl" not in ecs[0]
+    one_off = [line for line in rules if line.startswith("| One-off commands") and "| EKS " in line][0]
+    assert "kubectl exec" in one_off and "Kubernetes Job" in one_off and "never give them ECS Exec" in one_off
+    logs = [line for line in rules if line.startswith("| Log tailing") and "| EKS " in line][0]
+    assert "kubectl logs -f" in logs and "Fluent Bit" in logs and "CloudWatch Observability" in logs
+    assert "live tail is **Build**" in logs
+    ecs_logs = [line for line in rules if line.startswith("| Log tailing") and "| EB / Fargate" in line][0]
+    assert "CloudWatch Logs live tail" in ecs_logs and "Build" not in ecs_logs
+    # Rendered rows follow the target in both all-EKS and mixed EB+EKS estates.
+    rendered = section[section.index("| Heroku today") :]
+    run_row = [line for line in rendered.splitlines() if line.startswith("| `heroku run`")][0]
+    log_row = [line for line in rendered.splitlines() if line.startswith("| `heroku logs --tail`")][0]
+    for row in (run_row, log_row):
+        assert "Per the status rules above" in row and "EKS" in row and "Beanstalk/Fargate" in row
+        assert "different command" not in row or "for the target" in row
+    assert "kubectl exec" in run_row and "kubectl logs -f" in log_row and "CloudWatch tailing **Build**" in log_row
+    core = DECISION_CORE.read_text(encoding="utf-8")
+    assert "one-off-command and log-tailing rules" in core and "kubectl logs -f" in core
+
+
 def test_scheduler_row_status_is_computed_from_mapped_vs_deferred() -> None:
     text = REPORT.read_text(encoding="utf-8")
     section = text[text.index("### `developer-workflow`") :]

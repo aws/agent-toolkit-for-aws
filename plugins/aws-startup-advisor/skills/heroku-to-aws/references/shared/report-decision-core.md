@@ -60,7 +60,10 @@ fresh decision without being touched or archived.
   cell read "will be generated" / "the Terraform that Generate will produce".
   **Covered**, **Build** and **No equivalent** are unchanged — they do not
   depend on Generate having run. The status rules themselves are the same in
-  both modes: the per-target config-vars rules (EB / Fargate / EKS each have
+  both modes: the per-target one-off-command and log-tailing rules (EKS apps
+  get `kubectl exec` / `kubectl run` / a Kubernetes Job and `kubectl logs -f`,
+  with CloudWatch tailing **Build** because log forwarding is additional setup;
+  never ECS Exec, `eb ssh` or run-task), the per-target config-vars rules (EB / Fargate / EKS each have
   their own rule — EKS apps get the Kubernetes Secret + `secretKeyRef` wording,
   never the Fargate task-definition wording) and the Scheduler row's status,
   which is **computed** from `aws-design.json` `services[]` vs `deferred[]`
