@@ -1,0 +1,39 @@
+{
+  "preview_version": 1,
+  "computed_at": "2026-11-11T01:09:53Z",
+  "route": "ai_only",
+  "ai_complexity_signal": "standard",
+  "eligible_for_clarify_fast_path": false,
+  "fast_path_blocked_by": [
+    "2 models"
+  ],
+  "ai_summary": {
+    "model_count": 2,
+    "model_ids": [
+      "gpt-4o",
+      "text-embedding-3-small"
+    ],
+    "providers": [
+      "openai"
+    ],
+    "gateways": [],
+    "agent_count": 0,
+    "tool_count": 0
+  },
+  "measured_usage": {
+    "source": "openai_usage_api",
+    "monthly_cost_usd": 30.75,
+    "cost_status": "partial_window",
+    "window_days": 30,
+    "active_days": 12,
+    "partial_window": true,
+    "capture_warnings": [
+      "usage-audio-transcriptions.json failed (HTTP 403 Missing scope)"
+    ]
+  },
+  "path_shape": "standard path: more than one model or capability to evaluate; confirm after Clarify",
+  "key_decisions_ahead": [
+    "Bedrock model selection for gpt-4o, text-embedding-3-small",
+    "Re-embedding stored vectors with a Bedrock embedding model"
+  ]
+}

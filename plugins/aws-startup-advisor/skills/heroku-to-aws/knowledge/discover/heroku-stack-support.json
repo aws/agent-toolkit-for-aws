@@ -1,0 +1,57 @@
+{
+  "_comment": "Heroku stack name -> support status. DIRECT LOOKUP on apps[].stack; read status/eol_date as written, do NOT infer a status from the stack number or the Ubuntu release. 'eol' stacks no longer receive operating-system security patches from Heroku. 'container' means the app ships its own Docker image and controls its own base layer (not an EOL finding).",
+  "_match": "EXACT, case-insensitive, full-string match on apps[].stack against a rows key. Partial matches are INVALID.",
+  "_on_not_found": "set stack_status 'unknown' and stack_eol_date null (covers cnb, null, and any stack name not listed here); never guess",
+  "_source": "https://devcenter.heroku.com/articles/stack (Stack Support Details table); cedar-14 from https://devcenter.heroku.com/articles/cedar-14-stack",
+  "_last_verified": "2026-09-11",
+  "rows": {
+    "cedar-14": {
+      "status": "eol",
+      "eol_date": "2019-05-01",
+      "ubuntu_base": "14.04",
+      "note": "End-of-life 2019-05-01; builds disabled 2020-11-02. No OS security patches."
+    },
+    "heroku-16": {
+      "status": "eol",
+      "eol_date": "2021-04-30",
+      "ubuntu_base": "16.04",
+      "note": "Supported through April 2021. No OS security patches."
+    },
+    "heroku-18": {
+      "status": "eol",
+      "eol_date": "2023-04-30",
+      "ubuntu_base": "18.04",
+      "note": "Supported through April 2023. No OS security patches."
+    },
+    "heroku-20": {
+      "status": "eol",
+      "eol_date": "2025-04-30",
+      "ubuntu_base": "20.04",
+      "note": "Supported through April 2025. No OS security patches."
+    },
+    "heroku-22": {
+      "status": "deprecated",
+      "eol_date": "2027-04-30",
+      "ubuntu_base": "22.04",
+      "note": "Deprecated; supported through April 2027. Still receives security patches until then."
+    },
+    "heroku-24": {
+      "status": "supported",
+      "eol_date": "2029-04-30",
+      "ubuntu_base": "24.04",
+      "note": "Default stack for new Cedar apps; supported through April 2029."
+    },
+    "heroku-26": {
+      "status": "supported",
+      "eol_date": "2031-04-30",
+      "ubuntu_base": "26.04",
+      "note": "Supported through April 2031."
+    },
+    "container": {
+      "status": "container",
+      "eol_date": null,
+      "ubuntu_base": null,
+      "note": "Docker image app; the app owns its base image, so Heroku stack support does not apply. Already containerized."
+    }
+  }
+}

@@ -43,7 +43,19 @@ the path and retry before assembly; do not continue with an unread schema.
    source provenance, as well as its `apps[]` metadata entry. These are two views
    of one app, not two apps; `total_apps_discovered` counts unique `apps[].app_name`.
    App rows carry metadata and do not create an additional compute cost.
-10. **Shared data stores.** When live discovery wrote `attached_apps` on any
+10. Set `stack_status` and `stack_eol_date` on every `apps[]` entry by exact
+    stack-name lookup in `knowledge/discover/heroku-stack-support.json`
+    (resolved from `SKILL_BASE`). Copy `status` and `eol_date` as written; a
+    `null` or unlisted stack gets `stack_status: "unknown"` and
+    `stack_eol_date: null` — never infer a status. Then write
+    `metadata.apps_by_stack_status` as
+    `{ "eol": N, "deprecated": N, "supported": N, "container": N, "unknown": N }`
+    (every key present, zero when none) and `metadata.eol_stack_apps` as the
+    sorted `app_name` list of apps whose `stack_status` is `"eol"` (empty array
+    when none). These are Heroku facts about the source estate, not migration
+    advice.
+
+11. **Shared data stores.** When live discovery wrote `attached_apps` on any
     `heroku-postgresql`, `heroku-redis` or `heroku-kafka` add-on, write the top-level
     `shared_data_stores` section (schema § `shared_data_stores`):
     - For each such add-on with a non-empty `attached_apps`, the set
