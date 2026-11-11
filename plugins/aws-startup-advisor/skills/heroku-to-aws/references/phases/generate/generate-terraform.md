@@ -1104,7 +1104,7 @@ depend on Step 6.5, so an all-Fargate plan with CNB apps still gets its `ecr.tf`
 
 Read `preferences.operational.containerization_method` (default `"dockerfile"` when absent — preferences written before this field existed carry no value). Resolve the method **per app**, never once for the estate:
 
-- `apps[].stack == "container"` **or** the app's `name` is listed in `preferences.operational.dockerfile_apps[]` (Clarify Q12b follow-up for a `partial` estate: the apps whose repository already has a Dockerfile, including apps that still run a Heroku buildpack stack today) → `app_containerization_method = "dockerfile"`. The app already ships a Dockerfile; keep it. Its workflow runs `docker build`, its Fargate build steps use `docker build`/`docker push`, and nothing from the CNB path is emitted for it.
+- `apps[].stack == "container"` **or** the app's `app_name` is listed in `preferences.operational.dockerfile_apps[]` (Clarify Q12b follow-up for a `partial` estate: the apps whose repository already has a Dockerfile, including apps that still run a Heroku buildpack stack today) → `app_containerization_method = "dockerfile"`. The app already ships a Dockerfile; keep it. Its workflow runs `docker build`, its Fargate build steps use `docker build`/`docker push`, and nothing from the CNB path is emitted for it.
 - `containerization_status == "containerized"` → every app resolves to `"dockerfile"` (even if a stale preference file carries `cnb_heroku_builder`).
 - Any other app (buildpack stack `heroku-22`, `heroku-24`, `heroku-26`, unknown, and not in `dockerfile_apps`) → `app_containerization_method = containerization_method`.
 
@@ -1174,7 +1174,7 @@ entrypoint with `/cnb/process/<process_type>` (the [CNB process contract](https:
 
 - Elastic Beanstalk: `Dockerrun.aws.json` `"Entrypoint": "/cnb/process/<process_type>"` and no `Command` (the CNB workflow in Step 6.5 writes this).
 - Fargate (Step 6): the task definition for a CNB app sets `image` to `"${aws_ecr_repository.<app_name>.repository_url}:${var.image_tag_<app_sanitized>}"` (a Terraform variable cannot reference a resource, so the repository URL is composed in `compute.tf` and only the tag is an input), adds `entryPoint = ["/cnb/process/<process_type>"]`, leaves `command` unset, and for the `web` container adds `environment = [{ name = "PORT", value = "8080" }]` so the process listens on the port the existing `portMappings` expose.
-- EKS (`generate-eks.md`, unchanged consumer): when a Deployment runs the same CNB image, set the container's `command: ["/cnb/process/<process_type>"]` — Kubernetes `command` overrides the image entrypoint — and set `PORT` to the containerPort for web.
+- EKS (`generate-eks.md`): the Deployment `image` for a CNB app is the repository from `ecr.tf` with the placeholder tag `bootstrap`, and the EKS guide publishes the image and substitutes the commit tag before `kubectl apply`. When a Deployment runs the same CNB image, set the container's `command: ["/cnb/process/<process_type>"]` — Kubernetes `command` overrides the image entrypoint — and set `PORT` to the containerPort for web.
 - Local: `docker run --rm --entrypoint /cnb/process/worker <image>`.
 
 ---

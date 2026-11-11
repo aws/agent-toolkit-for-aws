@@ -1661,12 +1661,12 @@ This directory contains all artifacts needed to migrate your Heroku application(
 {{IF eb_deploy_method == "github_actions"}}
 | `.github/workflows/deploy-eb.yml` | GitHub Actions deploy workflow, one variant per app (buildpack image build via `pack` plus Dockerrun bundles for CNB apps; source bundle for apps with a Dockerfile) |
 {{ENDIF}}
-{{IF has_cnb_app}}
-| `terraform/ecr.tf` | One ECR repository per buildpack app for the pack-built images |
-{{ENDIF}}
 {{IF eb_deploy_method == "codepipeline"}}
 | `terraform/pipeline.tf` | Optional CodePipeline source-to-EB deploy path |
 {{ENDIF}}
+{{ENDIF}}
+{{IF has_cnb_app}}
+| `terraform/ecr.tf` | One ECR repository per buildpack app for the pack-built images |
 {{ENDIF}}
 {{IF has_fargate}}
 | `terraform/ecs.tf` | ECS/Fargate task definitions and services |

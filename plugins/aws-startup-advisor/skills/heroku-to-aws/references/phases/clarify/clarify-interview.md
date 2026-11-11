@@ -37,6 +37,7 @@ Check `$MIGRATION_DIR/` for existing state:
     - A field holding a value with **no** `sources` entry and no `chosen_by` has no provenance. Do not guess — stop, report which field, and offer option 2 (start fresh). This is the state the Validation Checklist would have rejected anyway; failing here names the field.
   - **Present and empty**: the Decision gate's "Confirm execution choices" already ran and rewrote those `sources` entries to `"user"`. Accept as-is — do not re-list the IDs.
   - **Present and non-empty**: accept as-is.
+  - **Legacy partial Dockerfile status.** When `operational.containerization_status` is `"partial"` and `operational.dockerfile_apps` is absent (written before the field existed), ask only the Q12b follow-up (the "Which apps already have a Dockerfile?" prompt below), offering the inventory `container`-stack apps as the pre-filled answer. Store the confirmed list as `operational.dockerfile_apps` with the follow-up's validation, and leave every other answer untouched. If the user declines to answer, write the `container`-stack apps only (the Generate fallback) and say so.
   This normalization rebuilds a missing index over existing answers; it writes nothing to `questions_asked` or `questions_defaulted`, and the only values it writes are the documented default and `"default"` provenance for a question that never fired.
 - If 2: Delete `preferences.json`, continue to Step 1.
 
@@ -764,7 +765,7 @@ Validate: must be valid ISO 8601 date, must be in the future.
 **Default:** 2 → `containerization_status: "buildpack_only"`
 
 **Follow-up when the answer is 3 (`partial`) — which apps have a Dockerfile:** list the
-inventory `apps[].name` values and ask which of them already have a Dockerfile in their
+inventory `apps[].app_name` values and ask which of them already have a Dockerfile in their
 repository. Pre-select every app whose inventory `stack` is `"container"` (Heroku only
 runs those from a Dockerfile) and let the user add any app that still runs a buildpack
 stack (`heroku-22`/`-24`/`-26`) but has a Dockerfile prepared for the migration:
@@ -776,7 +777,7 @@ stack (`heroku-22`/`-24`/`-26`) but has a Dockerfile prepared for the migration:
 > `<app-a>`, `<app-b>`, …
 
 Store the confirmed names as `operational.dockerfile_apps: ["<app>", …]`. Validate: every
-name is an inventory `apps[].name`, every `container`-stack app is included, and the list is
+name is an inventory `apps[].app_name`, every `container`-stack app is included, and the list is
 neither empty nor every app (otherwise the answer is really 1 or 2 — re-ask Q12b with that
 hint). Write the array only when `containerization_status` is `"partial"`. The inventory
 `stack` is a source fact about what Heroku runs today; this array is the user's confirmed
