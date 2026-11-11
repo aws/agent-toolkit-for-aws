@@ -1,212 +1,269 @@
-# Auto Version Email Notifications (Phase 3)
+# Email notifications
 
-One notification set per account and Region: an SNS topic, an email subscription, and four EventBridge rules on the default event bus — one per state group — each with one SNS target that formats a plain-text email. The rules match every job's auto version state change in the account and Region; they are not tied to the jobs enabled in this session.
+AWS Glue sends an Amazon EventBridge event at each step of an auto upgrade. This setup emails five of them to the user. One setup per account and Region covers every auto upgrade job there, including jobs turned on later.
 
-All names are fixed: `glue-auto-version-notifications` (topic and key alias) and `glue-auto-version-<group>` (rules), so an existing setup is found and reused. Below, `<prefix>` stands for `glue-auto-version`; `<region>`, `<account>`, and `<partition>` come from the user and from the `Arn` returned by `aws sts get-caller-identity` (the partition is the second field of that ARN, for example `aws`).
+Set up the emails **before** turning on auto upgrade. A job that runs often can reach the approval request within an hour, and EventBridge doesn't replay events from before a rule exists.
 
-## Resources
+## What the setup creates
 
-| Resource | Name | ARN |
-|----------|------|-----|
-| SNS topic | `<prefix>-notifications` | `arn:<partition>:sns:<region>:<account>:<prefix>-notifications` |
-| Rule: consent required | `<prefix>-consent-required` | `arn:<partition>:events:<region>:<account>:rule/<prefix>-consent-required` |
-| Rule: upgrade completed | `<prefix>-upgrade-completed` | `arn:<partition>:events:<region>:<account>:rule/<prefix>-upgrade-completed` |
-| Rule: upgrade failed | `<prefix>-upgrade-failed` | `arn:<partition>:events:<region>:<account>:rule/<prefix>-upgrade-failed` |
-| Rule: upgrade stopped | `<prefix>-upgrade-stopped` | `arn:<partition>:events:<region>:<account>:rule/<prefix>-upgrade-stopped` |
+| Resource | Name | Why |
+|---|---|---|
+| Amazon SNS topic | `glue-auto-upgrade-notifications` | Sends the emails |
+| Email subscription | the user's address | Delivers after the user confirms |
+| Amazon EventBridge rules | one per event, in the following table | Each forwards one event with its own email text |
+| Topic policy statement | `AllowGlueAutoUpgradeEventBridgeRule` | Lets only these rules publish to the topic |
 
-Every rule has exactly one target, Id `<prefix>-sns`, pointing at the topic.
+Every auto upgrade event has the source `aws.glue-autoversion` and the detail type `Auto Version Job State Change`. Only `detail.state` differs. One input transformer can't change its text by state, so each state gets its own rule.
 
-## State Groups
+| Rule | `detail.state` | Email, line 1 | What to do |
+|---|---|---|---|
+| `glue-auto-upgrade-approval-needed` | `CONSENT_REQUIRED` | `<job>` is ready to upgrade from AWS Glue 4.0 to 6.0. | Review the eligibility summary, then approve or decline within 7 days |
+| `glue-auto-upgrade-approval-expired` | `CONSENT_EXPIRED` | The upgrade request for `<job>` expired. The job stays on AWS Glue 4.0 and on auto. | Nothing; the next job runs start a new evaluation |
+| `glue-auto-upgrade-failed` | `UPGRADE_FAILED` | AWS Glue didn't upgrade `<job>` to AWS Glue 6.0. Reason, and the version it reverted to | Read the auto upgrade evaluation summary |
+| `glue-auto-upgrade-finished` | `UPGRADE_COMPLETED` | `<job>` now runs on AWS Glue 6.0. | Check the output of the next runs |
+| `glue-auto-upgrade-stopped` | `UPGRADE_STOPPED` | Auto upgrade stopped for `<job>`. Someone set the job to a specific version, or deleted the job. | Nothing, if planned; to restart, set `GlueVersion` to `auto` |
 
-Each event carries `source` = `aws.glue-autoversion`, `detail-type` = `Auto Version Job State Change`, `resources` = `[<job ARN>]` (not filtered on), and `detail.jobName` + `detail.state`.
+A decline sends no event, so it sends no email.
 
-| Rule | `detail.state` values | Additional `detail` fields per state |
-|------|----------------------|--------------------------------------|
-| `<prefix>-consent-required` | `CONSENT_REQUIRED` | `currentVersion`, `targetVersion`, `analysisId`, `consentDeadline` (Unix epoch seconds), `eligibilityReportS3Uri` (only when the report is available) |
-| `<prefix>-upgrade-completed` | `UPGRADE_COMPLETED` | `currentVersion` (the previous version), `newVersion`, `analysisId`, `outcome` (`GRADUATED`), `consecutiveSuccesses` |
-| `<prefix>-upgrade-failed` | `UPGRADE_FAILED` | `currentVersion`, `attemptedVersion`, `analysisId`, `outcome` (`FAILED`), `failureReason`, `rollbackVersion` |
-| `<prefix>-upgrade-stopped` | `CONSENT_EXPIRED` | `analysisId`; `currentVersion` and `targetVersion` when known; no reason field |
-| | `UPGRADE_STOPPED` | `currentVersion`, `targetVersion`, `analysisId`, `stoppedReason` |
+Each email ends with the console link, the account, and the Region. Two limits come from AWS, not from the skill:
 
-Never route these states to email: `UPGRADE_RUN_SUCCEEDED` (one per upgrade run — noise), `UPGRADE_RUN_FAILED` and `POST_OBSERVING_FAILED` (each is always followed by `UPGRADE_FAILED` with the same `failureReason`, so emailing them would send an extra email per failure), `OBSERVATION_COMPLETED`, `EVALUATION_STARTED`. No rule matches them.
+- Every subject is "AWS Notification Message". EventBridge can't set the Amazon SNS subject.
+- Each line is wrapped in double quotes. EventBridge needs quotes around each line of a text template and keeps them.
 
-## Event Patterns
+Only a Lambda function between EventBridge and Amazon SNS can change either. The skill doesn't add one. Sources: [Amazon EventBridge input transformation](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-transform-target-input.html), [Customize the default SNS email for EventBridge rule notifications](https://aws.amazon.com/premiumsupport/knowledge-center/change-sns-email-for-eventbridge/).
 
-All four rules use the same shape; only `detail.state` differs. There is no `resources` or `jobName` filter: each rule matches that state for every job in the account and Region.
+## Cost
+
+The replies don't mention cost. If the user asks, answer from this table.
+
+| Item | Charge |
+|---|---|
+| Amazon EventBridge rules on AWS service events (default event bus) | No charge |
+| Amazon SNS email | The first 1,000 emails each month are free. After that, Amazon SNS charges per email. See [Amazon SNS pricing](https://aws.amazon.com/sns/pricing/). |
+| AWS KMS key (only if the user adds one) | A monthly charge per key. See [AWS KMS pricing](https://aws.amazon.com/kms/pricing/). |
+
+## Encryption
+
+The default topic has no customer managed key. The emails hold job names, versions, and failure reasons, not job data.
+
+Ask about a key in the same question as the email address, before the topic exists. Adding a key later to an existing topic is a manual change, because the setup never overwrites a topic.
+
+Server-side encryption protects each message while Amazon SNS stores it. Amazon SNS decrypts the message before it sends the email. The email in transit and in the inbox isn't protected by the key. No message flows until the user confirms the subscription.
+
+If the user adds a key, tell them these facts:
+
+- EventBridge can publish to an encrypted topic only when the topic uses a customer managed key. The AWS managed key `alias/aws/sns` doesn't work, because you can't change its key policy.
+- A customer managed key has a monthly charge.
+- The key policy must let `events.amazonaws.com` use `kms:GenerateDataKey*` and `kms:Decrypt`. Don't add `aws:SourceArn` or `aws:SourceAccount` conditions: Amazon SNS doesn't support them for EventBridge to encrypted topics.
+
+The confirmation email subject is "AWS Notification - Subscription Confirmation" ([Receive notifications on new updates](https://docs.aws.amazon.com/linux/al2023/ug/receive-update-notification.html)). Sources: [Managing Amazon SNS encryption keys and costs](https://docs.aws.amazon.com/sns/latest/dg/sns-key-management.html), [Amazon SNS server-side encryption](https://docs.aws.amazon.com/sns/latest/dg/sns-server-side-encryption.html). Checked 2026-11-09.
+
+Use only the key the user names, in step 2 of "Set up". Never create, edit, or schedule deletion of a key.
+
+## Confirm (stop)
+
+With a turn-on request, the Step 2 reply in [assess-and-turn-on.md](assess-and-turn-on.md) already asks for the address (`proceed, email <address>`). Add `key <key ARN>` only if the user names a key. For an email-only request, reply:
+
+```text
+AWS Glue can email you when an upgrade needs approval, expires, fails, finishes, or stops. The emails include job names, AWS Glue versions, and failure reasons for all auto upgrade jobs in <region>.
+
+To send these emails to <address>, enter `yes`. To store the messages encrypted with your own AWS KMS key, enter `yes, key <key ARN>`.
+```
+
+## Set up
+
+Use these names, so a later run finds and reuses them. Get `<account>` and `<partition>` from `aws sts get-caller-identity --region <region> --no-cli-pager --query "{Account: Account, Arn: Arn}"`. The partition is the second `:` field of `Arn`.
+
+| Resource | Name or ARN |
+|---|---|
+| Topic | `arn:<partition>:sns:<region>:<account>:glue-auto-upgrade-notifications` |
+| Rules | `glue-auto-upgrade-approval-needed`, `glue-auto-upgrade-approval-expired`, `glue-auto-upgrade-failed`, `glue-auto-upgrade-finished`, `glue-auto-upgrade-stopped` |
+
+Rules for every step:
+
+- **Reuse, never overwrite.** Create only what is missing. Don't change a topic, rule, target, or subscription that already exists.
+- **Stop on a conflict.** A topic with different encryption, a rule with a different event pattern, or a rule that is turned off is a conflict. Show it and stop.
+- **Partial failure.** If a step fails, stop. Tell the user what you created in this run, and give the cleanup commands at the end of this section.
+
+### 1. Check what exists (read-only)
+
+```bash
+aws sns list-topics --region <region> --no-cli-pager --query "Topics[?ends_with(TopicArn, ':glue-auto-upgrade-notifications')].TopicArn" --output text
+aws sns get-topic-attributes --region <region> --no-cli-pager --topic-arn <topic ARN> --query "Attributes.KmsMasterKeyId" --output text
+aws sns list-subscriptions-by-topic --region <region> --no-cli-pager --topic-arn <topic ARN> --query "Subscriptions[?Protocol=='email'].{Endpoint: Endpoint, Arn: SubscriptionArn}"
+```
+
+For each rule:
+
+```bash
+aws events describe-rule --region <region> --no-cli-pager --name <rule> --query "{EventPattern: EventPattern, State: State}"
+aws events list-targets-by-rule --region <region> --no-cli-pager --rule <rule> --query "Targets[].Arn" --output text
+```
+
+`ResourceNotFoundException` means the resource is missing. Any other error stops the setup. A subscription whose `Arn` is `PendingConfirmation` isn't confirmed yet: subscribe again in step 5, so that Amazon SNS resends the confirmation email.
+
+If the topic and all 5 rules exist and match, and `<address>` is a confirmed subscription (its `Arn` isn't `PendingConfirmation`), reply: "Email notifications for auto upgrade are already set up in <region>." Otherwise create only what is missing, and subscribe `<address>` in step 5.
+
+### 2. Create the topic (if missing)
+
+```bash
+aws sns create-topic --region <region> --no-cli-pager --name glue-auto-upgrade-notifications
+```
+
+If the user named a key, add `--attributes KmsMasterKeyId=<key ARN>`.
+
+### 3. Let the rules publish to the topic
+
+Read the policy. Keep every statement, and add or replace only the statement with `Sid` `AllowGlueAutoUpgradeEventBridgeRule`. A new topic can return no policy: then start from `{"Version": "2008-10-17", "Statement": []}`.
+
+```bash
+aws sns get-topic-attributes --region <region> --no-cli-pager --topic-arn <topic ARN> --query "Attributes.Policy" --output text
+```
 
 ```json
 {
-  "source": ["aws.glue-autoversion"],
-  "detail-type": ["Auto Version Job State Change"],
-  "detail": { "state": ["CONSENT_REQUIRED"] }
+  "Sid": "AllowGlueAutoUpgradeEventBridgeRule",
+  "Effect": "Allow",
+  "Principal": {"Service": "events.amazonaws.com"},
+  "Action": "sns:Publish",
+  "Resource": "<topic ARN>",
+  "Condition": {"ArnEquals": {"aws:SourceArn": [
+    "arn:<partition>:events:<region>:<account>:rule/glue-auto-upgrade-approval-expired",
+    "arn:<partition>:events:<region>:<account>:rule/glue-auto-upgrade-approval-needed",
+    "arn:<partition>:events:<region>:<account>:rule/glue-auto-upgrade-failed",
+    "arn:<partition>:events:<region>:<account>:rule/glue-auto-upgrade-finished",
+    "arn:<partition>:events:<region>:<account>:rule/glue-auto-upgrade-stopped"
+  ]}}
 }
 ```
 
-| Rule | `detail.state` |
-|------|----------------|
-| `<prefix>-consent-required` | `["CONSENT_REQUIRED"]` |
-| `<prefix>-upgrade-completed` | `["UPGRADE_COMPLETED"]` |
-| `<prefix>-upgrade-failed` | `["UPGRADE_FAILED"]` |
-| `<prefix>-upgrade-stopped` | `["CONSENT_EXPIRED", "UPGRADE_STOPPED"]` |
+```bash
+(D=$(mktemp -d); trap 'rm -rf "$D"' EXIT; cat > "$D/p.json" <<'JSON'
+<full policy JSON>
+JSON
+aws sns set-topic-attributes --region <region> --no-cli-pager --topic-arn <topic ARN> --attribute-name Policy --attribute-value file://"$D/p.json")
+```
 
-## Input Transformers
+### 4. Create each rule and its target (if missing)
 
-Each target formats the event as plain text. Every line of `InputTemplate` is a separate double-quoted string; lines are separated by `\n`, and an empty line (`\n\n`) separates the parts of the email. Never send the raw event JSON. The emails contain no state names and no raw timestamps; the consent email shows the event time (`$.time`, UTC). The upgrade-stopped email covers both `CONSENT_EXPIRED` and `UPGRADE_STOPPED` and explains both causes. The console link uses the raw job name; for job names with characters other than letters, digits, '-', '_' or '.', open the job from the console's job list.
+Every rule uses this event pattern, with its own `detail.state`:
 
-### Consent required
+```json
+{"source": ["aws.glue-autoversion"], "detail-type": ["Auto Version Job State Change"], "detail": {"state": ["<state>"]}}
+```
+
+```bash
+(D=$(mktemp -d); trap 'rm -rf "$D"' EXIT; cat > "$D/e.json" <<'JSON'
+<event pattern JSON>
+JSON
+cat > "$D/t.json" <<'JSON'
+[{"Id": "email-topic", "Arn": "<topic ARN>", "InputTransformer": <input transformer JSON>}]
+JSON
+aws events put-rule --region <region> --no-cli-pager --name <rule> --state ENABLED --event-pattern file://"$D/e.json" --description "Emails AWS Glue auto upgrade events" && aws events put-targets --region <region> --no-cli-pager --rule <rule> --targets file://"$D/t.json" --query "FailedEntryCount")
+```
+
+`put-targets` reports a failure in `FailedEntryCount`, not in the exit code. Any value other than `0` is a failure.
+
+In another partition, replace `console.aws.amazon.com` in the link: `aws-us-gov` uses `console.amazonaws-us-gov.com`, and `aws-cn` uses `console.amazonaws.cn`. Use these input transformers exactly:
+
+`glue-auto-upgrade-approval-needed`, `detail.state` `CONSENT_REQUIRED`:
 
 ```json
 {
   "InputPathsMap": {
     "job": "$.detail.jobName",
-    "analysis": "$.detail.analysisId",
+    "account": "$.account",
+    "region": "$.region",
     "from": "$.detail.currentVersion",
-    "to": "$.detail.targetVersion",
-    "sent": "$.time",
-    "account": "$.account",
-    "region": "$.region"
+    "to": "$.detail.targetVersion"
   },
-  "InputTemplate": "\"AWS Glue auto version: approve the upgrade of <job> to Glue <to>\"\n\n\"What happened\"\n\"AWS Glue watched runs of <job> on Glue <from> and found no blocking issues.\"\n\"The upgrade to Glue <to> now needs your approval. Account <account>, Region <region>.\"\n\n\"What to do\"\n\"Review the upgrade eligibility report, then approve or decline.\"\n\"Sent <sent> (UTC). The approval request expires 7 days after this time. If you don't decide, the job stays on Glue <from>.\"\n\"Once approved, up to 3 of the job's normal runs use Glue <to> and write to their real output locations. That data is not rolled back.\"\n\n\"Review and approve: https://<region>.console.aws.amazon.com/gluestudio/home?region=<region>#/editor/job/<job>/upgradeAnalysis\"\n\"Or ask your agent: 'review the pending Glue upgrade for <job> in <region>'.\"\n\n\"Analysis ID: <analysis>\""
+  "InputTemplate": "\"<job> is ready to upgrade from AWS Glue <from> to <to>.\"\n\"What to do: review the eligibility summary, then approve or decline within 7 days.\"\n\"https://<region>.console.aws.amazon.com/gluestudio/home?region=<region>#/editor/job/<job>/upgradeAnalysis\"\n\"\"\n\"Account <account>, Region <region>\""
 }
 ```
 
-### Upgrade completed
+`glue-auto-upgrade-approval-expired`, `detail.state` `CONSENT_EXPIRED`:
 
 ```json
 {
   "InputPathsMap": {
     "job": "$.detail.jobName",
-    "analysis": "$.detail.analysisId",
-    "from": "$.detail.currentVersion",
-    "to": "$.detail.newVersion",
-    "successes": "$.detail.consecutiveSuccesses",
     "account": "$.account",
-    "region": "$.region"
+    "region": "$.region",
+    "from": "$.detail.currentVersion"
   },
-  "InputTemplate": "\"AWS Glue auto version: <job> is now on Glue <to>\"\n\n\"What happened\"\n\"<job> passed <successes> validation runs on Glue <to> and was upgraded from Glue <from>.\"\n\"Account <account>, Region <region>.\"\n\n\"What to do\"\n\"Nothing. GlueVersion stays auto, so future Glue versions will ask for your approval the same way.\"\n\n\"Upgrade summary: https://<region>.console.aws.amazon.com/gluestudio/home?region=<region>#/editor/job/<job>/upgradeAnalysis\"\n\n\"Analysis ID: <analysis>\""
+  "InputTemplate": "\"The upgrade request for <job> expired. The job stays on AWS Glue <from> and on auto.\"\n\"What to do: nothing. AWS Glue requests approval again after later runs.\"\n\"https://<region>.console.aws.amazon.com/gluestudio/home?region=<region>#/editor/job/<job>/upgradeAnalysis\"\n\"\"\n\"Account <account>, Region <region>\""
 }
 ```
 
-### Upgrade failed
+`glue-auto-upgrade-failed`, `detail.state` `UPGRADE_FAILED`:
 
 ```json
 {
   "InputPathsMap": {
     "job": "$.detail.jobName",
-    "analysis": "$.detail.analysisId",
-    "attempted": "$.detail.attemptedVersion",
-    "rollback": "$.detail.rollbackVersion",
-    "reason": "$.detail.failureReason",
     "account": "$.account",
-    "region": "$.region"
+    "region": "$.region",
+    "to": "$.detail.attemptedVersion",
+    "back": "$.detail.rollbackVersion",
+    "reason": "$.detail.failureReason"
   },
-  "InputTemplate": "\"AWS Glue auto version: <job> was not upgraded and is back on Glue <rollback>\"\n\n\"What happened\"\n\"AWS Glue stopped the upgrade of <job> to Glue <attempted> and set the job back to Glue <rollback>.\"\n\"Auto version is now off for this job. Account <account>, Region <region>.\"\n\"Reason from AWS Glue: <reason>\"\n\n\"What to do\"\n\"Check the evaluation summary on the analysis page in the AWS Glue console (link below), or ask your agent: 'why did the Glue upgrade of <job> fail'.\"\n\n\"Analysis: https://<region>.console.aws.amazon.com/gluestudio/home?region=<region>#/editor/job/<job>/upgradeAnalysis\"\n\n\"Analysis ID: <analysis>\""
+  "InputTemplate": "\"AWS Glue didn't upgrade <job> to AWS Glue <to>.\"\n\"Reason: <reason>\"\n\"AWS Glue reverted the job to <back>.\"\n\"What to do: read the auto upgrade evaluation summary for the changes to make.\"\n\"https://<region>.console.aws.amazon.com/gluestudio/home?region=<region>#/editor/job/<job>/upgradeAnalysis\"\n\"\"\n\"Account <account>, Region <region>\""
 }
 ```
 
-### Upgrade stopped (consent expired or auto version turned off)
+`glue-auto-upgrade-finished`, `detail.state` `UPGRADE_COMPLETED`:
 
 ```json
 {
   "InputPathsMap": {
     "job": "$.detail.jobName",
-    "analysis": "$.detail.analysisId",
     "account": "$.account",
-    "region": "$.region"
+    "region": "$.region",
+    "to": "$.detail.newVersion"
   },
-  "InputTemplate": "\"AWS Glue auto version: the upgrade of <job> did not go ahead\"\n\n\"What happened\"\n\"AWS Glue stopped the upgrade of <job>. Account <account>, Region <region>.\"\n\n\"What to do\"\n\"Check the upgrade analysis in the AWS Glue console (link below), or ask your agent: 'why did the Glue upgrade of <job> not go ahead'.\"\n\n\"Analysis: https://<region>.console.aws.amazon.com/gluestudio/home?region=<region>#/editor/job/<job>/upgradeAnalysis\"\n\n\"Analysis ID: <analysis>\""
+  "InputTemplate": "\"<job> now runs on AWS Glue <to>.\"\n\"What to do: check the output of the next runs.\"\n\"https://<region>.console.aws.amazon.com/gluestudio/home?region=<region>#/editor/job/<job>/upgradeAnalysis\"\n\"\"\n\"Account <account>, Region <region>\""
 }
 ```
 
-## Procedure
+`glue-auto-upgrade-stopped`, `detail.state` `UPGRADE_STOPPED`:
 
-Run every command with `--region <region>`. With the AWS CLI, pass JSON through files (`file://`), not inline shell strings: the templates contain quotes and `<...>` placeholders that shells mangle. With the AWS MCP server's `run_script` tool, which has no local file access, pass the same JSON documents (key policy, event patterns, targets, topic policy) directly in the tool call.
+```json
+{
+  "InputPathsMap": {
+    "job": "$.detail.jobName",
+    "account": "$.account",
+    "region": "$.region"
+  },
+  "InputTemplate": "\"Auto upgrade stopped for <job>. Someone set the job to a specific AWS Glue version, or deleted the job.\"\n\"What to do: nothing, if this was planned. To turn auto upgrade on again, set GlueVersion to auto.\"\n\"https://<region>.console.aws.amazon.com/gluestudio/home?region=<region>#/editor/job/<job>/upgradeAnalysis\"\n\"\"\n\"Account <account>, Region <region>\""
+}
+```
 
-0. **Existing setup (read-only).**
-   - Run `aws events list-rules --region <region> --no-cli-pager --query "Rules[?contains(EventPattern || '', 'aws.glue-autoversion')].{Name:Name,State:State,EventPattern:EventPattern}"`.
-   - For each of the four fixed rules found, run `aws events list-targets-by-rule --rule <rule>`, then `aws sns get-topic-attributes` and `aws sns list-subscriptions-by-topic` on the target topic.
-   - **Already set up:** all four fixed rules exist with exactly the patterns in Event Patterns above (same `detail.state` list, no `resources` or `jobName` filter), an SNS target with exactly the group's transformer above, and at least one email subscription (confirmed or pending); list the subscribed addresses. Report it as already set up (topic, rules, subscription status) and do not offer or run the setup again.
-   - **Older setup:** a fixed rule from an earlier version of this skill differs from the current one: its pattern has a `resources` or `jobName` filter, or a different `detail.state` list (for example `<prefix>-upgrade-failed` still includes `UPGRADE_RUN_FAILED`, which sends an extra email for each failed upgrade run, or `POST_OBSERVING_FAILED`, which sends a separate email before every rollback email), or its target's InputTransformer differs. Report each such rule with what differs ("currently limited to N jobs", "also emails each failed upgrade run", "also emails a separate message before every rollback email", "uses the earlier email text"). When several rules differ, offer one reply that names all of them (for example "update glue-auto-version-consent-required, glue-auto-version-upgrade-failed and glue-auto-version-upgrade-stopped"). Offer to update it to the current pattern and transformer: `put-rule` with the same name, description and state, then `put-targets` for its target. Run the update only after the user confirms it by naming the rule (for example "update glue-auto-version-upgrade-failed"). Otherwise leave it unchanged and report it as outdated.
-   - **Other auto version rules:** rules with other names whose pattern matches `aws.glue-autoversion`, for example from a different prefix. List them by name. Never modify or delete them unless the user confirms by naming the rule (for example "delete rule X"); then run `aws events remove-targets` followed by `aws events delete-rule` for that rule only.
-   - **Partial setup:** some resources are missing or different. Create only what is missing and update only what differs (steps 2-7; existing rules and targets only per Older setup). Report each resource as created, updated or unchanged.
-1. **Confirm inputs.** Ask only for the recipient email address if the user hasn't given it, and ask the user to confirm the address belongs to personnel authorized to receive job names, Glue versions, failure reasons and AWS Glue console links for every auto version job in this account and Region. Use the fixed names above. Encryption is one of:
-   - (a) the user's own customer-managed KMS key;
-   - (b) by default, a dedicated new customer-managed key `alias/<prefix>-notifications` (step 2);
-   - (c) no encryption, only when the user explicitly opts out.
+### 5. Subscribe the email address (if not confirmed)
 
-   The preview for this phase lists the key alias, the key policy below, and its cost: a customer-managed key has a monthly charge plus request charges; see [AWS KMS pricing](https://aws.amazon.com/kms/pricing/). It also states that the AWS managed key `alias/aws/sns` cannot be used: its key policy cannot be changed to let `events.amazonaws.com` use it, so EventBridge deliveries to the topic would fail. The Phase 3 confirmation covers the key as well.
-2. **Key.**
-   - Dedicated key (default): `aws kms create-key --description "AWS Glue auto version notifications (<prefix>)" --tags TagKey=glue-auto-version-notifications,TagValue=<prefix> --policy file://key-policy.json`, then `aws kms create-alias --alias-name alias/<prefix>-notifications --target-key-id <KeyId>`. The key policy keeps account-root administration (so the key cannot become unmanageable) and lets EventBridge use the key only for the four rules:
+```bash
+aws sns subscribe --region <region> --no-cli-pager --topic-arn <topic ARN> --protocol email --notification-endpoint <address>
+```
 
-     ```json
-     {
-       "Version": "2012-10-17",
-       "Statement": [
-         {
-           "Sid": "EnableRootAdministration",
-           "Effect": "Allow",
-           "Principal": { "AWS": "arn:<partition>:iam::<account>:root" },
-           "Action": "kms:*",
-           "Resource": "*"
-         },
-         {
-           "Sid": "AllowGlueAutoVersionEventBridge",
-           "Effect": "Allow",
-           "Principal": { "Service": "events.amazonaws.com" },
-           "Action": ["kms:GenerateDataKey*", "kms:Decrypt"],
-           "Resource": "*",
-           "Condition": {
-             "ArnEquals": {
-               "aws:SourceArn": [
-                 "arn:<partition>:events:<region>:<account>:rule/<prefix>-consent-required",
-                 "arn:<partition>:events:<region>:<account>:rule/<prefix>-upgrade-completed",
-                 "arn:<partition>:events:<region>:<account>:rule/<prefix>-upgrade-failed",
-                 "arn:<partition>:events:<region>:<account>:rule/<prefix>-upgrade-stopped"
-               ]
-             }
-           }
-         }
-       ]
-     }
-     ```
+### 6. Reply
 
-     The rule ARNs are known before the rules exist, because they follow from the prefix.
-   - User-supplied key: use it as is and never edit its key policy. Tell the user the policy must contain the `AllowGlueAutoVersionEventBridge` statement above (or an equivalent grant to `events.amazonaws.com`); without it, delivery fails without an error.
-   - Opt-out: only on the user's explicit request. Warn that the topic is unencrypted at rest and that the emails carry metadata (job names, versions, analysis IDs, reason text, console links) — never job data. A wish to avoid cost is not an opt-out: recommend the dedicated key, state its cost (a monthly charge plus request charges; see AWS KMS pricing), and create an unencrypted topic only if the user then explicitly opts out after the warning.
-3. **Topic.** `aws sns create-topic --name <prefix>-notifications --attributes KmsMasterKeyId=<key ARN>` (omit `--attributes` only on the opt-out). To check whether the topic already exists, use `aws sns list-topics` or `get-topic-attributes`; never call `create-topic` as a check. Call `create-topic` only after the Phase 3 confirmation, with the key attribute (omitted only on the opt-out). It is idempotent when the attributes match and returns the existing ARN. If it fails because the topic already exists with different attributes (for example a different KMS key), report the error and ask the user how to proceed; never change the topic's encryption silently.
-4. **Rules.** For each of the four rules: if `describe-rule` shows the same account-level pattern, leave it unchanged. Otherwise run `aws events put-rule --name <rule> --event-pattern file://<rule>-pattern.json --state ENABLED --description "AWS Glue auto version notifications: <group>"` (for an existing rule, keep its description and state). For an existing rule that differs, do this only after the named confirmation from step 0; without it, leave the rule unchanged.
-5. **Targets.** For each rule: `aws events list-targets-by-rule --rule <rule>`; call `put-targets` only if the target with Id `<prefix>-sns` is missing, points to another ARN, or has a different InputTransformer. `aws events put-targets --rule <rule> --targets file://<rule>-targets.json` with one target: `{"Id": "<prefix>-sns", "Arn": "<topic ARN>", "InputTransformer": <group transformer above>}`. For an existing target whose InputTransformer differs, do this only after the named confirmation from step 0; without it, leave the target unchanged.
-6. **Topic policy.** Read the current policy (`aws sns get-topic-attributes --topic-arn <topic ARN>` → `Attributes.Policy`). Remove any existing statement with Sid `AllowGlueAutoVersionEventBridge`, append the statement below, keep every other statement unchanged, then `aws sns set-topic-attributes --topic-arn <topic ARN> --attribute-name Policy --attribute-value file://topic-policy.json`.
+For an email-only request, reply as follows. With a turn-on request, use the combined reply in [assess-and-turn-on.md](assess-and-turn-on.md):
 
-   ```json
-   {
-     "Sid": "AllowGlueAutoVersionEventBridge",
-     "Effect": "Allow",
-     "Principal": { "Service": "events.amazonaws.com" },
-     "Action": "sns:Publish",
-     "Resource": "arn:<partition>:sns:<region>:<account>:<prefix>-notifications",
-     "Condition": {
-       "ArnEquals": {
-         "aws:SourceArn": [
-           "arn:<partition>:events:<region>:<account>:rule/<prefix>-consent-required",
-           "arn:<partition>:events:<region>:<account>:rule/<prefix>-upgrade-completed",
-           "arn:<partition>:events:<region>:<account>:rule/<prefix>-upgrade-failed",
-           "arn:<partition>:events:<region>:<account>:rule/<prefix>-upgrade-stopped"
-         ]
-       }
-     }
-   }
-   ```
+```text
+AWS Glue can now email <address> about auto upgrades in <region>. You have one step left.
 
-   The condition lists the four exact rule ARNs — never a `rule/*` wildcard.
-7. **Subscription.** `aws sns list-subscriptions-by-topic --topic-arn <topic ARN>`; if the address is already subscribed (confirmed or pending), do not subscribe again. Otherwise `aws sns subscribe --topic-arn <topic ARN> --protocol email --notification-endpoint <address>`. Tell the user: AWS sends a confirmation email, and nothing is delivered until the recipient clicks the confirmation link.
-8. **Report.** Start with the one thing left for the user: click the confirmation link in the email from AWS Notifications; nothing is delivered until then. Then one line per outcome, for example `Created: KMS key alias/glue-auto-version-notifications, SNS topic glue-auto-version-notifications, 4 EventBridge rules (every auto version job in <region>), email subscription for <address> (pending confirmation).` Use `Updated:` and `Unchanged:` lines the same way, and list any other auto version rules found in step 0 by name. Give the ARNs, rule patterns and policies only when the user asks for details.
+To start receiving email, open the email titled "AWS Notification - Subscription Confirmation" and choose **Confirm subscription**.
 
-## New Jobs
+Email delivery is best effort. To check your jobs at any time, enter `Which of my Glue jobs in <region> are waiting for upgrade approval?`
+```
 
-Nothing to do: the rules are account-level, so jobs enabled later are covered automatically. Do not run Phase 3 again for new jobs.
+### Cleanup after a failed setup
 
-## Delivery Caveats
+The skill doesn't run cleanup. Give the user these commands, only for the resources you created in this run, and let the user run them:
 
-- Auto version events are best effort and an email can be missed. Tell the user to check status directly (the consent workflow ([auto-version-consent.md](auto-version-consent.md)), or `aws glue get-job` → `Job.AutoUpgradeMetadata`) instead of relying on email alone.
-- The `CONSENT_REQUIRED` email shows when the approval request was sent (UTC); the request expires 7 days after that. `get-job-upgrade-analysis` does not return the deadline.
+```bash
+aws events remove-targets --region <region> --no-cli-pager --rule <rule> --ids email-topic
+aws events delete-rule --region <region> --no-cli-pager --name <rule>
+aws sns delete-topic --region <region> --no-cli-pager --topic-arn <topic ARN>
+```
+
+Never suggest deleting a resource that existed before this run.
