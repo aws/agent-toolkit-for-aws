@@ -1743,22 +1743,40 @@ def _reviewed_lookup(line: str) -> str | None:
     return name
 
 
-def _reviewed_publish(line: str) -> str | None:
+def _reviewed_publish(line: str) -> tuple[str, str, str] | None:
     """Accept echo "NAME=<plain text>" >> "$GITHUB_ENV" (or "$GITHUB_OUTPUT") only.
 
     Called after the plain-interpolation checks, so the published value holds
     literal text and plain ${VAR} expansions. The caller rejects reserved
     execution-environment names, which would otherwise reach later steps.
+    Returns (name, raw value, "ENV" or "OUTPUT").
     """
     match = re.fullmatch(
-        r'echo "([A-Za-z_]\w*)=([^"`$\\]*(?:\$\{[A-Za-z_]\w*\}[^"`$\\]*)*)" >> "\$GITHUB_(?:ENV|OUTPUT)"',
+        r'echo "([A-Za-z_]\w*)=([^"`$\\]*(?:\$\{[A-Za-z_]\w*\}[^"`$\\]*)*)" >> "\$GITHUB_(ENV|OUTPUT)"',
         line,
     )
-    return match.group(1) if match else None
+    return (match.group(1), match.group(2), match.group(3)) if match else None
+
+
+def _resolve_published(value: str, environment: dict[str, str]) -> str | None:
+    """Expand plain ${VAR} references; None when any reference is unknown."""
+    unknown = False
+
+    def replace(match: re.Match[str]) -> str:
+        nonlocal unknown
+        name = match.group(1)
+        if name in environment:
+            return environment[name]
+        unknown = True
+        return ""
+
+    resolved = re.sub(r"\$\{([A-Za-z_]\w*)\}", replace, value)
+    return None if unknown else resolved
 
 
 def _direct_commands(
     lines: list[str], environment: dict[str, str], *, allow_assignments: bool = True,
+    env_writes: dict[str, str | None] | None = None,
 ) -> list[list[str]]:
     """Only unconditional commands and finite, literal nonempty for loops.
 
@@ -1793,8 +1811,12 @@ def _direct_commands(
             raise ValueError("Unresolved shell parameter expansion requires review.")
         published = _reviewed_publish(line)
         if published is not None:
-            if published in _EXECUTION_ENVIRONMENT_KEYS:
+            name, raw_value, target = published
+            if name in _EXECUTION_ENVIRONMENT_KEYS:
                 raise ValueError("Shell execution-environment mutation requires review.")
+            # $GITHUB_ENV reaches every later step; $GITHUB_OUTPUT does not.
+            if target == "ENV" and env_writes is not None:
+                env_writes[name] = _resolve_published(raw_value, environment)
             i += 1
             continue
         loop = re.fullmatch(r"for\s+([A-Za-z_]\w*)\s+in(?:\s+(.*?))?\s*;\s*do", line)
@@ -1818,7 +1840,7 @@ def _direct_commands(
             items = values.split()
             commands.extend(_direct_commands(
                 lines[i + 1:end], {**environment, variable: items[0]},
-                allow_assignments=False,
+                allow_assignments=False, env_writes=env_writes,
             ))
             environment[variable] = items[-1]
             i = end + 1
@@ -1902,8 +1924,13 @@ def _is_deploy_command(command: list[str]) -> bool:
                for token in command[index + 2:])
 
 
-def _deploy_command(script: str, environment: dict[str, str] | None = None) -> bool:
-    commands = _direct_commands(_logical_shell_lines(script), environment or {})
+def _deploy_command(
+    script: str, environment: dict[str, str] | None = None,
+    env_writes: dict[str, str | None] | None = None,
+) -> bool:
+    commands = _direct_commands(
+        _logical_shell_lines(script), environment or {}, env_writes=env_writes,
+    )
     return any(_is_deploy_command(command) for command in commands)
 
 
@@ -1955,16 +1982,28 @@ def _workflows(
                 ))
             if _condition(job["condition"]) is False:
                 continue
+            # $GITHUB_ENV writes of earlier steps; None marks an unknown value.
+            carried: dict[str, str | None] = {}
             for step in job["steps"]:
-                if _condition(step.get("if")) is False:
+                step_condition = _condition(step.get("if"))
+                if step_condition is False:
                     continue
                 uses = step.get("uses", "")
                 script = step.get("run", "")
                 deploy_action = uses.startswith("einaregilsson/beanstalk-deploy@")
+                inherited = {**job["env"]}
+                for name, value in carried.items():
+                    if value is None:
+                        inherited.pop(name, None)
+                    else:
+                        inherited[name] = value
+                writes: dict[str, str | None] = {}
                 try:
                     deploy_run = bool(script) and _deploy_command(
-                        script, {**job["env"], **step["env"]},
+                        script, {**inherited, **step["env"]}, writes,
                     )
+                    for name, value in writes.items():
+                        carried[name] = value if step_condition else None
                 except ValueError as exc:
                     if expect_deployment and re.search(r"elasticbeanstalk|\beb\s+deploy\b", script):
                         findings.append(Finding(

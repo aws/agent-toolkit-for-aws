@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -700,6 +701,64 @@ module "network" {
         self.assertIn("imageDigest", promote_notes)
         self.assertNotIn("imageTag", promote_notes)
 
+    def test_fargate_promote_requires_running_task_and_keeps_production_config(self) -> None:
+        docs = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-docs.md").read_text()
+        section = docs.split("### Deploy to Fargate", 1)[1].split("\n### ", 1)[0]
+        blocks = [part.split("\n```", 1)[0] for part in section.split("```bash\n")[1:]]
+        select, build = blocks[0], blocks[1]
+        # The task must be RUNNING with a sha256 digest, and its definition comes
+        # from that same describe-tasks response.
+        self.assertIn("lastStatus", select)
+        self.assertIn("taskDefinitionArn", select)
+        self.assertIn("sha256:", select)
+        self.assertIn("exit 1", select)
+        self.assertEqual(select.count("aws ecs describe-tasks"), 1)
+        self.assertNotIn("describe-services", select)
+        # Production's own task definition is the base; only the image changes.
+        self.assertIn("describe-services --cluster <prod cluster>", build)
+        self.assertIn("describe-task-definition", build)
+        self.assertNotIn("<staging", build)
+        if shutil.which("jq") is None:
+            self.skipTest("jq is required to execute the recipe's task-definition filter")
+        expression = build.split("'", 3)[3].split("'", 1)[0]
+        digest = "sha256:" + "a" * 64
+        production = {
+            "family": "app-production", "taskDefinitionArn": "arn:aws:ecs:r:1:task-definition/app-production:7",
+            "revision": 7, "status": "ACTIVE", "cpu": "512", "taskRoleArn": "arn:aws:iam::1:role/prod-task",
+            "containerDefinitions": [
+                {"name": "web", "image": "repo/app:old", "environment": [{"name": "DATABASE_URL", "value": "prod-db"}],
+                 "secrets": [{"name": "API_KEY", "valueFrom": "arn:aws:secretsmanager:r:1:secret:prod-key"}],
+                 "logConfiguration": {"logDriver": "awslogs", "options": {"awslogs-group": "/prod/web"}}},
+                {"name": "sidecar", "image": "repo/sidecar:1"},
+            ],
+        }
+        result = subprocess.run(
+            ["jq", "--arg", "name", "web", "--arg", "image", f"repo/app@{digest}", expression],
+            input=json.dumps(production), capture_output=True, text=True, check=True,
+        )
+        registered = json.loads(result.stdout)
+        web, sidecar = registered["containerDefinitions"]
+        self.assertEqual(web["image"], f"repo/app@{digest}")
+        self.assertEqual(web["environment"], [{"name": "DATABASE_URL", "value": "prod-db"}])
+        self.assertEqual(web["secrets"], production["containerDefinitions"][0]["secrets"])
+        self.assertEqual(web["logConfiguration"]["options"]["awslogs-group"], "/prod/web")
+        self.assertEqual(sidecar, production["containerDefinitions"][1])
+        self.assertEqual((registered["cpu"], registered["taskRoleArn"]), ("512", "arn:aws:iam::1:role/prod-task"))
+        for read_only in ("taskDefinitionArn", "revision", "status"):
+            self.assertNotIn(read_only, registered)
+
+    def test_promote_guide_documents_oidc_subject_and_reviewer_prerequisite(self) -> None:
+        docs = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-docs.md").read_text()
+        section = docs.split("### Promote to Production", 1)[1].split("{{IF eb_deploy_method", 1)[0]
+        self.assertIn('"repo:<org>/<repo>:ref:refs/heads/main"', section)
+        self.assertIn('"repo:<org>/<repo>:environment:production"', section)
+        self.assertIn("sts.amazonaws.com", section)
+        self.assertNotIn(":*", section)
+        self.assertIn("only in public repositories", section)
+        self.assertIn("GitHub Enterprise", section)
+        self.assertIn("workflow_dispatch", section)
+        self.assertIn("CodePipeline", section)
+
     def test_promote_lookup_and_publish_shapes_are_bounded(self) -> None:
         deploy = "aws elasticbeanstalk update-environment --environment-name app-web --version-label \"${LABEL}\""
         accepted = [
@@ -743,6 +802,42 @@ jobs:
                     self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK", self.report())
                 else:
                     self.assertIn("workflow_run_unverified", self.rules())
+
+    def test_github_env_writes_carry_into_later_deploy_steps(self) -> None:
+        lookup = 'BUCKET="$(aws elasticbeanstalk create-storage-location --query S3Bucket --output text)"'
+        loop = (
+            "for ENVIRONMENT in ${EB_ENVIRONMENTS}; do\n"
+            '  aws elasticbeanstalk update-environment --environment-name "${ENVIRONMENT}" --version-label "${GITHUB_SHA}"\n'
+            "done"
+        )
+
+        def workflow(first: str) -> str:
+            def block(body: str) -> str:
+                return "\n".join("          " + line for line in body.splitlines())
+            return (
+                "env:\n  EB_ENVIRONMENTS: app-web\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n"
+                "      - run: |\n" + block(first) + "\n"
+                "      - run: |\n" + block(loop) + "\n"
+            )
+
+        rejected = {
+            "empty": lookup + '\necho "EB_ENVIRONMENTS=" >> "$GITHUB_ENV"',
+            "unknown": 'echo "EB_ENVIRONMENTS=${MISSING}" >> "$GITHUB_ENV"',
+        }
+        for label, first in rejected.items():
+            with self.subTest(label=label):
+                self.write(".github/workflows/deploy-eb.yml", workflow(first))
+                self.assertIn("workflow_run_unverified", self.rules())
+        # A nonempty reassignment is carried and still verifies.
+        self.write(".github/workflows/deploy-eb.yml", workflow(
+            lookup + '\necho "EB_ENVIRONMENTS=app-web app-worker" >> "$GITHUB_ENV"',
+        ))
+        self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK", self.report())
+        # GITHUB_OUTPUT is a separate channel and does not touch the environment.
+        self.write(".github/workflows/deploy-eb.yml", workflow(
+            lookup + '\necho "EB_ENVIRONMENTS=" >> "$GITHUB_OUTPUT"',
+        ))
+        self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK", self.report())
 
     def test_loop_environment_reassignment_must_remain_provably_nonempty(self) -> None:
         for assignment in ['EB_ENVIRONMENTS=""', "EB_ENVIRONMENTS=$MISSING", 'export EB_ENVIRONMENTS=""', "read EB_ENVIRONMENTS", 'EB_ENVIRONMENTS+=""']:
