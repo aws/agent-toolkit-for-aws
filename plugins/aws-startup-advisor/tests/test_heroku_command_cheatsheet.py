@@ -80,12 +80,29 @@ def test_eb_shell_uses_ssm_session_not_eb_ssh() -> None:
     assert "`eb ssh` does not work here" in eb
     beanstalk = TERRAFORM[TERRAFORM.index('resource "aws_iam_role" "eb_instance_<app_name>"'):]
     beanstalk = beanstalk[: beanstalk.index("**Per-environment rules:**")]
-    assert re.search(
-        r'resource "aws_iam_role_policy_attachment" "eb_ssm_<app_name>" \{\s+'
-        r"role\s+= aws_iam_role\.eb_instance_<app_name>\.name\s+"
-        r'policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"',
-        beanstalk,
+    # AmazonSSMManagedInstanceCore allows ssm:GetParameter(s) on "*", which would widen
+    # the project-prefixed parameter read; the role gets an inline policy instead.
+    assert "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore" not in re.sub(
+        r"(?m)^#.*$", "", beanstalk
     )
+    assert "AmazonSSMManagedInstanceCore" not in eb
+    ssm = beanstalk[beanstalk.index('resource "aws_iam_role_policy" "eb_ssm_<app_name>"'):]
+    ssm = ssm[: ssm.index("\n}\n")]
+    actions = set(re.findall(r'"((?:ssm|ssmmessages|ec2messages):[A-Za-z*]+)"', ssm))
+    assert actions == {
+        "ssm:UpdateInstanceInformation",
+        "ssmmessages:CreateControlChannel",
+        "ssmmessages:CreateDataChannel",
+        "ssmmessages:OpenControlChannel",
+        "ssmmessages:OpenDataChannel",
+    }
+    # Composed role: every attachment/inline grant of ssm:GetParameter(s) is project-scoped.
+    assert "GetParameter" not in ssm
+    read = beanstalk[beanstalk.index('resource "aws_iam_role_policy" "eb_read_secrets_<app_name>"'):]
+    assert ":parameter/${var.project_name}/*" in read
+    assert re.findall(r'policy_arn\s+= "([^"]+)"', beanstalk) == [
+        "arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier"
+    ]
 
 
 def test_config_rows_follow_the_backing_store() -> None:
@@ -352,11 +369,18 @@ def test_eb_maintenance_row_branches_on_the_actual_load_balancer_type() -> None:
     assert row.count("{{IF has_route53_dns}}") == 1 and row.count("{{ELSE}}") == 1
     alb, classic = row.split("{{ELSE}}")
     assert "`beanstalk.tf` sets `LoadBalancerType=application`" in alb
-    assert "aws elbv2 modify-listener --listener-arn <listener-arn>" in alb
     name = alb.index("EnvironmentResources.LoadBalancers[0].Name")
     arn = alb.index("aws elbv2 describe-load-balancers --names \"$lb_name\"")
     listeners = alb.index("aws elbv2 describe-listeners --load-balancer-arn \"$lb_arn\"")
     assert name < arn < listeners
+    # Every forwarding listener is switched (EB keeps HTTP:80 forwarding next to the
+    # generated HTTPS:443 listener), saved before replacement and restored afterwards.
+    assert "**every** forwarding listener" in alb
+    assert alb.count("Listeners[?DefaultActions[0].Type=='forward'].ListenerArn") == 1
+    assert "maint-$(basename \"$l\").json" in alb
+    assert alb.index("> \"maint-") < alb.index("aws elbv2 modify-listener --listener-arn \"$l\" --default-actions Type=fixed-response")
+    assert "Type=='fixed-response'].ListenerArn" in alb
+    assert "--default-actions \"file://$f\"" in alb
     assert "Classic Load Balancer" in classic
     assert "aws elbv2" not in classic.split("do not exist")[1]
     assert (
@@ -435,3 +459,72 @@ def test_eb_retention_is_mapped_to_the_accepted_domain() -> None:
     assemble = (clarify / "clarify-assemble.md").read_text(encoding="utf-8")
     assert "smallest accepted value that is >= the\npreference (2 → 3, 45 → 60)" in interview
     assert "`operational.log_retention_days`, when present (fresh or reused preferences alike), is an integer 1–3653" in assemble
+
+
+def test_maintenance_loops_cover_two_forwarding_listeners() -> None:
+    # Run the row's save/replace/restore loops against a fake `aws` with an HTTP:80 and
+    # an HTTPS:443 forwarding listener: both end up replaced, then both restored.
+    import os
+    import shutil
+    import subprocess  # nosec B404 — test-only, inputs are literals from the guide
+    import tempfile
+
+    section = _section()
+    eb = section[section.index("{{IF has_beanstalk}}"):section.index("{{IF has_fargate}}")]
+    row = [line for line in eb.splitlines() if line.startswith("| `heroku maintenance:on")][0]
+    cmds = re.findall(r"`(for l in [^`]+)`", row)
+    assert len(cmds) == 2
+    sh = shutil.which("dash") or shutil.which("sh")
+    fake = r"""#!/bin/sh
+state="$FAKE_STATE"
+case "$*" in
+  *"--load-balancer-arn"*"forward"*) cat "$state/forward" ;;
+  *"--load-balancer-arn"*"fixed-response"*) cat "$state/fixed" ;;
+  *"--listener-arns"*) echo '[{"Type":"forward","TargetGroupArn":"tg"}]' ;;
+  *modify-listener*) echo "$*" >> "$state/modified" ;;
+esac
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        bindir = os.path.join(tmp, "bin")
+        os.mkdir(bindir)
+        with open(os.path.join(bindir, "aws"), "w") as fh:
+            fh.write(fake)
+        os.chmod(os.path.join(bindir, "aws"), 0o755)
+        arns = "arn:x:listener/app/lb/1/80 arn:x:listener/app/lb/1/443"
+        for name, text in (("forward", arns), ("fixed", arns)):
+            with open(os.path.join(tmp, name), "w") as fh:
+                fh.write(text)
+        env = {**os.environ, "PATH": bindir + os.pathsep + os.environ["PATH"], "FAKE_STATE": tmp}
+        for cmd in cmds:
+            run = subprocess.run(  # nosec B603
+                [sh, "-c", 'lb_arn=arn:x:lb; ' + cmd], cwd=tmp, env=env, text=True, capture_output=True
+            )
+            assert run.returncode == 0, run.stderr
+        modified = open(os.path.join(tmp, "modified")).read().splitlines()
+        assert len(modified) == 4
+        assert sum("fixed-response" in m for m in modified) == 2
+        assert sum("file://maint-80.json" in m for m in modified) == 1
+        assert sum("file://maint-443.json" in m for m in modified) == 1
+
+
+def test_pg_psql_rows_provision_the_ca_bundle_on_the_psql_host() -> None:
+    # Full cutover never downloads config/rds-ca-bundle.pem (that step lives inside the
+    # data-first TLS guard and writes to the Heroku checkout), so the rows fetch the
+    # bundle onto the host that runs psql and point sslrootcert at that explicit path.
+    section = _section()
+    rows = [line for line in section.splitlines() if line.startswith("| `heroku pg:psql")]
+    assert len(rows) == 2
+    for row in rows:
+        fetch = row.index(
+            "curl -fsSo /tmp/rds-global-bundle.pem "
+            "https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem"
+        )
+        assert fetch < row.index("psql \"postgres://")
+        assert "sslmode=verify-full&sslrootcert=/tmp/rds-global-bundle.pem" in row
+        assert "config/rds-ca-bundle.pem" not in row
+        assert "type the password at the prompt" in row
+        assert "interim_cutover_data_first" not in row
+    # The only producer of config/rds-ca-bundle.pem is inside the data-first guard.
+    producer = DOCS.index("curl -o config/rds-ca-bundle.pem")
+    guard = DOCS.rindex('{{IF migration_approach == "interim_cutover_data_first"}}', 0, producer)
+    assert "{{ENDIF}}" not in DOCS[guard:producer]

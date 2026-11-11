@@ -1515,9 +1515,28 @@ resource "aws_iam_role_policy_attachment" "eb_web_tier_<app_name>" {
 # MIGRATION_GUIDE.md § Day-to-day commands). The environment has no EC2 key pair and no
 # :22 ingress, so `eb ssh` cannot reach an instance; AWSElasticBeanstalkWebTier grants no
 # ssm:*/ssmmessages:* either. The SSM agent is preinstalled on the AL2023 Docker platform.
-resource "aws_iam_role_policy_attachment" "eb_ssm_<app_name>" {
-  role       = aws_iam_role.eb_instance_<app_name>.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+# Do NOT attach the AmazonSSMManagedInstanceCore managed policy here: it also allows
+# ssm:GetParameter(s) on Resource "*", which would widen the parameter-read boundary that
+# eb_read_secrets_<app_name> keeps under parameter/<project>/*. This inline policy carries
+# only the actions the agent needs to register and open a session channel.
+resource "aws_iam_role_policy" "eb_ssm_<app_name>" {
+  name = "${var.project_name}-eb-session-manager"
+  role = aws_iam_role.eb_instance_<app_name>.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "ssm:UpdateInstanceInformation",
+        "ssmmessages:CreateControlChannel",
+        "ssmmessages:CreateDataChannel",
+        "ssmmessages:OpenControlChannel",
+        "ssmmessages:OpenDataChannel"
+      ]
+      Resource = "*"
+    }]
+  })
 }
 
 resource "aws_iam_role_policy" "eb_read_secrets_<app_name>" {
