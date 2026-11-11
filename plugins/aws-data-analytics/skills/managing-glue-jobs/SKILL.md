@@ -24,7 +24,7 @@ Each step names the file to read. **Stop** marks a point where you wait for the 
 | 3. Notifications | If the user gave an address, you set up the emails first, so no approval email is missed. | [notifications.md](references/notifications.md) | — |
 | 4. Turn on | You set `GlueVersion` to `auto` with a full job update. | [assess-and-turn-on.md](references/assess-and-turn-on.md) | — |
 | 5. Review | Days later, you show the eligibility summary and what to check. | [approval.md](references/approval.md) | **Stop** |
-| 6. Approve or decline | You record the decision for the one job that the user names. | same | — |
+| 6. Approve or decline | You record the decision for each job that the user names, or decide each job on the user's blocking-issue condition. | same | — |
 | 7. Monitor and results | You report status and the auto upgrade evaluation summary. | same | — |
 
 Steps 1 to 4 can run in one conversation. A job that runs often can reach the approval request within an hour, so set up emails before turning on jobs. Step 5 starts after AWS Glue requests approval. Never approve in the same turn that turns on auto upgrade.
@@ -48,7 +48,7 @@ The assessment uses the `generate_assessment` tool of the `spark-upgrade` MCP se
 ## Rules
 
 1. **Change only what the user confirmed.** Before any call that changes something (`update-job`, `create-job`, `start-job-upgrade-analysis`, `create-topic`, `set-topic-attributes`, `put-rule`, `put-targets`, `subscribe`), say what will change. Run it only for jobs and resources that the user confirmed in this conversation.
-2. **One named decision per job.** Approve or decline only after you show that job's review, and only when the user names the job and the decision. Never approve in bulk, on a condition, or on a schedule.
+2. **One decision per job, from the user's instruction.** Record a decision only when the user names the job and the decision after you show its review, or when the user decides on the blocking-issue condition, for named jobs or for every waiting job: approve if the summary lists no blocking issue, decline if it lists at least one, or both. Act on that condition only if, in this turn, the job's status is `WAITING_FOR_CONSENT` and you read its eligibility summary. Never decide on a schedule, on a condition you can't check from the summary, or for a job that the instruction doesn't cover. A reply such as "no", "not now" or "later" isn't a decline: record nothing, and give the decline prompt.
 3. **No secrets in the chat.** Never repeat job argument values in a reply. Never print, store, or quote a summary link: the links are presigned, work for 1 hour, and are read only inside the one command in [approval.md](references/approval.md).
 4. **No IAM changes or installs.** Tell the user what to grant or install.
 5. **No scripts.** Write any temporary file inside the one command that uses it, and delete it in the same command.

@@ -83,7 +83,7 @@ Rules for every step:
 
 - **Reuse, never overwrite.** Create only what is missing. Don't change a topic, rule, target, or subscription that already exists.
 - **Stop on a conflict.** A topic with different encryption, a rule with a different event pattern, or a rule that is turned off is a conflict. Show it and stop.
-- **Partial failure.** If a step fails, stop. Tell the user what you created in this run, and give the cleanup commands at the end of this section.
+- **Partial failure.** If a step fails, stop the email setup. Tell the user what you created in this run, and give the cleanup commands at the end of this section. For an email-only request, stop there. With a turn-on request (`proceed, email <address>`), go on to turn on the confirmed jobs. The email failure doesn't block it ([assess-and-turn-on.md](assess-and-turn-on.md), "Step 4: Turn on").
 
 ### 1. Check what exists (read-only)
 

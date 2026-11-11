@@ -34,6 +34,7 @@ Never change `MaxRetries` or queuing yourself. Tell the user which setting to ch
    - `mode`: `auto_version_eligibility_assessment`; `application_type`: `glue`
    - `application_context`: `job_arguments` (from `aws glue get-job --job-name <job> --region <region> --no-cli-pager --query "Job.DefaultArguments"`, passed straight through, never shown), `script_location`, `language` (`python` or `scala`), `source_glue_version`, `target_glue_version` (the latest stable version, 6.0 today)
    - `source_spark_version` / `target_spark_version`: 2.0 = 2.4.3, 3.0 = 3.1.1, 4.0 = 3.3.0, 5.0 = 3.5.4, 5.1 = 3.5.6, 6.0 = 4.1.1
+   - All of these inputs are required; a result from a call missing any of them isn't valid.
    - A job passes only when `eligible` is `true` and the response has no `warning` or `note`. Otherwise keep the `breaking_changes[].detail` text for "details".
 4. If the server isn't connected, mark the jobs "not analyzed". AWS Glue still runs its own compatibility check after auto upgrade is on. Never judge a script yourself. To connect the server, give the user this MCP configuration and ask them to restart the session:
 
@@ -105,7 +106,7 @@ Leave out a table that has no rows. On "details", show one row per job with the 
 
    `GlueVersion` must be `auto`, and `MaxRetries`, `Role` and `Command` must match what you sent. If not, stop and show the difference. An `InvalidInputException` names the problem: show it. An error that says the account doesn't support auto upgrade stops the batch.
 
-If the user entered `proceed, email <address>`, set up the emails first ([notifications.md](notifications.md), "Set up"), then turn on the jobs. Then reply once:
+If the user entered `proceed, email <address>`, set up the emails first ([notifications.md](notifications.md), "Set up"), then turn on the jobs. If the email setup fails, still turn on the jobs. A conflict is the exception: it stops the setup and the turn-on. Then reply once:
 
 ```text
 Auto upgrade is now on for 2 jobs. The jobs stay on AWS Glue 4.0 until you approve an upgrade.
@@ -127,6 +128,8 @@ AWS Glue now emails <address> about auto upgrades in <region>. To start receivin
 
 If you miss an email, enter `Which of my Glue jobs in <region> are waiting for upgrade approval?`
 ```
+
+If the email setup failed, replace the **Email notifications** part with: "The email setup didn't finish: <step> failed with <error>. It created <the resources created in this run, or nothing>. To retry the email setup, enter `proceed, email <address>`." On that retry, run only the email setup: the jobs are already on `auto`, so Step 4 skips them.
 
 If the user entered only `proceed`, leave out the **Email notifications** part and the last line. Replace step 3 with "If a job needs no changes, AWS Glue requests your approval. You have 7 days to approve or decline." End with "To check for approval requests later, enter `Which of my Glue jobs in <region> are waiting for upgrade approval?`"
 

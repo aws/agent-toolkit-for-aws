@@ -57,7 +57,7 @@ You have 1 job waiting for your approval.
 
 Then review each waiting job.
 
-## Step 5: Review (stop)
+## Step 5: Review (stop, unless the user gave a conditional decision)
 
 First check whether the summary is encrypted:
 
@@ -137,9 +137,14 @@ Never call an upgrade safe. Never recommend approval. Never add findings that th
 
 ## Step 6: Approve or decline
 
-Record a decision only when the user names the job and the decision, and you showed that job's review in this conversation. "Yes", "ok", or "approve all" isn't a decision: ask for one job by name.
+Record a decision in one of these two cases:
 
-1. Run the status steps again for the job. The analysis ID must match the review, and `status` must be `WAITING_FOR_CONSENT`. Otherwise record nothing and report the new status.
+- **Named decision.** The user names the job and the decision, and you showed that job's review in this conversation.
+- **Conditional decision.** The user decides on the blocking-issue condition, for named jobs or for every waiting job. The instruction can approve if the summary lists no blocking issue, decline if it lists at least one, or both ("approve if clean, decline otherwise"). For each job that the instruction covers, first check two things in this turn: the status read shows `WAITING_FOR_CONSENT`, and you read the eligibility summary with the Step 5 command. Then approve when the summary lists no blocking issue and the instruction approves in that case. Decline when it lists at least one and the instruction declines in that case. Hold every other covered job, and say why. The condition is about blocking issues only. Write modes and warnings don't change it, and neither do your own findings.
+
+"Yes", "ok", "approve all" without the condition, and "do what you think is best" aren't decisions: ask for one job by name. "No", "not now" or "later" isn't a decline either: record nothing, and say that the user can enter `Decline the upgrade for <job>` or let the approval request expire. Never decide on a schedule. Never decide when you can't check the condition, for example when the summary is encrypted or not available yet. Never decide for a job that the instruction doesn't name or cover.
+
+1. Run the status steps again for the job. The analysis ID must match the review (for a conditional decision, the one from this turn's summary read), and `status` must be `WAITING_FOR_CONSENT`. Otherwise record nothing and report the new status.
 2. Run only the command for the decision that the user named.
 
    Approve:
@@ -163,6 +168,24 @@ Record a decision only when the user names the job and the decision, and you sho
 
    After the first upgraded run, check its output.
    ```
+
+   Conditional decision, with one row per job that the instruction covers:
+
+   ```text
+   You approved 1 job and declined 1 job. 1 job is held.
+
+   | Job   | Write mode   | Result   | Why                                       |
+   |-------|--------------|----------|-------------------------------------------|
+   | <job> | <write mode> | Approved | No blocking issues                        |
+   | <job> | <write mode> | Declined | <blocking issue from the summary>         |
+   | <job> | —            | Held     | Summary encrypted with your AWS KMS key   |
+
+   Approved jobs use AWS Glue <target> on subsequent job runs. Declined jobs stay on AWS Glue <source>, and auto upgrade is off for them.
+
+   A recorded decision can't be changed. To keep an approved job off the new version, turn off auto upgrade for it before its next run: enter `Turn off auto upgrade for <job> and keep it on AWS Glue <source>`. After the first upgraded run, check its output.
+   ```
+
+   Leave out the sentences for a result that no job has. In the Why column, give the blocking issue as the summary states it. For a held job, give "No blocking issues" (when the instruction only declines), the blocking issue (when it only approves), "Summary not available yet", "Summary encrypted with your AWS KMS key", or the job's status label.
 
    Decline:
 
