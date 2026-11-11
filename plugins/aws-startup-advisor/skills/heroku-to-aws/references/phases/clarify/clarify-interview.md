@@ -801,6 +801,12 @@ Validate: must be valid ISO 8601 date, must be in the future.
 
 **Default:** 3 → `log_retention_days: 30`
 
+Any value 1–3653 is stored as given. Elastic Beanstalk's `aws:elasticbeanstalk:cloudwatch:logs`
+`RetentionInDays` accepts only 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731,
+1827, 3653, so for a custom value Generate writes the smallest accepted value that is >= the
+preference (2 → 3, 45 → 60); choices 1–5 are accepted as-is. Tell the user when their custom
+value will be rounded up this way.
+
 ---
 
 #### Q14 — Alerting Preference

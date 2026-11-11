@@ -137,6 +137,7 @@ Before handing off to Design:
 - [ ] If peering detected and VPC ID needed → `network.existing_vpc_id` is populated
 - [ ] If Fir apps detected → `global.fir_intent` is populated (not null)
 - [ ] `operational.containerization_status` is populated
+- [ ] `operational.log_retention_days`, when present (fresh or reused preferences alike), is an integer 1–3653; Generate maps it to the Elastic Beanstalk `RetentionInDays` domain (smallest accepted value >= the preference — `clarify-interview.md` Q13), so a value outside 1–3653 is rejected here, not rounded
 - [ ] `design_constraints.compute_target.default` is one of: `"elastic_beanstalk"`, `"ecs-fargate"`, `"eks-managed"`, `"eks-or-ecs"`
 - [ ] `design_constraints.compute_target.chosen_by` is one of: `"user"`, `"system_recommended"`, `"default"`
 - [ ] `design_constraints.compute_target.overrides[]` entries, when present, have `formation`, `value`, `reason`, and `chosen_by`
