@@ -124,9 +124,6 @@ def test_capture_stops_on_a_revoked_key_and_requires_a_workspace(monkeypatch, tm
     assert code == 3 and manifest["result"] == "key_invalid_mid_run" and manifest["captures"][-1]["status"] == "failed"
     assert not key_file.exists() and not (tmp_path / "cap" / "usage-messages-hourly.json").exists()
     assert USAGE.main(["summarize", "--capture-dir", str(tmp_path / "cap"), "--out", str(tmp_path / "u.json")]) == 7
-    key_file.write_text(f"ANTHROPIC_ADMIN_KEY={KEY}\n")
-    with pytest.raises(SystemExit):
-        USAGE.main(["capture", "--key-file", str(key_file), "--out-dir", str(tmp_path / "c2")])
     (tmp_path / "bad").write_text("ANTHROPIC_ADMIN_KEY=sk-ant-api03-x\n")
     with pytest.raises(SystemExit, match="KEY_FORMAT_BAD"):
         USAGE.read_key(tmp_path / "bad")
@@ -184,9 +181,43 @@ def test_summarize_keeps_token_pools_apart_and_the_higher_peak(tmp_path) -> None
 
 def test_peak_input_counts_cache_writes_but_not_cache_reads() -> None:
     hourly = json.loads((CAPTURE / "usage-messages-hourly.json").read_text())
-    best, _ = USAGE._peaks(hourly)
-    sonnet = next(v for k, v in best.items() if k[0] == "claude-sonnet-5")
-    assert sonnet == [1300, 600]
+    best, days = USAGE._peaks(hourly)
+    key = next(k for k in best if k[0] == "claude-sonnet-5")
+    assert best[key] == [1300, 600]
+    assert days[key][USAGE._epoch("2026-10-20T00:00:00Z")] == [1300, 300]
+
+
+def test_a_cache_read_heavy_day_is_not_the_busiest_day(tmp_path) -> None:
+    def heavy_reads(cap):
+        for name in ("usage-messages.json", "usage-messages-hourly.json"):
+            _edit(cap / name, lambda buckets: [r.update(cache_read_input_tokens=100000) for b in buckets for r in b["results"]
+                                               if b["starting_at"].startswith("2026-10-20") and r["model"] == "claude-sonnet-5"])
+    usage = _summarize(tmp_path, _copy(tmp_path, heavy_reads))
+    sonnet = next(r for r in usage["usage_by_model"] if r["model"] == "claude-sonnet-5")
+    assert sonnet["cache_read_tokens"] == 100000 and sonnet["peak"]["busiest_day"] == "2026-10-25"
+    assert (sonnet["peak"]["day_input_tokens"], sonnet["peak"]["day_to_average_ratio"]) == (2000, round(2700 / (4300 / 12), 2))
+    hourly = json.loads((tmp_path / "cap" / "usage-messages-hourly.json").read_text())
+    assert USAGE._busiest_on_demand_day(hourly)[0] == USAGE._epoch("2026-10-25T00:00:00Z")
+
+
+def _network_down(request, timeout=None):
+    raise urllib.error.URLError("temporary failure in name resolution")
+
+
+@pytest.mark.parametrize("command", ["probe", "capture"])
+def test_a_network_error_still_deletes_the_key_file(monkeypatch, tmp_path, key_file, capsys, command) -> None:
+    monkeypatch.setattr(USAGE, "opener", _network_down)
+    argv = [command, "--key-file", str(key_file)] + (["--out-dir", str(tmp_path / "cap"), "--workspace", "wrkspc_app"] if command == "capture" else [])
+    with pytest.raises(urllib.error.URLError):
+        USAGE.main(argv)
+    out = capsys.readouterr()
+    assert not key_file.exists() and KEY not in out.out + out.err
+
+
+def test_a_missing_workspace_keeps_the_key_for_a_corrected_capture(tmp_path, key_file) -> None:
+    with pytest.raises(SystemExit):
+        USAGE.main(["capture", "--key-file", str(key_file), "--out-dir", str(tmp_path / "cap")])
+    assert key_file.exists()
 
 
 def _copy(tmp_path, mutate) -> Path:
@@ -239,7 +270,8 @@ def test_summarize_ignores_files_the_manifest_does_not_mark_ok(tmp_path) -> None
     usage = _summarize(tmp_path, _copy(tmp_path, hourly_failed))
     sonnet = next(r for r in usage["usage_by_model"] if r["model"] == "claude-sonnet-5")
     assert sonnet["peak"]["peak_source"] == "day" and sonnet["peak"]["peak_input_tokens_per_minute"] is None
-    assert usage["metadata"]["capture_warnings"] == ["usage-messages-hourly.json failed (HTTP 500)"]
+    assert usage["metadata"]["capture_warnings"] == ["usage-messages-hourly.json failed (HTTP 500)",
+                                                      "cost_report does not include priority tier spend; this total excludes it"]
 
 
 def test_merge_adds_anthropic_models_keeps_code_evidence_and_the_verbatim_name(tmp_path) -> None:
@@ -291,6 +323,41 @@ def test_preview_reports_each_source_and_withholds_a_total_it_cannot_know(tmp_pa
     assert PREVIEW.preview(profile)["measured_usage"] is None and PREVIEW.preview(profile)["preview_version"] == 2
 
 
+
+def test_preview_keeps_each_source_period_for_a_full_and_a_partial_window(tmp_path) -> None:
+    full, short = _openai_usage(tmp_path), _summarize(tmp_path)
+    full["metadata"].update(active_days=30, partial_window=False, cost_status="complete")
+    measured = PREVIEW.preview(json.loads((FIXTURES / "bma-scan-workloads-mixed/ai-workload-profile.json").read_text()), [full, short])["measured_usage"]
+    assert "active_days" not in measured and "partial_window" not in measured
+    assert [(s["active_days"], s["partial_window"]) for s in measured["sources"]] == [(30, False), (12, True)]
+    q3 = CLARIFY[CLARIFY.index("## Q3 "):CLARIFY.index("## Q4 ")]
+    q7 = CLARIFY[CLARIFY.index("## Q7 "):CLARIFY.index("## Q8 ")]
+    for q in (q3, q7):
+        assert "over its active_days days" in q and "After a source whose `partial_window` is true" in q
+    assert "Give each source its own period, never one period for the total" in q3
+
+
+def test_a_full_window_with_an_uncosted_tier_warns_downstream(tmp_path) -> None:
+    usage = _summarize(tmp_path, _copy(tmp_path, _full_window))
+    md = usage["metadata"]
+    assert (md["partial_window"], md["cost_status"], md["uncosted_service_tiers"]) == (False, "partial_window", ["priority"])
+    assert md["capture_warnings"] == ["cost_report does not include priority tier spend; this total excludes it"]
+    peak_only = ("hourly.json", "minute.json")
+    assert not any(name in w for w in md["capture_warnings"] for name in peak_only)
+    other = tmp_path / "cost-failed"
+    other.mkdir()
+    failed = _summarize(other, _copy(other, lambda cap: [_full_window(cap), _cost_failed(cap)]))
+    assert failed["metadata"]["capture_warnings"] == ["cost-report.json failed (HTTP 403)"]
+
+
+def test_resume_refreshes_a_version_1_preview_before_clarify() -> None:
+    old = json.loads((FIXTURES / "bma-preview-v1/migration-preview.json").read_text())
+    assert old["preview_version"] == 1 and "sources" not in old["measured_usage"] and "total_tokens" not in old["measured_usage"]
+    skill = (BMA / "SKILL.md").read_text(encoding="utf-8")
+    step0 = skill[skill.index("## Step 0"):skill.index("## Step 1:")]
+    assert "if `migration-preview.json` exists without `preview_version` 2, run Discover Step 2d again" in step0
+    assert "scans nothing, and calls no API" in step0
+
 def test_capture_rows_match_the_documented_endpoint_table() -> None:
     table = [row for row in READER.splitlines() if re.match(r"\| [1-4] \|", row)]
     rows = USAGE.DAILY_ROWS + [USAGE.MINUTE_ROW]
@@ -304,7 +371,8 @@ def test_reader_controller_and_clarify_wiring() -> None:
     for rule in ("never open it with any tool", "Only `scripts/anthropic-usage.py` reads it", "each workspace's total spend for the",
                  "usage of workspaces you don't select", "Nothing is created, changed, or deleted in your Anthropic account",
                  "no narrower usage-only", "However this flow ends, including when the user skips at any step", "`ORG_NOT_SUPPORTED`",
-                 "Claude Enterprise", "Claude Platform on AWS", "Rows of unselected workspaces are never written"):
+                 "Claude Enterprise", "Claude Platform on AWS", "Rows of unselected workspaces are never written", "however it ends (including a network error)",
+                 "The script stops on a network error or timeout", "the busiest day, and its `day_input_tokens` count uncached input and cache writes"):
         assert rule in READER, rule
     assert CONTROLLER.index("## Step 2c: Usage APIs") < CONTROLLER.index("## Step 2d: Preview")
     for rule in ("`references/phases/discover/discover-anthropic-api.md`", "`anthropic-capture/`", "declining one does not skip the next",

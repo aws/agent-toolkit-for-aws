@@ -187,7 +187,7 @@ Interpret → `ai_priority`. Default: 5 → `"balanced"`.
 
 ## Q3 — Monthly AI spend with your current AI providers?
 
-**Measured spend.** When `migration-preview.json` has `measured_usage` and its `monthly_cost_usd` is not `null`, say before the options: "Measured: $[monthly_cost_usd] over the last [active_days] days ([each source and its spend])." Add "(only [active_days] days of activity, not scaled to a month)" when `partial_window` is true, and "(excludes [uncosted_service_tiers] tier spend)" for a source whose `uncosted_service_tiers` is not empty. Then mark the option that range falls in as "(measured)". When `monthly_cost_usd` is `null`, say which source's spend is not available and mark nothing. Either way the user answers, and the answer is recorded with `chosen_by: "user"`.
+**Measured spend.** When `migration-preview.json` has `measured_usage` and its `monthly_cost_usd` is not `null`, say before the options: "Measured: $[monthly_cost_usd] in total ([each source in `sources`: its provider, its monthly_cost_usd, over its active_days days])." Give each source its own period, never one period for the total. After a source whose `partial_window` is true, add "(only [active_days] days of activity, not scaled to a month)"; after a source whose `uncosted_service_tiers` is not empty, add "(excludes [uncosted_service_tiers] tier spend)". Then mark the option that total falls in as "(measured)". When `monthly_cost_usd` is `null`, say which source's spend is not available and mark nothing. Either way the user answers, and the answer is recorded with `chosen_by: "user"`.
 
 > 1\) < $500 | 2\) $500–$2K | 3\) $2K–$10K | 4\) > $10K | 5\) Don't know
 
@@ -304,7 +304,7 @@ Interpret → `ai_vision`: 1 → `"text-only"`, 2 → `"vision"`, 3 → `"audio"
 
 _Never skipped:_ do not fill this from a usage-profile file or from the assumption sheet. Ask it unless the user says "use defaults for the rest".
 
-**Measured volume.** When `migration-preview.json` has `measured_usage`, say before the options: "Measured: [total_tokens] tokens over the last [window_days] days ([each source and its total_tokens])." Add "(only [active_days] days of activity, not scaled to a month)" when `partial_window` is true, and "(some usage could not be read: [capture_warnings])" when a warning names a file other than an hourly or minute file. Then mark the option that count falls in as "(measured)". The user still answers, and the answer is recorded with `chosen_by: "user"`.
+**Measured volume.** When `migration-preview.json` has `measured_usage`, say before the options: "Measured: [total_tokens] tokens in total ([each source in `sources`: its provider, its total_tokens, over its active_days days])." After a source whose `partial_window` is true, add "(only [active_days] days of activity, not scaled to a month)", and add "(some usage could not be read: [capture_warnings])" when a warning names a file other than an hourly or minute file. Then mark the option that total falls in as "(measured)". The user still answers, and the answer is recorded with `chosen_by: "user"`.
 
 > 1\) < 1M tokens | 2\) 1–10M | 3\) 10–100M | 4\) > 100M | 5\) Don't know
 

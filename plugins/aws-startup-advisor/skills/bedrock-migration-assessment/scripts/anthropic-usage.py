@@ -141,6 +141,9 @@ def cmd_probe(args) -> int:
         delete_key(args.key_file)
         print("ORG_NOT_SUPPORTED")
         return 8
+    except BaseException:
+        delete_key(args.key_file)
+        raise
     spend: dict[str, Decimal] = {}
     for bucket in buckets:
         for result in bucket.get("results", []):
@@ -163,7 +166,8 @@ def _busiest_on_demand_day(buckets: list) -> tuple[int, int] | None:
         day = start - start % 86400
         for r in bucket.get("results", []):
             if r.get("service_tier") != "batch":
-                per_day[day] = per_day.get(day, 0) + sum(_tokens(r))
+                uncached, _, c5, c1, out = _tokens(r)
+                per_day[day] = per_day.get(day, 0) + uncached + c5 + c1 + out
     if not per_day or max(per_day.values()) == 0:
         return None
     day = max(per_day, key=lambda d: (per_day[d], -d))
@@ -174,6 +178,13 @@ def cmd_capture(args) -> int:
     key = read_key(args.key_file)
     if not args.workspace:
         raise SystemExit("at least one --workspace is required; never capture the whole organization by default")
+    try:
+        return _capture(args, key)
+    finally:
+        delete_key(args.key_file)
+
+
+def _capture(args, key: str) -> int:
     selected = set(args.workspace)
     args.out_dir.mkdir(parents=True, exist_ok=True)
     for stale in [f for _, _, f in DAILY_ROWS + [MINUTE_ROW]] + ["manifest.json"]:
@@ -219,7 +230,6 @@ def cmd_capture(args) -> int:
                 "workspace_filter": sorted(selected), "result": {0: "complete", 3: "key_invalid_mid_run", 4: "all_usage_failed"}[status],
                 "captures": captures}
     (args.out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    delete_key(args.key_file)
     return status
 
 
@@ -251,7 +261,7 @@ def _peaks(buckets: list | None) -> tuple[dict, dict]:
             b[0] += uncached + c5 + c1
             b[1] += out
             d = days.setdefault(_row_key(r), {}).setdefault(day, [0, 0])
-            d[0] += uncached + read + c5 + c1
+            d[0] += uncached + c5 + c1
             d[1] += out
         for k, (quota_in, out) in per_bucket.items():
             m = best.setdefault(k, [0, 0])
@@ -305,13 +315,14 @@ def cmd_summarize(args) -> int:
         total = row["input_tokens"] + row["cache_read_tokens"] + row["cache_creation_tokens"] + row["output_tokens"]
         if not total:
             continue
+        quota_total = row["input_tokens"] + row["cache_creation_tokens"] + row["output_tokens"]
         days = hour_days.get(k) or daily_days.get(k) or {}
         busiest = max(days, key=lambda dd: (sum(days[dd]), -dd)) if days else None
         peak = None
         if busiest is not None:
             day_in, day_out = days[busiest]
             peak = {"busiest_day": datetime.fromtimestamp(busiest, timezone.utc).strftime("%Y-%m-%d"), "day_input_tokens": day_in,
-                    "day_output_tokens": day_out, "day_to_average_ratio": round((day_in + day_out) / (total / active_days), 2),
+                    "day_output_tokens": day_out, "day_to_average_ratio": round((day_in + day_out) / (quota_total / active_days), 2) if quota_total else None,
                     "peak_input_tokens_per_minute": None, "peak_output_tokens_per_minute": None, "peak_source": "day", "peak_window": "full_window"}
             if k in hour_max:
                 from_minute = False
@@ -325,6 +336,8 @@ def cmd_summarize(args) -> int:
     usage.sort(key=lambda r: -(r["input_tokens"] + r["cache_read_tokens"] + r["cache_creation_tokens"] + r["output_tokens"]))
     warnings = [f"{c['file']} {c['status']}" + (f" ({c['note']})" if c.get("note") else "") for c in manifest["captures"] if c["status"] != "ok"]
     uncosted = sorted({r["service_tier"] for r in usage if r["service_tier"] not in COSTED_TIERS})
+    if cost_rows is not None and uncosted:
+        warnings.append(f"cost_report does not include {', '.join(uncosted)} tier spend; this total excludes it")
     partial = active_days < window_days or not usage
     cost_status = "cost_unavailable" if cost_rows is None else "partial_window" if partial or uncosted else "complete"
     profile = {

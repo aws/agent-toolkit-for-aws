@@ -71,7 +71,7 @@ COST_STATUS_ORDER = ("complete", "partial_window", "cost_unavailable")
 
 
 def measured(profiles: list[dict]) -> dict | None:
-    """Per-source usage plus totals; the total spend is null when any source's spend is unknown."""
+    """Per-source usage plus totals; each source keeps its own active period, and total spend is null when any source's is unknown."""
     if not profiles:
         return None
     sources = []
@@ -87,7 +87,6 @@ def measured(profiles: list[dict]) -> dict | None:
     return {"sources": sources, "monthly_cost_usd": None if None in costs else round(sum(costs), 2),
             "cost_status": max((s["cost_status"] for s in sources), key=COST_STATUS_ORDER.index),
             "total_tokens": sum(s["total_tokens"] for s in sources), "window_days": max(s["window_days"] for s in sources),
-            "active_days": min(s["active_days"] for s in sources), "partial_window": any(s["partial_window"] for s in sources),
             "capture_warnings": [f"{s['source']}: {w}" for s in sources for w in s["capture_warnings"]]}
 
 

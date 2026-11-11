@@ -30,7 +30,7 @@ Never open `.env*`, private keys, credential files, or other secret files in the
 
 ## Step 0: Resume or start
 
-Rules 1 to 3 apply only to a run this skill created: the user names an existing `$MIGRATION_DIR` whose `.phase-status.json` has a `migration_id` starting with `bma-` and no `owning_skill`.
+Rules 1 to 3 apply only to a run this skill created: the user names an existing `$MIGRATION_DIR` whose `.phase-status.json` has a `migration_id` starting with `bma-` and no `owning_skill`. Before resuming at Clarify (rules 1 and 2), if `migration-preview.json` exists without `preview_version` 2, run Discover Step 2d again in that directory: it reads only the profile and usage profiles already there, scans nothing, and calls no API.
 
 1. If that file has `phases.clarify` set to `"in_progress"` or `"completed"`, resume at Clarify. `clarify-ai-only.md` Step 0 handles saved and draft answers. Do not change `run_id`.
 2. If that file has `phases.discover` set to `"completed"` and `phases.clarify` still `"pending"`, resume at Clarify in the same directory. Keep `run_id` and the profile. Do not scan again.

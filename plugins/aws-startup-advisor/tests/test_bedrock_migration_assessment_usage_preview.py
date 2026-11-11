@@ -100,6 +100,19 @@ def test_capture_stops_on_a_revoked_key_and_requires_a_project(monkeypatch, tmp_
         USAGE.read_key(tmp_path / "bad")
 
 
+
+@pytest.mark.parametrize("command", ["probe", "capture"])
+def test_a_network_error_still_deletes_the_key_file(monkeypatch, tmp_path, key_file, capsys, command) -> None:
+    def network_down(request, timeout=None):
+        raise urllib.error.URLError("temporary failure in name resolution")
+    monkeypatch.setattr(USAGE, "opener", network_down)
+    argv = [command, "--key-file", str(key_file)] + (["--out-dir", str(tmp_path / "cap"), "--project", "proj_app"] if command == "capture" else [])
+    with pytest.raises(urllib.error.URLError):
+        USAGE.main(argv)
+    out = capsys.readouterr()
+    assert not key_file.exists() and KEY not in out.out + out.err
+    assert "however it ends (including a network error)" in READER and "The script stops on a network error or timeout" in READER
+
 def test_capture_rows_match_the_documented_endpoint_table() -> None:
     table = [row for row in READER.splitlines() if re.match(r"\| [1-8] \|", row)]
     assert [re.search(r"`(/v1/[^`]+)`", r).group(1) for r in table] == [p for p, _, _ in USAGE.DAILY_ROWS + [USAGE.MINUTE_ROW]]
