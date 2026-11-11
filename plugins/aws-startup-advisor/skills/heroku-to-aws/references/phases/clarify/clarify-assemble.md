@@ -148,6 +148,7 @@ Before handing off to Design:
 - [ ] `design_constraints.compute_target.recommendation.reasons` is a non-empty array
 - [ ] If the resolved compute plan includes Elastic Beanstalk → `design_constraints.eb_deploy_method.value` is one of: `"github_actions"`, `"codepipeline"`, `"manual"`
 - [ ] If `design_constraints.eb_deploy_method` is present → `design_constraints.eb_deploy_method.chosen_by` is `"user"` or `"default"`
+- [ ] If `operational.containerization_method` is `"cnb_heroku_builder"` → `operational.container_registry` is `"ecr"`, and `design_constraints.eb_deploy_method.value` (when present) is not `"codepipeline"` (Q12 / Q12d validation; Generate halts on either combination)
 - [ ] All entries in `sources` have a value of `"user"`, `"extracted"`, or `"default"`
 - [ ] Every ID in `metadata.questions_skipped_extracted` has `sources.<QID>` = `"extracted"`, and its field holds a catalog enum value (`data.database_ha` ∈ `"single-az"` / `"multi-az"` / `"multi-az-ha"`; `operational.containerization_status` ∈ `"containerized"` / `"buildpack_only"` / `"partial"`; `data.redis_ha` Boolean) — never a raw inventory signal such as a Boolean `database_ha`
 - [ ] `metadata.clarify_mode` is set to `"fast_path"` or `"full"`

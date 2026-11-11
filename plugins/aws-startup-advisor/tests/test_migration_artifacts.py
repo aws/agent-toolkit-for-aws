@@ -637,6 +637,70 @@ module "network" {
         self.write(".github/workflows/deploy-eb.yml", workflow)
         self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK", self.report())
 
+    @staticmethod
+    def source_cnb_workflow() -> str:
+        text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
+        section = text.split("#### CNB variant", 1)[1]
+        workflow = section.split("```yaml\n", 1)[1].split("\n```", 1)[0]
+        return (
+            workflow.replace("<target_region>", "us-east-1")
+            .replace("<project_name>/<heroku_app>", "shop/shop-api")
+            .replace("<project_name>", "shop")
+            .replace("heroku/builder:<22|24|26>", "heroku/builder:24")
+            .replace("<eb_application_port_<app_sanitized>_web>", "3000")
+        )
+
+    def test_source_cnb_workflow_passes_required_eb_workflow_check(self) -> None:
+        workflow = self.source_cnb_workflow()
+        for placeholder in ["<target_region>", "<project_name>", "<heroku_app>", "<22|24|26>", "<eb_application_port"]:
+            self.assertNotIn(placeholder, workflow, "unfilled placeholder")
+        self.assertIn("setup-pack@v6.2.2", workflow)
+        self.assertIn('"Entrypoint": "/cnb/process/${PROCESS}"', workflow)
+        self.assertNotIn('"Command"', workflow)
+        self.assertNotIn("8080", workflow)
+        self.write(".github/workflows/deploy-eb.yml", workflow)
+        report = validator.validate(self.root, require_eb_workflow=True)
+        self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
+        self.assertEqual(self.cli("--require-eb-workflow", "--json", "-").returncode, 0)
+
+    def test_source_dockerfile_workflow_passes_required_eb_workflow_check(self) -> None:
+        text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
+        section = text.split("### `.github/workflows/deploy-eb.yml`", 1)[1]
+        workflow = section.split("```yaml\n", 1)[1].split("\n```", 1)[0]
+        workflow = workflow.replace("<space-separated EB environment names from aws-design.json>", "app-web app-worker")
+        self.write(".github/workflows/deploy-eb.yml", workflow)
+        report = validator.validate(self.root, require_eb_workflow=True)
+        self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
+
+    def test_cnb_deploy_step_cannot_absorb_the_bundle_heredoc(self) -> None:
+        # The previous single-step shape (heredoc + ${PAIR%%=*} + cd inside the deploy
+        # loop) is exactly what the bounded checker must keep rejecting.
+        workflow = self.source_cnb_workflow()
+        deploy_marker = "      - name: Create one application version per process type and deploy it\n        run: |\n"
+        head, deploy = workflow.split(deploy_marker, 1)
+        bundle_marker = "      - name: Write one Dockerrun bundle per process type\n        run: |\n"
+        before_bundle, bundle = head.split(bundle_marker, 1)
+        merged = before_bundle + deploy_marker + bundle.rstrip("\n") + "\n" + deploy
+        self.write(".github/workflows/deploy-eb.yml", merged)
+        report = validator.validate(self.root, require_eb_workflow=True)
+        rules = {item["rule"] for item in report["findings"]}
+        self.assertIn("workflow_run_unverified", rules, report)
+        self.assertIn("eb_deploy_missing", rules, report)
+        for body in [
+            'for PAIR in "app-web=web"; do\n  ENVIRONMENT="${PAIR%%=*}"\n'
+            "  aws elasticbeanstalk update-environment --environment-name \"${ENVIRONMENT}\" --version-label abc\ndone",
+            'cat > Dockerrun.aws.json <<JSON\n{}\nJSON\n'
+            "aws elasticbeanstalk update-environment --environment-name app-web --version-label abc",
+        ]:
+            with self.subTest(body=body):
+                self.write(".github/workflows/deploy-eb.yml", """jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+""" + "\n".join("          " + line for line in body.splitlines()) + "\n")
+                self.assertIn("workflow_run_unverified", self.rules())
+
     def test_loop_environment_reassignment_must_remain_provably_nonempty(self) -> None:
         for assignment in ['EB_ENVIRONMENTS=""', "EB_ENVIRONMENTS=$MISSING", 'export EB_ENVIRONMENTS=""', "read EB_ENVIRONMENTS", 'EB_ENVIRONMENTS+=""']:
             with self.subTest(assignment=assignment):

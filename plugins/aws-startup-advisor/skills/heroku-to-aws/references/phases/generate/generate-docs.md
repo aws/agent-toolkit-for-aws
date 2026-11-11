@@ -41,6 +41,9 @@ Also extract:
 - `migration_approach` — from `preferences.json`.global.migration_approach (`"full_cutover"` or `"interim_cutover_data_first"`)
 - `migration_method` — from `preferences.json`.data.migration_method (`"pg_dump_restore"`, `"dms"`, `"bucardo"`, `"wal_g"`)
 - `containerization_status` — from `preferences.json`.operational.containerization_status (`"containerized"`, `"buildpack_only"`, `"partial"`)
+- `containerization_method` — from `preferences.json`.operational.containerization_method; **default `"dockerfile"` when absent** (preferences written before Q12e existed have no field — the same fallback `generate-terraform.md` Step 6.5 applies, so the Dockerfile branches below still render for them). `"cnb_heroku_builder"` or `"dockerfile"`.
+- `app_containerization_method` — per app, resolved as in `generate-terraform.md` Step 6.5 § "Containerization method per app": `"dockerfile"` when the app's inventory `stack` is `"container"` (it already has a Dockerfile), otherwise `containerization_method`. `has_cnb_app = true` when any app resolves to `"cnb_heroku_builder"`; `has_dockerfile_app = true` when any app resolves to `"dockerfile"`. Per-app blocks (`{{app_name}}` sections) test `app_containerization_method`; estate-level sections test these two flags.
+- `cnb_builder_tag` — per app: `22` for stack `heroku-22`, `24` for `heroku-24`, otherwise `26`
 - `target_exit_date` — from `preferences.json`.global.target_exit_date (ISO date or null)
 - `dns_strategy` — from `preferences.json`.data.dns_strategy (Clarify Q10 writes it inside the `"data"` block — `clarify-assemble.md`; there is no `global.dns_strategy`). `"route53"` or `"external"`; treat any other or missing value (e.g. a legacy `"manual_cutover"`) as `"external"`.
 - `custom_domains[]` — every `resource_type == "domain"` resource's `config.hostname` from `heroku-resource-inventory.json` (deduplicated).
@@ -118,10 +121,12 @@ Before beginning the migration, ensure the following are in place:
 
 {{IF has_beanstalk}}
 
-{{IF containerization_method == "cnb_heroku_builder"}}
-- [ ] `pack` CLI installed locally for the first manual build (CI installs it itself); `pack build` of each app succeeds with the Heroku builder
-{{ELSE}}
-- [ ] Source bundle contains a Dockerfile at the repository root for Elastic Beanstalk Docker deployment
+{{IF has_cnb_app}}
+- [ ] `pack` CLI installed locally for the first manual build (CI installs it itself); `pack build` of each buildpack app succeeds with the Heroku builder
+- [ ] `EB_WEB_PORT` in each buildpack app's `deploy-eb.yml` equals that app's `eb_application_port_<app_sanitized>_web` in `terraform.tfvars`
+{{ENDIF}}
+{{IF has_dockerfile_app}}
+- [ ] Source bundle contains a Dockerfile at the repository root for Elastic Beanstalk Docker deployment (every app that already ships one, plus every buildpack app when the containerization method is `dockerfile`)
 {{ENDIF}}
       {{ENDIF}}
       {{IF has_beanstalk_web}}
@@ -134,32 +139,38 @@ Before beginning the migration, ensure the following are in place:
 - [ ] Environment variables documented and mapped to AWS Secrets Manager / Parameter Store
 - [ ] Health check endpoints identified for each web service
 
-{{IF containerization_method == "cnb_heroku_builder"}}
+{{IF has_cnb_app}}
 
-### Containerization: Cloud Native Buildpacks (no Dockerfile)
+### Containerization Prerequisites: Cloud Native Buildpacks (no Dockerfile)
 
-Your apps are built by Heroku buildpacks today. On AWS they run as container images, built
-by the **same buildpacks** through the `pack` CLI and the Heroku builder image. Nothing
-about the application changes: same `Procfile`, same dependency files, same build output.
+Your buildpack apps are built by Heroku buildpacks today. On AWS they run as container
+images, built by the **same buildpacks** through the `pack` CLI and the Heroku builder
+image. Nothing about the application changes: same `Procfile`, same dependency files, same
+build output. Apps that already ship a Dockerfile (Heroku `container` stack) are not
+affected: they keep their Dockerfile and their `docker build` path.
 
-**One-time local check (per app):**
+**One-time local check (per buildpack app):**
 
 ```bash
 # Install pack: https://buildpacks.io/docs/for-platform-operators/how-to/integrate-ci/pack/
 pack build {{app_name}}:local --builder heroku/builder:{{cnb_builder_tag}}   # 22 / 24 / 26 to match the app's Heroku stack; 26 is Heroku's recommended builder
-docker run --rm -e PORT=8080 -p 8080:8080 {{app_name}}:local          # runs the `web` process
-docker run --rm {{app_name}}:local worker                              # any other Procfile process type
+docker run --rm -e PORT=8080 -p 8080:8080 {{app_name}}:local                      # the default process: `web`
+docker run --rm --entrypoint /cnb/process/worker {{app_name}}:local               # any other Procfile process type
 ```
 
-**How process types map:** the image's default process is `web`; any other Procfile entry
-runs when its name is passed as the container command (`worker`, `scheduler`, `release`).
-Elastic Beanstalk environments get it through `Dockerrun.aws.json` `Command`; ECS task
-definitions through `command = ["<process_type>"]`.
+**How process types map:** the image's entrypoint is its default process, `web`. Another
+Procfile entry (`worker`, `scheduler`, …) is selected by overriding the **entrypoint** with
+`/cnb/process/<process_type>`; a bare container _command_ does not select a process, it is
+passed as an argument to `web`. Elastic Beanstalk environments get it through
+`Dockerrun.aws.json` `Entrypoint`; ECS task definitions through
+`entryPoint = ["/cnb/process/<process_type>"]`; Kubernetes Deployments through `command:`.
 
 **Key differences from Heroku:**
 
-- `PORT` is not injected by the platform; the generated environments set `PORT=8080` and
-  expose 8080.
+- `PORT` is not injected by the platform. Each web app has exactly one listen port: on
+  Elastic Beanstalk it is `eb_application_port_<app_sanitized>_web` (set as the EB `PORT`
+  property and as `EB_WEB_PORT`/`ContainerPort` in the deploy workflow); on Fargate the
+  task definition sets `PORT=8080` and maps 8080.
 - The `release` process type is not run automatically before a deploy; the generated
   workflow does not yet include a release step — run it as a one-off task before cutover
   (see Phase 4) until a release job is added to your pipeline.
@@ -171,6 +182,7 @@ definitions through `command = ["<process_type>"]`.
 
 {{ENDIF}}
 {{IF containerization_method == "dockerfile" AND (containerization_status == "buildpack_only" OR containerization_status == "partial")}}
+<!-- containerization_method is "dockerfile" here also when preferences.json has no such field (legacy preferences) -->
 
 ### Containerization Prerequisites
 
@@ -828,15 +840,25 @@ kafka-consumer-groups.sh --bootstrap-server {{TARGET_MSK_BROKERS}} \
 
 ### Deploy to Elastic Beanstalk
 
+{{IF app_containerization_method == "cnb_heroku_builder"}}
+The generated EB path for this app builds its image with Heroku buildpacks (`pack build --publish` to ECR) and deploys one `Dockerrun.aws.json` bundle per process type; the bundle's `Entrypoint` (`/cnb/process/<process_type>`) selects the process. GitHub Actions is the default deploy mechanism; CodePipeline is not available for buildpack apps (it ships the source tree straight to Elastic Beanstalk without a build stage).
+{{ELSE}}
 The generated EB path deploys a source bundle containing your Dockerfile. GitHub Actions is the default deploy mechanism; CodePipeline is available only when selected during Clarify.
+{{ENDIF}}
 
 {{IF eb_deploy_method == "github_actions"}}
 
 ### GitHub Actions Deploy (Default)
 
+{{IF app_containerization_method == "cnb_heroku_builder"}}
+The generated `.github/workflows/deploy-eb.yml` workflow uses GitHub OIDC role assumption, builds the image with `pack` and the Heroku builder, publishes it to ECR tagged with the commit SHA (reusing the image when a rerun finds that tag already published), writes one `Dockerrun.aws.json` bundle per process type, creates one Elastic Beanstalk application version per bundle, and updates each generated EB environment. Keep `EB_WEB_PORT` in the workflow equal to `eb_application_port_{{app_sanitized}}_web` in `terraform.tfvars`: it is the port the EB `PORT` property and the Dockerrun `ContainerPort` both carry.
+
+Before first run, create or provide a GitHub OIDC IAM role with permissions to call `elasticbeanstalk create-storage-location`, `elasticbeanstalk create-application-version`, `elasticbeanstalk update-environment`, upload the bundles to the EB storage bucket, and on the app's ECR repository `ecr:GetAuthorizationToken`, `ecr:DescribeImages`, `ecr:BatchCheckLayerAvailability`, `ecr:InitiateLayerUpload`, `ecr:UploadLayerPart`, `ecr:CompleteLayerUpload`, `ecr:PutImage`. Store the role ARN as the repository secret `AWS_ROLE_ARN`.
+{{ELSE}}
 The generated `.github/workflows/deploy-eb.yml` workflow uses GitHub OIDC role assumption, packages the source bundle, creates an Elastic Beanstalk application version, and updates each generated EB environment.
 
 Before first run, create or provide a GitHub OIDC IAM role with permissions to call `elasticbeanstalk create-storage-location`, `elasticbeanstalk create-application-version`, `elasticbeanstalk update-environment`, and upload the source bundle to the EB storage bucket. Store the role ARN as the repository secret `AWS_ROLE_ARN`.
+{{ENDIF}}
 
 {{ENDIF}}
 {{IF eb_deploy_method == "codepipeline"}}
@@ -851,6 +873,47 @@ The generated `terraform/pipeline.tf` creates an AWS-managed CodePipeline path f
 ### Manual EB CLI Deploy
 
 No automated deploy artifact was generated. Package and deploy manually:
+
+{{IF app_containerization_method == "cnb_heroku_builder"}}
+
+```bash
+# 1. Build with Heroku buildpacks (no Dockerfile) and publish to ECR, tagged by commit.
+#    The repository has immutable tags: skip the build when this commit is already published.
+IMAGE="{{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com/{{project_name}}/{{app_name}}:$(git rev-parse HEAD)"
+aws ecr get-login-password --region {{target_region}} | docker login --username AWS --password-stdin {{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com
+aws ecr describe-images --repository-name {{project_name}}/{{app_name}} --image-ids "imageTag=$(git rev-parse HEAD)" --region {{target_region}} > /dev/null 2>&1 \
+  || pack build "${IMAGE}" --builder heroku/builder:{{cnb_builder_tag}} --publish
+
+# 2. One Dockerrun.aws.json bundle per process type; the Entrypoint selects the process.
+#    EB_WEB_PORT must equal eb_application_port_{{app_sanitized}}_web in terraform.tfvars.
+EB_WEB_PORT="<eb_application_port_{{app_sanitized}}_web>"
+VERSION_BASE="v$(date +%Y%m%d%H%M%S)"
+BUCKET="$(aws elasticbeanstalk create-storage-location --query S3Bucket --output text --region {{target_region}})"
+for PROCESS in {{EB_PROCESS_TYPES}}; do          # e.g. web worker — never release
+  mkdir -p "dockerrun/${PROCESS}"
+  cat > "dockerrun/${PROCESS}/Dockerrun.aws.json" <<JSON
+{
+  "AWSEBDockerrunVersion": "1",
+  "Image": { "Name": "${IMAGE}", "Update": "true" },
+  "Ports": [{ "ContainerPort": "${EB_WEB_PORT}" }],
+  "Entrypoint": "/cnb/process/${PROCESS}"
+}
+JSON
+  zip -q -j "dockerrun/${PROCESS}.zip" "dockerrun/${PROCESS}/Dockerrun.aws.json"
+  aws s3 cp "dockerrun/${PROCESS}.zip" "s3://${BUCKET}/{{project_name}}/${VERSION_BASE}-${PROCESS}.zip" --region {{target_region}}
+  aws elasticbeanstalk create-application-version \
+    --application-name {{project_name}} \
+    --version-label "${VERSION_BASE}-${PROCESS}" \
+    --source-bundle "S3Bucket=${BUCKET},S3Key={{project_name}}/${VERSION_BASE}-${PROCESS}.zip" \
+    --region {{target_region}}
+  aws elasticbeanstalk update-environment \
+    --environment-name "{{project_name}}-${PROCESS}" \
+    --version-label "${VERSION_BASE}-${PROCESS}" \
+    --region {{target_region}}
+done
+```
+
+{{ELSE}}
 
 ```bash
 VERSION_LABEL="v$(date +%Y%m%d%H%M%S)"
@@ -871,6 +934,7 @@ done
 ```
 
 {{ENDIF}}
+{{ENDIF}}
 
 ### EB Config Var Migration
 
@@ -882,10 +946,14 @@ Export all Heroku config vars and import sensitive values to AWS Secrets Manager
 ### Build and Push Container Image
 
 ```bash
-{{IF containerization_method == "cnb_heroku_builder"}}
-# Build with Heroku buildpacks (no Dockerfile) and publish straight to ECR
+{{IF app_containerization_method == "cnb_heroku_builder"}}
+# Build with Heroku buildpacks (no Dockerfile) and publish straight to ECR, tagged by commit.
+# The repository has immutable tags: a commit that is already published is reused, not rebuilt.
 aws ecr get-login-password --region {{target_region}} | docker login --username AWS --password-stdin {{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com
-pack build {{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com/{{project_name}}/{{app_name}}:{{git_sha}} --builder heroku/builder:{{cnb_builder_tag}} --publish
+aws ecr describe-images --repository-name {{project_name}}/{{app_name}} --image-ids imageTag={{git_sha}} --region {{target_region}} > /dev/null 2>&1 \
+  || pack build {{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com/{{project_name}}/{{app_name}}:{{git_sha}} --builder heroku/builder:{{cnb_builder_tag}} --publish
+# The task definition selects the process type with entryPoint = ["/cnb/process/<process_type>"]
+# and sets PORT=8080 on the web container; set container_image_{{app_sanitized}}_<process_type> to this image.
 {{ELSE}}
 # Build Docker image
 docker build -t {{app_name}}:latest .
@@ -1452,6 +1520,12 @@ Replace template variables using these sources:
 | `{{migration_approach}}` | `preferences.json` → `global.migration_approach` |
 | `{{migration_method}}` | `preferences.json` → `data.migration_method` |
 | `{{containerization_status}}` | `preferences.json` → `operational.containerization_status` |
+| `{{containerization_method}}` | `preferences.json` → `operational.containerization_method`, `"dockerfile"` when absent |
+| `{{EB_PROCESS_TYPES}}` | Space-separated process types with a generated EB environment for the app (never `release`); environment names are `{{project_name}}-<process_type>` |
+| `{{project_name}}` | `var.project_name` from `terraform.tfvars` — the EB application name and the ECR repository prefix |
+| `{{app_sanitized}}` | `{{app_name}}` with `-` replaced by `_` (the per-app Terraform variable suffix) |
+| `{{cnb_builder_tag}}` | Step 0 `cnb_builder_tag` for the app (`22`, `24` or `26`) |
+| `{{git_sha}}` | Placeholder — the commit being deployed (`git rev-parse HEAD`) |
 | `{{target_exit_date}}` | `preferences.json` → `global.target_exit_date` (or "not set") |
 | `{{SOURCE_DB_*}}` | Placeholder — user fills from `heroku pg:credentials:url` output |
 | `{{TARGET_DB_*}}` | Placeholder — user fills from Terraform output |
@@ -1522,10 +1596,10 @@ This directory contains all artifacts needed to migrate your Heroku application(
 {{IF has_beanstalk}}
 | `terraform/beanstalk.tf` | Elastic Beanstalk applications and environments |
 {{IF eb_deploy_method == "github_actions"}}
-| `.github/workflows/deploy-eb.yml` | GitHub Actions deploy workflow (buildpack image build via `pack` when the containerization method is CNB; source bundle otherwise) |
+| `.github/workflows/deploy-eb.yml` | GitHub Actions deploy workflow, one variant per app (buildpack image build via `pack` plus Dockerrun bundles for CNB apps; source bundle for apps with a Dockerfile) |
 {{ENDIF}}
-{{IF containerization_method == "cnb_heroku_builder"}}
-| `terraform/ecr.tf` | One ECR repository per app for the pack-built images |
+{{IF has_cnb_app}}
+| `terraform/ecr.tf` | One ECR repository per buildpack app for the pack-built images |
 {{ENDIF}}
 {{IF eb_deploy_method == "codepipeline"}}
 | `terraform/pipeline.tf` | Optional CodePipeline source-to-EB deploy path |
@@ -1679,6 +1753,7 @@ Follow the verification checklist in `MIGRATION_GUIDE.md` Phase 4, then perform 
 
 - `has_beanstalk`: True if any service in design has `aws_service == "Elastic Beanstalk"`
 - `eb_deploy_method`: `preferences.design_constraints.eb_deploy_method.value`; default to `"github_actions"` when absent and `has_beanstalk` is true
+- `containerization_method`: `preferences.operational.containerization_method`; default to `"dockerfile"` when absent. `app_containerization_method`, `has_cnb_app`, `has_dockerfile_app`: see Step 0 variables
 - `has_fargate`: True if any service in design has `aws_service == "Fargate"`
 - `has_postgres`: True if any service has `aws_service` containing `"RDS PostgreSQL"` or `"Aurora PostgreSQL"`
 - `has_redis`: True if any service has `aws_service == "ElastiCache Valkey"` or `"ElastiCache Redis"` (Memcached is a different protocol and gets no Redis script)
@@ -2091,7 +2166,8 @@ Verify all generated files:
    - If `migration_approach == "interim_cutover_data_first"`: Contains "Interim Database Exposure" section whose Step 1 is the TLS prerequisite gate and whose Step 2 offers only bounded-allowlist connectivity paths
    - If `migration_approach == "interim_cutover_data_first"`: Contains "Platform Risk Advisory" section
    - Does NOT instruct opening a database port (5432) to `0.0.0.0/0` anywhere — interim access must be a scoped CIDR allowlist applied through Terraform
-   - If `containerization_status != "containerized"`: Contains "Containerization Prerequisites" section
+   - If `containerization_status != "containerized"`: Contains a "Containerization Prerequisites" section — the Dockerfile one when `containerization_method` is `"dockerfile"` (including the legacy case where `preferences.json` has no `containerization_method`), the "Containerization Prerequisites: Cloud Native Buildpacks (no Dockerfile)" one when any app resolves to `"cnb_heroku_builder"`; both when a `partial` estate has apps on each path
+   - If `has_cnb_app`: no `docker run … <image> <process_type>` or `Command`/`command = ["<process_type>"]` form anywhere — process types are selected with `--entrypoint` / `Entrypoint` / `entryPoint` `/cnb/process/<process_type>`; and no literal `PORT=8080` for an Elastic Beanstalk web app (its port is `eb_application_port_<app>_web`)
    - Contains "Post-Migration Lockdown" section
    - Contains "Config Var Migration" section
    - If `has_beanstalk_web`: Explains that each web app's `eb_application_port_<app>_web` and `eb_health_check_path_<app>_web` are required before planning

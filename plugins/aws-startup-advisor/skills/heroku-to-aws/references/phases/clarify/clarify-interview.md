@@ -521,7 +521,9 @@ Re-prompt Q9b until valid input is provided.
 
 **Default:** 1 → `design_constraints.eb_deploy_method: { "value": "github_actions", "chosen_by": "default" }`
 
-**Generate impact:** `"github_actions"` emits `.github/workflows/deploy-eb.yml`; `"codepipeline"` emits `terraform/pipeline.tf`; `"manual"` emits neither automation artifact and keeps the CLI path in `MIGRATION_GUIDE.md`.
+**Validate (CNB):** when `operational.containerization_method` is `"cnb_heroku_builder"` and any EB app is a buildpack app (inventory `stack` other than `"container"`), option 2 is **not offered**. Present only options 1 and 3 and add: "CodePipeline is unavailable for buildpack apps: its deploy stage hands the source tree straight to Elastic Beanstalk with no build step, so there is no image and no `Dockerrun.aws.json` to deploy. GitHub Actions builds the image with `pack`; the manual path documents the same steps." An answer of 2 in that case is invalid — re-ask with that sentence; never store `codepipeline` alongside CNB. Generate halts on the combination if a stale preferences file carries it.
+
+**Generate impact:** `"github_actions"` emits `.github/workflows/deploy-eb.yml` (the `pack`/Dockerrun variant for CNB apps); `"codepipeline"` emits `terraform/pipeline.tf` (Dockerfile apps only); `"manual"` emits neither automation artifact and keeps the CLI path in `MIGRATION_GUIDE.md` (with a `pack build` + Dockerrun bundle variant for CNB apps).
 
 ---
 
@@ -761,7 +763,7 @@ Validate: must be valid ISO 8601 date, must be in the future.
 
 **Default:** 2 → `containerization_status: "buildpack_only"`
 
-**Design impact:** Options 2 and 3 trigger a "Containerization Prerequisites" section in the MIGRATION_GUIDE.md with Procfile→Dockerfile guidance for common buildpacks (Ruby, Node.js, Python, Go, Java). Does not change design mappings. EB and Fargate Docker paths both require a Dockerfile/source bundle; EKS also requires containerization.
+**Design impact:** Options 2 and 3 trigger Q12e and a "Containerization Prerequisites" section in the MIGRATION_GUIDE.md — Procfile→Dockerfile guidance for common buildpacks (Ruby, Node.js, Python, Go, Java) when Q12e is `dockerfile`, `pack`/Heroku-builder guidance when it is `cnb_heroku_builder`. Does not change design mappings. EB and Fargate Docker paths both require a Dockerfile/source bundle; EKS also requires containerization.
 
 ---
 
@@ -787,13 +789,26 @@ Validate: must be valid ISO 8601 date, must be in the future.
 **Default:** 1 → `containerization_method: "cnb_heroku_builder"`. When Q12b is
 `containerized`, write `containerization_method: "dockerfile"` without asking.
 
+**Scope in a `partial` estate:** the answer covers the **buildpack apps only**. Apps
+whose inventory `stack` is `"container"` already ship a Dockerfile; Generate resolves them
+to `"dockerfile"` per app regardless of this value (`generate-terraform.md` Step 6.5
+§ "Containerization method per app") and never runs `pack build` for them. Say so when
+Q12b is `partial`: "Your apps that already have a Dockerfile keep it; this choice is for
+the buildpack apps."
+
+**Registry constraint:** the CNB deploy path publishes to and pulls from Amazon ECR
+(`pack build --publish`, EB instance role with ECR read access). Option 1 therefore
+requires Q12 → `ecr`; Q12 enforces this.
+
 **Design impact:** `cnb_heroku_builder` makes Generate emit `pack build` instead of
-`docker build` in the deploy workflow and the Fargate build steps, an `ecr.tf` with one
-repository per app, and Elastic Beanstalk `Dockerrun.aws.json` bundles that reference the
-image in ECR with the process type as the container command. The Containerization
-Prerequisites section of `MIGRATION_GUIDE.md` then explains `pack` instead of
-Procfile-to-Dockerfile patterns. This is unrelated to Fir-generation detection: Fir apps
-stay detect-only; this option concerns how Cedar apps are containerized for AWS.
+`docker build` in each buildpack app's deploy workflow and Fargate build steps, an
+`ecr.tf` with one repository per buildpack app, and Elastic Beanstalk `Dockerrun.aws.json`
+bundles that reference the image in ECR with `Entrypoint: /cnb/process/<process_type>`
+selecting the process. The Containerization Prerequisites section of `MIGRATION_GUIDE.md`
+then explains `pack` instead of Procfile-to-Dockerfile patterns. Q12d loses its
+CodePipeline option for CNB apps (the pipeline has no build stage). This is unrelated to
+Fir-generation detection: Fir apps stay detect-only; this option concerns how Cedar apps
+are containerized for AWS.
 
 ---
 
@@ -810,6 +825,8 @@ stay detect-only; this option concerns how Cedar apps are containerized for AWS.
 - 2 → `container_registry: "external"`
 
 **Default:** 1 → `container_registry: "ecr"`
+
+**Validate (CNB):** when Q12e stored `containerization_method: "cnb_heroku_builder"`, option 2 is **not offered**. Present option 1 with: "Your buildpack apps are built by `pack` and published to ECR; Elastic Beanstalk and Fargate pull them with their ECR permissions. An existing registry is not supported for that path — choose a Dockerfile in Q12e if you need one." An answer of 2 in that case is invalid — re-ask with that sentence and never store `external` alongside `cnb_heroku_builder`. Generate halts on the combination if a stale preferences file carries it (`generate-terraform.md` Step 6.5), so the contradiction is resolved here, before it is written.
 
 ---
 
