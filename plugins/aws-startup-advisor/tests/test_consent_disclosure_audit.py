@@ -303,7 +303,7 @@ def test_committed_anthropic_and_azure_openai_files_have_their_method_detected()
         assert unrecognized is False, rel
 
 
-def test_all_seven_committed_discovery_files_return_a_nonempty_method_set() -> None:
+def test_all_eight_committed_discovery_files_return_a_nonempty_method_set() -> None:
     """Every real discover-*-api.md file in this plugin must resolve to a
     non-empty method set — an empty read must never be silently treated as
     'this file is GET-only, nothing to check.'"""
@@ -311,7 +311,7 @@ def test_all_seven_committed_discovery_files_return_a_nonempty_method_set() -> N
     files = sorted(
         PLUGIN_ROOT.glob("skills/*/references/phases/discover/discover-*-api.md")
     )
-    assert len(files) == 7, f"expected 7 discovery sub-files, found {len(files)}"
+    assert len(files) == 8, f"expected 8 discovery sub-files, found {len(files)}"
     for path in files:
         text = path.read_text(encoding="utf-8")
         methods, unrecognized = mod._methods_in_capture_section(text)
