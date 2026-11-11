@@ -103,7 +103,7 @@ Leave out a table that has no rows. On "details", show one row per job with the 
    aws glue get-job --region <region> --no-cli-pager --job-name <job> --query "Job.{GlueVersion: GlueVersion, MaxRetries: MaxRetries, Role: Role, Command: Command}"
    ```
 
-   `GlueVersion` must be `auto`, and the other members must match what you sent. If not, stop and show the difference. An `InvalidInputException` names the problem: show it. An error that says the account doesn't support auto upgrade stops the batch.
+   `GlueVersion` must be `auto`, and `MaxRetries`, `Role` and `Command` must match what you sent. If not, stop and show the difference. An `InvalidInputException` names the problem: show it. An error that says the account doesn't support auto upgrade stops the batch.
 
 If the user entered `proceed, email <address>`, set up the emails first ([notifications.md](notifications.md), "Set up"), then turn on the jobs. Then reply once:
 

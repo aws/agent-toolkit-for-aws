@@ -33,6 +33,8 @@ Steps 1 to 4 can run in one conversation. A job that runs often can reach the ap
 
 The skill uses only the AWS CLI (version 2, with the auto upgrade commands). It ships no scripts. Run each command exactly as the reference file shows it, with `--region <region> --no-cli-pager`. Add `--profile <profile>` when the user names a profile.
 
+The AWS MCP server is recommended for working with AWS, but this skill doesn't require it. Run the commands in this skill with the AWS CLI, because the auto upgrade operations need a current AWS CLI.
+
 Check the CLI once per session. This call makes no AWS request:
 
 ```bash
