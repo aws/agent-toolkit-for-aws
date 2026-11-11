@@ -61,6 +61,47 @@
   other Regions is for finding resources, not for retrying an auth error.
   Retry throttling with backoff before you report it.
 
+## Final answer
+
+Apply these when you write the final answer, after the investigation.
+
+- MUST list every explicit ask in the request (each question, verdict,
+  classification, comparison, action, closure step, output format and save
+  location) and answer each under its own label. If you cannot answer one,
+  MUST write `Not answered: <why> (tried: <routes>)`; MUST NOT skip it.
+  If the request fixes an output format, the format wins: list the asks in
+  your notes and answer them inside that format.
+- When the request asks for a decision (works / does not work, defect / no
+  defect, root cause, recurrence, safe / not safe), MUST state one of the
+  requested options in the first lines. MUST NOT replace it with
+  "ambiguous", "partially verified" or recommendations. When the evidence
+  shows nothing wrong, MUST say "clean, no remediation needed". If the
+  evidence cannot decide, give the best-supported option, then say what is
+  unverified and which check would change it.
+- When the request supplies a runbook, ticket, prior incident, file or CR,
+  MUST say whether it covers the cause you found, what it leaves out, and
+  whether this is a recurrence.
+- MUST use the data source, fields, time window and entities the request
+  names, follow the requested output format exactly, and give the concrete
+  path of every file you were asked to produce. If you used something else,
+  MUST say what was requested, what you used instead, and why.
+- MUST state a cause, mechanism or history as confirmed only if a record you
+  read shows it (log line, change or stack event, config value, item), and
+  cite it. Otherwise MUST label it
+  `Hypothesis (unverified): <claim>; would be confirmed by <record>` or
+  leave it out. Timing, names or versions, ticket history and summary
+  metadata are not proof.
+- MUST report an empty or missing result as `not found in <scope you
+  checked>`, never as "never happened", "never produced", "lost" or "not
+  deployed".
+- MUST NOT call a behaviour a bug or defect unless the evidence shows it
+  contradicts the config, code, documentation or stated intent.
+- MUST NOT add metrics, infrastructure facts or remediation the request did
+  not ask for and you did not check. Every number and universal claim
+  ("all", "none", "exhaustive") MUST agree with the figures you report.
+- Before you submit, re-read the answer against these rules and fix what
+  fails.
+
 ## Secret Safety
 
 - MUST load the `aws-secrets-manager` skill first for any secret,
