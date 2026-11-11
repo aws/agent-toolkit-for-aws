@@ -1,5 +1,6 @@
 """Opus 5.5 selection, profile, pricing, and estimate-contract regressions."""
 
+import copy
 import importlib.util
 import shutil
 import sys
@@ -111,7 +112,16 @@ def test_batch_migration_does_not_suggest_an_unsupported_opus55_batch_job():
 
 
 def test_old_catalog_does_not_restore_opus48_to_the_current_pool():
-    catalog = mr.load_catalog(mr.MODELS_DIR / "anthropic-bedrock-2026-07-21.json")
+    # An older-shaped catalog (Opus 4.8 in place of Opus 5.5) must not put Opus 4.8 back in the
+    # automatic selection pool. Built in memory so the guard does not depend on a superseded file.
+    # The pool is key-allowlisted (_PRIORITY_ORDER / _FEATURE_ORDER name only current model keys),
+    # so this fails if someone adds claude_opus_4_8 to those preference lists.
+    catalog = copy.deepcopy(mr.load_catalog())
+    opus48 = catalog["models"].pop("claude_opus_5_5")
+    opus48.update(display_name="Claude Opus 4.8", version="4.8")
+    for path in opus48["paths"].values():
+        path["model_id"] = "anthropic.claude-opus-4-8"
+    catalog["models"]["claude_opus_4_8"] = opus48
     workload = {
         "workload_id": "old",
         "source": {"provider": "none"},
@@ -279,7 +289,7 @@ def test_build_price_guard_rejects_a_missing_default_model_rate(tmp_path, cloud)
     spec.loader.exec_module(guard)
     paths = [
         "agent-advisor/scripts/model_recommendation.py",
-        f"agent-advisor/references/models/{mr.DEFAULT_CATALOG.name}",
+        f"shared/ai/models/{mr.DEFAULT_CATALOG.name}",
         "gcp-to-aws/references/vendored/ai/bedrock-pricing-cache.md",
         "azure-to-aws/references/vendored/ai/bedrock-pricing-cache.md",
     ]

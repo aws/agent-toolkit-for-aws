@@ -1,0 +1,144 @@
+{
+  "schema_version": "1.1",
+  "ai_sources": [
+    {
+      "provider": "anthropic",
+      "source_service": "anthropic_api",
+      "model_families": [
+        "claude"
+      ],
+      "model_evidence": "observed",
+      "models": [
+        "claude-3.5-sonnet"
+      ],
+      "model_observations": [
+        {
+          "normalized_model": "claude-3.5-sonnet",
+          "raw_model": "anthropic/claude-3.5-sonnet",
+          "model_family": "claude",
+          "evidence": [
+            {
+              "provenance": "code",
+              "confidence": "high",
+              "detail": "app/chat.py:16 router.chat.completions.create"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model_families": [
+        "gpt"
+      ],
+      "model_evidence": "observed",
+      "models": [
+        "gpt-4o"
+      ],
+      "model_observations": [
+        {
+          "normalized_model": "gpt-4o",
+          "raw_model": "openai/gpt-4o",
+          "model_family": "gpt",
+          "evidence": [
+            {
+              "provenance": "code",
+              "confidence": "high",
+              "detail": "app/chat.py:7 ChatOpenAI via OpenRouter"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "gateways": [
+    {
+      "product": "openrouter",
+      "type": "llm_router",
+      "upstream_evidence": "observed",
+      "upstreams": [
+        {
+          "provider": "anthropic",
+          "source_service": "anthropic_api",
+          "model_families": [
+            {
+              "family": "claude",
+              "model_evidence": "observed",
+              "models": [
+                "claude-3.5-sonnet"
+              ]
+            }
+          ]
+        },
+        {
+          "provider": "openai",
+          "source_service": "openai_api",
+          "model_families": [
+            {
+              "family": "gpt",
+              "model_evidence": "observed",
+              "models": [
+                "gpt-4o"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "workloads": [
+    {
+      "workload_id": "openai_api.gpt-4o.langchain_openai.chatopenai.invoke.plain",
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model": "gpt-4o",
+      "sdk_method": "langchain_openai.ChatOpenAI.invoke",
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "structured_output": false,
+      "call_sites": [
+        {
+          "file": "app/chat.py",
+          "line": 12
+        }
+      ]
+    },
+    {
+      "workload_id": "anthropic_api.claude-3.5-sonnet.openai.chat.completions.create.plain",
+      "provider": "anthropic",
+      "source_service": "anthropic_api",
+      "model": "claude-3.5-sonnet",
+      "sdk_method": "openai.chat.completions.create",
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "structured_output": false,
+      "call_sites": [
+        {
+          "file": "app/chat.py",
+          "line": 16
+        }
+      ]
+    }
+  ],
+  "integration": {
+    "pattern": "framework",
+    "languages": [
+      "python"
+    ],
+    "frameworks": [
+      "langchain"
+    ],
+    "capabilities_summary": {
+      "text_generation": true,
+      "streaming": false,
+      "function_calling": false,
+      "vision": false,
+      "embeddings": false,
+      "batch_processing": false,
+      "speech_to_text": false,
+      "text_to_speech": false,
+      "image_generation": false
+    }
+  }
+}

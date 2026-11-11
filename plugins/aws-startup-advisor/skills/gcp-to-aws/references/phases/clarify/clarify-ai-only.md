@@ -81,7 +81,7 @@ Before asking anything, present what discovery already answered and what will be
 | Task complexity | Moderate | Sonnet-class model |
 
 Reply "looks good" to continue to the remaining questions, correct any line
-("model: gemini-2.5-pro"), or describe the issue in plain words.
+("model: gemini-3.8-flash"), or describe the issue in plain words.
 ```
 
 Questions resolved on this sheet are **not** re-asked in the batches below; record them with `chosen_by: "extracted"` (detected rows) or `"default"` (assumed rows, sheet-confirmed), and skip their entries in Batch 1/2. Rows the user corrects become `chosen_by: "user"`. Rows with no detection signal stay in the batches as normal questions.
@@ -197,7 +197,7 @@ _Skip when:_ `models[].model_id` is populated in `ai-workload-profile.json` **wi
 | GPT-4o        | GPT-5.6 Terra; or Sonnet 5     | Not on Bedrock — offer both        |
 | GPT-5.4 Mini  | GPT-5.6 Luna; or Nova Lite     | Mini not on Bedrock — offer both   |
 | GPT-5.4 Nano  | GPT-5.6 Luna; or Nova Micro    | Nano not on Bedrock — offer both   |
-| GPT-5.x Pro   | GPT-5.6 Sol; or Nova 2 Pro     | Pro not on Bedrock — offer both    |
+| GPT-5.x Pro   | GPT-5.6 Sol; or Claude Opus 5.5 | Pro not on Bedrock — offer both    |
 | GPT-5/5.1/5.2 | GPT-5.6 Terra; or Sonnet 5     | Not on Bedrock — offer both        |
 | o-series      | GPT-5.6 Sol/Terra; or Sonnet 5 | Not on Bedrock — offer both        |
 | Claude (any)  | Same model on Bedrock          | Client swap only — no model change |
@@ -213,6 +213,8 @@ For sources without a Bedrock equivalent, present a same-vendor upgrade and a cr
 Override examples: GPT-4 + Q2=cost → Haiku; Flash + Q10=extended thinking → Sonnet; GPT-4o + Q10=speech → Nova 2 Sonic; GPT-5.5 + Q2=cost → Sonnet 5.
 
 Interpret → `ai_model_baseline`. Default: auto-detect, fallback Q2 priority-based.
+
+When the resolved baseline is a Gemini 2.5 model (`gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`) or a Gemini 3.5 / 3.6 / 3.7 Flash model (`gemini-3.5-flash`, `gemini-3.6-flash`, `gemini-3.7-flash` — billed at list on Vertex AI, at the routed 3.6 / 3.8 Flash rate on the Developer API), also ask full-flow **Q19b** from `clarify-ai.md` (serving API: Vertex AI vs Gemini Developer API) with the same auto-detect rule, and write `ai_constraints.ai_source_serving_api`. When the baseline is Gemini 4 Argon on Vertex AI (or the API is unknown), also ask **Q19c** (Global vs regional Vertex AI endpoint) and write `ai_constraints.ai_source_endpoint_scope` — the regional endpoint is billed 10% above Global. The 2.5 models are retired on Vertex AI but still billed on the Developer API, so the answer decides the source-price baseline.
 
 ### Batch 1 → Save Draft and Present Batch 2
 
