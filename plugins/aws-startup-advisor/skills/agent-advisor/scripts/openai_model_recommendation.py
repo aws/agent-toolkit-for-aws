@@ -1213,6 +1213,18 @@ def recommend_openai_workload(workload, region, catalog):
             + (f" (reference_only entries skipped: {', '.join(skipped)})" if skipped else "")
         )
     model_key, model, path_config = catalog_hit
+    # The cross-family sentence is written before selection. If that tier is
+    # reference_only, name the model that was actually selected.
+    if path == "runtime_converse" and "the source tier maps to" in rationale_head:
+        tier = _converse_tier_for_source(source)
+        tier_model = catalog["models"].get(tier, {})
+        if not anthropic_model_recommendation.is_selectable(tier_model):
+            rationale_head = (
+                "Bedrock governance or multi-model requirements select runtime Converse; "
+                f"{model['display_name']} is selected because the source tier is reference_only "
+                "(capability-evidence fallback across Claude tiers). Sources without an "
+                "exact runtime catalog identity require this family switch."
+            )
     if path == "mantle_openai_chat":
         if model_key == _same_model_catalog_key(source):
             rationale_head = (

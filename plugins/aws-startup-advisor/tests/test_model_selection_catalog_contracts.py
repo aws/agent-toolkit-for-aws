@@ -247,6 +247,28 @@ def test_reference_only_astra_fails_closed_without_substitutes(requirements):
     assert rec["decision_options"] == []
 
 
+def test_runtime_rationale_names_the_selected_model_when_the_tier_is_reference_only():
+    requirements = {"preferred_api_path": "runtime_converse", "preserve_openai_api": False,
+                    "governance": ["guardrails"]}
+    catalog = mr.load_openai_catalog()
+    tier_name = catalog["models"]["anthropic_claude_sonnet_5"]["display_name"]
+    baseline = " ".join(_openai_rec(catalog, "gpt-4o", **requirements)["rationale"])
+    assert f"maps to {tier_name}" in baseline
+    hidden = _with_reference_only(catalog, "anthropic_claude_sonnet_5")
+    rec = _openai_rec(hidden, "gpt-4o", **requirements)
+    assert rec["primary_model"] != "anthropic.claude-sonnet-5"
+    text = " ".join(rec["rationale"])
+    assert f"maps to {tier_name}" not in text
+    selected_name = next(
+        model["display_name"]
+        for model in hidden["models"].values()
+        for path in model.get("paths", {}).values()
+        if isinstance(path, dict) and path.get("model_id") == rec["primary_model"]
+    )
+    assert selected_name in text
+    assert "reference_only" in text
+
+
 def test_runtime_rationale_does_not_claim_a_reference_only_same_model():
     requirements = {"preferred_api_path": "runtime_converse", "governance": ["guardrails"]}
     catalog = mr.load_openai_catalog()
