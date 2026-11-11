@@ -61,7 +61,7 @@
   other Regions is for finding resources, not for retrying an auth error.
   Retry throttling with backoff before you report it.
 
-## Final answer
+## Final answer for investigation tasks
 
 Apply these when you write the final answer, after the investigation.
 
