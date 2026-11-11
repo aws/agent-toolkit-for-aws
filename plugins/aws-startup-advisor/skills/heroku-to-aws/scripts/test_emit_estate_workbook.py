@@ -32,6 +32,10 @@ INVENTORY = {
     "resources": [
         {"resource_id": "formation:shop-prod-api:web", "resource_type": "formation", "heroku_app": "shop-prod-api",
          "config": {"process_type": "web", "dyno_type": "standard-2x", "quantity": 2}},
+        {"resource_id": "formation:shop-prod-worker:worker", "resource_type": "formation", "heroku_app": "shop-prod-worker",
+         "config": {"process_type": "worker", "dyno_type": "standard-1x", "quantity": 3}},
+        {"resource_id": "formation:shop-dev-api:web", "resource_type": "formation", "heroku_app": "shop-dev-api",
+         "config": {"process_type": "web", "dyno_type": "standard-1x", "quantity": 1}},
         {"resource_id": "addon:shop-prod-api:heroku-postgresql:standard-2", "resource_type": "addon",
          "heroku_app": "shop-prod-api",
          "config": {"addon_service": "heroku-postgresql", "plan": "standard-2", "provider": "heroku",
@@ -58,6 +62,14 @@ INVENTORY = {
 
 DESIGN = {
     "services": [
+        {"service_id": "fargate:shop-prod-worker:worker", "source_resource_id": "formation:shop-prod-worker:worker",
+         "heroku_app": "shop-prod-worker", "aws_service": "Fargate",
+         "aws_config": {"task_cpu": 1024, "task_memory": 2048, "desired_count": 3, "load_balancer": False}},
+        {"service_id": "fargate:shop-dev-api:web", "source_resource_id": "formation:shop-dev-api:web",
+         "heroku_app": "shop-dev-api", "aws_service": "Fargate",
+         "aws_config": {"task_cpu": 512, "task_memory": 1024, "desired_count": 1, "load_balancer": True}},
+        {"service_id": "alb:shop-dev-api:web", "source_resource_id": "formation:shop-dev-api:web",
+         "heroku_app": "shop-dev-api", "aws_service": "ALB", "aws_config": {"load_balancer": True}},
         {"service_id": "rds:shop-prod-api:postgres", "source_resource_id": "addon:shop-prod-api:heroku-postgresql:standard-2",
          "heroku_app": "shop-prod-api", "aws_service": "RDS PostgreSQL",
          "aws_config": {"instance_class": "db.m6g.large", "multi_az": True}},
@@ -76,7 +88,12 @@ ESTIMATE = {
                                    "gap_explanation": "Support and credits are not visible to discovery.",
                                    "lines": [{"category": "support", "monthly_usd": 100, "note": "24-month line"}]}},
     "projected_costs": {"aws_monthly_premium": 500, "aws_monthly_balanced": 400, "aws_monthly_optimized": 300},
-    "cost_comparison": {"heroku_monthly_baseline": 700, "baseline_source": "live_prices_plus_cache"},
+    "cost_comparison": {"heroku_monthly_baseline": 700, "baseline_source": "live_prices_plus_cache",
+                        "heroku_monthly_like_for_like": 140,
+                        "like_for_like_comparison": {"aws_monthly_balanced": 400, "heroku_monthly_like_for_like": 140,
+                                                     "monthly_difference": 260, "difference_pct": 1.857,
+                                                     "deferred_contribution_monthly": 560,
+                                                     "note": "Scope-matched."}},
 }
 
 
@@ -103,13 +120,19 @@ def test_writes_workbook_with_all_tabs_and_mapping_status():
         (tmp / "estimation-infra.json").write_text(json.dumps(ESTIMATE))
         code, out = run(tmp)
         assert code == 0
-        assert out.startswith("ESTATE_OK | path=") and "apps=3" in out and "resources=6" in out
+        assert out.startswith("ESTATE_OK | path=") and "apps=3" in out and "resources=8" in out
         wb = sheets(tmp / "heroku-estate.xlsx")
         assert list(wb) == ["Read Me", "Summary", "Apps", "Formations", "Postgres", "Redis", "Kafka",
                             "Other add-ons", "Shared data stores", "Cost estimate"]
         assert "db.m6g.large Multi-AZ" in wb["Postgres"]
         assert "Deferred - Not found in Fast_Path_Table" in wb["Other add-ons"]
         assert "t3.small 1-2 instances" in wb["Formations"]
+        # one source -> many services: the compute entry stays the target, the ALB is listed as associated
+        assert "512 CPU / 1024 MiB x1" in wb["Formations"] and "ALB" in wb["Formations"]
+        assert "1024 CPU / 2048 MiB x3" in wb["Formations"]
+        # scope-matched comparison rows are copied through
+        assert "Scope-matched comparison" in wb["Cost estimate"] and "<v>140</v>" in wb["Cost estimate"]
+        assert "<v>260</v>" in wb["Cost estimate"]
         assert "C1" in wb["Shared data stores"] and "shop-prod-worker" in wb["Shared data stores"]
         # follower is listed with its role but excluded from the leaders-only data total (40.5, not 81)
         assert "follower" in wb["Postgres"] and "HEROKU_POSTGRESQL_TEAL" in wb["Postgres"]
@@ -154,6 +177,43 @@ def test_fail_open_on_missing_or_broken_inventory():
         assert not (tmp / "heroku-estate.xlsx").exists()
     code, out = run(Path("/definitely/not/here"))
     assert code == 0 and out.startswith("ESTATE_SKIP | reason=migration dir not found")
+
+
+def test_stale_downstream_artifacts_excluded_after_rediscovery():
+    with tempfile.TemporaryDirectory() as t:
+        tmp = Path(t)
+        (tmp / "heroku-resource-inventory.json").write_text(json.dumps(INVENTORY))
+        (tmp / "aws-design.json").write_text(json.dumps(DESIGN))
+        (tmp / "estimation-infra.json").write_text(json.dumps(ESTIMATE))
+        # Discover re-entry: downstream phases reset to pending, their files retained
+        (tmp / ".phase-status.json").write_text(json.dumps(
+            {"phases": {"discover": "completed", "clarify": "pending", "design": "pending", "estimate": "pending"}}))
+        code, out = run(tmp)
+        assert code == 0 and out.startswith("ESTATE_OK")
+        wb = sheets(tmp / "heroku-estate.xlsx")
+        assert "Cost estimate" not in wb and "Right-sizing" not in wb
+        assert "Design not run" in wb["Formations"] and "Mapped" not in wb["Formations"]
+        # ...and with the phases completed the same files are used
+        (tmp / ".phase-status.json").write_text(json.dumps(
+            {"phases": {"discover": "completed", "design": "completed", "estimate": "completed"}}))
+        run(tmp)
+        wb = sheets(tmp / "heroku-estate.xlsx")
+        assert "Cost estimate" in wb and "Mapped" in wb["Formations"]
+
+
+def test_fail_open_on_undecodable_inputs():
+    with tempfile.TemporaryDirectory() as t:
+        tmp = Path(t)
+        (tmp / "heroku-resource-inventory.json").write_bytes(b"\xff\xfe not utf-8 {")
+        code, out = run(tmp)
+        assert code == 0 and out.startswith("ESTATE_SKIP | reason=inventory unreadable")
+        assert not (tmp / "heroku-estate.xlsx").exists()
+        # an undecodable OPTIONAL design must not block a usable inventory
+        (tmp / "heroku-resource-inventory.json").write_text(json.dumps(INVENTORY))
+        (tmp / "aws-design.json").write_bytes(b"\xff\xfe")
+        code, out = run(tmp)
+        assert code == 0 and out.startswith("ESTATE_OK")
+        assert "Design not run" in sheets(tmp / "heroku-estate.xlsx")["Formations"]
 
 
 def test_out_override():

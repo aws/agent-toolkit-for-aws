@@ -77,6 +77,13 @@ transfer. Use the discovered like-for-like figure for a scope-matched comparison
 treat both as floors on AWS cost." Never present "contract minus AWS" as the
 headline saving.
 
+From `estimation-infra.json` `cost_comparison.like_for_like_comparison` (present whenever
+any add-on was Deferred): render it as its own row block in `exec-costs`, directly under
+the full-baseline comparison — "Scope-matched: Heroku $X/mo (excludes $D/mo of add-ons
+with no AWS mapping yet) vs AWS Balanced $Y/mo → $Z/mo {more|less} on AWS ({P}%)". Keep
+the full-baseline row and its caveat above it. Wrap the like-for-like Heroku figure in
+`data-cost-key="heroku_monthly_like_for_like"` so the validator can cross-check it.
+
 ---
 
 ## Step 2: Write `migration-report.html`

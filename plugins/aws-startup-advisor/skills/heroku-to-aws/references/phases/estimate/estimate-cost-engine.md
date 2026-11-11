@@ -186,6 +186,14 @@ order form commits spend discovery cannot see. Reconcile the two rather than pic
 The contract run-rate is never the baseline used for savings headlines. It is shown
 beside the discovered figure so the reader can see both and why they differ.
 
+**Scope-matched comparison is mandatory whenever any add-on is Deferred**, contract or
+not: Part 3 must compute `cost_comparison.like_for_like_comparison` (AWS Balanced minus
+the like-for-like baseline, with the percentage and the deferred contribution it removed)
+and the financial roll-up must present that difference alongside — never instead of — the
+full-baseline difference and its caveat. Example: full baseline $740, deferred add-ons
+$600, AWS $200 → full view says "$540 less on AWS", scope-matched view says "$60 more on
+AWS ($200 vs $140)". Both are shown; the second is the one labelled decision-grade.
+
 Whenever a baseline was determined (any source except `"unavailable"`), present it as:
 
 - Total monthly cost, with its source and accuracy stated plainly (invoice data vs actual plan prices vs rate card vs user estimate)
@@ -399,8 +407,16 @@ Include in `estimation-infra.json`:
 "cost_comparison": {
   "heroku_monthly_baseline": "<Part 1 baseline total>",
   "baseline_source": "<current_costs.source>",
-  "heroku_monthly_like_for_like": "<Part 1 § Contract reconciliation step 5, when a contract exists; else omit>",
+  "heroku_monthly_like_for_like": "<Part 1 baseline minus the priced contribution of every add-on the Design marked Deferred (same figure Part 1b/§ Contract reconciliation step 5 uses); present whenever deferred add-ons exist, contract or not>",
   "heroku_monthly_contract": "<current_costs.contract.monthly_run_rate, when a contract exists; else omit>",
+  "like_for_like_comparison": {
+    "aws_monthly_balanced": "<projected_costs.aws_monthly_balanced>",
+    "heroku_monthly_like_for_like": "<as above>",
+    "monthly_difference": "<aws_monthly_balanced − heroku_monthly_like_for_like; positive = AWS costs more>",
+    "difference_pct": "<monthly_difference / heroku_monthly_like_for_like>",
+    "deferred_contribution_monthly": "<sum of Deferred add-ons' Heroku list prices>",
+    "note": "Scope-matched: both sides exclude the add-ons that have no AWS mapping yet. This is the comparison to quote; the full-baseline figures above include spend the AWS estimate does not replace."
+  },
   "option_a_premium": {
     "aws_monthly": "<premium total>",
     "monthly_difference": "<premium - heroku>",

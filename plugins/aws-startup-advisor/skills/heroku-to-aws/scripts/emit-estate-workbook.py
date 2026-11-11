@@ -23,6 +23,9 @@ Reads:
   <dir>/heroku-resource-inventory.json   required
   <dir>/aws-design.json                  optional — proposed AWS target per resource, deferred[]
   <dir>/estimation-infra.json            optional — Heroku baseline vs AWS scenarios
+  <dir>/.phase-status.json               optional — design/estimate artifacts are used only when
+                                         their phase is "completed" (a Discover re-entry resets
+                                         them to "pending" and leaves stale files behind)
 
 Writes:
   <dir>/heroku-estate.xlsx               (or --out)
@@ -140,32 +143,77 @@ def _load(path: Path):
             return json.load(f)
     except FileNotFoundError:
         return None
-    except (OSError, json.JSONDecodeError) as e:
+    except (OSError, ValueError) as e:  # ValueError covers JSONDecodeError and UnicodeDecodeError
         return {"__error__": f"{path.name}: {e.__class__.__name__}"}
 
 
+def _phase_completed(status, phase: str) -> bool:
+    """True when .phase-status.json says the phase has completed (or no status file exists).
+
+    On a confirmed Discover re-entry the interpreter resets downstream phases to "pending"
+    but keeps their JSON files; those are stale against the fresh inventory and must not be
+    exported as current mappings or costs."""
+    if not isinstance(status, dict):
+        return True  # no phase-status: nothing says the artifact is stale
+    phases = status.get("phases") or {}
+    return phases.get(phase) == "completed"
+
+
+# Services that ARE the target for a source resource; anything else sharing the
+# source_resource_id (ALB, RDS Proxy, ...) is an associated service, not the target.
+_COMPUTE_OR_STORE = ("Elastic Beanstalk", "Fargate", "ECS", "EKS", "RDS", "Aurora", "ElastiCache", "MSK")
+
+
+def _sizing(svc: dict) -> str:
+    cfg = svc.get("aws_config") or {}
+    name = svc.get("aws_service", "")
+    parts: list[str] = []
+    if "Fargate" in name or "ECS" in name:
+        if cfg.get("task_cpu") or cfg.get("task_memory"):
+            parts.append(f"{cfg.get('task_cpu', '?')} CPU / {cfg.get('task_memory', '?')} MiB")
+        if cfg.get("desired_count"):
+            parts.append(f"x{cfg['desired_count']}")
+    elif name == "EKS" or "EKS" in name:
+        res = (cfg.get("resources") or {}).get("requests") or {}
+        if res:
+            parts.append(f"{res.get('cpu', '?')} CPU / {res.get('memory', '?')}")
+        if cfg.get("replicas"):
+            parts.append(f"x{cfg['replicas']}")
+    else:
+        size = (cfg.get("instance_class") or cfg.get("instance_type") or cfg.get("node_type")
+                or cfg.get("broker_instance_type") or "")
+        if size:
+            parts.append(size)
+        if cfg.get("max_instances") or cfg.get("min_instances"):
+            parts.append(f"{cfg.get('min_instances', 1)}-{cfg.get('max_instances', 1)} instances")
+        if cfg.get("broker_count"):
+            parts.append(f"{cfg['broker_count']} brokers")
+    if cfg.get("multi_az") is True:
+        parts.append("Multi-AZ")
+    if cfg.get("read_replicas"):
+        parts.append(f"+{cfg['read_replicas']} read replica(s)")
+    return " ".join(parts).strip()
+
+
 def _design_index(design) -> tuple[dict, dict]:
-    """source_resource_id -> (aws_service, one-line sizing); addon (name, plan) -> deferred reason."""
+    """source_resource_id -> (target aws_service, sizing, associated services); addon (name, plan) -> deferred reason.
+
+    A source resource can map to several services (a Fargate web task AND its ALB share one
+    source_resource_id). The target is the compute/data-store entry; the rest are listed as
+    associated services so nothing is lost and the target is never overwritten."""
     by_source: dict = {}
     deferred: dict = {}
     if not isinstance(design, dict):
         return by_source, deferred
+    groups: dict = defaultdict(list)
     for svc in design.get("services") or []:
-        if not isinstance(svc, dict):
-            continue
-        cfg = svc.get("aws_config") or {}
-        size = (cfg.get("instance_class") or cfg.get("instance_type") or cfg.get("node_type")
-                or cfg.get("broker_instance_type") or "")
-        extra = []
-        if cfg.get("multi_az") is True:
-            extra.append("Multi-AZ")
-        if cfg.get("broker_count"):
-            extra.append(f"{cfg['broker_count']} brokers")
-        if cfg.get("max_instances") or cfg.get("min_instances"):
-            extra.append(f"{cfg.get('min_instances', 1)}-{cfg.get('max_instances', 1)} instances")
-        if cfg.get("desired_count"):
-            extra.append(f"x{cfg['desired_count']}")
-        by_source[svc.get("source_resource_id")] = (svc.get("aws_service", ""), " ".join([size] + extra).strip())
+        if isinstance(svc, dict):
+            groups[svc.get("source_resource_id")].append(svc)
+    for src, svcs in groups.items():
+        targets = [s for s in svcs if any(k in (s.get("aws_service") or "") for k in _COMPUTE_OR_STORE)]
+        target = targets[0] if targets else svcs[0]
+        others = [s.get("aws_service", "") for s in svcs if s is not target]
+        by_source[src] = (target.get("aws_service", ""), _sizing(target), ", ".join(o for o in others if o))
     for d in design.get("deferred") or []:
         if isinstance(d, dict):
             deferred[(d.get("addon_name"), d.get("addon_plan"))] = d.get("reason", "Deferred")
@@ -193,6 +241,10 @@ def build_sheets(inv: dict, design, est) -> tuple[list[tuple[str, list[list]]], 
         if reason:
             return f"Deferred - {reason}", "", ""
         return ("Not in design" if has_design else "Design not run"), "", ""
+
+    def associated_for(res) -> str:
+        hit = by_source.get(res.get("resource_id"))
+        return hit[2] if hit else ""
 
     by_app: dict = defaultdict(lambda: defaultdict(list))
     for r in resources:
@@ -223,13 +275,14 @@ def build_sheets(inv: dict, design, est) -> tuple[list[tuple[str, list[list]]], 
 
     # ---- Formations
     form_rows = [["Heroku app", "Process type", "Dyno size", "Running dynos", "AWS status",
-                  "Proposed AWS target", "Proposed AWS sizing"]]
+                  "Proposed AWS target", "Proposed AWS sizing", "Associated AWS services"]]
     for r in sorted(resources, key=lambda x: x.get("resource_id") or ""):
         if r.get("resource_type") != "formation":
             continue
         c = r.get("config") or {}
         st, tgt, sz = status_for(r)
-        form_rows.append([r.get("heroku_app"), c.get("process_type"), c.get("dyno_type"), c.get("quantity"), st, tgt, sz])
+        form_rows.append([r.get("heroku_app"), c.get("process_type"), c.get("dyno_type"), c.get("quantity"), st, tgt, sz,
+                          associated_for(r)])
 
     # ---- Data stores
     pg_rows = [["Owning Heroku app", "Plan", "PG version", "Data size (GB, measured)", "Role", "Follows",
@@ -322,12 +375,22 @@ def build_sheets(inv: dict, design, est) -> tuple[list[tuple[str, list[list]]], 
         cost_rows = [["Heroku baseline vs preliminary AWS cost (USD / month)", "", ""],
                      ["Figures are copied from estimation-infra.json. The Heroku baseline is derived unless its source is billing_data.", "", ""],
                      ["", "", ""],
-                     ["Heroku baseline", baseline, f"source: {cur.get('source', '')}; {cur.get('accuracy', '')}".rstrip("; ")],
+                     ["Heroku baseline (full)", baseline, f"source: {cur.get('source', '')}; {cur.get('accuracy', '')}".rstrip("; ")],
                      ["  note", cur.get("baseline_note") or "", ""],
                      ["AWS Premium", proj.get("aws_monthly_premium"), ""],
                      ["AWS Balanced (primary)", proj.get("aws_monthly_balanced"), ""],
                      ["AWS Optimized", proj.get("aws_monthly_optimized"), ""],
                      ["Pricing source", (est.get("pricing_source") or {}).get("status", ""), (est.get("pricing_source") or {}).get("note", "") or ""]]
+        lfl = comp.get("like_for_like_comparison")
+        if isinstance(lfl, dict):
+            cost_rows += [["", "", ""],
+                          ["Scope-matched comparison (decision-grade)", "", "Both sides exclude add-ons with no AWS mapping yet"],
+                          ["Heroku baseline, like-for-like", lfl.get("heroku_monthly_like_for_like"),
+                           f"excludes {lfl.get('deferred_contribution_monthly')} of deferred add-ons" if lfl.get("deferred_contribution_monthly") is not None else ""],
+                          ["AWS Balanced", lfl.get("aws_monthly_balanced"), ""],
+                          ["Difference (AWS minus Heroku, like-for-like)", lfl.get("monthly_difference"),
+                           f"{round(float(lfl['difference_pct']) * 100, 1)}%" if lfl.get("difference_pct") not in (None, "") else ""],
+                          ["  note", lfl.get("note") or "", ""]]
         contract = cur.get("contract")
         if isinstance(contract, dict):
             cost_rows += [["", "", ""],
@@ -385,10 +448,13 @@ def main(argv=None) -> int:
     if not isinstance(inv, dict) or "__error__" in inv:
         print(f"ESTATE_SKIP | reason=inventory unreadable ({inv.get('__error__') if isinstance(inv, dict) else 'not an object'})")
         return 0
-    design = _load(mdir / "aws-design.json")
+    status = _load(mdir / ".phase-status.json")
+    if isinstance(status, dict) and "__error__" in status:
+        status = None
+    design = _load(mdir / "aws-design.json") if _phase_completed(status, "design") else None
     if isinstance(design, dict) and "__error__" in design:
         design = None
-    est = _load(mdir / "estimation-infra.json")
+    est = _load(mdir / "estimation-infra.json") if _phase_completed(status, "estimate") else None
     if isinstance(est, dict) and "__error__" in est:
         est = None
     try:

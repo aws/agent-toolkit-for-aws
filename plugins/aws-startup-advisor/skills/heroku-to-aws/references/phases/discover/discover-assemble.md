@@ -61,15 +61,9 @@ the path and retry before assembly; do not continue with an unread schema.
     Skip the section entirely when no add-on carries `attached_apps` (Terraform-only
     runs cannot see attachments).
 
-11. **Estate workbook (fail-open).** After the inventory is written, run
-    `python3 "<SKILL_BASE>/scripts/emit-estate-workbook.py" --migration-dir "$MIGRATION_DIR"`
-    (absolute paths). It copies the inventory into `$MIGRATION_DIR/heroku-estate.xlsx`,
-    one tab per resource family plus Summary and Shared data stores, so the customer can
-    review what was found in a spreadsheet before any AWS design exists. It prints
-    `ESTATE_OK | …` or `ESTATE_SKIP | reason=…`; on skip, continue — the inventory is
-    the artifact, the workbook is a convenience. Mention the file in the phase output
-    only when it printed `ESTATE_OK`. Later phases re-run the same script to add the
-    AWS mapping and cost tabs.
+    (The estate workbook is NOT written here: this assembler runs in the dispatched
+    `rw` worker, which has no shell. `discover.md` § Handoff runs the export in the main
+    window after `HANDOFF_OK`.)
 
 ## Merge & Drift Rules (when BOTH terraform and live fragments contributed)
 
