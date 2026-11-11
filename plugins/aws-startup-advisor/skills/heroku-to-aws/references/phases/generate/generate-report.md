@@ -68,9 +68,14 @@ read it from `aws-design.json`'s per-formation `aws_service`, not from
 From the inventory, for the `developer-workflow` section: apps by stack
 (`container` vs buildpack stacks), count of `pipeline` resources and of apps that
 appear in any `stages[]`, whether any pipeline has `review_apps_enabled: true`, total
-`config_var_keys` across `config` resources, count of `release` process types, count of
-`scheduler` / `advanced-scheduler` add-ons, and the number of non-data-store add-ons
-that are mapped vs deferred in `aws-design.json`.
+`config_var_keys` across `config` resources, count of `release` process types, and the
+number of non-data-store add-ons that are mapped vs deferred in `aws-design.json`.
+For the Scheduler row specifically: the scheduler-family add-ons (`addon_service`
+normalizing to `heroku scheduler`, `scheduler` or `advanced scheduler`) split into those
+whose `resource_id` appears as a `source_resource_id` in `aws-design.json` `services[]`
+(mapped to EventBridge Scheduler) and those whose `resource_id` appears in `deferred[]`
+(no replacement selected). Both counts are inputs to the row's status — on this
+branch `advanced-scheduler` has no fast-path row or alias, so Design defers it.
 
 ---
 
@@ -155,31 +160,37 @@ team writes it once and reuses it), **No equivalent**. A status describes what t
 migration **actually emits for the selected target**, never what the stack or the
 `recommendation.value` implies — when the estate mixes targets, give one status per
 target group ("**Generated** for the {n} Beanstalk apps; **Build** for the {m} Fargate
-apps") rather than the most favourable one.
+apps") rather than the most favourable one. Likewise a status that depends on what
+Design mapped is **computed from `aws-design.json`'s `services[]` and `deferred[]`
+entries, never asserted** — a row never says "Covered — mapped" while any of its
+source add-ons sits in `deferred[]`.
 
-**Status rules for the two target-dependent rows** (resolved target per app from
-`aws-design.json`, deploy method from `eb_deploy_method.value`, `github_actions` when
-absent):
+**Status rules for the target- and design-dependent rows** (resolved target per app
+from `aws-design.json`, deploy method from `eb_deploy_method.value`, `github_actions`
+when absent; mapped/deferred counts from `aws-design.json` as gathered in Step 1):
 
-| Row                | Resolved target                                    | Status                                                                                                                                                                                                                 |
+| Row                | Resolved target / design state                     | Status                                                                                                                                                                                                                 |
 | ------------------ | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Push to deploy     | EB + `github_actions` or `codepipeline`            | **Generated** — the generated workflow (or CodePipeline) builds and deploys per app                                                                                                                                    |
 | Push to deploy     | EB + `manual`                                      | **Build** — no CI is generated; the guide documents a CLI deploy                                                                                                                                                       |
 | Push to deploy     | Fargate or EKS (any method)                        | **Build** — no push-to-deploy workflow is generated for container services; the team writes the image build + deploy pipeline                                                                                           |
 | Push to deploy     | any target, buildpack apps                         | add "**Build** — a Dockerfile per buildpack app" as a separate clause; every target runs a container image (EB uses the Docker platform), so Dockerfile work is independent of whether CI is generated                   |
 | Config vars        | EB                                                 | **Covered** — one `environmentsecrets` binding per sensitive key is generated; you import the values                                                                                                                   |
-| Config vars        | Fargate or EKS                                     | **Build** — the generated task definition carries no environment/secrets bindings; you export the values, import them to Secrets Manager / Parameter Store, and wire each key into the task definition yourselves (the migration guide's Fargate config-var section is the procedure; in the rendered row say "the migration guide", not the file name) |
+| Config vars        | Fargate                                            | **Build** — the generated task definition carries no environment/secrets bindings; you export the values, import them to Secrets Manager / Parameter Store, and wire each key into the task definition yourselves (the migration guide's Fargate config-var section is the procedure; in the rendered row say "the migration guide", not the file name) |
+| Config vars        | EKS                                                | **Build** — the generated Kubernetes Deployments carry `PORT` plus `DATABASE_URL` and `REDIS_URL` `secretKeyRef` bindings only (reading a per-app Kubernetes Secret that is not generated); you create that Secret from the exported values and add an env entry per remaining key to each Deployment (the migration guide's EKS section shows the `kubectl create secret` and `secretKeyRef` steps). There is no task definition for EKS apps and the Fargate config-var procedure does not apply to them — never point EKS apps at it |
+| Scheduler add-ons  | every scheduler-family add-on in `services[]`      | **Covered** — mapped to EventBridge Scheduler; disclose that no Terraform is emitted for the schedules themselves (Generate records them in its unsupported-resource warnings), so each job is recreated as a schedule by you                                                                                   |
+| Scheduler add-ons  | one or more scheduler-family add-ons in `deferred[]` | **Build** for those — "{S_deferred} scheduler add-on(s) deferred — replacement selection pending"; when others are mapped, render both statuses with their counts ("**Covered** for {S_mapped}; **Build** for {S_deferred}")                                                                              |
 
 | Heroku today                              | On AWS                                                                                      | Status                                                                            | Your estate (from the inventory)                                     |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
 | `git push heroku main` + buildpacks       | CI builds a container image and deploys it                                                  | Per the status rules above: **Generated** only for Beanstalk apps with a generated deploy method; **Build** for Fargate/EKS apps and manual Beanstalk; plus **Build** (a Dockerfile per app) for buildpack apps | "{N} buildpack apps, {M} already containerized; {n} on Beanstalk, {m} on Fargate/EKS" |
 | Pipelines and promote                     | Environments per stage with the same image promoted between them, approval-gated            | **Build** — pipelines are detected, not generated                                 | "{P} pipelines covering {A} apps"                                    |
 | Review apps                               | An ephemeral environment per pull request, torn down on merge                               | **Build** (or buy — see below)                                                    | "enabled on {R} pipelines" or "not enabled"                          |
-| Config vars                               | Parameter Store / Secrets Manager, injected at deploy; `config:set` becomes one CLI call      | Per the status rules above: **Covered** for Beanstalk apps (bindings generated, values by you); **Build** for Fargate/EKS apps (values imported and task-definition bindings written by you) | "{K} config var keys across {N} apps"                                |
+| Config vars                               | Parameter Store / Secrets Manager, injected at deploy; `config:set` becomes one CLI call      | Per the status rules above: **Covered** for Beanstalk apps (bindings generated, values by you); **Build** for Fargate apps (values imported and task-definition bindings written by you); **Build** for EKS apps (database/cache bindings generated, Kubernetes Secret and the remaining keys' env entries written by you) | "{K} config var keys across {N} apps"                                |
 | `heroku run` / one-off dynos              | ECS Exec or `eb ssh`; one-off tasks as a run-task call                                       | **Covered** — different command                                                   | —                                                                    |
 | `heroku logs --tail`                      | CloudWatch Logs live tail                                                                   | **Covered** — different command                                                   | —                                                                    |
 | Release phase                             | A pre-deploy job in the workflow that runs before traffic shifts                             | **Build**                                                                         | "{L} release process types"                                          |
-| Scheduler add-ons                         | EventBridge Scheduler                                                                       | **Covered** — mapped by this migration                                            | "{S} scheduler add-ons"                                              |
+| Scheduler add-ons                         | EventBridge Scheduler                                                                       | Per the status rules above, computed from `aws-design.json`: **Covered** for the mapped add-ons (schedules recreated by you); **Build** for any in `deferred[]` ("{S_deferred} scheduler add-on(s) deferred — replacement selection pending") | "{S_mapped} scheduler add-ons mapped, {S_deferred} deferred"         |
 | `ps:scale`                                | Autoscaling policy or one CLI call                                                          | **Covered**                                                                       | —                                                                    |
 | Add-on marketplace                        | Each add-on becomes an AWS service or a retained SaaS, wired by Terraform                   | **No equivalent** to the marketplace itself                                       | "{X} add-ons mapped, {Y} deferred for manual selection"              |
 

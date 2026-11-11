@@ -59,9 +59,16 @@ fresh decision without being touched or archived.
   **Will be generated**, and "is generated" / "the generated Terraform" in a
   cell read "will be generated" / "the Terraform that Generate will produce".
   **Covered**, **Build** and **No equivalent** are unchanged — they do not
-  depend on Generate having run. The status rules themselves (target and
-  deploy method from the plan) are the same in both modes; the decision report
-  shows the user what Generate will and will not emit before they commit to it.
+  depend on Generate having run. The status rules themselves are the same in
+  both modes: the per-target config-vars rules (EB / Fargate / EKS each have
+  their own rule — EKS apps get the Kubernetes Secret + `secretKeyRef` wording,
+  never the Fargate task-definition wording) and the Scheduler row's status,
+  which is **computed** from `aws-design.json` `services[]` vs `deferred[]`
+  (both exist at the Decision gate) and never asserted — a deferred
+  `advanced-scheduler` renders as **Build** with its deferred count in
+  `decision-report.html` and `DECISION.md` exactly as in the full report. The
+  decision report shows the user what Generate will and will not emit before
+  they commit to it.
 - **`decision-cta` (required, replaces `next-steps` in decision mode):**
   `<section id="decision-cta">` — "**Ready to execute?** Say \"generate the
   Terraform and migration scripts\" and I'll produce the full execution pack

@@ -103,6 +103,31 @@ def test_developer_workflow_statuses_derive_from_target_and_deploy_method() -> N
     assert "task definition carries no environment/secrets bindings" in section
 
 
+def test_config_vars_row_gives_eks_its_own_kubernetes_rule() -> None:
+    text = REPORT.read_text(encoding="utf-8")
+    section = text[text.index("### `developer-workflow`") :]
+    rules = section[: section.index("| Heroku today")]
+    eks_rule = [line for line in rules.splitlines() if line.startswith("| Config vars") and "| EKS " in line]
+    assert len(eks_rule) == 1, "EKS must have its own config-vars rule, not share Fargate's"
+    assert "secretKeyRef" in eks_rule[0] and "DATABASE_URL" in eks_rule[0] and "REDIS_URL" in eks_rule[0]
+    assert "Kubernetes Secret" in eks_rule[0]
+    assert "Fargate config-var procedure does not apply" in eks_rule[0]
+    fargate_rule = [line for line in rules.splitlines() if line.startswith("| Config vars") and "| Fargate " in line]
+    assert len(fargate_rule) == 1 and "task definition" in fargate_rule[0]
+    assert "| Fargate or EKS" not in "\n".join(eks_rule + fargate_rule)
+
+
+def test_scheduler_row_status_is_computed_from_mapped_vs_deferred() -> None:
+    text = REPORT.read_text(encoding="utf-8")
+    section = text[text.index("### `developer-workflow`") :]
+    assert "never asserted" in section
+    assert "**Covered** — mapped by this migration" not in section, "unconditional Scheduler status must be gone"
+    assert "scheduler add-on(s) deferred — replacement selection pending" in section
+    assert "{S_mapped} scheduler add-ons mapped, {S_deferred} deferred" in section
+    core = DECISION_CORE.read_text(encoding="utf-8")
+    assert "`services[]` vs `deferred[]`" in core and "never asserted" in core
+
+
 def test_decision_report_renders_developer_workflow_pre_execution() -> None:
     text = DECISION_CORE.read_text(encoding="utf-8")
     assert "`exec-costs` →\n  `developer-workflow`" in text or "`exec-costs` → `developer-workflow`" in text, (
