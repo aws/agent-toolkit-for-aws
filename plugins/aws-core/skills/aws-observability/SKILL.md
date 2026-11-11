@@ -14,7 +14,7 @@ description: >-
   logging or threat detection.
 
 metadata:
-  version: "11"
+  version: "12"
 ---
 
 # AWS Observability
