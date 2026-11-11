@@ -63,17 +63,18 @@ runpy.run_path(%r, run_name="__main__")
     assert not list(home.iterdir())
 
 
-def test_sdk_files_only_ship_with_migration_skills():
+def test_shared_sender_bundles_include_optional_account_runtime():
     import importlib.util
 
     path = TELEMETRY / "sync_bundles.py"
     spec = importlib.util.spec_from_file_location("account_bundle_manifest", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    for name in module.MIGRATION_SKILLS:
+    for name in module.BUNDLES:
         assert "auth/aws_account.py" in module.BUNDLES[name]
         assert "auth/pyproject.toml" in module.BUNDLES[name]
-    assert not any(name.startswith("auth/") for name in module.OPERATE_FILES)
+        assert "sharing/credentials.py" in module.BUNDLES[name]
+        assert "sharing/policy.json" in module.BUNDLES[name]
 
 
 def test_legacy_payload_building_does_not_load_auth_or_add_identity(home):

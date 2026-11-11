@@ -376,7 +376,14 @@ def test_incomplete_bundle_imports_fail_open(tmp_path, home, collector, missing)
     (installed / missing).unlink()
     p = Project(tmp_path, home, collector, phase_status(), consent=None)
     output, bodies = invoke(p, "status", script=installed / "cli.py")
-    assert output == "" and bodies == []
+    if missing == "metric_emission/migration.py":
+        # Read-only sharing/status commands also ship in non-migration bundles.
+        # A missing migration emitter prevents reconciliation, not status reads.
+        assert json.loads(output)["consentStatus"] is None
+    else:
+        assert output == ""
+    assert bodies == []
+    assert invoke(p, "reconcile", script=installed / "cli.py") == ("", [])
     assert not p.has_snapshot()
 
 

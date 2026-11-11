@@ -98,10 +98,17 @@ class TestBundle:
 
     def test_the_operate_on_aws_bundle_carries_only_what_it_uses(self):
         bundle = PLUGIN_ROOT / "skills/operate-on-aws/references/vendored/telemetry"
-        files = {str(p.relative_to(bundle)) for p in bundle.rglob("*") if p.is_file()}
+        files = {
+            str(p.relative_to(bundle)) for p in bundle.rglob("*")
+            if p.is_file() and not ("__pycache__" in p.parts and p.suffix == ".pyc")
+        }
         assert files == {
             "devops_agent_cli.py", "version.json", "consent/record.py", "consent/notice.py", "consent/cli.py",
             "consent/accept.py", "consent/opt_out.py", "metric_emission/client.py", "metric_emission/agent_space.py",
+            "cli.py", "auth/__init__.py", "auth/aws_account.py", "auth/identity.py", "auth/pyproject.toml",
+            "auth/uv.lock", "auth/README.md", "sharing/__init__.py", "sharing/README.md", "sharing/policy.py",
+            "sharing/policy.json", "sharing/credentials.py", "sharing/worker.py", "sharing/ui.py",
+            "sharing/page.html", "sharing/page.js", "sharing/browser.py",
         }
 
 

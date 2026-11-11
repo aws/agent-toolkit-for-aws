@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AWS Startup Advisor sharing choices</title>
+  <style>
+    body { margin: 0; color: #192332; background: #f3f5f7; font: 16px/1.55 system-ui, sans-serif; }
+    main { max-width: 720px; margin: 48px auto; padding: 32px; background: white; border-radius: 12px; }
+    h1 { font-size: 28px; margin-top: 0; } h2 { font-size: 19px; }
+    .notice { white-space: pre-wrap; } label { display: block; margin: 24px 0 8px; }
+    input { box-sizing: border-box; width: 100%; padding: 12px; border: 1px solid #8b98a6; border-radius: 6px; font: inherit; }
+    .buttons { display: grid; gap: 12px; margin: 24px 0; }
+    button { padding: 14px; border: 1px solid #33445a; border-radius: 6px; background: white; color: #192332; font: inherit; cursor: pointer; }
+    button:first-child { background: #192f4a; color: white; } button:disabled { opacity: .5; cursor: default; }
+    button:focus-visible, input:focus-visible { outline: 3px solid #167ba8; outline-offset: 3px; }
+    #result { padding: 12px; background: #edf4f8; } .help { font-size: 14px; color: #435267; }
+    @media (max-width: 760px) { main { margin: 12px; padding: 24px; } }
+  </style>
+  <script src="/page.js" defer></script>
+</head>
+<body>
+<main>
+  <h1>Choose how you share usage data</h1>
+  <p>You can continue your work with any choice.</p>
+  <h2>Anonymous usage data</h2>
+  <p id="anonymous-notice" class="notice"></p>
+  <section id="account-section" hidden>
+    <h2>Reporting with your AWS account</h2>
+    <p id="account-notice" class="notice"></p>
+    <p id="selected-account"></p>
+    <label for="profile">AWS profile, optional</label>
+    <input id="profile" maxlength="128" autocomplete="off" placeholder="Leave blank to use your configured default credentials">
+    <p class="help">Choosing a different profile starts a new sharing choice for that account.</p>
+  </section>
+  <p id="account-unavailable" class="help">Account sharing is not available in this version.</p>
+  <div class="buttons">
+    <button id="account" disabled>Sign in and share</button>
+    <button id="anonymous" disabled>Share without signing in</button>
+    <button id="opt-out">Continue without sharing</button>
+  </div>
+  <p id="result" role="status" aria-live="polite">Loading your choices…</p>
+  <p id="sign-in-help" class="help" hidden>Sign in with your existing AWS tool, then choose Sign in and share again.
+    For an IAM Identity Center profile, use <code>aws sso login --profile &lt;your-profile&gt;</code>.
+    <a href="https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sso.html" target="_blank" rel="noopener noreferrer">AWS sign-in instructions</a>
+  </p>
+</main>
+</body>
+</html>

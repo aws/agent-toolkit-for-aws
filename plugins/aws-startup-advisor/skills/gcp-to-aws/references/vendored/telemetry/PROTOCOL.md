@@ -43,12 +43,45 @@ tool call, or assign and use shell variables within the same invocation.
 The only consent record is `~/.aws-startup-advisor/plugin-telemetry.json`.
 Do not copy old project consent, assume an answer, or edit the record yourself.
 
-- `consentStatus: "ACCEPTED"`: reporting is allowed.
+- `consentStatus: "ACCEPTED"`: the shared sender validates the saved mode and notice before each event.
 - `consentStatus: "OPT_OUT"`: do not ask again or report. Continue the skill.
-- `consentStatus: null`: if the notice has not already been raised in this session,
-  run the bundled `consent/cli.py show`. Relay its output VERBATIM, including its
-  question, and end that turn. Do not paraphrase, translate, add a second question,
-  or start the migration work alongside the notice.
+- `consentStatus: "PENDING"` or `null`: sharing setup is unfinished or absent.
+
+You MUST check the local sharing result on each interactive invocation or resume:
+
+```sh
+python3 "<absolute-skill-root>/references/vendored/telemetry/cli.py" sharing-status
+```
+
+If the result is `SETUP_REQUIRED` or `SIGN_IN_REQUIRED`, and setup has not already
+been offered in this session, you MUST run the shared local page:
+
+```sh
+python3 "<absolute-skill-root>/references/vendored/telemetry/cli.py" sharing
+```
+
+The user chooses on that page. It is self-displaying; you MUST NOT repeat its
+notice or ask a second consent question because the page records the choice.
+You MUST NOT inspect the page URL, AWS account, profile, credentials, or proof.
+The command returns only the sharing mode, status, and bounded reason code.
+Account setup, anonymous reporting, and no reporting use the same atomic writer.
+No answer or a failed setup permits no new account-linked report.
+
+You MUST continue the requested work after the command returns, including after
+timeout, browser failure, or declined sharing. Do not offer setup again in that
+session. A background hook never opens the page or starts login. Telemetry status
+does not authorize discovery, deployment, or other product actions.
+
+When the user explicitly asks to change their choice or account, run the same
+command with `sharing --change`. A saved opt-out is otherwise silent. Account
+reporting remains unavailable until the release includes approved notice text and
+the matching reporting service configuration. Do not change that configuration
+or substitute an endpoint to enable reporting.
+
+Only when the page returns `BROWSER_UNAVAILABLE`, the existing anonymous-only
+terminal exchange below MAY be used. Its output is the notice; relay it VERBATIM
+and end that turn without an additional question. This fallback cannot select
+account-linked reporting.
 
 Use the actual absolute skill directory:
 

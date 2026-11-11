@@ -27,6 +27,7 @@ cli.py             read-only host/consent status and explicit reconciliation
 PROTOCOL.md        CLI-host workflow using the existing notice exchange
 sync_bundles.py    generate/check standalone migration-skill bundles
 auth/             optional AWS account lookup and proof preparation (Python 3.10+)
+sharing/          local three-choice page, release policy, and bounded account worker
 ```
 
 Two directories, two jobs: `consent/` decides, `metric_emission/` sends. Every
@@ -97,10 +98,10 @@ caches are ignored.
 Python 3.8+ is the runtime requirement; unavailable Python or a denied tool call
 skips telemetry.
 
-The optional [AWS account helper](auth/README.md) uses a separate Python 3.10+
-SDK environment. It is bundled with migration skills but is not invoked by the
-existing anonymous hooks or CLI. Account-linked reporting requires its sharing
-adapter and a reporting API that validates the proposed proof contract.
+The [local sharing adapter](sharing/README.md) connects the optional
+[AWS account helper](auth/README.md) to the common hook/CLI sender. Account sharing
+is disabled in the shipped release configuration until its notice and verifier
+deployment are ready. Anonymous hooks and CLI remain independent of the SDK.
 
 CLI reporting runs at the documented state boundaries and on resume. It has no
 automatic session-end callback, so an interrupted boundary may remain unreported

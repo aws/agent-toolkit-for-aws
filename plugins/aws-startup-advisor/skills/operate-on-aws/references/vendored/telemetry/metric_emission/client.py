@@ -10,20 +10,21 @@
       "pluginTelemetryEvent": {...}   # the PluginTelemetryEvent union
     }
 
-The endpoint has no authorizer — the gateway stamps `auth: {type: NONE}` and an
-`AnyPrincipal` allow on `execute-api:Invoke` — so this needs no credentials, no
-SigV4 and no boto3, and has no third-party imports.
+Anonymous reporting uses the existing public ingress and needs no AWS SDK.
+Account reporting uses the separately installed T01 runtime and an approved
+endpoint, audience and notice configured in sharing/policy.json. It is disabled
+in the shipped configuration until those integration requirements are met.
 
-Fire and forget. `post_event` swallows everything and reports failure to nobody: a
-telemetry POST is not something the user asked for and must not be able to fail an
-operation they did ask for. Every status is treated the same way — a 403 or 400 is
-dropped exactly like a timeout, so nothing here depends on which the service sends.
-
-The consent gate is re-checked in `post_event`, so a new call site cannot emit by
-forgetting to ask.
+Every hook and CLI send validates the current sharing choice here. Account
+proofs stay on private worker pipes and account transport has a total deadline.
+Public results contain only reporting mode, status and a bounded reason.
+Failures never raise into migration work or downgrade account sharing to
+anonymous. Legacy anonymous HTTP status handling remains available to the
+migration snapshot's retry policy; unknown account outcomes are never retried.
 """
 
 import json
+import math
 import os
 import socket
 import sys
@@ -33,7 +34,7 @@ import urllib.request
 from pathlib import Path
 
 _TELEMETRY = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(_TELEMETRY / "consent"), str(_TELEMETRY / "metric_emission")]
+sys.path[:0] = [str(_TELEMETRY), str(_TELEMETRY / "consent"), str(_TELEMETRY / "metric_emission")]
 
 import record  # noqa: E402  (paths set above so this resolves in-plugin)
 
@@ -208,46 +209,174 @@ def build_payload(event, install_id, now_ms=None):
     }
 
 
-def post_event_status(event, install_id, url, timeout=TIMEOUT_SECONDS):
-    """POST one event and report the HTTP status; UNREACHABLE when no connection
-    could be made; None when nothing was sent or the outcome is unknown (a
-    timeout, a connection dropped mid-request); never raises.
+_PRIVATE_EVENT_FIELDS = frozenset({
+    "identity", "awsidentityproof", "expectedawsaccountid", "awsaccountid",
+    "accountid", "awsprofile", "profile", "credentials", "accesskeyid", "accesskey",
+    "awsaccesskeyid", "secretaccesskey", "secretkey", "awssecretaccesskey",
+    "sessiontoken", "awssessiontoken", "token", "authorization", "xamzsecuritytoken",
+})
+_BACKEND_ERRORS = frozenset({
+    "INVALID_PROOF", "ACCOUNT_MISMATCH", "REPORTING_NOT_ALLOWED",
+    "VERIFICATION_UNAVAILABLE", "PROOF_REPLAY", "INVALID_REQUEST",
+    "PUBLICATION_UNCERTAIN",
+})
 
-    `install_id` and `url` are passed in so a caller that has already read and
-    validated the record is not making this re-derive it. The status lets a
-    caller tell a refusal it may retry (403, 429, 5xx) from one it may not (400).
 
-    Everything is inside the try, not just the request: a malformed URL, an
-    unserializable event or an unreadable manifest must fail the same silent way
-    an unreachable network does.
-    """
+def _event_has_private_fields(value):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            normalized = str(key).lower().replace("_", "").replace("-", "")
+            if normalized in _PRIVATE_EVENT_FIELDS or _event_has_private_fields(child):
+                return True
+    elif isinstance(value, (list, tuple)):
+        return any(_event_has_private_fields(child) for child in value)
+    return False
+
+
+def _result(status, reason=None, mode=None):
+    result = {"status": status}
+    if reason:
+        result["reasonCode"] = reason
+    if mode:
+        result["reportingMode"] = mode
+    return result
+
+
+def _mark_recovery(selected, result, deadline):
+    # Other submissions may still hold shared locks. Wait within this send's
+    # remaining budget, but never replace a known error with an unknown outcome
+    # just because its local recovery marker could not be saved.
     try:
-        if not record.is_accepted():
-            return None
+        record.mark_recovery(
+            selected, result["status"], result["reasonCode"],
+            timeout=max(0, deadline - time.monotonic()),
+        )
+    except OSError:
+        pass
 
+
+def _send_event(event, url=None, timeout=TIMEOUT_SECONDS, selected_install_id=None):
+    """The sole send path, with private transport status kept out of CLI results."""
+    mode = None
+    selected = None
+    attempted = False
+    try:
+        if type(timeout) not in (int, float) or not math.isfinite(timeout) or timeout <= 0:
+            return _result("SKIPPED", "DEADLINE_EXCEEDED"), UNREACHABLE
+        deadline = time.monotonic() + max(0, timeout)
+        selected = record.read_state()
+        if not selected:
+            return _result("SKIPPED", "CHOICE_REQUIRED"), UNREACHABLE
+        mode = record.sharing_mode(selected)
+        if selected.get("consentStatus") != record.ACCEPTED:
+            reason = "OPT_OUT" if selected.get("consentStatus") == record.OPT_OUT else "SETUP_PENDING"
+            return _result("SKIPPED", reason, mode), UNREACHABLE
+        if selected.get("recoveryStatus"):
+            return _result(selected["recoveryStatus"], selected["recoveryReason"], mode), UNREACHABLE
+        install_id = record.normalize_install_id(selected.get("installId"))
+        if (selected_install_id is not None
+                and record.normalize_install_id(selected_install_id) != install_id):
+            return _result("SKIPPED", "CHOICE_CHANGED", mode), UNREACHABLE
+        if _event_has_private_fields(event):
+            return _result("ERROR", "PAYLOAD_INVALID", mode), None
         payload = build_payload(event, install_id)
         if payload is None:
-            return None
+            return _result("ERROR", "PLUGIN_VERSION_UNAVAILABLE", mode), None
+        if mode == "AWS_ACCOUNT":
+            from sharing import credentials, policy
 
-        request = urllib.request.Request(
-            url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json", "User-Agent": USER_AGENT},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
-                return response.status
-        except urllib.error.HTTPError as error:
-            return error.code
-        except urllib.error.URLError as error:
-            # Raised before any response: the connection was never made, unless
-            # the reason is a timeout, which may have struck after the send.
-            if isinstance(error.reason, (socket.timeout, TimeoutError)):
-                return None
-            return UNREACHABLE
+            configured = policy.account_policy()
+            if configured is None:
+                return _result("SKIPPED", "ACCOUNT_REPORTING_DISABLED", mode), UNREACHABLE
+            if selected.get("noticeVersion") != configured["noticeVersion"]:
+                return _result("SETUP_REQUIRED", "NOTICE_RENEWAL_REQUIRED", mode), UNREACHABLE
+            # Existing hook callers supply the old default URL. The approved
+            # account endpoint takes its place. An override never changes the
+            # signed proof's destination or audience.
+            overridden = os.environ.get(ENDPOINT_ENV, "").strip()
+            if ((overridden and overridden != configured["endpoint"])
+                    or (url and url not in (DEFAULT_ENDPOINT, configured["endpoint"]))):
+                return _result("ERROR", "ENDPOINT_NOT_ALLOWED", mode), UNREACHABLE
+            url = configured["endpoint"]
+            payload.update({
+                "reportingMode": "AWS_ACCOUNT",
+                "expectedAwsAccountId": selected["expectedAwsAccountId"],
+                "noticeVersion": selected["noticeVersion"],
+            })
+            prepared = credentials.prepare_report(payload, selected, configured, deadline - time.monotonic())
+            if prepared.get("status") != "READY":
+                result = _result(prepared["status"], prepared["reasonCode"], mode)
+                if prepared["status"] in ("SIGN_IN_REQUIRED", "SETUP_REQUIRED"):
+                    _mark_recovery(selected, result, deadline)
+                return result, UNREACHABLE
+            body = prepared["requestBody"]
+        elif mode == "ANONYMOUS":
+            if selected.get("noticeVersion", 1) > record.notice.NOTICE_VERSION:
+                return _result("SETUP_REQUIRED", "NOTICE_RENEWAL_REQUIRED", mode), UNREACHABLE
+            body = json.dumps(payload, allow_nan=False).encode("utf-8")
+            url = url or endpoint()
+        else:
+            return _result("SKIPPED", "CHOICE_REQUIRED"), UNREACHABLE
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return _result("SKIPPED", "DEADLINE_EXCEEDED", mode), UNREACHABLE
+        # Shared senders can submit a whole batch concurrently. Preference
+        # writers stay excluded through the final comparison and HTTP call.
+        # Signing remains outside the lock so setup and opt-out can proceed.
+        with record.state_guard(timeout=min(0.25, remaining), shared=True):
+            if record.read_state() != selected:
+                return _result("SKIPPED", "CHOICE_CHANGED", mode), UNREACHABLE
+            if mode == "AWS_ACCOUNT" and policy.account_policy() != configured:
+                return _result("SKIPPED", "ACCOUNT_POLICY_CHANGED", mode), UNREACHABLE
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return _result("SKIPPED", "DEADLINE_EXCEEDED", mode), UNREACHABLE
+            attempted = True
+            if mode == "AWS_ACCOUNT":
+                transport = credentials.send_report(body, url, timeout=remaining)
+                if transport.get("status") == "SENT":
+                    return _result("SENT", mode=mode), transport["httpStatus"]
+                result = _result(transport["status"], transport["reasonCode"], mode)
+            else:
+                request = urllib.request.Request(
+                    url, data=body,
+                    headers={"Content-Type": "application/json", "User-Agent": USER_AGENT},
+                    method="POST",
+                )
+                try:
+                    with urllib.request.urlopen(request, timeout=remaining) as response:
+                        status = response.status
+                        if 200 <= status < 300:
+                            return _result("SENT", mode=mode), status
+                        return _result("ERROR", "HTTP_REJECTED", mode), status
+                except urllib.error.HTTPError as error:
+                    return _result("ERROR", "HTTP_REJECTED", mode), error.code
+                except urllib.error.URLError as error:
+                    if isinstance(error.reason, (socket.timeout, TimeoutError)):
+                        return _result("ERROR", "PUBLICATION_UNKNOWN", mode), None
+                    return _result("ERROR", "NETWORK_UNAVAILABLE", mode), UNREACHABLE
+        if result["status"] == "SETUP_REQUIRED":
+            _mark_recovery(selected, result, deadline)
+        # Account backend failures do not flow through the legacy HTTP retry
+        # rules. Unknown publication outcomes and rejected proofs are dropped.
+        return result, None
+    except OSError:
+        return _result("ERROR", "PUBLICATION_UNKNOWN" if attempted else "CHOICE_BUSY", mode), None if attempted else UNREACHABLE
     except BaseException:
+        return _result("ERROR", "PUBLICATION_UNKNOWN" if attempted else "INTERNAL_ERROR", mode), None
+
+
+def send_event_result(event, url=None, timeout=TIMEOUT_SECONDS):
+    """Shared hook/CLI result containing no account, profile, credential or proof."""
+    return _send_event(event, url=url, timeout=timeout)[0]
+
+
+def post_event_status(event, install_id, url, timeout=TIMEOUT_SECONDS):
+    """Legacy migration status adapter around the shared consent-aware sender."""
+    if not install_id:
         return None
+    return _send_event(event, url, timeout, selected_install_id=install_id)[1]
 
 
 def post_event(event, install_id, url):
@@ -258,10 +387,7 @@ def post_event(event, install_id, url):
 
 def send_event(event):
     """POST one event, reading the install ID and endpoint for the caller."""
-    # .get: an opted-out record is valid without an installId, and post_event
-    # re-checks consent anyway, so None here simply means nothing is sent.
-    state = record.read_state() or {}
-    return post_event(event, state.get("installId"), endpoint())
+    return send_event_result(event)["status"] == "SENT"
 
 
 def emit_skill_invocation_metric(install_id, skill_id, url):

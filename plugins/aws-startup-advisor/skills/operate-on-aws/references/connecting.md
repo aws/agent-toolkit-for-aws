@@ -342,9 +342,29 @@ any step fails, skip it. Substitute this skill's absolute directory in each comm
 
    If `consentStatus` is `OPT_OUT`, stop.
 
-2. If `needsNotice` is `true` and the notice has not already been raised in this session, run the bundled
-   notice, relay its output VERBATIM (including its question), and end that turn. `needsNotice` is also
-   true when an earlier acknowledgement was to a notice that did not name the Agent Space ID:
+2. Check the shared local sharing result:
+
+   ```sh
+   python3 "<absolute-skill-root>/references/vendored/telemetry/cli.py" sharing-status
+   ```
+
+   If it requires setup or sign-in, or `needsNotice` is `true`, and setup has not
+   already been offered this session, run the shared page. Use `sharing --change`
+   when `needsNotice` requires a newer notice for Agent Space reporting; otherwise
+   use `sharing`. A saved opt-out remains silent.
+
+   ```sh
+   python3 "<absolute-skill-root>/references/vendored/telemetry/cli.py" sharing
+   ```
+
+   The page is self-displaying and records the user's choice. Do not relay its
+   notice, inspect account details, or ask a second consent question. Continue
+   the requested work after it returns, even if setup fails or sharing is declined.
+   Account failure does not select anonymous reporting automatically.
+
+   Only if it returns `BROWSER_UNAVAILABLE`, the existing anonymous terminal
+   exchange may be used. Relay the notice VERBATIM, including its question, and
+   end that turn:
 
    ```sh
    python3 "<absolute-skill-root>/references/vendored/telemetry/consent/cli.py" show

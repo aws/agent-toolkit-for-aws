@@ -207,13 +207,14 @@ class TestReadState:
 
 
 class TestWriteState:
-    def test_schema_has_exactly_three_keys(self, home):
+    def test_accept_schema_records_explicit_anonymous_mode(self, home):
         record.write_state(record.ACCEPTED)
         written = json.loads(record.state_path().read_text())
-        assert set(written) == {"installId", "consentStatus", "noticeVersion"}
+        assert set(written) == {"installId", "consentStatus", "noticeVersion", "identityMode"}
+        assert written["identityMode"] == record.ANONYMOUS
         assert written["noticeVersion"] == notice.NOTICE_VERSION
 
-    @pytest.mark.parametrize("stored, covers", [(None, 1), (1, 1), (2, 2), ("2", 1), (True, 1), (0, 1)])
+    @pytest.mark.parametrize("stored, covers", [(None, 0), (1, 1), (2, 2), ("2", 0), (True, 0), (0, 0)])
     def test_an_accepted_record_covers_the_notice_it_answered(self, home, stored, covers):
         written = record.write_state(record.ACCEPTED)
         if stored is None:
@@ -222,6 +223,7 @@ class TestWriteState:
             written["noticeVersion"] = stored
         record.state_path().write_text(json.dumps(written))
         assert record.accepted_notice_version() == covers
+        assert record.is_accepted() is bool(covers)
 
     def test_nothing_accepted_covers_no_notice(self, home):
         assert record.accepted_notice_version() == 0
