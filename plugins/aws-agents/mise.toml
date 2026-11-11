@@ -1,0 +1,11 @@
+[tasks.ci]
+description = "Run aws-agents CI checks"
+depends = ["test:payment-scripts"]
+
+[tasks."test:payment-scripts"]
+description = "Run payment skill script tests"
+run = """
+uv run --no-project --with pytest python -m pytest \
+  skills/agents-build/scripts/test_setup_payment_user.py \
+  skills/agents-pay/scripts/test_resource_resolution.py
+"""
