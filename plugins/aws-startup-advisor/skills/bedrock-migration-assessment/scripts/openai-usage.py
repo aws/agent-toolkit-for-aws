@@ -105,6 +105,9 @@ def cmd_probe(args) -> int:
         delete_key(args.key_file)
         print("KEY_REJECTED")
         return 2
+    except BaseException:
+        delete_key(args.key_file)
+        raise
     spend: dict[str, float] = {}
     for bucket in buckets:
         for result in bucket.get("results", bucket.get("result", [])):
@@ -131,6 +134,13 @@ def cmd_capture(args) -> int:
     key = read_key(args.key_file)
     if not args.project:
         raise SystemExit("at least one --project is required; never capture the whole organization by default")
+    try:
+        return _capture(args, key)
+    finally:
+        delete_key(args.key_file)
+
+
+def _capture(args, key: str) -> int:
     args.out_dir.mkdir(parents=True, exist_ok=True)
     for stale in [f for _, _, f in DAILY_ROWS + [MINUTE_ROW]] + ["manifest.json"]:
         (args.out_dir / stale).unlink(missing_ok=True)
@@ -174,7 +184,6 @@ def cmd_capture(args) -> int:
     manifest = {"captured_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "window_days": args.days,
                 "window_start": start, "project_filter": args.project, "result": result, "captures": captures}
     (args.out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    delete_key(args.key_file)
     return status
 
 

@@ -1089,6 +1089,25 @@ resource "aws_iam_role" "ecs_task" {
     Name = "${var.project_name}-${var.environment}-ecs-task"
   }
 }
+
+# ECS Exec (the `heroku run bash` equivalent) opens an SSM channel from the task.
+resource "aws_iam_role_policy" "ecs_task_exec" {
+  name = "${var.project_name}-${var.environment}-ecs-exec"
+  role = aws_iam_role.ecs_task.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "ssmmessages:CreateControlChannel",
+        "ssmmessages:CreateDataChannel",
+        "ssmmessages:OpenControlChannel",
+        "ssmmessages:OpenDataChannel"
+      ]
+      Resource = "*"
+    }]
+  })
+}
 ```
 
 ---
@@ -1292,6 +1311,10 @@ resource "aws_ecs_service" "<app_sanitized>_<process_type>" {
   name            = "${var.project_name}-${var.environment}-<process_type>"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.<app_sanitized>_<process_type>.arn
+  # ECS Exec is the `heroku run bash` equivalent (MIGRATION_GUIDE.md § Day-to-day commands).
+  # It needs the ssmmessages permissions that aws_iam_role_policy.ecs_task_exec grants
+  # the task role in security.tf (Step 5).
+  enable_execute_command = true
   # 0 while var.writers_quiesced is true, so a later apply (DNS rollback, a repair)
   # cannot restart tasks that Phase 6 scaled to zero. Set the variable back to false
   # only at the next intentional handoff.
@@ -1567,6 +1590,27 @@ resource "aws_elastic_beanstalk_environment" "<app_name>_<process_type>" {
     value     = var.eb_deployment_policy
   }
 
+  # Stream instance logs to CloudWatch Logs so `aws logs tail` works (the
+  # `heroku logs --tail` equivalent in MIGRATION_GUIDE.md § Day-to-day commands).
+  # The Docker application log lands in
+  # /aws/elasticbeanstalk/<environment>/var/log/eb-docker/containers/eb-current-app/stdouterr.log
+  setting {
+    namespace = "aws:elasticbeanstalk:cloudwatch:logs"
+    name      = "StreamLogs"
+    value     = "true"
+  }
+
+  # RetentionInDays accepts only 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400,
+  # 545, 731, 1827, 3653. Clarify Q13 allows any integer 1–3653 (including a reused
+  # preferences.json), so the generator emits the smallest accepted value that is
+  # >= operational.log_retention_days (2 → 3, 45 → 60, 30 → 30; default 30). Never copy
+  # the raw preference: an unlisted value fails environment creation/update.
+  setting {
+    namespace = "aws:elasticbeanstalk:cloudwatch:logs"
+    name      = "RetentionInDays"
+    value     = "<smallest EB-accepted RetentionInDays >= preferences.json.operational.log_retention_days || 30>"
+  }
+
   # {{IF process_type == "web"}}
   # The one listen port for this web app. Heroku injected PORT; a pack-built (CNB)
   # image does not, so this property is how the process learns it. The CNB deploy
@@ -1620,6 +1664,33 @@ resource "aws_iam_role_policy_attachment" "eb_web_tier_<app_name>" {
 resource "aws_iam_role_policy_attachment" "eb_ecr_pull_<app_name>" {
   role       = aws_iam_role.eb_instance_<app_name>.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+# Session Manager access for `aws ssm start-session` (the `heroku run bash` equivalent in
+# MIGRATION_GUIDE.md § Day-to-day commands). The environment has no EC2 key pair and no
+# :22 ingress, so `eb ssh` cannot reach an instance; AWSElasticBeanstalkWebTier grants no
+# ssm:*/ssmmessages:* either. The SSM agent is preinstalled on the AL2023 Docker platform.
+# Do NOT attach the AmazonSSMManagedInstanceCore managed policy here: it also allows
+# ssm:GetParameter(s) on Resource "*", which would widen the parameter-read boundary that
+# eb_read_secrets_<app_name> keeps under parameter/<project>/*. This inline policy carries
+# only the actions the agent needs to register and open a session channel.
+resource "aws_iam_role_policy" "eb_ssm_<app_name>" {
+  name = "${var.project_name}-eb-session-manager"
+  role = aws_iam_role.eb_instance_<app_name>.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "ssm:UpdateInstanceInformation",
+        "ssmmessages:CreateControlChannel",
+        "ssmmessages:CreateDataChannel",
+        "ssmmessages:OpenControlChannel",
+        "ssmmessages:OpenDataChannel"
+      ]
+      Resource = "*"
+    }]
+  })
 }
 
 resource "aws_iam_role_policy" "eb_read_secrets_<app_name>" {
