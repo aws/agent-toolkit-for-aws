@@ -1786,6 +1786,30 @@ resource "aws_db_instance" "<app_sanitized>_postgres" {
   }
 }
 
+# {{IF aws_config.read_replicas > 0}}
+# Read replicas — one per Heroku follower collapsed onto this database (Design 2B-F).
+# A Multi-AZ standby cannot serve reads; these can. Same class as the primary.
+resource "aws_db_instance" "<app_sanitized>_postgres_replica" {
+  count               = <aws_config.read_replicas>
+  identifier          = "${var.project_name}-${var.environment}-postgres-replica-${count.index + 1}"
+  replicate_source_db = aws_db_instance.<app_sanitized>_postgres.identifier
+  instance_class      = "<aws_config.instance_class>"
+  storage_encrypted   = true
+  publicly_accessible = false
+  vpc_security_group_ids = [aws_security_group.database.id]
+  skip_final_snapshot    = true
+  tags = {
+    Name      = "${var.project_name}-${var.environment}-postgres-replica-${count.index + 1}"
+    HerokuApp = "<heroku_app>"
+    Role      = "read-replica"
+  }
+}
+
+output "postgres_replica_endpoints_<app_sanitized>" {
+  value = aws_db_instance.<app_sanitized>_postgres_replica[*].endpoint
+}
+# {{ENDIF}}
+
 resource "aws_db_parameter_group" "<app_sanitized>_postgres" {
   name   = "${var.project_name}-${var.environment}-postgres-params"
   family = "postgres<major_version>"
@@ -1904,7 +1928,9 @@ resource "aws_rds_cluster_parameter_group" "<app_sanitized>_aurora" {
 # {{ENDIF}}
 
 resource "aws_rds_cluster_instance" "<app_sanitized>_aurora" {
-  count              = 2
+  # writer + readers. One reader always; each additional Heroku follower collapsed onto this
+  # database (aws_config.read_replicas, Design 2B-F) adds a reader.
+  count              = <1 + max(1, aws_config.read_replicas)>
   identifier         = "${var.project_name}-${var.environment}-aurora-${count.index + 1}"
   cluster_identifier = aws_rds_cluster.<app_sanitized>_aurora.id
   instance_class     = "<aws_config.instance_class>"

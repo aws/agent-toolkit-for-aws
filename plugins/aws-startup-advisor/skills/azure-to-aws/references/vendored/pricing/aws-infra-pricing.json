@@ -24,10 +24,7 @@
     "per_vcpu_hour_arm64": 0.03238,
     "per_gb_mem_hour_arm64": 0.003556
   },
-  "alb": {
-    "monthly_fixed": 16.43,
-    "per_lcu_hour": 0.008
-  },
+  "alb": {"monthly_fixed": 16.43, "per_lcu_hour": 0.008},
   "nlb": {
     "monthly_fixed": 16.43,
     "per_lcu_hour": 0.006,
@@ -85,9 +82,10 @@
       "db.r6g.2xlarge": 1.038,
       "db.r6g.4xlarge": 2.076,
       "db.r6g.8xlarge": 4.153,
-      "db.r6g.16xlarge": 8.306
+      "db.r6g.16xlarge": 8.306,
+      "db.x2g.16xlarge": 12.064
     },
-    "_instances_note": "Re-verified via the AWS Pricing MCP server on 2026-10-05 (AmazonRDS, databaseEngine=Aurora PostgreSQL, deploymentOption=Single-AZ, non-IO-optimized). r6g.xlarge/2xlarge/4xlarge/8xlarge/16xlarge moved down ~6% from the previous extrapolated values; db.t4g.* and db.r6g.large were unchanged.",
+    "_instances_note": "Re-verified via the AWS Pricing MCP server on 2026-10-05 (AmazonRDS, databaseEngine=Aurora PostgreSQL, deploymentOption=Single-AZ, non-IO-optimized). r6g.xlarge/2xlarge/4xlarge/8xlarge/16xlarge moved down ~6% from the previous extrapolated values; db.t4g.* and db.r6g.large were unchanged. db.x2g.16xlarge (1,024 GiB) added 2026-11-10 from the AWS Pricing MCP server (AmazonRDS, databaseEngine=Aurora PostgreSQL, deploymentOption=Single-AZ, standard not IO-optimized, us-east-1): $12.064/hr.",
     "storage_per_gb_month": 0.1,
     "io_per_million": 0.2
   },
@@ -162,23 +160,15 @@
     },
     "pod_cost": 0
   },
-  "nat_gateway": {
-    "monthly_fixed": 32.85,
-    "per_gb_processed": 0.045
-  },
+  "nat_gateway": {"monthly_fixed": 32.85, "per_gb_processed": 0.045},
   "ebs": {
     "_comment": "EBS volume pricing (us-east-1). Used to price EC2-backed compute root volumes (Elastic Beanstalk instances, EKS nodes) so EB estimates need no known-omission caveat.",
     "gp3_per_gb_month": 0.08,
     "eb_root_volume_gb_default": 8,
     "_default_note": "eb_root_volume_gb_default is the AL2023 EB default root size; use aws_config.root_volume_gb when the design specifies one."
   },
-  "rds_proxy": {
-    "per_vcpu_hour": 0.015
-  },
-  "route53": {
-    "hosted_zone_monthly": 0.5,
-    "per_million_queries": 0.4
-  },
+  "rds_proxy": {"per_vcpu_hour": 0.015},
+  "route53": {"hosted_zone_monthly": 0.5, "per_million_queries": 0.4},
   "sqs": {
     "standard_per_million_requests": 0.4,
     "fifo_per_million_requests": 0.5,
@@ -207,12 +197,8 @@
       "monthly_baseline_est": 1,
       "_basis": "assumes ~1M cron-scale events/mo @ per_million_events"
     },
-    "amazon_mq": {
-      "instance_monthly_est": 130
-    },
-    "opensearch": {
-      "instance_monthly_est": 100
-    },
+    "amazon_mq": {"instance_monthly_est": 130},
+    "opensearch": {"instance_monthly_est": 100},
     "cloudfront": {
       "per_gb_first_10tb": 0.085,
       "monthly_baseline_est": 10,

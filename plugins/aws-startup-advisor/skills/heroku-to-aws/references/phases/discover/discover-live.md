@@ -114,9 +114,12 @@ text, keep the plan-only entry and record a warning):
   Also set `pg_role`: `"follower"` when a `Following:` line is present, `"fork"`
   when a `Forked From:` line is present, otherwise `"leader"`; copy the referenced
   attachment name (e.g. `HEROKU_POSTGRESQL_TEAL`) into `pg_leader` (or `null` for a
-  leader). One app commonly owns a leader plus one or more followers — without
-  `pg_role` the Design phase sizes every one of them as a separate database and the
-  data-volume total double-counts. (Advanced-tier add-ons carry the same information
+  leader). Also record `pg_attachment_names`: the attachment names in the block's
+  `=== ...` header with the `_URL` suffix removed (e.g. `=== DATABASE_URL, HEROKU_POSTGRESQL_TEAL_URL`
+  → `["DATABASE", "HEROKU_POSTGRESQL_TEAL"]`); Design matches a follower's `pg_leader`
+  against its siblings' `pg_attachment_names` to find the leader. One app commonly owns a
+  leader plus one or more followers — without `pg_role` the Design phase sizes every one
+  of them as a separate database and the data-volume total double-counts. (Advanced-tier add-ons carry the same information
   in `advanced_pools[]`; `pg_role` there is `"leader"` for the add-on itself.)
 - `redis-<app>.out` → `redis_version`, `maxmemory_policy`; set `ha_enabled: true`
   when the plan tier starts with `premium` or `private`, and

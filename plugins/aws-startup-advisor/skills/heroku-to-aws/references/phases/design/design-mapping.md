@@ -258,10 +258,14 @@ Continue with the next resource after the Fargate entry is appended. This guard 
 **Mapping logic:**
 
 1. Extract `config.plan`, `config.connection_pooling`, and (when live discovery ran) `config.pg_role` from the resource.
-   - **Follower collapse.** If `config.pg_role == "follower"`: do NOT design a separate database. A Heroku follower is a read replica of a leader on the same app; on AWS that role is served by the leader's Aurora reader or RDS Multi-AZ standby / read replica. Add to `warnings[]`:
-     > "`{resource_id}` is a Heroku follower of `{config.pg_leader}` — no separate RDS/Aurora instance designed; read traffic is served by the leader's reader/replica. Its `data_size_gb` duplicates the leader's and is excluded from data-volume totals."
-
-   - Then record `{ "resource_id", "leader": config.pg_leader, "plan": config.plan }` in `metadata.postgres_followers_collapsed[]` and continue to the next resource.
+   - **Follower: defer to the end of Step 2.** If `config.pg_role == "follower"`: do NOT design a
+     separate database now. Push `{ "resource_id", "heroku_app", "leader": config.pg_leader, "plan": config.plan, "data_size_gb" }`
+     onto a `pending_followers[]` working list and continue to the next resource. Followers
+     are resolved in **2B-F** (below, after every leader has been mapped), because a follower's
+     read capacity must land on a leader that actually exists in `services[]`. Its
+     `data_size_gb` duplicates the leader's and is excluded from data-volume totals regardless
+     of how 2B-F resolves it — unique-data accounting and replica capacity are separate
+     questions.
    - **Fork.** If `config.pg_role == "fork"`: a fork is an independent point-in-time copy that may have diverged. Design it as a normal database (continue below) but add to `warnings[]`:
      > "`{resource_id}` is a Heroku fork of `{config.pg_leader}`. Confirm with the customer whether it is still needed on AWS; forks are often stale experiment or reporting copies and inflate the data-volume total."
    - **No `pg_role`** (Terraform-only discovery): apply no collapse — Terraform cannot express follow relationships. If one app owns more than one `heroku-postgresql` add-on, add one warning per app: "App `{heroku_app}` owns {n} Heroku Postgres add-ons; live discovery was not available to tell leaders from followers, so each is designed as a separate database."
@@ -309,12 +313,42 @@ Continue with the next resource after the Fargate entry is appended. This guard 
        "multi_az": <true|false>,
        "storage_gb": <from table, numeric>,
        "engine_version": "15",
-       "rds_proxy": <true|false>
+       "rds_proxy": <true|false>,
+       "read_replicas": 0
      }
    }
    ```
 
+   `read_replicas` is finalized by 2B-F; it counts Heroku followers served by this
+   database and drives the generated replica / reader instances and their cost.
+
 10. Append to `services[]`. Increment `metadata.total_services`.
+
+#### 2B-F: Resolve followers (run once, after the Step 2 pass over all resources)
+
+An RDS Multi-AZ standby cannot serve reads, and the Estimate prices only what is in
+`services[]`, so a follower must become either generated, priced read capacity on its
+leader or an explicit deferral. Never a warning alone. For each entry in `pending_followers[]`:
+
+1. **Find the leader.** The leader is the `heroku-postgresql` add-on on the same
+   `heroku_app` whose `config.pg_attachment_names[]` contains `leader` (the attachment name
+   from the follower's `Following:` line, e.g. `HEROKU_POSTGRESQL_TEAL`). Exactly one match
+   is required.
+2. **Leader mapped** (a `services[]` entry exists with `source_resource_id` equal to the
+   leader's `resource_id`): increment that entry's `aws_config.read_replicas` (default `0`).
+   Record `{ "resource_id", "leader_resource_id", "plan", "served_by": "rds_read_replica" | "aurora_reader" }`
+   in `metadata.postgres_followers_collapsed[]` and add to `warnings[]`:
+   > "`{resource_id}` (Heroku follower of `{leader}`) is served by {`an RDS read replica of` | `the Aurora reader of`} `{leader_resource_id}` — generated in `rds.tf` and priced in the Estimate. No separate database."
+   Generate emits one `aws_db_instance` read replica per `read_replicas` on RDS, and
+   `1 + max(1, read_replicas)` cluster instances on Aurora (the cluster always has one reader;
+   extra followers add readers). The Estimate prices those instances.
+3. **Leader not mapped** (not found on the app, ambiguous, or the leader itself went to the
+   Specialist Gate): add a Specialist Gate entry (Step 2F format) with
+   `reason: "Follower of unresolved leader {leader} — read capacity not designed"` and a
+   warning naming the follower and leader. Do not attach the follower to any other database.
+4. Never add a follower to `services[]` on its own. Set `aws_config.read_replicas: 0`
+   explicitly on every Postgres entry that gained none, so Generate and the Estimate read a
+   number, not an absence.
 
 ---
 
@@ -483,7 +517,9 @@ Continue with the next resource after the Fargate entry is appended. This guard 
    - `scout` → `scout apm`
    - `newrelic` or `new-relic` → `new relic`
    - `heroku scheduler` → `scheduler`
-   - `heroku-connect` or `heroku connect` → `herokuconnect`
+   - `connect` → `herokuconnect` (this is what `heroku-connect` becomes after the `heroku-` prefix is stripped — aliases are applied AFTER stripping, so the alias key is the stripped form)
+   - `heroku connect` → `herokuconnect` (display-name path; a space, not a hyphen, so no prefix strip applies)
+   - `herokuconnect` matches its row directly
    - `jawsdb-maria` → `jawsdb maria`
 
    \*\* The Heroku CLI (`heroku addons --json`) reports Heroku Scheduler under the slug `scheduler` — there is no `heroku-` prefix to strip — so the fast-path row is keyed `scheduler`; the display name 'Heroku Scheduler' reaches the same row through the alias above. A run that defers `scheduler` as "Not found in Fast_Path_Table" is a normalization bug, not a missing mapping.
@@ -498,6 +534,7 @@ Continue with the next resource after the Fargate entry is appended. This guard 
    - "New Relic APM" does NOT match "New Relic"
 
 4. **If matched — Single mapping** (Mapping Type = "Single"):
+   - Exception: when the matched row is `rediscloud`, skip this generic entry and apply **Step 4b** (after this list) instead.
 
    Produce one service entry:
 
@@ -543,6 +580,28 @@ Continue with the next resource after the Fargate entry is appended. This guard 
    Route to **Specialist Gate** (Step 2F).
 
 7. Append matched entries to `services[]`. Increment `metadata.total_services`.
+
+**Step 4b — Redis Cloud (`rediscloud` row): a full cache entry, not a generic one.** The
+`rediscloud` row's `aws_services` is `ElastiCache Redis`, but a generic step-4 entry has no
+node type, engine, HA or encryption, and the Estimate and Generate both need them. When
+the matched row is `rediscloud`:
+
+- Parse the plan's memory: the Redis Cloud plan name on Heroku is its size in MB (`30`,
+  `100`, `250`, `500`, `1000`, `2500`, `5000`, …; strip any `mb` suffix). No parseable
+  integer → Specialist Gate (Step 2F) with reason `"Unrecognized rediscloud plan: {plan}"`.
+- Look up `redis-elasticache-sizing.json` (loaded for this case by the phase's
+  `_knowledge` `_when`) **by memory**: take the first row, in table order, whose
+  `memory_limit` is ≥ the plan's MB. Plan larger than every row → Specialist Gate with
+  reason `"rediscloud plan {plan} exceeds the sizing table"`.
+- Produce exactly the 2C step 8 entry shape with `service_id: "elasticache:{heroku_app}:rediscloud"`,
+  `aws_service` per the engine, `aws_config`: `engine: "valkey"`, `node_type` from the
+  chosen row, `multi_az` / `automatic_failover` from `preferences.data.redis_ha` (Redis
+  Cloud plans do not expose HA in the plan name — do not infer it), `transit_encryption:
+  true`, `engine_version` per the 2C engine-aware rule from a `7.0` source.
+- Add a warning: "`{heroku_app}` Redis Cloud `{plan}` sized by plan memory ({MB} MB →
+  {node_type}); confirm actual memory use with the customer."
+
+Skip step 4's generic entry for this row.
 
 ---
 
