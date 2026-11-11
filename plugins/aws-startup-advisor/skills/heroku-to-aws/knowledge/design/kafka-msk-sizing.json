@@ -7,7 +7,7 @@
     "_floor": "never fewer than 2 brokers or 2 AZs",
     "standard|extended|private|shield": { "broker_count": 3, "availability_zones": 3 }
   },
-  "_topology_preservation": "max_topics from config.topics else row; max_partitions from config.partitions else row; replication_factor from config.replication_factor else default (3 for standard/extended/private, 2 for basic)",
+  "_topology_preservation": "max_topics from config.topics else row; max_partitions from config.partitions else row; replication_factor from config.replication_factor else default (3 for standard/extended/private/shield, 2 for basic)",
   "rows": {
     "basic-0": {
       "tier": "basic",

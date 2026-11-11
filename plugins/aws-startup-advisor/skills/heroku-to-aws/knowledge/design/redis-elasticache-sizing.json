@@ -1,5 +1,5 @@
 {
-  "_comment": "Heroku Redis plan -> ElastiCache sizing. DIRECT LOOKUP: read node_type column. memory_limit is PROVENANCE ONLY (encodes meets-or-exceeds) — do not recompute node_type from it.",
+  "_comment": "Heroku Redis plan -> ElastiCache sizing. DIRECT LOOKUP: read node_type column. memory_limit is PROVENANCE ONLY (encodes meets-or-exceeds) — do not recompute node_type from it. Documented exception: design-mapping.md 2E step 4b sizes a third-party `rediscloud` plan (no Heroku plan row) by taking the first row whose memory_limit >= the plan's MB.",
   "_match": "exact, case-insensitive, on addon config.plan",
   "_on_not_found": "defer to specialist gate; append warning 'Unrecognized heroku-redis plan tier: {plan}. Cannot determine ElastiCache node type. Deferring to specialist engagement.'; continue",
   "_ha": "if row ha == true OR config.ha_enabled == true -> multi_az: true, automatic_failover: true; else both false",
@@ -117,6 +117,6 @@
     }
   },
   "_shield_note": "shield-* plans are the Shield Space equivalents of private-*; map identically but note the compliance requirement",
-  "_plan_memory_note": "memory_limit values are the plan sizes Heroku publishes today (elements.heroku.com/addons/heroku-redis) and match references/shared/heroku-pricing-cache.md. Earlier versions of this table carried ~10x larger values for premium-5..14 and private-3..7 (e.g. private-7 as 100 GB; it is 7 GB), which over-sized ElastiCache by two to three instance classes. premium-4/6/8/11/13 and private-1/2/4/6 are legacy plan numbers no longer sold; kept for older accounts.",
+  "_plan_memory_note": "memory_limit values are the plan sizes Heroku publishes today (elements.heroku.com/addons/heroku-redis) and match references/shared/heroku-pricing-cache.md. premium-4/6/8/11/13 and private-1/2/4/6 are legacy plan numbers no longer sold; kept for older accounts.",
   "_reserved_memory_note": "Node selection accounts for ElastiCache's default reserved-memory-percent of 25%: the usable dataset capacity of a node is 0.75 x its advertised memory, and the chosen node's usable capacity meets or exceeds the plan's memory_limit (converted GB -> GiB). Examples: 25 GB (23.3 GiB) needs > 31 GiB advertised -> cache.m6g.4xlarge (52.26 GiB); 50 GB -> cache.m6g.8xlarge (103.68 GiB); 100 GB -> cache.m6g.12xlarge (157.12 GiB); 10 GB (9.3 GiB) fits cache.m6g.xlarge (12.93 GiB, 9.7 usable). An HA replica adds availability, not primary dataset capacity."
 }

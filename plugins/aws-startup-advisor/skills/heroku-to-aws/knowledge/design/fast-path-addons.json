@@ -42,9 +42,9 @@
     "sentry": {"type": "single", "aws_services": ["CloudWatch"], "notes": "Error tracking via structured logs"},
     "rediscloud": {
       "type": "single",
-      "aws_services": ["ElastiCache Redis"],
-      "notes": "Redis Cloud (Redis Ltd.) third-party Redis. Plan name is the memory in MB (e.g. `30`, `100`, `250`, `1000`). Design 2E step 4b produces a FULL ElastiCache entry (same shape as 2C step 8) by looking the memory up in redis-elasticache-sizing.json; plans above the largest row, or with no parseable MB, are deferred.",
-      "sizing": "redis-elasticache-sizing.json by memory (2E step 4b)"
+      "aws_services": ["ElastiCache Valkey"],
+      "notes": "Redis Cloud (Redis Ltd.) third-party Redis. Plan name is the memory in MB (e.g. `30`, `100`, `250`, `1000`). Design 2E step 4b produces a FULL ElastiCache entry (same shape as 2C step 8, engine valkey; ElastiCache Redis only under the 2C Redis OSS exception). Node type comes from a memory_limit lookup in redis-elasticache-sizing.json — a documented exception to that file's PROVENANCE ONLY rule, because a third-party plan has no Heroku plan row to read node_type from. Plans above the largest row, or with no parseable MB, are deferred.",
+      "sizing": "redis-elasticache-sizing.json by memory_limit (2E step 4b; documented exception to PROVENANCE ONLY)"
     },
     "jawsdb": {
       "type": "single",
@@ -69,7 +69,7 @@
     "inference": {
       "type": "single",
       "aws_services": ["Amazon Bedrock"],
-      "notes": "Heroku Inference (slug `heroku-inference`, Bedrock-backed on Heroku). Map to Bedrock directly; model IDs carry over. Unpriced in the Estimate (token-based)"
+      "notes": "Heroku Inference (slug `heroku-inference`). Target is Amazon Bedrock, but nothing carries over unchanged: Heroku Inference model IDs (e.g. `claude-sonnet-5-5`, `nova-pro`, `gpt-oss-120b`) are served on an OpenAI-style /v1/chat/completions endpoint, while Bedrock uses its own model / inference-profile IDs and the Converse or InvokeModel API. Both the IDs and the client code must be remapped — hand the code change to the llm-to-bedrock skill. Unpriced in the Estimate (token-based)"
     }
   }
 }

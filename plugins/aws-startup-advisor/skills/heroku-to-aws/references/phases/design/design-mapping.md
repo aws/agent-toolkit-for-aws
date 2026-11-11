@@ -263,9 +263,9 @@ Continue with the next resource after the Fargate entry is appended. This guard 
      onto a `pending_followers[]` working list and continue to the next resource. Followers
      are resolved in **2B-F** (below, after every leader has been mapped), because a follower's
      read capacity must land on a leader that actually exists in `services[]`. Its
-     `data_size_gb` duplicates the leader's and is excluded from data-volume totals regardless
-     of how 2B-F resolves it — unique-data accounting and replica capacity are separate
-     questions.
+     `data_size_gb` is excluded from data-volume totals only when 2B-F resolves the leader
+     (then the bytes are proven to be a copy); an unresolved follower keeps its size in the
+     total, because without the leader we cannot prove the data exists elsewhere in the estate.
    - **Fork.** If `config.pg_role == "fork"`: a fork is an independent point-in-time copy that may have diverged. Design it as a normal database (continue below) but add to `warnings[]`:
      > "`{resource_id}` is a Heroku fork of `{config.pg_leader}`. Confirm with the customer whether it is still needed on AWS; forks are often stale experiment or reporting copies and inflate the data-volume total."
    - **No `pg_role`** (Terraform-only discovery): apply no collapse — Terraform cannot express follow relationships. If one app owns more than one `heroku-postgresql` add-on, add one warning per app: "App `{heroku_app}` owns {n} Heroku Postgres add-ons; live discovery was not available to tell leaders from followers, so each is designed as a separate database."
@@ -330,22 +330,32 @@ An RDS Multi-AZ standby cannot serve reads, and the Estimate prices only what is
 `services[]`, so a follower must become either generated, priced read capacity on its
 leader or an explicit deferral. Never a warning alone. For each entry in `pending_followers[]`:
 
-1. **Find the leader.** The leader is the `heroku-postgresql` add-on on the same
-   `heroku_app` whose `config.pg_attachment_names[]` contains `leader` (the attachment name
-   from the follower's `Following:` line, e.g. `HEROKU_POSTGRESQL_TEAL`). Exactly one match
-   is required.
+1. **Find the leader.** `leader` is an **attachment name** (the value after `Following:` in
+   `pg:info`, e.g. `HEROKU_POSTGRESQL_TEAL`), not an inventory `resource_id`. The leader is
+   the `heroku-postgresql` add-on on the same `heroku_app` whose
+   `config.pg_attachment_names[]` contains that name. Exactly one match is required. Heroku
+   does not require a follower and its leader to share an app, so a follower of a database
+   on another app will not match here and falls through to step 3.
 2. **Leader mapped** (a `services[]` entry exists with `source_resource_id` equal to the
    leader's `resource_id`): increment that entry's `aws_config.read_replicas` (default `0`).
    Record `{ "resource_id", "leader_resource_id", "plan", "served_by": "rds_read_replica" | "aurora_reader" }`
-   in `metadata.postgres_followers_collapsed[]` and add to `warnings[]`:
-   > "`{resource_id}` (Heroku follower of `{leader}`) is served by {`an RDS read replica of` | `the Aurora reader of`} `{leader_resource_id}` — generated in `rds.tf` and priced in the Estimate. No separate database."
+   in `metadata.postgres_followers_collapsed[]`, exclude the follower's `data_size_gb` from
+   the data-volume total, and add to `warnings[]` the branch-accurate text:
+   - Aurora leader:
+     > "`{resource_id}` (Heroku follower of `{leader}`) is served by the Aurora cluster reader endpoint of `{leader_resource_id}` — one reader instance per follower is generated in `rds.tf` and priced in the Estimate. Point the app's read connections at the reader endpoint. No separate database."
+   - RDS leader:
+     > "`{resource_id}` (Heroku follower of `{leader}`) is served by an RDS read replica of `{leader_resource_id}` — an RDS Multi-AZ standby does not serve reads, so one `aws_db_instance` read replica is generated in `rds.tf` and priced in the Estimate. Point the app's read connections at the replica endpoint. No separate database."
    Generate emits one `aws_db_instance` read replica per `read_replicas` on RDS, and
    `1 + max(1, read_replicas)` cluster instances on Aurora (the cluster always has one reader;
    extra followers add readers). The Estimate prices those instances.
-3. **Leader not mapped** (not found on the app, ambiguous, or the leader itself went to the
-   Specialist Gate): add a Specialist Gate entry (Step 2F format) with
-   `reason: "Follower of unresolved leader {leader} — read capacity not designed"` and a
-   warning naming the follower and leader. Do not attach the follower to any other database.
+3. **Leader not mapped** (no attachment-name match on the app, ambiguous, or the leader itself
+   went to the Specialist Gate): add a Specialist Gate entry (Step 2F format) with
+   `reason: "Follower of unresolved leader {leader} — read capacity not designed"` and add to
+   `warnings[]`:
+   > "`{resource_id}` follows `{leader}`, which did not resolve to a Heroku Postgres add-on on `{heroku_app}`. The leader may live on another app (Heroku does not require followers to share an app with their leader), or it was itself deferred. Confirm the leader with the customer; its read capacity is not designed and the follower's `data_size_gb` stays in the data-volume total because it cannot be proven to be a copy."
+   Do not attach the follower to any other database. The deferral is deliberate: a Specialist
+   Gate entry is visible in the report, whereas designing the follower as a standalone
+   database would silently price a database the customer may not need.
 4. Never add a follower to `services[]` on its own. Set `aws_config.read_replicas: 0`
    explicitly on every Postgres entry that gained none, so Generate and the Estimate read a
    number, not an absence.
@@ -436,7 +446,7 @@ leader or an explicit deferral. Never a warning alone. For each entry in `pendin
 5. **Broker count and availability zones**:
 
    - Basic plans: minimum **2 brokers** across **2 AZs**.
-   - Standard/Extended/Private plans: **3 brokers** across **3 AZs**.
+   - Standard/Extended/Private/Shield plans: **3 brokers** across **3 AZs**.
    - Never fewer than 2 brokers or 2 AZs.
 
 6. **Topology preservation**:
@@ -582,7 +592,7 @@ leader or an explicit deferral. Never a warning alone. For each entry in `pendin
 7. Append matched entries to `services[]`. Increment `metadata.total_services`.
 
 **Step 4b — Redis Cloud (`rediscloud` row): a full cache entry, not a generic one.** The
-`rediscloud` row's `aws_services` is `ElastiCache Redis`, but a generic step-4 entry has no
+`rediscloud` row's `aws_services` is `ElastiCache Valkey`, but a generic step-4 entry has no
 node type, engine, HA or encryption, and the Estimate and Generate both need them. When
 the matched row is `rediscloud`:
 
@@ -591,8 +601,10 @@ the matched row is `rediscloud`:
   integer → Specialist Gate (Step 2F) with reason `"Unrecognized rediscloud plan: {plan}"`.
 - Look up `redis-elasticache-sizing.json` (loaded for this case by the phase's
   `_knowledge` `_when`) **by memory**: take the first row, in table order, whose
-  `memory_limit` is ≥ the plan's MB. Plan larger than every row → Specialist Gate with
-  reason `"rediscloud plan {plan} exceeds the sizing table"`.
+  `memory_limit` is ≥ the plan's MB. This is the one documented exception to that file's
+  "`memory_limit` is PROVENANCE ONLY" rule: a third-party plan has no Heroku plan row to read
+  `node_type` from, so memory is the only sizing signal available. Plan larger than every
+  row → Specialist Gate with reason `"rediscloud plan {plan} exceeds the sizing table"`.
 - Produce exactly the 2C step 8 entry shape with `service_id: "elasticache:{heroku_app}:rediscloud"`,
   `aws_service` per the engine, `aws_config`: `engine: "valkey"`, `node_type` from the
   chosen row, `multi_az` / `automatic_failover` from `preferences.data.redis_ha` (Redis

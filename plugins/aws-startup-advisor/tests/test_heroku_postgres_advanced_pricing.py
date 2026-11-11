@@ -194,11 +194,13 @@ def test_pricing_cache_advanced_tier_documents_multi_pool_known_limitation() -> 
     assert "rate[pool.level] × pool.instance_count" in rules or "rate[pool.level] x pool.instance_count" in rules
 
 
-def test_pricing_cache_classic_tier_rows_untouched() -> None:
-    # Guard against accidental edits to existing flat-lookup Classic rows. Match on
+def test_pricing_cache_classic_tier_rows_match_published_prices() -> None:
+    # Pin the Classic flat-lookup rows to Heroku's published prices. Match on
     # cell VALUES, not column padding: the tables were re-padded when the -8/-9/-10
     # and L/XL rows were added. Private/Shield -0 are $300/$350 (devcenter
     # heroku-postgres-and-private-spaces); the earlier $200 mirrored Premium and was wrong.
+    # Cache <-> sizing-table parity (RAM / memory_limit per plan, class GiB >= RAM) is
+    # covered in test_heroku_sizing_capacity.py.
     text = PRICING_CACHE.read_text(encoding="utf-8")
 
     def row(plan: str) -> list[str]:

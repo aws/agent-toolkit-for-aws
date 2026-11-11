@@ -8,6 +8,10 @@ Review findings (leon1418, PR #608):
   pricing file (the two files are a pair).
 - Fast-path aliases are applied AFTER `heroku-` prefix stripping, so `heroku-connect`,
   `Heroku Connect` and `herokuconnect` must all reach the `herokuconnect` row.
+- Cache <-> sizing parity: every Classic Postgres / Redis plan priced in
+  `heroku-pricing-cache.md` has a sizing row whose RAM / memory_limit matches the cache, and
+  every RDS / Aurora class a Postgres row emits has at least the plan's RAM (this is the check
+  that would have caught a 512 GiB class on a 768 GB plan).
 """
 from __future__ import annotations
 
@@ -20,6 +24,7 @@ import pytest
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 K = PLUGIN_ROOT / "skills/heroku-to-aws/knowledge/design"
 PRICING = PLUGIN_ROOT / "skills/heroku-to-aws/references/vendored/pricing/aws-infra-pricing.json"
+CACHE = PLUGIN_ROOT / "skills/heroku-to-aws/references/shared/heroku-pricing-cache.md"
 
 # Advertised memory per node (GiB), AWS ElastiCache supported node types page.
 NODE_GIB = {
@@ -34,6 +39,13 @@ RESERVED = 0.25  # reserved-memory-percent default
 AURORA_GIB = {
     "db.t4g.medium": 4, "db.t4g.large": 8, "db.r6g.large": 16, "db.r6g.xlarge": 32, "db.r6g.2xlarge": 64,
     "db.r6g.4xlarge": 128, "db.r6g.8xlarge": 256, "db.r6g.16xlarge": 512, "db.x2g.16xlarge": 1024,
+}
+
+# RAM per RDS PostgreSQL class (GiB); Aurora classes are valid on RDS too.
+RDS_GIB = {
+    **AURORA_GIB,
+    "db.t4g.micro": 1, "db.m6g.large": 8, "db.m6g.xlarge": 16, "db.m6g.2xlarge": 32,
+    "db.m6g.4xlarge": 64, "db.m6g.8xlarge": 128, "db.m6g.16xlarge": 256,
 }
 
 
@@ -98,8 +110,68 @@ def test_every_sizing_class_has_a_rate_row():
     assert not missing, missing
 
 
+# ---------------------------------------------------------------- Cache <-> sizing parity
+def _cache_tables(heading: str, next_heading: str) -> dict[str, list[str]]:
+    """Rows of every markdown table between two `##` headings, keyed by first cell."""
+    text = CACHE.read_text(encoding="utf-8")
+    section = text[text.index(heading):text.index(next_heading)]
+    rows = {}
+    for line in section.splitlines():
+        if not line.startswith("|") or set(line) <= set("|- "):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if cells[0] in ("Plan", "Plan Level (`--level`)"):
+            continue
+        rows[cells[0]] = cells
+    return rows
+
+
+_CACHE_PG = {
+    k: v for k, v in _cache_tables("## Heroku Postgres", "## Heroku Key-Value Store").items()
+    if re.match(r"(standard|premium|private|shield)-", k)
+}
+_CACHE_REDIS = _cache_tables("## Heroku Key-Value Store", "## Apache Kafka on Heroku")
+
+
+def test_cache_covers_classic_postgres_plans():
+    assert len(_CACHE_PG) >= 50 and "standard-0" in _CACHE_PG and "shield-xl-9" in _CACHE_PG
+
+
+@pytest.mark.parametrize("plan", sorted(_CACHE_PG))
+def test_every_classic_postgres_cache_plan_has_matching_sizing_row(plan: str):
+    assert plan in _PG_ROWS, f"{plan} is priced in heroku-pricing-cache.md but has no sizing row"
+    cache_ram = _CACHE_PG[plan][2]
+    assert _PG_ROWS[plan]["ram"] == cache_ram, f"{plan}: sizing ram {_PG_ROWS[plan]['ram']} != cache RAM {cache_ram}"
+
+
+@pytest.mark.parametrize("plan", sorted(_CACHE_REDIS))
+def test_every_classic_redis_cache_plan_has_matching_sizing_row(plan: str):
+    assert plan in _REDIS_ROWS, f"{plan} is priced in heroku-pricing-cache.md but has no sizing row"
+    cache_ram = _CACHE_REDIS[plan][2]
+    assert _REDIS_ROWS[plan]["memory_limit"] == cache_ram, (
+        f"{plan}: sizing memory_limit {_REDIS_ROWS[plan]['memory_limit']} != cache RAM {cache_ram}"
+    )
+
+
+@pytest.mark.parametrize("plan", [k for k in _PG_ROWS if not _PG_ROWS[k]["ram"].startswith("0 MB")])
+def test_postgres_class_ram_covers_plan_ram(plan: str):
+    # Heroku publishes decimal GB; instance classes are GiB. No slack: the class must hold
+    # the whole plan RAM (db.r6g.16xlarge at 512 GiB on a 768 GB plan fails here).
+    need = _to_gib(_PG_ROWS[plan]["ram"])
+    for col, table in (("rds_instance_class", RDS_GIB), ("aurora_instance_class", AURORA_GIB)):
+        cls = _PG_ROWS[plan][col]
+        assert cls in table, f"{plan}: add {cls} to the GiB map"
+        assert table[cls] >= need, f"{plan}: {col} {cls} {table[cls]} GiB < plan {need:.1f} GiB"
+
+
 # ---------------------------------------------------------------- Fast-path normalization
 _FP = _load("fast-path-addons.json")
+
+
+def test_scheduler_row_present():
+    # Heroku Scheduler's CLI slug is plain `scheduler`; the row must exist under that key.
+    assert "scheduler" in _FP["rows"]
+    assert _FP["_prefix_aliases"]["heroku scheduler"] == "scheduler"
 
 
 def _normalize(addon_service: str) -> str:
