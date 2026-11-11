@@ -44,6 +44,7 @@ Write `$MIGRATION_DIR/preferences.json`:
     "availability": "<Q3 value>",
     "maintenance_window": "<Q4 value>",
     "environment_naming": "<Q5 value>",
+    "dx_priority": "<Q5c value: critical|important|not_a_factor>",
     "migration_approach": "<Q6b value>",
     "interim_cutover": false,
     "target_exit_date": "<ISO date or null>",

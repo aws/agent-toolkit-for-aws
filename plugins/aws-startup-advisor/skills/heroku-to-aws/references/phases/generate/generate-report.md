@@ -58,7 +58,15 @@ From `estimation-infra.json`:
   the savings/difference figure, not just gathered — see `exec-costs` below.
 
 From design + preferences: region, primary compute (EB / Fargate / EKS),
-service count.
+service count, `global.dx_priority`, and `design_constraints.compute_target.recommendation.scale_note`
+when present.
+
+From the inventory, for the `developer-workflow` section: apps by stack
+(`container` vs buildpack stacks), count of `pipeline` resources and of apps that
+appear in any `stages[]`, whether any pipeline has `review_apps_enabled: true`, total
+`config_var_keys` across `config` resources, count of `release` process types, count of
+`scheduler` / `advanced-scheduler` add-ons, and the number of non-data-store add-ons
+that are mapped vs deferred in `aws-design.json`.
 
 ---
 
@@ -72,6 +80,7 @@ Write a **self-contained** HTML file to `$MIGRATION_DIR/migration-report.html`
 | `decision-summary`  | Typography-first verdict (see below), cost one-liner, next action                                                                                                                                                                                                                            |
 | `exec-costs`        | Heroku-vs-AWS side-by-side when a Heroku baseline exists (`current_costs.source != "unavailable"`); otherwise the AWS three-tier table with a one-line note that no Heroku baseline was available. Estimated monthly; Balanced primary. **When `current_costs.baseline_note` is present (any derived — not invoiced — source, including the Postgres Advanced per-pool formula), render it as a visible caveat line directly beside the Heroku current-monthly figure — never only in the accuracy band.** This is mandatory, not conditional on which derived source produced the note. **When `cost_comparison.comparison_status == "incomplete_unmatched_services"`, render the same mandatory caveat-beside-the-figure treatment, naming `cost_comparison.unmatched_deferred_services` and `unmatched_deferred_cost` directly beside the savings/difference figure — never present that dollar delta as decision-grade savings without it.** This file is the single source of truth for `exec-costs` content rules, so `report-decision-core.md`'s reuse of these rules picks this up automatically. |
 | `cost-optimization` | Reserved Instance / Savings Plan opportunities table, or the explicit no-eligible-commitment statement — see below. Always present, never omitted                                                                                                                                            |
+| `developer-workflow` | Always render. Heading "Developer workflow: what stays, what changes, what you build". One line stating the Q5c answer. Then the table defined in § `developer-workflow` below. Then the closing paragraph(s) defined there. Reader vocabulary only — no file names or resource IDs |
 | `next-steps`        | Ordered list pointing to `MIGRATION_GUIDE.md` phases (not a procedure dump). Include one bullet noting the Terraform ships with `baseline.tf` (account security baseline — GuardDuty, CloudTrail, budget alerts) and that three contact emails must be set in tfvars before `terraform plan` |
 
 **Cost-figure anchor (machine-checkable).** In `exec-costs`, wrap the recommended AWS
@@ -111,6 +120,10 @@ Only untagged _illustrative_ numbers are skipped.
    present — short unordered list. Skip silently when absent.
 5. **One-sentence next action** — the single most useful next step for the
    reader (Generate artifacts, confirm a condition, or gather named evidence).
+6. **Developer workflow pointer (when `global.dx_priority == "critical"`):** one
+   line — `Developer workflow was rated critical; see
+   <a href="#developer-workflow">Developer workflow</a> for what stays, what changes
+   and what must be built.`
 
 ### `decision-basis` (end of summary, when v2 fields exist)
 
@@ -125,6 +138,49 @@ either order is fine as long as the confidence pointer's href resolves):
 - One-line pricing provenance from `pricing_source` + accuracy band.
 
 Omit the section when `decision_basis` is absent (pre-extension artifacts).
+
+### `developer-workflow` (always render)
+
+The customer's developers will judge the migration by their daily workflow, not by
+the architecture diagram. Say plainly what maps, what is generated, what they must
+build, and what has no equivalent. One table, one row per Heroku primitive, columns
+**Heroku today / On AWS / Status / Your estate**. Status is exactly one of four words:
+**Covered** (an AWS feature or a generated artifact does this; the command differs),
+**Generated** (this migration emits it per app), **Build** (not generated; the platform
+team writes it once and reuses it), **No equivalent**.
+
+| Heroku today                              | On AWS                                                                                      | Status                                                                            | Your estate (from the inventory)                                     |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `git push heroku main` + buildpacks       | CI builds a container image and deploys it; the generated workflow does this per app        | **Generated** for apps already on the `container` stack; **Build** (a Dockerfile per app) for buildpack apps | "{N} buildpack apps, {M} already containerized"                      |
+| Pipelines and promote                     | Environments per stage with the same image promoted between them, approval-gated            | **Build** — pipelines are detected, not generated                                 | "{P} pipelines covering {A} apps"                                    |
+| Review apps                               | An ephemeral environment per pull request, torn down on merge                               | **Build** (or buy — see below)                                                    | "enabled on {R} pipelines" or "not enabled"                          |
+| Config vars                               | Parameter Store / Secrets Manager, injected at deploy; `config:set` becomes one CLI call      | **Covered** — keys are migrated by the generated Terraform, values by you          | "{K} config var keys across {N} apps"                                |
+| `heroku run` / one-off dynos              | ECS Exec or `eb ssh`; one-off tasks as a run-task call                                       | **Covered** — different command                                                   | —                                                                    |
+| `heroku logs --tail`                      | CloudWatch Logs live tail                                                                   | **Covered** — different command                                                   | —                                                                    |
+| Release phase                             | A pre-deploy job in the workflow that runs before traffic shifts                             | **Build**                                                                         | "{L} release process types"                                          |
+| Scheduler add-ons                         | EventBridge Scheduler                                                                       | **Covered** — mapped by this migration                                            | "{S} scheduler add-ons"                                              |
+| `ps:scale`                                | Autoscaling policy or one CLI call                                                          | **Covered**                                                                       | —                                                                    |
+| Add-on marketplace                        | Each add-on becomes an AWS service or a retained SaaS, wired by Terraform                   | **No equivalent** to the marketplace itself                                       | "{X} add-ons mapped, {Y} deferred for manual selection"              |
+
+Fill the last column from the inventory and design counts gathered in Step 1; write
+"—" where there is nothing to count. Do not invent rows. Do not soften "Build" into
+"Covered" because a how-to exists in `MIGRATION_GUIDE.md`.
+
+**Closing paragraph (always):** "The rows marked Build are a platform layer your team
+owns: a deploy pipeline with promote and release steps, review-app automation, and a
+thin command wrapper. It is weeks of platform work, not months, and it is the same for
+every app." When `compute_target.recommendation.scale_note` exists, add: "Compute was
+recommended as shared ECS clusters rather than one Beanstalk environment per process
+type ({scale_note}) so that day-to-day operation stays at least as simple as Heroku."
+
+**Build-vs-buy paragraph (when `dx_priority` is `critical`, or more than 40
+formations):** "Two shapes for that layer: build it yourselves on the generated
+scaffolding (lowest cost, you own it, needs platform-engineering time), or run a
+platform product on your AWS account that provides Heroku-style push-to-deploy,
+pipelines and review apps from day one (products in this space include Flightcontrol,
+Porter and Coherence; another vendor, another contract, faster start). The AWS cost
+below is the same either way; the difference is people and time." Name the products
+plainly, make no recommendation between them, and never present a product's price.
 
 ### `cost-optimization` (REQUIRED — always render, never omit)
 
@@ -228,6 +284,7 @@ stakeholders, not a design system.
       </table>
     </section>
     <section id="cost-optimization">…</section>
+    <section id="developer-workflow">…</section>
     <!-- <section id="what-if-scenarios"> when ≥2 scenarios -->
     <section id="next-steps">…</section>
     <footer>Generated by Heroku to AWS Migration Advisor — draft for review; verify figures before executive sign-off.</footer>
