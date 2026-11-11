@@ -17,7 +17,7 @@ directory supplied in your context. Substitute both before running.
 ## Input
 
 - `source_provider`: `openai` | `anthropic` | `google`
-- `source_model_id`: the model ID to call (e.g., `gpt-4o`, `claude-3-5-sonnet-20241022`, `gemini-1.5-pro`)
+- `source_model_id`: the model ID to call (e.g., `gpt-5.4`, `claude-sonnet-5`, `gemini-3.8-flash`)
 - `golden_dataset_path`: usually `<REPO>/.saws-migrate/golden-dataset/prompts.jsonl`
 - `output_path`: usually `<REPO>/.saws-migrate/eval-results/source_baselines.jsonl`
 
@@ -81,8 +81,8 @@ arguments). The resolver:
      `<source_model_id>-` AND whose suffix is a date (`YYYY-MM-DD`) or
      pure version number (e.g. `2`, `3.1`). These are the same model
      pinned to a date or version — same-line. Examples:
-     `gpt-5.4` matches `gpt-5.4-2026-03-05`; `claude-3-5-sonnet`
-     matches `claude-3-5-sonnet-20241022`. Does NOT match `gpt-5`,
+     `gpt-5.4` matches `gpt-5.4-2026-03-05`; `claude-haiku-4-5`
+     matches `claude-haiku-4-5-20251001`. Does NOT match `gpt-5`,
      `gpt-5.5`, `gpt-54` (different lines), nor `gpt-5.4-mini`,
      `gpt-5.4-pro`, `gpt-5.4-latest` (alphabetic suffixes — those are
      either different model lines or non-deterministic aliases).

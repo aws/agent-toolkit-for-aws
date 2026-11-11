@@ -274,7 +274,7 @@ Minimal changes — swap provider configuration only:
 ```typescript
 // Before
 import { openai } from '@ai-sdk/openai';
-const model = openai('gpt-4o');
+const model = openai('gpt-5.4');
 
 // After
 import { bedrock } from '@ai-sdk/amazon-bedrock';
@@ -286,7 +286,7 @@ const model = bedrock('us.anthropic.claude-sonnet-4-6');
 ```python
 # Before
 from langchain_openai import ChatOpenAI
-llm = ChatOpenAI(model="gpt-4o")
+llm = ChatOpenAI(model="gpt-5.4")
 
 # After
 from langchain_aws import ChatBedrockConverse
@@ -304,7 +304,7 @@ Full rewrite to boto3 / AWS SDK:
 from openai import OpenAI
 client = OpenAI()
 response = client.chat.completions.create(
-    model="gpt-4o",
+    model="gpt-5.4",
     messages=[{"role": "user", "content": "Hello"}]
 )
 output = response.choices[0].message.content
@@ -329,7 +329,7 @@ if not output or stop_reason in ("max_tokens", "model_context_window_exceeded", 
 
 ```python
 # Before
-stream = client.chat.completions.create(model="gpt-4o", messages=messages, stream=True)
+stream = client.chat.completions.create(model="gpt-5.4", messages=messages, stream=True)
 for chunk in stream:
     content = chunk.choices[0].delta.content
 
@@ -368,7 +368,7 @@ return their results; it is not a final text answer.
 ```python
 # Before (OpenAI)
 tools = [{"type": "function", "function": {"name": "get_weather", "parameters": {...}}}]
-response = client.chat.completions.create(model="gpt-4o", messages=messages, tools=tools)
+response = client.chat.completions.create(model="gpt-5.4", messages=messages, tools=tools)
 
 # After (Bedrock Converse API)
 tool_config = {"tools": [{"toolSpec": {"name": "get_weather", "inputSchema": {"json": {...}}}}]}

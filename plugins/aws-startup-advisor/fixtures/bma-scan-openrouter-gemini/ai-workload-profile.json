@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "ai_sources": [
     {
       "provider": "anthropic",
@@ -59,5 +59,57 @@
       "upstream_evidence": "unresolved",
       "upstreams": []
     }
-  ]
+  ],
+  "workloads": [
+    {
+      "workload_id": "anthropic_api.claude-3.5-sonnet.openai.chat.completions.create.plain",
+      "provider": "anthropic",
+      "source_service": "anthropic_api",
+      "model": "claude-3.5-sonnet",
+      "sdk_method": "openai.chat.completions.create",
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "structured_output": false,
+      "call_sites": [
+        {
+          "file": "src/router.py",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "workload_id": "gemini_api.gemini-2.5-flash.genai.models.generate_content.plain",
+      "provider": "google",
+      "source_service": "gemini_api",
+      "model": "gemini-2.5-flash",
+      "sdk_method": "genai.models.generate_content",
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "structured_output": false,
+      "call_sites": [
+        {
+          "file": "src/drafts.py",
+          "line": 10
+        }
+      ]
+    }
+  ],
+  "integration": {
+    "pattern": "mixed",
+    "languages": [
+      "python"
+    ],
+    "frameworks": [],
+    "capabilities_summary": {
+      "text_generation": true,
+      "streaming": false,
+      "function_calling": false,
+      "vision": false,
+      "embeddings": false,
+      "batch_processing": false,
+      "speech_to_text": false,
+      "text_to_speech": false,
+      "image_generation": false
+    }
+  }
 }
