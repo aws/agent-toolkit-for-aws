@@ -266,4 +266,6 @@ aws events delete-rule --region <region> --no-cli-pager --name <rule>
 aws sns delete-topic --region <region> --no-cli-pager --topic-arn <topic ARN>
 ```
 
+These commands need `events:RemoveTargets`, `events:DeleteRule` and `sns:DeleteTopic`, which the email setup policy in [permissions.md](permissions.md) doesn't include. Run them with credentials that allow them.
+
 Never suggest deleting a resource that existed before this run.
