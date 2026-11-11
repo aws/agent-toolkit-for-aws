@@ -77,6 +77,7 @@ This guide provides step-by-step instructions for migrating your Heroku applicat
 - [Phase 5: Cutover](#phase-5-cutover)
 - [Phase 6: Rollback](#phase-6-rollback)
 - [Decommission Heroku](#decommission-heroku-resources)
+- [Day-to-day commands: Heroku → AWS](#day-to-day-commands-heroku--aws)
   {{IF deferred_addons.length > 0}}
 - [Manual Migration Items](#manual-migration-items)
   {{ENDIF}}
@@ -1366,6 +1367,63 @@ Only after the Phase 6 rollback window (72 hours at 100 % on AWS with no trigger
 
 ---
 
+## Day-to-day commands: Heroku → AWS
+
+What your developers type every week, and what it becomes. Every row is the same
+capability with a different command; nothing here needs to be built. Names are filled
+in for `{{app_name}}` — repeat per app.
+
+{{IF has_beanstalk}}
+
+| Heroku | AWS (Elastic Beanstalk) |
+| --- | --- |
+| `heroku logs --tail -a {{app_name}}` | `aws logs tail /aws/elasticbeanstalk/{{EB_WEB_ENVIRONMENT}}/var/log/eb-docker/containers/eb-current-app --follow` |
+| `heroku run bash -a {{app_name}}` | `eb ssh {{EB_WEB_ENVIRONMENT}}` then `sudo docker exec -it $(sudo docker ps -q) bash` — or an SSM session: `aws ssm start-session --target <instance-id>` |
+| `heroku run rake db:migrate -a {{app_name}}` (one-off task) | `eb ssh` as above, then `sudo docker exec $(sudo docker ps -q) <command>`; for repeatable jobs prefer a scheduled EventBridge target or an ECS one-off task |
+| `heroku config -a {{app_name}}` | `aws ssm get-parameters-by-path --path /{{app_name}}/ --with-decryption --query 'Parameters[].[Name,Value]' --output table` |
+| `heroku config:get KEY -a {{app_name}}` | `aws ssm get-parameter --name /{{app_name}}/KEY --with-decryption --query Parameter.Value --output text` |
+| `heroku config:set KEY=value -a {{app_name}}` | `aws ssm put-parameter --name /{{app_name}}/KEY --type SecureString --value 'value' --overwrite`, then restart: `aws elasticbeanstalk restart-app-server --environment-name {{EB_WEB_ENVIRONMENT}}` |
+| `heroku ps -a {{app_name}}` | `aws elasticbeanstalk describe-environment-health --environment-name {{EB_WEB_ENVIRONMENT}} --attribute-names All` |
+| `heroku ps:scale web=3 -a {{app_name}}` | `aws elasticbeanstalk update-environment --environment-name {{EB_WEB_ENVIRONMENT}} --option-settings Namespace=aws:autoscaling:asg,OptionName=MinSize,Value=3 Namespace=aws:autoscaling:asg,OptionName=MaxSize,Value=3` |
+| `heroku restart -a {{app_name}}` | `aws elasticbeanstalk restart-app-server --environment-name {{EB_WEB_ENVIRONMENT}}` |
+| `heroku releases -a {{app_name}}` | `aws elasticbeanstalk describe-application-versions --application-name {{app_name}} --query 'ApplicationVersions[].[VersionLabel,DateCreated]' --output table` |
+| `heroku rollback -a {{app_name}}` | `aws elasticbeanstalk update-environment --environment-name {{EB_WEB_ENVIRONMENT}} --version-label <previous label>` (run once per EB environment of the app) |
+| `heroku maintenance:on -a {{app_name}}` | Point the ALB listener at a fixed 503 response: `aws elbv2 modify-listener --listener-arn <arn> --default-actions Type=fixed-response,FixedResponseConfig='{StatusCode=503,ContentType=text/plain,MessageBody="Maintenance"}'`; `maintenance:off` = restore the forward action |
+| `heroku pg:psql -a {{app_name}}` | `psql "$(aws secretsmanager get-secret-value --secret-id {{app_name}}/DATABASE_URL --query SecretString --output text)"` from a host inside the VPC (bastion or SSM session) |
+| `heroku pg:info` / `pg:backups:capture` | `aws rds describe-db-instances --db-instance-identifier <id>` / `aws rds create-db-snapshot --db-instance-identifier <id> --db-snapshot-identifier manual-$(date +%Y%m%d)` |
+| `heroku addons -a {{app_name}}` | `terraform state list` in `terraform/` — every former add-on is a resource there |
+| `heroku open -a {{app_name}}` | `open https://{{EB_ENVIRONMENT_URL}}` (or your custom domain after cutover) |
+
+{{ENDIF}}
+{{IF has_fargate}}
+
+| Heroku | AWS (ECS Fargate) |
+| --- | --- |
+| `heroku logs --tail -a {{app_name}}` | `aws logs tail /ecs/{{ECS_CLUSTER}}/web --follow` (one log group per process type: replace `web`) |
+| `heroku run bash -a {{app_name}}` | `aws ecs execute-command --cluster {{ECS_CLUSTER}} --task <task-id> --container web --interactive --command bash` (ECS Exec is enabled on the generated services; needs the Session Manager plugin locally) |
+| `heroku run rake db:migrate -a {{app_name}}` (one-off task) | `aws ecs run-task --cluster {{ECS_CLUSTER}} --launch-type FARGATE --task-definition {{ECS_CLUSTER}}-web --network-configuration "awsvpcConfiguration={subnets=[...],securityGroups=[...]}" --overrides '{"containerOverrides":[{"name":"web","command":["rake","db:migrate"]}]}'` |
+| `heroku config -a {{app_name}}` | `aws ssm get-parameters-by-path --path /{{app_name}}/ --with-decryption --query 'Parameters[].[Name,Value]' --output table` |
+| `heroku config:get KEY -a {{app_name}}` | `aws ssm get-parameter --name /{{app_name}}/KEY --with-decryption --query Parameter.Value --output text` |
+| `heroku config:set KEY=value -a {{app_name}}` | `aws ssm put-parameter --name /{{app_name}}/KEY --type SecureString --value 'value' --overwrite`, then `aws ecs update-service --cluster {{ECS_CLUSTER}} --service {{ECS_CLUSTER}}-web --force-new-deployment` |
+| `heroku ps -a {{app_name}}` | `aws ecs describe-services --cluster {{ECS_CLUSTER}} --services {{ECS_CLUSTER}}-web --query 'services[].[serviceName,runningCount,desiredCount]' --output table` |
+| `heroku ps:scale web=3 -a {{app_name}}` | `aws ecs update-service --cluster {{ECS_CLUSTER}} --service {{ECS_CLUSTER}}-web --desired-count 3` |
+| `heroku restart -a {{app_name}}` | `aws ecs update-service --cluster {{ECS_CLUSTER}} --service {{ECS_CLUSTER}}-web --force-new-deployment` |
+| `heroku releases -a {{app_name}}` | `aws ecr describe-images --repository-name <repo> --query 'sort_by(imageDetails,&imagePushedAt)[].[imageTags[0],imagePushedAt]' --output table` |
+| `heroku rollback -a {{app_name}}` | Register the task definition with the previous image tag, then `aws ecs update-service --cluster {{ECS_CLUSTER}} --service {{ECS_CLUSTER}}-web --task-definition <previous revision>` |
+| `heroku maintenance:on -a {{app_name}}` | Point the ALB listener at a fixed 503 response: `aws elbv2 modify-listener --listener-arn <arn> --default-actions Type=fixed-response,FixedResponseConfig='{StatusCode=503,ContentType=text/plain,MessageBody="Maintenance"}'`; `maintenance:off` = restore the forward action |
+| `heroku pg:psql -a {{app_name}}` | `psql "$(aws secretsmanager get-secret-value --secret-id {{app_name}}/DATABASE_URL --query SecretString --output text)"` from a host inside the VPC (bastion, SSM session, or `ecs execute-command` into a task) |
+| `heroku pg:info` / `pg:backups:capture` | `aws rds describe-db-instances --db-instance-identifier <id>` / `aws rds create-db-snapshot --db-instance-identifier <id> --db-snapshot-identifier manual-$(date +%Y%m%d)` |
+| `heroku addons -a {{app_name}}` | `terraform state list` in `terraform/` — every former add-on is a resource there |
+| `heroku open -a {{app_name}}` | `open https://{{ALB_DNS_NAME}}` (or your custom domain after cutover) |
+
+{{ENDIF}}
+
+Two things have no one-line equivalent and are covered elsewhere: `git push heroku main`
+(Phase 3 — the generated deploy workflow) and `heroku pipelines:promote` (not generated;
+see the Developer workflow section of `migration-report.html`). Wrapping the rows above in
+a `bin/` directory of short shell scripts named after the Heroku commands is a common
+first platform-team task; the commands are stable enough to copy as-is.
+
 ## Manual Migration Items
 
 The following add-ons could not be automatically mapped to AWS equivalents and require manual migration:
@@ -1417,6 +1475,8 @@ Replace template variables using these sources:
 | `{{ALB_DNS_NAME}}` | Placeholder — user fills from Terraform output |
 | `{{EB_ENVIRONMENT_URL}}` | Elastic Beanstalk web environment CNAME output |
 | `{{EB_ENVIRONMENT_NAMES}}` | Space-separated generated Elastic Beanstalk environment names for all EB process types |
+| `{{EB_WEB_ENVIRONMENT}}` | The generated Elastic Beanstalk environment name for the app's `web` process type (`${project_name}-web`); for an app without a web process, the first EB environment |
+| `{{ECS_CLUSTER}}` | `${var.project_name}-${var.environment}` — the generated ECS cluster name; service names and log groups are `<cluster>-<process_type>` and `/ecs/<cluster>/<process_type>` |
 | `{{MSK_CLUSTER_ARN}}` | Placeholder — user fills from Terraform output |
 | `{{MIGRATION_BUCKET}}` | Placeholder — user creates an S3 bucket for migration artifacts |
 | `{{app_domain}}` | First hostname in `custom_domains[]` when the inventory has `domain` resources; otherwise a placeholder the user fills |

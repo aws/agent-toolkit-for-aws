@@ -1056,6 +1056,25 @@ resource "aws_iam_role" "ecs_task" {
     Name = "${var.project_name}-${var.environment}-ecs-task"
   }
 }
+
+# ECS Exec (the `heroku run bash` equivalent) opens an SSM channel from the task.
+resource "aws_iam_role_policy" "ecs_task_exec" {
+  name = "${var.project_name}-${var.environment}-ecs-exec"
+  role = aws_iam_role.ecs_task.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "ssmmessages:CreateControlChannel",
+        "ssmmessages:CreateDataChannel",
+        "ssmmessages:OpenControlChannel",
+        "ssmmessages:OpenDataChannel"
+      ]
+      Resource = "*"
+    }]
+  })
+}
 ```
 
 ---
@@ -1157,6 +1176,9 @@ resource "aws_ecs_service" "<app_sanitized>_<process_type>" {
   name            = "${var.project_name}-${var.environment}-<process_type>"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.<app_sanitized>_<process_type>.arn
+  # ECS Exec is the `heroku run bash` equivalent (MIGRATION_GUIDE.md § Day-to-day commands).
+  # It needs the ssmmessages permissions on the task role below.
+  enable_execute_command = true
   # 0 while var.writers_quiesced is true, so a later apply (DNS rollback, a repair)
   # cannot restart tasks that Phase 6 scaled to zero. Set the variable back to false
   # only at the next intentional handoff.
