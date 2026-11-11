@@ -10,6 +10,7 @@ _contributes:
   - terraform/beanstalk.tf
   - terraform/pipeline.tf
   - .github/workflows/deploy-eb.yml
+  - .github/workflows/promote.yml
   - terraform/.gitignore
   - terraform/terraform.tfvars.example
 ---
@@ -49,6 +50,7 @@ Generate `$MIGRATION_DIR/terraform/` with the following file organization. Only 
 - `compute.tf` — Emitted when `aws_service` contains "Fargate" or "ALB" entries
 - `beanstalk.tf` — Emitted when `aws_service` contains "Elastic Beanstalk" entries
 - `.github/workflows/deploy-eb.yml` — Emitted when `aws_service` contains "Elastic Beanstalk" entries and `preferences.design_constraints.eb_deploy_method.value` is `"github_actions"` or absent (default)
+- `.github/workflows/promote.yml` — Emitted alongside `deploy-eb.yml` (same condition). The Heroku `pipelines:promote` equivalent: redeploys an existing application version to the production environments behind a GitHub environment approval (see § `promote.yml`)
 - `pipeline.tf` — Emitted only when `aws_service` contains "Elastic Beanstalk" entries and `preferences.design_constraints.eb_deploy_method.value` is `"codepipeline"`
 - `database.tf` — Emitted when `aws_service` contains "RDS" or "Aurora" entries
 - `cache.tf` — Emitted when `aws_service` contains "ElastiCache" entries
@@ -61,7 +63,7 @@ Generate `$MIGRATION_DIR/terraform/` with the following file organization. Only 
 | AWS Service in `aws-design.json`   | Target File                                                                                                     |
 | ---------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | Fargate, ALB                       | `compute.tf`                                                                                                    |
-| Elastic Beanstalk                  | `beanstalk.tf`; plus `.github/workflows/deploy-eb.yml` for `github_actions` or `pipeline.tf` for `codepipeline` |
+| Elastic Beanstalk                  | `beanstalk.tf`; plus `.github/workflows/deploy-eb.yml` and `promote.yml` for `github_actions`, or `pipeline.tf` for `codepipeline` |
 | RDS PostgreSQL, Aurora PostgreSQL  | `database.tf`                                                                                                   |
 | ElastiCache Valkey (or ElastiCache Redis when `aws_config.engine` is `redis`) | `cache.tf` |
 | Amazon MSK                         | `messaging.tf`                                                                                                  |
@@ -1293,7 +1295,7 @@ Skip this step if no services in `aws-design.json` have `aws_service: "Elastic B
 
 Read `preferences.design_constraints.eb_deploy_method.value`; default to `"github_actions"` when the field is absent. Always generate `beanstalk.tf` for EB services, then generate exactly one deploy path:
 
-- `"github_actions"` → generate `$MIGRATION_DIR/.github/workflows/deploy-eb.yml`
+- `"github_actions"` → generate `$MIGRATION_DIR/.github/workflows/deploy-eb.yml` **and** `$MIGRATION_DIR/.github/workflows/promote.yml` (§ `promote.yml`)
 - `"codepipeline"` → generate `$MIGRATION_DIR/terraform/pipeline.tf`
 - `"manual"` → generate neither deploy automation artifact; document CLI deployment in `MIGRATION_GUIDE.md`
 
@@ -1554,6 +1556,108 @@ jobs:
 - `EB_ENVIRONMENTS` MUST include every generated EB environment for the app, not only `<app_name>-web`.
 - The workflow assumes a GitHub OIDC role through `secrets.AWS_ROLE_ARN`; document the required role setup in `MIGRATION_GUIDE.md`.
 - Do not emit `pipeline.tf` when this method is selected.
+
+### `.github/workflows/promote.yml` — Promote an existing version to production
+
+Heroku's `pipelines:promote` moves the slug that is already running on staging to
+production without rebuilding it. Elastic Beanstalk has the same artifact — an
+application version with its S3 source bundle — so promote is: take the version label
+running on the staging environment, make it available to the production EB application
+(same bundle, no rebuild), update the production environments. The approval click lives
+in a GitHub **environment** named `production` with required reviewers, which the
+customer creates once in the repository settings.
+
+**Resolve the two sides from the inventory before emitting:**
+
+- If the app appears in a `pipeline` resource's `stages[]` with `stage: "production"`,
+  then `STAGING_APP` = the app at `stage: "staging"` in the same pipeline (or
+  `"development"` when there is no staging stage), and `PRODUCTION_APP` = this app. Each
+  Heroku app has its own generated EB application (`var.project_name`) and environments;
+  fill both sides with those generated names.
+- If the app is in no pipeline, emit the workflow with `STAGING_APP` equal to
+  `PRODUCTION_APP`: promote degrades to an approval-gated redeploy of a chosen version
+  label to the app's own environments, which is still the rollback-safe way to ship.
+  Say so in the generated file's comment.
+
+```yaml
+name: Promote to production
+on:
+  workflow_dispatch:
+    inputs:
+      version_label:
+        description: "Application version to promote (leave empty to take what is running on staging)"
+        required: false
+        default: ""
+permissions:
+  id-token: write
+  contents: read
+env:
+  AWS_REGION: <target_region>
+  STAGING_APP: <staging app's generated EB application name>
+  STAGING_WEB_ENV: <staging app's generated web environment name>
+  PRODUCTION_APP: <this app's generated EB application name>
+  PRODUCTION_ENVIRONMENTS: "<space-separated generated EB environment names for this app>"
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    # Approval gate: create a GitHub environment named `production` with required
+    # reviewers (Settings -> Environments). The job waits here until someone approves.
+    environment: production
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Resolve the version to promote
+        run: |
+          LABEL="${{ github.event.inputs.version_label }}"
+          if [ -z "${LABEL}" ]; then
+            LABEL="$(aws elasticbeanstalk describe-environments \
+              --environment-names "${STAGING_WEB_ENV}" \
+              --query 'Environments[0].VersionLabel' --output text)"
+          fi
+          echo "Promoting ${LABEL} from ${STAGING_APP} to ${PRODUCTION_APP}"
+          echo "LABEL=${LABEL}" >> "$GITHUB_ENV"
+      - name: Make the version available to the production application (no rebuild)
+        run: |
+          if [ "${STAGING_APP}" != "${PRODUCTION_APP}" ]; then
+            BUNDLE="$(aws elasticbeanstalk describe-application-versions \
+              --application-name "${STAGING_APP}" --version-labels "${LABEL}" \
+              --query 'ApplicationVersions[0].SourceBundle' --output json)"
+            aws elasticbeanstalk create-application-version \
+              --application-name "${PRODUCTION_APP}" \
+              --version-label "${LABEL}" \
+              --source-bundle "${BUNDLE}" \
+              --description "Promoted from ${STAGING_APP} by ${{ github.actor }}" || true  # already exists on a re-run
+          fi
+      - name: Update production environments
+        run: |
+          for ENVIRONMENT in ${PRODUCTION_ENVIRONMENTS}; do
+            aws elasticbeanstalk update-environment \
+              --environment-name "${ENVIRONMENT}" \
+              --version-label "${LABEL}"
+          done
+          echo "Rollback: re-run this workflow with the previous version label."
+```
+
+**promote.yml rules:**
+
+- Same OIDC role as `deploy-eb.yml`; it additionally needs
+  `elasticbeanstalk:DescribeEnvironments` and `elasticbeanstalk:DescribeApplicationVersions`
+  (both read-only). The source bundle stays in the staging application's S3 location;
+  the production application version points at it, so the bucket policy must allow the
+  production application to read it — it does when both apps share the account's EB
+  storage bucket, which is the default.
+- `PRODUCTION_ENVIRONMENTS` lists every generated EB environment of the production
+  app, same rule as `EB_ENVIRONMENTS` in `deploy-eb.yml`.
+- When the CNB variant of `deploy-eb.yml` is in use, the version's bundle is a
+  `Dockerrun.aws.json` pointing at an immutable image tag; promote moves the same tag.
+  Nothing in this workflow changes.
+- Fargate services are not promoted by this file; the guide's Phase 3 gives the
+  two-command equivalent (re-register the task definition with the staging image tag,
+  update the service), which a later PR will wrap the same way.
+- `"codepipeline"` and `"manual"` deploy methods do not emit this file; for
+  CodePipeline, the manual-approval action in `pipeline.tf` is the promote gate.
 
 ### `pipeline.tf` — CodePipeline GitHub Source to EB Deploy (Optional)
 

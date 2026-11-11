@@ -798,6 +798,26 @@ The generated `.github/workflows/deploy-eb.yml` workflow uses GitHub OIDC role a
 
 Before first run, create or provide a GitHub OIDC IAM role with permissions to call `elasticbeanstalk create-storage-location`, `elasticbeanstalk create-application-version`, `elasticbeanstalk update-environment`, and upload the source bundle to the EB storage bucket. Store the role ARN as the repository secret `AWS_ROLE_ARN`.
 
+### Promote to Production (`heroku pipelines:promote` equivalent)
+
+`deploy-eb.yml` deploys every push to the staging environments. The generated
+`.github/workflows/promote.yml` moves what is running on staging to production without
+rebuilding it: it reads the version label from `{{STAGING_WEB_ENVIRONMENT}}`, makes that
+same source bundle available to the production application, and updates
+`{{EB_ENVIRONMENT_NAMES}}`. It is a manual run (**Actions → Promote to production → Run
+workflow**) and it waits for approval.
+
+One-time setup, in the GitHub repository: **Settings → Environments → New environment →
+`production`**, add the people who may approve as _Required reviewers_. The OIDC role also
+needs the read-only `elasticbeanstalk:DescribeEnvironments` and
+`elasticbeanstalk:DescribeApplicationVersions`.
+
+Rollback is the same workflow with the previous version label typed into the
+`version_label` input. {{IF app_in_pipeline}}Your Heroku pipeline `{{pipeline_name}}` maps
+staging `{{STAGING_APP_NAME}}` → production `{{app_name}}`.{{ELSE}}This app is not in a
+Heroku pipeline, so promote runs against the app's own environments: an approval-gated
+redeploy of a chosen version, which is still the safe way to ship.{{ENDIF}}
+
 {{ENDIF}}
 {{IF eb_deploy_method == "codepipeline"}}
 
@@ -856,6 +876,14 @@ docker push {{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com/{{app_nam
 ### Deploy to Fargate
 
 The Terraform configuration creates ECS services automatically. After pushing the image, force a new deployment:
+
+Promote (staging image to production, no rebuild): register the production task
+definition with the image tag already running on staging, then update the service —
+`aws ecs describe-task-definition --task-definition <staging family> --query 'taskDefinition.containerDefinitions[0].image'`
+gives the tag; `aws ecs register-task-definition` with that image in the production
+family, then `aws ecs update-service --cluster <prod cluster> --service <service> --task-definition <new revision>`.
+A generated workflow for this is not yet emitted (the Elastic Beanstalk one is,
+`promote.yml`).
 
 ```bash
 aws ecs update-service \
@@ -1417,6 +1445,8 @@ Replace template variables using these sources:
 | `{{ALB_DNS_NAME}}` | Placeholder — user fills from Terraform output |
 | `{{EB_ENVIRONMENT_URL}}` | Elastic Beanstalk web environment CNAME output |
 | `{{EB_ENVIRONMENT_NAMES}}` | Space-separated generated Elastic Beanstalk environment names for all EB process types |
+| `{{app_in_pipeline}}` / `{{pipeline_name}}` / `{{STAGING_APP_NAME}}` | From the inventory's `pipeline` resources: whether this app sits at `stage: "production"` in a pipeline; that pipeline's name; the app at `stage: "staging"` (else `"development"`) in it |
+| `{{STAGING_WEB_ENVIRONMENT}}` | The staging app's generated EB `web` environment name; when the app is in no pipeline, this app's own web environment |
 | `{{MSK_CLUSTER_ARN}}` | Placeholder — user fills from Terraform output |
 | `{{MIGRATION_BUCKET}}` | Placeholder — user creates an S3 bucket for migration artifacts |
 | `{{app_domain}}` | First hostname in `custom_domains[]` when the inventory has `domain` resources; otherwise a placeholder the user fills |
@@ -1477,6 +1507,7 @@ This directory contains all artifacts needed to migrate your Heroku application(
 | `terraform/beanstalk.tf` | Elastic Beanstalk applications and environments |
 {{IF eb_deploy_method == "github_actions"}}
 | `.github/workflows/deploy-eb.yml` | GitHub Actions source-to-EB deploy workflow |
+| `.github/workflows/promote.yml` | Approval-gated promote of a running version to production (`heroku pipelines:promote` equivalent) |
 {{ENDIF}}
 {{IF eb_deploy_method == "codepipeline"}}
 | `terraform/pipeline.tf` | Optional CodePipeline source-to-EB deploy path |
