@@ -17,7 +17,9 @@ Complete inventory of discovered Heroku resources. Uses a **flat resource model*
     "total_apps_discovered": 4,
     "discovery_sources": ["terraform", "procfile"],
     "confidence": "full|reduced",
-    "confidence_note": "Terraform had parse errors on some files (if reduced)"
+    "confidence_note": "Terraform had parse errors on some files (if reduced)",
+    "apps_by_stack_status": { "eol": 0, "deprecated": 1, "supported": 3, "container": 0, "unknown": 0 },
+    "eol_stack_apps": []
   },
   "apps": [
     {
