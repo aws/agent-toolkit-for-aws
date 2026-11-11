@@ -179,9 +179,17 @@ order form commits spend discovery cannot see. Reconcile the two rather than pic
    list rates; committed headroom and scaled-to-zero formations; apps or accounts
    outside the CLI's view; usage-based add-ons; support and Connect being invisible to
    discovery. Say plainly that the gap is **not** evidence of unused commitment.
-5. Also compute `discovered_like_for_like_monthly` = discovered baseline minus the
-   list price of every add-on the Design marked Deferred. This is the only Heroku
-   figure that is scope-matched to the AWS estimate; Part 3 uses it.
+5. Also compute `discovered_like_for_like_monthly` = discovered baseline minus
+   `current_costs.deferred_resource_cost` — Part 1b's sum of what the **selected
+   baseline actually counted** for the Deferred add-ons (invoice amounts under
+   `billing_data`, live plan prices under `live_prices_plus_cache`, cache prices under
+   `pricing_cache`). Never substitute list prices: with a $150 invoice baseline that
+   includes $50 of deferred spend whose list price is $100, the matched baseline is $100
+   and the removed amount disclosed is $50. If the selected baseline cannot attribute an
+   amount to a deferred add-on (e.g. a billing line that does not break it out), leave
+   that add-on out of the subtraction and say so in `like_for_like_comparison.note`
+   rather than inventing a figure. This is the only Heroku figure that is scope-matched
+   to the AWS estimate; Part 3 uses it.
 
 The contract run-rate is never the baseline used for savings headlines. It is shown
 beside the discovered figure so the reader can see both and why they differ.
@@ -190,7 +198,8 @@ beside the discovered figure so the reader can see both and why they differ.
 not: Part 3 must compute `cost_comparison.like_for_like_comparison` (AWS Balanced minus
 the like-for-like baseline, with the percentage and the deferred contribution it removed)
 and the financial roll-up must present that difference alongside — never instead of — the
-full-baseline difference and its caveat. Example: full baseline $740, deferred add-ons
+full-baseline difference and its caveat. The subtraction and the disclosed removed amount
+are the same number, `current_costs.deferred_resource_cost` from Part 1b. Example: full baseline $740, deferred add-ons
 $600, AWS $200 → full view says "$540 less on AWS", scope-matched view says "$60 more on
 AWS ($200 vs $140)". Both are shown; the second is the one labelled decision-grade.
 
@@ -414,7 +423,8 @@ Include in `estimation-infra.json`:
     "heroku_monthly_like_for_like": "<as above>",
     "monthly_difference": "<aws_monthly_balanced − heroku_monthly_like_for_like; positive = AWS costs more>",
     "difference_pct": "<monthly_difference / heroku_monthly_like_for_like>",
-    "deferred_contribution_monthly": "<sum of Deferred add-ons' Heroku list prices>",
+    "deferred_contribution_monthly": "<current_costs.deferred_resource_cost from Part 1b — the amount the selected baseline counted for the Deferred add-ons, NOT their list prices; same figure the subtraction above removed>",
+    "unattributed_deferred_services": "<deferred add-ons the selected baseline could not attribute an amount to (left in the baseline); [] when none>",
     "note": "Scope-matched: both sides exclude the add-ons that have no AWS mapping yet. This is the comparison to quote; the full-baseline figures above include spend the AWS estimate does not replace."
   },
   "option_a_premium": {

@@ -156,7 +156,7 @@ Before generating questions, scan the inventory to determine which questions app
 | Q13 — Log retention                  | Always                                                           | Never                                     |
 | Q14 — Alerting preference            | Always                                                           | Never                                     |
 | Q15 — Cost optimization              | Always                                                           | Never                                     |
-| Q16 — Heroku contract                | `billing_profile.available == false` (no invoice data)           | Billing data present, or user says "none" |
+| Q16 — Heroku contract                | `billing_profile` absent, `null`, or `available != true` (no invoice) | `billing_profile.available == true`, or user says "none" |
 
 ### Extraction Rules (answer from the inventory before asking)
 
@@ -231,7 +231,7 @@ After determining active questions, organize them into **three progressive batch
 
 **Batch 2 is active** if ANY of: Postgres present, Redis present, Kafka present, Private Space detected, or DNS question is needed (always true → Batch 2 always fires with at least Q10).
 
-**Batch 3 is always active** (Q12–Q15 always fire; Q11 fires only if Fir detected; Q16 fires only when `billing_profile.available == false` — see Conditional Question Rules).
+**Batch 3 is always active** (Q12–Q15 always fire; Q11 fires only if Fir detected; Q16 fires whenever `billing_profile` is absent, `null`, or has `available != true` — Discover omits the section entirely when no billing file was supplied, and that is the common no-invoice case; see Conditional Question Rules).
 
 Record the ordered list of active batches and count questions per batch after filtering. **Exclude questions resolved on the Assumption Sheet** (extracted, defaulted-and-confirmed, or corrected) — batches contain only the questions the user must actually answer.
 
@@ -844,6 +844,8 @@ Validate: must be valid ISO 8601 date, must be in the future.
 
 #### Q16 — Heroku Contract (Enterprise order form)
 
+> _Fires when the inventory has no invoice: `billing_profile` absent or `null`, or `billing_profile.available` is anything but `true`._
+>
 > Do you have a Heroku Enterprise contract or order form? If so, share the committed
 > lines (totals only — no unit prices needed): term start and end, and the total for
 > each of: dyno units, add-on credits, support plan, Private Spaces, Connect rows,
