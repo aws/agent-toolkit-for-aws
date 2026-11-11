@@ -327,7 +327,7 @@ def test_non_finite_numbers_become_empty_cells():
         blob = "\n".join(sheets(tmp / "heroku-estate.xlsx").values())
         assert "<v>nan</v>" not in blob and "<v>inf</v>" not in blob
         # the leaders-only total still sums the finite leader value
-        assert "<v>40.5</v>" in sheets(tmp / "heroku-estate.xlsx")["Summary"]
+        assert "<v>20.5</v>" in sheets(tmp / "heroku-estate.xlsx")["Summary"]  # this stack's fixture leader is 20.5 GB
 
 
 def test_tmp_file_removed_when_write_fails():
