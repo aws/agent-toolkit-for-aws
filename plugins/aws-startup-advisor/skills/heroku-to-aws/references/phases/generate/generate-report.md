@@ -32,6 +32,7 @@ _contributes:
 | `preferences.json`                                                                                                             | Region, HA, arch (active scenario = working tree)                                                                                                                               |
 | `scenarios/index.json` + manifests **+ each scenario's `scenarios/scenario-NNN.preferences.json` / `.aws-design.json` copies** | What-if table when ≥2 scenarios — manifests carry the cost tiers/complexity; the per-scenario Region/HA/Compute/Arch columns come from the scenario's preferences/design copies |
 | `MIGRATION_GUIDE.md`                                                                                                           | Must already exist (docs fragment ran first)                                                                                                                                    |
+| `heroku-resource-inventory.json`                                                                                               | `metadata.apps_by_stack_status` / `metadata.eol_stack_apps` for the end-of-life stack line (tolerate absence on older inventories)                                               |
 
 ---
 
@@ -59,6 +60,13 @@ From `estimation-infra.json`:
 
 From design + preferences: region, primary compute (EB / Fargate / EKS),
 service count.
+
+From `heroku-resource-inventory.json` (when present — older inventories omit
+these keys; treat absence as no finding):
+
+- `metadata.apps_by_stack_status` (`eol` / `deprecated` / `supported` /
+  `container` / `unknown` counts)
+- `metadata.eol_stack_apps` (sorted app names on end-of-life stacks)
 
 ---
 
@@ -109,6 +117,12 @@ Only untagged _illustrative_ numbers are skipped.
    (estimated monthly), else AWS Balanced alone.
 4. **What would flip this (v2):** from `recommendation.would_flip_if[]` when
    present — short unordered list. Skip silently when absent.
+   - **End-of-life stacks (conditional):** when
+     `metadata.apps_by_stack_status.eol > 0`, add one line stating that N apps
+     run on Heroku stacks that have reached end-of-life and no longer receive
+     operating-system security patches on Heroku, then list
+     `metadata.eol_stack_apps` (all names when ≤ 10; otherwise the first 10
+     followed by "and N more"). Skip silently when the key is absent or zero.
 5. **One-sentence next action** — the single most useful next step for the
    reader (Generate artifacts, confirm a condition, or gather named evidence).
 
