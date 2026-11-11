@@ -886,21 +886,27 @@ docker push {{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com/{{app_nam
 
 The Terraform configuration creates ECS services automatically. After pushing the image, force a new deployment:
 
-Promote (run the image that is deployed on staging in production, no rebuild): resolve
-the task definition the staging service is actually running, not the family's latest
-`ACTIVE` revision and not a moving `:latest` tag, then reuse its image by digest.
+Promote (run the image that is deployed on staging in production, no rebuild): take the
+image digest from a running staging task. ECS reports the digest of the image the task
+actually pulled, so this is immune to the family's latest `ACTIVE` revision and to a
+`:latest` tag that moved in the registry after staging started. Do not resolve the
+digest from the registry tag (`aws ecr describe-images --image-ids imageTag=...` reads
+what the tag points to now, which may not be what staging runs).
 
 ```bash
+STAGING_TASK="$(aws ecs list-tasks --cluster <staging cluster> --service-name <staging service> \
+  --desired-status RUNNING --query 'taskArns[0]' --output text)"
+STAGING_DIGEST="$(aws ecs describe-tasks --cluster <staging cluster> --tasks "${STAGING_TASK}" \
+  --query 'tasks[0].containers[?name==`<process>`].imageDigest' --output text)"
 STAGING_TASK_DEF="$(aws ecs describe-services --cluster <staging cluster> --services <staging service> \
   --query 'services[0].taskDefinition' --output text)"
-aws ecs describe-task-definition --task-definition "${STAGING_TASK_DEF}" \
-  --query 'taskDefinition.containerDefinitions[0].image' --output text
 ```
 
-If the printed image is a tag rather than `<repository>@sha256:<digest>`, resolve the
-digest with `aws ecr describe-images --repository-name <repository> --image-ids imageTag=<tag> --query 'imageDetails[0].imageDigest'`
-and use `<repository>@<digest>` in the production task definition. Then
-`aws ecs register-task-definition` with that image in the production family and
+`STAGING_DIGEST` is `sha256:<digest>`; `STAGING_TASK_DEF` is only used to copy the
+container definition (CPU, memory, environment, log configuration) into the production
+family. Register the production task definition with
+`image = <repository>@${STAGING_DIGEST}` (`aws ecs register-task-definition` in the
+production family) and run
 `aws ecs update-service --cluster <prod cluster> --service <service> --task-definition <new revision>`.
 A generated workflow for this is not yet emitted (the Elastic Beanstalk one is,
 `promote.yml`).

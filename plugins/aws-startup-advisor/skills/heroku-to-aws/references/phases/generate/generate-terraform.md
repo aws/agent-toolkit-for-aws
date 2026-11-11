@@ -1708,8 +1708,9 @@ jobs:
   reference and production runs the staging image without a rebuild. With the default
   source bundle, production rebuilds the Dockerfile from the promoted source version.
 - Fargate services are not promoted by this file; the guide's Phase 3 gives the CLI
-  equivalent (resolve the task definition the staging service is running, register it
-  with its image digest in the production family, update the service). A generated
+  equivalent (read the `imageDigest` of a running staging task with
+  `aws ecs describe-tasks`, register a production task definition pinned to that digest,
+  update the service; the registry tag is never resolved). A generated
   workflow for Fargate is not emitted yet.
 - `"codepipeline"` and `"manual"` deploy methods do not emit this file. The generated
   `pipeline.tf` has `Source` and `Deploy` stages only; a CodePipeline promotion approval

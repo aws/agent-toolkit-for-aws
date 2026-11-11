@@ -682,6 +682,24 @@ module "network" {
         report = validator.validate(self.root, require_eb_workflow=True)
         self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
 
+    def test_fargate_promote_guide_pins_the_running_staging_task_digest(self) -> None:
+        # A registry tag can move after staging started; the digest must come from
+        # the task ECS is actually running, never from `describe-images imageTag=`.
+        docs = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-docs.md").read_text()
+        section = docs.split("### Deploy to Fargate", 1)[1].split("\n### ", 1)[0]
+        recipe = section.split("```bash\n", 1)[1].split("\n```", 1)[0]
+        self.assertIn("aws ecs list-tasks", recipe)
+        self.assertIn("aws ecs describe-tasks", recipe)
+        self.assertIn(".imageDigest", recipe)
+        self.assertIn("@${STAGING_DIGEST}", section)
+        self.assertNotIn("describe-images", recipe)
+        self.assertNotIn("imageTag=", recipe)
+        self.assertNotIn("imageDetails", section)
+        terraform = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
+        promote_notes = terraform.split("### `.github/workflows/promote.yml`", 1)[1].split("\n### ", 1)[0]
+        self.assertIn("imageDigest", promote_notes)
+        self.assertNotIn("imageTag", promote_notes)
+
     def test_promote_lookup_and_publish_shapes_are_bounded(self) -> None:
         deploy = "aws elasticbeanstalk update-environment --environment-name app-web --version-label \"${LABEL}\""
         accepted = [
