@@ -94,6 +94,8 @@ ESTIMATE = {
                         "like_for_like_comparison": {"aws_monthly_balanced": 400, "heroku_monthly_like_for_like": 140,
                                                      "monthly_difference": 260, "difference_pct": 1.857,
                                                      "deferred_contribution_monthly": 560,
+                                                     "unattributed_deferred_services": [],
+                                                     "attribution": "complete",
                                                      "note": "Scope-matched."}},
 }
 
@@ -164,6 +166,62 @@ def test_design_and_estimate_are_optional():
         wb = sheets(tmp / "heroku-estate.xlsx")
         assert "Cost estimate" not in wb
         assert "Design not run" in wb["Formations"]
+
+
+def _write_estimate_with_lfl(tmp: Path, lfl: dict) -> None:
+    est = json.loads(json.dumps(ESTIMATE))
+    est["cost_comparison"]["like_for_like_comparison"] = lfl
+    est["cost_comparison"]["heroku_monthly_like_for_like"] = lfl["heroku_monthly_like_for_like"]
+    (tmp / "heroku-resource-inventory.json").write_text(json.dumps(INVENTORY))
+    (tmp / "estimation-infra.json").write_text(json.dumps(est))
+
+
+def test_complete_attribution_is_labelled_decision_grade():
+    with tempfile.TemporaryDirectory() as t:
+        tmp = Path(t)
+        (tmp / "heroku-resource-inventory.json").write_text(json.dumps(INVENTORY))
+        (tmp / "estimation-infra.json").write_text(json.dumps(ESTIMATE))
+        assert run(tmp)[0] == 0
+        sheet = sheets(tmp / "heroku-estate.xlsx")["Cost estimate"]
+        assert "Scope-matched comparison (decision-grade)" in sheet
+        assert "provisional" not in sheet
+        assert "185.7%" in sheet
+
+
+def test_incomplete_attribution_is_labelled_provisional_not_decision_grade():
+    # $150 invoice baseline, $100 AWS, nothing attributable to remove, one deferred database the
+    # invoice could not itemize: the $50 "saving" still has that database on the Heroku side only.
+    with tempfile.TemporaryDirectory() as t:
+        tmp = Path(t)
+        _write_estimate_with_lfl(tmp, {
+            "aws_monthly_balanced": 100, "heroku_monthly_like_for_like": 150, "monthly_difference": -50,
+            "difference_pct": -0.333, "deferred_contribution_monthly": 0,
+            "unattributed_deferred_services": ["heroku-postgresql:premium-0"], "attribution": "incomplete",
+            "note": "Scope-matched (provisional)."})
+        assert run(tmp)[0] == 0
+        sheet = sheets(tmp / "heroku-estate.xlsx")["Cost estimate"]
+        assert "Scope-matched comparison (provisional" in sheet
+        assert "1 deferred add-on(s) could not be attributed and remain in the Heroku figure: heroku-postgresql:premium-0" in sheet
+        assert "decision-grade" not in sheet
+        assert "Both sides exclude" not in sheet
+        assert "<v>150</v>" in sheet and "<v>-50</v>" in sheet
+
+
+def test_zero_matched_baseline_renders_pct_note_and_keeps_dollar_difference():
+    with tempfile.TemporaryDirectory() as t:
+        tmp = Path(t)
+        _write_estimate_with_lfl(tmp, {
+            "aws_monthly_balanced": 40, "heroku_monthly_like_for_like": 0, "monthly_difference": 40,
+            "difference_pct": None, "pct_note": "percentage not applicable: matched Heroku baseline is $0",
+            "deferred_contribution_monthly": 600, "unattributed_deferred_services": [],
+            "attribution": "complete", "note": "Scope-matched."})
+        code, out = run(tmp)
+        assert code == 0 and out.startswith("ESTATE_OK")
+        _parse_every_worksheet(tmp / "heroku-estate.xlsx")
+        sheet = sheets(tmp / "heroku-estate.xlsx")["Cost estimate"]
+        assert "percentage not applicable: matched Heroku baseline is $0" in sheet
+        assert "<v>40</v>" in sheet and "<v>0</v>" in sheet
+        assert "%" not in sheet
 
 
 def test_fail_open_on_missing_or_broken_inventory():

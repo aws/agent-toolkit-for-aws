@@ -401,13 +401,27 @@ def build_sheets(inv: dict, design, est) -> tuple[list[tuple[str, list[list]]], 
                      ["Pricing source", (est.get("pricing_source") or {}).get("status", ""), (est.get("pricing_source") or {}).get("note", "") or ""]]
         lfl = comp.get("like_for_like_comparison")
         if isinstance(lfl, dict):
+            unattributed = [str(s) for s in (lfl.get("unattributed_deferred_services") or [])]
+            # Only a fully attributed comparison is decision-grade. When the selected
+            # baseline could not itemize a deferred add-on, its spend is still on the
+            # Heroku side only, so the block is labelled provisional and names it.
+            if lfl.get("attribution") == "incomplete" or unattributed:
+                heading = (f"Scope-matched comparison (provisional — {len(unattributed)} deferred add-on(s) could not be "
+                           f"attributed and remain in the Heroku figure: {', '.join(unattributed) or 'unnamed'})")
+                heading_note = "Provisional: the named add-ons are still on the Heroku side only, so the figures are not comparable yet"
+            else:
+                heading = "Scope-matched comparison (decision-grade)"
+                heading_note = "Both sides exclude add-ons with no AWS mapping yet"
+            if lfl.get("difference_pct") not in (None, ""):
+                pct_note = f"{round(float(lfl['difference_pct']) * 100, 1)}%"
+            else:
+                pct_note = lfl.get("pct_note") or ""
             cost_rows += [["", "", ""],
-                          ["Scope-matched comparison (decision-grade)", "", "Both sides exclude add-ons with no AWS mapping yet"],
+                          [heading, "", heading_note],
                           ["Heroku baseline, like-for-like", lfl.get("heroku_monthly_like_for_like"),
                            f"excludes {lfl.get('deferred_contribution_monthly')} of deferred add-ons" if lfl.get("deferred_contribution_monthly") is not None else ""],
                           ["AWS Balanced", lfl.get("aws_monthly_balanced"), ""],
-                          ["Difference (AWS minus Heroku, like-for-like)", lfl.get("monthly_difference"),
-                           f"{round(float(lfl['difference_pct']) * 100, 1)}%" if lfl.get("difference_pct") not in (None, "") else ""],
+                          ["Difference (AWS minus Heroku, like-for-like)", lfl.get("monthly_difference"), pct_note],
                           ["  note", lfl.get("note") or "", ""]]
         contract = cur.get("contract")
         if isinstance(contract, dict):

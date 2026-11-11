@@ -203,8 +203,12 @@ order form commits spend discovery cannot see. Reconcile the two rather than pic
    prices: with a $150 invoice baseline that includes $50 of deferred spend whose list
    price is $100, the matched baseline is $100 and the removed amount disclosed is $50.
    If the selected baseline cannot attribute an amount to a deferred add-on (e.g. a
-   billing line that does not break it out), leave that add-on out of the subtraction
-   and say so in `like_for_like_comparison.note` rather than inventing a figure.
+   billing line that does not break it out), leave that add-on out of the subtraction,
+   list it in `like_for_like_comparison.unattributed_deferred_services`, set
+   `like_for_like_comparison.attribution` to `"incomplete"` and say so in its `note`
+   rather than inventing a figure. An incomplete comparison is **provisional, not
+   decision-grade** (Part 3 § Attribution): the unattributed add-on's spend is still on
+   the Heroku side only.
 
 The contract run-rate is never the baseline used for savings headlines. It is shown
 beside the discovered figure so the reader can see both and why they differ.
@@ -216,7 +220,12 @@ and the financial roll-up must present that difference alongside — never inste
 full-baseline difference and its caveat. The subtraction and the disclosed removed amount
 are the same number, `current_costs.deferred_resource_cost` from Part 1b. Example: full baseline $740, deferred add-ons
 $600, AWS $200 → full view says "$540 less on AWS", scope-matched view says "$60 more on
-AWS ($200 vs $140)". Both are shown; the second is the one labelled decision-grade.
+AWS ($200 vs $140)". Both are shown; the second is the one labelled decision-grade — but
+only when `like_for_like_comparison.attribution == "complete"`. When it is `"incomplete"`
+the second view is labelled "Scope-matched (provisional — N deferred add-on(s) could not
+be attributed and remain in the Heroku figure: `<names>`)" instead, and is never called
+decision-grade. When the matched baseline is $0, the percentage is omitted and rendered as
+"(percentage not applicable)" (Part 3 § Zero matched baseline).
 
 Whenever a baseline was determined (any source except `"unavailable"`), present it as:
 
@@ -437,10 +446,12 @@ Include in `estimation-infra.json`:
     "aws_monthly_balanced": "<projected_costs.aws_monthly_balanced>",
     "heroku_monthly_like_for_like": "<as above>",
     "monthly_difference": "<aws_monthly_balanced − heroku_monthly_like_for_like; positive = AWS costs more>",
-    "difference_pct": "<monthly_difference / heroku_monthly_like_for_like>",
+    "difference_pct": "<monthly_difference / heroku_monthly_like_for_like; OMIT (null) when heroku_monthly_like_for_like == 0 — never divide by zero>",
+    "pct_note": "<ONLY when heroku_monthly_like_for_like == 0: 'percentage not applicable: matched Heroku baseline is $0'; omit otherwise>",
     "deferred_contribution_monthly": "<current_costs.deferred_resource_cost from Part 1b — the amount the selected baseline counted for the Deferred add-ons, NOT their list prices; same figure the subtraction above removed>",
     "unattributed_deferred_services": "<deferred add-ons the selected baseline could not attribute an amount to (left in the baseline); [] when none>",
-    "note": "Scope-matched: both sides exclude the add-ons that have no AWS mapping yet. This is the comparison to quote; the full-baseline figures above include spend the AWS estimate does not replace."
+    "attribution": "complete" | "incomplete",
+    "note": "<attribution == complete: 'Scope-matched: both sides exclude the add-ons that have no AWS mapping yet. This is the comparison to quote; the full-baseline figures above include spend the AWS estimate does not replace.' | attribution == incomplete: 'Scope-matched (provisional — N deferred add-on(s) could not be attributed and remain in the Heroku figure: <names>). The Heroku side still carries spend the AWS estimate does not replace; do not quote this as decision-grade.'>"
   },
   "option_a_premium": {
     "aws_monthly": "<premium total>",
@@ -470,6 +481,25 @@ Set `comparison_status` to `"incomplete_unmatched_services"` whenever
 `current_costs.deferred_resource_cost > 0` (from Part 1b); else `"complete"`.
 This mirrors the existing `found`/`available`-style status flag convention
 already used in `billing_profile` / `terraform_metadata` / `live_metadata`.
+
+**Zero matched baseline.** A supported estate can have a matched Heroku baseline of
+$0 (e.g. every formation scaled to quantity 0 and the whole invoice attributable to a
+Deferred add-on) while the AWS mapping keeps a positive minimum instance count and so a
+positive AWS cost. `monthly_difference` is still the dollar figure (= AWS Balanced);
+`difference_pct` is omitted (null) — never divided by zero — and `pct_note` carries
+`"percentage not applicable: matched Heroku baseline is $0"`. The report renders
+"(percentage not applicable)" in place of the percentage; the workbook leaves the
+percentage cell blank.
+
+**Attribution.** Set `attribution` to `"incomplete"` whenever
+`unattributed_deferred_services` is non-empty (§ Contract reconciliation step 5: the
+selected baseline could not itemize that add-on, so its spend stays in the Heroku
+figure), else `"complete"`. Only a `complete` comparison may be labelled decision-grade
+or described as "both sides exclude add-ons with no AWS mapping". An `incomplete`
+comparison is labelled provisional and names the services in every presentation (estimate
+note, both HTML report modes, workbook): with a $150 invoice baseline, $100 AWS, zero
+attributable deferred spend and one unattributed database, the $50 "saving" is NOT
+scope-matched — the database is only on the Heroku side — and must say so.
 
 **Keep the full baseline — do not subtract or hide the deferred resource's
 cost.** `heroku_monthly_baseline` and the three option differences are always

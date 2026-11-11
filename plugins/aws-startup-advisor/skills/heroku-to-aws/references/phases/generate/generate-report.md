@@ -84,7 +84,22 @@ any add-on was Deferred): render it as its own row block in `exec-costs`, direct
 the full-baseline comparison — "Scope-matched: Heroku $X/mo (excludes $D/mo of add-ons
 with no AWS mapping yet) vs AWS Balanced $Y/mo → $Z/mo {more|less} on AWS ({P}%)". Keep
 the full-baseline row and its caveat above it. Wrap the like-for-like Heroku figure in
-`data-cost-key="heroku_monthly_like_for_like"` so the validator can cross-check it.
+`data-cost-key="heroku_monthly_like_for_like"` so the validator can cross-check it (the
+validator requires that anchor inside `exec-costs` whenever `like_for_like_comparison`
+exists, and fails the report when its rendered dollars differ from
+`cost_comparison.heroku_monthly_like_for_like`). Two variants of that line:
+
+- `like_for_like_comparison.difference_pct` absent/null (`heroku_monthly_like_for_like`
+  is $0; `pct_note` present): render "(percentage not applicable)" in place of "({P}%)".
+  Keep the dollar `$Z/mo`.
+- `like_for_like_comparison.attribution == "incomplete"`: the label is "Scope-matched
+  (provisional — N deferred add-on(s) could not be attributed and remain in the Heroku
+  figure: `<names from unattributed_deferred_services>`)" instead of "Scope-matched", and
+  the block must not say "decision-grade" or "both sides exclude" — the named add-ons are
+  still only on the Heroku side. Only `attribution == "complete"` may be labelled
+  decision-grade.
+
+These rules apply in both report modes (`report-decision-core.md` reuses this section).
 
 ---
 

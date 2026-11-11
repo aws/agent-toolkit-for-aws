@@ -67,7 +67,12 @@ fresh decision without being touched or archived.
 - **Cost labeling, reader vocabulary:** unchanged from `generate-report.md` —
   every dollar figure is "estimated monthly"; no `*.json` filenames or
   `aws_*.` resource IDs in `decision-summary` / `exec-costs` /
-  `what-if-scenarios`.
+  `what-if-scenarios`. The scope-matched block's two variants (zero matched
+  baseline → "(percentage not applicable)"; `attribution == "incomplete"` →
+  the provisional label naming the unattributed add-ons, never
+  "decision-grade") and its `heroku_monthly_like_for_like` anchor apply in
+  decision mode exactly as in `generate-report.md` Step 1; the validator
+  checks the anchor in both modes.
 
 ## Full-mode specifics
 
