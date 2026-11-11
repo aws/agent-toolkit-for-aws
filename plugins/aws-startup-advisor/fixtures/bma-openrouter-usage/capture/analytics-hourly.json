@@ -1,0 +1,44 @@
+{
+ "data": {
+  "data": [
+   {
+    "hour": "2026-10-20T09:00:00Z",
+    "model": "openai/gpt-4.1-2025-04-14",
+    "tokens_prompt": 1000,
+    "tokens_completion": 200,
+    "request_count": 10
+   },
+   {
+    "hour": "2026-10-25T10:00:00Z",
+    "model": "openai/gpt-4.1-2025-04-14",
+    "tokens_prompt": 1800,
+    "tokens_completion": 300,
+    "request_count": 12
+   },
+   {
+    "hour": "2026-10-25T11:00:00Z",
+    "model": "openai/gpt-4.1-2025-04-14",
+    "tokens_prompt": 1200,
+    "tokens_completion": 300,
+    "request_count": 8
+   },
+   {
+    "hour": "2026-10-25T03:00:00Z",
+    "model": "anthropic/claude-sonnet-5-20260901",
+    "tokens_prompt": 2000,
+    "tokens_completion": 400,
+    "request_count": 5
+   },
+   {
+    "hour": "2026-10-26T01:00:00Z",
+    "model": "google/gemini-2.5-flash",
+    "tokens_prompt": 800,
+    "tokens_completion": 100,
+    "request_count": 8
+   }
+  ],
+  "metadata": {
+   "truncated": false
+  }
+ }
+}

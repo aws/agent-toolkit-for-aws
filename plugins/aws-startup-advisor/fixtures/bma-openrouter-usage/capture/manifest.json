@@ -1,0 +1,52 @@
+{
+  "captured_at": "2026-10-31T06:00:00Z",
+  "window_days": 30,
+  "window_start_utc": "2026-10-01T00:00:00Z",
+  "window_end_utc": "2026-10-31T00:00:00Z",
+  "workspace_scope": null,
+  "result": "complete",
+  "captures": [
+    {
+      "endpoint": "/credits",
+      "file": "credits.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "endpoint": "/activity",
+      "file": "activity.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "endpoint": "/key",
+      "file": "key.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "endpoint": "/analytics/meta",
+      "file": "analytics-meta.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "endpoint": "/analytics/query",
+      "file": "analytics.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "endpoint": "/analytics/query",
+      "file": "analytics-volume.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "endpoint": "/analytics/query",
+      "file": "analytics-hourly.json",
+      "status": "ok",
+      "note": null
+    }
+  ]
+}

@@ -70,23 +70,50 @@ def decisions(profile: dict, summary: dict, models: list[str]) -> list[str]:
 COST_STATUS_ORDER = ("complete", "partial_window", "cost_unavailable")
 
 
+TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens", "prompt_tokens", "completion_tokens")
+
+
+def _tokens(row: dict) -> int:
+    return sum(row.get(f, 0) for f in TOKEN_FIELDS)
+
+
+def _overlaps(profiles: list[dict]) -> set[int]:
+    """OpenRouter rows whose model a direct usage profile also measured, unless confirmed no_byok (same name rule as llm-to-bedrock)."""
+    direct = {r["model"].lower() for u in profiles if u["metadata"]["source"] != "openrouter_usage_api" for r in u["usage_by_model"]}
+    return {id(r) for u in profiles if u["metadata"]["source"] == "openrouter_usage_api" for r in u["usage_by_model"]
+            if r["model"].lower().rsplit("/", 1)[-1] in direct and r.get("cost_provenance") != "no_byok"}
+
+
 def measured(profiles: list[dict]) -> dict | None:
     """Per-source usage plus totals; each source keeps its own active period, and total spend is null when any source's is unknown."""
     if not profiles:
         return None
-    sources = []
+    overlap = _overlaps(profiles)
+    sources, excluded = [], []
+    total_cost, total_tokens, cost_known = 0.0, 0, True
     for usage in profiles:
         md = usage["metadata"]
-        tokens = sum(r.get(f, 0) for r in usage["usage_by_model"] for f in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens"))
-        sources.append({"source": md["source"], "monthly_cost_usd": usage["summary"]["monthly_cost_usd"],
-                        "cost_status": md.get("cost_status", "partial_window" if md["partial_window"] else "complete"),
-                        "window_days": md["window_days"], "active_days": md["active_days"], "partial_window": md["partial_window"],
-                        "total_tokens": tokens, "uncosted_service_tiers": md.get("uncosted_service_tiers", []),
-                        "capture_warnings": md.get("capture_warnings", [])})
-    costs = [s["monthly_cost_usd"] for s in sources]
-    return {"sources": sources, "monthly_cost_usd": None if None in costs else round(sum(costs), 2),
+        rows = usage["usage_by_model"]
+        source = {"source": md["source"], "monthly_cost_usd": usage["summary"]["monthly_cost_usd"],
+                  "cost_status": md.get("cost_status", "partial_window" if md["partial_window"] else "complete"),
+                  "window_days": md["window_days"], "active_days": md["active_days"], "partial_window": md["partial_window"],
+                  "total_tokens": sum(_tokens(r) for r in rows), "uncosted_service_tiers": md.get("uncosted_service_tiers", []),
+                  "capture_warnings": md.get("capture_warnings", [])}
+        if "byok_inference_cost_usd" in usage["summary"]:
+            source["byok_inference_cost_usd"] = usage["summary"]["byok_inference_cost_usd"]
+        sources.append(source)
+        kept = [r for r in rows if id(r) not in overlap]
+        excluded += [{"source": md["source"], "model": r["model"], "cost_provenance": r.get("cost_provenance")} for r in rows if id(r) in overlap]
+        total_tokens += sum(_tokens(r) for r in kept)
+        if source["monthly_cost_usd"] is None:
+            cost_known = False
+        elif md["source"] == "openrouter_usage_api":
+            total_cost += sum(r["monthly_cost_usd"] + r.get("byok_inference_cost_usd", 0) for r in kept)
+        else:
+            total_cost += source["monthly_cost_usd"]
+    return {"sources": sources, "monthly_cost_usd": round(total_cost, 2) if cost_known else None,
             "cost_status": max((s["cost_status"] for s in sources), key=COST_STATUS_ORDER.index),
-            "total_tokens": sum(s["total_tokens"] for s in sources), "window_days": max(s["window_days"] for s in sources),
+            "total_tokens": total_tokens, "window_days": max(s["window_days"] for s in sources), "overlap_excluded": excluded,
             "capture_warnings": [f"{s['source']}: {w}" for s in sources for w in s["capture_warnings"]]}
 
 
