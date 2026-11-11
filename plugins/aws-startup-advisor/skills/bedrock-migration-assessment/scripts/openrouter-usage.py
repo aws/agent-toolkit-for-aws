@@ -28,6 +28,7 @@ ANALYTICS_ROWS = [("analytics.json", CLASSIFY_METRICS, None), ("analytics-volume
                   ("analytics-hourly.json", HOURLY_METRICS, "hour")]
 CAPTURE_FILES = ["credits.json", "activity.json", "key.json", "analytics-meta.json"] + [f for f, _, _ in ANALYTICS_ROWS]
 BYOK_THRESHOLD = 0.005
+MAX_ANALYTICS_MODELS = 50
 KEY_FIELDS = ("limit", "limit_remaining", "limit_reset", "include_byok_in_limit", "is_free_tier")
 sleep = time.sleep
 opener = urllib.request.urlopen
@@ -58,9 +59,9 @@ def call(key: str, path: str, params: dict | None = None, body: dict | None = No
     params = params or {}
     if body is None and path not in GET_PATHS or body is not None and path not in POST_PATHS or FORBIDDEN_PARAMS & set(params):
         raise ValueError(f"endpoint or parameter not allowed: {path}")
-    if body is not None and (set(body.get("dimensions", [])) - {"model"} or body.get("granularity") not in (None, "hour") or "filters" in body
-                             and any(f.get("field") != "workspace" for f in body["filters"])):
-        raise ValueError("analytics query must group by model only, hourly at most, and filter by workspace only")
+    if body is not None and (body.get("dimensions") or body.get("granularity") not in (None, "hour")
+                             or any(f.get("field") not in ("workspace", "model") or f.get("operator") != "eq" for f in body.get("filters", []))):
+        raise ValueError("analytics query must have no dimensions, hourly granularity at most, and only workspace and model equality filters")
     url = f"{BASE_URL}{path}" + (f"?{urllib.parse.urlencode(params)}" if params else "")
     data = json.dumps(body).encode() if body is not None else None
     headers = {"Authorization": f"Bearer {key}", "Accept": "application/json"} | ({"Content-Type": "application/json"} if data else {})
@@ -126,12 +127,14 @@ def cmd_probe(args) -> int:
     return 0
 
 
-def _analytics_body(metrics: list[str], granularity: str | None, start: int, end: int, workspace: str | None, limit: int) -> dict:
-    body = {"metrics": metrics, "dimensions": ["model"], "time_range": {"start": _iso(start), "end": _iso(end)}, "limit": limit}
+def _analytics_body(metrics: list[str], granularity: str | None, start: int, end: int, workspace: str | None, permaslug: str, limit: int) -> dict:
+    """One model's totals: responses label the model dimension for display, so each query filters by one permaslug instead of grouping."""
+    filters = [{"field": "model", "operator": "eq", "value": permaslug}]
+    if workspace:
+        filters.append({"field": "workspace", "operator": "eq", "value": workspace})
+    body = {"metrics": metrics, "time_range": {"start": _iso(start), "end": _iso(end)}, "filters": filters, "limit": limit}
     if granularity:
         body["granularity"] = granularity
-    if workspace:
-        body["filters"] = [{"field": "workspace", "operator": "eq", "value": workspace}]
     return body
 
 
@@ -180,24 +183,31 @@ def _capture(args, key: str) -> int:
         record("key.json", "/key", lambda: {"data": {k: v for k, v in (call(key, "/key").get("data") or {}).items() if k in KEY_FIELDS}}, optional=True)
         meta = record("analytics-meta.json", "/analytics/meta", lambda: call(key, "/analytics/meta"))
         available = {m.get("name") for m in ((meta or {}).get("data") or {}).get("metrics", [])}
+        slugs = sorted({r.get("model_permaslug") for r in ((activity or {}).get("data") or []) if r.get("model_permaslug")})
         for name, metrics, granularity in ANALYTICS_ROWS:
             wanted = [m for m in metrics if m in available]
-            if not wanted:
-                captures.append({"endpoint": "/analytics/query", "file": name, "status": "skipped",
-                                 "note": "analytics metadata unavailable" if meta is None else "none of these metrics is offered"})
+            if not wanted or not slugs:
+                note = "analytics metadata unavailable" if meta is None else "none of these metrics is offered" if not wanted else "no models in /activity"
+                captures.append({"endpoint": "/analytics/query", "file": name, "status": "skipped", "note": note})
                 print(f"{name} skipped 0")
                 continue
 
             def query(wanted=wanted, granularity=granularity):
-                result = call(key, "/analytics/query", body=_analytics_body(wanted, granularity, start, end, args.workspace_id, 1000))
-                if ((result.get("data") or {}).get("metadata") or {}).get("truncated"):
-                    result = call(key, "/analytics/query", body=_analytics_body(wanted, granularity, start, end, args.workspace_id, 5000))
-                return result
+                out = []
+                for slug in slugs[:MAX_ANALYTICS_MODELS]:
+                    result = call(key, "/analytics/query", body=_analytics_body(wanted, granularity, start, end, args.workspace_id, slug, 1000))
+                    if ((result.get("data") or {}).get("metadata") or {}).get("truncated"):
+                        result = call(key, "/analytics/query", body=_analytics_body(wanted, granularity, start, end, args.workspace_id, slug, 5000))
+                    out.append({"model_permaslug": slug, "response": result})
+                return {"data": out}
             data = record(name, "/analytics/query", query)
             if data is not None:
                 captures[-1]["metrics"] = wanted
-                if ((data.get("data") or {}).get("metadata") or {}).get("truncated"):
-                    captures[-1]["note"] = "truncated"
+                truncated = [q["model_permaslug"] for q in data["data"] if ((q["response"].get("data") or {}).get("metadata") or {}).get("truncated")]
+                skipped = slugs[MAX_ANALYTICS_MODELS:]
+                if truncated or skipped:
+                    captures[-1]["note"] = "; ".join(filter(None, [f"truncated for {', '.join(truncated)}" if truncated else "",
+                                                                   f"not queried (over {MAX_ANALYTICS_MODELS} models): {', '.join(skipped)}" if skipped else ""]))
         if activity is None:
             print("ALL_USAGE_FAILED")
             status = 4
@@ -218,8 +228,20 @@ def _loader(capture_dir: Path, manifest: dict):
     return load
 
 
-def _analytics_rows(payload) -> list:
-    return ((payload or {}).get("data") or {}).get("data") or []
+def _per_slug(payload) -> dict[str, list]:
+    """permaslug -> that model's analytics rows; a truncated reply is left out."""
+    out = {}
+    for q in (payload or {}).get("data") or []:
+        data = (q.get("response") or {}).get("data") or {}
+        if not (data.get("metadata") or {}).get("truncated"):
+            out[q["model_permaslug"]] = data.get("data") or []
+    return out
+
+
+def _measured(rows: list, metric: str, offered: set[str]):
+    """Sum of one metric, or None when it was not offered or no row reported it."""
+    values = [r[metric] for r in rows if r.get(metric) is not None]
+    return sum(float(v) for v in values) if metric in offered and values else None
 
 
 def _classify(byok: float, credits: float) -> str:
@@ -250,11 +272,14 @@ def cmd_summarize(args) -> int:
     status_of = {c["file"]: c for c in manifest["captures"]}
     activity = (load("activity.json") or {}).get("data") or []
     credits = (load("credits.json") or {}).get("data") or {}
-    classify = {r.get("model"): (float(r.get("byok_usage") or 0), float(r.get("openrouter_usage") or 0))
-                for r in _analytics_rows(load("analytics.json"))}
-    volume_ok = load("analytics-volume.json") is not None and status_of.get("analytics-volume.json", {}).get("note") != "truncated"
-    volume = {r.get("model"): r for r in _analytics_rows(load("analytics-volume.json"))}
-    hourly_ok = load("analytics-hourly.json") is not None and status_of.get("analytics-hourly.json", {}).get("note") != "truncated"
+    offered = {name: set(status_of.get(name, {}).get("metrics") or []) for name, _, _ in ANALYTICS_ROWS}
+    classify = {}
+    for slug, rs in _per_slug(load("analytics.json")).items():
+        byok_cost, credit_cost = _measured(rs, "byok_usage", offered["analytics.json"]), _measured(rs, "openrouter_usage", offered["analytics.json"])
+        if byok_cost is not None and credit_cost is not None:
+            classify[slug] = (byok_cost, credit_cost)
+    volume = _per_slug(load("analytics-volume.json"))
+    hourly = _per_slug(load("analytics-hourly.json"))
     end = int(datetime.fromisoformat(manifest["window_end_utc"].replace("Z", "+00:00")).timestamp())
     window_days = manifest["window_days"]
     rows: dict[str, dict] = {}
@@ -283,24 +308,28 @@ def cmd_summarize(args) -> int:
         row.setdefault("_slugs", set()).add(slug)
     active_days = window_days if first_day is None else min(window_days, max(1, math.ceil((end - first_day) / 86400)))
     hour_max: dict[str, list] = {}
-    if hourly_ok:
-        per_hour: dict[tuple, list] = {}
-        short_of = {slug: model for model, row in rows.items() for slug in row["_slugs"]}
-        for r in _analytics_rows(load("analytics-hourly.json")):
-            model = short_of.get(r.get("model"))
-            if model is None:
-                continue
-            hour = next((r[k] for k in ("hour", "time", "timestamp", "date", "period", "bucket") if k in r), id(r))
-            h = per_hour.setdefault((model, hour), [0, 0, 0])
-            h[0] += r.get("tokens_prompt") or 0
-            h[1] += r.get("tokens_completion") or 0
-            h[2] += r.get("request_count") or 0
-        for (model, _), h in per_hour.items():
-            m = hour_max.setdefault(model, [0, 0, 0])
-            m[:] = [max(a, b) for a, b in zip(m, h)]
+    for model, row in rows.items():
+        slugs = row["_slugs"]
+        if not slugs <= set(hourly) or not {"tokens_prompt", "tokens_completion"} <= offered["analytics-hourly.json"]:
+            continue
+        per_hour: dict = {}
+        for slug in slugs:
+            for i, r in enumerate(hourly[slug]):
+                hour = next((r[k] for k in ("hour", "time", "timestamp", "date", "period", "bucket") if k in r), None)
+                if hour is None and len(slugs) > 1:
+                    per_hour = None
+                    break
+                h = per_hour.setdefault(hour if hour is not None else i, [0, 0, 0])
+                h[0] += r.get("tokens_prompt") or 0
+                h[1] += r.get("tokens_completion") or 0
+                h[2] += r.get("request_count") or 0
+            if per_hour is None:
+                break
+        if per_hour:
+            hour_max[model] = [max(h[i] for h in per_hour.values()) for i in range(3)]
     warnings = [f"{c['file']} {c['status']}" + (f" ({c['note']})" if c.get("note") else "") for c in manifest["captures"]
-                if c["status"] != "ok" or c.get("note") == "truncated"]
-    analytics_known = status_of.get("analytics.json", {}).get("status") == "ok"
+                if c["status"] != "ok" or c.get("note")]
+    analytics_known = status_of.get("analytics.json", {}).get("status") == "ok" and set(CLASSIFY_METRICS) <= offered["analytics.json"]
     usage = []
     for model, row in rows.items():
         total = row["prompt_tokens"] + row["completion_tokens"]
@@ -312,14 +341,22 @@ def cmd_summarize(args) -> int:
                             "token/dollar totals include its usage but its BYOK-vs-credits split is unverified")
         out = {k: v for k, v in row.items() if not k.startswith("_")}
         out.update(monthly_cost_usd=round(row["monthly_cost_usd"], 2), byok_inference_cost_usd=round(row["byok_inference_cost_usd"], 2), cost_provenance=label)
-        if volume_ok:
-            vs = [volume[s] for s in row["_slugs"] if s in volume]
-            add = lambda f: sum(v.get(f) or 0 for v in vs)
-            latencies = [v["p95_latency"] for v in vs if v.get("p95_latency") is not None]
-            speeds = [v["p95_throughput"] for v in vs if v.get("p95_throughput") is not None]
-            out.update(byok_fees_usd=round(add("byok_fees"), 4), byok_request_count=add("byok_request_count"), analytics_request_count=add("request_count"),
+        if row["_slugs"] <= set(volume):
+            vs = [r for s in row["_slugs"] for r in volume[s]]
+            per_slug = [volume[s] for s in row["_slugs"]]
+
+            def summed(metric, digits=None):
+                parts = [_measured(rs, metric, offered["analytics-volume.json"]) for rs in per_slug]
+                return None if None in parts else round(sum(parts), digits) if digits is not None else int(sum(parts))
+            latencies = [float(v["p95_latency"]) for v in vs if v.get("p95_latency") is not None and "p95_latency" in offered["analytics-volume.json"]]
+            speeds = [float(v["p95_throughput"]) for v in vs if v.get("p95_throughput") is not None and "p95_throughput" in offered["analytics-volume.json"]]
+            out.update(byok_fees_usd=summed("byok_fees", 4), byok_request_count=summed("byok_request_count"), analytics_request_count=summed("request_count"),
                        p95_latency_ms=max(latencies) if latencies else None, p95_throughput_tokens_per_sec=min(speeds) if speeds else None,
-                       web_search_cost_usd=round(add("usage_web"), 4), guardrail_invoked_count=add("guardrail_invoked_count"))
+                       web_search_cost_usd=summed("usage_web", 4), guardrail_invoked_count=summed("guardrail_invoked_count"))
+            unmeasured = [f for f in ("byok_fees_usd", "byok_request_count", "analytics_request_count", "web_search_cost_usd", "guardrail_invoked_count")
+                          if out[f] is None]
+            if unmeasured:
+                warnings.append(f"{model}: {', '.join(unmeasured)} not measured (metric not offered or not reported); null, not zero")
         days = row["_days"]
         busiest = max(days, key=lambda dd: (days[dd][0] + days[dd][1], -dd)) if days else None
         peak = None
@@ -336,7 +373,9 @@ def cmd_summarize(args) -> int:
         usage.append(out)
     usage.sort(key=lambda r: -(r["prompt_tokens"] + r["completion_tokens"]))
     if not analytics_known:
-        warnings.append(f"analytics.json {status_of.get('analytics.json', {}).get('status', 'skipped')} — cost_provenance is unknown for all models")
+        state = status_of.get("analytics.json", {}).get("status", "skipped")
+        reason = "without both byok_usage and openrouter_usage" if state == "ok" else state
+        warnings.append(f"analytics.json {reason} — cost_provenance is unknown for all models")
     if not activity and float(credits.get("total_usage") or 0) > 0:
         warnings.append(f"activity empty but credits.total_usage is ${credits['total_usage']} lifetime — spend exists outside the 30-day window; "
                         "per-model attribution unavailable")
@@ -374,10 +413,20 @@ def _sibling(name: str, file: str):
 
 
 GOOGLE_SERVICE = {"google vertex": "vertex_ai", "google ai studio": "gemini_api"}
+GEMINI_VERSION_SUFFIX = re.compile(r"-(?:latest|preview|exp)(?:-[0-9][0-9-]*)?$|-[0-9]+$")
+
+
+def normalize_gemini(model: str) -> str:
+    """discover-app-code.md Step 4: drop only version suffixes; -lite, -thinking, -image, -live, and -tts stay part of the model."""
+    while True:
+        shorter = GEMINI_VERSION_SUFFIX.sub("", model)
+        if shorter == model or shorter in ("gemini", ""):
+            return model
+        model = shorter
 
 
 def _source_of(row: dict) -> tuple[str, str, str] | None:
-    """(provider, source_service, model) by the scan's OpenRouter prefix rules, or None when the source is not established."""
+    """(provider, source_service, normalized model) by the scan's OpenRouter prefix rules, or None when the source is not established."""
     prefix, _, name = row["model"].partition("/")
     if not name:
         return None
@@ -385,8 +434,16 @@ def _source_of(row: dict) -> tuple[str, str, str] | None:
         return prefix, f"{prefix}_api", name.lower()
     if prefix == "google":
         service = GOOGLE_SERVICE.get((row.get("provider_name") or "").lower())
-        return ("google", service, name.lower()) if service else None
+        name = name.lower()
+        return ("google", service, normalize_gemini(name) if name.startswith("gemini-") else name) if service else None
     return None
+
+
+def _references(upstream: dict, key: tuple[str, str], sources: list[dict]) -> bool:
+    """Whether a gateway upstream resolves to this source, by the validator's rule for service-less upstreams."""
+    if "source_service" in upstream:
+        return (upstream["provider"], upstream["source_service"]) == key
+    return upstream["provider"] == key[0] and sum(s["provider"] == key[0] for s in sources) == 1
 
 
 def cmd_merge(args) -> int:
@@ -403,26 +460,34 @@ def cmd_merge(args) -> int:
         return 5
     family_of = _sibling("bma_openai_usage_for_openrouter", "openai-usage.py").model_family
     days = usage["metadata"]["window_days"]
+    touched: set[tuple[str, str]] = set()
     for row, (provider, service, model) in resolved:
-        source = next((s for s in profile["ai_sources"] if (s["provider"], s["source_service"]) == (provider, service)), None)
-        upstream = next((u for u in gateway["upstreams"] if u["provider"] == provider and u.get("source_service", service) == service), None)
-        if source is None or upstream is None:
+        key = (provider, service)
+        source = next((s for s in profile["ai_sources"] if (s["provider"], s["source_service"]) == key), None)
+        if source is None or not any(_references(u, key, profile["ai_sources"]) for u in gateway["upstreams"]):
             print(f"UPSTREAM_NOT_IN_PROFILE: {provider}/{service} is not an observed OpenRouter upstream; usage models were not merged")
             return 5
-        entry = {"provenance": "usage_api", "confidence": "high", "detail": f"OpenRouter usage API: {row['requests']} requests in the last {days} days"}
+        entry = {"provenance": "usage_api", "confidence": "high",
+                 "detail": f"OpenRouter usage API: {row['requests']} requests as {row['model']} in the last {days} days"}
         obs = next((o for o in source["model_observations"] if o["normalized_model"] == model), None)
         if obs is None:
-            obs = {"normalized_model": model, "raw_model": row["model"], "model_family": family_of(model), "evidence": [entry]}
-            source["model_observations"].append(obs)
+            source["model_observations"].append({"normalized_model": model, "raw_model": row["model"], "model_family": family_of(model), "evidence": [entry]})
         elif entry not in obs["evidence"]:
             obs["evidence"].append(entry)
         source["model_evidence"] = "observed"
         source["models"] = sorted({o["normalized_model"] for o in source["model_observations"]})
         source["model_families"] = sorted({o["model_family"] for o in source["model_observations"]})
+        touched.add(key)
+    for key in touched:
+        source = next(s for s in profile["ai_sources"] if (s["provider"], s["source_service"]) == key)
         by_family: dict[str, list] = {}
         for o in source["model_observations"]:
             by_family.setdefault(o["model_family"], []).append(o["normalized_model"])
-        upstream["model_families"] = [{"family": f, "model_evidence": source["model_evidence"], "models": sorted(ms)} for f, ms in sorted(by_family.items())]
+        families = [{"family": f, "model_evidence": source["model_evidence"], "models": sorted(ms)} for f, ms in sorted(by_family.items())]
+        for gw in profile["gateways"]:
+            for upstream in gw["upstreams"]:
+                if _references(upstream, key, profile["ai_sources"]):
+                    upstream["model_families"] = families
     validator = _sibling("bma_validator_for_openrouter", "validate-ai-profile.py")
     try:
         validator.validate_profile(profile)

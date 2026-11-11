@@ -34,19 +34,41 @@
       "endpoint": "/analytics/query",
       "file": "analytics.json",
       "status": "ok",
-      "note": null
+      "note": "truncated for anthropic/claude-sonnet-5-20261001",
+      "metrics": [
+        "byok_usage",
+        "openrouter_usage"
+      ]
     },
     {
       "endpoint": "/analytics/query",
       "file": "analytics-volume.json",
       "status": "ok",
-      "note": null
+      "note": "truncated for anthropic/claude-sonnet-5-20261001",
+      "metrics": [
+        "tokens_prompt",
+        "tokens_completion",
+        "reasoning_tokens",
+        "cached_tokens",
+        "byok_fees",
+        "byok_request_count",
+        "request_count",
+        "p95_latency",
+        "p95_throughput",
+        "usage_web",
+        "guardrail_invoked_count"
+      ]
     },
     {
       "endpoint": "/analytics/query",
       "file": "analytics-hourly.json",
       "status": "ok",
-      "note": null
+      "note": "truncated for anthropic/claude-sonnet-5-20261001",
+      "metrics": [
+        "tokens_prompt",
+        "tokens_completion",
+        "request_count"
+      ]
     }
   ]
 }

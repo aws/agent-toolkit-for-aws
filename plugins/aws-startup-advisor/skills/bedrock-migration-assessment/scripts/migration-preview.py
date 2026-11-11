@@ -77,11 +77,25 @@ def _tokens(row: dict) -> int:
     return sum(row.get(f, 0) for f in TOKEN_FIELDS)
 
 
+BYOK_THRESHOLD = 0.005
+
+
 def _overlaps(profiles: list[dict]) -> set[int]:
     """OpenRouter rows whose model a direct usage profile also measured, unless confirmed no_byok (same name rule as llm-to-bedrock)."""
     direct = {r["model"].lower() for u in profiles if u["metadata"]["source"] != "openrouter_usage_api" for r in u["usage_by_model"]}
     return {id(r) for u in profiles if u["metadata"]["source"] == "openrouter_usage_api" for r in u["usage_by_model"]
             if r["model"].lower().rsplit("/", 1)[-1] in direct and r.get("cost_provenance") != "no_byok"}
+
+
+def _excluded(source: str, row: dict) -> dict:
+    """What leaving out one overlapping OpenRouter row keeps (a measured router fee on a pure-BYOK row) and what it drops, in dollars."""
+    fee = row.get("byok_fees_usd")
+    kept = fee if row.get("cost_provenance") == "byok_passthrough" and fee is not None and fee > BYOK_THRESHOLD else 0.0
+    dropped = round(max(row.get("monthly_cost_usd", 0) - kept, 0), 2)
+    note = ("its independent OpenRouter usage is dropped too" if row.get("cost_provenance") == "mixed" else
+            f"its ${dropped} OpenRouter charge is not in the total" if dropped > BYOK_THRESHOLD else "")
+    return {"source": source, "model": row["model"], "cost_provenance": row.get("cost_provenance"), "router_fee_kept_usd": round(kept, 4),
+            "charge_dropped_usd": dropped, "note": note}
 
 
 def measured(profiles: list[dict]) -> dict | None:
@@ -94,27 +108,31 @@ def measured(profiles: list[dict]) -> dict | None:
     for usage in profiles:
         md = usage["metadata"]
         rows = usage["usage_by_model"]
+        kept = [r for r in rows if id(r) not in overlap]
         source = {"source": md["source"], "monthly_cost_usd": usage["summary"]["monthly_cost_usd"],
                   "cost_status": md.get("cost_status", "partial_window" if md["partial_window"] else "complete"),
                   "window_days": md["window_days"], "active_days": md["active_days"], "partial_window": md["partial_window"],
                   "total_tokens": sum(_tokens(r) for r in rows), "uncosted_service_tiers": md.get("uncosted_service_tiers", []),
                   "capture_warnings": md.get("capture_warnings", [])}
-        if "byok_inference_cost_usd" in usage["summary"]:
-            source["byok_inference_cost_usd"] = usage["summary"]["byok_inference_cost_usd"]
+        if md["source"] == "openrouter_usage_api":
+            source["byok_inference_cost_usd"] = usage["summary"].get("byok_inference_cost_usd", 0)
+            source["byok_inference_included_usd"] = round(sum(r.get("byok_inference_cost_usd", 0) for r in kept), 2)
         sources.append(source)
-        kept = [r for r in rows if id(r) not in overlap]
-        excluded += [{"source": md["source"], "model": r["model"], "cost_provenance": r.get("cost_provenance")} for r in rows if id(r) in overlap]
+        dropped = [_excluded(md["source"], r) for r in rows if id(r) in overlap]
+        excluded += dropped
         total_tokens += sum(_tokens(r) for r in kept)
         if source["monthly_cost_usd"] is None:
             cost_known = False
         elif md["source"] == "openrouter_usage_api":
-            total_cost += sum(r["monthly_cost_usd"] + r.get("byok_inference_cost_usd", 0) for r in kept)
+            total_cost += sum(r["monthly_cost_usd"] + r.get("byok_inference_cost_usd", 0) for r in kept) + sum(d["router_fee_kept_usd"] for d in dropped)
         else:
             total_cost += source["monthly_cost_usd"]
+    warnings = [f"{s['source']}: {w}" for s in sources for w in s["capture_warnings"]]
+    warnings += [f"{d['model']} left out because a direct provider's usage also counts it; {d['note']}" for d in excluded if d["note"]]
     return {"sources": sources, "monthly_cost_usd": round(total_cost, 2) if cost_known else None,
             "cost_status": max((s["cost_status"] for s in sources), key=COST_STATUS_ORDER.index),
             "total_tokens": total_tokens, "window_days": max(s["window_days"] for s in sources), "overlap_excluded": excluded,
-            "capture_warnings": [f"{s['source']}: {w}" for s in sources for w in s["capture_warnings"]]}
+            "spend_excludes_usd": round(sum(d["charge_dropped_usd"] for d in excluded), 2), "capture_warnings": warnings}
 
 
 def preview(profile: dict, usage: list[dict] | None = None) -> dict:
