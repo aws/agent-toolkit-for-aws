@@ -64,6 +64,7 @@ Extract from `preferences.json`:
 Resolve once before mapping formations:
 
 1. `cpu_architecture` = `preferences.workshop.cpu_architecture` if set, else `"x86_64"`.
+   - **CNB override (per app):** when `preferences.operational.containerization_method == "cnb_heroku_builder"` and the formation's app has a buildpack stack (`apps[].stack` other than `"container"`), use `"x86_64"` for that app's formations regardless of the preference, and append warning `cnb_architecture_x86` naming the app once: "App `{heroku_app}` is built with Cloud Native Buildpacks; the Heroku builder images (`heroku/builder:22`/`:24`/`:26`) are published for linux/amd64 only and the generated workflow builds without `--platform`, so its formations stay on x86_64." Apps that ship their own Dockerfile (`stack == "container"`) follow the preference as usual.
 2. When `"arm64"`:
    - **Elastic Beanstalk**: use `ec2_instance_type_arm64` from the matched `dyno-eb-sizing.json` row when present; else use `ec2_instance_type` and append warning `architecture_fallback_x86` naming the formation.
    - **Fargate**: set `aws_config.cpu_architecture` to `"ARM64"` (task size from `dyno-fargate-sizing.json` unchanged — Fargate ARM is a runtime arch flag). Prefer Estimate rates `fargate.per_vcpu_hour_arm64` / `per_gb_mem_hour_arm64` when present.
@@ -706,7 +707,7 @@ After all resources are mapped:
    - Set `metadata.fir_workloads_detected` to `[]`.
    - Set `metadata.fir_generation_note`: "No Fir workloads detected; all Cedar generation."
 
-4. **CRITICAL CONSTRAINT**: Do NOT produce ARM/Graviton instance targeting or Fir-specific buildpack configuration (Fir builder `project.toml`, Fir-only process definitions) in ANY output, regardless of `heroku_generation` value. Fir detection is **detect-only** in v1. This constraint is about Fir. It does not cover `preferences.operational.containerization_method == "cnb_heroku_builder"`, which uses Cloud Native Buildpacks on x86 to containerize **Cedar** apps for AWS compute; Generate emits that path normally.
+4. **CRITICAL CONSTRAINT**: Do NOT produce ARM/Graviton instance targeting or Fir-specific buildpack configuration (Fir builder `project.toml`, Fir-only process definitions) in ANY output, regardless of `heroku_generation` value. Fir detection is **detect-only** in v1. This constraint is about Fir. It does not cover `preferences.operational.containerization_method == "cnb_heroku_builder"`, which uses Cloud Native Buildpacks to containerize **Cedar** apps for AWS compute; Generate emits that path normally. CNB apps are pinned to x86_64 by the "CPU architecture resolution" step above (warning `cnb_architecture_x86`), not by this constraint.
 
 ---
 

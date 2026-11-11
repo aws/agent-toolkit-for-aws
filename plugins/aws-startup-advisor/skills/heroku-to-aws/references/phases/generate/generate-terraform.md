@@ -35,6 +35,7 @@ Generate `$MIGRATION_DIR/terraform/` with the following file organization. Only 
 | `vpc.tf`       | networking | VPC, subnets, route tables, internet gateway, NAT, peering                                                                             |
 | `compute.tf`   | compute    | ECS cluster, Fargate task definitions, services, ALBs                                                                                  |
 | `beanstalk.tf` | compute    | Elastic Beanstalk applications and environments                                                                                        |
+| `ecr.tf`       | compute    | One ECR repository per app built with Cloud Native Buildpacks (Fargate or Elastic Beanstalk)                                          |
 | `pipeline.tf`  | deploy     | Optional CodePipeline source-to-EB deploy path                                                                                         |
 | `database.tf`  | database   | RDS/Aurora instances, parameter groups, RDS Proxy                                                                                      |
 | `cache.tf`     | cache      | ElastiCache replication groups, subnet groups                                                                                          |
@@ -48,7 +49,7 @@ Generate `$MIGRATION_DIR/terraform/` with the following file organization. Only 
 - `vpc.tf` — Emitted when `vpc_design` is present in `aws-design.json` (either existing or new VPC)
 - `compute.tf` — Emitted when `aws_service` contains "Fargate" or "ALB" entries
 - `beanstalk.tf` — Emitted when `aws_service` contains "Elastic Beanstalk" entries
-- `ecr.tf` — Emitted when at least one app resolves to the CNB containerization method (§ "Containerization method per app") AND `preferences.operational.container_registry` is `"ecr"` or absent (one repository per CNB app; see § `ecr.tf`). Never emitted for `container_registry: "external"`.
+- `ecr.tf` — Emitted when at least one app resolves to the CNB containerization method (Step 5.5 § "Containerization method per app") AND `preferences.operational.container_registry` is `"ecr"` or absent (one repository per CNB app; see Step 5.5 § `ecr.tf`). Independent of the compute target: an all-Fargate plan with CNB apps gets it too. Never emitted for `container_registry: "external"`.
 - `.github/workflows/deploy-eb.yml` — Emitted when `aws_service` contains "Elastic Beanstalk" entries and `preferences.design_constraints.eb_deploy_method.value` is `"github_actions"` or absent (default)
 - `pipeline.tf` — Emitted only when `aws_service` contains "Elastic Beanstalk" entries and `preferences.design_constraints.eb_deploy_method.value` is `"codepipeline"`
 - `database.tf` — Emitted when `aws_service` contains "RDS" or "Aurora" entries
@@ -401,7 +402,7 @@ variable "security_email" {
 
 **Per-service variables** — Extract from `aws-design.json` `aws_config` for each designed service. Include:
 
-- Compute: `container_image_*` (one per Fargate service), `desired_count_*`, EB `instance_type_*`, `min_instances_*`, `max_instances_*`
+- Compute: `container_image_*` (one per Fargate service of a Dockerfile app), `image_tag_*` (one per Fargate app whose `app_containerization_method` is `"cnb_heroku_builder"`, Step 5.5 — see below), `desired_count_*`, EB `instance_type_*`, `min_instances_*`, `max_instances_*`
 - Database: `db_instance_class`, `db_storage_gb`, `db_engine_version`, `db_multi_az`
 - Cache: `cache_node_type`, `cache_engine_version`, `cache_multi_az`
 - Messaging: `msk_broker_instance_type`, `msk_broker_count`, `msk_storage_gb`
@@ -447,6 +448,26 @@ Preserve both customer values exactly. Reference each variable directly from the
 corresponding app's Elastic Beanstalk setting. Validate but do not trim, normalize,
 convert, or replace either value, and do not derive a fallback from the source
 repository.
+
+**CNB image tag (Fargate apps built with buildpacks)** — For each app with a Fargate
+service whose `app_containerization_method` is `"cnb_heroku_builder"` (Step 5.5), emit one
+`image_tag_<app_sanitized>` variable instead of `container_image_*` variables. The
+repository URL comes from `aws_ecr_repository.<app_name>` in `compute.tf`; a `variable`
+block cannot reference a resource, so only the tag is an input. The tag is the commit SHA
+the build published (`pack build … --publish`, `MIGRATION_GUIDE.md` Phase 3). No
+`default`: `terraform plan -input=false` must fail until an image exists.
+
+```hcl
+variable "image_tag_<app_sanitized>" {
+  description = "Tag of the <heroku_app> image in aws_ecr_repository.<app_name> (the commit SHA pack published)"
+  type        = string
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_.-]{1,128}$", var.image_tag_<app_sanitized>))
+    error_message = "image_tag must be a valid ECR image tag (1-128 characters: letters, digits, _ . -)."
+  }
+}
+```
 
 **Naming convention:** `<resource_type>_<heroku_app>_<attribute>` (sanitize app names: replace `-` with `_`).
 
@@ -1061,6 +1082,78 @@ resource "aws_iam_role" "ecs_task" {
 
 ---
 
+## Step 5.5: Resolve the containerization method per app and generate `ecr.tf`
+
+Run this step for every compute target (Fargate, Elastic Beanstalk, or both). It does not
+depend on Step 6.5, so an all-Fargate plan with CNB apps still gets its `ecr.tf`. Step 6
+(`compute.tf`) and Step 6.5 (`beanstalk.tf`, deploy workflow) both consume
+`app_containerization_method`.
+
+### Containerization method per app
+
+Read `preferences.operational.containerization_method` (default `"dockerfile"` when absent — preferences written before this field existed carry no value). Resolve the method **per app**, never once for the estate:
+
+- `apps[].stack == "container"` → `app_containerization_method = "dockerfile"`. The app already ships a Dockerfile (Heroku container stack); keep it. Its workflow runs `docker build`, its Fargate build steps use `docker build`/`docker push`, and nothing from the CNB path is emitted for it.
+- Any other stack (`heroku-22`, `heroku-24`, `heroku-26`, unknown) → `app_containerization_method = containerization_method`.
+
+In a `partial` estate this is what makes the choice honest: `cnb_heroku_builder` applies to the buildpack apps only, and the apps that already have a Dockerfile are left alone. `containerization_status: "containerized"` therefore resolves every app to `"dockerfile"` even if a stale preference file says otherwise. Set `has_cnb_app = true` when any app resolves to `"cnb_heroku_builder"` (the same flag `generate-docs.md` Step 0 derives).
+
+The CNB path publishes to and pulls from ECR only; when `preferences.operational.container_registry` is `"external"` and any app resolves to CNB, **halt and inform**: Clarify Q12 rejects that combination, so this is a stale or hand-edited preferences file — ask the user to re-run Clarify or set `container_registry` to `"ecr"`. Do not emit `ecr.tf`, an ECR login step or an ECR pull policy for an external registry.
+
+**Architecture.** The Heroku builder images (`heroku/builder:22`, `:24`, `:26`) are published
+for `linux/amd64` only and the generated workflows run `pack build` without `--platform`,
+so a CNB image only runs on x86_64 compute. Design keeps CNB apps on `x86_64`
+(`design-mapping.md` § "CPU architecture resolution", warning `cnb_architecture_x86`), so
+`aws-design.json` carries x86 instance types and `cpu_architecture: "X86_64"` for their
+formations. Never emit `runtime_platform { cpu_architecture = "ARM64" }` or a Graviton
+instance type for a CNB app, whatever `preferences.workshop.cpu_architecture` says.
+
+### `ecr.tf` — Image repositories (only for apps whose `app_containerization_method == "cnb_heroku_builder"`, `container_registry` `"ecr"`)
+
+One repository per CNB Heroku app (not per process type: every process type runs the same
+image with a different entrypoint). Emit alongside `compute.tf` and/or `beanstalk.tf`,
+whichever the app's formations land on. Apps that resolve to `"dockerfile"` get no
+repository here (they keep whatever registry they use today). Skip the file when no app
+resolves to CNB.
+
+```hcl
+resource "aws_ecr_repository" "<app_name>" {
+  name                 = "${var.project_name}/<heroku_app>"
+  image_tag_mutability = "IMMUTABLE"
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
+resource "aws_ecr_lifecycle_policy" "<app_name>" {
+  repository = aws_ecr_repository.<app_name>.name
+  policy = jsonencode({
+    rules = [{
+      rulePriority = 1
+      description  = "keep the last 30 images"
+      selection    = { tagStatus = "any", countType = "imageCountMoreThan", countNumber = 30 }
+      action       = { type = "expire" }
+    }]
+  })
+}
+
+output "ecr_repository_url_<app_name>" {
+  value = aws_ecr_repository.<app_name>.repository_url
+}
+```
+
+**Selecting the process type.** A pack-built image's entrypoint is its default process
+(`/cnb/process/web`); anything passed as the container _command_ becomes an argument to
+that process, it does not pick another one. A process type is selected by overriding the
+entrypoint with `/cnb/process/<process_type>` (the [CNB process contract](https://buildpacks.io/docs/for-app-developers/how-to/build-outputs/specify-launch-process/)). Apply this everywhere the image runs:
+
+- Elastic Beanstalk: `Dockerrun.aws.json` `"Entrypoint": "/cnb/process/<process_type>"` and no `Command` (the CNB workflow in Step 6.5 writes this).
+- Fargate (Step 6): the task definition for a CNB app sets `image` to `"${aws_ecr_repository.<app_name>.repository_url}:${var.image_tag_<app_sanitized>}"` (a Terraform variable cannot reference a resource, so the repository URL is composed in `compute.tf` and only the tag is an input), adds `entryPoint = ["/cnb/process/<process_type>"]`, leaves `command` unset, and for the `web` container adds `environment = [{ name = "PORT", value = "8080" }]` so the process listens on the port the existing `portMappings` expose.
+- EKS (`generate-eks.md`, unchanged consumer): when a Deployment runs the same CNB image, set the container's `command: ["/cnb/process/<process_type>"]` — Kubernetes `command` overrides the image entrypoint — and set `PORT` to the containerPort for web.
+- Local: `docker run --rm --entrypoint /cnb/process/worker <image>`.
+
+---
+
 ## Step 6: Generate `compute.tf`
 
 For each service in `aws-design.json` where `aws_service` is "Fargate" or "ALB":
@@ -1116,13 +1209,17 @@ resource "aws_ecs_task_definition" "<app_sanitized>_<process_type>" {
 
   container_definitions = jsonencode([{
     name  = "<process_type>"
-    image = var.<container_image_variable>
     # {{IF app_containerization_method == "cnb_heroku_builder"}}
+    # The pack-built image lives in the repository ecr.tf declares (Step 5.5). A variable
+    # cannot reference a resource, so the URL is composed here and only the tag is an input.
+    image = "${aws_ecr_repository.<app_name>.repository_url}:${var.image_tag_<app_sanitized>}"
     # A pack-built image selects its process type through the entrypoint, never through
     # the command (which only adds arguments to the default web process). PORT is not
     # injected by Fargate; set it to the port the mapping below exposes (web only).
     entryPoint  = ["/cnb/process/<process_type>"]
     environment = [{ name = "PORT", value = "8080" }] # web only; omit for workers
+    # {{ELSE}}
+    image = var.<container_image_variable>
     # {{ENDIF}}
     portMappings = [
       {
@@ -1155,8 +1252,9 @@ resource "aws_ecs_task_definition" "<app_sanitized>_<process_type>" {
 - `cpu` and `memory` come from `aws_config.task_cpu` and `aws_config.task_memory` (mapped from Dyno Type Table)
 - `portMappings` included only for `web` process types (port 8080 default)
 - Workers, clock, and custom process types: no `portMappings`. Release process types are run-once hooks and should not be generated as persistent services.
-- Container image: use variable reference (placeholder image at generation time)
-- CNB apps (`app_containerization_method == "cnb_heroku_builder"`, Step 6.5 § "Containerization method per app"): add `entryPoint = ["/cnb/process/<process_type>"]` to every container and `environment = [{ name = "PORT", value = "8080" }]` to the `web` container only; never set `command` to the process type. Dockerfile apps get neither.
+- Container image, Dockerfile apps: `image = var.container_image_<app_sanitized>_<process_type>` (placeholder image at generation time)
+- Container image, CNB apps (`app_containerization_method == "cnb_heroku_builder"`, Step 5.5 § "Containerization method per app"): `image = "${aws_ecr_repository.<app_name>.repository_url}:${var.image_tag_<app_sanitized>}"` — the repository from `ecr.tf`, the tag from the per-app `image_tag_<app_sanitized>` variable (Step 2; the commit SHA the build published). Do not declare a `container_image_*` variable for a CNB app: a `variable` default cannot reference `aws_ecr_repository`.
+- CNB apps also get `entryPoint = ["/cnb/process/<process_type>"]` on every container and `environment = [{ name = "PORT", value = "8080" }]` on the `web` container only; never set `command` to the process type. Dockerfile apps get neither.
 
 ### Fargate Services
 
@@ -1300,16 +1398,9 @@ variable "acm_certificate_arn" {
 
 Skip this step if no services in `aws-design.json` have `aws_service: "Elastic Beanstalk"`.
 
-### Containerization method per app
+### CNB apps on Elastic Beanstalk
 
-Read `preferences.operational.containerization_method` (default `"dockerfile"` when absent — preferences written before this field existed carry no value). Resolve the method **per app**, never once for the estate:
-
-- `apps[].stack == "container"` → `app_containerization_method = "dockerfile"`. The app already ships a Dockerfile (Heroku container stack); keep it. Its workflow runs `docker build`, its Fargate build steps use `docker build`/`docker push`, and nothing from the CNB path is emitted for it.
-- Any other stack (`heroku-22`, `heroku-24`, `heroku-26`, unknown) → `app_containerization_method = containerization_method`.
-
-In a `partial` estate this is what makes the choice honest: `cnb_heroku_builder` applies to the buildpack apps only, and the apps that already have a Dockerfile are left alone. `containerization_status: "containerized"` therefore resolves every app to `"dockerfile"` even if a stale preference file says otherwise.
-
-For every app whose `app_containerization_method` is `"cnb_heroku_builder"`: also emit `terraform/ecr.tf` (§ `ecr.tf` below), add the ECR read-only attachment to that app's EB instance role, and emit the CNB variant of the deploy workflow for that app — it has no Dockerfile, so its EB source bundle is a `Dockerrun.aws.json` that points at the image in ECR. The CNB path publishes to and pulls from ECR only; when `preferences.operational.container_registry` is `"external"` and any app resolves to CNB, **halt and inform**: Clarify Q12 rejects that combination, so this is a stale or hand-edited preferences file — ask the user to re-run Clarify or set `container_registry` to `"ecr"`. Do not emit `ecr.tf`, an ECR login step or an ECR pull policy for an external registry.
+`app_containerization_method` is resolved per app in Step 5.5 § "Containerization method per app", and `ecr.tf` is emitted there (it does not depend on this step). For every EB app whose `app_containerization_method` is `"cnb_heroku_builder"`: add the ECR read-only attachment to that app's EB instance role (`beanstalk.tf` below) and emit the CNB variant of the deploy workflow for that app — it has no Dockerfile, so its EB source bundle is a `Dockerrun.aws.json` that points at the image in ECR.
 
 Read `preferences.design_constraints.eb_deploy_method.value`; default to `"github_actions"` when the field is absent. Always generate `beanstalk.tf` for EB services, then generate exactly one deploy path:
 
@@ -1527,49 +1618,6 @@ resource "aws_iam_role_policy" "eb_read_secrets_<app_name>" {
 - Do NOT generate persistent EB environments for `release` process types. Heroku release-phase commands are run-once deployment hooks and must be handled manually or by a deployment hook.
 - Use `data.aws_elastic_beanstalk_solution_stack.docker.name`, not a hardcoded platform version.
 
-### `ecr.tf` — Image repositories (only for apps whose `app_containerization_method == "cnb_heroku_builder"`, `container_registry` `"ecr"`)
-
-One repository per CNB Heroku app (not per process type: every process type runs the same
-image with a different entrypoint). Emit alongside `beanstalk.tf` and/or `ecs.tf`. Apps
-that resolve to `"dockerfile"` get no repository here (they keep whatever registry they
-use today).
-
-```hcl
-resource "aws_ecr_repository" "<app_name>" {
-  name                 = "${var.project_name}/<heroku_app>"
-  image_tag_mutability = "IMMUTABLE"
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-}
-
-resource "aws_ecr_lifecycle_policy" "<app_name>" {
-  repository = aws_ecr_repository.<app_name>.name
-  policy = jsonencode({
-    rules = [{
-      rulePriority = 1
-      description  = "keep the last 30 images"
-      selection    = { tagStatus = "any", countType = "imageCountMoreThan", countNumber = 30 }
-      action       = { type = "expire" }
-    }]
-  })
-}
-
-output "ecr_repository_url_<app_name>" {
-  value = aws_ecr_repository.<app_name>.repository_url
-}
-```
-
-**Selecting the process type.** A pack-built image's entrypoint is its default process
-(`/cnb/process/web`); anything passed as the container _command_ becomes an argument to
-that process, it does not pick another one. A process type is selected by overriding the
-entrypoint with `/cnb/process/<process_type>` (the [CNB process contract](https://buildpacks.io/docs/for-app-developers/how-to/build-outputs/specify-launch-process/)). Apply this everywhere the image runs:
-
-- Elastic Beanstalk: `Dockerrun.aws.json` `"Entrypoint": "/cnb/process/<process_type>"` and no `Command` (the CNB workflow below writes this).
-- Fargate: in the task definition for a CNB app, add `entryPoint = ["/cnb/process/<process_type>"]` to the container definition, leave `command` unset, and for the `web` container add `environment = [{ name = "PORT", value = "8080" }]` so the process listens on the port the existing `portMappings` expose. Point `var.<container_image_variable>` at `"${aws_ecr_repository.<app_name>.repository_url}:<tag>"`.
-- EKS (`generate-eks.md`, unchanged consumer): when a Deployment runs the same CNB image, set the container's `command: ["/cnb/process/<process_type>"]` — Kubernetes `command` overrides the image entrypoint — and set `PORT` to the containerPort for web.
-- Local: `docker run --rm --entrypoint /cnb/process/worker <image>`.
-
 ### `.github/workflows/deploy-eb.yml` — GitHub Actions EB Deploy (Default)
 
 Emit this file when `eb_deploy_method.value` is `"github_actions"` or absent.
@@ -1747,10 +1795,16 @@ jobs:
   `heroku/builder:24`, `heroku-26` or unknown/EOL stacks → `heroku/builder:26` (Heroku's
   recommended builder; source github.com/heroku/cnb-builder-images). All three ship
   .NET, Go, Java, Node.js, PHP, Python, Ruby and Scala buildpacks. Do not emit Fir builders.
-- The OIDC role needs `ecr:GetAuthorizationToken`, `ecr:DescribeImages`,
-  `ecr:BatchCheckLayerAvailability`, `ecr:InitiateLayerUpload`, `ecr:UploadLayerPart`,
-  `ecr:CompleteLayerUpload`, `ecr:PutImage` on the repository in addition to the Elastic
-  Beanstalk permissions; document this with the role setup in `MIGRATION_GUIDE.md`.
+- The OIDC role needs two ECR statements in addition to the Elastic Beanstalk
+  permissions, and `MIGRATION_GUIDE.md` Phase 3 documents them with the role setup:
+  - `ecr:GetAuthorizationToken` on `"Resource": "*"` — the action is not
+    resource-scoped; a repository ARN in that statement makes `amazon-ecr-login` fail
+    with AccessDenied.
+  - On the app's repository ARN (`aws_ecr_repository.<app_name>.arn`):
+    `ecr:DescribeImages`, `ecr:BatchGetImage`, `ecr:BatchCheckLayerAvailability`,
+    `ecr:InitiateLayerUpload`, `ecr:UploadLayerPart`, `ecr:CompleteLayerUpload`,
+    `ecr:PutImage`. `pack build --publish` reads the existing manifest
+    (`BatchGetImage`) before it writes layers; `describe-images` is the rerun check.
 - Private Heroku buildpacks (custom `BUILDPACK_URL`s) are not resolved by the Heroku
   builder; list them in `MIGRATION_GUIDE.md` as needing `--buildpack` flags or a
   Dockerfile for that app.
@@ -2773,8 +2827,13 @@ cutover_weight = 0
 # acm_certificate_arn = "arn:aws:acm:<region>:<account_id>:certificate/<cert-id>"
 # {{ENDIF}}
 
-# Container images (one per Fargate service)
+# Container images (one per Fargate service of an app that ships a Dockerfile)
 # container_image_<app>_<process_type> = "<account_id>.dkr.ecr.<region>.amazonaws.com/<repo>:<tag>"
+# {{IF has_cnb_app}}
+# Image tag (one per Fargate app built with Cloud Native Buildpacks; the repository is
+# aws_ecr_repository.<app> from ecr.tf). The commit SHA that `pack build --publish` tagged.
+# image_tag_<app_sanitized> = "<git sha>"
+# {{ENDIF}}
 
 # {{IF has_beanstalk_web}}
 # Elastic Beanstalk web runtime settings (one required pair per web app; no defaults).

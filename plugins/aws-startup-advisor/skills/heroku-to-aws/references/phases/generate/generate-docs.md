@@ -41,8 +41,8 @@ Also extract:
 - `migration_approach` — from `preferences.json`.global.migration_approach (`"full_cutover"` or `"interim_cutover_data_first"`)
 - `migration_method` — from `preferences.json`.data.migration_method (`"pg_dump_restore"`, `"dms"`, `"bucardo"`, `"wal_g"`)
 - `containerization_status` — from `preferences.json`.operational.containerization_status (`"containerized"`, `"buildpack_only"`, `"partial"`)
-- `containerization_method` — from `preferences.json`.operational.containerization_method; **default `"dockerfile"` when absent** (preferences written before Q12e existed have no field — the same fallback `generate-terraform.md` Step 6.5 applies, so the Dockerfile branches below still render for them). `"cnb_heroku_builder"` or `"dockerfile"`.
-- `app_containerization_method` — per app, resolved as in `generate-terraform.md` Step 6.5 § "Containerization method per app": `"dockerfile"` when the app's inventory `stack` is `"container"` (it already has a Dockerfile), otherwise `containerization_method`. `has_cnb_app = true` when any app resolves to `"cnb_heroku_builder"`; `has_dockerfile_app = true` when any app resolves to `"dockerfile"`. Per-app blocks (`{{app_name}}` sections) test `app_containerization_method`; estate-level sections test these two flags.
+- `containerization_method` — from `preferences.json`.operational.containerization_method; **default `"dockerfile"` when absent** (preferences written before Q12e existed have no field — the same fallback `generate-terraform.md` Step 5.5 applies, so the Dockerfile branches below still render for them). `"cnb_heroku_builder"` or `"dockerfile"`.
+- `app_containerization_method` — per app, resolved as in `generate-terraform.md` Step 5.5 § "Containerization method per app": `"dockerfile"` when the app's inventory `stack` is `"container"` (it already has a Dockerfile), otherwise `containerization_method`. `has_cnb_app = true` when any app resolves to `"cnb_heroku_builder"`; `has_dockerfile_app = true` when any app resolves to `"dockerfile"`. Per-app blocks (`{{app_name}}` sections) test `app_containerization_method`; estate-level sections test these two flags.
 - `cnb_builder_tag` — per app: `22` for stack `heroku-22`, `24` for `heroku-24`, otherwise `26`
 - `target_exit_date` — from `preferences.json`.global.target_exit_date (ISO date or null)
 - `dns_strategy` — from `preferences.json`.data.dns_strategy (Clarify Q10 writes it inside the `"data"` block — `clarify-assemble.md`; there is no `global.dns_strategy`). `"route53"` or `"external"`; treat any other or missing value (e.g. a legacy `"manual_cutover"`) as `"external"`.
@@ -853,7 +853,12 @@ The generated EB path deploys a source bundle containing your Dockerfile. GitHub
 {{IF app_containerization_method == "cnb_heroku_builder"}}
 The generated `.github/workflows/deploy-eb.yml` workflow uses GitHub OIDC role assumption, builds the image with `pack` and the Heroku builder, publishes it to ECR tagged with the commit SHA (reusing the image when a rerun finds that tag already published), writes one `Dockerrun.aws.json` bundle per process type, creates one Elastic Beanstalk application version per bundle, and updates each generated EB environment. Keep `EB_WEB_PORT` in the workflow equal to `eb_application_port_{{app_sanitized}}_web` in `terraform.tfvars`: it is the port the EB `PORT` property and the Dockerrun `ContainerPort` both carry.
 
-Before first run, create or provide a GitHub OIDC IAM role with permissions to call `elasticbeanstalk create-storage-location`, `elasticbeanstalk create-application-version`, `elasticbeanstalk update-environment`, upload the bundles to the EB storage bucket, and on the app's ECR repository `ecr:GetAuthorizationToken`, `ecr:DescribeImages`, `ecr:BatchCheckLayerAvailability`, `ecr:InitiateLayerUpload`, `ecr:UploadLayerPart`, `ecr:CompleteLayerUpload`, `ecr:PutImage`. Store the role ARN as the repository secret `AWS_ROLE_ARN`.
+Before first run, create or provide a GitHub OIDC IAM role with permissions to call `elasticbeanstalk create-storage-location`, `elasticbeanstalk create-application-version`, `elasticbeanstalk update-environment`, and upload the bundles to the EB storage bucket. Because this app's image is built by `pack` and pushed to ECR, the same role also needs two ECR statements:
+
+- `ecr:GetAuthorizationToken` with `"Resource": "*"` — this action is not resource-scoped, so a statement that names the repository ARN fails with AccessDenied at `amazon-ecr-login`.
+- On the app's repository ARN (`arn:aws:ecr:{{target_region}}:{{AWS_ACCOUNT_ID}}:repository/{{project_name}}/{{app_name}}`, the repository `terraform/ecr.tf` creates): `ecr:DescribeImages`, `ecr:BatchGetImage`, `ecr:BatchCheckLayerAvailability`, `ecr:InitiateLayerUpload`, `ecr:UploadLayerPart`, `ecr:CompleteLayerUpload`, `ecr:PutImage`.
+
+Store the role ARN as the repository secret `AWS_ROLE_ARN`.
 {{ELSE}}
 The generated `.github/workflows/deploy-eb.yml` workflow uses GitHub OIDC role assumption, packages the source bundle, creates an Elastic Beanstalk application version, and updates each generated EB environment.
 
@@ -953,7 +958,8 @@ aws ecr get-login-password --region {{target_region}} | docker login --username 
 aws ecr describe-images --repository-name {{project_name}}/{{app_name}} --image-ids imageTag={{git_sha}} --region {{target_region}} > /dev/null 2>&1 \
   || pack build {{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com/{{project_name}}/{{app_name}}:{{git_sha}} --builder heroku/builder:{{cnb_builder_tag}} --publish
 # The task definition selects the process type with entryPoint = ["/cnb/process/<process_type>"]
-# and sets PORT=8080 on the web container; set container_image_{{app_sanitized}}_<process_type> to this image.
+# and sets PORT=8080 on the web container. Its image is the repository from terraform/ecr.tf
+# plus this tag: set image_tag_{{app_sanitized}} = "{{git_sha}}" in terraform.tfvars and apply.
 {{ELSE}}
 # Build Docker image
 docker build -t {{app_name}}:latest .

@@ -791,7 +791,7 @@ Validate: must be valid ISO 8601 date, must be in the future.
 
 **Scope in a `partial` estate:** the answer covers the **buildpack apps only**. Apps
 whose inventory `stack` is `"container"` already ship a Dockerfile; Generate resolves them
-to `"dockerfile"` per app regardless of this value (`generate-terraform.md` Step 6.5
+to `"dockerfile"` per app regardless of this value (`generate-terraform.md` Step 5.5
 § "Containerization method per app") and never runs `pack build` for them. Say so when
 Q12b is `partial`: "Your apps that already have a Dockerfile keep it; this choice is for
 the buildpack apps."
@@ -826,7 +826,7 @@ are containerized for AWS.
 
 **Default:** 1 → `container_registry: "ecr"`
 
-**Validate (CNB):** when Q12e stored `containerization_method: "cnb_heroku_builder"`, option 2 is **not offered**. Present option 1 with: "Your buildpack apps are built by `pack` and published to ECR; Elastic Beanstalk and Fargate pull them with their ECR permissions. An existing registry is not supported for that path — choose a Dockerfile in Q12e if you need one." An answer of 2 in that case is invalid — re-ask with that sentence and never store `external` alongside `cnb_heroku_builder`. Generate halts on the combination if a stale preferences file carries it (`generate-terraform.md` Step 6.5), so the contradiction is resolved here, before it is written.
+**Validate (CNB):** when Q12e stored `containerization_method: "cnb_heroku_builder"`, option 2 is **not offered**. Present option 1 with: "Your buildpack apps are built by `pack` and published to ECR; Elastic Beanstalk and Fargate pull them with their ECR permissions. An existing registry is not supported for that path — choose a Dockerfile in Q12e if you need one." An answer of 2 in that case is invalid — re-ask with that sentence and never store `external` alongside `cnb_heroku_builder`. Generate halts on the combination if a stale preferences file carries it (`generate-terraform.md` Step 5.5), so the contradiction is resolved here, before it is written.
 
 ---
 

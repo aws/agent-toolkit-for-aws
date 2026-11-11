@@ -701,6 +701,33 @@ module "network" {
 """ + "\n".join("          " + line for line in body.splitlines()) + "\n")
                 self.assertIn("workflow_run_unverified", self.rules())
 
+    def test_cnb_ecr_and_fargate_image_do_not_depend_on_beanstalk_step(self) -> None:
+        # ecr.tf must be emitted for all-Fargate CNB plans, so it lives in its own step
+        # ahead of compute.tf rather than inside the EB-only Step 6.5; the Fargate task
+        # composes the image from the repository resource (a variable cannot).
+        text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
+        step_55 = text.index("## Step 5.5: Resolve the containerization method per app and generate `ecr.tf`")
+        step_6 = text.index("## Step 6: Generate `compute.tf`")
+        step_65 = text.index("## Step 6.5: Generate `beanstalk.tf`")
+        self.assertLess(step_55, step_6)
+        self.assertIn("### `ecr.tf`", text[step_55:step_6])
+        self.assertNotIn("### `ecr.tf`", text[step_65:])
+        self.assertNotIn("ecs.tf", text)
+        compute = text[step_6:step_65]
+        self.assertIn('image = "${aws_ecr_repository.<app_name>.repository_url}:${var.image_tag_<app_sanitized>}"', compute)
+        self.assertIn('entryPoint  = ["/cnb/process/<process_type>"]', compute)
+        self.assertNotIn("command = [", compute)
+        self.assertIn('variable "image_tag_<app_sanitized>"', text[: text.index("## Step 3")])
+        cnb_rules = text[text.index("**CNB variant rules:**") : text.index("### `pipeline.tf`")]
+        self.assertIn('`ecr:GetAuthorizationToken` on `"Resource": "*"`', cnb_rules)
+        self.assertIn("`ecr:BatchGetImage`", cnb_rules)
+        self.assertNotIn("EB_TARGETS", text)
+        docs = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-docs.md").read_text()
+        self.assertIn('`ecr:GetAuthorizationToken` with `"Resource": "*"`', docs)
+        self.assertIn("`ecr:BatchGetImage`", docs)
+        design = (PLUGIN / "skills/heroku-to-aws/references/phases/design/design-mapping.md").read_text()
+        self.assertIn("cnb_architecture_x86", design)
+
     def test_loop_environment_reassignment_must_remain_provably_nonempty(self) -> None:
         for assignment in ['EB_ENVIRONMENTS=""', "EB_ENVIRONMENTS=$MISSING", 'export EB_ENVIRONMENTS=""', "read EB_ENVIRONMENTS", 'EB_ENVIRONMENTS+=""']:
             with self.subTest(assignment=assignment):
