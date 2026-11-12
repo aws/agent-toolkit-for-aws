@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "aws-continuum",
+  "version": "0.3.0",
+  "description": "Set up AWS Continuum, understand whole-application security state, and turn related issues into developer-approved, tested pull requests.",
+  "author": {
+    "name": "Amazon Web Services"
+  },
+  "homepage": "https://aws.amazon.com/products/developer-tools/agent-toolkit-for-aws/",
+  "repository": "https://github.com/aws/agent-toolkit-for-aws/tree/main/plugins/aws-continuum",
+  "license": "Apache-2.0",
+  "keywords": [
+    "aws",
+    "continuum",
+    "security",
+    "code-scanning",
+    "remediation",
+    "skills",
+    "scripts"
+  ]
+}
