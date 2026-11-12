@@ -2,6 +2,10 @@
 
 Investigate incidents, review code and execute UAT for release readiness, scan code for vulnerabilities, and run penetration tests with [AWS DevOps Agent](https://aws.amazon.com/devops-agent/?trk=7b4b0d25-1409-441c-b914-c5d08677c376&sc_channel=ghr) and [AWS Security Agent](https://aws.amazon.com/security-agent/?trk=7b4b0d25-1409-441c-b914-c5d08677c376&sc_channel=ghr).
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for changes that can affect how the plugin behaves, such as the rename of release readiness review to code change risk analysis and the new `review_depth` option. Check it first when a skill or command stops working as it used to.
+
 ## What's inside
 
 | Component | Path | Trigger |
