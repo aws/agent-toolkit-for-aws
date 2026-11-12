@@ -62,21 +62,6 @@ Write `$MIGRATION_DIR/preferences.json`:
     "database_sizing_basis": "measured|plan", // Q6d; omit when Q6d did not fire
     "rightsizing_candidates_shown": ["<resource_id of each Postgres add-on listed in the Q6d table>"] // Q6d; omit when Q6d did not fire
   },
-  "commercial": {
-    "heroku_contract": { // Q16; omit the whole "commercial" object when the user has no contract
-      "term_start": "YYYY-MM-DD",
-      "term_end": "YYYY-MM-DD",
-      "lines": [
-        {
-          "category": "dynos|addon_credits|support|private_spaces|connect|other",
-          "label": "<as written on the order form>",
-          "total_usd": 0,
-          "months": 12
-        }
-      ],
-      "prior_term_annual_usd": null
-    }
-  },
   "network": {
     "existing_vpc_id": "<Q9b value or null>",
     "subnet_ids": ["<Q9 values>"],

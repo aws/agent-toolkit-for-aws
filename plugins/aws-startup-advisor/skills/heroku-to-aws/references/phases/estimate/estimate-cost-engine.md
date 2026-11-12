@@ -154,22 +154,18 @@ Large estates usually carry databases on plans chosen years ago. Before comparin
 to AWS, show the customer what they could stop paying for on Heroku today:
 
 Apply the Clarify Q6d **Right-sizing rule** (`clarify-interview.md` § Q6d) — the one rule
-set shared with Clarify and Design 2B step 2a. In short:
+set shared with Clarify and Design 2B step 2a. That rule defines which add-ons are
+assessed, `utilization_pct`, `fitting_plan` and what makes a database a candidate; apply
+it exactly as written and do not restate or vary it here. This step adds only what the
+Estimate produces:
 
-1. For every `heroku-postgresql` add-on with `data_size_gb > 0` and `pg_role` other than
-   `"follower"` (followers mirror the leader's size), look up the plan's Storage and
-   $/month in `references/shared/heroku-pricing-cache.md`. Skip Advanced-tier add-ons
-   (usage-billed). A missing `pg_role` (Classic discovery does not write one) is treated
-   as a leader; record the candidate with `role: "unknown"` so the report can say so.
-   `data_size_gb` absent or `≤ 0` means no measurement: skip the add-on.
-2. `utilization_pct = data_size_gb / plan_storage_gb × 100`, compared against 25 before
-   rounding; record it rounded to 2 decimal places.
-3. `fitting_plan` = within the same plan family, the smallest plan whose Storage is ≥
-   `data_size_gb × 2`, never a plan with more Storage than the current plan (so the
-   fitting plan of a `*-0` plan is itself). A database is a **candidate** only when
-   `utilization_pct ≤ 25` AND `fitting_plan != plan`.
-   `monthly_saving_usd = plan $/mo − fitting_plan $/mo`.
-4. Write `current_costs.rightsizing_candidates[]`, largest saving first. Example: a
+1. Assess the add-ons the rule selects, and look up each plan's Storage and $/month in
+   `references/shared/heroku-pricing-cache.md`. The rule treats a missing `pg_role`
+   (Classic discovery does not write one, and a failed `pg:info` capture leaves it unset
+   for that database) as a leader. Record such a candidate with `role: "unknown"` so the
+   report can say so.
+2. `monthly_saving_usd = plan $/mo − fitting_plan $/mo` for each candidate.
+3. Write `current_costs.rightsizing_candidates[]`, largest saving first. Example: a
    `standard-4` ($750, 768 GB) holding 1.5 GB — 0.1953% → `0.2`; 3 GB fits `standard-0`
    ($50, 64 GB):
 
@@ -188,7 +184,7 @@ set shared with Clarify and Design 2B step 2a. In short:
    `preferences.data.rightsizing_candidates_shown[]`. The fitting plan is chosen by
    storage only; a plan sized for memory, connections or query load may be correct as it
    is — carry that sentence wherever the candidates are shown.
-5. Redis add-ons are not assessed: live discovery captures plan memory, not used memory.
+4. Redis add-ons are not assessed: live discovery captures plan memory, not used memory.
 
 ### Contract reconciliation (when `preferences.commercial.heroku_contract` exists)
 

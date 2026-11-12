@@ -283,17 +283,10 @@ Continue with the next resource after the Fargate entry is appended. This guard 
    `sources.Q6d: "user"`); this add-on's `resource_id` is in
    `preferences.data.rightsizing_candidates_shown[]` (the databases the user saw in Q6d —
    never re-size one they did not see); and the add-on is still a candidate under the
-   Clarify Q6d **Right-sizing rule** (`clarify-interview.md` § Q6d — the one rule set,
-   repeated here only for the lookup):
-   - `plan_storage_gb` is the plan's Storage column in
-     `references/shared/heroku-pricing-cache.md`, NOT the matched row's `storage_gb`.
-   - `data_size_gb > 0` and `data_size_gb / plan_storage_gb × 100 ≤ 25` (compare before
-     rounding).
-   - `fitting_plan` = within the SAME plan family as the source plan (`essential-*`,
-     `standard-*`, `premium-*`, `private-*`, `shield-*`; `hobby-*` as its `essential-*`
-     successor — this keeps the HA and compliance semantics of the plan), the plan with the
-     smallest pricing-cache Storage that is ≥ `data_size_gb × 2`, never a plan with more
-     Storage than the source plan. If `fitting_plan == plan` the add-on is not a candidate.
+   Clarify Q6d **Right-sizing rule** (`clarify-interview.md` § Q6d). That rule is the only
+   definition of `plan_storage_gb`, the follower and `pg_role` handling, `utilization_pct`,
+   `fitting_plan` and what makes a database a candidate: apply it exactly as written
+   there and do not restate or vary it here. This step only does the lookup:
    - Use the `fitting_plan` row of `postgres-rds-sizing.json` for steps 5–6 below instead
      of the plan-name row. This is still a direct lookup — by storage instead of by name —
      not a recomputation of instance class from RAM. No rounding and no 20 GB minimum is
