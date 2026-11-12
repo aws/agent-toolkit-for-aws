@@ -362,6 +362,20 @@
       "name": "aws-startup-advisor",
       "source": "./plugins/aws-startup-advisor",
       "version": "2.0.3"
+    },
+    {
+      "category": "cloud",
+      "description": "Set up AWS Continuum, understand whole-application security state, and turn related issues into developer-approved, tested pull requests.",
+      "keywords": [
+        "aws",
+        "continuum",
+        "security",
+        "code-scanning",
+        "remediation"
+      ],
+      "name": "aws-continuum",
+      "source": "./plugins/aws-continuum",
+      "version": "0.3.0"
     }
   ]
 }
