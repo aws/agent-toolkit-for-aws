@@ -33,7 +33,7 @@ These tools are NOT deferred/lazy-loaded — if they do not appear in your tool 
 
 ## Remote Server path (see skill: "Core workflow")
 
-1. Call `aws_devops_agent__create_code_change_risk_analysis(content={...}, skip_automated_testing=...)`.
+1. Call `aws_devops_agent__create_code_change_risk_analysis(content={...}, review_depth=...)`, with `review_depth` set to `"static-analysis"` or `"verification-testing"` from the user's answer.
 2. Poll `aws_devops_agent__get_task(task_id=TASK_ID)` every 30s.
 3. Stream progress via `aws_devops_agent__list_journal_records(execution_id=EXEC_ID, order="ASC")`.
 4. On `COMPLETED`: call `aws_devops_agent__get_code_change_risk_analysis_report(execution_id=EXEC_ID)`, save to file, and run the auto-fix flow from the skill.
@@ -52,7 +52,7 @@ Use this path when the remote server tools are unavailable.
       --task-type CODE_CHANGE_RISK_ANALYSIS \
       --title 'Code Change Risk Analysis' \
       --priority MEDIUM \
-      --description '{"agentInput": {"content": <CONTENT_JSON>, "metadata": {"skipAutomatedTesting": true/false}}}' \
+      --description '{"agentInput": {"content": <CONTENT_JSON>, "metadata": {"reviewDepth": "static-analysis" | "verification-testing", "skipAutomatedTesting": true | false}}}' \
       --region us-east-1
     ```
 
