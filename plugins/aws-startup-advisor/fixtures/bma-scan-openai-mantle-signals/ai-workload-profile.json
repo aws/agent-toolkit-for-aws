@@ -4,11 +4,26 @@
     {
       "provider": "openai",
       "source_service": "openai_api",
-      "model_families": ["gpt"],
+      "model_families": [
+        "gpt"
+      ],
       "model_evidence": "observed",
-      "models": ["gpt-4o"],
+      "models": [
+        "gpt-4o"
+      ],
       "model_observations": [
-        {"normalized_model": "gpt-4o", "raw_model": "gpt-4o", "model_family": "gpt", "evidence": [{"provenance": "code", "confidence": "high", "detail": "app/llm.py:9 client.responses.create"}]}
+        {
+          "normalized_model": "gpt-4o",
+          "raw_model": "gpt-4o",
+          "model_family": "gpt",
+          "evidence": [
+            {
+              "provenance": "code",
+              "confidence": "high",
+              "detail": "app/llm.py:9 client.responses.create"
+            }
+          ]
+        }
       ]
     }
   ],
@@ -59,9 +74,57 @@
     }
   },
   "mantle_signals": [
-    {"selector": "background_inference", "provider": "openai", "source_service": "openai_api", "model": "gpt-4o", "evidence": [{"provenance": "code", "confidence": "high", "detail": "app/llm.py:9 background=True"}]},
-    {"selector": "web_search", "provider": "openai", "source_service": "openai_api", "model": "gpt-4o", "evidence": [{"provenance": "code", "confidence": "high", "detail": "app/llm.py:14 \"type\": \"web_search\""}]},
-    {"selector": "server_side_tools", "provider": "openai", "source_service": "openai_api", "model": "gpt-4o", "evidence": [{"provenance": "code", "confidence": "high", "detail": "app/llm.py:21 \"type\": \"mcp\""}]},
-    {"selector": "projects", "provider": "openai", "source_service": "openai_api", "model": "gpt-4o", "evidence": [{"provenance": "code", "confidence": "high", "detail": "app/llm.py:5 OpenAI-Project"}]}
+    {
+      "selector": "background_inference",
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model": "gpt-4o",
+      "evidence": [
+        {
+          "provenance": "code",
+          "confidence": "high",
+          "detail": "app/llm.py:9 background=True"
+        }
+      ]
+    },
+    {
+      "selector": "web_search",
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model": "gpt-4o",
+      "evidence": [
+        {
+          "provenance": "code",
+          "confidence": "high",
+          "detail": "app/llm.py:14 \"type\": \"web_search\""
+        }
+      ]
+    },
+    {
+      "selector": "server_side_tools",
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model": "gpt-4o",
+      "evidence": [
+        {
+          "provenance": "code",
+          "confidence": "high",
+          "detail": "app/llm.py:21 \"type\": \"mcp\""
+        }
+      ]
+    },
+    {
+      "selector": "projects",
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model": "gpt-4o",
+      "evidence": [
+        {
+          "provenance": "code",
+          "confidence": "high",
+          "detail": "app/llm.py:5 OpenAI-Project"
+        }
+      ]
+    }
   ]
 }

@@ -243,11 +243,11 @@ workload:
   `mantle_openai_chat` for a Chat Completions source, `mantle_messages` for an Anthropic SDK
   source — with `mantle_selector` = that selector. Several matching entries → the first in the
   policy-table order `background_inference, server_side_tools, web_search, projects, workspaces,
-  in_region_processing` becomes `mantle_selector`; name the others in the row's `rationale`.
+  in_region_processing` becomes `mantle_selector`; name the others in the row's `rationale`. Generate and the report pass every matched selector to `iam_policy.py --mantle-selector`; a grant such as Web Search is not implied by the primary selector.
   `in_region_processing` applies only when `bedrock-runtime` serves the model in the entry's
   `region` through a CRIS profile alone (the CRIS-only gate in `ai-openai-to-bedrock.md`);
   otherwise the workload stays on `bedrock-runtime` in that Region.
-- A matched selector is validated against the API it requires before the path is chosen (`web_search` and `background_inference` require the Responses API; `workspaces` the Anthropic Messages API; `projects` an OpenAI-compatible API — read 2026-11-09): a Chat Completions or Anthropic Messages source matched by a Responses-only selector is an explicit API-continuity decision — keep the source API on `bedrock-runtime` and drop the requirement (disclosed in `capability_gaps[]`), or move to `mantle_openai_responses` — never a silent same-API Mantle row; a provider mismatch (`workspaces` on OpenAI, `projects` on Anthropic) keeps `bedrock-runtime` and re-runs Clarify.
+- A matched selector is validated against the API it requires before the path is chosen (`web_search`, `background_inference`, and `server_side_tools` require the Responses API; `workspaces` the Anthropic Messages API; `projects` an OpenAI-compatible API — read 2026-11-09): a Chat Completions or Anthropic Messages source matched by a Responses-only selector is an explicit API-continuity decision — keep the source API on `bedrock-runtime` and drop the requirement (disclosed in `capability_gaps[]`), or move to `mantle_openai_responses` — never a silent same-API Mantle row; a provider mismatch (`workspaces` on OpenAI, `projects` on Anthropic) keeps `bedrock-runtime` and re-runs Clarify.
 - A matching entry on a workload whose source API has no Mantle path (Gemini / Vertex AI, or a
   workload whose target is a cross-family `direct` / `converse` / `gpt-oss` row) does not change
   the endpoint: the row keeps `bedrock-runtime`, records `endpoint_assumption` verbatim (below),

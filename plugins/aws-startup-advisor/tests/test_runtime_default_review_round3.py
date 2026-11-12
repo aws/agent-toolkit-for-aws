@@ -125,7 +125,7 @@ def test_report_recipe_names_the_web_search_grants_and_the_fetch_default() -> No
 def test_report_checklist_has_a_tool_level_permission_check() -> None:
     apply = _squash(_section(REPORT_GENERATOR.read_text(), "## How to Apply", "## How to Undo"))
     assert "Tool-level permission check" in apply
-    assert "Render ONLY when a `bedrock_models[]` row has `mantle_selector: web_search`" in apply
+    assert "Render ONLY when `web_search` is a confirmed mantle requirement" in apply
     assert 'tools=[{"type": "web_search", "external_web_access": False}]' in apply
     assert "`web_search_call` item or a `url_citation` annotation" in apply
     assert "CloudTrail Web Search data events for a denied `InvokeSearch` / `InvokeFetch`" in apply
@@ -255,7 +255,7 @@ def test_step_08_validates_the_selector_against_its_api_before_choosing_a_path(p
 def test_schema_docs_carry_the_responses_only_selector_decision(path: Path) -> None:
     text = _squash(path.read_text())
     assert "A matched selector is validated against the API it requires before the path is chosen" in text
-    assert "`web_search` and `background_inference` require the Responses API" in text
+    assert "`web_search`, `background_inference`, and `server_side_tools` require the Responses API" in text
     assert "explicit API-continuity decision" in text and "never a silent same-API Mantle row" in text
     assert "`workspaces` on OpenAI, `projects` on Anthropic" in text
 
@@ -300,6 +300,6 @@ def test_design_fixture_corpus_never_records_a_responses_only_selector_on_a_same
         for row in json.loads(path.read_text())["ai_architecture"]["bedrock_models"]:
             selector = row.get("mantle_selector")
             if row.get("migration_path") == "mantle_openai_chat":
-                assert selector not in {"web_search", "background_inference"}, f"{path}: Responses-only selector on a Chat Mantle row"
+                assert selector not in {"web_search", "background_inference", "server_side_tools"}, f"{path}: Responses-only selector on a Chat Mantle row"
             if row.get("migration_path") == "mantle_messages":
                 assert selector not in {"background_inference", "projects"}, f"{path}: OpenAI-only selector on a Messages Mantle row"

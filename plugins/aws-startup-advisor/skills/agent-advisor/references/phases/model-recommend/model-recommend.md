@@ -9,6 +9,7 @@ _input:
 _knowledge:
   - { file: references/vendored/ai/models/anthropic-bedrock.json }
   - { file: references/vendored/ai/models/openai-bedrock.json }
+  - { file: references/vendored/ai/bedrock-endpoint-policy.md }
 _assemble:
   _file: phases/model-recommend/model-recommend-assemble.md
 _produces:
@@ -79,7 +80,14 @@ code or prior answers:
 - require a provider-native Bedrock request body?
 - minimum context window and expected output-token ceiling?
 - use thinking?
-- allow Global CRIS, or require a geography-scoped CRIS profile?
+- a verified Mantle-only need? — background inference, server-side / pre-configured tools
+  including Web Search, customer Projects or Workspaces, a model or API listed on
+  `bedrock-mantle` only, or strict in-Region processing where `bedrock-runtime` offers only a
+  CRIS profile: record `mantle_selector` with the exact value from
+  `references/vendored/ai/bedrock-endpoint-policy.md`; otherwise leave it absent — preserving
+  the Responses, Chat Completions or Messages API is not a selector
+- allow Global CRIS, require a geography-scoped profile, or require strict in-Region processing
+  (`data_residency: in_region_required`)?
 
 For OpenAI and Azure OpenAI sources, ask instead for the provider-neutral requirements (never
 reuse the Anthropic `preserve_messages_api` switch):
@@ -89,61 +97,131 @@ reuse the Anthropic `preserve_messages_api` switch):
 - require Bedrock Guardrails, invocation logging, or a shared multi-model Converse surface?
 - does the code use `n` (multiple candidates), hosted state (Assistants/Threads,
   `previous_response_id`), hosted web/file search, Files API, or vector stores?
+- a verified Mantle-only need? — background inference, server-side / pre-configured tools
+  including Web Search, customer Projects or Workspaces, a model or API listed on
+  `bedrock-mantle` only, or strict in-Region processing where `bedrock-runtime` offers only a
+  CRIS profile: record `mantle_selector` with the exact value from
+  `references/vendored/ai/bedrock-endpoint-policy.md`; otherwise leave it absent — preserving
+  the Responses, Chat Completions or Messages API is not a selector
 - minimum context window and expected output-token ceiling?
-- allow Global CRIS or require a geography-scoped profile (runtime Converse only)?
+- allow Global CRIS, require a geography-scoped profile, or require strict in-Region processing
+  (`data_residency: in_region_required`)? (any bedrock-runtime path)
 
-OpenAI is handled by a dedicated provider module (`openai-bedrock.json` catalog).
-Recognized GPT-5.6 and GPT-6 source identities are evaluated against their exact same-model
-catalog entry before capability/numeric fallbacks. The engine routes only recognized GPT-6 Chat
-Completions sources to `mantle_openai_chat`; a GPT-5.x Chat Completions source is currently
-reshaped to Responses. That reshape is a current engine limitation, not a model fact: the catalog
-records Chat Completions as supported on Mantle for GPT-5.5 and GPT-5.4 (model cards read
-2026-11-06) and as unchecked for GPT-5.6 Sol. GPT-6 Chat Completions sources with required or
-preferred API continuity keep that surface through `mantle_openai_chat`; GPT-6 Responses sources
-use `mantle_openai_responses`. Both Mantle paths are
-in-region only and enforce the selected model's cataloged `region_availability`: Astra reaches
-us-east-1 and us-west-2, while Sol, Luna, and 6.1 Sol reach us-east-1 only. Outside that footprint,
-the engine skips the same-model Mantle candidate and evaluates its existing capability/numeric
-fallbacks. Those fallbacks walk candidates in catalog order, and GPT-5.5 and GPT-5.4 (both
-cataloged with Chat Completions on Mantle; GPT-5.5 reaches us-east-1/us-east-2, GPT-5.4 reaches
-us-east-1/us-east-2/us-west-2 and us-gov-west-1) precede GPT-6 Astra in that order. A GPT-6 Sol or
-6.1 Sol Chat Completions source outside us-east-1 therefore lands on GPT-5.5 in us-east-2 or GPT-5.4
-in us-west-2 through `mantle_openai_chat`, not on Astra. That is a current engine ordering
-limitation (a newer-generation source falls back to an older-generation model); treat such a
-recommendation as a prompt for the Chat-vs-Converse decision, not as a model endorsement.
-Governance requirements select the exact same GPT-5.6 or GPT-6 model through
-`runtime_converse` only when the requested Global or geography-scoped CRIS profile is cataloged
-for that model and source region; an unsupported profile falls through to an eligible documented
-runtime candidate or remains an explicit decision. GPT-5.5/5.4 also carry a cataloged
-`runtime_converse` path via `us.`/`global.` CRIS ids (model cards read 2026-11-06); the engine does
-not yet recognize them as same-model source identities, so a GPT-5.5/5.4 source under governance
-requirements still lands on the Claude Converse tier until that recognition is added. GPT-6 Astra's
-runtime surface lacks `Invoke` support (Responses/Chat Completions/Converse only), while
-Sol/Luna/6.1 Sol support all four APIs. Every selected path remains provisional until it is probed
-in the target account and region. Azure OpenAI remains an explicit `provider_module_pending`
-generic result.
+OpenAI is handled by a dedicated provider module (`openai-bedrock.json` catalog). The module
+defaults to the bedrock-runtime path that preserves the source API — `runtime_openai_responses`
+for a Responses source, `runtime_openai_chat` for a Chat Completions source — on the exact source
+model; GPT-5.6, GPT-5.5, GPT-5.4 and GPT-6 identities are all recognized and evaluated against
+their same-model catalog entry before capability/numeric fallbacks. A `mantle_openai_*` path is
+selected only with a `mantle_selector`: explicit, or derived from a detected `web_search` tool
+(the built-in Web Search tool is served on `bedrock-mantle` only) or from
+`data_residency: in_region_required` on a runtime model that is CRIS-only in the region. Guardrails
+select `runtime_converse` (same model first, Claude tier as fallback) only when the source
+model's card lists Guardrails as Converse-only — GPT-5.6 Sol / Terra / Luna, GPT-5.5, GPT-5.4 and
+GPT-6 Astra. GPT-6 Sol and GPT-6 Luna keep `runtime_openai_responses` / `runtime_openai_chat`, and
+GPT-6.1 Sol keeps `runtime_openai_chat`, because their cards list Guardrails on those APIs (the
+catalog row flag `guardrails_supported`; cards read 2026-11-08:
+`https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-sol.html`,
+`model-card-openai-gpt-6-luna.html`, `model-card-openai-gpt-6-1-sol.html`). A GPT-6.1 Sol
+Responses source with Guardrails is a `decision_required` because its card excludes Responses.
+The catalog row flag `prompt_caching_supported` carries the per-API prompt-caching scope the same way
+(GPT-5.5 / GPT-5.4: implicit caching on the bedrock-runtime Responses API only, none on
+`bedrock-mantle`; GPT-5.6 Sol / Terra / Luna: every runtime API and Mantle Responses only; GPT-6 Sol /
+Luna and GPT-6.1 Sol: every API on both endpoints; cards read 2026-11-09:
+`https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html`,
+`model-card-openai-gpt-54.html`). A required `prompt_caching` is checked on the selected API row for
+every candidate: a GPT-5.5 Chat Completions source with required continuity and critical
+`prompt_caching` lands on the same-family candidate whose Chat row caches (GPT-5.6) with the reason
+in `rationale`, or — when no candidate's row caches — is an `unverified_capability` decision that
+names the Chat-versus-Responses continuity trade-off. It is never a clean `runtime_openai_chat`
+recommendation with empty compatibility buckets. A
+shared multi-model Converse surface always selects `runtime_converse`. Required API continuity
+plus Converse-only governance is a `decision_required` between two bedrock-runtime options
+(`runtime_openai_<api>` and `runtime_converse`); Mantle is never offered without a selector.
+Invocation logging pins `bedrock-runtime` (model invocation logging captures only that endpoint,
+including its OpenAI-compatible APIs:
+`https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html`, read
+2026-11-08), so logging plus any `mantle_selector` — explicit, or `in_region_processing` derived
+from `in_region_required` — is a `decision_required` between the Mantle option (carrying the
+selector) and the runtime option that keeps the source API. CloudWatch alone never changes the
+path: `bedrock-runtime` publishes `AWS/Bedrock` metrics and `bedrock-mantle` publishes
+`AWS/BedrockMantle` (`https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-mantle-metrics.html`,
+read 2026-11-08). An application inference profile ARN in `inference_profile_id` requires
+Converse — the bedrock-runtime Responses and Chat Completions APIs reject it with HTTP 400
+(`https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html`, read
+2026-11-08) — so with required continuity it is a `decision_required` whose OpenAI-API option
+carries no invocation id; system, Geo and Global profiles are unaffected. Every selector is
+validated against the final provider and API before a path is chosen, and a retained
+`critical_features` entry is checked the same way even when another selector is the primary
+reason. `background_inference`, `web_search`, and `server_side_tools` are Responses API features
+on `bedrock-mantle`
+(`https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html`,
+`https://docs.aws.amazon.com/bedrock/latest/userguide/web-search.html`,
+`https://docs.aws.amazon.com/bedrock/latest/userguide/tool-use-server-side.html`, read 2026-11-09),
+so a Chat Completions path that would carry one of them is a `decision_required`
+(`selector_api_incompatible`: `mantle_openai_responses` versus `runtime_openai_chat` without it)
+unless `api_continuity: not_required` allows the reshape; `mantle_openai_chat` is never recorded
+or offered for a Responses-only feature. Client function tools stay on Chat Completions. A selector whose
+provider does not match the workload is a `selector_provider_mismatch` decision whose options
+both stay on `bedrock-runtime`: `workspaces` (`anthropic-workspace-id`,
+`https://docs.aws.amazon.com/bedrock/latest/userguide/workspaces.html`) on an OpenAI SDK
+workload, and `projects` (`OpenAI-Project`,
+`https://docs.aws.amazon.com/bedrock/latest/userguide/projects.html`) on an Anthropic SDK
+workload (read 2026-11-09). An Anthropic Messages source with `background_inference` is likewise
+a `selector_api_incompatible` decision between `runtime_messages` and the runtime governance path
+— the Messages API has no background mode and the Anthropic module has no Responses route. The
+`server_side_tools` / `web_search` selectors skip Mantle rows whose card lists server-side system
+tools as unsupported (`server_side_tools_supported: false` — GPT-6.1 Sol) and fall to the next
+same-family model with a fallback rationale; the selector is never dropped. An explicit runtime
+`preferred_api_path` plus any selector (explicit or derived) is a `preferred_api_path_conflict`
+decision between the Mantle option and the preferred runtime option. A recommended `runtime_*`
+record never carries a selector.
+Fallbacks walk same-family candidates first, newest version first, so a GPT-6 Chat Completions
+source never falls to GPT-5.4 while Astra or GPT-5.5 is available in the region. Governance
+selects the exact same GPT model through `runtime_converse` only when the requested Global or
+geography-scoped CRIS profile is cataloged for that model and source region; an unsupported
+profile falls through to an eligible documented runtime candidate or remains an explicit
+decision. Every selected path remains provisional until it is probed in the target account and
+region. Azure OpenAI remains an explicit `provider_module_pending` generic result.
 
 For Astra, preserve a compatible explicit API preference before the source default.
 Keep Astra selected and require a decision when its path, region or feature evidence
-cannot satisfy the request; do not silently substitute another model.
+cannot satisfy the request; do not silently substitute another model. Astra's JSON Schema output
+on `bedrock-runtime` applies to non-streaming calls on Chat Completions, Responses and Converse
+(`https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html`, read
+2026-11-08), so `structured_output_json` plus `streaming` on any of those runtime paths is a
+`structured_output_streaming_unverified` decision.
+
+The Anthropic module applies the same governance rules to its paths: invocation logging plus a
+`mantle_selector` (explicit, or derived `in_region_processing`) is a `decision_required` between
+`mantle_messages` and the runtime path that keeps the source API (`runtime_messages` for a
+Messages source); CloudWatch alone never changes the path; an explicit
+`preferred_api_path: runtime_messages` plus Guardrails or a shared multi-model Converse surface is
+a `decision_required` between `runtime_messages` and `runtime_converse`; an explicit runtime
+preference plus any selector is a `decision_required` between `mantle_messages` and the preferred
+path. The conflict name (`mantle_selector_vs_invocation_logging`,
+`in_region_processing_vs_invocation_logging`, `preferred_path_vs_mantle_selector`,
+`preferred_path_vs_converse`, `in_region_processing_vs_preferred_api_path`) appears in the
+`model_path_decision_required` message.
 
 **OpenRouter/LiteLLM-sourced OpenAI models still use the OpenAI module.** Discover records the
 underlying `provider` (e.g. `openai`) even when the calls transit a gateway — see `discover.md`'s
 gateway-detection rule. Do not treat a gateway-routed source as `unknown` or route it to the
-generic branch: the model itself, and therefore the Mantle/Converse recommendation, is unaffected
+generic branch: the model itself, and therefore the model/path recommendation, is unaffected
 by the gateway. What changes is `api_continuity`: a gateway-routed source is not, by construction,
 calling the OpenAI SDK directly, so its actual migration effort is closer to `preferred` than
 `required` — ask this explicitly rather than assuming `required` from the SDK detection default,
-and note in `[TUNE]`/rationale that landing on Mantle from OpenRouter means a real base-URL,
-credential, and model-ID-format change, not the zero-code-change claim that applies to a direct
-OpenAI SDK caller.
+and note in `[TUNE]`/rationale that landing on bedrock-runtime `/openai/v1` (or Mantle) from
+OpenRouter means a real base-URL, credential, and model-ID-format change, not the
+zero-code-change claim that applies to a direct OpenAI SDK caller.
 
 Do not ask users to choose an API path by name unless they already expressed a preference.
 The deterministic engine ranks `(model, api_path)` candidates together after filtering hard
 constraints. If an explicit preference exists, record `preferred_api_path`. Record
 `min_context_tokens`, `expected_output_tokens`, `thinking_enabled`, `data_residency`,
-`cris_geography`, and an explicit `inference_profile_id` when known. Do not manufacture a
-Global or geography prefix when residency is unresolved.
+`cris_geography`, and an explicit `inference_profile_id` when known. Record `mantle_selector`
+only when the user confirmed the need. Do not manufacture a Global or geography prefix when
+residency is unresolved; with `in_region_required` the runtime invocation id stays null unless
+an in-Region model form or an explicit profile applies.
 
 ## Step 3 — Record migration-sensitive features
 
@@ -290,8 +368,12 @@ uv run --with boto3 --with anthropic python "$SCRIPTS/verify_model_path.py" \
   --output "$RUN_DIR/model-verification.json"
 ```
 
-**Each API path needs its own client library.** The line above covers the Anthropic and runtime
-paths. A workload on `mantle_openai_responses` or `mantle_openai_chat` additionally needs
+**Each API path needs its own client library.** The line above covers `mantle_messages`,
+`runtime_converse` and `runtime_invoke`. A workload on `runtime_messages` additionally needs
+`--with anthropic --with aws-bedrock-token-generator` (the bearer token for the
+`bedrock-runtime.{region}.amazonaws.com/anthropic` base URL). A workload on
+`runtime_openai_responses`, `runtime_openai_chat`, `mantle_openai_responses` or
+`mantle_openai_chat` additionally needs
 `--with openai --with aws-bedrock-token-generator`; without them that workload comes back
 `failed` with a `RuntimeError` naming the missing package, while every other workload still
 probes normally. So a `failed` status here can mean "the dependency was absent", not "the model
@@ -324,8 +406,8 @@ by this rule. Cross-region application profiles still need the reference-profile
 
 ## Step 8 — Present the recommendation and advance
 
-For each workload, show the primary model, API path, resolved invocation ID or CRIS TODO,
-compatibility groups, architecture impacts, any `additional_targets` (separate-modality targets
+For each workload, show the primary model, API path with its `mantle_selector` (`null` on every
+bedrock-runtime path), resolved invocation ID or CRIS TODO, compatibility groups, architecture impacts, any `additional_targets` (separate-modality targets
 such as embeddings/images/audio, shown as unresolved with their named service — never as a
 runnable model ID), path rationale, `[BLOCKS]`, `[TUNE]`, evaluation mode, rollout gate, and
 verification status. Do not resolve blockers in chat by silently changing the output. Confirm
