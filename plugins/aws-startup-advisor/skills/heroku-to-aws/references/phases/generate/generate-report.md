@@ -88,9 +88,9 @@ these keys; treat absence as no finding):
 From the inventory: `shared_data_stores.cohorts` (for the conditional
 `shared-data-stores` section) and `metadata.apps_by_environment_tier` (one line in
 `decision-summary` **only when the field is present**: "N apps, of which M are
-production by name or pipeline stage"; the field is written by the environment-tier
-discovery, which is not part of this change — when it is absent, omit the line, never
-derive the counts here).
+production by name or pipeline stage", where `N` is the sum of all tier counts and `M`
+is the `prod` count. When the field is absent, omit the line and never derive the counts
+here).
 
 From `estimation-infra.json` `current_costs.rightsizing_candidates[]` (present when any
 Postgres database holds 25% or less of its plan's storage and a smaller same-family plan

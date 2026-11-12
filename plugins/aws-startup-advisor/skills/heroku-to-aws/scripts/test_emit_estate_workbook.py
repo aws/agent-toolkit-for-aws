@@ -41,6 +41,7 @@ INVENTORY = {
          "heroku_app": "shop-prod-api",
          "config": {"addon_service": "heroku-postgresql", "plan": "standard-2", "provider": "heroku",
                     "connection_pooling": True, "data_size_gb": 20.5, "pg_role": "leader", "pg_leader": None,
+                    "pg_attachment_names": ["HEROKU_POSTGRESQL_TEAL", "DATABASE"],
                     "attached_apps": ["shop-prod-worker"], "monthly_price_usd": 200}},
         {"resource_id": "addon:shop-prod-api:heroku-postgresql:standard-2:follower", "resource_type": "addon",
          "heroku_app": "shop-prod-api",
@@ -146,9 +147,10 @@ def test_writes_workbook_with_all_tabs_and_mapping_status():
         assert "Scope-matched comparison" in wb["Cost estimate"] and "<v>140</v>" in wb["Cost estimate"]
         assert "<v>260</v>" in wb["Cost estimate"]
         assert "C1" in wb["Shared data stores"] and "shop-prod-worker" in wb["Shared data stores"]
-        # follower is listed with its role but excluded from the leaders-only data total (20.5, not 41)
+        # follower whose leader resolves is a proven copy: listed with its role, excluded from the total (20.5, not 41)
         assert "follower" in wb["Postgres"] and "HEROKU_POSTGRESQL_TEAL" in wb["Postgres"]
-        assert "leaders only" in wb["Summary"] and "<v>20.5</v>" in wb["Summary"] and "<v>41" not in wb["Summary"]
+        assert "excluding proven follower copies" in wb["Summary"]
+        assert "<v>20.5</v>" in wb["Summary"] and "<v>41" not in wb["Summary"]
         # right-sizing rows carry the add-on id, the role and the storage-only caveat
         assert "addon:shop-prod-api:heroku-postgresql:standard-2" in wb["Right-sizing"]
         assert "leader" in wb["Right-sizing"] and "chosen by storage only" in wb["Right-sizing"]
@@ -393,3 +395,98 @@ def test_out_override():
         code, out = run(tmp, "--out", str(tmp / "custom.xlsx"))
         assert code == 0 and "path=" + str(tmp / "custom.xlsx") in out
         assert (tmp / "custom.xlsx").exists()
+
+
+def _pg(rid: str, app: str, **cfg) -> dict:
+    base = {"addon_service": "heroku-postgresql", "plan": "standard-0", "provider": "heroku"}
+    return {"resource_id": rid, "resource_type": "addon", "heroku_app": app, "config": {**base, **cfg}}
+
+
+def _inventory_with(resources: list) -> dict:
+    inv = json.loads(json.dumps(INVENTORY))
+    inv["resources"] = resources
+    inv["apps"] = [{"app_name": a, "heroku_generation": "cedar", "space": None}
+                   for a in sorted({r["heroku_app"] for r in resources})]
+    return inv
+
+
+def _build(inv: dict, design: dict | None = None) -> dict[str, str]:
+    with tempfile.TemporaryDirectory() as t:
+        tmp = Path(t)
+        (tmp / "heroku-resource-inventory.json").write_text(json.dumps(inv))
+        if design is not None:
+            (tmp / "aws-design.json").write_text(json.dumps(design))
+        code, out = run(tmp)
+        assert code == 0 and out.startswith("ESTATE_OK"), out
+        return sheets(tmp / "heroku-estate.xlsx")
+
+
+def test_deferral_is_matched_by_resource_not_by_service_and_plan():
+    # App a's follower is deferred; app b's same-plan follower was collapsed by Design onto its
+    # leader, so it is in neither services[] nor deferred[]. It must not borrow a's reason.
+    a = _pg("addon:a:heroku-postgresql:standard-0", "a", pg_role="follower", pg_leader="X", data_size_gb=5)
+    b = _pg("addon:b:heroku-postgresql:standard-0", "b", pg_role="follower", pg_leader="HEROKU_POSTGRESQL_B", data_size_gb=5)
+    b_leader = _pg("addon:b:heroku-postgresql:standard-2", "b", pg_role="leader", plan="standard-2",
+                   pg_attachment_names=["HEROKU_POSTGRESQL_B"], data_size_gb=5)
+    design = {"services": [{"service_id": "rds:b", "source_resource_id": b_leader["resource_id"], "heroku_app": "b",
+                            "aws_service": "RDS PostgreSQL", "aws_config": {"instance_class": "db.m6g.large"}}],
+              "deferred": [{"addon_name": "heroku-postgresql", "addon_plan": "standard-0", "provider": "heroku",
+                            "resource_id": a["resource_id"], "reason": "Follower of unresolved leader X"}],
+              "metadata": {"postgres_followers_collapsed": [{"resource_id": b["resource_id"]}]}}
+    wb = _build(_inventory_with([a, b, b_leader]), design)
+    assert wb["Postgres"].count("Follower of unresolved leader X") == 1
+    # one deferred add-on, not two
+    assert re.search(r"add-ons deferred.*?<v>1</v>", wb["Summary"], re.S)
+
+
+def test_deferral_without_resource_id_falls_back_to_service_and_plan():
+    a = _pg("addon:a:heroku-postgresql:standard-0", "a", data_size_gb=5)
+    design = {"services": [{"service_id": "x", "source_resource_id": "other", "aws_service": "ALB"}],
+              "deferred": [{"addon_name": "heroku-postgresql", "addon_plan": "standard-0",
+                            "reason": "Legacy entry without a resource id"}]}
+    assert "Legacy entry without a resource id" in _build(_inventory_with([a]), design)["Postgres"]
+
+
+def test_unresolved_follower_keeps_its_size_in_the_total():
+    leader = _pg("addon:a:heroku-postgresql:standard-2", "a", plan="standard-2", pg_role="leader", data_size_gb=40.5,
+                 pg_attachment_names=["DATABASE"])
+    # points at an attachment name no add-on on the app has: unresolved, not a proven copy
+    follower = _pg("addon:a:heroku-postgresql:standard-2:f", "a", plan="standard-2", pg_role="follower",
+                   pg_leader="HEROKU_POSTGRESQL_GONE", data_size_gb=10.25)
+    summary = _build(_inventory_with([leader, follower]))["Summary"]
+    assert "<v>50.75</v>" in summary and "<v>40.5</v>" not in summary
+
+
+def test_design_collapsed_list_is_authoritative_for_the_total():
+    # the inventory alone cannot resolve this follower (no pg_attachment_names), so only
+    # Design's list decides whether its bytes count
+    leader = _pg("addon:a:heroku-postgresql:standard-2", "a", plan="standard-2", pg_role="leader", data_size_gb=40.5)
+    follower = _pg("addon:a:heroku-postgresql:standard-2:f", "a", plan="standard-2", pg_role="follower",
+                   pg_leader="DATABASE", data_size_gb=10.25)
+    inv = _inventory_with([leader, follower])
+    collapsed = {"services": [], "deferred": [], "metadata": {"postgres_followers_collapsed": [
+        {"resource_id": follower["resource_id"], "leader_resource_id": leader["resource_id"]}]}}
+    not_collapsed = {"services": [], "deferred": [], "metadata": {"postgres_followers_collapsed": []}}
+    assert "<v>40.5</v>" in _build(inv, collapsed)["Summary"]
+    assert "<v>50.75</v>" in _build(inv, not_collapsed)["Summary"]
+
+
+def test_unmeasured_database_is_counted_not_summed_as_zero():
+    measured = _pg("addon:a:heroku-postgresql:standard-2", "a", plan="standard-2", pg_role="leader", data_size_gb=12.5)
+    unmeasured = _pg("addon:b:heroku-postgresql:standard-0", "b", pg_role="leader")  # no data_size_gb
+    summary = _build(_inventory_with([measured, unmeasured]))["Summary"]
+    assert "databases without a measured size" in summary
+    assert re.search(r"databases without a measured size.*?<v>1</v>", summary, re.S)
+    assert "<v>12.5</v>" in summary
+
+
+def test_mixed_roles_do_not_claim_the_unknown_database_was_checked():
+    # One database has a recorded role, one does not (a failed `pg:info` capture is the normal
+    # way to get this). The total counts the role-less database in full, so the label must not
+    # say followers were excluded from it, and the note must say how many were counted unchecked.
+    known = _pg("addon:a:heroku-postgresql:standard-2", "a", plan="standard-2", pg_role="leader", data_size_gb=10.5)
+    unknown = _pg("addon:b:heroku-postgresql:standard-2", "b", plan="standard-2", data_size_gb=20.25)
+    summary = _build(_inventory_with([known, unknown]))["Summary"]
+    assert "<v>30.75</v>" in summary
+    assert "roles unknown" not in summary  # not every database lacks a role
+    assert "1 database(s) have no recorded role and are counted in full" in summary
