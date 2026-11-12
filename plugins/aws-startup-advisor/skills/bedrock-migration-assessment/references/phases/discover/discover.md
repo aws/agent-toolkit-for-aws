@@ -36,19 +36,20 @@ The SKILL.md secret-file rule applies before Step 1: to see whether the project 
 
 ## Step 2c: Usage APIs (optional)
 
-After either route has a validated profile in `$MIGRATION_DIR`, run each usage reader below whose source the profile has, or whose provider's usage or spend the user mentions, one at a time in this order; skip the others without asking:
+After either route has a validated profile in `$MIGRATION_DIR`, run each usage reader below whose source or gateway the profile has, or whose provider's usage or spend the user mentions, one at a time in this order; skip the others without asking:
 
-| Source in the profile          | Reader                                                | Capture directory   |
+| In the profile                 | Reader                                                | Capture directory   |
 | ------------------------------ | ----------------------------------------------------- | ------------------- |
 | `openai`/`openai_api`          | `references/phases/discover/discover-openai-api.md`    | `openai-capture/`    |
 | `anthropic`/`anthropic_api`    | `references/phases/discover/discover-anthropic-api.md` | `anthropic-capture/` |
+| an `openrouter` gateway        | `references/phases/discover/discover-openrouter-api.md` | `openrouter-capture/` |
 
 Each reader's Step 0 is the only consent prompt for that provider, and declining one does not skip the next. If a reader's `$MIGRATION_DIR/<capture directory>/manifest.json` already exists, follow that reader's resume rows in its Error Handling table: only a `result` of `complete` resumes at its Step 3. After each merge, validate the profile again as in Step 2b.
 
 ## Step 2d: Preview
 
 ```bash
-python3 <SKILL_BASE>/scripts/migration-preview.py $MIGRATION_DIR/ai-workload-profile.json --out $MIGRATION_DIR/migration-preview.json [--usage $MIGRATION_DIR/openai-usage-profile.json] [--usage $MIGRATION_DIR/anthropic-usage-profile.json]
+python3 <SKILL_BASE>/scripts/migration-preview.py $MIGRATION_DIR/ai-workload-profile.json --out $MIGRATION_DIR/migration-preview.json [--usage $MIGRATION_DIR/openai-usage-profile.json] [--usage $MIGRATION_DIR/anthropic-usage-profile.json] [--usage $MIGRATION_DIR/openrouter-usage-profile.json]
 ```
 
 Pass one `--usage` for each usage profile Step 2c wrote. Show the user:

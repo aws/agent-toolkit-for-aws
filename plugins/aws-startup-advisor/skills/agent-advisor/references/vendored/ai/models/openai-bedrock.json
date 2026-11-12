@@ -4,8 +4,8 @@
   "generated_from": "bedrock-model-registry.json (rendered by tools/build-model-catalogs.py; edit the registry, not this file)",
   "verified_at": "2026-11-10",
   "verified_region": "us-east-2",
-  "source": "Haiku 5.5 Converse tier: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-5-5.html (read 2026-11-09). Opus 5.5 cross-family target: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html (retrieved 2026-09-24). OpenAI and other unchanged entries retain their evidence from the superseded 2026-08-21 catalog (removed; see git history). Claude Sonnet 5.5 and OpenAI GPT-6.1 Terra: AWS model cards read 2026-11-10.",
-  "disclaimer": "Haiku 5.5 is the fast/low-cost Converse tier (the GPT-5.6 Luna cross-family fallback); Haiku 4.5 remains an explicit alternative, not an automatic fallback. The Opus cross-family target is updated to Opus 5.5; same-model OpenAI paths and their earlier evidence remain unchanged. This is a migration target catalog, not an account-availability claim. Verify the chosen model, API, region and CRIS profile before implementation. Opus 5.5 uses CRIS on runtime outside eu-west-2, has 1M context/128K output, always-on adaptive thinking, and no Batch tier. Fable and Mythos remain excluded from default selection. Opus 5.5 is the only Opus model in the automatic selection pool; older Opus snapshots and pricing records are historical references. The runtime in-region exception in eu-west-2 was verified 2026-10-03; the original catalog and other model evidence dates remain unchanged.",
+  "source": "Haiku 5.5 Converse tier: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-5-5.html (read 2026-11-09). Opus 5.5 cross-family target: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html (retrieved 2026-09-24). GPT-5.5 and GPT-5.4 rows re-read from their public model cards on 2026-11-06 (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html, https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html): both now list bedrock-runtime (Responses, Chat Completions, Converse via us./global. CRIS ids) and Chat Completions on bedrock-mantle. Other OpenAI and other unchanged entries retain their evidence from the superseded 2026-08-21 catalog (removed; see git history). Claude Sonnet 5.5 and OpenAI GPT-6.1 Terra: AWS model cards read 2026-11-10.",
+  "disclaimer": "Haiku 5.5 is the fast/low-cost Converse tier (the GPT-5.6 Luna cross-family fallback); Haiku 4.5 remains an explicit alternative, not an automatic fallback. The Opus cross-family target is updated to Opus 5.5; the GPT-5.5 and GPT-5.4 entries were re-read from their public model cards on 2026-11-06 (runtime CRIS paths, Chat Completions on mantle, 1.05M context, long-context pricing); the other same-model OpenAI paths and their earlier evidence remain unchanged. This is a migration target catalog, not an account-availability claim. Verify the chosen model, API, region and CRIS profile before implementation. Opus 5.5 uses CRIS on runtime outside eu-west-2, has 1M context/128K output, always-on adaptive thinking, and no Batch tier. Fable and Mythos remain excluded from default selection. Opus 5.5 is the only Opus model in the automatic selection pool; older Opus snapshots and pricing records are historical references. The runtime in-region exception in eu-west-2 was verified 2026-10-03; the original catalog and other model evidence dates remain unchanged.",
   "paths": {
     "mantle_openai_responses": {
       "sdk": "openai",
@@ -20,8 +20,8 @@
         "GPT-5.x on Bedrock Mantle is served through the Responses API"
       ],
       "constraints": [
-        "Mantle itself has no cross-region form for any GPT model (in-region only); for GPT-5.6 the bedrock-runtime CRIS path covers additional regions instead (see runtime_converse)",
-        "GPT-5.x on Mantle rejects Chat Completions; a Chat Completions source must reshape to Responses (reference-verified on gpt-5.4; the 5.6 cards list Chat Completions as a supported API but its mantle-side availability is unprobed — verify in the target account)",
+        "Mantle itself has no cross-region form for any GPT model (in-region only); for GPT-5.6, GPT-5.5 and GPT-5.4 the bedrock-runtime CRIS path covers additional regions instead (see runtime_converse)",
+        "Chat Completions support on Mantle is model-specific: the GPT-5.4 and GPT-5.5 model cards list Chat Completions as supported on bedrock-mantle (read 2026-11-06); the GPT-5.6 Sol card does not. A Chat Completions source reshapes to Responses only when the selected model's card does not list Chat Completions — verify in the target account",
         "Availability must be probed in the target account and region"
       ]
     },
@@ -37,7 +37,7 @@
         "OpenAI-compatible Chat Completions surface for models that accept it"
       ],
       "constraints": [
-        "Not available for the GPT-5.x models listed here: rejected on gpt-5.4 (internal reference probe) and unsupported on the gpt-5.6-sol model card",
+        "Model-specific: listed as supported on bedrock-mantle by the GPT-5.4 and GPT-5.5 model cards (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html, https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html, read 2026-11-06) and by the GPT-6 cards; unsupported on the gpt-5.6-sol model card. Uses /openai/v1/chat/completions",
         "Availability and model support must be probed in the target account and region"
       ]
     },
@@ -52,11 +52,12 @@
       "strengths": [
         "Bedrock-native multi-model request surface",
         "Supports Bedrock Guardrails (Converse API only), invocation logging, and CloudWatch",
-        "For GPT-5.6 this is a SAME-MODEL governance path via CRIS (us./in./global. ids; base URL bedrock-runtime.{region}.amazonaws.com/openai/v1 for the OpenAI-compatible APIs); the model cards recommend runtime for new applications, and Global CRIS is priced at OpenAI's standard rate (cost parity)"
+        "This is a SAME-MODEL governance path via CRIS. GPT-5.6 Terra and Luna publish us./in./global. ids; us./global. only for GPT-5.6 Sol, GPT-5.5 and GPT-5.4 (their model cards list no in. profile; cards read 2026-11-07). The base URL for the OpenAI-compatible APIs is bedrock-runtime.{region}.amazonaws.com/openai/v1. The model cards recommend runtime for new applications, and for GPT-5.6 Global CRIS is priced at OpenAI's standard rate (cost parity)"
       ],
       "constraints": [
-        "GPT-5.5 / GPT-5.4 have NO runtime path — a Converse target for them means a Bedrock-native model and a boto3 rewrite of the OpenAI integration",
-        "GPT-5.6 on runtime is CRIS-only (no in-region form); Geo CRIS stays within the geography, Global CRIS routes anywhere — pick by data-residency posture. Runtime does not support server-side tool use, structured outputs, or application inference profiles for these models; prompt caching is Responses-only",
+        "GPT-5.5 / GPT-5.4 on runtime are CRIS-only (us. and global. ids; no in-region form) per their model cards (read 2026-11-06); the cards publish In-Region (1.10x) pricing only, so do not assume Global CRIS price parity for them",
+        "GPT-5.6 on runtime is CRIS-only (no in-region form); Geo CRIS stays within the geography, Global CRIS routes anywhere — pick by data-residency posture. For GPT-5.6, runtime does not support server-side tool use, structured outputs, or application inference profiles; prompt caching is Responses-only",
+        "GPT-5.5 / GPT-5.4 on runtime (per their model cards, read 2026-11-07): server-side tool use is unsupported; structured outputs and implicit prompt caching are Responses-only; Guardrails and application inference profiles are Converse-only",
         "Bedrock-native models generally require a Global or geography-scoped CRIS inference profile",
         "Availability must be probed in the target account and region"
       ]
@@ -114,19 +115,104 @@
       "generation": "reasoning",
       "version": "5.5",
       "class": "reasoning",
-      "context_window": 272000,
-      "output_token_ceiling": "unknown",
+      "context_window": 1050000,
+      "output_token_ceiling": 128000,
       "capabilities": [
         "reasoning",
-        "tool_or_function_calling"
+        "tool_or_function_calling",
+        "image_input_vision"
       ],
-      "capability_source": "AWS model card 2026-07-21 (launch 2026-06-01, Active): advanced coding/agentic tasks; tool calling via the Responses API's built-in tool use. Feature-level Mantle behavior not probed — verify before relying. Re-verified 2026-08-21: still mantle-only, in-region only; no CRIS, no runtime path, no long-context tier.",
+      "capability_source": "AWS model card https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html (read 2026-11-06; launch 2026-06-01, Active, EOL no sooner than 2027-06-01): text+image input, text output; 1,050,000-token context shared between input and output, 128,000 max output. Mantle lists server-side and client-side tool calling; runtime lists invocation logs, streaming, Guardrails (Converse only), application inference profiles (Converse only), implicit prompt caching (Responses only), structured outputs (Responses) and reasoning summaries; server-side tool use is unsupported on runtime. Documentation claims, not account probes — verify before relying.",
+      "inference_profiles": {
+        "us": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2",
+          "ca-central-1",
+          "ca-west-1"
+        ],
+        "global": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2",
+          "ca-central-1",
+          "ca-west-1",
+          "mx-central-1",
+          "eu-central-1",
+          "eu-central-2",
+          "eu-north-1",
+          "eu-south-1",
+          "eu-south-2",
+          "eu-west-1",
+          "eu-west-2",
+          "eu-west-3",
+          "ap-east-2",
+          "ap-northeast-1",
+          "ap-northeast-2",
+          "ap-northeast-3",
+          "ap-south-1",
+          "ap-south-2",
+          "ap-southeast-1",
+          "ap-southeast-2",
+          "ap-southeast-3",
+          "ap-southeast-4",
+          "ap-southeast-5",
+          "ap-southeast-6",
+          "ap-southeast-7",
+          "il-central-1",
+          "me-central-1",
+          "me-south-1",
+          "af-south-1",
+          "sa-east-1"
+        ]
+      },
+      "region_availability": {
+        "commercial": [
+          "us-east-1",
+          "us-east-2"
+        ],
+        "govcloud": [],
+        "evidence": "bedrock-mantle in-region rows of the GPT-5.5 model card, read 2026-11-06: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html"
+      },
+      "pricing": {
+        "source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html (read 2026-11-06); USD per 1M tokens, Standard tier; the card lists the In-Region inference option only",
+        "commercial_short_context_le_272k": {
+          "input": 5.5,
+          "cache_read": 0.55,
+          "output": 33.0
+        },
+        "commercial_long_context_gt_272k": {
+          "input": 11.0,
+          "cache_read": 1.1,
+          "output": 49.5
+        },
+        "service_tiers": {
+          "standard": true,
+          "priority": false,
+          "flex": false,
+          "reserved": false
+        }
+      },
       "paths": {
         "mantle_openai_responses": {
           "available": true,
           "model_id": "openai.gpt-5.5",
           "requires_cris": false,
-          "evidence": "AWS model card model-card-openai-gpt-55 (2026-07-21): bedrock-mantle Programmatic Access with Responses sample code; Geo/Global inference not supported"
+          "evidence": "AWS model card model-card-openai-gpt-55 (read 2026-11-06): bedrock-mantle supports Responses at /openai/v1/responses; in-region us-east-1 and us-east-2 only; Geo/Global not supported on mantle"
+        },
+        "mantle_openai_chat": {
+          "available": true,
+          "model_id": "openai.gpt-5.5",
+          "requires_cris": false,
+          "evidence": "AWS model card model-card-openai-gpt-55 (read 2026-11-06): Chat Completions listed as supported on bedrock-mantle at /openai/v1/chat/completions, with sample code"
+        },
+        "runtime_converse": {
+          "available": true,
+          "model_id": "openai.gpt-5.5",
+          "requires_cris": true,
+          "evidence": "AWS model card model-card-openai-gpt-55 (read 2026-11-06): bedrock-runtime supported with Responses, Chat Completions and Converse (Messages and Invoke unsupported); no in-region form — requests must name us.openai.gpt-5.5 (Geo) or global.openai.gpt-5.5 (Global); base URL bedrock-runtime.{region}.amazonaws.com/openai/v1 for the OpenAI-compatible APIs"
         }
       }
     },
@@ -219,27 +305,114 @@
       "generation": "reasoning",
       "version": "5.4",
       "class": "reasoning",
-      "context_window": "unknown",
-      "output_token_ceiling": "unknown",
+      "context_window": 1050000,
+      "output_token_ceiling": 128000,
       "capabilities": [
         "tool_or_function_calling",
         "structured_output_json",
         "reasoning",
-        "streaming"
+        "streaming",
+        "image_input_vision"
       ],
-      "capability_source": "internal reference smoke tests and its reasoning-API migration notebook (Responses path, 2026-06 probes) — the only entry with feature-level Mantle behavior probes (tools, structured output, sampling); limits not stated Re-verified 2026-08-21: still mantle-only, in-region only; no CRIS, no runtime path, no long-context tier.",
+      "capability_source": "AWS model card https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html (read 2026-11-06; launch 2026-06-01, Active, EOL no sooner than 2027-06-01): text+image input, text output; 1,050,000-token context shared between input and output, 128,000 max output. Mantle lists server-side and client-side tool calling; runtime lists invocation logs, response streaming, Guardrails (Converse only), application inference profiles (Converse only), implicit prompt caching (Responses only), structured outputs (JSON Schema; Responses API) and reasoning summaries; server-side tool use is unsupported on runtime. Documentation claims, not account probes — verify before relying.",
+      "inference_profiles": {
+        "us": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2",
+          "ca-central-1",
+          "ca-west-1"
+        ],
+        "global": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2",
+          "ca-central-1",
+          "ca-west-1",
+          "mx-central-1",
+          "eu-central-1",
+          "eu-central-2",
+          "eu-north-1",
+          "eu-south-1",
+          "eu-south-2",
+          "eu-west-1",
+          "eu-west-2",
+          "eu-west-3",
+          "ap-east-2",
+          "ap-northeast-1",
+          "ap-northeast-2",
+          "ap-northeast-3",
+          "ap-south-1",
+          "ap-south-2",
+          "ap-southeast-1",
+          "ap-southeast-2",
+          "ap-southeast-3",
+          "ap-southeast-4",
+          "ap-southeast-5",
+          "ap-southeast-6",
+          "ap-southeast-7",
+          "il-central-1",
+          "me-central-1",
+          "me-south-1",
+          "af-south-1",
+          "sa-east-1"
+        ]
+      },
+      "region_availability": {
+        "commercial": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-2"
+        ],
+        "govcloud": [
+          "us-gov-west-1"
+        ],
+        "evidence": "bedrock-mantle in-region rows of the GPT-5.4 model card, read 2026-11-06: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html"
+      },
+      "pricing": {
+        "source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html (read 2026-11-06); USD per 1M tokens, Standard tier; the card lists the In-Region inference option only",
+        "commercial_short_context_le_272k": {
+          "input": 2.75,
+          "cache_read": 0.275,
+          "output": 16.5
+        },
+        "commercial_long_context_gt_272k": {
+          "input": 5.5,
+          "cache_read": 0.55,
+          "output": 24.75
+        },
+        "govcloud_us_west_short_context_le_272k": {
+          "input": 3.375,
+          "cache_read": 0.3375,
+          "output": 20.25
+        },
+        "service_tiers": {
+          "standard": true,
+          "priority": false,
+          "flex": false,
+          "reserved": false
+        }
+      },
       "paths": {
         "mantle_openai_responses": {
           "available": true,
           "model_id": "openai.gpt-5.4",
           "requires_cris": false,
-          "evidence": "internal reference smoke-test default Mantle model id; client.responses.create verified live"
+          "evidence": "AWS model card model-card-openai-gpt-54 (read 2026-11-06): bedrock-mantle supports Responses at /openai/v1/responses; in-region us-east-1, us-east-2, us-west-2 and us-gov-west-1; Geo/Global not supported on mantle"
         },
         "mantle_openai_chat": {
-          "available": false,
+          "available": true,
           "model_id": "openai.gpt-5.4",
           "requires_cris": false,
-          "evidence": "internal reference verified gotcha: GPT-5.x on Mantle is Responses-only; Chat Completions rejected"
+          "evidence": "AWS model card model-card-openai-gpt-54 (read 2026-11-06): Chat Completions listed as supported on bedrock-mantle at /openai/v1/chat/completions, with sample code"
+        },
+        "runtime_converse": {
+          "available": true,
+          "model_id": "openai.gpt-5.4",
+          "requires_cris": true,
+          "evidence": "AWS model card model-card-openai-gpt-54 (read 2026-11-06): bedrock-runtime supported with Responses, Chat Completions and Converse (Messages and Invoke unsupported); no in-region form — requests must name us.openai.gpt-5.4 (Geo) or global.openai.gpt-5.4 (Global); base URL bedrock-runtime.{region}.amazonaws.com/openai/v1 for the OpenAI-compatible APIs"
         }
       }
     },

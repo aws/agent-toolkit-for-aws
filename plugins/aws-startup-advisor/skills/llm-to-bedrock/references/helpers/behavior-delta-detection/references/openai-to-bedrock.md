@@ -29,7 +29,7 @@ for OpenAI-compatible runtime calls, CRIS ids, and runtime IAM permissions. Astr
 - `resolution_kind`: `ux_choice`
 - Source (OpenAI): `client.chat.completions.create(...)`, `messages=[...]`, reads `choices[0].message.content`
 - Target (mantle GPT): `client.responses.create(...)`, `input=...`, reads `output_text`
-- Chat Completions support is **model-specific, not uniformly unverified.** All four GPT-6 models (Astra, Sol, Luna, 6.1 Sol) and the GPT-5.6 family (Sol, Terra, Luna) list `Chat Completions` as a supported API on both `bedrock-mantle` and `bedrock-runtime` CRIS (per their model cards — see `openai-on-bedrock.md` § Access Paths). For these models, a Chat Completions source MAY keep `chat.completions.create` and `choices[0].message` parsing unchanged — **reshape to Responses is OPTIONAL**, driven only by a Responses-only feature (runtime prompt caching, reasoning-item round-trips on `bedrock-runtime`) or a demonstrated account-specific constraint, not by a blanket assumption that Chat Completions is unsupported. For GPT-5.5 / GPT-5.4 (mantle-only, no CRIS) Chat Completions support is still unconfirmed on their model cards — treat those two as requiring a reshape to Responses, and probe the target account before committing.
+- Chat Completions support is **model-specific, not uniformly unverified.** All four GPT-6 models (Astra, Sol, Luna, 6.1 Sol) and the GPT-5.6 family (Sol, Terra, Luna) list `Chat Completions` as a supported API on both `bedrock-mantle` and `bedrock-runtime` CRIS (per their model cards — see `openai-on-bedrock.md` § Access Paths). For these models, a Chat Completions source MAY keep `chat.completions.create` and `choices[0].message` parsing unchanged — **reshape to Responses is OPTIONAL**, driven only by a Responses-only feature (runtime prompt caching, reasoning-item round-trips on `bedrock-runtime`) or a demonstrated account-specific constraint, not by a blanket assumption that Chat Completions is unsupported. GPT-5.5 / GPT-5.4 follow the same rule: their model cards (read 2026-11-06 — [GPT-5.4](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html), [GPT-5.5](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html)) list `Chat Completions` as supported on both `bedrock-mantle` and `bedrock-runtime` (`us.`/`global.` CRIS ids), so the reshape is OPTIONAL for them too. Plan a reshape only when the selected model's card leaves Chat Completions unchecked on the selected endpoint, and probe the target account before committing, as for any model.
 
 ### detect_grep
 
@@ -66,7 +66,7 @@ grep -rEn 'function_call_output|tool_call' <REPO> --include="*.py" --include="*.
 ## prompt-caching-availability
 
 - `resolution_kind`: `impl_path`
-- Prompt caching is listed as supported on GPT-5.6 and GPT-6 only. Do not emit caching configuration for `openai.gpt-5.5` or `openai.gpt-5.4`.
+- Prompt caching with request parameters (explicit mode) is listed on GPT-5.6 and GPT-6 only. The GPT-5.5 / GPT-5.4 cards (read 2026-11-06) list only implicit caching on `bedrock-runtime` Responses (automatic, no request parameters) and none on mantle — do not emit caching configuration for `openai.gpt-5.5` or `openai.gpt-5.4` on either endpoint.
 
 - Astra lists implicit and explicit prompt caching on mantle Responses, with **30-minute cache-write** rates.
   Do not inherit GPT-5.6's minimum-prefix, breakpoint, or cached-input quota-exemption rules.

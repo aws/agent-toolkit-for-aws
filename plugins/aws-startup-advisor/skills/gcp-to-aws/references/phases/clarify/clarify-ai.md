@@ -41,6 +41,7 @@ Before presenting questions, show:
 > **Integration pattern:** [from `integration.pattern`; if `unknown`, say **Unknown (IaC-only)**] via [from `integration.primary_sdk`, or **not determined**]
 > **Gateway/router:** [from `integration.gateway_type`, or "None (direct SDK)"]
 > **Frameworks:** [from `integration.frameworks`, or "None"]
+> **Mantle-only signals:** [from `workloads[].mantle_signals`: one line per signal as `[workload] — [selector] — [file:line construct]`, or "None detected" — confirmed in Q22b]
 
 ---
 
@@ -115,7 +116,7 @@ Before presenting Q16–Q22, show the detected workloads and proposed Bedrock ta
 
    **Zero-workload case:** If no AI workloads detected and user doesn't report any, write `"workloads": []` to preferences.json. Design emits empty `design_blocks[]` for this case.
 
-5. **Question budget:** 4 global questions (Q14, Q15, framework, spend) + at most 2 per medium/low workload. For an app with 3 high-confidence workloads: 4 questions total, 0 per-workload. For an app with 2 high + 1 medium: 4 + 2 = 6 questions max.
+5. **Question budget:** 5 global questions (Q14, Q15, Q22b, framework, spend) + at most 2 per medium/low workload. For an app with 3 high-confidence workloads: 5 questions total, 0 per-workload. For an app with 2 high + 1 medium: 5 + 2 = 7 questions max.
 
 **Single-workload fallback:** If `workloads[]` has exactly 1 entry or is empty, skip the confirmation table and proceed with the existing Q16–Q22 flow below.
 
@@ -483,6 +484,37 @@ Interpret → `ai_complexity`. Default: 2 → `"moderate"`.
 
 ---
 
+## Q22b — Mantle-only requirements (asynchronous inference, provider-run tools, Projects/Workspaces, single-Region processing)
+
+**Disposition: ESSENTIAL** — asked in the Gate-2 AI batch (`clarify-assemble.md`), never placed on the assumption sheet: the answer decides the endpoint, so there is no safe default to propose. Prefill from `workloads[].mantle_signals` when present: show each detected signal as `[workload] — [selector] — [file:line construct]` and ask the user to confirm or correct before writing; a declined signal is dropped. When `metadata.profile_source` is `iac_vertex`, the profile is billing-only, or the user declined the code scan, say so in the lead-in — "No application code was scanned, so I cannot infer this" — and ask the four sub-questions outright.
+
+**Multi-workload rule:** ask once ("does any workload…"), then list the affected workload numbers from the confirmation table → one entry per `workload_id`.
+
+Amazon Bedrock serves most applications on `bedrock-runtime`; a few needs exist only on `bedrock-mantle`. Answer per workload, or "none" / "all".
+
+> a. Does any workload rely on asynchronous/background inference — long-running requests you submit now and poll for later?
+>
+> b. Does any workload use server-side or pre-configured tools run by the provider — including web search, hosted MCP servers, code execution or file search? (Your own client-side function tools do not count.)
+>
+> c. Does any workload use customer-created Projects (OpenAI) or Workspaces (Anthropic) for isolation or cost tracking?
+>
+> d. Does any workload have a strict requirement that inference stays in one AWS Region? If so, which Region?
+
+| Answer                            | Recommendation Impact                                                                                                                                                                                                      |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| a = yes                           | `background_inference` → Mantle for that workload (`bedrock-runtime` rejects `background=true` with 400 — [Responses API on Bedrock](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html), read 2026-11-07) |
+| b = yes, web search               | `web_search` → Mantle (Runtime has no Web Search tool)                                                                                                                                                                     |
+| b = yes, other provider-run tools | `server_side_tools` → Mantle                                                                                                                                                                                               |
+| c = yes                           | `projects` (OpenAI source) / `workspaces` (Anthropic source) → Mantle (Runtime exposes only the default project)                                                                                                           |
+| d = yes + Region                  | `in_region_processing` with `region` — applied by Design only when `bedrock-runtime` serves that model in that Region through a CRIS profile alone; otherwise `bedrock-runtime` in-Region                                  |
+| none                              | No selector; Design records `bedrock-runtime` and states the assumption                                                                                                                                                    |
+
+Interpret → `ai_constraints.mantle_requirements`: array of `{ workload_id, selector, source, evidence?, region? }` — `selector` ∈ `background_inference | server_side_tools | web_search | projects | workspaces | in_region_processing | none`, `source` ∈ `detected | user | none`. Default: `[{ "workload_id": "*", "selector": "none", "source": "none" }]` with `chosen_by: "default"` and the report caveat "Mantle-only requirements were not confirmed by the user; bedrock-runtime assumed".
+
+`workload_id` is the `workloads[].workload_id` the answer applies to, or `*` for every workload (always `*` when the profile has no `workloads[]`). `source: "detected"` = prefilled from a Discover signal and confirmed by the user (copy the signal's `file:line construct` into `evidence`); `source: "user"` = answered without a code signal (an explicit "none" answer records `{ "workload_id": "*", "selector": "none", "source": "user" }`); `source: "none"` = defaulted. `region` is required when `selector` is `in_region_processing`. The constraint wrapper uses `chosen_by: "user"` when answered or confirmed, `chosen_by: "default"` + `source: "default:Q22b"` when skipped (append the caveat to `metadata.report_caveats[]`) — never `extracted`. `mantle_only_model_or_api` is never written here; Design derives it from the model catalog. For a workload whose source has no Mantle path (Gemini / Vertex AI, or one Design maps to a cross-family `direct` / `converse` / `gpt-oss` target), tell the user up front that a "yes" does not change the endpoint: Design keeps `bedrock-runtime` and records the requirement as a capability gap in the design (`rationale` + `capability_gaps[]`) rather than an endpoint change.
+
+---
+
 ## Category G — Agentic Workflows (If `agentic_profile` exists in `ai-workload-profile.json`)
 
 _Fire when:_ `ai-workload-profile.json` contains `agentic_profile` with `is_agentic: true`.
@@ -662,6 +694,31 @@ Category G answers are stored in `preferences.json` → `ai_constraints.agentic`
 - `memory_requirement` — Determines whether AgentCore Memory is included in design
 - `task_duration` — Determines AgentCore Runtime recommendation and session limit warnings
 - `incremental_migration` — Determines whether incremental migration artifacts are generated
+
+## Preferences Output — `ai_constraints.mantle_requirements`
+
+Q22b answers are stored in `preferences.json` → `ai_constraints.mantle_requirements` as a standard constraint wrapper whose `value` is the entry array:
+
+```json
+{
+  "ai_constraints": {
+    "mantle_requirements": {
+      "value": [
+        { "workload_id": "wl_9532e7", "selector": "projects", "source": "detected", "evidence": "src/ai/openai_client.py:9 default_headers={\"OpenAI-Project\": os.environ[\"OPENAI_PROJECT_ID\"]}" },
+        { "workload_id": "*", "selector": "in_region_processing", "source": "user", "region": "us-east-1" }
+      ],
+      "chosen_by": "user",
+      "prompt": "Mantle-only requirements (asynchronous inference, provider-run tools, Projects/Workspaces, single-Region processing)",
+      "design_consequence": "Workloads with a selector route to bedrock-mantle; every other workload stays on bedrock-runtime",
+      "question_id": "Q22b"
+    }
+  }
+}
+```
+
+**Field contract (consumed by Design phase):**
+
+- `value[]` — one `{ workload_id, selector, source, evidence?, region? }` entry per confirmed requirement (vocabulary in Q22b's Interpret line); consumed by `design-ai.md` Step 0.8 to derive `bedrock_models[].mantle_selector` for the matching workload(s). The default entry (`selector: "none"`, `source: "none"`, `chosen_by: "default"`, `source: "default:Q22b"` on the wrapper) makes Design record `bedrock-runtime` with the assumption sentence and the report caveat.
 
 ## Status — build step 5 (restructure)
 
