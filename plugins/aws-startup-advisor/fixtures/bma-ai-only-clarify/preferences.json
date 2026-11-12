@@ -41,7 +41,7 @@
     "ai_monthly_spend": {
       "value": "$500-$2K",
       "chosen_by": "default",
-      "prompt": "Monthly AI spend on OpenAI or Gemini? (default applied)",
+      "prompt": "Monthly AI spend with your current AI providers? (default applied)",
       "design_consequence": "$500-$2K band sets token volume and model tier assumptions",
       "question_id": "Q3",
       "source": "default:Q3"
