@@ -12,7 +12,7 @@ description: >-
   metadata, Terraform. For using what is set up - queries, dashboards, alarms, Omni alerts, X-Ray,
   synthetics, Dynamic Instrumentation, AI agent evaluation, detecting Omni vs classic - use
   aws-observability.
-version: 6
+version: 5
 ---
 
 # Setting Up CloudWatch Observability
