@@ -27,7 +27,7 @@ Read `$MIGRATION_DIR/preferences.json` → `ai_constraints` (if present). If abs
   `references/shared/openai-on-bedrock.md` (the fact base: model IDs, endpoint paths, region matrix, quotas,
   caching). OpenAI's proprietary GPT models run on Bedrock, so the source model is often itself the target — the
   mapping guide's Tier 0 path is the default, not a cross-family swap.
-- `"anthropic"` → load `references/vendored/ai/ai-anthropic-to-bedrock.md` (Anthropic SDK → Bedrock Converse API client swap; do NOT use ai-openai-to-bedrock.md for Anthropic SDK users)
+- `"anthropic"` → load `references/vendored/ai/ai-anthropic-to-bedrock.md` (Anthropic SDK → Bedrock Runtime Messages (default) / Converse alternative; the Anthropic SDK stays and is repointed at `https://bedrock-runtime.{region}.amazonaws.com/anthropic` — record `migration_path: "runtime_messages"` with `required_client_api: "messages"` by default, `"converse"` only on explicit request or for a Converse-only feature, `"mantle_messages"` only with a `mantle_selector` **recorded by Step 0.8 (any matched `ai_constraints.mantle_requirements` entry on the Anthropic workload, typically `workspaces`)**; do NOT use ai-openai-to-bedrock.md for Anthropic SDK users)
 - `"both"` → `both` never means exactly "Gemini+OpenAI" — per
   `discover-anthropic-api.md` Step 4.5, `both` is also reached when Anthropic
   usage joins a Gemini-or-OpenAI codebase, so it can mean "Gemini+Anthropic"
@@ -102,6 +102,28 @@ Read `preferences.json` → `design_constraints.compliance` (from full-flow Q2 o
 | `soc2` / `ccpa`  | Part 5 plan must include CloudTrail audit logging; CCPA additionally: prompt/completion retention policy + deletion workflow for logged content. Models whose Status is `restricted` with an `aws_review` or `provider_data_share` retention opt-in (Fable / Mythos) keep prompts outside the customer's deletion control — up to 30 days for AWS review, or shared with the provider — so exclude them under CCPA unless the plan documents that retention explicitly. |
 
 Record what was applied: every constraint that changed a model choice or region adds a `regional_warnings[]` entry (existing shape) or a Part 5 plan line naming the compliance value that forced it, and the Present Summary section MUST state which compliance regime(s) shaped the design. A design that ignores a declared compliance value is a validation failure (see Validation Checklist).
+
+---
+
+## Step 0.8: Endpoint Selection from Clarify's Mantle Requirements
+
+Read `preferences.json` → `ai_constraints.mantle_requirements` (written by Clarify Q22b, or Q10.5 in the AI-only flow). **Absent on older runs = no requirement recorded** — treat it like a single `{ "workload_id": "*", "selector": "none", "source": "none" }` entry. The endpoint of every `bedrock_models[]` row is decided HERE and only here; the source API, the model family, and your own judgment about what the app "probably" needs are not inputs (`references/vendored/ai/bedrock-endpoint-policy.md`: API continuity alone never selects Mantle).
+
+**Derivation rule — apply per workload (`workloads[]` from `preferences.json`, falling back to the profile; when the profile has no `workloads[]`, every entry is `*` and applies to every row):**
+
+1. Collect the `mantle_requirements.value[]` entries whose `workload_id` equals the workload's id or is `*`, and whose `selector` is one of `background_inference | server_side_tools | web_search | projects | workspaces | in_region_processing` with `source` ∈ `detected | user`. Entries with `selector: "none"` or `source: "none"` match nothing.
+1b. **Validate the matched selector against the API it requires.** `web_search` and `background_inference` require the Responses API (`web-search.html`; `inference-responses-api.html` — read 2026-11-09); `workspaces` requires the Anthropic Messages API (`anthropic-workspace-id`); `projects` requires an OpenAI-compatible API (`OpenAI-Project`). A selector whose provider does not match the workload's source API — `workspaces` on an OpenAI SDK workload, `projects` on an Anthropic SDK workload — is a mismatch: the row keeps `bedrock-runtime`, records `endpoint_assumption`, discloses the mismatch in `rationale` and `capability_gaps[]`, and Clarify is re-run; never invent a Mantle path. A Chat Completions source (or an Anthropic Messages source) matched by a Responses-only selector (`web_search`, `background_inference`) is an **explicit API-continuity decision** recorded in the plan and the Present Summary, never a silent same-API Mantle row: (i) keep the source API on `bedrock-runtime` and drop the requirement — the row stays `runtime_openai_cris` / `runtime_messages` with `endpoint_assumption` and a `capability_gaps[]` entry naming the dropped selector and the decision; or (ii) move to `mantle_openai_responses` with that `mantle_selector`, `mantle_requirement`, and the Chat → Responses reshape delta in Generate. `mantle_openai_chat` / `mantle_messages` is never recorded for a Responses-only selector.
+2. **Any match that passes 1b → the Mantle path for the workload's source API:** `"mantle_openai_responses"` for a Responses source, `"mantle_openai_chat"` for a Chat Completions source, `"mantle_messages"` for an Anthropic SDK source. Set `bedrock_models[].mantle_selector` to the matched selector; when several entries match, take the first in the policy-table order `background_inference, server_side_tools, web_search, projects, workspaces, in_region_processing` and name the others in the row's `rationale`. Copy the matched entry into `bedrock_models[].mantle_requirement` — `{ workload_id, selector, source, evidence?, region? }` where `evidence` is present when `source` is `detected` (the Clarify entry's `file:line construct`) and `region` is present iff `selector` is `in_region_processing`.
+   - `in_region_processing` still obeys the existing CRIS-only gate in `references/vendored/ai/ai-openai-to-bedrock.md`: it selects Mantle only when `bedrock-runtime` serves the selected model in the entry's `region` through a CRIS profile alone; when a runtime in-Region form exists, the workload stays on `bedrock-runtime` in that Region and the row records the `endpoint_assumption` below with a `rationale` note that the Region need is met on runtime.
+   - **A match on a workload whose source API has no Mantle path** (Gemini / Vertex AI via `google-genai`, or any workload whose target is a cross-family `"direct"` / `"converse"` / `"gpt-oss"` row) does not change the endpoint. The row keeps its `bedrock-runtime` path and records the `endpoint_assumption` sentence below verbatim (it is the fixed runtime-lane disclosure), and the recorded requirement is disclosed as a capability gap: name the unhonored selector with its `source` and `evidence` in the row's `rationale` and add a `capability_gaps[]` entry (`"<selector> requested in Clarify (<source>, <evidence>) — no bedrock-mantle path for this source API"`); for `in_region_processing` add a `regional_warnings[]` entry instead. Never invent a Mantle path for that source and never drop the answer silently; the Present Summary endpoint line names the gap.
+3. **`mantle_only_model_or_api` is never a Clarify value.** When the selected model or API exists only on `bedrock-mantle` per the catalog (`references/vendored/ai/ai-openai-to-bedrock.md` / `references/shared/openai-on-bedrock.md` access-path tables), record the Mantle path with `mantle_selector: "mantle_only_model_or_api"` and `mantle_requirement: { "workload_id": "<id>", "selector": "mantle_only_model_or_api", "source": "catalog", "evidence": "<catalog file § row>" }`.
+4. **No match → the `bedrock-runtime` default** (`"runtime_openai_cris"` / `"runtime_messages"` / `"converse"` / `"gpt-oss"` / `"direct"` per Parts 1 and 5) and the row records `bedrock_models[].endpoint_assumption`, exactly:
+
+   > No Mantle-only requirement was recorded for <workload_id>; bedrock-runtime selected. If this workload needs background inference, server-side tools, Projects/Workspaces, or single-Region processing, re-run Clarify.
+
+   where `<workload_id>` is the `design_blocks[].workload_id` whose `model_id` equals the row's `source_model_id` (several workloads on one row → comma-joined ids), written as a plain id with no backticks or quotes. When the constraint was defaulted (`chosen_by: "default"`), the report caveat "Mantle-only requirements were not confirmed by the user; bedrock-runtime assumed" from Clarify stays in `metadata.report_caveats[]`.
+
+Exactly one of `mantle_requirement` / `endpoint_assumption` is present on every `bedrock_models[]` row. Generate echoes whichever is present in the generated script/adapter header, and the llm-to-bedrock report quotes it.
 
 ---
 
@@ -357,7 +379,7 @@ For each model in `models[]`, record:
 
 | GCP Pattern  | AWS Pattern                                                               | Effort  |
 | ------------ | ------------------------------------------------------------------------- | ------- |
-| `direct_sdk` | Mantle Responses API (OpenAI source, model on Bedrock, region carries it) | Minimal |
+| `direct_sdk` | Runtime OpenAI API — same model on `bedrock-runtime` CRIS (OpenAI source, model on Bedrock); Mantle only for a recorded `mantle_selector` | Minimal |
 | `direct_sdk` | Bedrock SDK (boto3 / AWS SDK)                                             | Medium  |
 | `framework`  | LangChain/LlamaIndex + Bedrock                                            | Low     |
 | `rest_api`   | Bedrock REST API                                                          | Medium  |
@@ -391,10 +413,11 @@ For each detected `integration.pattern` and `ai_source`, generate before/after m
 
 | Pattern                         | Source                    | Target              | Key Change                                                                                           |
 | ------------------------------- | ------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------- |
-| Direct SDK (OpenAI), same model | OpenAI                    | Selected Mantle API | Base URL → `.../openai/v1`, Bedrock credential, `openai.gpt-*` model ID, `bedrock-mantle:*` IAM      |
+| Direct SDK (OpenAI), same model | OpenAI                    | Runtime OpenAI API (default) | Base URL → `https://bedrock-runtime.{region}.amazonaws.com/openai/v1`, Bedrock token, CRIS `us.`/`global.` model ID, `bedrock:InvokeModel*` IAM; same API the source calls |
+| Direct SDK (OpenAI), same model | OpenAI                    | Selected Mantle API (selector-gated) | Only with `mantle_selector`: base URL → `.../openai/v1` on Mantle, Bedrock credential, `openai.gpt-*` model ID, `bedrock-mantle:*` IAM |
 | Direct SDK                      | Vertex AI                 | boto3 Converse API  | `generate_content()` → `converse()`                                                                  |
-| Direct SDK                      | OpenAI                    | boto3 Converse API  | `completions.create()` → `converse()` (use if Mantle region unavailable or Converse features needed) |
-| Direct SDK                      | Anthropic                 | boto3 Converse API  | `messages.create()` → `converse()` with Claude model ID on Bedrock                                   |
+| Direct SDK                      | OpenAI                    | boto3 Converse API  | `completions.create()` → `converse()` (use only for a need no same-model path serves, e.g. Knowledge Bases) |
+| Direct SDK                      | Anthropic                 | Runtime Anthropic Messages (default) | Keep `anthropic.Anthropic`; base URL → `https://bedrock-runtime.{region}.amazonaws.com/anthropic`, string Bedrock token, `global.`/Geo Claude profile ID, `bedrock:InvokeModel*` IAM; `migration_path: "runtime_messages"` + `required_client_api: "messages"`. `"converse"` (boto3 `messages.create()` → `converse()`) only on explicit request / Converse-only feature; `"mantle_messages"` only with a `mantle_selector` **recorded by Step 0.8 (any matched entry, typically `workspaces`)** |
 | LangChain                       | ChatVertexAI / ChatOpenAI | ChatBedrock         | Swap import and model_id                                                                             |
 | LlamaIndex                      | Vertex / OpenAI LLM       | BedrockConverse     | Swap import                                                                                          |
 | LLM Router (LiteLLM)            | Any                       | Config change       | `model="bedrock/<model_id>"` (1 line)                                                                |
@@ -402,10 +425,19 @@ For each detected `integration.pattern` and `ai_source`, generate before/after m
 | Streaming                       | `stream=True`             | `converse_stream`   | Event loop over `contentBlockDelta`                                                                  |
 
 **OpenAI model/API selection:** preserve the model and the supported API chosen in the
-mapping guide. For Astra on Standard Mantle in `us-east-1` or `us-west-2`, a Chat source selects
-`migration_path: "mantle_openai_chat"`; a Responses source selects `"mantle_openai_responses"`.
-Keep the OpenAI SDK, use `/openai/v1`, Bedrock credentials and Mantle IAM. Do not reshape
-Astra Chat solely because it is proprietary GPT. Record `model_change: false` only when
+mapping guide. **The default for every proprietary GPT target is `migration_path:
+"runtime_openai_cris"`** with `bedrock_models[].required_client_api` set to the API the source app
+calls (`responses` for a Responses source, `chat_completions` for a Chat source) — the OpenAI SDK
+stays, the base URL becomes `https://bedrock-runtime.{region}.amazonaws.com/openai/v1`, the model
+ID becomes the CRIS profile and IAM is `bedrock:InvokeModel*`. A `mantle_*` path
+(`"mantle_openai_chat"` for a Chat source, `"mantle_openai_responses"` for a Responses source — e.g.
+Astra on Standard Mantle in `us-east-1` or `us-west-2`) is recorded **only** when the row also
+records `bedrock_models[].mantle_selector` from `references/vendored/ai/bedrock-endpoint-policy.md`
+(the selector enum is defined there and only there), derived in Step 0.8 from
+`ai_constraints.mantle_requirements` (never from the source API, the model, or a guess) and cited
+in the row's `mantle_requirement`; then keep the OpenAI SDK, use
+`/openai/v1` on Mantle, Bedrock credentials and Mantle IAM. API continuity alone never selects
+Mantle. Do not reshape Astra Chat solely because it is proprietary GPT. Record `model_change: false` only when
 the exact source model is retained; a Pro-to-Astra upgrade is a model change requiring eval.
 GPT-5.x retains its separately dated API evidence and any selected Chat-to-Responses reshape.
 
@@ -423,8 +455,9 @@ GPT-5.5 / GPT-5.4 (model cards read 2026-11-06: `us.openai.gpt-5.5` / `global.op
 have a `bedrock-runtime` CRIS path (`us.`/`global.` prefixed IDs, per `openai-on-bedrock.md`
 § Access Paths). No proprietary GPT model has a runtime in-region form. For all of them, a region
 or feature need (Guardrails, invocation logging, application inference profiles, or a region
-outside the mantle matrix) is satisfied by **switching endpoint, not model**: record
-`migration_path: "runtime_openai_cris"` with `model_change: false`. Reserve
+outside the mantle matrix) is satisfied by **the default endpoint, not a model switch**: record
+`migration_path: "runtime_openai_cris"` with `model_change: false` — the same path a region-only
+move records. Reserve
 `migration_path: "converse"` with `model_change: true` for a need the same-model CRIS path itself
 cannot serve (Knowledge Bases, intelligent prompt routing, or a feature CRIS does not support —
 see the runtime-side feature splits in `openai-on-bedrock.md`). Note:
@@ -435,8 +468,10 @@ must verify against Astra's model card per-feature, not assume parity with Sol/L
 **When Guardrails is the driving need and the design keeps `runtime_openai_cris` (endpoint
 switch, not model switch), it MUST also record `bedrock_models[].required_client_api` so the
 generated client uses a Guardrails-capable surface — `converse` for Astra and 6.1 Terra; `converse` /
-`chat_completions` / `invoke` (never `responses`) for 6.1 Sol and the other GPT-6/5.6 CRIS models except Astra and 6.1 Terra. Do not leave the client on `responses` when Guardrails is required.** `Responses`
-stays the default for a region-only CRIS move with no Guardrails or application-inference-profile need.
+`chat_completions` / `invoke` (never `responses`) for 6.1 Sol and the other GPT-6/5.6 CRIS models except Astra and 6.1 Terra. Do not leave the client on `responses` when Guardrails is required.** For a
+region-only CRIS move with no Guardrails or application-inference-profile need, the default
+`required_client_api` is the API the source app already calls (`responses` or `chat_completions`)
+— never an implicit Converse.
 
 **Application inference profiles are Converse-only on GPT-5.5, GPT-5.4, GPT-6.1 Terra and Astra —
 the requirement MUST reach `required_client_api`.** The GPT-5.4 / GPT-5.5 model cards (read 2026-11-07)
@@ -467,6 +502,8 @@ do not manufacture a profile from the region. Keep each unit's model/API/profile
 For multiple advisor units, write `migration_path` and `required_client_api` on each corresponding
 `bedrock_models[]` row with its `aws_model_id`; `code_migration` remains the primary-unit default.
 
+<!-- TODO(PR 3 — agent-advisor runtime paths): when the advisor emits runtime OpenAI Responses/Chat or Runtime Messages path names, translate them here; names are owned by PR 3, do not invent them. -->
+
 **Throughput:** load `references/vendored/ai/ai-migration-guardrails.md` and apply the selected
 model/endpoint's quota rules. Astra runtime uses input TPM plus 10 times output TPM.
 Astra Mantle quotas and cache exemptions must be verified independently; do not copy GPT-5.6's
@@ -478,7 +515,7 @@ Generate concrete code examples using actual model IDs from the selected Bedrock
 
 **OpenRouter-specific guidance** (if `gateway_type == "llm_router"` AND `detection_signals` contains OpenRouter evidence):
 
-OpenRouter is a hosted routing service (not self-hosted like LiteLLM). It adds a margin on top of provider pricing. **First check whether the underlying model is an OpenAI model with a Mantle target** (`ai_source == "openai"`, per the Mantle guidance above) — OpenRouter is a transport layer, not a different model, so an OpenAI model routed through OpenRouter is eligible for the same same-model Mantle path a direct-SDK OpenAI source gets. Present the options below to the user:
+OpenRouter is a hosted routing service (not self-hosted like LiteLLM). It adds a margin on top of provider pricing. **First check whether the underlying model is an OpenAI model that is on Bedrock** (`ai_source == "openai"`, per the OpenAI model/API selection above) — OpenRouter is a transport layer, not a different model, so an OpenAI model routed through OpenRouter is eligible for the same same-model `bedrock-runtime` path a direct-SDK OpenAI source gets. Present the options below to the user:
 
 > **If the startup was using OpenRouter primarily for cost-based routing within one model family**
 > (e.g., routing between Claude Haiku and Claude Sonnet, or Nova Lite and Nova Pro),
@@ -488,12 +525,12 @@ OpenRouter is a hosted routing service (not self-hosted like LiteLLM). It adds a
 
 | Option                                                                     | Action                                                                                    | Effort    | Trade-off                                                                                                                                                                                           |
 | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A) Same model via Mantle (recommended when the source model is on Bedrock) | Remove OpenRouter, point the existing OpenAI SDK at Bedrock Mantle with the same model ID | Days      | Keeps the same model — no eval/prompt-behavior risk; requires base URL, credential, and model-ID-format changes (e.g. `openai/gpt-4o` → an OpenAI-compatible Bedrock model ID); not a one-line swap |
-| B) Direct Bedrock, cross-family                                            | Remove OpenRouter, call Bedrock API directly with a Claude/Nova model                     | 1–2 weeks | Removes middleman + margin; requires SDK + prompt changes; use when no Mantle target exists or cost is the priority                                                                                 |
+| A) Same model on Bedrock (recommended when the source model is on Bedrock) | Remove OpenRouter, point the existing OpenAI SDK at `bedrock-runtime` `/openai/v1` with the same model's CRIS ID (`same_model_runtime`, default); Mantle (`same_model_mantle`) only with a recorded `mantle_selector` | Days      | Keeps the same model — no eval/prompt-behavior risk; requires base URL, credential, and model-ID-format changes (e.g. `openai/gpt-4o` → a CRIS-prefixed Bedrock model ID); not a one-line swap |
+| B) Direct Bedrock, cross-family                                            | Remove OpenRouter, call Bedrock API directly with a Claude/Nova model                     | 1–2 weeks | Removes middleman + margin; requires SDK + prompt changes; use when the source model is not on Bedrock or cost is the priority                                                                      |
 | C) Self-hosted LiteLLM                                                     | Replace OpenRouter with LiteLLM proxy pointing to Bedrock                                 | 1–3 days  | Preserves router pattern; removes OpenRouter dependency; adds self-hosting                                                                                                                          |
 | D) Keep OpenRouter                                                         | Use OpenRouter with `amazon/` prefixed Bedrock models                                     | Hours     | Lowest effort; retains OpenRouter dependency and margin; this is a model switch, not a same-model move                                                                                              |
 
-Recommend **A** when `ai_source == "openai"` and a Mantle target exists (region gate passes per the Mantle guidance above); otherwise recommend **B** and present C/D as lower-effort alternatives. Record user's choice (or the recommended default if not asked) in `aws-design-ai.json` → `code_migration.openrouter_path`: `"same_model_mantle"` / `"direct"` / `"litellm"` / `"keep_openrouter"`.
+Recommend **A** when `ai_source == "openai"` and the source model is on Bedrock (region gate passes per the mapping guide); A defaults to `same_model_runtime` (Runtime CRIS) and becomes `same_model_mantle` only when the row records a `mantle_selector`. Otherwise recommend **B** and present C/D as lower-effort alternatives. Record user's choice (or the recommended default if not asked) in `aws-design-ai.json` → `code_migration.openrouter_path`: `"same_model_runtime"` / `"same_model_mantle"` / `"direct"` / `"litellm"` / `"keep_openrouter"`.
 
 ---
 
@@ -509,7 +546,7 @@ Write `aws-design-ai.json` to `$MIGRATION_DIR/`.
 | `ai_architecture.honest_assessment`        | string      | `"strong_migrate"`, `"moderate_migrate"`, `"weak_migrate"`, `"recommend_stay"`, `"not_applicable"` (per-workload only — traditional-AI capabilities `document_extraction`/`image_analysis`/`speech_transcription`; never the overall assessment) |
 | `ai_architecture.honest_assessment_reason` | string/null | Required when `honest_assessment == "recommend_stay"`. The specific non-cost blocker (region, Realtime API, separate-service capability, Assistants API feature, unsupported API surface). Null otherwise.                                       |
 | `ai_architecture.tiered_strategy`          | object/null | Tiered model routing (null for low/medium volume)                                                                                                                                                                                                |
-| `ai_architecture.bedrock_models`           | array       | Per-model: `gcp_model_id`, `aws_model_id`, `capabilities_matched[]`, `capability_gaps[]`, `honest_assessment`, `source_provider_price`, `bedrock_price`, `price_comparison`, `migration_complexity`                                              |
+| `ai_architecture.bedrock_models`           | array       | Per-model: `gcp_model_id`, `aws_model_id`, `capabilities_matched[]`, `capability_gaps[]`, `honest_assessment`, `source_provider_price`, `bedrock_price`, `price_comparison`, `migration_complexity`, `migration_path`, `mantle_selector` + `mantle_requirement` (every `mantle_*` row, from Step 0.8), `endpoint_assumption` (every non-`mantle_*` row, the Step 0.8 sentence) |
 | `ai_architecture.capability_mapping`       | object      | Per-capability: `parity` (full/partial/none), `notes`                                                                                                                                                                                            |
 | `ai_architecture.code_migration`           | object      | `primary_pattern`, `framework`, `files_to_modify[]`, `dependency_changes`, `migration_path`; per-model `required_client_api` selects the runtime API |
 | `ai_architecture.infrastructure`           | array       | GCP resource → AWS equivalent mappings with confidence                                                                                                                                                                                           |
@@ -531,6 +568,8 @@ Write `aws-design-ai.json` to `$MIGRATION_DIR/`.
 - [ ] `honest_assessment` logic is consistent (weakest model drives overall)
 - [ ] If `ai_source` includes `"openai"`: every model that `shared/openai-on-bedrock.md` lists as available on Bedrock, and whose target region carries it, is mapped to **itself** with `model_change: false` — not to a Claude/Nova substitute
 - [ ] If `honest_assessment == "recommend_stay"`: `honest_assessment_reason` names a non-cost blocker (cost parity alone is never sufficient for an OpenAI source)
+- [ ] Every same-model proprietary GPT row records `migration_path: "runtime_openai_cris"` by default; every `bedrock_models[]` row whose `migration_path` starts with `mantle_` carries a `mantle_selector` from `references/vendored/ai/bedrock-endpoint-policy.md`, and no `runtime_*`/`converse` row carries one
+- [ ] Every `mantle_*` row's `mantle_selector` is derived from an `ai_constraints.mantle_requirements` entry (or the catalog for `mantle_only_model_or_api`) and the row carries `mantle_requirement` citing it; every non-`mantle_*` row carries the `endpoint_assumption` sentence naming its workload
 - [ ] No `bedrock_models[]` entry pairs a **bare** proprietary GPT id (including bare
       `openai.gpt-5.5` / `openai.gpt-5.4`) with a Converse/`bedrock-runtime` migration path.
       GPT-5.6, GPT-6, GPT-5.5 and GPT-5.4 MAY use `migration_path: "runtime_openai_cris"` on
@@ -541,7 +580,9 @@ Write `aws-design-ai.json` to `$MIGRATION_DIR/`.
       records `required_client_api: "converse"` — not absent, `responses` or `chat_completions`.
       A same-workload Responses-only need (GPT-5.5 / GPT-5.4 structured outputs or implicit
       caching) is recorded as an explicit decision in the Part 5 plan, not silently dropped.
-      A region-only CRIS move keeps the `responses` default.
+      A region-only CRIS move with no such need keeps the source app's own API as the default
+      `required_client_api` (`responses` for a Responses source, `chat_completions` for a Chat
+      Completions source) — never an implicit Converse.
 - [ ] `regional_warnings` is present (empty array `[]` if no issues; populated if any service unavailable in target region)
 - [ ] `multi_model_warnings` is present (empty array `[]` if single model or no coordination issues)
 - [ ] If `agentic_profile.is_agentic == true`: `agentic_design` object is present with `migration_approach` matching `preferences.json`
@@ -565,3 +606,4 @@ After writing `aws-design-ai.json`, present under 25 lines:
 3. Integration pattern and migration complexity
 4. Capability gaps (if any)
 5. If weak_migrate or recommend_stay: flag prominently with cost justification
+6. Endpoint per workload — `bedrock-mantle (<selector>, <source>)` or the `endpoint_assumption` sentence verbatim, plus any Step 0.8 requirement that could not be honored (no Mantle path for the source API) with its capability gap

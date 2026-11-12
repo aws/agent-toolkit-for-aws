@@ -229,6 +229,10 @@ stops on abort.
   GPT-5.5/5.4 CRIS ids flow through Steps 1–5 like any other inference profile. See
   `$ASSESS_BASE/references/shared/openai-on-bedrock.md` for the authoritative
   family split.
+- A `runtime_messages` plan (Anthropic SDK on the `bedrock-runtime` `/anthropic` endpoint)
+  resolves exactly like Converse: a supported `us.`/`eu.`/`global.` inference profile through
+  Steps 1–5, with a bare id only for the documented eu-west-2 Opus 5.5 route (Step 0).
+  `mantle_messages` uses the bare `anthropic.claude-*` id (Step 0, mantle endpoint).
 - Output of this skill should replace the plan's `target_model_id` in the
   caller's context — downstream phases (evaluator, rewriter) receive the
   validated ID only.
