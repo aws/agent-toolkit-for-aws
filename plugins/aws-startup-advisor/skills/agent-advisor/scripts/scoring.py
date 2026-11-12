@@ -170,12 +170,33 @@ def _apply_hard_constraints(answers, profiles, run_evidence=None):
     return _evaluate_hard_constraints(answers, profiles, verifications)[0]
 
 
+def _agentcore_needs_instances(answers):
+    """Answers that require AgentCore's Instances compute type (AWS-managed EC2 via a capacity
+    provider): sessions over 8h, GPU or heavy compute, or a chosen instance type."""
+    return (
+        answers.get("session_duration") == "over_8hr"
+        or answers.get("compute_tier") in ("gpu", "heavy_non_gpu")
+        or answers.get("instance_type_requirement") == "yes"
+    )
+
+
+def _effective_affinities(profile, answers):
+    """A profile's affinities with any compute-type overrides applied. AgentCore Instances bills
+    EC2 plus a management fee with no scale-to-zero, so its cost-driven dimensions (expected_scale)
+    use the Instances values instead of the microVMs ones."""
+    affinities = profile.get("affinities", {})
+    overrides = profile.get("compute_type_affinities", {})
+    if profile["id"] == "agentcore" and "instances" in overrides and _agentcore_needs_instances(answers):
+        return {**affinities, **overrides["instances"]}
+    return affinities
+
+
 def _compute_scores(answers, profiles, eliminated):
     scores = {}
     for profile in profiles:
         if profile["id"] in eliminated:
             continue
-        affinities = profile.get("affinities", {})
+        affinities = _effective_affinities(profile, answers)
         total = 0
         for dim in DIMENSIONS:
             value = answers.get(dim, "unknown")
@@ -229,12 +250,7 @@ def _select_agentcore_compute_type(answers, verdict, co_recommend=None):
     )
     if not agentcore_wins:
         return None
-    needs_instances = (
-        answers.get("session_duration") == "over_8hr"
-        or answers.get("compute_tier") in ("gpu", "heavy_non_gpu")
-        or answers.get("instance_type_requirement") == "yes"
-    )
-    return "instances" if needs_instances else "microvms"
+    return "instances" if _agentcore_needs_instances(answers) else "microvms"
 
 
 AGENTCORE_ALWAYS_SERVICES = ["identity", "observability", "evaluations", "optimization"]

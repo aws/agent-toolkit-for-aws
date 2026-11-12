@@ -898,3 +898,50 @@ def test_clarify_documents_every_expected_scale_value():
     assert legal_line.split(":", 1)[1].split(".")[0].strip().split(" | ") == scoring.LEGAL_VALUES["expected_scale"]
     for audience in ("clarify-business.md", "clarify-technical.md"):
         assert "**expected_scale**" in (clarify / audience).read_text()
+
+
+# --- Gen's review on #623: AgentCore Instances has no scale-to-zero ----------------------------
+
+@pytest.mark.parametrize("scale", ["prototype", "growing"])
+@pytest.mark.parametrize("instances_answer", [
+    pytest.param({"session_duration": "over_8hr"}, id="over_8hr"),
+    pytest.param({"compute_tier": "gpu"}, id="gpu"),
+    pytest.param({"compute_tier": "heavy_non_gpu"}, id="heavy_non_gpu"),
+    pytest.param({"instance_type_requirement": "yes"}, id="instance_type"),
+])
+def test_small_scale_bonus_skips_agentcore_instances(scale, instances_answer):
+    before = scoring.score({"answers": instances_answer})["scores"]["agentcore"]
+    after = scoring.score({"answers": {**instances_answer, "expected_scale": scale}})["scores"]["agentcore"]
+    # Instances bills EC2 plus a management fee: prototype scores below neutral, growing neutral.
+    assert after - before == {"prototype": -1, "growing": 0}[scale]
+
+
+def test_small_scale_bonus_still_applies_to_agentcore_microvms():
+    before = scoring.score({"answers": {"compute_tier": "light"}})["scores"]["agentcore"]
+    after = scoring.score({"answers": {"compute_tier": "light", "expected_scale": "prototype"}})["scores"]["agentcore"]
+    assert after - before == 2
+
+
+def test_instances_gpu_workload_stays_on_ecs_at_prototype_scale():
+    # Gen's repro: without the override, prototype scale tied AgentCore Instances with ECS.
+    answers = {"session_duration": "over_8hr", "traffic_pattern": "steady", "compute_tier": "gpu"}
+    for scale in ("unknown", "prototype", "growing"):
+        result = scoring.score({"answers": {**answers, "expected_scale": scale}})
+        assert (result["verdict"], result.get("co_recommend")) == ("ecs", None)
+
+
+def test_unknown_scale_scores_the_same_on_instances():
+    answers = {"session_duration": "over_8hr", "compute_tier": "gpu"}
+    assert scoring.score({"answers": answers})["scores"] == scoring.score(
+        {"answers": {**answers, "expected_scale": "unknown"}})["scores"]
+
+
+@pytest.mark.parametrize("profile", scoring.load_profiles(
+    statuses=frozenset({"ga", "preview", "coming_soon"})), ids=lambda p: p["id"])
+def test_compute_type_affinity_overrides_are_well_formed(profile):
+    for compute_type, dims in profile.get("compute_type_affinities", {}).items():
+        assert compute_type in profile.get("compute_types", []), compute_type
+        for dim, value_map in dims.items():
+            assert dim in profile["affinities"], f"{compute_type}.{dim} overrides no base affinity"
+            assert set(value_map) == set(scoring.LEGAL_VALUES[dim])
+            assert value_map["unknown"] == profile["affinities"][dim]["unknown"]
