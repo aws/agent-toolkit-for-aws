@@ -16,6 +16,29 @@ SUPPORTED_PATHS = {
     "runtime_converse",
     "runtime_invoke",
 }
+# Catalog selection state (scripts/contracts/model-selection-catalog.schema.json). Only
+# `selectable` entries are automatic-selection candidates; `reference_only` entries stay in the
+# catalog for lookups but every candidate enumerator skips them. A missing status counts as
+# selectable so in-memory test catalogs keep working; the loaders require the field on disk.
+SELECTION_STATUSES = ("selectable", "reference_only")
+
+
+def with_all_selectable(catalog):
+    """The same catalog with every entry selectable: used to ask whether reference_only entries,
+    and not some other filter, are what left a decision side empty."""
+    return {**catalog, "models": {k: {**m, "selection_status": "selectable"}
+                                  for k, m in catalog["models"].items()}}
+
+
+def is_selectable(model):
+    status = model.get("selection_status", "selectable")
+    if status not in SELECTION_STATUSES:
+        raise ValueError(
+            f"selection_status must be one of {list(SELECTION_STATUSES)}, got {status!r}"
+        )
+    return status == "selectable"
+
+
 ANTHROPIC_PATHS = (
     "mantle_messages",
     "runtime_converse",
@@ -33,21 +56,75 @@ ANTHROPIC_POOL = frozenset({"anthropic", "none", "unknown"})
 # Haiku 4.5 is never the automatic pick while Haiku 5.5 is selectable; it follows Haiku 5.5 in the
 # speed/cost orders only so that a path/region Haiku 5.5 does not serve (Mantle outside
 # us-gov-west-1) still gets the fast tier rather than Sonnet, and stays last everywhere else.
+# Sonnet 5.5 is the balanced default (same price as Sonnet 5, cheaper cache reads, later EOL);
+# Sonnet 5 stays selectable directly after it as the explicit alternative for forced tool_choice
+# or Batch, which Sonnet 5.5 does not support.
 _PRIORITY_ORDER = {
-    "quality": ["claude_opus_5_5", "claude_sonnet_5", "claude_haiku_5_5", "claude_haiku_4_5"],
-    "balanced": ["claude_sonnet_5", "claude_opus_5_5", "claude_haiku_5_5", "claude_haiku_4_5"],
-    "speed": ["claude_haiku_5_5", "claude_haiku_4_5", "claude_sonnet_5", "claude_opus_5_5"],
-    "cost": ["claude_haiku_5_5", "claude_haiku_4_5", "claude_sonnet_5", "claude_opus_5_5"],
-    "unknown": ["claude_sonnet_5", "claude_opus_5_5", "claude_haiku_5_5", "claude_haiku_4_5"],
+    "quality": ["claude_opus_5_5", "claude_sonnet_5_5", "claude_sonnet_5", "claude_haiku_5_5", "claude_haiku_4_5"],
+    "balanced": ["claude_sonnet_5_5", "claude_sonnet_5", "claude_opus_5_5", "claude_haiku_5_5", "claude_haiku_4_5"],
+    "speed": ["claude_haiku_5_5", "claude_haiku_4_5", "claude_sonnet_5_5", "claude_sonnet_5", "claude_opus_5_5"],
+    "cost": ["claude_haiku_5_5", "claude_haiku_4_5", "claude_sonnet_5_5", "claude_sonnet_5", "claude_opus_5_5"],
+    "unknown": ["claude_sonnet_5_5", "claude_sonnet_5", "claude_opus_5_5", "claude_haiku_5_5", "claude_haiku_4_5"],
 }
 # Models with no Bedrock Batch tier and the explicitly chosen, Batch-listed alternative to name.
 _BATCH_CAPABLE_ALTERNATIVE = {
     "claude_opus_5_5": "Claude Opus 4.6",
     "claude_haiku_5_5": "Claude Haiku 4.5",
+    "claude_sonnet_5_5": "Claude Sonnet 5",
 }
+# Models that reject forced any/named tool_choice and the explicit alternative to name. Sonnet 5 is
+# Sonnet 5.5's card-listed fallback model; its own forced tool_choice support is unverified.
+# A preferred model that cannot serve a workload need yields to its named alternative on the same
+# path: Sonnet 5.5 (adaptive thinking only, no Batch tier) yields to Sonnet 5 when the workload
+# disables thinking or uses Message Batches.
+_CAPABILITY_YIELD = {"claude_sonnet_5_5": "claude_sonnet_5"}
+
+
+def _effectively_detected(workload):
+    """Features detected through either accepted encoding: the `detected_features` array or a
+    `feature_status` value of "detected" (the same merge `_feature_assessment` applies)."""
+    detected = set(workload.get("detected_features", []))
+    detected.update(f for f, status in (workload.get("feature_status") or {}).items() if status == "detected")
+    return detected
+
+
+def _unmet_needs(model, workload):
+    needs = []
+    if workload["requirements"].get("thinking_enabled") is False and model.get("adaptive_thinking_only"):
+        needs.append("disabled thinking")
+    if "message_batches" in _effectively_detected(workload) and model.get("batch_supported") is False:
+        needs.append("Message Batches")
+    return needs
+
+
+def _yield_to_capable_alternative(candidates, workload):
+    """Move a named alternative ahead of a preferred model that cannot serve the workload."""
+    first = candidates[0]
+    alternative = _CAPABILITY_YIELD.get(first["model_key"])
+    if not alternative or not _unmet_needs(first["model"], workload):
+        return candidates
+    for index, candidate in enumerate(candidates):
+        if candidate["model_key"] == alternative and candidate["path"] == first["path"]:
+            if _unmet_needs(candidate["model"], workload):
+                return candidates
+            return [candidate] + candidates[:index] + candidates[index + 1:]
+    return candidates
+
+
+_FORCED_TOOL_CHOICE_ALTERNATIVE = {
+    "claude_sonnet_5_5": "Claude Sonnet 5 (Sonnet 5.5's card-listed fallback model) after verifying "
+                         "that it accepts forced tool_choice",
+}
+
+
+def _short_name(model):
+    """Display name without the vendor prefix, e.g. 'Opus 5.5'."""
+    name = (model or {}).get("display_name", "This model")
+    return name[len("Claude "):] if name.startswith("Claude ") else name
 
 _FEATURE_ORDER = {
     "agentic": [
+        "claude_sonnet_5_5",
         "claude_sonnet_5",
         "claude_opus_5_5",
         "claude_haiku_5_5",
@@ -318,7 +395,7 @@ def _build_candidates(catalog, paths, requirements, region=None):
     for path_rank, path in enumerate(paths):
         for model_rank, model_key in enumerate(model_order):
             model = catalog["models"].get(model_key)
-            if model is None:
+            if model is None or not is_selectable(model):
                 continue
             path_config = model["paths"].get(path, {})
             if path_config.get("available") is not True:
@@ -536,9 +613,18 @@ def _source_analysis(source, target_version):
 
 
 def _structured_output_remediation(model=None):
+    if (model or {}).get("forced_tool_choice_supported") is False and (model or {}).get(
+        "native_structured_output_supported"
+    ):
+        return (
+            f"{_short_name(model)} rejects forced any/tool choice and disabled thinking. Move "
+            "plain-text prefill intent into prompt instructions without promising an exact prefix. "
+            "For structured results, use native structured outputs (output_config.format) or "
+            "automatic tool choice with application schema validation; fail closed on invalid output."
+        )
     if (model or {}).get("forced_tool_choice_supported") is False:
         return (
-            "Opus 5.5 has no native schema guarantee and rejects forced any/tool choice, "
+            f"{_short_name(model)} has no native schema guarantee and rejects forced any/tool choice, "
             "assistant prefill, and disabled thinking. Move plain-text prefill intent into prompt "
             "instructions without promising an exact prefix. For structured results, use automatic tool choice or prompted JSON "
             "with application schema validation and bounded retries; fail closed on invalid output. "
@@ -783,11 +869,6 @@ def _decision_required(workload, region, catalog, constraints):
     decision_options = _decision_options(
         catalog, workload, constraints["option_paths"], region
     )
-    if len(decision_options) != len(set(constraints["option_paths"])):
-        raise ValueError(
-            "catalog has no candidate for every conflicting model/path option "
-            f"for workload {workload['workload_id']}"
-        )
     blocks = [
         _finding(
             "model_path_decision_required",
@@ -797,10 +878,40 @@ def _decision_required(workload, region, catalog, constraints):
             "update requirements, and rerun Model Recommend.",
         )
     ]
+    # A real choice needs a candidate on every conflicting side. A side is blocked only when
+    # reference_only entries are what emptied it: with them counted as selectable (every other
+    # filter unchanged) the side has a candidate. Otherwise the requirement is unsatisfiable and
+    # the fail-closed raise is unchanged. Options are never invented to fill the gap.
+    status = "decision_required"
+    if len(decision_options) != len(set(constraints["option_paths"])):
+        offered = {option["api_path"] for option in decision_options}
+        missing = sorted(set(constraints["option_paths"]) - offered)
+        counterfactual = with_all_selectable(catalog)
+        blamed = set()
+        for path in missing:
+            candidates = _build_candidates(counterfactual, [path], workload["requirements"], region)
+            if not candidates:
+                raise ValueError(
+                    "catalog has no candidate for every conflicting model/path option "
+                    f"for workload {workload['workload_id']}"
+                )
+            blamed |= {c["model_key"] for c in candidates
+                       if not is_selectable(catalog["models"][c["model_key"]])}
+        status = "blocked"
+        blocks.append(
+            _finding(
+                "decision_option_unavailable",
+                "[BLOCKS]",
+                f"No selectable catalog model satisfies the {', '.join(missing)} option; it is "
+                f"available only from reference_only entries: {', '.join(sorted(blamed))}.",
+                "Mark a verified model selectable for that path, or update the conflicting "
+                "requirement, then rerun Model Recommend.",
+            )
+        )
     return {
         "workload_id": workload["workload_id"],
         "provider_module": "anthropic",
-        "decision_status": "decision_required",
+        "decision_status": status,
         "source": workload["source"],
         "source_analysis": {
             "detected_version": _source_version(workload["source"]),
@@ -822,8 +933,12 @@ def _decision_required(workload, region, catalog, constraints):
         "migration_deltas": [],
         "evaluation": _evaluation_requirements(workload, feature_status),
         "rollout": {
-            "strategy": "decision_required",
-            "gate": "Resolve the model/path conflict before implementation.",
+            "strategy": status,
+            "gate": (
+                "Resolve the model/path conflict before implementation."
+                if status == "decision_required"
+                else "Resolve each [BLOCKS] finding as its remediation says, then rerun."
+            ),
         },
         "verification": {
             "region": region,
@@ -848,10 +963,14 @@ def recommend_anthropic_workload(workload, region, catalog):
         catalog, constraints["paths"], workload["requirements"], region
     )
     if not candidates:
+        skipped = sorted(k for k, m in catalog["models"].items() if not is_selectable(m))
         raise ValueError(
             f"catalog has no model/path candidate satisfying workload "
             f"{workload['workload_id']} requirements"
+            + (f" (reference_only entries skipped: {', '.join(skipped)})" if skipped else "")
         )
+    yielded_from = candidates[0]
+    candidates = _yield_to_capable_alternative(candidates, workload)
     chosen = _honor_explicit_profile(candidates, workload["requirements"], region)
     model = chosen["model"]
     path = chosen["path"]
@@ -896,11 +1015,16 @@ def recommend_anthropic_workload(workload, region, catalog):
         finding = _finding(
             "adaptive_thinking_required",
             "[BLOCKS]" if workload["requirements"].get("thinking_enabled") is False else "[TUNE]",
-            "Opus 5.5 always uses adaptive thinking; disabled thinking, manual budgets, and forced any/tool choice are unsupported.",
-            "Use adaptive thinking with output_config.effort (default medium). "
+            f"{_short_name(model)} always uses adaptive thinking; disabled thinking, manual budgets, and forced any/tool choice are unsupported.",
+            f"Use adaptive thinking with output_config.effort (default {model.get('default_effort', 'medium')}). "
             "Budget max_tokens for thinking plus response text and remeasure token usage. "
             "Use auto/none tool choice; if forced tool selection is a hard requirement, "
-            "select a verified compatible target rather than silently weakening that requirement.",
+            + (
+                f"explicitly select {_FORCED_TOOL_CHOICE_ALTERNATIVE[chosen['model_key']]} "
+                "rather than silently weakening that requirement."
+                if chosen["model_key"] in _FORCED_TOOL_CHOICE_ALTERNATIVE
+                else "select a verified compatible target rather than silently weakening that requirement."
+            ),
         )
         (blocks if finding["tag"] == "[BLOCKS]" else tuning).append(finding)
     if model.get("batch_supported") is False:
@@ -913,10 +1037,19 @@ def recommend_anthropic_workload(workload, region, catalog):
                     f"{alternative} after verifying its Batch support and rates."
                 )
     rationale = list(constraints["rationale"])
-    rationale.append(
-        f"{model['display_name']} is the highest-ranked {chosen['driver']} model "
-        f"that satisfies the {path} constraints."
-    )
+    if chosen["model_key"] != yielded_from["model_key"] and chosen["model_key"] == _CAPABILITY_YIELD.get(
+        yielded_from["model_key"]
+    ):
+        rationale.append(
+            f"{yielded_from['model']['display_name']} ranks first but does not support "
+            f"{' or '.join(_unmet_needs(yielded_from['model'], workload))}, so its named alternative "
+            f"{model['display_name']} is selected on {path}."
+        )
+    else:
+        rationale.append(
+            f"{model['display_name']} is the highest-ranked {chosen['driver']} model "
+            f"that satisfies the {path} constraints."
+        )
     alternatives = [
         _candidate_summary(
             candidate,

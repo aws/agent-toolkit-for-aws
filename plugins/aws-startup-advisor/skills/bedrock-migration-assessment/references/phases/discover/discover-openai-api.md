@@ -10,7 +10,7 @@
 
 1. **Read-only, fixed endpoints.** Only `scripts/openai-usage.py` calls the API, and it sends only `GET` requests to the endpoints in the Step 2 Capture Endpoint Table, on `https://api.openai.com`. Never call the API another way, never call another endpoint, and never call management endpoints (projects, users, API keys).
 2. **The Admin key never enters this conversation.** Do not ask the user to paste it in chat, and never echo, print, or put its value in a command. If the user pastes a key in chat, do not use it: tell them it is now in the transcript, recommend rotating it, and continue with Step 1.
-3. **The key file is a secret file.** `$MIGRATION_DIR/.openai-admin-env` falls under the SKILL.md secret-file rule: never open it with any tool (`Read`, `cat`, `grep`, `sed`, and so on). Only `scripts/openai-usage.py` reads it. The script deletes it after every capture, successful or not, and after a rejected probe. However this flow ends, including when the user skips at any step, finish with `rm -f "$MIGRATION_DIR/.openai-admin-env"`; keep the file only while a retry of Step 2 is in progress.
+3. **The key file is a secret file.** `$MIGRATION_DIR/.openai-admin-env` falls under the SKILL.md secret-file rule: never open it with any tool (`Read`, `cat`, `grep`, `sed`, and so on). Only `scripts/openai-usage.py` reads it. The script deletes it after every capture, however it ends (including a network error), and after any probe that does not succeed. However this flow ends, including when the user skips at any step, finish with `rm -f "$MIGRATION_DIR/.openai-admin-env"`; keep the file only while a retry of Step 2 is in progress.
 4. **Scoped, aggregate data only.** The endpoints return bucketed token counts and costs: no prompts, completions, or files. The Step 2a probe is the one read that is not filtered by project: it prints each project's total spend so the user can pick, and writes nothing to disk. Every capture is filtered to the projects the user then selects. Never group by user or API key.
 5. **Consent first.** Nothing happens before the user answers `[A]` in Step 0: no key intake, no key file, no API call.
 
@@ -157,6 +157,7 @@ Report: "OpenAI usage: $X over the last N days across M models (projects: …)."
 | One row `failed`                                  | Continue; Step 3 lists it in `capture_warnings` and ignores the file                        |
 | Costs row `failed`                                | Continue; `cost_status: "cost_unavailable"`, spend `null`, token usage kept                 |
 | `ALL_USAGE_FAILED`                                | Exit with no usage profile; say which permission is likely missing                          |
+| The script stops on a network error or timeout    | The script has deleted the key file; offer intake again once, or skip                       |
 | Selected projects show zero usage                 | Show the project list again once; if still zero, write the profile with zeros               |
 | Resumed run, `manifest.json` `result` is `complete` | Start at Step 3; consent and capture already happened                                    |
 | Resumed run, `result` is `key_invalid_mid_run`    | Consent was given: start at Step 1 intake, then Step 2                                      |

@@ -722,6 +722,7 @@ _POOL_LIFECYCLE_KEYS = {
     "claude_sonnet_5": "claude-sonnet-5",
     "claude_haiku_4_5": "claude-haiku-4-5",
     "claude_haiku_5_5": "claude-haiku-5-5",
+    "claude_sonnet_5_5": "claude-sonnet-5-5",
     "openai_gpt_6_astra": "gpt-6-astra",
     "openai_gpt_5_6_sol": "gpt-5.6-sol",
     "openai_gpt_5_6_terra": "gpt-5.6-terra",
@@ -732,10 +733,12 @@ _POOL_LIFECYCLE_KEYS = {
     "openai_gpt_6_sol": "gpt-6-sol",
     "openai_gpt_6_luna": "gpt-6-luna",
     "openai_gpt_6_1_sol": "gpt-6.1-sol",
+    "openai_gpt_6_1_terra": "gpt-6.1-terra",
     "anthropic_claude_sonnet_5": "claude-sonnet-5",
     "anthropic_claude_opus_5_5": "claude-opus-5-5",
     "anthropic_claude_haiku_4_5": "claude-haiku-4-5",
     "anthropic_claude_haiku_5_5": "claude-haiku-5-5",
+    "anthropic_claude_sonnet_5_5": "claude-sonnet-5-5",
 }
 
 
