@@ -180,8 +180,9 @@ Do not inflate the recommendation to match the source footprint. If the customer
 
 ## Key recommendations
 
-- **Express recommendations**: Broker instance size (express.m7g.large through
-  express.m7g.16xlarge) and count
+- **Express recommendations**: Broker instance size and count. Report the
+  Express M8g pick; use the Express M7g pick only when the M8g line reads
+  "not sized" (M8g not offered in the Region)
 - **Bottleneck breakdown**: per instance, which
   constraint (ingress / egress / partitions / storage) drives the broker
   count.
