@@ -263,9 +263,11 @@ Continue with the next resource after the Fargate entry is appended. This guard 
      onto a `pending_followers[]` working list and continue to the next resource. Followers
      are resolved in **2B-F** (below, after every leader has been mapped), because a follower's
      read capacity must land on a leader that actually exists in `services[]`. Its
-     `data_size_gb` is excluded from data-volume totals only when 2B-F resolves the leader
-     (then the bytes are proven to be a copy); an unresolved follower keeps its size in the
-     total, because without the leader we cannot prove the data exists elsewhere in the estate.
+     bytes are a proven copy only when 2B-F resolves the leader, and then the follower is
+     recorded in `metadata.postgres_followers_collapsed[]`. An unresolved follower is not
+     recorded there, because without the leader we cannot prove the data exists elsewhere in
+     the estate. Design computes no data-volume total itself; a consumer that totals data
+     volume (the estate workbook) excludes exactly the followers listed in that array.
    - **Fork.** If `config.pg_role == "fork"`: a fork is an independent point-in-time copy that may have diverged. Design it as a normal database (continue below) but add to `warnings[]`:
      > "`{resource_id}` is a Heroku fork of `{config.pg_leader}`. Confirm with the customer whether it is still needed on AWS; forks are often stale experiment or reporting copies and inflate the data-volume total."
    - **No `pg_role`** (Terraform-only discovery): apply no collapse — Terraform cannot express follow relationships. If one app owns more than one `heroku-postgresql` add-on, add one warning per app: "App `{heroku_app}` owns {n} Heroku Postgres add-ons; live discovery was not available to tell leaders from followers, so each is designed as a separate database."
@@ -339,8 +341,9 @@ leader or an explicit deferral. Never a warning alone. For each entry in `pendin
 2. **Leader mapped** (a `services[]` entry exists with `source_resource_id` equal to the
    leader's `resource_id`): increment that entry's `aws_config.read_replicas` (default `0`).
    Record `{ "resource_id", "leader_resource_id", "plan", "served_by": "rds_read_replica" | "aurora_reader" }`
-   in `metadata.postgres_followers_collapsed[]`, exclude the follower's `data_size_gb` from
-   the data-volume total, and add to `warnings[]` the branch-accurate text:
+   in `metadata.postgres_followers_collapsed[]` (this array is what marks the follower's
+   `data_size_gb` as a proven copy for any consumer that totals data volume), and add to
+   `warnings[]` the branch-accurate text:
    - Aurora leader:
      > "`{resource_id}` (Heroku follower of `{leader}`) is served by the Aurora cluster reader endpoint of `{leader_resource_id}` — one reader instance per follower is generated in `rds.tf` and priced in the Estimate. Point the app's read connections at the reader endpoint. No separate database."
    - RDS leader:
@@ -599,12 +602,20 @@ the matched row is `rediscloud`:
 - Parse the plan's memory: the Redis Cloud plan name on Heroku is its size in MB (`30`,
   `100`, `250`, `500`, `1000`, `2500`, `5000`, …; strip any `mb` suffix). No parseable
   integer → Specialist Gate (Step 2F) with reason `"Unrecognized rediscloud plan: {plan}"`.
-- Look up `redis-elasticache-sizing.json` (loaded for this case by the phase's
-  `_knowledge` `_when`) **by memory**: take the first row, in table order, whose
-  `memory_limit` is ≥ the plan's MB. This is the one documented exception to that file's
-  "`memory_limit` is PROVENANCE ONLY" rule: a third-party plan has no Heroku plan row to read
-  `node_type` from, so memory is the only sizing signal available. Plan larger than every
-  row → Specialist Gate with reason `"rediscloud plan {plan} exceeds the sizing table"`.
+- Size the node **by memory, from the node table, not from Heroku plan rows**. Read
+  `node_memory_gib` in `redis-elasticache-sizing.json` (loaded for this case by the phase's
+  `_knowledge` `_when`). Convert the plan to GiB (`MB × 1,000,000 ÷ 1,073,741,824`), then take
+  the **smallest node** (by advertised GiB) whose usable memory, `0.75 × advertised` after
+  ElastiCache's default 25% reserved memory, is ≥ that figure. The Heroku plan rows are
+  ordered by plan name, not by memory (`premium-8` is 15 GB and sits before `premium-9`
+  at 10 GB), so scanning them in order can pick an undersized row; never scan them for this
+  case. This is the one documented exception to that file's "`memory_limit` is PROVENANCE
+  ONLY" rule: a third-party plan has no Heroku plan row to read `node_type` from, so memory
+  is the only sizing signal available. Worked examples: `12000` MB = 11.18 GiB →
+  `cache.m6g.2xlarge` (19.53 usable; `cache.m6g.xlarge` has 9.70). `2500` MB = 2.33 GiB →
+  `cache.m6g.large` (`cache.t4g.medium` has 2.32). `500` MB = 0.47 GiB → `cache.t4g.small`.
+  Plan larger than the largest node's usable memory → Specialist Gate with reason
+  `"rediscloud plan {plan} exceeds the sizing table"`.
 - Produce exactly the 2C step 8 entry shape with `service_id: "elasticache:{heroku_app}:rediscloud"`,
   `aws_service` per the engine, `aws_config`: `engine: "valkey"`, `node_type` from the
   chosen row, `multi_az` / `automatic_failover` from `preferences.data.redis_ha` (Redis

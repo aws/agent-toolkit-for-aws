@@ -5,6 +5,13 @@
   "_ha": "if row ha == true OR config.ha_enabled == true -> multi_az: true, automatic_failover: true; else both false",
   "_transit_encryption": "if config.encryption_in_transit == true OR row encryption == true -> transit_encryption: true",
   "_engine_version": "engine-aware (design-mapping.md 2C steps 5-6): the default engine is Valkey — emit a Valkey engine_version (7.2 or later) that covers the source feature set; the explicit Redis OSS exception emits a supported Redis OSS version with the same major (7.0 -> 7.1) and the ElastiCache Redis label; the row redis_version is PROVENANCE only (why the node meets the source) — do not derive the engine from it",
+  "_node_memory_gib_note": "Advertised memory per ElastiCache node (GiB), from the AWS ElastiCache supported node types page. Used by design-mapping.md Step 4b to size a Redis Cloud plan by memory: pick the smallest node here whose usable memory (0.75 x advertised, after the default 25% reserved-memory-percent) covers the plan. Heroku plan rows are never consulted for that case. Every node must also have a rate row in references/vendored/pricing/aws-infra-pricing.json (tests/test_heroku_sizing_capacity.py checks both).",
+  "node_memory_gib": {
+    "cache.t4g.micro": 0.5, "cache.t4g.small": 1.37, "cache.t4g.medium": 3.09,
+    "cache.m6g.large": 6.38, "cache.m6g.xlarge": 12.93, "cache.m6g.2xlarge": 26.04,
+    "cache.m6g.4xlarge": 52.26, "cache.m6g.8xlarge": 103.68, "cache.m6g.12xlarge": 157.12,
+    "cache.m6g.16xlarge": 209.55
+  },
   "rows": {
     "mini": {
       "memory_limit": "25 MB",
@@ -23,7 +30,7 @@
     "premium-5": {"memory_limit": "1 GB", "ha": true, "encryption": true, "redis_version": "7.0", "node_type": "cache.t4g.small"},
     "premium-6": {"memory_limit": "5 GB", "ha": true, "encryption": true, "redis_version": "7.0", "node_type": "cache.m6g.large"},
     "premium-7": {"memory_limit": "7 GB", "ha": true, "encryption": true, "redis_version": "7.0", "node_type": "cache.m6g.xlarge"},
-    "premium-8": {"memory_limit": "15 GB", "ha": true, "encryption": true, "redis_version": "7.0", "node_type": "cache.m6g.xlarge"},
+    "premium-8": {"memory_limit": "15 GB", "ha": true, "encryption": true, "redis_version": "7.0", "node_type": "cache.m6g.2xlarge"},
     "premium-9": {"memory_limit": "10 GB", "ha": true, "encryption": true, "redis_version": "7.0", "node_type": "cache.m6g.xlarge"},
     "premium-10": {"memory_limit": "25 GB", "ha": true, "encryption": true, "redis_version": "7.0", "node_type": "cache.m6g.4xlarge"},
     "premium-11": {"memory_limit": "75 GB", "ha": true, "encryption": true, "redis_version": "7.0", "node_type": "cache.m6g.8xlarge"},
@@ -33,7 +40,7 @@
       "ha": true,
       "encryption": true,
       "redis_version": "7.0",
-      "node_type": "cache.m6g.12xlarge"
+      "node_type": "cache.m6g.16xlarge"
     },
     "premium-14": {
       "memory_limit": "100 GB",
@@ -43,11 +50,11 @@
       "node_type": "cache.m6g.12xlarge"
     },
     "private-1": {"memory_limit": "1 GB", "ha": true, "encryption": true, "redis_version": "7.0", "node_type": "cache.t4g.small"},
-    "private-2": {"memory_limit": "2.5 GB", "ha": true, "encryption": true, "redis_version": "7.0", "node_type": "cache.t4g.medium"},
+    "private-2": {"memory_limit": "2.5 GB", "ha": true, "encryption": true, "redis_version": "7.0", "node_type": "cache.m6g.large"},
     "private-3": {"memory_limit": "500 MB", "ha": true, "encryption": true, "redis_version": "7.0", "node_type": "cache.t4g.small"},
     "private-4": {"memory_limit": "10 GB", "ha": true, "encryption": true, "redis_version": "7.0", "node_type": "cache.m6g.xlarge"},
     "private-5": {"memory_limit": "750 MB", "ha": true, "encryption": true, "redis_version": "7.0", "node_type": "cache.t4g.small"},
-    "private-6": {"memory_limit": "50 GB", "ha": true, "encryption": true, "redis_version": "7.0", "node_type": "cache.m6g.4xlarge"},
+    "private-6": {"memory_limit": "50 GB", "ha": true, "encryption": true, "redis_version": "7.0", "node_type": "cache.m6g.8xlarge"},
     "private-7": {"memory_limit": "7 GB", "ha": true, "encryption": true, "redis_version": "7.0", "node_type": "cache.m6g.xlarge"},
     "private-9": {"memory_limit": "10 GB", "ha": true, "encryption": true, "redis_version": "7.0", "node_type": "cache.m6g.xlarge"},
     "private-10": {"memory_limit": "25 GB", "ha": true, "encryption": true, "redis_version": "7.0", "node_type": "cache.m6g.4xlarge"},

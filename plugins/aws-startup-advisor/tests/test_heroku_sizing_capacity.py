@@ -65,12 +65,59 @@ def _to_gib(text: str) -> float:
 _REDIS_ROWS = _load("redis-elasticache-sizing.json")["rows"]
 
 
-@pytest.mark.parametrize("plan", [k for k in _REDIS_ROWS if re.match(r"(premium|private|shield)-(7|9|10|12|14)$", k) or k == "mini"])
+@pytest.mark.parametrize("plan", list(_REDIS_ROWS))
 def test_redis_node_holds_plan_after_reserved_memory(plan: str):
+    # Every row, not a filtered subset: the file's _reserved_memory_note claims every row clears
+    # the 25% reserve, and the legacy rows (premium-8/13, private-2/6) once did not.
     row = _REDIS_ROWS[plan]
     usable = NODE_GIB[row["node_type"]] * (1 - RESERVED)
     need = _to_gib(row["memory_limit"])
     assert usable >= need, f"{plan}: {row['node_type']} usable {usable:.2f} GiB < plan {need:.2f} GiB"
+
+
+_NODE_MEMORY = _load("redis-elasticache-sizing.json")["node_memory_gib"]
+
+
+def _redis_cloud_node(plan_mb: float) -> str | None:
+    """design-mapping.md Step 4b: the smallest node whose usable memory covers the plan."""
+    need = plan_mb * 1_000_000 / 1_073_741_824
+    for node, gib in sorted(_NODE_MEMORY.items(), key=lambda kv: kv[1]):
+        if gib * (1 - RESERVED) >= need:
+            return node
+    return None
+
+
+def test_redis_cloud_node_table_matches_the_aws_node_table_and_has_rates():
+    assert _NODE_MEMORY == NODE_GIB
+    pricing = json.loads(PRICING.read_text(encoding="utf-8"))
+    assert set(_NODE_MEMORY) <= set(pricing["elasticache"]["nodes"])
+
+
+def test_redis_cloud_sizing_picks_the_smallest_sufficient_node_regardless_of_row_order():
+    # The Heroku plan rows are not ordered by memory (premium-8 is 15 GB, premium-9 is 10 GB), so
+    # "first row in table order" picked an undersized node for these sizes.
+    assert _redis_cloud_node(12000) == "cache.m6g.2xlarge"
+    assert _redis_cloud_node(2500) == "cache.m6g.large"
+    assert _redis_cloud_node(500) == "cache.t4g.small"
+    assert _redis_cloud_node(170_000) is None  # exceeds the largest node: Specialist Gate
+
+
+@pytest.mark.parametrize("plan_mb", [30, 100, 250, 500, 1000, 2500, 5000, 7500, 10_000, 12_000, 25_000, 50_000, 75_000, 100_000, 150_000])
+def test_redis_cloud_pick_covers_the_plan_and_no_smaller_node_does(plan_mb: int):
+    node = _redis_cloud_node(plan_mb)
+    need = plan_mb * 1_000_000 / 1_073_741_824
+    assert node is not None
+    assert _NODE_MEMORY[node] * (1 - RESERVED) >= need
+    assert all(g * (1 - RESERVED) < need for n, g in _NODE_MEMORY.items() if g < _NODE_MEMORY[node])
+
+
+def test_report_phase_names_only_files_a_phase_writes():
+    # generate-report.md once read `discover-heroku.json` and `design.json`, which no phase writes,
+    # so the estate-tier and follower lines silently never rendered. Discover writes
+    # heroku-resource-inventory.json and Design writes aws-design.json.
+    text = (PLUGIN_ROOT / "skills/heroku-to-aws/references/phases/generate/generate-report.md").read_text(encoding="utf-8")
+    assert "discover-heroku.json" not in text
+    assert not re.search(r"(?<![-\w/])design\.json", text)
 
 
 def test_redis_large_plans_not_under_sized():
