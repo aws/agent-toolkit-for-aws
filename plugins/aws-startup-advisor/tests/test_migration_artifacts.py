@@ -629,15 +629,62 @@ module "network" {
         report = validator.validate(self.root, require_eb_workflow=True)
         self.assertIn("eb_deploy_missing", {item["rule"] for item in report["findings"]})
 
+    def test_per_app_deploy_workflow_file_is_checked_like_deploy_eb_yml(self) -> None:
+        # In per-app mode the workflow is deploy-eb-<slug>.yml. The checker must treat it as the deploy
+        # workflow: an EB root whose only workflow is a no-op one still reports a missing deployment.
+        eb = 'resource "aws_elastic_beanstalk_environment" "main" {\n name = "shop-shop-staging-web"\n}\n'
+        self.write("terraform/main.tf", eb)
+        noop = "jobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo deploy\n"
+        for name in ("deploy-eb.yml", "deploy-eb-shop-staging.yml"):
+            with self.subTest(name=name):
+                (self.root / ".github/workflows").mkdir(parents=True, exist_ok=True)
+                for old in (self.root / ".github/workflows").glob("*.yml"):
+                    old.unlink()
+                self.write(f".github/workflows/{name}", noop)
+                self.assertIn("eb_deploy_missing", self.rules())
+        # a real per-app deploy workflow passes
+        (self.root / ".github/workflows/deploy-eb-shop-staging.yml").unlink()
+        self.write(".github/workflows/deploy-eb-shop-staging.yml", WORKFLOW)
+        self.assertNotIn("eb_deploy_missing", self.rules())
+
     def test_source_eb_workflow_with_literal_environment_list_passes(self) -> None:
         text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
         section = text.split("### `.github/workflows/deploy-eb.yml`", 1)[1]
         workflow = section.split("```yaml\n", 1)[1].split("\n```", 1)[0]
         workflow = workflow.replace("<eb_application_name>", "app").replace(
             "<space-separated EB environment names of this app from EB name resolution>", "app-web app-worker",
-        )
+        ).replace("<eb_app_label>", "").replace("<eb_deploy_trigger>", "push:\n    branches: [main]")
+        self.assertNotIn("<eb_", workflow, "the template must be fully rendered before it is checked")
         self.write(".github/workflows/deploy-eb.yml", workflow)
         self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK", self.report())
+
+    def test_per_app_deploy_workflow_renders_and_a_production_app_is_manual_only(self) -> None:
+        text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
+        section = text.split("### `.github/workflows/deploy-eb.yml`", 1)[1]
+        template = section.split("```yaml\n", 1)[1].split("\n```", 1)[0]
+
+        def render(app: str, slug: str, trigger: str) -> str:
+            return (template.replace("<eb_application_name>", f"shop-{slug}")
+                    .replace("<space-separated EB environment names of this app from EB name resolution>",
+                             f"shop-{slug}-web shop-{slug}-worker")
+                    .replace("<eb_app_label>", f" ({app})").replace("<eb_deploy_trigger>", trigger))
+
+        push = "push:\n    branches: [main]"
+        manual = "workflow_dispatch:"
+        staging = render("shop-staging", "shop-staging", push)
+        production = render("shop-production", "shop-production", manual)
+        for rendered in (staging, production):
+            self.assertNotIn("<eb_", rendered)
+        self.assertIn("name: Deploy Elastic Beanstalk (shop-staging)", staging)
+        self.assertIn("EB_APPLICATION_NAME: shop-shop-staging", staging)
+        self.assertIn("EB_APPLICATION_NAME: shop-shop-production", production)
+        # a push-triggered staging workflow and a manual-only production workflow, side by side, pass
+        self.write(".github/workflows/deploy-eb-shop-staging.yml", staging)
+        self.write(".github/workflows/deploy-eb-shop-production.yml", production)
+        self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK", self.report())
+        # the production app's workflow does not run on a push
+        self.assertNotIn("push:", production)
+        self.assertIn("workflow_dispatch:", production)
 
     def test_loop_environment_reassignment_must_remain_provably_nonempty(self) -> None:
         for assignment in ['EB_ENVIRONMENTS=""', "EB_ENVIRONMENTS=$MISSING", 'export EB_ENVIRONMENTS=""', "read EB_ENVIRONMENTS", 'EB_ENVIRONMENTS+=""']:

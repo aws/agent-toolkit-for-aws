@@ -798,7 +798,7 @@ The generated EB path deploys a source bundle containing your Dockerfile. GitHub
 
 ### GitHub Actions Deploy (Default)
 
-The generated `.github/workflows/deploy-eb.yml` workflow uses GitHub OIDC role assumption, packages the source bundle, creates an Elastic Beanstalk application version, and updates each generated EB environment.
+The generated `.github/workflows/deploy-eb.yml` workflow (with two or more Elastic Beanstalk apps, one `.github/workflows/deploy-eb-<eb_app_slug>.yml` per app) uses GitHub OIDC role assumption, packages the source bundle, creates an Elastic Beanstalk application version, and updates each generated EB environment of its app. An app that is the production side of a Heroku pipeline has a manually run workflow only, so a push to `main` cannot reach production.
 
 Before first run, create or provide a GitHub OIDC IAM role with permissions to call `elasticbeanstalk create-storage-location`, `elasticbeanstalk create-application-version`, `elasticbeanstalk update-environment`, and upload the source bundle to the EB storage bucket. Store the role ARN as the repository secret `AWS_ROLE_ARN`.
 
@@ -1600,7 +1600,7 @@ This directory contains all artifacts needed to migrate your Heroku application(
 {{IF has_beanstalk}}
 | `terraform/beanstalk.tf` | Elastic Beanstalk applications and environments |
 {{IF eb_deploy_method == "github_actions"}}
-| `.github/workflows/deploy-eb.yml` | GitHub Actions source-to-EB deploy workflow |
+| `.github/workflows/deploy-eb.yml` (or one `deploy-eb-<eb_app_slug>.yml` per EB app when the design has two or more) | GitHub Actions source-to-EB deploy workflow |
 {{ENDIF}}
 {{IF eb_deploy_method == "codepipeline"}}
 | `terraform/pipeline.tf` | Optional CodePipeline source-to-EB deploy path |

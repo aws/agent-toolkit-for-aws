@@ -541,6 +541,58 @@ class AcceptanceTests(unittest.TestCase):
                 self.assertFalse((root / "terraform/pipeline.tf").exists() and
                                  (root / ".github/workflows/deploy-eb.yml").exists())
 
+    def test_two_eb_apps_need_one_deploy_workflow_each(self):
+        # With two or more Elastic Beanstalk apps the default workflow is one deploy-eb-<slug>.yml per app
+        # (generate-terraform.md, EB name resolution); a single deploy-eb.yml cannot name two applications.
+        workflow = ("name: Deploy\non: push\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n"
+                    "    steps:\n      - uses: einaregilsson/beanstalk-deploy@v22\n")
+        design = {"services": [
+            {"aws_service": "Elastic Beanstalk", "heroku_app": "shop-staging"},
+            {"aws_service": "Elastic Beanstalk", "heroku_app": "shop-staging"},
+            {"aws_service": "Elastic Beanstalk", "heroku_app": "shop-production"},
+        ]}
+        with tempfile.TemporaryDirectory() as temp:
+            root = heroku_execution_run(Path(temp))
+            write_json(root / "aws-design.json", design)
+            write_json(root / "preferences.json", {"design_constraints": {}})
+            (root / "terraform/beanstalk.tf").write_text("# Present\n")
+            workflows = root / ".github/workflows"
+            workflows.mkdir(parents=True, exist_ok=True)
+            # none yet, and a lone deploy-eb.yml is not enough for two apps
+            result = by_name(acceptance.accept(root, "heroku-to-aws"), "conditional_outputs")
+            self.assertEqual("FAIL", result["status"])
+            self.assertTrue(any("2 Elastic Beanstalk apps need one deploy workflow each, found 0" in e
+                                for e in result["detail"]["errors"]), result["detail"])
+            (workflows / "deploy-eb.yml").write_text(workflow)
+            result = by_name(acceptance.accept(root, "heroku-to-aws"), "conditional_outputs")
+            self.assertEqual("FAIL", result["status"], "the single shared file must not satisfy two apps")
+            # one per app passes; one for only one of the two does not
+            (workflows / "deploy-eb-shop-staging.yml").write_text(workflow)
+            result = by_name(acceptance.accept(root, "heroku-to-aws"), "conditional_outputs")
+            self.assertEqual("FAIL", result["status"])
+            self.assertTrue(any("found 1" in e for e in result["detail"]["errors"]), result["detail"])
+            (workflows / "deploy-eb-shop-production.yml").write_text(workflow)
+            result = by_name(acceptance.accept(root, "heroku-to-aws"), "conditional_outputs")
+            self.assertEqual("PASS", result["status"], result)
+
+    def test_one_eb_app_still_requires_exactly_deploy_eb_yml(self):
+        workflow = ("name: Deploy\non: push\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n"
+                    "    steps:\n      - uses: einaregilsson/beanstalk-deploy@v22\n")
+        with tempfile.TemporaryDirectory() as temp:
+            root = heroku_execution_run(Path(temp))
+            write_json(root / "aws-design.json", {"services": [
+                {"aws_service": "Elastic Beanstalk", "heroku_app": "shop"},
+                {"aws_service": "Elastic Beanstalk", "heroku_app": "shop"},
+            ]})
+            write_json(root / "preferences.json", {"design_constraints": {}})
+            (root / "terraform/beanstalk.tf").write_text("# Present\n")
+            result = by_name(acceptance.accept(root, "heroku-to-aws"), "conditional_outputs")
+            self.assertEqual([".github/workflows/deploy-eb.yml"], result["detail"]["missing"])
+            workflows = root / ".github/workflows"
+            workflows.mkdir(parents=True, exist_ok=True)
+            (workflows / "deploy-eb.yml").write_text(workflow)
+            self.assertEqual("PASS", by_name(acceptance.accept(root, "heroku-to-aws"), "conditional_outputs")["status"])
+
     def test_unknown_eb_method_is_unverified_and_non_eb_design_is_unaffected(self):
         with tempfile.TemporaryDirectory() as temp:
             root = heroku_execution_run(Path(temp))

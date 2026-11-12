@@ -40,15 +40,24 @@ def eb_suffixes(project_name: str, apps: dict[str, list[str]]) -> dict[str, str]
     room = EB_ENV_MAX - len(project_name) - 1 - 1 - longest
     if room < 3:
         raise ValueError("project name or process type too long for per-app names")
+    def clean(app: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "-", app.lower()).strip("-") or "app"
+
+    naturals = {app: clean(app)[:room].rstrip("-") for app in eb_apps}
     suffixes: dict[str, str] = {}
-    seen: dict[str, int] = {}
+    assigned: set[str] = set()
     for app in eb_apps:
-        base = re.sub(r"[^a-z0-9]+", "-", app.lower()).strip("-") or "app"
-        slug = base[:room].rstrip("-")
-        seen[slug] = seen.get(slug, 0) + 1
-        n = seen[slug]
-        if n > 1:
-            slug = base[: room - len(str(n)) - 1].rstrip("-") + "-" + str(n)
+        slug = naturals[app]
+        if slug in assigned:
+            others = {naturals[other] for other in eb_apps if other != app}
+            n = 1
+            while slug in assigned or slug in others or n == 1:
+                n += 1
+                keep = room - len(str(n)) - 1
+                if keep < 1:
+                    raise ValueError("project name or process type too long for per-app names")
+                slug = clean(app)[:keep].rstrip("-") + "-" + str(n)
+        assigned.add(slug)
         suffixes[app] = "-" + slug
     return suffixes
 
@@ -111,6 +120,49 @@ class EbNameRuleTests(unittest.TestCase):
                 self.assertEqual(len(names), len(set(names)), "two environments share a name")
                 self.assertEqual(len({s for s in suffixes.values()}), len(suffixes), "two apps share a suffix")
 
+    def test_a_rebuilt_slug_that_collides_is_rebuilt_again(self) -> None:
+        # `hello-2` truncates to `hello` (taken by `hello`), is rebuilt to `hell-2`, and `hell-2` already
+        # owns that slug, so the rebuild must continue to `hell-3`.
+        project = "a" * 29  # room = 40 - 29 - 1 - 1 - len("web") = 6
+        suffixes = eb_suffixes(project, {"hell-2": ["web"], "hello": ["web"], "hello-2": ["web"]})
+        self.assertEqual(suffixes, {"hell-2": "-hell-2", "hello": "-hello", "hello-2": "-hell-3"})
+        self.assertEqual(len(set(suffixes.values())), 3)
+
+    def test_a_later_natural_slug_cannot_equal_an_earlier_rebuilt_one(self) -> None:
+        # The rebuilt slug must also avoid the natural slug of an app that is assigned later.
+        for project, apps in (
+            ("a" * 29, {"hello": ["web"], "hellos": ["web"], "hell-2": ["web"], "hello-2": ["web"], "helloa": ["web"]}),
+            ("a" * 28, {"abcdef": ["web"], "abcdefg": ["web"], "abcdefh": ["web"], "abcd-2": ["web"]}),
+        ):
+            with self.subTest(apps=sorted(apps)):
+                suffixes = eb_suffixes(project, apps)
+                self.assertEqual(len(set(suffixes.values())), len(suffixes), suffixes)
+
+    def test_slugs_are_unique_or_refused_for_many_generated_app_sets(self) -> None:
+        import random
+        rng = random.Random(632)
+        alphabet = "ab-12"
+        refused = unique = 0
+        for _ in range(3000):
+            # project lengths up to 33 leave room 3..36 for a 3-letter process type, so the tightest rooms
+            # (where a rebuild cannot fit and generation must halt) are reached as well as the roomy ones
+            project = "p" * rng.randint(1, 33)
+            apps = {"".join(rng.choice(alphabet) for _ in range(rng.randint(1, 9))): ["web"] for _ in range(rng.randint(2, 12))}
+            if len(apps) < 2:
+                continue
+            try:
+                suffixes = eb_suffixes(project, apps)
+            except ValueError:
+                refused += 1
+                continue
+            unique += 1
+            self.assertEqual(len(set(suffixes.values())), len(suffixes), (project, sorted(apps), suffixes))
+            for app, suffix in suffixes.items():
+                self.assertLessEqual(len(f"{project}{suffix}-web"), EB_ENV_MAX, (project, app, suffix))
+                self.assertRegex(f"{project}{suffix}-web", r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
+        self.assertGreater(unique, 1500, "the generator should mostly produce valid sets")
+        self.assertGreater(refused, 0, "tight rooms should be refused, not silently collided")
+
     def test_a_project_or_process_name_too_long_for_per_app_names_is_refused(self) -> None:
         with self.assertRaises(ValueError):
             eb_suffixes("a-very-long-project-name-here", {"a": ["web"], "b": ["a-long-process-type-name"]})
@@ -140,6 +192,42 @@ class EbNameTemplateTests(unittest.TestCase):
             '"${var.project_name}<eb_app_suffix>-codepipeline-policy"',
         ):
             self.assertIn(suffixed, section, suffixed)
+
+    def test_slug_step_keeps_rebuilding_until_unique_and_can_halt(self) -> None:
+        section = TERRAFORM.split("### EB name resolution", 1)[1].split("### `beanstalk.tf`", 1)[0]
+        for text in (
+            "neither already assigned to an earlier app nor the natural slug of any other app",
+            "keep incrementing n", "drops below 1, halt with the message from step 1",
+        ):
+            self.assertIn(text, section, text)
+
+    def test_pipeline_policy_names_the_application_not_the_terraform_label(self) -> None:
+        # The policy authorized application/<app_name>, the Terraform resource label (shop_staging), which
+        # is never the Elastic Beanstalk application name. It now references the resource's own name.
+        policy = TERRAFORM.split("### `pipeline.tf`", 1)[1].split("**CodePipeline rules:**", 1)[0]
+        for kind in ("application", "applicationversion", "environment"):
+            self.assertRegex(
+                policy,
+                rf":{kind}/\$\{{aws_elastic_beanstalk_application\.<app_name>\.name\}}",
+                kind,
+            )
+        self.assertNotRegex(policy, r"elasticbeanstalk:\$\{[^\"]*\}:\$\{[^\"]*\}:(application|applicationversion|environment)/<app_name>")
+
+    def test_per_app_mode_emits_one_deploy_workflow_per_app(self) -> None:
+        section = TERRAFORM.split("### `.github/workflows/deploy-eb.yml`", 1)[1].split("### `pipeline.tf`", 1)[0]
+        for text in (
+            "One file per EB app in per-app mode",
+            "`.github/workflows/deploy-eb-<eb_app_slug>.yml` for each EB app",
+            "Emit one workflow per EB app, never one per EB environment",
+            "`workflow_dispatch:` only",
+        ):
+            self.assertIn(text, section, text)
+        # the file lists and the checker agree
+        front = TERRAFORM.split("---\n", 2)[1]
+        self.assertIn(".github/workflows/deploy-eb-*.yml", front)
+        for doc in ("generate.md", "generate-assemble.md"):
+            text = (GENERATE / doc).read_text(encoding="utf-8")
+            self.assertIn("deploy-eb-<", text, doc)
 
     def test_deploy_workflow_names_the_ebs_application_not_the_heroku_app(self) -> None:
         # main set EB_APPLICATION_NAME to the Heroku app name while Terraform created `var.project_name`

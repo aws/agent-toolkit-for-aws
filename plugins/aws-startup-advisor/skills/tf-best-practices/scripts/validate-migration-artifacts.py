@@ -1898,7 +1898,7 @@ def _workflows(
     )
     pipeline_satisfies_requirement = has_pipeline and not require_workflow
     expect_deployment = require_workflow or (
-        has_eb and any(path.stem == "deploy-eb" for path in paths)
+        has_eb and any(path.stem == "deploy-eb" or path.stem.startswith("deploy-eb-") for path in paths)
     )
     if expect_deployment and not paths and not pipeline_satisfies_requirement:
         findings.append(Finding(

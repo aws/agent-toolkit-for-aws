@@ -10,6 +10,7 @@ _contributes:
   - terraform/beanstalk.tf
   - terraform/pipeline.tf
   - .github/workflows/deploy-eb.yml
+  - .github/workflows/deploy-eb-*.yml
   - terraform/.gitignore
   - terraform/terraform.tfvars.example
 ---
@@ -48,7 +49,7 @@ Generate `$MIGRATION_DIR/terraform/` with the following file organization. Only 
 - `vpc.tf` — Emitted when `vpc_design` is present in `aws-design.json` (either existing or new VPC)
 - `compute.tf` — Emitted when `aws_service` contains "Fargate" or "ALB" entries
 - `beanstalk.tf` — Emitted when `aws_service` contains "Elastic Beanstalk" entries
-- `.github/workflows/deploy-eb.yml` — Emitted when `aws_service` contains "Elastic Beanstalk" entries and `preferences.design_constraints.eb_deploy_method.value` is `"github_actions"` or absent (default)
+- `.github/workflows/deploy-eb.yml` (one EB app) or `.github/workflows/deploy-eb-<eb_app_slug>.yml`, one per EB app (two or more; § EB name resolution) — Emitted when `aws_service` contains "Elastic Beanstalk" entries and `preferences.design_constraints.eb_deploy_method.value` is `"github_actions"` or absent (default)
 - `pipeline.tf` — Emitted only when `aws_service` contains "Elastic Beanstalk" entries and `preferences.design_constraints.eb_deploy_method.value` is `"codepipeline"`
 - `database.tf` — Emitted when `aws_service` contains "RDS" or "Aurora" entries
 - `cache.tf` — Emitted when `aws_service` contains "ElastiCache" entries
@@ -61,7 +62,7 @@ Generate `$MIGRATION_DIR/terraform/` with the following file organization. Only 
 | AWS Service in `aws-design.json`   | Target File                                                                                                     |
 | ---------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | Fargate, ALB                       | `compute.tf`                                                                                                    |
-| Elastic Beanstalk                  | `beanstalk.tf`; plus `.github/workflows/deploy-eb.yml` for `github_actions` or `pipeline.tf` for `codepipeline` |
+| Elastic Beanstalk                  | `beanstalk.tf`; plus `.github/workflows/deploy-eb.yml` (or one `deploy-eb-<eb_app_slug>.yml` per app with two or more EB apps) for `github_actions`, or `pipeline.tf` for `codepipeline` |
 | RDS PostgreSQL, Aurora PostgreSQL  | `database.tf`                                                                                                   |
 | ElastiCache Valkey (or ElastiCache Redis when `aws_config.engine` is `redis`) | `cache.tf` |
 | Amazon MSK                         | `messaging.tf`                                                                                                  |
@@ -1316,7 +1317,7 @@ Skip this step if no services in `aws-design.json` have `aws_service: "Elastic B
 
 Read `preferences.design_constraints.eb_deploy_method.value`; default to `"github_actions"` when the field is absent. Always generate `beanstalk.tf` for EB services, then generate exactly one deploy path:
 
-- `"github_actions"` → generate `$MIGRATION_DIR/.github/workflows/deploy-eb.yml`
+- `"github_actions"` → generate `$MIGRATION_DIR/.github/workflows/deploy-eb.yml` with one EB app, or one `$MIGRATION_DIR/.github/workflows/deploy-eb-<eb_app_slug>.yml` per EB app with two or more (§ `.github/workflows/deploy-eb.yml`)
 - `"codepipeline"` → generate `$MIGRATION_DIR/terraform/pipeline.tf`
 - `"manual"` → generate neither deploy automation artifact; document CLI deployment in `MIGRATION_GUIDE.md`
 
@@ -1353,9 +1354,13 @@ nothing is left). Then fit it:
    process type. If `room` is below 3, halt and tell the user the project name or a process type is
    too long for per-app names and ask for a shorter `project_name`.
 2. Truncate the slug to `room` characters and trim a trailing `-`.
-3. Walk `eb_apps` in sorted order. If a slug equals an earlier app's slug, rebuild it for the
-   n-th occurrence (n = 2, 3, …) as the original slug truncated to `room − len(n) − 1` characters
-   (trailing `-` trimmed), then `-`, then `n`.
+3. Compute every app's _natural_ slug (steps above). Then walk `eb_apps` in sorted order and assign
+   each app a slug that no other app has: the natural slug when no earlier app was assigned it.
+   Otherwise rebuild it for n = 2, 3, … as the original slug truncated to `room − len(n) − 1`
+   characters (trailing `-` trimmed), then `-`, then `n`, and take the first n whose result is
+   neither already assigned to an earlier app nor the natural slug of any other app. A rebuilt slug
+   can itself collide (with `room` 6, `hell-2` and `hello-2` both rebuild `hello-2` to `hell-2`),
+   so keep incrementing n; if `room − len(n) − 1` drops below 1, halt with the message from step 1.
 
 The longest environment name is then at most 40 characters, so the instance role
 (`<project_name><eb_app_suffix>-eb-instance`, 12 more characters than the environment's prefix)
@@ -1623,12 +1628,13 @@ resource "aws_iam_role_policy" "eb_read_secrets_<app_name>" {
 
 Emit this file when `eb_deploy_method.value` is `"github_actions"` or absent. The workflow uses GitHub OIDC role assumption, packages the source bundle, creates one EB application version, and updates every generated EB environment for the app (web, worker, clock, custom).
 
+**One file per EB app in per-app mode.** With one EB app the file is `.github/workflows/deploy-eb.yml` and `<eb_app_label>` below is empty. With two or more it is `.github/workflows/deploy-eb-<eb_app_slug>.yml` for each EB app, `<eb_app_label>` is a space followed by `(<heroku_app>)`, and every file carries that app's own application and environment names from EB name resolution. A single shared file cannot name two applications, and the second app would otherwise have no workflow at all.
+
 ```yaml
-name: Deploy Elastic Beanstalk
+name: Deploy Elastic Beanstalk<eb_app_label>
 
 on:
-  push:
-    branches: [main]
+  <eb_deploy_trigger>
 
 permissions:
   id-token: write
@@ -1673,7 +1679,8 @@ jobs:
 
 **GitHub Actions rules:**
 
-- Emit one workflow per repository/migration, not one per EB environment.
+- Emit one workflow per EB app, never one per EB environment: one file with one EB app, one `deploy-eb-<eb_app_slug>.yml` per app with two or more.
+- `<eb_deploy_trigger>` is `push:` with `branches: [main]`, except for an app that sits at `stage: "production"` in a `pipeline` resource's `config.stages[]`: its trigger is `workflow_dispatch:` only. Without that, a push to `main` would deploy straight to the production application of a staging and production pair, and in per-app mode every app has its own workflow. Production then receives a release only when a person runs the workflow (an approval-gated promote workflow can replace this).
 - `EB_APPLICATION_NAME` and `EB_ENVIRONMENTS` are the names from EB name resolution, written as literals. In per-app mode they are this app's own names, so one app's workflow never touches another app's environments.
 - `EB_ENVIRONMENTS` MUST include every generated EB environment for the app, not only the `web` one.
 - The workflow assumes a GitHub OIDC role through `secrets.AWS_ROLE_ARN`; document the required role setup in `MIGRATION_GUIDE.md`.
@@ -1796,9 +1803,9 @@ resource "aws_iam_role_policy" "codepipeline_policy_<app_name>" {
           "elasticbeanstalk:UpdateEnvironment"
         ]
         Resource = [
-          "arn:aws:elasticbeanstalk:${var.aws_region}:${data.aws_caller_identity.current.account_id}:application/<app_name>",
-          "arn:aws:elasticbeanstalk:${var.aws_region}:${data.aws_caller_identity.current.account_id}:applicationversion/<app_name>/*",
-          "arn:aws:elasticbeanstalk:${var.aws_region}:${data.aws_caller_identity.current.account_id}:environment/<app_name>/*"
+          "arn:aws:elasticbeanstalk:${var.aws_region}:${data.aws_caller_identity.current.account_id}:application/${aws_elastic_beanstalk_application.<app_name>.name}",
+          "arn:aws:elasticbeanstalk:${var.aws_region}:${data.aws_caller_identity.current.account_id}:applicationversion/${aws_elastic_beanstalk_application.<app_name>.name}/*",
+          "arn:aws:elasticbeanstalk:${var.aws_region}:${data.aws_caller_identity.current.account_id}:environment/${aws_elastic_beanstalk_application.<app_name>.name}/*"
         ]
       },
       {
