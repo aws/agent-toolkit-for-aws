@@ -671,6 +671,25 @@ module "network" {
         self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
         self.assertEqual(self.cli("--require-eb-workflow", "--json", "-").returncode, 0)
 
+    def test_source_cnb_workflow_with_build_time_secrets_passes_the_required_check(self) -> None:
+        # The documented way to pass build-time config vars: names in BUILD_ENV_NAMES, values from
+        # GitHub secrets in a block-style `env:` on the build step. The mandatory checker must still pass.
+        workflow = self.source_cnb_workflow().replace('BUILD_ENV_NAMES: ""', 'BUILD_ENV_NAMES: "NPM_TOKEN RAILS_MASTER_KEY"')
+        marker = "      - name: Build image with Heroku buildpacks (no Dockerfile)\n"
+        self.assertEqual(workflow.count(marker), 1)
+        workflow = workflow.replace(
+            marker,
+            marker + "        env:\n          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}\n          RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}\n",
+        )
+        code = "\n".join(line for line in workflow.splitlines() if not line.lstrip().startswith("#"))
+        # names only: no value on any pack argument or in the script
+        self.assertIn('--env "${NAME}"', code)
+        self.assertNotRegex(code, r"--env\s+\S*=")
+        self.assertNotIn("NPM_TOKEN=", code)
+        self.write(".github/workflows/deploy-eb.yml", workflow)
+        report = validator.validate(self.root, require_eb_workflow=True)
+        self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
+
     def test_source_cnb_workflow_worker_only_app_has_a_resolved_container_port(self) -> None:
         # A worker-only EB app has no eb_application_port_<app>_web variable; its bundles
         # carry the documented 8080 constant, never an unresolved placeholder.

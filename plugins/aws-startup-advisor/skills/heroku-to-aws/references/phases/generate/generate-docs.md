@@ -127,6 +127,7 @@ Before beginning the migration, ensure the following are in place:
 
 {{IF has_cnb_app}}
 - [ ] `pack` CLI installed locally for the first manual build (CI installs it itself); `pack build` of each buildpack app succeeds with the Heroku builder
+- [ ] Config vars the buildpacks need at build time are identified (private registry tokens, `RAILS_MASTER_KEY` / `SECRET_KEY_BASE` for asset compilation) and passed to `pack build` by name with `--env NAME`; see Containerization Prerequisites: Cloud Native Buildpacks
 - [ ] Publishing builds run on a host that can build `linux/amd64` images (an x86 machine or CI's `ubuntu-latest`); every publishing `pack build` passes `--platform linux/amd64` because the AWS compute for these apps is x86_64
 - [ ] `EB_CONTAINER_PORT` in each buildpack app's `deploy-eb.yml` equals that app's `eb_application_port_<app_sanitized>_web` in `terraform.tfvars` (apps with an EB web environment), or is `8080` (worker-only apps, which have no such variable)
 {{ENDIF}}
@@ -189,6 +190,16 @@ passed as an argument to `web`. Elastic Beanstalk environments get it through
 - The `release` process type is not run automatically before a deploy; the generated
   workflow does not yet include a release step — run it as a one-off task before cutover
   (see Phase 4) until a release job is added to your pipeline.
+- **Build-time config vars.** On Heroku the buildpacks see the app's config vars while they
+  compile. `pack` sees none unless you pass them with `--env NAME`, so an app whose build reads
+  a private registry token (`NPM_TOKEN`, `BUNDLE_GEMS__*`, `PIP_EXTRA_INDEX_URL`) or whose asset
+  compilation reads `RAILS_MASTER_KEY` / `SECRET_KEY_BASE` fails to build, or builds a different
+  image, until you list them. Check `heroku config -a {{app_name}}` for those names. Pass **names
+  only** (`--env NPM_TOKEN`): `pack` then reads the value from the shell environment, so it
+  never appears on the command line or in a log. In CI, add each name to `BUILD_ENV_NAMES` in
+  `deploy-eb.yml` and source it from a GitHub secret in the build step's `env:`. Whatever a
+  buildpack bakes into the image is readable from the image, so pass only values the running app
+  may hold.
 - Custom buildpack URLs (`heroku buildpacks:add https://…`) are not known to the Heroku
   builder. For those apps pass `--buildpack <url>` to `pack build`, or fall back to a
   Dockerfile for that app only.
@@ -931,7 +942,9 @@ if aws ecr describe-images --repository-name {{project_name}}/{{app_name}} --ima
     *) echo "${IMAGE} exists but is '${ARCHES}', not amd64: delete the tag (aws ecr batch-delete-image) and rebuild" >&2; exit 1 ;;
   esac
 else
-  pack build "${IMAGE}" --builder heroku/builder:{{cnb_builder_tag}} --platform linux/amd64 --publish
+  # BUILD_ENV_FLAGS: one `--env NAME` per build-time config var (names only, values come from your
+  # shell environment), e.g. BUILD_ENV_FLAGS=(--env NPM_TOKEN --env RAILS_MASTER_KEY); empty when none.
+  pack build "${IMAGE}" --builder heroku/builder:{{cnb_builder_tag}} --platform linux/amd64 --publish "${BUILD_ENV_FLAGS[@]}"
 fi
 
 # 2. One Dockerrun.aws.json bundle per process type; the Entrypoint selects the process.
@@ -1014,7 +1027,9 @@ if aws ecr describe-images --repository-name {{project_name}}/{{app_name}} --ima
     *) echo "${IMAGE} exists but is '${ARCHES}', not amd64: delete the tag (aws ecr batch-delete-image) and rebuild" >&2; exit 1 ;;
   esac
 else
-  pack build "${IMAGE}" --builder heroku/builder:{{cnb_builder_tag}} --platform linux/amd64 --publish
+  # BUILD_ENV_FLAGS: one `--env NAME` per build-time config var (names only, values come from your
+  # shell environment), e.g. BUILD_ENV_FLAGS=(--env NPM_TOKEN --env RAILS_MASTER_KEY); empty when none.
+  pack build "${IMAGE}" --builder heroku/builder:{{cnb_builder_tag}} --platform linux/amd64 --publish "${BUILD_ENV_FLAGS[@]}"
 fi
 # The task definition selects the process type with entryPoint = ["/cnb/process/<process_type>"]
 # and sets PORT=8080 on the web container. Its image is the repository from terraform/ecr.tf
@@ -1587,8 +1602,8 @@ Elastic Beanstalk runs one environment per process type:{{FOR proc IN eb_process
 | `heroku ps:scale {{proc.process_type}}=3 -a {{app_name}}` | {{IF proc.process_type == "web"}}`aws elasticbeanstalk update-environment --environment-name {{proc.environment_name}} --option-settings Namespace=aws:autoscaling:asg,OptionName=MinSize,Value=3 Namespace=aws:autoscaling:asg,OptionName=MaxSize,Value=3` — temporary: MinSize/MaxSize are Terraform-managed, so the next `terraform apply` reverts this. For a persistent change edit `eb_min_instances_*` / `eb_max_instances_*` in `terraform/terraform.tfvars` and apply. Never scale or restart while `writers_quiesced = true` (Phase 6 drained this environment on purpose){{ELSE}}not applicable: `{{proc.environment_name}}` is a SingleInstance environment (one `{{proc.process_type}}` process). A count above 1 is what Design routes to Fargate; change the formation and re-run Design rather than scaling here{{ENDIF}} |
 {{ENDFOR}}
 | `heroku restart -a {{app_name}}` | `for env in {{EB_ENVIRONMENT_NAMES}}; do aws elasticbeanstalk restart-app-server --environment-name $env; done` (not while `writers_quiesced = true`) |
-| `heroku releases -a {{app_name}}` | `aws elasticbeanstalk describe-application-versions --application-name {{EB_APPLICATION}} --query 'ApplicationVersions[].[VersionLabel,DateCreated]' --output table` |
-| `heroku rollback -a {{app_name}}` | `for env in {{EB_ENVIRONMENT_NAMES}}; do aws elasticbeanstalk update-environment --application-name {{EB_APPLICATION}} --environment-name $env --version-label <previous label>; done` |
+| `heroku releases -a {{app_name}}` | `aws elasticbeanstalk describe-application-versions --application-name {{EB_APPLICATION}} --query 'ApplicationVersions[].[VersionLabel,DateCreated]' --output table`{{IF app_containerization_method == "cnb_heroku_builder"}} Each deploy registers one label per process type, `<base>-<process_type>` (for example `<base>-web` and `<base>-worker`), so the shared `<base>` is what identifies one release{{ENDIF}} |
+| `heroku rollback -a {{app_name}}` | {{IF app_containerization_method == "cnb_heroku_builder"}}Each environment runs its own process, so each needs its own label: take the previous `<base>` from the `releases` row, then `for proc in {{EB_PROCESS_TYPES}}; do aws elasticbeanstalk update-environment --application-name {{EB_APPLICATION}} --environment-name {{project_name}}-$proc --version-label <previous base>-$proc; done`. Never give one label to every environment: the `-web` bundle starts `/cnb/process/web` in whatever environment receives it, so a worker or clock environment would run the web process{{ELSE}}`for env in {{EB_ENVIRONMENT_NAMES}}; do aws elasticbeanstalk update-environment --application-name {{EB_APPLICATION}} --environment-name $env --version-label <previous label>; done`{{ENDIF}} |
 {{IF app_has_eb_web}}
 | `heroku maintenance:on -a {{app_name}}` | {{IF has_route53_dns}}`beanstalk.tf` sets `LoadBalancerType=application`. EB leaves its default HTTP listener on 80 forwarding to the app next to the HTTPS listener on 443, so switch **every** forwarding listener, not one. Find the load balancer (EB reports a name, `describe-listeners` needs the ARN): `lb_name=$(aws elasticbeanstalk describe-environment-resources --environment-name {{EB_RUN_ENVIRONMENT}} --query 'EnvironmentResources.LoadBalancers[0].Name' --output text)` then `lb_arn=$(aws elbv2 describe-load-balancers --names "$lb_name" --query 'LoadBalancers[0].LoadBalancerArn' --output text)`. `maintenance:on` saves each forwarding listener's actions, then replaces them: `for l in $(aws elbv2 describe-listeners --load-balancer-arn "$lb_arn" --query "Listeners[?DefaultActions[0].Type=='forward'].ListenerArn" --output text); do aws elbv2 describe-listeners --listener-arns "$l" --query 'Listeners[0].DefaultActions' > "maint-$(basename "$l").json"; aws elbv2 modify-listener --listener-arn "$l" --default-actions Type=fixed-response,FixedResponseConfig='{StatusCode=503,ContentType=text/plain,MessageBody="Maintenance"}'; done`. `maintenance:off` restores each from its saved file: `for l in $(aws elbv2 describe-listeners --load-balancer-arn "$lb_arn" --query "Listeners[?DefaultActions[0].Type=='fixed-response'].ListenerArn" --output text); do f="maint-$(basename "$l").json"; [ -f "$f" ] && aws elbv2 modify-listener --listener-arn "$l" --default-actions "file://$f"; done` (keep the `maint-*.json` files until then; a listener that redirects is left alone){{ELSE}}`beanstalk.tf` emits no `LoadBalancerType` without Route 53 DNS, so the web environment runs the EB default, a Classic Load Balancer; `aws elbv2 modify-listener` / fixed-response actions do not exist for it. Supported procedure: keep an application version whose container answers 503 on every path, then `aws elasticbeanstalk update-environment --environment-name {{EB_RUN_ENVIRONMENT}} --version-label <maintenance-version>`; `maintenance:off` = `update-environment` back to the previous label (the `releases` row lists them). For a listener-level switch, the environment needs `LoadBalancerType=application` in `beanstalk.tf` — settable only at creation, so that is a new environment, not an edit{{ENDIF}} |
 {{ENDIF}}
@@ -1626,8 +1641,8 @@ Fargate runs one service per process type:{{FOR proc IN fargate_processes}} `{{p
 | `heroku ps:scale {{proc.process_type}}=3 -a {{app_name}}` | `aws ecs update-service --cluster {{ECS_CLUSTER}} --service {{proc.service_name}} --desired-count 3` — temporary: `desired_count` is Terraform-managed, so the next `terraform apply` reverts this. For a persistent change edit `desired_count_*` in `terraform/terraform.tfvars` (or the service's `desired_count` in `terraform/compute.tf`) and apply. Never scale or restart while `writers_quiesced = true` (the service is pinned to 0 on purpose; an apply with the flag set brings it back to 0) |
 {{ENDFOR}}
 | `heroku restart -a {{app_name}}` | `for svc in {{FARGATE_SERVICE_NAMES}}; do aws ecs update-service --cluster {{ECS_CLUSTER}} --service $svc --force-new-deployment; done` (not while `writers_quiesced = true`) |
-| `heroku releases -a {{app_name}}` | `aws ecr describe-images --repository-name {{app_name}} --query 'sort_by(imageDetails,&imagePushedAt)[].[imageDigest,imageTags[0],imagePushedAt]' --output table` — Phase 3 pushes every build as `:latest` and redeploys with `--force-new-deployment`, so the digest, not the tag, identifies a release |
-| `heroku rollback -a {{app_name}}` | There is no previous tag to point at (every push overwrote `:latest`, and the task revision never changed). Roll back by digest: pick the previous `imageDigest` from the `releases` row, set each `container_image_<app>_<process_type>` in `terraform/terraform.tfvars` to `{{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com/{{app_name}}@<digest>`, then `terraform apply` (a new task revision rolls out to every service in `{{FARGATE_SERVICE_NAMES}}`). To roll forward again, set the variables back to `:latest` and apply, or move to immutable per-commit tags so `rollback` becomes a tag change |
+| `heroku releases -a {{app_name}}` | {{IF app_containerization_method == "cnb_heroku_builder"}}`aws ecr describe-images --repository-name {{project_name}}/{{app_name}} --query 'sort_by(imageDetails,&imagePushedAt)[].[imageTags[0],imageDigest,imagePushedAt]' --output table` — Phase 3 publishes every build under its immutable commit-SHA tag, so the tag identifies a release{{ELSE}}`aws ecr describe-images --repository-name {{app_name}} --query 'sort_by(imageDetails,&imagePushedAt)[].[imageDigest,imageTags[0],imagePushedAt]' --output table` — Phase 3 pushes every build as `:latest` and redeploys with `--force-new-deployment`, so the digest, not the tag, identifies a release{{ENDIF}} |
+| `heroku rollback -a {{app_name}}` | {{IF app_containerization_method == "cnb_heroku_builder"}}Tags are immutable commit SHAs, so rollback is a tag change: pick the previous tag from the `releases` row, set `image_tag_{{app_sanitized}} = "<previous tag>"` in `terraform/terraform.tfvars` (a buildpack app has no `container_image_*` variable), then `terraform apply` (a new task revision rolls out to every service in `{{FARGATE_SERVICE_NAMES}}`). Roll forward by setting the variable to the newer tag and applying again. Never set a tag that is not in the repository: the service would fail to start{{ELSE}}There is no previous tag to point at (every push overwrote `:latest`, and the task revision never changed). Roll back by digest: pick the previous `imageDigest` from the `releases` row, set each `container_image_<app>_<process_type>` in `terraform/terraform.tfvars` to `{{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com/{{app_name}}@<digest>`, then `terraform apply` (a new task revision rolls out to every service in `{{FARGATE_SERVICE_NAMES}}`). To roll forward again, set the variables back to `:latest` and apply, or move to immutable per-commit tags so `rollback` becomes a tag change{{ENDIF}} |
 {{IF app_has_fargate_web}}
 | `heroku maintenance:on -a {{app_name}}` | Point the ALB HTTPS listener at a fixed 503 response: `aws elbv2 modify-listener --listener-arn <listener-arn> --default-actions Type=fixed-response,FixedResponseConfig='{StatusCode=503,ContentType=text/plain,MessageBody="Maintenance"}'`; `maintenance:off` = restore the forward action. The listener is `aws_lb_listener.https` in `terraform/compute.tf` (`terraform state show aws_lb_listener.https`) |
 {{ENDIF}}

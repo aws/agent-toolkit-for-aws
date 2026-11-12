@@ -1816,6 +1816,10 @@ env:
   # property carries). App with no EB web environment (worker/clock only): the literal 8080 -- that
   # variable is not emitted for it; EB's Docker platform still requires a ContainerPort and nothing listens on it.
   EB_CONTAINER_PORT: "<eb_application_port_<app_sanitized>_web | 8080 when the app has no EB web environment>"
+  # Config vars the buildpacks read while building (Containerization Prerequisites in MIGRATION_GUIDE.md),
+  # as space-separated NAMES only, e.g. "NPM_TOKEN RAILS_MASTER_KEY". Empty when the app needs none.
+  # Heroku shows every config var to the buildpacks at compile time; pack passes only the names listed here.
+  BUILD_ENV_NAMES: ""
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -1829,8 +1833,16 @@ jobs:
         id: ecr
       - uses: buildpacks/github-actions/setup-pack@v6.2.2
       - name: Build image with Heroku buildpacks (no Dockerfile)
+        # One line per name in BUILD_ENV_NAMES, each sourced from a GitHub secret. The value reaches
+        # pack through this environment only; it is never written into the script or the command line.
+        # Add a block-style `env:` key here only when BUILD_ENV_NAMES is not empty, one line per name
+        # (never flow style `env: {}`: the artifact checker rejects it):
+        #   env:
+        #     NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           IMAGE="${{ steps.ecr.outputs.registry }}/${ECR_REPOSITORY}:${GITHUB_SHA}"
+          BUILD_ENV_FLAGS=()
+          for NAME in ${BUILD_ENV_NAMES}; do BUILD_ENV_FLAGS+=(--env "${NAME}"); done
           # The repository has immutable tags. A rerun of this commit (for example after a
           # failed deployment) reuses the image it already published instead of failing on
           # ImageTagAlreadyExistsException -- but only when that image is linux/amd64, the
@@ -1842,7 +1854,7 @@ jobs:
               *) echo "::error::${IMAGE} exists but is '${ARCHES}', not amd64; delete that tag (aws ecr batch-delete-image) and rerun" ; exit 1 ;;
             esac
           else
-            pack build "${IMAGE}" --builder "${CNB_BUILDER}" --platform linux/amd64 --publish
+            pack build "${IMAGE}" --builder "${CNB_BUILDER}" --platform linux/amd64 --publish "${BUILD_ENV_FLAGS[@]}"
           fi
           echo "IMAGE=${IMAGE}" >> "$GITHUB_ENV"
       - name: Write one Dockerrun bundle per process type
@@ -1909,6 +1921,18 @@ jobs:
   the tag to delete; never reuse an image of another architecture. `ubuntu-latest` is
   amd64, so the flagged build succeeds there; a host that cannot run amd64 containers fails
   the build instead of publishing an arm64 image.
+- `BUILD_ENV_NAMES` lists the config vars the buildpacks need **while building**. Heroku
+  shows every config var to the buildpacks at compile time; `pack` passes none unless
+  `--env NAME` names it. The generator cannot know which ones matter (the inventory holds
+  config var **keys**, never values), so it writes `""` and the guide's Containerization
+  Prerequisites tell the user which to add: private registry tokens (`NPM_TOKEN`,
+  `BUNDLE_GEMS__*`, `PIP_EXTRA_INDEX_URL`) and the keys an asset-compilation step reads
+  (`RAILS_MASTER_KEY`, `SECRET_KEY_BASE`). For each name, add one line to the build step's
+  `env:` (`NAME: ${{ secrets.NAME }}`) and the name to `BUILD_ENV_NAMES`. The value is
+  never interpolated into the `run:` script, a `pack` argument or a log line: `--env NAME`
+  (no `=value`) reads it from the step's environment. Anything a buildpack bakes into the
+  image is readable from the image, so a build-time secret must never be one the running
+  app should not hold.
 - `EB_CONTAINER_PORT` is the Dockerrun `ContainerPort` of every bundle of the app. For
   an app with an EB web environment it is the value of
   `eb_application_port_<app_sanitized>_web` in `terraform.tfvars` — the only port the
