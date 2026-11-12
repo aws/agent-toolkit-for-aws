@@ -834,3 +834,112 @@ def test_runtimes_dir_points_at_skill_references():
     parts = RUNTIMES_DIR.parts
     assert parts[-2:] == ("references", "runtimes"), RUNTIMES_DIR
     assert parts[-3] == "agent-advisor", RUNTIMES_DIR
+
+
+# --- B3 (#566 feedback F2): AgentCore single-agent parity and revisit triggers -----------------
+
+def test_single_agent_answer_scores_the_same_on_every_runtime():
+    # `multi_agent: no` used to cost only AgentCore a point (1 vs 2 everywhere else).
+    profiles = scoring.load_profiles()
+    assert {p["id"]: p["affinities"]["multi_agent"]["no"] for p in profiles} == {
+        p["id"]: scoring.NEUTRAL_SCORE for p in profiles}
+
+
+@pytest.mark.parametrize(("answers", "verdict", "co_recommend"), [
+    pytest.param({"traffic_pattern": "idle", "ops_preference": "full_control",
+                  "memory_needs": "cross_session", "multi_agent": "no", "framework": "strands",
+                  "multi_cloud": "no", "idle_resume": "filesystem",
+                  "compute_tier": "heavy_non_gpu"},
+                 "co_recommend", ["agentcore", "lambda_microvms"], id="microvms_to_co_recommend"),
+    pytest.param({"platform_fit": "ecs", "ops_preference": "minimal", "isolation": "nice_to_have",
+                  "memory_needs": "session_only", "multi_agent": "no", "framework": "custom",
+                  "existing_cluster": "ecs", "multi_cloud": "yes",
+                  "instance_type_requirement": "yes"},
+                 "co_recommend", ["agentcore", "ecs"], id="ecs_to_co_recommend"),
+])
+def test_single_agent_parity_brings_agentcore_into_the_recommendation(answers, verdict, co_recommend):
+    result = scoring.score({"answers": answers})
+    assert (result["verdict"], result.get("co_recommend")) == (verdict, co_recommend)
+
+
+_PROTOTYPE = {"multi_agent": "no", "session_duration": "under_15min", "traffic_pattern": "bursty",
+              "ops_preference": "minimal", "session_state": "stateless", "memory_needs": "none",
+              "isolation": "not_needed", "framework": "strands", "existing_cluster": "none",
+              "compute_tier": "light"}
+
+
+def test_revisit_triggers_list_each_growth_signal_when_agentcore_loses():
+    result = scoring.score({"answers": _PROTOTYPE})
+    assert result["verdict"] == "lambda"
+    assert [(t["field"], t["current"]) for t in result["agentcore_revisit_triggers"]] == [
+        ("multi_agent", "no"), ("memory_needs", "none"), ("isolation", "not_needed")]
+    assert all(t["trigger"] for t in result["agentcore_revisit_triggers"])
+
+
+def test_revisit_triggers_skip_a_signal_the_workload_already_has():
+    result = scoring.score({"answers": {**_PROTOTYPE, "multi_agent": "yes"}})
+    assert result["verdict"] != "agentcore"
+    assert "multi_agent" not in {t["field"] for t in result["agentcore_revisit_triggers"]}
+
+
+def test_revisit_triggers_are_empty_when_agentcore_wins():
+    result = scoring.score({"answers": {**_PROTOTYPE, "session_duration": "15min_to_8hr",
+                                        "session_state": "hitl"}})
+    assert result["verdict"] == "agentcore"
+    assert result["agentcore_revisit_triggers"] == []
+
+
+def test_revisit_triggers_stay_on_a_co_recommend_that_includes_agentcore():
+    # Confirm may pick the other runtime; Design drops the triggers if it picks AgentCore.
+    answers = {"traffic_pattern": "idle", "ops_preference": "full_control",
+               "memory_needs": "cross_session", "multi_agent": "no", "framework": "strands",
+               "multi_cloud": "no", "idle_resume": "filesystem", "compute_tier": "heavy_non_gpu"}
+    result = scoring.score({"answers": answers})
+    assert result["co_recommend"] == ["agentcore", "lambda_microvms"]
+    # isolation=required gains AgentCore and MicroVMs 2 points each, so it is not a reason to
+    # revisit AgentCore over MicroVMs; multi_agent=yes gains only AgentCore.
+    assert [t["field"] for t in result["agentcore_revisit_triggers"]] == ["multi_agent"]
+
+
+def test_revisit_triggers_are_empty_when_agentcore_is_eliminated():
+    profiles = scoring.load_profiles()
+    for profile in profiles:
+        if profile["id"] == "agentcore":
+            profile["hard_constraints"] = [{"field": "multi_agent", "value": "no", "reason": "test"}]
+    result = scoring.score({"answers": _PROTOTYPE}, profiles=profiles)
+    assert "agentcore" in result["eliminated"]
+    assert result["agentcore_revisit_triggers"] == []
+
+
+def test_revisit_triggers_match_the_schema():
+    import jsonschema
+    result = scoring.score({"answers": _PROTOTYPE})
+    schema = json.loads(
+        (pathlib.Path(scoring.__file__).parent / "schemas" / "scoring-result.json").read_text())
+    jsonschema.validate({**result, "units": {"primary-agent": result}}, schema)
+    bad = {**result, "agentcore_revisit_triggers": [{"field": "multi_agent"}]}
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate({**bad, "units": {"primary-agent": bad}}, schema)
+
+
+def test_revisit_triggers_list_a_signal_for_an_unanswered_question():
+    answers = {k: v for k, v in _PROTOTYPE.items() if k != "memory_needs"}
+    result = scoring.score({"answers": answers})
+    assert result["verdict"] != "agentcore"
+    assert {"field": "memory_needs", "current": "unknown"}.items() <= next(
+        t for t in result["agentcore_revisit_triggers"] if t["field"] == "memory_needs").items()
+
+
+def test_score_units_mirrors_the_primary_unit_triggers(tmp_path, capsys):
+    answers = {"entry_point": "build_scratch", "primary_unit": "a",
+               "system": {"framework": "strands"},
+               "units": {"a": {"workload_class": "agent_session", **_PROTOTYPE},
+                         "b": {"workload_class": "agent_session", **_PROTOTYPE,
+                               "session_duration": "15min_to_8hr", "session_state": "hitl"}}}
+    path = tmp_path / "answers.json"
+    path.write_text(json.dumps(answers))
+    assert score_units.main([str(path)]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["units"]["b"]["verdict"] == "agentcore"
+    assert out["units"]["b"]["agentcore_revisit_triggers"] == []
+    assert out["agentcore_revisit_triggers"] == out["units"]["a"]["agentcore_revisit_triggers"] != []

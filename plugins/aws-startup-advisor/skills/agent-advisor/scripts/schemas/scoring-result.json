@@ -24,6 +24,20 @@
         "verification_sources": { "type": "array", "minItems": 1, "items": { "type": "string" } }
       }
     },
+    "agentcoreRevisitTriggers": {
+      "description": "Growth signals that would move AgentCore closer to the recommended runtime(s). Empty when AgentCore is the sole verdict or was eliminated. Design copies them only for a unit whose runtime is not AgentCore.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["field", "current", "trigger"],
+        "additionalProperties": false,
+        "properties": {
+          "field": { "type": "string" },
+          "current": { "type": "string" },
+          "trigger": { "type": "string" }
+        }
+      }
+    },
     "scoredUnit": {
       "type": "object",
       "required": ["verdict", "scores", "eliminated", "deferred_verification_requirements", "recommendation_status"],
@@ -40,6 +54,7 @@
         "recommendation_status": { "enum": ["provisional", "final"] },
         "deployment_model": { "type": ["string", "null"], "enum": ["harness", "framework_on_runtime", null] },
         "agentcore_services": { "type": "array", "items": { "type": "string" } },
+        "agentcore_revisit_triggers": { "$ref": "#/$defs/agentcoreRevisitTriggers" },
         "assumptions_used": { "type": "array", "items": { "type": "string" } },
         "warnings": { "type": "array", "items": { "type": "string" } },
         "co_recommend": { "type": "array", "items": { "type": "string" } },
@@ -68,6 +83,7 @@
     "eliminated": { "type": "object", "additionalProperties": { "type": "string" } },
     "deployment_model": { "type": ["string", "null"], "enum": ["harness", "framework_on_runtime", null] },
     "agentcore_services": { "type": "array", "items": { "type": "string" } },
+    "agentcore_revisit_triggers": { "$ref": "#/$defs/agentcoreRevisitTriggers" },
     "assumptions_used": { "type": "array", "items": { "type": "string" } },
     "warnings": { "type": "array", "items": { "type": "string" } },
     "co_recommend": { "type": "array", "items": { "type": "string" } },

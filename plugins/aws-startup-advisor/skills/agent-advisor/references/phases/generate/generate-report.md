@@ -322,6 +322,13 @@ that element entirely (use `display:none` or omit the HTML block).
         <tr><td>Key change</td><td>{{ unit.key_change }}</td><td>{{ additional notes }}</td></tr>
       </tbody>
     </table>
+    {{ IF NOT EMPTY(unit.agentcore_revisit_triggers) }}
+    <!-- design.json's list, already empty when this unit runs on AgentCore; quote each trigger. -->
+    <h3>When to revisit AgentCore</h3>
+    <ul class="plain">
+      {{ FOR EACH t IN unit.agentcore_revisit_triggers }}<li>{{ t.trigger }}</li>{{ END FOR }}
+    </ul>
+    {{ END IF }}
     {{ ELSE }}
     <!-- RULE-BASED FORM — non-agent units are decided by a workload-classes rule, not scored,
          so the basis is the unit's `rationale` (which carries the rule cite, e.g.
