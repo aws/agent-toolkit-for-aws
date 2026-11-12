@@ -15,14 +15,14 @@
     {
       "value": "medium",
       "q7_option": 2,
-      "label": "1–10M",
+      "label": "1M to under 10M",
       "min_tokens": 1000000,
       "max_tokens": 10000000
     },
     {
       "value": "high",
       "q7_option": 3,
-      "label": "10–100M",
+      "label": "10M to under 100M",
       "min_tokens": 10000000,
       "max_tokens": 100000000
     },

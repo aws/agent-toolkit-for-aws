@@ -48,6 +48,26 @@ def test_q7_options_and_values_match_the_table() -> None:
     assert default == (str(next(t["q7_option"] for t in TIERS["tiers"] if t["value"] == TIERS["dont_know"]["default"])), TIERS["dont_know"]["default"])
 
 
+def stated_bounds(label: str) -> tuple[int, int | None]:
+    """The bounds a Q7 label states, in tokens. 'to under' is exclusive."""
+    million = 1_000_000
+    below = re.fullmatch(r"< (\d+)M tokens", label)
+    if below:
+        return 0, int(below.group(1)) * million
+    span = re.fullmatch(r"(\d+)M to under (\d+)M", label)
+    if span:
+        return int(span.group(1)) * million, int(span.group(2)) * million
+    above = re.fullmatch(r"> (\d+)M", label)
+    if above:
+        return int(above.group(1)) * million, None
+    raise AssertionError(f"label does not state its bounds: {label!r}")
+
+
+def test_each_label_states_the_table_bounds() -> None:
+    for tier in TIERS["tiers"]:
+        assert stated_bounds(tier["label"]) == (tier["min_tokens"], tier["max_tokens"])
+
+
 def test_q7_places_a_measured_total_with_the_table_bounds() -> None:
     assert "references/vendored/ai/token-volume-tiers.json" in Q7 and "`min_tokens` inclusive, `max_tokens` exclusive" in Q7
     assert "Q7 also reads this skill's `references/vendored/ai/token-volume-tiers.json`" in CLARIFY

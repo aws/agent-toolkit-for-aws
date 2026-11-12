@@ -306,7 +306,7 @@ _Never skipped:_ do not fill this from a usage-profile file or from the assumpti
 
 **Measured volume.** When `migration-preview.json` has `measured_usage`, say before the options: "Measured: [total_tokens] tokens in total ([each source in `sources`: its provider, its total_tokens, over its active_days days])." After a source whose `partial_window` is true, add "(only [active_days] days of activity, not scaled to a month)", add "(some usage could not be read: [capture_warnings])" when a warning names a file other than an hourly or minute file, and add the same `overlap_excluded` note as Q3. Then mark the option whose tier in `references/vendored/ai/token-volume-tiers.json` contains that total (`min_tokens` inclusive, `max_tokens` exclusive) as "(measured)". The user still answers, and the answer is recorded with `chosen_by: "user"`.
 
-> 1\) < 1M tokens | 2\) 1–10M | 3\) 10–100M | 4\) > 100M | 5\) Don't know
+> 1\) < 1M tokens | 2\) 1M to under 10M | 3\) 10M to under 100M | 4\) > 100M | 5\) Don't know
 
 | Answer    | Impact                                             |
 | --------- | -------------------------------------------------- |
