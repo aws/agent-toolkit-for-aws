@@ -321,3 +321,15 @@ def test_mantle_option_honors_a_pin_the_rerun_honors():
     data["workloads"][0]["requirements"]["preferred_api_path"] = "mantle_messages"
     rerun = mr.recommend(data)["workloads"]["w"]
     assert option["model"] == rerun["primary_model"] == "anthropic.claude-sonnet-5"
+
+
+# Logan's review on #620: with no path constraint, a runtime profile pin selects the runtime path
+# and the pinned model; `main` dropped the pin and returned Mantle with a different model.
+@pytest.mark.parametrize(("pin", "model"), [
+    ("global.anthropic.claude-sonnet-5-5", "anthropic.claude-sonnet-5-5"),
+    ("us.anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-haiku-4-5-20251001-v1:0"),
+])
+def test_a_runtime_pin_selects_the_runtime_path_when_no_path_is_constrained(pin, model):
+    rec = _rec("anthropic", "claude-3-7-sonnet-latest", "messages", priority="balanced",
+               inference_profile_id=pin)
+    assert (rec["api_path"], rec["primary_model"], rec["invocation_model_id"]) == ("runtime_converse", model, pin)
