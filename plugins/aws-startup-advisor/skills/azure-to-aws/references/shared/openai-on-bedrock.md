@@ -2,6 +2,7 @@
 
 **Last verified:** 2026-10-10
 **GPT-6.1 Terra verified:** 2026-10-27
+**GPT-5.5 / GPT-5.4 re-verified:** 2026-11-06 against their model cards ([GPT-5.4](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html), [GPT-5.5](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html)) — both now list `bedrock-runtime` (Responses, Chat Completions, Converse via `us.`/`global.` CRIS ids), Chat Completions on mantle, a 1.05M context window and a long-context price tier
 **Sources:** [OpenAI model cards](https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards-openai.html) (per-model
 cards linked below), [GPT-5.6 launch post](https://aws.amazon.com/blogs/machine-learning/get-started-with-openai-gpt-5-6-sol-terra-and-luna-on-amazon-bedrock/),
 [GPT-5.6 GA announcement](https://aws.amazon.com/about-aws/whats-new/2026/07/openai-gpt-sol-terra/),
@@ -32,8 +33,8 @@ risk) all defer to it. Do not restate model IDs, regions, or endpoint paths else
 | GPT-5.6 Sol         | `openai.gpt-5.6-sol`                     | Jul 13, 2026 | 1M      | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-sol.html)                                                       |
 | GPT-5.6 Terra       | `openai.gpt-5.6-terra`                   | Jul 13, 2026 | 1M      | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-terra.html)                                                     |
 | GPT-5.6 Luna        | `openai.gpt-5.6-luna`                    | Jul 13, 2026 | 1M      | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-luna.html)                                                      |
-| GPT-5.5             | `openai.gpt-5.5`                         | Jun 1, 2026  | 272K    | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html)                                                           |
-| GPT-5.4             | `openai.gpt-5.4`                         | Jun 1, 2026  | 272K    | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html)                                                           |
+| GPT-5.5             | `openai.gpt-5.5`                         | Jun 1, 2026  | 1.05M   | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html)                                                           |
+| GPT-5.4             | `openai.gpt-5.4`                         | Jun 1, 2026  | 1.05M   | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html)                                                           |
 | gpt-oss-120b        | `openai.gpt-oss-120b`                    | Aug 5, 2025  | 128K    | Active    | open-weight; also on `bedrock-runtime` as `openai.gpt-oss-120b-1:0`                                                                                  |
 | gpt-oss-20b         | `openai.gpt-oss-20b`                     | Aug 5, 2025  | 128K    | Active    | open-weight; also on `bedrock-runtime` as `openai.gpt-oss-20b-1:0`                                                                                   |
 | GPT OSS Safeguard   | `openai.gpt-oss-safeguard-120b` / `-20b` | —            | —       | Active    | content-moderation / guardrail enforcement, not general chat                                                                                         |
@@ -47,8 +48,10 @@ share a generation with a future `Sol`. **GPT-6** carries forward `Sol` and `Lun
 discount) — not a new tier name (cite [openai.com/index/introducing-gpt-6-1-sol/](https://openai.com/index/introducing-gpt-6-1-sol/)).
 
 > **Context-window conflict (resolved):** the GPT-5.6 launch blog states 272K for all three variants; all three
-> model cards state 1M. **The model cards are authoritative** — use 1M for GPT-5.6. GPT-5.5 and GPT-5.4 are 272K on
-> both sources. Re-check on refresh; if AWS corrects the blog, the cards still win.
+> model cards state 1M. **The model cards are authoritative** — use 1M for GPT-5.6. The GPT-5.5 and GPT-5.4 cards
+> (read 2026-11-06) state 1,050,000 tokens shared between input and output with 128,000 max output; the 272K figure
+> recorded earlier is now only their short-/long-context pricing breakpoint. Re-check on refresh; if AWS corrects
+> the blog, the cards still win.
 
 **Not on Bedrock (as of this refresh):** GPT-4o, GPT-4.1, GPT-4 / GPT-4 Turbo, GPT-3.5 Turbo, the o-series
 (o1/o3/o4-mini), GPT-5 / GPT-5.1 / GPT-5.2, and the `*-Pro` variants (GPT-5.5 Pro, GPT-5.4 Pro). Sources whose model
@@ -112,8 +115,12 @@ input and text output. The launch announcement rounds the input context to 1M; u
 exact limits for capacity checks. Browser/computer-use capability does not establish parity with
 OpenAI-hosted tools; probe the application's specific tool flow.
 
-**GPT-5.5 and GPT-5.4 are `bedrock-mantle`-only and in-region only.** Their model cards list a single
-Programmatic Access row (`bedrock-mantle`, Geo/Global "Not supported") and In-Region pricing only.
+**GPT-5.5 and GPT-5.4 have TWO endpoints** (re-verified 2026-11-06 against their model cards; earlier revisions of
+this file recorded them as `bedrock-mantle`-only). Both Programmatic Access tables now carry a `bedrock-runtime`
+row (In-Region "Not supported"; Geo `us.openai.gpt-5.5` / `us.openai.gpt-5.4`; Global `global.openai.gpt-5.5` /
+`global.openai.gpt-5.4`) and a `bedrock-mantle` row (bare id, in-region only). Supported APIs: `Responses`,
+`Chat Completions` and `Converse` on `bedrock-runtime`; `Responses` and `Chat Completions` on `bedrock-mantle`;
+`Messages` and `Invoke` on neither. The pricing tables still publish the In-Region inference option only.
 
 **GPT-5.6 Sol / Terra / Luna have TWO endpoints** (verified 2026-08-21 — this changed after this file's original
 2026-08-10 verification; the Refresh Checklist predicted it):
@@ -132,13 +139,16 @@ Constraints that still break naive assumptions:
    mantle path explicitly, and the runtime example gives `bedrock-runtime.{region}.amazonaws.com/openai/v1`.
 2. **The endpoints take different model-id forms.** Mantle takes the bare `openai.gpt-5.6-*` id and has no CRIS;
    `bedrock-runtime` takes ONLY a CRIS inference-profile id (`us.` / `in.` / `global.` prefixed) and has no
-   in-region form. `bedrock:ListInferenceProfiles` returns the 5.6 CRIS profiles; it never returns the bare mantle
-   ids, and it returns nothing for GPT-5.5 / GPT-5.4.
+   in-region form. `bedrock:ListInferenceProfiles` returns the CRIS profiles (5.6, and `us.`/`global.` for
+   GPT-5.5 / GPT-5.4 per their cards); it never returns the bare mantle ids.
 3. **API surfaces differ by endpoint.** The 5.6 cards list `Responses`, `Chat Completions`, `Invoke`, and
    `Converse` as supported APIs, with runtime-side feature splits: **Guardrails are Converse-only; prompt caching is
    Responses-only on runtime**; server-side tool use, structured outputs, and application inference profiles are NOT
-   supported on runtime (server-side tool calling IS supported on mantle). For GPT-5.5 / GPT-5.4 treat Responses on
-   mantle as the only verified surface.
+   supported on runtime (server-side tool calling IS supported on mantle). The GPT-5.5 / GPT-5.4 cards (read
+   2026-11-06) list `Responses`, `Chat Completions` and `Converse` on runtime (no `Invoke`) and `Responses` and
+   `Chat Completions` on mantle; on runtime they list Guardrails and application inference profiles as
+   Converse-only, and implicit prompt caching and structured outputs as Responses-only. Chat Completions is a
+   documented surface for GPT-5.5 / GPT-5.4 on both endpoints — probe it in the target account like any other.
 
 ### GPT-6 family: Ultrafast tier
 
@@ -189,8 +199,10 @@ that expires within 12 hours and is not refreshed. Do not recommend it for produ
 
 **IAM:** on the mantle path, the managed policy `AmazonBedrockMantleInferenceAccess` grants what inference needs,
 including `bedrock-mantle:CreateInference` and `bedrock-mantle:CallWithBearerToken` — `bedrock:InvokeModel` does not
-authorize mantle calls. On the GPT-5.6 `bedrock-runtime` path the usual `bedrock:InvokeModel*` against the CRIS
-inference-profile ARN applies, as for any other runtime model.
+authorize mantle calls. On the GPT-5.6 / GPT-5.5 / GPT-5.4 `bedrock-runtime` path the usual `bedrock:InvokeModel*`
+against the CRIS inference-profile ARN applies, as for any other runtime model; the GPT-5.5 / GPT-5.4 cards add
+that the identity also needs `bedrock:InvokeModel` on the account's default project
+(`arn:aws:bedrock:{region}:{account-id}:project/default`).
 
 **Reasoning effort:** the five GPT-5.x models accept `none`, `low`, `medium`, `high`, `xhigh`, `max`. Because these models reason
 before responding, the model's output items (which may include reasoning items) must be passed back in the next
@@ -200,7 +212,8 @@ request for multi-turn and tool-calling flows.
 
 ## Regional Availability — Endpoint-Aware
 
-**The mantle in-region matrix** (the only reach for GPT-5.5 / GPT-5.4, and the in-region option for GPT-5.6):
+**The mantle in-region matrix** (the in-region option for every proprietary GPT model; GPT-5.5 / GPT-5.4 rows
+re-verified 2026-11-06):
 
 | Model         | us-east-1 | us-east-2 | us-west-2 | us-gov-west-1 | us-gov-east-1 |
 | ------------- | --------- | --------- | --------- | ------------- | ------------- |
@@ -230,8 +243,16 @@ any GPT-6 model, it just means using the runtime endpoint with a CRIS id.
 **GPT-5.6 additionally reaches most commercial regions via `bedrock-runtime` CRIS** (Geo `us.` / `in.`, Global
 `global.` inference profiles; the Sol card's runtime footprint spans 30+ regions). So a region outside the mantle
 matrix does NOT make the same-model path unavailable for GPT-5.6 — it means using the runtime endpoint with a CRIS
-id, with the data-residency implications of cross-region routing. For GPT-5.5 / GPT-5.4 the mantle matrix is a hard
-gate: no CRIS, no fallback.
+id, with the data-residency implications of cross-region routing.
+
+**GPT-5.5 / GPT-5.4 runtime availability** (model cards read 2026-11-06): US Geo CRIS (`us.openai.gpt-5.5` /
+`us.openai.gpt-5.4`) can be called from `us-east-1`, `us-east-2`, `us-west-1`, `us-west-2`, `ca-central-1` and
+`ca-west-1`. Global CRIS (`global.openai.gpt-5.5` / `global.openai.gpt-5.4`) is listed in those six plus
+`mx-central-1`, every EU region (`eu-central-1/2`, `eu-north-1`, `eu-south-1/2`, `eu-west-1/2/3`), `ap-east-2`,
+`ap-northeast-1/2/3`, `ap-south-1/2`, `ap-southeast-1` through `-7`, `il-central-1`, `me-central-1`, `me-south-1`,
+`af-south-1` and `sa-east-1` (33 regions). No runtime in-region form, no EU/India Geo profile, and no GovCloud
+runtime row. So the mantle matrix is no longer a hard gate for GPT-5.5 / GPT-5.4; only a strictly in-region
+requirement outside the mantle matrix blocks the same-model path.
 
 Verify current footprints per model card / `aws___get_regional_availability` (AWS MCP Server) — the CRIS lists move faster than this file.
 
@@ -242,13 +263,19 @@ for these models). Sol rates reflect the Aug 21, 2026 reduction (−20% input / 
 the AWS What's New announcement lists as promotional through at least Nov 21, 2026. **Pricing now has an
 inference-option dimension:**
 
-- **GPT-5.x In-Region and Geo CRIS: 1.10x OpenAI's standard list price** (parity with OpenAI's _data residency_ tier).
+- **GPT-5.6 In-Region and Geo CRIS: 1.10x OpenAI's standard list price** (parity with OpenAI's _data residency_ tier).
 - **Global CRIS: OpenAI's standard list price** — cost parity for the recorded GPT-5.6 rates, and only when the
   workload has no data-residency constraint.
 
 So the honest cost statement is conditional, not flat: a same-model GPT-5.6 move on Global CRIS is
-**cost-neutral**; the same move in-region or Geo (and any GPT-5.5 / GPT-5.4 move) is **~10% more expensive**. The
-same Global-CRIS-is-cost-neutral / in-Region-and-Geo-is-~10%-more pattern applies to the GPT-6 family below.
+**cost-neutral**; the same move in-region or Geo is **~10% more expensive**. The GPT-5.5 / GPT-5.4 cards publish
+**commercial In-Region pricing only** (no Geo/Global rows as of 2026-11-07; the cards say "Commercial In-Region
+prices include a 10% fee over OpenAI rates"), so for them the ~10% premium is verified for the In-Region (mantle)
+option alone — nothing establishes a Geo (`us.`) or Global CRIS price. For a GPT-5.5 / GPT-5.4 CRIS plan, source the
+Geo/Global rate separately (the card's inference-option table or the Bedrock pricing page, with URL and read date)
+or report the comparison unavailable; an In-Region rate used as a proxy is an **unverified planning assumption**,
+labelled as such, and must not be turned into a verified premium or savings percentage. Never report parity for
+them. The same Global-CRIS-is-cost-neutral / in-Region-and-Geo-is-~10%-more pattern applies to the GPT-6 family below.
 Never state either number without stating the inference option it belongs to.
 
 ### GPT-6 Astra / Sol / Luna / 6.1 Sol — short context (≤272K)
@@ -302,12 +329,17 @@ provider rate before claiming savings or parity for the selected context tier.
 
 A workload above 272K context must be priced at the long-context tier.
 
-### GPT-5.5 / GPT-5.4 — In-Region only (no CRIS, no long-context tier; usable window 272K)
+### GPT-5.5 / GPT-5.4 — In-Region pricing only; short- and long-context tiers (model cards read 2026-11-06)
 
-| Model   | In-Region (in · out) | Cache read | Notes                            |
-| ------- | -------------------- | ---------- | -------------------------------- |
-| GPT-5.5 | 5.50 · 33.00         | 0.55       | no cache-write rate published    |
-| GPT-5.4 | 2.75 · 16.50         | 0.275      | GovCloud (US-West): 3.30 · 19.80 |
+The cards publish only the commercial In-Region inference option (the `us.` / `global.` runtime CRIS ids exist but
+carry no separate price row). A `runtime_openai_cris` plan priced from this table is an unverified planning
+assumption, not a verified rate — `bedrock_pricing.lookup()` returns `available: false` for these CRIS ids on
+purpose. Long-context rates apply to all input and output tokens of a request above 272K input tokens.
+
+| Model   | Short context ≤272K (in · cache read · out) | Long context >272K (in · cache read · out) | Notes                                    |
+| ------- | ------------------------------------------- | ------------------------------------------ | ---------------------------------------- |
+| GPT-5.5 | 5.50 · 0.55 · 33.00                         | 11.00 · 1.10 · 49.50                       | no cache-write rate published            |
+| GPT-5.4 | 2.75 · 0.275 · 16.50                        | 5.50 · 0.55 · 24.75                        | GovCloud (US-West) short: 3.375 · 0.3375 · 20.25 |
 
 > **The Luna "blog discrepancy" resolved differently than first recorded.** The AWS News Blog's 0.20 / 1.20 is not
 > an error — it is the **Global CRIS** rate, now published on the Luna card. An earlier revision of this file said
@@ -323,8 +355,10 @@ Astra has separate Responses-only caching evidence above. Do not inherit GPT-5.6
 
 Listed as a supported feature on the GPT-5.6 Sol/Terra/Luna model cards and on all five GPT-6 model cards (Astra,
 Sol, Luna, 6.1 Sol, 6.1 Terra — confirmed by the cache-write/cache-read columns in the GPT-6 pricing tables above). The
-GPT-5.5 and GPT-5.4 cards list client-side tool calling in that slot instead and do **not** list prompt caching.
-Do not assume caching on 5.5/5.4.
+GPT-5.5 and GPT-5.4 cards (read 2026-11-06) list **implicit prompt caching on `bedrock-runtime` Responses only**
+(automatic, no request parameters) with a cache-read rate and no cache-write rate; explicit caching is unsupported
+and the mantle feature list carries client-side tool calling in that slot instead. Do not assume caching on
+5.5/5.4 mantle, and do not inherit the GPT-5.6 prefix/breakpoint rules below for them.
 
 | Property          | Value                                                        |
 | ----------------- | ------------------------------------------------------------ |
@@ -352,10 +386,10 @@ This corrects two claims that were previously applied to all Mantle traffic in t
 
 - There is **no shared 10,000 RPM account limit** governing these models — the quota dimension is TPM, per model,
   per region.
-- "Switch to `bedrock-runtime`" is **not a throughput remedy for GPT-5.5 / GPT-5.4** — they have no
-  `bedrock-runtime` path at all. For GPT-5.6 the runtime path DOES exist (CRIS only; see Access Paths above), so
-  moving there is a legitimate option — but treat it as an endpoint/architecture choice with its own quota family
-  and residency implications, not a free throughput escape hatch.
+- "Switch to `bedrock-runtime`" is **not a free throughput escape hatch**. For GPT-5.6, GPT-5.5 and GPT-5.4 the
+  runtime path exists (CRIS only; see Access Paths above — GPT-5.5 / GPT-5.4 re-verified 2026-11-06), so moving
+  there is a legitimate option — but treat it as an endpoint/architecture choice with its own quota family and
+  residency implications.
 
 The supported mitigations are: exponential backoff with a bounded retry count (`max_retries` on the OpenAI SDK),
 spreading load across minutes rather than bursting, ramping request rate gradually, and prompt caching (cached input
@@ -396,8 +430,8 @@ This model family is moving fast (two GA waves and a repricing inside 10 weeks).
 
 1. Re-read the [OpenAI model card index](https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards-openai.html)
    for models added or removed, and each per-model card for lifecycle state and EOL date.
-2. Recheck the region matrix AND the GPT-5.6 CRIS footprints — for 5.5/5.4 a region change is migration-blocking;
-   for 5.6 the runtime/CRIS path usually covers the region instead.
+2. Recheck the region matrix AND the CRIS footprints for every proprietary GPT model — the runtime/CRIS path
+   usually covers a region outside the mantle matrix; only a strictly in-region requirement there is blocking.
 3. Recheck rates on the Bedrock pricing page OpenAI tab, and resolve any row still marked _unverified_.
 4. Recheck whether the Price List API has gained GPT-5.x coverage; if it has, drop the caveat above and let
    `estimate-ai.md` price these models from the MCP.
@@ -412,3 +446,9 @@ This model family is moving fast (two GA waves and a repricing inside 10 weeks).
    2026), and GPT-6.1 Sol (GA Sep 29, 2026) are all confirmed on Bedrock with their own model cards and pricing
    tables. New discovery this refresh: a 6x-Standard **Ultrafast** service tier on Astra and 6.1 Sol only (Sol and
    Luna remain Standard-only) — the first new tier shape since this file started tracking the family.
+9. **2026-11-06 refresh — GPT-5.5 / GPT-5.4 re-read.** Item 5 fired again: both cards now list `bedrock-runtime`
+   (Responses, Chat Completions, Converse via `us.` / `global.` CRIS ids; no in-region runtime form), Chat
+   Completions on `bedrock-mantle`, a 1,050,000-token context window with 128,000 max output, a long-context
+   (>272K) price tier, implicit prompt caching on runtime Responses, and a GovCloud (US-West) GPT-5.4 rate of
+   3.375 · 20.25. Earlier "mantle-only / no CRIS / 272K / no long-context tier" claims for these two models were
+   stale and are corrected throughout this file.

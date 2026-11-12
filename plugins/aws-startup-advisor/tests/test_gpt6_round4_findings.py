@@ -2,8 +2,9 @@
 GPT-6 recognition, report pricing bugs).
 
 Finding 0 — runtime_openai_cris carve-out gaps:
-  (a) Azure design.md / generate.md _assert blocks must scope the GPT-ban to
-      GPT-5.5/GPT-5.4 and explicitly carve out GPT-5.6/GPT-6 on runtime_openai_cris.
+  (a) Azure design.md / generate.md _assert blocks must scope the GPT-ban to BARE
+      proprietary ids and explicitly carve out GPT-5.6/GPT-6 — and, since the
+      2026-11-06 model-card re-read, GPT-5.5/GPT-5.4 — on runtime_openai_cris.
   (b) GCP generate-ai.md Part 1 must route runtime_openai_cris through
       bedrock-runtime, not the mantle URL/IAM.
   (c) Canonical model-selection guide + vendored guardrails must name the full
@@ -79,21 +80,30 @@ def _norm(text: str) -> str:
 # --- Finding 0.1: Azure design.md / generate.md assert carve-out ---
 
 
-def test_azure_design_assert_scopes_gpt_ban_to_55_54_and_carves_out_cris() -> None:
+def test_azure_design_assert_scopes_gpt_ban_to_bare_ids_and_carves_out_cris() -> None:
+    # GPT-5.5 / GPT-5.4 model cards (read 2026-11-06) list us./global. CRIS ids on
+    # bedrock-runtime, so the ban is on BARE proprietary ids paired with
+    # converse/bedrock-runtime — not on the GPT-5.5/GPT-5.4 models themselves.
     text = _norm(AZURE_DESIGN_MD.read_text(encoding="utf-8"))
-    assert "no proprietary GPT-5.5 or GPT-5.4 model ID is paired" in text, (
-        "design.md _assert must scope the ban to GPT-5.5/GPT-5.4, not blanket 'openai.gpt-*'"
+    assert "no bare proprietary openai.gpt-* model ID (including bare openai.gpt-5.5 or openai.gpt-5.4) is paired" in text, (
+        "design.md _assert must ban bare proprietary ids on converse/bedrock-runtime, "
+        "naming bare openai.gpt-5.5/openai.gpt-5.4 explicitly"
     )
-    assert "runtime_openai_cris on bedrock-runtime — this is not a violation" in text
+    assert "GPT-5.6, GPT-6, GPT-5.5 and GPT-5.4 models MAY use migration_path: runtime_openai_cris on bedrock-runtime — this is not a violation" in text
+    assert "GPT-5.5/GPT-5.4 us./global. profiles" in text
+    assert "no proprietary GPT-5.5 or GPT-5.4 model ID is paired" not in text
     assert "no proprietary openai.gpt-* model ID is paired" not in text
 
 
-def test_azure_generate_assert_scopes_gpt_ban_to_55_54_and_carves_out_cris() -> None:
+def test_azure_generate_assert_scopes_gpt_ban_to_bare_ids_and_carves_out_cris() -> None:
     text = _norm(AZURE_GENERATE_MD.read_text(encoding="utf-8"))
-    assert "no proprietary GPT-5.5 or GPT-5.4 model ID is paired" in text, (
-        "generate.md _assert must scope the ban to GPT-5.5/GPT-5.4, not blanket 'openai.gpt-*'"
+    assert "no bare proprietary openai.gpt-* model ID (including bare openai.gpt-5.5 or openai.gpt-5.4) is paired" in text, (
+        "generate.md _assert must ban bare proprietary ids on converse/bedrock-runtime, "
+        "naming bare openai.gpt-5.5/openai.gpt-5.4 explicitly"
     )
-    assert "runtime_openai_cris on bedrock-runtime — this is not a violation" in text
+    assert "GPT-5.6, GPT-6, GPT-5.5 and GPT-5.4 models MAY use migration_path: runtime_openai_cris on bedrock-runtime — this is not a violation" in text
+    assert "GPT-5.5/GPT-5.4 us./global. profiles" in text
+    assert "no proprietary GPT-5.5 or GPT-5.4 model ID is paired" not in text
     assert "no proprietary openai.gpt-* model ID is paired" not in text
 
 

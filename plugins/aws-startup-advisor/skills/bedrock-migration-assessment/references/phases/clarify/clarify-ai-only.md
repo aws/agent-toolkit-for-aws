@@ -223,8 +223,8 @@ _Skip when:_ the validator summary reports `models_extractable: true` — every 
 | GPT-6/6.1 (Astra/Sol/Luna) | **Same model on Bedrock** | ~10% over OpenAI std (DR tier); Astra/6.1 Sol also support Ultrafast |
 | GPT-6.1 Terra              | **Same model on Bedrock** | Use the model-specific endpoint and context-tier prices in the [GPT-6.1 Terra model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-terra.html); compare against measured source spend or verified source rates. |
 | GPT-5.6 (any) | **Same model on Bedrock**      | ~10% over OpenAI std (DR tier)     |
-| GPT-5.5       | **Same model on Bedrock**      | ~10% over OpenAI std (DR tier)     |
-| GPT-5.4       | **Same model on Bedrock**      | ~10% over OpenAI std (DR tier)     |
+| GPT-5.5       | **Same model on Bedrock**      | In-Region (mantle) ~10% over OpenAI std; no Geo or Global price published |
+| GPT-5.4       | **Same model on Bedrock**      | In-Region (mantle) ~10% over OpenAI std; no Geo or Global price published |
 | GPT-3.5 Turbo | GPT-5.6 Luna; or Claude Haiku 5.5 | At equal billed volumes and 2:1 input/output, Haiku US Geo is 56.25% cheaper up to 100K prompt tokens; Luna is 54.29% cheaper above 100K while Luna remains within 272K. Recount target tokens; if request size is unknown, present both Haiku tiers. |
 | GPT-4/4 Turbo | GPT-5.6 Terra; or Sonnet 5     | Not on Bedrock — offer both        |
 | GPT-4o        | GPT-5.6 Terra; or Sonnet 5     | Not on Bedrock — offer both        |
@@ -237,8 +237,8 @@ _Skip when:_ the validator summary reports `models_extractable: true` — every 
 
 **Same-model rows first.** GPT-6 Astra / GPT-5.6 / 5.5 / 5.4 sources map to themselves.
 Design applies the model-specific API and region gate; Clarify records the baseline only.
-Astra Standard mantle supports `us-east-1` and `us-west-2`; runtime uses US Geo / Global CRIS. GPT-5.6 also has runtime CRIS;
-GPT-5.5 / 5.4 remain mantle-only. GPT-5.x in-region costs about 10% above OpenAI standard,
+Astra Standard mantle supports `us-east-1` and `us-west-2`; runtime uses US Geo / Global CRIS. GPT-5.6, GPT-5.5
+and GPT-5.4 also have runtime CRIS (`us.` / `global.`). GPT-5.x in-region costs about 10% above OpenAI standard,
 while GPT-5.6 Global CRIS uses the standard rate. For Astra, compare its separately dated
 inference/context tier against the source price before claiming savings or parity.
 For sources without a Bedrock equivalent, present a same-vendor upgrade and a cross-family option.

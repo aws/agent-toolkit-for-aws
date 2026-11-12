@@ -80,10 +80,14 @@ diffs outputs, so the user validates behavior before cutover.
 ## Step 3: `setup_bedrock.sh`
 
 Enables the chosen Bedrock model(s), sets up IAM, and (mantle path) the Bedrock API key. For a
-`runtime_openai_cris` target whose CRIS id is a GPT-6 model (Astra, Sol, Luna, 6.1 Sol, 6.1 Terra), the IAM
+`runtime_openai_cris` target whose CRIS id is a GPT-6 model (Astra, Sol, Luna, 6.1 Sol, 6.1 Terra) or
+GPT-5.5 / GPT-5.4 (`us.openai.gpt-5.5` / `global.openai.gpt-5.5`, `us.openai.gpt-5.4` /
+`global.openai.gpt-5.4`, or their `inference-profile/` ARNs), the IAM
 policy must grant `bedrock:InvokeModel` on `arn:aws:bedrock:{region}:{account}:project/default`
-in addition to the CRIS inference-profile ARN — both required per the GPT-6 model cards; the
-mantle `bedrock-mantle:*` policy is unaffected.
+in addition to the CRIS inference-profile ARN — both required per the GPT-6 model cards and the
+GPT-5.5 / GPT-5.4 cards (read 2026-11-07); `iam_policy.py` emits the third ARN for exactly these
+ids. The mantle `bedrock-mantle:*` policy (bare `openai.gpt-5.5` / `openai.gpt-5.4` ids included)
+is unaffected.
 
 ## Step 3B: `gateway_config.{yaml,py,json}` (gateway users)
 
@@ -155,9 +159,11 @@ is AWS-only and ports from gcp unchanged.
 - [ ] No secret VALUE in any emitted file; credentials are env-var references.
 - [ ] Bare proprietary GPT ids use Mantle; Astra runtime calls retain the validated `us.` /
       `global.` CRIS id. Chat/Responses and runtime artifact selection match the saved design.
-- [ ] No **GPT-5.5 or GPT-5.4** model ID paired with a Converse/`bedrock-runtime` path (those two
-      models only — mantle-only, no CRIS). GPT-5.6 and GPT-6 models MAY use
-      `migration_path: "runtime_openai_cris"` on `bedrock-runtime` — this is NOT a violation.
+- [ ] No **bare** proprietary GPT model ID (including bare `openai.gpt-5.5` / `openai.gpt-5.4`)
+      paired with a Converse/`bedrock-runtime` path. GPT-5.6, GPT-6, GPT-5.5 and GPT-5.4 MAY use
+      `migration_path: "runtime_openai_cris"` on `bedrock-runtime` with a CRIS id (`us.`/`in.`/`global.`
+      for GPT-5.6 Terra and Luna; `us.`/`global.` only for GPT-5.6 Sol, GPT-6, GPT-5.5 and GPT-5.4) —
+      this is NOT a violation.
 - [ ] Plugin attribution strings say "Azure-to-AWS".
 - [ ] `generation-ai.json` validates; `rollback_plan.mechanism == "feature_flag"`.
 
