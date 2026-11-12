@@ -22,4 +22,5 @@ if this skill needs one, add the copy **and** a row in the table below.
 
 | Vendored path                    | Canonical source                                |
 | -------------------------------- | ----------------------------------------------- |
+| `ai/token-volume-tiers.json`     | `skills/shared/ai/token-volume-tiers.json`     |
 | `state/phase-status.schema.json` | `skills/shared/state/phase-status.schema.json` |

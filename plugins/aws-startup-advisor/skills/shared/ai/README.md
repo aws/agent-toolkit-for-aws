@@ -24,6 +24,7 @@ before opening a pull request.
 | `bedrock-pricing-cache.md`           | Provider-neutral Bedrock model and service pricing             |
 | `models/bedrock-model-registry.json` | **Source of truth** for model-selection data: one record per Bedrock model (shared facts, canonical capability vocabulary, `selection_status`) plus per-provider views. Edit this file, then run `tools/build-model-catalogs.py` and `tools/sync-vendored.py`. Contract: `scripts/contracts/model-registry.schema.json` |
 | `models/anthropic-bedrock.json`, `models/openai-bedrock.json` | **Rendered** per-provider catalogs read by agent-advisor's selectors. Do not edit by hand: `mise run lint:model-catalogs` fails when they differ from the registry. Contract `scripts/contracts/model-selection-catalog.schema.json`; `tools/model-catalog-drift.py` checks them against `ai-model-lifecycle.md` |
+| `token-volume-tiers.json`            | The `ai_token_volume` tiers: Clarify Q7's bands, their token bounds, and how Estimate prices a tier |
 | `schema-design-aws-ai.md`            | Target-only `aws-design-ai.json` contract; `metadata.ai_sources[]`/`gateways[]` mirror `ai-workload-profile.schema.json` exactly |
 | `schema-estimate-ai.md`               | Target-only `estimation-ai.json` contract; `cost_by_source[]` traces per-source/per-model cost back to `aws-design-ai.json` |
 | `schema-generate-ai.md`               | Target-only `generation-ai.json` contract; `artifacts_by_source[]` traces per-source/per-model generated artifacts back to `estimation-ai.json` |
