@@ -49,6 +49,7 @@ class MultiDatabaseArtifactTests(unittest.TestCase):
             if service["aws_service"] == "Elastic Beanstalk":
                 rendered = self.environment_template
                 for old, new in {
+                    "<eb_app_suffix>": "-" + app,
                     "<app_name>": safe_app,
                     "<app_sanitized>": safe_app,
                     "<heroku_app>": app,

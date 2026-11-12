@@ -347,7 +347,7 @@ pg_restore "$TARGET_DATABASE_URL"
         text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
         section = text.split("### `pipeline.tf`", 1)[1]
         pipeline = section.split("```hcl\n", 1)[1].split("\n```", 1)[0]
-        self.write("terraform/pipeline.tf", pipeline.replace("<app_name>", "main").replace("<process_type>", "web"))
+        self.write("terraform/pipeline.tf", pipeline.replace("<app_name>", "main").replace("<eb_app_suffix>", "").replace("<process_type>", "web"))
         for workflow in (
             None,
             "jobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo deploy\n",
@@ -633,7 +633,9 @@ module "network" {
         text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
         section = text.split("### `.github/workflows/deploy-eb.yml`", 1)[1]
         workflow = section.split("```yaml\n", 1)[1].split("\n```", 1)[0]
-        workflow = workflow.replace("<space-separated EB environment names from aws-design.json>", "app-web app-worker")
+        workflow = workflow.replace("<eb_application_name>", "app").replace(
+            "<space-separated EB environment names of this app from EB name resolution>", "app-web app-worker",
+        )
         self.write(".github/workflows/deploy-eb.yml", workflow)
         self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK", self.report())
 

@@ -1320,7 +1320,57 @@ Read `preferences.design_constraints.eb_deploy_method.value`; default to `"githu
 - `"codepipeline"` → generate `$MIGRATION_DIR/terraform/pipeline.tf`
 - `"manual"` → generate neither deploy automation artifact; document CLI deployment in `MIGRATION_GUIDE.md`
 
+### EB name resolution (run once, before `beanstalk.tf`, the deploy artifacts and `pipeline.tf`)
+
+Every Elastic Beanstalk name comes from this one section; nothing else in this file or in
+`generate-docs.md` derives one. Names are fixed at generation time and written as literals.
+
+Collect `eb_apps` = the distinct `heroku_app` values of `aws-design.json` `services[]` entries with
+`aws_service: "Elastic Beanstalk"`, sorted. Two modes:
+
+- **Shared names (exactly one EB app).** `<eb_app_suffix>` is empty. The EB application is
+  `var.project_name`, each environment is `${var.project_name}-<process_type>`, and the instance
+  role and profile are `${var.project_name}-eb-instance` and `${var.project_name}-eb-profile`.
+  This is the naming this skill has always produced for one app; nothing changes for it.
+- **Per-app names (two or more EB apps).** `<eb_app_suffix>` is `-<eb_app_slug>`. The EB
+  application is `${var.project_name}<eb_app_suffix>`, each environment is
+  `${var.project_name}<eb_app_suffix>-<process_type>`, and the instance role and profile are
+  `${var.project_name}<eb_app_suffix>-eb-instance` and `${var.project_name}<eb_app_suffix>-eb-profile`.
+  With the shared form a second app would create a second application, environments and role with
+  the same names as the first (Terraform cannot apply them, and a staging and a production app
+  would resolve to the same environments), so each app needs its own.
+
+In both modes an environment's name is its application's name, a dash, and the process type.
+Deploy artifacts rely on that.
+
+**`<eb_app_slug>`** (per-app mode only). Start from the Heroku app name: lowercase it, replace each
+run of characters outside `a-z0-9` with `-`, and trim leading and trailing `-` (use `app` if
+nothing is left). Then fit it:
+
+1. An Elastic Beanstalk environment name is at most 40 characters. `room` = 40 − `len(project_name)`
+   − 1 − 1 − `len(longest process_type among the EB services of all EB apps)`, where `project_name`
+   is the `terraform.tfvars` value. The two `1`s are the dashes before the slug and before the
+   process type. If `room` is below 3, halt and tell the user the project name or a process type is
+   too long for per-app names and ask for a shorter `project_name`.
+2. Truncate the slug to `room` characters and trim a trailing `-`.
+3. Walk `eb_apps` in sorted order. If a slug equals an earlier app's slug, rebuild it for the
+   n-th occurrence (n = 2, 3, …) as the original slug truncated to `room − len(n) − 1` characters
+   (trailing `-` trimmed), then `-`, then `n`.
+
+The longest environment name is then at most 40 characters, so the instance role
+(`<project_name><eb_app_suffix>-eb-instance`, 12 more characters than the environment's prefix)
+stays well inside IAM's 64-character limit. Examples, for `project_name = "shop"` unless noted:
+
+| Heroku apps (process types) | `room` | Application | Environment |
+| --- | --- | --- | --- |
+| `shop-staging` (web, worker) | 28 | `shop-shop-staging` | `shop-shop-staging-web` |
+| `shop-production` (web, worker) | 28 | `shop-shop-production` | `shop-shop-production-worker` |
+| `acme-platform-production-api-service` (web, scheduler), `project_name = "acme-platform-prod"` | 11 | `acme-platform-prod-acme-platfo` | `acme-platform-prod-acme-platfo-scheduler` (40) |
+| `billing-service-eu`, `billing-service-us` (web, scheduler), `project_name = "acme-platform-prod"` | 11 | `…-billing-ser`, `…-billing-s-2` | `…-billing-ser-scheduler`, `…-billing-s-2-scheduler` |
+
 ### `beanstalk.tf` — EB Application and Environments
+
+`<eb_app_suffix>` is the value from EB name resolution above: empty with one EB app, `-<eb_app_slug>` with two or more.
 
 ```hcl
 # Select the latest Elastic Beanstalk Docker platform for Amazon Linux 2023.
@@ -1332,12 +1382,12 @@ data "aws_elastic_beanstalk_solution_stack" "docker" {
 }
 
 resource "aws_elastic_beanstalk_application" "<app_name>" {
-  name        = var.project_name
+  name        = "${var.project_name}<eb_app_suffix>"
   description = "Migrated from Heroku app: <heroku_app>"
 }
 
 resource "aws_elastic_beanstalk_environment" "<app_name>_<process_type>" {
-  name                = "${var.project_name}-<process_type>"
+  name                = "${var.project_name}<eb_app_suffix>-<process_type>"
   application         = aws_elastic_beanstalk_application.<app_name>.name
   solution_stack_name = data.aws_elastic_beanstalk_solution_stack.docker.name
   tier                = "WebServer"
@@ -1489,12 +1539,12 @@ resource "aws_elastic_beanstalk_environment" "<app_name>_<process_type>" {
 }
 
 resource "aws_iam_instance_profile" "eb_<app_name>" {
-  name = "${var.project_name}-eb-profile"
+  name = "${var.project_name}<eb_app_suffix>-eb-profile"
   role = aws_iam_role.eb_instance_<app_name>.name
 }
 
 resource "aws_iam_role" "eb_instance_<app_name>" {
-  name = "${var.project_name}-eb-instance"
+  name = "${var.project_name}<eb_app_suffix>-eb-instance"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -1586,8 +1636,9 @@ permissions:
 
 env:
   AWS_REGION: <target_region>
-  EB_APPLICATION_NAME: <app_name>
-  EB_ENVIRONMENTS: "<space-separated EB environment names from aws-design.json>"
+  # The EB application's name from EB name resolution (aws_elastic_beanstalk_application.name), not the Heroku app name.
+  EB_APPLICATION_NAME: <eb_application_name>
+  EB_ENVIRONMENTS: "<space-separated EB environment names of this app from EB name resolution>"
 
 jobs:
   deploy:
@@ -1623,7 +1674,8 @@ jobs:
 **GitHub Actions rules:**
 
 - Emit one workflow per repository/migration, not one per EB environment.
-- `EB_ENVIRONMENTS` MUST include every generated EB environment for the app, not only `<app_name>-web`.
+- `EB_APPLICATION_NAME` and `EB_ENVIRONMENTS` are the names from EB name resolution, written as literals. In per-app mode they are this app's own names, so one app's workflow never touches another app's environments.
+- `EB_ENVIRONMENTS` MUST include every generated EB environment for the app, not only the `web` one.
 - The workflow assumes a GitHub OIDC role through `secrets.AWS_ROLE_ARN`; document the required role setup in `MIGRATION_GUIDE.md`.
 - Do not emit `pipeline.tf` when this method is selected.
 
@@ -1633,7 +1685,7 @@ Emit this file only when `eb_deploy_method.value` is `"codepipeline"`.
 
 ```hcl
 resource "aws_codepipeline" "<app_name>_deploy" {
-  name     = "${var.project_name}-deploy"
+  name     = "${var.project_name}<eb_app_suffix>-deploy"
   role_arn = aws_iam_role.codepipeline_<app_name>.arn
 
   artifact_store {
@@ -1693,7 +1745,7 @@ resource "aws_s3_bucket_versioning" "pipeline_artifacts_<app_name>" {
 }
 
 resource "aws_iam_role" "codepipeline_<app_name>" {
-  name = "${var.project_name}-codepipeline"
+  name = "${var.project_name}<eb_app_suffix>-codepipeline"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -1706,7 +1758,7 @@ resource "aws_iam_role" "codepipeline_<app_name>" {
 }
 
 resource "aws_iam_role_policy" "codepipeline_policy_<app_name>" {
-  name = "${var.project_name}-codepipeline-policy"
+  name = "${var.project_name}<eb_app_suffix>-codepipeline-policy"
   role = aws_iam_role.codepipeline_<app_name>.id
 
   policy = jsonencode({

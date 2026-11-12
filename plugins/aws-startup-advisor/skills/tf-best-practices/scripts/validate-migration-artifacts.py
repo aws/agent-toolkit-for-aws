@@ -881,6 +881,44 @@ def _allows_port(body: str, port: int, policy: Any) -> bool:
     return protocol in {"tcp", "6"} and low is not None and high is not None and low <= port <= high
 
 
+# Resource kinds whose `name` must be unique (Elastic Beanstalk names per account and region, IAM
+# role and instance profile names per account): two of them with the same name cannot both be created.
+_UNIQUE_NAME_KINDS = {
+    "aws_elastic_beanstalk_application", "aws_elastic_beanstalk_environment",
+    "aws_iam_role", "aws_iam_instance_profile",
+}
+
+
+def _eb_duplicate_names(resources: list[Resource], policy: Any, findings: list[Finding]) -> None:
+    """Two Elastic Beanstalk applications, environments, roles or instance profiles written with
+    the same `name` expression in one Terraform root.
+
+    A migration with several Heroku apps on Elastic Beanstalk that names every application
+    `var.project_name` makes the second `apply` fail, and a staging and a production app then
+    resolve to the same environments. The comparison is of the expression text, so
+    `"${var.project_name}-web"` written twice is caught even though its value is not resolvable.
+    A resource with a dynamic count or for_each is skipped, never guessed at.
+    """
+    seen: dict[tuple[str, str], Resource] = {}
+    for resource in resources:
+        if resource.kind not in _UNIQUE_NAME_KINDS or _instances(resource, policy) is not True:
+            continue
+        expression = _attr(resource.body, "name", policy)
+        if expression is None:
+            continue
+        key = (resource.kind, re.sub(r"\s+", "", expression))
+        first = seen.get(key)
+        if first is None:
+            seen[key] = resource
+            continue
+        findings.append(Finding(
+            resource.file, resource.line, "eb_duplicate_name",
+            f"{resource.address} and {first.address} both set name = {expression}; two "
+            f"{resource.kind} resources cannot share a name. Give each Heroku app its own name "
+            "(generate-terraform.md, EB name resolution).",
+        ))
+
+
 def _eb_database_access(resources: list[Resource], policy: Any, findings: list[Finding]) -> None:
     databases = [r for r in resources if r.kind in {"aws_db_instance", "aws_rds_cluster"}]
     environments = [r for r in resources if r.kind == "aws_elastic_beanstalk_environment"]
@@ -1963,6 +2001,7 @@ def validate(
         _database_credential_wiring(root, resources, policy, findings)
         _rds_windows(resources, policy, windows, findings)
         _eb_database_access(resources, policy, findings)
+        _eb_duplicate_names(resources, policy, findings)
         _postgres(root, resources, policy, findings, require_postgres_script)
         _workflows(root, resources, policy, findings, require_eb_workflow)
     except ValueError as exc:
@@ -1974,13 +2013,14 @@ def validate(
         "artifact_status": status,
         "verdict": status,
         "checks_run": [
-            "postgres_verify", "eb_database_access", "workflow_deploy", "rds_windows",
-            "ecs_database_credentials",
+            "postgres_verify", "eb_database_access", "eb_duplicate_names", "workflow_deploy",
+            "rds_windows", "ecs_database_credentials",
             "database_credential_wiring",
         ],
         "scope": [
             "supported PostgreSQL verification control flow and Bash syntax",
             "explicit Elastic Beanstalk to RDS security-group references",
+            "duplicate names among Elastic Beanstalk applications, environments, IAM roles and instance profiles",
             "GitHub Actions step IDs and presence of an EB deployment operation",
             "literal RDS backup and maintenance window overlap",
             "placeholder passwords in literal ECS DATABASE_URL environment entries",
