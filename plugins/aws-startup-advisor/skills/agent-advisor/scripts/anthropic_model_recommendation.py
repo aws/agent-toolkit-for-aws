@@ -563,6 +563,14 @@ def _invocation_requires_cris(path_config, invocation_model_id):
     return path_config["requires_cris"] and invocation_model_id != path_config["model_id"]
 
 
+def _pin_names_model(pin, model_id):
+    """True when an `inference_profile_id` pin (model id, profile id, or ARN) names exactly this
+    model id. Matches whole id segments only, so a Sonnet 5.5 pin
+    (`global.anthropic.claude-sonnet-5-5`) does not name Sonnet 5 (`anthropic.claude-sonnet-5`)."""
+    tail = pin.rsplit("/", 1)[-1]
+    return tail == model_id or tail.endswith(f".{model_id}")
+
+
 def _honor_explicit_profile(candidates, requirements, region):
     """An explicit `inference_profile_id` names a model as well as a profile. When a lower-ranked
     candidate (e.g. the retained Haiku 4.5 alternative) is the one that profile resolves against,
@@ -575,8 +583,7 @@ def _honor_explicit_profile(candidates, requirements, region):
         path_config = candidate["path_config"]
         # The pin must name this candidate's model (profile id or ARN tail); a profile for
         # another model must not be "resolved" against a candidate that lacks a profile matrix.
-        if not explicit.endswith(path_config["model_id"]) and f"/{path_config['model_id']}" not in explicit \
-                and f".{path_config['model_id']}" not in explicit:
+        if not _pin_names_model(explicit, path_config["model_id"]):
             continue
         resolved = _resolve_invocation_model_id(
             path_config["model_id"], path_config["requires_cris"], requirements, candidate["model"], region
@@ -674,7 +681,12 @@ def _decision_options(catalog, workload, option_paths, region=None, selector=Non
             )
         else:
             tradeoff = "Provides runtime governance but requires rewriting the Messages integration."
-        option = _candidate_summary(candidates[0], requirements, tradeoff, region)
+        # Offer what the rerun on this path selects: the same capability yield and explicit-profile
+        # pin as the main path, so a chosen option does not resolve to a different model.
+        chosen = _honor_explicit_profile(
+            _yield_to_capable_alternative(candidates, workload), requirements, region
+        )
+        option = _candidate_summary(chosen, requirements, tradeoff, region)
         if path == "mantle_messages":
             option["mantle_selector"] = selector
         options.append(option)
