@@ -104,8 +104,8 @@ See `references/shared/openai-on-bedrock.md` for the model-specific pricing rule
 
 For the GPT-5.x rows, the mantle endpoint is in-region only (us-east-1, us-east-2; us-west-2 additionally for
 Terra, Luna, and GPT-5.4; AWS GovCloud us-gov-west-1 / us-gov-east-1 for Terra and Luna, us-gov-west-1 also for
-GPT-5.4). GPT-5.6 additionally reaches most commercial regions via `bedrock-runtime` CRIS ids; GPT-5.5 / GPT-5.4
-have no CRIS.
+GPT-5.4). GPT-5.6, GPT-5.5 and GPT-5.4 additionally reach most commercial regions via `bedrock-runtime` CRIS ids
+(`us.` / `global.`; GPT-5.5 / GPT-5.4 per their model cards read 2026-11-06).
 
 For the GPT-6 rows, mantle is us-east-1 only, except GPT-6 Astra which is also available in us-west-2. All five
 GPT-6 models additionally reach a broad set of commercial regions via `bedrock-runtime` CRIS (`us.` / `global.`
@@ -115,7 +115,7 @@ At Discover time the target region may not be known — record the same-model ma
 the region gate. See `references/shared/openai-on-bedrock.md`.
 
 **Pro sources need a choice.** For `gpt-*-pro`, `o1-pro`, and `o3-pro`, offer GPT-6 Astra as the
-capability-first same-vendor upgrade and GPT-5.6 Sol as the lower-cost GPT alternative, alongside Nova 2 Pro
+capability-first same-vendor upgrade and GPT-5.6 Sol as the lower-cost GPT alternative, alongside Claude Opus 5.5
 below. Astra is 2.5x Sol at the recorded matching context/inference tier. This is a model change requiring eval;
 record the choice in `key_decisions_ahead` instead of silently selecting Nova. Apply the Astra region gate.
 
@@ -126,10 +126,10 @@ record the choice in `key_decisions_ahead` instead of silently selecting Nova. A
 | `gpt-4o`, `gpt-4.1`, `gpt-5`/`5.1`/`5.2`                | Claude Sonnet 5                                | `anthropic.claude-sonnet-5`                                            |
 | `gpt-4o-mini`, `gpt-4.1-mini`, `gpt-5.*-mini`           | Claude Haiku 5.5                               | `anthropic.claude-haiku-5-5`                             |
 | `gpt-3.5-turbo`, `gpt-4.1-nano`, `gpt-5.*-nano`         | Amazon Nova Micro                              | `amazon.nova-micro-v1:0`                                               |
-| `gpt-*-pro` (GPT-5.x Pro), `o1-pro`, `o3-pro`           | GPT-6 Astra; Sol for lower cost; or Nova 2 Pro | `openai.gpt-6-astra` / `openai.gpt-5.6-sol` / `amazon.nova-2-pro-v1:0` |
+| `gpt-*-pro` (GPT-5.x Pro), `o1-pro`, `o3-pro`           | GPT-6 Astra; Sol for lower cost; or Claude Opus 5.5 | `openai.gpt-6-astra` / `openai.gpt-5.6-sol` / `global.anthropic.claude-opus-5-5` |
 | `o3`, `o4-mini`, reasoning models                       | Claude Sonnet 5                                | `anthropic.claude-sonnet-5`                                            |
 | `gemini-3.5-flash-lite`                                 | Amazon Nova Lite                               | `amazon.nova-lite-v1:0`                                                |
-| `gemini-3.5-flash` (not `-lite`)                        | Amazon Nova Lite                               | `amazon.nova-lite-v1:0`                                                |
+| `gemini-3.5-flash` (not `-lite`), `gemini-3.6-flash` — the Developer API routes 3.5 Flash to 3.6 Flash; Google's upgrade for both is 3.8 Flash | Amazon Nova Lite                               | `amazon.nova-lite-v1:0`                                                |
 | `gemini-3.8-flash`                                      | Amazon Nova Pro; Nova Lite for lower cost      | `amazon.nova-pro-v1:0` / `amazon.nova-lite-v1:0`                       |
 | `gemini-3.*-pro`, `gemini-2.5-pro` (retired Oct 20, 2026 — flag) | Claude Sonnet 5                     | `anthropic.claude-sonnet-5`                                            |
 | `gemini-2.5-flash` (retired Oct 20, 2026 — flag), `gemini-2.0-flash` (retired Jun 1, 2026 — flag) | Claude Haiku 5.5                   | `anthropic.claude-haiku-5-5`                             |

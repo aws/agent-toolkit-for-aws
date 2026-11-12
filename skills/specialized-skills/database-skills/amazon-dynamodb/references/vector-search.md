@@ -190,6 +190,14 @@ embedding**. Re-creating an item without its vector leaves it permanently unsear
 is worse than the original bug. Do **not** drop and recreate the index: backfill re-derives
 from the same base-table items, so nothing changes.
 
+**Choosing the value.** For a few items, set only the missing attribute with `UpdateItem SET`,
+conditioned on `attribute_exists(<pk>) AND attribute_not_exists(<attr>)`, so the embedding and other
+attributes stay as they are. If the user asked for the fix, the table isn't production, and the data
+points to one value, write it without waiting for confirmation. For example, the user reported missing
+results for one tenant, and every item that has the attribute carries that tenant. Then say what you
+inferred and how to undo it (`REMOVE <attr>`). Ask first when the evidence fits more than one value or
+none, or when the table serves production traffic.
+
 **Prevent it on the write path.** Treat a search-schema `HASH` attribute as mandatory on every
 item that must be searchable — guard it at write time in the same spirit as the
 `attribute_exists` / `attribute_not_exists` guards in Patterns #2 — or define no partition key
@@ -404,6 +412,13 @@ validate against a representative dataset before sizing.
 - **Export / import** — exports contain the vector attributes; on import, define the index in
   the import request as you would for `CreateTable`.
 - **DAX** — does not support `SearchVectors`. Send searches directly to DynamoDB.
+- **Bulk put items** — loads S3 data into a vector-indexed table on the `STANDARD` tier only;
+  requesting `ACCELERATED` fails validation, even when speed matters. Each record is a whole-item
+  put that bypasses your write-path guards, so, as with `PutItem`, a record missing the search-schema
+  `HASH` attribute is written but never indexed (silent de-indexing): validate the input first. It drops attributes a
+  record omits, so don't use it to add embeddings to live items unless every record carries the
+  whole current item. It can't start while an index is being created. Vector bytes are metered
+  separately (`BulkPutVectorBytes`). See `${SKILL_DIR}/references/bulk-put-items.md`.
 
 ## Troubleshooting
 
@@ -419,7 +434,7 @@ validate against a representative dataset before sizing.
 | `Invalid size for parameter <attr>, Expected: N, Actual: M` | Stored vector wrong length | Match the index `Dimensions` |
 | `Input collection contains duplicates` on a write | Vector sent as a Number Set (`NS`); duplicates collapsed | Send it as a List (`L`) of Numbers (`N`) |
 | `Query`/`Scan` rejected: `... operation not supported on this index type` | Wrong read API | Use `SearchVectors` |
-| Item absent from search, `GetItem` fine, no errors | Missing search-schema `HASH` attribute — silent de-indexing | Re-write the item with the attribute, preserving its embedding |
+| Item absent from search, `GetItem` fine, no errors | Missing search-schema `HASH` attribute — silent de-indexing | Restore the attribute with a conditional `UpdateItem SET`, which keeps the embedding. Pick the value as *Choosing the value* under *Silent de-indexing* describes. |
 | An attribute missing from results, no error | Not projected into the index | Widen the projection (new index) or hydrate from the base table |
 | Ranking looks inverted; threshold checks misbehave | Score direction assumed wrong, or negative `DOT_PRODUCT` scores | Rely on the returned order; see the distance-function table |
 | `AccessDenied` on search while other actions work | `dynamodb:SearchVectors` sits in an FGAC-conditioned statement | Move it to its own condition-free statement scoped to the index ARN |

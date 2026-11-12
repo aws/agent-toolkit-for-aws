@@ -94,17 +94,30 @@ reuse the Anthropic `preserve_messages_api` switch):
 
 OpenAI is handled by a dedicated provider module (`openai-bedrock.json` catalog).
 Recognized GPT-5.6 and GPT-6 source identities are evaluated against their exact same-model
-catalog entry before capability/numeric fallbacks. GPT-5.x on Mantle is Responses-only, so a Chat
-Completions source is reshaped rather than routed to `mantle_openai_chat`. GPT-6 Chat Completions
-sources with required or preferred API continuity instead keep that surface through
-`mantle_openai_chat`; GPT-6 Responses sources use `mantle_openai_responses`. Both Mantle paths are
+catalog entry before capability/numeric fallbacks. The engine routes only recognized GPT-6 Chat
+Completions sources to `mantle_openai_chat`; a GPT-5.x Chat Completions source is currently
+reshaped to Responses. That reshape is a current engine limitation, not a model fact: the catalog
+records Chat Completions as supported on Mantle for GPT-5.5 and GPT-5.4 (model cards read
+2026-11-06) and as unchecked for GPT-5.6 Sol. GPT-6 Chat Completions sources with required or
+preferred API continuity keep that surface through `mantle_openai_chat`; GPT-6 Responses sources
+use `mantle_openai_responses`. Both Mantle paths are
 in-region only and enforce the selected model's cataloged `region_availability`: Astra reaches
 us-east-1 and us-west-2, while Sol, Luna, and 6.1 Sol reach us-east-1 only. Outside that footprint,
 the engine skips the same-model Mantle candidate and evaluates its existing capability/numeric
-fallbacks. Governance requirements select the exact same GPT-5.6 or GPT-6 model through
+fallbacks. Those fallbacks walk candidates in catalog order, and GPT-5.5 and GPT-5.4 (both
+cataloged with Chat Completions on Mantle; GPT-5.5 reaches us-east-1/us-east-2, GPT-5.4 reaches
+us-east-1/us-east-2/us-west-2 and us-gov-west-1) precede GPT-6 Astra in that order. A GPT-6 Sol or
+6.1 Sol Chat Completions source outside us-east-1 therefore lands on GPT-5.5 in us-east-2 or GPT-5.4
+in us-west-2 through `mantle_openai_chat`, not on Astra. That is a current engine ordering
+limitation (a newer-generation source falls back to an older-generation model); treat such a
+recommendation as a prompt for the Chat-vs-Converse decision, not as a model endorsement.
+Governance requirements select the exact same GPT-5.6 or GPT-6 model through
 `runtime_converse` only when the requested Global or geography-scoped CRIS profile is cataloged
 for that model and source region; an unsupported profile falls through to an eligible documented
-runtime candidate or remains an explicit decision. GPT-5.5/5.4 remain mantle-only. GPT-6 Astra's
+runtime candidate or remains an explicit decision. GPT-5.5/5.4 also carry a cataloged
+`runtime_converse` path via `us.`/`global.` CRIS ids (model cards read 2026-11-06); the engine does
+not yet recognize them as same-model source identities, so a GPT-5.5/5.4 source under governance
+requirements still lands on the Claude Converse tier until that recognition is added. GPT-6 Astra's
 runtime surface lacks `Invoke` support (Responses/Chat Completions/Converse only), while
 Sol/Luna/6.1 Sol support all four APIs. Every selected path remains provisional until it is probed
 in the target account and region. Azure OpenAI remains an explicit `provider_module_pending`
@@ -188,7 +201,7 @@ Write `$RUN_DIR/model-recommendation-input.json` with this shape:
       "workload_id": "support-agent",
       "source": {
         "provider": "anthropic",
-        "model_ids": ["claude-3-7-sonnet-latest"],
+        "model_ids": ["claude-sonnet-5"],
         "sdk": "anthropic",
         "api_surface": "messages",
         "source_paths": ["src/agent.py"]
@@ -251,12 +264,19 @@ dated catalog. Azure OpenAI and Google sources remain the generic provisional br
 `provider_module_pending` in `[BLOCKS]`; do not present those as provider-complete. All modules
 share one artifact shape, so downstream phases consume every provider identically.
 
-## Step 6 — Resolve decision_required before advancing
+## Step 6 — Resolve decision_required and blocked before advancing
 
 If any workload has `decision_status: decision_required`, present its `decision_options` and
 tradeoffs. Ask the user to resolve the conflicting requirement, update
 `model-recommendation-input.json`, and rerun the deterministic engine. Do not pick an option,
 edit the output, or mark this phase completed while any workload remains unresolved.
+
+If any workload has `decision_status: blocked`, there is no automatic target and fewer than two
+real options. Causes include a `reference_only` source model or conflict side in the catalog, and
+other no-target results such as an incomplete feature scan. Present its `[BLOCKS]` findings and any
+remaining option, apply each finding's own remediation (for example a feature rescan, a
+requirement change, or marking a verified model `selectable`), then rerun. Do not invent an option
+or treat a lone remaining option as the answer.
 
 ## Step 7 — Optionally probe the selected path
 
@@ -288,10 +308,14 @@ model ARN set changed. An unchanged
 invocation contract retains its verification. After invalidation, treat verification as
 `not_run`; do not restore a passed result from an older design or report.
 
-For an Opus 5.5 application-profile ARN, the verifier first reads `GetInferenceProfile`
+For any application-profile ARN (every model and region — Opus 5.5 under US residency and a
+Canada-only Haiku 5.5 profile alike), the verifier first reads `GetInferenceProfile`
 for that ARN and the recommendation's `verification.allowed_inference_profiles`. It requires
 active destinations matching the selected model and an allowed regional profile before
-invoking the original ARN. The caller needs `bedrock:GetInferenceProfile` for these metadata
+invoking the original ARN; a passed probe alone never establishes residency. An explicit
+`inference_profile_id` is also validated for model identity, ARN partition/region, and the
+required geography before any candidate is accepted, including models without a profile matrix;
+an invalid pin blocks with `inference_profile_unresolved` rather than passing through. The caller needs `bedrock:GetInferenceProfile` for these metadata
 reads; a failed or inconclusive check prevents inference and does not establish access.
 For London in-region profiles, `verification.allowed_in_region_model_arns` carries the
 exact permitted foundation-model destination. An ACTIVE application profile with only that

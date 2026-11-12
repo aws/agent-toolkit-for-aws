@@ -63,7 +63,7 @@ each consequence to one line — use the consequence text supplied by each row's
 | Database size | up to 10 GB allocated (actual data may be less) | Terraform `disk_size` | Migration tool ceiling; script measures actual size |
 | DB traffic / I/O | Steady / Low (dev-tier `db-f1-micro`) | Terraform tier + ZONAL | gp3 storage, no replicas |
 | Cloud SQL HA | Zonal (1 instance) | billing-profile.json | No Aurora Multi-AZ failover |
-| AI model | gemini-3.5-flash | ai-workload-profile.json | Bedrock mapping baseline |
+| AI model | gemini-3.8-flash | ai-workload-profile.json | Bedrock mapping baseline |
 
 **Assumed (documented defaults — correct anything that's wrong):**
 
@@ -225,7 +225,7 @@ Present the essential questions (from each fragment's disposition, plus any rows
 text, context, and options from the fragment files. Typical total: 2–7.
 
 **Batch composition:** core first (Q1/Q2/Q3/Q3.5/Q7 + conflicts, from `clarify-global.md`),
-then AI/agentic (Q15, Q23–Q25, multi-workload confirmations, from `clarify-ai.md`). **Q27 is
+then AI/agentic (Q15, Q22b, Q23–Q25, multi-workload confirmations, from `clarify-ai.md`). **Q27 is
 not batched** — ask it as its own short follow-up after the last batch, per the presentation
 rule in `clarify-ai.md` Q27 (it's a funding question, not a technical one). Write
 `preferences-draft.json` between batches (same schema as `preferences.json` plus
@@ -271,6 +271,12 @@ default genuinely does not exist:
   skips it, record `startup_program_status: "unknown"` with `chosen_by: "default"` and
   `source: "default:Q27"`; downstream artifacts must use neutral Activate copy (both tiers, no
   "your status: eligible_*").
+- Q22b (Mantle-only requirements) defaults to the single entry
+  `{ "workload_id": "*", "selector": "none", "source": "none" }` in
+  `ai_constraints.mantle_requirements` with `chosen_by: "default"`, `source: "default:Q22b"`,
+  and appends "Mantle-only requirements were not confirmed by the user; bedrock-runtime
+  assumed" to `metadata.report_caveats[]` (Design then records `bedrock-runtime` with the
+  assumption sentence).
 - Q3.5, Q23–Q25, and unresolved multi-instance conflicts fall back to their documented
   defaults (Q3.5 → 5; Q23 → framework-based; Q24 → session; Q25 → medium; conflicts → most
   conservative posture) with `chosen_by: "default"`.
@@ -382,11 +388,11 @@ Otherwise, apply Category E defaults (`ha_upgrade: false`, `right_sizing: false`
 | Multi-agent + MCP                        | Q14 = 4 + 6                                                                        | AgentCore to unify orchestration + MCP (Gateway)                                                |
 | Voice platform AI                        | Q14 includes 7                                                                     | Check native Bedrock support; Nova 2 Sonic if needed                                            |
 | GPT-5.5 migration                        | Q19 = GPT-5.5                                                                      | Claude Opus 4.6 — Bedrock 17% cheaper on output; or Sonnet 5 for 68% savings                    |
-| GPT-5.5 Pro migration                    | Q19 = GPT-5.5 Pro                                                                  | Nova 2 Pro — 95% cheaper on Bedrock                                                             |
+| GPT-5.5 Pro migration                    | Q19 = GPT-5.5 Pro                                                                  | GPT-5.6 Sol (same vendor), or Claude Opus 5.5 (Global) — 88% cheaper at 150M/75M              |
 | GPT-5.4 migration                        | Q19 = GPT-5.4                                                                      | Claude Sonnet 5 — ~36% cheaper blended; AWS consolidation                                       |
 | GPT-5.4 Mini/Nano migration              | Q19 = GPT-5.4 Mini or Nano                                                         | Nova Lite/Micro — 87-94% cheaper on Bedrock                                                     |
-| GPT-4 Turbo migration                    | Q19 = GPT-4 Turbo                                                                  | Claude Sonnet 5 — 80% cheaper on input                                                          |
-| o-series migration                       | Q19 = o-series                                                                     | Claude Sonnet 5 with extended thinking                                                          |
+| GPT-4 Turbo migration                    | Q19 = GPT-4 Turbo                                                                  | GPT-5.6 Sol (OpenAI's substitute; GPT-4 Turbo shut down 2026-10-23), or Claude Sonnet 5 — price against a measured bill, no live saving |
+| o-series migration                       | Q19 = o-series                                                                     | GPT-5.6 Sol (OpenAI's substitute; o1 / o1-pro / o3-mini / o4-mini shut down 2026-10-23, o3 / o3-pro on 2026-12-11), or Claude Sonnet 5 with extended thinking |
 | High-volume cost-critical AI             | Q18 = High + cost critical                                                         | Nova Micro or Haiku 5.5; verify on-demand quotas, price tier, and measured throughput                                                |
 | Reasoning/agent workload                 | Q17 = Extended thinking                                                            | Claude Sonnet 5 extended thinking; Opus 4.6 for hardest                                         |
 | Speech-to-speech AI                      | Q17 = Real-time speech                                                             | Nova 2 Sonic                                                                                    |
@@ -551,7 +557,7 @@ the draft-specific metadata fields (`draft`, `wizard_stage`, `batches_completed`
       "question_id": "Q18"
     },
     "ai_model_baseline": {
-      "value": "gemini-3.5-flash",
+      "value": "gemini-3.8-flash",
       "chosen_by": "extracted",
       "source": "ai-profile:models[0].model_id",
       "prompt": "Detected: primary production model from ai-workload-profile.json",
@@ -693,6 +699,7 @@ skips, "use defaults for the rest", and the fast paths.
 | Q20 — Input types          | 1 (text only)                                                                                                     | no constraint                                                                                                                                                                                        |
 | Q21 — AI latency           | 2 (important)                                                                                                     | `ai_latency: "important"`                                                                                                                                                                            |
 | Q22 — Task complexity      | 2 (moderate)                                                                                                      | `ai_complexity: "moderate"`                                                                                                                                                                          |
+| Q22b — Mantle-only requirements | none (bedrock-runtime assumed, report caveat)                                                                | `ai_constraints.mantle_requirements` default entry                                                                                                                                                   |
 | Q23 — Agentic approach     | _(framework-based auto-detect; see `clarify-ai.md`)_                                                              | `ai_constraints.agentic.migration_approach`                                                                                                                                                          |
 | Q24 — Agent memory         | 2 (session)                                                                                                       | `ai_constraints.agentic.memory_requirement: "session"`                                                                                                                                               |
 | Q25 — Task duration        | 2 (medium)                                                                                                        | `ai_constraints.agentic.task_duration: "medium"`                                                                                                                                                     |

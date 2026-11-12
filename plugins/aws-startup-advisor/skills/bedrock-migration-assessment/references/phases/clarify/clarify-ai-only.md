@@ -2,7 +2,7 @@
 
 **Standalone flow** — Used when ONLY `ai-workload-profile.json` exists (no infrastructure or billing artifacts). Infrastructure stays where it runs today; only AI/LLM calls move to AWS Bedrock.
 
-**Input contract.** The only profile this flow reads is the provider-neutral `ai-workload-profile.json` (`schema_version`, `ai_sources[]`, `gateways[]`), already accepted by `scripts/validate-ai-profile.py`. Use that script's JSON summary for every detected value below. A 1.1 profile also carries `integration`; from it the summary reports `ai_framework_detected` and `ai_vision_detected`. Both are `null` for a 1.0 profile or when the evidence is not definitive, and then Q1 and Q6 are asked, not extracted. Do not scan application code or IaC, and do not read usage-profile files or any other file: only the validator summary can supply an extracted answer.
+**Input contract.** The only profile this flow reads is the provider-neutral `ai-workload-profile.json` (`schema_version`, `ai_sources[]`, `gateways[]`), already accepted by `scripts/validate-ai-profile.py`. Use that script's JSON summary for every detected value below. A 1.1 profile also carries `integration`; from it the summary reports `ai_framework_detected` and `ai_vision_detected`. Both are `null` for a 1.0 profile or when the evidence is not definitive, and then Q1 and Q6 are asked, not extracted. `ai_vision_detected` is only `"vision"` or `"audio"`: finding no image or audio input does not prove the app sends only text, so Q6 is then asked. Do not scan application code or IaC, and do not read usage-profile files or any other file except `migration-preview.json`, for the fast-path check in Step 1.5 and the measured values Q3 and Q7 show: only the validator summary can supply an extracted answer.
 
 Produces the same `preferences.json` output but with `design_constraints` limited to region and compliance, `startup_constraints` populated, and `ai_constraints` fully populated. Questions are presented in **two progressive batches** with an intermediate save — partial answers persist across sessions.
 
@@ -49,7 +49,17 @@ Check `$MIGRATION_DIR/` for existing state:
 
 ## Step 1.5: Fast-Path Check
 
-The fast path is gated on `migration-preview.json`, which this skill does not produce yet. Continue to Step 1.75 (mini assumption sheet), then Step 2.
+Read `$MIGRATION_DIR/migration-preview.json`. Use the first line that matches:
+
+1. The file is missing, `eligible_for_clarify_fast_path` is not `true`, or the validator summary does not report `models_extractable: true`: continue to Step 1.75, then Step 2.
+2. Otherwise (the preview found nothing in `fast_path_blocked_by`): say "Your AI migration looks straightforward: one model to move to Bedrock. I need only a few answers." Run Step 1.75, then ask one batch instead of Step 2's two:
+   - Always: Q1.5, Q2, Q3, Q4, Q7, and Q11. Q1.5 and Q11 are never dropped, and Q7 is never skipped.
+   - Q1 when `ai_framework_detected` is `null`, and Q6 when `ai_vision_detected` is `null`.
+   - Q5 is extracted, because line 1 already required `models_extractable: true`.
+   - Q10 when the Q2 answer is 4 (Specialized capability): ask it right after Q2 and record the answer with `chosen_by: "user"`, unless the user said "use defaults for the rest".
+   - Q8 and Q9, and Q10 when the previous bullet did not ask it, take their documented defaults, recorded in `questions_defaulted` with `chosen_by: "default"`.
+
+   "Use defaults for the rest" works here as in Step 2. Then go to Step 3.
 
 ---
 
@@ -68,7 +78,7 @@ Before asking anything, present what the profile already answered as a compact c
 | Input types | [ai_vision_detected, e.g. vision] | ai-workload-profile.json `integration.capabilities_summary` |
 
 Reply "looks good" to continue to the remaining questions, correct any line
-("model: gemini-3.5-flash"), or describe the issue in plain words.
+("model: gemini-3.8-flash"), or describe the issue in plain words.
 ```
 
 Questions resolved on this sheet are **not** re-asked in the batches below; record them with `chosen_by: "extracted"` and skip their entries in Batch 1/2. Rows the user corrects become `chosen_by: "user"`. The sheet never assumes a value: every question without a detected row stays in the batches, and only "use defaults for the rest" applies defaults.
@@ -175,7 +185,9 @@ Interpret → `design_constraints.compliance` array (same format as the full flo
 
 Interpret → `ai_priority`. Default: 5 → `"balanced"`.
 
-## Q3 — Monthly AI spend on OpenAI or Gemini?
+## Q3 — Monthly AI spend with your current AI providers?
+
+**Measured spend.** When `migration-preview.json` has `measured_usage` and its `monthly_cost_usd` is not `null`, say before the options: "Measured: $[monthly_cost_usd] in total ([each source in `sources`: its provider, its monthly_cost_usd, over its active_days days])." Give each source its own period, never one period for the total. After a source whose `partial_window` is true, add "(only [active_days] days of activity, not scaled to a month)"; after a source whose `uncosted_service_tiers` is not empty, add "(excludes [uncosted_service_tiers] tier spend)". When `overlap_excluded` is not empty, add "(OpenRouter rows for [models] are left out so their BYOK traffic, which a direct provider's usage also counts, is not counted twice)", followed by each entry's `note` when it has one (a `mixed` row's note says its OpenRouter-funded usage is not in this total), and say the total leaves out $[spend_excludes_usd] when that is above zero. When an OpenRouter source has `byok_inference_included_usd` above zero, say that part of the total is billed by the user's own provider keys. Then mark the option that total falls in as "(measured)". When `monthly_cost_usd` is `null`, say which source's spend is not available and mark nothing. Either way the user answers, and the answer is recorded with `chosen_by: "user"`.
 
 > 1\) < $500 | 2\) $500–$2K | 3\) $2K–$10K | 4\) > $10K | 5\) Don't know
 
@@ -211,22 +223,22 @@ _Skip when:_ the validator summary reports `models_extractable: true` — every 
 | GPT-6/6.1 (Astra/Sol/Luna) | **Same model on Bedrock** | ~10% over OpenAI std (DR tier); Astra/6.1 Sol also support Ultrafast |
 | GPT-6.1 Terra              | **Same model on Bedrock** | Use the model-specific endpoint and context-tier prices in the [GPT-6.1 Terra model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-terra.html); compare against measured source spend or verified source rates. |
 | GPT-5.6 (any) | **Same model on Bedrock**      | ~10% over OpenAI std (DR tier)     |
-| GPT-5.5       | **Same model on Bedrock**      | ~10% over OpenAI std (DR tier)     |
-| GPT-5.4       | **Same model on Bedrock**      | ~10% over OpenAI std (DR tier)     |
+| GPT-5.5       | **Same model on Bedrock**      | In-Region (mantle) ~10% over OpenAI std; no Geo or Global price published |
+| GPT-5.4       | **Same model on Bedrock**      | In-Region (mantle) ~10% over OpenAI std; no Geo or Global price published |
 | GPT-3.5 Turbo | GPT-5.6 Luna; or Claude Haiku 5.5 | At equal billed volumes and 2:1 input/output, Haiku US Geo is 56.25% cheaper up to 100K prompt tokens; Luna is 54.29% cheaper above 100K while Luna remains within 272K. Recount target tokens; if request size is unknown, present both Haiku tiers. |
 | GPT-4/4 Turbo | GPT-5.6 Terra; or Sonnet 5     | Not on Bedrock — offer both        |
 | GPT-4o        | GPT-5.6 Terra; or Sonnet 5     | Not on Bedrock — offer both        |
 | GPT-5.4 Mini  | GPT-5.6 Luna; or Nova Lite     | Mini not on Bedrock — offer both   |
 | GPT-5.4 Nano  | GPT-5.6 Luna; or Nova Micro    | Nano not on Bedrock — offer both   |
-| GPT-5.x Pro   | GPT-5.6 Sol; or Nova 2 Pro     | Pro not on Bedrock — offer both    |
+| GPT-5.x Pro   | GPT-5.6 Sol; or Claude Opus 5.5 | Pro not on Bedrock — offer both    |
 | GPT-5/5.1/5.2 | GPT-5.6 Terra; or Sonnet 5     | Not on Bedrock — offer both        |
 | o-series      | GPT-5.6 Sol/Terra; or Sonnet 5 | Not on Bedrock — offer both        |
 | Claude (any)  | Same model on Bedrock          | Client swap only — no model change |
 
 **Same-model rows first.** GPT-6 Astra / GPT-5.6 / 5.5 / 5.4 sources map to themselves.
 Design applies the model-specific API and region gate; Clarify records the baseline only.
-Astra Standard mantle supports `us-east-1` and `us-west-2`; runtime uses US Geo / Global CRIS. GPT-5.6 also has runtime CRIS;
-GPT-5.5 / 5.4 remain mantle-only. GPT-5.x in-region costs about 10% above OpenAI standard,
+Astra Standard mantle supports `us-east-1` and `us-west-2`; runtime uses US Geo / Global CRIS. GPT-5.6, GPT-5.5
+and GPT-5.4 also have runtime CRIS (`us.` / `global.`). GPT-5.x in-region costs about 10% above OpenAI standard,
 while GPT-5.6 Global CRIS uses the standard rate. For Astra, compare its separately dated
 inference/context tier against the source price before claiming savings or parity.
 For sources without a Bedrock equivalent, present a same-vendor upgrade and a cross-family option.
@@ -264,7 +276,7 @@ After the user responds to Batch 1:
 ```
 Got it — your AI strategy preferences are saved.
 
-Last section — 6 questions about your technical requirements, then your answers are saved.
+Last section — 7 questions about your technical requirements, then your answers are saved.
 You can answer each, skip individual ones, or say "use defaults for the rest."
 
 --- Technical Requirements ---
@@ -291,6 +303,8 @@ Interpret → `ai_vision`: 1 → `"text-only"`, 2 → `"vision"`, 3 → `"audio"
 ## Q7 — Monthly AI usage volume
 
 _Never skipped:_ do not fill this from a usage-profile file or from the assumption sheet. Ask it unless the user says "use defaults for the rest".
+
+**Measured volume.** When `migration-preview.json` has `measured_usage`, say before the options: "Measured: [total_tokens] tokens in total ([each source in `sources`: its provider, its total_tokens, over its active_days days])." After a source whose `partial_window` is true, add "(only [active_days] days of activity, not scaled to a month)", add "(some usage could not be read: [capture_warnings])" when a warning names a file other than an hourly or minute file, and add the same `overlap_excluded` note as Q3. Then mark the option that total falls in as "(measured)". The user still answers, and the answer is recorded with `chosen_by: "user"`.
 
 > 1\) < 1M tokens | 2\) 1–10M | 3\) 10–100M | 4\) > 100M | 5\) Don't know
 
@@ -338,7 +352,7 @@ Interpret → `ai_complexity`. Default: 2 → `"moderate"`.
 | Answer                               | Recommendation Impact                                                                                                                                                                                                                                                                                                                                                                                               |
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Function calling / Tool use          | Claude Sonnet 5 — best-in-class tool use on Bedrock via structured JSON tool schemas; supports parallel tool calls and multi-turn tool use                                                                                                                                                                                                                                                                          |
-| Ultra-long context (> 300K tokens)   | Claude Opus 5.5 (1M context, 128K output; London in-region or a verified Geo/Global CRIS profile on runtime), or Claude Sonnet/Opus 4.6 long-context SKUs where available (standard on-demand for 4.6 matches base tier in US East N. Virginia per [Amazon Bedrock pricing](https://aws.amazon.com/bedrock/pricing/)); or Llama 4 Scout (10M), Llama 4 Maverick (1M), Nova 2 Pro/Lite (1M) for very large native context windows |
+| Ultra-long context (> 300K tokens)   | Claude Opus 5.5 (1M context, 128K output; London in-region or a verified Geo/Global CRIS profile on runtime), or Claude Sonnet/Opus 4.6 long-context SKUs where available (standard on-demand for 4.6 matches base tier in US East N. Virginia per [Amazon Bedrock pricing](https://aws.amazon.com/bedrock/pricing/)); or Nova 2 Lite (1M) for a very large native context window at low cost. Llama 4 Scout (10M) / Maverick (1M) are Legacy (EOL 2027-03-30) and Nova 2 Pro is a gated preview — neither is a target |
 | Extended thinking / Chain-of-thought | Claude Sonnet 5 with adaptive thinking; Claude Opus 5.5 for demanding reasoning (adaptive thinking always on; default medium effort; no manual budget_tokens). Use London runtime in-region or a verified runtime CRIS profile; select Opus 4.6 instead when Batch is required                                                                                                                                                                  |
 | Prompt caching                       | Claude Sonnet 5 with prompt caching enabled; cost savings analysis included. **Caveat:** caching only helps for long, repeated context (system prompts, documents). Per-model minimum token thresholds (~1K–4K tokens) and TTL apply — short prompts won't cache. Verify current minimums at docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html before recommending.                                  |
 | RAG optimization                     | Amazon Bedrock Knowledge Bases recommended alongside model; Titan Embeddings for vector store                                                                                                                                                                                                                                                                                                                       |
@@ -349,6 +363,33 @@ Interpret → `ai_complexity`. Default: 2 → `"moderate"`.
 | None                                 | Default recommendation from Q2 priority stands                                                                                                                                                                                                                                                                                                                                                                     |
 
 Interpret → `ai_critical_feature`. Default: 10 → no override.
+
+## Q10.5 — Mantle-only requirements (asynchronous inference, provider-run tools, Projects/Workspaces, single-Region processing)
+
+Amazon Bedrock serves most applications on `bedrock-runtime`; a few needs exist only on `bedrock-mantle`. Answer per workload, or "none" / "all".
+
+_Never skipped:_ ask it in Batch 2 unless the user says "use defaults for the rest". Prefill from the validator summary's `mantle_signals_detected` (selector, model, detail); confirm each with the user: show each detected signal as `[model] — [selector] — [detail]` and ask the user to confirm or correct before writing; a declined signal is dropped. When the summary reports no signals, ask the four sub-questions outright.
+
+> a. Does any workload rely on asynchronous/background inference — long-running requests you submit now and poll for later?
+>
+> b. Does any workload use server-side or pre-configured tools run by the provider — including web search, hosted MCP servers, code execution or file search? (Your own client-side function tools do not count.)
+>
+> c. Does any workload use customer-created Projects (OpenAI) or Workspaces (Anthropic) for isolation or cost tracking?
+>
+> d. Does any workload have a strict requirement that inference stays in one AWS Region? If so, which Region?
+
+| Answer                            | Recommendation Impact                                                                                                                                                                                                      |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| a = yes                           | `background_inference` → Mantle for that workload (`bedrock-runtime` rejects `background=true` with 400 — [Responses API on Bedrock](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html), read 2026-11-07) |
+| b = yes, web search               | `web_search` → Mantle (Runtime has no Web Search tool)                                                                                                                                                                     |
+| b = yes, other provider-run tools | `server_side_tools` → Mantle                                                                                                                                                                                               |
+| c = yes                           | `projects` (OpenAI source) / `workspaces` (Anthropic source) → Mantle (Runtime exposes only the default project)                                                                                                           |
+| d = yes + Region                  | `in_region_processing` with `region` — applied by Design only when `bedrock-runtime` serves that model in that Region through a CRIS profile alone; otherwise `bedrock-runtime` in-Region                                  |
+| none                              | No selector; Design records `bedrock-runtime` and states the assumption                                                                                                                                                    |
+
+Interpret → `ai_constraints.mantle_requirements`: array of `{ workload_id, selector, source, evidence?, region? }` — `selector` ∈ `background_inference | server_side_tools | web_search | projects | workspaces | in_region_processing | none`, `source` ∈ `detected | user | none`. Default: `[{ "workload_id": "*", "selector": "none", "source": "none" }]` with `chosen_by: "default"` and the report caveat "Mantle-only requirements were not confirmed by the user; bedrock-runtime assumed".
+
+`workload_id` is the `workloads[].workload_id` the answer applies to, or `*` for every workload (always `*` when the profile has no `workloads[]`; the summary's signals are per model, so use `*` unless the user names a workload). `source: "detected"` = prefilled from a summary signal and confirmed by the user (copy the signal's `detail` into `evidence`); `source: "user"` = answered without a signal (an explicit "none" answer records `{ "workload_id": "*", "selector": "none", "source": "user" }`); `source: "none"` = defaulted. `region` is required when `selector` is `in_region_processing`. The constraint wrapper uses `chosen_by: "user"` when answered or confirmed, `chosen_by: "default"` + `source: "default:Q10.5"` when skipped (append the caveat to `metadata.report_caveats[]`) — never `extracted`. `mantle_only_model_or_api` is never written here; Design derives it from the model catalog. For a workload whose source has no Mantle path (Gemini / Vertex AI, or one Design maps to a cross-family `direct` / `converse` / `gpt-oss` target), tell the user up front that a "yes" does not change the endpoint: Design keeps `bedrock-runtime` and records the requirement as a capability gap in the design (`rationale` + `capability_gaps[]`) rather than an endpoint change.
 
 ## Q11 — Have you applied for AWS Activate credits?
 
@@ -406,6 +447,7 @@ Write `$MIGRATION_DIR/preferences.json`:
 | `ai_latency`               | `ai_constraints.ai_latency`                  | From Q8                                                                                                                                                                                                                                         |
 | `ai_complexity`            | `ai_constraints.ai_complexity`               | From Q9                                                                                                                                                                                                                                         |
 | `ai_critical_feature`      | `ai_constraints.ai_critical_feature`         | From Q10                                                                                                                                                                                                                                        |
+| `mantle_requirements`      | `ai_constraints.mantle_requirements`         | From Q10.5 — array of `{ workload_id, selector, source, evidence?, region? }`; Design derives `mantle_selector` from it                                                                                                                          |
 
 `ai_capabilities_required` is omitted: Q6 and Q10 already record the requirement.
 

@@ -33,10 +33,12 @@ wording are Azure-swapped (Azure OpenAI, no Gemini).
 ## Step 1.5: Fast-path check
 
 If the AI usage looks simple (single model, non-agentic, no multi-provider/multi-model routing):
-present ONLY Q1.5, Q2, Q3, Q4, Q11 (Q1 framework, Q5 model, Q6 capabilities are extracted;
-Q7–Q10 default). **Q1.5 (compliance) and Q11 (Activate) are never dropped** — always PRESENTED,
-never silently omitted. "Use defaults for the rest" applies documented defaults (compliance →
-`["unknown"]` + a `metadata.report_caveats[]` entry, never a silent "none"; Activate → `unknown`).
+present ONLY Q1.5, Q2, Q3, Q4, Q10.5, Q11 (Q1 framework, Q5 model, Q6 capabilities are extracted;
+Q7–Q10 default). **Q1.5 (compliance), Q10.5 (Mantle-only requirements) and Q11 (Activate) are
+never dropped** — always PRESENTED, never silently omitted. "Use defaults for the rest" applies
+documented defaults (compliance → `["unknown"]` + a `metadata.report_caveats[]` entry, never a
+silent "none"; Mantle-only requirements → the `none` entry + report caveat, `bedrock-runtime`
+assumed; Activate → `unknown`).
 Then skip to Step 3. Otherwise continue to Step 1.75 → Step 2.
 
 ## Step 1.75: Mini assumption sheet
@@ -119,19 +121,20 @@ running). → `ai_constraints.cross_cloud`. Default `"latency-acceptable"`.
 | GPT-6 (Astra/Sol/Luna) / GPT-6.1 Sol       | **Same model on Bedrock**              | ~10% over OpenAI std (data-residency tier); Astra/6.1 Sol also support Ultrafast (6x) |
 | GPT-6.1 Terra                              | **Same model on Bedrock**              | Use the model-specific endpoint and context-tier prices in `references/shared/openai-on-bedrock.md`; compare against measured source spend or verified source rates. |
 | GPT-5.6 (Sol/Terra/Luna)                  | **Same model on Bedrock**              | ~10% over OpenAI std (data-residency tier) |
-| GPT-5.5                                   | **Same model on Bedrock**              | ~10% over std                              |
-| GPT-5.4                                   | **Same model on Bedrock**              | ~10% over std                              |
+| GPT-5.5                                   | **Same model on Bedrock**              | In-Region (mantle) ~10% over OpenAI std; no Geo or Global price published |
+| GPT-5.4                                   | **Same model on Bedrock**              | In-Region (mantle) ~10% over OpenAI std; no Geo or Global price published |
 | GPT-4o                                    | GPT-5.6 Terra; or Claude Sonnet 5      | not on Bedrock — offer both                |
 | GPT-4 / 4 Turbo                           | GPT-5.6 Terra; or Sonnet 5             | not on Bedrock — offer both                |
 | GPT-4.1 / mini / nano                     | GPT-5.6 Terra/Luna; or Nova Lite/Micro | not on Bedrock — offer both                |
-| GPT-3.5 Turbo                             | GPT-5.6 Luna; or Haiku 4.5             | Luna cheaper                               |
+| GPT-3.5 Turbo                             | GPT-5.6 Luna; or Haiku 5.5             | Haiku 5.5 cheaper up to 100K prompt tokens |
 | o-series (o3/o4-mini)                     | GPT-5.6 Sol/Terra; or Sonnet 5         | not on Bedrock — offer both                |
 | Claude (Anthropic SDK)                    | Same model on Bedrock                  | client swap only — no model change         |
 | Other / multiple / don't know             | ask / infer                            | —                                          |
 
-**Same-model rows first.** GPT-5.6/5.5/5.4 run on Bedrock via `bedrock-mantle` (Responses,
-in-region only) — the case is AWS commitments/governance/residency, not savings, and not parity
-(~10% above OpenAI standard). For sources with no Bedrock equivalent, present a same-vendor
+**Same-model rows first.** GPT-5.6/5.5/5.4 run on Bedrock via `bedrock-mantle` (Responses or
+Chat Completions, in-region only) or via `bedrock-runtime` CRIS ids (`us.`/`global.`) — the case
+is AWS commitments/governance/residency, not savings, and not parity (~10% above OpenAI standard
+in-region; GPT-5.6 Global CRIS is at the standard rate). For sources with no Bedrock equivalent, present a same-vendor
 upgrade AND a cross-family option. → `ai_model_baseline`.
 
 **After Batch 1:** interpret answers, write `preferences-draft.json` (`metadata.draft: true`,
@@ -166,6 +169,19 @@ moderate / complex). → `ai_complexity`. Default `"moderate"`. **Q10 — Specia
 (function calling / ultra-long-context / extended-thinking / prompt-caching / RAG / agentic /
 real-time / image-gen / speech). → `ai_critical_feature`. Default none.
 
+**Q10.5 — Mantle-only requirements** (a: asynchronous/background inference; b: provider-run
+server-side or pre-configured tools incl. web search; c: customer-created Projects/Workspaces;
+d: strict single-Region processing + Region). Prefill from `workloads[].mantle_signals` and
+confirm; otherwise ask. Never dropped. → `ai_constraints.mantle_requirements` (array of
+`{ workload_id, selector, source, evidence?, region? }`; `selector` ∈ `background_inference |
+server_side_tools | web_search | projects | workspaces | in_region_processing | none`, `source` ∈
+`detected | user | none`, `region` required for `in_region_processing`). Default: one
+`{ "workload_id": "*", "selector": "none", "source": "none" }` entry + report caveat
+("Mantle-only requirements were not confirmed by the user; bedrock-runtime assumed"). For a
+workload whose source has no Mantle path (a cross-family `direct` / `converse` / `gpt-oss`
+target), say up front that a "yes" does not change the endpoint: Design keeps `bedrock-runtime`
+and records the requirement as a capability gap (`rationale` + `capability_gaps[]`).
+
 **Q11 — AWS Activate credits** (**never dropped**; ≡ full-flow Q27). Never infer funding stage
 from Q3 spend. Options: have credits / self-funded (→ Activate Founders up to $5K) /
 VC-backed (→ Activate Portfolio up to $200K, needs Org ID) / don't know. Escalations: `>$10K`→
@@ -187,8 +203,8 @@ Write `$MIGRATION_DIR/preferences.json`:
 - `startup_constraints.startup_program_status` (Q11).
 - `ai_constraints`: `ai_framework`, `ai_priority`, `ai_monthly_spend`, `cross_cloud` (Q4 —
   unique to AI-only), `ai_model_baseline`, `ai_vision`, `ai_token_volume`, `ai_latency`,
-  `ai_complexity`, `ai_critical_feature`, `ai_capabilities_required` (derived from
-  `capabilities_summary`).
+  `ai_complexity`, `ai_critical_feature`, `mantle_requirements` (Q10.5),
+  `ai_capabilities_required` (derived from `capabilities_summary`).
 - Persist the confirmed `workloads[]` (top-level) exactly as `clarify-ai.md` specifies — each
   entry carries `workload_id`, `model_id`, `sdk_method`, `capability`, `capability_confidence`,
   `structured_output`, `call_sites`, `target_bedrock_model`, `priority`, `latency_tier`. This is
@@ -272,6 +288,13 @@ discovery is never indistinguishable from a promoted default. No nulls. Delete
     },
     "ai_capabilities_required": { // REQUIRED
       "value": [], "chosen_by": "derived", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q25"
+    },
+    "mantle_requirements": { // optional on older runs; Design treats absence as no requirement recorded
+      "value": [
+        { "workload_id": "wl-1", "selector": "web_search", "source": "detected", "evidence": "app.py:14 tools type web_search" },
+        { "workload_id": "*", "selector": "in_region_processing", "source": "user", "region": "us-east-1" }
+      ],
+      "chosen_by": "user", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q10.5"
     }
   },
   "workloads": [ // REQUIRED — [] when none; design-ai reads this array, not the profile

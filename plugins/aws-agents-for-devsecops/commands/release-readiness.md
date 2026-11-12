@@ -1,5 +1,5 @@
 ---
-description: Trigger a pre-merge release readiness review on a GitHub PR, GitLab MR, or local branch
+description: Trigger a pre-merge code change risk analysis on a GitHub PR, GitLab MR, or local branch
 argument-hint: [PR/MR URL or repo name]
 ---
 
@@ -11,10 +11,10 @@ Read and follow the `analyzing-release-readiness` skill for full execution detai
 
 Check your available tools. Do you have ALL of these tools?
 
-- `aws_devops_agent__create_release_readiness_review`
+- `aws_devops_agent__create_code_change_risk_analysis`
 - `aws_devops_agent__get_task`
 - `aws_devops_agent__list_journal_records`
-- `aws_devops_agent__get_release_readiness_report`
+- `aws_devops_agent__get_code_change_risk_analysis_report`
 
 These tools are NOT deferred/lazy-loaded — if they do not appear in your tool list, they are unavailable. Do NOT search for them via ToolSearch.
 
@@ -33,10 +33,10 @@ These tools are NOT deferred/lazy-loaded — if they do not appear in your tool 
 
 ## Remote Server path (see skill: "Core workflow")
 
-1. Call `aws_devops_agent__create_release_readiness_review(content={...}, skip_automated_testing=...)`.
+1. Call `aws_devops_agent__create_code_change_risk_analysis(content={...}, review_depth=...)`, with `review_depth` set to `"static-analysis"` or `"verification-testing"` from the user's answer.
 2. Poll `aws_devops_agent__get_task(task_id=TASK_ID)` every 30s.
 3. Stream progress via `aws_devops_agent__list_journal_records(execution_id=EXEC_ID, order="ASC")`.
-4. On `COMPLETED`: call `aws_devops_agent__get_release_readiness_report(execution_id=EXEC_ID)`, save to file, and run the auto-fix flow from the skill.
+4. On `COMPLETED`: call `aws_devops_agent__get_code_change_risk_analysis_report(execution_id=EXEC_ID)`, save to file, and run the auto-fix flow from the skill.
 
 ## Fallback (CLI) path
 
@@ -49,10 +49,10 @@ Use this path when the remote server tools are unavailable.
     ```
     aws devops-agent create-backlog-task \
       --agent-space-id SPACE_ID \
-      --task-type RELEASE_READINESS_REVIEW \
-      --title 'Release Readiness Review' \
+      --task-type CODE_CHANGE_RISK_ANALYSIS \
+      --title 'Code Change Risk Analysis' \
       --priority MEDIUM \
-      --description '{"agentInput": {"content": <CONTENT_JSON>, "metadata": {"skipAutomatedTesting": true/false}}}' \
+      --description '{"agentInput": {"content": <CONTENT_JSON>, "metadata": {"reviewDepth": "static-analysis" | "verification-testing", "skipAutomatedTesting": true | false}}}' \
       --region us-east-1
     ```
 
@@ -88,7 +88,7 @@ Use this path when the remote server tools are unavailable.
       --region us-east-1
     ```
 
-    Save the report to `release-readiness-review-<YYYY-MM-DD-HHmmss>.md` and run the auto-fix flow from the skill.
+    Save the report to `code-change-risk-analysis-<YYYY-MM-DD-HHmmss>.md` and run the auto-fix flow from the skill.
 
     On `FAILED` or `TIMED_OUT`: present the error and suggest next steps. On `CANCELED`: inform the user no report is available.
 
@@ -127,15 +127,15 @@ When `$ARGUMENTS` is a repo name/path or empty (steps 2-3 above), execute this f
 4. **Stash uncommitted changes** (skip if clean):
 
    ```bash
-   git stash push --include-untracked -m "release-analysis: preserve working changes"
+   git stash push --include-untracked -m "code-change-risk-analysis: preserve working changes"
    ```
 
 5. **Create review branch**:
 
    ```bash
    ORIGINAL_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-   BRANCH_NAME="feat/release-readiness-review"
-   git checkout -b $BRANCH_NAME 2>/dev/null || { BRANCH_NAME="feat/release-readiness-review-$(date +%Y%m%d-%H%M%S)"; git checkout -b $BRANCH_NAME; }
+   BRANCH_NAME="feat/code-change-risk-analysis"
+   git checkout -b $BRANCH_NAME 2>/dev/null || { BRANCH_NAME="feat/code-change-risk-analysis-$(date +%Y%m%d-%H%M%S)"; git checkout -b $BRANCH_NAME; }
    ```
 
 6. **Apply stash and commit** (skip if clean):
@@ -143,7 +143,7 @@ When `$ARGUMENTS` is a repo name/path or empty (steps 2-3 above), execute this f
    ```bash
    git stash apply
    git add -A
-   git commit -m "chore: snapshot for release readiness review"
+   git commit -m "chore: snapshot for code change risk analysis"
    ```
 
    Check for sensitive files before staging — warn user if found.

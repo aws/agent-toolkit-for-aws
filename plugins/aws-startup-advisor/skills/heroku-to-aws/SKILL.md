@@ -221,6 +221,9 @@ heroku-to-aws/
 │   ├── redis-elasticache-sizing.json           # Redis plan → ElastiCache sizing
 │   ├── kafka-msk-sizing.json                   # Kafka plan → MSK sizing
 │   └── fast-path-addons.json                   # Add-on → AWS deterministic mappings (13+ entries)
+│
+├── knowledge/discover/                        # discover lookup DATA (referenced by discover-assemble.md)
+│   └── heroku-stack-support.json               # Heroku stack name → support status / EOL date
 ```
 
 | Condition                                                | Action                                                                                                                                                                                 |

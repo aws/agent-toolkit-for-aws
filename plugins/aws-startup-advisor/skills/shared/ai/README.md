@@ -12,9 +12,10 @@ before opening a pull request.
 | ------------------------------------ | -------------------------------------------------------------- |
 | `ai-model-lifecycle.md`              | Bedrock Active/Legacy/EOL registry + the 90-day exclusion rule |
 | `ai-migration-guardrails.md`         | Shared constraints for every agentic migration path            |
+| `bedrock-endpoint-policy.md`         | `bedrock-runtime` default / `bedrock-mantle` selector rule, `mantle_selector` enum, public endpoint matrix |
 | `bedrock-quotas.md`                  | TPM/RPM quota-risk assessment (works without an AWS account)   |
 | `ai-openai-to-bedrock.md`            | OpenAI-protocol (incl. Azure OpenAI) → Bedrock model selection |
-| `ai-anthropic-to-bedrock.md`         | Anthropic SDK → Bedrock Converse client swap                   |
+| `ai-anthropic-to-bedrock.md`         | Anthropic SDK → Bedrock Runtime Messages (default) / Converse alternative |
 | `ai-gemini-to-bedrock.md`            | Gemini (incl. Vertex AI) → Bedrock model selection             |
 | `ai-openrouter-to-bedrock.md`        | OpenRouter gateway → per-upstream Bedrock routing              |
 | `design-ref-harness.md`              | AgentCore Harness design reference                             |
@@ -22,7 +23,8 @@ before opening a pull request.
 | `sdk-capability-map.json`            | SDK method → capability lookup used by app-code discovery      |
 | `ai-capability-catalog.json`         | Target-only source-provider/gateway capability catalog (schema_version, provider/gateway status, no implemented-adapter claim) |
 | `bedrock-pricing-cache.md`           | Provider-neutral Bedrock model and service pricing             |
-| `models/anthropic-bedrock.json`, `models/openai-bedrock.json` | Machine-readable model-selection catalogs (paths, model IDs, capabilities) read by agent-advisor; `tools/model-catalog-drift.py` checks them against `ai-model-lifecycle.md` |
+| `models/bedrock-model-registry.json` | **Source of truth** for model-selection data: one record per Bedrock model (shared facts, canonical capability vocabulary, `selection_status`) plus per-provider views. Edit this file, then run `tools/build-model-catalogs.py` and `tools/sync-vendored.py`. Contract: `scripts/contracts/model-registry.schema.json` |
+| `models/anthropic-bedrock.json`, `models/openai-bedrock.json` | **Rendered** per-provider catalogs read by agent-advisor's selectors. Do not edit by hand: `mise run lint:model-catalogs` fails when they differ from the registry. Contract `scripts/contracts/model-selection-catalog.schema.json`; `tools/model-catalog-drift.py` checks them against `ai-model-lifecycle.md` |
 | `schema-design-aws-ai.md`            | Target-only `aws-design-ai.json` contract; `metadata.ai_sources[]`/`gateways[]` mirror `ai-workload-profile.schema.json` exactly |
 | `schema-estimate-ai.md`               | Target-only `estimation-ai.json` contract; `cost_by_source[]` traces per-source/per-model cost back to `aws-design-ai.json` |
 | `schema-generate-ai.md`               | Target-only `generation-ai.json` contract; `artifacts_by_source[]` traces per-source/per-model generated artifacts back to `estimation-ai.json` |

@@ -214,7 +214,7 @@ Also record, as findings rather than questions:
 for Redis has no modules — the answer is no); PROPOSED when it is
 `Microsoft.Cache/redisEnterprise`. **Default:** `false`.
 
-**Consequence line:** _Assuming no Redis modules → ElastiCache Redis is a drop-in.
+**Consequence line:** _Assuming no Redis modules → ElastiCache Valkey is a drop-in (Redis OSS-compatible, 20% cheaper, Database-SP-eligible).
 RediSearch, RedisJSON and RedisTimeSeries have no ElastiCache or MemoryDB equivalent, and
 that is a feature gap rather than a sizing difference._
 

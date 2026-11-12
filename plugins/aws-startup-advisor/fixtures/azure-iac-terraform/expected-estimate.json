@@ -36,12 +36,12 @@
     "priced": [
       {
         "service_id": "elasticache-redis-session",
-        "expected": 24.82,
-        "min": 22.34,
-        "max": 27.3,
+        "expected": 19.86,
+        "min": 17.87,
+        "max": 21.85,
         "basis": "rate_times_count",
-        "must_not_be": 49.64,
-        "must_not_be_why": "49.64 is the x2 multi-AZ multiplier applied. elasticache carries multi_az_handling multiplier_x2, but preferences.data.availability is single-az, so it must NOT be applied. Doubling here is the single easiest cost error in the estate."
+        "must_not_be": 39.71,
+        "must_not_be_why": "39.71 is the x2 multi-AZ multiplier applied. elasticache carries multi_az_handling multiplier_x2, but preferences.data.availability is single-az, so it must NOT be applied. Doubling here is the single easiest cost error in the estate."
       },
       {
         "service_id": "msk-telemetry",
@@ -159,13 +159,13 @@
   },
   "totals": {
     "_why": "Banded for sanity, but the load-bearing checks are the RELATIONAL ones below — those hold across any rate refresh.",
-    "lift_expected": 465.09,
-    "right_sized_expected": 465.09,
+    "lift_expected": 460.13,
+    "right_sized_expected": 460.13,
     "min": 395.33,
     "max": 534.85,
     "basis": "total",
-    "must_not_be": 675.97,
-    "must_not_be_why": "675.97 is 465.09 plus the two Windows floors (140.16 + 70.72) — i.e. what the total becomes if the partial lines are folded in as if they were fully priced. It is the most plausible wrong total in this estate, and it is wrong in the direction that looks MORE complete.",
+    "must_not_be": 671.01,
+    "must_not_be_why": "671.01 is 460.13 plus the two Windows floors (140.16 + 70.72) — i.e. what the total becomes if the partial lines are folded in as if they were fully priced. It is the most plausible wrong total in this estate, and it is wrong in the direction that looks MORE complete.",
     "reconciles_exactly": true,
     "excluded_from_sum": [
       "ec2-reporting",
@@ -397,9 +397,9 @@
     "_why": "The shared estimation-infra.schema.json lists aws_monthly_premium / _balanced / _optimized under projected_costs.required. The azure dual output (lift vs right_sized) is a DIFFERENT axis — sizing, not resilience — and does not replace them. Plan section 8 read 'no additionalProperties: false' as 'no schema change needed'; that permits ADDING the dual-output keys and says nothing about omitting a required one. An artifact carrying only the dual output fails the schema this phase declares in its own _knowledge.",
     "_checked_against_the_schema": "The required-key list is read from the schema file at assert time rather than restated here, so the fixture cannot drift from the contract it is enforcing.",
     "_anchor_why": "Balanced IS the right-sized total by definition: the recommended design at on-demand rates. Emitting them as two independently computed figures lets them drift, and a reader has no way to tell which is authoritative.",
-    "expected_balanced": 465.09,
-    "expected_premium": 489.91,
-    "expected_optimized": 366.15,
+    "expected_balanced": 460.13,
+    "expected_premium": 479.99,
+    "expected_optimized": 362.68,
     "premium_min": 416.42,
     "premium_max": 563.4,
     "optimized_min": 311.23,

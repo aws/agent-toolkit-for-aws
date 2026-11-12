@@ -1,7 +1,7 @@
 ---
 name: dms-schema-conversion
 description: "Handles the full DMS Schema Conversion lifecycle including creating migration projects, converting database schemas to a target engine, running compatibility assessments, navigating metadata trees, exporting converted DDL to S3, applying schema changes to a target database, and converting SQL statements between database engines. Applies when migrating database schemas between heterogeneous engines using AWS DMS Schema Conversion."
-version: 4
+version: 5
 ---
 
 # DMS Schema Conversion
@@ -17,7 +17,7 @@ This skill handles the full DMS Schema Conversion lifecycle — from first-time 
 - [Selection rules in DMS Schema Conversion](https://docs.aws.amazon.com/dms/latest/userguide/sc-selection-rules.html) — scoping operations to specific objects
 - [Transformation rules in DMS Schema Conversion](https://docs.aws.amazon.com/dms/latest/userguide/sc-transformation-rules.html) — renaming schemas, tables, columns during conversion
 
-**Global constraint:** You MUST fetch and read any linked documentation before acting on it — do NOT rely on memory for any referenced material (selection rules, transformation rules, troubleshooting guides, network configuration, etc.). Documentation contains vendor-specific details that change between engines and API versions.
+**Global constraint:** You MUST fetch and read any linked public AWS documentation before acting on it — do NOT rely on memory for any referenced material (selection rules, transformation rules, troubleshooting guides, network configuration, etc.). Documentation contains vendor-specific details that change between engines and API versions. If required documentation is unavailable or conflicts with the requested operation, explain the discrepancy and stop rather than inventing instructions.
 
 ---
 
@@ -47,6 +47,8 @@ Before starting, check that AWS CLI commands can be executed.
 
 ## Project Selection
 
+**Setup-reference routing:** Whenever the customer asks to create, plan, explain, or review a migration-project setup or any setup component, load [setup-wizard.md](references/setup-wizard.md) before answering. For a read-only planning or review request, use its decision and validation requirements but do not run project selection or any mutation.
+
 Check for existing migration projects:
 
 ```
@@ -61,26 +63,7 @@ aws dms describe-migration-projects
 
 ## Auto Import
 
-> This section runs only after the setup wizard creates a new project. Do NOT run for existing projects.
-
-1. Build selection rules to import **all schemas** from the source server. For `server-name`, use the data provider identifier (the short ID from the ARN, e.g., `JIFET2LUZJEJZPDYSOSGANOA2M`) or the literal `ServerName` value from the data provider settings (e.g., `"offline"` for offline sources). For SQL Server, you MUST include `database-name` in the object locator. See [Selection rules in DMS Schema Conversion](https://docs.aws.amazon.com/dms/latest/userguide/sc-selection-rules.html) for JSON format.
-
-2. Run `start-metadata-model-import` with `--origin SOURCE --refresh` and the selection rules from step 1. Extract `RequestIdentifier` from the response.
-
-3. Wait for import completion using the DMS waiter:
-
-   ```
-   aws dms wait metadata-model-imported \
-     --migration-project-identifier <migration_project_identifier> \
-     --filter 'Name=schema-conversion-operation-id,Values=<RequestIdentifier>'
-   ```
-
-   If the waiter fails or is unavailable, fall back to polling `describe-metadata-model-imports` every 30 seconds with `--filter Name=request-id,Values=<RequestIdentifier>`. Terminal statuses: **SUCCESS** (proceed) or **FAILED** (check error via the `Error` field in the response).
-
-4. **Show discovered schemas:** On success, call `describe-metadata-model-children` with `--origin SOURCE` at the root level to list the imported schemas/databases. Present the discovered names to the customer so they can confirm the correct database connection was established:
-   > "Import complete. I found the following schemas/databases: `<list>`. Does this look correct?"
-
-5. Proceed to [Actions Menu](#actions-menu).
+After the setup wizard creates a new migration project, load [schema-conversion-operations.md](references/schema-conversion-operations.md) and follow **Auto Import**. Use the data-provider settings and source-specific values retained by the setup wizard. After the procedure returns, proceed to [Actions Menu](#actions-menu).
 
 ---
 
@@ -114,7 +97,7 @@ After each action completes, return to this menu by presenting the same selectio
 
 1. **Ask what to convert:** Ask the customer what they want to convert (e.g., "all schemas", "schema public", "tables starting with PROD_").
 
-2. **Build selection rules:** Translate the customer's natural language to selection rules JSON. Refer to [Selection rules in DMS Schema Conversion](https://docs.aws.amazon.com/dms/latest/userguide/sc-selection-rules.html) for format, wildcards, and vendor-specific locators.
+2. **Build selection rules:** Translate the customer's natural language to selection rules JSON. Load [schema-conversion-operations.md](references/schema-conversion-operations.md) and follow **Selection Scope** before building the rules. Refer to [Selection rules in DMS Schema Conversion](https://docs.aws.amazon.com/dms/latest/userguide/sc-selection-rules.html) for format, wildcards, and vendor-specific locators. Store the result as `source_selection_rules`.
 
 3. **Run conversion:** Call `start-metadata-model-conversion` with the migration project and selection rules. Extract `RequestIdentifier` from the response.
 
@@ -123,7 +106,7 @@ After each action completes, return to this menu by presenting the same selectio
    ```
    aws dms wait metadata-model-converted \
      --migration-project-identifier <migration_project_identifier> \
-     --filter 'Name=schema-conversion-operation-id,Values=<RequestIdentifier>'
+     --filter 'Name=request-id,Values=<RequestIdentifier>'
    ```
 
    If the waiter fails or is unavailable, fall back to polling `describe-metadata-model-conversions` every 30 seconds with `--filter Name=request-id,Values=<RequestIdentifier>`. Terminal statuses: **SUCCESS** (proceed) or **FAILED** (check error).
@@ -139,9 +122,11 @@ After each action completes, return to this menu by presenting the same selectio
    > 3. **Apply to target** — apply converted objects to the target database *(live targets only)*
    > 4. **Back** — return to actions menu"
 
+   Before **Export as script** or **Apply to target**, call `aws dms describe-metadata-model --migration-project-identifier <migration_project_identifier> --origin SOURCE --selection-rules '<source_selection_rules>'`. Extract `TargetMetadataModels[0].SelectionRules` as `target_selection_rules`. If no target model is returned, report that the selected source scope has no converted target model and stop that action.
+
    - **Fix Action Items:** Load [action-items.md](references/action-items.md) and follow the fixing workflow there.
-   - **Export as script:** Run `aws dms start-metadata-model-export-as-script --migration-project-identifier <migration_project_identifier> --origin TARGET --selection-rules '<json>'`. Extract `RequestIdentifier`. Wait via `aws dms wait metadata-model-exported-as-script --migration-project-identifier <id> --filter 'Name=schema-conversion-operation-id,Values=<RequestIdentifier>'`. Provide the S3 link on completion.
-   - **Apply to target:** Run `aws dms start-metadata-model-export-to-target --migration-project-identifier <migration_project_identifier> --selection-rules '<json>'`. Optionally pass `--overwrite-extension-pack` if the customer confirms. Extract `RequestIdentifier`. Wait via `aws dms wait metadata-model-exported-to-target --migration-project-identifier <id> --filter 'Name=schema-conversion-operation-id,Values=<RequestIdentifier>'`. Inform the customer on completion.
+   - **Export as script:** Run `aws dms start-metadata-model-export-as-script --migration-project-identifier <migration_project_identifier> --origin TARGET --selection-rules '<target_selection_rules>'`. Pass the service-returned target rules unchanged. Extract `RequestIdentifier`. Wait via `aws dms wait metadata-model-exported-as-script --migration-project-identifier <id> --filter 'Name=request-id,Values=<RequestIdentifier>'`. Provide the S3 link on completion.
+   - **Apply to target:** Run `aws dms start-metadata-model-export-to-target --migration-project-identifier <migration_project_identifier> --selection-rules '<target_selection_rules>'`. Optionally pass `--overwrite-extension-pack` if the customer confirms. Extract `RequestIdentifier`. Wait via `aws dms wait metadata-model-exported-to-target --migration-project-identifier <id> --filter 'Name=request-id,Values=<RequestIdentifier>'`. Inform the customer on completion.
    - **Back:** Return to [Actions Menu](#actions-menu).
 
 After completing, ask the customer what they'd like to do next.
@@ -156,7 +141,7 @@ Assessment analyzes conversion complexity and generates an conversion assessment
 
 1. **Ask what to assess:** Ask the customer what they want to assess (e.g., "all schemas", "schema pg_catalog", "tables starting with PROD_").
 
-2. **Build selection rules:** Translate the customer's natural language to selection rules JSON. Refer to [Selection rules in DMS Schema Conversion](https://docs.aws.amazon.com/dms/latest/userguide/sc-selection-rules.html) for format, wildcards, and vendor-specific locators.
+2. **Build selection rules:** Translate the customer's natural language to selection rules JSON. Load [schema-conversion-operations.md](references/schema-conversion-operations.md) and follow **Selection Scope** before building the rules. Refer to [Selection rules in DMS Schema Conversion](https://docs.aws.amazon.com/dms/latest/userguide/sc-selection-rules.html) for format, wildcards, and vendor-specific locators.
 
 3. **Run assessment:** Call `start-metadata-model-assessment` with the migration project and selection rules. Extract `RequestIdentifier` from the response.
 
@@ -165,7 +150,7 @@ Assessment analyzes conversion complexity and generates an conversion assessment
    ```
    aws dms wait metadata-model-assessed \
      --migration-project-identifier <migration_project_identifier> \
-     --filter 'Name=schema-conversion-operation-id,Values=<RequestIdentifier>'
+     --filter 'Name=request-id,Values=<RequestIdentifier>'
    ```
 
    If the waiter fails or is unavailable, fall back to polling `describe-metadata-model-assessments` every 30 seconds with `--filter Name=request-id,Values=<RequestIdentifier>`. Terminal statuses: **SUCCESS** (proceed) or **FAILED** (check error).
@@ -207,17 +192,19 @@ The tree uses on-demand loading — metadata is retrieved from the database only
 
 Both require `--origin SOURCE` or `--origin TARGET` and accept only `explicit` selection rules.
 
-1. **Show tree root:** Call `describe-metadata-model-children` with selection rules targeting the root level and `--origin SOURCE`. If the tree is empty, automatically run a metadata import (same as [Auto Import](#auto-import)) and then re-display the tree root.
+1. **Choose the tree:** Use `SOURCE` or `TARGET` from the customer's request. If it is unclear, ask which tree to browse. Keep this origin throughout navigation.
 
-2. **Navigate:** Each child in the response has `MetadataModelName` and `SelectionRules`. Present the children and ask the customer what to do:
+2. **Show tree root:** Call `describe-metadata-model-children` with selection rules targeting the root level and the selected origin. If the SOURCE tree is empty, follow **Auto Import** from [schema-conversion-operations.md](references/schema-conversion-operations.md), then show the root again. If the TARGET tree is empty, import it with `Refresh=false` only for a connected target; a virtual target must first receive converted source objects.
+
+3. **Navigate:** Follow **Tree Navigation** in [schema-conversion-operations.md](references/schema-conversion-operations.md). Each child in the response has `MetadataModelName` and `SelectionRules`. Present the children and ask the customer what to do:
    - **Show children** — drill into a child by calling `describe-metadata-model-children` with the child's `SelectionRules` as the `--selection-rules` parameter
-   - **Show definition** — display the DDL for the selected object (see step 3). Only available for objects, not categories.
+   - **Show definition** — display the DDL for the selected object (see step 4). Only available for objects, not categories.
    - **Go up** — return to the parent node
    - **Exit tree** — return to actions menu
 
-3. **Show definition:** Call `describe-metadata-model` with the child's `SelectionRules` and `--origin SOURCE`. The response includes `Definition` (SOURCE DDL) and `TargetMetadataModels` (list of converted counterparts with their own `SelectionRules`). To get the TARGET DDL, call `describe-metadata-model` again with `SelectionRules` from `TargetMetadataModels[0]` and `--origin TARGET`. Present both clearly labeled as **SOURCE** and **TARGET**.
+4. **Show definition:** Call `describe-metadata-model` with the selected origin and the child's returned `SelectionRules`. If browsing SOURCE and `TargetMetadataModels` contains a converted counterpart, fetch it with its returned rules and `--origin TARGET`, then show both definitions clearly labeled as **SOURCE** and **TARGET**. Otherwise show the selected origin's definition.
 
-4. **Refresh from database:** If the customer asks to refresh, run `start-metadata-model-import` with selection rules scoped to the current tree position, `--origin SOURCE --refresh`. Extract `RequestIdentifier`. Wait via `aws dms wait metadata-model-imported --migration-project-identifier <id> --filter 'Name=schema-conversion-operation-id,Values=<RequestIdentifier>'`. After refresh completes, re-display the current node's children.
+5. **Refresh from database:** Refresh only when the customer asks and the selected provider supports import. Use the current node's rules, the selected origin, and `Refresh=true`. A virtual target cannot be refreshed. Wait with `metadata-model-imported` and `--filter 'Name=request-id,Values=<RequestIdentifier>'`, then show the current node again.
 
 After completing, ask the customer what they'd like to do next.
 
@@ -238,11 +225,11 @@ After completing, ask the customer what they'd like to do next.
    - `--metadata-model-name` — the generated model name
    - `--properties '{"StatementProperties": {"Definition": "<sql_statement>"}}'`
 
-   Extract `RequestIdentifier` from the response. Wait via `aws dms wait metadata-model-created --migration-project-identifier <id> --filter 'Name=schema-conversion-operation-id,Values=<RequestIdentifier>'`.
+   Extract `RequestIdentifier` from the response. Wait via `aws dms wait metadata-model-created --migration-project-identifier <id> --filter 'Name=request-id,Values=<RequestIdentifier>'`.
 
 5. **Build selection rules for the statement:** Build selection rules targeting the specific statement. See [Selection rules in DMS Schema Conversion](https://docs.aws.amazon.com/dms/latest/userguide/sc-selection-rules.html) — use `statement-name` set to the model name.
 
-6. **Convert the created model:** Call `start-metadata-model-conversion` with the statement selection rules from step 5. Extract `RequestIdentifier`. Wait via `aws dms wait metadata-model-converted --migration-project-identifier <id> --filter 'Name=schema-conversion-operation-id,Values=<RequestIdentifier>'`.
+6. **Convert the created model:** Call `start-metadata-model-conversion` with the statement selection rules from step 5. Extract `RequestIdentifier`. Wait via `aws dms wait metadata-model-converted --migration-project-identifier <id> --filter 'Name=request-id,Values=<RequestIdentifier>'`.
 
 7. **Show converted result:** Call `describe-metadata-model` with the statement selection rules from step 5 and `--origin SOURCE`. From the response, extract `TargetMetadataModels[0].SelectionRules`. Then call `describe-metadata-model` with those target selection rules and `--origin TARGET`. Present the converted SQL from the `Definition` field clearly to the customer.
 
@@ -348,10 +335,10 @@ During any running async operation, if the customer requests cancellation, refer
 
 ## Security Considerations
 
-- **Credentials:** All database credentials are stored in AWS Secrets Manager. Never embed credentials in data provider settings or log them to output.
-- **Encryption at rest:** S3 buckets use SSE-S3 encryption (default). SSE-KMS is not supported by DMS Schema Conversion.
+- **Credentials:** Database credentials used for connections are stored in AWS Secrets Manager. Never embed credentials in data provider settings or log them to output.
+- **Encryption at rest:** S3 migration-artifacts buckets support SSE-S3 and SSE-KMS. Refer to [setup-wizard.md](references/setup-wizard.md), **Phase 8 — S3 Bucket**, for the selected encryption configuration.
 - **Encryption in transit:** Online connections should use `require` or stronger SSL mode. `none` should only be used in isolated test environments.
-- **IAM least-privilege:** All IAM roles use confused-deputy condition keys (`aws:SourceAccount`, `aws:SourceArn`) and scoped resource ARNs.
+- **IAM least-privilege:** Scope IAM permissions to the required resources, and use confused-deputy condition keys (`aws:SourceAccount`, `aws:SourceArn`) when supported by the role's documented trust policy.
 - **Network access:** DMS instance profiles operate within VPC subnets with security group restrictions.
 - See [DMS security best practices](https://docs.aws.amazon.com/dms/latest/userguide/CHAP_Security.html) for additional guidance.
 

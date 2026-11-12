@@ -73,7 +73,13 @@
             }
           }
         },
-        "source_baseline_available": { "type": "boolean" }
+        "source_baseline_available": { "type": "boolean" },
+        "stored_response_ops": {
+          "$comment": "Optional (analyzer §14): the client.responses.<op>(id) calls the source app makes and the rewrite RETAINS — retrieve / cancel / delete. The report's §6.4 IAM recipe passes them to iam_policy.py --stored-response-ops so a runtime Responses row gets bedrock:GetInvoke / CancelInvoke / DeleteInvoke on project/default. Absent or [] = none retained.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "enum": ["retrieve", "cancel", "delete"] }
+        }
       }
     },
     {
