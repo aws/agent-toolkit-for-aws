@@ -257,35 +257,37 @@ def _select_agentcore_services(answers):
     return services
 
 
-def _agentcore_revisit_triggers(answers, profiles, verdict, co_recommend, eliminated):
-    """Growth signals that would move AgentCore closer to the recommended runtime(s), listed when
-    AgentCore was scored but is not the sole verdict. A co-recommend that includes AgentCore keeps
-    them (measured against its other members) because Confirm may pick another runtime; Design
-    drops them when the unit's runtime is AgentCore. A trigger applies when changing the current
-    answer to the trigger's value gains AgentCore more points than it gains every recommended
-    runtime, so a signal another runtime rewards just as much is not listed."""
+def _agentcore_revisit_triggers_by_runtime(answers, profiles, eliminated):
+    """Growth signals that would move AgentCore closer to each other scored runtime, keyed by that
+    runtime. Design reads the entry for the unit's effective runtime, which Confirm may set to a
+    co-recommend pick or a consolidated platform runtime rather than the scored verdict, and writes
+    [] when that runtime is AgentCore. A trigger is listed for a runtime when changing the current
+    answer to the trigger's value gains AgentCore more points than it gains that runtime, so a
+    signal both reward equally is not listed. Empty when AgentCore is eliminated or absent."""
     by_id = {p["id"]: p for p in profiles}
     agentcore = by_id.get("agentcore")
-    if agentcore is None or "agentcore" in eliminated or verdict in ("agentcore", "no_viable_runtime"):
-        return []
-    recommended = [r for r in (co_recommend if verdict == "co_recommend" else [verdict]) if r != "agentcore"]
+    if agentcore is None or "agentcore" in eliminated:
+        return {}
 
     def gain(profile, field, value, current):
         dimension = profile.get("affinities", {}).get(field, {})
         return dimension.get(value, NEUTRAL_SCORE) - dimension.get(current, NEUTRAL_SCORE)
 
-    triggers = []
-    for trigger in agentcore.get("revisit_triggers", []):
-        field, value = trigger["field"], trigger["value"]
-        current = answers.get(field, "unknown")
-        if current == value:
+    result = {}
+    for runtime, profile in sorted(by_id.items()):
+        if runtime == "agentcore" or runtime in eliminated:
             continue
-        agentcore_gain = gain(agentcore, field, value, current)
-        if agentcore_gain > 0 and all(
-            agentcore_gain > gain(by_id[r], field, value, current) for r in recommended if r in by_id
-        ):
-            triggers.append({"field": field, "current": current, "trigger": trigger["trigger"]})
-    return triggers
+        triggers = []
+        for trigger in agentcore.get("revisit_triggers", []):
+            field, value = trigger["field"], trigger["value"]
+            current = answers.get(field, "unknown")
+            if current == value:
+                continue
+            agentcore_gain = gain(agentcore, field, value, current)
+            if agentcore_gain > 0 and agentcore_gain > gain(profile, field, value, current):
+                triggers.append({"field": field, "current": current, "trigger": trigger["trigger"]})
+        result[runtime] = triggers
+    return result
 
 
 def _collect_assumptions(raw_answers):
@@ -436,8 +438,8 @@ def score(input_data, profiles=None, run_evidence=None):
         "deployment_model": deployment_model,
         "agentcore_compute_type": agentcore_compute_type,
         "agentcore_services": _select_agentcore_services(answers),
-        "agentcore_revisit_triggers": _agentcore_revisit_triggers(
-            answers, profiles, verdict, co_recommend, eliminated
+        "agentcore_revisit_triggers_by_runtime": _agentcore_revisit_triggers_by_runtime(
+            answers, profiles, eliminated
         ),
         "assumptions_used": _collect_assumptions(raw_answers),
         "warnings": _collect_warnings(

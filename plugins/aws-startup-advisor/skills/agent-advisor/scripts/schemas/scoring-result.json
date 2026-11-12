@@ -24,8 +24,13 @@
         "verification_sources": { "type": "array", "minItems": 1, "items": { "type": "string" } }
       }
     },
-    "agentcoreRevisitTriggers": {
-      "description": "Growth signals that would move AgentCore closer to the recommended runtime(s). Empty when AgentCore is the sole verdict or was eliminated. Design copies them only for a unit whose runtime is not AgentCore.",
+    "agentcoreRevisitTriggersByRuntime": {
+      "description": "Growth signals that would move AgentCore closer to each other scored runtime, keyed by runtime id. Empty when AgentCore was eliminated. Design reads the entry for the unit's effective runtime.",
+      "type": "object",
+      "propertyNames": { "enum": ["lambda_microvms", "ecs", "eks", "lambda"] },
+      "additionalProperties": { "$ref": "#/$defs/agentcoreRevisitTriggerList" }
+    },
+    "agentcoreRevisitTriggerList": {
       "type": "array",
       "items": {
         "type": "object",
@@ -54,7 +59,7 @@
         "recommendation_status": { "enum": ["provisional", "final"] },
         "deployment_model": { "type": ["string", "null"], "enum": ["harness", "framework_on_runtime", null] },
         "agentcore_services": { "type": "array", "items": { "type": "string" } },
-        "agentcore_revisit_triggers": { "$ref": "#/$defs/agentcoreRevisitTriggers" },
+        "agentcore_revisit_triggers_by_runtime": { "$ref": "#/$defs/agentcoreRevisitTriggersByRuntime" },
         "assumptions_used": { "type": "array", "items": { "type": "string" } },
         "warnings": { "type": "array", "items": { "type": "string" } },
         "co_recommend": { "type": "array", "items": { "type": "string" } },
@@ -83,7 +88,7 @@
     "eliminated": { "type": "object", "additionalProperties": { "type": "string" } },
     "deployment_model": { "type": ["string", "null"], "enum": ["harness", "framework_on_runtime", null] },
     "agentcore_services": { "type": "array", "items": { "type": "string" } },
-    "agentcore_revisit_triggers": { "$ref": "#/$defs/agentcoreRevisitTriggers" },
+    "agentcore_revisit_triggers_by_runtime": { "$ref": "#/$defs/agentcoreRevisitTriggersByRuntime" },
     "assumptions_used": { "type": "array", "items": { "type": "string" } },
     "warnings": { "type": "array", "items": { "type": "string" } },
     "co_recommend": { "type": "array", "items": { "type": "string" } },

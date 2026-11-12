@@ -868,37 +868,45 @@ _PROTOTYPE = {"multi_agent": "no", "session_duration": "under_15min", "traffic_p
               "compute_tier": "light"}
 
 
-def test_revisit_triggers_list_each_growth_signal_when_agentcore_loses():
+def _fields(result, runtime):
+    return [t["field"] for t in result["agentcore_revisit_triggers_by_runtime"][runtime]]
+
+
+def test_revisit_triggers_list_each_growth_signal_against_the_verdict():
     result = scoring.score({"answers": _PROTOTYPE})
     assert result["verdict"] == "lambda"
-    assert [(t["field"], t["current"]) for t in result["agentcore_revisit_triggers"]] == [
+    triggers = result["agentcore_revisit_triggers_by_runtime"]["lambda"]
+    assert [(t["field"], t["current"]) for t in triggers] == [
         ("multi_agent", "no"), ("memory_needs", "none"), ("isolation", "not_needed")]
-    assert all(t["trigger"] for t in result["agentcore_revisit_triggers"])
+    assert all(t["trigger"] for t in triggers)
+
+
+def test_revisit_triggers_are_keyed_by_every_scored_runtime_except_agentcore():
+    result = scoring.score({"answers": _PROTOTYPE})
+    assert set(result["agentcore_revisit_triggers_by_runtime"]) == {"ecs", "eks", "lambda", "lambda_microvms"}
 
 
 def test_revisit_triggers_skip_a_signal_the_workload_already_has():
     result = scoring.score({"answers": {**_PROTOTYPE, "multi_agent": "yes"}})
-    assert result["verdict"] != "agentcore"
-    assert "multi_agent" not in {t["field"] for t in result["agentcore_revisit_triggers"]}
+    for triggers in result["agentcore_revisit_triggers_by_runtime"].values():
+        assert "multi_agent" not in {t["field"] for t in triggers}
 
 
-def test_revisit_triggers_are_empty_when_agentcore_wins():
-    result = scoring.score({"answers": {**_PROTOTYPE, "session_duration": "15min_to_8hr",
-                                        "session_state": "hitl"}})
-    assert result["verdict"] == "agentcore"
-    assert result["agentcore_revisit_triggers"] == []
+def test_revisit_triggers_omit_a_signal_the_runtime_rewards_just_as_much():
+    # isolation unknown -> required gains AgentCore 2, Lambda 1, MicroVMs 2.
+    result = scoring.score({"answers": {**_PROTOTYPE, "isolation": "unknown"}})
+    assert "isolation" in _fields(result, "lambda")
+    assert "isolation" not in _fields(result, "lambda_microvms")
 
 
-def test_revisit_triggers_stay_on_a_co_recommend_that_includes_agentcore():
-    # Confirm may pick the other runtime; Design drops the triggers if it picks AgentCore.
-    answers = {"traffic_pattern": "idle", "ops_preference": "full_control",
-               "memory_needs": "cross_session", "multi_agent": "no", "framework": "strands",
-               "multi_cloud": "no", "idle_resume": "filesystem", "compute_tier": "heavy_non_gpu"}
-    result = scoring.score({"answers": answers})
-    assert result["co_recommend"] == ["agentcore", "lambda_microvms"]
-    # isolation=required gains AgentCore and MicroVMs 2 points each, so it is not a reason to
-    # revisit AgentCore over MicroVMs; multi_agent=yes gains only AgentCore.
-    assert [t["field"] for t in result["agentcore_revisit_triggers"]] == ["multi_agent"]
+def test_revisit_triggers_skip_eliminated_runtimes():
+    profiles = scoring.load_profiles()
+    for profile in profiles:
+        if profile["id"] == "ecs":
+            profile["hard_constraints"] = [{"field": "multi_agent", "value": "no", "reason": "test"}]
+    result = scoring.score({"answers": _PROTOTYPE}, profiles=profiles)
+    assert "ecs" in result["eliminated"]
+    assert "ecs" not in result["agentcore_revisit_triggers_by_runtime"]
 
 
 def test_revisit_triggers_are_empty_when_agentcore_is_eliminated():
@@ -908,7 +916,7 @@ def test_revisit_triggers_are_empty_when_agentcore_is_eliminated():
             profile["hard_constraints"] = [{"field": "multi_agent", "value": "no", "reason": "test"}]
     result = scoring.score({"answers": _PROTOTYPE}, profiles=profiles)
     assert "agentcore" in result["eliminated"]
-    assert result["agentcore_revisit_triggers"] == []
+    assert result["agentcore_revisit_triggers_by_runtime"] == {}
 
 
 def test_revisit_triggers_match_the_schema():
@@ -917,29 +925,46 @@ def test_revisit_triggers_match_the_schema():
     schema = json.loads(
         (pathlib.Path(scoring.__file__).parent / "schemas" / "scoring-result.json").read_text())
     jsonschema.validate({**result, "units": {"primary-agent": result}}, schema)
-    bad = {**result, "agentcore_revisit_triggers": [{"field": "multi_agent"}]}
-    with pytest.raises(jsonschema.ValidationError):
-        jsonschema.validate({**bad, "units": {"primary-agent": bad}}, schema)
+    for bad_map in ({"lambda": [{"field": "multi_agent"}]}, {"agentcore": []}):
+        bad = {**result, "agentcore_revisit_triggers_by_runtime": bad_map}
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate({**bad, "units": {"primary-agent": bad}}, schema)
 
 
 def test_revisit_triggers_list_a_signal_for_an_unanswered_question():
     answers = {k: v for k, v in _PROTOTYPE.items() if k != "memory_needs"}
     result = scoring.score({"answers": answers})
-    assert result["verdict"] != "agentcore"
-    assert {"field": "memory_needs", "current": "unknown"}.items() <= next(
-        t for t in result["agentcore_revisit_triggers"] if t["field"] == "memory_needs").items()
+    memory = next(t for t in result["agentcore_revisit_triggers_by_runtime"]["lambda"]
+                  if t["field"] == "memory_needs")
+    assert memory["current"] == "unknown"
 
 
-def test_score_units_mirrors_the_primary_unit_triggers(tmp_path, capsys):
-    answers = {"entry_point": "build_scratch", "primary_unit": "a",
-               "system": {"framework": "strands"},
-               "units": {"a": {"workload_class": "agent_session", **_PROTOTYPE},
-                         "b": {"workload_class": "agent_session", **_PROTOTYPE,
-                               "session_duration": "15min_to_8hr", "session_state": "hitl"}}}
+def test_consolidation_reads_the_effective_runtime_entry(tmp_path, capsys):
+    # Gen's review on #622: a Lambda unit consolidated with a MicroVMs unit onto MicroVMs must not
+    # keep its Lambda-relative isolation trigger, which MicroVMs rewards as much as AgentCore.
+    lambda_unit = {**_PROTOTYPE, "isolation": "unknown"}
+    microvms_unit = {"multi_agent": "no", "session_duration": "15min_to_8hr", "traffic_pattern": "idle",
+                     "idle_resume": "process_level", "compute_tier": "heavy_non_gpu"}
+    answers = {"entry_point": "build_scratch", "primary_unit": "a", "system": {},
+               "units": {"a": {"workload_class": "agent_session", **lambda_unit},
+                         "b": {"workload_class": "agent_session", **microvms_unit}}}
     path = tmp_path / "answers.json"
     path.write_text(json.dumps(answers))
     assert score_units.main([str(path)]) == 0
     out = json.loads(capsys.readouterr().out)
-    assert out["units"]["b"]["verdict"] == "agentcore"
-    assert out["units"]["b"]["agentcore_revisit_triggers"] == []
-    assert out["agentcore_revisit_triggers"] == out["units"]["a"]["agentcore_revisit_triggers"] != []
+    a, b = out["units"]["a"], out["units"]["b"]
+    assert (a["verdict"], b["verdict"]) == ("lambda", "lambda_microvms")
+    by_runtime = a["agentcore_revisit_triggers_by_runtime"]
+    # Split: unit a stays on Lambda and keeps the isolation signal.
+    assert "isolation" in [t["field"] for t in by_runtime["lambda"]]
+    # Consolidated onto MicroVMs: Design reads this entry instead, which omits it.
+    assert "isolation" not in [t["field"] for t in by_runtime["lambda_microvms"]]
+    # The top-level mirror is the primary unit's map.
+    assert out["agentcore_revisit_triggers_by_runtime"] == by_runtime
+
+
+def test_design_reads_the_entry_for_the_effective_runtime():
+    design = (pathlib.Path(scoring.__file__).parent.parent / "references" / "phases" / "design"
+              / "design.md").read_text()
+    assert "agentcore_revisit_triggers_by_runtime[<effective_runtime>]" in design
+    assert "Never use the entry for the scored verdict" in " ".join(design.split())
