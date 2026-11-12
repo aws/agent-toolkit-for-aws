@@ -331,6 +331,8 @@ When agents use more than one framework, set `framework` to the one with the mos
 - **`auth_hint`**: `api_key`, `oauth`, or `iam` from the names the tool's code uses (an `os.environ["…_API_KEY"]` name, an `Authorization` or `x-api-key` header, `client_id`/`client_secret`, `boto3`); `none` when its code uses none of them; omitted when its implementation cannot be read. Never copy a key, token, or header value. Do not open MCP config files (`.mcp.json`, `mcp.json`, and similar), which often hold tokens: record only MCP servers created in code (for example `MCPServerStdio(name=…)` or `MultiServerMCPClient({…})`), and name servers that only a config file defines in the summary.
 - **`used_by_agents`**: the `agent_id` of every recorded agent that uses it.
 
+---
+
 ## Step 4.8: Mantle-only selector signals
 
 A few provider capabilities decide the target endpoint later (`skills/shared/ai/bedrock-endpoint-policy.md`, § How a selector is learned). Five of them are visible in code. For every call site whose model was observed in Step 4, scan the call arguments, the client construction that the call site uses, and any request headers for the constructs below. Active (non-commented) code only.
@@ -392,6 +394,15 @@ Write the profile to the path the Discover controller names:
     }
   ],
   "gateways": [],
+  "mantle_signals": [
+    {
+      "selector": "projects",
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model": "gpt-4o",
+      "evidence": [{"provenance": "code", "confidence": "high", "detail": "app/llm.py:3 default_headers OpenAI-Project"}]
+    }
+  ],
   "workloads": [
     {
       "workload_id": "openai_api.gpt-4o.openai.chat.completions.create.plain",
@@ -413,20 +424,11 @@ Write the profile to the path the Discover controller names:
       "text_generation": true, "streaming": false, "function_calling": false, "vision": false, "embeddings": false,
       "batch_processing": false, "speech_to_text": false, "text_to_speech": false, "image_generation": false
     }
-  },
-  "mantle_signals": [
-    {
-      "selector": "projects",
-      "provider": "openai",
-      "source_service": "openai_api",
-      "model": "gpt-4o",
-      "evidence": [{"provenance": "code", "confidence": "high", "detail": "app/llm.py:3 default_headers OpenAI-Project"}]
-    }
-  ]
+  }
 }
 ```
 
 - One `model_observations` entry per entry in `models`, with every evidence entry using `provenance: "code"`. Keep `detail` to a file and line plus the call name; never copy secret values, prompts, or comment text into it.
 - `model_families` lists every family of the source's observed models.
 - For an observed gateway, each upstream lists exactly the families and models of the matching source; the checker rejects anything else.
-- Write `schema_version: "1.1"`, `ai_sources`, `gateways`, `workloads` (`[]` when no call has a workload), and `integration`. Add `agentic_profile` and `tool_manifest` only when Step 4.7 recorded an agent. When Step 4.8 matched anything, also write top-level `mantle_signals` (omit the key when none).
+- Write `schema_version: "1.1"`, `ai_sources`, `gateways`, `workloads` (`[]` when no call has a workload), and `integration`. Add `agentic_profile` and `tool_manifest` only when Step 4.7 recorded an agent. Add `mantle_signals` when Step 4.8 matched anything, and omit that key when none.

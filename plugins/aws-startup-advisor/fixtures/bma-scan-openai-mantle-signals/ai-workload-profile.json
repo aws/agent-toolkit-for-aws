@@ -30,34 +30,6 @@
   "gateways": [],
   "workloads": [
     {
-      "workload_id": "openai_api.gpt-4o.openai.responses.create.plain",
-      "provider": "openai",
-      "source_service": "openai_api",
-      "model": "gpt-4o",
-      "sdk_method": "openai.responses.create",
-      "capability": "text_generation",
-      "capability_confidence": "medium",
-      "structured_output": false,
-      "call_sites": [
-        {
-          "file": "app/llm.py",
-          "line": 9
-        },
-        {
-          "file": "app/llm.py",
-          "line": 14
-        },
-        {
-          "file": "app/llm.py",
-          "line": 19
-        },
-        {
-          "file": "app/llm.py",
-          "line": 37
-        }
-      ]
-    },
-    {
       "workload_id": "openai_api.gpt-4o.openai.chat.completions.create.plain",
       "provider": "openai",
       "source_service": "openai_api",
@@ -66,19 +38,28 @@
       "capability": "text_generation",
       "capability_confidence": "medium",
       "structured_output": false,
+      "call_sites": [{"file": "app/llm.py", "line": 28}]
+    },
+    {
+      "workload_id": "openai_api.gpt-4o.openai.responses.create.plain",
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model": "gpt-4o",
+      "sdk_method": "openai.responses.create",
+      "capability": "text_generation",
+      "capability_confidence": "high",
+      "structured_output": false,
       "call_sites": [
-        {
-          "file": "app/llm.py",
-          "line": 28
-        }
+        {"file": "app/llm.py", "line": 9},
+        {"file": "app/llm.py", "line": 14},
+        {"file": "app/llm.py", "line": 19},
+        {"file": "app/llm.py", "line": 37}
       ]
     }
   ],
   "integration": {
     "pattern": "direct_sdk",
-    "languages": [
-      "python"
-    ],
+    "languages": ["python"],
     "frameworks": [],
     "capabilities_summary": {
       "text_generation": true,

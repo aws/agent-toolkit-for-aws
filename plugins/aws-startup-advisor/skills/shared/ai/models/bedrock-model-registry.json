@@ -431,6 +431,78 @@
         "tool_calling",
         "image_input"
       ],
+      "inference_profiles": {
+        "us": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2",
+          "ca-central-1",
+          "ca-west-1"
+        ],
+        "global": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2",
+          "ca-central-1",
+          "ca-west-1",
+          "mx-central-1",
+          "eu-central-1",
+          "eu-central-2",
+          "eu-north-1",
+          "eu-south-1",
+          "eu-south-2",
+          "eu-west-1",
+          "eu-west-2",
+          "eu-west-3",
+          "ap-east-2",
+          "ap-northeast-1",
+          "ap-northeast-2",
+          "ap-northeast-3",
+          "ap-south-1",
+          "ap-south-2",
+          "ap-southeast-1",
+          "ap-southeast-2",
+          "ap-southeast-3",
+          "ap-southeast-4",
+          "ap-southeast-5",
+          "ap-southeast-6",
+          "ap-southeast-7",
+          "il-central-1",
+          "me-central-1",
+          "me-south-1",
+          "af-south-1",
+          "sa-east-1"
+        ]
+      },
+      "region_availability": {
+        "commercial": [
+          "us-east-1",
+          "us-east-2"
+        ],
+        "govcloud": [],
+        "evidence": "bedrock-mantle in-region rows of the GPT-5.5 model card, read 2026-11-06: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html"
+      },
+      "pricing": {
+        "source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html (read 2026-11-06); USD per 1M tokens, Standard tier; the card lists the In-Region inference option only",
+        "commercial_short_context_le_272k": {
+          "input": 5.5,
+          "cache_read": 0.55,
+          "output": 33.0
+        },
+        "commercial_long_context_gt_272k": {
+          "input": 11.0,
+          "cache_read": 1.1,
+          "output": 49.5
+        },
+        "service_tiers": {
+          "standard": true,
+          "priority": false,
+          "flex": false,
+          "reserved": false
+        }
+      },
       "paths": {
         "mantle_openai_responses": {
           "available": true,
@@ -796,6 +868,86 @@
         "streaming",
         "image_input"
       ],
+      "inference_profiles": {
+        "us": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2",
+          "ca-central-1",
+          "ca-west-1"
+        ],
+        "global": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2",
+          "ca-central-1",
+          "ca-west-1",
+          "mx-central-1",
+          "eu-central-1",
+          "eu-central-2",
+          "eu-north-1",
+          "eu-south-1",
+          "eu-south-2",
+          "eu-west-1",
+          "eu-west-2",
+          "eu-west-3",
+          "ap-east-2",
+          "ap-northeast-1",
+          "ap-northeast-2",
+          "ap-northeast-3",
+          "ap-south-1",
+          "ap-south-2",
+          "ap-southeast-1",
+          "ap-southeast-2",
+          "ap-southeast-3",
+          "ap-southeast-4",
+          "ap-southeast-5",
+          "ap-southeast-6",
+          "ap-southeast-7",
+          "il-central-1",
+          "me-central-1",
+          "me-south-1",
+          "af-south-1",
+          "sa-east-1"
+        ]
+      },
+      "region_availability": {
+        "commercial": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-2"
+        ],
+        "govcloud": [
+          "us-gov-west-1"
+        ],
+        "evidence": "bedrock-mantle in-region rows of the GPT-5.4 model card, read 2026-11-06: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html"
+      },
+      "pricing": {
+        "source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html (read 2026-11-06); USD per 1M tokens, Standard tier; the card lists the In-Region inference option only",
+        "commercial_short_context_le_272k": {
+          "input": 2.75,
+          "cache_read": 0.275,
+          "output": 16.5
+        },
+        "commercial_long_context_gt_272k": {
+          "input": 5.5,
+          "cache_read": 0.55,
+          "output": 24.75
+        },
+        "govcloud_us_west_short_context_le_272k": {
+          "input": 3.375,
+          "cache_read": 0.3375,
+          "output": 20.25
+        },
+        "service_tiers": {
+          "standard": true,
+          "priority": false,
+          "flex": false,
+          "reserved": false
+        }
+      },
       "paths": {
         "mantle_openai_responses": {
           "available": true,
@@ -1791,7 +1943,7 @@
           "family": "claude_haiku",
           "version": "5.5",
           "class": "fast",
-          "evidence": "AWS model card model-card-anthropic-claude-haiku-5-5 (read 2026-11-09): launch 2026-10-07, Active, EOL no sooner than 2027-10-07; Messages/Converse/Invoke on bedrock-runtime via Geo (us./ca./eu./au./jp.) and Global CRIS, Messages on bedrock-mantle with the bare id; 1M context, 128K max output; adaptive thinking on by default with configurable effort; image input; explicit prompt caching; tiered pricing above 100K prompt tokens (US Geo $0.11/$0.55 up to 100K, $0.55/$2.75 above; Global $0.10/$0.50 and $0.50/$2.50). Supersedes Haiku 4.5 as the fast/low-cost Claude tier; Haiku 4.5 (200K, no thinking) stays an explicit alternative for workloads that must keep pre-5.5 behavior — see ai-anthropic-to-bedrock.md for the ~30% tokenizer recount and thinking-history constraints. AWS model card model-card-anthropic-claude-haiku-5-5 (re-read 2026-11-10): Regional Availability lists bedrock-runtime in 35 commercial Regions plus us-gov-east-1/us-gov-west-1 and bedrock-mantle in us-gov-west-1 only; Geo source-region tables for us./ca./eu./au./jp. copied verbatim; Global profiles are unavailable in GovCloud. Service Tiers: Standard only (no Batch, Priority, Flex, or Reserved) per the Haiku 5.5 target contract in ai-anthropic-to-bedrock.md. Migration guide: omit temperature/top_p/top_k (including Converse temperature/topP); forced tool choice is accepted; adaptive thinking is on by default and can be turned off (not Opus 5.5's always-on rule).",
+          "evidence": "AWS model card model-card-anthropic-claude-haiku-5-5 (read 2026-11-09): launch 2026-10-07, Active, EOL no sooner than 2027-10-07; Messages/Converse/Invoke on bedrock-runtime via Geo (us./ca./eu./au./jp.) and Global CRIS, Messages on bedrock-mantle with the bare id; 1M context, 128K max output; adaptive thinking on by default with configurable effort; image input; explicit prompt caching; tiered pricing above 100K prompt tokens (US Geo $0.11/$0.55 up to 100K, $0.55/$2.75 above; Global $0.10/$0.50 and $0.50/$2.50). Supersedes Haiku 4.5 as the fast/low-cost Claude tier; Haiku 4.5 (200K, no thinking) stays an explicit alternative for workloads that must keep pre-5.5 behavior \u2014 see ai-anthropic-to-bedrock.md for the ~30% tokenizer recount and thinking-history constraints. AWS model card model-card-anthropic-claude-haiku-5-5 (re-read 2026-11-10): Regional Availability lists bedrock-runtime in 35 commercial Regions plus us-gov-east-1/us-gov-west-1 and bedrock-mantle in us-gov-west-1 only; Geo source-region tables for us./ca./eu./au./jp. copied verbatim; Global profiles are unavailable in GovCloud. Service Tiers: Standard only (no Batch, Priority, Flex, or Reserved) per the Haiku 5.5 target contract in ai-anthropic-to-bedrock.md. Migration guide: omit temperature/top_p/top_k (including Converse temperature/topP); forced tool choice is accepted; adaptive thinking is on by default and can be turned off (not Opus 5.5's always-on rule).",
           "paths": {
             "mantle_messages": {},
             "runtime_converse": {},
@@ -1810,7 +1962,7 @@
         "provider": "openai",
         "verified_at": "2026-11-10",
         "verified_region": "us-east-2",
-        "source": "Haiku 5.5 Converse tier: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-5-5.html (read 2026-11-09). Opus 5.5 cross-family target: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html (retrieved 2026-09-24). GPT-5.5 and GPT-5.4 rows re-read from their public model cards on 2026-11-06 (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html, https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html): both now list bedrock-runtime (Responses, Chat Completions, Converse via us./global. CRIS ids) and Chat Completions on bedrock-mantle. Other OpenAI entries retain their evidence from the superseded 2026-08-21 catalog (removed; see git history). The runtime_openai_responses and runtime_openai_chat path definitions and their per-model rows on every openai_gpt_* entry were added from the nine public model cards and the endpoints / inference-responses-api / inference-chat-completions pages on 2026-11-07; earlier rows and their evidence are unchanged. GPT-5.6 Sol/Terra/Luna Mantle Chat rows, their inference_profiles maps, per-path capabilities for GPT-5.4/5.5, and the guardrails_supported / server_side_tools_supported row flags were re-read from the public model cards on 2026-11-08. Claude Sonnet 5.5 and OpenAI GPT-6.1 Terra: AWS model cards read 2026-11-10.",
+        "source": "Haiku 5.5 Converse tier: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-5-5.html (read 2026-11-09). Opus 5.5 cross-family target: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html (retrieved 2026-09-24). GPT-5.5 and GPT-5.4 rows re-read from their public model cards on 2026-11-06 (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html, https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html): both now list bedrock-runtime (Responses, Chat Completions, Converse via us./global. CRIS ids) and Chat Completions on bedrock-mantle. Other OpenAI and other unchanged entries retain their evidence from the superseded 2026-08-21 catalog (removed; see git history). The runtime_openai_responses and runtime_openai_chat path definitions and their per-model rows on every openai_gpt_* entry were added from the nine public model cards and the endpoints / inference-responses-api / inference-chat-completions pages on 2026-11-07; earlier rows and their evidence are unchanged. GPT-5.6 Sol/Terra/Luna Mantle Chat rows, their inference_profiles maps, per-path capabilities for GPT-5.4/5.5, and the guardrails_supported / server_side_tools_supported row flags were re-read from the public model cards on 2026-11-08. Claude Sonnet 5.5 and OpenAI GPT-6.1 Terra: AWS model cards read 2026-11-10.",
         "disclaimer": "Haiku 5.5 is the fast/low-cost Converse tier (the GPT-5.6 Luna cross-family fallback); Haiku 4.5 remains an explicit alternative, not an automatic fallback. The Opus cross-family target is updated to Opus 5.5; the GPT-5.5 and GPT-5.4 entries were re-read from their public model cards on 2026-11-06 (runtime CRIS paths, Chat Completions on mantle, 1.05M context, long-context pricing); the other same-model OpenAI paths and their earlier evidence remain unchanged. This is a migration target catalog, not an account-availability claim. Verify the chosen model, API, region and CRIS profile before implementation. Opus 5.5 uses CRIS on runtime outside eu-west-2, has 1M context/128K output, always-on adaptive thinking, and no Batch tier. Fable and Mythos remain excluded from default selection. Opus 5.5 is the only Opus model in the automatic selection pool; older Opus snapshots and pricing records are historical references. The runtime in-region exception in eu-west-2 was verified 2026-10-03; the original catalog and other model evidence dates remain unchanged."
       },
       "capabilities": {
@@ -1934,7 +2086,7 @@
           "generation": "reasoning",
           "version": "5.6",
           "class": "reasoning",
-          "capability_source": "AWS model card 2026-08-21 (launch 2026-07-13, Active): frontier reasoning/agentic, image+text input checked; tool calling via the Responses API's built-in tool use (models-api-compatibility). Structured output/streaming behavior not feature-probed on Mantle — verify before relying. Re-verified 2026-08-21: context window is 1M per the current card (272K was the 2026-07-21 value); long-context (>272K) is a separate price tier at 2.0x input / 1.5x output per inference option.",
+          "capability_source": "AWS model card 2026-08-21 (launch 2026-07-13, Active): frontier reasoning/agentic, image+text input checked; tool calling via the Responses API's built-in tool use (models-api-compatibility). Structured output/streaming behavior not feature-probed on Mantle \u2014 verify before relying. Re-verified 2026-08-21: context window is 1M per the current card (272K was the 2026-07-21 value); long-context (>272K) is a separate price tier at 2.0x input / 1.5x output per inference option.",
           "paths": {
             "mantle_openai_responses": {
               "evidence": "AWS model card (2026-08-21): bedrock-mantle at /openai/v1, in-region only; Responses supported; In-Region pricing at 1.10x OpenAI standard; prompt_caching_supported true: the card lists implicit prompt caching on the Responses API only on bedrock-mantle (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-sol.html, read 2026-11-09)"
@@ -1986,7 +2138,7 @@
           "generation": "reasoning",
           "version": "5.6",
           "class": "reasoning",
-          "capability_source": "AWS model card 2026-08-21: balanced performance at half GPT-5.5 cost; tool calling via the Responses API's built-in tool use. Re-verified 2026-08-21: context window is 1M per the current card (the 2026-07-21 card did not state it — cataloged as unknown then); long-context (>272K) is a separate price tier at 2.0x input / 1.5x output per inference option.",
+          "capability_source": "AWS model card 2026-08-21: balanced performance at half GPT-5.5 cost; tool calling via the Responses API's built-in tool use. Re-verified 2026-08-21: context window is 1M per the current card (the 2026-07-21 card did not state it \u2014 cataloged as unknown then); long-context (>272K) is a separate price tier at 2.0x input / 1.5x output per inference option.",
           "paths": {
             "mantle_openai_responses": {
               "evidence": "AWS model card (2026-08-21): bedrock-mantle at /openai/v1, in-region only; Responses supported; In-Region pricing at 1.10x OpenAI standard; prompt_caching_supported true: the card lists implicit prompt caching on the Responses API only on bedrock-mantle (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-terra.html, read 2026-11-09)"
@@ -2012,7 +2164,7 @@
           "generation": "reasoning",
           "version": "5.6",
           "class": "reasoning",
-          "capability_source": "AWS model card 2026-08-21: fastest/lowest-cost OpenAI tier for high-volume tasks; tool calling via the Responses API's built-in tool use. Re-verified 2026-08-21: context window is 1M per the current card (the 2026-07-21 card did not state it — cataloged as unknown then); long-context (>272K) is a separate price tier at 2.0x input / 1.5x output per inference option.",
+          "capability_source": "AWS model card 2026-08-21: fastest/lowest-cost OpenAI tier for high-volume tasks; tool calling via the Responses API's built-in tool use. Re-verified 2026-08-21: context window is 1M per the current card (the 2026-07-21 card did not state it \u2014 cataloged as unknown then); long-context (>272K) is a separate price tier at 2.0x input / 1.5x output per inference option.",
           "paths": {
             "mantle_openai_responses": {
               "evidence": "AWS model card (2026-08-21): bedrock-mantle at /openai/v1, in-region only; Responses supported; In-Region pricing at 1.10x OpenAI standard; prompt_caching_supported true: the card lists implicit prompt caching on the Responses API only on bedrock-mantle (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-luna.html, read 2026-11-09)"
@@ -2208,7 +2360,7 @@
           "generation": "bedrock_native",
           "version": "5",
           "class": "runtime_native",
-          "capability_source": "AWS model card model-card-anthropic-claude-sonnet-5 (2026-07-21): Converse checked, 1M context / 128K output, adaptive thinking always on, image input checked (tool_use/thinking/vision mapped to this provider's feature vocabulary). Balanced Claude tier — the Converse target for GPT-5.6 Terra, GPT-5.5, GPT-5.4, and unmatched/legacy sources.",
+          "capability_source": "AWS model card model-card-anthropic-claude-sonnet-5 (2026-07-21): Converse checked, 1M context / 128K output, adaptive thinking always on, image input checked (tool_use/thinking/vision mapped to this provider's feature vocabulary). Balanced Claude tier \u2014 the Converse target for GPT-5.6 Terra, GPT-5.5, GPT-5.4, and unmatched/legacy sources.",
           "paths": {
             "runtime_converse": {
               "evidence": "AWS model card (2026-07-21): Converse on bedrock-runtime checked; Geo (us/eu/au) and Global CRIS supported; prompt_caching_supported true: Claude explicit cache checkpoints (cachePoint) are supported on Converse (https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html, read 2026-11-09)"
@@ -2236,7 +2388,7 @@
           "generation": "bedrock_native",
           "version": "5.5",
           "class": "runtime_native",
-          "capability_source": "AWS model card model-card-anthropic-claude-haiku-5-5 (read 2026-11-09): launch 2026-10-07, Active, EOL no sooner than 2027-10-07; Messages/Converse/Invoke on bedrock-runtime via Geo (us./ca./eu./au./jp.) and Global CRIS, Messages on bedrock-mantle with the bare id; 1M context, 128K max output; adaptive thinking on by default with configurable effort; image input; explicit prompt caching; tiered pricing above 100K prompt tokens (US Geo $0.11/$0.55 up to 100K, $0.55/$2.75 above; Global $0.10/$0.50 and $0.50/$2.50). Supersedes Haiku 4.5 as the fast/low-cost Claude tier; Haiku 4.5 (200K, no thinking) stays an explicit alternative for workloads that must keep pre-5.5 behavior — see ai-anthropic-to-bedrock.md for the ~30% tokenizer recount and thinking-history constraints. AWS model card model-card-anthropic-claude-haiku-5-5 (re-read 2026-11-10): Regional Availability lists bedrock-runtime in 35 commercial Regions plus us-gov-east-1/us-gov-west-1 and bedrock-mantle in us-gov-west-1 only; Geo source-region tables for us./ca./eu./au./jp. copied verbatim; Global profiles are unavailable in GovCloud. Service Tiers: Standard only (no Batch, Priority, Flex, or Reserved) per the Haiku 5.5 target contract in ai-anthropic-to-bedrock.md. Migration guide: omit temperature/top_p/top_k (including Converse temperature/topP); forced tool choice is accepted; adaptive thinking is on by default and can be turned off (not Opus 5.5's always-on rule).",
+          "capability_source": "AWS model card model-card-anthropic-claude-haiku-5-5 (read 2026-11-09): launch 2026-10-07, Active, EOL no sooner than 2027-10-07; Messages/Converse/Invoke on bedrock-runtime via Geo (us./ca./eu./au./jp.) and Global CRIS, Messages on bedrock-mantle with the bare id; 1M context, 128K max output; adaptive thinking on by default with configurable effort; image input; explicit prompt caching; tiered pricing above 100K prompt tokens (US Geo $0.11/$0.55 up to 100K, $0.55/$2.75 above; Global $0.10/$0.50 and $0.50/$2.50). Supersedes Haiku 4.5 as the fast/low-cost Claude tier; Haiku 4.5 (200K, no thinking) stays an explicit alternative for workloads that must keep pre-5.5 behavior \u2014 see ai-anthropic-to-bedrock.md for the ~30% tokenizer recount and thinking-history constraints. AWS model card model-card-anthropic-claude-haiku-5-5 (re-read 2026-11-10): Regional Availability lists bedrock-runtime in 35 commercial Regions plus us-gov-east-1/us-gov-west-1 and bedrock-mantle in us-gov-west-1 only; Geo source-region tables for us./ca./eu./au./jp. copied verbatim; Global profiles are unavailable in GovCloud. Service Tiers: Standard only (no Batch, Priority, Flex, or Reserved) per the Haiku 5.5 target contract in ai-anthropic-to-bedrock.md. Migration guide: omit temperature/top_p/top_k (including Converse temperature/topP); forced tool choice is accepted; adaptive thinking is on by default and can be turned off (not Opus 5.5's always-on rule).",
           "paths": {
             "runtime_converse": {
               "evidence": "AWS model card (read 2026-11-09): Converse on bedrock-runtime via us./ca./eu./au./jp. Geo or global. CRIS; the bare id is the Mantle Messages id. guardrails_supported and prompt_caching_supported true: the card's bedrock-runtime feature table lists Guardrails and Explicit Prompt Caching as supported (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-5-5.html, read 2026-11-10)"
