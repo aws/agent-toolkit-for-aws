@@ -234,3 +234,102 @@ def test_sonnet_5_5_converse_target_serves_documented_capabilities(feature):
     rec = _gpt4o(critical_features=[feature])
     assert rec["decision_status"] == "recommended"
     assert rec["primary_model"] == "anthropic.claude-sonnet-5-5"
+
+
+# --- follow-up review on #607: conflict options apply the same yield as the rerun --------------
+
+def _conflict(detected=(), status=None, **requirements):
+    data = _workload("anthropic", "claude-3-7-sonnet-latest", "messages", detected=detected,
+                     priority="balanced", governance=["guardrails"], **requirements)
+    if status:
+        _with_feature_status(data, status)
+    return data
+
+
+def _option_and_rerun(data, path="runtime_converse"):
+    conflicted = copy.deepcopy(data)
+    conflicted["workloads"][0]["requirements"]["preserve_messages_api"] = True
+    options = mr.recommend(conflicted)["workloads"]["w"]["decision_options"]
+    option = next(o for o in options if o["api_path"] == path)
+    rerun = mr.recommend(data)["workloads"]["w"]
+    assert rerun["api_path"] == path
+    return option["model"], rerun["primary_model"]
+
+
+@pytest.mark.parametrize("kwargs", [
+    pytest.param({"thinking_enabled": False}, id="thinking_disabled"),
+    pytest.param({"detected": ["message_batches"]}, id="batch_array"),
+    pytest.param({"status": {"message_batches": "detected"}}, id="batch_feature_status"),
+])
+def test_runtime_option_offers_the_model_the_rerun_selects(kwargs):
+    assert _option_and_rerun(_conflict(**kwargs)) == ("anthropic.claude-sonnet-5",) * 2
+
+
+def test_runtime_option_keeps_sonnet_5_5_without_an_unmet_need():
+    assert _option_and_rerun(_conflict()) == ("anthropic.claude-sonnet-5-5",) * 2
+
+
+def test_runtime_option_keeps_an_explicitly_pinned_sonnet_5_5():
+    data = _conflict(thinking_enabled=False, inference_profile_id="global.anthropic.claude-sonnet-5-5")
+    assert _option_and_rerun(data) == ("anthropic.claude-sonnet-5-5",) * 2
+
+
+def test_runtime_option_quality_tier_is_unchanged_by_the_yield():
+    data = _workload("anthropic", "claude-3-7-sonnet-latest", "messages", priority="quality",
+                     governance=["guardrails"], thinking_enabled=False)
+    assert _option_and_rerun(data) == ("anthropic.claude-opus-5-5",) * 2
+
+
+def _mantle_pinned(pin, priority="quality"):
+    return _rec("anthropic", "claude-opus-4-8", "messages", priority=priority,
+                preferred_api_path="mantle_messages", inference_profile_id=pin)
+
+
+def test_sonnet_5_5_pin_does_not_select_sonnet_5_by_id_prefix():
+    # Sonnet 5.5 is not on Mantle; its pin must not name Sonnet 5 and override the ranked choice.
+    rec = _mantle_pinned("global.anthropic.claude-sonnet-5-5")
+    assert (rec["api_path"], rec["primary_model"]) == ("mantle_messages", "anthropic.claude-opus-5-5")
+
+
+@pytest.mark.parametrize("pin", [
+    "global.anthropic.claude-sonnet-5",
+    "arn:aws:bedrock:us-east-1:111122223333:inference-profile/global.anthropic.claude-sonnet-5",
+    "anthropic.claude-sonnet-5",
+])
+def test_a_pin_naming_sonnet_5_still_selects_it(pin):
+    assert _mantle_pinned(pin)["primary_model"] == "anthropic.claude-sonnet-5"
+
+
+@pytest.mark.parametrize("pin", [
+    "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "arn:aws:bedrock:us-east-1:111122223333:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0",
+])
+def test_a_versioned_haiku_4_5_pin_still_selects_it_on_the_runtime(pin):
+    rec = _rec("anthropic", "claude-opus-4-8", "messages", priority="quality", governance=["guardrails"],
+               preferred_api_path="runtime_converse", inference_profile_id=pin)
+    assert (rec["primary_model"], rec["invocation_model_id"]) == ("anthropic.claude-haiku-4-5-20251001-v1:0", pin)
+
+
+def test_mantle_option_honors_a_pin_the_rerun_honors():
+    data = _workload("anthropic", "claude-opus-4-8", "messages", priority="quality",
+                     governance=["guardrails"], inference_profile_id="anthropic.claude-sonnet-5")
+    conflicted = copy.deepcopy(data)
+    conflicted["workloads"][0]["requirements"]["preserve_messages_api"] = True
+    options = mr.recommend(conflicted)["workloads"]["w"]["decision_options"]
+    option = next(o for o in options if o["api_path"] == "mantle_messages")
+    data["workloads"][0]["requirements"].pop("governance")
+    data["workloads"][0]["requirements"]["preferred_api_path"] = "mantle_messages"
+    rerun = mr.recommend(data)["workloads"]["w"]
+    assert option["model"] == rerun["primary_model"] == "anthropic.claude-sonnet-5"
+
+
+# Logan's review on #620: with no path constraint, a runtime profile pin selects the runtime path
+# and the pinned model; `main` dropped the pin and returned Mantle with a different model.
+@pytest.mark.parametrize(("pin", "model"), [
+    ("global.anthropic.claude-sonnet-5-5", "anthropic.claude-sonnet-5-5"),
+    ("us.anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-haiku-4-5-20251001-v1:0"),
+])
+def test_a_runtime_pin_selects_the_runtime_path_when_no_path_is_constrained(pin, model):
+    rec = _rec("anthropic", "claude-3-7-sonnet-latest", "messages", priority="balanced",
+               inference_profile_id=pin)
+    assert (rec["api_path"], rec["primary_model"], rec["invocation_model_id"]) == ("runtime_converse", model, pin)

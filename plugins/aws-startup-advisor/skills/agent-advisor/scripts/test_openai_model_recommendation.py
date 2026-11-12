@@ -79,16 +79,76 @@ def test_responses_source_with_continuity_recommends_mantle_responses():
     assert rec["primary_model"] == "openai.gpt-5.6-sol"
 
 
-def test_chat_completions_gpt5_target_selects_responses_not_chat():
+def test_chat_completions_unrecognized_gpt5_source_lands_on_sol_responses():
+    # The default workload's source is `gpt-5.4`, which the engine does not yet
+    # recognize as a same-model identity (see _SOURCE_MODEL_KEYS), so it lands on
+    # the first catalog candidate — GPT-5.6 Sol — whose card leaves Chat
+    # Completions unchecked on Mantle. The reshape here follows from THAT model's
+    # card, not from a blanket "GPT-5.x on Mantle is Responses-only" rule: the
+    # GPT-5.4 card itself lists Chat Completions on Mantle (see the catalog test
+    # below).
     rec = _recommend(
         _workload(
             source={"api_surface": "chat_completions"},
             requirements={"api_continuity": "required"},
         )
     )
+    assert rec["primary_model"] == "openai.gpt-5.6-sol"
+    assert OPENAI_CATALOG["models"]["openai_gpt_5_6_sol"]["paths"]["mantle_openai_chat"]["available"] is False
     assert rec["api_path"] == "mantle_openai_responses"
     assert rec["api_path"] != "mantle_openai_chat"
     assert "chat_completions_to_responses_required" in _codes(rec["blocks"])
+
+
+@pytest.mark.parametrize(
+    ("catalog_key", "model_id", "card"),
+    [
+        ("openai_gpt_5_4", "openai.gpt-5.4", "model-card-openai-gpt-54.html"),
+        ("openai_gpt_5_5", "openai.gpt-5.5", "model-card-openai-gpt-55.html"),
+    ],
+)
+def test_catalog_gpt54_gpt55_record_public_runtime_and_chat_facts(catalog_key, model_id, card):
+    # Public model cards (read 2026-11-06): both models list bedrock-runtime
+    # (Responses, Chat Completions, Converse via us./global. CRIS ids; no in-region
+    # form), Chat Completions on bedrock-mantle, a 1,050,000-token context window
+    # and 128,000 max output. Provenance must be the public card, never an
+    # internal reference.
+    model = OPENAI_CATALOG["models"][catalog_key]
+    paths = model["paths"]
+    assert paths["mantle_openai_responses"]["available"] is True
+    assert paths["mantle_openai_chat"]["available"] is True
+    assert paths["runtime_converse"]["available"] is True
+    assert paths["runtime_converse"]["requires_cris"] is True
+    assert paths["runtime_converse"]["model_id"] == model_id
+    assert f"us.{model_id}" in paths["runtime_converse"]["evidence"]
+    assert f"global.{model_id}" in paths["runtime_converse"]["evidence"]
+    assert set(model["inference_profiles"]) == {"us", "global"}
+    assert model["context_window"] == 1050000
+    assert model["output_token_ceiling"] == 128000
+    assert card in model["capability_source"]
+    for path in paths.values():
+        assert "internal reference" not in path["evidence"]
+    assert "internal reference" not in model["capability_source"]
+
+
+def test_runtime_converse_path_text_does_not_grant_in_profile_to_gpt54_gpt55():
+    # The GPT-5.4 / GPT-5.5 cards publish only us. and global. CRIS ids; only
+    # GPT-5.6 has an in. profile. The shared runtime_converse path text must not
+    # attach the in. prefix to the 5.4/5.5 models, and its feature constraints
+    # must be stated per model (5.4/5.5 cards list structured outputs on Responses
+    # and application inference profiles on Converse, which the GPT-5.6 sentence
+    # denies).
+    path = OPENAI_CATALOG["paths"]["runtime_converse"]
+    strengths = "\n".join(path["strengths"])
+    constraints = "\n".join(path["constraints"])
+    assert "For GPT-5.6, GPT-5.5 and GPT-5.4" not in strengths
+    # in. exists for GPT-5.6 Terra/Luna only; Sol, 5.5 and 5.4 are us./global.
+    assert "GPT-5.6 Terra and Luna publish us./in./global. ids" in strengths
+    assert "us./global. only for GPT-5.6 Sol, GPT-5.5 and GPT-5.4" in strengths
+    assert "For GPT-5.6, runtime does not support server-side tool use" in constraints
+    assert "GPT-5.5 / GPT-5.4 on runtime" in constraints
+    assert "structured outputs and implicit prompt caching are Responses-only" in constraints
+    assert "Guardrails and application inference profiles are Converse-only" in constraints
 
 
 def test_chat_completions_case_includes_full_reshape_deltas():
@@ -281,6 +341,57 @@ def test_gpt6_mantle_skips_exact_model_outside_cataloged_region():
     assert rec["primary_model"] != "openai.gpt-6-sol"
     assert "fallback" in rec["rationale"][0]
     assert "exact same model" not in rec["rationale"][0]
+
+
+# Deliberate consequence of recording the public GPT-5.5/GPT-5.4 facts (Chat
+# Completions available on Mantle, cataloged region_availability): the Mantle Chat
+# fallback walks candidates in catalog order, and GPT-5.5 / GPT-5.4 sit ahead of
+# GPT-6 Astra in that order. A GPT-6 Sol / 6.1 Sol Chat source outside its own
+# footprint therefore lands on GPT-5.5 (us-east-2) or GPT-5.4 (us-west-2) instead
+# of Astra / a blocking decision. Pinned here so the shift is visible; reordering
+# the candidate walk is engine work tracked for the follow-up PR.
+@pytest.mark.parametrize("source_id", ["gpt-6-sol", "gpt-6.1-sol"])
+@pytest.mark.parametrize(
+    ("region", "fallback_id", "fallback_key"),
+    [
+        ("us-east-2", "openai.gpt-5.5", "openai_gpt_5_5"),
+        ("us-west-2", "openai.gpt-5.4", "openai_gpt_5_4"),
+    ],
+)
+def test_gpt6_chat_outside_own_footprint_falls_back_to_in_region_gpt5_chat(
+    source_id, region, fallback_id, fallback_key
+):
+    rec = _recommend(
+        _workload(
+            source={"model_ids": [source_id], "api_surface": "chat_completions"},
+            requirements={"api_continuity": "required"},
+        ),
+        region=region,
+    )
+    assert rec["decision_status"] == "recommended"
+    assert rec["primary_model"] == fallback_id
+    assert rec["api_path"] == "mantle_openai_chat"
+    assert "mantle_region_unavailable" not in _codes(rec["blocks"])
+    assert "chat_completions_to_responses_required" not in _codes(rec["blocks"])
+    assert "fallback" in rec["rationale"][0]
+    assert region in OPENAI_CATALOG["models"][fallback_key]["region_availability"]["commercial"]
+
+
+def test_gpt56_sol_responses_outside_us_east_skips_gpt55_for_in_region_terra():
+    # GPT-5.5's cataloged footprint is us-east-1/us-east-2 only, so in us-west-2
+    # the Responses fallback now skips it and lands on GPT-5.6 Terra (base
+    # catalog, with no GPT-5.5 region data, selected GPT-5.5 here).
+    rec = _recommend(
+        _workload(
+            source={"model_ids": ["gpt-5.6-sol"]},
+            requirements={"api_continuity": "required"},
+        ),
+        region="us-west-2",
+    )
+    assert rec["decision_status"] == "recommended"
+    assert rec["primary_model"] == "openai.gpt-5.6-terra"
+    assert rec["api_path"] == "mantle_openai_responses"
+    assert "us-west-2" not in OPENAI_CATALOG["models"]["openai_gpt_5_5"]["region_availability"]["commercial"]
 
 
 def test_gpt6_chat_outside_every_mantle_footprint_returns_blocking_decision():
