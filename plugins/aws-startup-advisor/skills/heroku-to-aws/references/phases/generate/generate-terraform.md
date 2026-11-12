@@ -1655,16 +1655,32 @@ reviewers, which the customer creates once in the repository settings.
 - A **promote pair** exists when this app sits at `stage: "production"` in a `pipeline`
   resource's `stages[]`, the app at `stage: "staging"` in that pipeline (or
   `"development"` when there is no staging stage) is itself in `aws-design.json` with
-  Elastic Beanstalk services, and the two apps share the repository. Then
+  Elastic Beanstalk services, the two apps share the repository, **and the two sides
+  resolve to different generated names** (see "Distinct names" below). Then
   `STAGING_APP` = that app's generated EB application name and `STAGING_ENVIRONMENT` =
   any one of its generated EB environments: prefer its `web` environment, otherwise the
   first one (a worker-only app has no web environment; every environment of an app
   receives the same version label from `deploy-eb.yml`, so any of them identifies the
   running version). In a promote pair `deploy-eb.yml` targets the staging app
   (§ GitHub Actions rules) and production receives versions only through this file.
+- **Distinct names.** A pair needs `STAGING_APP != PRODUCTION_APP` and no staging
+  environment name equal to a production environment name. In the `beanstalk.tf` of
+  Step 6.5 every app's EB application is `var.project_name` and every environment is
+  `"${var.project_name}-<process_type>"`, and a Terraform root has one `project_name`, so
+  two Heroku apps in one design resolve to the **same** application and the same
+  environments. With those names `STAGING_ENVIRONMENT` is production's own environment:
+  every push to `main` would deploy straight to production and skip the approval, and
+  `promote.yml` would "promote" production's running version onto itself. (Two EB
+  applications with one name also cannot be created in one root, so such a design does
+  not apply cleanly today either.) Until `beanstalk.tf` names applications and
+  environments per Heroku app, **no pair resolves**: emit the fallback variant below for
+  the production app, and say so in the generated file's comment and in
+  `MIGRATION_GUIDE.md`. The rule is stated in terms of names, so it enables a pair
+  automatically once the generated names differ.
 - Otherwise there is **no generated staging source**: the app is in no pipeline, its
   pipeline partner was not migrated (pipeline membership alone does not supply an EB
-  source), or the app is itself at the staging/development stage. Emit the fallback
+  source), the two sides resolve to the same generated names (above), or the app is
+  itself at the staging/development stage. Emit the fallback
   variant: `version_label` is `required: true`, the two `{{IF promote_pair}}` steps are
   omitted, and promote is an approval-gated redeploy of the chosen version label to the
   app's own environments. Pushes to `main` still deploy to those environments through
@@ -1775,10 +1791,16 @@ jobs:
   application's S3 location and the production application version points at it; this
   works when both applications share the account's EB storage bucket, which is the
   default.
-- When the CNB variant of `deploy-eb.yml` is in use, the version's bundle is a
-  `Dockerrun.aws.json` pointing at an immutable image reference; promote moves the same
-  reference and production runs the staging image without a rebuild. With the default
-  source bundle, production rebuilds the Dockerfile from the promoted source version.
+- The default source-bundle `promote.yml` above is for Dockerfile apps: every environment
+  of the app receives the same version label, so one label identifies the release. A
+  buildpack (CNB) app does not work that way. Its `deploy-eb.yml` registers one version
+  label per process type, `<base>-<process_type>`, and each bundle's `Dockerrun.aws.json`
+  has `Entrypoint: /cnb/process/<process_type>`. Reading one label from a staging
+  environment and applying it to every production environment would start the `web`
+  process in the worker and clock environments (or the reverse). A CNB app therefore uses
+  the **CNB promote variant** below, which promotes the shared `<base>` and gives each
+  production environment its own `<base>-<process_type>` label. The bundles point at an
+  immutable image reference, so production runs the image that was built, with no rebuild.
 - Fargate services are not promoted by this file; the guide's Phase 3 gives the CLI
   equivalent (read the `imageDigest` of a running staging task with
   `aws ecs describe-tasks`, register a production task definition pinned to that digest,
@@ -1788,6 +1810,78 @@ jobs:
   `pipeline.tf` has `Source` and `Deploy` stages only; a CodePipeline promotion approval
   action is not generated yet, so document the CLI promote path in `MIGRATION_GUIDE.md`
   for those methods.
+
+#### CNB promote variant (`containerization_method == "cnb_heroku_builder"`)
+
+Use this instead of the file above for a buildpack app, whether or not a promote pair
+resolves. It never reads a label from a staging environment automatically: a staging
+environment carries one `<base>-<process_type>` label and the base cannot be recovered
+from it with the plain-interpolation shell the artifact checker accepts. The release is
+named explicitly by its **base label** (the `VERSION_BASE` that `deploy-eb.yml` builds as
+`${GITHUB_SHA}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}`). Promote then updates every
+production environment with its own `<base>-<process_type>` label. Each of those versions
+must already exist in `PRODUCTION_APP`: a deploy to the app registers them, and the staging
+registration step of the default file is not part of this variant.
+
+```yaml
+name: Promote to production
+on:
+  workflow_dispatch:
+    inputs:
+      version_label:
+        description: "Release to promote: the base label deploy-eb.yml registered, without the per-process suffix"
+        required: true
+permissions:
+  id-token: write
+  contents: read
+env:
+  AWS_REGION: <target_region>
+  PRODUCTION_APP: <this app's generated EB application name>
+  # Every process type with a generated EB environment, from aws-design.json (never release).
+  # Each environment is named PRODUCTION_APP-PROCESS and runs the version named BASE-PROCESS.
+  EB_PROCESS_TYPES: "web worker"
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    # Approval gate: create a GitHub environment named `production` with required
+    # reviewers (Settings -> Environments). The job waits here until someone approves.
+    environment: production
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Check the release label
+        env:
+          REQUESTED_LABEL: ${{ inputs.version_label }}
+        run: |
+          LABEL="${REQUESTED_LABEL}"
+          if ! [[ "${LABEL}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ ]]; then
+            echo "::error::Pass the release base label (1-80 characters: letters, digits, . _ -)."
+            exit 1
+          fi
+          echo "Promoting ${LABEL} to ${PRODUCTION_APP}"
+          echo "LABEL=${LABEL}" >> "$GITHUB_ENV"
+      - name: Update production environments
+        run: |
+          for PROCESS in ${EB_PROCESS_TYPES}; do
+            aws elasticbeanstalk update-environment --environment-name "${PRODUCTION_APP}-${PROCESS}" --version-label "${LABEL}-${PROCESS}"
+          done
+          echo "Rollback: re-run this workflow with the previous base label."
+```
+
+**CNB promote rules:**
+
+- `EB_PROCESS_TYPES` MUST list every process type with a generated EB environment for the
+  app, the same list `deploy-eb.yml` uses, so no environment keeps the old release.
+- The label is capped at 80 characters because Elastic Beanstalk limits a version label to
+  100 and `-<process_type>` is appended.
+- `{{IF promote_pair}}` is false for these apps even where a pair would resolve: say in
+  the generated file's comment and in `MIGRATION_GUIDE.md` that promote takes the base
+  label from the deploy run and does not read staging. Automatic pairing needs a per-process
+  reader of the staging labels, which this variant does not have.
+- The environment name `${PRODUCTION_APP}-${PROCESS}` is the name `beanstalk.tf` creates
+  (`"${var.project_name}-<process_type>"` in an application named `var.project_name`).
 
 ### `pipeline.tf` — CodePipeline GitHub Source to EB Deploy (Optional)
 

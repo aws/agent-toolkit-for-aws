@@ -1934,6 +1934,53 @@ def _deploy_command(
     return any(_is_deploy_command(command) for command in commands)
 
 
+# Workflow variables a deploy loop reads: a write the checker cannot follow must make these
+# unknown instead of leaving the value an earlier step set.
+_DEPLOY_RELEVANT_ENV = ("EB_ENVIRONMENTS", "EB_APPLICATION_NAME", "EB_PROCESS_TYPES")
+_DEPLOY_RELEVANT_PREFIXES = ("PRODUCTION_", "STAGING_")
+# Actions that do not write the deploy variables (checkout, AWS auth and ECR login, pack setup).
+_REVIEWED_ACTION_PREFIXES = ("actions/", "aws-actions/", "buildpacks/github-actions/")
+
+
+def _is_deploy_relevant(name: str) -> bool:
+    return name in _DEPLOY_RELEVANT_ENV or name.startswith(_DEPLOY_RELEVANT_PREFIXES)
+
+
+def _unreviewed_env_write(step: dict[str, Any], script: str) -> bool:
+    """True when this step may set a deploy variable through `$GITHUB_ENV` in a form the
+    checker does not follow.
+
+    `carried` only learns of `echo "NAME=value" >> "$GITHUB_ENV"` lines it fully parses. Other
+    forms write the same file unseen: a write inside shell control flow, `tee -a`, `printf`, or
+    an action. A step is unreviewed when it
+    - is a `uses:` step outside the reviewed prefixes (it can write `$GITHUB_ENV` itself), or
+    - mentions `$GITHUB_ENV` more often than it makes reviewed writes AND either names a
+      deploy variable or builds the variable name from an expansion.
+    A step that writes other names (the CNB build step writes `IMAGE`) is not unreviewed.
+    """
+    uses = step.get("uses") or ""
+    if uses and not uses.startswith(_REVIEWED_ACTION_PREFIXES) and not uses.startswith("einaregilsson/beanstalk-deploy@"):
+        return True
+    code = "\n".join(line for line in script.splitlines() if not line.lstrip().startswith("#"))
+    mentions = len(re.findall(r"GITHUB_ENV", code))
+    if not mentions:
+        return False
+    try:
+        reviewed = sum(
+            1 for line in _logical_shell_lines(code)
+            if (published := _reviewed_publish(line)) is not None and published[2] == "ENV"
+        )
+    except ValueError:
+        reviewed = 0
+    if reviewed >= mentions:
+        return False
+    names_a_deploy_variable = bool(re.search(
+        r"\b(?:EB_ENVIRONMENTS|EB_APPLICATION_NAME|EB_PROCESS_TYPES|PRODUCTION_\w+|STAGING_\w+)\b", code,
+    ))
+    builds_the_name = bool(re.search(r"(?:echo|printf)\b[^\n]*[\"'\s]\$\{?\w+\}?=", code))
+    return names_a_deploy_variable or builds_the_name
+
+
 def _workflows(
     root: Path, resources: list[Resource], policy: Any,
     findings: list[Finding], require_workflow: bool,
@@ -1998,6 +2045,13 @@ def _workflows(
                     else:
                         inherited[name] = value
                 writes: dict[str, str | None] = {}
+                if _unreviewed_env_write(step, script):
+                    # This step can set a deploy variable in a form the checker does not follow;
+                    # whatever an earlier step set is no longer known.
+                    for name in {*job["env"], *carried, *_DEPLOY_RELEVANT_ENV}:
+                        if _is_deploy_relevant(name):
+                            carried[name] = None
+                    inherited = {k: v for k, v in inherited.items() if not _is_deploy_relevant(k)}
                 try:
                     deploy_run = bool(script) and _deploy_command(
                         script, {**inherited, **step["env"]}, writes,

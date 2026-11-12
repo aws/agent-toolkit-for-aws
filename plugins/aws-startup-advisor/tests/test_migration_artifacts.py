@@ -630,6 +630,50 @@ module "network" {
         report = validator.validate(self.root, require_eb_workflow=True)
         self.assertIn("eb_deploy_missing", {item["rule"] for item in report["findings"]})
 
+    # A step before the deploy loop that rewrites a deploy variable through $GITHUB_ENV in a form the
+    # checker does not follow must make the deploy step unverified. The first three reach
+    # `carried` only as an ignored parse failure or not at all; the fourth is an action.
+    UNREVIEWED_ENV_WRITES = {
+        "write inside an if": 'if [ -n "${X:-}" ]; then echo "EB_ENVIRONMENTS=" >> "$GITHUB_ENV"; fi',
+        "tee -a": 'echo "EB_ENVIRONMENTS=" | tee -a "$GITHUB_ENV"',
+        "printf": "printf 'EB_ENVIRONMENTS=\\n' >> \"$GITHUB_ENV\"",
+        "name built from an expansion": 'echo "${TARGET}=" >> "$GITHUB_ENV"',
+    }
+
+    def _deploy_workflow_with_step_before_deploy(self, step: str) -> str:
+        return (
+            "jobs:\n  deploy:\n    runs-on: ubuntu-latest\n    env:\n      EB_ENVIRONMENTS: app-web\n    steps:\n"
+            + step
+            + "      - run: |\n"
+            + "          for ENVIRONMENT in ${EB_ENVIRONMENTS}; do\n"
+            + '            aws elasticbeanstalk update-environment --environment-name "${ENVIRONMENT}" --version-label abc\n'
+            + "          done\n"
+        )
+
+    def test_unreviewed_github_env_write_before_the_deploy_loop_is_reported(self) -> None:
+        for label, line in self.UNREVIEWED_ENV_WRITES.items():
+            with self.subTest(label):
+                self.write(".github/workflows/deploy-eb.yml", self._deploy_workflow_with_step_before_deploy(
+                    "      - run: |\n          " + line + "\n"))
+                self.assertIn("workflow_run_unverified", self.rules())
+
+    def test_unreviewed_action_before_the_deploy_loop_is_reported(self) -> None:
+        self.write(".github/workflows/deploy-eb.yml", self._deploy_workflow_with_step_before_deploy(
+            "      - uses: some-org/some-action@v1\n"))
+        self.assertIn("workflow_run_unverified", self.rules())
+
+    def test_reviewed_steps_and_other_github_env_names_do_not_poison_the_deploy_loop(self) -> None:
+        # a reviewed action, a write of an unrelated name through control flow (the CNB build step writes
+        # IMAGE this way), and a fully parsed write of a deploy variable all leave the loop verifiable
+        for label, step in {
+            "reviewed action": "      - uses: aws-actions/configure-aws-credentials@v4\n        with:\n          aws-region: us-east-1\n",
+            "unrelated name": '      - run: |\n          if [ -n "${X:-}" ]; then echo "IMAGE=abc" >> "$GITHUB_ENV"; fi\n',
+            "parsed write": '      - run: |\n          echo "EB_ENVIRONMENTS=app-web" >> "$GITHUB_ENV"\n',
+        }.items():
+            with self.subTest(label):
+                self.write(".github/workflows/deploy-eb.yml", self._deploy_workflow_with_step_before_deploy(step))
+                self.assertNotIn("workflow_run_unverified", self.rules(), label)
+
     def test_source_eb_workflow_with_literal_environment_list_passes(self) -> None:
         text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
         section = text.split("### `.github/workflows/deploy-eb.yml`", 1)[1]
@@ -682,6 +726,61 @@ module "network" {
         self.write(".github/workflows/promote.yml", "\n".join(fallback) + "\n")
         report = validator.validate(self.root, require_eb_workflow=True)
         self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
+
+    GENERATE_TERRAFORM = PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md"
+
+    def _cnb_promote_workflow(self) -> str:
+        text = self.GENERATE_TERRAFORM.read_text()
+        section = text.split("#### CNB promote variant", 1)[1]
+        workflow = section.split("```yaml\n", 1)[1].split("\n```", 1)[0]
+        return workflow.replace("<target_region>", "us-east-1").replace(
+            "<this app's generated EB application name>", "app",
+        )
+
+    def test_cnb_promote_gives_each_environment_its_own_process_label(self) -> None:
+        # A CNB deploy registers `<base>-<process_type>` per environment and each bundle's Entrypoint selects
+        # that process. One label on every production environment would start the web process in the workers.
+        workflow = self._cnb_promote_workflow()
+        self.assertIn('--environment-name "${PRODUCTION_APP}-${PROCESS}" --version-label "${LABEL}-${PROCESS}"', workflow)
+        self.assertNotIn("describe-environments", workflow, "the base label cannot be read back from one staging environment")
+        self.assertNotIn("STAGING_", workflow)
+        self.assertIn("environment: production", workflow)
+        self.assertIn("required: true", workflow)
+        self.assertNotIn("<", workflow.replace("Settings -> Environments", ""))
+        self.write(".github/workflows/promote.yml", workflow)
+        self.write(".github/workflows/deploy-eb.yml", self._deploy_workflow_with_step_before_deploy(""))
+        report = validator.validate(self.root, require_eb_workflow=True)
+        self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
+        # the default file's single-label update is only for apps whose environments share one label
+        default = self.GENERATE_TERRAFORM.read_text().split("### `.github/workflows/promote.yml`", 1)[1].split("#### CNB promote variant", 1)[0]
+        self.assertIn("CNB promote variant", default)
+        self.assertNotIn("production runs the staging image without a rebuild. With the default", default)
+
+    def test_cnb_promote_matches_the_labels_the_cnb_deploy_registers(self) -> None:
+        # Guard the pairing this variant relies on: deploy-eb registers `${VERSION_BASE}-${PROCESS}` and the
+        # base is `${GITHUB_SHA}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}`. That variant lives with the
+        # buildpack build, so this only runs where it exists; the variant text itself is checked above.
+        text = self.GENERATE_TERRAFORM.read_text()
+        variant = text.split("#### CNB promote variant", 1)[1].split("### `pipeline.tf`", 1)[0]
+        self.assertIn("${GITHUB_SHA}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}", variant)
+        if "#### CNB variant (`containerization_method" in text:
+            cnb_deploy = text.split("#### CNB variant (`containerization_method", 1)[1]
+            self.assertIn('--version-label "${VERSION_BASE}-${PROCESS}"', cnb_deploy)
+
+    def test_a_promote_pair_needs_distinct_generated_names(self) -> None:
+        # beanstalk.tf names every app's application var.project_name and its environments
+        # "${var.project_name}-<process_type>", so a staging and a production app of one design resolve to the
+        # same names: every push would deploy to production and skip the approval.
+        text = self.GENERATE_TERRAFORM.read_text()
+        beanstalk = text.split('resource "aws_elastic_beanstalk_application"', 1)[1].split("}", 1)[0]
+        self.assertIn("name        = var.project_name", beanstalk)
+        promote = text.split("### `.github/workflows/promote.yml`", 1)[1]
+        self.assertIn("resolve to different generated names", promote)
+        self.assertIn("**Distinct names.**", promote)
+        self.assertIn("**no pair resolves**", promote)
+        self.assertIn("STAGING_APP != PRODUCTION_APP", promote)
+        docs = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-docs.md").read_text()
+        self.assertIn("resolve to different generated EB application and environment names", docs)
 
     def test_fargate_promote_guide_pins_the_running_staging_task_digest(self) -> None:
         # A registry tag can move after staging started; the digest must come from

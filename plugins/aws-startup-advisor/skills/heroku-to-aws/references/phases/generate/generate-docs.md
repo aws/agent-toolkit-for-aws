@@ -815,11 +815,22 @@ Dockerfile in that bundle on the production instances, so promote redeploys the 
 source version tested on staging; the image itself is rebuilt unless you switch to the
 image-based (`Dockerrun.aws.json`) bundle variant.
 {{ELSE}}
-This app has no migrated staging source (it is in no Heroku pipeline, or its pipeline
-partner was not migrated). `deploy-eb.yml` deploys every push to `main` to this app's
+This app has no generated staging source: it is in no Heroku pipeline, its pipeline
+partner was not migrated, or its staging partner and this app resolve to the same
+generated Elastic Beanstalk names (the generated Terraform names every EB application
+from one `project_name`, so two apps in one design would share an application and its
+environments; a "staging" deploy would then land in production). `deploy-eb.yml` deploys every push to `main` to this app's
 environments (`{{EB_ENVIRONMENT_NAMES}}`). The generated `.github/workflows/promote.yml`
 is an approval-gated redeploy of a version label you choose to those same environments:
 use it for controlled releases and rollbacks, with `version_label` always filled in.
+{{ENDIF}}
+{{IF app_containerization_method == "cnb_heroku_builder"}}
+This app is built with buildpacks, so its deploys register one version label per process
+type (`<base>-web`, `<base>-worker`, …) and each environment must run its own. Promote
+therefore takes the **base label** (the `<base>` part, shown in the deploy run's version
+labels) and updates every production environment with its own `<base>-<process_type>`
+label; it does not read staging for you. Never give one label to every environment: the
+`-web` version starts the web process wherever it is applied.
 {{ENDIF}}
 
 Promote is a manual run (**Actions → Promote to production → Run workflow**) and waits
@@ -1658,7 +1669,7 @@ Replace template variables using these sources:
 | `{{FARGATE_RUN_SERVICE}}` / `{{FARGATE_RUN_PROCESS}}` | The service/task family and container (`process_type`) where `heroku run` / `config` equivalents land: the app's `web` entry when `app_has_fargate_web`, else its first `fargate_processes[]` entry |
 | `{{DB_INSTANCE_IDENTIFIER}}` | `identifier` of the generated `aws_db_instance` (`${var.project_name}-${var.environment}-postgres`); used when `postgres_engine == "rds"` |
 | `{{DB_CLUSTER_IDENTIFIER}}` | `cluster_identifier` of the generated `aws_rds_cluster` (`${var.project_name}-${var.environment}-aurora`); used when `postgres_engine == "aurora"` |
-| `{{promote_pair}}` / `{{pipeline_name}}` / `{{STAGING_APP_NAME}}` | Resolved as in generate-terraform.md § `promote.yml`: true only when this app sits at `stage: "production"` in a `pipeline` resource AND the app at `stage: "staging"` (else `"development"`) in it has Elastic Beanstalk services in `aws-design.json`; that pipeline's name; that staging app |
+| `{{promote_pair}}` / `{{pipeline_name}}` / `{{STAGING_APP_NAME}}` | Resolved as in generate-terraform.md § `promote.yml`: true only when this app sits at `stage: "production"` in a `pipeline` resource AND the app at `stage: "staging"` (else `"development"`) in it has Elastic Beanstalk services in `aws-design.json` AND the staging and production sides resolve to different generated EB application and environment names (today every EB app is named from the one `var.project_name`, so they do not, and `promote_pair` is false); that pipeline's name; that staging app |
 | `{{STAGING_EB_ENVIRONMENT}}` / `{{STAGING_EB_ENVIRONMENT_NAMES}}` | Promote pair only: one generated EB environment of the staging app (`web` if present, else the first; a worker-only app has no web environment) and all of its generated EB environment names |
 | `{{MSK_CLUSTER_ARN}}` | Placeholder — user fills from Terraform output |
 | `{{MIGRATION_BUCKET}}` | Placeholder — user creates an S3 bucket for migration artifacts |
