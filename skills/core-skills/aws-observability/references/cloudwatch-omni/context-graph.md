@@ -409,7 +409,7 @@ example):
       "nodeProperties": { "region": "us-east-1", "cloudProvider": "aws",
                           "sourceAccountId": "123456789012", "namespace": "ecommerce" } }
   ],
-  "nextToken": "eyJvZmZzZXQiOjEwMH0="
+  "nextToken": "<token-from-previous-page>"
 }
 ```
 
