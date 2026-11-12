@@ -16,7 +16,7 @@ DIMENSIONS = [
     "session_duration", "traffic_pattern", "platform_fit", "session_state",
     "ops_preference", "isolation", "memory_needs", "multi_agent", "framework",
     "existing_cluster", "multi_cloud", "idle_resume", "compute_tier",
-    "launch_concurrency", "instance_type_requirement",
+    "launch_concurrency", "instance_type_requirement", "expected_scale",
 ]
 
 # Legal answer values per scoring dimension (the closed set the engine reasons about).
@@ -36,6 +36,7 @@ LEGAL_VALUES = {
     "compute_tier": ["light", "heavy_non_gpu", "gpu", "unknown"],
     "launch_concurrency": ["high", "moderate", "low", "unknown"],
     "instance_type_requirement": ["yes", "no", "unknown"],
+    "expected_scale": ["prototype", "growing", "high", "unknown"],
 }
 
 DEFAULTS = {

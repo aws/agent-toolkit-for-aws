@@ -834,3 +834,67 @@ def test_runtimes_dir_points_at_skill_references():
     parts = RUNTIMES_DIR.parts
     assert parts[-2:] == ("references", "runtimes"), RUNTIMES_DIR
     assert parts[-3] == "agent-advisor", RUNTIMES_DIR
+
+
+# --- B4 (#566 feedback F2): expected_scale -----------------------------------------------------
+
+def test_unknown_scale_scores_neutral_on_every_runtime():
+    # Existing runs and seeds carry no expected_scale; they must score exactly as before.
+    for profile in scoring.load_profiles():
+        assert profile["affinities"]["expected_scale"]["unknown"] == scoring.NEUTRAL_SCORE
+    answers = {"session_duration": "15min_to_8hr", "traffic_pattern": "steady"}
+    assert scoring.score({"answers": answers})["scores"] == scoring.score(
+        {"answers": {**answers, "expected_scale": "unknown"}})["scores"]
+
+
+def _scale_gain(scale):
+    answers = {"session_duration": "15min_to_8hr"}
+    before = scoring.score({"answers": answers})["scores"]
+    after = scoring.score({"answers": {**answers, "expected_scale": scale}})["scores"]
+    return {runtime: after[runtime] - before[runtime] for runtime in before}
+
+
+def test_prototype_scale_favors_scale_to_zero_runtimes():
+    gain = _scale_gain("prototype")
+    assert min(gain["agentcore"], gain["lambda"]) > gain["lambda_microvms"] > gain["ecs"] > gain["eks"]
+
+
+def test_high_scale_favors_container_runtimes():
+    gain = _scale_gain("high")
+    assert min(gain["ecs"], gain["eks"]) > gain["agentcore"] > max(gain["lambda"], gain["lambda_microvms"])
+
+
+_STEADY_AGENT = {"session_duration": "15min_to_8hr", "traffic_pattern": "steady",
+                 "ops_preference": "moderate", "existing_cluster": "none"}
+
+
+def test_prototype_scale_brings_agentcore_into_the_recommendation():
+    answers = {**_STEADY_AGENT, "framework": "strands", "multi_agent": "no", "platform_fit": "none"}
+    assert scoring.score({"answers": answers})["verdict"] == "lambda_microvms"
+    result = scoring.score({"answers": {**answers, "expected_scale": "prototype"}})
+    assert result["co_recommend"] == ["agentcore", "lambda_microvms"]
+
+
+def test_high_scale_brings_ecs_into_the_recommendation():
+    answers = {**_STEADY_AGENT, "framework": "custom", "session_state": "stateful", "idle_resume": "none"}
+    assert scoring.score({"answers": answers})["verdict"] == "lambda_microvms"
+    result = scoring.score({"answers": {**answers, "expected_scale": "high"}})
+    assert result["co_recommend"] == ["ecs", "lambda_microvms"]
+
+
+def test_seed_schema_accepts_expected_scale_and_rejects_other_values():
+    import jsonschema
+    schema = json.loads(
+        (pathlib.Path(scoring.__file__).parent / "schemas" / "seed.json").read_text())
+    jsonschema.validate({"units": {"agent": {"expected_scale": "growing"}}}, schema)
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate({"units": {"agent": {"expected_scale": "huge"}}}, schema)
+
+
+def test_clarify_documents_every_expected_scale_value():
+    clarify = (pathlib.Path(scoring.__file__).parent.parent / "references" / "phases" / "clarify")
+    legal_line = next(line for line in (clarify / "clarify.md").read_text().splitlines()
+                      if line.startswith("- `expected_scale`:"))
+    assert legal_line.split(":", 1)[1].split(".")[0].strip().split(" | ") == scoring.LEGAL_VALUES["expected_scale"]
+    for audience in ("clarify-business.md", "clarify-technical.md"):
+        assert "**expected_scale**" in (clarify / audience).read_text()
