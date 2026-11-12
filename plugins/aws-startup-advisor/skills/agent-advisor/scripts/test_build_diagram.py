@@ -1,3 +1,6 @@
+import pathlib
+import re
+
 import build_diagram
 
 
@@ -37,12 +40,16 @@ def test_registry_renders_in_diagram():
     assert "Registry" in out
 
 
-def test_service_labels_match_offered_services():
-    # The labels are the allowed agentcore_services ids that Confirm's postcondition names.
-    assert set(build_diagram.SERVICE_LABELS) == {
-        "identity", "observability", "evaluations", "optimization", "memory", "gateway",
-        "policy", "managed_kb", "code_interpreter", "browser", "web_search", "sandbox",
-        "registry"}
+def test_service_labels_match_confirm_postcondition():
+    # The labels must equal the agentcore_services ids that Confirm's postcondition allows,
+    # and Confirm must not offer Payments.
+    confirm = (pathlib.Path(__file__).resolve().parents[1]
+               / "references/phases/confirm/confirm.md").read_text(encoding="utf-8")
+    named = re.search(
+        r"service id this skill offers: (.+?) \(the keys of SERVICE_LABELS", confirm).group(1)
+    assert set(build_diagram.SERVICE_LABELS) == set(
+        re.findall(r"[a-z_]+", named.replace(" or ", ", ")))
+    assert "payments" not in confirm.lower()
 
 
 def test_resolve_services_prefers_confirm():
