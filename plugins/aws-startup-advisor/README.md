@@ -69,7 +69,7 @@ For standalone skill installs — Kiro, fx, and other hosts that consume skills 
 npx skills add aws/agent-toolkit-for-aws/plugins/aws-startup-advisor/skills --skill '*'
 ```
 
-Install all 12 skills together rather than a subset: `agent-advisor` delegates to `gcp-to-aws`, and the migration skills share vendored fragments. A standalone install covers the skills only — it does not configure the `aws-mcp` server declared in `.mcp.json`, which the host needs separately.
+Install all 13 skills together rather than a subset: `agent-advisor` delegates to `gcp-to-aws`, and the migration skills share vendored fragments. A standalone install covers the skills only — it does not configure the `aws-mcp` server declared in `.mcp.json`, which the host needs separately.
 
 ## Development checks
 
@@ -298,6 +298,7 @@ Documentation search, regional availability lookups, and the reference-content s
 
 - `sts` - Caller identity and account context checks
 - `bedrock`, `bedrock-runtime` - Model availability and prompt evaluation for the Bedrock migration flow
+- `bedrock-mantle` - Calls to the Bedrock Mantle endpoint (Web Search, Projects, Workspaces and other Mantle-only features, and a few Mantle-only models). It is a separate IAM service prefix, so a `bedrock:*` grant does not cover it; the Bedrock migration flow only needs it when a plan uses a Mantle path
 - `ec2`, `rds`, `s3` - Read-only discovery of existing compute, database, and storage resources
 - `iam` - Reviewing roles and policies referenced by a design or security baseline
 - `cloudformation` - Inspecting and deploying generated infrastructure
