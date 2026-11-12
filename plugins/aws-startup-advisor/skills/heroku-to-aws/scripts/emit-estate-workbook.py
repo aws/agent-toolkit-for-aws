@@ -213,6 +213,43 @@ def _sizing(svc: dict) -> str:
     return " ".join(parts).strip()
 
 
+def _finite_number(value):
+    """A finite float, or None when the value is missing, non-numeric, NaN or infinite."""
+    if isinstance(value, bool) or value in (None, ""):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _proven_follower_copies(resources: list, design) -> set:
+    """resource_ids of Postgres followers whose bytes are a proven copy of a leader.
+
+    Design's 2B-F is authoritative once it ran: it lists the followers it collapsed onto a
+    leader in metadata.postgres_followers_collapsed[]. Without that list (Design not run, or an
+    older design file), apply the same rule to the inventory: the follower's pg_leader is an
+    attachment name, and it must match exactly one add-on on the same app whose
+    pg_attachment_names[] contains it. An unresolved follower is not a proven copy, so it is
+    not excluded."""
+    meta = design.get("metadata") if isinstance(design, dict) else None
+    collapsed = meta.get("postgres_followers_collapsed") if isinstance(meta, dict) else None
+    if isinstance(collapsed, list):
+        return {e.get("resource_id") for e in collapsed if isinstance(e, dict) and e.get("resource_id")}
+    pg = [r for r in resources if (r.get("config") or {}).get("addon_service") == "heroku-postgresql"]
+    proven: set = set()
+    for r in pg:
+        c = r.get("config") or {}
+        if c.get("pg_role") != "follower" or not c.get("pg_leader"):
+            continue
+        matches = [x for x in pg if x.get("heroku_app") == r.get("heroku_app") and x is not r
+                   and c["pg_leader"] in ((x.get("config") or {}).get("pg_attachment_names") or [])]
+        if len(matches) == 1:
+            proven.add(r.get("resource_id"))
+    return proven
+
+
 def _design_index(design) -> tuple[dict, dict]:
     """source_resource_id -> (target aws_service, sizing, associated services); addon (name, plan) -> deferred reason.
 
@@ -234,8 +271,24 @@ def _design_index(design) -> tuple[dict, dict]:
         by_source[src] = (target.get("aws_service", ""), _sizing(target), ", ".join(o for o in others if o))
     for d in design.get("deferred") or []:
         if isinstance(d, dict):
-            deferred[(d.get("addon_name"), d.get("addon_plan"))] = d.get("reason", "Deferred")
+            # Every 2F entry carries the deferred resource's resource_id, so match by resource.
+            # The (service, plan) key is only a fallback for an entry that has no resource id;
+            # keying every entry by (service, plan) would show one app's deferral on another
+            # app's add-on of the same plan.
+            rid = d.get("resource_id") or d.get("source_resource_id")
+            key = rid if rid else (d.get("addon_name"), d.get("addon_plan"))
+            deferred[key] = d.get("reason", "Deferred")
     return by_source, deferred
+
+
+def _deferred_reason(deferred: dict, res: dict):
+    """The deferral reason for one inventory resource: its own resource_id first, then the
+    (service, plan) fallback that only holds entries recorded without a resource id."""
+    rid = res.get("resource_id")
+    if rid and rid in deferred:
+        return deferred[rid]
+    cfg = res.get("config") or {}
+    return deferred.get((cfg.get("addon_service"), cfg.get("plan")))
 
 
 # ----------------------------------------------------------------------------
@@ -254,8 +307,7 @@ def build_sheets(inv: dict, design, est) -> tuple[list[tuple[str, list[list]]], 
         hit = by_source.get(res.get("resource_id"))
         if hit:
             return "Mapped", hit[0], hit[1]
-        cfg = res.get("config") or {}
-        reason = deferred.get((cfg.get("addon_service"), cfg.get("plan")))
+        reason = _deferred_reason(deferred, res)
         if reason:
             return f"Deferred - {reason}", "", ""
         return ("Not in design" if has_design else "Design not run"), "", ""
@@ -352,9 +404,19 @@ def build_sheets(inv: dict, design, est) -> tuple[list[tuple[str, list[list]]], 
     n_other = sum(1 for r in resources if r.get("resource_type") == "addon"
                   and (r.get("config") or {}).get("addon_service") not in DATA_STORES)
     n_deferred = sum(1 for r in resources if r.get("resource_type") == "addon" and status_for(r)[0].startswith("Deferred"))
-    pg_total_gb = round(sum(float((r.get("config") or {}).get("data_size_gb") or 0) for r in resources
-                            if (r.get("config") or {}).get("addon_service") == "heroku-postgresql"
-                            and (r.get("config") or {}).get("pg_role") != "follower"), 2)
+    copies = _proven_follower_copies(resources, design)
+    pg_measured: list = []
+    pg_unmeasured = 0
+    for r in resources:
+        c = r.get("config") or {}
+        if c.get("addon_service") != "heroku-postgresql" or r.get("resource_id") in copies:
+            continue
+        size = _finite_number(c.get("data_size_gb"))
+        if size is None:
+            pg_unmeasured += 1
+        else:
+            pg_measured.append(size)
+    pg_total_gb = round(sum(pg_measured), 2)
     cohorts = (inv.get("shared_data_stores") or {}).get("cohorts") or []
     summary = [["Heroku estate summary", "", ""],
                ["Discovery timestamp", meta.get("discovery_timestamp", ""), ""],
@@ -365,7 +427,11 @@ def build_sheets(inv: dict, design, est) -> tuple[list[tuple[str, list[list]]], 
                ["Process types (formations)", n_form, ""],
                ["Running dynos", n_dyno, "Point-in-time; formations scaled to zero are not visible to live discovery"],
                ["Heroku Postgres databases", n_pg, ""],
-               ["  measured data, leaders only (GB)", pg_total_gb, "Followers excluded; forks included"],
+               ["  measured data, excluding proven follower copies (GB)", pg_total_gb,
+                "A follower is excluded only when its leader resolved, so its bytes are a copy; an unresolved "
+                "follower keeps its size. Forks are included."],
+               ["  databases without a measured size", pg_unmeasured,
+                "Left out of the total above, not counted as 0 GB"],
                ["Heroku Redis instances", n_rd, ""],
                ["Heroku Kafka add-ons", n_kf, ""],
                ["Other add-ons", n_other, ""],

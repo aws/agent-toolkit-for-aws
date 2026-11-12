@@ -442,6 +442,7 @@ def _validate_cost_figures(html: str, migration_dir: Path | None) -> list[str]:
     # customers read as the authoritative cost comparison.
     exec_costs_html = _section_html(html, "exec-costs")
     if exec_costs_html is not None:
+        errors.extend(_like_for_like_source_errors(est))
         exec_costs_keys = {k.lower() for k, _ in _cost_anchor_matches(exec_costs_html)}
         for key, trigger in _REQUIRED_COST_KEYS.items():
             path = _COST_ANCHORS[key]
@@ -457,6 +458,43 @@ def _validate_cost_figures(html: str, migration_dir: Path | None) -> list[str]:
                 )
 
     return errors
+
+
+def _like_for_like_source_errors(est: dict) -> list[str]:
+    """The like-for-like anchor is required when `cost_comparison.like_for_like_comparison`
+    exists, but the figure it is compared with is the top-level
+    `cost_comparison.heroku_monthly_like_for_like`. Two estimate shapes would let a wrong
+    anchored figure through, so both are failures:
+
+    - the block exists and the top-level value is missing: there is nothing to compare the
+      anchor with, so any amount would pass;
+    - the block carries its own `heroku_monthly_like_for_like` and it differs from the
+      top-level one: the estimate disagrees with itself, so the anchor cannot be right
+      against both."""
+    cmp_ = est.get("cost_comparison")
+    block = cmp_.get("like_for_like_comparison") if isinstance(cmp_, dict) else None
+    if block is None:
+        return []
+    top = cmp_.get("heroku_monthly_like_for_like")
+    if top is None:
+        return [
+            "estimation-infra.json cost_comparison.like_for_like_comparison exists but "
+            "cost_comparison.heroku_monthly_like_for_like is missing; the "
+            'data-cost-key="heroku_monthly_like_for_like" anchor has no figure to be checked against '
+            "(write the like-for-like Heroku figure at cost_comparison.heroku_monthly_like_for_like)"
+        ]
+    nested = block.get("heroku_monthly_like_for_like") if isinstance(block, dict) else None
+    if nested is None:
+        return []
+    try:
+        if _canonical_money(float(top)) != _canonical_money(float(nested)):
+            return [
+                "estimation-infra.json disagrees with itself: cost_comparison.heroku_monthly_like_for_like = "
+                f"{top!r} but cost_comparison.like_for_like_comparison.heroku_monthly_like_for_like = {nested!r}"
+            ]
+    except (TypeError, ValueError):
+        pass  # a non-numeric figure is reported by the anchor comparison itself
+    return []
 
 
 def _body_scope(html: str) -> str:

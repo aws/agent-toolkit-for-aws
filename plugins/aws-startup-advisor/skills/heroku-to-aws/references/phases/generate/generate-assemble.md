@@ -140,7 +140,7 @@ Artifacts produced:
 • MIGRATION_GUIDE.md — Step-by-step migration procedure
 • README.md — Artifact listing and quick start
 • migration-report.html — Stakeholder summary (costs + what-if scenarios when present)
-• heroku-estate.xlsx — Reviewable estate inventory with AWS mapping and costs   (show this line only when the workbook writer below printed ESTATE_OK)
+• heroku-estate.xlsx — Reviewable estate inventory with AWS mapping and costs   (show this line only when the workbook writer above printed ESTATE_OK)
 • scripts/ — Database migration scripts
 [• generation-warnings.json — N service(s) require manual setup]   (show this line only when warnings is non-empty; the file is always written)
 
