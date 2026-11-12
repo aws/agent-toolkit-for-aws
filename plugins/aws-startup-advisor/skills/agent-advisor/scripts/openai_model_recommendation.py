@@ -116,7 +116,10 @@ _HOSTED_TOOL_IMPACTS = {
 
 
 # Converse tier map: a governance workload keeps its capability tier when moving
-# from the (Mantle-only) GPT-5.x family to Claude on runtime Converse.
+# from a GPT-5.x source the engine does not recognize as a same-model runtime
+# identity (see _SOURCE_MODEL_KEYS) to Claude on runtime Converse. This is an
+# engine recognition gap, not an endpoint fact: GPT-5.5 and GPT-5.4 do carry a
+# cataloged runtime_converse path via us./global. CRIS ids.
 #   GPT-5.6 Sol (frontier)      -> Claude Opus 5.5
 #   GPT-5.6 Terra / 6.1 Terra / 5.5 / 5.4 -> Claude Sonnet 5.5 (also the default tier; Sonnet 5
 #                                  follows it as the forced tool_choice / Batch alternative)
@@ -1390,8 +1393,9 @@ def recommend_openai_workload(workload, region, catalog):
                 (
                     "The selected Astra Responses path requires reshaping the Chat source."
                     if model_key == "openai_gpt_6_astra"
-                    else "GPT-5.x on Mantle rejects Chat Completions; the source must reshape "
-                    "to the Responses API."
+                    else "The selected Mantle Responses path requires reshaping the Chat source "
+                    "to the Responses API (Chat Completions support is per-model: see the "
+                    "selected model's mantle_openai_chat catalog entry)."
                 ),
                 "Apply the request/response/tool/state reshape deltas before cutover.",
             )

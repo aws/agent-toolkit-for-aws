@@ -122,3 +122,29 @@ def test_azure_generate_mantle_branch_still_correct() -> None:
         "Azure generate-artifacts-ai.md regressed off the bedrock-mantle:* IAM "
         "action for the Mantle path"
     )
+    # Runtime-default: Mantle is no longer presented as Azure's primary path.
+    assert "Mantle is the PRIMARY path" not in text, (
+        "Azure generate-artifacts-ai.md still calls Mantle the PRIMARY path; "
+        "bedrock-runtime CRIS is the default and Mantle is selector-gated"
+    )
+    assert "bedrock-runtime" in text
+
+
+def test_step0_runtime_cris_is_default_and_mantle_needs_selector() -> None:
+    # bedrock-runtime is the documented default endpoint (endpoints.html); Step 0
+    # must list runtime_openai_cris before the mantle bullet, label it the default,
+    # and tie the mantle bullet to a recorded mantle_selector. Step 3B's OpenRouter
+    # subroute must know the runtime same-model route.
+    text = GCP_GENERATE.read_text(encoding="utf-8")
+    step0 = text.split("## Step 0:", 1)[1].split("## Step 1M:", 1)[0]
+    runtime_idx = step0.index("`migration_path` = `\"runtime_openai_cris\"`")
+    mantle_idx = step0.index("`migration_path` starts with `\"mantle\"`")
+    assert runtime_idx < mantle_idx, (
+        "Step 0 must list the runtime_openai_cris bullet before the mantle bullet"
+    )
+    assert "default" in step0[runtime_idx:mantle_idx].lower()
+    assert "mantle_selector" in step0
+    assert "bedrock-endpoint-policy.md" in step0
+    step3b = text.split("## Step 3B: Generate Gateway Configuration", 1)[1]
+    assert "same_model_runtime" in step3b
+    assert "same_model_mantle" in step3b
