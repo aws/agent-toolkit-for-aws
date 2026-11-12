@@ -12,10 +12,12 @@ from iam_policy import (
     foundation_model_arn,
     generate_policy,
     is_gpt6_cris_model,
+    is_gpt54_55_cris_model,
     is_mantle_model,
     mantle_project_arn,
     inference_profile_arn,
     is_inference_profile,
+    requires_default_project_grant,
 )
 
 REGION = "us-east-1"
@@ -124,6 +126,18 @@ def test_mantle_model_detection_excludes_gpt_oss():
     assert is_mantle_model("openai.gpt-5.5") is True
     assert is_mantle_model("openai.gpt-oss-120b-1:0") is False
     assert is_mantle_model("anthropic.claude-sonnet-4-6") is False
+
+
+def test_is_mantle_model_gpt54_55_cris_ids_are_runtime_not_mantle():
+    # GPT-5.4 / GPT-5.5 model cards (read 2026-11-06) list us./global. CRIS ids on
+    # bedrock-runtime: the bare id needs bedrock-mantle:* actions, the prefixed id
+    # needs bedrock:InvokeModel against the inference-profile ARN.
+    assert is_mantle_model("openai.gpt-5.4") is True
+    assert is_mantle_model("openai.gpt-5.5") is True
+    assert is_mantle_model("us.openai.gpt-5.4") is False
+    assert is_mantle_model("global.openai.gpt-5.4") is False
+    assert is_mantle_model("us.openai.gpt-5.5") is False
+    assert is_mantle_model("global.openai.gpt-5.5") is False
 
 
 def test_is_mantle_model_matches_bare_gpt6_ids():
@@ -255,3 +269,91 @@ class TestGpt6CrisProjectArn:
         pol = generate_policy(["openai.gpt-6-sol"], REGION, ACCOUNT)
         sids = {s["Sid"] for s in pol["Statement"]}
         assert "BedrockInvokeModelScoped" not in sids
+
+
+_GPT54_55_CRIS_SHORT_IDS = [
+    "us.openai.gpt-5.4",
+    "global.openai.gpt-5.4",
+    "us.openai.gpt-5.5",
+    "global.openai.gpt-5.5",
+]
+
+
+class TestGpt54Gpt55CrisProjectArn:
+    """PR 583 review: the GPT-5.4 / GPT-5.5 model cards (read 2026-11-07,
+    https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html
+    and ...-gpt-55.html) say the IAM identity "also needs bedrock:InvokeModel on
+    your account's default project ... in addition to the inference profile" for
+    their us./global. runtime ids. The grant must cover exactly those ids."""
+
+    @pytest.mark.parametrize("model_id", _GPT54_55_CRIS_SHORT_IDS)
+    def test_predicates_match_short_ids(self, model_id):
+        assert is_gpt54_55_cris_model(model_id)
+        assert requires_default_project_grant(model_id)
+        assert not is_gpt6_cris_model(model_id)
+
+    @pytest.mark.parametrize("model_id", _GPT54_55_CRIS_SHORT_IDS)
+    def test_predicates_match_system_profile_arns(self, model_id):
+        arn = f"arn:aws:bedrock:{REGION}:{ACCOUNT}:inference-profile/{model_id}"
+        assert is_gpt54_55_cris_model(arn)
+        assert requires_default_project_grant(arn)
+
+    @pytest.mark.parametrize(
+        "model_id",
+        [
+            "openai.gpt-5.4",  # bare — mantle, not CRIS
+            "openai.gpt-5.5",
+            "us.openai.gpt-5.6-sol",  # GPT-5.6 cards do not add the grant
+            "global.openai.gpt-5.6-terra",
+            "us.openai.gpt-5.4-pro",  # not a published runtime id
+            "us.anthropic.claude-sonnet-5",
+            f"arn:aws:bedrock:{REGION}:{ACCOUNT}:inference-profile/us.anthropic.claude-sonnet-5",
+        ],
+    )
+    def test_predicates_exclude_bare_mantle_gpt56_and_unrelated_ids(self, model_id):
+        assert not is_gpt54_55_cris_model(model_id)
+        assert not requires_default_project_grant(model_id)
+
+    @pytest.mark.parametrize("model_id", _GPT54_55_CRIS_SHORT_IDS)
+    def test_generate_policy_grants_project_default_for_short_id(self, model_id):
+        pol = generate_policy([model_id], REGION, ACCOUNT)
+        assert [s["Sid"] for s in pol["Statement"]] == ["BedrockInvokeModelScoped"]
+        base = model_id.split(".", 1)[1]
+        assert set(pol["Statement"][0]["Resource"]) == {
+            f"arn:aws:bedrock:*::foundation-model/{base}",
+            f"arn:aws:bedrock:{REGION}:{ACCOUNT}:inference-profile/{model_id}",
+            default_project_arn(REGION, ACCOUNT),
+        }
+
+    @pytest.mark.parametrize("model_id", _GPT54_55_CRIS_SHORT_IDS)
+    def test_generate_policy_grants_project_default_for_profile_arn(self, model_id):
+        arn = f"arn:aws:bedrock:{REGION}:{ACCOUNT}:inference-profile/{model_id}"
+        pol = generate_policy([arn], REGION, ACCOUNT)
+        resources = pol["Statement"][0]["Resource"]
+        assert arn in resources
+        assert default_project_arn(REGION, ACCOUNT) in resources
+
+    @pytest.mark.parametrize("model_id", ["openai.gpt-5.4", "openai.gpt-5.5"])
+    def test_bare_mantle_id_gets_mantle_statements_and_no_project_default(self, model_id):
+        pol = generate_policy([model_id], REGION, ACCOUNT)
+        sids = {s["Sid"] for s in pol["Statement"]}
+        assert "BedrockInvokeModelScoped" not in sids
+        assert "BedrockMantleInference" in sids
+        assert default_project_arn(REGION, ACCOUNT) not in json.dumps(pol)
+
+    @pytest.mark.parametrize(
+        "model_id",
+        ["us.anthropic.claude-sonnet-5", "us.openai.gpt-5.6-sol", "global.openai.gpt-5.6-luna"],
+    )
+    def test_unrelated_runtime_ids_do_not_get_project_default(self, model_id):
+        pol = generate_policy([model_id], REGION, ACCOUNT)
+        resources = pol["Statement"][0]["Resource"]
+        assert default_project_arn(REGION, ACCOUNT) not in resources
+        assert len(resources) == 2
+
+    def test_mixed_run_adds_project_default_once(self):
+        pol = generate_policy(
+            ["us.openai.gpt-5.4", "us.anthropic.claude-sonnet-5"], REGION, ACCOUNT
+        )
+        resources = pol["Statement"][0]["Resource"]
+        assert resources.count(default_project_arn(REGION, ACCOUNT)) == 1

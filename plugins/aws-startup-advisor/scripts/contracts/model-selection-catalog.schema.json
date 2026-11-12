@@ -152,6 +152,7 @@
             "evidence": { "type": "string" }
           }
         },
+        "pricing": { "type": "object" },
         "paths": {
           "type": "object",
           "minProperties": 1,
