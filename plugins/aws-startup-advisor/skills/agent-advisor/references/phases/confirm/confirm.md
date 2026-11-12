@@ -29,6 +29,8 @@ _postconditions:
     _on_failure: _halt_and_inform
   - _assert: "confirm.json has one units[<unit_id>] entry per agent_session unit (each with its own confirmed deployment_model, agentcore_services, tool_choices, model_decision, and chosen_runtime when that unit's verdict was co_recommend), plus top-level fields mirroring the primary unit; every model-bearing unit's model_decision copies primary_model, api_path, invocation_model_id, and the independent verification_status from model-recommendation.json plus model-verification.json when present unless the user requested changed requirements and the deterministic engine was rerun; accepted means the recommendation strategy was accepted and never implies verification_status == passed; a single-unit run may use the flat top-level shape alone; confirm.json carries resolved_runtimes{<unit_id>: <runtime>} for every unit (the per-unit rule/Tier-1 picks used by the platform gate); confirm.json records platform_decision {mode, platform} — asked only when the resolved runtimes diverge, silent split otherwise; when the gate was asked, platform_decision.offer records the superset and per-unit sacrifices; every temporal_worker_poll unit's Tier-1 pick (including any user AskUserQuestion choice for Tier-1 rules 1/4) is persisted in resolved_runtimes so Design consumes it verbatim and never re-asks"
     _on_failure: _halt_and_inform
+  - _assert: "every agentcore_services entry in confirm.json (per unit and top level) is a service id this skill offers: identity, observability, evaluations, optimization, memory, gateway, policy, managed_kb, code_interpreter, browser, web_search, sandbox, or registry (the keys of SERVICE_LABELS in scripts/build_diagram.py)"
+    _on_failure: _halt_and_inform
 ---
 
 # Phase: Confirm — Winner-specific follow-ups
@@ -83,18 +85,21 @@ evaluations, optimization). Multi-select, seeded from `agentcore_services`:
 - Gateway (external APIs / MCP), enhanced Identity (OAuth), Policy (high-risk / multi-tenant),
   Memory (cross-session), Managed KB (internal docs), Code Interpreter, Browser, Web Search,
   Sandbox.
-- **Conditional (mention only when signals fit — not by default):** Payments (agent pays /
-  transacts on the user's behalf — surface if high-risk/transactional actions are detected) and
-  AWS Agent Registry (`registry`: shared catalog, resource discovery, or approval-based governance
-  requested by the user or identified in the workload). Registry can fit a single agent;
-  `multi_agent == "yes"` alone does not justify it. If neither service's signal is present,
-  leave it out. A Registry selection remains conditional until Design checks its Region
-  availability per `freshness.md`; Registry discovers resources, not orchestrates their execution.
+- **Conditional (mention only when signals fit, not by default):** AWS Agent Registry
+  (`registry`: shared catalog, resource discovery, or approval-based governance requested by the
+  user or identified in the workload). Registry can fit a single agent; `multi_agent == "yes"`
+  alone does not justify it. If its signal is not present, leave it out. A Registry selection
+  remains conditional until Design checks its Region availability per `freshness.md`; Registry
+  discovers resources, not orchestrates their execution.
   For any selected service that can front external tools/data (Gateway, Managed KB, Web Search,
   Memory), **ask** whether they already use a third-party tool for it (e.g. Tavily, Pinecone,
   Browserbase, a REST/MCP server) — do NOT assume greenfield. If yes: switch to AgentCore native,
   or keep existing and connect via Gateway. If no: default to native. Record the choice in
   `tool_choices`.
+
+Offer and record only the always-on set plus the services listed above, here and in Step 3. Do
+not add any other AgentCore service to `agentcore_services`, even on request; say this skill does
+not configure it.
 
 ## Step 3 — If a unit's verdict is any non-AgentCore runtime (ecs / eks / lambda / lambda_microvms / batch / fargate)
 

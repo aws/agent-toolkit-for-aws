@@ -26,16 +26,23 @@ def test_labels_cover_all_runtimes():
         assert rid in build_diagram.RUNTIME_LABELS
 
 
-def test_service_labels_include_payments_and_registry():
-    # Conditional AgentCore services (SA feedback: relevant but not always).
-    assert build_diagram.SERVICE_LABELS["payments"] == "Payments"
+def test_service_labels_include_registry():
+    # Conditional AgentCore service (SA feedback: relevant but not always).
     assert build_diagram.SERVICE_LABELS["registry"] == "Registry"
 
 
-def test_payments_registry_render_in_diagram():
+def test_registry_renders_in_diagram():
     out = build_diagram.render_mermaid(
-        "agentcore", ["identity", "payments", "registry"], "claude_sonnet_5", "harness")
-    assert "Payments" in out and "Registry" in out
+        "agentcore", ["identity", "registry"], "claude_sonnet_5", "harness")
+    assert "Registry" in out
+
+
+def test_service_labels_match_offered_services():
+    # The labels are the allowed agentcore_services ids that Confirm's postcondition names.
+    assert set(build_diagram.SERVICE_LABELS) == {
+        "identity", "observability", "evaluations", "optimization", "memory", "gateway",
+        "policy", "managed_kb", "code_interpreter", "browser", "web_search", "sandbox",
+        "registry"}
 
 
 def test_resolve_services_prefers_confirm():
