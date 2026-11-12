@@ -97,7 +97,7 @@ def test_mantle_probe_uses_recommended_clean_id():
 
 
 def test_default_messages_probe_uses_runtime_messages_with_resolved_cris():
-    messages = FakeMessages(response={"model": "global.anthropic.claude-sonnet-5"})
+    messages = FakeMessages(response={"model": "global.anthropic.claude-sonnet-5-5"})
     client = FakeMantleClient(messages)
     mantle_calls = []
     result = _verify(
@@ -109,8 +109,8 @@ def test_default_messages_probe_uses_runtime_messages_with_resolved_cris():
 
     assert verification["status"] == "passed"
     assert verification["api_path"] == "runtime_messages"
-    assert verification["response_model_id"] == "global.anthropic.claude-sonnet-5"
-    assert messages.calls[0]["model"] == "global.anthropic.claude-sonnet-5"
+    assert verification["response_model_id"] == "global.anthropic.claude-sonnet-5-5"
+    assert messages.calls[0]["model"] == "global.anthropic.claude-sonnet-5-5"
     assert mantle_calls == []
 
 
@@ -128,7 +128,7 @@ def test_converse_probe_uses_resolved_cris_without_substitution():
     assert verification["status"] == "passed"
     assert (
         client.converse_calls[0]["modelId"]
-        == "global.anthropic.claude-sonnet-5"
+        == "global.anthropic.claude-sonnet-5-5"
     )
 
 

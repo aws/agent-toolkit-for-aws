@@ -1,0 +1,170 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:awslabs:startups:ai:model-selection-catalog",
+  "title": "Bedrock model-selection catalog",
+  "description": "Contract for skills/shared/ai/models/{anthropic,openai}-bedrock.json, the machine-readable catalogs the agent-advisor model selectors read (vendored into agent-advisor at references/vendored/ai/models/). Lifecycle state is owned by skills/shared/ai/ai-model-lifecycle.md; tools/model-catalog-drift.py binds the two. Every entry under models MUST declare selection_status: only 'selectable' entries are automatic-selection candidates; 'reference_only' entries stay readable for lookups but are never picked by the selectors.",
+  "type": "object",
+  "required": ["schema_version", "provider", "verified_at", "verified_region", "source", "disclaimer", "paths", "models"],
+  "additionalProperties": false,
+  "anyOf": [
+    {
+      "$comment": "Anthropic selector compares limits numerically, so every entry needs integer limits.",
+      "properties": {
+        "provider": { "const": "anthropic" },
+        "models": { "additionalProperties": { "$ref": "#/definitions/anthropicModelRules" } }
+      }
+    },
+    {
+      "$comment": "OpenAI loader requires generation; it supports \"unknown\" limits.",
+      "properties": {
+        "provider": { "const": "openai" },
+        "models": { "additionalProperties": { "$ref": "#/definitions/openaiModelRules" } }
+      }
+    }
+  ],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 2 },
+    "provider": { "type": "string", "enum": ["anthropic", "openai"] },
+    "generated_from": {
+      "description": "Marks this catalog as rendered by tools/build-model-catalogs.py from bedrock-model-registry.json; edit the registry instead.",
+      "type": "string",
+      "minLength": 1
+    },
+    "verified_at": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "verified_region": { "type": "string", "minLength": 1 },
+    "source": { "type": "string", "minLength": 1 },
+    "disclaimer": { "type": "string", "minLength": 1 },
+    "registry_exclusions": {
+      "description": "Active registry models intentionally absent from models, keyed by Bedrock model id, with a reason (see tools/model-catalog-drift.py).",
+      "type": "object",
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "paths": {
+      "description": "Provider-specific invocation path definitions, keyed by path id.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/definitions/pathDefinition" }
+    },
+    "models": {
+      "description": "Model entries keyed by the catalog model key emitted as model_key in recommendations.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/definitions/model" }
+    }
+  },
+  "definitions": {
+    "anthropicModelRules": {
+      "properties": {
+        "context_window": { "type": "integer", "minimum": 1 },
+        "output_token_ceiling": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "openaiModelRules": {
+      "required": ["generation"]
+    },
+    "stringList": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "tokenLimit": {
+      "anyOf": [
+        { "type": "integer", "minimum": 1 },
+        { "type": "string", "const": "unknown" }
+      ]
+    },
+    "isoDate": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "pathDefinition": {
+      "type": "object",
+      "required": ["sdk", "client", "model_id_strategy", "supports_cris", "strengths", "constraints"],
+      "additionalProperties": false,
+      "properties": {
+        "sdk": { "type": "string", "minLength": 1 },
+        "client": { "type": "string", "minLength": 1 },
+        "endpoint": { "type": "string", "minLength": 1 },
+        "api": { "type": "string", "minLength": 1 },
+        "iam_action": { "type": "string", "minLength": 1 },
+        "iam_auth": { "type": "string", "minLength": 1 },
+        "model_id_strategy": { "type": "string", "minLength": 1 },
+        "supports_cris": { "type": "boolean" },
+        "strengths": { "$ref": "#/definitions/stringList" },
+        "constraints": { "$ref": "#/definitions/stringList" }
+      }
+    },
+    "modelPath": {
+      "type": "object",
+      "required": ["available", "model_id", "requires_cris"],
+      "additionalProperties": false,
+      "properties": {
+        "available": { "type": "boolean" },
+        "model_id": { "type": "string", "minLength": 1 },
+        "requires_cris": { "type": "boolean" },
+        "guardrails_supported": { "type": "boolean" },
+        "prompt_caching_supported": { "type": "boolean" },
+        "server_side_tools_supported": { "type": "boolean" },
+        "evidence": { "type": "string" },
+        "capabilities": { "$ref": "#/definitions/stringList" },
+        "regions": { "$ref": "#/definitions/stringList" },
+        "supported_regions": { "$ref": "#/definitions/stringList" },
+        "inference_profile_regions": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/stringList" }
+        }
+      }
+    },
+    "model": {
+      "type": "object",
+      "required": ["display_name", "selection_status", "family", "version", "class", "context_window", "output_token_ceiling", "capabilities", "paths"],
+      "additionalProperties": false,
+      "properties": {
+        "display_name": { "type": "string", "minLength": 1 },
+        "selection_status": {
+          "description": "selectable: an automatic-selection candidate. reference_only: readable for lookups, never picked by the selectors.",
+          "type": "string",
+          "enum": ["selectable", "reference_only"]
+        },
+        "family": { "type": "string", "minLength": 1 },
+        "generation": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "class": { "type": "string", "minLength": 1 },
+        "context_window": { "$ref": "#/definitions/tokenLimit" },
+        "output_token_ceiling": { "$ref": "#/definitions/tokenLimit" },
+        "capabilities": { "$ref": "#/definitions/stringList" },
+        "capability_source": { "type": "string" },
+        "evidence": { "type": "string" },
+        "lifecycle_status": { "type": "string", "minLength": 1 },
+        "launch_date": { "$ref": "#/definitions/isoDate" },
+        "eol_no_sooner_than": { "$ref": "#/definitions/isoDate" },
+        "default_effort": { "type": "string", "minLength": 1 },
+        "adaptive_thinking_only": { "type": "boolean" },
+        "batch_supported": { "type": "boolean" },
+        "forced_tool_choice_supported": { "type": "boolean" },
+        "native_structured_output_supported": { "type": "boolean" },
+        "sampling_parameters_supported": { "type": "boolean" },
+        "runtime_in_region_regions": { "$ref": "#/definitions/stringList" },
+        "runtime_in_region_verified_at": { "$ref": "#/definitions/isoDate" },
+        "mantle_regions": { "$ref": "#/definitions/stringList" },
+        "service_tiers": { "$ref": "#/definitions/stringList" },
+        "inference_profiles": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/stringList" }
+        },
+        "region_availability": {
+          "type": "object",
+          "required": ["commercial", "govcloud"],
+          "additionalProperties": false,
+          "properties": {
+            "commercial": { "$ref": "#/definitions/stringList" },
+            "govcloud": { "$ref": "#/definitions/stringList" },
+            "evidence": { "type": "string" }
+          }
+        },
+        "pricing": {
+          "description": "Cached Standard-tier price table for the model (USD per 1M tokens) with its source and read date; the estimate phases read it.",
+          "type": "object"
+        },
+        "paths": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "$ref": "#/definitions/modelPath" }
+        }
+      }
+    }
+  }
+}

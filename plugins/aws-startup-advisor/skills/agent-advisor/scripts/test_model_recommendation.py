@@ -1,3 +1,4 @@
+import copy
 import json
 import pathlib
 import re
@@ -74,9 +75,9 @@ def test_default_anthropic_messages_lands_on_runtime_messages():
     rec = result["workloads"]["support-agent"]
 
     assert rec["decision_status"] == "recommended"
-    assert rec["primary_model"] == "anthropic.claude-sonnet-5"
-    assert rec["model_identity"]["display_name"] == "Claude Sonnet 5"
-    assert rec["model_identity"]["version"] == "5.0"
+    assert rec["primary_model"] == "anthropic.claude-sonnet-5-5"
+    assert rec["model_identity"]["display_name"] == "Claude Sonnet 5.5"
+    assert rec["model_identity"]["version"] == "5.5"
     assert rec["api_path"] == "runtime_messages"
     assert rec["invocation_model_id"] is None  # residency unknown: no CRIS prefix guessed
     assert rec["mantle_selector"] is None
@@ -254,7 +255,7 @@ def test_governance_selects_runtime_converse_when_messages_is_a_preference():
 
     assert rec["decision_status"] == "recommended"
     assert rec["api_path"] == "runtime_converse"
-    assert rec["primary_model"] == "anthropic.claude-sonnet-5"
+    assert rec["primary_model"] == "anthropic.claude-sonnet-5-5"
     assert rec["mantle_selector"] is None
 
 
@@ -534,7 +535,7 @@ def test_source_version_hop_requires_explicit_feature_scan():
 
     assert rec["source_analysis"] == {
         "detected_version": "3.7",
-        "target_version": "5.0",
+        "target_version": "5.5",
         "version_changed": True,
     }
     assert "claude_version_hop" in _codes(rec["migration_deltas"])
@@ -584,8 +585,10 @@ def test_detected_version_features_emit_blocks_and_tuning():
 @pytest.mark.parametrize(
     "requirements,expected_path",
     [
-        ({"preserve_messages_api": True}, "runtime_messages"),
-        ({"governance": ["guardrails"]}, "runtime_converse"),
+        # Sonnet 5.5 is the balanced default on bedrock-runtime and its Mantle path is
+        # GovCloud-only, so the older target this guidance is for (Sonnet 5) is reached
+        # through a verified Mantle selector in a commercial Region.
+        ({"mantle_selector": "workspaces"}, "mantle_messages"),
     ],
 )
 def test_older_target_forced_tool_guidance_requires_verified_support(
@@ -637,17 +640,27 @@ def test_agent_features_produce_architecture_and_trajectory_requirements():
     ]
 
 
+def test_eu_geo_from_a_us_region_fails_closed_with_a_block():
+    rec = _recommend(_workload(requirements={
+        "data_residency": "geo_required", "cris_geography": "eu", "governance": ["guardrails"],
+    }))
+    assert rec["invocation_model_id"] is None
+    assert "inference_profile_unresolved" in _codes(rec["blocks"])
+
+
 @pytest.mark.parametrize(
     "requirements,expected",
     [
         ({"data_residency": "unknown"}, None),
         (
             {"data_residency": "global_allowed"},
-            "global.anthropic.claude-sonnet-5",
+            "global.anthropic.claude-sonnet-5-5",
         ),
+        # An EU Geo profile is callable only from EU source Regions. From us-east-1, Sonnet 5.5's
+        # profile matrix resolves nothing, and the result fails closed (see the next test).
         (
             {"data_residency": "geo_required", "cris_geography": "eu"},
-            "eu.anthropic.claude-sonnet-5",
+            None,
         ),
         (
             {
@@ -669,15 +682,14 @@ def test_runtime_cris_resolution(requirements, expected):
 @pytest.mark.parametrize(
     "pin,requirements",
     [
-        # Global profile under US-only residency: Sonnet 5 has no profile matrix, but the
-        # geography constraint must still reject the pin.
+        # Global profile under US-only residency: the geography constraint must reject the pin.
         (
-            "global.anthropic.claude-sonnet-5",
+            "global.anthropic.claude-sonnet-5-5",
             {"data_residency": "geo_required", "cris_geography": "us"},
         ),
         # EU profile under US-only residency.
         (
-            "eu.anthropic.claude-sonnet-5",
+            "eu.anthropic.claude-sonnet-5-5",
             {"data_residency": "geo_required", "cris_geography": "us"},
         ),
         # Profile for another model.
@@ -811,7 +823,7 @@ def test_input_and_output_match_schemas():
 def test_catalog_records_path_specific_ids_and_limits():
     catalog = model_recommendation.load_catalog()
 
-    assert catalog["verified_at"] == "2026-11-09"
+    assert catalog["verified_at"] == "2026-11-10"
     assert catalog["models"]["claude_haiku_5_5"]["paths"]["mantle_messages"]["model_id"] == "anthropic.claude-haiku-5-5"
     assert catalog["models"]["claude_haiku_5_5"]["paths"]["runtime_converse"]["requires_cris"] is True
     assert catalog["models"]["claude_haiku_5_5"]["context_window"] == 1000000
@@ -914,3 +926,29 @@ def test_canadian_geography_validates_and_resolves_the_ca_profile():
         assert rec["model_identity"]["model_key"] == "claude_haiku_5_5"
         assert rec["invocation_model_id"] == "ca.anthropic.claude-haiku-5-5", region
 
+
+def test_sonnet55_structured_output_guidance_uses_native_outputs_not_forced_tools():
+    # Governance lands on runtime Converse, where the balanced default is Sonnet 5.5. It rejects
+    # forced tool_choice but supports native structured outputs, so the guidance says so.
+    rec = _recommend(
+        _workload(requirements={"governance": ["guardrails"]}, detected_features=["structured_output"])
+    )
+    assert rec["primary_model"] == "anthropic.claude-sonnet-5-5"
+    finding = next(item for item in rec["blocks"] if item["code"] == "structured_output_portable_pattern")
+    assert "Sonnet 5.5 rejects forced any/tool choice" in finding["remediation"]
+    assert "native structured outputs" in finding["remediation"]
+
+
+def test_older_target_forced_tool_guidance_on_runtime_converse():
+    # Sonnet 5 on runtime Converse (reachable here by marking Sonnet 5.5 reference_only) keeps the
+    # older-target guidance: a forced tool only after verifying support.
+    catalog = copy.deepcopy(model_recommendation.load_catalog())
+    catalog["models"]["claude_sonnet_5_5"]["selection_status"] = "reference_only"
+    rec = model_recommendation.recommend(
+        _input(_workload(requirements={"governance": ["guardrails"]}, detected_features=["structured_output"])),
+        catalog=catalog,
+    )["workloads"]["support-agent"]
+    assert (rec["primary_model"], rec["api_path"]) == ("anthropic.claude-sonnet-5", "runtime_converse")
+    finding = next(item for item in rec["blocks"] if item["code"] == "structured_output_portable_pattern")
+    assert "forced tool without strict" in finding["remediation"]
+    assert "only after verifying" in finding["remediation"]

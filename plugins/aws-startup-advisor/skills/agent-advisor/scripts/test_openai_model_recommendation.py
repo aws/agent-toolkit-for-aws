@@ -60,10 +60,26 @@ def _workload(**overrides):
     return workload
 
 
-def _recommend(workload=None, region="us-east-2"):
+def _recommend(workload=None, region="us-east-2", catalog=None):
     return oai.recommend_openai_workload(
-        workload or _workload(), region, OPENAI_CATALOG
+        workload or _workload(), region, catalog or OPENAI_CATALOG
     )
+
+
+def _without_converse_streaming_evidence():
+    """A catalog where no runtime_converse model evidences streaming (the Claude tier models and
+    the OpenAI same-model rows alike), to exercise the fail-closed branch (in the shipped
+    catalog the Sonnet 5.5 tier and the cataloged GPT same-model rows evidence streaming)."""
+    import copy
+    catalog = copy.deepcopy(OPENAI_CATALOG)
+    for model in catalog["models"].values():
+        if "runtime_converse" not in model["paths"]:
+            continue
+        model["capabilities"] = [c for c in model["capabilities"] if c != "streaming"]
+        path = model["paths"]["runtime_converse"]
+        if "capabilities" in path:
+            path["capabilities"] = [c for c in path["capabilities"] if c != "streaming"]
+    return catalog
 
 
 def _codes(items):
@@ -298,11 +314,11 @@ def test_governance_selects_runtime_converse():
     )
     assert rec["decision_status"] == "recommended"
     assert rec["api_path"] == "runtime_converse"
-    assert rec["primary_model"] == "anthropic.claude-sonnet-5"
+    assert rec["primary_model"] == "anthropic.claude-sonnet-5-5"
     assert rec["model_identity"]["display_name"] == (
-        "Claude Sonnet 5 (Converse tier match for GPT-5.6 Terra / 5.5 / 5.4)"
+        "Claude Sonnet 5.5 (Converse tier match for GPT-5.6 Terra / 6.1 Terra / 5.5 / 5.4)"
     )
-    assert rec["model_identity"]["version"] == "5"
+    assert rec["model_identity"]["version"] == "5.5"
     assert rec["mantle_selector"] is None
 
 
@@ -790,7 +806,7 @@ def test_gpt4o_guardrails_and_prompt_caching_keeps_the_claude_converse_fallback(
         region="us-east-1",
     )
     assert rec["decision_status"] == "recommended"
-    assert rec["primary_model"] == "anthropic.claude-sonnet-5"
+    assert rec["primary_model"] == "anthropic.claude-sonnet-5-5"
     assert rec["api_path"] == "runtime_converse"
     assert "prompt_caching" in rec["compatibility"]["native"]
 
@@ -822,7 +838,7 @@ def test_workspaces_selector_on_an_openai_source_is_a_provider_mismatch_decision
     # Web Search is Responses-only: the Chat source reshapes once continuity is free.
     ("chat_completions", "web_search", "mantle_openai_responses"),
 ])
-def test_gpt61_sol_server_side_tool_selectors_fall_to_astra_and_keep_the_selector(
+def test_gpt61_sol_server_side_tool_selectors_fall_to_gpt61_terra_and_keep_the_selector(
     surface, selector, path
 ):
     requirements = {"mantle_selector": selector}
@@ -839,7 +855,9 @@ def test_gpt61_sol_server_side_tool_selectors_fall_to_astra_and_keep_the_selecto
     rec = out["workloads"]["chat-svc"]
     assert rec["decision_status"] == "recommended"
     assert rec["api_path"] == path
-    assert rec["primary_model"] == "openai.gpt-6-astra"
+    # Same GPT major family, newest first: GPT-6.1 Terra (server-side tools supported on
+    # Mantle per its card) precedes GPT-6 Astra.
+    assert rec["primary_model"] == "openai.gpt-6.1-terra"
     assert rec["mantle_selector"] == selector
     assert "fallback" in rec["rationale"][0]
     assert "server-side system tools" in rec["rationale"][0]
@@ -950,8 +968,8 @@ def test_gpt6_supported_region_selects_exact_model_and_validates_schema(
     if selector and source_id == "gpt-6.1-sol":
         # The GPT-6.1 Sol card lists server-side system tools as unsupported on
         # bedrock-mantle (read 2026-11-08): the selector is kept and the walk falls
-        # to the next same-family model that serves them.
-        assert rec["primary_model"] == "openai.gpt-6-astra"
+        # to the next same-family model that serves them (GPT-6.1 Terra, newest first).
+        assert rec["primary_model"] == "openai.gpt-6.1-terra"
         assert "fallback" in rec["rationale"][0]
     else:
         assert rec["primary_model"] == target_id
@@ -1046,7 +1064,7 @@ def test_gpt6_unsupported_geo_profile_falls_back_without_fabricated_id(
 
 
 def test_active_catalog_contains_gpt6_profile_metadata_and_current_provenance():
-    assert OPENAI_CATALOG["verified_at"] == "2026-11-09"
+    assert OPENAI_CATALOG["verified_at"] == "2026-11-10"
     for model_key, _ in _GPT6_MODELS:
         catalog_key = oai._SOURCE_MODEL_KEYS[model_key]
         assert set(OPENAI_CATALOG["models"][catalog_key]["inference_profiles"]) == {
@@ -1347,7 +1365,12 @@ def test_runtime_unresolved_branches_outside_mantle_region_are_schema_valid(
         source={"model_ids": ["gpt-6-sol"], "api_surface": "chat_completions"},
         requirements=requirements,
     )
-    out = _full_recommend(workload, region="eu-west-1")
+    # Without Converse streaming evidence, the streaming case still reaches the unresolved branch.
+    out = model_recommendation.recommend(
+        {"schema_version": 2, "region": "eu-west-1", "primary_unit": workload["workload_id"],
+         "workloads": [workload]},
+        openai_catalog=_without_converse_streaming_evidence(),
+    )
     jsonschema.validate(out, _OUT_SCHEMA)
     rec = out["workloads"]["chat-svc"]
     assert rec["decision_status"] == "decision_required"
@@ -1612,7 +1635,7 @@ def test_g01_runtime_target_is_not_reported_as_gpt5():
         _workload(source={"model_ids": ["gpt-4"]}, requirements={"governance": ["guardrails"]})
     )
     assert rec["api_path"] == "runtime_converse"
-    assert rec["source_analysis"]["target_version"] == "5"  # Claude Sonnet 5, not gpt-5.x
+    assert rec["source_analysis"]["target_version"] == "5.5"  # Claude Sonnet 5.5, not gpt-5.x
     assert rec["source_analysis"]["target_version"] != "gpt-5.x"
 
 
@@ -1633,17 +1656,28 @@ def test_g01_legacy_source_to_reasoning_target_marks_generation_change():
 
 
 def test_g02_runtime_selection_fails_closed_on_unproven_capability():
-    # Neither GPT-5.6 Terra nor any Claude tier has streaming evidence on
-    # runtime_converse, so a workload requiring it must NOT get a silent native
-    # claim — it fails closed.
+    # With no runtime_converse tier model evidencing streaming, a workload requiring it must NOT
+    # get a silent native claim — it fails closed.
+    rec = _recommend(
+        _workload(
+            requirements={"governance": ["guardrails"], "critical_features": ["streaming"]}
+        ),
+        catalog=_without_converse_streaming_evidence(),
+    )
+    assert rec["decision_status"] == "decision_required"
+    assert "unverified_capability" in _codes(rec["blocks"])
+
+
+def test_g02_streaming_now_resolves_to_an_evidenced_converse_target():
+    # The Sonnet 5.5 card documents response streaming, so the default Converse tier serves it.
     rec = _recommend(
         _workload(
             source={"model_ids": ["gpt-5.6-terra"]},
             requirements={"governance": ["guardrails"], "critical_features": ["streaming"]},
         )
     )
-    assert rec["decision_status"] == "decision_required"
-    assert "unverified_capability" in _codes(rec["blocks"])
+    assert rec["decision_status"] == "recommended"
+    assert rec["primary_model"] == "anthropic.claude-sonnet-5-5"
 
 
 def test_g02_native_only_lists_catalog_evidenced_features():
@@ -1845,7 +1879,7 @@ def test_n03_tool_requirement_never_lands_on_unevidenced_nova():
         )
     )
     assert rec["decision_status"] == "recommended"
-    assert rec["primary_model"] == "anthropic.claude-sonnet-5"
+    assert rec["primary_model"] == "anthropic.claude-sonnet-5-5"
     assert "tool_or_function_calling" in rec["compatibility"]["native"]
 
 
@@ -1916,7 +1950,7 @@ def test_tier_map_terra_and_55_sources_keep_themselves_on_converse():
     assert rec_55["api_path"] == "runtime_converse"
     # The Sonnet tier stays the cross-family fallback behind both.
     order = oai._converse_candidate_order({"model_ids": ["gpt-5.5"]})
-    assert order[:2] == ["openai_gpt_5_5", "anthropic_claude_sonnet_5"]
+    assert order[:2] == ["openai_gpt_5_5", "anthropic_claude_sonnet_5_5"]
 
 def test_tier_map_falls_back_across_tiers_on_capability_evidence():
     # The capability-evidence fallback mechanism: when the first candidate in the
@@ -2549,7 +2583,9 @@ def test_gpt54_structured_output_is_evidenced_only_on_runtime_responses(path, un
     assert missing == unmet
 
 
-def test_gpt54_guardrails_plus_structured_output_has_no_evidenced_converse_candidate():
+def test_gpt54_guardrails_plus_structured_output_falls_to_the_evidenced_claude_converse_tier():
+    # GPT-5.4's Converse row carries no structured-output evidence, so the same-model
+    # candidate is skipped (never claimed natively); the Sonnet 5.5 tier evidences it.
     rec = _recommend(
         _workload(
             requirements={"governance": ["guardrails"],
@@ -2557,9 +2593,10 @@ def test_gpt54_guardrails_plus_structured_output_has_no_evidenced_converse_candi
                           "data_residency": "global_allowed"},
         )
     )
-    assert rec["decision_status"] == "decision_required"
-    assert "unverified_capability" in _codes(rec["blocks"])
-    assert "structured_output_json" not in rec["compatibility"]["native"]
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "runtime_converse"
+    assert rec["primary_model"] == "anthropic.claude-sonnet-5-5"
+    assert "structured_output_json" in rec["compatibility"]["native"]
 
 
 def test_gpt54_chat_source_with_structured_output_does_not_claim_it_on_gpt54_chat():

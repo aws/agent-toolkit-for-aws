@@ -126,10 +126,12 @@ _HOSTED_TOOL_IMPACTS = {
 # runtime Converse. A governance workload whose source has no cataloged same-model
 # identity (see _SOURCE_MODEL_KEYS) keeps its capability tier when moving to Claude.
 #   GPT-5.6 Sol (frontier)      -> Claude Opus 5.5
-#   GPT-5.6 Terra / 5.5 / 5.4   -> Claude Sonnet 5 (also the default tier)
+#   GPT-5.6 Terra / 6.1 Terra / 5.5 / 5.4 -> Claude Sonnet 5.5 (also the default tier; Sonnet 5
+#                                  follows it as the forced tool_choice / Batch alternative)
 #   GPT-5.6 Luna (fast/low-cost)-> Claude Haiku 5.5 (Haiku 4.5 stays an explicit alternative, last in the order)
-_CONVERSE_TIER_DEFAULT = "anthropic_claude_sonnet_5"
+_CONVERSE_TIER_DEFAULT = "anthropic_claude_sonnet_5_5"
 _CONVERSE_TIER_ORDER = (
+    "anthropic_claude_sonnet_5_5",
     "anthropic_claude_sonnet_5",
     "anthropic_claude_opus_5_5",
     "anthropic_claude_haiku_5_5",
@@ -147,6 +149,17 @@ def _converse_tier_for_source(source):
     return _CONVERSE_TIER_DEFAULT
 
 
+# Models whose cards document runtime JSON Schema output for non-streaming calls only, with the
+# Converse request shape in the structured_output_text_format delta. Short names keep Astra's text.
+_RUNTIME_JSON_SCHEMA_NON_STREAMING = {
+    "openai_gpt_6_astra": "Astra",
+    "openai_gpt_6_1_terra": "GPT-6.1 Terra",
+}
+_RUNTIME_JSON_SCHEMA_NON_STREAMING_NAMES = {
+    "OpenAI GPT-6 Astra (on Bedrock)": "Astra",
+    "OpenAI GPT-6.1 Terra (on Bedrock)": "GPT-6.1 Terra",
+}
+
 _SOURCE_MODEL_KEYS = {
     "gpt-5.6-sol": "openai_gpt_5_6_sol",
     "gpt-5.6-terra": "openai_gpt_5_6_terra",
@@ -157,6 +170,7 @@ _SOURCE_MODEL_KEYS = {
     "gpt-6-sol": "openai_gpt_6_sol",
     "gpt-6-luna": "openai_gpt_6_luna",
     "gpt-6.1-sol": "openai_gpt_6_1_sol",
+    "gpt-6.1-terra": "openai_gpt_6_1_terra",
 }
 
 
@@ -174,13 +188,26 @@ def _same_model_runtime_key(source):
     return _same_model_catalog_key(source)
 
 
+# Sonnet 5.5 is adaptive-thinking only; a workload that disables thinking gets Sonnet 5 first,
+# unless an explicit inference profile names Sonnet 5.5 (same scoped yield as the Anthropic module).
+_CONVERSE_THINKING_YIELD = ("anthropic_claude_sonnet_5_5", "anthropic_claude_sonnet_5")
+
+
 def _converse_candidate_order(source, requirements=None):
+    requirements = requirements or {}
     tier = (
         "anthropic_claude_opus_5_5"
-        if (requirements or {}).get("priority") == "quality"
+        if requirements.get("priority") == "quality"
         else _converse_tier_for_source(source)
     )
     order = [tier] + [k for k in _CONVERSE_TIER_ORDER if k != tier]
+    preferred, alternative = _CONVERSE_THINKING_YIELD
+    pinned = requirements.get("inference_profile_id") or ""
+    if (requirements.get("thinking_enabled") is False and "claude-sonnet-5-5" not in pinned
+            and preferred in order and alternative in order
+            and order.index(preferred) < order.index(alternative)):
+        order.remove(alternative)
+        order.insert(order.index(preferred), alternative)
     same = _same_model_runtime_key(source)
     if same:
         # Same model outranks any cross-family tier: keeping the model removes
@@ -412,7 +439,7 @@ def _catalog_model_for_path(catalog, path, detected_features=None, requirements=
     guardrails = enforce_guardrails and _guardrails_required(requirements or {})
     for model_key in keys:
         model = catalog["models"].get(model_key)
-        if model is None:
+        if model is None or not anthropic_model_recommendation.is_selectable(model):
             continue
         path_config = model["paths"].get(path, {})
         if path_config.get("available") is not True:
@@ -686,7 +713,8 @@ def _reasoning_findings(source, requirements, target_model, path, detected_featu
     # Sampling acceptance is a property of the TARGET model and the selected path.
     if target_model and target_model.get("sampling_parameters_supported") is False:
         if target_model.get("adaptive_thinking_only"):
-            # Opus 5.5: thinking is always on, so the controls cannot come back by disabling it.
+            # Opus 5.5 / Sonnet 5.5: thinking is always on, so the controls cannot come back by
+            # disabling it.
             remediation = (
                 "Remove temperature/top_p/top_k from requests to this target; do not rescale them "
                 "or disable thinking. Route user-visible controls through the existing "
@@ -807,12 +835,13 @@ def _feature_findings(detected_features, requirements, path=None, target_model=N
     blocks, tuning, deltas, impacts = [], [], [], []
 
     if "structured_output_json" in detected:
-        if path == "runtime_converse" and (target_model or {}).get("display_name") == "OpenAI GPT-6 Astra (on Bedrock)":
+        json_schema_name = _RUNTIME_JSON_SCHEMA_NON_STREAMING_NAMES.get((target_model or {}).get("display_name"))
+        if path == "runtime_converse" and json_schema_name:
             deltas.append(
                 _delta(
                     "structured_output_text_format",
                     "feature",
-                    "Astra runtime JSON Schema output is documented for non-streaming calls. "
+                    f"{json_schema_name} runtime JSON Schema output is documented for non-streaming calls. "
                     "Set outputConfig.textFormat.type=json_schema and put name plus schema "
                     "(encoded as a JSON string) in outputConfig.textFormat.structure.jsonSchema. "
                     "Also set additionalModelRequestFields.text.format.strict=true. Use an "
@@ -1358,8 +1387,16 @@ def recommend_openai_workload(workload, region, catalog):
     def _unresolved(
         reason_head, reasons, block, path_for_compat, decision_options=None
     ):
-        # Shared decision_required assembly (no target selected).
-        rec = _base(workload, "decision_required")
+        # Shared assembly for results with no target selected. A real choice needs at least
+        # two options (decision_required); with fewer (e.g. a reference_only pinned source, or
+        # every option on one side filtered out) the result is blocked. Never invent options.
+        options = (
+            _decision_options(catalog, workload, region, selector)
+            if decision_options is None
+            else decision_options
+        )
+        status = "decision_required" if len(options) >= 2 else "blocked"
+        rec = _base(workload, status)
         rec.update(
             {
                 "source_analysis": _source_analysis(source, None),
@@ -1369,11 +1406,7 @@ def recommend_openai_workload(workload, region, catalog):
                 "api_path": None,
                 "invocation_model_id": None,
                 "mantle_selector": None,
-                "decision_options": (
-                    _decision_options(catalog, workload, region, selector)
-                    if decision_options is None
-                    else decision_options
-                ),
+                "decision_options": options,
                 "alternatives": [],
                 "rationale": [reason_head] + reasons,
                 "blocks": [block],
@@ -1384,13 +1417,37 @@ def recommend_openai_workload(workload, region, catalog):
                 "migration_deltas": [],
                 "evaluation": _evaluation(detected, requirements),
                 "rollout": {
-                    "strategy": "decision_required",
-                    "gate": "Resolve the open decision before implementation.",
+                    "strategy": status,
+                    "gate": (
+                        "Resolve the open decision before implementation."
+                        if status == "decision_required"
+                        else "Resolve each [BLOCKS] finding as its remediation says, then rerun."
+                    ),
                 },
                 "verification": _verification(region, catalog, None, False, None, selected=False),
             }
         )
         return rec
+
+    # --- Fail closed: Astra is pinned to itself, so a reference_only Astra has no target ---
+    astra_entry = catalog["models"].get("openai_gpt_6_astra")
+    if (_same_model_runtime_key(source) == "openai_gpt_6_astra" and astra_entry is not None
+            and not anthropic_model_recommendation.is_selectable(astra_entry)):
+        return _unresolved(
+            "GPT-6 Astra sources stay on Astra, but the catalog marks Astra reference_only, "
+            "so it is not an automatic-selection candidate.",
+            ["No other model is substituted for an Astra source."],
+            _finding(
+                "model_not_selectable",
+                "[BLOCKS]",
+                "The source model GPT-6 Astra is marked reference_only in the model-selection "
+                "catalog.",
+                "Mark the Astra entry selectable once it is verified, or choose a target "
+                "model explicitly, then rerun Model Recommend.",
+            ),
+            None,
+            decision_options=[],
+        )
 
     # --- Fail closed: a required feature with unknown status is not ready (G08) ---
     if unknown_required:
@@ -1412,11 +1469,43 @@ def recommend_openai_workload(workload, region, catalog):
             "",
         )
 
-    def _decision_conflict(reason_head, reasons, message, remediation, options):
+    def _decision_conflict(reason_head, reasons, message, remediation, build_options):
+        # `build_options(catalog)` assembles the two-sided option set the caller offers, so the
+        # reference_only counterfactual below is built exactly like the real options.
+        options = build_options(catalog)
         if len(options) < 2:
-            raise ValueError(
-                f"catalog cannot supply both decision options for workload "
-                f"{workload['workload_id']}"
+            # Blocked only when reference_only entries emptied the side: with them counted as
+            # selectable (every other filter unchanged) both options exist. Otherwise the
+            # requirement is unsatisfiable and the fail-closed raise is unchanged.
+            counterfactual = build_options(
+                anthropic_model_recommendation.with_all_selectable(catalog)
+            )
+            if len(counterfactual) < 2:
+                raise ValueError(
+                    f"catalog cannot supply both decision options for workload "
+                    f"{workload['workload_id']}"
+                )
+            offered = {option["api_path"] for option in options}
+            blamed = sorted(
+                option["model_key"] for option in counterfactual
+                if option["api_path"] not in offered
+                and not anthropic_model_recommendation.is_selectable(catalog["models"][option["model_key"]])
+            )
+            return _unresolved(
+                "Required OpenAI API continuity conflicts with a runtime-only Bedrock "
+                "governance requirement, and one side has no selectable model.",
+                [f"That side is available only from reference_only entries: {', '.join(blamed)}."],
+                _finding(
+                    "decision_option_unavailable",
+                    "[BLOCKS]",
+                    "One side of the continuity-versus-governance decision has no selectable "
+                    f"catalog model; it is available only from reference_only entries: "
+                    f"{', '.join(blamed)}.",
+                    "Mark a verified model selectable for that path, or update the conflicting "
+                    "requirement, then rerun Model Recommend.",
+                ),
+                "",
+                decision_options=options,
             )
         return _unresolved(
             reason_head, reasons,
@@ -1424,9 +1513,9 @@ def recommend_openai_workload(workload, region, catalog):
             "", decision_options=options,
         )
 
-    def _mantle_options(mantle_selector):
+    def _mantle_options(mantle_selector, cat=None):
         return [
-            option for option in _decision_options(catalog, workload, region, mantle_selector)
+            option for option in _decision_options(cat or catalog, workload, region, mantle_selector)
             if option["api_path"].startswith("mantle_")
         ]
 
@@ -1483,17 +1572,19 @@ def recommend_openai_workload(workload, region, catalog):
     if selector and runtime_required:
         drivers = ", ".join(_runtime_only_drivers(requirements))
         if converse_required:
-            options = _decision_options(catalog, workload, region, selector)
+            def options(cat):
+                return _decision_options(cat, workload, region, selector)
         else:
             # Invocation logging and Guardrails listed on the OpenAI API are satisfied
             # on the bedrock-runtime OpenAI path, so the runtime option keeps the
             # source API rather than switching to Converse.
-            options = _mantle_options(selector) + [
-                option for option in _decision_options(
-                    catalog, workload, region, None, openai_path=openai_path_default
-                )
-                if option["api_path"].startswith("runtime_openai_")
-            ]
+            def options(cat):
+                return _mantle_options(selector, cat) + [
+                    option for option in _decision_options(
+                        cat, workload, region, None, openai_path=openai_path_default
+                    )
+                    if option["api_path"].startswith("runtime_openai_")
+                ]
         return _decision_conflict(
             f"A verified Mantle-only need (mantle_selector {selector}) conflicts with a "
             f"bedrock-runtime-only governance requirement ({drivers}).",
@@ -1526,16 +1617,19 @@ def recommend_openai_workload(workload, region, catalog):
             "cannot both be satisfied by one bedrock-runtime API.",
             "Choose the bedrock-runtime OpenAI API option or the runtime Converse "
             "governance option, update requirements, and rerun Model Recommend.",
-            _decision_options(catalog, workload, region, None, openai_path=openai_path_default),
+            lambda cat: _decision_options(
+                cat, workload, region, None, openai_path=openai_path_default
+            ),
         )
 
     # --- Select a path ---
-    if converse_required:
-        path = "runtime_converse"
-        candidate_order = _converse_candidate_order(source, requirements)
+    def _converse_selection():
+        order = _converse_candidate_order(source, requirements)
         same = _same_model_runtime_key(source)
+        if same and not anthropic_model_recommendation.is_selectable(catalog["models"].get(same, {})):
+            same = None
         if same:
-            rationale_head = (
+            head = (
                 "Bedrock governance or multi-model requirements select runtime Converse; "
                 f"the source model itself ({catalog['models'][same]['display_name']}) runs "
                 "there via a CRIS id, so the same-model candidate leads, with the Claude "
@@ -1543,12 +1637,16 @@ def recommend_openai_workload(workload, region, catalog):
             )
         else:
             tier = _converse_tier_for_source(source)
-            rationale_head = (
+            head = (
                 "Bedrock governance or multi-model requirements select runtime Converse; "
                 f"the source tier maps to {catalog['models'][tier]['display_name']} "
                 "(capability-evidence fallback across Claude tiers). Sources without an "
                 "exact runtime catalog identity require this family switch."
             )
+        return order, head
+    if converse_required:
+        path = "runtime_converse"
+        candidate_order, rationale_head = _converse_selection()
     elif selector:
         path = _mantle_path(source, requirements)
         candidate_order = _openai_candidate_order(catalog, source)
@@ -1624,7 +1722,11 @@ def recommend_openai_workload(workload, region, catalog):
                 "that capability is served on bedrock-mantle only (bedrock-endpoint-policy.md).",
             )
         path = preferred
-
+        if preferred == "runtime_converse" and not converse_required and not astra:
+            # An explicit Converse preference on a source whose Guardrails are listed on its
+            # OpenAI API: the rationale and walk are Converse's (same model, then Claude tier),
+            # not the OpenAI-API Guardrails wording selected before the preference was read.
+            candidate_order, rationale_head = _converse_selection()
     # A Chat Completions Mantle path cannot carry a Responses-only feature. Check the
     # retained features themselves, not only the primary selector: projects or
     # server_side_tools must not hide a required web_search or background_inference.
@@ -1702,7 +1804,13 @@ def recommend_openai_workload(workload, region, catalog):
                 ),
                 path,
             )
-        if _hard_profile_requirement(requirements):
+        emptied_by_reference_only = _hard_profile_requirement(requirements) and bool(
+            _catalog_model_for_path(
+                anthropic_model_recommendation.with_all_selectable(catalog), path, detected,
+                requirements, candidate_order=candidate_order, region=region, selector=selector,
+            )[0]
+        )
+        if _hard_profile_requirement(requirements) and not emptied_by_reference_only:
             # Every runtime candidate was skipped because its cataloged CRIS
             # profile matrix has no profile callable from this region under the
             # stated residency (e.g. an EU-Geo caller on models that publish
@@ -1726,9 +1834,25 @@ def recommend_openai_workload(workload, region, catalog):
                 ),
                 path,
             )
-        raise ValueError(f"catalog has no available model for path {path}")
+        skipped = sorted(k for k in candidate_order or catalog["models"]
+                         if not anthropic_model_recommendation.is_selectable(catalog["models"].get(k, {})))
+        raise ValueError(
+            f"catalog has no available model for path {path}"
+            + (f" (reference_only entries skipped: {', '.join(skipped)})" if skipped else "")
+        )
     model_key, model, path_config = catalog_hit
-
+    # The cross-family sentence is written before selection. If that tier is
+    # reference_only, name the model that was actually selected.
+    if path == "runtime_converse" and "the source tier maps to" in rationale_head:
+        tier = _converse_tier_for_source(source)
+        tier_model = catalog["models"].get(tier, {})
+        if not anthropic_model_recommendation.is_selectable(tier_model):
+            rationale_head = (
+                "Bedrock governance or multi-model requirements select runtime Converse; "
+                f"{model['display_name']} is selected because the source tier is reference_only "
+                "(capability-evidence fallback across Claude tiers). Sources without an "
+                "exact runtime catalog identity require this family switch."
+            )
     # Derived selector: strict in-Region processing on a CRIS-only runtime candidate
     # is a Mantle-only need (bedrock-endpoint-policy.md in_region_processing). An
     # explicit runtime preference or invocation logging turns it into a decision;
@@ -1760,9 +1884,9 @@ def recommend_openai_workload(workload, region, catalog):
             "in_region_processing and invocation logging cannot both be satisfied by one path.",
             "Choose the Mantle in-Region option or the bedrock-runtime logging option, "
             "update requirements, and rerun Model Recommend.",
-            _mantle_options("in_region_processing") + [
+            lambda cat: _mantle_options("in_region_processing", cat) + [
                 option for option in _decision_options(
-                    catalog, workload, region, None, openai_path=openai_path_default
+                    cat, workload, region, None, openai_path=openai_path_default
                 )
                 if option["api_path"].startswith("runtime_openai_")
             ],
@@ -1881,17 +2005,17 @@ def recommend_openai_workload(workload, region, catalog):
         )
 
     needed = set(detected) | set(requirements.get("critical_features") or [])
-    if (model_key == "openai_gpt_6_astra"
+    if (model_key in _RUNTIME_JSON_SCHEMA_NON_STREAMING
             and path in {"runtime_converse", "runtime_openai_responses", "runtime_openai_chat"}
             and {"structured_output_json", "streaming"} <= needed):
         return _unresolved(
             rationale_head, [],
             _finding(
                 "structured_output_streaming_unverified", "[BLOCKS]",
-                "Astra JSON Schema output on bedrock-runtime applies to non-streaming calls "
-                "on Chat Completions, Responses and Converse "
-                "(https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html, "
-                "read 2026-11-08).",
+                f"{_RUNTIME_JSON_SCHEMA_NON_STREAMING[model_key]} JSON Schema output on bedrock-runtime "
+                "is documented only for non-streaming calls on Chat Completions, Responses and "
+                "Converse (https://docs.aws.amazon.com/bedrock/latest/userguide/"
+                f"model-card-{path_config['model_id'].replace('.', '-')}.html).",
                 "Use non-streaming structured output or separate the streaming workload, "
                 "then update requirements and rerun Model Recommend.",
             ), path,
@@ -1957,8 +2081,8 @@ def recommend_openai_workload(workload, region, catalog):
         finding = _finding(
             "adaptive_thinking_required",
             "[BLOCKS]" if requirements.get("thinking_enabled") is False else "[TUNE]",
-            "Opus 5.5 always uses adaptive thinking and does not support disabled thinking, manual budgets, or forced any/tool choice.",
-            "Set output_config.effort as needed (default medium), and size max_tokens "
+            f"{anthropic_model_recommendation._short_name(model)} always uses adaptive thinking and does not support disabled thinking, manual budgets, or forced any/tool choice.",
+            f"Set output_config.effort as needed (default {model.get('default_effort', 'medium')}), and size max_tokens "
             "for thinking plus response text. Use auto/none tool choice; a hard forced-tool "
             "requirement needs a verified compatible target. Verify billed usage on the workload.",
         )

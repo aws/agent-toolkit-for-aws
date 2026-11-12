@@ -195,7 +195,8 @@ def test_every_gpt_path_row_carries_a_boolean_prompt_caching_flag(catalogs):
     # GPT-5.4 list implicit caching on the bedrock-runtime Responses API only and no
     # caching on bedrock-mantle; GPT-5.6 Sol/Terra/Luna cache on every runtime API and
     # on Mantle Responses only; GPT-6 Sol/Luna and GPT-6.1 Sol cache on every runtime
-    # API and on both Mantle APIs; GPT-6 Astra mirrors its per-path capabilities.
+    # API and on both Mantle APIs; GPT-6.1 Terra (card read 2026-11-10) caches on every
+    # runtime API and on Mantle Responses only; GPT-6 Astra mirrors its per-path capabilities.
     models = catalogs["openai"]["models"]
     runtime_responses_true = set()
     runtime_chat_true = set()
@@ -210,7 +211,8 @@ def test_every_gpt_path_row_carries_a_boolean_prompt_caching_flag(catalogs):
         for path, row in model["paths"].items():
             assert isinstance(row.get("prompt_caching_supported"), bool), f"{model_key}.{path}"
             assert "prompt_caching_supported" in row["evidence"], f"{model_key}.{path}"
-            assert "read 2026-11-09" in row["evidence"], f"{model_key}.{path}"
+            read_date = "read 2026-11-10" if model_key == "openai_gpt_6_1_terra" else "read 2026-11-09"
+            assert read_date in row["evidence"], f"{model_key}.{path}"
             assert _cites_aws_docs(row["evidence"]), f"{model_key}.{path}"
             if row["prompt_caching_supported"]:
                 {
@@ -226,11 +228,12 @@ def test_every_gpt_path_row_carries_a_boolean_prompt_caching_flag(catalogs):
     assert runtime_responses_true == gpt_keys
     assert runtime_chat_true == {
         "openai_gpt_5_6_sol", "openai_gpt_5_6_terra", "openai_gpt_5_6_luna",
-        "openai_gpt_6_sol", "openai_gpt_6_luna", "openai_gpt_6_1_sol", "openai_gpt_6_astra",
+        "openai_gpt_6_sol", "openai_gpt_6_luna", "openai_gpt_6_1_sol", "openai_gpt_6_1_terra",
+        "openai_gpt_6_astra",
     }
     assert runtime_converse_true == {
         "openai_gpt_5_6_sol", "openai_gpt_5_6_terra", "openai_gpt_5_6_luna",
-        "openai_gpt_6_sol", "openai_gpt_6_luna", "openai_gpt_6_1_sol",
+        "openai_gpt_6_sol", "openai_gpt_6_luna", "openai_gpt_6_1_sol", "openai_gpt_6_1_terra",
     }
     assert mantle_responses_true == gpt_keys - {"openai_gpt_5_5", "openai_gpt_5_4"}
     assert mantle_chat_true == {"openai_gpt_6_sol", "openai_gpt_6_luna", "openai_gpt_6_1_sol"}

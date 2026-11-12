@@ -2,7 +2,7 @@
 
 **Standalone flow** — Used when ONLY `ai-workload-profile.json` exists (no infrastructure or billing artifacts). Infrastructure stays where it runs today; only AI/LLM calls move to AWS Bedrock.
 
-**Input contract.** The only profile this flow reads is the provider-neutral `ai-workload-profile.json` (`schema_version`, `ai_sources[]`, `gateways[]`), already accepted by `scripts/validate-ai-profile.py`. Use that script's JSON summary for every detected value below. A 1.1 profile also carries `integration`; from it the summary reports `ai_framework_detected` and `ai_vision_detected`. Both are `null` for a 1.0 profile or when the evidence is not definitive, and then Q1 and Q6 are asked, not extracted. `ai_vision_detected` is only `"vision"` or `"audio"`: finding no image or audio input does not prove the app sends only text, so Q6 is then asked. Do not scan application code or IaC, and do not read usage-profile files or any other file except `migration-preview.json` in Step 1.5: only the validator summary can supply an extracted answer.
+**Input contract.** The only profile this flow reads is the provider-neutral `ai-workload-profile.json` (`schema_version`, `ai_sources[]`, `gateways[]`), already accepted by `scripts/validate-ai-profile.py`. Use that script's JSON summary for every detected value below. A 1.1 profile also carries `integration`; from it the summary reports `ai_framework_detected` and `ai_vision_detected`. Both are `null` for a 1.0 profile or when the evidence is not definitive, and then Q1 and Q6 are asked, not extracted. `ai_vision_detected` is only `"vision"` or `"audio"`: finding no image or audio input does not prove the app sends only text, so Q6 is then asked. Do not scan application code or IaC, and do not read usage-profile files or any other file except `migration-preview.json`, for the fast-path check in Step 1.5 and the measured values Q3 and Q7 show: only the validator summary can supply an extracted answer.
 
 Produces the same `preferences.json` output but with `design_constraints` limited to region and compliance, `startup_constraints` populated, and `ai_constraints` fully populated. Questions are presented in **two progressive batches** with an intermediate save — partial answers persist across sessions.
 
@@ -185,7 +185,9 @@ Interpret → `design_constraints.compliance` array (same format as the full flo
 
 Interpret → `ai_priority`. Default: 5 → `"balanced"`.
 
-## Q3 — Monthly AI spend on OpenAI or Gemini?
+## Q3 — Monthly AI spend with your current AI providers?
+
+**Measured spend.** When `migration-preview.json` has `measured_usage` and its `monthly_cost_usd` is not `null`, say before the options: "Measured: $[monthly_cost_usd] in total ([each source in `sources`: its provider, its monthly_cost_usd, over its active_days days])." Give each source its own period, never one period for the total. After a source whose `partial_window` is true, add "(only [active_days] days of activity, not scaled to a month)"; after a source whose `uncosted_service_tiers` is not empty, add "(excludes [uncosted_service_tiers] tier spend)". When `overlap_excluded` is not empty, add "(OpenRouter rows for [models] are left out so their BYOK traffic, which a direct provider's usage also counts, is not counted twice)", followed by each entry's `note` when it has one (a `mixed` row's note says its OpenRouter-funded usage is not in this total), and say the total leaves out $[spend_excludes_usd] when that is above zero. When an OpenRouter source has `byok_inference_included_usd` above zero, say that part of the total is billed by the user's own provider keys. Then mark the option that total falls in as "(measured)". When `monthly_cost_usd` is `null`, say which source's spend is not available and mark nothing. Either way the user answers, and the answer is recorded with `chosen_by: "user"`.
 
 > 1\) < $500 | 2\) $500–$2K | 3\) $2K–$10K | 4\) > $10K | 5\) Don't know
 
@@ -301,6 +303,8 @@ Interpret → `ai_vision`: 1 → `"text-only"`, 2 → `"vision"`, 3 → `"audio"
 ## Q7 — Monthly AI usage volume
 
 _Never skipped:_ do not fill this from a usage-profile file or from the assumption sheet. Ask it unless the user says "use defaults for the rest".
+
+**Measured volume.** When `migration-preview.json` has `measured_usage`, say before the options: "Measured: [total_tokens] tokens in total ([each source in `sources`: its provider, its total_tokens, over its active_days days])." After a source whose `partial_window` is true, add "(only [active_days] days of activity, not scaled to a month)", add "(some usage could not be read: [capture_warnings])" when a warning names a file other than an hourly or minute file, and add the same `overlap_excluded` note as Q3. Then mark the option that total falls in as "(measured)". The user still answers, and the answer is recorded with `chosen_by: "user"`.
 
 > 1\) < 1M tokens | 2\) 1–10M | 3\) 10–100M | 4\) > 100M | 5\) Don't know
 

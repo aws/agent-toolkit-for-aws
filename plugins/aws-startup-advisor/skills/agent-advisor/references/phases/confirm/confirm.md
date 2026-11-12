@@ -134,7 +134,7 @@ trigger and pending Region verification; its availability is independent of the 
 Before writing, confirm each model-bearing unit's model and API path alongside its runtime.
 Show that unit's path-specific model ID, invocation ID or CRIS TODO, compatibility,
 architecture impacts, `[BLOCKS]`, `[TUNE]`, evaluation/rollout gates, and probe status. If any
-entry is still `decision_required`, return to Model Recommend and resolve it; do not confirm a
+entry is still `decision_required` or `blocked`, return to Model Recommend and resolve it; do not confirm a
 null model/path. The user may:
 
 - accept the recommendation, including the work needed to clear listed blocks; or

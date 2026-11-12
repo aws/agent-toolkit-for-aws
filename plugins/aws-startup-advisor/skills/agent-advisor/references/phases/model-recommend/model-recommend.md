@@ -342,12 +342,19 @@ dated catalog. Azure OpenAI and Google sources remain the generic provisional br
 `provider_module_pending` in `[BLOCKS]`; do not present those as provider-complete. All modules
 share one artifact shape, so downstream phases consume every provider identically.
 
-## Step 6 — Resolve decision_required before advancing
+## Step 6 — Resolve decision_required and blocked before advancing
 
 If any workload has `decision_status: decision_required`, present its `decision_options` and
 tradeoffs. Ask the user to resolve the conflicting requirement, update
 `model-recommendation-input.json`, and rerun the deterministic engine. Do not pick an option,
 edit the output, or mark this phase completed while any workload remains unresolved.
+
+If any workload has `decision_status: blocked`, there is no automatic target and fewer than two
+real options. Causes include a `reference_only` source model or conflict side in the catalog, and
+other no-target results such as an incomplete feature scan. Present its `[BLOCKS]` findings and any
+remaining option, apply each finding's own remediation (for example a feature rescan, a
+requirement change, or marking a verified model `selectable`), then rerun. Do not invent an option
+or treat a lone remaining option as the answer.
 
 ## Step 7 — Optionally probe the selected path
 
