@@ -6,6 +6,8 @@ The AWS Continuum plugin helps a coding agent set up Continuum for a repository,
 
 You need AWS CLI 2.38.5 or newer, Git, and Node.js 20 or newer. Configure an AWS CLI profile with valid credentials and permission to use AWS Continuum before setup.
 
+Version 1.0.0 is tested on Claude Code and Codex. See [Known limits](#known-limits) for other clients.
+
 ### Claude Code
 
 ```text
@@ -59,6 +61,7 @@ Read the detailed [safety rules](SAFETY.md) before using the plugin with an AWS 
 
 ## Known limits
 
+- Version 1.0.0 is tested on Claude Code and Codex. The Cursor and Devin manifests are included but not yet tested. Kiro, fx and `aws configure agent-toolkit` install skills from this repository's top-level `skills/` folder rather than plugins, so this plugin is not available there yet.
 - Native reads, quota checks, report checks and plan safeguards are skill instructions, not enforcement by a local service. Confirm the actual commands and recorded evidence.
 - Combined testing uses repository-owned checks. The plugin provides no execution isolation; rely only on isolation the target repository's reviewed harness proves.
 - In Codex, a finished background scan does not wake the conversation. Ask **“did the scan finish?”** to receive its result.
