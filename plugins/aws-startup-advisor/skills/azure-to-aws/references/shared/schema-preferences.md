@@ -77,6 +77,8 @@ licensing exposure and found none" is a different statement from silence.
     "cost_optimization": { "disposition": "PROPOSED", "value": null, "default": "balanced" },
     "traffic_pattern": { "disposition": "PROPOSED", "value": null, "default": "steady" },
     "long_lived_connections": { "disposition": "PROPOSED", "value": null, "default": false },
+    "release_strategy": { "disposition": "PROPOSED", "value": null, "default": "canary" }, // canary | rolling | blue_green — Q-C7, N/A when nothing lands on Fargate
+    "compute_shape": { "disposition": "DETECTED", "value": {}, "default": {} }, // per-service http_service | worker | tcp_or_grpc_passthrough, recorded only when Design cannot derive it
     "vm_cutover": { "disposition": "ESSENTIAL", "value": "mgn", "default": null }
   },
   "data": {
