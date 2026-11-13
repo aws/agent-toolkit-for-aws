@@ -26,6 +26,9 @@ Scan `aws-design.json`.services[] to determine which compute and data store type
 | Beanstalk web present | Any service with `aws_service == "Elastic Beanstalk"` and `aws_config.process_type == "web"` | `has_beanstalk_web = true` |
 | Fargate present       | Any service with `aws_service == "Fargate"` or `aws_service == "ALB"`                        | `has_fargate = true`       |
 | Fargate web present   | Any service with `aws_service == "ALB"`, or `aws_service == "Fargate"` and `aws_config.process_type == "web"` (workers alone never count) | `has_fargate_web = true` |
+| Standard ALB present  | Any service with `aws_service == "ALB"` (a standard-mode Fargate web formation; a Fargate entry with no `ecs_mode` key is standard and always has one) | `has_alb = true`           |
+| Express web present   | Any service with `aws_service == "Fargate"`, `aws_config.process_type == "web"`, and `aws_config.ecs_mode == "express"` | `has_express = true`       |
+| Blue/green web present | Any service with `aws_service == "Fargate"`, `aws_config.process_type == "web"`, `aws_config.ecs_mode == "standard"`, and `preferences.design_constraints.release_strategy == "blue_green"` | `has_blue_green = true`    |
 | EKS present           | Any service with `aws_service == "EKS"` (`design-eks.md` "All-or-Nothing Rule": then no EB or Fargate web service exists) | `has_eks = true`           |
 | Postgres present      | Any service with `aws_service` containing `"RDS PostgreSQL"` or `"Aurora PostgreSQL"`        | `has_postgres = true`      |
 | Redis present         | Any service with `aws_service` of `"ElastiCache Valkey"` (default) or `"ElastiCache Redis"` — not `ElastiCache Memcached` | `has_redis = true`         |
@@ -38,14 +41,17 @@ Also extract:
 - `target_region` — from `preferences.json`.global.target_region (default: `us-east-1`)
 - `heroku_apps[]` — list of unique app names from design services
 - `beanstalk_web_apps[]` — unique app names from Elastic Beanstalk web services, plus each name sanitized by replacing `-` with `_`
+- `eb_processes[]` — per app, one entry per Elastic Beanstalk service in `aws-design.json`.services[]: `{ heroku_app, process_type, environment_name }` where `environment_name` is the generated `${project_name}-<process_type>` (the same names `EB_ENVIRONMENT_NAMES` lists). `app_has_eb_web` is true when that app's `web` formation is among them.
+- `fargate_processes[]` — per app, one entry per Fargate service in `aws-design.json`.services[]: `{ heroku_app, process_type, service_name, log_group }` where `service_name` is the generated service and task family name `<cluster>-<process_type>`, the container name is `<process_type>`, and `log_group` is `/ecs/<cluster>/<process_type>`. `app_has_fargate_web` is true when that app's `web` formation is among them (an `ALB` service exists). A web app whose `worker` formation was routed to Fargate by the Horizontal Non-Web Capacity Guard (`design-mapping.md`) has `app_has_eb_web = true`, `app_has_fargate_web = false`, and a `fargate_processes[]` entry only for `worker`.
+- `postgres_engine` — `"aurora"` when the Postgres service's `aws_service == "Aurora PostgreSQL"`, else `"rds"` (only meaningful when `has_postgres`)
 - `migration_approach` — from `preferences.json`.global.migration_approach (`"full_cutover"` or `"interim_cutover_data_first"`)
 - `migration_method` — from `preferences.json`.data.migration_method (`"pg_dump_restore"`, `"dms"`, `"bucardo"`, `"wal_g"`)
 - `containerization_status` — from `preferences.json`.operational.containerization_status (`"containerized"`, `"buildpack_only"`, `"partial"`)
 - `target_exit_date` — from `preferences.json`.global.target_exit_date (ISO date or null)
 - `dns_strategy` — from `preferences.json`.data.dns_strategy (Clarify Q10 writes it inside the `"data"` block — `clarify-assemble.md`; there is no `global.dns_strategy`). `"route53"` or `"external"`; treat any other or missing value (e.g. a legacy `"manual_cutover"`) as `"external"`.
 - `custom_domains[]` — every `resource_type == "domain"` resource's `config.hostname` from `heroku-resource-inventory.json` (deduplicated).
-- `dns_hostnames[]` — one entry per `custom_domains[]` hostname, preserving the associations the inventory and design already carry: `{ hostname, heroku_app, app_sanitized, target_kind, output_name }`. `heroku_app` is the domain resource's `heroku_app` (the `{app_name}` segment of `domain:{app_name}:{hostname}`); `app_sanitized` replaces `-` with `_`. `target_kind` is resolved from that app's **web** formation in `aws-design.json`.services[] — not from any worker: `alb:{heroku_app}:web` present → `"alb"` (`output_name: "alb_dns_name_<app_sanitized>"`); else `eb:{heroku_app}:web` present → `"eb"` (`output_name: "eb_environment_url_<app_sanitized>"` — the per-app output Step 3 of `generate-terraform.md` actually emits; there is no `eb_environment_cname`); else `eks:{heroku_app}:web` present → `"eks"` (`output_name: null` — the endpoint is the Kubernetes Service's `EXTERNAL-IP`, known only after Phase 3); else `"none"` (worker-only app, or its formations were deferred).
-- `eligible_hostnames[]` — the `dns_hostnames[]` entries with `target_kind` `"alb"` or `"eb"`: the only hostnames `dns.tf` can route. `has_route53_dns = true` when `dns_strategy == "route53"` AND `eligible_hostnames` is non-empty — the same condition under which `generate-terraform.md` Step 9.5 emits `dns.tf`. An EKS design therefore always has `has_route53_dns = false`. Entries with `target_kind` `"eks"` or `"none"` are rendered only in the manual DNS branch (and `generate-terraform.md` Step 9.5 records them in `generation-warnings.json`). Whether a hostname is a zone apex is not known at generation time (it depends on the zone the user supplies), so `dns.tf` decides it at plan time and the guide covers the apex unconditionally inside the Route 53 branch.
+- `dns_hostnames[]` — one entry per `custom_domains[]` hostname, preserving the associations the inventory and design already carry: `{ hostname, heroku_app, app_sanitized, target_kind, output_name }`. `heroku_app` is the domain resource's `heroku_app` (the `{app_name}` segment of `domain:{app_name}:{hostname}`); `app_sanitized` replaces `-` with `_`. `target_kind` is resolved from that app's **web** formation in `aws-design.json`.services[] — not from any worker: `alb:{heroku_app}:web` present → `"alb"` (`output_name: "alb_dns_name_<app_sanitized>"`); else `fargate:{heroku_app}:web` present with `aws_config.ecs_mode == "express"` → `"express"` (`output_name: "<app_sanitized>_web_endpoint"` — the AWS-provided HTTPS endpoint `generate-terraform.md` Step 6 emits for the `aws_ecs_express_gateway_service`; an Express web formation has no `alb:` entry, so without this branch it would be misread as `"none"`); else `eb:{heroku_app}:web` present → `"eb"` (`output_name: "eb_environment_url_<app_sanitized>"` — the per-app output Step 3 of `generate-terraform.md` actually emits; there is no `eb_environment_cname`); else `eks:{heroku_app}:web` present → `"eks"` (`output_name: null` — the endpoint is the Kubernetes Service's `EXTERNAL-IP`, known only after Phase 3); else `"none"` (worker-only app, or its formations were deferred).
+- `eligible_hostnames[]` — the `dns_hostnames[]` entries with `target_kind` `"alb"` or `"eb"`: the only hostnames `dns.tf` can route. `has_route53_dns = true` when `dns_strategy == "route53"` AND `eligible_hostnames` is non-empty — the same condition under which `generate-terraform.md` Step 9.5 emits `dns.tf`. An EKS design therefore always has `has_route53_dns = false`, and so does an all-Express design (Design forces `standard` when `dns_strategy == "route53"`, so `"express"` only occurs with external DNS). Entries with `target_kind` `"express"`, `"eks"`, or `"none"` are rendered only in the manual DNS branch (and `generate-terraform.md` Step 9.5 records them in `generation-warnings.json`). Whether a hostname is a zone apex is not known at generation time (it depends on the zone the user supplies), so `dns.tf` decides it at plan time and the guide covers the apex unconditionally inside the Route 53 branch.
 
 ---
 
@@ -77,6 +83,7 @@ This guide provides step-by-step instructions for migrating your Heroku applicat
 - [Phase 5: Cutover](#phase-5-cutover)
 - [Phase 6: Rollback](#phase-6-rollback)
 - [Decommission Heroku](#decommission-heroku-resources)
+- [Day-to-day commands: Heroku → AWS](#day-to-day-commands-heroku--aws)
   {{IF deferred_addons.length > 0}}
 - [Manual Migration Items](#manual-migration-items)
   {{ENDIF}}
@@ -854,24 +861,72 @@ docker push {{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com/{{app_nam
 ```
 
 ### Deploy to Fargate
+The Terraform configuration creates ECS services automatically. How an image update reaches a service depends on the shape Design chose for it (`aws-design.json` → `aws_config.ecs_mode`, and `preferences.design_constraints.release_strategy`); render only the branches the design uses.
 
-The Terraform configuration creates ECS services automatically. After pushing the image, force a new deployment:
+**Standard ECS service, rolling or canary release (`ecs_mode: "standard"`, `release_strategy` absent or `canary`):** the service uses the ECS deployment controller, so force a new deployment after pushing the image:
 
 ```bash
 aws ecs update-service \
   --cluster {{app_name}}-cluster \
-  --service {{app_name}}-web \
+  --service {{app_name}}-<process_type> \
   --force-new-deployment \
   --region {{target_region}}
 ```
+
+Repeat per formation (`-web`, `-worker`, …); the service names are the standard `aws_ecs_service` names from `generate-terraform.md` Step 6.
+
+{{IF has_blue_green}}
+**Standard ECS service, blue/green release (`release_strategy == "blue_green"`, web formations only):** the service is emitted with `deployment_controller { type = "CODE_DEPLOY" }` and `ignore_changes = [task_definition, load_balancer]`, so neither `terraform apply` nor `update-service --force-new-deployment` ships a new image — `update-service` is rejected for a CodeDeploy-controlled service. Register a new task definition revision and start a CodeDeploy deployment with an AppSpec, one per blue/green web app:
+
+```bash
+# 1. New task definition revision pointing at the pushed image
+TD_ARN=$(aws ecs describe-services --cluster {{app_name}}-cluster --service {{app_name}}-<app_sanitized>-web \
+  --region {{target_region}} --query 'services[0].taskDefinition' --output text)
+aws ecs describe-task-definition --task-definition "$TD_ARN" --region {{target_region}} \
+  --query 'taskDefinition' > td.json
+# Replace the image, drop the read-only fields, register
+jq --arg img "{{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com/{{app_name}}:latest" \
+  '.containerDefinitions[0].image = $img
+   | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' \
+  td.json > td-new.json
+NEW_TD=$(aws ecs register-task-definition --cli-input-json file://td-new.json --region {{target_region}} \
+  --query 'taskDefinition.taskDefinitionArn' --output text)
+
+# 2. AppSpec for CodeDeploy (ECS compute platform)
+cat > appspec.yaml <<EOF
+version: 0.0
+Resources:
+  - TargetService:
+      Type: AWS::ECS::Service
+      Properties:
+        TaskDefinition: "$NEW_TD"
+        LoadBalancerInfo:
+          ContainerName: "<container name from the task definition>"
+          ContainerPort: 8080
+EOF
+
+# 3. Deploy — CodeDeploy shifts traffic blue -> green on the 443 listener after the 8443 test listener passes
+aws deploy create-deployment \
+  --application-name {{app_name}}-<app_sanitized>-web \
+  --deployment-group-name {{app_name}}-<app_sanitized>-web \
+  --revision "revisionType=AppSpecContent,appSpecContent={content=$(jq -Rs . < appspec.yaml)}" \
+  --region {{target_region}}
+```
+
+The CodeDeploy application and deployment group names are the per-app names `generate-terraform.md` emits (`${project_name}-${environment}-<app_sanitized>-web`). The test listener on 8443 admits only `var.codedeploy_test_cidrs`; run the deployment from an address in that list (or set `terraform.tfvars` `codedeploy_test_cidrs` to the CI egress CIDR first).
+{{ENDIF}}
+
+{{IF has_express}}
+**ECS Express Mode service (`ecs_mode: "express"`):** Express Mode owns the deployment (canary). Push the image to the tag the service references and force a new deployment the same way as the rolling branch, using the Express service name `{{app_name}}-<app_sanitized>-web`; the service ARN is in the `<app_sanitized>_web_service_arn` output.
+{{ENDIF}}
 
 ### Fargate Config Var Migration
 
 Export all Heroku config vars and import to AWS Secrets Manager / Parameter Store, then reference them in your ECS task definition.
 
-### ECS Express Mode (Forward-Look)
+### ECS Express Mode (web dynos on Fargate)
 
-This generated path uses standard ECS/Fargate Terraform. If an ECS Express Mode path becomes available in this skill, treat it as an optional simplification for the Fargate override path, not as a replacement for the Elastic Beanstalk default without explicit user choice.
+Web formations routed to Fargate with `aws_config.ecs_mode: "express"` are emitted as `aws_ecs_express_gateway_service` (see `generate-terraform.md` Step 6): AWS provisions the ALB, HTTPS listener and certificate, auto scaling, and logs, and exposes an AWS-provided HTTPS endpoint (`<app>_web_endpoint` output). Workers, Route 53-cutover designs, oversized tasks, and non-canary release strategies use the standard ECS/Fargate Terraform. Express Mode is a shape of the Fargate override, not a replacement for the Elastic Beanstalk default without explicit user choice.
 
 {{ENDIF}}
 
@@ -886,9 +941,13 @@ This generated path uses standard ECS/Fargate Terraform. If an ECS Express Mode 
 - [ ] Each customer-supplied `eb_health_check_path_<app_sanitized>_web` returns a successful response on its app's EB environment URL
       {{ENDIF}}
       {{ENDIF}}
-      {{IF has_fargate}}
+      {{IF has_alb}}
 - [ ] Application responds on ALB endpoint: `https://{{ALB_DNS_NAME}}/`
 - [ ] Health check endpoint returns 200: `https://{{ALB_DNS_NAME}}/health`
+      {{ENDIF}}
+      {{IF has_express}}
+- [ ] Each Express Mode web app responds on its AWS-provided endpoint: `curl -fsS -o /dev/null -w '%{http_code}' "$(terraform -chdir=terraform output -raw <app_sanitized>_web_endpoint)/"` (one line per Express app). The output is already a full `https://…` URL (`ingress_paths[0].endpoint`), so never prefix it with another `https://`; there is no `ALB_DNS_NAME` for these — Express Mode owns the ALB
+- [ ] Health check path returns 200 on that same URL with the generated `health_check_path` appended once. The output is already `https://…`; do not add another scheme
       {{ENDIF}}
       {{IF has_postgres}}
 - [ ] Database connectivity confirmed (application can read/write)
@@ -947,7 +1006,7 @@ Each hostname has its own target; a hostname is never pointed at another app's e
 <!-- markdownlint-disable MD055 MD056 -->
 
 {{FOR host IN dns_hostnames}}
-| `{{host.hostname}}` | `{{host.heroku_app}}` | {{IF host.target_kind == "alb"}}ALB DNS name{{ENDIF}}{{IF host.target_kind == "eb"}}Elastic Beanstalk environment CNAME{{ENDIF}}{{IF host.target_kind == "eks"}}Service `EXTERNAL-IP` hostname from `kubectl get svc -n {{host.heroku_app}} web` (exists only after Phase 3){{ENDIF}}{{IF host.target_kind == "none"}}none — `{{host.heroku_app}}` has no web process; this hostname is not routed{{ENDIF}} | {{IF host.output_name}}`{{host.output_name}}`{{ELSE}}—{{ENDIF}} |
+| `{{host.hostname}}` | `{{host.heroku_app}}` | {{IF host.target_kind == "alb"}}ALB DNS name{{ENDIF}}{{IF host.target_kind == "eb"}}Elastic Beanstalk environment CNAME{{ENDIF}}{{IF host.target_kind == "express"}}ECS Express Mode endpoint host (the hostname part of the `https://…` output){{ENDIF}}{{IF host.target_kind == "eks"}}Service `EXTERNAL-IP` hostname from `kubectl get svc -n {{host.heroku_app}} web` (exists only after Phase 3){{ENDIF}}{{IF host.target_kind == "none"}}none — `{{host.heroku_app}}` has no web process; this hostname is not routed{{ENDIF}} | {{IF host.output_name}}`{{host.output_name}}`{{ELSE}}—{{ENDIF}} |
 {{ENDFOR}}
 
 <!-- markdownlint-enable MD055 MD056 -->
@@ -1008,11 +1067,15 @@ No `dns.tf` was generated ({{IF custom_domains is empty}}no custom domain was di
    {{FOR host IN dns_hostnames}}
    {{IF host.target_kind == "alb"}}{{host.hostname}}  CNAME  <terraform output {{host.output_name}}>          (was: <heroku DNS target>){{ENDIF}}
    {{IF host.target_kind == "eb"}}{{host.hostname}}  CNAME  <terraform output {{host.output_name}}>          (was: <heroku DNS target>){{ENDIF}}
+   {{IF host.target_kind == "express"}}{{host.hostname}}  CNAME  <host of terraform output {{host.output_name}}>   (was: <heroku DNS target>) — after the listener step below{{ENDIF}}
    {{IF host.target_kind == "eks"}}{{host.hostname}}  CNAME  <EXTERNAL-IP hostname of Service web in namespace {{host.heroku_app}}>  (was: <heroku DNS target>){{ENDIF}}
    {{IF host.target_kind == "none"}}{{host.hostname}}  — not routed: {{host.heroku_app}} has no web process on AWS; decide what should answer for it before cutover{{ENDIF}}
    {{ENDFOR}}
    ```
 
+   {{IF has_express}}
+   An ECS Express Mode ALB routes by **host header**, so a CNAME alone returns the ALB's default 404 for your hostname. Before changing the record for each `express` hostname, follow [Adding a custom domain to your service](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-advanced-customization.html#express-service-add-custom-domain): request an ACM certificate for the hostname and validate it at your DNS provider; in the ECS console open the Express service → **Resources** → listener rule, add the hostname as an **OR** host-header value next to the AWS-provided one; add the certificate to the ALB's HTTPS listener (**Certificates** tab). Then set the CNAME to the host part of `terraform output -raw <app_sanitized>_web_endpoint` (strip `https://`). Verify before and after: `curl -fsS --connect-to '<hostname>:443:<endpoint-host>:443' -o /dev/null -w '%{http_code}' https://<hostname>`. Express Mode does not overwrite these listener edits on later `terraform apply` runs.
+   {{ENDIF}}
    {{IF has_eks}}
    The EKS Service address is known only after Phase 3 (`kubectl get svc -n <app> web -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'`), so this step cannot run before the deploy. The generated Service already declares port 80 and port 443, both targeting 8080, with `service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"`. Before any DNS change, request an ACM certificate for these hostnames, validate it at your DNS provider, set `service.beta.kubernetes.io/aws-load-balancer-ssl-cert` to that ARN on `kubernetes/<app>-web-service.yaml`, and apply the Service. Confirm the load balancer has a listener on 443 (`aws elbv2 describe-listeners --load-balancer-arn <arn>`). Then request the application hostname, and connect that request to the load balancer, so SNI and certificate validation use the name on the certificate: `curl -fsS --connect-to '<hostname>:443:<load-balancer-hostname>:443' -o /dev/null -w '%{http_code}' https://<hostname>`. A request to `https://<load-balancer-hostname>` fails hostname validation even when the certificate is valid for the application domain. The certificate annotation does not create a listener; without port 443 there is nothing for HTTPS to land on.
    {{ENDIF}}
@@ -1187,27 +1250,47 @@ Until the Phase 5 flip the primary is Heroku Postgres, frozen under `maintenance
    ```bash
    set -euo pipefail
    # Persist before any apply. Fargate desired_count is `var.writers_quiesced ? 0 : <formation quantity>`,
-   # so a later apply keeps those services at 0. Leave this true until the next intentional handoff.
+   # and an Express Mode service's scaling_target.min_task_count is `var.writers_quiesced ? 0 : …`,
+   # so a later apply keeps those services at 0.
+   # Leave this true until the next intentional handoff.
    # The assignment is in terraform.tfvars.example for every design, including external DNS and EKS.
    sed -i.bak 's/^writers_quiesced *=.*/writers_quiesced = true/' terraform/terraform.tfvars
    grep -q '^writers_quiesced *= *true$' terraform/terraform.tfvars
    {{IF has_fargate}}
    {{IF has_beanstalk}}
-   # A full apply would also restore the Beanstalk environment. Target only ECS services.
+   # A full apply would also restore the Beanstalk environment. Target only ECS services —
+   # standard (aws_ecs_service) and Express Mode (aws_ecs_express_gateway_service) alike.
    # The pipe would hide `targets` in a subshell, so read it with process substitution.
    ( cd terraform
      targets=()
      while read -r addr; do
        targets+=("-target=$addr")
-     done < <(terraform state list | grep '^aws_ecs_service\.')
+     done < <(terraform state list | grep -E '^aws_ecs(_express_gateway)?_service\.')
      if [ "${#targets[@]}" -eq 0 ]; then
-       echo "No aws_ecs_service in state — do not apply; a full apply would start Beanstalk writers" >&2
+       echo "No aws_ecs_service / aws_ecs_express_gateway_service in state — do not apply; a full apply would start Beanstalk writers" >&2
        exit 1
      fi
      terraform apply -input=false "${targets[@]}"
    )
    {{ELSE}}
    ( cd terraform && terraform apply -input=false )
+   {{ENDIF}}
+   {{IF has_express}}
+   # Express Mode: the apply above sets min_task_count to 0 and (wait_for_steady_state = true) returns
+   # once the service is steady — but confirm the stop and suspend Application Auto Scaling for the
+   # whole handoff, so neither a still-draining task nor a scale-out can write after the check.
+   # Express scaling is an Application Auto Scaling scalable target on ecs:service:DesiredCount
+   # (https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html, "Application scaling target defaults").
+   # One block per Express web app:
+   SVC_ARN=$(terraform -chdir=terraform output -raw <app_sanitized>_web_service_arn)
+   CLUSTER=$(echo "$SVC_ARN" | cut -d/ -f2); SVC=$(echo "$SVC_ARN" | cut -d/ -f3)
+   aws application-autoscaling register-scalable-target --service-namespace ecs \
+     --scalable-dimension ecs:service:DesiredCount --resource-id "service/$CLUSTER/$SVC" \
+     --suspended-state DynamicScalingInSuspended=true,DynamicScalingOutSuspended=true,ScheduledScalingSuspended=true \
+     --region {{target_region}}
+   until [ "$(aws ecs describe-services --cluster "$CLUSTER" --services "$SVC" --region {{target_region}} \
+     --query 'services[0].[runningCount,pendingCount]' --output text | tr -s '\t' '+' )" = "0+0" ]; do sleep 10; done
+   # Step 6 (or the next intentional handoff) re-registers the target with every *Suspended=false.
    {{ENDIF}}
    {{ENDIF}}
    {{IF has_beanstalk}}
@@ -1234,12 +1317,12 @@ Until the Phase 5 flip the primary is Heroku Postgres, frozen under `maintenance
    {{ENDIF}}
    ```
 
-   Confirm the AWS database has no application writer before the dump. Repeat until the query returns zero rows:
+   Confirm the AWS database has no application session before the dump, including idle ones. A draining task whose connection is `idle` can still issue a write after a check that skips that state. Repeat until the query returns zero rows. `rdsadmin` is the only excluded role.
 
    ```bash
    PGPASSWORD="{{TARGET_DB_PASSWORD}}" psql -h {{TARGET_DB_HOST}} -p {{TARGET_DB_PORT}} \
      -U {{TARGET_DB_USER}} -d {{TARGET_DB_NAME}} -v ON_ERROR_STOP=1 -c \
-     "SELECT pid, usename, application_name, state FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND state <> 'idle' AND backend_type = 'client backend';"
+     "SELECT pid, usename, application_name, state FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND backend_type = 'client backend' AND usename IS DISTINCT FROM 'rdsadmin';"
    ```
 
 2. **Dump the current primary (the AWS database) completely.** Do not dump while the query above still returns rows.
@@ -1273,7 +1356,7 @@ Until the Phase 5 flip the primary is Heroku Postgres, frozen under `maintenance
 {{ELSE}}
 5. Heroku was never repointed: `DATABASE_URL` still names Heroku Postgres. Nothing to re-attach.
 {{ENDIF}}
-6. **Restore the Heroku formation recorded in step 1, confirm web is ready, send DNS back to Heroku, then — and only then — `heroku maintenance:off`.** Leave `writers_quiesced = true` on AWS until the next intentional handoff. Turn the Scheduler jobs step 1 wrote down back on. Scale back to `heroku-formation-before-failback.txt`. `heroku ps` must show the web dynos at that quantity, and the health path must answer, before maintenance comes off.
+6. **Restore the Heroku formation recorded in step 1, confirm web is ready, send DNS back to Heroku, then — and only then — `heroku maintenance:off`.** Leave `writers_quiesced = true` on AWS until the next intentional handoff.{{IF has_express}} Leave each Express service's Application Auto Scaling target suspended as well; the next intentional handoff re-registers it with `DynamicScalingInSuspended=false,DynamicScalingOutSuspended=false,ScheduledScalingSuspended=false` after `writers_quiesced` goes back to `false`.{{ENDIF}} Turn the Scheduler jobs step 1 wrote down back on. Scale back to `heroku-formation-before-failback.txt`. `heroku ps` must show the web dynos at that quantity, and the health path must answer, before maintenance comes off.
 
    ```bash
    heroku ps:scale <web=N worker=N ... from heroku-formation-before-failback.txt> -a {{app_name}}
@@ -1362,6 +1445,114 @@ Only after the Phase 6 rollback window (72 hours at 100 % on AWS with no trigger
    heroku apps:destroy --confirm {{app_name}}
    ```
 
+---
+
+## Day-to-day commands: Heroku → AWS
+
+What your developers type every week, and what it becomes. Every row is the same
+capability with a different command; nothing here needs to be built. Names are filled
+in for `{{app_name}}` — repeat per app, and render each table only for the compute
+target that runs one of this app's process types.
+
+Three rows depend on where Phase 3 put each config var. `config:set` on the wrong store
+changes a value the application never reads, so check the reference first: in
+`terraform/beanstalk.tf` the `aws:elasticbeanstalk:application:environmentsecrets`
+settings (one per sensitive var, value = the Secrets Manager secret ARN or the SSM
+parameter ARN) and the `aws:elasticbeanstalk:application:environment` settings (plain
+values); in `terraform/compute.tf` the container definition's `environment[]` (plain values)
+and any `secrets[]` entries (`valueFrom` ARN) you added in Phase 3 — the generated task
+definition emits none. `<secret-arn>` and `<parameter-name>` below are those identifiers.
+A key that no setting or `secrets[]` entry references is never read, whatever its value,
+so adding a key is a Terraform change, not a CLI call. The Elastic Beanstalk instance role
+reads only `secret:{{PROJECT_NAME}}/*` and `parameter/{{PROJECT_NAME}}/*`, so new secrets
+and parameters go under that prefix.
+
+{{IF has_beanstalk}}
+
+Elastic Beanstalk runs one environment per process type:{{FOR proc IN eb_processes}} `{{proc.process_type}}` → `{{proc.environment_name}}`;{{ENDFOR}} app-wide actions (restart, config change, rollback) run once per environment, so they loop over `{{EB_ENVIRONMENT_NAMES}}`.
+
+<!-- markdownlint-disable MD055 MD056 -->
+
+| Heroku | AWS (Elastic Beanstalk) |
+| --- | --- |
+{{FOR proc IN eb_processes}}
+| `heroku logs --tail --dyno {{proc.process_type}} -a {{app_name}}` | `aws logs tail /aws/elasticbeanstalk/{{proc.environment_name}}/var/log/eb-docker/containers/eb-current-app/stdouterr.log --follow` (`beanstalk.tf` streams this group with `aws:elasticbeanstalk:cloudwatch:logs` `StreamLogs=true`) |
+{{ENDFOR}}
+| `heroku run bash -a {{app_name}}` | `aws ssm start-session --target $(aws elasticbeanstalk describe-environment-resources --environment-name {{EB_RUN_ENVIRONMENT}} --query 'EnvironmentResources.Instances[0].Id' --output text)` then `sudo docker exec -it $(sudo docker ps -q) /bin/sh` (needs the Session Manager plugin locally; `beanstalk.tf` gives the instance role an inline Session Manager policy limited to `ssm:UpdateInstanceInformation` and the four `ssmmessages` channel actions, so it adds no parameter reads). `eb ssh` does not work here: the environment has no EC2 key pair and no :22 ingress. Use `/bin/sh`: the Alpine image patterns in Phase 1 (`node:20-alpine`, `alpine`) have no `bash`; `bash` works only when your Dockerfile installs it |
+| `heroku run rake db:migrate -a {{app_name}}` (one-off task) | The same `aws ssm start-session` as above, then `sudo docker exec $(sudo docker ps -q) <command>`; for repeatable jobs prefer a scheduled EventBridge target or an ECS one-off task |
+| `heroku config -a {{app_name}}` | Plain values: `aws elasticbeanstalk describe-configuration-settings --application-name {{EB_APPLICATION}} --environment-name {{EB_RUN_ENVIRONMENT}} --query "ConfigurationSettings[0].OptionSettings[?Namespace=='aws:elasticbeanstalk:application:environment'].[OptionName,Value]" --output table`. Secret references: the same query with `environmentsecrets` lists `KEY` → ARN; resolve each with the `config:get` row |
+| `heroku config:get KEY -a {{app_name}}` | Plain value: the `heroku config` query filtered with `?OptionName=='KEY'`. Secrets Manager: `aws secretsmanager get-secret-value --secret-id <secret-arn> --query SecretString --output text`. SSM: `aws ssm get-parameter --name <parameter-name> --with-decryption --query Parameter.Value --output text` |
+| `heroku config:set KEY=value -a {{app_name}}` (existing key) | Plain value: edit the `aws:elasticbeanstalk:application:environment` setting in `terraform/beanstalk.tf` and `terraform apply` (EB restarts the app; a CLI `update-environment --option-settings Namespace=aws:elasticbeanstalk:application:environment,OptionName=KEY,Value='value'` works too, but the next apply reverts it). Secrets Manager: `aws secretsmanager put-secret-value --secret-id <secret-arn> --secret-string 'value'`. SSM: `aws ssm put-parameter --name <parameter-name> --type SecureString --value 'value' --overwrite`. After either store changes, refetch: `for env in {{EB_ENVIRONMENT_NAMES}}; do aws elasticbeanstalk restart-app-server --environment-name $env; done` (EB reads secrets only at bootstrap and on restart/update) |
+| `heroku config:set NEW_KEY=value -a {{app_name}}` (new key) | A `put-parameter` or `create-secret` alone is a silent no-op: EB injects only the keys named in `environmentsecrets`, and the instance role reads only `parameter/{{PROJECT_NAME}}/*` and `secret:{{PROJECT_NAME}}/*`. Plain value: add an `aws:elasticbeanstalk:application:environment` setting for `NEW_KEY` in `terraform/beanstalk.tf`, then `terraform apply`. Secret: `aws ssm put-parameter --name /{{PROJECT_NAME}}/NEW_KEY --type SecureString --value 'value'` (or `aws secretsmanager create-secret --name {{PROJECT_NAME}}/NEW_KEY --secret-string 'value'`), add an `aws:elasticbeanstalk:application:environmentsecrets` setting `NEW_KEY` = that ARN in `terraform/beanstalk.tf`, then `terraform apply` |
+| `heroku ps -a {{app_name}}` | `aws elasticbeanstalk describe-environments --application-name {{EB_APPLICATION}} --query 'Environments[].[EnvironmentName,Status,Health]' --output table` (`describe-environment-health` needs enhanced health reporting; the generated environments use the default basic `SystemType`) |
+{{FOR proc IN eb_processes}}
+| `heroku ps:scale {{proc.process_type}}=3 -a {{app_name}}` | {{IF proc.process_type == "web"}}`aws elasticbeanstalk update-environment --environment-name {{proc.environment_name}} --option-settings Namespace=aws:autoscaling:asg,OptionName=MinSize,Value=3 Namespace=aws:autoscaling:asg,OptionName=MaxSize,Value=3` — temporary: MinSize/MaxSize are Terraform-managed, so the next `terraform apply` reverts this. For a persistent change edit `eb_min_instances_*` / `eb_max_instances_*` in `terraform/terraform.tfvars` and apply. Never scale or restart while `writers_quiesced = true` (Phase 6 drained this environment on purpose){{ELSE}}not applicable: `{{proc.environment_name}}` is a SingleInstance environment (one `{{proc.process_type}}` process). A count above 1 is what Design routes to Fargate; change the formation and re-run Design rather than scaling here{{ENDIF}} |
+{{ENDFOR}}
+| `heroku restart -a {{app_name}}` | `for env in {{EB_ENVIRONMENT_NAMES}}; do aws elasticbeanstalk restart-app-server --environment-name $env; done` (not while `writers_quiesced = true`) |
+| `heroku releases -a {{app_name}}` | `aws elasticbeanstalk describe-application-versions --application-name {{EB_APPLICATION}} --query 'ApplicationVersions[].[VersionLabel,DateCreated]' --output table` |
+| `heroku rollback -a {{app_name}}` | `for env in {{EB_ENVIRONMENT_NAMES}}; do aws elasticbeanstalk update-environment --application-name {{EB_APPLICATION}} --environment-name $env --version-label <previous label>; done` |
+{{IF app_has_eb_web}}
+| `heroku maintenance:on -a {{app_name}}` | {{IF has_route53_dns}}`beanstalk.tf` sets `LoadBalancerType=application`. EB leaves its default HTTP listener on 80 forwarding to the app next to the HTTPS listener on 443, so switch **every** forwarding listener, not one. Find the load balancer (EB reports a name, `describe-listeners` needs the ARN): `lb_name=$(aws elasticbeanstalk describe-environment-resources --environment-name {{EB_RUN_ENVIRONMENT}} --query 'EnvironmentResources.LoadBalancers[0].Name' --output text)` then `lb_arn=$(aws elbv2 describe-load-balancers --names "$lb_name" --query 'LoadBalancers[0].LoadBalancerArn' --output text)`. `maintenance:on` saves each forwarding listener's actions, then replaces them: `for l in $(aws elbv2 describe-listeners --load-balancer-arn "$lb_arn" --query "Listeners[?DefaultActions[0].Type=='forward'].ListenerArn" --output text); do aws elbv2 describe-listeners --listener-arns "$l" --query 'Listeners[0].DefaultActions' > "maint-$(basename "$l").json"; aws elbv2 modify-listener --listener-arn "$l" --default-actions Type=fixed-response,FixedResponseConfig='{StatusCode=503,ContentType=text/plain,MessageBody="Maintenance"}'; done`. `maintenance:off` restores each from its saved file: `for l in $(aws elbv2 describe-listeners --load-balancer-arn "$lb_arn" --query "Listeners[?DefaultActions[0].Type=='fixed-response'].ListenerArn" --output text); do f="maint-$(basename "$l").json"; [ -f "$f" ] && aws elbv2 modify-listener --listener-arn "$l" --default-actions "file://$f"; done` (keep the `maint-*.json` files until then; a listener that redirects is left alone){{ELSE}}`beanstalk.tf` emits no `LoadBalancerType` without Route 53 DNS, so the web environment runs the EB default, a Classic Load Balancer; `aws elbv2 modify-listener` / fixed-response actions do not exist for it. Supported procedure: keep an application version whose container answers 503 on every path, then `aws elasticbeanstalk update-environment --environment-name {{EB_RUN_ENVIRONMENT}} --version-label <maintenance-version>`; `maintenance:off` = `update-environment` back to the previous label (the `releases` row lists them). For a listener-level switch, the environment needs `LoadBalancerType=application` in `beanstalk.tf` — settable only at creation, so that is a new environment, not an edit{{ENDIF}} |
+{{ENDIF}}
+{{IF has_postgres}}
+| `heroku pg:psql -a {{app_name}}` | Two hosts: the session role cannot read the secret (the EB instance role reads only `secret:{{PROJECT_NAME}}/*`, and `{{DB_CREDENTIALS_SECRET}}` sits outside that prefix), so read it on your workstation with your own AWS CLI credentials: `creds=$(aws secretsmanager get-secret-value --secret-id {{DB_CREDENTIALS_SECRET}} --query SecretString --output text)` then `jq -rn --argjson c "$creds" '$c.username, $c.password'`. Then from a host inside the VPC (the `run bash` SSM session above), first fetch the RDS CA bundle onto that host (the Heroku-side copy from the data-first TLS step is not there, and full cutover never makes one): `curl -fsSo /tmp/rds-global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem` (install `curl` or fetch it elsewhere and copy it in if the image lacks it), then `psql "postgres://<username>@{{TARGET_DB_HOST}}:{{TARGET_DB_PORT}}/{{TARGET_DB_NAME}}?sslmode=verify-full&sslrootcert=/tmp/rds-global-bundle.pem"` and type the password at the prompt (it never enters the session's shell history). `{{DB_CREDENTIALS_SECRET}}` holds JSON `{username,password}` and is the only secret Terraform creates (with RDS Proxy); without RDS Proxy there is no secret to read: the same pair is `db_username` / `db_password` in `terraform/terraform.tfvars`. `{{TARGET_DB_HOST}}:{{TARGET_DB_PORT}}` is the database endpoint from `terraform output` (`rds_endpoint`, or the Aurora cluster writer endpoint) |
+| `heroku pg:info` / `pg:backups:capture` | {{IF postgres_engine == "aurora"}}`aws rds describe-db-clusters --db-cluster-identifier {{DB_CLUSTER_IDENTIFIER}}` / `aws rds create-db-cluster-snapshot --db-cluster-identifier {{DB_CLUSTER_IDENTIFIER}} --db-cluster-snapshot-identifier manual-$(date +%Y%m%d)` (Aurora snapshots are cluster-level; `create-db-snapshot` does not apply){{ELSE}}`aws rds describe-db-instances --db-instance-identifier {{DB_INSTANCE_IDENTIFIER}}` / `aws rds create-db-snapshot --db-instance-identifier {{DB_INSTANCE_IDENTIFIER}} --db-snapshot-identifier manual-$(date +%Y%m%d)`{{ENDIF}} |
+{{ENDIF}}
+| `heroku addons -a {{app_name}}` | `terraform state list` in `terraform/` — every former add-on is a resource there |
+{{IF app_has_eb_web}}
+| `heroku open -a {{app_name}}` | {{IF has_route53_dns}}`open https://{{APP_HTTPS_HOSTNAME}}` — the HTTPS listener in `beanstalk.tf` carries the certificate for your custom domains, not for the EB CNAME, so `https://{{EB_ENVIRONMENT_URL}}` fails certificate verification{{ELSE}}`open http://{{EB_ENVIRONMENT_URL}}` — the generated environment serves plain HTTP (no HTTPS listener is emitted without Route 53 DNS); after cutover, `open https://{{APP_HTTPS_HOSTNAME}}` through your own TLS termination{{ENDIF}} |
+{{ENDIF}}
+
+<!-- markdownlint-enable MD055 MD056 -->
+
+{{ENDIF}}
+{{IF has_fargate}}
+
+Fargate runs one service per process type:{{FOR proc IN fargate_processes}} `{{proc.process_type}}` → service and task family `{{proc.service_name}}`, container `{{proc.process_type}}`, log group `{{proc.log_group}}`;{{ENDFOR}} app-wide actions (restart, config change, rollback) loop over `{{FARGATE_SERVICE_NAMES}}`.
+
+<!-- markdownlint-disable MD055 MD056 -->
+
+| Heroku | AWS (ECS Fargate) |
+| --- | --- |
+{{FOR proc IN fargate_processes}}
+| `heroku logs --tail --dyno {{proc.process_type}} -a {{app_name}}` | `aws logs tail {{proc.log_group}} --follow` |
+{{ENDFOR}}
+| `heroku run bash -a {{app_name}}` | `aws ecs execute-command --cluster {{ECS_CLUSTER}} --task $(aws ecs list-tasks --cluster {{ECS_CLUSTER}} --service-name {{FARGATE_RUN_SERVICE}} --query 'taskArns[0]' --output text) --container {{FARGATE_RUN_PROCESS}} --interactive --command /bin/sh` (ECS Exec is enabled on the generated services; needs the Session Manager plugin locally). Use `/bin/sh`: the Alpine image patterns in Phase 1 have no `bash`; `bash` works only when your Dockerfile installs it |
+| `heroku run rake db:migrate -a {{app_name}}` (one-off task) | `aws ecs run-task --cluster {{ECS_CLUSTER}} --launch-type FARGATE --task-definition {{FARGATE_RUN_SERVICE}} --network-configuration "awsvpcConfiguration={subnets=[...],securityGroups=[...]}" --overrides '{"containerOverrides":[{"name":"{{FARGATE_RUN_PROCESS}}","command":["rake","db:migrate"]}]}'` |
+| `heroku config -a {{app_name}}` | `aws ecs describe-task-definition --task-definition {{FARGATE_RUN_SERVICE}} --query 'taskDefinition.containerDefinitions[0].[environment,secrets]'` — `environment` holds plain values, `secrets` holds `KEY` → `valueFrom` ARN; resolve each with the `config:get` row |
+| `heroku config:get KEY -a {{app_name}}` | Plain value: in the `environment` list above. Secrets Manager: `aws secretsmanager get-secret-value --secret-id <secret-arn> --query SecretString --output text`. SSM: `aws ssm get-parameter --name <parameter-name> --with-decryption --query Parameter.Value --output text` |
+| `heroku config:set KEY=value -a {{app_name}}` (existing key) | Plain value: edit the `environment` entry in `terraform/compute.tf` and `terraform apply` (a new task revision rolls out). Secrets Manager: `aws secretsmanager put-secret-value --secret-id <secret-arn> --secret-string 'value'`. SSM: `aws ssm put-parameter --name <parameter-name> --type SecureString --value 'value' --overwrite`. After either store changes: `for svc in {{FARGATE_SERVICE_NAMES}}; do aws ecs update-service --cluster {{ECS_CLUSTER}} --service $svc --force-new-deployment; done` (tasks read secrets at start) |
+| `heroku config:set NEW_KEY=value -a {{app_name}}` (new key) | A `put-parameter` or `create-secret` alone is a silent no-op: the generated task definition has no `secrets` block and the execution role carries only `AmazonECSTaskExecutionRolePolicy`, which grants no `ssm:GetParameters` / `secretsmanager:GetSecretValue`, so nothing reads the new value. Plain value: add an `environment` entry for `NEW_KEY` in `terraform/compute.tf`, then `terraform apply`. Secret: `aws ssm put-parameter --name /{{PROJECT_NAME}}/NEW_KEY --type SecureString --value 'value'` (or `aws secretsmanager create-secret --name {{PROJECT_NAME}}/NEW_KEY --secret-string 'value'`), add `secrets = [{ name = "NEW_KEY", valueFrom = "<arn>" }]` to the container definition in `terraform/compute.tf`, grant `aws_iam_role.ecs_execution` (`terraform/security.tf`) `ssm:GetParameters` / `secretsmanager:GetSecretValue` on that ARN (plus `kms:Decrypt` on the key when it is customer managed), then `terraform apply` |
+| `heroku ps -a {{app_name}}` | `aws ecs describe-services --cluster {{ECS_CLUSTER}} --services {{FARGATE_SERVICE_NAMES}} --query 'services[].[serviceName,runningCount,desiredCount]' --output table` |
+{{FOR proc IN fargate_processes}}
+| `heroku ps:scale {{proc.process_type}}=3 -a {{app_name}}` | `aws ecs update-service --cluster {{ECS_CLUSTER}} --service {{proc.service_name}} --desired-count 3` — temporary: `desired_count` is Terraform-managed, so the next `terraform apply` reverts this. For a persistent change edit `desired_count_*` in `terraform/terraform.tfvars` (or the service's `desired_count` in `terraform/compute.tf`) and apply. Never scale or restart while `writers_quiesced = true` (the service is pinned to 0 on purpose; an apply with the flag set brings it back to 0) |
+{{ENDFOR}}
+| `heroku restart -a {{app_name}}` | `for svc in {{FARGATE_SERVICE_NAMES}}; do aws ecs update-service --cluster {{ECS_CLUSTER}} --service $svc --force-new-deployment; done` (not while `writers_quiesced = true`) |
+| `heroku releases -a {{app_name}}` | `aws ecr describe-images --repository-name {{app_name}} --query 'sort_by(imageDetails,&imagePushedAt)[].[imageDigest,imageTags[0],imagePushedAt]' --output table` — Phase 3 pushes every build as `:latest` and redeploys with `--force-new-deployment`, so the digest, not the tag, identifies a release |
+| `heroku rollback -a {{app_name}}` | There is no previous tag to point at (every push overwrote `:latest`, and the task revision never changed). Roll back by digest: pick the previous `imageDigest` from the `releases` row, set each `container_image_<app>_<process_type>` in `terraform/terraform.tfvars` to `{{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com/{{app_name}}@<digest>`, then `terraform apply` (a new task revision rolls out to every service in `{{FARGATE_SERVICE_NAMES}}`). To roll forward again, set the variables back to `:latest` and apply, or move to immutable per-commit tags so `rollback` becomes a tag change |
+{{IF app_has_fargate_web}}
+| `heroku maintenance:on -a {{app_name}}` | Point the ALB HTTPS listener at a fixed 503 response: `aws elbv2 modify-listener --listener-arn <listener-arn> --default-actions Type=fixed-response,FixedResponseConfig='{StatusCode=503,ContentType=text/plain,MessageBody="Maintenance"}'`; `maintenance:off` = restore the forward action. The listener is `aws_lb_listener.https` in `terraform/compute.tf` (`terraform state show aws_lb_listener.https`) |
+{{ENDIF}}
+{{IF has_postgres}}
+| `heroku pg:psql -a {{app_name}}` | Two hosts: the session role cannot read the secret (the task role carries only the `ssmmessages` channel actions, and the execution role only `AmazonECSTaskExecutionRolePolicy`), so read it on your workstation with your own AWS CLI credentials: `creds=$(aws secretsmanager get-secret-value --secret-id {{DB_CREDENTIALS_SECRET}} --query SecretString --output text)` then `jq -rn --argjson c "$creds" '$c.username, $c.password'`. Then from a host inside the VPC (bastion, SSM session, or the `run bash` `ecs execute-command` above when the image ships `psql`), first fetch the RDS CA bundle onto that host (the Heroku-side copy from the data-first TLS step is not there, and full cutover never makes one): `curl -fsSo /tmp/rds-global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem` (install `curl` or fetch it elsewhere and copy it in if the image lacks it), then `psql "postgres://<username>@{{TARGET_DB_HOST}}:{{TARGET_DB_PORT}}/{{TARGET_DB_NAME}}?sslmode=verify-full&sslrootcert=/tmp/rds-global-bundle.pem"` and type the password at the prompt (it never enters the session's shell history). `{{DB_CREDENTIALS_SECRET}}` holds JSON `{username,password}` and is the only secret Terraform creates (with RDS Proxy); without RDS Proxy there is no secret to read: the same pair is `db_username` / `db_password` in `terraform/terraform.tfvars`. `{{TARGET_DB_HOST}}:{{TARGET_DB_PORT}}` is the database endpoint from `terraform output` (`rds_endpoint`, or the Aurora cluster writer endpoint) |
+| `heroku pg:info` / `pg:backups:capture` | {{IF postgres_engine == "aurora"}}`aws rds describe-db-clusters --db-cluster-identifier {{DB_CLUSTER_IDENTIFIER}}` / `aws rds create-db-cluster-snapshot --db-cluster-identifier {{DB_CLUSTER_IDENTIFIER}} --db-cluster-snapshot-identifier manual-$(date +%Y%m%d)` (Aurora snapshots are cluster-level; `create-db-snapshot` does not apply){{ELSE}}`aws rds describe-db-instances --db-instance-identifier {{DB_INSTANCE_IDENTIFIER}}` / `aws rds create-db-snapshot --db-instance-identifier {{DB_INSTANCE_IDENTIFIER}} --db-snapshot-identifier manual-$(date +%Y%m%d)`{{ENDIF}} |
+{{ENDIF}}
+| `heroku addons -a {{app_name}}` | `terraform state list` in `terraform/` — every former add-on is a resource there |
+{{IF app_has_fargate_web}}
+| `heroku open -a {{app_name}}` | `open https://{{APP_HTTPS_HOSTNAME}}` — the ALB certificate (`dns.tf` or `var.acm_certificate_arn`) covers your custom domains, not the ALB DNS name, so `https://{{ALB_DNS_NAME}}` fails certificate verification; before DNS cutover test with `curl -sk -H "Host: {{APP_HTTPS_HOSTNAME}}" https://{{ALB_DNS_NAME}}/` |
+{{ENDIF}}
+
+<!-- markdownlint-enable MD055 MD056 -->
+
+{{ENDIF}}
+
+Two things have no one-line equivalent and are covered elsewhere: `git push heroku main`
+(Phase 3 — the generated deploy workflow) and `heroku pipelines:promote` (not generated;
+promotion between environments is a step you add to the Phase 3 deploy workflow — see the
+migration report). Wrapping the rows above in
+a `bin/` directory of short shell scripts named after the Heroku commands is a common
+first platform-team task; the commands are stable enough to copy as-is.
+
 {{IF deferred_addons.length > 0}}
 
 ---
@@ -1414,14 +1605,25 @@ Replace template variables using these sources:
 | `{{SOURCE_KAFKA_*}}` | Placeholder — user fills from `heroku kafka:info` output |
 | `{{TARGET_MSK_*}}` | Placeholder — user fills from Terraform output |
 | `{{AWS_ACCOUNT_ID}}` | Placeholder — user fills with their AWS account ID |
-| `{{ALB_DNS_NAME}}` | Placeholder — user fills from Terraform output |
+| `{{ALB_DNS_NAME}}` | Placeholder — user fills from Terraform output (`alb_dns_name_<app_sanitized>`); rendered only when `has_alb` (a standard-mode Fargate web formation). Express Mode web apps use the `<app_sanitized>_web_endpoint` output instead |
 | `{{EB_ENVIRONMENT_URL}}` | Elastic Beanstalk web environment CNAME output |
 | `{{EB_ENVIRONMENT_NAMES}}` | Space-separated generated Elastic Beanstalk environment names for all EB process types |
+| `{{PROJECT_NAME}}` | The `project_name` value written to `terraform/terraform.tfvars` (`var.project_name`); the EB instance role reads only `secret:<project_name>/*` and `parameter/<project_name>/*`, so new secrets and parameters go under this prefix |
+| `{{EB_APPLICATION}}` | `name` of the generated `aws_elastic_beanstalk_application` — `var.project_name`, not the Heroku app name |
+| `{{DB_CREDENTIALS_SECRET}}` | `name` of the generated `aws_secretsmanager_secret.db_credentials` (`${var.project_name}-${var.environment}/db-credentials`, JSON `{username,password}`); emitted with RDS Proxy |
+| `{{FOR proc IN eb_processes}}` / `{{FOR proc IN fargate_processes}}` | Step 0 `eb_processes[]` / `fargate_processes[]` for the app being rendered — one table row per process type (`proc.process_type`, `proc.environment_name` / `proc.service_name`, `proc.log_group`) |
+| `{{EB_RUN_ENVIRONMENT}}` | The EB environment where `heroku run` / `config` equivalents land: the app's `web` environment (`${project_name}-web`) when `app_has_eb_web`, else the app's first `eb_processes[]` entry |
+| `{{ECS_CLUSTER}}` | `${var.project_name}-${var.environment}` — the generated ECS cluster name; service names and log groups are `<cluster>-<process_type>` and `/ecs/<cluster>/<process_type>` |
+| `{{FARGATE_SERVICE_NAMES}}` | Space-separated `service_name` of every `fargate_processes[]` entry for the app |
+| `{{FARGATE_RUN_SERVICE}}` / `{{FARGATE_RUN_PROCESS}}` | The service/task family and container (`process_type`) where `heroku run` / `config` equivalents land: the app's `web` entry when `app_has_fargate_web`, else its first `fargate_processes[]` entry |
+| `{{DB_INSTANCE_IDENTIFIER}}` | `identifier` of the generated `aws_db_instance` (`${var.project_name}-${var.environment}-postgres`); used when `postgres_engine == "rds"` |
+| `{{DB_CLUSTER_IDENTIFIER}}` | `cluster_identifier` of the generated `aws_rds_cluster` (`${var.project_name}-${var.environment}-aurora`); used when `postgres_engine == "aurora"` |
 | `{{MSK_CLUSTER_ARN}}` | Placeholder — user fills from Terraform output |
 | `{{MIGRATION_BUCKET}}` | Placeholder — user creates an S3 bucket for migration artifacts |
 | `{{app_domain}}` | First hostname in `custom_domains[]` when the inventory has `domain` resources; otherwise a placeholder the user fills |
+| `{{APP_HTTPS_HOSTNAME}}` | Per app: `hostname` of the first `dns_hostnames[]` entry whose `heroku_app` is the app being rendered (the `open` rows of "Day-to-day commands"); `<your-custom-domain>` placeholder when that app has no `domain` resource. Never `{{app_domain}}`, which is the first global hostname and may belong to another app |
 | `{{custom_domains}}` | Comma-separated `custom_domains[]` (inventory `domain` resources' `config.hostname`) |
-| `{{FOR host IN dns_hostnames}}` / `{{FOR host IN eligible_hostnames}}` | Step 0 `dns_hostnames[]` / `eligible_hostnames[]`; `host.hostname`, `host.heroku_app`, `host.target_kind` (`alb` / `eb` / `eks` / `none`), `host.output_name` (`alb_dns_name_<app_sanitized>` / `eb_environment_url_<app_sanitized>` / null) — one table row or record line per hostname, each with its own app's endpoint |
+| `{{FOR host IN dns_hostnames}}` / `{{FOR host IN eligible_hostnames}}` | Step 0 `dns_hostnames[]` / `eligible_hostnames[]`; `host.hostname`, `host.heroku_app`, `host.target_kind` (`alb` / `express` / `eb` / `eks` / `none`), `host.output_name` (`alb_dns_name_<app_sanitized>` / `<app_sanitized>_web_endpoint` / `eb_environment_url_<app_sanitized>` / null) — one table row or record line per hostname, each with its own app's endpoint |
 | `{{health_check_path}}` | `eb_health_check_path_<app_sanitized>_web` for the first Beanstalk web app; `/` for a Fargate web service (the ALB target group default) — the same path Phase 4 checks |
 
 ### Conditional Section Rules
@@ -1439,6 +1641,7 @@ Replace template variables using these sources:
 - If `has_kafka == false`: Omit the entire "Kafka Migration" subsection under Phase 2 (heading + content)
 - If ALL data store flags are false: Omit the entire "Phase 2: Data Migration" section and its Table of Contents entry
 - If `deferred_addons.length == 0`: Omit the entire "Manual Migration Items" section and its Table of Contents entry
+- "Day-to-day commands: Heroku → AWS" is ALWAYS rendered (it sits outside the `deferred_addons` guard) and renders exactly the per-target tables for which the app has an `eb_processes[]` / `fargate_processes[]` entry. Inside each table: one `logs --tail` and one `ps:scale` row per process type; the `maintenance:on` and `open` rows render only when that target runs the app's `web` process (`app_has_eb_web` / `app_has_fargate_web`), so a worker-only app and the EB-web + Fargate-worker split get no ALB or `open` row on the worker target; the `pg:psql` and `pg:info` rows render only when `has_postgres`, with the Aurora cluster-snapshot branch when `postgres_engine == "aurora"`; the `open` row uses `https://{{APP_HTTPS_HOSTNAME}}` (the rendered app's own `dns_hostnames[]` hostname, never the global first hostname) when a custom hostname is configured (`has_route53_dns`, or always for an ALB) and `http://{{EB_ENVIRONMENT_URL}}` for a default Elastic Beanstalk environment, which has no HTTPS listener; the Elastic Beanstalk `maintenance:on` row renders the ELBv2 fixed-response procedure (load-balancer name → ARN → listeners) only under `has_route53_dns`, where `beanstalk.tf` sets `LoadBalancerType=application`, and the Classic Load Balancer maintenance-version procedure otherwise.
 - Verification section (Phase 4) checkboxes: Only include data-store-specific checks for present data stores
 
 ---
@@ -2048,7 +2251,7 @@ Verify all generated files:
    - If `has_beanstalk_web`: Explains that each web app's `eb_application_port_<app>_web` and `eb_health_check_path_<app>_web` are required before planning
    - If `has_beanstalk`: Contains selected EB deploy method instructions and the EB DNS cutover target, and emits no CodePipeline artifact unless `eb_deploy_method` is `"codepipeline"`
    - If `has_route53_dns`: Phase 1 contains "DNS preparation (Route 53)" with this order: authority check, then `terraform init` and required inputs, then existing-record conversion + `terraform import`, then zone adoption, then `heroku_apex_ips`, and only then the plan/apply block. No Route 53 write is instructed before the authority check. The Phase 1 rollback after adoption runs `terraform state rm` on `aws_route53_record.heroku` and `aws_route53_record.apex_heroku` before `terraform destroy`
-   - Phase 5 lists every `dns_hostnames[]` hostname with its own Heroku app and its own AWS endpoint/output name (`alb_dns_name_<app_sanitized>` or `eb_environment_url_<app_sanitized>`; never a shared `alb_dns_name`/`eb_environment_url`, never `eb_environment_cname`); no two apps share a target. If `has_eks`: the manual branch names the Kubernetes Service `EXTERNAL-IP` as the target, and the Service ships with port 443 (`targetPort` 8080) plus `aws-load-balancer-ssl-ports: "443"`, with an apply-and-verify step (`describe-listeners` on 443) before any DNS change
+   - Phase 5 lists every `dns_hostnames[]` hostname with its own Heroku app and its own AWS endpoint/output name (`alb_dns_name_<app_sanitized>`, `<app_sanitized>_web_endpoint` for an Express Mode web app, or `eb_environment_url_<app_sanitized>`; never a shared `alb_dns_name`/`eb_environment_url`, never `eb_environment_cname`); no two apps share a target. If `has_express`: an Express web app is never rendered as `target_kind "none"`, Phase 4 checks its `<app_sanitized>_web_endpoint` rather than `ALB_DNS_NAME`, and the manual branch carries the listener host-header + certificate step before the CNAME. If `has_eks`: the manual branch names the Kubernetes Service `EXTERNAL-IP` as the target, and the Service ships with port 443 (`targetPort` 8080) plus `aws-load-balancer-ssl-ports: "443"`, with an apply-and-verify step (`describe-listeners` on 443) before any DNS change
    - Every `cutover_weight` change in Phases 5 and 6 edits `terraform.tfvars` and never passes `-var cutover_weight`. The apply is plain, except the Phase 6 database-failback DNS move when Elastic Beanstalk is in the design: that move is `aws route53 change-resource-record-sets`, and a saved plan that changes `aws_elastic_beanstalk_environment` is not applied
    - Does NOT hard-code a health check path for Elastic Beanstalk verification; use the applicable per-app `eb_health_check_path_<app>_web` instead
    - Contains "Verification" section with data-store-appropriate checks

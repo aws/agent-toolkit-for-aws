@@ -1,3 +1,4 @@
+import copy
 import json
 import pathlib
 import re
@@ -62,38 +63,149 @@ def _codes(items):
     return {item["code"] for item in items}
 
 
-def test_default_anthropic_messages_prefers_mantle_and_sonnet5():
-    # Sonnet 5 (launched 2026-06-30) supports Mantle Messages, so the balanced
-    # priority no longer has to escalate to Opus for Messages continuity.
-    rec = _recommend()
+def _schema(name):
+    scripts = pathlib.Path(model_recommendation.__file__).parent
+    return json.loads((scripts / "schemas" / name).read_text())
+
+
+def test_default_anthropic_messages_lands_on_runtime_messages():
+    # bedrock-runtime is the default endpoint (bedrock-endpoint-policy.md); a Messages
+    # source keeps its API on bedrock-runtime Messages. Nothing selects Mantle here.
+    result = model_recommendation.recommend(_input())
+    rec = result["workloads"]["support-agent"]
 
     assert rec["decision_status"] == "recommended"
-    assert rec["primary_model"] == "anthropic.claude-sonnet-5"
-    assert rec["model_identity"]["display_name"] == "Claude Sonnet 5"
-    assert rec["model_identity"]["version"] == "5.0"
-    assert rec["api_path"] == "mantle_messages"
-    assert rec["invocation_model_id"] == "anthropic.claude-sonnet-5"
+    assert rec["primary_model"] == "anthropic.claude-sonnet-5-5"
+    assert rec["model_identity"]["display_name"] == "Claude Sonnet 5.5"
+    assert rec["model_identity"]["version"] == "5.5"
+    assert rec["api_path"] == "runtime_messages"
+    assert rec["invocation_model_id"] is None  # residency unknown: no CRIS prefix guessed
+    assert rec["mantle_selector"] is None
+    assert rec["model_identity"]["requires_cris"] is True
     assert rec["model_identity"]["path_model_id"] == rec["primary_model"]
     assert rec["verification"]["probe_status"] == "not_run"
+    assert not any("mantle" in block["message"].lower() for block in rec["blocks"])
+    jsonschema.validate(result, _schema("model-recommendation.json"))
 
 
-def test_cost_priority_on_messages_uses_clean_mantle_haiku_id():
+def test_cost_priority_with_workspaces_selector_uses_clean_mantle_haiku_id():
     # Haiku 5.5 is the fast/low-cost tier, but the model card lists bedrock-mantle for it only in
-    # us-gov-west-1. In us-east-1 the Messages path therefore falls to Haiku 4.5, the Batch-listed
-    # explicit alternative, rather than to Sonnet 5.
-    rec = _recommend(_workload(requirements={"priority": "cost"}))
+    # us-gov-west-1. In us-east-1 the Messages path (selected here by the workspaces selector)
+    # therefore falls to Haiku 4.5, the Batch-listed explicit alternative, rather than to Sonnet 5.
+    rec = _recommend(
+        _workload(requirements={"priority": "cost", "mantle_selector": "workspaces"})
+    )
 
     assert rec["api_path"] == "mantle_messages"
     assert rec["primary_model"] == "anthropic.claude-haiku-4-5"
+    assert rec["invocation_model_id"] == "anthropic.claude-haiku-4-5"
     assert rec["model_identity"]["requires_cris"] is False
+    assert rec["mantle_selector"] == "workspaces"
     # Haiku 5.5 may still appear as a runtime_converse alternative; it must not be a Mantle option here.
     assert not any(
         o["model_key"] == "claude_haiku_5_5" and o["api_path"] == "mantle_messages" for o in rec["alternatives"]
     )
 
 
+# background_inference (Responses-only) and projects (OpenAI-only) are decisions below.
+_MESSAGES_ROUTABLE_SELECTORS = [
+    selector for selector in anthropic_model_recommendation.MANTLE_SELECTORS
+    if selector not in {"background_inference", "projects"}
+]
+
+
+@pytest.mark.parametrize("selector", _MESSAGES_ROUTABLE_SELECTORS)
+def test_every_mantle_selector_selects_mantle_messages_and_is_echoed(selector):
+    rec = _recommend(_workload(requirements={"mantle_selector": selector}))
+
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "mantle_messages"
+    assert rec["mantle_selector"] == selector
+    assert any(f"mantle_selector {selector}" in line for line in rec["rationale"])
+
+
+# --- Every selector is validated against the final provider and API (PR 588 F4) ---
+# Background inference is a Responses API feature on bedrock-mantle
+# (inference-responses-api.html, read 2026-11-09); `projects` scopes the
+# OpenAI-compatible APIs while Messages scopes by Workspaces (projects.html,
+# workspaces.html, read 2026-11-09).
+
+def test_anthropic_messages_with_background_inference_is_a_decision_not_mantle_messages():
+    workload = _workload(requirements={"mantle_selector": "background_inference"})
+    result = model_recommendation.recommend(_input(workload))
+    jsonschema.validate(result, _schema("model-recommendation.json"))
+    rec = result["workloads"]["support-agent"]
+
+    assert rec["decision_status"] == "decision_required"
+    assert rec["api_path"] is None
+    assert rec["mantle_selector"] is None
+    assert "selector_api_incompatible" in _codes(rec["blocks"])
+    assert "mantle_selector_vs_anthropic_api" in _decision_block(rec)["message"]
+    # Both options stay on bedrock-runtime; mantle_messages is never offered.
+    assert {option["api_path"] for option in rec["decision_options"]} == {
+        "runtime_messages", "runtime_converse",
+    }
+    block = next(b for b in rec["blocks"] if b["code"] == "selector_api_incompatible")
+    assert "inference-responses-api.html" in block["message"]
+    assert "Responses" in block["message"]
+
+
+def test_projects_selector_on_an_anthropic_source_is_a_provider_mismatch_decision():
+    workload = _workload(requirements={"mantle_selector": "projects"})
+    result = model_recommendation.recommend(_input(workload))
+    jsonschema.validate(result, _schema("model-recommendation.json"))
+    rec = result["workloads"]["support-agent"]
+
+    assert rec["decision_status"] == "decision_required"
+    assert rec["api_path"] is None
+    assert "selector_provider_mismatch" in _codes(rec["blocks"])
+    assert "mantle_selector_provider_mismatch" in _decision_block(rec)["message"]
+    assert {option["api_path"] for option in rec["decision_options"]} == {
+        "runtime_messages", "runtime_converse",
+    }
+    block = next(b for b in rec["blocks"] if b["code"] == "selector_provider_mismatch")
+    assert "anthropic-workspace-id" in block["message"]
+    assert "OpenAI-Project" in block["message"]
+
+
+def test_projects_with_a_preferred_mantle_path_still_never_offers_mantle_messages():
+    rec = _recommend(
+        _workload(requirements={"preferred_api_path": "mantle_messages",
+                                "mantle_selector": "projects"})
+    )
+
+    assert rec["decision_status"] == "decision_required"
+    assert "selector_provider_mismatch" in _codes(rec["blocks"])
+    assert not any(o["api_path"].startswith("mantle_") for o in rec["decision_options"])
+
+
+def test_background_inference_with_native_payload_offers_runtime_messages_or_invoke():
+    rec = _recommend(
+        _workload(requirements={"mantle_selector": "background_inference",
+                                "requires_native_payload": True})
+    )
+
+    assert rec["decision_status"] == "decision_required"
+    assert "selector_api_incompatible" in _codes(rec["blocks"])
+    assert "mantle_selector_vs_runtime" not in _decision_block(rec)["message"]
+    assert {option["api_path"] for option in rec["decision_options"]} == {
+        "runtime_messages", "runtime_invoke",
+    }
+
+
+def test_mantle_selectors_match_the_input_schema_enum():
+    enum = _schema("model-recommendation-input.json")["properties"]["workloads"]["items"][
+        "properties"]["requirements"]["properties"]["mantle_selector"]["enum"]
+    assert list(anthropic_model_recommendation.MANTLE_SELECTORS) == enum
+    with pytest.raises(ValueError, match="unsupported mantle_selector"):
+        _recommend(_workload(requirements={"mantle_selector": "because"}))
+
+
+
+
 def test_cost_priority_on_messages_in_govcloud_selects_haiku_5_5():
-    inp = _input(_workload(requirements={"priority": "cost"}))
+    # Messages is selected by a verified selector; cost priority alone stays on bedrock-runtime.
+    inp = _input(_workload(requirements={"priority": "cost", "mantle_selector": "workspaces"}))
     inp["region"] = "us-gov-west-1"
     rec = model_recommendation.recommend(inp)["workloads"]["support-agent"]
     assert rec["api_path"] == "mantle_messages"
@@ -143,7 +255,22 @@ def test_governance_selects_runtime_converse_when_messages_is_a_preference():
 
     assert rec["decision_status"] == "recommended"
     assert rec["api_path"] == "runtime_converse"
-    assert rec["primary_model"] == "anthropic.claude-sonnet-5"
+    assert rec["primary_model"] == "anthropic.claude-sonnet-5-5"
+    assert rec["mantle_selector"] is None
+
+
+@pytest.mark.parametrize("governance", [["invocation_logging"], ["cloudwatch"],
+                                        ["invocation_logging", "cloudwatch"]])
+def test_runtime_only_logging_governance_keeps_required_messages_on_runtime(governance):
+    # invocation logging and CloudWatch apply to every bedrock-runtime path, so they
+    # never force a Messages workload onto Converse.
+    rec = _recommend(
+        _workload(requirements={"preserve_messages_api": True, "governance": governance})
+    )
+
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "runtime_messages"
+    assert rec["mantle_selector"] is None
 
 
 def test_required_messages_and_governance_require_user_decision():
@@ -159,11 +286,194 @@ def test_required_messages_and_governance_require_user_decision():
     assert rec["decision_status"] == "decision_required"
     assert rec["primary_model"] is None
     assert rec["api_path"] is None
+    assert rec["mantle_selector"] is None
     assert {option["api_path"] for option in rec["decision_options"]} == {
-        "mantle_messages",
+        "runtime_messages",
         "runtime_converse",
     }
-    assert "model_path_decision_required" in _codes(rec["blocks"])
+    assert all(option.get("mantle_selector") is None for option in rec["decision_options"])
+    block = next(item for item in rec["blocks"] if item["code"] == "model_path_decision_required")
+    assert "messages_vs_converse" in block["message"]
+    assert "runtime_messages" in block["remediation"] and "runtime_converse" in block["remediation"]
+    jsonschema.validate(
+        model_recommendation.recommend(_input(_workload(requirements={
+            "preserve_messages_api": True, "governance": ["guardrails"]}))),
+        _schema("model-recommendation.json"),
+    )
+
+
+def test_selector_and_guardrails_require_user_decision_with_mantle_option():
+    rec = _recommend(
+        _workload(requirements={"mantle_selector": "web_search", "governance": ["guardrails"]})
+    )
+
+    assert rec["decision_status"] == "decision_required"
+    options = {option["api_path"]: option for option in rec["decision_options"]}
+    assert set(options) == {"mantle_messages", "runtime_converse"}
+    assert options["mantle_messages"]["mantle_selector"] == "web_search"
+    assert "mantle_selector" not in options["runtime_converse"]
+    block = next(item for item in rec["blocks"] if item["code"] == "model_path_decision_required")
+    assert "mantle_selector_vs_runtime" in block["message"]
+
+
+def _decision_block(rec):
+    return next(item for item in rec["blocks"] if item["code"] == "model_path_decision_required")
+
+
+# Invocation logging is captured only on bedrock-runtime (model-invocation-logging.html,
+# read 2026-11-08); CloudWatch metrics exist on both endpoints (AWS/BedrockMantle,
+# monitoring-mantle-metrics.html, read 2026-11-08) and never constrain the path.
+
+def test_logging_plus_selector_is_a_decision_between_mantle_and_runtime_messages():
+    workload = _workload(requirements={"governance": ["invocation_logging"],
+                                       "mantle_selector": "workspaces"})
+    result = model_recommendation.recommend(_input(workload))
+    jsonschema.validate(result, _schema("model-recommendation.json"))
+    rec = result["workloads"]["support-agent"]
+
+    assert rec["decision_status"] == "decision_required"
+    options = {option["api_path"]: option for option in rec["decision_options"]}
+    assert set(options) == {"mantle_messages", "runtime_messages"}
+    assert options["mantle_messages"]["mantle_selector"] == "workspaces"
+    assert "mantle_selector_vs_invocation_logging" in _decision_block(rec)["message"]
+    assert "CloudWatch" not in _decision_block(rec)["message"]
+
+
+def test_logging_plus_derived_in_region_is_a_decision_carrying_the_derived_selector():
+    workload = _workload(requirements={"governance": ["invocation_logging"],
+                                       "data_residency": "in_region_required"})
+    result = model_recommendation.recommend(_input(workload))
+    jsonschema.validate(result, _schema("model-recommendation.json"))
+    rec = result["workloads"]["support-agent"]
+
+    assert rec["decision_status"] == "decision_required"
+    options = {option["api_path"]: option for option in rec["decision_options"]}
+    assert set(options) == {"mantle_messages", "runtime_messages"}
+    assert options["mantle_messages"]["mantle_selector"] == "in_region_processing"
+    assert "in_region_processing_vs_invocation_logging" in _decision_block(rec)["message"]
+    assert "runtime_messages" in _decision_block(rec)["remediation"]
+
+
+def test_cloudwatch_plus_selector_is_recommended_on_mantle_messages():
+    rec = _recommend(_workload(requirements={"governance": ["cloudwatch"],
+                                             "mantle_selector": "workspaces"}))
+
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "mantle_messages"
+    assert rec["mantle_selector"] == "workspaces"
+
+
+def test_cloudwatch_plus_in_region_derives_the_mantle_selector():
+    rec = _recommend(_workload(requirements={"governance": ["cloudwatch"],
+                                             "data_residency": "in_region_required"}))
+
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "mantle_messages"
+    assert rec["mantle_selector"] == "in_region_processing"
+
+
+# An explicit bedrock-runtime preference never coexists with a Mantle selector or a
+# Converse-only requirement; both are decisions.
+
+def test_preferred_runtime_messages_plus_selector_is_a_decision():
+    rec = _recommend(_workload(requirements={"preferred_api_path": "runtime_messages",
+                                             "mantle_selector": "workspaces"}))
+
+    assert rec["decision_status"] == "decision_required"
+    options = {option["api_path"]: option for option in rec["decision_options"]}
+    assert set(options) == {"mantle_messages", "runtime_messages"}
+    assert options["mantle_messages"]["mantle_selector"] == "workspaces"
+    assert "preferred_path_vs_mantle_selector" in _decision_block(rec)["message"]
+
+
+def test_preferred_runtime_messages_plus_guardrails_is_a_decision():
+    rec = _recommend(_workload(requirements={"preferred_api_path": "runtime_messages",
+                                             "governance": ["guardrails"]}))
+
+    assert rec["decision_status"] == "decision_required"
+    assert {option["api_path"] for option in rec["decision_options"]} == {
+        "runtime_messages", "runtime_converse",
+    }
+    assert "preferred_path_vs_converse" in _decision_block(rec)["message"]
+
+
+def test_preferred_runtime_messages_plus_derived_in_region_is_a_decision():
+    workload = _workload(requirements={"preferred_api_path": "runtime_messages",
+                                       "data_residency": "in_region_required"})
+    result = model_recommendation.recommend(_input(workload))
+    jsonschema.validate(result, _schema("model-recommendation.json"))
+    rec = result["workloads"]["support-agent"]
+
+    assert rec["decision_status"] == "decision_required"
+    options = {option["api_path"]: option for option in rec["decision_options"]}
+    assert set(options) == {"mantle_messages", "runtime_messages"}
+    assert options["mantle_messages"]["mantle_selector"] == "in_region_processing"
+    assert "in_region_processing_vs_preferred_api_path" in _decision_block(rec)["message"]
+
+
+def test_in_region_required_on_a_cris_only_runtime_candidate_derives_mantle():
+    rec = _recommend(_workload(requirements={"data_residency": "in_region_required"}))
+
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "mantle_messages"
+    assert rec["mantle_selector"] == "in_region_processing"
+    assert rec["primary_model"] == "anthropic.claude-sonnet-5"
+    assert rec["invocation_model_id"] == "anthropic.claude-sonnet-5"
+    assert any("in_region_processing" in line for line in rec["rationale"])
+
+
+def test_in_region_required_keeps_opus55_london_on_runtime_messages():
+    workload = _workload(
+        requirements={"priority": "quality", "data_residency": "in_region_required"}
+    )
+    data = _input(workload)
+    data["region"] = "eu-west-2"
+    rec = model_recommendation.recommend(data)["workloads"]["support-agent"]
+
+    assert rec["api_path"] == "runtime_messages"
+    assert rec["primary_model"] == "anthropic.claude-opus-5-5"
+    assert rec["invocation_model_id"] == "anthropic.claude-opus-5-5"
+    assert rec["model_identity"]["requires_cris"] is False
+    assert rec["mantle_selector"] is None
+
+
+def test_preferred_mantle_path_without_selector_fails_closed():
+    rec = _recommend(_workload(requirements={"preferred_api_path": "mantle_messages"}))
+
+    assert rec["decision_status"] == "decision_required"
+    assert "mantle_selector_required" in _codes(rec["blocks"])
+    options = {option["api_path"] for option in rec["decision_options"]}
+    assert options == {"runtime_messages", "mantle_messages"}
+
+
+def test_preferred_mantle_path_with_selector_is_honored():
+    rec = _recommend(
+        _workload(requirements={"preferred_api_path": "mantle_messages",
+                                "mantle_selector": "workspaces"})
+    )
+
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "mantle_messages"
+    assert rec["mantle_selector"] == "workspaces"
+
+
+def test_preferred_runtime_messages_is_honored_and_does_not_conflict_with_required_messages():
+    rec = _recommend(
+        _workload(requirements={"preferred_api_path": "runtime_messages",
+                                "preserve_messages_api": True})
+    )
+
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "runtime_messages"
+
+
+def test_newest_betas_stay_on_runtime_messages_with_a_verification_tune():
+    rec = _recommend(_workload(requirements={"newest_anthropic_betas": True}))
+
+    assert rec["api_path"] == "runtime_messages"
+    assert rec["mantle_selector"] is None
+    finding = next(item for item in rec["tuning"] if item["code"] == "beta_header_verification")
+    assert "mantle_only_model_or_api" in finding["remediation"]
 
 
 def test_conflicting_paths_without_catalog_candidates_are_rejected():
@@ -188,39 +498,36 @@ def test_native_payload_selects_runtime_invoke():
 
 
 def test_context_and_output_limits_filter_candidates():
-    rec = _recommend(
-        _workload(
-            requirements={
-                "priority": "cost",
-                "min_context_tokens": 1000000,
-                "expected_output_tokens": 100000,
-            }
-        )
-    )
-
-    # On Mantle in us-east-1 Haiku 5.5 is not served, and Haiku 4.5 (200K / 64K) is filtered
-    # by the limits, so the cost order lands on Sonnet 5 (1M / 128K).
-    assert rec["model_identity"]["model_key"] == "claude_sonnet_5"
-    assert all(
-        option["model_key"] != "claude_haiku_4_5"
-        for option in rec["alternatives"]
-    )
+    limits = {"priority": "cost", "min_context_tokens": 1000000, "expected_output_tokens": 100000}
+    # Default path is bedrock-runtime: Haiku 5.5 (1M / 128K) satisfies the limits and is the
+    # fast/low-cost tier, while Haiku 4.5 (200K / 64K) is filtered out.
+    rec = _recommend(_workload(requirements=limits))
+    assert rec["api_path"].startswith("runtime_")
+    assert rec["model_identity"]["model_key"] == "claude_haiku_5_5"
+    assert all(option["model_key"] != "claude_haiku_4_5" for option in rec["alternatives"])
+    # On Mantle (selected by a verified selector) in us-east-1 Haiku 5.5 is not served, and
+    # Haiku 4.5 is filtered by the limits, so the cost order lands on Sonnet 5 (1M / 128K).
+    mantle = _recommend(_workload(requirements={**limits, "mantle_selector": "workspaces"}))
+    assert mantle["api_path"] == "mantle_messages"
+    assert mantle["model_identity"]["model_key"] == "claude_sonnet_5"
+    assert all(option["model_key"] != "claude_haiku_4_5" for option in mantle["alternatives"])
 
 
 def test_thinking_requirement_filters_haiku():
-    rec = _recommend(
-        _workload(
-            requirements={
-                "priority": "cost",
-                "thinking_enabled": True,
-            }
-        )
-    )
-
-    # On Mantle in us-east-1 Haiku 5.5 is not served and Haiku 4.5 has no extended_thinking,
-    # so thinking_enabled lands on Sonnet 5; the Haiku 4.5 exclusion below is the real check.
-    assert rec["model_identity"]["model_key"] == "claude_sonnet_5"
+    # Default path is bedrock-runtime: Haiku 5.5 has extended_thinking and is the cost tier;
+    # Haiku 4.5 has no extended_thinking and is excluded.
+    rec = _recommend(_workload(requirements={"priority": "cost", "thinking_enabled": True}))
+    assert rec["api_path"].startswith("runtime_")
+    assert rec["model_identity"]["model_key"] == "claude_haiku_5_5"
     assert all(option["model_key"] != "claude_haiku_4_5" for option in rec["alternatives"])
+    # On Mantle in us-east-1 Haiku 5.5 is not served and Haiku 4.5 has no extended_thinking,
+    # so thinking_enabled lands on Sonnet 5; the Haiku 4.5 exclusion is the real check.
+    mantle = _recommend(
+        _workload(requirements={"priority": "cost", "thinking_enabled": True, "mantle_selector": "workspaces"})
+    )
+    assert mantle["api_path"] == "mantle_messages"
+    assert mantle["model_identity"]["model_key"] == "claude_sonnet_5"
+    assert all(option["model_key"] != "claude_haiku_4_5" for option in mantle["alternatives"])
 
 
 def test_source_version_hop_requires_explicit_feature_scan():
@@ -228,7 +535,7 @@ def test_source_version_hop_requires_explicit_feature_scan():
 
     assert rec["source_analysis"] == {
         "detected_version": "3.7",
-        "target_version": "5.0",
+        "target_version": "5.5",
         "version_changed": True,
     }
     assert "claude_version_hop" in _codes(rec["migration_deltas"])
@@ -278,8 +585,10 @@ def test_detected_version_features_emit_blocks_and_tuning():
 @pytest.mark.parametrize(
     "requirements,expected_path",
     [
-        ({"preserve_messages_api": True}, "mantle_messages"),
-        ({"governance": ["guardrails"]}, "runtime_converse"),
+        # Sonnet 5.5 is the balanced default on bedrock-runtime and its Mantle path is
+        # GovCloud-only, so the older target this guidance is for (Sonnet 5) is reached
+        # through a verified Mantle selector in a commercial Region.
+        ({"mantle_selector": "workspaces"}, "mantle_messages"),
     ],
 )
 def test_older_target_forced_tool_guidance_requires_verified_support(
@@ -331,17 +640,27 @@ def test_agent_features_produce_architecture_and_trajectory_requirements():
     ]
 
 
+def test_eu_geo_from_a_us_region_fails_closed_with_a_block():
+    rec = _recommend(_workload(requirements={
+        "data_residency": "geo_required", "cris_geography": "eu", "governance": ["guardrails"],
+    }))
+    assert rec["invocation_model_id"] is None
+    assert "inference_profile_unresolved" in _codes(rec["blocks"])
+
+
 @pytest.mark.parametrize(
     "requirements,expected",
     [
         ({"data_residency": "unknown"}, None),
         (
             {"data_residency": "global_allowed"},
-            "global.anthropic.claude-sonnet-5",
+            "global.anthropic.claude-sonnet-5-5",
         ),
+        # An EU Geo profile is callable only from EU source Regions. From us-east-1, Sonnet 5.5's
+        # profile matrix resolves nothing, and the result fails closed (see the next test).
         (
             {"data_residency": "geo_required", "cris_geography": "eu"},
-            "eu.anthropic.claude-sonnet-5",
+            None,
         ),
         (
             {
@@ -363,15 +682,14 @@ def test_runtime_cris_resolution(requirements, expected):
 @pytest.mark.parametrize(
     "pin,requirements",
     [
-        # Global profile under US-only residency: Sonnet 5 has no profile matrix, but the
-        # geography constraint must still reject the pin.
+        # Global profile under US-only residency: the geography constraint must reject the pin.
         (
-            "global.anthropic.claude-sonnet-5",
+            "global.anthropic.claude-sonnet-5-5",
             {"data_residency": "geo_required", "cris_geography": "us"},
         ),
         # EU profile under US-only residency.
         (
-            "eu.anthropic.claude-sonnet-5",
+            "eu.anthropic.claude-sonnet-5-5",
             {"data_residency": "geo_required", "cris_geography": "us"},
         ),
         # Profile for another model.
@@ -505,7 +823,7 @@ def test_input_and_output_match_schemas():
 def test_catalog_records_path_specific_ids_and_limits():
     catalog = model_recommendation.load_catalog()
 
-    assert catalog["verified_at"] == "2026-11-09"
+    assert catalog["verified_at"] == "2026-11-10"
     assert catalog["models"]["claude_haiku_5_5"]["paths"]["mantle_messages"]["model_id"] == "anthropic.claude-haiku-5-5"
     assert catalog["models"]["claude_haiku_5_5"]["paths"]["runtime_converse"]["requires_cris"] is True
     assert catalog["models"]["claude_haiku_5_5"]["context_window"] == 1000000
@@ -608,3 +926,29 @@ def test_canadian_geography_validates_and_resolves_the_ca_profile():
         assert rec["model_identity"]["model_key"] == "claude_haiku_5_5"
         assert rec["invocation_model_id"] == "ca.anthropic.claude-haiku-5-5", region
 
+
+def test_sonnet55_structured_output_guidance_uses_native_outputs_not_forced_tools():
+    # Governance lands on runtime Converse, where the balanced default is Sonnet 5.5. It rejects
+    # forced tool_choice but supports native structured outputs, so the guidance says so.
+    rec = _recommend(
+        _workload(requirements={"governance": ["guardrails"]}, detected_features=["structured_output"])
+    )
+    assert rec["primary_model"] == "anthropic.claude-sonnet-5-5"
+    finding = next(item for item in rec["blocks"] if item["code"] == "structured_output_portable_pattern")
+    assert "Sonnet 5.5 rejects forced any/tool choice" in finding["remediation"]
+    assert "native structured outputs" in finding["remediation"]
+
+
+def test_older_target_forced_tool_guidance_on_runtime_converse():
+    # Sonnet 5 on runtime Converse (reachable here by marking Sonnet 5.5 reference_only) keeps the
+    # older-target guidance: a forced tool only after verifying support.
+    catalog = copy.deepcopy(model_recommendation.load_catalog())
+    catalog["models"]["claude_sonnet_5_5"]["selection_status"] = "reference_only"
+    rec = model_recommendation.recommend(
+        _input(_workload(requirements={"governance": ["guardrails"]}, detected_features=["structured_output"])),
+        catalog=catalog,
+    )["workloads"]["support-agent"]
+    assert (rec["primary_model"], rec["api_path"]) == ("anthropic.claude-sonnet-5", "runtime_converse")
+    finding = next(item for item in rec["blocks"] if item["code"] == "structured_output_portable_pattern")
+    assert "forced tool without strict" in finding["remediation"]
+    assert "only after verifying" in finding["remediation"]

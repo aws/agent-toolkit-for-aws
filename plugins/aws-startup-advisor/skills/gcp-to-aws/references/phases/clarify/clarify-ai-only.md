@@ -51,9 +51,9 @@ Check `$MIGRATION_DIR/` for existing state:
 
 If `migration-preview.json` exists and `ai_complexity_signal == "likely_simple"` (single model, non-agentic, no multi-provider, no multi-model routing):
 
-> "Your AI migration looks straightforward — one model swapping to Bedrock. I only need 5 quick answers to complete your migration plan."
+> "Your AI migration looks straightforward — one model swapping to Bedrock. I only need 6 quick answers to complete your migration plan."
 
-Present **only Q1.5, Q2, Q3, Q4, Q11** (Q1 framework is extracted; Q5 model is extracted; Q6 capabilities are extracted; Q7–Q10 use defaults). **Q1.5 (compliance) and Q11 (Activate status) are never dropped from the fast path** — "never dropped" means always PRESENTED: the fast-path question set must include them; they are never silently omitted or auto-answered. An explicit user "use defaults for the rest" still applies their documented defaults (compliance → `["unknown"]` + report caveat — never a silent "none", matching full-flow Q2 semantics; Activate → `unknown` + neutral copy) — that is the sanctioned default path, same as full-flow Q27. After answering, skip directly to Step 3.
+Present **only Q1.5, Q2, Q3, Q4, Q10.5, Q11** (Q1 framework is extracted; Q5 model is extracted; Q6 capabilities are extracted; Q7–Q10 use defaults). **Q1.5 (compliance), Q10.5 (Mantle-only requirements) and Q11 (Activate status) are never dropped from the fast path** — "never dropped" means always PRESENTED: the fast-path question set must include them; they are never silently omitted or auto-answered. An explicit user "use defaults for the rest" still applies their documented defaults (compliance → `["unknown"]` + report caveat — never a silent "none", matching full-flow Q2 semantics; Mantle-only requirements → the `none` entry + report caveat, `bedrock-runtime` assumed; Activate → `unknown` + neutral copy) — that is the sanctioned default path, same as full-flow Q27. After answering, skip directly to Step 3.
 
 If `ai_complexity_signal` is `"standard"` or `"complex"`, or `migration-preview.json` is absent, continue to Step 1.75 (mini assumption sheet), then Step 2.
 
@@ -190,8 +190,8 @@ _Skip when:_ `models[].model_id` is populated in `ai-workload-profile.json` **wi
 | GPT-6/6.1 (Astra/Sol/Luna) | **Same model on Bedrock** | ~10% over OpenAI std (DR tier); Astra/6.1 Sol also support Ultrafast |
 | GPT-6.1 Terra              | **Same model on Bedrock** | Use the model-specific endpoint and context-tier prices in `references/shared/openai-on-bedrock.md`; compare against measured source spend or verified source rates. |
 | GPT-5.6 (any) | **Same model on Bedrock**      | ~10% over OpenAI std (DR tier)     |
-| GPT-5.5       | **Same model on Bedrock**      | ~10% over OpenAI std (DR tier)     |
-| GPT-5.4       | **Same model on Bedrock**      | ~10% over OpenAI std (DR tier)     |
+| GPT-5.5       | **Same model on Bedrock**      | In-Region (mantle) ~10% over OpenAI std; no Geo or Global price published |
+| GPT-5.4       | **Same model on Bedrock**      | In-Region (mantle) ~10% over OpenAI std; no Geo or Global price published |
 | GPT-3.5 Turbo | GPT-5.6 Luna; or Claude Haiku 5.5 | At equal billed volumes and 2:1 input/output, Haiku US Geo is 56.25% cheaper up to 100K prompt tokens; Luna is 54.29% cheaper above 100K while Luna remains within 272K. Recount target tokens; if request size is unknown, present both Haiku tiers. |
 | GPT-4/4 Turbo | GPT-5.6 Terra; or Sonnet 5     | Not on Bedrock — offer both        |
 | GPT-4o        | GPT-5.6 Terra; or Sonnet 5     | Not on Bedrock — offer both        |
@@ -204,8 +204,8 @@ _Skip when:_ `models[].model_id` is populated in `ai-workload-profile.json` **wi
 
 **Same-model rows first.** GPT-6 Astra / GPT-5.6 / 5.5 / 5.4 sources map to themselves.
 Apply the model-specific API and region gate in `references/shared/openai-on-bedrock.md`.
-Astra Standard mantle supports `us-east-1` and `us-west-2`; runtime uses US Geo / Global CRIS. GPT-5.6 also has runtime CRIS;
-GPT-5.5 / 5.4 remain mantle-only. GPT-5.x in-region costs about 10% above OpenAI standard,
+Astra Standard mantle supports `us-east-1` and `us-west-2`; runtime uses US Geo / Global CRIS. GPT-5.6, GPT-5.5
+and GPT-5.4 also have runtime CRIS (`us.` / `global.`). GPT-5.x in-region costs about 10% above OpenAI standard,
 while GPT-5.6 Global CRIS uses the standard rate. For Astra, compare its separately dated
 inference/context tier against the source price before claiming savings or parity.
 For sources without a Bedrock equivalent, present a same-vendor upgrade and a cross-family option.
@@ -245,7 +245,7 @@ After the user responds to Batch 1:
 ```
 Got it — your AI strategy preferences are saved.
 
-Last section — 6 questions about your technical requirements, then we're ready to design.
+Last section — 7 questions about your technical requirements, then we're ready to design.
 You can answer each, skip individual ones, or say "use defaults for the rest."
 
 --- Technical Requirements ---
@@ -320,6 +320,33 @@ Same decision logic as Q17 in `clarify-ai.md`.
 
 Interpret → `ai_critical_feature`. Default: 10 → no override.
 
+## Q10.5 — Mantle-only requirements (asynchronous inference, provider-run tools, Projects/Workspaces, single-Region processing)
+
+Amazon Bedrock serves most applications on `bedrock-runtime`; a few needs exist only on `bedrock-mantle`. Answer per workload, or "none" / "all".
+
+_Never skipped:_ ask it in Batch 2 unless the user says "use defaults for the rest". Prefill from `workloads[].mantle_signals` when present: show each detected signal as `[workload] — [selector] — [file:line construct]` and ask the user to confirm or correct before writing; a declined signal is dropped. When the profile has no `workloads[]`, no signals, or no application code was scanned, ask the four sub-questions outright.
+
+> a. Does any workload rely on asynchronous/background inference — long-running requests you submit now and poll for later?
+>
+> b. Does any workload use server-side or pre-configured tools run by the provider — including web search, hosted MCP servers, code execution or file search? (Your own client-side function tools do not count.)
+>
+> c. Does any workload use customer-created Projects (OpenAI) or Workspaces (Anthropic) for isolation or cost tracking?
+>
+> d. Does any workload have a strict requirement that inference stays in one AWS Region? If so, which Region?
+
+| Answer                            | Recommendation Impact                                                                                                                                                                                                      |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| a = yes                           | `background_inference` → Mantle for that workload (`bedrock-runtime` rejects `background=true` with 400 — [Responses API on Bedrock](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html), read 2026-11-07) |
+| b = yes, web search               | `web_search` → Mantle (Runtime has no Web Search tool)                                                                                                                                                                     |
+| b = yes, other provider-run tools | `server_side_tools` → Mantle                                                                                                                                                                                               |
+| c = yes                           | `projects` (OpenAI source) / `workspaces` (Anthropic source) → Mantle (Runtime exposes only the default project)                                                                                                           |
+| d = yes + Region                  | `in_region_processing` with `region` — applied by Design only when `bedrock-runtime` serves that model in that Region through a CRIS profile alone; otherwise `bedrock-runtime` in-Region                                  |
+| none                              | No selector; Design records `bedrock-runtime` and states the assumption                                                                                                                                                    |
+
+Interpret → `ai_constraints.mantle_requirements`: array of `{ workload_id, selector, source, evidence?, region? }` — `selector` ∈ `background_inference | server_side_tools | web_search | projects | workspaces | in_region_processing | none`, `source` ∈ `detected | user | none`. Default: `[{ "workload_id": "*", "selector": "none", "source": "none" }]` with `chosen_by: "default"` and the report caveat "Mantle-only requirements were not confirmed by the user; bedrock-runtime assumed".
+
+`workload_id` is the `workloads[].workload_id` the answer applies to, or `*` for every workload (always `*` when the profile has no `workloads[]`). `source: "detected"` = prefilled from a Discover signal and confirmed by the user (copy the signal's `file:line construct` into `evidence`); `source: "user"` = answered without a code signal (an explicit "none" answer records `{ "workload_id": "*", "selector": "none", "source": "user" }`); `source: "none"` = defaulted. `region` is required when `selector` is `in_region_processing`. The constraint wrapper uses `chosen_by: "user"` when answered or confirmed, `chosen_by: "default"` + `source: "default:Q10.5"` when skipped (append the caveat to `metadata.report_caveats[]`) — never `extracted`. `mantle_only_model_or_api` is never written here; Design derives it from the model catalog. For a workload whose source has no Mantle path (Gemini / Vertex AI, or one Design maps to a cross-family `direct` / `converse` / `gpt-oss` target), tell the user up front that a "yes" does not change the endpoint: Design keeps `bedrock-runtime` and records the requirement as a capability gap in the design (`rationale` + `capability_gaps[]`) rather than an endpoint change.
+
 ## Q11 — Have you applied for AWS Activate credits?
 
 > **Numbering note:** AI-only Q11 ≡ full-flow **Q27** (startup programs). It is unrelated to the full flow's Q11 (Cloud Run spend) or Q11b (Graviton) — the two flows number independently.
@@ -378,6 +405,7 @@ Write `$MIGRATION_DIR/preferences.json`:
 | `ai_latency`               | `ai_constraints.ai_latency`                  | From Q8                                                                                                                                                                                                                                         |
 | `ai_complexity`            | `ai_constraints.ai_complexity`               | From Q9                                                                                                                                                                                                                                         |
 | `ai_critical_feature`      | `ai_constraints.ai_critical_feature`         | From Q10                                                                                                                                                                                                                                        |
+| `mantle_requirements`      | `ai_constraints.mantle_requirements`         | From Q10.5 — array of `{ workload_id, selector, source, evidence?, region? }`; Design derives `mantle_selector` from it                                                                                                                          |
 | `ai_capabilities_required` | `ai_constraints.ai_capabilities_required`    | Derived from `capabilities_summary`                                                                                                                                                                                                             |
 
 Each constraint carries the FULL clarify.md field shape — `value`, `chosen_by` (`user`|`extracted`|`default`|`derived`), `prompt`, `design_consequence`, and `source`/`question_id` per the clarify.md source-field rules. (The short `{ value, chosen_by }` form shown above is an abbreviation, not the schema.) No nulls. All schema rules from `clarify.md` apply, with two AI-only bindings: `metadata.clarify_mode` is `"fast_path"` when Step 1.5 fired, `"full"` for the two-batch flow; and this flow's `questions_extracted` is the full flow's `questions_skipped_extracted` (downstream consumers accept both names).

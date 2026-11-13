@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "urn:awslabs:startups:migration:ai-workload-profile",
   "title": "AI workload profile (provider-neutral observation contract)",
-  "description": "Provider-neutral ai-workload-profile.json observation contract. Render application discovery produces version 1.0 profiles; bedrock-migration-assessment consumes versions 1.0 and 1.1. Structural validity does NOT imply an implemented adapter, route, model mapping, or runtime-supported identity.",
+  "description": "Provider-neutral ai-workload-profile.json observation contract. Render application discovery produces version 1.0 profiles; bedrock-migration-assessment consumes versions 1.0 and 1.1. The optional mantle_signals[] array records the code-detectable Mantle-only selectors (background_inference, web_search, server_side_tools, projects, workspaces) with evidence; it is valid at every schema_version. Structural validity does NOT imply an implemented detector, adapter, route, model mapping, or runtime-supported identity.",
   "type": "object",
   "required": ["schema_version", "ai_sources", "gateways"],
   "additionalProperties": false,
@@ -33,9 +33,27 @@
       "type": "array",
       "uniqueItems": true,
       "items": {"$ref": "#/definitions/tool"}
+    },
+    "mantle_signals": {
+      "description": "Code-detectable Mantle-only selectors observed by Discover, one entry per (selector, provider, source_service, model). Each (provider, source_service, model) must be an observed model of ai_sources[]; the validator enforces that. mantle_only_model_or_api and in_region_processing are never signals.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/definitions/mantleSignal"}
     }
   },
   "definitions": {
+    "mantleSignal": {
+      "type": "object",
+      "required": ["selector", "provider", "source_service", "model", "evidence"],
+      "additionalProperties": false,
+      "properties": {
+        "selector": {"enum": ["background_inference", "web_search", "server_side_tools", "projects", "workspaces"]},
+        "provider": {"$ref": "#/definitions/extensibleIdentity"},
+        "source_service": {"$ref": "#/definitions/extensibleIdentity"},
+        "model": {"$ref": "#/definitions/normalizedModel"},
+        "evidence": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/evidenceEntry"}}
+      }
+    },
     "extensibleIdentity": {"type": "string", "pattern": "^(?!(?:both|openrouter|unknown)$)[a-z][a-z0-9_]*$"},
     "modelFamily": {"type": "string", "pattern": "^(?!(?:both|unknown)$)[a-z][a-z0-9_.-]*$"},
     "normalizedModel": {"type": "string", "pattern": "^(?!(?:both|unknown)$)[a-z0-9][a-z0-9._:/-]*$"},

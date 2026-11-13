@@ -67,7 +67,76 @@ def decisions(profile: dict, summary: dict, models: list[str]) -> list[str]:
     return out[:4]
 
 
-def preview(profile: dict, usage: dict | None = None) -> dict:
+COST_STATUS_ORDER = ("complete", "partial_window", "cost_unavailable")
+
+
+TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens", "prompt_tokens", "completion_tokens")
+
+
+def _tokens(row: dict) -> int:
+    return sum(row.get(f, 0) for f in TOKEN_FIELDS)
+
+
+BYOK_THRESHOLD = 0.005
+
+
+def _overlaps(profiles: list[dict]) -> set[int]:
+    """OpenRouter rows whose model a direct usage profile also measured, unless confirmed no_byok (same name rule as llm-to-bedrock)."""
+    direct = {r["model"].lower() for u in profiles if u["metadata"]["source"] != "openrouter_usage_api" for r in u["usage_by_model"]}
+    return {id(r) for u in profiles if u["metadata"]["source"] == "openrouter_usage_api" for r in u["usage_by_model"]
+            if r["model"].lower().rsplit("/", 1)[-1] in direct and r.get("cost_provenance") != "no_byok"}
+
+
+def _excluded(source: str, row: dict) -> dict:
+    """What leaving out one overlapping OpenRouter row keeps (a measured router fee on a pure-BYOK row) and what it drops, in dollars."""
+    fee = row.get("byok_fees_usd")
+    kept = fee if row.get("cost_provenance") == "byok_passthrough" and fee is not None and fee > BYOK_THRESHOLD else 0.0
+    dropped = round(max(row.get("monthly_cost_usd", 0) - kept, 0), 2)
+    note = ("its independent OpenRouter usage is dropped too" if row.get("cost_provenance") == "mixed" else
+            f"its ${dropped} OpenRouter charge is not in the total" if dropped > BYOK_THRESHOLD else "")
+    return {"source": source, "model": row["model"], "cost_provenance": row.get("cost_provenance"), "router_fee_kept_usd": round(kept, 4),
+            "charge_dropped_usd": dropped, "note": note}
+
+
+def measured(profiles: list[dict]) -> dict | None:
+    """Per-source usage plus totals; each source keeps its own active period, and total spend is null when any source's is unknown."""
+    if not profiles:
+        return None
+    overlap = _overlaps(profiles)
+    sources, excluded = [], []
+    total_cost, total_tokens, cost_known = 0.0, 0, True
+    for usage in profiles:
+        md = usage["metadata"]
+        rows = usage["usage_by_model"]
+        kept = [r for r in rows if id(r) not in overlap]
+        source = {"source": md["source"], "monthly_cost_usd": usage["summary"]["monthly_cost_usd"],
+                  "cost_status": md.get("cost_status", "partial_window" if md["partial_window"] else "complete"),
+                  "window_days": md["window_days"], "active_days": md["active_days"], "partial_window": md["partial_window"],
+                  "total_tokens": sum(_tokens(r) for r in rows), "uncosted_service_tiers": md.get("uncosted_service_tiers", []),
+                  "capture_warnings": md.get("capture_warnings", [])}
+        if md["source"] == "openrouter_usage_api":
+            source["byok_inference_cost_usd"] = usage["summary"].get("byok_inference_cost_usd", 0)
+            source["byok_inference_included_usd"] = round(sum(r.get("byok_inference_cost_usd", 0) for r in kept), 2)
+        sources.append(source)
+        dropped = [_excluded(md["source"], r) for r in rows if id(r) in overlap]
+        excluded += dropped
+        total_tokens += sum(_tokens(r) for r in kept)
+        if source["monthly_cost_usd"] is None:
+            cost_known = False
+        elif md["source"] == "openrouter_usage_api":
+            total_cost += sum(r["monthly_cost_usd"] + r.get("byok_inference_cost_usd", 0) for r in kept) + sum(d["router_fee_kept_usd"] for d in dropped)
+        else:
+            total_cost += source["monthly_cost_usd"]
+    warnings = [f"{s['source']}: {w}" for s in sources for w in s["capture_warnings"]]
+    warnings += [f"{d['model']} left out so its BYOK traffic, which a direct provider's usage also counts, is not counted twice; {d['note']}"
+                 for d in excluded if d["note"]]
+    return {"sources": sources, "monthly_cost_usd": round(total_cost, 2) if cost_known else None,
+            "cost_status": max((s["cost_status"] for s in sources), key=COST_STATUS_ORDER.index),
+            "total_tokens": total_tokens, "window_days": max(s["window_days"] for s in sources), "overlap_excluded": excluded,
+            "spend_excludes_usd": round(sum(d["charge_dropped_usd"] for d in excluded), 2), "capture_warnings": warnings}
+
+
+def preview(profile: dict, usage: list[dict] | None = None) -> dict:
     summary = validator.validate_profile(profile)
     models = sorted({m["model"] for s in summary["ai_sources"] for m in s["models"]})
     signal, reasons = classify(profile, summary)
@@ -76,7 +145,7 @@ def preview(profile: dict, usage: dict | None = None) -> dict:
         reasons = ["the model is not high-confidence evidence, so Q5 must be asked"]
     agents = (profile.get("agentic_profile") or {}).get("agents", [])
     out = {
-        "preview_version": 1,
+        "preview_version": 2,
         "computed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "route": "ai_only",
         "ai_complexity_signal": signal,
@@ -90,27 +159,21 @@ def preview(profile: dict, usage: dict | None = None) -> dict:
             "agent_count": len(agents),
             "tool_count": len(profile.get("tool_manifest", [])),
         },
-        "measured_usage": None,
+        "measured_usage": measured(usage or []),
         "path_shape": PATH_SHAPE[signal],
         "key_decisions_ahead": decisions(profile, summary, models),
     }
-    if usage:
-        md = usage["metadata"]
-        out["measured_usage"] = {"source": md["source"], "monthly_cost_usd": usage["summary"]["monthly_cost_usd"],
-                                 "cost_status": md.get("cost_status", "partial_window" if md["partial_window"] else "complete"),
-                                 "window_days": md["window_days"], "active_days": md["active_days"], "partial_window": md["partial_window"],
-                                 "capture_warnings": md.get("capture_warnings", [])}
     return out
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("profile", type=Path)
-    ap.add_argument("--usage", type=Path, help="openai-usage-profile.json, when usage was captured")
+    ap.add_argument("--usage", type=Path, action="append", default=[], help="a <provider>-usage-profile.json; repeat once per captured provider")
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args(argv)
     try:
-        result = preview(json.loads(args.profile.read_text()), json.loads(args.usage.read_text()) if args.usage else None)
+        result = preview(json.loads(args.profile.read_text()), [json.loads(u.read_text()) for u in args.usage])
     except validator.ProfileRejected as err:
         print(json.dumps({"ok": False, "error": err.code, "detail": err.detail}))
         return 1

@@ -90,8 +90,7 @@ back here.
   configured — the caller was denied `kms:Decrypt` / `kms:GenerateDataKey` on that key, or
   the key policy does not allow the encryption context. A key that is merely *disabled* is
   **not** this cause. Fix the grant, the IAM action, or the key policy; changing the request
-  does not help. AccessDenied here is **never** an "intelligence not enabled" signal —
-  `GetContextGraph` reads topology, which is not behind the Omni Intelligence enablement gate.
+  does not help.
 - **404 `UnknownOperationException` — a reachability gate.** The operation is not available
   to this account, so the server rejects it as if it did not exist. `GetContextGraph` is a
   public operation, so a server-side 404 is about this account's access to the service, not a
@@ -107,7 +106,7 @@ back here.
 The one-line reading: a **404 is a reachability gate** (the operation is not available to
 this account), a **403 is an authorization result** (it is available, you are not allowed),
 and a local error never reached the service at all. Do not report a 404 as a permissions
-problem, or a 403 as "intelligence not enabled".
+problem.
 
 ---
 
@@ -439,8 +438,8 @@ hypothesis — not the first degraded node you saw — and state the traversal p
 
 ### Hop-by-hop traversal
 
-1. **Locate the alarming node** — the service named by the alert, the Omni
-   Intelligence insight shown in the console, or the user's symptom. Fetch it with
+1. **Locate the alarming node** — the service named by the alert, or the user's
+   symptom. Fetch it with
    `nodeFilters.name` (or `nodeId`), `depth: 1`, and a **narrow** window around the
    incident.
 2. **Read the edges.** Any `edgeProperties.errorCode` or a non-2xx
@@ -465,12 +464,8 @@ The graph localizes; queries confirm. Alternate between them, spending the cheap
 call (graph) before the expensive one (telemetry scan).
 
 1. **Start from the symptom.** An alert firing ([alerts.md](alerts.md)) names a
-   query and a Space; a CloudWatch Omni Intelligence insight or anomaly names the affected
-   service(s), severity, and time; a user names a service. Any of these gives you a service
-   name, a Region, and a time window. Reading Omni's insights and observations is a separate
-   surface from the topology this file covers — `ListInsights` / `ListObservations`, not
-   `GetContextGraph` — so do not assume the graph call returns them; see
-   [intelligence.md](intelligence.md). Then carry the affected nodes into the graph call.
+   query and a Space; a user names a service. Either gives you a service name, a Region, and
+   a time window. Then carry the affected nodes into the graph call.
 
 2. **Fetch the neighborhood.** `get-context-graph` with `nodeFilters.name`,
    `depth: 1`, `includeMetadata: true`, and a window of roughly the incident ± 15
