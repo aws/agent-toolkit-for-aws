@@ -13,7 +13,7 @@
 
 - Team > 10-15 engineers with multiple teams needing namespace isolation
 - You're hiring primarily from a Kubernetes-experienced talent pool
-- You need advanced scheduling (GPU sharing, bin-packing, multi-tenancy)
+- You need advanced scheduling (GPU sharing via DRA, bin-packing, multi-tenancy, topology-aligned GPU/EFA allocation)
 - Your compute spend exceeds $20K/month and Karpenter's optimization justifies the platform cost
 - You're already running K8s and migrating to AWS (don't re-learn ECS just for AWS)
 
@@ -70,7 +70,7 @@
 | ----------------------------------------------------- | --------------------------------------- |
 | >15 engineers, multiple teams deploying independently | Namespace isolation, RBAC per team      |
 | Monthly compute > $20K, need optimization             | Karpenter's bin-packing saves 30-40%    |
-| Need GPU sharing across workloads                     | K8s device plugin + time-slicing        |
+| Need GPU sharing across workloads                     | DRA (ResourceClaim/ResourceClaimTemplate) with Karpenter/Auto Mode, or K8s device plugin + time-slicing        |
 | Hiring pipeline is primarily K8s-experienced          | Developer experience matters            |
 | Need advanced traffic management                      | K8s ecosystem (Istio, Cilium) is richer |
 
