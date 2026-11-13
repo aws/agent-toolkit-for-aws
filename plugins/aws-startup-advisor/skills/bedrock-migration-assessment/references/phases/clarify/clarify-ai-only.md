@@ -2,7 +2,7 @@
 
 **Standalone flow** — Used when ONLY `ai-workload-profile.json` exists (no infrastructure or billing artifacts). Infrastructure stays where it runs today; only AI/LLM calls move to AWS Bedrock.
 
-**Input contract.** The only profile this flow reads is the provider-neutral `ai-workload-profile.json` (`schema_version`, `ai_sources[]`, `gateways[]`), already accepted by `scripts/validate-ai-profile.py`. Use that script's JSON summary for every detected value below. A 1.1 profile also carries `integration`; from it the summary reports `ai_framework_detected` and `ai_vision_detected`. Both are `null` for a 1.0 profile or when the evidence is not definitive, and then Q1 and Q6 are asked, not extracted. `ai_vision_detected` is only `"vision"` or `"audio"`: finding no image or audio input does not prove the app sends only text, so Q6 is then asked. Do not scan application code or IaC, and do not read usage-profile files or any other file except `migration-preview.json`, for the fast-path check in Step 1.5 and the measured values Q3 and Q7 show: only the validator summary can supply an extracted answer.
+**Input contract.** The only profile this flow reads is the provider-neutral `ai-workload-profile.json` (`schema_version`, `ai_sources[]`, `gateways[]`), already accepted by `scripts/validate-ai-profile.py`. Use that script's JSON summary for every detected value below. A 1.1 profile also carries `integration`; from it the summary reports `ai_framework_detected` and `ai_vision_detected`. Both are `null` for a 1.0 profile or when the evidence is not definitive, and then Q1 and Q6 are asked, not extracted. `ai_vision_detected` is only `"vision"` or `"audio"`: finding no image or audio input does not prove the app sends only text, so Q6 is then asked. Do not scan application code or IaC, and do not read usage-profile files or any other run file except `migration-preview.json`, for the fast-path check in Step 1.5 and the measured values Q3 and Q7 show: only the validator summary can supply an extracted answer. Q7 also reads this skill's `references/vendored/ai/token-volume-tiers.json` for its band bounds.
 
 Produces the same `preferences.json` output but with `design_constraints` limited to region and compliance, `startup_constraints` populated, and `ai_constraints` fully populated. Questions are presented in **two progressive batches** with an intermediate save — partial answers persist across sessions.
 
@@ -304,9 +304,9 @@ Interpret → `ai_vision`: 1 → `"text-only"`, 2 → `"vision"`, 3 → `"audio"
 
 _Never skipped:_ do not fill this from a usage-profile file or from the assumption sheet. Ask it unless the user says "use defaults for the rest".
 
-**Measured volume.** When `migration-preview.json` has `measured_usage`, say before the options: "Measured: [total_tokens] tokens in total ([each source in `sources`: its provider, its total_tokens, over its active_days days])." After a source whose `partial_window` is true, add "(only [active_days] days of activity, not scaled to a month)", add "(some usage could not be read: [capture_warnings])" when a warning names a file other than an hourly or minute file, and add the same `overlap_excluded` note as Q3. Then mark the option that total falls in as "(measured)". The user still answers, and the answer is recorded with `chosen_by: "user"`.
+**Measured volume.** When `migration-preview.json` has `measured_usage`, say before the options: "Measured: [total_tokens] tokens in total ([each source in `sources`: its provider, its total_tokens, over its active_days days])." After a source whose `partial_window` is true, add "(only [active_days] days of activity, not scaled to a month)", add "(some usage could not be read: [capture_warnings])" when a warning names a file other than an hourly or minute file, and add the same `overlap_excluded` note as Q3. Then mark the option whose tier in `references/vendored/ai/token-volume-tiers.json` contains that total (`min_tokens` inclusive, `max_tokens` exclusive) as "(measured)". The user still answers, and the answer is recorded with `chosen_by: "user"`.
 
-> 1\) < 1M tokens | 2\) 1–10M | 3\) 10–100M | 4\) > 100M | 5\) Don't know
+> 1\) < 1M tokens | 2\) 1M to under 10M | 3\) 10M to under 100M | 4\) 100M or more | 5\) Don't know
 
 | Answer    | Impact                                             |
 | --------- | -------------------------------------------------- |
@@ -316,6 +316,8 @@ _Never skipped:_ do not fill this from a usage-profile file or from the assumpti
 | Very high | Provisioned throughput required; capacity planning |
 
 Interpret → `ai_token_volume`: 1 → `"low"`, 2 → `"medium"`, 3 → `"high"`, 4 → `"very_high"`. Default: 2 → `"medium"`.
+
+These options, bands, and values are defined once in `references/vendored/ai/token-volume-tiers.json`; keep this question identical to it.
 
 ## Q8 — Response speed importance
 
