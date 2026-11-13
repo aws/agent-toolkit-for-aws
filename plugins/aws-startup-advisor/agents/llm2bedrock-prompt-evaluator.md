@@ -41,7 +41,7 @@ Read from prompt context (forwarded from llm2bedrock-code-analyzer, llm2bedrock-
 - **`<TEMPLATE_PATH>`** — `<repo>/.saws-migrate/golden-dataset/templates/prompt_template.txt` (from T2-2).
 - **`<TARGET_MODEL_ID>`** — the exact validated target ID or ARN from the migration plan. It identifies the endpoint, not the API: bare proprietary GPT uses Mantle; supported CRIS uses runtime. `<TARGET_API_SURFACE>` selects Chat, Responses or Converse within that endpoint. Preserve both through every call; never remove a profile prefix to change the endpoint.
 - **`<REGION>`** — AWS region for Bedrock (the `AWS region:` line in your context).
-- **`<TARGET_API_SURFACE>`** — copy the normalized `Target API surface` context line: `chat_completions`, `responses`, or `converse`. It applies to both Mantle and runtime. If a direct legacy dispatch omits that line, call `preflight_bedrock.normalize_api_path` with the saved path, target IDs and `runtime_api`, then derive the same surface. An absent runtime API means Converse; never discard an explicit runtime Chat/Responses choice.
+- **`<TARGET_API_SURFACE>`** — copy the normalized `Target API surface` context line: `chat_completions`, `responses`, `messages` (the runtime Anthropic Messages API, for a `runtime_messages` plan), or `converse`. It applies to both Mantle and runtime. If a direct legacy dispatch omits that line, call `preflight_bedrock.normalize_api_path` with the saved path, target IDs and `runtime_api`, then derive the same surface. A `runtime_openai_cris` plan with no recorded API makes that call raise — stop and have the orchestrator resolve the source API; never discard an explicit runtime Chat/Responses/Messages choice and never substitute Converse.
 - **From `llm2bedrock-code-analyzer` (`AiAnalysisData`)** — key fields:
   - `source_provider` — `openai` / `anthropic` / `google` / `cohere` / `custom`. Drives §9 baseline gating. (Vertex AI customers are emitted as `google` here; the analyzer's `errors` field carries the `vertex AI auth detected` signal that gates baseline collection upstream — by the time you reach §9, `source_baseline_available` already reflects that.)
   - `source_models` — list of source-model IDs. Pass `<SOURCE_MODEL_ID>` to the §9 baseline skill verbatim.
@@ -135,7 +135,8 @@ call in §6, §9.5 and §10:**
 | --------------------------------------------------------- | ------------------- | ------------ | ------------ | ------------------------------- |
 | bare `openai.gpt-5*` (not `-oss`) or `openai.gpt-6*` | Selected Mantle API | §6a          | §9.5a        | §8 if same-model; otherwise §10 |
 | Supported CRIS with selected Chat/Responses | Runtime OpenAI API | §6a | §9.5a | §8 if same-model; otherwise §10 |
-| Supported CRIS with Converse (legacy default) | `boto3.converse` | §6 | §9.5 | §8 if same-model; otherwise §10 |
+| Supported profile with selected `messages` | Runtime Anthropic Messages | §6b | §9.5b | §8 if same-model; otherwise §10 |
+| Supported CRIS with explicit Converse | `boto3.converse` | §6 | §9.5 | §8 if same-model; otherwise §10 |
 | anything else (Claude, Nova, `openai.gpt-oss-*`)          | `boto3.converse`    | §6           | §9.5         | §10, or §8 if same-model        |
 
 The bare proprietary GPT ids select the `bedrock-mantle` endpoint; supported CRIS ids select runtime. Calling `boto3.converse` against a bare Mantle id fails, so running the Converse
@@ -144,8 +145,9 @@ check below for a mantle target would abort this agent before it ever reached
 
 This choice is made once and holds for every Bedrock call in the run. It is
 independent of `same_model_family`: the short-circuit decides whether to _score_,
-while this table decides _how to call_. A same-model Anthropic run still uses
-Converse, and a same-model OpenAI run still needs its vision smoke test.
+while this table decides _how to call_. A same-model Anthropic run still uses the
+selected surface (Messages on a `runtime_messages` plan, Converse on an explicit `converse`
+plan), and a same-model OpenAI run still needs its vision smoke test.
 
 ```bash
 mkdir -p <repo>/.saws-migrate/eval-results
@@ -249,6 +251,52 @@ Interpret the result:
 Because these targets are same-model migrations, §8's short-circuit applies right
 after §7: run each golden prompt through this same Responses client for
 connectivity verification rather than the Converse script in §10.
+
+# 6b. Runtime Anthropic Messages connectivity
+
+Use this INSTEAD of §6 when `<TARGET_API_SURFACE>` is `messages` (a `runtime_messages` plan:
+the Anthropic SDK stays and talks to `https://bedrock-runtime.<REGION>.amazonaws.com/anthropic`
+with a string Bedrock token — public basis
+<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-messages-api.html>, read 2026-11-07).
+The client factory lives in `preflight_bedrock.create_messages_client`; it mints the token per
+client, so create the client inside a `with` block and let it close.
+
+```bash
+mkdir -p <repo>/.saws-migrate/eval-results
+
+AWS_REGION=<REGION> <prepend AWS_PROFILE=<profile> when your context has an `AWS profile` line> uv run --project <scriptsDir> python - <<'PY'
+import os, sys
+sys.path.insert(0, "<scriptsDir>")
+from preflight_bedrock import create_messages_client
+region = os.environ.get('AWS_REGION', 'us-east-1')
+try:
+    with create_messages_client(region, max_retries=2) as c:
+        r = c.messages.create(model='<TARGET_MODEL_ID>', max_tokens=16,
+                              messages=[{'role': 'user', 'content': 'ping'}])
+    text = ''.join(block.text for block in r.content if block.type == 'text')
+    print('OK:', text or '(invocation succeeded; no text)', f'stop_reason={r.stop_reason}')
+except Exception as e:
+    print(f'FAIL [{type(e).__name__}]: {e}', file=sys.stderr)
+    sys.exit(1)
+PY
+```
+
+Interpret the result:
+
+- **Exit 0 + "OK:" line** — proceed to §7.
+- **HTTP 404 / not-found** — the selected profile is not available in `<REGION>` on the
+  runtime Messages endpoint. Load `resolve-bedrock-model-id` with the plan's ID and the region
+  (it resolves `runtime_messages` like Converse: a supported `us.`/`eu.`/`global.` profile), retry
+  with the returned ID, and otherwise return `{ blocked: { reason: 'model_unresolvable', detail: '<exact error> — <TARGET_MODEL_ID> is not available on the bedrock-runtime Anthropic Messages endpoint in <REGION>' } }`.
+- **HTTP 401 / 403** — distinguish the two causes from the message. If it names model access,
+  return `{ blocked: { reason: 'model_access', ... } }` as in §6. Otherwise it is IAM on the
+  runtime endpoint: the principal needs `bedrock:InvokeModel` / `bedrock:InvokeModelWithResponseStream`
+  on the inference-profile and foundation-model ARNs plus `bedrock:GetInferenceProfile` on the
+  profile — **not** Mantle actions. Return `{ blocked: { reason: 'authz', detail: '<exact error> — grant bedrock:InvokeModel* on the profile and foundation-model ARNs and bedrock:GetInferenceProfile on the profile.' } }`.
+- **`ModuleNotFoundError`** — the pinned scripts environment is missing `anthropic` or
+  `aws-bedrock-token-generator` (both declared in `scripts/pyproject.toml`). Return
+  `{ blocked: { reason: 'messages_deps_missing', detail: '<exact error> — re-sync the pinned environment.' } }`. Do NOT treat this as a passing check and do NOT substitute Converse.
+- **Any other failure** — surface the exact error type and message and STOP, as in §6.
 
 # 7. Load golden dataset
 
@@ -482,11 +530,48 @@ Outcomes are the same as §9.5: `VISION_OK` → proceed; `VISION_INFRA_SKIPPED` 
 
 **On `VISION_FAIL` specifically, do not fall back to text-only prompts.** The migration's vision capability is unverified at that point, and a text-only pass rate would misrepresent it as working. The content-block shapes above match their selected OpenAI API; if it is rejected for a reason other than access, report the exact error rather than guessing at an alternative shape.
 
+# 9.5b Runtime Anthropic Messages vision smoke test
+
+Use this INSTEAD of §9.5 when `<TARGET_API_SURFACE>` is `messages` AND `special_patterns.vision == true`. The image goes through `image_input.messages_message` as a base64 `source` block (the Messages shape), never as an OpenAI data URL.
+
+```bash
+AWS_REGION=<REGION> <prepend AWS_PROFILE=<profile> when your context has an `AWS profile` line> uv run --project <scriptsDir> python - <<'PY'
+import os, sys
+try:
+    import urllib.request
+    img = urllib.request.urlopen(
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Cat_November_2010-1a.jpg/320px-Cat_November_2010-1a.jpg",
+        timeout=15,
+    ).read()
+except Exception as e:
+    print(f"VISION_INFRA_SKIPPED [{type(e).__name__}]: {e}", file=sys.stderr)
+    sys.exit(0)
+
+sys.path.insert(0, "<scriptsDir>")
+from preflight_bedrock import create_messages_client
+from image_input import messages_message
+region = os.environ.get("AWS_REGION", "us-east-1")
+try:
+    with create_messages_client(region, max_retries=2) as client:
+        r = client.messages.create(
+            model="<TARGET_MODEL_ID>", max_tokens=32,
+            messages=[messages_message("Describe this image briefly.", "smoke.jpg", img)])
+    text = "".join(block.text for block in r.content if block.type == "text")
+    print("VISION_OK:", text)
+except Exception as e:
+    print(f"VISION_FAIL [{type(e).__name__}]: {e}", file=sys.stderr)
+    sys.exit(1)
+PY
+```
+
+Outcomes are the same as §9.5: `VISION_OK` → proceed; `VISION_INFRA_SKIPPED` → record `vision_smoke_skipped` in `notes` and proceed; `VISION_FAIL` → surface the exact error and STOP, routing a model-access denial through `{ blocked: { reason: 'model_access', ... } }` and an IAM denial through `{ blocked: { reason: 'authz', ... } }` per §6b. Do not fall back to text-only prompts.
+
 # 10. Run golden prompt evaluation
 
-> **Use the endpoint and API selected in §6.** A model change (including Pro-to-Astra)
-> still requires golden evaluation and scoring on Mantle. Same-model runs use §8's
-> connectivity-only branch. Never send a bare Astra id to Converse.
+> **Use the endpoint and API selected in §6 / §6a / §6b.** A model change (including
+> Pro-to-Astra) still requires golden evaluation and scoring on the selected endpoint.
+> Same-model runs use §8's connectivity-only branch. Never send a bare Astra id to Converse,
+> and never send a `messages` run through Converse.
 
 For each prompt in the golden dataset, run the evaluation via `python` stdin (avoids the brittle nested-heredoc + escaped-quote pattern that breaks on any literal `'` inside the script):
 
@@ -503,19 +588,22 @@ import time
 import boto3
 from botocore.exceptions import ClientError
 sys.path.insert(0, "<scriptsDir>")
-from preflight_bedrock import is_mantle_model, create_openai_client
-from image_input import converse_message, responses_message, chat_message
+from preflight_bedrock import is_mantle_model, create_openai_client, create_messages_client
+from image_input import converse_message, responses_message, chat_message, messages_message
 
 region = os.environ.get("AWS_REGION", "us-east-1")
 model_id = "<TARGET_MODEL_ID>"
 api_surface = "<TARGET_API_SURFACE>"
-if api_surface not in {"responses", "chat_completions", "converse"}:
+if api_surface not in {"responses", "chat_completions", "converse", "messages"}:
     raise ValueError("Resolve the selected API surface before evaluation")
 openai_api = api_surface in {"responses", "chat_completions"}
+messages_api = api_surface == "messages"
 if is_mantle_model(model_id) and not openai_api:
     raise ValueError("A bare Mantle model cannot use Converse")
 if openai_api:
     client = create_openai_client(model_id, region, max_retries=0)
+elif messages_api:
+    pass  # a Messages client is created per request inside target_with_backoff (string token)
 else:
     bedrock = boto3.client("bedrock-runtime", region_name=region)
 
@@ -569,6 +657,19 @@ def target_with_backoff(prompt):
                 if prompt.get("system_prompt"):
                     args["instructions"] = prompt["system_prompt"]
                 return client.responses.create(**args).output_text
+            if messages_api:
+                with create_messages_client(region) as messages_client:
+                    r = messages_client.messages.create(
+                        model=model_id, max_tokens=4096,
+                        messages=[messages_message(prompt["user_prompt"], prompt.get("image_path"), raw)],
+                        **({"system": prompt["system_prompt"]} if prompt.get("system_prompt") else {}))
+                text = "".join(block.text for block in r.content if block.type == "text")
+                stop_reason = getattr(r, "stop_reason", "unknown")
+                if stop_reason in ("max_tokens", "refusal", "tool_use"):
+                    raise ValueError(f"non_final_response (stop_reason={stop_reason})")
+                if not text:
+                    raise ValueError(f"no_text_response (stop_reason={stop_reason})")
+                return text
             system = [{"text": prompt["system_prompt"]}] if prompt.get("system_prompt") else []
             r = bedrock.converse(modelId=model_id,
                 messages=[converse_message(prompt["user_prompt"], prompt.get("image_path"), raw)],

@@ -26,6 +26,9 @@ Scan `aws-design.json`.services[] to determine which compute and data store type
 | Beanstalk web present | Any service with `aws_service == "Elastic Beanstalk"` and `aws_config.process_type == "web"` | `has_beanstalk_web = true` |
 | Fargate present       | Any service with `aws_service == "Fargate"` or `aws_service == "ALB"`                        | `has_fargate = true`       |
 | Fargate web present   | Any service with `aws_service == "ALB"`, or `aws_service == "Fargate"` and `aws_config.process_type == "web"` (workers alone never count) | `has_fargate_web = true` |
+| Standard ALB present  | Any service with `aws_service == "ALB"` (a standard-mode Fargate web formation; a Fargate entry with no `ecs_mode` key is standard and always has one) | `has_alb = true`           |
+| Express web present   | Any service with `aws_service == "Fargate"`, `aws_config.process_type == "web"`, and `aws_config.ecs_mode == "express"` | `has_express = true`       |
+| Blue/green web present | Any service with `aws_service == "Fargate"`, `aws_config.process_type == "web"`, `aws_config.ecs_mode == "standard"`, and `preferences.design_constraints.release_strategy == "blue_green"` | `has_blue_green = true`    |
 | EKS present           | Any service with `aws_service == "EKS"` (`design-eks.md` "All-or-Nothing Rule": then no EB or Fargate web service exists) | `has_eks = true`           |
 | Postgres present      | Any service with `aws_service` containing `"RDS PostgreSQL"` or `"Aurora PostgreSQL"`        | `has_postgres = true`      |
 | Redis present         | Any service with `aws_service` of `"ElastiCache Valkey"` (default) or `"ElastiCache Redis"` — not `ElastiCache Memcached` | `has_redis = true`         |
@@ -47,8 +50,8 @@ Also extract:
 - `target_exit_date` — from `preferences.json`.global.target_exit_date (ISO date or null)
 - `dns_strategy` — from `preferences.json`.data.dns_strategy (Clarify Q10 writes it inside the `"data"` block — `clarify-assemble.md`; there is no `global.dns_strategy`). `"route53"` or `"external"`; treat any other or missing value (e.g. a legacy `"manual_cutover"`) as `"external"`.
 - `custom_domains[]` — every `resource_type == "domain"` resource's `config.hostname` from `heroku-resource-inventory.json` (deduplicated).
-- `dns_hostnames[]` — one entry per `custom_domains[]` hostname, preserving the associations the inventory and design already carry: `{ hostname, heroku_app, app_sanitized, target_kind, output_name }`. `heroku_app` is the domain resource's `heroku_app` (the `{app_name}` segment of `domain:{app_name}:{hostname}`); `app_sanitized` replaces `-` with `_`. `target_kind` is resolved from that app's **web** formation in `aws-design.json`.services[] — not from any worker: `alb:{heroku_app}:web` present → `"alb"` (`output_name: "alb_dns_name_<app_sanitized>"`); else `eb:{heroku_app}:web` present → `"eb"` (`output_name: "eb_environment_url_<app_sanitized>"` — the per-app output Step 3 of `generate-terraform.md` actually emits; there is no `eb_environment_cname`); else `eks:{heroku_app}:web` present → `"eks"` (`output_name: null` — the endpoint is the Kubernetes Service's `EXTERNAL-IP`, known only after Phase 3); else `"none"` (worker-only app, or its formations were deferred).
-- `eligible_hostnames[]` — the `dns_hostnames[]` entries with `target_kind` `"alb"` or `"eb"`: the only hostnames `dns.tf` can route. `has_route53_dns = true` when `dns_strategy == "route53"` AND `eligible_hostnames` is non-empty — the same condition under which `generate-terraform.md` Step 9.5 emits `dns.tf`. An EKS design therefore always has `has_route53_dns = false`. Entries with `target_kind` `"eks"` or `"none"` are rendered only in the manual DNS branch (and `generate-terraform.md` Step 9.5 records them in `generation-warnings.json`). Whether a hostname is a zone apex is not known at generation time (it depends on the zone the user supplies), so `dns.tf` decides it at plan time and the guide covers the apex unconditionally inside the Route 53 branch.
+- `dns_hostnames[]` — one entry per `custom_domains[]` hostname, preserving the associations the inventory and design already carry: `{ hostname, heroku_app, app_sanitized, target_kind, output_name }`. `heroku_app` is the domain resource's `heroku_app` (the `{app_name}` segment of `domain:{app_name}:{hostname}`); `app_sanitized` replaces `-` with `_`. `target_kind` is resolved from that app's **web** formation in `aws-design.json`.services[] — not from any worker: `alb:{heroku_app}:web` present → `"alb"` (`output_name: "alb_dns_name_<app_sanitized>"`); else `fargate:{heroku_app}:web` present with `aws_config.ecs_mode == "express"` → `"express"` (`output_name: "<app_sanitized>_web_endpoint"` — the AWS-provided HTTPS endpoint `generate-terraform.md` Step 6 emits for the `aws_ecs_express_gateway_service`; an Express web formation has no `alb:` entry, so without this branch it would be misread as `"none"`); else `eb:{heroku_app}:web` present → `"eb"` (`output_name: "eb_environment_url_<app_sanitized>"` — the per-app output Step 3 of `generate-terraform.md` actually emits; there is no `eb_environment_cname`); else `eks:{heroku_app}:web` present → `"eks"` (`output_name: null` — the endpoint is the Kubernetes Service's `EXTERNAL-IP`, known only after Phase 3); else `"none"` (worker-only app, or its formations were deferred).
+- `eligible_hostnames[]` — the `dns_hostnames[]` entries with `target_kind` `"alb"` or `"eb"`: the only hostnames `dns.tf` can route. `has_route53_dns = true` when `dns_strategy == "route53"` AND `eligible_hostnames` is non-empty — the same condition under which `generate-terraform.md` Step 9.5 emits `dns.tf`. An EKS design therefore always has `has_route53_dns = false`, and so does an all-Express design (Design forces `standard` when `dns_strategy == "route53"`, so `"express"` only occurs with external DNS). Entries with `target_kind` `"express"`, `"eks"`, or `"none"` are rendered only in the manual DNS branch (and `generate-terraform.md` Step 9.5 records them in `generation-warnings.json`). Whether a hostname is a zone apex is not known at generation time (it depends on the zone the user supplies), so `dns.tf` decides it at plan time and the guide covers the apex unconditionally inside the Route 53 branch.
 
 ---
 
@@ -798,9 +801,88 @@ The generated EB path deploys a source bundle containing your Dockerfile. GitHub
 
 ### GitHub Actions Deploy (Default)
 
-The generated `.github/workflows/deploy-eb.yml` workflow (with two or more Elastic Beanstalk apps, one `.github/workflows/deploy-eb-<eb_app_slug>.yml` per app) uses GitHub OIDC role assumption, packages the source bundle, creates an Elastic Beanstalk application version, and updates each generated EB environment of its app. An app that is the production side of a Heroku pipeline has a manually run workflow only, so a push to `main` cannot reach production.
+The generated `.github/workflows/deploy-eb.yml` workflow (with two or more Elastic Beanstalk apps, one `.github/workflows/deploy-eb-<eb_app_slug>.yml` per app) uses GitHub OIDC role assumption, packages the source bundle, creates an Elastic Beanstalk application version, and updates each generated EB environment of its app. An app that is the production side of a Heroku pipeline has a manually run workflow only, so a push to `main` cannot reach production; its approved releases come through `promote.yml` (see below).
 
 Before first run, create or provide a GitHub OIDC IAM role with permissions to call `elasticbeanstalk create-storage-location`, `elasticbeanstalk create-application-version`, `elasticbeanstalk update-environment`, and upload the source bundle to the EB storage bucket. Store the role ARN as the repository secret `AWS_ROLE_ARN`.
+
+### Promote to Production (`heroku pipelines:promote` equivalent)
+
+{{IF promote_pair}}
+Your Heroku pipeline `{{pipeline_name}}` maps staging `{{STAGING_APP_NAME}}` → production
+`{{app_name}}`. The staging app's deploy workflow deploys every push to `main` to the staging environments
+only (`{{STAGING_EB_ENVIRONMENT_NAMES}}`); this app's own deploy workflow runs only when you start it. Production receives versions only through the
+generated `.github/workflows/promote.yml`: it reads the version label running on
+`{{STAGING_EB_ENVIRONMENT}}`, registers that same source bundle in the production
+application, and updates `{{EB_ENVIRONMENT_NAMES}}`. Elastic Beanstalk builds the
+Dockerfile in that bundle on the production instances, so promote redeploys the exact
+source version tested on staging; the image itself is rebuilt unless you switch to the
+image-based (`Dockerrun.aws.json`) bundle variant.
+{{ELSE}}
+This app has no generated staging source: it is in no Heroku pipeline, its pipeline
+partner was not migrated, or the two apps do not share one repository. This app's deploy workflow deploys every push to `main` to this app's
+environments (`{{EB_ENVIRONMENT_NAMES}}`). The generated `.github/workflows/promote.yml`
+is an approval-gated redeploy of a version label you choose to those same environments:
+use it for controlled releases and rollbacks, with `version_label` always filled in.
+{{ENDIF}}
+{{IF app_containerization_method == "cnb_heroku_builder"}}
+This app is built with buildpacks, so its deploys register one version label per process
+type (`<base>-web`, `<base>-worker`, …) and each environment must run its own. Promote
+therefore takes the **base label** (the `<base>` part, shown in the deploy run's version
+labels) and updates every production environment with its own `<base>-<process_type>`
+label; it does not read staging for you. Never give one label to every environment: the
+`-web` version starts the web process wherever it is applied.
+{{ENDIF}}
+
+Promote is a manual run (**Actions → Promote to production → Run workflow**) and waits
+for approval. One-time setup, in the GitHub repository:
+
+1. **Prerequisite: required reviewers must be available.** On GitHub Free, Pro and Team,
+   required reviewers on an environment work only in public repositories; a private
+   repository needs GitHub Enterprise (see
+   [Managing environments for deployment](https://docs.github.com/en/actions/managing-workflow-runs-and-deployments/managing-deployments/managing-environments-for-deployment)).
+   A job that names `environment: production` does not wait for anyone unless that
+   protection is actually enabled.
+2. **Settings → Environments → New environment → `production`**, then add the people who
+   may approve as _Required reviewers_. Confirm the rule is saved before the first run.
+   Do not enable the production path (`promote.yml`) until the protection is in place.
+3. Add the production environment subject to the IAM role trust policy. A job with
+   `environment: production` presents the OIDC subject
+   `repo:<org>/<repo>:environment:production` instead of `repo:<org>/<repo>:ref:refs/heads/main`,
+   so a role trusted only for `main` rejects `promote.yml`. List both exact subjects
+   (no wildcard) and keep the audience condition:
+
+   ```json
+   {
+     "Effect": "Allow",
+     "Principal": {
+       "Federated": "arn:aws:iam::<account-id>:oidc-provider/token.actions.githubusercontent.com"
+     },
+     "Action": "sts:AssumeRoleWithWebIdentity",
+     "Condition": {
+       "StringEquals": {
+         "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+         "token.actions.githubusercontent.com:sub": [
+           "repo:<org>/<repo>:ref:refs/heads/main",
+           "repo:<org>/<repo>:environment:production"
+         ]
+       }
+     }
+   }
+   ```
+
+   If the repository customizes its OIDC subject claim template, use the subject format
+   it actually emits.
+4. The OIDC role also needs the read-only `elasticbeanstalk:DescribeEnvironments` and
+   `elasticbeanstalk:DescribeApplicationVersions`.
+
+If required reviewers are unavailable (for example a private repository on Free, Pro or
+Team), do not rely on the `production` environment as a gate. Release manually instead:
+run the production deploy `workflow_dispatch` only from a protected branch or tag whose
+branch protection requires a reviewed pull request, or put a manual approval stage in
+CodePipeline before the production deploy.
+
+Rollback is the same workflow with the previous version label typed into the
+`version_label` input (letters, digits, `.`, `_`, `-`; up to 100 characters).
 
 {{ENDIF}}
 {{IF eb_deploy_method == "codepipeline"}}
@@ -858,24 +940,120 @@ docker push {{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com/{{app_nam
 ```
 
 ### Deploy to Fargate
+The Terraform configuration creates ECS services automatically. How an image update reaches a service depends on the shape Design chose for it (`aws-design.json` → `aws_config.ecs_mode`, and `preferences.design_constraints.release_strategy`); render only the branches the design uses.
 
-The Terraform configuration creates ECS services automatically. After pushing the image, force a new deployment:
+**Standard ECS service, rolling or canary release (`ecs_mode: "standard"`, `release_strategy` absent or `canary`):** the service uses the ECS deployment controller, so force a new deployment after pushing the image:
+
+Promote (run the image that is deployed on staging in production, no rebuild): take the
+image digest from one running staging task. ECS reports the digest of the image the task
+actually pulled, so this is immune to the family's latest `ACTIVE` revision and to a
+`:latest` tag that moved in the registry after staging started. Do not resolve the
+digest from the registry tag (`aws ecr describe-images --image-ids imageTag=...` reads
+what the tag points to now, which may not be what staging runs).
+
+The selected task must have `lastStatus` `RUNNING` (a `PENDING` task has no digest yet)
+and its container must report a `sha256:` digest. Read the status, the task definition
+and the digest from that same `describe-tasks` response, never from a separate
+`describe-services` call: during a rollout, tasks of one service can run different
+definitions. If any check fails, stop. Wait and retry until the staging deployment has
+settled, or report that the running image identity is unavailable or ambiguous (for
+example several tasks on different digests). Never continue with an empty digest.
+
+```bash
+STAGING_TASK="$(aws ecs list-tasks --cluster <staging cluster> --service-name <staging service>   --desired-status RUNNING --query 'taskArns[0]' --output text)"
+read -r STAGING_STATUS STAGING_TASK_DEF STAGING_DIGEST < <(aws ecs describe-tasks   --cluster <staging cluster> --tasks "${STAGING_TASK}" --output text   --query 'tasks[0].[lastStatus,taskDefinitionArn,containers[?name==`<process>`]|[0].imageDigest]')
+if [ "${STAGING_STATUS}" != "RUNNING" ] || ! [[ "${STAGING_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+  echo "Staging task ${STAGING_TASK} is not RUNNING with a sha256 image digest" \
+    "(status=${STAGING_STATUS}, digest=${STAGING_DIGEST}). Wait and retry, or report the" \
+    "running image identity as unavailable." >&2
+  exit 1
+fi
+```
+
+`STAGING_TASK_DEF` identifies the staging revision for the promotion record only. Do not
+copy its container definition into production: staging and production usually differ in
+environment variables, secrets and log groups. Start from the PRODUCTION service's
+current task definition and change only the image of the one container to the verified
+staging digest (`image = <repository>@${STAGING_DIGEST}`). Everything else
+(environment, secrets, log configuration, CPU, memory, roles) stays as production has it:
+
+```bash
+PROD_TASK_DEF="$(aws ecs describe-services --cluster <prod cluster> --services <prod service> \
+  --query 'services[0].taskDefinition' --output text)"
+aws ecs describe-task-definition --task-definition "${PROD_TASK_DEF}" --query taskDefinition --output json \
+  | jq --arg name "<process>" --arg image "<repository>@${STAGING_DIGEST}" \
+    'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy) | .containerDefinitions |= map(if .name == $name then .image = $image else . end)' \
+  > prod-task-definition.json
+NEW_REVISION="$(aws ecs register-task-definition --cli-input-json file://prod-task-definition.json \
+  --query taskDefinition.taskDefinitionArn --output text)"
+aws ecs update-service --cluster <prod cluster> --service <prod service> --task-definition "${NEW_REVISION}"
+```
+
+A generated workflow for this is not yet emitted (the Elastic Beanstalk one is,
+`promote.yml`).
 
 ```bash
 aws ecs update-service \
   --cluster {{app_name}}-cluster \
-  --service {{app_name}}-web \
+  --service {{app_name}}-<process_type> \
   --force-new-deployment \
   --region {{target_region}}
 ```
+
+Repeat per formation (`-web`, `-worker`, …); the service names are the standard `aws_ecs_service` names from `generate-terraform.md` Step 6.
+
+{{IF has_blue_green}}
+**Standard ECS service, blue/green release (`release_strategy == "blue_green"`, web formations only):** the service is emitted with `deployment_controller { type = "CODE_DEPLOY" }` and `ignore_changes = [task_definition, load_balancer]`, so neither `terraform apply` nor `update-service --force-new-deployment` ships a new image — `update-service` is rejected for a CodeDeploy-controlled service. Register a new task definition revision and start a CodeDeploy deployment with an AppSpec, one per blue/green web app:
+
+```bash
+# 1. New task definition revision pointing at the pushed image
+TD_ARN=$(aws ecs describe-services --cluster {{app_name}}-cluster --service {{app_name}}-<app_sanitized>-web \
+  --region {{target_region}} --query 'services[0].taskDefinition' --output text)
+aws ecs describe-task-definition --task-definition "$TD_ARN" --region {{target_region}} \
+  --query 'taskDefinition' > td.json
+# Replace the image, drop the read-only fields, register
+jq --arg img "{{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com/{{app_name}}:latest" \
+  '.containerDefinitions[0].image = $img
+   | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' \
+  td.json > td-new.json
+NEW_TD=$(aws ecs register-task-definition --cli-input-json file://td-new.json --region {{target_region}} \
+  --query 'taskDefinition.taskDefinitionArn' --output text)
+
+# 2. AppSpec for CodeDeploy (ECS compute platform)
+cat > appspec.yaml <<EOF
+version: 0.0
+Resources:
+  - TargetService:
+      Type: AWS::ECS::Service
+      Properties:
+        TaskDefinition: "$NEW_TD"
+        LoadBalancerInfo:
+          ContainerName: "<container name from the task definition>"
+          ContainerPort: 8080
+EOF
+
+# 3. Deploy — CodeDeploy shifts traffic blue -> green on the 443 listener after the 8443 test listener passes
+aws deploy create-deployment \
+  --application-name {{app_name}}-<app_sanitized>-web \
+  --deployment-group-name {{app_name}}-<app_sanitized>-web \
+  --revision "revisionType=AppSpecContent,appSpecContent={content=$(jq -Rs . < appspec.yaml)}" \
+  --region {{target_region}}
+```
+
+The CodeDeploy application and deployment group names are the per-app names `generate-terraform.md` emits (`${project_name}-${environment}-<app_sanitized>-web`). The test listener on 8443 admits only `var.codedeploy_test_cidrs`; run the deployment from an address in that list (or set `terraform.tfvars` `codedeploy_test_cidrs` to the CI egress CIDR first).
+{{ENDIF}}
+
+{{IF has_express}}
+**ECS Express Mode service (`ecs_mode: "express"`):** Express Mode owns the deployment (canary). Push the image to the tag the service references and force a new deployment the same way as the rolling branch, using the Express service name `{{app_name}}-<app_sanitized>-web`; the service ARN is in the `<app_sanitized>_web_service_arn` output.
+{{ENDIF}}
 
 ### Fargate Config Var Migration
 
 Export all Heroku config vars and import to AWS Secrets Manager / Parameter Store, then reference them in your ECS task definition.
 
-### ECS Express Mode (Forward-Look)
+### ECS Express Mode (web dynos on Fargate)
 
-This generated path uses standard ECS/Fargate Terraform. If an ECS Express Mode path becomes available in this skill, treat it as an optional simplification for the Fargate override path, not as a replacement for the Elastic Beanstalk default without explicit user choice.
+Web formations routed to Fargate with `aws_config.ecs_mode: "express"` are emitted as `aws_ecs_express_gateway_service` (see `generate-terraform.md` Step 6): AWS provisions the ALB, HTTPS listener and certificate, auto scaling, and logs, and exposes an AWS-provided HTTPS endpoint (`<app>_web_endpoint` output). Workers, Route 53-cutover designs, oversized tasks, and non-canary release strategies use the standard ECS/Fargate Terraform. Express Mode is a shape of the Fargate override, not a replacement for the Elastic Beanstalk default without explicit user choice.
 
 {{ENDIF}}
 
@@ -890,9 +1068,13 @@ This generated path uses standard ECS/Fargate Terraform. If an ECS Express Mode 
 - [ ] Each customer-supplied `eb_health_check_path_<app_sanitized>_web` returns a successful response on its app's EB environment URL
       {{ENDIF}}
       {{ENDIF}}
-      {{IF has_fargate}}
+      {{IF has_alb}}
 - [ ] Application responds on ALB endpoint: `https://{{ALB_DNS_NAME}}/`
 - [ ] Health check endpoint returns 200: `https://{{ALB_DNS_NAME}}/health`
+      {{ENDIF}}
+      {{IF has_express}}
+- [ ] Each Express Mode web app responds on its AWS-provided endpoint: `curl -fsS -o /dev/null -w '%{http_code}' "$(terraform -chdir=terraform output -raw <app_sanitized>_web_endpoint)/"` (one line per Express app). The output is already a full `https://…` URL (`ingress_paths[0].endpoint`), so never prefix it with another `https://`; there is no `ALB_DNS_NAME` for these — Express Mode owns the ALB
+- [ ] Health check path returns 200 on that same URL with the generated `health_check_path` appended once. The output is already `https://…`; do not add another scheme
       {{ENDIF}}
       {{IF has_postgres}}
 - [ ] Database connectivity confirmed (application can read/write)
@@ -951,7 +1133,7 @@ Each hostname has its own target; a hostname is never pointed at another app's e
 <!-- markdownlint-disable MD055 MD056 -->
 
 {{FOR host IN dns_hostnames}}
-| `{{host.hostname}}` | `{{host.heroku_app}}` | {{IF host.target_kind == "alb"}}ALB DNS name{{ENDIF}}{{IF host.target_kind == "eb"}}Elastic Beanstalk environment CNAME{{ENDIF}}{{IF host.target_kind == "eks"}}Service `EXTERNAL-IP` hostname from `kubectl get svc -n {{host.heroku_app}} web` (exists only after Phase 3){{ENDIF}}{{IF host.target_kind == "none"}}none — `{{host.heroku_app}}` has no web process; this hostname is not routed{{ENDIF}} | {{IF host.output_name}}`{{host.output_name}}`{{ELSE}}—{{ENDIF}} |
+| `{{host.hostname}}` | `{{host.heroku_app}}` | {{IF host.target_kind == "alb"}}ALB DNS name{{ENDIF}}{{IF host.target_kind == "eb"}}Elastic Beanstalk environment CNAME{{ENDIF}}{{IF host.target_kind == "express"}}ECS Express Mode endpoint host (the hostname part of the `https://…` output){{ENDIF}}{{IF host.target_kind == "eks"}}Service `EXTERNAL-IP` hostname from `kubectl get svc -n {{host.heroku_app}} web` (exists only after Phase 3){{ENDIF}}{{IF host.target_kind == "none"}}none — `{{host.heroku_app}}` has no web process; this hostname is not routed{{ENDIF}} | {{IF host.output_name}}`{{host.output_name}}`{{ELSE}}—{{ENDIF}} |
 {{ENDFOR}}
 
 <!-- markdownlint-enable MD055 MD056 -->
@@ -1012,11 +1194,15 @@ No `dns.tf` was generated ({{IF custom_domains is empty}}no custom domain was di
    {{FOR host IN dns_hostnames}}
    {{IF host.target_kind == "alb"}}{{host.hostname}}  CNAME  <terraform output {{host.output_name}}>          (was: <heroku DNS target>){{ENDIF}}
    {{IF host.target_kind == "eb"}}{{host.hostname}}  CNAME  <terraform output {{host.output_name}}>          (was: <heroku DNS target>){{ENDIF}}
+   {{IF host.target_kind == "express"}}{{host.hostname}}  CNAME  <host of terraform output {{host.output_name}}>   (was: <heroku DNS target>) — after the listener step below{{ENDIF}}
    {{IF host.target_kind == "eks"}}{{host.hostname}}  CNAME  <EXTERNAL-IP hostname of Service web in namespace {{host.heroku_app}}>  (was: <heroku DNS target>){{ENDIF}}
    {{IF host.target_kind == "none"}}{{host.hostname}}  — not routed: {{host.heroku_app}} has no web process on AWS; decide what should answer for it before cutover{{ENDIF}}
    {{ENDFOR}}
    ```
 
+   {{IF has_express}}
+   An ECS Express Mode ALB routes by **host header**, so a CNAME alone returns the ALB's default 404 for your hostname. Before changing the record for each `express` hostname, follow [Adding a custom domain to your service](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-advanced-customization.html#express-service-add-custom-domain): request an ACM certificate for the hostname and validate it at your DNS provider; in the ECS console open the Express service → **Resources** → listener rule, add the hostname as an **OR** host-header value next to the AWS-provided one; add the certificate to the ALB's HTTPS listener (**Certificates** tab). Then set the CNAME to the host part of `terraform output -raw <app_sanitized>_web_endpoint` (strip `https://`). Verify before and after: `curl -fsS --connect-to '<hostname>:443:<endpoint-host>:443' -o /dev/null -w '%{http_code}' https://<hostname>`. Express Mode does not overwrite these listener edits on later `terraform apply` runs.
+   {{ENDIF}}
    {{IF has_eks}}
    The EKS Service address is known only after Phase 3 (`kubectl get svc -n <app> web -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'`), so this step cannot run before the deploy. The generated Service already declares port 80 and port 443, both targeting 8080, with `service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"`. Before any DNS change, request an ACM certificate for these hostnames, validate it at your DNS provider, set `service.beta.kubernetes.io/aws-load-balancer-ssl-cert` to that ARN on `kubernetes/<app>-web-service.yaml`, and apply the Service. Confirm the load balancer has a listener on 443 (`aws elbv2 describe-listeners --load-balancer-arn <arn>`). Then request the application hostname, and connect that request to the load balancer, so SNI and certificate validation use the name on the certificate: `curl -fsS --connect-to '<hostname>:443:<load-balancer-hostname>:443' -o /dev/null -w '%{http_code}' https://<hostname>`. A request to `https://<load-balancer-hostname>` fails hostname validation even when the certificate is valid for the application domain. The certificate annotation does not create a listener; without port 443 there is nothing for HTTPS to land on.
    {{ENDIF}}
@@ -1191,27 +1377,47 @@ Until the Phase 5 flip the primary is Heroku Postgres, frozen under `maintenance
    ```bash
    set -euo pipefail
    # Persist before any apply. Fargate desired_count is `var.writers_quiesced ? 0 : <formation quantity>`,
-   # so a later apply keeps those services at 0. Leave this true until the next intentional handoff.
+   # and an Express Mode service's scaling_target.min_task_count is `var.writers_quiesced ? 0 : …`,
+   # so a later apply keeps those services at 0.
+   # Leave this true until the next intentional handoff.
    # The assignment is in terraform.tfvars.example for every design, including external DNS and EKS.
    sed -i.bak 's/^writers_quiesced *=.*/writers_quiesced = true/' terraform/terraform.tfvars
    grep -q '^writers_quiesced *= *true$' terraform/terraform.tfvars
    {{IF has_fargate}}
    {{IF has_beanstalk}}
-   # A full apply would also restore the Beanstalk environment. Target only ECS services.
+   # A full apply would also restore the Beanstalk environment. Target only ECS services —
+   # standard (aws_ecs_service) and Express Mode (aws_ecs_express_gateway_service) alike.
    # The pipe would hide `targets` in a subshell, so read it with process substitution.
    ( cd terraform
      targets=()
      while read -r addr; do
        targets+=("-target=$addr")
-     done < <(terraform state list | grep '^aws_ecs_service\.')
+     done < <(terraform state list | grep -E '^aws_ecs(_express_gateway)?_service\.')
      if [ "${#targets[@]}" -eq 0 ]; then
-       echo "No aws_ecs_service in state — do not apply; a full apply would start Beanstalk writers" >&2
+       echo "No aws_ecs_service / aws_ecs_express_gateway_service in state — do not apply; a full apply would start Beanstalk writers" >&2
        exit 1
      fi
      terraform apply -input=false "${targets[@]}"
    )
    {{ELSE}}
    ( cd terraform && terraform apply -input=false )
+   {{ENDIF}}
+   {{IF has_express}}
+   # Express Mode: the apply above sets min_task_count to 0 and (wait_for_steady_state = true) returns
+   # once the service is steady — but confirm the stop and suspend Application Auto Scaling for the
+   # whole handoff, so neither a still-draining task nor a scale-out can write after the check.
+   # Express scaling is an Application Auto Scaling scalable target on ecs:service:DesiredCount
+   # (https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html, "Application scaling target defaults").
+   # One block per Express web app:
+   SVC_ARN=$(terraform -chdir=terraform output -raw <app_sanitized>_web_service_arn)
+   CLUSTER=$(echo "$SVC_ARN" | cut -d/ -f2); SVC=$(echo "$SVC_ARN" | cut -d/ -f3)
+   aws application-autoscaling register-scalable-target --service-namespace ecs \
+     --scalable-dimension ecs:service:DesiredCount --resource-id "service/$CLUSTER/$SVC" \
+     --suspended-state DynamicScalingInSuspended=true,DynamicScalingOutSuspended=true,ScheduledScalingSuspended=true \
+     --region {{target_region}}
+   until [ "$(aws ecs describe-services --cluster "$CLUSTER" --services "$SVC" --region {{target_region}} \
+     --query 'services[0].[runningCount,pendingCount]' --output text | tr -s '\t' '+' )" = "0+0" ]; do sleep 10; done
+   # Step 6 (or the next intentional handoff) re-registers the target with every *Suspended=false.
    {{ENDIF}}
    {{ENDIF}}
    {{IF has_beanstalk}}
@@ -1238,12 +1444,12 @@ Until the Phase 5 flip the primary is Heroku Postgres, frozen under `maintenance
    {{ENDIF}}
    ```
 
-   Confirm the AWS database has no application writer before the dump. Repeat until the query returns zero rows:
+   Confirm the AWS database has no application session before the dump, including idle ones. A draining task whose connection is `idle` can still issue a write after a check that skips that state. Repeat until the query returns zero rows. `rdsadmin` is the only excluded role.
 
    ```bash
    PGPASSWORD="{{TARGET_DB_PASSWORD}}" psql -h {{TARGET_DB_HOST}} -p {{TARGET_DB_PORT}} \
      -U {{TARGET_DB_USER}} -d {{TARGET_DB_NAME}} -v ON_ERROR_STOP=1 -c \
-     "SELECT pid, usename, application_name, state FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND state <> 'idle' AND backend_type = 'client backend';"
+     "SELECT pid, usename, application_name, state FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND backend_type = 'client backend' AND usename IS DISTINCT FROM 'rdsadmin';"
    ```
 
 2. **Dump the current primary (the AWS database) completely.** Do not dump while the query above still returns rows.
@@ -1277,7 +1483,7 @@ Until the Phase 5 flip the primary is Heroku Postgres, frozen under `maintenance
 {{ELSE}}
 5. Heroku was never repointed: `DATABASE_URL` still names Heroku Postgres. Nothing to re-attach.
 {{ENDIF}}
-6. **Restore the Heroku formation recorded in step 1, confirm web is ready, send DNS back to Heroku, then — and only then — `heroku maintenance:off`.** Leave `writers_quiesced = true` on AWS until the next intentional handoff. Turn the Scheduler jobs step 1 wrote down back on. Scale back to `heroku-formation-before-failback.txt`. `heroku ps` must show the web dynos at that quantity, and the health path must answer, before maintenance comes off.
+6. **Restore the Heroku formation recorded in step 1, confirm web is ready, send DNS back to Heroku, then — and only then — `heroku maintenance:off`.** Leave `writers_quiesced = true` on AWS until the next intentional handoff.{{IF has_express}} Leave each Express service's Application Auto Scaling target suspended as well; the next intentional handoff re-registers it with `DynamicScalingInSuspended=false,DynamicScalingOutSuspended=false,ScheduledScalingSuspended=false` after `writers_quiesced` goes back to `false`.{{ENDIF}} Turn the Scheduler jobs step 1 wrote down back on. Scale back to `heroku-formation-before-failback.txt`. `heroku ps` must show the web dynos at that quantity, and the health path must answer, before maintenance comes off.
 
    ```bash
    heroku ps:scale <web=N worker=N ... from heroku-formation-before-failback.txt> -a {{app_name}}
@@ -1526,7 +1732,7 @@ Replace template variables using these sources:
 | `{{SOURCE_KAFKA_*}}` | Placeholder — user fills from `heroku kafka:info` output |
 | `{{TARGET_MSK_*}}` | Placeholder — user fills from Terraform output |
 | `{{AWS_ACCOUNT_ID}}` | Placeholder — user fills with their AWS account ID |
-| `{{ALB_DNS_NAME}}` | Placeholder — user fills from Terraform output |
+| `{{ALB_DNS_NAME}}` | Placeholder — user fills from Terraform output (`alb_dns_name_<app_sanitized>`); rendered only when `has_alb` (a standard-mode Fargate web formation). Express Mode web apps use the `<app_sanitized>_web_endpoint` output instead |
 | `{{EB_ENVIRONMENT_URL}}` | Elastic Beanstalk web environment CNAME output |
 | `{{EB_ENVIRONMENT_NAMES}}` | Space-separated generated Elastic Beanstalk environment names for all EB process types |
 | `{{PROJECT_NAME}}` | The `project_name` value written to `terraform/terraform.tfvars` (`var.project_name`); the EB instance role reads only `secret:<project_name>/*` and `parameter/<project_name>/*`, so new secrets and parameters go under this prefix |
@@ -1539,12 +1745,14 @@ Replace template variables using these sources:
 | `{{FARGATE_RUN_SERVICE}}` / `{{FARGATE_RUN_PROCESS}}` | The service/task family and container (`process_type`) where `heroku run` / `config` equivalents land: the app's `web` entry when `app_has_fargate_web`, else its first `fargate_processes[]` entry |
 | `{{DB_INSTANCE_IDENTIFIER}}` | `identifier` of the generated `aws_db_instance` (`${var.project_name}-${var.environment}-postgres`); used when `postgres_engine == "rds"` |
 | `{{DB_CLUSTER_IDENTIFIER}}` | `cluster_identifier` of the generated `aws_rds_cluster` (`${var.project_name}-${var.environment}-aurora`); used when `postgres_engine == "aurora"` |
+| `{{promote_pair}}` / `{{pipeline_name}}` / `{{STAGING_APP_NAME}}` | Resolved as in generate-terraform.md § `promote.yml`: true only when this app sits at `stage: "production"` in a `pipeline` resource AND the app at `stage: "staging"` (else `"development"`) in it has Elastic Beanstalk services in `aws-design.json` AND the staging and production sides resolve to different generated EB application and environment names (always true with two or more EB apps, because EB name resolution gives each app its own); that pipeline's name; that staging app |
+| `{{STAGING_EB_ENVIRONMENT}}` / `{{STAGING_EB_ENVIRONMENT_NAMES}}` | Promote pair only: one generated EB environment of the staging app (`web` if present, else the first; a worker-only app has no web environment) and all of its generated EB environment names |
 | `{{MSK_CLUSTER_ARN}}` | Placeholder — user fills from Terraform output |
 | `{{MIGRATION_BUCKET}}` | Placeholder — user creates an S3 bucket for migration artifacts |
 | `{{app_domain}}` | First hostname in `custom_domains[]` when the inventory has `domain` resources; otherwise a placeholder the user fills |
 | `{{APP_HTTPS_HOSTNAME}}` | Per app: `hostname` of the first `dns_hostnames[]` entry whose `heroku_app` is the app being rendered (the `open` rows of "Day-to-day commands"); `<your-custom-domain>` placeholder when that app has no `domain` resource. Never `{{app_domain}}`, which is the first global hostname and may belong to another app |
 | `{{custom_domains}}` | Comma-separated `custom_domains[]` (inventory `domain` resources' `config.hostname`) |
-| `{{FOR host IN dns_hostnames}}` / `{{FOR host IN eligible_hostnames}}` | Step 0 `dns_hostnames[]` / `eligible_hostnames[]`; `host.hostname`, `host.heroku_app`, `host.target_kind` (`alb` / `eb` / `eks` / `none`), `host.output_name` (`alb_dns_name_<app_sanitized>` / `eb_environment_url_<app_sanitized>` / null) — one table row or record line per hostname, each with its own app's endpoint |
+| `{{FOR host IN dns_hostnames}}` / `{{FOR host IN eligible_hostnames}}` | Step 0 `dns_hostnames[]` / `eligible_hostnames[]`; `host.hostname`, `host.heroku_app`, `host.target_kind` (`alb` / `express` / `eb` / `eks` / `none`), `host.output_name` (`alb_dns_name_<app_sanitized>` / `<app_sanitized>_web_endpoint` / `eb_environment_url_<app_sanitized>` / null) — one table row or record line per hostname, each with its own app's endpoint |
 | `{{health_check_path}}` | `eb_health_check_path_<app_sanitized>_web` for the first Beanstalk web app; `/` for a Fargate web service (the ALB target group default) — the same path Phase 4 checks |
 
 ### Conditional Section Rules
@@ -1601,6 +1809,7 @@ This directory contains all artifacts needed to migrate your Heroku application(
 | `terraform/beanstalk.tf` | Elastic Beanstalk applications and environments |
 {{IF eb_deploy_method == "github_actions"}}
 | `.github/workflows/deploy-eb.yml` (or one `deploy-eb-<eb_app_slug>.yml` per EB app when the design has two or more) | GitHub Actions source-to-EB deploy workflow |
+| `.github/workflows/promote.yml` | Approval-gated promote of a running version to production (`heroku pipelines:promote` equivalent) |
 {{ENDIF}}
 {{IF eb_deploy_method == "codepipeline"}}
 | `terraform/pipeline.tf` | Optional CodePipeline source-to-EB deploy path |
@@ -2172,7 +2381,7 @@ Verify all generated files:
    - If `has_beanstalk_web`: Explains that each web app's `eb_application_port_<app>_web` and `eb_health_check_path_<app>_web` are required before planning
    - If `has_beanstalk`: Contains selected EB deploy method instructions and the EB DNS cutover target, and emits no CodePipeline artifact unless `eb_deploy_method` is `"codepipeline"`
    - If `has_route53_dns`: Phase 1 contains "DNS preparation (Route 53)" with this order: authority check, then `terraform init` and required inputs, then existing-record conversion + `terraform import`, then zone adoption, then `heroku_apex_ips`, and only then the plan/apply block. No Route 53 write is instructed before the authority check. The Phase 1 rollback after adoption runs `terraform state rm` on `aws_route53_record.heroku` and `aws_route53_record.apex_heroku` before `terraform destroy`
-   - Phase 5 lists every `dns_hostnames[]` hostname with its own Heroku app and its own AWS endpoint/output name (`alb_dns_name_<app_sanitized>` or `eb_environment_url_<app_sanitized>`; never a shared `alb_dns_name`/`eb_environment_url`, never `eb_environment_cname`); no two apps share a target. If `has_eks`: the manual branch names the Kubernetes Service `EXTERNAL-IP` as the target, and the Service ships with port 443 (`targetPort` 8080) plus `aws-load-balancer-ssl-ports: "443"`, with an apply-and-verify step (`describe-listeners` on 443) before any DNS change
+   - Phase 5 lists every `dns_hostnames[]` hostname with its own Heroku app and its own AWS endpoint/output name (`alb_dns_name_<app_sanitized>`, `<app_sanitized>_web_endpoint` for an Express Mode web app, or `eb_environment_url_<app_sanitized>`; never a shared `alb_dns_name`/`eb_environment_url`, never `eb_environment_cname`); no two apps share a target. If `has_express`: an Express web app is never rendered as `target_kind "none"`, Phase 4 checks its `<app_sanitized>_web_endpoint` rather than `ALB_DNS_NAME`, and the manual branch carries the listener host-header + certificate step before the CNAME. If `has_eks`: the manual branch names the Kubernetes Service `EXTERNAL-IP` as the target, and the Service ships with port 443 (`targetPort` 8080) plus `aws-load-balancer-ssl-ports: "443"`, with an apply-and-verify step (`describe-listeners` on 443) before any DNS change
    - Every `cutover_weight` change in Phases 5 and 6 edits `terraform.tfvars` and never passes `-var cutover_weight`. The apply is plain, except the Phase 6 database-failback DNS move when Elastic Beanstalk is in the design: that move is `aws route53 change-resource-record-sets`, and a saved plan that changes `aws_elastic_beanstalk_environment` is not applied
    - Does NOT hard-code a health check path for Elastic Beanstalk verification; use the applicable per-app `eb_health_check_path_<app>_web` instead
    - Contains "Verification" section with data-store-appropriate checks

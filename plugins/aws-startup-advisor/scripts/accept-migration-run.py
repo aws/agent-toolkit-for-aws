@@ -234,6 +234,7 @@ def heroku_conditional_outputs(
                             errors.append(f"{finding['file']}: {finding['summary']}")
             else:
                 names.append(".github/workflows/deploy-eb.yml")
+            names.append(".github/workflows/promote.yml")
         elif method == "codepipeline":
             names.append("terraform/pipeline.tf")
         elif method != "manual":

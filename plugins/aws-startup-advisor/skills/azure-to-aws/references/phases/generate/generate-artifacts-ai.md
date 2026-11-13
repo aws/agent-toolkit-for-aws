@@ -27,9 +27,11 @@ Read `aws-design-ai.json → ai_architecture.code_migration.migration_path` and
 
 | `migration_path` / framework                                      | Emits (in addition to the always-on set)                                  |
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `mantle_openai_responses` / `mantle_openai_chat`                                         | `ai-migration/migrate_to_mantle.sh` — **skip the provider adapter**       |
-| `runtime_openai_cris`                                              | `ai-migration/migrate_to_mantle.sh` (CRIS variant — `bedrock-runtime` base URL + CRIS id) — skip the provider adapter |
-| `direct` (or absent) or `converse`                                | `ai-migration/provider_adapter.{py,js,go}` — `converse` is a Converse client swap, not a Mantle script |
+| `runtime_openai_cris` (default same-model path)                   | `ai-migration/migrate_to_mantle.sh` (CRIS variant — `bedrock-runtime` base URL + CRIS id + the row's `required_client_api`) — skip the provider adapter |
+| `mantle_openai_responses` / `mantle_openai_chat` (only with `mantle_selector`) | `ai-migration/migrate_to_mantle.sh` — **skip the provider adapter**       |
+| `runtime_messages` (Anthropic source, default)                    | `ai-migration/provider_adapter.{py,js,go}` whose Bedrock class keeps the Anthropic SDK at `https://bedrock-runtime.{region}.amazonaws.com/anthropic` with a string Bedrock token (`required_client_api: messages`; `bedrock:InvokeModel*` IAM) — not a Mantle script, not a Converse rewrite |
+| `mantle_messages` (Anthropic source, only with `mantle_selector`) | same adapter shape at `https://bedrock-mantle.{region}.api.aws/anthropic` with `bedrock-mantle:*` IAM |
+| `direct` (or absent) or `converse`                                | `ai-migration/provider_adapter.{py,js,go}` — `converse` is an explicit boto3 Converse rewrite, not a Mantle script |
 | `gpt-oss`                                                         | `ai-migration/provider_adapter.{py,js,go}` targeting gpt-oss via Converse |
 | gateway (`llm_router`/`api_gateway`/`voice_platform`/`framework`) | `ai-migration/gateway_config.{yaml,py,json}` — skip the adapter           |
 | agentic `migration_approach == harness`                           | `ai-migration/harness.json`, `ai-migration/deploy_harness.sh`             |
@@ -39,10 +41,17 @@ Read `aws-design-ai.json → ai_architecture.code_migration.migration_path` and
 **Always emit (every path):** `ai-migration/setup_bedrock.sh`, `ai-migration/test_comparison.py`
 (always Python), `ai-migration/bedrock_monitoring.tf`.
 
-> **Mantle is the PRIMARY path for Azure.** Azure OpenAI apps use the OpenAI SDK, so a same-model
-> move keeps the SDK and changes only base URL, credential, model ID, and IAM — `migrate_to_mantle.sh`,
-> not a rewritten adapter. The `direct` adapter path is the exception (cross-family swap, or a
-> Converse feature the mantle models cannot serve), not the default.
+> **`bedrock-runtime` CRIS is the default path for Azure OpenAI.** Azure OpenAI apps use the OpenAI
+> SDK, so a same-model move keeps the SDK and changes only base URL
+> (`https://bedrock-runtime.{region}.amazonaws.com/openai/v1`), credential, model ID (CRIS profile),
+> and IAM (`bedrock:InvokeModel*`) — `migrate_to_mantle.sh` in its CRIS variant, not a rewritten
+> adapter. Mantle is used only when Design recorded a `mantle_selector`
+> (`references/vendored/ai/bedrock-endpoint-policy.md`). The `direct` adapter path is the exception
+> (cross-family swap, or a Converse feature no same-model path can serve), not the default.
+> For a `runtime_openai_cris` or `runtime_messages` row, echo the row's `endpoint_assumption`
+> sentence in the generated script/adapter header comment; for a `mantle_*` row, echo that
+> selector and its `mantle_requirement` (workload, source, evidence) there instead, so the
+> endpoint choice stays traceable to the Clarify answer.
 
 ## Step 1M: `migrate_to_mantle.sh` (mantle path)
 
@@ -68,7 +77,11 @@ Adapt Azure-specific client/deployment/API-version settings to the Bedrock clien
 Feature-flagged on `AI_PROVIDER` (values `azure_openai` | `bedrock` | `shadow`; **default
 `azure_openai`**). Emits methods gated on `integration.capabilities_summary`: `text_generation`→
 `generate`, `streaming`→`generate_stream`, `embeddings`→`embed`. Bedrock side is boto3 Converse
-(`BEDROCK_INFERENCE_PROFILE_ARN` env, model-id fallback). **Azure source side:** the `azure_openai`
+(`BEDROCK_INFERENCE_PROFILE_ARN` env, model-id fallback); for `runtime_messages` it is instead
+`anthropic.Anthropic(base_url="https://bedrock-runtime.{region}.amazonaws.com/anthropic",
+api_key=provide_token(region=region))` — a string token minted per client, client created and
+closed per request boundary, `messages.create` / `messages.stream` unchanged, `global.`/Geo
+Claude profile ID (`mantle_messages`: same shape at `https://bedrock-mantle.{region}.api.aws/anthropic`). **Azure source side:** the `azure_openai`
 branch calls the `AzureOpenAI` client (`azure_endpoint`, `api_version`) for Python / `@azure/openai`
 (or the `openai` SDK with `azure` config) for Node — NOT Vertex/`@google-cloud/vertexai`.
 
@@ -79,22 +92,71 @@ diffs outputs, so the user validates behavior before cutover.
 
 ## Step 3: `setup_bedrock.sh`
 
-Enables the chosen Bedrock model(s), sets up IAM, and (mantle path) the Bedrock API key. For a
-`runtime_openai_cris` target whose CRIS id is a GPT-6 model (Astra, Sol, Luna, 6.1 Sol, 6.1 Terra) or
-GPT-5.5 / GPT-5.4 (`us.openai.gpt-5.5` / `global.openai.gpt-5.5`, `us.openai.gpt-5.4` /
-`global.openai.gpt-5.4`, or their `inference-profile/` ARNs), the IAM
-policy must grant `bedrock:InvokeModel` on `arn:aws:bedrock:{region}:{account}:project/default`
-in addition to the CRIS inference-profile ARN — both required per the GPT-6 model cards and the
-GPT-5.5 / GPT-5.4 cards (read 2026-11-07); `iam_policy.py` emits the third ARN for exactly these
-ids. The mantle `bedrock-mantle:*` policy (bare `openai.gpt-5.5` / `openai.gpt-5.4` ids included)
-is unaffected.
+Enables the chosen Bedrock model(s), sets up IAM, and (mantle path) the Bedrock API key. For
+EVERY `runtime_openai_cris` target whose `required_client_api` is `responses` or
+`chat_completions` — by id form, not model family: any proprietary GPT CRIS id, so GPT-5.6 Sol /
+Terra / Luna, the GPT-6 family (Astra, Sol, Luna, 6.1 Sol, 6.1 Terra) and GPT-5.5 / GPT-5.4
+(`us.openai.gpt-5.5` / `global.openai.gpt-5.5`, `us.openai.gpt-5.4` / `global.openai.gpt-5.4`), or
+their `inference-profile/` ARNs — the IAM policy must grant `bedrock:InvokeModel` on
+`arn:aws:bedrock:{region}:{account}:project/default` in addition to the CRIS inference-profile
+ARN: a Responses request on `bedrock-runtime` authorizes the default project separately from the
+inference target (<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html>,
+"Permissions", read 2026-11-07), and each of those model cards (read 2026-11-07) repeats the
+requirement for its runtime CRIS ids. `iam_policy.py --target <aws_model_id>=<required_client_api>`
+(one pair per `bedrock_models[]` row, each with its own API — a GPT Chat / Responses secondary beside
+a Claude Messages primary still gets the grant) emits the third ARN for exactly those rows and omits
+it for a `converse` or `messages` row (Converse is the application-inference-profile route) and for
+every Anthropic / Nova / gpt-oss id. The mantle
+`bedrock-mantle:*` policy (bare `openai.gpt-5.5` / `openai.gpt-5.4` / `openai.gpt-5.6-*` /
+`openai.gpt-6-*` ids included) is unaffected.
+
+**Retained stored-response operations.** When the source code keeps `client.responses.retrieve(id)`
+(or `.cancel(id)` / `.delete(id)`; scan for `responses.retrieve(` / `responses.cancel(` /
+`responses.delete(`), a runtime `responses` row ALSO needs `bedrock:GetInvoke` (and
+`bedrock:CancelInvoke` / `bedrock:DeleteInvoke` only for the ops actually retained) on the same
+`arn:aws:bedrock:{region}:{account}:project/default`: creating a response authorizes
+`bedrock:InvokeModel` on the target and the project, while retrieving, canceling or deleting a
+stored response authorizes those actions on the project (same page, "Permissions", read
+2026-11-08) — without them creation and the ping pass and the app's existing retrieve is denied.
+`iam_policy.py --stored-response-ops retrieve[,cancel,delete]` emits that `BedrockStoredResponseOps`
+statement for a runtime `responses` row only and refuses (`reason:
+stored_response_ops_no_responses_row`) for a `converse`, `messages` or `chat_completions` plan,
+which has no stored responses on either endpoint. A bare Mantle id on `responses` (a
+`mantle_openai_responses` row) satisfies retained ops through the `BedrockMantleInference` statement:
+stored responses are retrievable on Mantle at `GET /v1/responses/{id}` under
+`bedrock-mantle:CreateInference` (same page, "Permissions", read 2026-11-09), so no `bedrock:GetInvoke`
+is added and the helper does not refuse. `setup_bedrock.sh`'s verification then also retrieves the
+response it just created (`r = client.responses.create(...)`, then `client.responses.retrieve(r.id)`):
+a 403 on the second call means the grant is missing even though creation passed.
+
+**Web Search grants.** When `web_search` is a confirmed mantle requirement — the row's
+`mantle_selector`, or any other `detected`/`user` entry in `ai_constraints.mantle_requirements`,
+including when the primary selector is `background_inference` — pass
+`iam_policy.py --mantle-selector web_search` (joined with the other confirmed selectors) and the policy gains a `BedrockWebSearch` statement:
+`bedrock-websearch:InvokeSearch` and `bedrock-websearch:InvokeFetch` on resource `*` with an
+`aws:RequestedRegion` condition (all three `bedrock-websearch` actions take `*`; that is the service's
+only condition key — <https://docs.aws.amazon.com/bedrock/latest/userguide/security-web-search.html>,
+read 2026-11-09). The generated client sets `"external_web_access": false` on the `web_search` tool
+by default: the parameter defaults to `true`, and without `bedrock-websearch:ExternalWebAccess` every
+Fetch then fails authorization before the cache is read while the request still returns 200
+(<https://docs.aws.amazon.com/bedrock/latest/userguide/web-search.html>, "Controlling external web
+access", read 2026-11-09). Only when the user explicitly confirmed external web access in Clarify,
+pass `--external-web-access` as well (adds `bedrock-websearch:ExternalWebAccess`) and leave the
+parameter `true`. Web Search is served on `bedrock-mantle` Responses only, so the helper refuses
+(`reason: web_search_without_mantle_row`) when no row is a bare Mantle id; a plan without a
+`web_search` row gets no `bedrock-websearch:*` action. Step 5's verification then also runs a
+tool-level check: `client.responses.create(model=<bare Mantle id>, input=<time-sensitive question>,
+tools=[{"type": "web_search", "external_web_access": False}])`, confirm a `web_search_call` item or
+a `url_citation` annotation in the output, and check CloudTrail Web Search data events for a denied
+`InvokeSearch` / `InvokeFetch` — a plain model ping passing does not prove the grant.
 
 ## Step 3B: `gateway_config.{yaml,py,json}` (gateway users)
 
 Format by framework: `llm_router` → `gateway_config.yaml` (LiteLLM); `framework` →
 `gateway_config.py`; `voice_platform` → `gateway_config.json`; `api_gateway` → `gateway_config.yaml`.
-OpenRouter branches on `code_migration.openrouter_path` (`same_model_mantle` → run Step 1M;
-`direct` → adapter; `litellm` → yaml; `keep_openrouter` → json; absent → litellm).
+OpenRouter branches on `code_migration.openrouter_path` (`same_model_runtime` → run Step 1M's CRIS
+variant, the default same-model subroute; `same_model_mantle` → run Step 1M's Mantle variant, only
+with a `mantle_selector`; `direct` → adapter; `litellm` → yaml; `keep_openrouter` → json; absent → litellm).
 
 ## Step 3C / 3E: agentic artifacts
 

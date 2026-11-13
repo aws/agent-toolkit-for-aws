@@ -1766,8 +1766,75 @@ def _logical_shell_lines(script: str) -> list[str]:
     return lines
 
 
+_READ_ONLY_EB_LOOKUPS = {
+    "create-storage-location", "describe-environments", "describe-application-versions",
+}
+
+
+def _reviewed_lookup(line: str) -> str | None:
+    """Accept NAME="$(aws elasticbeanstalk <read-only verb> ...)" and nothing else.
+
+    The source deploy and promote templates capture one direct, read-only
+    Elastic Beanstalk query per assignment (storage bucket, running version
+    label, existing production versions, source bundle). Such a substitution
+    cannot suppress or redirect a later deploy command; the caller still checks
+    the assigned name against the reserved execution-environment keys.
+    """
+    match = re.fullmatch(r'([A-Za-z_]\w*)="\$\((aws elasticbeanstalk .*)\)"', line)
+    if not match:
+        return None
+    name, inner = match.groups()
+    if "`" in inner or "$[" in inner or "$(" in inner:
+        raise ValueError("Nested shell substitution requires review.")
+    for expansion in re.finditer(r"\$\{([^}]*)\}", inner):
+        if not re.fullmatch(r"[A-Za-z_]\w*", expansion.group(1)):
+            raise ValueError("Only plain shell variable interpolation is supported.")
+    if inner.count("${") != len(re.findall(r"\$\{[^}]*\}", inner)):
+        raise ValueError("Unresolved shell parameter expansion requires review.")
+    if re.search(r"[&|<>{}();]", _shell_mask(inner)):
+        raise ValueError("Shell grouping, conditions, pipelines, and redirections require review.")
+    command = shlex.split(inner)
+    if command[:2] != ["aws", "elasticbeanstalk"] or command[2:3] == [] or (
+        command[2] not in _READ_ONLY_EB_LOOKUPS
+    ):
+        raise ValueError("Only reviewed read-only Elastic Beanstalk lookups may be substituted.")
+    return name
+
+
+def _reviewed_publish(line: str) -> tuple[str, str, str] | None:
+    """Accept echo "NAME=<plain text>" >> "$GITHUB_ENV" (or "$GITHUB_OUTPUT") only.
+
+    Called after the plain-interpolation checks, so the published value holds
+    literal text and plain ${VAR} expansions. The caller rejects reserved
+    execution-environment names, which would otherwise reach later steps.
+    Returns (name, raw value, "ENV" or "OUTPUT").
+    """
+    match = re.fullmatch(
+        r'echo "([A-Za-z_]\w*)=([^"`$\\]*(?:\$\{[A-Za-z_]\w*\}[^"`$\\]*)*)" >> "\$GITHUB_(ENV|OUTPUT)"',
+        line,
+    )
+    return (match.group(1), match.group(2), match.group(3)) if match else None
+
+
+def _resolve_published(value: str, environment: dict[str, str]) -> str | None:
+    """Expand plain ${VAR} references; None when any reference is unknown."""
+    unknown = False
+
+    def replace(match: re.Match[str]) -> str:
+        nonlocal unknown
+        name = match.group(1)
+        if name in environment:
+            return environment[name]
+        unknown = True
+        return ""
+
+    resolved = re.sub(r"\$\{([A-Za-z_]\w*)\}", replace, value)
+    return None if unknown else resolved
+
+
 def _direct_commands(
     lines: list[str], environment: dict[str, str], *, allow_assignments: bool = True,
+    env_writes: dict[str, str | None] | None = None,
 ) -> list[list[str]]:
     """Only unconditional commands and finite, literal nonempty for loops.
 
@@ -1782,19 +1849,34 @@ def _direct_commands(
         line = lines[i]
         # Shell expansions can mutate the parent execution context even in an
         # echo argument or assignment. Support plain variable interpolation and
-        # the source template's one reviewed AWS lookup, not arbitrary shell
-        # programs hidden inside arguments.
-        bucket_lookup = (
-            'BUCKET="$(aws elasticbeanstalk create-storage-location '
-            '--query S3Bucket --output text)"'
-        )
-        if "`" in line or "$[" in line or ("$(" in line and line != bucket_lookup):
+        # the source templates' reviewed read-only AWS lookups, not arbitrary
+        # shell programs hidden inside arguments.
+        lookup = _reviewed_lookup(line)
+        if lookup is not None:
+            if not allow_assignments:
+                raise ValueError("Assignments inside shell loops require review.")
+            if lookup in _EXECUTION_ENVIRONMENT_KEYS:
+                raise ValueError("Shell execution-environment mutation requires review.")
+            environment.pop(lookup, None)
+            i += 1
+            continue
+        if "`" in line or "$[" in line or "$(" in line:
             raise ValueError("Shell command/arithmetic substitution requires review.")
         for expansion in re.finditer(r"\$\{([^}]*)\}", line):
             if not re.fullmatch(r"[A-Za-z_]\w*", expansion.group(1)):
                 raise ValueError("Only plain shell variable interpolation is supported.")
         if line.count("${") != len(re.findall(r"\$\{[^}]*\}", line)):
             raise ValueError("Unresolved shell parameter expansion requires review.")
+        published = _reviewed_publish(line)
+        if published is not None:
+            name, raw_value, target = published
+            if name in _EXECUTION_ENVIRONMENT_KEYS:
+                raise ValueError("Shell execution-environment mutation requires review.")
+            # $GITHUB_ENV reaches every later step; $GITHUB_OUTPUT does not.
+            if target == "ENV" and env_writes is not None:
+                env_writes[name] = _resolve_published(raw_value, environment)
+            i += 1
+            continue
         loop = re.fullmatch(r"for\s+([A-Za-z_]\w*)\s+in(?:\s+(.*?))?\s*;\s*do", line)
         if loop:
             variable, values = loop.groups()
@@ -1816,7 +1898,7 @@ def _direct_commands(
             items = values.split()
             commands.extend(_direct_commands(
                 lines[i + 1:end], {**environment, variable: items[0]},
-                allow_assignments=False,
+                allow_assignments=False, env_writes=env_writes,
             ))
             environment[variable] = items[-1]
             i = end + 1
@@ -1900,9 +1982,61 @@ def _is_deploy_command(command: list[str]) -> bool:
                for token in command[index + 2:])
 
 
-def _deploy_command(script: str, environment: dict[str, str] | None = None) -> bool:
-    commands = _direct_commands(_logical_shell_lines(script), environment or {})
+def _deploy_command(
+    script: str, environment: dict[str, str] | None = None,
+    env_writes: dict[str, str | None] | None = None,
+) -> bool:
+    commands = _direct_commands(
+        _logical_shell_lines(script), environment or {}, env_writes=env_writes,
+    )
     return any(_is_deploy_command(command) for command in commands)
+
+
+# Workflow variables a deploy loop reads: a write the checker cannot follow must make these
+# unknown instead of leaving the value an earlier step set.
+_DEPLOY_RELEVANT_ENV = ("EB_ENVIRONMENTS", "EB_APPLICATION_NAME", "EB_PROCESS_TYPES")
+_DEPLOY_RELEVANT_PREFIXES = ("PRODUCTION_", "STAGING_")
+# Actions that do not write the deploy variables (checkout, AWS auth and ECR login, pack setup).
+_REVIEWED_ACTION_PREFIXES = ("actions/", "aws-actions/", "buildpacks/github-actions/")
+
+
+def _is_deploy_relevant(name: str) -> bool:
+    return name in _DEPLOY_RELEVANT_ENV or name.startswith(_DEPLOY_RELEVANT_PREFIXES)
+
+
+def _unreviewed_env_write(step: dict[str, Any], script: str) -> bool:
+    """True when this step may set a deploy variable through `$GITHUB_ENV` in a form the
+    checker does not follow.
+
+    `carried` only learns of `echo "NAME=value" >> "$GITHUB_ENV"` lines it fully parses. Other
+    forms write the same file unseen: a write inside shell control flow, `tee -a`, `printf`, or
+    an action. A step is unreviewed when it
+    - is a `uses:` step outside the reviewed prefixes (it can write `$GITHUB_ENV` itself), or
+    - mentions `$GITHUB_ENV` more often than it makes reviewed writes AND either names a
+      deploy variable or builds the variable name from an expansion.
+    A step that writes other names (the CNB build step writes `IMAGE`) is not unreviewed.
+    """
+    uses = step.get("uses") or ""
+    if uses and not uses.startswith(_REVIEWED_ACTION_PREFIXES) and not uses.startswith("einaregilsson/beanstalk-deploy@"):
+        return True
+    code = "\n".join(line for line in script.splitlines() if not line.lstrip().startswith("#"))
+    mentions = len(re.findall(r"GITHUB_ENV", code))
+    if not mentions:
+        return False
+    try:
+        reviewed = sum(
+            1 for line in _logical_shell_lines(code)
+            if (published := _reviewed_publish(line)) is not None and published[2] == "ENV"
+        )
+    except ValueError:
+        reviewed = 0
+    if reviewed >= mentions:
+        return False
+    names_a_deploy_variable = bool(re.search(
+        r"\b(?:EB_ENVIRONMENTS|EB_APPLICATION_NAME|EB_PROCESS_TYPES|PRODUCTION_\w+|STAGING_\w+)\b", code,
+    ))
+    builds_the_name = bool(re.search(r"(?:echo|printf)\b[^\n]*[\"'\s]\$\{?\w+\}?=", code))
+    return names_a_deploy_variable or builds_the_name
 
 
 def _workflows(
@@ -1954,16 +2088,35 @@ def _workflows(
                 ))
             if _condition(job["condition"]) is False:
                 continue
+            # $GITHUB_ENV writes of earlier steps; None marks an unknown value.
+            carried: dict[str, str | None] = {}
             for step in job["steps"]:
-                if _condition(step.get("if")) is False:
+                step_condition = _condition(step.get("if"))
+                if step_condition is False:
                     continue
                 uses = step.get("uses", "")
                 script = step.get("run", "")
                 deploy_action = uses.startswith("einaregilsson/beanstalk-deploy@")
+                inherited = {**job["env"]}
+                for name, value in carried.items():
+                    if value is None:
+                        inherited.pop(name, None)
+                    else:
+                        inherited[name] = value
+                writes: dict[str, str | None] = {}
+                if _unreviewed_env_write(step, script):
+                    # This step can set a deploy variable in a form the checker does not follow;
+                    # whatever an earlier step set is no longer known.
+                    for name in {*job["env"], *carried, *_DEPLOY_RELEVANT_ENV}:
+                        if _is_deploy_relevant(name):
+                            carried[name] = None
+                    inherited = {k: v for k, v in inherited.items() if not _is_deploy_relevant(k)}
                 try:
                     deploy_run = bool(script) and _deploy_command(
-                        script, {**job["env"], **step["env"]},
+                        script, {**inherited, **step["env"]}, writes,
                     )
+                    for name, value in writes.items():
+                        carried[name] = value if step_condition else None
                 except ValueError as exc:
                     if expect_deployment and re.search(r"elasticbeanstalk|\beb\s+deploy\b", script):
                         findings.append(Finding(

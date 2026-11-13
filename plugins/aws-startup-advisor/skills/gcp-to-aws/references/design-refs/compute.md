@@ -26,7 +26,8 @@
 
 - **Always-on** or **cold-start sensitive** → Fargate (not Lambda)
 - **Stateless microservice** + **<15 min execution** → Lambda
-- **HTTP-only** + **container-native** → Fargate preferred (better dev/prod parity)
+- **HTTP-only** + **container-native** → Fargate preferred (better dev/prod parity); emit it as **ECS Express Mode** (`aws_config.ecs_mode: "express"`) unless an eliminator in § ECS Fargate Mode applies
+- **Cloud Run job, Pub/Sub- or Eventarc-triggered service with no public ingress** → Fargate standard service, no load balancer (`compute_shape: "worker"`)
 
 Note: Cloud Run maps to Fargate via deterministic fast-path ("Always"). The `compute_model` preference does not affect Cloud Run mapping.
 
@@ -55,6 +56,28 @@ Note: Cloud Run maps to Fargate via deterministic fast-path ("Always"). The `com
 - **Event-driven / scale-to-zero required** → Lambda
 
 After selecting Elastic Beanstalk, load `elastic-beanstalk.md` to populate `aws_config` (platform, deployment policy, IAM, VPC, sizing). When `compute: "eks"` routes App Engine to EKS, do **not** run the EB fan-out or load `elastic-beanstalk.md` — the app_version resources are skipped like any other non-EB path.
+
+## ECS Fargate Mode (Express vs standard)
+
+**ECS Express Mode is the default shape for an HTTP(S) web service on Fargate.** Express Mode is a standard ECS service that AWS provisions for you — Fargate cluster, task definition, Application Load Balancer with an HTTPS listener and ACM certificate, security groups, target-tracking auto scaling, CloudWatch log group, canary deployments, and an AWS-provided HTTPS endpoint — with no additional charge beyond the resources ([Express Mode](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html); it is also AWS's named replacement for App Runner). Up to 25 Express services share one ALB per VPC and scheme. **Express Mode derives the ALB scheme from the task subnets** ([network defaults](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html#express-service-network-defaults)): public subnets give an internet-facing ALB and public task IPs; private subnets give an internal ALB. So an Express service's placement follows its ingress — a public HTTP service is generated in the **public** subnets (the one accepted exception to the `tf-best-practices` private-subnet rule, recorded in the generator's warnings) and an internal-only service in the private subnets. Record the decision on every Fargate entry as `aws_config.ecs_mode` (`"express"` or `"standard"`), a one-line `aws_config.ecs_mode_reason`, and for `express` the `aws_config.placement` (`"public_subnets"` for a public service, `"private_subnets"` for an internal one) so Estimate groups the shared ALB by scheme and Generate picks the matching subnets.
+
+Select `"standard"` (a hand-written `aws_ecs_service` + ALB/NLB) when **any** of these holds; otherwise select `"express"`:
+
+| Eliminator                                                                                                                    | Source                                                                                              |
+| ----------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Not an HTTP(S) web service — a worker, scheduled job, queue consumer, or anything with no inbound HTTP listener               | `compute_shape != "http_service"` (derived from inventory; Clarify asks only when it cannot be derived) |
+| Needs TCP/UDP passthrough, gRPC without HTTP/2 termination, an NLB, or no load balancer at all                                 | `compute_shape == "tcp_or_grpc_passthrough"`                                                        |
+| Release process requires rolling or blue/green deployments (Express Mode deploys canary only)                                  | `design_constraints.release_strategy` is `"rolling"` or `"blue_green"`                               |
+| Task size outside Express limits: CPU > 4096 units or memory > 8192 MiB                                                        | sizing table / `aws_config.task_cpu`, `aws_config.task_memory`                                      |
+| Generated Terraform must own a custom-domain ALB (Route 53 alias to the ALB, customer certificate on the listener)             | skill-specific DNS/cutover preference (heroku: `dns_strategy == "route53"`)                          |
+| Sidecars or a custom task definition the generator must author (Express Mode accepts a custom task definition only via the API/CLI, not the Terraform resource) | detected multi-container task                                                 |
+| Public HTTP service whose tasks must stay in **private** subnets (a recorded network-isolation requirement, restricted-CIDR ingress, or tasks that must not carry public IPs) — Express cannot give a public ALB to private tasks | public edge with private tasks: Cloud Run `ingress: INTERNAL_AND_CLOUD_LOAD_BALANCING` behind a customer-owned external load balancer, or Cloud Armor / IAP policies on that edge (`ecs_mode_reason: "private_tasks"`) |
+
+Express Mode is a shape of Fargate, not a new service: `aws_service` stays `"Fargate"`, sizing and cost come from the same tables, and the entry is still priced as Fargate tasks plus a share of an ALB (`ceil(count / 25)` per VPC and scheme — see the Estimate phase). A design saved before this section existed has no `ecs_mode`; Estimate and Generate read that as `"standard"`. It does **not** displace Elastic Beanstalk for PaaS sources (App Engine, App Service, Heroku web dynos); it applies once Fargate is the selected target or the source is already a container.
+
+Derive `compute_shape` from the Terraform/live inventory first (Cloud Run `template.containers[].ports` + `ingress`; Cloud Run jobs and non-HTTP Cloud Functions triggers are `worker`; `use_http2` gRPC without edge termination or a TCP forwarding rule is `tcp_or_grpc_passthrough`). Read `preferences.json` → `design_constraints.compute_shape[<service>]` only when Clarify Q10c was asked, and `design_constraints.release_strategy` (default `canary`).
+
+---
 
 ## CPU Architecture (Graviton vs x86)
 
@@ -174,7 +197,9 @@ Deterministic (fast-path) mappings omit `rubric_applied`; inferred (rubric-based
   "aws_config": {
     "cpu": "0.5",
     "memory_mb": 1024,
-    "region": "us-east-1"
+    "region": "us-east-1",
+    "ecs_mode": "express",
+    "ecs_mode_reason": "http_service; canary release strategy; 512 CPU / 1024 MiB within Express limits"
   },
   "graviton": {
     "compatibility": "ready",

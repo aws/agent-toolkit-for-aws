@@ -35,7 +35,7 @@ assembler adds the cross-artifact checks that span multiple fragment outputs:
 
 - Every service in `aws-design.json.services[]` is either generated in Terraform OR listed in `generation-warnings.json`
 - If any service has `aws_service: "EKS"` → `terraform/eks.tf` must exist AND `kubernetes/` directory must contain at least one Deployment manifest
-- If any service has `aws_service: "Elastic Beanstalk"` → `terraform/beanstalk.tf` must exist, plus the selected EB deploy artifact (`.github/workflows/deploy-eb.yml` for `github_actions` — one `deploy-eb-<eb_app_slug>.yml` per EB app when the design has two or more — `terraform/pipeline.tf` for `codepipeline`, none for `manual`)
+- If any service has `aws_service: "Elastic Beanstalk"` → `terraform/beanstalk.tf` must exist, plus the selected EB deploy artifacts (`.github/workflows/deploy-eb.yml` for `github_actions` — one `deploy-eb-<eb_app_slug>.yml` per EB app when the design has two or more — and `.github/workflows/promote.yml`; `terraform/pipeline.tf` for `codepipeline`; none for `manual`)
 - `README.md` references all files that actually exist
 - `MIGRATION_GUIDE.md` data migration sections match design content (no empty sections)
 
