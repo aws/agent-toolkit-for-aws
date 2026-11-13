@@ -54,7 +54,8 @@
     "idle_resume": { "process_level": 5, "filesystem": 3, "none": 1, "unknown": 2 },
     "compute_tier": { "light": 2, "heavy_non_gpu": 7, "gpu": 0, "unknown": 2 },
     "launch_concurrency": { "high": 0, "moderate": 2, "low": 3, "unknown": 2 },
-    "instance_type_requirement": { "yes": 0, "no": 3, "unknown": 2 }
+    "instance_type_requirement": { "yes": 0, "no": 3, "unknown": 2 },
+    "expected_scale": { "prototype": 3, "growing": 3, "high": 2, "unknown": 2 }
   },
   "deployment_models": [],
   "volatile_facts": [

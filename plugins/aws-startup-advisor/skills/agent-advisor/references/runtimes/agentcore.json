@@ -20,7 +20,13 @@
     "idle_resume": { "process_level": 1, "filesystem": 4, "none": 2, "unknown": 2 },
     "compute_tier": { "light": 4, "heavy_non_gpu": 3, "gpu": 3, "unknown": 2 },
     "launch_concurrency": { "high": 5, "moderate": 3, "low": 2, "unknown": 2 },
-    "instance_type_requirement": { "yes": 3, "no": 3, "unknown": 2 }
+    "instance_type_requirement": { "yes": 3, "no": 3, "unknown": 2 },
+    "expected_scale": { "prototype": 4, "growing": 3, "high": 3, "unknown": 2 }
+  },
+  "compute_type_affinities": {
+    "instances": {
+      "expected_scale": { "prototype": 1, "growing": 2, "high": 3, "unknown": 2 }
+    }
   },
   "deployment_models": ["harness", "framework_on_runtime"],
   "compute_types": ["microvms", "instances"],
