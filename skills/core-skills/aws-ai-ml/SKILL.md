@@ -11,11 +11,11 @@ description: >
   validating training data, evaluating model quality, deploying or optimizing
   endpoints, configuring IAM/S3 for training, or managing SageMaker Managed
   MLflow. Use for endpoint health, failures, latency, logs, metrics, errors.
-  Covers Serverless Model Customization, Nova and OSS deployment paths, and
-  PySDK v3. NOT for Ground Truth labeling, Feature Store, or general-purpose AWS
-  infrastructure.
+  Runs commands on HyperPod cluster nodes. Covers Serverless Model
+  Customization, Nova and OSS deployment paths, and PySDK v3. NOT for Ground
+  Truth labeling, Feature Store, or general-purpose AWS infrastructure.
 metadata:
-  version: "5"
+  version: "6"
 ---
 
 # AWS AI/ML Model Customization
@@ -38,11 +38,12 @@ Match the user's intent to the appropriate reference folder and load only that c
 | Train a model with a SageMaker Training job | [references/training-jobs/](references/training-jobs/) | Use when the goal is to fit or update model parameters and produce model artifacts or checkpoints. Covers recipes, JumpStart traditional ML, custom training scripts or containers, distributed training, and training-job diagnosis. |
 | Process data with a SageMaker Processing job | [references/processing-jobs/](references/processing-jobs/) | Use when the goal is preprocessing, feature engineering, evaluation, transformation, or ETL without model training as the primary operation. Covers scripts, framework processors, Spark, custom containers, Athena, Redshift, and processing-job diagnosis. |
 | Evaluate or benchmark a trained model | [references/model-evaluation/](references/model-evaluation/) | User says "evaluate my model", "run a benchmark", "test model performance", "compare models". Supports LLM-as-Judge and Custom Scorer. |
-| Deploy, benchmark, or optimize a model on an endpoint or Bedrock | [references/model-deployment/](references/model-deployment/) | User says "deploy my model", "create an endpoint", or "make it available" (plain deploy) — or, for the inference-optimization sub-workflows on SageMaker Real-Time Endpoints only, "benchmark my endpoint" / "compare benchmark runs" (benchmarking), or states a performance/cost/latency/throughput goal for a new deployment such as "find the cheapest instance" (recommendations). Handles Nova vs OSS deployment pathways. |
+| Deploy, benchmark, or optimize a model on an endpoint or Bedrock | [references/model-deployment/](references/model-deployment/) | User says "deploy my model", "create an endpoint", or "make it available" (plain deploy) — or, for the inference-optimization sub-workflows on SageMaker Real-Time Endpoints only, "benchmark my endpoint" / "compare benchmark runs" (benchmarking), or states a performance/cost/latency/throughput goal for a new deployment such as "find the cheapest instance", or asks for an AI Recommendation Job or to right-size a model already on an endpoint (recommendations). Handles Nova vs OSS deployment pathways. |
 | Set up IAM roles, S3 buckets, SDK configuration | [references/sdk-getting-started/](references/sdk-getting-started/) | User says "set up", "getting started", "check my environment", "configure SDK", or as first step in any plan involving SageMaker training/evaluation/deployment. |
 | Manage project directory and artifacts | [references/directory-management/](references/directory-management/) | Starting a new project, resuming existing one, or when PLAN.md needs to be associated with a project directory. |
 | Set up, update, or delete a SageMaker Managed MLflow app | [references/manage-mlflow/](references/manage-mlflow/) | User says "set up MLflow", "create MLflow app", "update my MLflow app", "delete my MLflow app", "I need an MLflow server", asks "what is SageMaker MLflow", or a workflow needs an MLflow backend and none is connected. |
 | Diagnose a failing or unhealthy SageMaker endpoint | [references/endpoint-diagnostics/](references/endpoint-diagnostics/) | User reports endpoint errors, latency, inference failures, or a deployment that failed. "What's the status of my endpoint?", "Is my endpoint erroring?", "My endpoint failed — why?", "How many instances are running behind my endpoint?", "Is the latency my model or SageMaker?", "Show me the container logs for my endpoint." NOT for training-job issues, endpoint deletion, scaling changes, or new deployments. |
+| Run commands on SageMaker HyperPod cluster nodes | [references/hyperpod/](references/hyperpod/) | User has a HyperPod cluster (EKS or Slurm) and wants to run a command on its nodes, for example to check GPUs or disk space, read a log or config file, or install a package. "Run nvidia-smi on my HyperPod node", "show me the slurmd log on a node in my HyperPod cluster." NOT for SageMaker training jobs, serverless fine-tuning, or endpoints (use training-jobs, finetuning, or endpoint-diagnostics). |
 
 ## Rules
 

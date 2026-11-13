@@ -20,9 +20,16 @@ python3 model-selection/scripts/get_deployable_models.py \
     SageMakerPublicHub --list-values --create-snapshot <region>
 ```
 
-The command creates a unique private temporary file and returns both `available_values` and `snapshot_file` in one JSON object. It removes the file automatically if snapshot creation fails. Record the exact `snapshot_file` value in conversation context; later commands MUST use that literal path.
+The command creates a unique private temporary file and returns four fields:
 
-The snapshot is a per-selection-session cache of compact, normalized `ListHubContents` summaries. It provides current exact keyword spellings, raw size values, and `OriginalCreationTime` without a second catalog call after confirmation. It does not contain credentials, model documents, or markdown. Reuse it only while the Hub and region remain unchanged, and delete it as described under **Snapshot cleanup**.
+- `snapshot_file`: the file to reuse for preflight and Search.
+- `available_values`: values observed in the compact `ListHubContents` keywords.
+- `canonical_values`: every value allowed by the public-Hub producer's closed contracts.
+- `canonical_rules`: how to handle language and provider, whose contracts are not closed lists.
+
+`available_values` is an observation, not an allowlist: the Hub writes at most 50 keywords per model, so a value may be absent there while still present in the Search document. Record the exact `snapshot_file` value in conversation context; later commands MUST use that literal path.
+
+The snapshot is a per-selection-session cache of compact, normalized `ListHubContents` summaries. It provides current keyword spellings, raw size values, `OriginalCreationTime`, local fallback data, and compatibility with models published before the canonical contracts. It does not contain credentials, model documents, or markdown. The canonical values and rules are static contract data returned alongside the snapshot, not inferred from it. Reuse the snapshot only while the Hub and region remain unchanged, and delete it as described under **Snapshot cleanup**.
 
 ### Private Hub
 
@@ -32,7 +39,7 @@ Run the existing discovery command without a snapshot:
 python3 model-selection/scripts/get_deployable_models.py <hub-name> --list-values <region>
 ```
 
-Both commands return a JSON object showing all unique values available for each filterable field. For example:
+The private-Hub command returns only its observed values because private Hubs have no public producer contract and continue using local filtering. For the public Hub, the same observed object appears under `available_values`, alongside `canonical_values` and `canonical_rules`. An observed values object looks like:
 
 ```json
 {
@@ -50,16 +57,19 @@ Read `use_case_spec.md` and extract the **Deployment Constraints** section. Thes
 
 > **ENFORCEMENT — read before mapping.** Apply these rules in order:
 >
-> 1. **Use ONLY the tables below.** Do not infer filter values from your own
->    knowledge of model sizes, tasks, or context lengths, and do not substitute
->    "close enough" values. The tables are the single source of truth, so the SAME
->    user words always produce the SAME filter set every run.
-> 2. **Unmapped term → ASK.** If a constraint term is not listed below, ask the
->    user a clarifying question rather than guessing.
-> 3. **Ambiguous term → offer options.** If a term is ambiguous (e.g. "qa" =
->    *question answering* or *quality assurance*), ask and offer the mapped
->    categories to choose from (e.g. "task options: chatbot/assistant,
->    summarization, classification, translation — which fits?").
+> 1. **Use only the tables and contract output below.** Do not infer size,
+>    task, context-window, or canonical metadata values from model knowledge, and
+>    do not substitute a "close enough" value. The same user words MUST produce
+>    the same filter set every run.
+> 2. **An absent observed value is still eligible.** `available_values` is the
+>    capped keyword observation, not an allowlist. If a concrete public-Hub value
+>    is absent there, keep it and let the deterministic preflight resolve it
+>    through `canonical_values` or `canonical_rules`.
+> 3. **Unknown or ambiguous → ASK.** Do not guess and do not run a fuzzy metadata
+>    search. Run the Step 2f preflight first. If it cannot produce one
+>    deterministic value, offer the candidates in its error and ask the user to
+>    choose. For an unmapped soft term such as "qa," offer the relevant table
+>    options before preflight.
 > 4. **"any" / "don't care" → no filter** for that field.
 > 5. **Pass each value in a cell as its own argument** with the same key; the
 >    filter OR-s values within a key.
@@ -109,14 +119,12 @@ image/tabular/token classification).
 | long, long documents, long context | `context_window:32k-128k` `context_window:>128k` |
 | very long, largest context | `context_window:>128k` |
 
-> Unlike `size`, `context_window` is NOT normalized by the script — it is stored
-> and matched verbatim, and the table above assumes the hub's buckets are exactly
-> `<4k` / `4k-8k` / `8k-32k` / `32k-128k` / `>128k`. Before applying a
-> context_window filter, confirm the value(s) appear in the `context_windows` list
-> from the Step 1 `--list-values` output. If the hub's buckets differ (e.g. a new
-> value like `16k`), use the matching value(s) from that list instead of a value
-> from this table — do NOT filter on a bucket that isn't in the catalog, or the
-> result will be silently empty.
+> `context_window` uses the public-Hub canonical buckets exactly: `<4k` /
+> `4k-8k` / `8k-32k` / `32k-128k` / `>128k`. A canonical bucket does not
+> need to appear in `available_values`; the preflight can resolve it directly.
+> A value outside these buckets, such as `16k`, is not canonical. Do not silently
+> substitute a bucket; run preflight and ask the user to choose from the returned
+> canonical options.
 
 ### 2d. Other fields — exact mappings
 
@@ -127,6 +135,7 @@ image/tabular/token classification).
 | | audio, speech | `data_type:audio` |
 | | multimodal | `data_type:multimodal` |
 | | tabular | `data_type:tabular` |
+| | biology, protein, protein structure | `data_type:biology` |
 | Model type | open source, open weights | `model_type:open_weights` |
 | | proprietary, closed | `model_type:proprietary` |
 | Deployment target | Bedrock | `bedrock:true` |
@@ -134,40 +143,71 @@ image/tabular/token classification).
 
 ### 2e. Concrete fields — user names the value directly
 
-For **license, language, provider, model name**, and **modalities**, do not use a
-lookup table — the user names a concrete value. Match it against the Step 1
-`--list-values` output using substring matching. The public Search adapter repeats
-this lookup against the session snapshot and sends every matching exact value;
-for example, `license:apache` searches both `@license:Apache 2.0` and
-`@license:Apache-2.0`. This explicit expansion is required until Hub license
-metadata uses one standardized spelling. If the named value is absent from the
-catalog, tell the user rather than substituting a different one.
+For **license, language, provider, model name**, and **modalities**, the user names a concrete value rather than a soft category.
+
+For the public Hub:
+
+1. Check `available_values` first. A match preserves every current keyword spelling, including legacy aliases from models published before the canonical contracts.
+2. If license, language, provider, or modality is absent, do **not** reject it. Keep the customer's value and run the Step 2f preflight. Closed fields resolve against `canonical_values`; language and provider follow `canonical_rules`.
+3. Model name is the exception: it has no producer contract. It must match an observed model name; otherwise ask the user.
+
+The preflight resolves case and known aliases. For example, `license:apache 2.0` becomes `Metadata.License = Apache-2.0`, and `language:somali` becomes `Metadata.Languages = Somali` even when neither value has a keyword. Provider is open text and is searched in the producer casings supported by the adapter.
+
+A short language token can be both a code and a language name. For example, `so` can mean the ISO code for Somali or the language named So. Do not choose one. Let preflight return both interpretations, then ask: "Did you mean Somali, or So (Democratic Republic of Congo)?" ⏸ Wait for the answer. Do not run fuzzy Search over structured metadata.
+
+For a private Hub, keep the existing rule: concrete values must appear in its Step 1 observed values because private selection has no public producer contract or metadata Search fallback.
 
 The filter keys you pass are the same for every field. Internally the adapter
 sends `data_type`, `input_modality`, `output_modality`, `model_type`, `bedrock`,
-`size`, and `context_window` as exact `Metadata.*` filters over the model
-document, and the other keys as `HubContentSearchKeywords` tags. A `size` or
-`context_window` filter can return a few models the private-Hub path would not:
-the Hub writes at most 50 keywords per model, and a model with many languages
-can run out of slots before its size or context window is written. The document
-still carries the value, so Search finds the model and the script fills in
-`size_raw` and `context_window` from the document. Present those models exactly
-like the others.
+`customization`, `license`, `provider`, `task`, `size`, `context_window`, and
+`language` as exact `Metadata.*` filters over the model document. License,
+provider, and task also include exact `HubContentSearchKeywords` alternatives:
+license and provider protect existing matches from new producer casing, while
+task preserves legacy aliases that are not values of `Metadata.Task`. The
+`name` filter uses `HubContentName`. A `size`,
+`context_window`, `language`, or `license` filter can return a few models the
+private-Hub path would not: the Hub writes at most 50 keywords per model, and a
+model with many languages can run out of slots before its remaining metadata is
+written. The document still carries every value, so Search finds the model and
+the script fills in `size_raw`, `context_window`, `license`, and the missing
+`languages` from the document. Present those models exactly like the others. A
+contract-resolved language is requestable even if no model kept it as a
+keyword; Search, not the keyword snapshot, determines whether a model carries
+it.
+
+### 2f. Preflight public-Hub values
+
+After assembling the complete public-Hub filter list, resolve it without calling Search:
+
+```bash
+python3 model-selection/scripts/search_deployable_models.py \
+    SageMakerPublicHub --snapshot-file <recorded-snapshot-path> \
+    --resolve-only <filter1> <filter2> ...
+```
+
+Preflight reads the recorded snapshot and does not call AWS, so it does not need a region argument.
+
+Handle the result as follows:
+
+- **Exit 0:** The filters are deterministic. Record every `resolution_notes` entry; it names a value absent from the keyword snapshot and the exact document value that Search will use.
+- **Unknown or ambiguous value:** The error says `Ask the user` and includes either canonical choices or language interpretations. Present those choices in one concise question and ⏸ wait. Do not substitute a value, omit the constraint, or call Search. After the user answers, replace the value and rerun this preflight.
+- **Any other error:** Report it and stop. Do not bypass preflight.
+
+This is the only value-validity gate for public-Hub Search. `available_values`
+is consulted first for compatibility, but absence there does not reject a
+contract-resolvable value.
 
 **General rules:**
 
 - If the user said "any" or "don't care" for a field, do not create a filter for it.
-- If a term is not covered by the tables above, is ambiguous (like "qa"), or is not
-  a concrete value the user named, ASK a clarifying question — and list the relevant
-  mapped options so the user can choose (for tasks: chatbot/assistant, summarization,
-  classification, translation; for size: small, medium, large,
-  very large). Do not guess.
+- If a soft term is not covered by the tables above, ASK a clarifying question and list the relevant mapped options so the user can choose (for tasks: chatbot/assistant, summarization, classification, translation; for size: small, medium, large, very large). Do not guess.
+- For a concrete public-Hub value, let preflight determine whether it is canonical, unknown, or ambiguous. Do not reject it merely because it is absent from `available_values`, and do not use a fuzzy metadata query.
 
-Present your resolved mapping to the user for confirmation before filtering:
+After preflight succeeds, present the resolved mapping to the user for confirmation. If `resolution_notes` is non-empty, explain each contract-resolved value in the mapping:
 
-> "Based on your preferences, I'll filter with these criteria: [list each mapping]. Does this look right?"
+> "Based on your preferences, I'll filter with these criteria: [list each mapping, including any canonical value resolved by preflight]. Does this look right?"
 
-⏸ Wait for user confirmation. If they disagree, adjust — but only to other values that exist in the tables above or the Step 1 catalog values.
+⏸ Wait for user confirmation. If they disagree, adjust only to a table value, an observed value, or a value the preflight resolves successfully; then rerun preflight before asking for confirmation again.
 
 ## Step 3: Retrieve and Filter Candidates
 

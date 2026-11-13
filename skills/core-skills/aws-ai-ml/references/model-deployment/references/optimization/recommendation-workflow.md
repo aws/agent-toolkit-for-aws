@@ -2,6 +2,8 @@
 
 Guide the user through creating and running an AI Recommendation Job. A recommendation job takes a model in S3, deploys it on multiple candidate instance types, benchmarks each configuration (with optional optimizations like kernel tuning and speculative decoding), and returns a ranked list of deployment options with expected performance metrics and deployable ModelPackages.
 
+An AI Recommendation Job is not a SageMaker Inference Recommender job. When the user asks for an AI Recommendation Job or deployment recommendations, use this workflow; don't call `aws sagemaker create-inference-recommendations-job` or `list-inference-recommendations-jobs` unless the user names Inference Recommender.
+
 ## Applies to
 
 (Canonical statement of what recommendations support — other references defer here.)
@@ -16,6 +18,7 @@ Guide the user through creating and running an AI Recommendation Job. A recommen
 
 First determine the model source (see **Applies to**):
 
+- **A model already on a SageMaker endpoint** — the user names an endpoint or inference component, for example to right-size it. Read `workload-from-endpoint.md`: it finds the model behind the endpoint (one of the two sources below) and sizes the workload from the endpoint's traffic.
 - **JumpStart base model** — the user names a JumpStart model id (or model-selection resolved one). No S3 URI needed; the builder resolves the JumpStart artifacts. You need a candidate **instance type** for the `Compute(...)` config (model-selection's resolved instance is a good default).
 - **Own HF-format weights in S3** — the user has their own copy in S3. You need the **Model S3 URI**.
 
@@ -105,7 +108,7 @@ Cell 2:
 - `[PERFORMANCE_METRIC]` → `cost`, `ttft-ms`, or `throughput` from Step 2
 - `[TOKENIZER]` → HuggingFace tokenizer id for the model (e.g., `meta-llama/Llama-3.2-1B`)
 
-Cell 3 (workload parameters):
+Cell 3 (workload parameters; for a model already on an endpoint, take them from `workload-from-endpoint.md`):
 
 - `[INPUT_TOKENS_MEAN]` → Average input token count from user
 - `[INPUT_TOKENS_STDDEV]` → Std dev of input tokens (default 50)
