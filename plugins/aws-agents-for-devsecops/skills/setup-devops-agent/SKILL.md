@@ -147,7 +147,7 @@ Only write after the user confirms. Write ONE server entry — never both. Insta
 
 ### Bearer config
 
-Replace `<REGION>` with the user's region. Write the region name, not `${DEVOPS_AGENT_REGION}`. Some clients, for example Codex, do not expand variables in `url`. These clients send the text as it is, and no tools load.
+Replace `<REGION>` with the user's region, for example `us-west-2`. This is the value of `DEVOPS_AGENT_REGION`. Write the region name itself, not the text `${DEVOPS_AGENT_REGION}`. Some clients, for example Codex, do not expand variables in `url`. These clients send the text as it is, and no tools load.
 
 ```json
 {
@@ -166,7 +166,7 @@ Replace `<REGION>` with the user's region. Write the region name, not `${DEVOPS_
 
 ### SigV4 config
 
-Replace `<REGION>` with the user's actual region:
+Replace `<REGION>` with the user's region, for example `us-west-2`. This is the value of `DEVOPS_AGENT_REGION`.
 
 ```json
 {
@@ -289,7 +289,7 @@ need to prompt the user to run it. Also mention that after restarting the MCP se
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| No tools visible | Token not set or Claude Code not restarted | Set `DEVOPS_AGENT_TOKEN` + `DEVOPS_AGENT_REGION`, restart |
+| No tools visible | The token is not set, or Claude Code did not restart | Set `DEVOPS_AGENT_TOKEN`, then restart. To change the region, do this setup. |
 | HTTP 401 at session start, before setup | The default config is active, and `DEVOPS_AGENT_TOKEN` is not set. The message is `Access token not configured`. Older servers send `Invalid or expired access token`. | Do this setup. The token is not expired. |
 | HTTP 401 `Invalid or expired access token` after setup | The token is not valid, is expired, or is revoked | Make a new token in the Operator Web App |
 | Works in `us-east-1` only | The default config always uses `us-east-1`. `DEVOPS_AGENT_REGION` does not change it. | Do this setup. Setup writes the region that you select into the config. |
