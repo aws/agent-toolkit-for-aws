@@ -326,7 +326,7 @@ that element entirely (use `display:none` or omit the HTML block).
     <!-- design.json's list, already empty when this unit runs on AgentCore; quote each trigger. -->
     <h3>When to revisit AgentCore</h3>
     <ul class="plain">
-      {{ FOR EACH t IN unit.agentcore_revisit_triggers }}<li>{{ t.trigger }}</li>{{ END FOR }}
+      {{ FOR EACH t IN unit.agentcore_revisit_triggers }}<li>{{ t.trigger }}{{ IF t.current === "unknown" }} The question was not answered.{{ END IF }}</li>{{ END FOR }}
     </ul>
     {{ END IF }}
     {{ ELSE }}
