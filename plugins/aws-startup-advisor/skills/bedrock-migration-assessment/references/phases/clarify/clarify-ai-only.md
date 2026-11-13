@@ -469,6 +469,6 @@ If either check fails: STOP and output: "AI-only clarify output validation faile
 Use read-merge-write (as described in `SKILL.md`) to update `.phase-status.json` in the same turn as the output message:
 
 - Set `phases.clarify` to `"completed"`
-- Set `current_phase` to `"complete"`
+- Set `current_phase` to `"design"`
 
-Output: "Clarification complete. Your answers are saved in `preferences.json`." Then stop: this skill does not yet include Design, Estimate, or Generate.
+Output: "Clarification complete. Your answers are saved in `preferences.json`." Then continue to Design (SKILL.md Step 3).

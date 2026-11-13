@@ -1,0 +1,171 @@
+# AI Migration Guardrails
+
+> Canonical guardrails for every agentic migration path. Source-cloud agnostic:
+> these are Bedrock/AgentCore constraints, not source-provider facts.
+> Vendored into each consuming skill as
+> `references/vendored/ai/ai-migration-guardrails.md` and kept byte-identical by
+> `shared:check`; edit HERE, then run `shared:sync`.
+
+Shared warnings and constraints for all agentic migration paths. Loaded once by `design-ai.md` when `agentic_profile.is_agentic == true`. Path-specific design references (Harness, Strands, retarget) should NOT duplicate these — reference this file instead.
+
+---
+
+## AgentCore Regional Availability
+
+AgentCore services have different regional footprints. Always validate via `aws___get_regional_availability` from the AWS MCP Server before recommending.
+
+**As of July 2026:**
+
+| Service                | Availability           | Regions                                                                                                                                                                                         |
+| ---------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AgentCore Runtime (GA) | All commercial regions | us-east-1, us-east-2, us-west-2, us-west-1, ap-southeast-1, ap-southeast-2, ap-northeast-1, ap-northeast-2, ap-south-1, eu-central-1, eu-west-1, eu-west-2, eu-north-1, sa-east-1, ca-central-1 |
+| AgentCore Harness (GA) | All commercial regions | Same as Runtime (GA June 2026)                                                                                                                                                                  |
+| AgentCore Memory (GA)  | All commercial regions | Same as Runtime                                                                                                                                                                                 |
+| AgentCore Gateway (GA) | All commercial regions | Same as Runtime                                                                                                                                                                                 |
+| AgentCore Policy (GA)  | 13 regions             | us-east-1, us-east-2, us-west-2, us-west-1, ap-southeast-1, ap-southeast-2, ap-northeast-1, ap-south-1, eu-central-1, eu-west-1, eu-west-2, eu-north-1, ca-central-1                            |
+
+**IMPORTANT:** These lists go stale. The `aws___get_regional_availability` call (AWS MCP Server) is the source of truth. Use the table above only as a fallback if the call fails.
+
+**If target region is unavailable for a recommended service:**
+
+1. Flag prominently in `aws-design-ai.json` → `regional_warnings[]`
+2. Suggest nearest available region as alternative
+3. Note in user summary: "[Service] is not yet available in [target region]. Nearest available: [alternative]."
+
+---
+
+## Bedrock Mantle Throughput Limits
+
+Bedrock Mantle serves OpenAI-compatible and Anthropic-compatible APIs on Bedrock.
+
+### OpenAI proprietary models (GPT-6 / GPT-5.6 / 5.5 / 5.4) — TPM only, no RPM
+
+Inference on `bedrock-mantle` for these models is governed by **two per-model, per-region quotas: input tokens per minute and output tokens per minute. There is no requests-per-minute quota.** Exceeding a TPM quota returns HTTP 429. Cached input tokens read through prompt caching **do not count** against the input-TPM quota.
+
+| Workload Volume | Risk Level | Guidance                                                                                           |
+| --------------- | ---------- | -------------------------------------------------------------------------------------------------- |
+| Low             | Low        | Default TPM quotas are ample                                                                       |
+| Medium          | Medium     | Monitor 429s against **token** throughput, not request rate; enable prompt caching                 |
+| High            | High       | Enable prompt caching first (cached input is exempt from input TPM), then request a quota increase |
+
+**Every proprietary GPT model on Bedrock has a `bedrock-runtime` path via CRIS inference profiles.** GPT-5.6 Terra and Luna (`us.`/`in.`/`global.`), and `us.`/`global.` only for GPT-5.6 Sol, GPT-6 Astra/Sol/Luna/6.1 Sol/6.1 Terra, and GPT-5.5 / GPT-5.4 (the GPT-5.6 Sol card lists no `in.` profile; per their model cards read 2026-11-06, [GPT-5.4](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html), [GPT-5.5](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html)) all list `bedrock-runtime` with Responses, Chat Completions and Converse; none has a runtime in-region form. The model cards recommend runtime for new applications. It is a legitimate endpoint option with its own quota family, and for GPT-5.6 / GPT-6 on Global CRIS it is also the cost-parity option (the GPT-5.5 / GPT-5.4 cards publish In-Region pricing only). A same-model endpoint switch is not a model change; only moving to a Bedrock-native model or `gpt-oss` carries the eval cost of a model change. Scaling levers on the mantle path, in order:
+
+1. Prompt caching (GPT-5.6 and GPT-6 on mantle; GPT-5.5 / GPT-5.4 list implicit caching on `bedrock-runtime` Responses only) — 90% off cached input and exempt from the input-TPM quota
+2. Exponential backoff with a bounded retry count (`max_retries` on the OpenAI SDK)
+3. Spreading load across minutes and ramping request rate gradually rather than bursting
+4. A Service Quotas increase for that model's input/output TPM in that region
+5. Only if the above are insufficient: change models, accepting the eval cost
+
+See `references/shared/openai-on-bedrock.md` for the endpoint, region matrix, and caching parameters.
+
+**Source:** [Get started with GPT-5.6 on Amazon Bedrock — Quotas and scaling](https://aws.amazon.com/blogs/machine-learning/get-started-with-openai-gpt-5-6-sol-terra-and-luna-on-amazon-bedrock/)
+
+### GPT-6 Astra — verify the selected endpoint's quota
+
+Astra Standard mantle is available in `us-east-1` and `us-west-2` (region availability verified 2026-09-30). Its model card lists implicit/explicit caching on
+Responses and 30-minute cache-write prices, but does not establish GPT-5.6's cached-input quota
+exemption, minimum prefix, or breakpoint rules. Verify account quotas before promising throughput.
+
+Astra runtime uses **10× output-token burndown**:
+`required_TPM = peak_input_TPM + 10 × peak_output_TPM`. Use the selected US Geo or Global CRIS quota;
+do not multiply total source TPM by ten or carry this rule over to mantle. An endpoint change also
+requires residency consent and API/capability checks from the canonical catalog.
+
+**Source:** [Astra model card, verified 2026-09-16](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html)
+
+### GPT-6.1 Terra — model-specific caching and quotas
+
+For Terra, use this subsection instead of the GPT-5.6-derived scaling assumptions above.
+Its cache-read rate is 5% of uncached input (a 95% discount), with the exact price selected
+by context tier and inference option in `bedrock-pricing-cache.md`. Verify the selected
+endpoint's account quotas and cached-token accounting before promising capacity; the Terra
+card does not establish the GPT-5.6 cached-input exemption.
+
+On runtime, the card specifies 10x output-token burndown:
+`required_TPM = peak_input_TPM + 10 * peak_output_TPM`.
+Do not apply that multiplier to Mantle or to the whole input-plus-output total.
+Retain the selected region, inference profile, and API constraints when changing endpoints.
+Compare costs against measured source spend or verified source rates.
+
+**Source:** [GPT-6.1 Terra model card, verified 2026-11-02](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-terra.html)
+
+### Other models on Mantle
+
+For non-OpenAI models served through Mantle, verify current quota dimensions and any shared-account limits in the [Mantle documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-mantle.html) before advising on throughput. Do not carry the OpenAI TPM-only model over to other providers without checking, and do not assume previously documented shared-RPM behavior still applies.
+
+---
+
+## Bedrock Mantle TPM Limits (Claude Models)
+
+Claude models on Mantle have an additional **output TPM cap** that differs by model generation:
+
+| Model Family            | Output TPM Cap                | Notes                             |
+| ----------------------- | ----------------------------- | --------------------------------- |
+| Claude 4.7+             | 2,000,000 output TPM          | Per-model cap applies             |
+| All other Claude models | No per-model output TPM limit | Standard account TPM limits apply |
+
+**Impact for migration decisions:**
+
+- For Claude migrations at medium/high volume: the 2M output TPM cap on Claude 4.7+ is the binding constraint
+- For OpenAI proprietary GPT targets: this Claude cap does not apply. Use the GPT-5.x mantle quotas or
+  Astra-specific verification above. Astra / GPT-5.6 / GPT-5.5 / GPT-5.4 all have runtime CRIS alternatives
+  with their own quotas (`us.`/`global.` prefixed ids; no runtime in-region form)
+- For `gpt-oss` targets: these do run on `bedrock-runtime`, so standard account TPM limits and the Converse-path mitigations apply
+- When output-heavy workloads (long JSON, tool outputs, multi-step reasoning) are detected, flag the relevant cap prominently; recommend `bedrock-runtime` for production **only** when the target model actually has a `bedrock-runtime` path
+
+---
+
+## AgentCore Harness (GA)
+
+- Harness is **generally available** (June 2026) in all commercial regions where AgentCore is available.
+- No separate Harness charge — pay only for underlying AgentCore capabilities (Runtime, Memory, Gateway).
+- Harness is powered by Strands Agents internally. Custom orchestration can switch from config-based to code-defined harness without rearchitecting (export to Strands-based code on the same platform).
+- Harness supports Bedrock, OpenAI, and Google Gemini models. Third-party API keys stored in AgentCore Identity token vault.
+- Model-agnostic and provider-switchable mid-session without losing context or touching agent logic.
+
+## AgentCore Policy (GA)
+
+- Policy is **generally available** (March 2026) in 13 regions.
+- Provides centralized control over agent-tool interactions via natural language policies that compile to Cedar.
+- Policies are stored in a policy engine attached to AgentCore Gateway. The gateway intercepts agent-tool traffic and evaluates each request before granting or denying access.
+- Operates outside agent code — security, compliance, and operations teams can define access rules without modifying agent code.
+- Recommend Policy when `agentic_profile.tools` contains write-capable tools (database writes, API mutations, file operations) or when the startup has compliance requirements.
+
+---
+
+## Model Lifecycle Checks
+
+Before recommending any Bedrock model in an agentic design:
+
+1. Check `references/vendored/ai/ai-model-lifecycle.md` for model status
+2. Do NOT recommend Legacy models as primary selections
+3. If a model is approaching EOL, note the date and suggest the Active successor
+
+---
+
+## Pricing Source Rules
+
+For agentic workload cost estimation:
+
+1. **Primary:** `references/vendored/ai/bedrock-pricing-cache.md` (±15-25% accuracy)
+2. **Fallback:** `references/shared/pricing-fallback.md` (cache-miss → `estimated`/`unavailable`)
+
+AgentCore Runtime and Harness pricing: consumption-based, no upfront cost. Include in estimate only if the user selects Harness or Strands path.
+
+---
+
+## Effort Estimation Rules
+
+Do NOT output fixed week estimates for agentic migrations. Output ranges with drivers:
+
+**Format:** "[low]–[high] weeks depending on [driver 1] ([value]), [driver 2] ([value]), [driver 3] ([value])"
+
+**Drivers to include:**
+
+- Agent count (from `agentic_profile.agent_count`)
+- Tool count (from `agentic_profile.tool_count`)
+- Orchestration complexity (from `agentic_profile.orchestration_pattern`)
+- Framework familiarity (team's experience with target framework)
+- Test coverage (existing tests reduce migration risk)
+
+**Example:** "2–5 weeks depending on agent count (3), tool count (8), and graph complexity (hierarchical with conditional routing)"

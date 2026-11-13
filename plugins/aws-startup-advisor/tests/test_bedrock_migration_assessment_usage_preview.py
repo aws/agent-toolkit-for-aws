@@ -266,8 +266,8 @@ def test_discover_and_clarify_wiring() -> None:
 def test_resume_rules_apply_only_to_this_skills_runs() -> None:
     skill = (BMA / "SKILL.md").read_text(encoding="utf-8")
     step0 = skill[skill.index("## Step 0"):skill.index("## Step 1:")]
-    gate = "Rules 1 to 3 apply only to a run this skill created: the user names an existing `$MIGRATION_DIR` whose `.phase-status.json` has a `migration_id` starting with `bma-` and no `owning_skill`."
-    assert step0.index(gate) < step0.index("1. If that file") < step0.index("4. Otherwise start a new run")
+    gate = "Rules 1 to 4 apply only to a run this skill created: the user names an existing `$MIGRATION_DIR` whose `.phase-status.json` has a `migration_id` starting with `bma-` and no `owning_skill`."
+    assert step0.index(gate) < step0.index("1. If that file") < step0.index("5. Otherwise start a new run")
     assert '"migration_id": "bma-MMDD-HHMM"' in CONTROLLER and "Do not write `owning_skill`" in CONTROLLER
     others = [p for p in (PLUGIN_ROOT / "skills").rglob("*.md") if BMA not in p.parents]
     ids = {m for p in others for m in re.findall(r'"migration_id": "([^"]+)"', p.read_text(encoding="utf-8"))}
