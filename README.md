@@ -64,7 +64,7 @@ For `aws-agents-for-devsecops` used to investigate incidents, review code and ex
 /aws-agents-for-devsecops:setup
 ```
 
-For `aws-continuum` that sets up AWS Continuum, reports the current whole-application security state, and prepares developer-approved, tested pull requests to fix related issues:
+For `aws-continuum` that discovers, prioritizes, validates, and remediates security risks across the software development lifecycle with AWS Continuum:
 
 ```
 /plugin marketplace add aws/agent-toolkit-for-aws
@@ -210,7 +210,7 @@ Plugins bundle the AWS MCP Server configuration and agent skills into a single i
 | [aws-agents](plugins/aws-agents/)                             | Skills for building AI agents on AWS with Amazon Bedrock and AgentCore.                                                                                                                                                                                                                                                                                                            |
 | [aws-data-analytics](plugins/aws-data-analytics/)             | Skills for data lake, analytics, and ETL workflows with S3 Tables, AWS Glue, and Athena.                                                                                                                                                                                                                                                                                           |
 | [aws-agents-for-devsecops](plugins/aws-agents-for-devsecops/) | Investigate incidents, review code and execute UAT for release readiness, scan code for vulnerabilities, and run penetration tests with [AWS DevOps Agent](https://aws.amazon.com/devops-agent/?trk=7b4b0d25-1409-441c-b914-c5d08677c376&sc_channel=ghr) and [AWS Security Agent](https://aws.amazon.com/security-agent/?trk=7b4b0d25-1409-441c-b914-c5d08677c376&sc_channel=ghr). |
-| [aws-continuum](plugins/aws-continuum/)                       | Set up AWS Continuum, understand whole-application security state, and turn related issues into developer-approved, tested pull requests.                                                                                                                                                                                                                                         |
+| [aws-continuum](plugins/aws-continuum/)                       | Discover, prioritize, validate, and remediate security risks across the software development lifecycle with AWS Continuum, right from your coding agent. See which risks are real and drive each one to a tested fix.                                                                                                                                                             |
 | [aws-startup-advisor](plugins/aws-startup-advisor/)           | Puts an AWS Startups Solutions Architect in your coding assistant. Recommends the smallest architecture for your stage, credits, and team, then can scaffold it, migrate you from Azure, Google Cloud, or Heroku, move model calls to Amazon Bedrock, investigate production incidents, answer AWS Activate credits eligibility questions, and find startup offers you can use.                                                                                                                                              |
 
 Plugins are currently available for Claude Code, Codex, Cursor, and Devin. For other agents, configure the AWS MCP Server directly and install skills from this repository.

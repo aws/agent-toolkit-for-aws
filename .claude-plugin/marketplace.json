@@ -365,7 +365,7 @@
     },
     {
       "category": "cloud",
-      "description": "Set up AWS Continuum, understand whole-application security state, and turn related issues into developer-approved, tested pull requests.",
+      "description": "Discover, prioritize, validate, and remediate security risks across the software development lifecycle with AWS Continuum, right from your coding agent. See which risks are real and drive each one to a tested fix.",
       "keywords": [
         "aws",
         "continuum",
