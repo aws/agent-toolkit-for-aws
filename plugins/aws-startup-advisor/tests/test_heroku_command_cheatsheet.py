@@ -100,8 +100,11 @@ def test_eb_shell_uses_ssm_session_not_eb_ssh() -> None:
     assert "GetParameter" not in ssm
     read = beanstalk[beanstalk.index('resource "aws_iam_role_policy" "eb_read_secrets_<app_name>"'):]
     assert ":parameter/${var.project_name}/*" in read
+    # The only managed policies on the role: the web tier, plus read-only ECR pull that the
+    # CNB path attaches so the Docker platform can fetch the pack-built image.
     assert re.findall(r'policy_arn\s+= "([^"]+)"', beanstalk) == [
-        "arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier"
+        "arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier",
+        "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
     ]
 
 
@@ -159,7 +162,9 @@ def test_eb_rows_use_the_application_name_and_basic_health() -> None:
     section = _section()
     eb = section[section.index("{{IF has_beanstalk}}"):section.index("{{IF has_fargate}}")]
     assert "--application-name {{app_name}}" not in eb
-    assert eb.count("--application-name {{EB_APPLICATION}}") == 4
+    # config, ps, releases, and the rollback row, which has one command per variant: a single
+    # shared label for Dockerfile apps and one label per process type for CNB apps.
+    assert eb.count("--application-name {{EB_APPLICATION}}") == 5
     assert "aws elasticbeanstalk describe-environment-health " not in eb
     assert (
         "aws elasticbeanstalk describe-environments --application-name {{EB_APPLICATION}}"
@@ -528,3 +533,74 @@ def test_pg_psql_rows_provision_the_ca_bundle_on_the_psql_host() -> None:
     producer = DOCS.index("curl -o config/rds-ca-bundle.pem")
     guard = DOCS.rindex('{{IF migration_approach == "interim_cutover_data_first"}}', 0, producer)
     assert "{{ENDIF}}" not in DOCS[guard:producer]
+
+
+def _row(section: str, command: str) -> str:
+    """The single table row whose Heroku column starts with `command`."""
+    rows = [line for line in section.splitlines() if line.startswith(f"| `{command}")]
+    assert len(rows) >= 1, command
+    return rows[0]
+
+
+def _rows(section: str, command: str) -> list[str]:
+    return [line for line in section.splitlines() if line.startswith(f"| `{command}")]
+
+
+CNB_GUARD = '{{IF app_containerization_method == "cnb_heroku_builder"}}'
+
+
+def test_eb_rollback_gives_each_cnb_environment_its_own_process_label() -> None:
+    # The CNB deploy registers `<base>-<process_type>` per environment, and each bundle's Entrypoint is
+    # /cnb/process/<process_type>. One label on every environment would start the web process in the
+    # worker and clock environments (or the reverse).
+    rollback = next(r for r in _rows(_section(), "heroku rollback -a {{app_name}}") if "elasticbeanstalk" in r)
+    assert CNB_GUARD in rollback
+    cnb, dockerfile = rollback.split("{{ELSE}}", 1)
+    assert "for proc in {{EB_PROCESS_TYPES}}" in cnb
+    assert "--environment-name {{project_name}}-$proc" in cnb
+    assert '--version-label <previous base>-$proc' in cnb
+    assert "<previous label>" not in cnb
+    # Dockerfile apps keep the single shared label
+    assert "for env in {{EB_ENVIRONMENT_NAMES}}" in dockerfile and "--version-label <previous label>" in dockerfile
+    # the label scheme the row relies on is the one the generated workflow writes
+    assert '--version-label "${VERSION_BASE}-${PROCESS}"' in TERRAFORM
+
+
+def test_eb_releases_row_explains_the_per_process_labels_for_cnb() -> None:
+    releases = next(r for r in _rows(_section(), "heroku releases -a {{app_name}}") if "describe-application-versions" in r)
+    assert CNB_GUARD in releases and "<base>-<process_type>" in releases
+
+
+def test_fargate_cnb_rollback_is_a_tag_change_on_image_tag_not_container_image() -> None:
+    # A buildpack app's repository is <project_name>/<heroku_app>, its tags are immutable commit SHAs,
+    # and its Terraform input is image_tag_<app_sanitized>; it has no container_image_* variable.
+    rollback = next(r for r in _rows(_section(), "heroku rollback -a {{app_name}}") if "ecs" in r or "image_tag" in r or "digest" in r)
+    assert CNB_GUARD in rollback
+    cnb, dockerfile = rollback.split("{{ELSE}}", 1)
+    assert 'image_tag_{{app_sanitized}} = "<previous tag>"' in cnb
+    assert "container_image_" not in cnb.replace("no `container_image_*` variable", "")
+    assert "latest" not in cnb
+    # Dockerfile apps keep the by-digest flow
+    assert "container_image_<app>_<process_type>" in dockerfile and "@<digest>" in dockerfile
+    releases = next(r for r in _rows(_section(), "heroku releases -a {{app_name}}") if "ecr describe-images" in r)
+    cnb_rel = releases.split("{{ELSE}}", 1)[0]
+    assert "--repository-name {{project_name}}/{{app_name}}" in cnb_rel and "commit-SHA tag" in cnb_rel
+    assert "`:latest`" not in cnb_rel
+    # the variable and repository the row names are the ones generate-terraform.md defines
+    assert "image_tag_<app_sanitized>" in TERRAFORM and 'name                 = "${var.project_name}/<heroku_app>"' in TERRAFORM
+
+
+def test_cnb_builds_pass_build_time_config_vars_by_name_only() -> None:
+    # Heroku shows every config var to the buildpacks at compile time; `pack` sees only `--env NAME`.
+    workflow = TERRAFORM.split("#### CNB variant", 1)[1].split("```yaml\n", 1)[1].split("\n```", 1)[0]
+    assert 'BUILD_ENV_NAMES: ""' in workflow
+    build = workflow.split("- name: Build image with Heroku buildpacks (no Dockerfile)", 1)[1].split("- name: Write one Dockerrun", 1)[0]
+    assert '(--env "${NAME}")' in build or '--env "${NAME}"' in build
+    assert '--publish "${BUILD_ENV_FLAGS[@]}"' in build
+    # names only: no value is ever placed in the script or on the pack command line
+    assert "--env NAME=" not in build and "--env \"${NAME}=" not in build
+    assert "secrets." in build  # shown as the only source of a value, in the step's env: block comment
+    docs = DOCS
+    for line in (l for l in docs.splitlines() if l.lstrip().startswith("pack build") and "--publish" in l):
+        assert 'BUILD_ENV_FLAGS[@]' in line, line
+    assert "Build-time config vars" in docs and "heroku config -a {{app_name}}" in docs

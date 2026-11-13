@@ -302,7 +302,7 @@ spec:
     spec:
       containers:
       - name: <process-type>
-        image: <placeholder-image>
+        image: <placeholder-image>  # CNB app (generate-terraform.md Step 5.5): <AWS_ACCOUNT_ID>.dkr.ecr.<region>.amazonaws.com/<project_name>/<heroku-app-name>:bootstrap
         resources:
           requests:
             cpu: "<from aws-design.json: aws_config.resources.requests.cpu>"
@@ -393,6 +393,17 @@ Add these sections after Prerequisites, before Data Migration:
    ```
 
 ## Deploy Workloads to EKS
+
+When any app resolves to the CNB containerization method, publish its image first. Buildpack (CNB) apps have no Dockerfile, so their image must be published before the Deployments can start. `terraform/ecr.tf` (Phase 1 apply) already created each repository. For every CNB app, before the steps below:
+
+- Publish the image, tagged by commit, to that app's repository (same `pack build … --builder heroku/builder:<tag> --platform linux/amd64 --publish` flow as the Fargate "Build and Push Container Image" step; run it on an x86 host or CI).
+- Replace the `:bootstrap` placeholder tag in that app's Deployment files with the published tag. The node role has `AmazonEC2ContainerRegistryReadOnly`, so the pods can pull it. Every process type of the app runs this same image, selected by the Deployment's `command: ["/cnb/process/<process_type>"]`.
+
+```bash
+sed -i.bak 's#:bootstrap$#:<git_sha>#' kubernetes/<heroku-app-name>-*-deployment.yaml
+```
+
+Do not `kubectl apply` a CNB Deployment while it still points at `:bootstrap`: the pod would sit in `ImagePullBackOff`.
 
 1. Create namespace:
    ```bash

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -683,6 +684,215 @@ module "network" {
         )
         self.write(".github/workflows/deploy-eb.yml", workflow)
         self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK", self.report())
+
+    CNB_PORT_PLACEHOLDER = "<eb_application_port_<app_sanitized>_web | 8080 when the app has no EB web environment>"
+
+    @classmethod
+    def source_cnb_workflow(cls, *, container_port: str = "3000", process_types: str = "web worker") -> str:
+        text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
+        section = text.split("#### CNB variant", 1)[1]
+        workflow = section.split("```yaml\n", 1)[1].split("\n```", 1)[0]
+        return (
+            workflow.replace("<target_region>", "us-east-1")
+            .replace("<project_name>/<heroku_app>", "shop/shop-api")
+            .replace("<project_name>", "shop")
+            .replace("heroku/builder:<22|24|26>", "heroku/builder:24")
+            .replace(cls.CNB_PORT_PLACEHOLDER, container_port)
+            .replace('EB_PROCESS_TYPES: "web worker"', f'EB_PROCESS_TYPES: "{process_types}"')
+        )
+
+    def test_source_cnb_workflow_passes_required_eb_workflow_check(self) -> None:
+        workflow = self.source_cnb_workflow()
+        for placeholder in ["<target_region>", "<project_name>", "<heroku_app>", "<22|24|26>", "<eb_application_port"]:
+            self.assertNotIn(placeholder, workflow, "unfilled placeholder")
+        self.assertIn("setup-pack@v6.2.2", workflow)
+        self.assertIn('"Entrypoint": "/cnb/process/${PROCESS}"', workflow)
+        self.assertNotIn('"Command"', workflow)
+        code = "\n".join(line for line in workflow.splitlines() if not line.lstrip().startswith("#"))
+        self.assertNotIn("8080", code, "a web app's bundles carry the customer port, never a literal")
+        self.assertIn('"ContainerPort": "${EB_CONTAINER_PORT}"', workflow)
+        self.assertIn('EB_CONTAINER_PORT: "3000"', workflow)
+        self.write(".github/workflows/deploy-eb.yml", workflow)
+        report = validator.validate(self.root, require_eb_workflow=True)
+        self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
+        self.assertEqual(self.cli("--require-eb-workflow", "--json", "-").returncode, 0)
+
+    def test_source_cnb_workflow_with_build_time_secrets_passes_the_required_check(self) -> None:
+        # The documented way to pass build-time config vars: names in BUILD_ENV_NAMES, values from
+        # GitHub secrets in a block-style `env:` on the build step. The mandatory checker must still pass.
+        workflow = self.source_cnb_workflow().replace('BUILD_ENV_NAMES: ""', 'BUILD_ENV_NAMES: "NPM_TOKEN RAILS_MASTER_KEY"')
+        marker = "      - name: Build image with Heroku buildpacks (no Dockerfile)\n"
+        self.assertEqual(workflow.count(marker), 1)
+        workflow = workflow.replace(
+            marker,
+            marker + "        env:\n          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}\n          RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}\n",
+        )
+        code = "\n".join(line for line in workflow.splitlines() if not line.lstrip().startswith("#"))
+        # names only: no value on any pack argument or in the script
+        self.assertIn('--env "${NAME}"', code)
+        self.assertNotRegex(code, r"--env\s+\S*=")
+        self.assertNotIn("NPM_TOKEN=", code)
+        self.write(".github/workflows/deploy-eb.yml", workflow)
+        report = validator.validate(self.root, require_eb_workflow=True)
+        self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
+
+    def test_source_cnb_workflow_worker_only_app_has_a_resolved_container_port(self) -> None:
+        # A worker-only EB app has no eb_application_port_<app>_web variable; its bundles
+        # carry the documented 8080 constant, never an unresolved placeholder.
+        workflow = self.source_cnb_workflow(container_port="8080", process_types="worker")
+        self.assertNotIn("<eb_application_port", workflow)
+        self.assertNotIn("EB_WEB_PORT", workflow)
+        self.assertIn('EB_CONTAINER_PORT: "8080"', workflow)
+        self.assertIn('EB_PROCESS_TYPES: "worker"', workflow)
+        self.write(".github/workflows/deploy-eb.yml", workflow)
+        report = validator.validate(self.root, require_eb_workflow=True)
+        self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
+        bundle = subprocess.run(
+            ["bash", "-c", 'for PROCESS in ${EB_PROCESS_TYPES}; do printf \'%s\' "${EB_CONTAINER_PORT}:${PROCESS}"; done'],
+            env={"PATH": os.environ["PATH"], "EB_PROCESS_TYPES": "worker", "EB_CONTAINER_PORT": "8080"},
+            capture_output=True, text=True, check=True,
+        )
+        self.assertEqual(bundle.stdout, "8080:worker")
+
+    def test_source_cnb_workflow_pins_amd64_and_unique_rerun_labels(self) -> None:
+        workflow = self.source_cnb_workflow()
+        build = workflow.split("- name: Build image with Heroku buildpacks", 1)[1].split("- name: Write one Dockerrun", 1)[0]
+        self.assertIn("--platform linux/amd64 --publish", build)
+        self.assertIn("docker manifest inspect --verbose", build)
+        self.assertIn("exit 1", build, "an existing tag of another architecture must stop the run")
+        deploy = workflow.split("- name: Create one application version per process type and deploy it", 1)[1]
+        self.assertIn('VERSION_BASE="${GITHUB_SHA}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"', deploy)
+        text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
+        dockerfile_variant = text.split("### `.github/workflows/deploy-eb.yml`", 1)[1].split("```yaml\n", 1)[1].split("\n```", 1)[0]
+        self.assertIn('VERSION_LABEL="${GITHUB_SHA}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"', dockerfile_variant)
+        self.assertNotIn("linux/amd64` only and the generated workflows run `pack build` without `--platform`", text)
+        docs = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-docs.md").read_text()
+        publishing = [line for line in docs.splitlines() if line.lstrip().startswith(("pack build", "|| pack build")) and "--publish" in line]
+        self.assertTrue(publishing)
+        for line in publishing:
+            with self.subTest(line=line):
+                self.assertIn("--platform linux/amd64", line)
+        self.assertNotIn("EB_WEB_PORT", docs)
+        self.assertNotIn("EB_WEB_PORT", text)
+
+    def test_partial_estate_dockerfile_apps_is_a_preferences_contract_field(self) -> None:
+        # Q12b's partial follow-up stores the confirmed per-app Dockerfile status; the
+        # preferences contract (clarify-assemble.md fenced template) must accept it as a
+        # string array and keep rejecting other shapes.
+        seed = json.loads((PLUGIN / "fixtures/heroku-workshop/seed/preferences.json").read_text())
+        seed["operational"]["containerization_status"] = "partial"
+        seed["operational"]["containerization_method"] = "cnb_heroku_builder"
+        for value, expected in [(["app-a", "app-b"], 0), ("app-a", 1)]:
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as root:
+                seed["operational"]["dockerfile_apps"] = value
+                (Path(root) / "preferences.json").write_text(json.dumps(seed))
+                result = subprocess.run(
+                    [sys.executable, str(PLUGIN / "scripts/validate-artifacts.py"), "--run-dir", root, "--skill", "heroku-to-aws"],
+                    capture_output=True, text=True,
+                )
+                self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+        interview = (PLUGIN / "skills/heroku-to-aws/references/phases/clarify/clarify-interview.md").read_text()
+        self.assertIn("operational.dockerfile_apps", interview)
+        for doc in ["generate/generate-terraform.md", "generate/generate-docs.md", "design/design-mapping.md", "clarify/clarify-assemble.md"]:
+            with self.subTest(doc=doc):
+                self.assertIn("dockerfile_apps", (PLUGIN / "skills/heroku-to-aws/references/phases" / doc).read_text())
+
+    def test_cnb_image_tag_bootstraps_before_the_image_exists(self) -> None:
+        # The same root creates the ECR repository, so the first apply must succeed with no
+        # published image: the tag defaults to "" and the service runs zero tasks until set.
+        text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
+        variables = text[: text.index("## Step 3")]
+        block = variables.split('variable "image_tag_<app_sanitized>"', 1)[1].split("\n}\n", 1)[0]
+        self.assertIn('default     = ""', block)
+        self.assertIn('var.image_tag_<app_sanitized> == "" ||', block)
+        compute = text[text.index("## Step 6: Generate `compute.tf`") : text.index("## Step 6.5: Generate `beanstalk.tf`")]
+        self.assertIn('coalesce(var.image_tag_<app_sanitized>, "bootstrap")', compute)
+        self.assertIn('var.image_tag_<app_sanitized> == "") ? 0 :', compute)
+        docs = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-docs.md").read_text()
+        phase_1 = docs[docs.index("## Phase 1:") : docs.index("## Phase 2:")]
+        self.assertIn("First deployment of buildpack (CNB) apps on Fargate", phase_1)
+        self.assertIn("`image_tag_<app_sanitized>` unset", phase_1)
+        hcl = block.replace("<app_sanitized>", "shop_api").replace("<heroku_app>", "shop-api").replace("<app_name>", "shop_api") + "\n}\n"
+        terraform = shutil.which("terraform")
+        if terraform is None:
+            self.skipTest("terraform not installed")
+        with tempfile.TemporaryDirectory() as root:
+            (Path(root) / "variables.tf").write_text('variable "image_tag_shop_api"' + hcl)
+            env = {**os.environ, "TF_IN_AUTOMATION": "1", "TF_INPUT": "0"}
+            subprocess.run([terraform, "init", "-backend=false", "-input=false"], cwd=root, env=env, capture_output=True, check=True)
+            unset = subprocess.run([terraform, "plan", "-input=false"], cwd=root, env=env, capture_output=True, text=True)
+            self.assertEqual(unset.returncode, 0, unset.stderr)
+            published = subprocess.run([terraform, "plan", "-input=false", "-var", "image_tag_shop_api=0123abcd"], cwd=root, env=env, capture_output=True, text=True)
+            self.assertEqual(published.returncode, 0, published.stderr)
+            invalid = subprocess.run([terraform, "plan", "-input=false", "-var", "image_tag_shop_api=not a tag"], cwd=root, env=env, capture_output=True, text=True)
+            self.assertNotEqual(invalid.returncode, 0)
+
+    def test_source_dockerfile_workflow_passes_required_eb_workflow_check(self) -> None:
+        text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
+        section = text.split("### `.github/workflows/deploy-eb.yml`", 1)[1]
+        workflow = section.split("```yaml\n", 1)[1].split("\n```", 1)[0]
+        workflow = workflow.replace(
+            "<space-separated EB environment names of the push target from aws-design.json>", "app-web app-worker",
+        )
+        self.write(".github/workflows/deploy-eb.yml", workflow)
+        report = validator.validate(self.root, require_eb_workflow=True)
+        self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
+
+    def test_cnb_deploy_step_cannot_absorb_the_bundle_heredoc(self) -> None:
+        # The previous single-step shape (heredoc + ${PAIR%%=*} + cd inside the deploy
+        # loop) is exactly what the bounded checker must keep rejecting.
+        workflow = self.source_cnb_workflow()
+        deploy_marker = "      - name: Create one application version per process type and deploy it\n        run: |\n"
+        head, deploy = workflow.split(deploy_marker, 1)
+        bundle_marker = "      - name: Write one Dockerrun bundle per process type\n        run: |\n"
+        before_bundle, bundle = head.split(bundle_marker, 1)
+        merged = before_bundle + deploy_marker + bundle.rstrip("\n") + "\n" + deploy
+        self.write(".github/workflows/deploy-eb.yml", merged)
+        report = validator.validate(self.root, require_eb_workflow=True)
+        rules = {item["rule"] for item in report["findings"]}
+        self.assertIn("workflow_run_unverified", rules, report)
+        self.assertIn("eb_deploy_missing", rules, report)
+        for body in [
+            'for PAIR in "app-web=web"; do\n  ENVIRONMENT="${PAIR%%=*}"\n'
+            "  aws elasticbeanstalk update-environment --environment-name \"${ENVIRONMENT}\" --version-label abc\ndone",
+            'cat > Dockerrun.aws.json <<JSON\n{}\nJSON\n'
+            "aws elasticbeanstalk update-environment --environment-name app-web --version-label abc",
+        ]:
+            with self.subTest(body=body):
+                self.write(".github/workflows/deploy-eb.yml", """jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+""" + "\n".join("          " + line for line in body.splitlines()) + "\n")
+                self.assertIn("workflow_run_unverified", self.rules())
+
+    def test_cnb_ecr_and_fargate_image_do_not_depend_on_beanstalk_step(self) -> None:
+        # ecr.tf must be emitted for all-Fargate CNB plans, so it lives in its own step
+        # ahead of compute.tf rather than inside the EB-only Step 6.5; the Fargate task
+        # composes the image from the repository resource (a variable cannot).
+        text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
+        step_55 = text.index("## Step 5.5: Resolve the containerization method per app and generate `ecr.tf`")
+        step_6 = text.index("## Step 6: Generate `compute.tf`")
+        step_65 = text.index("## Step 6.5: Generate `beanstalk.tf`")
+        self.assertLess(step_55, step_6)
+        self.assertIn("### `ecr.tf`", text[step_55:step_6])
+        self.assertNotIn("### `ecr.tf`", text[step_65:])
+        self.assertNotIn("ecs.tf", text)
+        compute = text[step_6:step_65]
+        self.assertIn('image = "${aws_ecr_repository.<app_name>.repository_url}:${coalesce(var.image_tag_<app_sanitized>, "bootstrap")}"', compute)
+        self.assertIn('entryPoint  = ["/cnb/process/<process_type>"]', compute)
+        self.assertNotIn("command = [", compute)
+        self.assertIn('variable "image_tag_<app_sanitized>"', text[: text.index("## Step 3")])
+        cnb_rules = text[text.index("**CNB variant rules:**") : text.index("### `pipeline.tf`")]
+        self.assertIn('`ecr:GetAuthorizationToken` on `"Resource": "*"`', cnb_rules)
+        self.assertIn("`ecr:BatchGetImage`", cnb_rules)
+        self.assertNotIn("EB_TARGETS", text)
+        docs = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-docs.md").read_text()
+        self.assertIn('`ecr:GetAuthorizationToken` with `"Resource": "*"`', docs)
+        self.assertIn("`ecr:BatchGetImage`", docs)
+        design = (PLUGIN / "skills/heroku-to-aws/references/phases/design/design-mapping.md").read_text()
+        self.assertIn("cnb_architecture_x86", design)
 
     def test_source_deploy_and_promote_pair_passes_as_emitted(self) -> None:
         text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()

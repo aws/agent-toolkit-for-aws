@@ -52,7 +52,7 @@ _postconditions:
     _on_failure: _halt_and_inform
   - _assert: "metadata.total_services matches services[].length"
     _on_failure: _halt_and_inform
-  - _assert: "no Fir-specific Terraform (ARM/Graviton, CNB) appears anywhere in output"
+  - _assert: "no Fir-specific Terraform (ARM/Graviton instance targeting, Fir builder project.toml) appears anywhere in output; Cedar containerization via pack build (containerization_method cnb_heroku_builder) is not Fir-specific"
     _on_failure: _halt_and_inform
 _forbids_files:
   - README.md

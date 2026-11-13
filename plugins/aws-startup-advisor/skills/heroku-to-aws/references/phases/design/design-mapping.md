@@ -64,6 +64,7 @@ Extract from `preferences.json`:
 Resolve once before mapping formations:
 
 1. `cpu_architecture` = `preferences.workshop.cpu_architecture` if set, else `"x86_64"`.
+   - **CNB override (per app):** when `preferences.operational.containerization_method == "cnb_heroku_builder"` and the formation's app resolves to CNB per app (`apps[].stack` other than `"container"` **and** the app is not listed in `preferences.operational.dockerfile_apps[]`, and `containerization_status` is not `"containerized"` — the same rule as `generate-terraform.md` Step 5.5 § "Containerization method per app"), use `"x86_64"` for that app's formations regardless of the preference, and append warning `cnb_architecture_x86` naming the app once: "App `{heroku_app}` is built with Cloud Native Buildpacks; the generated build publishes a linux/amd64 image (`pack build --platform linux/amd64`; `heroku/builder:22` is amd64-only and `:24`/`:26` are multi-arch), so its formations stay on x86_64." Apps that ship their own Dockerfile (`stack == "container"` or listed in `dockerfile_apps`) follow the preference as usual.
 2. When `"arm64"`:
    - **Elastic Beanstalk**: use `ec2_instance_type_arm64` from the matched `dyno-eb-sizing.json` row when present; else use `ec2_instance_type` and append warning `architecture_fallback_x86` naming the formation.
    - **Fargate**: set `aws_config.cpu_architecture` to `"ARM64"` (task size from `dyno-fargate-sizing.json` unchanged — Fargate ARM is a runtime arch flag). Prefer Estimate rates `fargate.per_vcpu_hour_arm64` / `per_gb_mem_hour_arm64` when present.
@@ -704,14 +705,14 @@ After all resources are mapped:
 
 2. **If Fir workloads exist**:
    - Add each Fir app name to `metadata.fir_workloads_detected[]`.
-   - Set `metadata.fir_generation_note`: "Fir-generation workloads detected. No Fir-specific Terraform (ARM/Graviton instance targeting, CNB buildpack configuration) is generated in v1. These workloads are deferred to a future version."
+   - Set `metadata.fir_generation_note`: "Fir-generation workloads detected. No Fir-specific Terraform (ARM/Graviton instance targeting, Fir builder `project.toml` configuration) is generated in v1. These workloads are deferred to a future version."
    - Add a warning: "Fir-generation workloads deferred to future version: {comma-separated app names}"
 
 3. **If NO Fir workloads**:
    - Set `metadata.fir_workloads_detected` to `[]`.
    - Set `metadata.fir_generation_note`: "No Fir workloads detected; all Cedar generation."
 
-4. **CRITICAL CONSTRAINT**: Do NOT produce ARM/Graviton instance targeting or CNB buildpack configuration in ANY output, regardless of `heroku_generation` value. Fir detection is **detect-only** in v1.
+4. **CRITICAL CONSTRAINT**: Do NOT produce ARM/Graviton instance targeting or Fir-specific buildpack configuration (Fir builder `project.toml`, Fir-only process definitions) in ANY output, regardless of `heroku_generation` value. Fir detection is **detect-only** in v1. This constraint is about Fir. It does not cover `preferences.operational.containerization_method == "cnb_heroku_builder"`, which uses Cloud Native Buildpacks to containerize **Cedar** apps for AWS compute; Generate emits that path normally. CNB apps are pinned to x86_64 by the "CPU architecture resolution" step above (warning `cnb_architecture_x86`), not by this constraint.
 
 ---
 

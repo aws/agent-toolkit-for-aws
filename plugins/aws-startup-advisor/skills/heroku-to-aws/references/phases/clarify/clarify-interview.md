@@ -37,6 +37,7 @@ Check `$MIGRATION_DIR/` for existing state:
     - A field holding a value with **no** `sources` entry and no `chosen_by` has no provenance. Do not guess — stop, report which field, and offer option 2 (start fresh). This is the state the Validation Checklist would have rejected anyway; failing here names the field.
   - **Present and empty**: the Decision gate's "Confirm execution choices" already ran and rewrote those `sources` entries to `"user"`. Accept as-is — do not re-list the IDs.
   - **Present and non-empty**: accept as-is.
+  - **Legacy partial Dockerfile status.** When `operational.containerization_status` is `"partial"` and `operational.dockerfile_apps` is absent (written before the field existed), ask only the Q12b follow-up (the "Which apps already have a Dockerfile?" prompt below), offering the inventory `container`-stack apps as the pre-filled answer. Store the confirmed list as `operational.dockerfile_apps` with the follow-up's validation, and leave every other answer untouched. If the user declines to answer, write the `container`-stack apps only (the Generate fallback) and say so.
   This normalization rebuilds a missing index over existing answers; it writes nothing to `questions_asked` or `questions_defaulted`, and the only values it writes are the documented default and `"default"` provenance for a question that never fired.
 - If 2: Delete `preferences.json`, continue to Step 1.
 
@@ -110,6 +111,7 @@ Compute `fast_path_question_count` from this table against the inventory and use
 - `migration_approach`: `full_cutover`
 - `migration_method`: `pg_dump_restore`
 - `containerization_status`: `buildpack_only`
+- `containerization_method`: `cnb_heroku_builder`
 - `database_ha`: matches Q3 availability
 - `redis_ha`: `true` (unless § Extraction Rules read a `mini`/hobby Redis tier — then the proposed `false` is the applied default, still recorded under `Q7` in `metadata.questions_defaulted`)
 - `dns_strategy`: `route53`
@@ -152,6 +154,7 @@ Before generating questions, scan the inventory to determine which questions app
 | Q10 — DNS strategy                   | Always                                                           | Never                                     |
 | Q11 — Fir intent                     | At least one app has `heroku_generation == "fir"`                | No Fir-generation apps                    |
 | Q12b — Containerization status       | Always                                                           | Never                                     |
+| Q12e — Containerization method       | Q12b answer is `buildpack_only` or `partial`                     | Every app already has a Dockerfile        |
 | Q12c — Compute target recommendation | Always                                                           | Never                                     |
 | Q12d — EB deploy method              | **Deferred to Generate** — defaulted here when the Q12c plan includes EB, asked at [C] Generate | All-Fargate/EKS plan, or never asked in Clarify |
 | Q12e — Release strategy              | Q12c plan routes a `web` formation to Fargate AND `dns_strategy` is `external` AND no Private Space | No Fargate web formation, or `dns_strategy` is `route53`, or a Private Space is detected (standard ECS forced) |
@@ -582,7 +585,9 @@ built.
 
 **Default:** 1 → `design_constraints.eb_deploy_method: { "value": "github_actions", "chosen_by": "default" }`
 
-**Generate impact:** `"github_actions"` emits `.github/workflows/deploy-eb.yml` and the approval-gated `promote.yml` (the `pipelines:promote` equivalent); `"codepipeline"` emits `terraform/pipeline.tf`; `"manual"` emits neither automation artifact and keeps the CLI path in `MIGRATION_GUIDE.md`.
+**Validate (CNB):** when `operational.containerization_method` is `"cnb_heroku_builder"` and any app with an EB formation in the resolved compute plan resolves to CNB per app (inventory `stack` other than `"container"` **and** not listed in `operational.dockerfile_apps[]` — the same per-app rule as `generate-terraform.md` Step 5.5 § "Containerization method per app"), option 2 is **not offered**. An estate whose only CNB apps run on Fargate while every EB app has a Dockerfile keeps option 2: CodePipeline deploys those Dockerfile apps and `pipeline.tf` is emitted for them. Present only options 1 and 3 and add: "CodePipeline is unavailable for buildpack apps: its deploy stage hands the source tree straight to Elastic Beanstalk with no build step, so there is no image and no `Dockerrun.aws.json` to deploy. GitHub Actions builds the image with `pack`; the manual path documents the same steps." An answer of 2 in that case is invalid — re-ask with that sentence; never store `codepipeline` alongside CNB. Generate halts on the combination if a stale preferences file carries it.
+
+**Generate impact:** `"github_actions"` emits `.github/workflows/deploy-eb.yml` (the `pack`/Dockerrun variant for CNB apps) and the approval-gated `promote.yml` (the `pipelines:promote` equivalent); `"codepipeline"` emits `terraform/pipeline.tf` (Dockerfile apps only); `"manual"` emits neither automation artifact and keeps the CLI path in `MIGRATION_GUIDE.md` (with a `pack build` + Dockerrun bundle variant for CNB apps).
 
 ---
 
@@ -842,7 +847,76 @@ Ask:
 
 **Default:** 2 → `containerization_status: "buildpack_only"`
 
-**Design impact:** Options 2 and 3 trigger a "Containerization Prerequisites" section in the MIGRATION_GUIDE.md with Procfile→Dockerfile guidance for common buildpacks (Ruby, Node.js, Python, Go, Java). Does not change design mappings. EB and Fargate Docker paths both require a Dockerfile/source bundle; EKS also requires containerization.
+**Follow-up when the answer is 3 (`partial`) — which apps have a Dockerfile:** list the
+inventory `apps[].app_name` values and ask which of them already have a Dockerfile in their
+repository. Pre-select every app whose inventory `stack` is `"container"` (Heroku only
+runs those from a Dockerfile) and let the user add any app that still runs a buildpack
+stack (`heroku-22`/`-24`/`-26`) but has a Dockerfile prepared for the migration:
+
+> Which apps already have a Dockerfile? (Container-stack apps are included automatically;
+> add any app whose repository has a Dockerfile even though it still runs a Heroku
+> buildpack stack today.)
+>
+> `<app-a>`, `<app-b>`, …
+
+Store the confirmed names as `operational.dockerfile_apps: ["<app>", …]`. Validate: every
+name is an inventory `apps[].app_name`, every `container`-stack app is included, and the list is
+neither empty nor every app (otherwise the answer is really 1 or 2 — re-ask Q12b with that
+hint). Write the array only when `containerization_status` is `"partial"`. The inventory
+`stack` is a source fact about what Heroku runs today; this array is the user's confirmed
+per-app Dockerfile status, and Generate resolves the method per app from
+`stack == "container"` **or** membership here (`generate-terraform.md` Step 5.5
+§ "Containerization method per app"). It is not asked on the fast path (which defaults
+Q12b to `buildpack_only`).
+
+**Design impact:** Options 2 and 3 trigger Q12e and a "Containerization Prerequisites" section in the MIGRATION_GUIDE.md — Procfile→Dockerfile guidance for common buildpacks (Ruby, Node.js, Python, Go, Java) when Q12e is `dockerfile`, `pack`/Heroku-builder guidance when it is `cnb_heroku_builder`. Does not change design mappings. EB and Fargate Docker paths both require a Dockerfile/source bundle; EKS also requires containerization.
+
+---
+
+#### Q12e — Containerization Method
+
+> _Fires only when Q12b is `buildpack_only` or `partial`._
+>
+> Your apps are built by Heroku buildpacks today. AWS compute runs container images, so
+> each app needs one. Two ways to get there:
+>
+> 1. Cloud Native Buildpacks with the Heroku builder (recommended) — `pack build` with
+>    the Heroku builder image that matches the app's stack (`heroku/builder:22`, `:24` or `:26`) produces a container image using the same buildpacks Heroku
+>    uses, from the same source, with no Dockerfile. The Procfile process types become
+>    the image's processes. The generated deploy workflow does this for every app.
+> 2. Write a Dockerfile per app — full control over the base image and build; one file
+>    to author and maintain for each app.
+
+**Interpret:**
+
+- 1 → `containerization_method: "cnb_heroku_builder"`
+- 2 → `containerization_method: "dockerfile"`
+
+**Default:** 1 → `containerization_method: "cnb_heroku_builder"`. When Q12b is
+`containerized`, write `containerization_method: "dockerfile"` without asking.
+
+**Scope in a `partial` estate:** the answer covers the **apps without a Dockerfile only**.
+The apps the Q12b follow-up stored in `operational.dockerfile_apps[]` (every
+`container`-stack app plus any buildpack-stack app whose repository already has a
+Dockerfile) keep their Dockerfile; Generate resolves them to `"dockerfile"` per app
+regardless of this value (`generate-terraform.md` Step 5.5 § "Containerization method per
+app": `stack == "container"` or listed in `dockerfile_apps`) and never runs `pack build`
+for them. Say so when Q12b is `partial`, naming them: "`<dockerfile_apps>` keep their
+Dockerfiles; this choice is for the remaining buildpack apps."
+
+**Registry constraint:** the CNB deploy path publishes to and pulls from Amazon ECR
+(`pack build --publish`, EB instance role with ECR read access). Option 1 therefore
+requires Q12 → `ecr`; Q12 enforces this.
+
+**Design impact:** `cnb_heroku_builder` makes Generate emit `pack build` instead of
+`docker build` in each buildpack app's deploy workflow and Fargate build steps, an
+`ecr.tf` with one repository per buildpack app, and Elastic Beanstalk `Dockerrun.aws.json`
+bundles that reference the image in ECR with `Entrypoint: /cnb/process/<process_type>`
+selecting the process. The Containerization Prerequisites section of `MIGRATION_GUIDE.md`
+then explains `pack` instead of Procfile-to-Dockerfile patterns. Q12d loses its
+CodePipeline option for CNB apps (the pipeline has no build stage). This is unrelated to
+Fir-generation detection: Fir apps stay detect-only; this option concerns how Cedar apps
+are containerized for AWS.
 
 ---
 
@@ -859,6 +933,8 @@ Ask:
 - 2 → `container_registry: "external"`
 
 **Default:** 1 → `container_registry: "ecr"`
+
+**Validate (CNB):** when Q12e stored `containerization_method: "cnb_heroku_builder"`, option 2 is **not offered**. Present option 1 with: "Your buildpack apps are built by `pack` and published to ECR; Elastic Beanstalk and Fargate pull them with their ECR permissions. An existing registry is not supported for that path — choose a Dockerfile in Q12e if you need one." An answer of 2 in that case is invalid — re-ask with that sentence and never store `external` alongside `cnb_heroku_builder`. Generate halts on the combination if a stale preferences file carries it (`generate-terraform.md` Step 5.5), so the contradiction is resolved here, before it is written.
 
 ---
 
@@ -949,7 +1025,9 @@ value will be rounded up this way.
 | Q9b — VPC ID              | _(no default — must ask if applicable)_ | —                                                                                                           |
 | Q10 — DNS                 | 1 (Route 53)                            | `dns_strategy: "route53"`                                                                                   |
 | Q11 — Fir intent          | 1 (exit Heroku)                         | `fir_intent: "exit_heroku"`                                                                                 |
-| Q12b — Containerization   | 2 (buildpack_only)                      | `containerization_status: "buildpack_only"`                                                                 |
+| Q12b — Containerization   | 2 (buildpack_only)                      | `containerization_status: "buildpack_only"` (no `dockerfile_apps`; the follow-up fires only on an explicit `partial` answer) |
+| Q12e — Containerization method | 1 (CNB, Heroku builder)            | `containerization_method: "cnb_heroku_builder"` (`"dockerfile"` without asking when Q12b is `containerized`) |
+
 | Q12c — Compute target     | 1 (use computed recommendation)         | `design_constraints.compute_target` follows the computed plan: `default: "elastic_beanstalk"` plus any `system_forced` Fargate overrides at 40 or fewer non-release formations; `default: "ecs-fargate"` with `recommendation.scale_note` at 41 or more |
 | Q12d — EB deploy method   | 1 (GitHub Actions)                      | `eb_deploy_method: "github_actions"` when resolved compute plan includes EB                                 |
 | Q12e — Release strategy   | 1 (canary)                              | `release_strategy: "canary"` when a web formation lands on Fargate with `dns_strategy: "external"`; N/A otherwise |
