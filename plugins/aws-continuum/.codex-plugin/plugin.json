@@ -1,7 +1,7 @@
 {
   "name": "aws-continuum",
   "version": "0.3.0",
-  "description": "Set up AWS Continuum, understand whole-application security state, and turn related issues into developer-approved, tested pull requests.",
+  "description": "Discover, prioritize, validate, and remediate security risks across the software development lifecycle with AWS Continuum, right from your coding agent. See which risks are real and drive each one to a tested fix.",
   "author": {
     "name": "Amazon Web Services",
     "url": "https://github.com/aws/agent-toolkit-for-aws"
@@ -21,8 +21,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "AWS Continuum",
-    "shortDescription": "Understand and fix application security issues with AWS Continuum.",
-    "longDescription": "Guide Continuum setup, show a whole-picture map of attack paths and protected assets, discuss grouped fixes with the developer, and prepare tested pull requests without ever merging them.",
+    "shortDescription": "Discover, validate, and fix security risks with AWS Continuum.",
+    "longDescription": "Discover, prioritize, validate, and remediate security risks across the software development lifecycle with AWS Continuum, right from your coding agent. See which risks are real and drive each one to a tested fix.",
     "defaultPrompt": [
       "Set up Continuum for this repository.",
       "Where do we stand on security?",
