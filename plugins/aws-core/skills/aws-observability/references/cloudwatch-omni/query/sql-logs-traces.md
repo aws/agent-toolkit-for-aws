@@ -50,7 +50,7 @@ span columns on `traces.default`; filtering on them against `traces.default` ret
 without error, indistinguishable from "no evaluations ran" — see agent-evaluation.md's "Query
 surface" section.
 
-**Metrics are not in this table.** Metrics are not SQL — they are queried with PromQL, and there is no `metrics.default` `FROM` target. See [promql-metrics.md](promql-metrics.md) for the PromQL surface, label conventions, and per-service metric catalog.
+**Metrics are not in this table.** Metrics are not SQL — they are queried with PromQL, and there is no `metrics.default` `FROM` target. Classic CloudWatch metrics (custom metrics, vended metrics without OTel enrichment, and usage metrics such as `AWS/Logs` `IncomingBytes`) are not in CloudWatch Omni at all: Omni's PromQL surface has no `GetMetricData` or Metrics Insights route behind it. Counting or sizing records in `logs.default` does not reproduce them, so do not offer it even as an approximation; read them in CloudWatch ([promql-metrics.md](promql-metrics.md), §1). See [../../cloudwatch/promql.md](../../cloudwatch/promql.md) for the PromQL surface, label conventions, and per-service metric catalog.
 
 **FROM clause quoting is flexible** — all of these are equivalent:
 

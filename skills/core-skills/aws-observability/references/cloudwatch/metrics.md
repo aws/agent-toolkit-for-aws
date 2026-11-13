@@ -1,6 +1,15 @@
-# CloudWatch Custom Metrics
+# CloudWatch Classic Metrics
 
-Publishing, querying, and managing custom metrics — EMF, PutMetricData, metric filters, and retention.
+Publishing, querying, and managing **classic** custom metrics — namespaces and dimensions, EMF,
+PutMetricData, metric filters, metric math, and retention.
+
+CloudWatch also has an **OpenTelemetry metric model** — OTLP ingestion, OTel attributes as
+labels, queried with PromQL — which is the AWS-recommended path for new custom metrics.
+Choosing between the two, ingestion, and enrichment of vended metrics are in
+[otel-metrics.md](otel-metrics.md); querying is in [promql.md](promql.md).
+PromQL does not read the classic metrics described here, and `GetMetricData` is not how to
+read an OTel metric. OTLP-ingested metrics, span-derived metrics and OTel-enriched vended
+metrics (the full set an Omni Space shows) are read with a PromQL query per [promql.md](promql.md).
 
 ## Contents
 
@@ -134,7 +143,7 @@ Publishes a metric with value 1 for each matching log event.
 
 **Key insight**: You cannot query 1-minute data from 2 months ago. It has been automatically aggregated to 5-minute resolution. High-resolution (1-second) data is only available for 3 hours.
 
-**OTel metrics**: Only **30 days** retention (public preview) — significantly shorter than traditional CloudWatch metrics (15 months).
+**OTel metrics** are also kept 15 months but are priced differently — see [otel-metrics.md](otel-metrics.md), and confirm current values in the CloudWatch documentation.
 
 ### Metric expiry
 

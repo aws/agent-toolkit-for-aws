@@ -152,7 +152,7 @@ template {
 
 **Files Changed:**
 
-- IAM role: Added CloudWatchAgentServerPolicy to `your-node-role`
+- IAM role: Added CloudWatchAgentServerPolicy to `<role>`
 - CloudWatch Observability EKS add-on: Added to the EKS Cluster
 - Kubernetes Deployment: Instrumentation annotation added with inject-python set to true
 

@@ -17,7 +17,7 @@ restate them:
   roles each edge type assigns.
 - **Metrics (RED / USE)** — the exact PromQL, the gauge-vs-counter read, the **per-service
   signal catalog (§5)**, and the empty-series rules are in
-  [query/promql-metrics.md](query/promql-metrics.md). Do not duplicate a selector here;
+  [../cloudwatch/promql.md](../cloudwatch/promql.md). Do not duplicate a selector here;
   for a specific resource type (EC2, RDS, Lambda, …) take the resource-specific signals and
   their aggregation from that §5 catalog rather than the generic USE shape below.
 - **Failed / slow spans and logs** — the SQL over `traces.default` / `logs.default`,
@@ -46,15 +46,19 @@ on and what role does each play," and "which services call `<service>`" are
 **observability-data questions answered from the telemetry surface and the context graph,
 not from the resource's control plane**. (A pure "what breaks if `<datastore>` goes down"
 blast-radius question is [context-graph.md](context-graph.md)'s.) Answering with the
-*methodology* — the graph call, the signals to check, the verdict rubric — is an **output
+*methodology* — the graph call, the signals to check with the PromQL that reads each one
+(gauge or counter, per the §5 catalog), the verdict rubric — is an **output
 contract**: surface every item below that applies, **whether or not** you also pull live
 numbers and **even if** no matching service exists in the account yet. Presenting a verdict
 without a telemetry check, or a dependency list without roles, is the single most common
 wrong answer here.
 
-- **Establish topology first, then confirm with telemetry — the graph localizes, queries
-  confirm.** Call `GetContextGraph` on the named service (`nodeFilters.name`, `depth: 1`,
-  `includeMetadata: true`, a window around the incident) *before* writing any query. Do
+- **Answer for the type the user named.** If the probe finds no such resource, or finds a
+  different type under that name (the user said RDS and the graph shows DynamoDB), say so
+  in one line, then still give the full check for the type the user named: its signals,
+  how each is read, and the verdict rule. Call `GetContextGraph` on the
+  named service (`nodeFilters.name`, `depth: 1`, `includeMetadata: true`, a 24-hour window
+  ending at the incident) *before* writing any query. Do
   not open with a metric scan of the fleet or a `depth: 3` sweep.
 - **A dependency list MUST carry each dependency's ROLE, not just its name.** Derive the
   role from the edge type and direction (next section): a **callee service** (`CALLS`
@@ -70,9 +74,14 @@ wrong answer here.
   the USE signals (utilization, saturation, a headroom signal, errors) plus alarm state.
   Then state the verdict **in one of exactly three words — HEALTHY, DEGRADED, or DOWN —**
   with the evidence behind it. A one-signal answer ("CPU is fine, it's healthy"), or a
-  description of signals with no explicit verdict word, does not meet the bar.
+  description of signals with no explicit verdict word, does not meet the bar. With no
+  live numbers yet, end on the verdict rule instead: which readings make it HEALTHY, which
+  DEGRADED, which DOWN.
 - **Never give a verdict from no telemetry.** A generic health answer with no metric,
-  span, or alarm check is the lowest-scoring answer there is. An empty or zero result is
+  span, or alarm check is the lowest-scoring answer there is. This is not a reason to stop
+  short: when the resource cannot be found or queried, still give each signal's query and
+  read (gauge with `avg`/`max`/`min`, never `rate()`; a headroom signal near its limit is
+  DEGRADED even when utilization looks calm) and end on the verdict rule. An empty or zero result is
   a scoping signal (wrong Region/Space, wrong window, wrong label) — never proof of
   health. Never conclude "healthy" from a missing `errorCode`, an absent metric series,
   or an empty node list.
@@ -81,7 +90,7 @@ wrong answer here.
   node (database, host, queue, cache) gets Utilization / Saturation / Errors / headroom.
   Pick the shape from the node's `nodeType` / `nodeProperties.category`, then — for a
   specific resource type (EC2, RDS, ELB, …) — take the **resource-specific** signals and
-  their aggregation from the [promql-metrics.md](query/promql-metrics.md) **§5 per-service
+  their aggregation from the [../cloudwatch/promql.md](../cloudwatch/promql.md) **§5 per-service
   catalog**, not the generic USE list: e.g. an EC2 fleet needs `StatusCheckFailed*` read
   with `max` (a 0/1 flag; averaging hides a failure), `CPUCreditBalance` with `min`
   (burstable only), grouped by `InstanceId` — those specifics live in §5, not here.
@@ -131,8 +140,7 @@ depends on `to`):
 Procedure:
 
 1. `GetContextGraph` with `nodeFilters.name = <service>`, `depth: 1`,
-   `includeMetadata: true`, and a window around the question's time (or a recent hour if
-   none was given).
+   `includeMetadata: true`, and a 24-hour window ending at the question's time (or now).
 2. Bucket `<service>`'s outbound edges by `edgeType` into the callee / datastore / runs-on
    roles above, and fetch its callers with the reverse (inbound-edge) query — see
    [context-graph.md](context-graph.md) for the traversal mechanics.
@@ -159,8 +167,9 @@ pagination, silent hub truncation, collect every page) all live there. Use it fo
 
 What is health-specific — and all you need here — is the read on an affected caller:
 **a caller whose edge to the target carries an `errorCode` or a non-2xx `httpStatusCode`
-is proven-affected**; a caller with an edge but no error fields is merely dependent, so
-confirm its state with the caller's own telemetry before calling it degraded.
+is proven-affected**; a caller with an edge but no error fields is merely dependent. For a
+who-is-affected list, label each caller this way without querying telemetry; offer that as
+the next step.
 
 ---
 
@@ -170,7 +179,7 @@ A verdict rests on several signals, chosen by whether the node is a service or a
 The RED/USE shapes below are only the *categories* to cover — they are **not** the
 per-resource signal list. For a specific resource type (EC2, RDS, ELB, DynamoDB, …), the
 exact metrics, their aggregation, and the identity label to group by come from the
-[promql-metrics.md](query/promql-metrics.md) **§5 per-service catalog** — go there and
+[../cloudwatch/promql.md](../cloudwatch/promql.md) **§5 per-service catalog** — go there and
 use its signals rather than the generic USE list here (which would under-cover a resource
 type: an EC2 verdict needs `StatusCheckFailed*` with `max`, `CPUCreditBalance` with `min`
 on burstable, memory/disk from the CloudWatch agent, grouped by `InstanceId` — §5 names
@@ -178,13 +187,17 @@ them, this section does not).
 
 **For a `SERVICE` node — RED:**
 
-- **Rate** — request throughput. From span RED (`traces.span.metrics.calls`, a delta Sum —
-  `sum_over_time(...[5m])`, not `rate()`) or Application Signals request count.
+- **Rate** — request throughput. From span RED (`traces.span.metrics.calls`: CloudWatch's `cloudwatch.aws/xray/span-metrics`
+  series are delta, `sum_over_time(...[5m])`; a collector's `spanmetricsconnector` series are
+  cumulative, `rate()`; scope `"@instrumentation.@name"` to one) or Application Signals request count.
 - **Errors** — error/fault *rate*, derived as `errors / total` over the same window, never
   a numerator alone. Application Signals `Fault` (5xx + span-status errors) and `Error`
   (4xx), or the span error split on `status['code']`.
 - **Duration** — latency including a **p99**, not just an average. From the native
-  histogram `traces.span.metrics.duration` via `histogram_quantile(0.99, rate(...[5m]))`,
+  histogram `traces.span.metrics.duration` via `histogram_quantile(0.99, sum_over_time(...[5m]))`
+  (`sum_over_time` for a delta series, `rate()` for a cumulative one: read `__temporality__`,
+  since it differs by producer: CloudWatch's span metrics are delta, a collector's
+  spanmetrics connector is cumulative), scoped to the service and to one producer,
   Application Signals `Latency`, or span `durationNano` in SQL
   ([sql-logs-traces.md](query/sql-logs-traces.md)).
 
@@ -207,7 +220,8 @@ them, this section does not).
   count above zero, is direct evidence of a breaching signal; `NODATA` is itself a finding
   (the rule ran and saw nothing), not "healthy". `OK` is one signal, not the verdict.
 - **A live failing edge on the graph** — any `errorCode` / non-2xx `httpStatusCode` on an
-  edge into or out of the node, with a `lastObservedAt` inside the window.
+  edge into or out of the node, with a `lastObservedAt` at or near the incident (the graph
+  window is 24 hours, so an older error is history).
 
 **State the verdict explicitly:**
 
@@ -231,7 +245,7 @@ what is actually stored, rather than the graph's normalized name:
 1. **Metrics** — `metadata.metrics[]` gives each metric `name`, its `preferredStat`, and
    the raw `attributes` (`service.name`, `service.namespace`, `cloud.region`, ...) to use
    as PromQL label matchers. Build the selector per
-   [promql-metrics.md](query/promql-metrics.md) — do not guess the metric name from the
+   [../cloudwatch/promql.md](../cloudwatch/promql.md) — do not guess the metric name from the
    node's display name.
 2. **Traces / logs** — `metadata.traces[]` / `metadata.logs[]` are per-signal query
    selectors (OR'ed blocks of AND'ed exact column→value maps). Use them and
@@ -258,7 +272,7 @@ accounts.
 - **An empty result is a scoping signal, never a verdict.** Empty nodes, zero rows, or an
   absent metric series most often mean the wrong Region/Space, a window that does not
   overlap, or a name/label mismatch (see [context-graph.md](context-graph.md) and
-  [promql-metrics.md](query/promql-metrics.md) empty-series tables). Never report
+  [../cloudwatch/promql.md](../cloudwatch/promql.md) empty-series tables). Never report
   "healthy" from it.
 - **Hub fan-out is silently truncated and pagination is by node** — so a dependency map
   or affected-caller set built from one page can be incomplete. This mechanic (and its fix)
