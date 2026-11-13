@@ -298,7 +298,8 @@ Documentation search, regional availability lookups, and the reference-content s
 
 - `sts` - Caller identity and account context checks
 - `bedrock`, `bedrock-runtime` - Model availability and prompt evaluation for the Bedrock migration flow
-- `bedrock-mantle` - Calls to the Bedrock Mantle endpoint (Web Search, Projects, Workspaces and other Mantle-only features, and a few Mantle-only models). It is a separate IAM service prefix, so a `bedrock:*` grant does not cover it; the Bedrock migration flow only needs it when a plan uses a Mantle path
+- `bedrock-mantle` - Calls to the Bedrock Mantle endpoint (Projects, Workspaces and other Mantle-only features, and a few Mantle-only models). It is a separate IAM service prefix, so a `bedrock:*` grant does not cover it; the Bedrock migration flow only needs it when a plan uses a Mantle path
+- `bedrock-websearch` - Bedrock Web Search tool calls, only when a plan uses Web Search. It is a separate prefix from both `bedrock` and `bedrock-mantle`, so a custom policy limited to those two can authorize inference while the tool's permission checks fail. Grant `InvokeSearch` and `InvokeFetch`, and add `ExternalWebAccess` only if you enable retrieval from the live web. AWS managed policies may already include these actions
 - `ec2`, `rds`, `s3` - Read-only discovery of existing compute, database, and storage resources
 - `iam` - Reviewing roles and policies referenced by a design or security baseline
 - `cloudformation` - Inspecting and deploying generated infrastructure
