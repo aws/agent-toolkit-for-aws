@@ -1354,13 +1354,19 @@ nothing is left). Then fit it:
    process type. If `room` is below 3, halt and tell the user the project name or a process type is
    too long for per-app names and ask for a shorter `project_name`.
 2. Truncate the slug to `room` characters and trim a trailing `-`.
-3. Compute every app's _natural_ slug (steps above). Then walk `eb_apps` in sorted order and assign
-   each app a slug that no other app has: the natural slug when no earlier app was assigned it.
-   Otherwise rebuild it for n = 2, 3, … as the original slug truncated to `room − len(n) − 1`
-   characters (trailing `-` trimmed), then `-`, then `n`, and take the first n whose result is
-   neither already assigned to an earlier app nor the natural slug of any other app. A rebuilt slug
-   can itself collide (with `room` 6, `hell-2` and `hello-2` both rebuild `hello-2` to `hell-2`),
-   so keep incrementing n; if `room − len(n) − 1` drops below 1, halt with the message from step 1.
+3. Compute every app's _natural_ slug (steps above). An app's _environment names_ are
+   `<slug>-<process_type>` for each of its own EB process types. Process types may contain dashes, so
+   two different slugs can give the same environment name: app `foo` with process `bar-worker` and app
+   `foo-bar` with process `worker` both reach `foo-bar-worker`. Walk `eb_apps` in sorted order and
+   give each app the natural slug when that slug is not assigned to an earlier app and none of the
+   app's environment names equals an environment name of an earlier app. Otherwise rebuild it for
+   n = 2, 3, … as the original slug truncated to `room − len(n) − 1` characters (trailing `-`
+   trimmed), then `-`, then `n`, and take the first n whose result meets the same two conditions and
+   is also not the natural slug of any other app. A rebuilt slug can itself collide (with `room` 6,
+   `hell-2` and `hello-2` both rebuild `hello-2` to `hell-2`), so keep incrementing n; if
+   `room − len(n) − 1` drops below 1, halt with the message from step 1. The resolved map of app to
+   slug is the only source for the application and environment names in `beanstalk.tf`, the deploy
+   workflows, `pipeline.tf` and the guide; none of them recomputes a name.
 
 The longest environment name is then at most 40 characters, so the instance role
 (`<project_name><eb_app_suffix>-eb-instance`, 12 more characters than the environment's prefix)

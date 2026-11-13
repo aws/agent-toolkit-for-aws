@@ -46,18 +46,27 @@ def eb_suffixes(project_name: str, apps: dict[str, list[str]]) -> dict[str, str]
     naturals = {app: clean(app)[:room].rstrip("-") for app in eb_apps}
     suffixes: dict[str, str] = {}
     assigned: set[str] = set()
+    used_environments: set[str] = set()
+
+    def free(app: str, slug: str) -> bool:
+        environments = {f"{slug}-{process}" for process in apps[app]}
+        return slug not in assigned and not (environments & used_environments)
+
     for app in eb_apps:
         slug = naturals[app]
-        if slug in assigned:
+        if not free(app, slug):
             others = {naturals[other] for other in eb_apps if other != app}
             n = 1
-            while slug in assigned or slug in others or n == 1:
+            while True:
                 n += 1
                 keep = room - len(str(n)) - 1
                 if keep < 1:
                     raise ValueError("project name or process type too long for per-app names")
                 slug = clean(app)[:keep].rstrip("-") + "-" + str(n)
+                if free(app, slug) and slug not in others:
+                    break
         assigned.add(slug)
+        used_environments.update(f"{slug}-{process}" for process in apps[app])
         suffixes[app] = "-" + slug
     return suffixes
 
@@ -138,6 +147,18 @@ class EbNameRuleTests(unittest.TestCase):
                 suffixes = eb_suffixes(project, apps)
                 self.assertEqual(len(set(suffixes.values())), len(suffixes), suffixes)
 
+    def test_dashed_process_types_cannot_make_two_environments_share_a_name(self) -> None:
+        # app `foo` + process `bar-worker` and app `foo-bar` + process `worker` have distinct slugs but both
+        # environments would be `shop-foo-bar-worker`.
+        apps = {"foo": ["bar-worker"], "foo-bar": ["worker"]}
+        suffixes = eb_suffixes("shop", apps)
+        environments = [f"shop{suffix}-{process}" for app, suffix in suffixes.items() for process in apps[app]]
+        self.assertEqual(len(environments), len(set(environments)), environments)
+        self.assertEqual(suffixes["foo"], "-foo")
+        self.assertEqual(suffixes["foo-bar"], "-foo-bar-2")
+        # the sibling that does not collide keeps its natural slug
+        self.assertEqual(eb_suffixes("shop", {"foo": ["web"], "foo-bar": ["worker"]}), {"foo": "-foo", "foo-bar": "-foo-bar"})
+
     def test_slugs_are_unique_or_refused_for_many_generated_app_sets(self) -> None:
         import random
         rng = random.Random(632)
@@ -147,7 +168,11 @@ class EbNameRuleTests(unittest.TestCase):
             # project lengths up to 33 leave room 3..36 for a 3-letter process type, so the tightest rooms
             # (where a rebuild cannot fit and generation must halt) are reached as well as the roomy ones
             project = "p" * rng.randint(1, 33)
-            apps = {"".join(rng.choice(alphabet) for _ in range(rng.randint(1, 9))): ["web"] for _ in range(rng.randint(2, 12))}
+            apps = {
+                "".join(rng.choice(alphabet) for _ in range(rng.randint(1, 9))):
+                    rng.choice((["web"], ["web", "a-b"], ["b-web"], ["web", "worker"]))
+                for _ in range(rng.randint(2, 12))
+            }
             if len(apps) < 2:
                 continue
             try:
@@ -157,9 +182,11 @@ class EbNameRuleTests(unittest.TestCase):
                 continue
             unique += 1
             self.assertEqual(len(set(suffixes.values())), len(suffixes), (project, sorted(apps), suffixes))
-            for app, suffix in suffixes.items():
-                self.assertLessEqual(len(f"{project}{suffix}-web"), EB_ENV_MAX, (project, app, suffix))
-                self.assertRegex(f"{project}{suffix}-web", r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
+            environments = [f"{project}{suffix}-{process}" for app, suffix in suffixes.items() for process in apps[app]]
+            self.assertEqual(len(environments), len(set(environments)), (project, sorted(apps), suffixes))
+            for environment in environments:
+                self.assertLessEqual(len(environment), EB_ENV_MAX, (project, environment))
+                self.assertRegex(environment, r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
         self.assertGreater(unique, 1500, "the generator should mostly produce valid sets")
         self.assertGreater(refused, 0, "tight rooms should be refused, not silently collided")
 
@@ -196,7 +223,8 @@ class EbNameTemplateTests(unittest.TestCase):
     def test_slug_step_keeps_rebuilding_until_unique_and_can_halt(self) -> None:
         section = TERRAFORM.split("### EB name resolution", 1)[1].split("### `beanstalk.tf`", 1)[0]
         for text in (
-            "neither already assigned to an earlier app nor the natural slug of any other app",
+            "is also not the natural slug of any other app",
+            "none of the\n   app's environment names equals an environment name of an earlier app",
             "keep incrementing n", "drops below 1, halt with the message from step 1",
         ):
             self.assertIn(text, section, text)
@@ -322,6 +350,54 @@ resource "aws_iam_role" "eb_instance_{label}" {{
         per_app = render("shop-staging", "-shop-staging") + render("shop-production", "-shop-production")
         self.assertIn("eb_duplicate_name", self.rules(shared))
         self.assertEqual(self.rules(per_app), [])
+
+    def test_whitespace_inside_a_quoted_name_is_part_of_the_name(self) -> None:
+        # EB application names are free-form strings: "my app" and "myapp" are two applications.
+        def apps(first: str, second: str) -> str:
+            return (f'resource "aws_elastic_beanstalk_application" "a" {{\n  name = "{first}"\n}}\n'
+                    f'resource "aws_elastic_beanstalk_application" "b" {{\n  name = "{second}"\n}}\n')
+
+        self.assertEqual(self.rules(apps("my app", "myapp")), [])
+        self.assertEqual(self.rules(apps("my app", "my  app")), [])
+        self.assertEqual(self.rules(apps("my app", "my app")), ["eb_duplicate_name"])
+        # whitespace that is only syntax still compares equal
+        self.assertEqual(self.rules(apps("${ var.project_name }-web", "${var.project_name}-web")), ["eb_duplicate_name"])
+        text = (
+            'resource "aws_elastic_beanstalk_application" "a" {\n  name   =   "${var.p}-web"\n}\n'
+            'resource "aws_elastic_beanstalk_application" "b" {\n  name = "${var.p}-web"\n}\n'
+        )
+        self.assertEqual(self.rules(text), ["eb_duplicate_name"])
+
+    def test_each_per_app_workflow_needs_its_own_deployment(self) -> None:
+        deploy = (
+            "name: Deploy\non:\n  push:\n    branches: [main]\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n"
+            "    steps:\n      - uses: einaregilsson/beanstalk-deploy@v22\n        with:\n"
+            "          application_name: shop-shop-staging\n"
+        )
+        echo = (
+            "name: Deploy\non:\n  push:\n    branches: [main]\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n"
+            "    steps:\n      - run: echo deploying production\n"
+        )
+
+        def report(staging: str, production: str) -> dict:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory).resolve()
+                (root / "terraform").mkdir()
+                (root / "terraform/main.tf").write_text(
+                    self.render("shop-staging", "-shop-staging") + self.render("shop-production", "-shop-production"),
+                    encoding="utf-8")
+                workflows = root / ".github/workflows"
+                workflows.mkdir(parents=True)
+                (workflows / "deploy-eb-shop-staging.yml").write_text(staging, encoding="utf-8")
+                (workflows / "deploy-eb-shop-production.yml").write_text(production, encoding="utf-8")
+                return self.validator.validate(root, require_eb_workflow=True)
+
+        both = report(deploy, deploy.replace("shop-shop-staging", "shop-shop-production"))
+        self.assertEqual([item for item in both["findings"] if item["rule"] == "eb_deploy_missing"], [])
+        broken = report(deploy, echo)
+        missing = [item for item in broken["findings"] if item["rule"] == "eb_deploy_missing"]
+        self.assertEqual([item["file"] for item in missing], [".github/workflows/deploy-eb-shop-production.yml"])
+        self.assertEqual(broken["artifact_status"], "ARTIFACTS_FAIL")
 
     def test_validate_reports_the_rule_and_lists_the_check(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

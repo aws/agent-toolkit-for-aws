@@ -222,6 +222,16 @@ def heroku_conditional_outputs(
                     errors.append(
                         f".github/workflows/deploy-eb-<slug>.yml: {len(eb_apps)} Elastic Beanstalk apps need "
                         f"one deploy workflow each, found {len(have)}")
+                else:
+                    # A nonempty file is not a deployment: one real workflow must not cover a sibling that
+                    # only echoes. The shared checker reports each deploy-eb-*.yml that has no deploy step.
+                    report = load_module(
+                        "_accept_eb_artifacts", TF_SCRIPTS / "validate-migration-artifacts.py",
+                    ).validate(root, require_eb_workflow=True)
+                    for finding in report.get("findings") or []:
+                        if finding.get("rule") == "eb_deploy_missing" and \
+                                str(finding.get("file", "")).startswith(".github/workflows/deploy-eb-"):
+                            errors.append(f"{finding['file']}: {finding['summary']}")
             else:
                 names.append(".github/workflows/deploy-eb.yml")
         elif method == "codepipeline":

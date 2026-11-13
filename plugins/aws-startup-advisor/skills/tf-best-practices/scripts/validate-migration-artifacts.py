@@ -889,6 +889,26 @@ _UNIQUE_NAME_KINDS = {
 }
 
 
+_QUOTED_OR_SPACE = re.compile(r'"(?:[^"\\]|\\.)*"|\s+')
+
+
+def _normalize_name_expression(expression: str) -> str:
+    """Drop whitespace that is only HCL syntax, keep whitespace that is part of a name.
+
+    `"my app"` and `"myapp"` are different names (Elastic Beanstalk accepts spaces), so whitespace
+    inside a quoted literal stays. Whitespace inside a `${...}` interpolation is syntax and is
+    dropped, so `"${ var.p }-web"` and `"${var.p}-web"` still compare equal.
+    """
+    def keep(match: re.Match[str]) -> str:
+        text = match.group(0)
+        if not text.startswith('"'):
+            return ""
+        return re.sub(
+            r"\$\{([^{}]*)\}", lambda inner: "${" + re.sub(r"\s+", "", inner.group(1)) + "}", text,
+        )
+    return _QUOTED_OR_SPACE.sub(keep, expression)
+
+
 def _eb_duplicate_names(resources: list[Resource], policy: Any, findings: list[Finding]) -> None:
     """Two Elastic Beanstalk applications, environments, roles or instance profiles written with
     the same `name` expression in one Terraform root.
@@ -906,7 +926,7 @@ def _eb_duplicate_names(resources: list[Resource], policy: Any, findings: list[F
         expression = _attr(resource.body, "name", policy)
         if expression is None:
             continue
-        key = (resource.kind, re.sub(r"\s+", "", expression))
+        key = (resource.kind, _normalize_name_expression(expression))
         first = seen.get(key)
         if first is None:
             seen[key] = resource
@@ -1908,6 +1928,7 @@ def _workflows(
             "Elastic Beanstalk has neither a generated workflow nor CodePipeline.",
         ))
     found_deployment = False
+    deployed_here: set[str] = set()
     for path in paths:
         relative = path.relative_to(root).as_posix()
         try:
@@ -1965,6 +1986,7 @@ def _workflows(
                     continue
                 if deploy_action:
                     found_deployment = True
+                    deployed_here.add(relative)
                 if deploy_run:
                     if _run_shell(step, job) not in {"bash", "sh"}:
                         findings.append(Finding(
@@ -1978,6 +2000,19 @@ def _workflows(
                         ))
                     else:
                         found_deployment = True
+                        deployed_here.add(relative)
+    if found_deployment and not pipeline_satisfies_requirement:
+        # Per-app mode writes one deploy-eb-<slug>.yml per Elastic Beanstalk app, and each must deploy its
+        # own app: one workflow that deploys must not stand in for a sibling that only echoes.
+        for path in paths:
+            relative = path.relative_to(root).as_posix()
+            if path.stem.startswith("deploy-eb-") and relative not in deployed_here:
+                findings.append(Finding(
+                    relative, 0, "eb_deploy_missing",
+                    "This per-app Elastic Beanstalk workflow has no active, supported deploy action, "
+                    "`eb deploy`, or AWS update-environment --version-label command. Each app needs its "
+                    "own; another workflow's deployment does not cover it.",
+                ))
     if expect_deployment and paths and not found_deployment and not pipeline_satisfies_requirement:
         findings.append(Finding(
             ".github/workflows", 0, "eb_deploy_missing",
