@@ -864,6 +864,12 @@ def test_high_scale_favors_container_runtimes():
     assert min(gain["ecs"], gain["eks"]) > gain["agentcore"] > max(gain["lambda"], gain["lambda_microvms"])
 
 
+def test_growing_scale_sits_between_prototype_and_high():
+    gain = _scale_gain("growing")
+    assert (gain["agentcore"] == gain["lambda"] == gain["lambda_microvms"]
+            > gain["ecs"] > gain["eks"])
+
+
 _STEADY_AGENT = {"session_duration": "15min_to_8hr", "traffic_pattern": "steady",
                  "ops_preference": "moderate", "existing_cluster": "none"}
 
