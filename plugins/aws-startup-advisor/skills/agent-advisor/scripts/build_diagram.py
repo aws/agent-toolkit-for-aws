@@ -31,7 +31,6 @@ SERVICE_LABELS = {
     "browser": "Browser",
     "web_search": "Web Search",
     "sandbox": "Sandbox",
-    "payments": "Payments",
     "registry": "Registry",
 }
 

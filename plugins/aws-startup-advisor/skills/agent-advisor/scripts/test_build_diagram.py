@@ -1,3 +1,6 @@
+import pathlib
+import re
+
 import build_diagram
 
 
@@ -26,16 +29,27 @@ def test_labels_cover_all_runtimes():
         assert rid in build_diagram.RUNTIME_LABELS
 
 
-def test_service_labels_include_payments_and_registry():
-    # Conditional AgentCore services (SA feedback: relevant but not always).
-    assert build_diagram.SERVICE_LABELS["payments"] == "Payments"
+def test_service_labels_include_registry():
+    # Conditional AgentCore service (SA feedback: relevant but not always).
     assert build_diagram.SERVICE_LABELS["registry"] == "Registry"
 
 
-def test_payments_registry_render_in_diagram():
+def test_registry_renders_in_diagram():
     out = build_diagram.render_mermaid(
-        "agentcore", ["identity", "payments", "registry"], "claude_sonnet_5", "harness")
-    assert "Payments" in out and "Registry" in out
+        "agentcore", ["identity", "registry"], "claude_sonnet_5", "harness")
+    assert "Registry" in out
+
+
+def test_service_labels_match_confirm_postcondition():
+    # The labels must equal the agentcore_services ids that Confirm's postcondition allows,
+    # and Confirm must not offer Payments.
+    confirm = (pathlib.Path(__file__).resolve().parents[1]
+               / "references/phases/confirm/confirm.md").read_text(encoding="utf-8")
+    named = re.search(
+        r"service id this skill offers: (.+?) \(the keys of SERVICE_LABELS", confirm).group(1)
+    assert set(build_diagram.SERVICE_LABELS) == set(
+        re.findall(r"[a-z_]+", named.replace(" or ", ", ")))
+    assert "payments" not in confirm.lower()
 
 
 def test_resolve_services_prefers_confirm():

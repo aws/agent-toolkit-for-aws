@@ -38,7 +38,7 @@
           "properties": {
             "reason": {
               "type": "string",
-              "enum": ["model_access", "source_key_auth", "model_unresolvable", "authz", "mantle_deps_missing"]
+              "enum": ["model_access", "source_key_auth", "model_unresolvable", "authz", "mantle_deps_missing", "messages_deps_missing"]
             },
             "detail": { "type": "string" }
           }

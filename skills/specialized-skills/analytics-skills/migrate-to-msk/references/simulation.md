@@ -200,16 +200,19 @@ value the script rejected — an unsupported value otherwise only fails later at
 
 **Picker cap.** The `AskUserQuestion` tool hard-limits each question to 4
 options (plus the auto-appended "Other") and silently drops the rest. There are
-**7 supported `instance_type` values**, more than the picker can show. You may
-still use the picker, but the **question text MUST enumerate all 7 instance
+**15 supported `instance_type` values**, more than the picker can show. You may
+still use the picker, but the **question text MUST enumerate all 15 instance
 types** (with their specs) so the customer can see every option even when some are
 not rendered as buttons — instruct them to use "Other" to pick a type that is
 not shown as a button. Never present `instance_type` in a way that names fewer
-than all 7 types. `broker_count` and `kafka_version` have ≤ 4 options each and
+than all 15 types. `broker_count` and `kafka_version` have ≤ 4 options each and
 fit the picker directly.
 
 - **instance_type** — exactly these Express types (no others), always present
-  all seven:
+  all fifteen:
+  `express.m8g.large`, `express.m8g.xlarge`, `express.m8g.2xlarge`,
+  `express.m8g.4xlarge`, `express.m8g.8xlarge`, `express.m8g.12xlarge`,
+  `express.m8g.16xlarge`, `express.m8g.24xlarge`,
   `express.m7g.large`, `express.m7g.xlarge`, `express.m7g.2xlarge`,
   `express.m7g.4xlarge`, `express.m7g.8xlarge`, `express.m7g.12xlarge`,
   `express.m7g.16xlarge`.
@@ -450,6 +453,8 @@ first when many consumer groups read the stream).
 | express.m7g.8xlarge | 250 | 375 | 500 | 937.5 |
 | express.m7g.12xlarge | 375 | 562.5 | 750 | 1406.2 |
 | express.m7g.16xlarge | 500 | 750 | 1000 | 1875 |
+| express.m8g.large through express.m8g.16xlarge | same as the matching express.m7g size | | | |
+| express.m8g.24xlarge | 667 | 1000.5 | 1334 | 2501.3 |
 
 ### Client fleet sizing
 

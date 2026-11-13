@@ -78,14 +78,17 @@ def test_rerun_into_blocked_overwrites_prior_artifacts(tmp_path, monkeypatch, ca
 
 
 def test_one_remaining_option_is_blocked_not_padded(tmp_path, monkeypatch, capsys):
-    # Continuity vs governance offers a Mantle option and a runtime option. With every
-    # Mantle-capable model reference_only, only the runtime option remains.
+    # A verified Mantle selector vs Converse-only governance offers a Mantle option and a
+    # runtime option (API continuity alone never selects Mantle). With every Mantle-capable
+    # model reference_only, only the runtime option remains. GPT-5.6 Terra lists Guardrails as
+    # Converse-only, so the governance side is runtime Converse.
     catalog = _REAL_OPENAI_LOADER()
     mantle_keys = [k for k, m in catalog["models"].items()
                    if any(p.startswith("mantle_") for p in m["paths"])]
     _use_openai_catalog(monkeypatch, tmp_path, _reference_only(catalog, mantle_keys))
-    rec = _run(_input(tmp_path, "openai", "gpt-6-sol", "responses",
-                      preserve_openai_api=True, governance=["guardrails"]), capsys)
+    rec = _run(_input(tmp_path, "openai", "gpt-5.6-terra", "responses",
+                      preserve_openai_api=True, mantle_selector="projects",
+                      governance=["guardrails"]), capsys)
     assert rec["decision_status"] == "blocked"
     assert [b["code"] for b in rec["blocks"]] == ["decision_option_unavailable"]
     assert len(rec["decision_options"]) == 1
@@ -122,7 +125,8 @@ def test_schema_rejects_decision_required_with_fewer_than_two_options(options):
         "workloads": [{"workload_id": "w",
                        "source": {"provider": "openai", "model_ids": ["gpt-6-sol"], "sdk": "openai",
                                   "api_surface": "responses", "source_paths": ["src/app.py"]},
-                       "requirements": {"preserve_openai_api": True, "governance": ["guardrails"],
+                       "requirements": {"preserve_openai_api": True, "mantle_selector": "projects",
+                                        "governance": ["guardrails"],
                                         "data_residency": "global_allowed"},
                        "detected_features": []}],
     })))
@@ -168,7 +172,8 @@ def test_anthropic_blocked_names_only_the_entries_that_would_fill_the_side():
             model["paths"]["mantle_messages"]["available"] = False
     catalog = _reference_only(catalog, ["claude_opus_5_5"])
     rec = mr.recommend(_workload_input("anthropic", "claude-opus-4-8", "messages",
-                                       preserve_messages_api=True, governance=["guardrails"]),
+                                       preserve_messages_api=True, mantle_selector="workspaces",
+                                       governance=["guardrails"]),
                        catalog=catalog)["workloads"]["w"]
     assert rec["decision_status"] == "blocked"
     finding = next(b for b in rec["blocks"] if b["code"] == "decision_option_unavailable")
@@ -187,7 +192,8 @@ def test_openai_unrelated_reference_only_keeps_the_unsatisfiable_raise():
                 path["available"] = False
     catalog = _reference_only(catalog, ["anthropic_claude_haiku_4_5"])
     data = _workload_input("openai", "gpt-6-sol", "responses",
-                           preserve_openai_api=True, governance=["guardrails"])
+                           preserve_openai_api=True, mantle_selector="projects",
+                           governance=["guardrails"])
     with pytest.raises(ValueError, match="cannot supply both decision options"):
         mr.recommend(data, catalog=mr.load_catalog(), openai_catalog=catalog)
 
@@ -200,7 +206,8 @@ def test_openai_blocked_names_only_mantle_side_entries(tmp_path, monkeypatch, ca
     # be named.
     hidden = _reference_only(catalog, mantle_keys + ["anthropic_claude_haiku_4_5"])
     rec = mr.recommend(_workload_input("openai", "gpt-6-sol", "responses",
-                                       preserve_openai_api=True, governance=["guardrails"]),
+                                       preserve_openai_api=True, mantle_selector="projects",
+                                       governance=["guardrails"]),
                        catalog=mr.load_catalog(), openai_catalog=hidden)["workloads"]["w"]
     assert rec["decision_status"] == "blocked"
     message = next(b for b in rec["blocks"] if b["code"] == "decision_option_unavailable")["message"]
