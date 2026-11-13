@@ -278,6 +278,41 @@ class EbNameTemplateTests(unittest.TestCase):
         self.assertNotIn("`web` environment (`${project_name}-web`)", DOCS)
 
 
+class EbManualGuideTests(unittest.TestCase):
+    def manual_block(self) -> str:
+        section = DOCS.split("### Manual EB CLI Deploy", 1)[1].split("```bash\n", 1)[1].split("\n```", 1)[0]
+        return section
+
+    def test_manual_deploy_uses_the_generated_application_not_the_heroku_name(self) -> None:
+        # Terraform creates `${var.project_name}<eb_app_suffix>`; a guide that creates versions under the
+        # Heroku name deploys to an application that does not exist.
+        block = self.manual_block()
+        self.assertEqual(block.count("{{EB_APPLICATION}}"), 3)
+        self.assertNotIn("{{app_name}}", block)
+        self.assertIn("{{EB_ENVIRONMENT_NAMES}}", block)
+
+    def test_rendered_manual_guide_matches_the_generated_names_of_each_app(self) -> None:
+        project = "a" * 29  # room 6, so the slugs are shortened and one is rebuilt
+        apps = {"hell-2": ["web"], "hello": ["web", "worker"], "hello-2": ["web"]}
+        suffixes = eb_suffixes(project, apps)
+        self.assertEqual(len(set(suffixes.values())), 3)
+        for app, suffix in suffixes.items():
+            application = project + suffix
+            environments = [f"{application}-{process}" for process in apps[app]]
+            rendered = (self.manual_block().replace("{{EB_APPLICATION}}", application)
+                        .replace("{{EB_ENVIRONMENT_NAMES}}", " ".join(environments))
+                        .replace("{{target_region}}", "us-east-1"))
+            self.assertNotIn("{{", rendered)
+            self.assertIn(f"--application-name {application} ", rendered)
+            self.assertIn(f"s3://${{BUCKET}}/{application}/", rendered)
+            self.assertNotIn(f" {app} ", rendered.replace(application, ""))
+            for environment in environments:
+                self.assertIn(environment, rendered)
+                self.assertTrue(environment.startswith(application + "-"))
+        # the EB application the guide names is the one beanstalk.tf creates
+        self.assertIn('name        = "${var.project_name}<eb_app_suffix>"', TERRAFORM.split("### `beanstalk.tf`", 1)[1])
+
+
 class EbDuplicateNameCheckTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -291,7 +326,7 @@ class EbDuplicateNameCheckTests(unittest.TestCase):
             (root / "terraform/main.tf").write_text(text, encoding="utf-8")
             findings: list = []
             resources = self.validator._resources(root, self.policy, findings)
-            self.validator._eb_duplicate_names(resources, self.policy, findings)
+            self.validator._eb_duplicate_names(resources, self.policy, findings, root)
             return [item.rule for item in findings]
 
     @staticmethod
@@ -367,6 +402,81 @@ resource "aws_iam_role" "eb_instance_{label}" {{
             'resource "aws_elastic_beanstalk_application" "b" {\n  name = "${var.p}-web"\n}\n'
         )
         self.assertEqual(self.rules(text), ["eb_duplicate_name"])
+
+    def test_quoted_data_inside_an_interpolation_is_part_of_the_name(self) -> None:
+        # `${format("my app-%s", var.p)}` and `${format("myapp-%s", var.p)}` are two names; stripping every
+        # space outside the outermost quotes made them equal.
+        def apps(first: str, second: str) -> str:
+            return (f'resource "aws_elastic_beanstalk_application" "a" {{\n  name = {first}\n}}\n'
+                    f'resource "aws_elastic_beanstalk_application" "b" {{\n  name = {second}\n}}\n')
+
+        spaced = '"${format("my app-%s", var.project_name)}"'
+        joined = '"${format("myapp-%s", var.project_name)}"'
+        self.assertEqual(self.rules(apps(spaced, joined)), [])
+        self.assertEqual(self.rules(apps(spaced, spaced)), ["eb_duplicate_name"])
+        # syntax whitespace around the call and its arguments still compares equal
+        self.assertEqual(
+            self.rules(apps(spaced, '"${ format( "my app-%s",  var.project_name ) }"')), ["eb_duplicate_name"],
+        )
+        # an escaped quote and a literal `$${` do not end the string or open an interpolation
+        self.assertEqual(self.rules(apps(r'"a \" b"', r'"a \"b"')), [])
+        self.assertEqual(self.rules(apps('"x $${ y }"', '"x $${y}"')), [])
+        self.assertEqual(self.validator._normalize_name_expression('"${ var.p }-web"'), '"${var.p}-web"')
+
+    PROVIDERS = (
+        'provider "aws" {\n  region = "us-east-1"\n}\n'
+        'provider "aws" {\n  alias  = "west"\n  region = "us-west-2"\n}\n'
+    )
+
+    @staticmethod
+    def two_resources(kind: str, second_provider: str = "", name: str = "shop") -> str:
+        return (f'resource "{kind}" "a" {{\n  name = "{name}"\n}}\n'
+                f'resource "{kind}" "b" {{\n{second_provider}  name = "{name}"\n}}\n')
+
+    def test_duplicate_names_are_scoped_by_provider_region(self) -> None:
+        eb = "aws_elastic_beanstalk_application"
+        west = "  provider = aws.west\n"
+        # one name in two regions is two names
+        self.assertEqual(self.rules(self.PROVIDERS + self.two_resources(eb, west)), [])
+        # the same provider, or the default one twice, is one namespace
+        self.assertEqual(self.rules(self.PROVIDERS + self.two_resources(eb)), ["eb_duplicate_name"])
+        self.assertEqual(self.rules(self.PROVIDERS + self.two_resources(eb, "  provider = aws\n")), ["eb_duplicate_name"])
+        # two aliases that are provably the same region and account are one namespace (control)
+        same_region = self.PROVIDERS.replace("us-west-2", "us-east-1")
+        self.assertEqual(self.rules(same_region + self.two_resources(eb, west)), ["eb_duplicate_name"])
+        # a region that is not a literal cannot be compared, so the collision is not proven
+        dynamic = self.PROVIDERS.replace('region = "us-west-2"', "region = var.west_region")
+        self.assertEqual(self.rules(dynamic + self.two_resources(eb, west)), ["eb_duplicate_name_scope_unverified"])
+        # an alias with no provider block in the source cannot be resolved
+        self.assertEqual(
+            self.rules('provider "aws" {\n  region = "us-east-1"\n}\n' + self.two_resources(eb, west)),
+            ["eb_duplicate_name_scope_unverified"],
+        )
+
+    def test_duplicate_names_are_scoped_by_provider_account(self) -> None:
+        eb = "aws_elastic_beanstalk_application"
+        west = "  provider = aws.west\n"
+        other_profile = self.PROVIDERS.replace('alias  = "west"', 'alias  = "west"\n  profile = "other"')
+        self.assertEqual(self.rules(other_profile + self.two_resources(eb, west)), [])  # regions differ
+        same_region_other_profile = other_profile.replace("us-west-2", "us-east-1")
+        self.assertEqual(
+            self.rules(same_region_other_profile + self.two_resources(eb, west)),
+            ["eb_duplicate_name_scope_unverified"],
+        )
+        assumed = self.PROVIDERS.replace(
+            'alias  = "west"', 'alias  = "west"\n  assume_role {\n    role_arn = "arn:aws:iam::1:role/x"\n  }',
+        )
+        self.assertEqual(self.rules(assumed + self.two_resources(eb, west)), [])
+
+    def test_iam_names_are_account_wide_and_not_scoped_by_region(self) -> None:
+        # IAM is global: the same role name through a us-east-1 and a us-west-2 provider of one account collides
+        role = "aws_iam_role"
+        west = "  provider = aws.west\n"
+        self.assertEqual(self.rules(self.PROVIDERS + self.two_resources(role, west, "r")), ["eb_duplicate_name"])
+        other_profile = self.PROVIDERS.replace('alias  = "west"', 'alias  = "west"\n  profile = "other"')
+        self.assertEqual(
+            self.rules(other_profile + self.two_resources(role, west, "r")), ["eb_duplicate_name_scope_unverified"],
+        )
 
     def test_each_per_app_workflow_needs_its_own_deployment(self) -> None:
         deploy = (

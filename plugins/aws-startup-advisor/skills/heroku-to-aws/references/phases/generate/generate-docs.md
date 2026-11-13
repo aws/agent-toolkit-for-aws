@@ -902,11 +902,11 @@ No automated deploy artifact was generated. Package and deploy manually:
 VERSION_LABEL="v$(date +%Y%m%d%H%M%S)"
 BUCKET="$(aws elasticbeanstalk create-storage-location --query S3Bucket --output text --region {{target_region}})"
 zip -r app.zip . -x '.git/*' 'node_modules/*'
-aws s3 cp app.zip "s3://${BUCKET}/{{app_name}}/${VERSION_LABEL}.zip" --region {{target_region}}
+aws s3 cp app.zip "s3://${BUCKET}/{{EB_APPLICATION}}/${VERSION_LABEL}.zip" --region {{target_region}}
 aws elasticbeanstalk create-application-version \
-  --application-name {{app_name}} \
+  --application-name {{EB_APPLICATION}} \
   --version-label "${VERSION_LABEL}" \
-  --source-bundle "S3Bucket=${BUCKET},S3Key={{app_name}}/${VERSION_LABEL}.zip" \
+  --source-bundle "S3Bucket=${BUCKET},S3Key={{EB_APPLICATION}}/${VERSION_LABEL}.zip" \
   --region {{target_region}}
 for ENVIRONMENT in {{EB_ENVIRONMENT_NAMES}}; do
   aws elasticbeanstalk update-environment \
