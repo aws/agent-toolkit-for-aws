@@ -582,7 +582,7 @@ built.
 
 **Default:** 1 → `design_constraints.eb_deploy_method: { "value": "github_actions", "chosen_by": "default" }`
 
-**Generate impact:** `"github_actions"` emits `.github/workflows/deploy-eb.yml`; `"codepipeline"` emits `terraform/pipeline.tf`; `"manual"` emits neither automation artifact and keeps the CLI path in `MIGRATION_GUIDE.md`.
+**Generate impact:** `"github_actions"` emits `.github/workflows/deploy-eb.yml` and the approval-gated `promote.yml` (the `pipelines:promote` equivalent); `"codepipeline"` emits `terraform/pipeline.tf`; `"manual"` emits neither automation artifact and keeps the CLI path in `MIGRATION_GUIDE.md`.
 
 ---
 

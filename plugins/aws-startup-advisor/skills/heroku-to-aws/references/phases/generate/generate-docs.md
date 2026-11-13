@@ -801,9 +801,91 @@ The generated EB path deploys a source bundle containing your Dockerfile. GitHub
 
 ### GitHub Actions Deploy (Default)
 
-The generated `.github/workflows/deploy-eb.yml` workflow uses GitHub OIDC role assumption, packages the source bundle, creates an Elastic Beanstalk application version, and updates each generated EB environment.
+The generated `.github/workflows/deploy-eb.yml` workflow uses GitHub OIDC role assumption, packages the source bundle, creates an Elastic Beanstalk application version, and updates each generated EB environment of its push target: the staging app when a promote pair exists (see below), otherwise this app.
 
 Before first run, create or provide a GitHub OIDC IAM role with permissions to call `elasticbeanstalk create-storage-location`, `elasticbeanstalk create-application-version`, `elasticbeanstalk update-environment`, and upload the source bundle to the EB storage bucket. Store the role ARN as the repository secret `AWS_ROLE_ARN`.
+
+### Promote to Production (`heroku pipelines:promote` equivalent)
+
+{{IF promote_pair}}
+Your Heroku pipeline `{{pipeline_name}}` maps staging `{{STAGING_APP_NAME}}` → production
+`{{app_name}}`. `deploy-eb.yml` deploys every push to `main` to the staging environments
+only (`{{STAGING_EB_ENVIRONMENT_NAMES}}`). Production receives versions only through the
+generated `.github/workflows/promote.yml`: it reads the version label running on
+`{{STAGING_EB_ENVIRONMENT}}`, registers that same source bundle in the production
+application, and updates `{{EB_ENVIRONMENT_NAMES}}`. Elastic Beanstalk builds the
+Dockerfile in that bundle on the production instances, so promote redeploys the exact
+source version tested on staging; the image itself is rebuilt unless you switch to the
+image-based (`Dockerrun.aws.json`) bundle variant.
+{{ELSE}}
+This app has no generated staging source: it is in no Heroku pipeline, its pipeline
+partner was not migrated, or its staging partner and this app resolve to the same
+generated Elastic Beanstalk names (the generated Terraform names every EB application
+from one `project_name`, so two apps in one design would share an application and its
+environments; a "staging" deploy would then land in production). `deploy-eb.yml` deploys every push to `main` to this app's
+environments (`{{EB_ENVIRONMENT_NAMES}}`). The generated `.github/workflows/promote.yml`
+is an approval-gated redeploy of a version label you choose to those same environments:
+use it for controlled releases and rollbacks, with `version_label` always filled in.
+{{ENDIF}}
+{{IF app_containerization_method == "cnb_heroku_builder"}}
+This app is built with buildpacks, so its deploys register one version label per process
+type (`<base>-web`, `<base>-worker`, …) and each environment must run its own. Promote
+therefore takes the **base label** (the `<base>` part, shown in the deploy run's version
+labels) and updates every production environment with its own `<base>-<process_type>`
+label; it does not read staging for you. Never give one label to every environment: the
+`-web` version starts the web process wherever it is applied.
+{{ENDIF}}
+
+Promote is a manual run (**Actions → Promote to production → Run workflow**) and waits
+for approval. One-time setup, in the GitHub repository:
+
+1. **Prerequisite: required reviewers must be available.** On GitHub Free, Pro and Team,
+   required reviewers on an environment work only in public repositories; a private
+   repository needs GitHub Enterprise (see
+   [Managing environments for deployment](https://docs.github.com/en/actions/managing-workflow-runs-and-deployments/managing-deployments/managing-environments-for-deployment)).
+   A job that names `environment: production` does not wait for anyone unless that
+   protection is actually enabled.
+2. **Settings → Environments → New environment → `production`**, then add the people who
+   may approve as _Required reviewers_. Confirm the rule is saved before the first run.
+   Do not enable the production path (`promote.yml`) until the protection is in place.
+3. Add the production environment subject to the IAM role trust policy. A job with
+   `environment: production` presents the OIDC subject
+   `repo:<org>/<repo>:environment:production` instead of `repo:<org>/<repo>:ref:refs/heads/main`,
+   so a role trusted only for `main` rejects `promote.yml`. List both exact subjects
+   (no wildcard) and keep the audience condition:
+
+   ```json
+   {
+     "Effect": "Allow",
+     "Principal": {
+       "Federated": "arn:aws:iam::<account-id>:oidc-provider/token.actions.githubusercontent.com"
+     },
+     "Action": "sts:AssumeRoleWithWebIdentity",
+     "Condition": {
+       "StringEquals": {
+         "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+         "token.actions.githubusercontent.com:sub": [
+           "repo:<org>/<repo>:ref:refs/heads/main",
+           "repo:<org>/<repo>:environment:production"
+         ]
+       }
+     }
+   }
+   ```
+
+   If the repository customizes its OIDC subject claim template, use the subject format
+   it actually emits.
+4. The OIDC role also needs the read-only `elasticbeanstalk:DescribeEnvironments` and
+   `elasticbeanstalk:DescribeApplicationVersions`.
+
+If required reviewers are unavailable (for example a private repository on Free, Pro or
+Team), do not rely on the `production` environment as a gate. Release manually instead:
+run the production deploy `workflow_dispatch` only from a protected branch or tag whose
+branch protection requires a reviewed pull request, or put a manual approval stage in
+CodePipeline before the production deploy.
+
+Rollback is the same workflow with the previous version label typed into the
+`version_label` input (letters, digits, `.`, `_`, `-`; up to 100 characters).
 
 {{ENDIF}}
 {{IF eb_deploy_method == "codepipeline"}}
@@ -864,6 +946,54 @@ docker push {{AWS_ACCOUNT_ID}}.dkr.ecr.{{target_region}}.amazonaws.com/{{app_nam
 The Terraform configuration creates ECS services automatically. How an image update reaches a service depends on the shape Design chose for it (`aws-design.json` → `aws_config.ecs_mode`, and `preferences.design_constraints.release_strategy`); render only the branches the design uses.
 
 **Standard ECS service, rolling or canary release (`ecs_mode: "standard"`, `release_strategy` absent or `canary`):** the service uses the ECS deployment controller, so force a new deployment after pushing the image:
+
+Promote (run the image that is deployed on staging in production, no rebuild): take the
+image digest from one running staging task. ECS reports the digest of the image the task
+actually pulled, so this is immune to the family's latest `ACTIVE` revision and to a
+`:latest` tag that moved in the registry after staging started. Do not resolve the
+digest from the registry tag (`aws ecr describe-images --image-ids imageTag=...` reads
+what the tag points to now, which may not be what staging runs).
+
+The selected task must have `lastStatus` `RUNNING` (a `PENDING` task has no digest yet)
+and its container must report a `sha256:` digest. Read the status, the task definition
+and the digest from that same `describe-tasks` response, never from a separate
+`describe-services` call: during a rollout, tasks of one service can run different
+definitions. If any check fails, stop. Wait and retry until the staging deployment has
+settled, or report that the running image identity is unavailable or ambiguous (for
+example several tasks on different digests). Never continue with an empty digest.
+
+```bash
+STAGING_TASK="$(aws ecs list-tasks --cluster <staging cluster> --service-name <staging service>   --desired-status RUNNING --query 'taskArns[0]' --output text)"
+read -r STAGING_STATUS STAGING_TASK_DEF STAGING_DIGEST < <(aws ecs describe-tasks   --cluster <staging cluster> --tasks "${STAGING_TASK}" --output text   --query 'tasks[0].[lastStatus,taskDefinitionArn,containers[?name==`<process>`]|[0].imageDigest]')
+if [ "${STAGING_STATUS}" != "RUNNING" ] || ! [[ "${STAGING_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+  echo "Staging task ${STAGING_TASK} is not RUNNING with a sha256 image digest" \
+    "(status=${STAGING_STATUS}, digest=${STAGING_DIGEST}). Wait and retry, or report the" \
+    "running image identity as unavailable." >&2
+  exit 1
+fi
+```
+
+`STAGING_TASK_DEF` identifies the staging revision for the promotion record only. Do not
+copy its container definition into production: staging and production usually differ in
+environment variables, secrets and log groups. Start from the PRODUCTION service's
+current task definition and change only the image of the one container to the verified
+staging digest (`image = <repository>@${STAGING_DIGEST}`). Everything else
+(environment, secrets, log configuration, CPU, memory, roles) stays as production has it:
+
+```bash
+PROD_TASK_DEF="$(aws ecs describe-services --cluster <prod cluster> --services <prod service> \
+  --query 'services[0].taskDefinition' --output text)"
+aws ecs describe-task-definition --task-definition "${PROD_TASK_DEF}" --query taskDefinition --output json \
+  | jq --arg name "<process>" --arg image "<repository>@${STAGING_DIGEST}" \
+    'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy) | .containerDefinitions |= map(if .name == $name then .image = $image else . end)' \
+  > prod-task-definition.json
+NEW_REVISION="$(aws ecs register-task-definition --cli-input-json file://prod-task-definition.json \
+  --query taskDefinition.taskDefinitionArn --output text)"
+aws ecs update-service --cluster <prod cluster> --service <prod service> --task-definition "${NEW_REVISION}"
+```
+
+A generated workflow for this is not yet emitted (the Elastic Beanstalk one is,
+`promote.yml`).
 
 ```bash
 aws ecs update-service \
@@ -1618,6 +1748,8 @@ Replace template variables using these sources:
 | `{{FARGATE_RUN_SERVICE}}` / `{{FARGATE_RUN_PROCESS}}` | The service/task family and container (`process_type`) where `heroku run` / `config` equivalents land: the app's `web` entry when `app_has_fargate_web`, else its first `fargate_processes[]` entry |
 | `{{DB_INSTANCE_IDENTIFIER}}` | `identifier` of the generated `aws_db_instance` (`${var.project_name}-${var.environment}-postgres`); used when `postgres_engine == "rds"` |
 | `{{DB_CLUSTER_IDENTIFIER}}` | `cluster_identifier` of the generated `aws_rds_cluster` (`${var.project_name}-${var.environment}-aurora`); used when `postgres_engine == "aurora"` |
+| `{{promote_pair}}` / `{{pipeline_name}}` / `{{STAGING_APP_NAME}}` | Resolved as in generate-terraform.md § `promote.yml`: true only when this app sits at `stage: "production"` in a `pipeline` resource AND the app at `stage: "staging"` (else `"development"`) in it has Elastic Beanstalk services in `aws-design.json` AND the staging and production sides resolve to different generated EB application and environment names (today every EB app is named from the one `var.project_name`, so they do not, and `promote_pair` is false); that pipeline's name; that staging app |
+| `{{STAGING_EB_ENVIRONMENT}}` / `{{STAGING_EB_ENVIRONMENT_NAMES}}` | Promote pair only: one generated EB environment of the staging app (`web` if present, else the first; a worker-only app has no web environment) and all of its generated EB environment names |
 | `{{MSK_CLUSTER_ARN}}` | Placeholder — user fills from Terraform output |
 | `{{MIGRATION_BUCKET}}` | Placeholder — user creates an S3 bucket for migration artifacts |
 | `{{app_domain}}` | First hostname in `custom_domains[]` when the inventory has `domain` resources; otherwise a placeholder the user fills |
@@ -1680,6 +1812,7 @@ This directory contains all artifacts needed to migrate your Heroku application(
 | `terraform/beanstalk.tf` | Elastic Beanstalk applications and environments |
 {{IF eb_deploy_method == "github_actions"}}
 | `.github/workflows/deploy-eb.yml` | GitHub Actions source-to-EB deploy workflow |
+| `.github/workflows/promote.yml` | Approval-gated promote of a running version to production (`heroku pipelines:promote` equivalent) |
 {{ENDIF}}
 {{IF eb_deploy_method == "codepipeline"}}
 | `terraform/pipeline.tf` | Optional CodePipeline source-to-EB deploy path |
