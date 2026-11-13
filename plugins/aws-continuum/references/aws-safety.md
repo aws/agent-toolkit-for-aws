@@ -1,6 +1,6 @@
 # Required AWS safety prelude
 
-Read and apply this before every AWS read, including setup discovery, status, fixing, refreshes and monitors, and before each approved write set. This is instruction-level safety, not a CLI wrapper. Read-side strictness is an owner-selectable policy; it is isolated in the final identity commit.
+Read and apply this before every AWS read, including setup discovery, status, fixing, refreshes and monitors, and before each approved write set. This is instruction-level safety, not a CLI wrapper. Read-side strictness is an owner-selectable policy.
 
 ## Reads: resolve and show the actual signer
 

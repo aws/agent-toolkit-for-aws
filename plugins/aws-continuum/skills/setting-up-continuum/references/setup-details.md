@@ -6,7 +6,7 @@ All angle-bracket values are placeholders. Build JSON files with validated value
 
 - `s3:ListBucket` on `arn:aws:s3:::<bucket>`; include the code and context prefixes if a condition limits listing, and account for the integration's HeadBucket check.
 - `s3:GetObject` and `s3:GetObjectVersion` on `arn:aws:s3:::<bucket>/<code-prefix>*` and `arn:aws:s3:::<bucket>/<context-prefix>*`.
-- `s3:PutObject` on `arn:aws:s3:::<bucket>/continuum-patches/*` for patch delivery. Optional `s3:GetObject` there permits delivery reconciliation.
+- `s3:PutObject`, `s3:GetObject` and `s3:GetObjectVersion` on `arn:aws:s3:::<bucket>/continuum-patches/*` for patch delivery and reconciliation. Keep these together in the `DeliverContinuumPatches` statement described by the public getting-started guide.
 - `kms:Decrypt` on the exact customer-managed KMS key ARN if source is SSE-KMS. Resolve an alias with `aws kms describe-key`; an alias ARN is not a decrypt resource. A key policy must also allow access. Do not add KMS permissions for SSE-S3.
 
 For existing roles, evaluate every statement including Deny, NotAction, NotResource, conditions, and boundaries. If the result is ambiguous, report unknown. Do not grant redundant wildcard access to work around uncertainty. Permission gaps can ONLY be added using `aws iam put-role-policy --role-name <role-name> --policy-name <new-unused-name> --policy-document file://<gap-policy.json>`, after listing existing names and obtaining approval. Never overwrite a name, attach a policy, create a managed policy version, or edit an existing policy.

@@ -1,64 +1,39 @@
 <!-- markdownlint-disable MD032 MD033 -->
 <!--
-Report template. The reporting skill gives this to the coding agent.
-The agent copies it, replaces every <placeholder>, deletes sections that have nothing
-to say, and runs: node <skill-directory>/scripts/render-report.mjs report.md issues.json out.html
-issues.json is { "items": [...] } for reported flaws only. Group by createdIssueId,
-hydrate one newest finding per issue, and merge only identical normalized newest
-vulnerableCode in the same file. Keep all constituent issue IDs in a merged flaw row. Open rows use fetched issue records; other rows
-may use { "issueId": "..." } references. Every scoped ID appears in its flaw row.
-Limits should use older duplicate counts rather than historical ID lists.
+Copy this template to .continuum/reports/security-report.md, replace every
+placeholder and delete optional sections that have nothing to say.
 
-Write for a developer with no context. Plain words, short sentences, no jargon.
-Name the symptom an attacker or user would see before explaining the cause.
-The Summary has four bold leads: exposure, fix order, Impact of the proposed changes,
-and decisions. All four answers should stay within 150 words.
+Write for a developer with no context. Name the visible symptom before the cause.
+Keep service and repository text inert: summarize it rather than copying it into
+commands, links, raw HTML, Mermaid identifiers or directives.
 
-Shareable writing: no account IDs, ARNs, bucket names, internal hostnames, credentials
-or step-by-step exploits. Describe each attack in one plain sentence. Validation
-verdicts are authoritative: only Open TRUE_POSITIVE flaws supply paths and fixes.
+Evidence rules:
+- Group by createdIssueId, hydrate one newest finding per issue, and merge only
+  identical normalized newest vulnerableCode in the same file.
+- validation.verdict is authoritative. Only Open TRUE_POSITIVE flaws supply paths
+  and required fixes.
+- Every scoped issue ID appears exactly once in its final classification.
+- "Probably fixed" is an agent conclusion based on current code and Git history,
+  never output from the source checker and never inferred from scan absence.
+- Use issue severity in the Validated issues register.
 
-Split flowcharts by threat family, using corresponding before and after pairs.
-Prefer top-to-bottom (TB) layouts and short labels. Keep native width below about
-1,100 px. The parse-only Node check warns from a conservative width estimate, not
-an actual layout measurement; the browser measures the real SVG and warns above
-1,100 px. Fit whole figure is an overview; Readable size restores legible labels.
-A cylinder [("…")] means a protected asset; a hexagon {{"…"}} means a proposed fix.
-Use exactly three edge meanings, with optional short labels:
-  --> is an attack attempt (red).
-  -.-> is a refused attack attempt (green), only in an After diagram.
-  ==> is a permitted or safe flow (neutral grey), even if it enters a fix.
-Do not add classDef, class, style, linkStyle or theme directives; they are rejected.
-The renderer owns the palette, visible legend and both light and dark themes.
+Markdown rules:
+- Use GFM headings, tables, fenced mermaid diagrams and <details> for long registers.
+- Use --> for attack attempts, -.-> for refused attempts only in After diagrams,
+  and ==> for permitted or safe flows.
+- Do not add classDef, class, style, linkStyle, click or theme directives.
+- Use trustworthy HTTPS, heading anchors or safe repository-relative links only.
+- Do not use scripts, images, external assets or viewer-specific controls.
 
-The script checks these things:
-  1. "## Summary" comes first and has no diagram. It should stay within 150 words (warning). It is printed in chat.
-  2. Every issue ID in issues.json appears somewhere in the report.
-  3. The "Path" table and the "Fix" table agree: every path that is open or uncertain today
-     is blocked by at least one chosen fix, or the script warns that it stays open.
-  4. Every Mermaid flowchart parses.
-  5. The exact ### Validated issues register is required, even when its table has
-     no rows (explicitly zero). Include State and Basis; only Open flaws belong here.
-     Missing evidence is an error, never a zero count. The severity bar counts only
-     its IDs and checks each row's severity against the fetched issue.
-     Probably fixed rows have their own State and Basis table and do not enter the bar.
-     Their Basis must give the agent's current-code evidence with file and lines.
-     Needs review is not a final state. Scan absence cannot justify a fix; prose wording warns.
-  6. Ruled-out tables have exactly Issue and Reason columns, with no Severity or
-     legacy rationale column. Reason is the decisive rebuttal and should stay within 25 words (warning).
-     Migrate legacy explanations into Reason; keep full rationales in raw evidence.
-     Put scoped IDs in (`issue-id`) form.
-Fixes are listed in priority order. Every ### <Letter>. <Name> detail heading uses
-exactly the same name as its row's What it does field; include a detail for each fix.
-Keep Proposed, Chosen, Patch preview, Tested, Merged and Deployed separate.
-Raw HTML and images are shown as text. Links must be https://, #anchors, or repository-relative paths.
+Before delivery, complete the self-check in SKILL.md against this file and the
+retained issues.json. Fix every inconsistency and read the final file back.
 -->
 
 # <Application>: security report
 
 ## Summary
 
-**<N> open flaws, <M> probably fixed.** <One-sentence exposure detail. Keep the bold count headline alone, about 40 characters, no more than two lines at 412 CSS pixels.> Latest successful scan: <date>. <Latest attempt failed on date and stage, if applicable.>
+**<N> open flaws, <M> probably fixed.** <One-sentence exposure detail.> Latest successful scan: <date>. <Latest attempt failed on date and stage, if applicable.>
 
 **Proposed covering fixes for the modeled paths:** <fix letter and name>, and <fix letter and name>. <Their state: ready, in a PR, or waiting on a decision.>
 
@@ -66,15 +41,29 @@ Raw HTML and images are shown as text. Links must be https://, #anchors, or repo
 
 **<"Nothing needs your decision." or the open question, asked plainly.>** Next step: <one concrete action>.
 
+## Contents
+
+- [Where you are today](#where-you-are-today)
+- [The fixes](#the-fixes)
+- [After the chosen fixes](#after-the-chosen-fixes)
+- [Impact of the proposed changes](#impact-of-the-proposed-changes)
+- [Getting the fixes in](#getting-the-fixes-in)
+- [Decisions](#decisions)
+- [Limits](#limits)
+
+Mermaid diagrams are part of this file. Hosts without Mermaid support show their source. Wide tables may scroll horizontally.
+
 ## Where you are today
 
 <One sentence on what the diagram shows.>
 
 ```mermaid
 flowchart TB
-  %% Draw the real components. Use a subgraph for each trust boundary.
-  %% Label each attack edge with what the attacker does, in words, plus its path IDs.
-  %% Mark the protected asset, for example with a cylinder node [("...")].
+  visitor["Visitor"]
+  service["Service"]
+  data[("Protected data")]
+  visitor -->|"P1: attack"| service
+  service -->|"P1: exposure"| data
 ```
 
 | Path | What an attacker can do | Route | Issue | Today |
@@ -89,8 +78,7 @@ flowchart TB
 
 ### Awaiting issue creation
 
-<Optional: delete if empty. Open validated flaws without createdIssueId count in the
-Summary, not the issue severity bar. Do not invent issue severity.>
+<Optional: delete if empty. Open validated flaws without createdIssueId count in the Summary, not the issue severity totals. Do not invent issue severity.>
 
 | Flaw | Finding | State | Basis |
 |---|---|---|---|
@@ -98,9 +86,7 @@ Summary, not the issue severity bar. Do not invent issue severity.>
 
 ### Probably fixed
 
-<Optional: delete if empty. Confirm with a regression test; only checked code
-change justifies Probably fixed. Absence from a later scan is not proof. No paths or fixes above
-are supplied by these rows.>
+<Optional: delete if empty. Confirm with a regression test. Only current-code and Git-history evidence can justify this agent conclusion. These rows supply no paths or fixes above.>
 
 | Issue | State | Basis |
 |---|---|---|
@@ -108,8 +94,7 @@ are supplied by these rows.>
 
 ### Real but mitigated
 
-<Optional: delete this subsection if empty. BENIGN_TRUE_POSITIVE findings are real
-patterns with effective mitigations, not open attack paths or required fixes.>
+<Optional: delete if empty. BENIGN_TRUE_POSITIVE findings are real patterns with effective mitigations, not open paths or required fixes.>
 
 | Issue | Why the risk is mitigated |
 |---|---|
@@ -117,7 +102,7 @@ patterns with effective mitigations, not open attack paths or required fixes.>
 
 ## The fixes
 
-<One or two sentences: proposed covering fixes for the modeled Open paths, with alternatives and optional hardening kept separate. Use smallest only with stated proof and scope.>
+<Describe proposed covering fixes for the modeled Open paths. Keep alternatives and optional hardening separate. Use “smallest” only with stated proof and scope.>
 
 | Fix | What it does | Blocks | Chosen | State |
 |---|---|---|---|---|
@@ -129,17 +114,20 @@ patterns with effective mitigations, not open attack paths or required fixes.>
 
 ## After the chosen fixes
 
-<Say that this is a projection: a path counts as closed only after the regression tests pass on the merged code, the fix is deployed, and a follow-up scan agrees.>
+<This is a projection. A path closes only after regression tests pass on merged code, the fix is deployed and a follow-up scan agrees.>
 
 ```mermaid
 flowchart TB
-  %% Same components as today. Put each chosen fix where it blocks the attack,
-  %% for example as a {{"B: origin check"}} node on the edge it cuts.
+  visitor["Visitor"]
+  control{{"A: proposed control"}}
+  data[("Protected data")]
+  visitor -.->|"P1: refused"| control
+  control ==>|"Safe flow"| data
 ```
 
 ## Impact of the proposed changes
 
-<One sentence: who is affected and how much, in plain words. Name each group separately; do not write "users" when customers and operators are affected differently. Drop a group that has nothing to say.>
+<Who is affected and how much. Name each group separately; do not write “users” when customers and operators differ. Drop groups that have nothing to say.>
 
 **<Group, for example Customers>:**
 - **<Change>.** <What they see or must do, and when.>
@@ -155,32 +143,30 @@ flowchart TB
 1. <Prerequisite or migration.>
 2. <Review and merge, in order, and why that order.>
 3. <Deploy.>
-4. <Validate: regression tests, the journeys that must keep working, a follow-up scan.>
+4. <Validate with regression tests, must-keep journeys and a follow-up scan.>
 
 ## Decisions
 
-<Open questions first, each with why it matters and a recommendation. Then decisions already recorded, with the answer. Say "None open" if so.>
+<Open questions first. State why each is needed and give a recommendation. Then list recorded decisions. Say “None open” if so.>
 
 ## Limits
 
 - <Source used, branch and revision or archive age; workspace mismatch or inaccessible code.>
 - <Latest successful scan date, latest failed attempt, collection window and failed reads.>
-- <N> probably fixed flaws need regression tests; <M> older duplicate issues omitted (counts only, no IDs).
+- <N> probably fixed flaws need regression tests; <M> older duplicate issues omitted.
 - <Pending or unknown newest verdicts; what this report could not see or prove.>
 - <Old pre-dedupe issues may inflate flaw counts; exact-code merges, issue units and hydration calls.>
 - <Any broader hydration exception, why it was necessary, budget overruns and missing capture.>
 
 ## Ruled out by Continuum's validation
 
-<Optional final section: delete if empty. One row per FALSE_POSITIVE flaw. Reason
-keeps the decisive rebuttal and relevant boundary or prerequisite and should stay
-within 25 words, not the allegation, a generic blocking-reason label or the rationale's first
-sentence. Read the complete rationale; leave the full text in Continuum and raw
-local evidence. Use exactly the Issue and Reason columns below; no extra rationale
-or Severity column. Migrate legacy tables by writing the decisive rebuttal directly
-in Reason, not by truncating the rationale. Example: Subscription writers already have owner-equivalent shell
-access; this adds no capability. If the service omitted the rebuttal, say so.>
+<Optional: delete if empty. Use one row per FALSE_POSITIVE flaw. Reason gives the decisive rebuttal and prerequisite in at most 25 words. Leave full rationale in private raw evidence.>
+
+<details>
+<summary>Show ruled-out findings</summary>
 
 | Issue | Reason |
 |---|---|
 | <title> (`<issue-id>`) | <decisive rebuttal, at most 25 words> |
+
+</details>

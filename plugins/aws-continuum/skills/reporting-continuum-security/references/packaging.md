@@ -23,7 +23,7 @@ There is no atomic folder rename. The backend ignores bookkeeping under `<codePr
 5. A populated version is complete only when its upload record has status `complete` and the record matches the observed repository set. Status `uploading` means incomplete. A version folder without a new upload record is unknown. For an incomplete or unknown highest folder, recover missing repository names from lower version folders, continuing backwards until the last verified `complete` set. Do not replace names already present in the newer set. If there is no lower verified complete set, preserve the actual uploaded set and explain the uncertainty. The preceding flat set is not used once versions exist, matching the reference publisher.
 6. Show ignored flat zips, recovered repositories, interrupted versions, and unknown versions. Build the new complete repository set as recovered current set MINUS repositories explicitly replaced PLUS new archives. For carry-forward preserve the original archive basename.
 
-Do not read or migrate the former bookkeeping objects under `<codePrefix>.continuum/versions/`. A folder produced with that layout has no new upload record and is therefore unknown. Explain that recovery uses the last version verified by a new `complete` upload record, or preserves the observed files with explicit uncertainty when none exists.
+Do not read or migrate legacy bookkeeping objects under `<codePrefix>.continuum/versions/`. A folder produced with that layout has no new upload record and is therefore unknown. Explain that recovery uses the last version verified by a new `complete` upload record, or preserves the observed files with explicit uncertainty when none exists.
 
 ## Prepare one upload record
 

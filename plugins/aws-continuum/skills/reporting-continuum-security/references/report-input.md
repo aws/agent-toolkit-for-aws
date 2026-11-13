@@ -1,6 +1,6 @@
 # Retained native evidence, separate from the report
 
-The HTML renderer takes Markdown plus the scoped `{ "items": [...] }` references for reported flaws, not a `{snapshotPath, model}` object. Follow [the Markdown template](../assets/report-template.md) and [the evidence contract](reporting.md). No acquisition helper ships.
+The agent writes `.continuum/reports/security-report.md` from retained evidence and completes the reporting skill's self-check. `issues.json` is the scoped `{ "items": [...] }` reference set for reported flaws, not a `{snapshotPath, model}` object. Follow [the Markdown template](../assets/report-template.md) and [the evidence contract](reporting.md). No acquisition helper or report renderer ships.
 
 Retain raw public list/get responses unchanged in private, Git-ignored evidence. If making a convenience snapshot for paging, preserve this information:
 
@@ -11,4 +11,4 @@ Retain raw public list/get responses unchanged in private, Git-ignored evidence.
 - Every request's non-secret argv, start/end UTC timestamps and response path or error. Enclosing start is the earliest ledger start, including STS; enclosing end is the latest ledger end, including failures.
 - Membership established through finding `scanRunId` and proven issue joins, never timestamps. Older repeats, unknown newest verdicts and unlinked candidates stay separately counted; do not list historical issue IDs in Limits.
 
-Read retained slices for paging without AWS refresh. Preserve file hash, order, total, offset and next offset. Report capture failure or partial reads, never silently truncate. Start at 600 requests and 10 minutes, with at most four concurrent requests, and ask before expanding scope or budget. Evidence files are mode 0600 in a directory mode 0700; no automatic cache retention is provided.
+Read retained slices for paging without AWS refresh. Preserve file hash, order, total, offset and next offset. Report capture failure or partial reads, never silently truncate. Start at 600 requests and 10 minutes, with at most four concurrent requests, and ask before expanding scope or budget. Evidence files are regular files, never symlinks, mode 0600 in a directory mode 0700; no automatic cache retention is provided.
