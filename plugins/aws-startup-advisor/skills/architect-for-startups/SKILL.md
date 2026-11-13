@@ -1,7 +1,7 @@
 ---
 name: architect-for-startups
 description: >-
-  Startup-tailored AWS architecture advice for non-agent workloads, adjusted to the company's stage (pre-revenue through Series B+), team size, runway, and credits. Not for AI agents: deploying an AI agent on AWS, picking its runtime, or any agentic architecture is agent-advisor. Use when a founder wants guidance or a recommendation rather than code changes: which services to choose, how to plan or review an architecture, how to stretch credits and control cost, or how to prepare architecture for a fundraise or technical diligence. For an interactive discovery flow that scaffolds and writes the architecture into the codebase, use start-building-for-startups. Do not use for: writing or scaffolding code, factual AWS Activate / programs / credits lookups (see knowledge-base-for-startups), a single copy-paste prompt (see prompt-library-for-startups), or migration intent such as GCP-to-AWS, Azure-to-AWS, or Heroku-to-AWS (see the migration skills: `gcp-to-aws`, `azure-to-aws`, `heroku-to-aws`, `llm-to-bedrock`).
+  Startup-tailored AWS architecture advice for non-agent workloads, adjusted to stage (pre-revenue through Series B+), team size, runway, and credits. Not for AI agents: deploying one, picking its runtime, or any agentic architecture is agent-advisor. Use when a founder wants guidance or a recommendation rather than code changes: which services to choose, designing or reviewing an architecture, tenant isolation for a multi-tenant SaaS, stretching credits and controlling cost, or preparing for a fundraise or technical diligence. Interactive scaffolding into the codebase is start-building-for-startups. Do not use for: writing code, Activate / programs / credits lookups (knowledge-base-for-startups), a copy-paste prompt (prompt-library-for-startups), pricing an infrastructure change before it ships (cost-regression-check), self-hosted LLM batch inference (self-hosted-llm-batch-inference), or migration intent (`gcp-to-aws`, `azure-to-aws`, `heroku-to-aws`, `llm-to-bedrock`).
 ---
 
 # Architect for Startups
@@ -76,6 +76,7 @@ guidance.
 ### Security & Identity
 
 - [Access control](references/iam.md)
+- [Multi-tenant SaaS isolation: silo, pool, or bridge per layer](references/multi-tenant-isolation.md)
 - [Security auditing](references/security-review.md)
 
 ### Messaging & Orchestration
@@ -94,11 +95,13 @@ guidance.
 - [Foundation models and AI agents](references/bedrock.md)
 - [Agent runtime platform](references/agentcore.md)
 - [ML pipelines and model serving](references/mlops.md)
+- Recurring offline batch inference on a self-hosted 1B to 8B open-weight model on one GPU: hand off to the `self-hosted-llm-batch-inference` skill instead of answering from these references.
 - [Strands SDK agent scaffolding](references/strands-agent.md)
 
 ### Cost
 
 - [Cost analysis and optimization](references/cost-check.md)
+- What a pull request or other Terraform, AWS CDK, or AWS CloudFormation change will add to the bill before apply, or a cost check on every pull request: hand off to the `cost-regression-check` skill instead of answering from this reference.
 
 ### Architecture & Planning
 
