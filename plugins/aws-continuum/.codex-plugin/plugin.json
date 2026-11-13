@@ -1,6 +1,6 @@
 {
   "name": "aws-continuum",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "Discover, prioritize, validate, and remediate security risks across the software development lifecycle with AWS Continuum, right from your coding agent. See which risks are real and drive each one to a tested fix.",
   "author": {
     "name": "Amazon Web Services",

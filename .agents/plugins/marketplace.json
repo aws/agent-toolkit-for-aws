@@ -74,7 +74,8 @@
         "installation": "AVAILABLE",
         "authentication": "ON_INSTALL"
       },
-      "category": "Cloud"
+      "category": "Cloud",
+      "version": "1.0.0"
     }
   ]
 }

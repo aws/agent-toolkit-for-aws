@@ -35,7 +35,8 @@
     {
       "name": "aws-continuum",
       "source": "./plugins/aws-continuum",
-      "description": "Discover, prioritize, validate, and remediate security risks across the software development lifecycle with AWS Continuum, right from your coding agent. See which risks are real and drive each one to a tested fix."
+      "description": "Discover, prioritize, validate, and remediate security risks across the software development lifecycle with AWS Continuum, right from your coding agent. See which risks are real and drive each one to a tested fix.",
+      "version": "1.0.0"
     }
   ]
 }
