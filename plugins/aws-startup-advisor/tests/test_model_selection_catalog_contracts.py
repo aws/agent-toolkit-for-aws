@@ -282,13 +282,16 @@ def test_runtime_rationale_does_not_claim_a_reference_only_same_model():
 
 
 def test_decision_options_skip_a_reference_only_model():
+    # GPT-5.6 Terra lists Guardrails as Converse-only, so continuity vs Guardrails is a decision
+    # between the bedrock-runtime OpenAI API and runtime Converse (GPT-6 Sol lists Guardrails on
+    # Responses, so it keeps its API and offers no decision).
     requirements = {"preserve_openai_api": True, "governance": ["guardrails"]}
     catalog = mr.load_openai_catalog()
-    offered = {o["model"] for o in _openai_rec(catalog, "gpt-6-sol", **requirements)["decision_options"]}
-    assert "openai.gpt-6-sol" in offered
-    hidden = _with_reference_only(catalog, "openai_gpt_6_sol")
-    offered = {o["model"] for o in _openai_rec(hidden, "gpt-6-sol", **requirements)["decision_options"]}
-    assert "openai.gpt-6-sol" not in offered
+    offered = {o["model"] for o in _openai_rec(catalog, "gpt-5.6-terra", **requirements)["decision_options"]}
+    assert "openai.gpt-5.6-terra" in offered
+    hidden = _with_reference_only(catalog, "openai_gpt_5_6_terra")
+    offered = {o["model"] for o in _openai_rec(hidden, "gpt-5.6-terra", **requirements)["decision_options"]}
+    assert "openai.gpt-5.6-terra" not in offered
 
 
 def _all_reference_only(catalog, keys=None):

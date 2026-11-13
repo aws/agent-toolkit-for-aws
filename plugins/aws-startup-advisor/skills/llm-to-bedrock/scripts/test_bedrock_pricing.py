@@ -295,6 +295,18 @@ def test_mantle_gpt_detection_excludes_gpt_oss():
     assert bp.is_mantle_gpt("anthropic.claude-sonnet-4-6") is False
 
 
+def test_mantle_gpt_detection_gpt54_55_bare_is_mantle_cris_is_runtime():
+    # GPT-5.4 / GPT-5.5 model cards (read 2026-11-06) list us./global. CRIS ids on
+    # bedrock-runtime. is_mantle_gpt matches only the bare (mantle) id form; the
+    # prefixed runtime forms are handled by the callers' explicit CRIS regex.
+    assert bp.is_mantle_gpt("openai.gpt-5.4") is True
+    assert bp.is_mantle_gpt("openai.gpt-5.5") is True
+    assert bp.is_mantle_gpt("us.openai.gpt-5.4") is False
+    assert bp.is_mantle_gpt("global.openai.gpt-5.4") is False
+    assert bp.is_mantle_gpt("us.openai.gpt-5.5") is False
+    assert bp.is_mantle_gpt("global.openai.gpt-5.5") is False
+
+
 def test_mantle_gpt_detection_includes_bare_gpt6():
     # Finding 1: bare GPT-6 ids must be recognized by the same detector that
     # routes GPT-5.x to the curated static table / mantle path.
@@ -359,6 +371,29 @@ def test_all_five_proprietary_gpt_models_are_priced():
         v = bp.lookup("us-east-1", mid)
         assert v["available"] is True, mid
         assert v["input_per_1k_usd"] > 0 and v["output_per_1k_usd"] > 0, mid
+
+
+@pytest.mark.parametrize("model_id", [
+    "us.openai.gpt-5.4", "global.openai.gpt-5.4",
+    "us.openai.gpt-5.5", "global.openai.gpt-5.5",
+    "arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.openai.gpt-5.4",
+    "arn:aws:bedrock:us-east-1:123456789012:inference-profile/global.openai.gpt-5.5",
+])
+def test_gpt54_55_cris_ids_are_unpriced_not_inferred_from_in_region(model_id, monkeypatch):
+    # PR 583 review: the GPT-5.4 / GPT-5.5 cards (read 2026-11-07) publish commercial
+    # In-Region prices only. Nothing establishes a Geo/Global CRIS rate, so a CRIS id
+    # must resolve to `available: false` — never to the bare In-Region row, and never
+    # via a live PriceList call that cannot carry these models.
+    import boto3
+
+    def boom(*a, **k):
+        raise AssertionError("must not call the PriceList API for a proprietary GPT CRIS id")
+
+    monkeypatch.setattr(boto3, "client", boom)
+    v = bp.lookup("us-east-1", model_id)
+    assert v["available"] is False, model_id
+    assert v["input_per_1k_usd"] is None and v["output_per_1k_usd"] is None
+    assert "not in the static table" in v["note"]
 
 
 def test_all_four_gpt6_models_are_priced():

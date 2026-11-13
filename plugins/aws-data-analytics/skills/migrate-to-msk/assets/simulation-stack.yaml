@@ -10,7 +10,7 @@ Parameters:
   InstanceType:
     Type: String
     Default: express.m7g.4xlarge
-    AllowedValues: [express.m7g.large, express.m7g.xlarge, express.m7g.2xlarge, express.m7g.4xlarge, express.m7g.8xlarge, express.m7g.12xlarge, express.m7g.16xlarge]
+    AllowedValues: [express.m7g.large, express.m7g.xlarge, express.m7g.2xlarge, express.m7g.4xlarge, express.m7g.8xlarge, express.m7g.12xlarge, express.m7g.16xlarge, express.m8g.large, express.m8g.xlarge, express.m8g.2xlarge, express.m8g.4xlarge, express.m8g.8xlarge, express.m8g.12xlarge, express.m8g.16xlarge, express.m8g.24xlarge]
     Description: Express broker instance type.
   BrokerCount:
     Type: Number
