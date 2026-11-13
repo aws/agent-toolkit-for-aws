@@ -463,14 +463,18 @@ calls the recommended Bedrock model and answers the AgentCore entrypoint contrac
 `AnthropicBedrockMantle` Messages client. For `runtime_converse`, use the boto3 Converse
 template. For `runtime_invoke`, use boto3 InvokeModel with the provider-native body. The
 `mantle_openai_chat` and `mantle_openai_responses` paths use their matching OpenAI-compatible
-clients. Never branch on one run-wide `migration_path` string.
+clients. For `runtime_messages`, generate an Anthropic SDK client with
+`base_url="https://bedrock-runtime.{region}.amazonaws.com/anthropic"` and a Bedrock bearer token
+(string `api_key`). For `runtime_openai_responses` / `runtime_openai_chat`, use the OpenAI SDK
+with `base_url="https://bedrock-runtime.{region}.amazonaws.com/openai/v1"` and the CRIS
+invocation id. Never branch on one run-wide `migration_path` string.
 
 The template below applies only to `runtime_converse`. Use it verbatim for that path,
 substituting `<MODEL_ID>` with the Step 2 invocation ID **for this unit** (or the
 `TODO: verify model id` placeholder if the MCP was not called). For the other API paths, keep
 the same `/invocations` and `/ping` HTTP wrapper but replace the imports, client construction,
 and `run_prompt` implementation with the selected path's client. Do not paste a Converse call
-into a Mantle or InvokeModel POC. In a multi-unit POC, each unit's agent.py uses THAT unit's
+into a Mantle, InvokeModel or Messages/OpenAI-SDK POC. In a multi-unit POC, each unit's agent.py uses THAT unit's
 model decision from `design.json.units[<unit-id>].model_recommendation`:
 
 ```python

@@ -62,7 +62,7 @@ The seven values are learned in three different ways; no phase may guess one it 
   Discover's app-code scanners record each match with file:line evidence — as
   `workloads[].mantle_signals[]` in the gcp-to-aws / azure-to-aws profile
   (`discover-app-code.md` Step 5C) and as top-level `mantle_signals[]` in the provider-neutral
-  profile (bedrock-migration-assessment `discover-app-code.md` Step 4.5); the usage-API discovery
+  profile (bedrock-migration-assessment `discover-app-code.md` Step 4.8); the usage-API discovery
   files add `projects` / `workspaces` / `web_search` signals from the account's own scoping and
   model strings. Clarify shows the detected signals and the user confirms or drops each one into
   `ai_constraints.mantle_requirements` (full flow Q22b, AI-only Q10.5); when no code was

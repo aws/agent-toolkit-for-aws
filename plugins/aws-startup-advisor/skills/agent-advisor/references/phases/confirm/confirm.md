@@ -27,7 +27,7 @@ _postconditions:
     _on_failure: _halt_and_inform
   - _validate_json: confirm.json
     _on_failure: _halt_and_inform
-  - _assert: "confirm.json has one units[<unit_id>] entry per agent_session unit (each with its own confirmed deployment_model, agentcore_services, tool_choices, model_decision, and chosen_runtime when that unit's verdict was co_recommend), plus top-level fields mirroring the primary unit; every model-bearing unit's model_decision copies primary_model, api_path, invocation_model_id, and the independent verification_status from model-recommendation.json plus model-verification.json when present unless the user requested changed requirements and the deterministic engine was rerun; accepted means the recommendation strategy was accepted and never implies verification_status == passed; a single-unit run may use the flat top-level shape alone; confirm.json carries resolved_runtimes{<unit_id>: <runtime>} for every unit (the per-unit rule/Tier-1 picks used by the platform gate); confirm.json records platform_decision {mode, platform} — asked only when the resolved runtimes diverge, silent split otherwise; when the gate was asked, platform_decision.offer records the superset and per-unit sacrifices; every temporal_worker_poll unit's Tier-1 pick (including any user AskUserQuestion choice for Tier-1 rules 1/4) is persisted in resolved_runtimes so Design consumes it verbatim and never re-asks"
+  - _assert: "confirm.json has one units[<unit_id>] entry per agent_session unit (each with its own confirmed deployment_model, agentcore_services, tool_choices, model_decision, and chosen_runtime when that unit's verdict was co_recommend), plus top-level fields mirroring the primary unit; every model-bearing unit's model_decision copies primary_model, api_path, mantle_selector, invocation_model_id, and the independent verification_status from model-recommendation.json plus model-verification.json when present unless the user requested changed requirements and the deterministic engine was rerun; accepted means the recommendation strategy was accepted and never implies verification_status == passed; a single-unit run may use the flat top-level shape alone; confirm.json carries resolved_runtimes{<unit_id>: <runtime>} for every unit (the per-unit rule/Tier-1 picks used by the platform gate); confirm.json records platform_decision {mode, platform} — asked only when the resolved runtimes diverge, silent split otherwise; when the gate was asked, platform_decision.offer records the superset and per-unit sacrifices; every temporal_worker_poll unit's Tier-1 pick (including any user AskUserQuestion choice for Tier-1 rules 1/4) is persisted in resolved_runtimes so Design consumes it verbatim and never re-asks"
     _on_failure: _halt_and_inform
   - _assert: "every agentcore_services entry in confirm.json (per unit and top level) is a service id this skill offers: identity, observability, evaluations, optimization, memory, gateway, policy, managed_kb, code_interpreter, browser, web_search, sandbox, or registry (the keys of SERVICE_LABELS in scripts/build_diagram.py)"
     _on_failure: _halt_and_inform
@@ -146,12 +146,13 @@ null model/path. The user may:
 - change a requirement. In that case update `model-recommendation-input.json`, rerun
   `model_recommendation.py`, and present the new result.
 
-Do not directly edit `primary_model`, `api_path`, or `invocation_model_id`, and do not let
-runtime scoring or a downstream migration engine replace them. Accepting the strategy and
-proving target-account access are independent. Record each accepted result as
-`model_decision: {"primary_model": "...", "api_path": "...", "invocation_model_id": "... |
-null", "accepted": true, "verification_status": "not_run | passed | failed |
-needs_resolution"}` in the matching unit. Use `model-verification.json` when present;
+Do not directly edit `primary_model`, `api_path`, `mantle_selector`, or `invocation_model_id`,
+and do not let runtime scoring or a downstream migration engine replace them. Accepting the
+strategy and proving target-account access are independent. Record each accepted result as
+`model_decision: {"primary_model": "...", "api_path": "...", "mantle_selector": "... | null",
+"invocation_model_id": "... | null", "accepted": true, "verification_status": "not_run | passed |
+failed | needs_resolution"}` in the matching unit (`mantle_selector` is copied verbatim from the
+recommendation: a string on `mantle_*` paths, `null` on every bedrock-runtime path). Use `model-verification.json` when present;
 otherwise use the recommendation's `verification.probe_status`. Model-less units omit
 `model_decision`.
 
@@ -182,6 +183,7 @@ mirror the primary unit's entry.
       "model_decision": {
         "primary_model": "anthropic.claude-sonnet-4-6",
         "api_path": "runtime_converse",
+        "mantle_selector": null,
         "invocation_model_id": "global.anthropic.claude-sonnet-4-6",
         "verification_status": "passed",
         "accepted": true
