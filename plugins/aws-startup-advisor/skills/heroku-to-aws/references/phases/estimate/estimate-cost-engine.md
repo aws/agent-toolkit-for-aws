@@ -276,9 +276,9 @@ Rates below come from the named keys in `aws-infra-pricing.json` — do not hard
 | AWS Service               | Formula (rates from `aws-infra-pricing.json`)                                                                                                            | Key inputs from `aws_config`                                                  |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | **Elastic Beanstalk**     | EC2: `ec2.instances[instance_type]` × 730 × running instance estimate + ALB: `alb.monthly_fixed` + LCU estimate (if LoadBalanced). EB service fee is $0. | `instance_type`, `min_instances`, `max_instances`, `environment_type`         |
-| **Fargate**               | (task_cpu/1024 × `fargate.per_vcpu_hour` + task_memory/1024 × `fargate.per_gb_mem_hour`) × 730 × desired_count                                           | `task_cpu`, `task_memory`, `desired_count`                                    |
+| **Fargate**               | (task_cpu/1024 × `fargate.per_vcpu_hour` + task_memory/1024 × `fargate.per_gb_mem_hour`) × 730 × desired_count; plus the shared Express Mode ALB lines below when `ecs_mode == "express"` | `task_cpu`, `task_memory`, `desired_count`, `ecs_mode`                        |
 | **EKS (cluster + nodes)** | `eks.control_plane_monthly` + `eks.node_rates_monthly[type]` × node_count + ALB per web service                                                          | `eks_cluster.node_groups[].instance_types`, `desired_size`, web service count |
-| **ALB**                   | `alb.monthly_fixed` + LCU estimate (`alb.per_lcu_hour` × 730)                                                                                            | Per web service with `load_balancer: true`                                    |
+| **ALB**                   | `alb.monthly_fixed` + LCU estimate (`alb.per_lcu_hour` × 730)                                                                                            | Per web service with `load_balancer: true` and `ecs_mode != "express"`        |
 | **RDS PostgreSQL**        | `rds_postgresql.instances[class]` × 730 + storage_gb × `rds_postgresql.storage_per_gb_month` (rate is baked_in Multi-AZ — do NOT double)                 | `instance_class`, `storage_gb`, `multi_az`                                    |
 | **Aurora PostgreSQL**     | `aurora_postgresql.instances[class]` × 730 + storage_gb × `aurora_postgresql.storage_per_gb_month` + I/O estimate (intrinsic multi-AZ)                   | `instance_class`, `storage_gb`                                                |
 | **ElastiCache Valkey** (ElastiCache Redis OSS: × `elasticache.redis_oss_multiplier`) | `elasticache.nodes[type]` × 730 (× 2 if Multi-AZ — `multiplier_x2`)                                                                                      | `node_type`, `multi_az`                                                       |
@@ -305,13 +305,24 @@ IF pricing data for a service is unavailable from both MCP and cache:
 3. Add to `warnings[]`: "Pricing unavailable for [service_id] ([aws_service]). Requires manual cost verification."
 4. Add service name to `pricing_source.services_with_missing_fallback[]`
 
+### Fargate Cost Calculation — ECS Express Mode ALB
+
+This step runs on the **common Fargate path**, for every design with at least one `aws_service: "Fargate"` entry whose `aws_config.ecs_mode == "express"` — with or without EKS or Elastic Beanstalk in the same design, and independent of `ALB` entries (Design emits no `alb:` entry for an Express web formation, so the per-entry ALB formula never sees it). A Fargate entry with no `ecs_mode` key is `standard` and is priced through its own `ALB` entry as before.
+
+1. **Tasks**: the Fargate formula above — Express Mode has no service charge of its own.
+2. **Shared ALB fixed charge**: Express Mode shares one ALB among up to **25** Express services per compatible group, and provisions another ALB when a group exceeds 25 ([resource sharing](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html#express-service-resource-sharing)). Group the Express entries by **VPC and ALB scheme** (`internet-facing` for public-subnet placement, `internal` for private-subnet placement — never combine the two in one group; a Heroku design has one VPC, and its Express web formations are all internet-facing, so this is normally one group). For each group emit **`ceil(count / 25)`** `alb.monthly_fixed` lines (1–25 services → 1 ALB, 26–50 → 2, 51–75 → 3), as a single `alb_express_shared` line item per group with `quantity = ceil(count / 25)`. Do not emit one fixed charge per Express service, and do not emit a single flat charge regardless of count.
+3. **LCU**: attribute the LCU estimate (`alb.per_lcu_hour` × 730) per Express service, as for a standard web service.
+4. **No double counting**: Elastic Beanstalk LoadBalanced environments and standard-mode `ALB` entries keep their own one-ALB-each lines; they never join an Express group, and an Express service is never also priced through the `ALB` row.
+
+Checks: one Express web formation and no EKS → exactly one `alb.monthly_fixed` plus its LCUs; 25 → 1 fixed line; 26 → 2; 50 → 2; 51 → 3.
+
 ### EKS Cost Calculation
 
 When `aws-design.json` contains EKS services (`aws_service: "EKS"`):
 
 1. **EKS Control Plane**: `eks.control_plane_monthly` (fixed, one cluster regardless of node count)
 2. **EC2 Node Group**: Look up the node instance type's monthly rate in `eks.node_rates_monthly[type]` × `desired_size` nodes. The monthly rates (m6i.large, m6i.xlarge, m6i.4xlarge, r6i.4xlarge, m6i.8xlarge, m6i.16xlarge) are maintained in `aws-infra-pricing.json` — do not hardcode them here.
-3. **ALB for web services**: Same as Fargate ALB pricing (`alb.monthly_fixed` per web service)
+3. **ALB for web services**: Same as Fargate ALB pricing (`alb.monthly_fixed` per web service). Express Mode is a Fargate shape and is priced in "Fargate Cost Calculation — ECS Express Mode ALB" above, not here (an EKS design has no Fargate formations — `design-eks.md` "All-or-Nothing Rule")
 4. **NAT Gateway** (if private subnets): Same as Fargate path (`nat_gateway.monthly_fixed` + data processing)
 
 **Total EKS monthly cost** = `eks.control_plane_monthly` + (node_monthly_rate × node_count) + ALB_costs + NAT_costs. Pods are NOT charged a per-task cost (compute is billed via the EC2 nodes); ALB and NAT are the separate lines above, not re-added here.

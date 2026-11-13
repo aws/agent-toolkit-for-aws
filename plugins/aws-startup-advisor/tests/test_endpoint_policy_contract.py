@@ -4,8 +4,8 @@ Amazon Bedrock documents `bedrock-runtime` as the recommended endpoint for most
 new applications and `bedrock-mantle` for capabilities available only there
 (https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints.html, read
 2026-11-07). The plugin states that rule once, in
-`skills/shared/ai/bedrock-endpoint-policy.md`, vendors it into gcp-to-aws and
-azure-to-aws, and requires every `mantle_*` design row to record a
+`skills/shared/ai/bedrock-endpoint-policy.md`, vendors it into gcp-to-aws,
+azure-to-aws and agent-advisor, and requires every `mantle_*` design row to record a
 `mantle_selector`. These checks pin the policy file's contract and the design
 files and the llm-to-bedrock orchestrator that must point at it.
 """
@@ -20,6 +20,7 @@ POLICY_CANONICAL = PLUGIN_ROOT / "skills" / "shared" / "ai" / "bedrock-endpoint-
 POLICY_VENDORED = [
     PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "vendored" / "ai" / "bedrock-endpoint-policy.md",
     PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "vendored" / "ai" / "bedrock-endpoint-policy.md",
+    PLUGIN_ROOT / "skills" / "agent-advisor" / "references" / "vendored" / "ai" / "bedrock-endpoint-policy.md",
 ]
 
 ANTHROPIC_GUIDE = PLUGIN_ROOT / "skills" / "shared" / "ai" / "ai-anthropic-to-bedrock.md"
