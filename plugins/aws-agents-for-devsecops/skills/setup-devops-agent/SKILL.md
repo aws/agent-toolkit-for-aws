@@ -9,6 +9,8 @@ The instructions below are specifically for setting up the AWS DevOps Agent plug
 
 ## Step 0: Check if setup is needed
 
+The plugin has a default `aws-devops-agent` entry in `${CLAUDE_PLUGIN_ROOT}/.mcp.json`. This entry uses Bearer token auth for `us-east-1`. It gets the token from `DEVOPS_AGENT_TOKEN`. Before setup, this variable is usually not set. Because of this, the server shows as failed with HTTP 401 at session start. The 401 message is `Access token not configured`. Older servers send `Invalid or expired access token`. This 401 is normal before setup. It does not show a bad token. If `DEVOPS_AGENT_TOKEN` is not set, the server is not set up. Go to "Step 1: Diagnose current state". Do not tell the user that the token is expired.
+
 1/ Check if the "aws-devops-agent" MCP server is running. If it is, verify that it has a valid connection (see "Step 3: Verify connectivity").
 
 If verification is successful, you should inform the user that the plugin is already setup using `SigV4 or Bearer Token`. Offer that you can switch the configuration to `Bearer Token or SigV4`, see "Step 2: Decide auth path" below for details.
@@ -100,7 +102,8 @@ curl -s -w "\nHTTP_STATUS: %{http_code}" \
 | Result | Meaning | Action |
 |--------|---------|--------|
 | HTTP 200 + `result.tools` array | Success | Proceed to Step 4 |
-| HTTP 401 | Token invalid or expired | Tell user to create a new token in the Operator Web App |
+| HTTP 401 + `Access token not configured` or `Empty bearer token` | `DEVOPS_AGENT_TOKEN` is not set in the shell that started the client | Do the steps in "Bearer token guidance" below with the user |
+| HTTP 401 + `Invalid or expired access token` | The token is not valid, is expired, or is revoked | Tell the user to make a new token in the Operator Web App |
 | HTTP 403 | Token scope insufficient | Tell user token needs `agent:read` + `agent:operate` scopes |
 | Connection refused / timeout | Endpoint unreachable | If SigV4 is available, offer fallback. Otherwise report unavailable. |
 
@@ -144,12 +147,14 @@ Only write after the user confirms. Write ONE server entry — never both. Insta
 
 ### Bearer config
 
+Replace `<REGION>` with the user's region. Write the region name, not `${DEVOPS_AGENT_REGION}`. Some clients, for example Codex, do not expand variables in `url`. These clients send the text as it is, and no tools load.
+
 ```json
 {
   "mcpServers": {
     "aws-devops-agent": {
       "type": "http",
-      "url": "https://connect.aidevops.${DEVOPS_AGENT_REGION}.api.aws/mcp",
+      "url": "https://connect.aidevops.<REGION>.api.aws/mcp",
       "headers": {
         "Authorization": "Bearer ${DEVOPS_AGENT_TOKEN}"
       },
@@ -285,7 +290,9 @@ need to prompt the user to run it. Also mention that after restarting the MCP se
 | Error | Cause | Fix |
 |-------|-------|-----|
 | No tools visible | Token not set or Claude Code not restarted | Set `DEVOPS_AGENT_TOKEN` + `DEVOPS_AGENT_REGION`, restart |
-| HTTP 401 | Token invalid/expired | Create new token in Operator Web App |
+| HTTP 401 at session start, before setup | The default config is active, and `DEVOPS_AGENT_TOKEN` is not set. The message is `Access token not configured`. Older servers send `Invalid or expired access token`. | Do this setup. The token is not expired. |
+| HTTP 401 `Invalid or expired access token` after setup | The token is not valid, is expired, or is revoked | Make a new token in the Operator Web App |
+| Works in `us-east-1` only | The default config always uses `us-east-1`. `DEVOPS_AGENT_REGION` does not change it. | Do this setup. Setup writes the region that you select into the config. |
 | `chat`/`investigate` missing | Token scope is `agent:read` only | Create token with `agent:operate` scope |
 | Connection refused / timeout | Endpoint unreachable | Check network; if SigV4 available, offer `aws-mcp` fallback |
 | `ExpiredTokenException` | AWS session credentials expired | `aws sso login` or refresh credentials |
