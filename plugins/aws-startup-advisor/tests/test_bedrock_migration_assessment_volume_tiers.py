@@ -48,8 +48,8 @@ def test_q7_options_and_values_match_the_table() -> None:
     assert default == (str(next(t["q7_option"] for t in TIERS["tiers"] if t["value"] == TIERS["dont_know"]["default"])), TIERS["dont_know"]["default"])
 
 
-def stated_bounds(label: str) -> tuple[int, int | None]:
-    """The bounds a Q7 label states, in tokens. 'to under' is exclusive."""
+def stated_range(label: str) -> tuple[int, int | None]:
+    """The half-open token range [low, high) a Q7 label states; '<' and 'under' are exclusive, 'or more' inclusive."""
     million = 1_000_000
     below = re.fullmatch(r"< (\d+)M tokens", label)
     if below:
@@ -57,15 +57,39 @@ def stated_bounds(label: str) -> tuple[int, int | None]:
     span = re.fullmatch(r"(\d+)M to under (\d+)M", label)
     if span:
         return int(span.group(1)) * million, int(span.group(2)) * million
-    above = re.fullmatch(r"> (\d+)M", label)
+    above = re.fullmatch(r"(\d+)M or more", label)
     if above:
         return int(above.group(1)) * million, None
+    strict = re.fullmatch(r"> (\d+)M", label)
+    if strict:
+        return int(strict.group(1)) * million + 1, None
     raise AssertionError(f"label does not state its bounds: {label!r}")
 
 
 def test_each_label_states_the_table_bounds() -> None:
     for tier in TIERS["tiers"]:
-        assert stated_bounds(tier["label"]) == (tier["min_tokens"], tier["max_tokens"])
+        assert stated_range(tier["label"]) == (tier["min_tokens"], tier["max_tokens"])
+
+
+@pytest.mark.parametrize("label", ["> 100M", "> 10M"])
+def test_a_strict_lower_bound_does_not_match_an_inclusive_tier(label) -> None:
+    assert stated_range(label)[0] not in {t["min_tokens"] for t in TIERS["tiers"]}
+
+
+@pytest.mark.parametrize("tokens", [0, 999_999, 1_000_000, 9_999_999, 10_000_000, 99_999_999, 100_000_000, 10**12])
+def test_every_boundary_matches_one_displayed_label_and_its_tier(tokens) -> None:
+    matches = [t["value"] for t in TIERS["tiers"]
+               if stated_range(t["label"])[0] <= tokens and (stated_range(t["label"])[1] is None or tokens < stated_range(t["label"])[1])]
+    assert matches == [tier_of(tokens)]
+
+
+def test_gcp_q7_shows_the_same_labels_and_auto_resolve_bands() -> None:
+    gcp = (PLUGIN_ROOT / "skills/gcp-to-aws/references/phases/clarify/clarify-ai-only.md").read_text(encoding="utf-8")
+    gcp_q7 = gcp[gcp.index("## Q7 "):gcp.index("## Q8 ")]
+    options = re.search(r"^> (1\\\).*)$", gcp_q7, re.M).group(1)
+    assert options == re.search(r"^> (1\\\).*)$", Q7, re.M).group(1)
+    for tier in TIERS["tiers"]:
+        assert f'{tier["label"].removesuffix(" tokens")} → `"{tier["value"]}"`' in gcp_q7
 
 
 def test_q7_places_a_measured_total_with_the_table_bounds() -> None:
@@ -73,5 +97,3 @@ def test_q7_places_a_measured_total_with_the_table_bounds() -> None:
     assert "Q7 also reads this skill's `references/vendored/ai/token-volume-tiers.json`" in CLARIFY
     vendored = BMA / "references/vendored/ai/token-volume-tiers.json"
     assert vendored.read_bytes() == SHARED.read_bytes()
-
-

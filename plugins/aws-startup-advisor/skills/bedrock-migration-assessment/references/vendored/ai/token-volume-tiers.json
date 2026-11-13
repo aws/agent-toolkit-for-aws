@@ -29,7 +29,7 @@
     {
       "value": "very_high",
       "q7_option": 4,
-      "label": "> 100M",
+      "label": "100M or more",
       "min_tokens": 100000000,
       "max_tokens": null
     }
