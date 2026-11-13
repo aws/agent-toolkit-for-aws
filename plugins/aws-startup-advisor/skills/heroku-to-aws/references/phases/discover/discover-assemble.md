@@ -36,6 +36,23 @@ the path and retry before assembly; do not continue with an unread schema.
    - `heroku_generation` (cedar/fir/unknown), `generation_action` (always `detect_only`), `generation_diagnostics` (array of diagnostic reasons)
    - `space` (Private Space name or null)
    - `procfile_parse_warning`, `app_json_parse_warning` (per-app parse warnings or null)
+   - `environment_tier` and `environment_tier_source` (rule 5a)
+
+   5a. **Environment tier.** Every stakeholder's first question about a large estate
+   is "how much of this is production?", so tag each app:
+   - If the app appears in a `pipeline` resource's `stages[]`, map the stage:
+     `production` → `prod`, `staging` → `staging`, `development` → `dev`,
+     `review` → `test`; set `environment_tier_source: "pipeline"`.
+   - Otherwise split `app_name` on `-` and `_` and look for a token (not a substring)
+     in this order: `prod`/`production`/`prd` → `prod`; `stg`/`staging`/`stage` →
+     `staging`; `qa`/`uat` → `qa`; `dev`/`development` → `dev`; `demo`/`sandbox` →
+     `demo`; `test`/`tst` → `test`. Set `environment_tier_source: "name-heuristic"`.
+   - No match → `environment_tier: "unmarked"`, `environment_tier_source: "name-heuristic"`.
+
+   Never infer tier from dyno size or plan — a `performance-l` dyno named `demo`
+   is still demo. Write the per-tier counts into `metadata.apps_by_environment_tier`
+   (`{ "prod": N, "staging": N, ... }`) so the report can quote them without
+   recounting.
 6. Include `billing_profile` section (if billing data available, with `available`, `total_monthly_cost`, `currency`, `billing_period`, `line_items`).
 7. Include `terraform_metadata` section only when `.tf` files with `heroku_*` resources were actually FOUND (the terraform fragment always runs but may exit empty — an empty run contributes no section and no `"terraform"` discovery source).
 8. Include `live_metadata` section (if the live fragment ran, with `found`, `captured_at`, `apps_captured`, `apps_failed`, `capture_warnings`, `limitations` — and `drift` per the Merge & Drift Rules below).

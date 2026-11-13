@@ -194,13 +194,29 @@ def test_pricing_cache_advanced_tier_documents_multi_pool_known_limitation() -> 
     assert "rate[pool.level] × pool.instance_count" in rules or "rate[pool.level] x pool.instance_count" in rules
 
 
-def test_pricing_cache_classic_tier_rows_untouched() -> None:
-    # Guard against accidental edits to existing flat-lookup Classic rows.
+def test_pricing_cache_classic_tier_rows_match_published_prices() -> None:
+    # Pin the Classic flat-lookup rows to Heroku's published prices. Match on
+    # cell VALUES, not column padding: the tables were re-padded when the -8/-9/-10
+    # and L/XL rows were added. Private/Shield -0 are $300/$350 (devcenter
+    # heroku-postgres-and-private-spaces); the earlier $200 mirrored Premium and was wrong.
+    # Cache <-> sizing-table parity (RAM / memory_limit per plan, class GiB >= RAM) is
+    # covered in test_heroku_sizing_capacity.py.
     text = PRICING_CACHE.read_text(encoding="utf-8")
-    assert "| standard-0 | 50      | 4 GB   | 64 GB   | 200         |" in text
-    assert "| premium-0 | 200     | 4 GB   | 64 GB   | 200         |" in text
-    assert "| private-0 | 200     | 4 GB   | 64 GB   | 200         |" in text
-    assert "| shield-0 | 200     | 4 GB   | 64 GB   | 200         |" in text
+
+    def row(plan: str) -> list[str]:
+        for line in text.splitlines():
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if cells and cells[0] == plan:
+                return cells
+        raise AssertionError(f"no pricing row for {plan}")
+
+    assert row("standard-0") == ["standard-0", "50", "4 GB", "64 GB", "200"]
+    assert row("premium-0") == ["premium-0", "200", "4 GB", "64 GB", "200"]
+    assert row("private-0") == ["private-0", "300", "4 GB", "64 GB", "200"]
+    assert row("shield-0") == ["shield-0", "350", "4 GB", "64 GB", "200"]
+    # the large plans a big Enterprise estate actually runs are present
+    for plan in ("private-8", "private-9", "private-xl-9", "shield-xl-9", "standard-10", "premium-10"):
+        assert len(row(plan)) == 5, plan
 
 
 def test_generate_report_requires_rendering_baseline_note() -> None:

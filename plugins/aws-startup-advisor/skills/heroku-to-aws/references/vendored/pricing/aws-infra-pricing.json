@@ -85,9 +85,10 @@
       "db.r6g.2xlarge": 1.038,
       "db.r6g.4xlarge": 2.076,
       "db.r6g.8xlarge": 4.153,
-      "db.r6g.16xlarge": 8.306
+      "db.r6g.16xlarge": 8.306,
+      "db.x2g.16xlarge": 12.064
     },
-    "_instances_note": "Re-verified via the AWS Pricing MCP server on 2026-10-05 (AmazonRDS, databaseEngine=Aurora PostgreSQL, deploymentOption=Single-AZ, non-IO-optimized). r6g.xlarge/2xlarge/4xlarge/8xlarge/16xlarge moved down ~6% from the previous extrapolated values; db.t4g.* and db.r6g.large were unchanged.",
+    "_instances_note": "Re-verified via the AWS Pricing MCP server on 2026-10-05 (AmazonRDS, databaseEngine=Aurora PostgreSQL, deploymentOption=Single-AZ, non-IO-optimized). r6g.xlarge/2xlarge/4xlarge/8xlarge/16xlarge moved down ~6% from the previous extrapolated values; db.t4g.* and db.r6g.large were unchanged. db.x2g.16xlarge (1,024 GiB) added 2026-11-10 from the AWS Pricing MCP server (AmazonRDS, databaseEngine=Aurora PostgreSQL, deploymentOption=Single-AZ, standard not IO-optimized, us-east-1): $12.064/hr.",
     "storage_per_gb_month": 0.1,
     "io_per_million": 0.2
   },
