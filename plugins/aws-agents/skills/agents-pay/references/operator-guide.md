@@ -52,9 +52,22 @@ and on why the split exists at all:
    `CreatePaymentSession` and every `Create*` setup action. Verify:
 
    ```bash
-   aws iam get-role-policy --role-name <ProcessPaymentRole> --policy-name <Policy> \
-     | grep -c CreatePaymentSession        # must be 0
+   ROLE_ARN=$(aws bedrock-agentcore-control get-agent-runtime \
+     --agent-runtime-id <runtime-id> --query roleArn --output text) || ROLE_ARN=LOOKUP_FAILED
+   decision=$(aws iam simulate-principal-policy --policy-source-arn "$ROLE_ARN" \
+     --action-names bedrock-agentcore:CreatePaymentSession \
+     --resource-arns <payment-manager-arn> \
+     --query 'EvaluationResults[0].EvalDecision' --output text) || decision=LOOKUP_FAILED
+   echo "$decision"   # PASS only on implicitDeny or explicitDeny; anything else is a FAIL
    ```
+
+   This checks the Runtime execution role (the role the agent actually runs as) and
+   fails closed: a lookup error prints `LOOKUP_FAILED`, never a pass. With the CLI's
+   default wiring, `agentcore deploy` grants the Runtime execution role both
+   `CreatePaymentSession` and `ProcessPayment` on the payment manager, so a default
+   deploy prints `allowed`. The role split above does not hold until you block it,
+   for example with an explicit `Deny` on `bedrock-agentcore:CreatePaymentSession`
+   attached to that role. Re-run the check after every deploy.
 
    A runtime `AccessDeniedException` on `CreatePaymentSession` is **the control
    working**. Do not "fix" it by granting the permission.
@@ -83,15 +96,24 @@ and on why the split exists at all:
 
 ```bash
 # 0. Prerequisites
+cd /absolute/path/to/agents-pay
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 npm install -g @aws/agentcore
 
 # 1. Provision (ControlPlaneRole; only step that touches provider secrets)
-agentcore add payment-manager                     # NO FLAGS — interactive wizard
-agentcore add payment-connector                   # NO FLAGS — interactive wizard
-agentcore deploy
+cd /absolute/path/to/AgentCore/project
+agentcore add payment-manager --name MyPayments --no-auto-payment
+agentcore add payment-connector --manager MyPayments --name Coinbase --quick-create
+agentcore build
+agentcore deploy --region <region>
+
+# The admin script lives in the installed agents-pay skill directory.
+export AGENTCORE_PROJECT_DIR="$PWD"
+export AGENTCORE_TARGET=default
+export AWS_REGION=<region>
+cd /absolute/path/to/agents-pay
 
 # 2. Write the config with at least one approved payee
 python scripts/agents_pay_admin.py init-config \
@@ -161,7 +183,7 @@ runtime path; enabling both would make policy enforcement path-dependent.
 Two things to confirm before you trust the OpenClaw runtime:
 
 1. **No tool takes a wallet secret or provider key as a parameter.** Credentials
-   belong in the environment or the `agentcore` wizard, never in a model-visible
+   belong in the environment or the `agentcore` credential flow, never in a model-visible
    schema — otherwise they land in transcripts, traces, and logs.
 2. **No model-callable tool creates a payment session.** If the model can mint
    budget, the per-session cap bounds nothing.

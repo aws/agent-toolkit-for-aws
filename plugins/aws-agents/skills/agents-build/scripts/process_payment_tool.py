@@ -24,7 +24,7 @@ Control-plane resources (payment manager/connector) are created by the AgentCore
 CLI; the per-user instrument/session are created by setup_payment_user.py. This
 tool only consumes them, via these environment variables:
 
-  PAYMENT_MANAGER_ARN        payment manager ARN      (from deployed-state.json)
+  PAYMENT_MANAGER_ARN        payment manager ARN      (from agentcore status --json)
   PAYMENT_INSTRUMENT_ID      per-user wallet ID       (from setup_payment_user.py)
   PAYMENT_SESSION_ID         per-conversation session (from setup_payment_user.py)
   PAYMENT_USER_ID            end-user identity        (required)

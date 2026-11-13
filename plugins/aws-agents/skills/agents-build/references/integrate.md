@@ -30,43 +30,27 @@ Do NOT use for:
 
 ### Step 1: Check deployment status
 
-Read `agentcore/agentcore.json` to get the agent name. Then check if it's deployed:
+Read `agentcore/agentcore.json` for the Runtime name and `agentcore/aws-targets.json` for the intended deployment target. Keep that target and its region for the SDK example below. Then check whether that Runtime is deployed there:
 
 ```bash
-agentcore status --type agent
+agentcore status --target <target> --json
 ```
 
-**If not deployed:** "Your agent needs to be deployed before you can call it from an app. Run `agentcore deploy` first, or use the `agents-deploy` skill for guidance."
+**If not deployed:** "Your agent needs to be deployed to `<target>` before you can call it from an app. Run `agentcore deploy --target <target>` first, or use the `agents-deploy` skill for guidance."
 
 Do not proceed until the agent is deployed.
 
-### Step 2: Get the agent endpoint
+### Step 2: Get the Runtime ARN and target
 
 ```bash
-agentcore fetch access --name <AgentName> --type agent
+agentcore status --target <target> --json
 ```
 
-This returns:
-
-- **Agent Runtime ARN** — needed for SDK invocation
-- **Endpoint URL** — for direct HTTPS calls
-- **Auth configuration** — what auth method is configured
-
-Note the auth type from the output. It determines how the client app authenticates.
+Select the deployed `runtime` entry by name in the `resources` array. Its `arn` is the identifier for SDK invocation. Use the selected target's region, including for `agentcore runtime get --id <runtime-id> --region <target-region> --json` when further service details are needed. The old `agentcore fetch access` command is absent in v1.
 
 ### Step 3: Determine auth method
 
-Read the agent's `authorizerType` field from `agentcore/agentcore.json` (it's a top-level field on the runtime entry; JWT details live in the separate `authorizerConfiguration` object on the same runtime).
-
-| Auth type | How the client authenticates | Best for |
-|---|---|---|
-| **None** (default) | IAM SigV4 signing on the request | Backend services with AWS credentials |
-| **AWS_IAM** | IAM SigV4 signing on the request | Backend services, Lambda-to-agent calls |
-| **CUSTOM_JWT** | Bearer token in Authorization header | Web/mobile apps with an identity provider |
-
-**If no authorizer is configured:** The agent uses IAM auth by default. The calling identity needs `bedrock-agentcore:InvokeAgentRuntime` permission.
-
-**If CUSTOM_JWT:** The client sends a JWT from the configured identity provider. The agent validates it against the discovery URL, allowed audience, and allowed clients configured during setup.
+Read the Runtime entry's `authorizerType` and `authorizerConfiguration` in `agentcore/agentcore.json`. An unset authorizer uses IAM. AWS_IAM callers sign requests with SigV4 and need `bedrock-agentcore:InvokeAgentRuntime`; CUSTOM_JWT callers present a JWT from the configured issuer. Keep bearer tokens out of source code and logs. For a quick CLI verification, use `agentcore invoke --runtime <name> --payload '{"prompt":"Hello"}' --target <target>` and add `--bearer-token` only for a JWT Runtime.
 
 ### Step 4: Generate client code
 
@@ -88,7 +72,7 @@ try:
         payload=json.dumps({
             "prompt": "Hello, what can you do?"
         }).encode(),
-        runtimeSessionId="session-123",  # reuse for multi-turn conversations
+        runtimeSessionId="550e8400-e29b-41d4-a716-446655440000",  # reuse for multi-turn conversations
     )
 
     # Handle streaming response — response["response"] is a StreamingBody
@@ -121,15 +105,22 @@ except ClientError as e:
 
 ```python
 import requests
+from urllib.parse import quote
 
-AGENT_URL = "<ENDPOINT_URL>"
+AGENT_URL = (
+    "https://bedrock-agentcore.<REGION>.amazonaws.com/runtimes/"
+    + quote("<AGENT_RUNTIME_ARN>", safe="")
+    + "/invocations"
+)
 JWT_TOKEN = "<TOKEN_FROM_YOUR_IDP>"
+session_id = "550e8400-e29b-41d4-a716-446655440000"  # reuse for later turns
 
 response = requests.post(
     AGENT_URL,
     headers={
         "Authorization": f"Bearer {JWT_TOKEN}",
         "Content-Type": "application/json",
+        "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id": session_id,
     },
     json={"prompt": "Hello, what can you do?"},
     stream=True,
@@ -156,7 +147,7 @@ const response = await client.send(
     payload: new TextEncoder().encode(
       JSON.stringify({ prompt: "Hello, what can you do?" })
     ),
-    runtimeSessionId: "session-123",
+    runtimeSessionId: "550e8400-e29b-41d4-a716-446655440000",
   })
 );
 
@@ -170,14 +161,16 @@ for await (const chunk of response.response) {
 #### JavaScript/TypeScript (fetch) — JWT auth
 
 ```typescript
-const AGENT_URL = "<ENDPOINT_URL>";
+const AGENT_URL = `https://bedrock-agentcore.<REGION>.amazonaws.com/runtimes/${encodeURIComponent("<AGENT_RUNTIME_ARN>")}/invocations`;
 const JWT_TOKEN = "<TOKEN_FROM_YOUR_IDP>";
+const sessionId = "550e8400-e29b-41d4-a716-446655440000"; // reuse for later turns
 
 const response = await fetch(AGENT_URL, {
   method: "POST",
   headers: {
     Authorization: `Bearer ${JWT_TOKEN}`,
     "Content-Type": "application/json",
+    "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id": sessionId,
   },
   body: JSON.stringify({ prompt: "Hello, what can you do?" }),
 });
@@ -195,10 +188,10 @@ while (true) {
 
 Explain how sessions work:
 
-- **`runtimeSessionId`** — pass the same value across multiple calls to maintain conversation context
+- **`runtimeSessionId`** — pass the same value across calls so the Runtime can route them to the same session
 - Generate a unique session ID per user conversation (e.g., UUID)
-- Sessions are server-side — the agent remembers the conversation history for that session ID
-- If you omit the session ID, each call is stateless (no conversation memory)
+- The session ID alone does not save conversation history. Check that the deployed agent keeps history in its process or uses a session or memory manager. The CLI's Strands template caches agents by session ID and wires a memory manager when configured; custom Runtime code must implement its own history handling.
+- If you omit the session ID, the service assigns one for that invocation, so a later call cannot deliberately resume it.
 
 ```python
 import uuid
@@ -270,10 +263,15 @@ Create an IAM role that trusts the caller account and has permission to invoke t
   "Statement": [{
     "Effect": "Allow",
     "Action": "bedrock-agentcore:InvokeAgentRuntime",
-    "Resource": "arn:aws:bedrock-agentcore:<REGION>:<AGENT_ACCOUNT_ID>:runtime/<RUNTIME_NAME>-*"
+    "Resource": [
+      "<AGENT_RUNTIME_ARN>",
+      "<AGENT_RUNTIME_ARN>/runtime-endpoint/*"
+    ]
   }]
 }
 ```
+
+Take `<AGENT_RUNTIME_ARN>` from `agentcore status --target <target> --json` in the agent's project (the `arn` of the `runtime` resource). The deployed Runtime name is `<project>_<target>_<runtime>-<id>` (hyphens in the target name become `_`), not the logical runtime name in `agentcore.json`. The call is authorized on the endpoint ARN (`.../runtime-endpoint/DEFAULT`), so include both entries. To survive a Runtime being replaced (new `<id>`), use `arn:aws:bedrock-agentcore:<REGION>:<AGENT_ACCOUNT_ID>:runtime/<project>_<target>_<runtime>-*` instead, which also matches the endpoint ARNs.
 
 Scope the `Principal` in the trust policy as narrowly as possible (a specific role ARN in the caller account rather than `:root` for anything beyond proof-of-concept). Use an `ExternalId` to prevent the confused deputy problem.
 
@@ -302,10 +300,10 @@ agentcore = boto3.client(
 )
 
 response = agentcore.invoke_agent_runtime(
-    agentRuntimeArn="arn:aws:bedrock-agentcore:<REGION>:<AGENT_ACCOUNT_ID>:runtime/<RUNTIME_NAME>",
+    agentRuntimeArn="<AGENT_RUNTIME_ARN>",  # exact ARN from agentcore status --json
     qualifier="DEFAULT",
     payload=json.dumps({"prompt": "hello"}).encode(),
-    runtimeSessionId="session-123",
+    runtimeSessionId="550e8400-e29b-41d4-a716-446655440000",
 )
 ```
 
@@ -335,6 +333,7 @@ When it's the wrong tool:
 **IAM permission required:** `bedrock-agentcore:InvokeAgentRuntimeCommand` on the runtime ARN. This is a **separate** action from `InvokeAgentRuntime` — scope it explicitly to the callers who need it.
 
 ```python
+import sys
 import boto3
 
 client = boto3.client("bedrock-agentcore", region_name="<REGION>")
@@ -342,14 +341,22 @@ client = boto3.client("bedrock-agentcore", region_name="<REGION>")
 response = client.invoke_agent_runtime_command(
     agentRuntimeArn="<AGENT_RUNTIME_ARN>",
     qualifier="DEFAULT",
-    runtimeSessionId="session-123",   # must be an existing session
-    command="ls -la /tmp && cat /tmp/status.json",
+    runtimeSessionId="550e8400-e29b-41d4-a716-446655440000",   # must be an existing session
+    body={"command": "ls -la /tmp && cat /tmp/status.json", "timeout": 60},
 )
 
-# Output streams back over HTTP/2 on response["response"]
-for chunk in response["response"].iter_chunks():
-    print(chunk.decode(), end="", flush=True)
+# Output streams back as events on response["stream"]
+for event in response["stream"]:
+    chunk = event.get("chunk", {})
+    if "contentDelta" in chunk:
+        delta = chunk["contentDelta"]
+        print(delta.get("stdout", ""), end="", flush=True)
+        print(delta.get("stderr", ""), end="", file=sys.stderr, flush=True)
+    elif "contentStop" in chunk:
+        print(f"\nexit code: {chunk['contentStop'].get('exitCode')}")
 ```
+
+For a one-off command or an interactive shell from your terminal, the CLI wraps the same API: `agentcore runtime exec --id <runtime-id> --session-id <session-id> --command "ls -la /tmp"` and `agentcore runtime shell --id <runtime-id> --session-id <session-id>`. The Runtime ID is the part of the Runtime ARN after `runtime/`.
 
 **Session must exist.** `InvokeAgentRuntimeCommand` attaches to a running session; it won't create one. If the session has expired or never existed, the call fails. Invoke the agent first (to start the session), then use the session ID for subsequent command calls.
 
@@ -370,11 +377,11 @@ for chunk in response["response"].iter_chunks():
 {
   "Effect": "Allow",
   "Action": "bedrock-agentcore:InvokeAgentRuntimeCommand",
-  "Resource": "arn:aws:bedrock-agentcore:<REGION>:<YOUR_ACCOUNT_ID>:runtime/<RUNTIME_NAME>-*"
+  "Resource": "arn:aws:bedrock-agentcore:<REGION>:<YOUR_ACCOUNT_ID>:runtime/<project>_<target>_<runtime>-*"
 }
 ```
 
-Keep this in a separate IAM policy from the one that grants `InvokeAgentRuntime`. Attach it only to roles that explicitly need to run commands inside agent sessions.
+The deployed Runtime name is `<project>_<target>_<runtime>-<id>`; check the exact ARN with `agentcore status --target <target> --json`. Keep this in a separate IAM policy from the one that grants `InvokeAgentRuntime`. Attach it only to roles that explicitly need to run commands inside agent sessions.
 
 **Command injection:** The code example above uses a hardcoded command string — intentionally. If your real usage constructs commands from user-supplied input, validate before passing: reject strings containing `&&`, `;`, `$(...)`, backticks, `|`, or other shell metacharacters. Passing unsanitized user input to `InvokeAgentRuntimeCommand` is a direct code execution vulnerability.
 
