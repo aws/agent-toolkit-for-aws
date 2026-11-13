@@ -12,7 +12,7 @@ Required workflow for any sizing answer:
 
 1. Translate the user's inputs (avg/peak ingress, avg/peak egress, partitions, retention, primary retention, RF, PST, rack affinity) into the script's flags. If a value is missing, ask before guessing.
 2. Run the script. Always pass `--retention-hours` and `--primary-retention-hours` — set them equal to disable Tiered Storage; set retention > primary to enable it.
-3. Read the "Recommended pick per class" section.
+3. Read the "Recommended pick per class" section. Express has one pick per generation: report the Express M8g pick as the Express recommendation. Report the Express M7g pick instead only when the Express M8g line reads "not sized", meaning M8g is not offered in that Region.
 4. Use the "Broker sizing" table and the `bottleneck` column only to explain *why* the script picked what it did, never to override the recommendation.
 
 You may suggest a larger size than the recommended pick only when (a) the user explicitly asks for one, or (b) the workload exceeds the broker quota and a quota increase is impractical. In both cases, name the recommended pick first and the alternative second.
@@ -51,6 +51,8 @@ Include this whenever you report cost figures from a default run:
 
 Ask for the discount percentage whenever the customer mentions a PPA, EDP, or other negotiated rates, then re-run with `--discount-pct N` and report the discounted figures. Do not guess a discount, and do not apply one the customer did not state. The discount changes cost only — broker counts and bottlenecks are identical.
 
+Express M8g's Cross-AZ line is half of Express M7g's for the same traffic. That is expected: on Express M8g, MSK does not bill the broker side of a client-to-broker AZ crossing, only the client side. Express M8g also has a lower broker price than Express M7g at the same size, with the same per-broker ingress and partition limits.
+
 Figures default to `us-east-1`. Pass `--region` for anything else; rates differ per Region. See the [Amazon MSK pricing page](https://aws.amazon.com/msk/pricing/).
 
 With AWS credentials the script fetches live rates for any Region. Without them it falls back to an embedded `us-east-1` snapshot, and the "Sizing inputs" block reports `pricing source: static` — when it does, tell the customer the rates are a snapshot with that capture date, not confirmed current pricing. Pricing a non-`us-east-1` Region needs credentials; the script errors rather than quoting `us-east-1` rates for another Region.
@@ -85,7 +87,7 @@ Express fixes RF=3, `min.insync.replicas=2`, `unclean.leader.election=false`, an
 | Maintenance windows | Yes — cluster enters MAINTENANCE state during patching | None — stays ACTIVE |
 | Scaling | Hours to days; manual rebalance | 20x faster scaling; Intelligent Rebalancing + 180x faster rebalancing [^1] |
 | Broker recovery | Rebalance required after replacement | 90% faster, no significant rebalance [^2] |
-| Instance families | kafka.t3, kafka.m5, kafka.m7g | express.m7g only |
+| Instance families | kafka.t3, kafka.m5, kafka.m7g, kafka.m8g | express.m7g, express.m8g |
 | Availability zones | 2 or 3 AZs | 3 AZs only |
 | RF / min.insync.replicas / unclean.leader.election | Configurable | Fixed at 3 / 2 / false |
 

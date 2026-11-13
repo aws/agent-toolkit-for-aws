@@ -2,6 +2,10 @@
 
 Investigate incidents, review code and execute UAT for release readiness, scan code for vulnerabilities, and run penetration tests with [AWS DevOps Agent](https://aws.amazon.com/devops-agent/?trk=7b4b0d25-1409-441c-b914-c5d08677c376&sc_channel=ghr) and [AWS Security Agent](https://aws.amazon.com/security-agent/?trk=7b4b0d25-1409-441c-b914-c5d08677c376&sc_channel=ghr).
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for changes that can affect how the plugin behaves, such as the rename of release readiness review to code change risk analysis and the new `review_depth` option. Check it first when a skill or command stops working as it used to.
+
 ## What's inside
 
 | Component | Path | Trigger |
@@ -28,7 +32,7 @@ Investigate incidents, review code and execute UAT for release readiness, scan c
 | **Command** `/aws-agents-for-devsecops:release-readiness` | `commands/release-readiness.md` | User types it explicitly |
 | **Command** `/aws-agents-for-devsecops:spaces` | `commands/spaces.md` | User types it explicitly |
 | **Command** `/aws-agents-for-devsecops:cost` | `commands/cost.md` | User types it explicitly |
-| **MCP server** `aws-devops-agent` | `.mcp.json` (written by setup) | Remote MCP server, Bearer or SigV4 |
+| **MCP server** `aws-devops-agent` | `.mcp.json` (default: Bearer, `us-east-1`; setup writes a new config) | Remote MCP server, Bearer or SigV4 |
 
 ## Available tools (remote server)
 
@@ -63,7 +67,7 @@ From the root directory of this repository:
 /reload-plugins
 ```
 
-Setup auth:
+Set up auth. **Do setup before first use.** Until you do setup, the `aws-devops-agent` MCP server shows as failed with HTTP 401 at session start. This is normal. The plugin has a default Bearer config for `us-east-1`, and the token is not set. `DEVOPS_AGENT_REGION` does not change the default region. Setup writes your region into the config. To do setup, use one of these commands:
 
 ```
 # General:

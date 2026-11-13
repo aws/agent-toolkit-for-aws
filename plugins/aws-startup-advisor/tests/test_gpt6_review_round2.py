@@ -70,14 +70,32 @@ def test_both_estimate_ai_files_require_matching_context_tiers() -> None:
 
 # --- Finding 2: runtime_openai_cris gate/dispatch ---
 
-def test_design_ai_scopes_mantle_only_to_gpt55_gpt54() -> None:
+def test_design_ai_gives_gpt55_gpt54_the_runtime_cris_path() -> None:
+    # GPT-5.5 / GPT-5.4 model cards (read 2026-11-06) list us./global. CRIS ids on
+    # bedrock-runtime, so the runtime_openai_cris carve-out must name them alongside
+    # GPT-6/5.6 and the old "mantle-only, no CRIS" scoping must be gone.
     for f in DESIGN_AI_FILES:
-        text = f.read_text(encoding="utf-8")
+        text = re.sub(r"\s+", " ", f.read_text(encoding="utf-8"))
         assert "runtime_openai_cris" in text, (
-            f"{f}: no runtime_openai_cris carve-out for GPT-6/5.6 (Finding 2)"
+            f"{f}: no runtime_openai_cris carve-out (Finding 2)"
         )
         assert "GPT-5.5" in text and "GPT-5.4" in text, (
-            f"{f}: mantle-only scoping must name GPT-5.5/GPT-5.4 specifically (Finding 2)"
+            f"{f}: the runtime_openai_cris rule must name GPT-5.5/GPT-5.4 specifically"
+        )
+        assert "us.openai.gpt-5.5" in text and "us.openai.gpt-5.4" in text, (
+            f"{f}: must record the GPT-5.5/GPT-5.4 us. CRIS ids"
+        )
+        assert "GPT-5.5 and GPT-5.4 are mantle-only" not in text
+        assert "GPT-5.5 and GPT-5.4 are `bedrock-mantle` only" not in text
+        assert "no CRIS" not in text
+        assert "No Converse fallback for GPT-5.5/GPT-5.4" not in text
+        # bedrock-runtime is the default; a mantle_* row needs a recorded selector
+        # and the OpenRouter same-model route has a runtime spelling.
+        assert "mantle_selector" in text, (
+            f"{f}: design must require bedrock_models[].mantle_selector on mantle_* rows"
+        )
+        assert "same_model_runtime" in text, (
+            f"{f}: openrouter_path vocabulary must include same_model_runtime"
         )
 
 
@@ -102,9 +120,21 @@ def test_schema_design_aws_ai_vocabulary_includes_runtime_openai_cris() -> None:
         "schema-design-aws-ai.md: migration_path vocabulary missing runtime_openai_cris (Finding 2)"
     )
     assert "GPT-5.5" in text and "GPT-5.4" in text, (
-        "schema-design-aws-ai.md: mantle-only scoping must name GPT-5.5/GPT-5.4 specifically, "
-        "not blanket 'proprietary GPT' (Finding 2)"
+        "schema-design-aws-ai.md: runtime_openai_cris vocabulary must name GPT-5.5/GPT-5.4 "
+        "specifically, not blanket 'proprietary GPT' (Finding 2)"
     )
+    # The ban is on BARE proprietary GPT ids paired with converse/bedrock-runtime,
+    # not on the GPT-5.5/GPT-5.4 models — their cards list us./global. CRIS ids.
+    normalized = re.sub(r"\s+", " ", text)
+    assert "those models are mantle-only" not in normalized
+    assert "mantle-only, no CRIS" not in normalized
+    assert "**bare** proprietary `openai.gpt-*`" in normalized
+    assert "us.openai.gpt-5.5" in normalized or "GPT-5.5 / GPT-5.4 runtime support" in normalized
+    # Runtime-default vocabulary: Anthropic SDK on bedrock-runtime, the runtime
+    # OpenRouter route, and the selector every mantle_* row must carry.
+    assert "runtime_messages" in text
+    assert "same_model_runtime" in text
+    assert "mantle_selector" in text
 
 
 # --- Finding 3: Astra Invoke-support correction ---

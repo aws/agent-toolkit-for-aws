@@ -54,6 +54,9 @@
         "available": { "type": "boolean" },
         "model_id": { "type": "string", "minLength": 1 },
         "requires_cris": { "type": "boolean" },
+        "guardrails_supported": { "type": "boolean" },
+        "prompt_caching_supported": { "type": "boolean" },
+        "server_side_tools_supported": { "type": "boolean" },
         "regions": { "$ref": "#/definitions/stringList" },
         "supported_regions": { "$ref": "#/definitions/stringList" },
         "inference_profile_regions": {
@@ -99,6 +102,10 @@
             "govcloud": { "$ref": "#/definitions/stringList" },
             "evidence": { "type": "string" }
           }
+        },
+        "pricing": {
+          "description": "Cached Standard-tier price table for the model (USD per 1M tokens) with its source and read date; the estimate phases read it.",
+          "type": "object"
         },
         "paths": {
           "type": "object",

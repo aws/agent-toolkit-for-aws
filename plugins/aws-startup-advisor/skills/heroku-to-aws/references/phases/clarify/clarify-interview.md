@@ -157,6 +157,7 @@ Before generating questions, scan the inventory to determine which questions app
 | Q12e — Containerization method       | Q12b answer is `buildpack_only` or `partial`                     | Every app already has a Dockerfile        |
 | Q12c — Compute target recommendation | Always                                                           | Never                                     |
 | Q12d — EB deploy method              | **Deferred to Generate** — defaulted here when the Q12c plan includes EB, asked at [C] Generate | All-Fargate/EKS plan, or never asked in Clarify |
+| Q12e — Release strategy              | Q12c plan routes a `web` formation to Fargate AND `dns_strategy` is `external` AND no Private Space | No Fargate web formation, or `dns_strategy` is `route53`, or a Private Space is detected (standard ECS forced) |
 | Q12 — Container registry             | Always                                                           | Never                                     |
 | Q13 — Log retention                  | Always                                                           | Never                                     |
 | Q14 — Alerting preference            | Always                                                           | Never                                     |
@@ -544,7 +545,7 @@ built.
 >
 > 1. Use this recommendation (default)
 > 2. Use Elastic Beanstalk for all EB-compatible formations; keep system-forced Fargate overrides for scaled non-web workers
-> 3. Use ECS Fargate for all dyno formations
+> 3. Use ECS Fargate for all dyno formations (web dynos land on ECS Express Mode — ALB, HTTPS, auto scaling and logs provisioned for you — unless Q12e or Q10 rules it out; workers get standard ECS services)
 > 4. Use EKS — team has Kubernetes expertise and wants full K8s control
 > 5. EKS acceptable — team can operate K8s, prefers managed node groups to reduce burden
 > 6. Set per-formation targets manually
@@ -586,7 +587,7 @@ built.
 
 **Validate (CNB):** when `operational.containerization_method` is `"cnb_heroku_builder"` and any app with an EB formation in the resolved compute plan resolves to CNB per app (inventory `stack` other than `"container"` **and** not listed in `operational.dockerfile_apps[]` — the same per-app rule as `generate-terraform.md` Step 5.5 § "Containerization method per app"), option 2 is **not offered**. An estate whose only CNB apps run on Fargate while every EB app has a Dockerfile keeps option 2: CodePipeline deploys those Dockerfile apps and `pipeline.tf` is emitted for them. Present only options 1 and 3 and add: "CodePipeline is unavailable for buildpack apps: its deploy stage hands the source tree straight to Elastic Beanstalk with no build step, so there is no image and no `Dockerrun.aws.json` to deploy. GitHub Actions builds the image with `pack`; the manual path documents the same steps." An answer of 2 in that case is invalid — re-ask with that sentence; never store `codepipeline` alongside CNB. Generate halts on the combination if a stale preferences file carries it.
 
-**Generate impact:** `"github_actions"` emits `.github/workflows/deploy-eb.yml` (the `pack`/Dockerrun variant for CNB apps); `"codepipeline"` emits `terraform/pipeline.tf` (Dockerfile apps only); `"manual"` emits neither automation artifact and keeps the CLI path in `MIGRATION_GUIDE.md` (with a `pack build` + Dockerrun bundle variant for CNB apps).
+**Generate impact:** `"github_actions"` emits `.github/workflows/deploy-eb.yml` (the `pack`/Dockerrun variant for CNB apps) and the approval-gated `promote.yml` (the `pipelines:promote` equivalent); `"codepipeline"` emits `terraform/pipeline.tf` (Dockerfile apps only); `"manual"` emits neither automation artifact and keeps the CLI path in `MIGRATION_GUIDE.md` (with a `pack build` + Dockerrun bundle variant for CNB apps).
 
 ---
 
@@ -810,6 +811,26 @@ Validate: must be valid ISO 8601 date, must be in the future.
 
 ---
 
+#### Q12e — Release Strategy for Fargate Web Formations
+
+> _Fires when the resolved Q12c plan routes at least one `web` formation to `ecs-fargate` AND `dns_strategy` is `"external"`. Skipped (defaulted to `canary`) when no web formation lands on Fargate; skipped as N/A when `dns_strategy` is `"route53"`, because the generated Route 53 cutover needs a Terraform-owned ALB and that already forces standard ECS services, and when a Private Space is detected, because its restricted inbound rules keep tasks in private subnets behind a Terraform-owned ALB (`design-mapping.md` 2A `private_space`)._
+
+Ask:
+
+> How do you release new versions of your web dynos?
+>
+> 1. Progressive / canary rollouts are fine (default — web dynos use ECS Express Mode)
+> 2. Rolling updates — replace tasks in place, no traffic shifting
+> 3. Blue/green — separate environment and an explicit cutover (Heroku pipelines + preview apps map here)
+
+**Interpret:**
+
+- 1 → `design_constraints.release_strategy: "canary"` — Fargate web formations get `aws_config.ecs_mode: "express"`
+- 2 → `design_constraints.release_strategy: "rolling"` — standard ECS service, rolling deployment controller
+- 3 → `design_constraints.release_strategy: "blue_green"` — standard ECS service with CodeDeploy blue/green
+
+**Default:** 1 (`canary`). Heroku's `web` process type is the shape signal (`http_service`); non-web process types are `worker` and never use Express Mode, so no shape question is asked.
+
 #### Q12b — Containerization Status
 
 > Is your application already containerized (has a Dockerfile)?
@@ -1009,6 +1030,7 @@ value will be rounded up this way.
 
 | Q12c — Compute target     | 1 (use computed recommendation)         | `design_constraints.compute_target` follows the computed plan: `default: "elastic_beanstalk"` plus any `system_forced` Fargate overrides at 40 or fewer non-release formations; `default: "ecs-fargate"` with `recommendation.scale_note` at 41 or more |
 | Q12d — EB deploy method   | 1 (GitHub Actions)                      | `eb_deploy_method: "github_actions"` when resolved compute plan includes EB                                 |
+| Q12e — Release strategy   | 1 (canary)                              | `release_strategy: "canary"` when a web formation lands on Fargate with `dns_strategy: "external"`; N/A otherwise |
 | Q12 — Registry            | 1 (ECR)                                 | `container_registry: "ecr"`                                                                                 |
 | Q13 — Log retention       | 3 (30 days)                             | `log_retention_days: 30`                                                                                    |
 | Q14 — Alerting            | 1 (CloudWatch)                          | `alerting: "cloudwatch"`                                                                                    |
