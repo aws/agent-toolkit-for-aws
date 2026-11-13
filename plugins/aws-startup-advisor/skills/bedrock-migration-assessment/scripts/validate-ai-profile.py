@@ -19,7 +19,7 @@ V11_FIELDS = ("integration", "workloads", "agentic_profile", "tool_manifest")
 ORCHESTRATION_FRAMEWORKS = {"langchain", "langgraph", "llama_index", "llamaindex", "semantic_kernel"}
 GATEWAY_FRAMEWORK_VALUES = {"llm_router": "llm_router", "api_gateway": "api_gateway", "voice_platform": "voice_platform"}
 
-_JSON_TYPES = {"object": dict, "array": list, "string": str, "boolean": bool, "number": (int, float), "integer": int}
+_JSON_TYPES = {"object": dict, "array": list, "string": str, "boolean": bool, "number": (int, float), "integer": int, "null": type(None)}
 
 
 class ProfileRejected(Exception):

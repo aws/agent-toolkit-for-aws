@@ -20,6 +20,16 @@ edit to a `skills/shared/` file this skill vendors, or a deleted copy, cannot me
 unnoticed. What CI cannot see is a **new** `skills/shared/` file that no skill vendors yet —
 if this skill needs one, add the copy **and** a row in the table below.
 
-| Vendored path                    | Canonical source                                |
-| -------------------------------- | ----------------------------------------------- |
+| Vendored path                    | Canonical source                               |
+| -------------------------------- | ---------------------------------------------- |
+| `ai/ai-anthropic-to-bedrock.md`  | `skills/shared/ai/ai-anthropic-to-bedrock.md`  |
+| `ai/ai-gemini-to-bedrock.md`     | `skills/shared/ai/ai-gemini-to-bedrock.md`     |
+| `ai/ai-migration-guardrails.md`  | `skills/shared/ai/ai-migration-guardrails.md`  |
+| `ai/ai-model-lifecycle.md`       | `skills/shared/ai/ai-model-lifecycle.md`       |
+| `ai/ai-openai-to-bedrock.md`     | `skills/shared/ai/ai-openai-to-bedrock.md`     |
+| `ai/ai-openrouter-to-bedrock.md` | `skills/shared/ai/ai-openrouter-to-bedrock.md` |
+| `ai/bedrock-endpoint-policy.md`  | `skills/shared/ai/bedrock-endpoint-policy.md`  |
+| `ai/bedrock-pricing-cache.md`    | `skills/shared/ai/bedrock-pricing-cache.md`    |
+| `ai/bedrock-quotas.md`           | `skills/shared/ai/bedrock-quotas.md`           |
+| `ai/schema-design-aws-ai.md`     | `skills/shared/ai/schema-design-aws-ai.md`     |
 | `state/phase-status.schema.json` | `skills/shared/state/phase-status.schema.json` |

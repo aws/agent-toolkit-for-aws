@@ -90,7 +90,7 @@ The preview names no Bedrock models or prices: Design chooses those. Do not writ
      "run_id": "[random UUID, written once]",
      "last_updated": "[ISO 8601 UTC]",
      "current_phase": "discover",
-     "phases": { "discover": "in_progress", "clarify": "pending" }
+     "phases": { "discover": "in_progress", "clarify": "pending", "design": "pending" }
    }
    ```
 
