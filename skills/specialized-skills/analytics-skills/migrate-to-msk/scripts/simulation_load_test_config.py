@@ -53,6 +53,16 @@ PER_BROKER_INGRESS = {
     "express.m7g.8xlarge": (250.0, 375.0),
     "express.m7g.12xlarge": (375.0, 562.5),
     "express.m7g.16xlarge": (500.0, 750.0),
+    # M8g keeps M7g per-broker ingress. 24xlarge has no M7g counterpart: sustained ingress is
+    # the published 667 MB/s, and max is 1.5x sustained, the ratio every other size uses.
+    "express.m8g.large": (15.6, 23.4),
+    "express.m8g.xlarge": (31.2, 46.8),
+    "express.m8g.2xlarge": (62.5, 93.7),
+    "express.m8g.4xlarge": (124.9, 187.5),
+    "express.m8g.8xlarge": (250.0, 375.0),
+    "express.m8g.12xlarge": (375.0, 562.5),
+    "express.m8g.16xlarge": (500.0, 750.0),
+    "express.m8g.24xlarge": (667.0, 1000.5),
 }
 
 # The only valid Express version + metadata-mode combinations, as the exact CFN
