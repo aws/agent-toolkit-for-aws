@@ -29,7 +29,7 @@ Post one comment per pull request and update it on every push, so the thread sho
 Cost check: list price, on demand, before credits, Free Tier, Savings Plans, Reserved Instances and private pricing
 
 Floor added by this change:    <amount>/month   threshold <amount>/month   <within | EXCEEDS>
-Stack floor after this change: <amount>/month   cap <amount>/month         <within | EXCEEDS>
+Stack floor after this change: <amount>/month   cap <amount>/month         <within | EXCEEDS | INCOMPLETE: retained resources not priced>
 Cost per <unit>:               <before> -> <after> (<change>)   threshold <amount>   <within | EXCEEDS>
 
 Largest contributors: <resource, dimension, amount> (up to five)
