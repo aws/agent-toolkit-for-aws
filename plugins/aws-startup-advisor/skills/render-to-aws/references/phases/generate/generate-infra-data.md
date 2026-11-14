@@ -12,7 +12,7 @@ Applies to the `render.postgres` and `render.key_value` rows of `aws-design.json
 ## Rules for every data resource
 
 - Place every data resource in private subnets through a dedicated subnet group, with `publicly_accessible = false` where the attribute exists.
-- Give the data tier its own security group. Allow only the database or cache port, and only from the security groups of the compute services that the design edges name. Never use `cidr_blocks` on a data ingress rule.
+- Give the data tier its own security group, `aws_security_group.data`. `network.tf` (see `generate-artifacts-infra.md`) is the only owner and declares it; `data.tf` references it and never declares it, so a composed pack has exactly one. Allow only the database or cache port, and only from the security groups of the compute services that the design edges name. Never use `cidr_blocks` on a data ingress rule.
 - Encrypt at rest and in transit. Prefer one customer-managed KMS key per stack with rotation enabled, shared by storage, Performance Insights, and the managed secret.
 - Never emit a credential, connection string with a password, or `password`, `auth_token`, or `master_password` variable. Passwords created by RDS or by ElastiCache must never pass through Terraform state as inputs.
 - Take engine major version, extensions, and parameters from the Discover and Clarify evidence. Pin the major version explicitly and never use `latest` or an unconstrained version.
@@ -43,7 +43,8 @@ Use only when rule 2 of the selector fired (Global Database, reader autoscaling,
 - Credentials: `manage_master_user_password = true` on the cluster, with `master_user_secret_kms_key_id`. The secret ARN is `master_user_secret[0].secret_arn`.
 - Parameter groups: `aws_rds_cluster_parameter_group` with `family = "aurora-postgresql<major>"` referenced by `db_cluster_parameter_group_name`. Put logical-replication and SSL settings here, not on an instance group.
 - Availability: Multi-AZ comes from instance count. Two or more instances place a reader in a second Availability Zone; set `promotion_tier` so the intended failover target is lowest. A high-availability preference with a single instance is a defect.
-- Storage: Aurora storage grows automatically, so do not emit `allocated_storage`, `storage_type`, or `max_allocated_storage` unless Aurora I/O-Optimized was selected explicitly.
+- Storage: Aurora storage grows automatically. Never emit `allocated_storage` or `max_allocated_storage` on `aws_rds_cluster` (the provider rejects `max_allocated_storage`). Emit `storage_type = "aurora-iopt1"` only when Aurora I/O-Optimized was selected explicitly.
+- Engine version: set `engine_version` to the source major or a full minor version at creation. Keep `auto_minor_version_upgrade = true` and add `lifecycle { ignore_changes = [engine_version] }` to the cluster and every instance, so an automatic minor upgrade never plans a downgrade that Aurora rejects. Do not pin a minor version without `ignore_changes` unless automatic minor upgrades are off.
 - Serverless v2: only when Design selected it, set `engine_mode = "provisioned"`, add a `serverlessv2_scaling_configuration` block with `min_capacity` and `max_capacity`, and use `instance_class = "db.serverless"`.
 - Backups and protection: `backup_retention_period`, `deletion_protection = true`, `skip_final_snapshot = false`, and `final_snapshot_identifier`, as for RDS.
 - Observability: `performance_insights_enabled = true` on each instance, and `enabled_cloudwatch_logs_exports = ["postgresql"]` on the cluster.
@@ -68,7 +69,7 @@ Every target must preserve the persistence and eviction facts from the source. A
 - Resource: `aws_elasticache_replication_group` with `engine = "valkey"` and an explicit `engine_version`. Never write `engine = "redis"`.
 - Topology: `num_cache_clusters` of 2 or more with `automatic_failover_enabled = true` and `multi_az_enabled = true` for a high-availability preference. Use `num_node_groups` and `replicas_per_node_group` only when the source uses cluster mode.
 - Encryption: `at_rest_encryption_enabled = true`, `transit_encryption_enabled = true`, and `kms_key_id`. Clients must use TLS.
-- Auth: use an `aws_elasticache_user_group` with IAM authentication or ACL users, passed through `user_group_ids`. Do not emit `auth_token`, which would pass a secret through Terraform input.
+- Auth: use an `aws_elasticache_user_group` with IAM authentication or ACL users, passed through `user_group_ids`. For an IAM-enabled user, `user_name` must equal `user_id`. Do not emit `auth_token`, which would pass a secret through Terraform input.
 - Parameter group: `aws_elasticache_parameter_group` with the matching Valkey family (for example `valkey8`), referenced through `parameter_group_name`. Set `maxmemory-policy` to the source policy; use `allkeys-lru` only for a pure cache with no stored policy. `noeviction` is for queues and data stores where loss is not accepted.
 - Persistence: `snapshot_retention_limit` of 0 for a cache that tolerates a cold start, and at least 1 with a `snapshot_window` for data that must survive a restart. Add `final_snapshot_identifier` when snapshots are on.
 - Maintenance: `auto_minor_version_upgrade = true`, `maintenance_window`, and `apply_immediately = false`.
@@ -82,9 +83,9 @@ Use only when the selector chose Serverless (rule 3), not as a default.
 - Resource: `aws_elasticache_serverless_cache` with `engine = "valkey"` and `major_engine_version`.
 - Limits: always set `cache_usage_limits` with `data_storage` and `ecpu_per_second` maxima from the memory plan, so cost has a ceiling.
 - Network and encryption: `subnet_ids`, `security_group_ids`, and `kms_key_id`. Transit encryption is always on and is not configurable.
-- Auth: a `user_group_id` with an `aws_elasticache_user` of `authentication_mode { type = "iam" }`, plus the required `default` user set to `access_string = "off -@all"`.
+- Auth: a `user_group_id` with an `aws_elasticache_user` of `authentication_mode { type = "iam" }` whose `user_name` equals its `user_id`, plus the required `default` user set to `access_string = "off -@all"`.
 - Snapshots: `snapshot_retention_limit` and `daily_snapshot_time` follow the persistence rule above.
-- Compatibility: Serverless runs in cluster mode only. If the source uses multi-key commands across slots, Lua, or `SELECT` of non-zero databases, Design must not have selected it. Stop and report the mismatch.
+- Compatibility: Serverless runs in cluster mode only. Lua (`EVAL`, `EVALSHA`, `SCRIPT LOAD`) is supported. If the source uses multi-key commands, scripts, or transactions that touch keys in more than one hash slot, or `SELECT` of a non-zero database, Design must not have selected it. Stop and report the mismatch only for those cases.
 - Outputs: `endpoint[0].address`, `endpoint[0].port`, and the cache ARN. A node-based group uses `primary_endpoint_address` (or `configuration_endpoint_address` in cluster mode) and `reader_endpoint_address`.
 
 ### Amazon MemoryDB (`aws_memorydb_cluster`)
@@ -105,8 +106,8 @@ Terraform generation for this target is `unsupported`. Emit the `unsupported` ro
 - Compute receives only references. For PostgreSQL, emit `database_endpoint`, `database_port`, and `database_secret_arn` as outputs. The ECS task definition injects the secret through `secrets[].valueFrom`, using the JSON key (for example `<secret_arn>:password::`), and gets host and port as plain `environment` entries.
 - Never build a connection string with a password in Terraform, an output, a tfvars file, or a log. The application assembles it at startup from the injected parts, or reads the whole secret.
 - Grant the task execution role `secretsmanager:GetSecretValue` on only the secret ARN, plus `kms:Decrypt` on the data KMS key when the secret uses a customer-managed key. Never use `Resource = "*"`.
-- For Valkey with IAM authentication, grant the task role `elasticache:Connect` on the cache or replication group ARN and the user ARN. Emit the user ID as an output.
-- Emit the data security group ID as an output so network and compute fragments refer to it. Do not edit compute or network files from this fragment.
+- For Valkey with IAM authentication, grant the task role `elasticache:Connect` on the cache or replication group ARN and the user ARN. Emit the user ID as an output. Set `user_name` equal to `user_id` on every IAM-enabled user.
+- Emit the data security group ID as an output so network and compute fragments refer to it. Do not edit compute or network files from this fragment, and do not declare the group in `data.tf`.
 
 ## Anti-patterns
 
@@ -118,7 +119,10 @@ Fail generation, or fix before returning, if any of these appear:
 - `skip_final_snapshot = true` or `deletion_protection = false` on a production or unspecified-environment database.
 - `backup_retention_period = 0` on a database that is not marked disposable.
 - `rds.logical_replication` set with `apply_method = "immediate"`, or set on a cluster parameter group for an `aws_db_instance`.
-- Using `aws_db_instance` for Aurora, or `allocated_storage` on an Aurora cluster.
+- Using `aws_db_instance` for Aurora, or `allocated_storage` or `max_allocated_storage` on an Aurora cluster.
+- An Aurora `engine_version` pin with automatic minor upgrades on and no `ignore_changes = [engine_version]`.
+- An IAM-enabled `aws_elasticache_user` whose `user_name` differs from `user_id`.
+- A second `aws_security_group.data` declaration in `data.tf`.
 - `multi_az = false` or a single Aurora instance when the availability preference is high availability.
 - `engine = "redis"` when Design selected Valkey, or a Valkey Serverless cache without `cache_usage_limits`.
 - Default parameter groups for a database that needs logical replication, `rds.force_ssl`, or a custom eviction policy.
@@ -129,7 +133,7 @@ Fail generation, or fix before returning, if any of these appear:
 ## Ordering
 
 1. KMS key and alias.
-2. Subnet groups, then the data security group.
+2. Subnet groups. The data security group is already declared in `network.tf`.
 3. Parameter groups, then the cluster or instance that uses them.
 4. Cluster before cluster instances; ACL users, then user group, then cache.
 5. Outputs last.

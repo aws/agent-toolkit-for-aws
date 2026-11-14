@@ -4,19 +4,6 @@ resource "aws_kms_key" "data" {
   deletion_window_in_days = 30
 }
 
-resource "aws_security_group" "data" {
-  name        = "${local.name_prefix}-data"
-  description = "Valkey access from application tasks only"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    description     = "Valkey from application tasks"
-    from_port       = 6379
-    to_port         = 6379
-    protocol        = "tcp"
-    security_groups = [aws_security_group.app.id]
-  }
-}
 
 resource "aws_elasticache_user" "default" {
   user_id              = "${local.name_prefix}-default"

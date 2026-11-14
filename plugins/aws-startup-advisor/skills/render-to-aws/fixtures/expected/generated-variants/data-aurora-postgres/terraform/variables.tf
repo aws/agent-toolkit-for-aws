@@ -17,7 +17,7 @@ variable "environment" {
 }
 
 variable "postgres_engine_version" {
-  description = "Aurora PostgreSQL engine version, pinned to the source major version."
+  description = "Aurora PostgreSQL engine version used at creation. Automatic minor upgrades are on and engine_version is in ignore_changes, so later minor versions do not plan a downgrade."
   type        = string
   default     = "16.4"
 }

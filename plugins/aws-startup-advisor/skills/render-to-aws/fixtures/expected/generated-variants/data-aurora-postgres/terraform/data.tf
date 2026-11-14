@@ -14,19 +14,6 @@ resource "aws_db_subnet_group" "main" {
   subnet_ids = aws_subnet.private[*].id
 }
 
-resource "aws_security_group" "data" {
-  name        = "${local.name_prefix}-data"
-  description = "PostgreSQL access from application tasks only"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    description     = "PostgreSQL from application tasks"
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.app.id]
-  }
-}
 
 resource "aws_rds_cluster_parameter_group" "postgres" {
   name        = "${local.name_prefix}-aurora-pg16"
@@ -80,6 +67,9 @@ resource "aws_rds_cluster" "postgres" {
   final_snapshot_identifier           = "${local.name_prefix}-postgres-final"
   enabled_cloudwatch_logs_exports     = ["postgresql"]
   apply_immediately                   = false
+  lifecycle {
+    ignore_changes = [engine_version]
+  }
 }
 
 resource "aws_rds_cluster_instance" "postgres" {
@@ -95,4 +85,7 @@ resource "aws_rds_cluster_instance" "postgres" {
   performance_insights_enabled    = true
   performance_insights_kms_key_id = aws_kms_key.data.arn
   promotion_tier                  = count.index
+  lifecycle {
+    ignore_changes = [engine_version]
+  }
 }

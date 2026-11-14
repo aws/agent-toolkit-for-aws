@@ -20,3 +20,16 @@ resource "aws_security_group" "app" {
   description = "Application tasks that consume the data tier"
   vpc_id      = aws_vpc.main.id
 }
+resource "aws_security_group" "data" {
+  name        = "${local.name_prefix}-data"
+  description = "Valkey access from application tasks only"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description     = "Valkey from application tasks"
+    from_port       = 6379
+    to_port         = 6379
+    protocol        = "tcp"
+    security_groups = [aws_security_group.app.id]
+  }
+}
