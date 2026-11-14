@@ -3,6 +3,7 @@ _assemble: assemble-generation
 _of_phase: generate
 _reads:
   - artifacts-infra
+  - artifacts-infra-network-storage-delivery
   - artifacts-docs
   - artifacts-report
 _produces:

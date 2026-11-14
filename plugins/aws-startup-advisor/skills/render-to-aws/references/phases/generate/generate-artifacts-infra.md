@@ -30,6 +30,7 @@ Route each supported selected target to a domain file and record that file in `g
 | ECR immutable promotion | ECR repository with immutable tags and scan-on-push plus promotion outputs |
 | Project/environment boundaries | Consume into VPC, tags, state, and deployment boundaries without a fake standalone service |
 
+For `terraform/network.tf`, `storage.tf` and `delivery.tf`, also follow `references/phases/generate/generate-artifacts-infra-network-storage-delivery.md`; its rules refine the matching rows above.
 The checked-in representative design selects Step Functions Standard and Lambda for a Workflow whose callback, retry, compensation, and state-retention semantics are not fixture-validated for automatic generation. Classify those rows as `unsupported`, emit `conditional_workflow_generation_unsupported`, and emit no Workflow Terraform. For another run, Workflow artifacts may be generated only when the rubric marks every required semantic supported and the generated definition has dedicated contract tests. AI is always `deferred_shared_ai_engine`; emit no model, adapter, Bedrock, or AI Terraform.
 
 Preserve build-once behavior: one build creates an ECR digest, environment promotion consumes that digest, and no environment rebuilds source independently. Preserve private-only ingress for private services. Never add App Runner or a public load balancer for a private service.
