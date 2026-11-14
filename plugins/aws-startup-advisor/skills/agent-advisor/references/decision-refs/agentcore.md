@@ -48,7 +48,7 @@ An always-on service is still a better ECS/EKS fit — Instances sessions end at
 
 ## Six dimensions
 
-- Identity: built-in (free), OAuth via enhanced Identity
+- Identity: built-in (free), OAuth via enhanced Identity (now supports OIDC and non-OIDC OAuth 2.0 discovery URLs for JWT authorizers and custom credential providers)
 - Observability: auto OTEL traces
 - Guardrails: Bedrock Guardrails + Policy (Cedar) for high-risk actions
 - Scaling: 5,000 concurrent sessions, 25 TPS launch (adjustable)
