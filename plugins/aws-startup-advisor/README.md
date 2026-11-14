@@ -241,7 +241,7 @@ Model mapping is compatibility-guided rather than one-to-one parity. Validate pr
 Two skills serve AWS-curated content rather than performing work on your account:
 
 - **`knowledge-base-for-startups`** — AWS Activate FAQ, credits guide, programs, partner offers, sample architectures, and learn articles spanning generative AI, cloud architecture, cost optimization, security, fundraising, and go-to-market. Answers come from the bundled `references/` tree.
-- **`prompt-library-for-startups`** — Copy-paste prompts for AI coding agents (MVP scaffolding, RAG chatbot on Amazon Bedrock, security baseline evaluation, cost anomaly detection, GPU quota requests, Amazon EKS deployment, Well-Architected review) plus downloadable installable agents.
+- **`prompt-library-for-startups`** — The approved subset of the AWS Startups prompt library: copy-paste prompts for AI coding agents (MVP scaffolding, RAG chatbot on Amazon Bedrock, security baseline evaluation, read-only cost optimization audit, GPU quota requests, Amazon EKS on Spot) plus downloadable installable agents. Anything not bundled is in the full library at [startups.aws.com/prompt-library](https://startups.aws.com/prompt-library).
 
 Neither skill can look up account-specific state such as your credits balance, Activate membership, or application status. Those questions belong at [AWS Startups](https://aws.amazon.com/startups/).
 

@@ -41,6 +41,10 @@ run = "python3 tools/build-model-catalogs.py --check"
 description = "Fail when an Active lifecycle-registry model is missing from the shared model-selection catalogs"
 run = "python3 tools/model-catalog-drift.py --strict"
 
+[tasks."lint:prompt-library-drift"]
+description = "Compare prompt-library-for-startups entries with their published pages (network; not part of ci)"
+run = "python3 tools/prompt-library-sync.py --check"
+
 [tasks."lint:model-id"]
 description = "Check model references against the lifecycle registry"
 run = "uv run --no-project python scripts/model-id-lint.py"
