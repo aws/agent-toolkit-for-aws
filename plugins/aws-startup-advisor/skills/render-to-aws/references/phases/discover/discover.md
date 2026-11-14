@@ -67,6 +67,9 @@ Run Steps 0 to 3 in this order, all BEFORE `_preconditions` is evaluated and bef
 
 Perform `_init` state setup per `INTERPRETER.md` § `_init: true` before any producer touches `$MIGRATION_DIR`: resolve resume-vs-fresh, set `$MIGRATION_DIR`, and on a fresh run create the directory, `.gitignore`, and `.phase-status.json` exactly as that section specifies. Cancellation terminates the phase without running Steps 1 to 3.
 
+### Step 0b — uv availability gate
+If the cold-start preflight in `SKILL.md` § Runtime failed and no valid `render-resource-inventory.json` and `render-resource-clusters.json` exist for this run, stop after Step 0 with the preflight warning and the rerun command. Do not run Steps 1 to 3: mint no attempt ID, show no consent prompt, and perform no capture. Discover stays pending. A local-only attempt is blocked the same way, because every producer and the normalizer need `uv`.
+
 ### Step 1 — attempt identity, live consent, and live capture
 
 The main window first determines whether the user selected live capture. For a local-only Blueprint, application, or billing run, it does not require the Render CLI, authentication, workspace enumeration, workspace confirmation, or live consent. It mints a UUIDv4 attempt ID, computes a deterministic `local_identity` from the canonical producer paths and input digests, and writes a local manifest with `identity_scope: local`, null `workspace_id`, `consent_digest`, and `ownership_index_digest`, and no CLI/REST entries. Canonical outputs use the explicit `local:<digest>` identity and never describe it as a confirmed Render workspace. Blueprint-backed Generate still requires renewed main-window semantic validation before execution.

@@ -20,7 +20,7 @@ Write `generation-warnings.json` against `references/shared/schema-generation-wa
 
 The report must not contain captured secrets, environment values, email/account/workspace/project/environment IDs, repository URLs, or local paths. It is a draft for review, not a deployment-success claim.
 
-The worker writes the candidate as `migration-report.html` but does not validate it. In the main window, run the skill-local validator with absolute paths:
+The worker writes the candidate as `migration-report.html` but does not validate it. In the main window, run the skill-local validator with absolute paths. If `uv` or the frozen environment is unavailable, stage 7 is `not_run`, completion stays blocked, and the preflight warning plus the rerun command are shown. There is no validation skip; stages 1 to 6 are unaffected.
 
 ```bash
 uv run --project "$SKILL_BASE/scripts" --frozen python \
