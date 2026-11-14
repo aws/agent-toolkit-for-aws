@@ -179,3 +179,85 @@ def test_heroku_skill_writer_matches_plugin_copy() -> None:
         "heroku skill emit-plan-json.py has drifted from the plugin-level copy; "
         "re-copy plugins/aws-startup-advisor/scripts/emit-plan-json.py"
     )
+
+RENDER_GOLDEN = PLUGIN_ROOT / "skills" / "render-to-aws" / "fixtures" / "expected" / "estimation-infra.json"
+RENDER_RUN_ID = "8c1e4f2a-3b6d-4a7e-9f10-5d2c8b7a6e41"
+def _render_run(tmp_path: Path, mutate=None, name: str = "render") -> Path:
+    run = tmp_path / name
+    run.mkdir()
+    estimate = json.loads(RENDER_GOLDEN.read_text())
+    if mutate is not None:
+        mutate(estimate)
+    (run / "estimation-infra.json").write_text(json.dumps(estimate))
+    (run / ".phase-status.json").write_text(
+        json.dumps({"owning_skill": "RENDER_TO_AWS", "run_id": RENDER_RUN_ID.upper()})
+    )
+    return run
+def test_render_infra_run_emits_plan_from_capacity_preserving_lines(tmp_path: Path) -> None:
+    """Render keeps projected_costs.breakdown empty; service items come from the
+    capacity-preserving scenario lines, summed per label, with unpriced and zero
+    lines left out so the list reconciles to the known-cost figure."""
+    data = _emit(_render_run(tmp_path))
+    assert data["sourcePlatform"] == "RENDER"
+    assert data["scope"] == "INFRA_ONLY"
+    assert data["runId"] == RENDER_RUN_ID
+    assert data["cost"]["awsMonthly"] == 352.0
+    assert data["cost"]["awsMonthlyBasis"] == "BALANCED"
+    assert data["cost"]["sourceMonthly"] == 123.45
+    assert "accuracy" not in data["cost"]
+    items = data["cost"]["awsServiceItems"]
+    names = [item["serviceName"] for item in items]
+    assert len(names) == len(set(names))
+    assert "Amazon EFS" not in names
+    assert "AWS Certificate Manager + external DNS" not in names
+    assert next(i for i in items if i["serviceName"] == "ECS on Fargate")["monthlyCost"] == 90.0
+    assert round(sum(item["monthlyCost"] for item in items), 2) == 352.0
+    assert {item["classification"] for item in items} == {"INFRASTRUCTURE"}
+def test_render_source_baseline_requires_explicit_usd(tmp_path: Path) -> None:
+    def drop_currency(estimate: dict) -> None:
+        del estimate["current_costs"]["currency"]
+    def euro(estimate: dict) -> None:
+        estimate["current_costs"]["currency"] = "EUR"
+    def unavailable(estimate: dict) -> None:
+        estimate["current_costs"] = {"source": "unavailable", "render_monthly": None, "breakdown": {}}
+    for index, mutate in enumerate((drop_currency, euro, unavailable)):
+        data = _emit(_render_run(tmp_path, mutate, name=f"baseline-{index}"))
+        assert "sourceMonthly" not in data["cost"]
+        assert data["cost"]["awsMonthly"] == 352.0
+def test_render_service_items_omitted_when_lines_do_not_reconcile(tmp_path: Path) -> None:
+    def drift(estimate: dict) -> None:
+        estimate["scenarios"]["capacity_preserving"]["known_cost_monthly_usd"] = 999.0
+    data = _emit(_render_run(tmp_path, drift))
+    assert "awsServiceItems" not in data["cost"]
+    assert data["cost"]["awsMonthly"] == 352.0
+def test_render_ai_estimate_fails_open_without_plan(tmp_path: Path) -> None:
+    """Render defers AI, so a run that also carries an AI estimate would be FULL, which
+    the import does not accept for RENDER; the writer must skip rather than emit it."""
+    run = _render_run(tmp_path)
+    (run / "estimation-ai.json").write_text(
+        json.dumps({"accuracy_confidence": "+/-30%", "cost_comparison": {"projected_bedrock_monthly": 50}})
+    )
+    (run / "plan.json").write_text("{}")
+    result = subprocess.run(
+        [sys.executable, str(WRITER), "--migration-dir", str(run)], capture_output=True, text=True
+    )
+    assert result.returncode == 0
+    assert result.stdout.startswith("PLAN_SKIP"), result.stdout
+    assert not (run / "plan.json").exists()
+def test_render_missing_estimate_fails_open(tmp_path: Path) -> None:
+    run = _render_run(tmp_path)
+    (run / "estimation-infra.json").unlink()
+    result = subprocess.run(
+        [sys.executable, str(WRITER), "--migration-dir", str(run)], capture_output=True, text=True
+    )
+    assert result.returncode == 0
+    assert result.stdout.startswith("PLAN_SKIP"), result.stdout
+    assert not (run / "plan.json").exists()
+def test_render_skill_writer_matches_plugin_copy() -> None:
+    """render-to-aws runs the writer from its own scripts/ dir so a standalone skill
+    install can emit the handoff; the copy must stay byte-identical to the plugin one."""
+    skill_copy = PLUGIN_ROOT / "skills" / "render-to-aws" / "scripts" / "emit-plan-json.py"
+    assert skill_copy.read_bytes() == WRITER.read_bytes(), (
+        "render skill emit-plan-json.py has drifted from the plugin-level copy; "
+        "re-copy plugins/aws-startup-advisor/scripts/emit-plan-json.py"
+    )

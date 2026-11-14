@@ -38,3 +38,5 @@ Run these independent checks after all worker writes, recording the exact comman
 Write one atomic `validation-report.json` conforming to `schema-validation-report.json`. `status: passed` requires every stage passed. `status: passed_degraded_offline` requires only `terraform_init` and optionally `terraform_validate` to be `provider_registry_unavailable`; fmt, policy, secret, schema, and report checks remain passed. No `not_run`, skipped, user-continue, warning-only, or policy override status can complete Generate.
 
 After writing, re-read and schema-validate the report, confirm the recorded commands correspond to the final file digests, then evaluate Generate postconditions. The main window emits `HANDOFF_OK` and updates phase state only on success.
+
+After `HANDOFF_OK`, run the fail-open web handoff in `references/shared/web-handoff.md`: write `plan.json` and, only when the writer printed `PLAN_OK`, add the one plain-text `plan.json` entry to the completion summary, show the file location, and append the "See your AWS credits" What's next block with the run's `run_id`. A `PLAN_SKIP` or any error leaves Generate complete and adds nothing.

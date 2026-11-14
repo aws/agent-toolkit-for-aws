@@ -65,7 +65,7 @@ Run Steps 0 to 3 in this order, all BEFORE `_preconditions` is evaluated and bef
 
 ### Step 0 — initialize the run
 
-Perform `_init` state setup per `INTERPRETER.md` § `_init: true` before any producer touches `$MIGRATION_DIR`: resolve resume-vs-fresh, set `$MIGRATION_DIR`, and on a fresh run create the directory, `.gitignore`, and `.phase-status.json` exactly as that section specifies. Cancellation terminates the phase without running Steps 1 to 3.
+Perform `_init` state setup per `INTERPRETER.md` § `_init: true` before any producer touches `$MIGRATION_DIR`: resolve resume-vs-fresh, set `$MIGRATION_DIR`, and on a fresh run create the directory, `.gitignore`, and `.phase-status.json` exactly as that section specifies. Cancellation terminates the phase without running Steps 1 to 3. After the resume-vs-fresh choice resolves and state is written, on a fresh run load `references/vendored/migration/upfront-credits.md` and render it verbatim once before any scanning. Skip it when resuming or re-entering an existing run, and do not render it later in the run.
 
 ### Step 1 — attempt identity, live consent, and live capture
 

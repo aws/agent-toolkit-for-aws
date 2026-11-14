@@ -213,7 +213,7 @@ def estimate_from_design(design: dict[str, Any]) -> dict[str, Any]:
             "services_with_missing_fallback": ["efs"],
         },
         "accuracy_confidence": "known-cost floors; EFS is unpriced",
-        "current_costs": {"source": "user_stated", "render_monthly": 123.45, "baseline_note": "Fixture user-stated monthly amount", "breakdown": {}},
+        "current_costs": {"source": "user_stated", "render_monthly": 123.45, "currency": "USD", "baseline_note": "Fixture user-stated monthly amount", "breakdown": {}},
         "projected_costs": {
             "aws_monthly_premium": capacity,
             "aws_monthly_balanced": capacity,

@@ -4,7 +4,7 @@
   "timestamp": "2026-10-21T12:00:00Z",
   "pricing_source": {"status": "cached", "message": "AWS rates use the reviewed us-east-1 cache; Render baseline is user stated.", "services_by_source": {"cached": ["ecs", "rds", "elasticache", "lambda"], "fallback": [], "estimated": []}, "services_with_missing_fallback": ["efs"]},
   "accuracy_confidence": "known-cost floors; EFS is unpriced",
-  "current_costs": {"source": "user_stated", "render_monthly": 123.45, "baseline_note": "User-stated amount as of 2026-10-21", "breakdown": {}},
+  "current_costs": {"source": "user_stated", "render_monthly": 123.45, "currency": "USD", "baseline_note": "User-stated amount as of 2026-10-21", "breakdown": {}},
   "projected_costs": {"aws_monthly_premium": 387.2, "aws_monthly_balanced": 352.0, "aws_monthly_optimized": 290.0, "aws_annual_optimized": 3480.0, "breakdown": {}},
   "scenarios": {
     "capacity_preserving": {
