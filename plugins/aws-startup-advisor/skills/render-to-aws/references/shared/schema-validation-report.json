@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aws-startup-advisor.example/schemas/render-validation-report-v1.json",
+  "title": "Render Generate validation report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "status", "offline_fallback_used", "checks", "timestamp"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "status": {"enum": ["passed", "passed_degraded_offline", "failed"]},
+    "offline_fallback_used": {"type": "boolean"},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["terraform_fmt", "terraform_init", "terraform_validate", "policy", "secret_scan", "schemas", "report"],
+      "properties": {
+        "terraform_fmt": {"$ref": "#/$defs/check"},
+        "terraform_init": {"$ref": "#/$defs/check"},
+        "terraform_validate": {"$ref": "#/$defs/check"},
+        "policy": {"$ref": "#/$defs/policy"},
+        "secret_scan": {"$ref": "#/$defs/check"},
+        "schemas": {"$ref": "#/$defs/check"},
+        "report": {"$ref": "#/$defs/check"}
+      }
+    }
+  },
+  "$defs": {
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "command", "evidence"],
+      "properties": {
+        "status": {"enum": ["passed", "failed", "provider_registry_unavailable"]},
+        "command": {"type": "string", "minLength": 1},
+        "evidence": {"type": "string", "minLength": 1, "maxLength": 300}
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "command", "evidence", "policy_status", "violations"],
+      "properties": {
+        "status": {"enum": ["passed", "failed"]},
+        "command": {"type": "string", "minLength": 1},
+        "evidence": {"type": "string", "minLength": 1, "maxLength": 300},
+        "policy_status": {"enum": ["POLICY_OK", "POLICY_FAIL"]},
+        "violations": {"type": "array", "items": {"type": "object"}}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "passed"}}},
+      "then": {
+        "properties": {
+          "offline_fallback_used": {"const": false},
+          "checks": {"properties": {
+            "terraform_fmt": {"properties": {"status": {"const": "passed"}}},
+            "terraform_init": {"properties": {"status": {"const": "passed"}}},
+            "terraform_validate": {"properties": {"status": {"const": "passed"}}},
+            "policy": {"properties": {"status": {"const": "passed"}, "policy_status": {"const": "POLICY_OK"}}},
+            "secret_scan": {"properties": {"status": {"const": "passed"}}},
+            "schemas": {"properties": {"status": {"const": "passed"}}},
+            "report": {"properties": {"status": {"const": "passed"}}}
+          }}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "passed_degraded_offline"}}},
+      "then": {
+        "properties": {
+          "offline_fallback_used": {"const": true},
+          "checks": {"properties": {
+            "terraform_fmt": {"properties": {"status": {"const": "passed"}}},
+            "terraform_init": {"properties": {"status": {"const": "provider_registry_unavailable"}}},
+            "terraform_validate": {"properties": {"status": {"enum": ["passed", "provider_registry_unavailable"]}}},
+            "policy": {"properties": {"status": {"const": "passed"}, "policy_status": {"const": "POLICY_OK"}}},
+            "secret_scan": {"properties": {"status": {"const": "passed"}}},
+            "schemas": {"properties": {"status": {"const": "passed"}}},
+            "report": {"properties": {"status": {"const": "passed"}}}
+          }}
+        }
+      }
+    }
+  ]
+}

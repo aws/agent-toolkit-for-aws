@@ -1,0 +1,5 @@
+# Render typed edge strategy
+
+The edge vocabulary is closed: `service_to_postgres`, `service_to_key_value`, `service_to_service`, `service_to_env_group`, `service_to_disk`, `member_of_project`, `member_of_environment`, `shares_repository`, `private_network_peer`, `custom_domain_routes_to`, `service_uses_build_source`, `build_source_produces_artifact`, `environment_promotes_artifact`, `workflow_has_version`, `workflow_version_has_task`, `workflow_task_has_run`, and `task_run_has_attempt`.
+
+An edge is emitted only when both endpoints resolve uniquely. Disk edges retain mount path, integer `sizeGB` with GB unit, inherited-region provenance, and live-versus-declared source without inventing disk status. Private-network edges retain caller, target, protocol, hostname/port, scope, and observed-versus-declared provenance. Build Source edges preserve service consumption, immutable artifact production, and environment promotion. Workflow execution layers remain distinct and no list order implies a current version or serving state.

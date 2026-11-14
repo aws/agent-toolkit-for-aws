@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["schema_version", "status", "identity_scope", "attempt_id", "workspace_id", "local_identity", "consent_digest", "ownership_index_digest", "captures"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "status": {"const": "active"},
+    "identity_scope": {"enum": ["live", "local"]},
+    "attempt_id": {"type": "string", "format": "uuid"},
+    "workspace_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 128},
+    "local_identity": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+    "consent_digest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+    "ownership_index_digest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+    "captures": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "required": ["transport", "category", "captured_at", "workspace_id", "status", "page_count", "ownership_index_digest", "path", "digest"],
+        "additionalProperties": false,
+        "properties": {
+          "transport": {"enum": ["cli", "rest", "blueprint", "application", "billing"]},
+          "category": {"type": "string", "minLength": 1, "maxLength": 64},
+          "captured_at": {"type": "string", "format": "date-time", "pattern": "Z$", "maxLength": 32},
+          "workspace_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 128},
+          "status": {"enum": ["ok", "successful_empty", "unavailable_plan", "invalid_query", "absent", "unsupported_for_type"]},
+          "page_count": {"type": ["integer", "null"], "minimum": 1, "maximum": 100},
+          "ownership_index_digest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+          "path": {"type": "string", "minLength": 1, "maxLength": 512},
+          "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"transport": {"enum": ["blueprint", "application", "billing"]}}, "required": ["transport"]},
+            "then": {"properties": {"ownership_index_digest": {"type": "null"}}},
+            "else": {"properties": {"ownership_index_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}}}
+          }
+        ]
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"identity_scope": {"const": "live"}}},
+      "then": {
+        "properties": {
+          "workspace_id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "local_identity": {"type": "null"},
+          "consent_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+          "ownership_index_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+        }
+      },
+      "else": {
+        "properties": {
+          "workspace_id": {"type": "null"},
+          "local_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+          "consent_digest": {"type": "null"},
+          "ownership_index_digest": {"type": "null"}
+        }
+      }
+    }
+  ]
+}
