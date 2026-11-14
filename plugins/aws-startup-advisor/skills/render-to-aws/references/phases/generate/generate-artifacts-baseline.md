@@ -58,7 +58,7 @@ Emit only when `global.compliance` contains `hipaa`, `pci` or `fedramp`, or an `
 
 ## RDS backup and point-in-time recovery
 
-Verify only. Generated RDS blocks keep `backup_retention_period` at 7 or higher (35 when any framework is declared), and set `backup_window` and `copy_tags_to_snapshot = true`. Raise a lower value; do not lower a higher one.
+Verify only. Generated RDS blocks keep `backup_retention_period` at 7 or higher (35 when any framework is declared). Raise a lower value; do not lower a higher one.
 
 ## backup.tf (gated)
 
