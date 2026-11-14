@@ -1,0 +1,111 @@
+---
+_fragment: infra-compute
+_of_phase: generate
+_contributes:
+  - terraform/compute.tf
+---
+
+# Generate compute.tf
+
+Apply this guidance only to design rows routed to `terraform/compute.tf`. Network, data, storage, and delivery resources stay with their own guidance; reference them by variable or resource address and do not re-create them here.
+
+## Common rules
+
+- Emit one resource set per design row and tag it `SourceResourceId = "<source_resource_id>"`.
+- Name resources `"${local.name_prefix}-<role>"`, unique per source resource. Target group names are at most 32 characters and Scheduler schedule names at most 64.
+- Read `aws_config.vcpu`, `memory_gb`, `desired_count`, `graceful_shutdown_seconds`, `time_zone`, `duration_minutes`, and the architecture from `aws-design.json`. Never invent counts or sizes. If `desired_count` is absent, return to Design; do not default to 2.
+- Images come only from per-service `<name>_image` variables holding an ECR digest reference. Never use `:latest` or a mutable tag.
+- Secrets use Secrets Manager or Parameter Store ARNs only: `secrets = [{ name, valueFrom }]` for ECS, `aws:elasticbeanstalk:application:environmentsecrets` for Elastic Beanstalk, and a runtime lookup for Lambda. Never put a secret in an `environment` value. A JSON secret key uses `${arn}:key::`.
+- IAM trust policies name the exact service principal. Every Allow lists actions and resource ARNs. Never use `Action = "*"`. Use `Resource = "*"` only where the API requires it, in its own statement. Build managed-policy ARNs with `data.aws_partition.current.partition`. Never write a literal account ID.
+- Architecture defaults to x86_64 unless the design records `arm64`. For `arm64`, set `runtime_platform { cpu_architecture = "ARM64" }` on ECS, `architectures = ["arm64"]` on Lambda, or Graviton instance types.
+- Create every log group in Terraform with `retention_in_days` set (default 30, or the recorded preference). Never rely on implicit log group creation.
+
+## ECS on Fargate: public web service
+
+Required resources: cluster with Container Insights, log group, execution role, task role, task definition, service, and an ALB target group with `target_type = "ip"`. The listener and certificate belong to network guidance; the service only references the target group.
+
+- Execution role: trust `ecs-tasks.amazonaws.com`, attach `AmazonECSTaskExecutionRolePolicy`, and add an inline policy scoped to the exact secret and parameter ARNs (`secretsmanager:GetSecretValue`, `ssm:GetParameters`, and `kms:Decrypt` only when the design names a customer-managed key).
+- Task role: application permissions only, empty by default, never the same role as the execution role. Add the `ssmmessages` channel actions only when `enable_execute_command = true`.
+- Task definition: `network_mode = "awsvpc"`, `requires_compatibilities = ["FARGATE"]`, a valid Fargate cpu/memory pair, `essential = true`, an `awslogs` log configuration, a `healthCheck` (command, interval, timeout, retries, `startPeriod`) when the source declares a health path, `stopTimeout` from `graceful_shutdown_seconds` (Fargate maximum 120), and `readonlyRootFilesystem = true` where the source allows it.
+- Service: `launch_type = "FARGATE"`, `desired_count` from design, private subnets with `assign_public_ip = false`, `health_check_grace_period_seconds` behind an ALB, `deployment_circuit_breaker { enable = true, rollback = true }`, explicit `deployment_minimum_healthy_percent` and `deployment_maximum_percent`, and `depends_on` the listener.
+- Anti-patterns: public IPs on tasks, a public ALB for private or worker services, one role serving as both task and execution role, `latest` tags, secrets in `environment`, missing log retention.
+
+## ECS on Fargate: private service
+
+Follow the public web rules without a public ALB or public ingress.
+
+- Register a Cloud Map service (`aws_service_discovery_service` with `health_check_custom_config { failure_threshold = 1 }`) and set `service_registries` on the ECS service.
+- Allow security group ingress only from the named caller security groups.
+- For EFS, declare the task `volume` with `transit_encryption = "ENABLED"` and an access point, add `mountPoints` to the container, and set `depends_on = [aws_efs_mount_target.<name>]` on the service so each mount target exists before tasks start.
+- Add an internal ALB only when the design row says so.
+
+## ECS on Fargate: background worker
+
+- Service without a load balancer or port mappings and without `service_registries` unless the design requires one.
+- Set `stopTimeout` from `graceful_shutdown_seconds`, `desired_count` from design, and the deployment circuit breaker.
+- Never convert a continuously supervised worker into a Lambda function or Scheduler task.
+
+## EventBridge Scheduler + ECS RunTask
+
+Required resources: a task definition with its own log group and roles, an `aws_scheduler_schedule`, and a scheduler role trusting `scheduler.amazonaws.com`.
+
+- Schedule: `schedule_expression`, `schedule_expression_timezone` from `aws_config.time_zone`, `flexible_time_window { mode = "OFF" }`, `retry_policy`, and `ecs_parameters` with `task_definition_arn`, `launch_type`, `task_count = 1`, and a private `network_configuration`.
+- Scheduler role policy: `ecs:RunTask` on the exact task definition ARN with an `ArnLike` condition on `ecs:cluster`, and `iam:PassRole` on only the task role and execution role ARNs with `iam:PassedToService = ecs-tasks.amazonaws.com`.
+- Anti-patterns: `ecs:*`, `Resource = "*"`, overlapping runs without a concurrency note, `task_count` above 1.
+
+## AWS Lambda (cron or finite task)
+
+Required resources: `aws_lambda_function`, an explicit log group named `/aws/lambda/<function name>`, an execution role trusting `lambda.amazonaws.com`, and an SQS dead-letter queue.
+
+- Function: `package_type = "Image"` with `image_uri = var.<name>_image` (a zip package only when the design says so), `timeout` from `duration_minutes` (at most 900 seconds), `memory_size`, `architectures`, `reserved_concurrent_executions = 1` for cron overlap protection, `tracing_config { mode = "Active" }`, `dead_letter_config`, and `depends_on` the log group.
+- Execution role: `logs:CreateLogStream` and `logs:PutLogEvents` on that log group only, plus `sqs:SendMessage` on the dead-letter queue. Do not attach `AWSLambdaBasicExecutionRole` and widen it. Attach `AWSLambdaVPCAccessExecutionRole` only when the design places the function in a VPC.
+- Schedule: `schedule_expression_timezone`, `retry_policy`, and `dead_letter_config`, with `arn = aws_lambda_function.<name>.arn`. The scheduler role gets `lambda:InvokeFunction` on only that function ARN; no `aws_lambda_permission` is needed for a role-based Scheduler target.
+- Environment values are non-secret only.
+- Anti-patterns: Lambda for work longer than 15 minutes, Lambda for a continuous worker, `Resource = "*"`, unbounded retries.
+
+## Elastic Beanstalk (traditional)
+
+Emit one `aws_elastic_beanstalk_application` and one `aws_elastic_beanstalk_environment` per source service.
+
+- `solution_stack_name` comes from `data "aws_elastic_beanstalk_solution_stack"` with `most_recent = true` and a `name_regex`. Never paste a platform label.
+- Instance profile: an `aws_iam_role` trusting `ec2.amazonaws.com`, an `aws_iam_instance_profile`, and the partition-built `AWSElasticBeanstalkWebTier` (web) or `AWSElasticBeanstalkWorkerTier` (worker) and `AmazonSSMManagedInstanceCore` policies. Scope secret access with an inline policy on the exact secret ARNs.
+- Service role: trust `elasticbeanstalk.amazonaws.com`, attach `AWSElasticBeanstalkEnhancedHealth` and `AWSElasticBeanstalkManagedUpdatesCustomerRolePolicy`.
+- Required `setting` blocks:
+  - `aws:autoscaling:launchconfiguration`: `IamInstanceProfile`, `InstanceType` (from `knowledge/design/service-plan-eb-sizing.json`), `SecurityGroups`.
+  - `aws:autoscaling:asg`: `MinSize` (at least 1) and `MaxSize`.
+  - `aws:ec2:vpc`: `VPCId`, `Subnets`, `ELBSubnets`, `ELBScheme` (`public` only for a public web service, otherwise `internal`), `AssociatePublicIpAddress = "false"`.
+  - `aws:elasticbeanstalk:environment`: `EnvironmentType = "LoadBalanced"`, `LoadBalancerType = "application"`, `ServiceRole`.
+  - `aws:elasticbeanstalk:environment:process:default`: `HealthCheckPath`, `Port`.
+  - `aws:elasticbeanstalk:healthreporting:system`: `SystemType = "enhanced"`.
+  - `aws:elasticbeanstalk:command`: `DeploymentPolicy` (`Rolling` by default, `Immutable` when the design asks).
+  - `aws:elasticbeanstalk:cloudwatch:logs`: `StreamLogs = "true"` and `RetentionInDays`, which accepts only 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, or 3653 (round up).
+  - `aws:elasticbeanstalk:application:environmentsecrets`: one entry per secret.
+  - HTTPS: `aws:elbv2:listener:443` with `SSLCertificateArns` from the already-issued certificate variable and a TLS 1.2 or newer `SSLPolicy`.
+- Anti-patterns: pasted platform names, `MinSize = 0`, public instances, an HTTP-only listener on a public environment, secrets in `aws:elasticbeanstalk:application:environment`.
+
+## Elastic Beanstalk Cluster Mode and Amazon EKS
+
+- Elastic Beanstalk Cluster Mode is service-managed Kubernetes with the Beanstalk application and environment lifecycle. Confirm the pinned AWS provider has a resource for it before emitting anything. If it does not, emit no resource, record `unsupported` in `generation-warnings.json` with the design row id, and do not invent resource types.
+- Amazon EKS cluster: `aws_eks_cluster` with private endpoint access on and public access off unless the design says otherwise, envelope encryption of secrets with a KMS key, all five control plane log types enabled, and `access_config { authentication_mode = "API" }`. Its role trusts `eks.amazonaws.com` and attaches `AmazonEKSClusterPolicy`.
+- Compute: a managed node group (or Fargate profile) in private subnets. The node role trusts `ec2.amazonaws.com` and attaches `AmazonEKSWorkerNodePolicy`, `AmazonEC2ContainerRegistryReadOnly`, and `AmazonEKS_CNI_Policy`. Use a `launch_template` with `http_tokens = "required"` and `http_put_response_hop_limit = 1`.
+- Workload identity: an OIDC provider and one IRSA role per workload. Applications never use node role credentials.
+- Log group `/aws/eks/<cluster name>/cluster` with retention.
+- Kubernetes manifests are not part of `compute.tf` unless the design lists them.
+- Anti-patterns: a public API endpoint open to 0.0.0.0/0, application permissions on the shared node role.
+
+## AWS Batch (finite tasks and cron)
+
+- `aws_batch_compute_environment` with `type = "MANAGED"`, `compute_resources { type = "FARGATE" }` unless the design needs GPU or EC2, private subnets, a security group, and `max_vcpus`.
+- `aws_batch_job_queue` and `aws_batch_job_definition` with `platform_capabilities = ["FARGATE"]`, an execution role, a job role, a log configuration with a retained log group, `retry_strategy` (attempts from design), and `timeout`.
+- Let AWS create the Batch service-linked role; do not emit a custom service role.
+- For cron, the scheduler role gets `batch:SubmitJob` on only the job definition and job queue ARNs, and the schedule uses the universal target `arn:aws:scheduler:::aws-sdk:batch:submitJob`.
+- Anti-patterns: `batch:*`, EC2 compute environments without a launch template that requires IMDSv2.
+
+## Self-check
+
+- Every compute design row maps to exactly one Terraform target.
+- No IAM statement uses a wildcard action, and no `Resource = "*"` appears outside an API that requires it.
+- Every log group has `retention_in_days`.
+- Every service image is a digest variable.
+- Every schedule carries a time zone and a retry policy.
+- No `latest` tag appears.

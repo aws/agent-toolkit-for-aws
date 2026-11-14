@@ -1345,6 +1345,41 @@ def _validate_generated_pack(root: Path, generated: Path, ledger: dict[str, Any]
     }
 
 
+def validate_terraform_directory(source: Path, workdir: Path) -> dict[str, str]:
+    """Run fmt, init, validate, and the policy check on a copy of one Terraform directory."""
+    terraform_binary = shutil.which("terraform")
+    if terraform_binary is None:
+        raise AssertionError("terraform is required to validate a golden Terraform directory")
+    shutil.copytree(source, workdir, ignore=shutil.ignore_patterns(".terraform", ".terraform.lock.hcl"))
+    fmt = _run([terraform_binary, "fmt", "-check", "-recursive"], workdir)
+    if fmt.returncode != 0:
+        raise AssertionError(fmt.stdout + fmt.stderr)
+    init = _run([terraform_binary, "init", "-backend=false", "-input=false"], workdir)
+    registry_failure = (
+        init.returncode != 0
+        and classify_terraform_init_failure(init.stdout + init.stderr) == "provider_registry_unavailable"
+    )
+    if init.returncode != 0 and not registry_failure:
+        raise AssertionError(init.stdout + init.stderr)
+    if registry_failure:
+        validate_status = "provider_registry_unavailable"
+    else:
+        validate = _run([terraform_binary, "validate"], workdir)
+        if validate.returncode != 0:
+            raise AssertionError(validate.stdout + validate.stderr)
+        validate_status = "passed"
+    policy = REPO_ROOT / "plugins/aws-startup-advisor/skills/tf-best-practices/scripts/validate-terraform-policy.py"
+    policy_result = _run([sys.executable, str(policy), str(workdir)], workdir)
+    if policy_result.returncode != 0 or not policy_result.stdout.startswith("POLICY_OK"):
+        raise AssertionError(policy_result.stdout + policy_result.stderr)
+    return {
+        "fmt": "passed",
+        "init": "provider_registry_unavailable" if registry_failure else "passed",
+        "validate": validate_status,
+        "policy": "POLICY_OK",
+    }
+
+
 def _promotion_script() -> str:
     return r'''#!/usr/bin/env bash
 set -euo pipefail
