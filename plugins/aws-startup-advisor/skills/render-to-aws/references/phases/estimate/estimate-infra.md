@@ -36,3 +36,5 @@ For each scenario:
 5. Compute delta only from the two known-cost floors and carry incompleteness into the explanation.
 
 Human labor, migration engineering, and downtime are considerations with no dollar amount. Commitment opportunities follow the vendored eligibility matrix and do not reduce the capacity-preserving on-demand total; Compute Savings Plans remain percent-only until 30–90 days of AWS usage establishes a floor.
+## ECS Express Mode pricing
+A Fargate mapping with `aws_config.ecs_mode: "express"` is priced like a standard Fargate service: task vCPU and GB-hours from the same tables plus its share of an ALB. Express Mode has no service charge, but its ALB is shared. Group Express mappings by VPC and ALB scheme (public placement is internet-facing, private placement is internal, never combined), then emit `ceil(count / 25)` `alb.monthly_fixed` lines per group as one shared line with that quantity. Attribute LCU estimates per service. Do not emit one ALB fixed charge per Express service. A standard HTTP service, including any mapping with no `ecs_mode`, keeps one ALB line and never joins an Express group.
