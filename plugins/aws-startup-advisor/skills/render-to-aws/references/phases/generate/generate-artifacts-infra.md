@@ -22,9 +22,9 @@ Route each supported selected target to a domain file and record that file in `g
 | Amazon S3 + Amazon CloudFront | Private S3 origin, versioning, encryption, public-access block, CloudFront OAC, distribution-scoped `s3:GetObject` bucket policy, and distribution |
 | ECS on Fargate / Fargate service | ECS cluster, task definitions, private services, desired counts, health/shutdown behavior, public ALB only for the public web service |
 | EventBridge Scheduler + ECS RunTask | Scheduler with one ECS task target, retry policy, time-zone intent, and scoped execution role |
-| Amazon RDS for PostgreSQL | Private encrypted RDS, subnet/parameter groups, Multi-AZ choice, Secrets Manager reference, backup/PITR settings |
-| ElastiCache for Valkey | Private encrypted replication group with the selected persistence/eviction posture |
-| Amazon EFS | Encrypted filesystem, mount targets, access point for `/var/data`, and app-scoped security group |
+| Amazon RDS for PostgreSQL | Private encrypted RDS, subnet/parameter groups, Multi-AZ choice, Secrets Manager reference, backup/PITR settings; when `data.regulated_data` is true, a customer-managed `aws_kms_key` (rotation on) as `kms_key_id` and no cross-Region replica or backup replication |
+| ElastiCache for Valkey | Private encrypted replication group with the selected persistence/eviction posture; when `data.regulated_data` is true, a customer-managed `aws_kms_key` as `kms_key_id` (snapshots included) and no Global Datastore |
+| Amazon EFS | Encrypted filesystem, mount targets, access point for `/var/data`, and app-scoped security group; when `data.regulated_data` is true, a customer-managed `aws_kms_key` as `kms_key_id` and no replication configuration |
 | ACM + external DNS | Require the ARN of an ACM certificate already validated and `Issued`; never attach a newly requested pending certificate to a listener and never fabricate Route 53 ownership |
 | Secrets Manager + Parameter Store | Names/references only; values are input at deployment and remain sensitive |
 | ECR immutable promotion | ECR repository with immutable tags and scan-on-push plus promotion outputs |

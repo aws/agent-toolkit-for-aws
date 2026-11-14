@@ -45,7 +45,7 @@ def test_complete_report_passes_with_exact_status(tmp_path: Path) -> None:
     ("mutation", "expected"),
     [
         (lambda text: text.replace("ECS on Fargate", "Amazon App Runner", 1), "TARGET_MAPPING_MISMATCH"),
-        (lambda text: text.replace('<td data-cost-key="capacity_preserving">$352</td>', '<td data-cost-key="capacity_preserving">$999</td>'), "COST_CAPACITY_PRESERVING_MISMATCH"),
+        (lambda text: text.replace('<td data-cost-key="capacity_preserving">$357</td>', '<td data-cost-key="capacity_preserving">$999</td>'), "COST_CAPACITY_PRESERVING_MISMATCH"),
         (lambda text: text.replace('data-accounted-count="15"', 'data-accounted-count="14"'), "REPORT_ACCOUNTED_COUNT_MISMATCH"),
         (lambda text: text.replace("establish writer quiescence, apply", "establish pause writes, apply"), "CONTENT_CUTOVER_WRITER_QUIESCENCE"),
         (lambda text: text.replace("honor the source retention window", "honor the source hold window"), "CONTENT_ROLLBACK_SOURCE_RETENTION"),

@@ -1155,3 +1155,29 @@ def test_golden_preferences_cover_every_new_clarify_question() -> None:
     for row in questions:
         if row["question_id"] in expected_ids:
             assert row["decision_changed"].strip()
+
+
+def test_golden_guide_reflects_golden_clarify_answers() -> None:
+    answers = {(row["question_id"], row["resource_id"]): row for row in load(EXPECTED / "preferences.json")["questions"]}
+    sections: dict[str, str] = {}
+    current = ""
+    for line in (EXPECTED / "generated/MIGRATION_GUIDE.md").read_text(encoding="utf-8").splitlines():
+        if line.startswith("## "):
+            current = line[3:]
+            sections[current] = ""
+        elif current:
+            sections[current] += line + "\n"
+    expectations = [
+        (("delivery.ci_owner", None), "github_actions", "Build and deployment migration", "GitHub Actions"),
+        (("identity.human_sign_in", None), "identity_center_directory", "Prerequisites", "IAM Identity Center"),
+        (("observability.log_retention", None), "30_days", "Prerequisites", "30 days"),
+        (("cutover.source_retention", None), "retain_14_days", "Rollback and source retention", "14 days"),
+        (("key_value.migration_strategy", "rr-kv"), "empty_start", "Key Value migration", "empty start"),
+        (("cutover.downtime_window", None), "short_window", "DNS and traffic cutover", "single switch"),
+    ]
+    for key, value, section, phrase in expectations:
+        assert answers[key]["value"] == value, key
+        assert phrase in sections[section], f"{section} ignores {key[0]}={value}"
+    assert "staged weighted shift" not in sections["DNS and traffic cutover"]
+    assert "dual-write transition" not in sections["Key Value migration"]
+    assert "small traffic slice" not in sections["DNS and traffic cutover"]

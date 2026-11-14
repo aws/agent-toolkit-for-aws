@@ -348,3 +348,53 @@ def test_every_new_clarify_question_names_a_decision_and_a_consumer() -> None:
     )
     for question_id in ids:
         assert question_id in consumers, f"{question_id} has no downstream reference"
+
+
+def _read_ref(path: str) -> str:
+    return (SKILL_ROOT / "references" / path).read_text(encoding="utf-8")
+
+
+def _clarify_row(question_id: str) -> dict[str, str]:
+    return next(row for row in clarify_question_rows() if row["question_id"].strip("`") == question_id)
+
+
+def test_sub_hour_downtime_and_data_bearing_key_value_never_default_to_data_loss_or_dump_restore() -> None:
+    privilege = _clarify_row("database.replication_privilege")["Default and consequence"]
+    assert privilege.startswith("none"), privilege
+    assert "falls back to dump/restore" not in privilege
+    strategy = _clarify_row("key_value.migration_strategy")["Default and consequence"]
+    assert strategy.startswith("none"), strategy
+    data = _read_ref("design-refs/data.md")
+    assert "never fall back to dump/restore through a default" in data
+    assert "`replication_privilege` when the tolerance is below one hour" in data
+
+
+def test_cutover_precedence_table_covers_every_downtime_and_ttl_combination() -> None:
+    text = _read_ref("phases/clarify/clarify-cutover.md")
+    for window in ("short_window", "staged_shift"):
+        for ttl in ("ttl_lowered_24h_ahead", "cannot_lower"):
+            assert f"- `{window}` with `{ttl}`:" in text, (window, ttl)
+    docs = _read_ref("phases/generate/generate-artifacts-docs.md")
+    assert "`staged_shift`" in docs and "`short_window`" in docs
+    assert "stage traffic, observe, then move fully; otherwise" not in docs
+
+
+def test_regulated_data_control_is_designed_and_generated_for_every_covered_store() -> None:
+    row = _clarify_row("data.regulated_data")
+    assert "PostgreSQL, Key Value, persistent disk" in row["Resource"]
+    assert "customer-managed KMS" in _read_ref("design-refs/data.md")
+    assert "customer-managed KMS" in _read_ref("design-refs/storage.md")
+    infra = _read_ref("phases/generate/generate-artifacts-infra.md")
+    for service in ("Amazon RDS for PostgreSQL", "ElastiCache for Valkey", "Amazon EFS"):
+        line = next(item for item in infra.splitlines() if item.startswith(f"| {service} |"))
+        assert "data.regulated_data" in line and "aws_kms_key" in line, service
+
+
+def test_estate_wide_estimate_costs_attach_to_design_mappings() -> None:
+    text = _read_ref("phases/estimate/estimate-infra.md")
+    assert "Do not emit separate estate-wide lines." in text
+    estimate = json.loads((SKILL_ROOT / "fixtures/expected/estimation-infra.json").read_text(encoding="utf-8"))
+    for scenario in estimate["scenarios"].values():
+        env = next(line for line in scenario["lines"] if line["source_resource_id"] == "rr-env")
+        assert "CloudWatch Logs (30-day retention)" in env["aws_service"]
+        assert env["monthly_amount"] and env["monthly_amount"] > 0

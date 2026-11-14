@@ -2,20 +2,20 @@
   "phase": "estimate",
   "design_source": "aws-design.json",
   "timestamp": "2026-10-21T12:00:00Z",
-  "pricing_source": {"status": "cached", "message": "AWS rates use the reviewed us-east-1 cache; Render baseline is user stated.", "services_by_source": {"cached": ["ecs", "rds", "elasticache", "lambda"], "fallback": [], "estimated": []}, "services_with_missing_fallback": ["efs"]},
+  "pricing_source": {"status": "cached", "message": "AWS rates use the reviewed us-east-1 cache; Render baseline is user stated.", "services_by_source": {"cached": ["ecs", "rds", "elasticache", "lambda"], "fallback": [], "estimated": ["cloudwatch"]}, "services_with_missing_fallback": ["efs"]},
   "accuracy_confidence": "known-cost floors; EFS is unpriced",
   "current_costs": {"source": "user_stated", "render_monthly": 123.45, "baseline_note": "User-stated amount as of 2026-10-21", "breakdown": {}},
-  "projected_costs": {"aws_monthly_premium": 387.2, "aws_monthly_balanced": 352.0, "aws_monthly_optimized": 290.0, "aws_annual_optimized": 3480.0, "breakdown": {}},
+  "projected_costs": {"aws_monthly_premium": 392.7, "aws_monthly_balanced": 357.0, "aws_monthly_optimized": 295.0, "aws_annual_optimized": 3540.0, "breakdown": {}},
   "scenarios": {
     "capacity_preserving": {
-      "known_cost_monthly_usd": 352.0, "is_floor": true, "unpriced_line_ids": ["line-disk"],
+      "known_cost_monthly_usd": 357.0, "is_floor": true, "unpriced_line_ids": ["line-disk"],
       "lines": [
         {"line_id": "line-build", "source_resource_id": "rr-build", "aws_service": "Amazon ECR + CI/CD immutable digest promotion", "monthly_amount": 10.0, "pricing_source": "estimated", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
         {"line_id": "line-cron", "source_resource_id": "rr-cron", "aws_service": "Amazon EventBridge Scheduler + ECS on Fargate RunTask", "monthly_amount": 20.0, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
         {"line_id": "line-db", "source_resource_id": "rr-db", "aws_service": "Amazon RDS for PostgreSQL", "monthly_amount": 100.0, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
         {"line_id": "line-disk", "source_resource_id": "rr-disk", "aws_service": "Amazon EFS", "monthly_amount": null, "pricing_source": "unavailable", "confidence": "inferred", "exclusion_reason": "No reviewed EFS rate row", "evidence_sufficient": false},
         {"line_id": "line-domain", "source_resource_id": "rr-domain", "aws_service": "AWS Certificate Manager + external DNS", "monthly_amount": 0.0, "pricing_source": "no_direct_charge", "confidence": "deterministic", "exclusion_reason": null, "evidence_sufficient": false},
-        {"line_id": "line-env", "source_resource_id": "rr-env", "aws_service": "AWS deployment environment stack", "monthly_amount": 0.0, "pricing_source": "no_direct_charge", "confidence": "deterministic", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-env", "source_resource_id": "rr-env", "aws_service": "AWS deployment environment stack + Amazon CloudWatch Logs (30-day retention)", "monthly_amount": 5.0, "pricing_source": "estimated", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
         {"line_id": "line-env-group", "source_resource_id": "rr-env-group", "aws_service": "AWS Secrets Manager + AWS Systems Manager Parameter Store", "monthly_amount": 2.0, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
         {"line_id": "line-kv", "source_resource_id": "rr-kv", "aws_service": "Amazon ElastiCache for Valkey node-based", "monthly_amount": 50.0, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
         {"line_id": "line-private", "source_resource_id": "rr-private", "aws_service": "ECS on Fargate", "monthly_amount": 40.0, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
@@ -28,14 +28,14 @@
       ]
     },
     "right_sized": {
-      "known_cost_monthly_usd": 290.0, "is_floor": true, "unpriced_line_ids": ["line-disk"],
+      "known_cost_monthly_usd": 295.0, "is_floor": true, "unpriced_line_ids": ["line-disk"],
       "lines": [
         {"line_id": "line-build", "source_resource_id": "rr-build", "aws_service": "Amazon ECR + CI/CD immutable digest promotion", "monthly_amount": 10.0, "pricing_source": "estimated", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
         {"line_id": "line-cron", "source_resource_id": "rr-cron", "aws_service": "Amazon EventBridge Scheduler + ECS on Fargate RunTask", "monthly_amount": 15.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
         {"line_id": "line-db", "source_resource_id": "rr-db", "aws_service": "Amazon RDS for PostgreSQL", "monthly_amount": 80.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
         {"line_id": "line-disk", "source_resource_id": "rr-disk", "aws_service": "Amazon EFS", "monthly_amount": null, "pricing_source": "unavailable", "confidence": "inferred", "exclusion_reason": "No reviewed EFS rate row", "evidence_sufficient": false},
         {"line_id": "line-domain", "source_resource_id": "rr-domain", "aws_service": "AWS Certificate Manager + external DNS", "monthly_amount": 0.0, "pricing_source": "no_direct_charge", "confidence": "deterministic", "exclusion_reason": null, "evidence_sufficient": false},
-        {"line_id": "line-env", "source_resource_id": "rr-env", "aws_service": "AWS deployment environment stack", "monthly_amount": 0.0, "pricing_source": "no_direct_charge", "confidence": "deterministic", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-env", "source_resource_id": "rr-env", "aws_service": "AWS deployment environment stack + Amazon CloudWatch Logs (30-day retention)", "monthly_amount": 5.0, "pricing_source": "estimated", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
         {"line_id": "line-env-group", "source_resource_id": "rr-env-group", "aws_service": "AWS Secrets Manager + AWS Systems Manager Parameter Store", "monthly_amount": 2.0, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
         {"line_id": "line-kv", "source_resource_id": "rr-kv", "aws_service": "Amazon ElastiCache for Valkey node-based", "monthly_amount": 40.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
         {"line_id": "line-private", "source_resource_id": "rr-private", "aws_service": "ECS on Fargate", "monthly_amount": 35.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
