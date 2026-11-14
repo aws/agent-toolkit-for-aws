@@ -209,7 +209,32 @@ def heroku_conditional_outputs(
         row = constraints.get("eb_deploy_method") if isinstance(constraints, dict) else None
         method = row.get("value") if isinstance(row, dict) else None
         if method in (None, "github_actions"):
-            names.extend([".github/workflows/deploy-eb.yml", ".github/workflows/promote.yml"])
+            eb_apps = {
+                service.get("heroku_app") for service in design.get("services") or []
+                if isinstance(service, dict) and "beanstalk" in str(service.get("aws_service", "")).casefold()
+            }
+            if len(eb_apps) >= 2:
+                # Per-app mode: one deploy-eb-<slug>.yml per Elastic Beanstalk app. The slug is derived in
+                # generate-terraform.md (EB name resolution), so the file names are not recomputed here.
+                have = sorted(path.name for path in (root / ".github/workflows").glob("deploy-eb-*.yml")
+                              if path.is_file() and path.stat().st_size) if (root / ".github/workflows").is_dir() else []
+                if len(have) < len(eb_apps):
+                    errors.append(
+                        f".github/workflows/deploy-eb-<slug>.yml: {len(eb_apps)} Elastic Beanstalk apps need "
+                        f"one deploy workflow each, found {len(have)}")
+                else:
+                    # A nonempty file is not a deployment: one real workflow must not cover a sibling that
+                    # only echoes. The shared checker reports each deploy-eb-*.yml that has no deploy step.
+                    report = load_module(
+                        "_accept_eb_artifacts", TF_SCRIPTS / "validate-migration-artifacts.py",
+                    ).validate(root, require_eb_workflow=True)
+                    for finding in report.get("findings") or []:
+                        if finding.get("rule") == "eb_deploy_missing" and \
+                                str(finding.get("file", "")).startswith(".github/workflows/deploy-eb-"):
+                            errors.append(f"{finding['file']}: {finding['summary']}")
+            else:
+                names.append(".github/workflows/deploy-eb.yml")
+            names.append(".github/workflows/promote.yml")
         elif method == "codepipeline":
             names.append("terraform/pipeline.tf")
         elif method != "manual":

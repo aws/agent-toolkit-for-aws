@@ -10,6 +10,7 @@ _contributes:
   - terraform/beanstalk.tf
   - terraform/pipeline.tf
   - .github/workflows/deploy-eb.yml
+  - .github/workflows/deploy-eb-*.yml
   - .github/workflows/promote.yml
   - terraform/.gitignore
   - terraform/terraform.tfvars.example
@@ -49,8 +50,8 @@ Generate `$MIGRATION_DIR/terraform/` with the following file organization. Only 
 - `vpc.tf` — Emitted when `vpc_design` is present in `aws-design.json` (either existing or new VPC)
 - `compute.tf` — Emitted when `aws_service` contains "Fargate" or "ALB" entries
 - `beanstalk.tf` — Emitted when `aws_service` contains "Elastic Beanstalk" entries
-- `.github/workflows/deploy-eb.yml` — Emitted when `aws_service` contains "Elastic Beanstalk" entries and `preferences.design_constraints.eb_deploy_method.value` is `"github_actions"` or absent (default)
-- `.github/workflows/promote.yml` — Emitted alongside `deploy-eb.yml` (same condition; both files are required for `github_actions`). The Heroku `pipelines:promote` equivalent: redeploys an existing application version to the production environments behind a GitHub environment approval (see § `promote.yml`)
+- `.github/workflows/deploy-eb.yml` (one EB app) or `.github/workflows/deploy-eb-<eb_app_slug>.yml`, one per EB app (two or more; § EB name resolution) — Emitted when `aws_service` contains "Elastic Beanstalk" entries and `preferences.design_constraints.eb_deploy_method.value` is `"github_actions"` or absent (default)
+- `.github/workflows/promote.yml` — Emitted alongside the deploy workflow (same condition; both are required for `github_actions`). The Heroku `pipelines:promote` equivalent: redeploys an existing application version to the production environments behind a GitHub environment approval (see § `promote.yml`)
 - `pipeline.tf` — Emitted only when `aws_service` contains "Elastic Beanstalk" entries and `preferences.design_constraints.eb_deploy_method.value` is `"codepipeline"`
 - `database.tf` — Emitted when `aws_service` contains "RDS" or "Aurora" entries
 - `cache.tf` — Emitted when `aws_service` contains "ElastiCache" entries
@@ -63,7 +64,7 @@ Generate `$MIGRATION_DIR/terraform/` with the following file organization. Only 
 | AWS Service in `aws-design.json`   | Target File                                                                                                     |
 | ---------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | Fargate, ALB                       | `compute.tf`                                                                                                    |
-| Elastic Beanstalk                  | `beanstalk.tf`; plus `.github/workflows/deploy-eb.yml` and `promote.yml` for `github_actions`, or `pipeline.tf` for `codepipeline` |
+| Elastic Beanstalk                  | `beanstalk.tf`; plus `.github/workflows/deploy-eb.yml` (or one `deploy-eb-<eb_app_slug>.yml` per app with two or more EB apps) and `promote.yml` for `github_actions`, or `pipeline.tf` for `codepipeline` |
 | RDS PostgreSQL, Aurora PostgreSQL  | `database.tf`                                                                                                   |
 | ElastiCache Valkey (or ElastiCache Redis when `aws_config.engine` is `redis`) | `cache.tf` |
 | Amazon MSK                         | `messaging.tf`                                                                                                  |
@@ -1592,11 +1593,71 @@ Skip this step if no services in `aws-design.json` have `aws_service: "Elastic B
 
 Read `preferences.design_constraints.eb_deploy_method.value`; default to `"github_actions"` when the field is absent. Always generate `beanstalk.tf` for EB services, then generate exactly one deploy path:
 
-- `"github_actions"` → generate `$MIGRATION_DIR/.github/workflows/deploy-eb.yml` **and** `$MIGRATION_DIR/.github/workflows/promote.yml` (§ `promote.yml`)
+- `"github_actions"` → generate `$MIGRATION_DIR/.github/workflows/deploy-eb.yml` with one EB app, or one `$MIGRATION_DIR/.github/workflows/deploy-eb-<eb_app_slug>.yml` per EB app with two or more (§ `.github/workflows/deploy-eb.yml`), **and** `$MIGRATION_DIR/.github/workflows/promote.yml` (§ `promote.yml`)
 - `"codepipeline"` → generate `$MIGRATION_DIR/terraform/pipeline.tf`
 - `"manual"` → generate neither deploy automation artifact; document CLI deployment in `MIGRATION_GUIDE.md`
 
+### EB name resolution (run once, before `beanstalk.tf`, the deploy artifacts and `pipeline.tf`)
+
+Every Elastic Beanstalk name comes from this one section; nothing else in this file or in
+`generate-docs.md` derives one. Names are fixed at generation time and written as literals.
+
+Collect `eb_apps` = the distinct `heroku_app` values of `aws-design.json` `services[]` entries with
+`aws_service: "Elastic Beanstalk"`, sorted. Two modes:
+
+- **Shared names (exactly one EB app).** `<eb_app_suffix>` is empty. The EB application is
+  `var.project_name`, each environment is `${var.project_name}-<process_type>`, and the instance
+  role and profile are `${var.project_name}-eb-instance` and `${var.project_name}-eb-profile`.
+  This is the naming this skill has always produced for one app; nothing changes for it.
+- **Per-app names (two or more EB apps).** `<eb_app_suffix>` is `-<eb_app_slug>`. The EB
+  application is `${var.project_name}<eb_app_suffix>`, each environment is
+  `${var.project_name}<eb_app_suffix>-<process_type>`, and the instance role and profile are
+  `${var.project_name}<eb_app_suffix>-eb-instance` and `${var.project_name}<eb_app_suffix>-eb-profile`.
+  With the shared form a second app would create a second application, environments and role with
+  the same names as the first (Terraform cannot apply them, and a staging and a production app
+  would resolve to the same environments), so each app needs its own.
+
+In both modes an environment's name is its application's name, a dash, and the process type.
+Deploy artifacts rely on that.
+
+**`<eb_app_slug>`** (per-app mode only). Start from the Heroku app name: lowercase it, replace each
+run of characters outside `a-z0-9` with `-`, and trim leading and trailing `-` (use `app` if
+nothing is left). Then fit it:
+
+1. An Elastic Beanstalk environment name is at most 40 characters. `room` = 40 − `len(project_name)`
+   − 1 − 1 − `len(longest process_type among the EB services of all EB apps)`, where `project_name`
+   is the `terraform.tfvars` value. The two `1`s are the dashes before the slug and before the
+   process type. If `room` is below 3, halt and tell the user the project name or a process type is
+   too long for per-app names and ask for a shorter `project_name`.
+2. Truncate the slug to `room` characters and trim a trailing `-`.
+3. Compute every app's _natural_ slug (steps above). An app's _environment names_ are
+   `<slug>-<process_type>` for each of its own EB process types. Process types may contain dashes, so
+   two different slugs can give the same environment name: app `foo` with process `bar-worker` and app
+   `foo-bar` with process `worker` both reach `foo-bar-worker`. Walk `eb_apps` in sorted order and
+   give each app the natural slug when that slug is not assigned to an earlier app and none of the
+   app's environment names equals an environment name of an earlier app. Otherwise rebuild it for
+   n = 2, 3, … as the original slug truncated to `room − len(n) − 1` characters (trailing `-`
+   trimmed), then `-`, then `n`, and take the first n whose result meets the same two conditions and
+   is also not the natural slug of any other app. A rebuilt slug can itself collide (with `room` 6,
+   `hell-2` and `hello-2` both rebuild `hello-2` to `hell-2`), so keep incrementing n; if
+   `room − len(n) − 1` drops below 1, halt with the message from step 1. The resolved map of app to
+   slug is the only source for the application and environment names in `beanstalk.tf`, the deploy
+   workflows, `pipeline.tf` and the guide; none of them recomputes a name.
+
+The longest environment name is then at most 40 characters, so the instance role
+(`<project_name><eb_app_suffix>-eb-instance`, 12 more characters than the environment's prefix)
+stays well inside IAM's 64-character limit. Examples, for `project_name = "shop"` unless noted:
+
+| Heroku apps (process types) | `room` | Application | Environment |
+| --- | --- | --- | --- |
+| `shop-staging` (web, worker) | 28 | `shop-shop-staging` | `shop-shop-staging-web` |
+| `shop-production` (web, worker) | 28 | `shop-shop-production` | `shop-shop-production-worker` |
+| `acme-platform-production-api-service` (web, scheduler), `project_name = "acme-platform-prod"` | 11 | `acme-platform-prod-acme-platfo` | `acme-platform-prod-acme-platfo-scheduler` (40) |
+| `billing-service-eu`, `billing-service-us` (web, scheduler), `project_name = "acme-platform-prod"` | 11 | `…-billing-ser`, `…-billing-s-2` | `…-billing-ser-scheduler`, `…-billing-s-2-scheduler` |
+
 ### `beanstalk.tf` — EB Application and Environments
+
+`<eb_app_suffix>` is the value from EB name resolution above: empty with one EB app, `-<eb_app_slug>` with two or more.
 
 ```hcl
 # Select the latest Elastic Beanstalk Docker platform for Amazon Linux 2023.
@@ -1608,12 +1669,12 @@ data "aws_elastic_beanstalk_solution_stack" "docker" {
 }
 
 resource "aws_elastic_beanstalk_application" "<app_name>" {
-  name        = var.project_name
+  name        = "${var.project_name}<eb_app_suffix>"
   description = "Migrated from Heroku app: <heroku_app>"
 }
 
 resource "aws_elastic_beanstalk_environment" "<app_name>_<process_type>" {
-  name                = "${var.project_name}-<process_type>"
+  name                = "${var.project_name}<eb_app_suffix>-<process_type>"
   application         = aws_elastic_beanstalk_application.<app_name>.name
   solution_stack_name = data.aws_elastic_beanstalk_solution_stack.docker.name
   tier                = "WebServer"
@@ -1765,12 +1826,12 @@ resource "aws_elastic_beanstalk_environment" "<app_name>_<process_type>" {
 }
 
 resource "aws_iam_instance_profile" "eb_<app_name>" {
-  name = "${var.project_name}-eb-profile"
+  name = "${var.project_name}<eb_app_suffix>-eb-profile"
   role = aws_iam_role.eb_instance_<app_name>.name
 }
 
 resource "aws_iam_role" "eb_instance_<app_name>" {
-  name = "${var.project_name}-eb-instance"
+  name = "${var.project_name}<eb_app_suffix>-eb-instance"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -1847,14 +1908,15 @@ resource "aws_iam_role_policy" "eb_read_secrets_<app_name>" {
 
 ### `.github/workflows/deploy-eb.yml` — GitHub Actions EB Deploy (Default)
 
-Emit this file when `eb_deploy_method.value` is `"github_actions"` or absent. The workflow uses GitHub OIDC role assumption, packages the source bundle, creates one EB application version, and updates every generated EB environment of the **push target** (web, worker, clock, custom). The push target is the staging app when a promote pair exists (§ `promote.yml`): pushes to `main` then reach staging only and production receives versions through the approval-gated `promote.yml`. Without a promote pair the push target is the app itself.
+Emit this file when `eb_deploy_method.value` is `"github_actions"` or absent. The workflow uses GitHub OIDC role assumption, packages the source bundle, creates one EB application version, and updates every generated EB environment of **its own app** (web, worker, clock, custom). In a promote pair (§ `promote.yml`) the staging app's workflow deploys it on every push to `main`, and the production app's workflow runs only when a person starts it, so production receives versions through the approval-gated `promote.yml`.
+
+**One file per EB app in per-app mode.** With one EB app the file is `.github/workflows/deploy-eb.yml` and `<eb_app_label>` below is empty. With two or more it is `.github/workflows/deploy-eb-<eb_app_slug>.yml` for each EB app, `<eb_app_label>` is a space followed by `(<heroku_app>)`, and every file carries that app's own application and environment names from EB name resolution. A single shared file cannot name two applications, and the second app would otherwise have no workflow at all.
 
 ```yaml
-name: Deploy Elastic Beanstalk
+name: Deploy Elastic Beanstalk<eb_app_label>
 
 on:
-  push:
-    branches: [main]
+  <eb_deploy_trigger>
 
 permissions:
   id-token: write
@@ -1862,10 +1924,9 @@ permissions:
 
 env:
   AWS_REGION: <target_region>
-  # Push target: the staging app's generated EB application and environments when a
-  # promote pair exists; otherwise this app's own.
-  EB_APPLICATION_NAME: <push target's generated EB application name>
-  EB_ENVIRONMENTS: "<space-separated EB environment names of the push target from aws-design.json>"
+  # The EB application's name from EB name resolution (aws_elastic_beanstalk_application.name), not the Heroku app name.
+  EB_APPLICATION_NAME: <eb_application_name>
+  EB_ENVIRONMENTS: "<space-separated EB environment names of this app from EB name resolution>"
 
 jobs:
   deploy:
@@ -1900,9 +1961,11 @@ jobs:
 
 **GitHub Actions rules:**
 
-- Emit one workflow per repository/migration, not one per EB environment.
-- `EB_ENVIRONMENTS` MUST include every generated EB environment for the push target, not only `<app_name>-web`.
-- When a promote pair is resolved (§ `promote.yml`), `EB_APPLICATION_NAME` and `EB_ENVIRONMENTS` are the **staging** app's generated names; the production app's environments MUST NOT appear here. Without a promote pair they are this app's own names, and `promote.yml` is an approval-gated redeploy of a chosen version to those same environments.
+- Emit one workflow per EB app, never one per EB environment: one file with one EB app, one `deploy-eb-<eb_app_slug>.yml` per app with two or more.
+- `<eb_deploy_trigger>` is `push:` with `branches: [main]`, except for an app that sits at `stage: "production"` in a `pipeline` resource's `config.stages[]`: its trigger is `workflow_dispatch:` only. Without that, a push to `main` would deploy straight to the production application of a staging and production pair, and in per-app mode every app has its own workflow. Production then receives a release when a person runs this workflow, or through the approval-gated `promote.yml` (§ `promote.yml`) when a promote pair resolves.
+- `EB_APPLICATION_NAME` and `EB_ENVIRONMENTS` are the names from EB name resolution, written as literals. In per-app mode they are this app's own names, so one app's workflow never touches another app's environments.
+- `EB_ENVIRONMENTS` MUST include every generated EB environment for the app, not only the `web` one.
+- In a promote pair (§ `promote.yml`) the staging app's own workflow deploys it on every push and the production app's workflow is manual-only; the production app's environments never appear in the staging file. Without a promote pair, `promote.yml` is an approval-gated redeploy of a chosen version to the app's own environments.
 - The workflow assumes a GitHub OIDC role through `secrets.AWS_ROLE_ARN`; document the required role setup in `MIGRATION_GUIDE.md`.
 - Do not emit `pipeline.tf` when this method is selected.
 
@@ -1935,26 +1998,22 @@ reviewers, which the customer creates once in the repository settings.
   any one of its generated EB environments: prefer its `web` environment, otherwise the
   first one (a worker-only app has no web environment; every environment of an app
   receives the same version label from `deploy-eb.yml`, so any of them identifies the
-  running version). In a promote pair `deploy-eb.yml` targets the staging app
-  (§ GitHub Actions rules) and production receives versions only through this file.
+  running version). In a promote pair the staging app's own deploy workflow
+  (§ GitHub Actions rules) deploys it on push, and production receives versions only through this file.
 - **Distinct names.** A pair needs `STAGING_APP != PRODUCTION_APP` and no staging
-  environment name equal to a production environment name. In the `beanstalk.tf` of
-  Step 6.5 every app's EB application is `var.project_name` and every environment is
-  `"${var.project_name}-<process_type>"`, and a Terraform root has one `project_name`, so
-  two Heroku apps in one design resolve to the **same** application and the same
-  environments. With those names `STAGING_ENVIRONMENT` is production's own environment:
-  every push to `main` would deploy straight to production and skip the approval, and
-  `promote.yml` would "promote" production's running version onto itself. (Two EB
-  applications with one name also cannot be created in one root, so such a design does
-  not apply cleanly today either.) Until `beanstalk.tf` names applications and
-  environments per Heroku app, **no pair resolves**: emit the fallback variant below for
-  the production app, and say so in the generated file's comment and in
-  `MIGRATION_GUIDE.md`. The rule is stated in terms of names, so it enables a pair
-  automatically once the generated names differ.
+  environment name equal to a production environment name. With one EB app there is no
+  second app, so no pair exists. With two or more, EB name resolution (above) gives every
+  app its own application, environments and roles and halts rather than emit two
+  environments with one name, so the two sides of a pipeline always resolve to
+  different generated names and `STAGING_APP`, `STAGING_ENVIRONMENT`, `PRODUCTION_APP` and
+  `PRODUCTION_ENVIRONMENTS` all come from that one map. Before that resolution existed, two
+  apps in a design shared `var.project_name` as their application name and the same
+  environments, so a push to staging would have deployed to production and `promote.yml`
+  would have promoted production onto itself; the per-app names are what rule that out.
 - Otherwise there is **no generated staging source**: the app is in no pipeline, its
   pipeline partner was not migrated (pipeline membership alone does not supply an EB
-  source), the two sides resolve to the same generated names (above), or the app is
-  itself at the staging/development stage. Emit the fallback
+  source), the two apps do not share the repository, or the app is itself at the
+  staging/development stage. Emit the fallback
   variant: `version_label` is `required: true`, the two `{{IF promote_pair}}` steps are
   omitted, and promote is an approval-gated redeploy of the chosen version label to the
   app's own environments. Pushes to `main` still deploy to those environments through
@@ -2155,7 +2214,7 @@ jobs:
   label from the deploy run and does not read staging. Automatic pairing needs a per-process
   reader of the staging labels, which this variant does not have.
 - The environment name `${PRODUCTION_APP}-${PROCESS}` is the name `beanstalk.tf` creates
-  (`"${var.project_name}-<process_type>"` in an application named `var.project_name`).
+  (`"${var.project_name}<eb_app_suffix>-<process_type>"` in an application named `"${var.project_name}<eb_app_suffix>"`, § EB name resolution).
 
 ### `pipeline.tf` — CodePipeline GitHub Source to EB Deploy (Optional)
 
@@ -2163,7 +2222,7 @@ Emit this file only when `eb_deploy_method.value` is `"codepipeline"`.
 
 ```hcl
 resource "aws_codepipeline" "<app_name>_deploy" {
-  name     = "${var.project_name}-deploy"
+  name     = "${var.project_name}<eb_app_suffix>-deploy"
   role_arn = aws_iam_role.codepipeline_<app_name>.arn
 
   artifact_store {
@@ -2223,7 +2282,7 @@ resource "aws_s3_bucket_versioning" "pipeline_artifacts_<app_name>" {
 }
 
 resource "aws_iam_role" "codepipeline_<app_name>" {
-  name = "${var.project_name}-codepipeline"
+  name = "${var.project_name}<eb_app_suffix>-codepipeline"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -2236,7 +2295,7 @@ resource "aws_iam_role" "codepipeline_<app_name>" {
 }
 
 resource "aws_iam_role_policy" "codepipeline_policy_<app_name>" {
-  name = "${var.project_name}-codepipeline-policy"
+  name = "${var.project_name}<eb_app_suffix>-codepipeline-policy"
   role = aws_iam_role.codepipeline_<app_name>.id
 
   policy = jsonencode({
@@ -2274,9 +2333,9 @@ resource "aws_iam_role_policy" "codepipeline_policy_<app_name>" {
           "elasticbeanstalk:UpdateEnvironment"
         ]
         Resource = [
-          "arn:aws:elasticbeanstalk:${var.aws_region}:${data.aws_caller_identity.current.account_id}:application/<app_name>",
-          "arn:aws:elasticbeanstalk:${var.aws_region}:${data.aws_caller_identity.current.account_id}:applicationversion/<app_name>/*",
-          "arn:aws:elasticbeanstalk:${var.aws_region}:${data.aws_caller_identity.current.account_id}:environment/<app_name>/*"
+          "arn:aws:elasticbeanstalk:${var.aws_region}:${data.aws_caller_identity.current.account_id}:application/${aws_elastic_beanstalk_application.<app_name>.name}",
+          "arn:aws:elasticbeanstalk:${var.aws_region}:${data.aws_caller_identity.current.account_id}:applicationversion/${aws_elastic_beanstalk_application.<app_name>.name}/*",
+          "arn:aws:elasticbeanstalk:${var.aws_region}:${data.aws_caller_identity.current.account_id}:environment/${aws_elastic_beanstalk_application.<app_name>.name}/*"
         ]
       },
       {

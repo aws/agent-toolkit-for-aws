@@ -348,7 +348,7 @@ pg_restore "$TARGET_DATABASE_URL"
         text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
         section = text.split("### `pipeline.tf`", 1)[1]
         pipeline = section.split("```hcl\n", 1)[1].split("\n```", 1)[0]
-        self.write("terraform/pipeline.tf", pipeline.replace("<app_name>", "main").replace("<process_type>", "web"))
+        self.write("terraform/pipeline.tf", pipeline.replace("<app_name>", "main").replace("<eb_app_suffix>", "").replace("<process_type>", "web"))
         for workflow in (
             None,
             "jobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo deploy\n",
@@ -630,6 +630,24 @@ module "network" {
         report = validator.validate(self.root, require_eb_workflow=True)
         self.assertIn("eb_deploy_missing", {item["rule"] for item in report["findings"]})
 
+    def test_per_app_deploy_workflow_file_is_checked_like_deploy_eb_yml(self) -> None:
+        # In per-app mode the workflow is deploy-eb-<slug>.yml. The checker must treat it as the deploy
+        # workflow: an EB root whose only workflow is a no-op one still reports a missing deployment.
+        eb = 'resource "aws_elastic_beanstalk_environment" "main" {\n name = "shop-shop-staging-web"\n}\n'
+        self.write("terraform/main.tf", eb)
+        noop = "jobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo deploy\n"
+        for name in ("deploy-eb.yml", "deploy-eb-shop-staging.yml"):
+            with self.subTest(name=name):
+                (self.root / ".github/workflows").mkdir(parents=True, exist_ok=True)
+                for old in (self.root / ".github/workflows").glob("*.yml"):
+                    old.unlink()
+                self.write(f".github/workflows/{name}", noop)
+                self.assertIn("eb_deploy_missing", self.rules())
+        # a real per-app deploy workflow passes
+        (self.root / ".github/workflows/deploy-eb-shop-staging.yml").unlink()
+        self.write(".github/workflows/deploy-eb-shop-staging.yml", WORKFLOW)
+        self.assertNotIn("eb_deploy_missing", self.rules())
+
     # A step before the deploy loop that rewrites a deploy variable through $GITHUB_ENV in a form the
     # checker does not follow must make the deploy step unverified. The first three reach
     # `carried` only as an ignored parse failure or not at all; the fourth is an action.
@@ -678,21 +696,50 @@ module "network" {
         text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
         section = text.split("### `.github/workflows/deploy-eb.yml`", 1)[1]
         workflow = section.split("```yaml\n", 1)[1].split("\n```", 1)[0]
-        workflow = workflow.replace(
-            "<space-separated EB environment names of the push target from aws-design.json>", "app-web app-worker",
-        )
+        workflow = workflow.replace("<eb_application_name>", "app").replace(
+            "<space-separated EB environment names of this app from EB name resolution>", "app-web app-worker",
+        ).replace("<eb_app_label>", "").replace("<eb_deploy_trigger>", "push:\n    branches: [main]")
+        self.assertNotIn("<eb_", workflow, "the template must be fully rendered before it is checked")
         self.write(".github/workflows/deploy-eb.yml", workflow)
         self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK", self.report())
+
+    def test_per_app_deploy_workflow_renders_and_a_production_app_is_manual_only(self) -> None:
+        text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
+        section = text.split("### `.github/workflows/deploy-eb.yml`", 1)[1]
+        template = section.split("```yaml\n", 1)[1].split("\n```", 1)[0]
+
+        def render(app: str, slug: str, trigger: str) -> str:
+            return (template.replace("<eb_application_name>", f"shop-{slug}")
+                    .replace("<space-separated EB environment names of this app from EB name resolution>",
+                             f"shop-{slug}-web shop-{slug}-worker")
+                    .replace("<eb_app_label>", f" ({app})").replace("<eb_deploy_trigger>", trigger))
+
+        push = "push:\n    branches: [main]"
+        manual = "workflow_dispatch:"
+        staging = render("shop-staging", "shop-staging", push)
+        production = render("shop-production", "shop-production", manual)
+        for rendered in (staging, production):
+            self.assertNotIn("<eb_", rendered)
+        self.assertIn("name: Deploy Elastic Beanstalk (shop-staging)", staging)
+        self.assertIn("EB_APPLICATION_NAME: shop-shop-staging", staging)
+        self.assertIn("EB_APPLICATION_NAME: shop-shop-production", production)
+        # a push-triggered staging workflow and a manual-only production workflow, side by side, pass
+        self.write(".github/workflows/deploy-eb-shop-staging.yml", staging)
+        self.write(".github/workflows/deploy-eb-shop-production.yml", production)
+        self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK", self.report())
+        # the production app's workflow does not run on a push
+        self.assertNotIn("push:", production)
+        self.assertIn("workflow_dispatch:", production)
 
     def test_source_deploy_and_promote_pair_passes_as_emitted(self) -> None:
         text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
         deploy = text.split("### `.github/workflows/deploy-eb.yml`", 1)[1].split("```yaml\n", 1)[1].split("\n```", 1)[0]
         deploy = deploy.replace("<target_region>", "us-east-1").replace(
-            "<push target's generated EB application name>", "app-staging",
+            "<eb_application_name>", "app-staging",
         ).replace(
-            "<space-separated EB environment names of the push target from aws-design.json>",
+            "<space-separated EB environment names of this app from EB name resolution>",
             "app-staging-web app-staging-worker",
-        )
+        ).replace("<eb_app_label>", "").replace("<eb_deploy_trigger>", "push:\n    branches: [main]")
         promote = text.split("### `.github/workflows/promote.yml`", 1)[1].split("```yaml\n", 1)[1].split("\n```", 1)[0]
         promote = promote.replace("<target_region>", "us-east-1").replace(
             "<staging app's generated EB application name>", "app-staging",
@@ -768,19 +815,22 @@ module "network" {
             self.assertIn('--version-label "${VERSION_BASE}-${PROCESS}"', cnb_deploy)
 
     def test_a_promote_pair_needs_distinct_generated_names(self) -> None:
-        # beanstalk.tf names every app's application var.project_name and its environments
-        # "${var.project_name}-<process_type>", so a staging and a production app of one design resolve to the
-        # same names: every push would deploy to production and skip the approval.
+        # With one project_name, two apps used to share an application and its environments, so every push
+        # would have deployed to production and skipped the approval. EB name resolution now names each app
+        # of a two-or-more design separately, and the pair rule is stated in terms of those names.
         text = self.GENERATE_TERRAFORM.read_text()
-        beanstalk = text.split('resource "aws_elastic_beanstalk_application"', 1)[1].split("}", 1)[0]
-        self.assertIn("name        = var.project_name", beanstalk)
+        beanstalk = text.split('resource "aws_elastic_beanstalk_application"', 1)[1].split("\n}\n", 1)[0]
+        self.assertIn('name        = "${var.project_name}<eb_app_suffix>"', beanstalk)
+        self.assertNotIn("name        = var.project_name", beanstalk)
         promote = text.split("### `.github/workflows/promote.yml`", 1)[1]
         self.assertIn("resolve to different generated names", promote)
         self.assertIn("**Distinct names.**", promote)
-        self.assertIn("**no pair resolves**", promote)
         self.assertIn("STAGING_APP != PRODUCTION_APP", promote)
+        self.assertIn("EB name resolution (above) gives every", promote)
+        self.assertNotIn("no pair resolves", promote)
         docs = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-docs.md").read_text()
         self.assertIn("resolve to different generated EB application and environment names", docs)
+        self.assertNotIn("so they do not, and `promote_pair` is false", docs)
 
     def test_fargate_promote_guide_pins_the_running_staging_task_digest(self) -> None:
         # A registry tag can move after staging started; the digest must come from
