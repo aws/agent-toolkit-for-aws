@@ -468,6 +468,44 @@ resource "aws_iam_role" "eb_instance_{label}" {{
         )
         self.assertEqual(self.rules(assumed + self.two_resources(eb, west)), [])
 
+    def test_nested_assume_role_blocks_are_compared_by_content(self) -> None:
+        # The presence of a block is not an identity. Two same-region aliases that assume roles in
+        # different accounts must not be reported as one proven namespace.
+        eb = "aws_elastic_beanstalk_application"
+        west = "  provider = aws.west\n"
+
+        def providers(attr: str, first_arn: str, second_arn: str, second_spacing: str = " = ") -> str:
+            def block(arn: str, spacing: str) -> str:
+                return f'  {attr} {{\n    role_arn{spacing}"{arn}"\n  }}\n'
+
+            return (
+                'provider "aws" {\n  region = "us-east-1"\n'
+                + block(first_arn, " = ")
+                + '}\nprovider "aws" {\n  alias  = "west"\n  region = "us-east-1"\n'
+                + block(second_arn, second_spacing)
+                + "}\n"
+            )
+
+        one = "arn:aws:iam::111111111111:role/deploy"
+        other = "arn:aws:iam::222222222222:role/deploy"
+        for attr in ("assume_role", "assume_role_with_web_identity"):
+            self.assertEqual(
+                self.rules(providers(attr, one, other) + self.two_resources(eb, west)),
+                ["eb_duplicate_name_scope_unverified"],
+                attr,
+            )
+            self.assertEqual(
+                self.rules(providers(attr, one, one) + self.two_resources(eb, west)),
+                ["eb_duplicate_name"],
+                attr,
+            )
+            # syntax whitespace inside the block is not part of the identity
+            self.assertEqual(
+                self.rules(providers(attr, one, one, second_spacing="   =   ") + self.two_resources(eb, west)),
+                ["eb_duplicate_name"],
+                attr,
+            )
+
     def test_iam_names_are_account_wide_and_not_scoped_by_region(self) -> None:
         # IAM is global: the same role name through a us-east-1 and a us-west-2 provider of one account collides
         role = "aws_iam_role"

@@ -935,7 +935,8 @@ def _normalize_name_expression(expression: str) -> str:
 
 
 # Attributes of an AWS provider block that can point it at a different account. Providers that differ in
-# any of them are not assumed to share an account.
+# any of them are not assumed to share an account. A nested block is compared by its contents: two
+# `assume_role` blocks are not the same identity merely because both blocks exist.
 _PROVIDER_IDENTITY_ATTRS = (
     "profile", "access_key", "secret_key", "token", "shared_config_files", "shared_credentials_files",
     "assume_role", "assume_role_with_web_identity", "allowed_account_ids", "forbidden_account_ids", "endpoints",
@@ -968,12 +969,31 @@ def _aws_providers(root: Path, policy: Any) -> dict[str | None, dict[str, Any]]:
 
 
 def _provider_attr(body: str, name: str, policy: Any) -> str | None:
-    """A provider attribute that is either `name = ...` or a nested block `name { ... }`."""
+    """A provider attribute that is either `name = ...` or a nested block `name { ... }`.
+
+    Nested-block contents are kept and normalized the same way a name expression is, so
+    `role_arn = "arn:aws:iam::111:role/a"` and `role_arn = "arn:aws:iam::222:role/b"` stay
+    distinct while syntax-only whitespace does not. Collapsing every block to one literal
+    made two accounts look like one namespace.
+    """
     direct = _attr(body, name, policy)
     if direct is not None:
         return direct
-    match = re.search(rf"\b{re.escape(name)}\s*\{{", _uncomment_hcl(body, policy))
-    return "<block>" if match else None
+    cleaned = _uncomment_hcl(body, policy)
+    lexed = policy._lex_hcl(cleaned)
+    depths, codes, _ = lexed
+    base = 1 if cleaned.lstrip().startswith("{") else 0
+    matches = [
+        match for match in re.finditer(rf"\b{re.escape(name)}\s*\{{", cleaned)
+        if codes[match.start()] and depths[match.start()] == base
+    ]
+    if not matches:
+        return None
+    parts = [
+        _normalize_name_expression(policy._extract_braced_block(cleaned, match.end() - 1, lexed)[0])
+        for match in matches
+    ]
+    return "".join(parts)
 
 
 def _provider_ref(resource: Resource, policy: Any) -> str | None | bool:
