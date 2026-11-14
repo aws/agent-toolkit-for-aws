@@ -3,7 +3,7 @@
 ## Alphabetical listing of Agent Plugins
 /plugins/aws-agents               @aws/agent-toolkit-admins @aws/agentcore-devex-devs @aws/agentcore-devex-pms @aws/agentcore-payments
 /plugins/aws-agents-for-devsecops @aws/agent-toolkit-admins @aws/aws-agentic-devsecops @coffeencoke @tipuq @ljainiaz @adthiru @AhmetAhunbayAWS
-/plugins/aws-continuum           @aws/agent-toolkit-admins @ashwin-pc
+/plugins/aws-continuum           @aws/agent-toolkit-admins @ashwin-pc @Preethi-Srinivasan-Amazon
 /plugins/aws-core                 @aws/agent-toolkit-admins
 /plugins/aws-data-analytics       @aws/agent-toolkit-admins @npmajisha @risears @mitczach @harshabattapady @shoukasg @sanjolia @dhruvyadav2007 @mukeshsahay
 /plugins/aws-startup-advisor      @aws/agent-toolkit-admins @aws/aws-startup-advisor
