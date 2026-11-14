@@ -12,9 +12,10 @@ before opening a pull request.
 | ------------------------------------ | -------------------------------------------------------------- |
 | `ai-model-lifecycle.md`              | Bedrock Active/Legacy/EOL registry + the 90-day exclusion rule |
 | `ai-migration-guardrails.md`         | Shared constraints for every agentic migration path            |
+| `bedrock-endpoint-policy.md`         | `bedrock-runtime` default / `bedrock-mantle` selector rule, `mantle_selector` enum, public endpoint matrix |
 | `bedrock-quotas.md`                  | TPM/RPM quota-risk assessment (works without an AWS account)   |
 | `ai-openai-to-bedrock.md`            | OpenAI-protocol (incl. Azure OpenAI) → Bedrock model selection |
-| `ai-anthropic-to-bedrock.md`         | Anthropic SDK → Bedrock Converse client swap                   |
+| `ai-anthropic-to-bedrock.md`         | Anthropic SDK → Bedrock Runtime Messages (default) / Converse alternative |
 | `ai-gemini-to-bedrock.md`            | Gemini (incl. Vertex AI) → Bedrock model selection             |
 | `ai-openrouter-to-bedrock.md`        | OpenRouter gateway → per-upstream Bedrock routing              |
 | `design-ref-harness.md`              | AgentCore Harness design reference                             |

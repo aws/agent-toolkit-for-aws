@@ -104,8 +104,8 @@ See `references/shared/openai-on-bedrock.md` for the model-specific pricing rule
 
 For the GPT-5.x rows, the mantle endpoint is in-region only (us-east-1, us-east-2; us-west-2 additionally for
 Terra, Luna, and GPT-5.4; AWS GovCloud us-gov-west-1 / us-gov-east-1 for Terra and Luna, us-gov-west-1 also for
-GPT-5.4). GPT-5.6 additionally reaches most commercial regions via `bedrock-runtime` CRIS ids; GPT-5.5 / GPT-5.4
-have no CRIS.
+GPT-5.4). GPT-5.6, GPT-5.5 and GPT-5.4 additionally reach most commercial regions via `bedrock-runtime` CRIS ids
+(`us.` / `global.`; GPT-5.5 / GPT-5.4 per their model cards read 2026-11-06).
 
 For the GPT-6 rows, mantle is us-east-1 only, except GPT-6 Astra which is also available in us-west-2. All five
 GPT-6 models additionally reach a broad set of commercial regions via `bedrock-runtime` CRIS (`us.` / `global.`

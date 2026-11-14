@@ -15,14 +15,16 @@ see a new `skills/shared/` file no skill vendors yet — adding one here means t
 
 | Vendored path                      | Canonical source                                 |
 | ---------------------------------- | ------------------------------------------------ |
+| `ai/bedrock-endpoint-policy.md`    | `skills/shared/ai/bedrock-endpoint-policy.md`    |
 | `ai/bedrock-pricing-cache.md`      | `skills/shared/ai/bedrock-pricing-cache.md`      |
 | `ai/models/anthropic-bedrock.json` | `skills/shared/ai/models/anthropic-bedrock.json` |
 | `ai/models/openai-bedrock.json`    | `skills/shared/ai/models/openai-bedrock.json`    |
 | `dsl/INTERPRETER.md`               | `skills/shared/dsl/INTERPRETER.md`               |
 
-This skill vendors the DSL interpreter contract, the provider-neutral Bedrock pricing
-cache, and the Anthropic/OpenAI model-selection catalogs read by
-`scripts/model_recommendation.py`. The catalogs are themselves rendered from
+This skill vendors the DSL interpreter contract, the Bedrock endpoint policy
+(`bedrock-runtime` default, `mantle_selector` enum) obeyed by Model Recommend, the
+provider-neutral Bedrock pricing cache, and the Anthropic/OpenAI model-selection catalogs
+read by `scripts/model_recommendation.py`. The catalogs are themselves rendered from
 `skills/shared/ai/models/bedrock-model-registry.json` by `tools/build-model-catalogs.py`: change the
 registry, rebuild, then sync. Both the registry and the tool live in the plugin repository; a
 standalone install of this skill carries only the rendered catalogs. It does not vendor the shared state schema

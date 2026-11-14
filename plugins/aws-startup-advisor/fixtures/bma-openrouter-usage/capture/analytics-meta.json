@@ -1,0 +1,102 @@
+{
+ "data": {
+  "metrics": [
+   {
+    "name": "byok_usage",
+    "display_label": "byok_usage",
+    "is_rate": false,
+    "display_format": "number"
+   },
+   {
+    "name": "openrouter_usage",
+    "display_label": "openrouter_usage",
+    "is_rate": false,
+    "display_format": "number"
+   },
+   {
+    "name": "tokens_prompt",
+    "display_label": "tokens_prompt",
+    "is_rate": false,
+    "display_format": "number"
+   },
+   {
+    "name": "tokens_completion",
+    "display_label": "tokens_completion",
+    "is_rate": false,
+    "display_format": "number"
+   },
+   {
+    "name": "reasoning_tokens",
+    "display_label": "reasoning_tokens",
+    "is_rate": false,
+    "display_format": "number"
+   },
+   {
+    "name": "cached_tokens",
+    "display_label": "cached_tokens",
+    "is_rate": false,
+    "display_format": "number"
+   },
+   {
+    "name": "byok_fees",
+    "display_label": "byok_fees",
+    "is_rate": false,
+    "display_format": "number"
+   },
+   {
+    "name": "byok_request_count",
+    "display_label": "byok_request_count",
+    "is_rate": false,
+    "display_format": "number"
+   },
+   {
+    "name": "request_count",
+    "display_label": "request_count",
+    "is_rate": false,
+    "display_format": "number"
+   },
+   {
+    "name": "p95_latency",
+    "display_label": "p95_latency",
+    "is_rate": false,
+    "display_format": "number"
+   },
+   {
+    "name": "p95_throughput",
+    "display_label": "p95_throughput",
+    "is_rate": false,
+    "display_format": "number"
+   },
+   {
+    "name": "usage_web",
+    "display_label": "usage_web",
+    "is_rate": false,
+    "display_format": "number"
+   },
+   {
+    "name": "guardrail_invoked_count",
+    "display_label": "guardrail_invoked_count",
+    "is_rate": false,
+    "display_format": "number"
+   }
+  ],
+  "dimensions": [
+   {
+    "name": "model",
+    "display_label": "Model"
+   }
+  ],
+  "operators": [
+   {
+    "name": "eq",
+    "value_type": "scalar"
+   }
+  ],
+  "granularities": [
+   {
+    "name": "hour",
+    "display_label": "Hour"
+   }
+  ]
+ }
+}

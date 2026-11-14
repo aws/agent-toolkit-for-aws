@@ -4,7 +4,7 @@
   "generated_from": "bedrock-model-registry.json (rendered by tools/build-model-catalogs.py; edit the registry, not this file)",
   "verified_at": "2026-11-10",
   "verified_region": "us-east-1",
-  "source": "Haiku 5.5: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-5-5.html (read 2026-11-09). Opus 5.5: AWS Bedrock model card retrieved 2026-09-24, https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html. Other entries retain their explicitly dated evidence from the superseded 2026-07-21 catalog (removed; see git history). Claude Sonnet 5.5 and OpenAI GPT-6.1 Terra: AWS model cards read 2026-11-10.",
+  "source": "Haiku 5.5: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-5-5.html (read 2026-11-09). Opus 5.5: AWS Bedrock model card retrieved 2026-09-24, https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html. Other entries retain their explicitly dated evidence from the superseded 2026-07-21 catalog (removed; see git history). The runtime_messages path definition and its rows on claude_opus_5_5, claude_sonnet_5 and claude_haiku_4_5 were added from the three public model cards and https://docs.aws.amazon.com/bedrock/latest/userguide/inference-messages-api.html on 2026-11-07; earlier rows and their evidence are unchanged. Claude Sonnet 5.5 and OpenAI GPT-6.1 Terra: AWS model cards read 2026-11-10.",
   "disclaimer": "Haiku 5.5 is the fast tier for new migrations; Haiku 4.5 remains an explicit alternative for workloads that must keep pre-5.5 behavior (tokenizer recount, thinking-history constraints). Point-in-time model-card evidence, not an account invocation. Re-probe the chosen model, API and inference profile in the target account and region. Opus 5.5 is Active, uses always-on adaptive thinking, and has no Batch tier. Global profiles are unavailable in GovCloud. Unchanged prior-generation entries retain their earlier evidence dates; Fable and Mythos are excluded from default selection. Opus 5.5 is the only Opus model in the automatic selection pool; older Opus snapshots and pricing records are historical references. The runtime in-region exception in eu-west-2 was verified 2026-10-03; the original catalog and other model evidence dates remain unchanged.",
   "paths": {
     "mantle_messages": {
@@ -53,6 +53,24 @@
       "constraints": [
         "Uses the Bedrock Anthropic version field rather than the first-party HTTP header",
         "Newer Claude models generally require a Global or geography-scoped CRIS inference profile",
+        "Structured-output strategy is model-specific: Opus 5.5 rejects forced any/tool choice and disabled thinking; use auto tool choice or prompted JSON with application validation and bounded retries, without a native schema guarantee.",
+        "Availability must be probed in the target account and region"
+      ]
+    },
+    "runtime_messages": {
+      "sdk": "anthropic",
+      "client": "Anthropic(base_url=https://bedrock-runtime.{region}.amazonaws.com/anthropic)",
+      "iam_action": "bedrock:InvokeModel",
+      "iam_auth": "bedrock_bearer_token_or_sigv4",
+      "model_id_strategy": "cris_inference_profile",
+      "supports_cris": true,
+      "strengths": [
+        "Preserves the Anthropic Messages API on the default bedrock-runtime endpoint (bedrock-endpoint-policy.md); the SDK sends /anthropic/v1/messages and adds the anthropic-version header automatically (https://docs.aws.amazon.com/bedrock/latest/userguide/inference-messages-api.html, read 2026-11-07)",
+        "IAM (bedrock:InvokeModel), model invocation logging and CloudWatch AWS/Bedrock metrics apply, as on every bedrock-runtime path"
+      ],
+      "constraints": [
+        "Default project only — Workspaces are available only with the Messages API on bedrock-mantle (https://docs.aws.amazon.com/bedrock/latest/userguide/workspaces.html, read 2026-11-07)",
+        "The model ID is a Global or geography-scoped CRIS inference profile except where the card lists a runtime in-region form (Opus 5.5 in eu-west-2)",
         "Structured-output strategy is model-specific: Opus 5.5 rejects forced any/tool choice and disabled thinking; use auto tool choice or prompted JSON with application validation and bounded retries, without a native schema guarantee.",
         "Availability must be probed in the target account and region"
       ]
@@ -166,12 +184,20 @@
         "runtime_converse": {
           "available": true,
           "model_id": "anthropic.claude-opus-5-5",
-          "requires_cris": true
+          "requires_cris": true,
+          "guardrails_supported": true,
+          "prompt_caching_supported": true
         },
         "runtime_invoke": {
           "available": true,
           "model_id": "anthropic.claude-opus-5-5",
           "requires_cris": true
+        },
+        "runtime_messages": {
+          "available": true,
+          "model_id": "anthropic.claude-opus-5-5",
+          "requires_cris": true,
+          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html (read 2026-11-07): bedrock-runtime Messages supported; Geo ids us./eu./au./jp.anthropic.claude-opus-5-5, Global id global.anthropic.claude-opus-5-5; in-region bare id in eu-west-2 only"
         }
       }
     },
@@ -272,12 +298,21 @@
         "runtime_converse": {
           "available": true,
           "model_id": "anthropic.claude-sonnet-5-5",
-          "requires_cris": true
+          "requires_cris": true,
+          "guardrails_supported": true,
+          "prompt_caching_supported": true,
+          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5-5.html (read 2026-11-10): Converse on bedrock-runtime via Geo (us./eu./au.) and Global CRIS; guardrails_supported and prompt_caching_supported true: the card lists Guardrails and explicit prompt caching on bedrock-runtime"
         },
         "runtime_invoke": {
           "available": true,
           "model_id": "anthropic.claude-sonnet-5-5",
           "requires_cris": true
+        },
+        "runtime_messages": {
+          "available": true,
+          "model_id": "anthropic.claude-sonnet-5-5",
+          "requires_cris": true,
+          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5-5.html (read 2026-11-10): bedrock-runtime Messages supported; Geo ids us./eu./au.anthropic.claude-sonnet-5-5, Global id global.anthropic.claude-sonnet-5-5; no in-region form"
         }
       }
     },
@@ -305,12 +340,20 @@
         "runtime_converse": {
           "available": true,
           "model_id": "anthropic.claude-sonnet-5",
-          "requires_cris": true
+          "requires_cris": true,
+          "guardrails_supported": true,
+          "prompt_caching_supported": true
         },
         "runtime_invoke": {
           "available": true,
           "model_id": "anthropic.claude-sonnet-5",
           "requires_cris": true
+        },
+        "runtime_messages": {
+          "available": true,
+          "model_id": "anthropic.claude-sonnet-5",
+          "requires_cris": true,
+          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5.html (read 2026-11-07): bedrock-runtime Messages supported; Geo ids us./eu./au./in.anthropic.claude-sonnet-5, Global id global.anthropic.claude-sonnet-5; no in-region form"
         }
       }
     },
@@ -335,12 +378,20 @@
         "runtime_converse": {
           "available": true,
           "model_id": "anthropic.claude-haiku-4-5-20251001-v1:0",
-          "requires_cris": true
+          "requires_cris": true,
+          "guardrails_supported": true,
+          "prompt_caching_supported": true
         },
         "runtime_invoke": {
           "available": true,
           "model_id": "anthropic.claude-haiku-4-5-20251001-v1:0",
           "requires_cris": true
+        },
+        "runtime_messages": {
+          "available": true,
+          "model_id": "anthropic.claude-haiku-4-5-20251001-v1:0",
+          "requires_cris": true,
+          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-4-5.html (read 2026-11-07): bedrock-runtime Messages supported; Geo ids us./eu./au./jp./in.anthropic.claude-haiku-4-5-20251001-v1:0, Global id global.anthropic.claude-haiku-4-5-20251001-v1:0; no in-region form"
         }
       }
     },
@@ -452,12 +503,20 @@
         "runtime_converse": {
           "available": true,
           "model_id": "anthropic.claude-haiku-5-5",
-          "requires_cris": true
+          "requires_cris": true,
+          "guardrails_supported": true,
+          "prompt_caching_supported": true
         },
         "runtime_invoke": {
           "available": true,
           "model_id": "anthropic.claude-haiku-5-5",
           "requires_cris": true
+        },
+        "runtime_messages": {
+          "available": true,
+          "model_id": "anthropic.claude-haiku-5-5",
+          "requires_cris": true,
+          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-5-5.html (read 2026-11-10): bedrock-runtime Messages supported (Anthropic SDK base_url https://bedrock-runtime.<region>.amazonaws.com/anthropic, model=global.anthropic.claude-haiku-5-5 in the card example); Geo ids us./ca./eu./au./jp.anthropic.claude-haiku-5-5, Global id global.anthropic.claude-haiku-5-5; no in-region form"
         }
       }
     }

@@ -61,8 +61,6 @@ An always-on service is still a better ECS/EKS fit — Instances sessions end at
 
 ## Conditional services (relevant but not always)
 
-- Payments: for agents that pay / transact on a user's behalf — surface only for
-  transactional / high-risk-action workloads.
 - AWS Agent Registry (`registry`): centralized discovery and governance for agents, tools,
   skills, MCP servers, and custom resources. Surface when the user needs a shared catalog,
   resource discovery, or approval-based governance, including single-agent workloads; multiple

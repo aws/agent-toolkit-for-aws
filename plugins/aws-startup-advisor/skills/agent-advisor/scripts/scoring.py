@@ -257,6 +257,39 @@ def _select_agentcore_services(answers):
     return services
 
 
+def _agentcore_revisit_triggers_by_runtime(answers, profiles, eliminated):
+    """Growth signals that would move AgentCore closer to each other scored runtime, keyed by that
+    runtime. Design reads the entry for the unit's effective runtime, which Confirm may set to a
+    co-recommend pick or a consolidated platform runtime rather than the scored verdict, and writes
+    [] when that runtime is AgentCore. A trigger is listed for a runtime when changing the current
+    answer to the trigger's value gains AgentCore more points than it gains that runtime, so a
+    signal both reward equally is not listed. Empty when AgentCore is eliminated or absent."""
+    by_id = {p["id"]: p for p in profiles}
+    agentcore = by_id.get("agentcore")
+    if agentcore is None or "agentcore" in eliminated:
+        return {}
+
+    def gain(profile, field, value, current):
+        dimension = profile.get("affinities", {}).get(field, {})
+        return dimension.get(value, NEUTRAL_SCORE) - dimension.get(current, NEUTRAL_SCORE)
+
+    result = {}
+    for runtime, profile in sorted(by_id.items()):
+        if runtime == "agentcore" or runtime in eliminated:
+            continue
+        triggers = []
+        for trigger in agentcore.get("revisit_triggers", []):
+            field, value = trigger["field"], trigger["value"]
+            current = answers.get(field, "unknown")
+            if current == value:
+                continue
+            agentcore_gain = gain(agentcore, field, value, current)
+            if agentcore_gain > 0 and agentcore_gain > gain(profile, field, value, current):
+                triggers.append({"field": field, "current": current, "trigger": trigger["trigger"]})
+        result[runtime] = triggers
+    return result
+
+
 def _collect_assumptions(raw_answers):
     out = []
     for dim in DIMENSIONS:
@@ -405,6 +438,9 @@ def score(input_data, profiles=None, run_evidence=None):
         "deployment_model": deployment_model,
         "agentcore_compute_type": agentcore_compute_type,
         "agentcore_services": _select_agentcore_services(answers),
+        "agentcore_revisit_triggers_by_runtime": _agentcore_revisit_triggers_by_runtime(
+            answers, profiles, eliminated
+        ),
         "assumptions_used": _collect_assumptions(raw_answers),
         "warnings": _collect_warnings(
             answers, verifications, verdict, co_recommend, selection_requirements,

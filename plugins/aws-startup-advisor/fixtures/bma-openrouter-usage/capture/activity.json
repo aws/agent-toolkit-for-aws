@@ -1,0 +1,74 @@
+{
+ "data": [
+  {
+   "date": "2026-10-20",
+   "model": "openai/gpt-4.1",
+   "model_permaslug": "openai/gpt-4.1-2025-04-14",
+   "endpoint_id": "00000000-0000-4000-8000-0000000000aa",
+   "provider_name": "OpenAI",
+   "requests": 10,
+   "prompt_tokens": 1000,
+   "completion_tokens": 200,
+   "reasoning_tokens": 0,
+   "cached_tokens": 100,
+   "usage": 1.0,
+   "byok_usage_inference": 0
+  },
+  {
+   "date": "2026-10-25",
+   "model": "openai/gpt-4.1",
+   "model_permaslug": "openai/gpt-4.1-2025-04-14",
+   "endpoint_id": "00000000-0000-4000-8000-0000000000aa",
+   "provider_name": "OpenAI",
+   "requests": 20,
+   "prompt_tokens": 3000,
+   "completion_tokens": 600,
+   "reasoning_tokens": 0,
+   "cached_tokens": 300,
+   "usage": 3.0,
+   "byok_usage_inference": 0
+  },
+  {
+   "date": "2026-10-25",
+   "model": "anthropic/claude-sonnet-5",
+   "model_permaslug": "anthropic/claude-sonnet-5-20260901",
+   "endpoint_id": "00000000-0000-4000-8000-0000000000aa",
+   "provider_name": "Anthropic",
+   "requests": 5,
+   "prompt_tokens": 2000,
+   "completion_tokens": 400,
+   "reasoning_tokens": 0,
+   "cached_tokens": 0,
+   "usage": 0.1,
+   "byok_usage_inference": 2.0
+  },
+  {
+   "date": "2026-10-26",
+   "model": "google/gemini-2.5-flash",
+   "model_permaslug": "google/gemini-2.5-flash",
+   "endpoint_id": "00000000-0000-4000-8000-0000000000aa",
+   "provider_name": "Google Vertex",
+   "requests": 8,
+   "prompt_tokens": 800,
+   "completion_tokens": 100,
+   "reasoning_tokens": 0,
+   "cached_tokens": 0,
+   "usage": 0.5,
+   "byok_usage_inference": 0
+  },
+  {
+   "date": "2026-10-26",
+   "model": "anthropic/claude-sonnet-5",
+   "model_permaslug": "anthropic/claude-sonnet-5-20261001",
+   "endpoint_id": "00000000-0000-4000-8000-0000000000aa",
+   "provider_name": "Anthropic",
+   "requests": 1,
+   "prompt_tokens": 100,
+   "completion_tokens": 10,
+   "reasoning_tokens": 0,
+   "cached_tokens": 0,
+   "usage": 0.05,
+   "byok_usage_inference": 0
+  }
+ ]
+}

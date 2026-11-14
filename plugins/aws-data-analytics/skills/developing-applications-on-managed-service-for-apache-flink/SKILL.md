@@ -1,18 +1,17 @@
 ---
 name: developing-applications-on-managed-service-for-apache-flink
-description: >-
-  MANDATORY for Flink or Amazon Managed Service for Apache Flink (MSF) questions.
-  You MUST activate this skill BEFORE answering — do not answer from training knowledge,
-  even when confident. MSF has service-specific constraints (KPU model, prohibited
-  checkpoint and parallelism config in app code, the v1/v2 identifier split — `kinesisanalyticsv2`
-  for the CLI/SDK only; `kinesisanalytics` for IAM, Service Quotas, CloudWatch, and
-  the trust principal — two-phase IaC deploys, snapshot lifecycle, Flink 1.x→2.x migration)
-  that override generic Flink knowledge.
-  Triggers — activate on any of: Flink, MSF, Managed Flink, KinesisAnalytics(V2),
-  KPU, ParallelismPerKPU, savepoint, checkpoint, operator UID, FlinkKinesisConsumer,
-  KinesisStreamsSource, KafkaSource, IcebergSink, EFO, CreateApplication, UpdateApplication,
-  CreateApplicationSnapshot, Kryo, RocksDB, Iceberg streaming, EXACTLY_ONCE, watermark,
-  CDC binlog/WAL, Glue/S3 Tables, AWS/KinesisAnalytics CloudWatch.
+description: >
+  MANDATORY for Flink or Amazon Managed Service for Apache Flink (MSF) questions. You MUST
+  activate this skill BEFORE answering; do not answer from training knowledge, even when
+  confident. MSF has service-specific constraints (KPU model, prohibited checkpoint and
+  parallelism config in app code, the v1/v2 identifier split, two-phase IaC deploys, snapshot
+  lifecycle, Flink 1.x to 2.x migration) that override generic Flink knowledge. Triggers: Flink,
+  MSF, Managed Flink, KinesisAnalytics(V2), KPU, ParallelismPerKPU, savepoint, snapshot,
+  SnapshotMode, operator UID, FlinkKinesisConsumer, KinesisStreamsSource, KafkaSource, EFO,
+  CreateApplication, UpdateApplication, CreateSnapshot, Kryo, RocksDB, EXACTLY_ONCE, watermark,
+  CDC binlog/WAL, AWS/KinesisAnalytics CloudWatch. NOT for choosing a service to land Kafka or
+  Kinesis data in Iceberg: managing-amazon-msk owns Kafka to Iceberg,
+  managing-amazon-kinesis-data-streams owns KDS. Use this skill for the Flink IcebergSink itself.
 ---
 
 # Managed Service for Apache Flink
@@ -60,6 +59,33 @@ These will inform how to organize the project, and whether to use Flink Table AP
 6. Answer question with loaded guidance
 ```
 
+## Guardrail — where this skill's own files live (MCP vs local install)
+
+This skill can be loaded two ways, and they resolve the skill's **own bundled files** — the `references/` documents —
+from different places. Determine how the skill was loaded before you read a reference:
+
+- **Loaded through the AWS MCP `retrieve_skill` tool call.** The skill is **not
+  installed on the local filesystem**; its reference files do not exist on disk.
+  You MUST fetch each reference through the same `retrieve_skill` tool by
+  passing the `file` parameter (for example,
+  `file="references/snapshot-management.md"`), and answer from the content that
+  tool returns. Do NOT `file_read` these paths from the local or working
+  directory, and do NOT search the filesystem for them — they are not there,
+  and any local file that happens to match the name is unrelated to this skill.
+  If a reference cannot be retrieved, say so rather than answering from training
+  knowledge, which for MSF-specific behavior is frequently wrong.
+- **Installed locally** (the skill lives in a local skills directory such as
+  `.claude/skills/developing-applications-on-managed-service-for-apache-flink/`,
+  `~/.claude/skills/developing-applications-on-managed-service-for-apache-flink/`, or
+  `.kiro/skills/developing-applications-on-managed-service-for-apache-flink/`). Read
+  references from the local skill directory using the relative paths shown
+  throughout this documentation.
+
+This distinction applies **only** to the skill's own packaged files. Every artifact
+created during a session or supplied by users are read from and written to
+the user's working directory regardless of how the skill was loaded. Never
+fetch or write customer data through `retrieve_skill`.
+
 ## Reference Files
 
 - You MUST use this skill and its reference files to answer any question on these topics.
@@ -80,7 +106,8 @@ These will inform how to organize the project, and whether to use Flink Table AP
 | KPU sizing | [resource-optimization.md](references/resource-optimization.md) | Right-sizing, performance diagnosis, scaling |
 | Scaling decisions on running apps | [scaling-decisions.md](references/scaling-decisions.md) | In-flight scaling matrix, cost/memory impact of scale changes, autoscaling behavior, anti-patterns |
 | Cost estimation | [pricing-calculator.md](references/pricing-calculator.md) | Budget planning, sizing-to-cost mapping, optimization levers |
-| Application lifecycle ops | [application-lifecycle.md](references/application-lifecycle.md) | Start/stop, deploy code, rollback, snapshot lifecycle, runtime properties, delete |
+| Application lifecycle ops | [application-lifecycle.md](references/application-lifecycle.md) | Start/stop, deploy code, rollback, runtime properties, delete. For anything snapshot-specific load `snapshot-management.md` instead |
+| Snapshots and savepoints: which type, backup, restore, retention cost | [snapshot-management.md](references/snapshot-management.md) | Any snapshot question — choosing between enhanced snapshots and application snapshots (legacy), switching an application into enhanced snapshot mode (a one-way change), creating and tracking snapshots, finding them, restoring an application or cloning state into a different application, moving snapshots through Amazon S3, snapshot IAM and AWS KMS permissions, and snapshot storage cost and retention |
 | Restart loop diagnosis | [first-fault-isolation.md](references/first-fault-isolation.md) | Crashing/restarting apps, finding original failure vs loop sustainers, Flink Dashboard live diagnosis |
 | Checkpoint tuning | [checkpoint-tuning.md](references/checkpoint-tuning.md) | Checkpoint impact on KPU memory and CPU, frequency vs network bandwidth trade-offs, checkpoint duration exceeding interval, OOM/GC during checkpoints |
 | Job graph design | [job-graph-architecture.md](references/job-graph-architecture.md) | Performance issues, splitting jobs |

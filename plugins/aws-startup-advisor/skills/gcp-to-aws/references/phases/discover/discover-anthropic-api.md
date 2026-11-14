@@ -530,6 +530,14 @@ volume:
       already has this exact `workload_id` (the sha256 is deterministic per
       model, so a second merge of the same model naturally collides on it
       instead of duplicating).
+   c. **Mantle signal (`workspaces`):** when `$WORKSPACE_IDS` (Step 2) names
+      more than one workspace, or a workspace the user identified as
+      non-default, append `{ "selector": "workspaces", "file": "<usage_api>",
+      "line": 0, "construct": "anthropic-usage-profile.json workspace_ids:
+      <ids>" }` to `mantle_signals` of every Anthropic workload row in
+      `workloads[]` (existing or usage-only; create the array if absent, skip
+      an identical entry). Workspace ids only — never a key value. Clarify
+      confirms the signal (`schema-discover-ai.md` § workloads[]).
 
    Recompute `summary.total_models_detected` to include any (a) addition.
 5. If `summary.ai_source` is `"gemini"` or `"openai"` and Anthropic usage was

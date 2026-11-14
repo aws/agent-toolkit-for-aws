@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "phase": "clarify",
+  "inventory_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "questions": [
+    {"question_id": "cron.duration", "resource_id": "rr-cron", "topic": "compute", "decision_changed": "EventBridge target", "disposition": "answered", "value": "20 minutes", "provenance": "user", "default_rule": null, "consequence": "eliminates Lambda and selects ECS RunTask"},
+    {"question_id": "database.aurora_outcome", "resource_id": "rr-db", "topic": "data", "decision_changed": "PostgreSQL target", "disposition": "defaulted", "value": false, "provenance": "default", "default_rule": "postgres.startup_fallback", "consequence": "selects lower-change RDS when both managed targets fit"},
+    {"question_id": "storage.access_semantics", "resource_id": "rr-disk", "topic": "storage", "decision_changed": "persistent storage target", "disposition": "answered", "value": "shared_posix", "provenance": "user", "default_rule": null, "consequence": "selects EFS and eliminates S3/EBS"},
+    {"question_id": "domain.dns_owner", "resource_id": "rr-domain", "topic": "network", "decision_changed": "Route 53 inclusion", "disposition": "answered", "value": "external", "provenance": "user", "default_rule": null, "consequence": "keeps DNS external while ACM serves TLS"},
+    {"question_id": "key_value.cross_region_writes", "resource_id": "rr-kv", "topic": "data", "decision_changed": "Key Value target", "disposition": "answered", "value": false, "provenance": "user", "default_rule": null, "consequence": "does not trigger MemoryDB"},
+    {"question_id": "private.load_balancing", "resource_id": "rr-private", "topic": "network", "decision_changed": "private ingress target", "disposition": "answered", "value": false, "provenance": "user", "default_rule": null, "consequence": "uses Service Connect without an internal load balancer"},
+    {"question_id": "compute.management_model", "resource_id": "rr-web", "topic": "compute", "decision_changed": "web compute target", "disposition": "answered", "value": "direct_task_control", "provenance": "user", "default_rule": null, "consequence": "selects ECS on Fargate instead of either Elastic Beanstalk model"},
+    {"question_id": "worker.execution_shape", "resource_id": "rr-worker", "topic": "compute", "decision_changed": "worker target", "disposition": "answered", "value": "continuous_consumer", "provenance": "user", "default_rule": null, "consequence": "selects an ECS/Fargate service"},
+    {"question_id": "workflow.orchestration_shape", "resource_id": "rr-workflow", "topic": "workflow", "decision_changed": "Workflow orchestrator", "disposition": "answered", "value": "auditable_callbacks", "provenance": "user", "default_rule": null, "consequence": "selects Step Functions Standard"},
+    {"question_id": "workflow.task_duration", "resource_id": "rr-workflow-task", "topic": "workflow", "decision_changed": "Workflow task target", "disposition": "answered", "value": "5 minutes", "provenance": "user", "default_rule": null, "consequence": "permits Lambda for the stateless task"}
+  ],
+  "global": {"aws_region": "us-east-1", "availability": "multi_az", "compliance": ["none"], "cost_posture": "balanced", "cpu_architecture": "x86_64", "management_model": "direct_task_control"},
+  "ai_track": {"status": "deferred_shared_ai_engine", "profile_path": "ai-workload-profile.json", "profile_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "reason": "provider-neutral AI Design, Estimate, and Generate execution is not available", "resume_from": "ai-workload-profile.json"}
+}

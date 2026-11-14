@@ -6,7 +6,7 @@
 - [Async Exceptions](#async-exceptions)
 - [Outdated AWS CLI Version](#outdated-aws-cli-version)
 - [Verify Connectivity](#verify-connectivity)
-- [DDL Processing Statistics (Offline Source)](#ddl-processing-statistics-offline-source)
+- [Offline Source Failures](#offline-source-failures)
 
 ---
 
@@ -20,7 +20,7 @@ These errors are returned immediately by the API call itself (`start-*`, `create
 | `ResourceNotFoundFault` | Any call | Referenced resource does not exist | Verify the migration project, instance profile, or data provider ARN/name is correct |
 | `ResourceAlreadyExistsFault` | `create-*` calls | Resource with this name already exists | Retrieve the existing resource ARN with the appropriate `describe-*` call and reuse it |
 | `ResourceQuotaExceededFault` | `create-*` / `start-*` calls | Account quota exceeded | Check Service Quotas console and request an increase for the relevant DMS resource |
-| `KMSKeyNotAccessibleFault` | `start-*` calls | DMS cannot access the KMS key | Check the KMS key policy allows the DMS service principal for the region |
+| `KMSKeyNotAccessibleFault` | `start-*` calls | DMS cannot access a required KMS key | Identify the resource and role named by the failed operation, then verify the role permissions and key policy against current AWS documentation |
 | `S3AccessDeniedFault` | `start-*` calls | DMS cannot access the S3 bucket | Verify the S3 role trust policy includes `dms.<region>.amazonaws.com` and the bucket policy does not block DMS |
 | `S3ResourceNotFoundFault` | `start-*` calls | S3 bucket does not exist | Validate: `aws s3api head-bucket --bucket <bucket_name>` — offer to create if missing |
 | `InvalidSubnet` | `create-replication-subnet-group` | Subnets not in at least 2 AZs or wrong VPC | Re-run Phase 4b of the setup wizard with corrected subnet IDs |
@@ -149,11 +149,14 @@ Use the corresponding `describe-*` command for the operation that failed (e.g., 
    aws iam get-role --role-name <s3_role_name>
    ```
 
-4. Verify the S3 role has the required permissions (`s3:PutObject`, `s3:GetObject`, `s3:GetObjectVersion`, `s3:GetBucketVersioning`, `s3:GetBucketLocation`, `s3:ListBucket`) on the bucket:
+4. Inspect the role's attached and inline policies:
 
    ```
    aws iam list-attached-role-policies --role-name <s3_role_name>
+   aws iam list-role-policies --role-name <s3_role_name>
    ```
+
+   Retrieve each policy document and compare it with [Complete prerequisites for working with DMS Schema Conversion](https://docs.aws.amazon.com/dms/latest/userguide/set-up.html). Verify that permissions are scoped to the migration-artifacts bucket. For an SSE-KMS bucket, also verify the documented KMS permissions in the role and key policies.
 
 5. Check the bucket policy does not explicitly deny DMS access:
 
@@ -200,32 +203,50 @@ Use the corresponding `describe-*` command for the operation that failed (e.g., 
 
 **Fix:**
 
-1. Retrieve the secret ARNs and secrets role ARN from the migration project and display them to the customer:
+1. Retrieve any supplied Secrets Manager secret ARNs and Secrets Manager access role ARNs from the migration project's source and target data-provider descriptors:
 
    ```
    aws dms describe-migration-projects \
      --filters Name=migration-project-identifier,Values=<migration_project_identifier>
    ```
 
-   Extract and show `SecretsManagerSecretId` from both source and target data provider descriptors, and `SecretsManagerAccessRoleArn`.
+   Extract and show any supplied `SecretsManagerSecretId` and `SecretsManagerAccessRoleArn` values from both descriptors.
 
-2. Verify each secret exists:
+2. Verify each supplied secret exists:
 
    ```
    aws secretsmanager describe-secret --secret-id <secret_arn>
    ```
 
-3. Verify the secrets role trust policy includes `dms.<region>.amazonaws.com`:
+3. For each supplied Secrets Manager access role, verify its trust policy includes `dms.<region>.amazonaws.com`:
 
    ```
-   aws iam get-role --role-name <secrets_role_name>
+   aws iam get-role --role-name <secrets_manager_access_role_name>
    ```
 
-4. Verify the secrets role has `secretsmanager:GetSecretValue` and `secretsmanager:DescribeSecret` on the secret ARNs:
+4. For each supplied Secrets Manager access role, verify its managed and inline policies grant `secretsmanager:GetSecretValue` and `secretsmanager:DescribeSecret` on its associated secret ARN:
 
    ```
-   aws iam list-attached-role-policies --role-name <secrets_role_name>
+   aws iam list-attached-role-policies --role-name <secrets_manager_access_role_name>
+   aws iam list-role-policies --role-name <secrets_manager_access_role_name>
    ```
+
+   For each managed `PolicyArn`, retrieve its default version:
+
+   ```
+   aws iam get-policy --policy-arn <policy_arn>
+   aws iam get-policy-version --policy-arn <policy_arn> --version-id <default_version_id>
+   ```
+
+   For each inline `PolicyName`, retrieve its document:
+
+   ```
+   aws iam get-role-policy \
+     --role-name <secrets_manager_access_role_name> \
+     --policy-name <policy_name>
+   ```
+
+   Confirm that the returned policy documents contain both required actions and the associated secret ARN.
 
 5. If the message mentions network unavailability, check that the DMS subnets have outbound access to Secrets Manager (via NAT gateway or VPC endpoint).
 
@@ -295,57 +316,16 @@ Use the corresponding `describe-*` command for the operation that failed (e.g., 
 - `The service is currently experiencing high load. Please try your request again later.`
 
 **Fix:**
-These are transient errors. Wait 5 minutes and retry the operation.
+These are transient errors. Wait 5 minutes, then continue to Step 2.
 
 ---
 
-#### Step 2 — Retry
+### Step 2 — Retry
 
 After the customer confirms the fix, ask:
 > "Would you like to retry the operation? (yes / no)"
 
 If yes, return to the appropriate action. If no, return to the [Actions Menu](../SKILL.md#actions-menu).
-
----
-
-### Group 8 — Offline Source Import Failure (Unexpected application error)
-
-**Messages:**
-
-- `Unexpected application error.`
-
-**Context:** This generic error occurs specifically during `start-metadata-model-import` for **offline source** data providers. The most common cause is a `DatabaseName` mismatch between the data provider settings and the DDL script content.
-
-**Fix:**
-
-1. Retrieve the data provider settings and extract the configured `DatabaseName`:
-
-   ```
-   aws dms describe-data-providers \
-     --filters Name=data-provider-identifier,Values=<project_name>-source
-   ```
-
-   Show the customer the `DatabaseName` value from `Settings.MicrosoftSqlServerSettings.DatabaseName`.
-
-2. Download one DDL script from S3 and check the actual database name:
-
-   ```
-   aws s3 cp <S3Path><first_file.sql> - | head -5
-   ```
-
-   Look for `USE [<name>]` or `CREATE DATABASE [<name>]`. Do not log or persist this output — DDL content may contain sensitive schema information. Use it only transiently to extract the database name.
-
-3. If the configured `DatabaseName` does not match the database name in the DDL scripts, modify the data provider with the corrected `DatabaseName`. Keep all other settings (ServerName, Port, SslMode, S3Path, S3AccessRoleArn) unchanged from the describe output.
-
-4. If `DatabaseName` was already correct, check DDL processing statistics in the S3 artifacts bucket:
-
-   ```
-   aws s3 cp s3://<artifacts_bucket>/<project_name>-migration-project/ddl-statistics/ds.csv -
-   ```
-
-   Look for files with `FAILED` status in the CSV — these indicate individual DDL parsing errors.
-
-5. Retry the import after the fix.
 
 ---
 
@@ -376,14 +356,48 @@ If the error indicates a network or connectivity issue, read [DMS SC network con
 
 ---
 
-## DDL Processing Statistics (Offline Source)
+## Offline Source Failures
 
-For offline source projects, DMS produces processing statistics in the project's S3 bucket after import, conversion, or assessment operations. **Check these statistics proactively** when results contain fewer objects than expected or when an operation completes without errors but the metadata tree appears incomplete.
+Use this section only when the source data provider is virtual and reads exported DDL from S3. Do not apply it to connected database failures.
 
-Retrieve the statistics:
+### DDL handling
 
-```
-aws s3 cp s3://<project-bucket>/<migration-project-folder>/ddl-statistics/ds.csv ./ds.csv
-```
+Do not display, quote, reconstruct, summarize as SQL, log, or retain customer DDL while diagnosing the failure. Report object keys, metadata, object names and types, operation statuses, statistics, and actionable validation results. Read only the minimum statement fragments required for the engine-specific checks below.
 
-Review the output for entries indicating processing failures. Common causes: malformed DDL, unsupported statements (DML/DROP), encoding issues, or non-compliant file structure. Refer to Phase 3d of the setup wizard for DDL structure requirements.
+### S3 and KMS access
+
+1. Describe the source data provider and verify `Virtual` is `true`.
+2. Verify its engine settings contain the expected `S3Path` and `S3AccessRoleArn`.
+3. Confirm the DDL bucket is in the migration project's Region and account.
+4. Confirm the role can list the configured prefix and read the selected `.sql` objects.
+5. Inspect all selected objects' encryption metadata. For each customer-managed KMS key in use, confirm the role has `kms:Decrypt` on that key and the key policy permits the role. Do not add `kms:GenerateDataKey`; that permission belongs to the separate read/write migration-artifacts path.
+
+### Unexpected application error
+
+1. Read `s3://<artifacts_bucket>/<migration_project_name>/ddl-statistics/ds.csv`.
+2. If any row is `FAILED`, report the failed object keys and comments, then apply the current engine-specific DDL requirements from **Offline source configuration** in the setup wizard.
+3. Validate the provider identity settings:
+   - **SQL Server:** `DatabaseName` exactly matches the single consistent name in the `CREATE DATABASE` and `USE` statements across the selected prefix.
+   - **Oracle:** The provider uses `OracleSettings`; every schema has the documented `CREATE USER <schema_name> NO AUTHENTICATION;` file; object names are schema-qualified.
+4. Preserve all described settings when correcting one field. Recreate a provider only when the required setting cannot be changed in place.
+5. Retry the import after correcting provider settings, DDL structure, or access.
+
+### Failed request with successful DDL statistics
+
+A `FAILED` top-level import and an all-success DDL statistics file are separate signals. Do not relabel the failed request as successful.
+
+1. Preserve and report the original request ID, `FAILED` status, and service error.
+2. Verify every DDL statistics row is `SUCCESS`.
+3. Verify that root metadata exists.
+4. Navigate using the category `SelectionRules` returned by DMS. Do not synthesize a category or leaf locator.
+5. Load an unloaded source category with the exact returned rules and `Refresh=false`, then describe its children with the same rules.
+6. Continue only if the requested object tree is independently visible. Report both the original failed request and the verified usable metadata state.
+
+### Incomplete metadata tree
+
+When the operation succeeds but expected objects are absent:
+
+1. Compare the expected object manifest with DDL statistics and the loaded metadata categories.
+2. Load each missing category using the service-returned rules and `Refresh=false`.
+3. Do not jump directly to a leaf object or replace returned rule fields with guessed values.
+4. If the object remains absent, report it as missing and retain the relevant request IDs, statistics rows, and category rules for support investigation.
