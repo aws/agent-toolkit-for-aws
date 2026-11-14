@@ -306,14 +306,14 @@
     "elastic_throughput_write_per_gb": 0.06,
     "provisioned_throughput_per_mibps_month": 6.0,
     "multi_az_handling": "intrinsic",
-    "_note": "Capacity-preserving line = provisioned/used GB x standard_per_gb_month. Throughput lines need transfer volume; with no measured volume, price storage only and say so. The Price List shows 0.00 per MiBps-month for throughput included with Standard storage."
+    "_note": "Capacity-preserving line = provisioned/used GB x standard_per_gb_month. Throughput lines need transfer volume; with no measured volume, price storage only and say so. Consumer scope: only render-to-aws estimate rules read this row today. azure-to-aws and heroku-to-aws have not adopted it; their designs that emit EFS keep surfacing a visible excluded line (formerly _absent_services.efs) until their estimate rules and goldens are updated deliberately. The Price List shows 0.00 per MiBps-month for throughput included with Standard storage."
   },
   "ecr": {
     "_comment": "Amazon ECR rates (us-east-1). Verified 2026-11-14 via the AWS Pricing MCP server (get_pricing, us-east-1, OnDemand), service code AmazonECR.",
     "storage_per_gb_month": 0.1,
     "image_signing_per_request": 0.02,
     "multi_az_handling": "intrinsic",
-    "_note": "Storage only. Data transfer out of ECR is a DataTransfer line, not priced here. Image count and size come from the Build Source; with no captured image size the line has no quantity."
+    "_note": "Storage only. Data transfer out of ECR is a DataTransfer line, not priced here. Image count and size come from the Build Source; with no captured image size the line has no quantity. Consumer scope: only render-to-aws estimate rules read this row today. azure-to-aws (Azure Container Registry) has not adopted it; keep surfacing ECR as a visible excluded line there (formerly _absent_services.ecr) until its estimate rules and goldens are updated deliberately."
   },
   "step_functions": {
     "_comment": "AWS Step Functions rates (us-east-1). Verified 2026-11-14 via the AWS Pricing MCP server (get_pricing, us-east-1, OnDemand), service code AmazonStates. Standard is billed per state transition; Express per request plus duration in GB-seconds.",
