@@ -14,6 +14,9 @@ _fragments:
   - _id: artifacts-infra
     _trigger: { _always: true }
     _file: phases/generate/generate-artifacts-infra.md
+  - _id: infra-data
+    _trigger: { _always: true }
+    _file: phases/generate/generate-infra-data.md
   - _id: artifacts-docs
     _trigger: { _always: true }
     _file: phases/generate/generate-artifacts-docs.md
