@@ -23,6 +23,7 @@ if this skill needs one, add the copy **and** a row in the table below.
 | Vendored path                           | Canonical source                                      |
 | --------------------------------------- | ----------------------------------------------------- |
 | `workshop/workshop-invariants.md`       | `skills/shared/workshop/workshop-invariants.md`       |
+| `estimate/cost-export-inputs.md`        | `skills/shared/estimate/cost-export-inputs.md`        |
 | `ai/ai-anthropic-to-bedrock.md`         | `skills/shared/ai/ai-anthropic-to-bedrock.md`         |
 | `ai/ai-capability-catalog.json`         | `skills/shared/ai/ai-capability-catalog.json`         |
 | `ai/ai-migration-guardrails.md`         | `skills/shared/ai/ai-migration-guardrails.md`         |

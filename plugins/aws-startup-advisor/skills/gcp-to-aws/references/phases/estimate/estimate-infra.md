@@ -2,6 +2,11 @@
 
 > Loaded by estimate.md when aws-design.json exists.
 
+Before pricing, follow `references/vendored/estimate/cost-export-inputs.md` for
+`estimation-infra.json`: capture the input snapshot, retain selected-row evidence
+while calculating, and include `export_inputs` in the output when available.
+Missing export evidence does not change the existing Estimate completion gates.
+
 **Execute ALL steps in order. Do not skip or optimize.**
 
 ## Pricing Mode

@@ -2,9 +2,9 @@
 """Emit plan.json from a finished migration run.
 
 Copies already-validated values from a run's artifacts into a `plan.json`
-summary the AWS Startups Migrate web import page ingests. It GENERATES nothing:
-every field is copied from a validated artifact or omitted, because every extra
-field is a mistake surface.
+summary the AWS Startups Migrate web import page ingests. It does not generate
+prices. The default version-1 export keeps its existing fields. Opt-in version 2
+adds Estimate-retained context only after checking its run and input snapshots.
 
 Fail-open by design: any missing or unreadable input leaves the migration
 successful, writes no file, prints the reason, and stays re-runnable. A missed
@@ -20,12 +20,15 @@ cost file, so a GCP or Azure AI-only run has no valid mapping yet.
 
 Usage:
   python3 scripts/emit-plan-json.py --migration-dir <dir>
+  python3 scripts/emit-plan-json.py --migration-dir <dir> --schema-version 2
+  python3 scripts/emit-plan-json.py --migration-dir <dir> --capture-inputs estimation-infra.json
 
 Reads:
   <dir>/.phase-status.json              run_id, owning_skill
   <dir>/estimation-infra.json           projected_costs.aws_monthly_balanced, current_costs.*
   <dir>/estimation-billing.json         cost_comparison.aws_monthly_mid / .gcp_monthly, aws_projection.services[]
   <dir>/estimation-ai.json              cost_comparison.projected_bedrock_monthly, current_costs.gcp_monthly_ai_spend
+  <dir>/aws-design*.json, preferences.json, usage profiles and selected scenario snapshots (v2 only)
   <PLUGIN_ROOT>/.claude-plugin/plugin.json   version
 
 Writes:
@@ -35,11 +38,14 @@ Status line (stdout, machine-readable):
   PLAN_OK   | path=<dir>/plan.json | platform=GCP | scope=INFRA_ONLY
   PLAN_SKIP | reason=<why>                 (fail-open; exit 0, no file written)
 Exit code is 0 for success AND for every fail-open skip; only a usage error is non-zero.
+Input capture prints a JSON snapshot or INPUT_SNAPSHOT_SKIP and does not write plan.json.
 """
 
 from __future__ import annotations
 
 import argparse
+import copy
+import hashlib
 import json
 import math
 import os
@@ -47,6 +53,7 @@ import re
 import sys
 import tempfile
 import time
+from decimal import Decimal, localcontext
 from pathlib import Path
 
 # scripts/ -> plugin root (holds .claude-plugin/plugin.json).
@@ -54,6 +61,23 @@ PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 
 # Highest plan.json schema the web import page understands (kept in lock-step there).
 SCHEMA_VERSION = 1
+# Version 2 is opt-in until compatible import readers are verified.
+MAX_IMPORT_FILE_BYTES = 512 * 1024
+# ECMAScript trim(), used for R2's nonblank text checks.
+_IMPORT_WHITESPACE = " \t\v\f\r\n\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
+DESIGN_FILES = {
+    "estimation-infra.json": "aws-design.json",
+    "estimation-billing.json": "aws-design-billing.json",
+    "estimation-ai.json": "aws-design-ai.json",
+}
+USAGE_FILES = {
+    "estimation-infra.json": ("gcp-resource-inventory.json", "heroku-resource-inventory.json", "billing-profile.json"),
+    "estimation-billing.json": ("billing-profile.json",),
+    "estimation-ai.json": (
+        "ai-workload-profile.json", "openai-usage-profile.json",
+        "openrouter-usage-profile.json", "anthropic-usage-profile.json",
+    ),
+}
 
 # The web-import schema types runId as a lowercase-canonical UUID. Native `uuidgen`
 # emits uppercase on macOS, and the state schema accepts it verbatim, so a UUID-shaped
@@ -268,7 +292,17 @@ def _source_monthly(data: dict, source_platform: str) -> float | None:
 
 
 def _service_items(projected: object) -> list[dict]:
-    """Per-service line items copied from projected_costs.breakdown.
+    """Project selected infrastructure rows onto the existing import contract."""
+    return [item for _, _, item in _service_rows(projected)]
+
+
+def _service_rows(projected: object) -> list[tuple[str, str | None, dict]]:
+    """Select (source key, amount field, import item) from projected_costs.breakdown.
+
+    Keep the original key and amount field alongside the item so retained cost
+    inputs can refer to the exact priced row, even when display names repeat.
+    A bare-number row has no amount field. These selectors identify estimate rows,
+    not design resources; a resource join needs evidence from the estimator.
 
     The breakdown is keyed by service, and its shape varies across skills and rows.
     An entry is either a bare monthly number, or an object carrying the figure under
@@ -291,7 +325,7 @@ def _service_items(projected: object) -> list[dict]:
     if not isinstance(breakdown, dict):
         return []
 
-    items: list[dict] = []
+    rows: list[tuple[str, str | None, dict]] = []
     for key, entry in breakdown.items():
         # Drop the aggregate row (any casing) so the total is never shown as a service.
         if not isinstance(key, str) or key.strip().lower() == "total":
@@ -300,6 +334,7 @@ def _service_items(projected: object) -> list[dict]:
         if _is_usable_amount(entry):
             # Bare-number form: {"compute": 75}.
             name, monthly = key, entry
+            amount_field = None
         elif isinstance(entry, dict):
             # Azure marks a row excluded with `excluded_from_total` and/or
             # `exclusion_reason` (no_rate / no_quantity / partial_rate) — skip it
@@ -315,7 +350,8 @@ def _service_items(projected: object) -> list[dict]:
             # another when the primary figure is present but out of range, which would
             # misreport a different number. `right_sized_monthly` is last so GCP/Heroku
             # behavior is unaffected when `monthly`/`mid` are present.
-            raw = next((entry[k] for k in ("monthly", "mid", "right_sized_monthly") if k in entry), None)
+            amount_field = next((k for k in ("monthly", "mid", "right_sized_monthly") if k in entry), None)
+            raw = entry[amount_field] if amount_field is not None else None
             if not _is_usable_amount(raw):
                 continue
             monthly = raw
@@ -329,18 +365,29 @@ def _service_items(projected: object) -> list[dict]:
         # name the strict import would reject for length.
         if not name or name.lower() == "total" or _import_str_len(name) > MAX_SERVICE_NAME_LEN:
             continue
-        items.append(
-            {
+        rows.append(
+            (key, amount_field, {
                 "serviceName": name,
                 "monthlyCost": monthly,
                 "classification": "INFRASTRUCTURE",
-            }
+            })
         )
-    return items
+    return rows
 
 
 def _billing_service_items(aws_projection: object) -> list[dict]:
-    """Per-service line items from a billing estimate's `aws_projection.services[]` (a
+    """Project selected billing rows onto the existing import contract."""
+    return [item for _, item in _billing_service_rows(aws_projection)]
+
+
+def _billing_service_rows(aws_projection: object) -> list[tuple[int, dict]]:
+    """Select (source index, import item) from `aws_projection.services[]`.
+
+    Keep the original index before filtering; repeated service names cannot identify
+    which billing row supplied an amount. This is estimate evidence, not AWS
+    resource configuration.
+
+    Per-service line items from a billing estimate's `aws_projection.services[]` (a
     list, unlike the infra breakdown). Each service carries `aws_target` (name) and
     `aws_mid` (mid monthly cost); same bounds and skips as the infra items."""
     if not isinstance(aws_projection, dict):
@@ -348,8 +395,8 @@ def _billing_service_items(aws_projection: object) -> list[dict]:
     services = aws_projection.get("services")
     if not isinstance(services, list):
         return []
-    items: list[dict] = []
-    for svc in services:
+    rows: list[tuple[int, dict]] = []
+    for index, svc in enumerate(services):
         if not isinstance(svc, dict):
             continue
         cost = svc.get("aws_mid")
@@ -361,8 +408,8 @@ def _billing_service_items(aws_projection: object) -> list[dict]:
         name = name.strip()
         if not name or name.lower() == "total" or _import_str_len(name) > MAX_SERVICE_NAME_LEN:
             continue
-        items.append({"serviceName": name, "monthlyCost": cost, "classification": "INFRASTRUCTURE"})
-    return items
+        rows.append((index, {"serviceName": name, "monthlyCost": cost, "classification": "INFRASTRUCTURE"}))
+    return rows
 
 
 def _load_route(path: Path) -> dict | None:
@@ -408,7 +455,225 @@ def _ai_route(data: dict) -> float:
     return aws
 
 
-def build_plan(migration_dir: Path, plugin_json_path: Path) -> tuple[dict, str, str]:
+def _input_digest(data: object, *, preferences: bool = False) -> str:
+    """Hash parsed input; exclude only workshop bookkeeping, never pricing knobs."""
+    data = copy.deepcopy(data)
+    if preferences and isinstance(data, dict) and isinstance(data.get("workshop"), dict):
+        for key in ("active", "active_scenario_id", "last_sheet_at"):
+            data["workshop"].pop(key, None)
+        if not data["workshop"]:
+            del data["workshop"]
+    encoded = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def capture_inputs(migration_dir: Path, estimate_file: str) -> dict:
+    """Capture the inputs BEFORE pricing; Estimate embeds this in export_inputs."""
+    status = _load_json(migration_dir / ".phase-status.json")
+    run_id = status.get("run_id")
+    skill = status.get("owning_skill")
+    if not isinstance(run_id, str) or not _UUID_RE.fullmatch(run_id.strip()):
+        raise ValueError("input capture requires a UUID run_id")
+    if skill not in SKILL_TO_PLATFORM:
+        raise ValueError("input capture requires a supported owning_skill")
+    files = {}
+    required = (DESIGN_FILES[estimate_file], "preferences.json")
+    for name in (*required, *USAGE_FILES[estimate_file]):
+        data = _load_route(migration_dir / name)
+        if data is None and name in required:
+            raise ValueError(f"input capture requires {name}")
+        files[name] = _input_digest(data, preferences=name == "preferences.json") if data is not None else None
+    return {"version": 1, "runId": run_id.strip().lower(), "owningSkill": skill, "files": files}
+
+
+def _pointer_token(key: str) -> str:
+    return key.replace("~", "~0").replace("/", "~1")
+
+
+def _resolve_pointer(data: object, pointer: str):
+    if not isinstance(pointer, str) or not pointer.startswith("/") or re.search(r"~(?![01])", pointer):
+        raise ValueError("invalid JSON Pointer")
+    for part in pointer[1:].split("/"):
+        part = part.replace("~1", "/").replace("~0", "~")
+        if isinstance(data, list):
+            if not re.fullmatch(r"0|[1-9][0-9]*", part):
+                raise ValueError("invalid array index")
+            data = data[int(part)]
+        else:
+            data = data[part]
+    return data
+
+
+def _selected_cost_rows(data: dict, estimate_file: str) -> list[tuple[str, dict]]:
+    if estimate_file == "estimation-infra.json":
+        return [
+            ("/projected_costs/breakdown/" + _pointer_token(key)
+             + ("/" + field if field is not None else ""), item)
+            for key, field, item in _service_rows(data.get("projected_costs"))
+        ]
+    if estimate_file == "estimation-billing.json":
+        return [(f"/aws_projection/services/{index}/aws_mid", item)
+                for index, item in _billing_service_rows(data.get("aws_projection"))]
+    return [("/cost_comparison/projected_bedrock_monthly",
+             {"serviceName": "Amazon Bedrock", "monthlyCost": _ai_route(data), "classification": "AI_ML"})]
+
+
+def _selected_scenario(migration_dir: Path, estimate_file: str, data: dict) -> str | None:
+    preferences = _load_json(migration_dir / "preferences.json")
+    workshop = preferences.get("workshop", {})
+    recorded = data.get("workshop", {}).get("scenario_id")
+    index_path = migration_dir / "scenarios/index.json"
+    if not index_path.exists() and not workshop.get("active") and not workshop.get("active_scenario_id") and not recorded:
+        return None
+    index = _load_json(index_path)
+    scenario = index.get("active_scenario_id")
+    if not isinstance(scenario, str) or not re.fullmatch(r"scenario-[0-9]+", scenario):
+        raise ValueError("missing selected scenario")
+    if workshop.get("active_scenario_id") != scenario or recorded not in (None, scenario):
+        raise ValueError("scenario selection mismatch")
+    for name in ("preferences.json", DESIGN_FILES[estimate_file], estimate_file):
+        current = data if name == estimate_file else _load_json(migration_dir / name)
+        saved = _load_json(migration_dir / "scenarios" / f"{scenario}.{name}")
+        if _input_digest(current, preferences=name == "preferences.json") != _input_digest(saved, preferences=name == "preferences.json"):
+            raise ValueError("selected scenario snapshot mismatch")
+    return scenario
+
+
+def _valid_context(context: object) -> bool:
+    """R2 structural rules only; missing context never makes the Plan invalid."""
+    if not isinstance(context, dict):
+        return False
+    limits = {"regionCode": 64, "upfrontCost": 128, "pricingBasis": 1024,
+              "configurationSummary": 4096, "description": 1024}
+    if set(context) - {*limits, "source"}:
+        return False
+    for key, limit in limits.items():
+        if key not in context:
+            continue
+        value = context[key]
+        if not isinstance(value, str) or _import_str_len(value) > limit or (key != "description" and not value.strip(_IMPORT_WHITESPACE)):
+            return False
+    if "upfrontCost" in context:
+        value = context["upfrontCost"]
+        if not re.fullmatch(r"(0|[1-9][0-9]*)(\.[0-9]+)?", value) or Decimal(value) > MAX_USD_AMOUNT:
+            return False
+    if "source" not in context:
+        return True
+    source = context["source"]
+    if not isinstance(source, dict) or set(source) - {"estimateFile", "costPointer", "resourceIds", "scenarioId"}:
+        return False
+    if "estimateFile" in source:
+        if not isinstance(source["estimateFile"], str) or source["estimateFile"] not in DESIGN_FILES:
+            return False
+    for key, limit in (("costPointer", 1024), ("scenarioId", 128)):
+        if key not in source:
+            continue
+        value = source[key]
+        if not isinstance(value, str) or _import_str_len(value) > limit:
+            return False
+        if key == "costPointer":
+            if not value.startswith("/") or re.search(r"~(?![01])", value):
+                return False
+        elif not value.strip(_IMPORT_WHITESPACE):
+            return False
+    if "resourceIds" in source:
+        ids = source["resourceIds"]
+        if not isinstance(ids, list) or not 1 <= len(ids) <= 100:
+            return False
+        if any(not isinstance(value, str) or not value.strip(_IMPORT_WHITESPACE) or _import_str_len(value) > 256 for value in ids):
+            return False
+    return True
+
+
+def _retained_contexts(migration_dir: Path, estimate_file: str, data: dict, run_id: str) -> dict:
+    """Read explicitly retained row evidence. Never join resources by display name."""
+    retained = data.get("export_inputs")
+    if not isinstance(retained, dict) or not isinstance(retained.get("rows"), dict):
+        return {}
+    try:
+        snapshot = capture_inputs(migration_dir, estimate_file)
+        if snapshot["runId"] != run_id or retained.get("snapshot") != snapshot:
+            return {}
+        scenario = _selected_scenario(migration_dir, estimate_file, data)
+        design = _load_json(migration_dir / DESIGN_FILES[estimate_file])
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return {}
+    contexts = {}
+    for pointer, item in _selected_cost_rows(data, estimate_file):
+        try:
+            entry = retained["rows"].get(pointer)
+            if not isinstance(entry, dict) or not _is_usable_amount(entry.get("monthlyCost")):
+                continue
+            if Decimal(str(entry["monthlyCost"])) != Decimal(str(item["monthlyCost"])):
+                continue
+            context = copy.deepcopy(entry.get("estimateInput"))
+            if not _valid_context(context):
+                continue
+            source = context.setdefault("source", {})
+            expected = {"estimateFile": estimate_file, "costPointer": pointer}
+            if scenario is not None:
+                expected["scenarioId"] = scenario
+            if any(key in source and source[key] != value for key, value in expected.items()):
+                continue
+            if scenario is None and "scenarioId" in source:
+                continue
+            source.update(expected)
+            if "resourceIds" in source:
+                ids = entry.get("resourceIdPointers")
+                configs = entry.get("configurationPointers")
+                if not isinstance(ids, list) or not isinstance(configs, list) or len(ids) != len(source["resourceIds"]) or len(configs) != len(ids):
+                    continue
+                if [_resolve_pointer(design, value) for value in ids] != source["resourceIds"]:
+                    continue
+                if any(identity.rsplit("/", 1)[0] != config.rsplit("/", 1)[0]
+                       for identity, config in zip(ids, configs)):
+                    continue
+                if any(not isinstance(_resolve_pointer(design, value), dict) or not _resolve_pointer(design, value) for value in configs):
+                    continue
+            for key in ("description", "configurationSummary", "pricingBasis"):
+                if key in context:
+                    context[key] = context[key].replace("\r\n", "\n").replace("\r", "\n")
+            if "upfrontCost" in context:
+                value = context["upfrontCost"]
+                context["upfrontCost"] = value.rstrip("0").rstrip(".") if "." in value else value
+            if _valid_context(context):
+                contexts[pointer] = context
+        except (ValueError, TypeError, KeyError, IndexError, AttributeError, UnicodeError):
+            continue
+    return contexts
+
+
+def _version_two(plan: dict, migration_dir: Path, routes: list[tuple[str, dict]]) -> dict:
+    """Opt-in R2 export. Unrepresentable FULL sums retain the valid v1 summary."""
+    result = copy.deepcopy(plan)
+    result["schemaVersion"] = 2
+    if plan["scope"] == "FULL":
+        amounts = [_ai_route(data) if name == "estimation-ai.json"
+                   else _billing_route(data)[0] if name == "estimation-billing.json"
+                   else _infra_route(data, plan["sourcePlatform"])[0] for name, data in routes]
+        # Bounded binary64 inputs need at most 333 places (1e8 through 5e-324).
+        with localcontext() as context:
+            context.prec = 400
+            exact = sum((Decimal(str(value)) for value in amounts), Decimal(0))
+        number = float(exact)
+        if not _is_usable_amount(number) or Decimal(str(number)) != exact:
+            return plan
+        result["cost"]["awsMonthly"] = number
+    rows = []
+    for name, data in routes:
+        contexts = _retained_contexts(migration_dir, name, data, plan["runId"])
+        for pointer, item in _selected_cost_rows(data, name):
+            if pointer in contexts:
+                item["estimateInput"] = contexts[pointer]
+            rows.append(item)
+    if "awsServiceItems" in result["cost"]:
+        result["cost"]["awsServiceItems"] = rows
+    if len((json.dumps(result, indent=2) + "\n").encode("utf-8")) > MAX_IMPORT_FILE_BYTES:
+        return plan
+    return result
+
+
+def build_plan(migration_dir: Path, plugin_json_path: Path, schema_version: int = 1) -> tuple[dict, str, str]:
     """Build the plan dict from validated artifacts, or raise SkipEmit to fail open."""
     status_path = migration_dir / ".phase-status.json"
     if not status_path.is_file():
@@ -553,6 +818,20 @@ def build_plan(migration_dir: Path, plugin_json_path: Path) -> tuple[dict, str, 
         if isinstance(version, str) and version:
             plan["producerVersion"] = version
 
+    if schema_version == 2:
+        routes = []
+        if infra_data is not None:
+            routes.append(("estimation-infra.json", infra_data))
+        elif billing_data is not None:
+            routes.append(("estimation-billing.json", billing_data))
+        if ai_data is not None:
+            routes.append(("estimation-ai.json", ai_data))
+        try:
+            plan = _version_two(plan, migration_dir, routes)
+        except Exception:
+            # Optional retained inputs must never prevent the existing handoff.
+            # Keep the complete v1 summary if an unclassifiable extension fault occurs.
+            pass
     return plan, source_platform, scope
 
 
@@ -597,16 +876,27 @@ def main() -> int:
         default=PLUGIN_ROOT / ".claude-plugin" / "plugin.json",
         help="Path to the plugin manifest read for producerVersion (defaults to this plugin's).",
     )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--schema-version", type=int, choices=(1, 2), default=SCHEMA_VERSION,
+                      help="Opt in to v2 only with a compatible import reader; default remains v1.")
+    mode.add_argument("--capture-inputs", choices=tuple(DESIGN_FILES),
+                      help="Print a JSON input snapshot before pricing this route; do not write plan.json.")
     args = parser.parse_args()
     migration_dir: Path = args.migration_dir
     out_path = migration_dir / "plan.json"
+    if args.capture_inputs:
+        try:
+            print(json.dumps(capture_inputs(migration_dir, args.capture_inputs), indent=2))
+        except Exception as err:
+            print(f"INPUT_SNAPSHOT_SKIP | reason={err}")
+        return 0
 
     # Reclaim any temp abandoned by a crashed earlier run, on EVERY invocation (not
     # only the write path) so a dir that keeps failing open still gets cleaned up.
     _sweep_orphan_temps(migration_dir)
 
     try:
-        plan, platform, scope = build_plan(migration_dir, args.plugin_json)
+        plan, platform, scope = build_plan(migration_dir, args.plugin_json, args.schema_version)
     except SkipEmit as skip:
         # Deterministic disqualification (the run grew to include AI, lost its run_id,
         # has no cost estimate, etc.): this run should have NO plan, so drop a stale
