@@ -31,13 +31,14 @@ Never open `.env*`, private keys, credential files, or other secret files in the
 
 ## Step 0: Resume or start
 
-Rules 1 to 4 apply only to a run this skill created: the user names an existing `$MIGRATION_DIR` whose `.phase-status.json` has a `migration_id` starting with `bma-` and no `owning_skill`. Before resuming at Clarify or Design (rules 1 to 3), if `migration-preview.json` exists without `preview_version` 2, run Discover Step 2d again in that directory: it reads only the profile and usage profiles already there, scans nothing, and calls no API.
+Rules 1 to 5 apply only to a run this skill created: the user names an existing `$MIGRATION_DIR` whose `.phase-status.json` has a `migration_id` starting with `bma-` and no `owning_skill`. Before resuming at Clarify or Design (rules 1 to 4), if `migration-preview.json` exists without `preview_version` 2, run Discover Step 2d again in that directory: it reads only the profile and usage profiles already there, scans nothing, and calls no API. Use the first rule that matches, and never change `run_id`.
 
-1. If that file has `phases.design` set to `"completed"`, show the summary of the saved `aws-design-ai.json` and offer to run Design again in the same directory, or Clarify and then Design to change answers. If `phases.design` is `"in_progress"`, or `phases.clarify` is `"completed"` and `phases.design` is `"pending"` or absent, resume at Design, adding `phases.design` when it is absent.
-2. If that file has `phases.clarify` set to `"in_progress"`, resume at Clarify. `clarify-ai-only.md` Step 0 handles saved and draft answers. Do not change `run_id`.
-3. If that file has `phases.discover` set to `"completed"` and `phases.clarify` still `"pending"`, resume at Clarify in the same directory. Keep `run_id` and the profile. Do not scan again.
-4. If that file has `phases.discover` set to `"in_progress"`, resume Discover in that directory. Keep `run_id`. When `ai-workload-profile.json` is already there, load `discover.md` at Step 2c and follow each usage reader's resume rows: `complete` starts at summarize, and `key_invalid_mid_run` or `all_usage_failed` starts at Step 1 intake. When the profile is not there yet, continue Step 2 in that same directory. Do not create a second run directory.
-5. Otherwise start a new run. Never write into a run directory another skill created; if the user named one, say that this skill did not create it and that this run starts fresh.
+1. If that file has `phases.clarify` set to `"in_progress"`, resume at Clarify, whatever `phases.design` says. `clarify-ai-only.md` Step 0 handles saved and draft answers.
+2. If that file has `phases.design` set to `"in_progress"`, or `phases.clarify` is `"completed"` and `phases.design` is `"pending"` or absent, resume at Design, adding `phases.design` when it is absent.
+3. If that file has `phases.design` set to `"completed"`, show the summary of the saved `aws-design-ai.json` and offer to run Design again in the same directory, or to change answers. To change answers, set `phases.clarify` to `"in_progress"`, `phases.design` to `"pending"`, and `current_phase` to `"clarify"` in one write, then go to Step 2.
+4. If that file has `phases.discover` set to `"completed"` and `phases.clarify` still `"pending"`, resume at Clarify in the same directory. Keep the profile. Do not scan again.
+5. If that file has `phases.discover` set to `"in_progress"`, resume Discover in that directory. When `ai-workload-profile.json` is already there, load `discover.md` at Step 2c and follow each usage reader's resume rows: `complete` starts at summarize, and `key_invalid_mid_run` or `all_usage_failed` starts at Step 1 intake. When the profile is not there yet, continue Step 2 in that same directory. Do not create a second run directory.
+6. Otherwise start a new run. Never write into a run directory another skill created; if the user named one, say that this skill did not create it and that this run starts fresh.
 
 ## Step 1: Discover
 
@@ -45,7 +46,7 @@ Load `references/phases/discover/discover.md` and follow it. It either validates
 
 ## Step 2: Clarify
 
-Set `phases.clarify` to `"in_progress"`, then load `references/phases/clarify/clarify-ai-only.md` and follow it. It writes `preferences.json` in the shape defined by `references/shared/schema-preferences.md`.
+Set `phases.clarify` to `"in_progress"`. If `phases.design` is `"in_progress"` or `"completed"`, set it to `"pending"` in the same write: new answers make the saved design stale. Then load `references/phases/clarify/clarify-ai-only.md` and follow it. It writes `preferences.json` in the shape defined by `references/shared/schema-preferences.md`.
 
 Update `.phase-status.json` with read-merge-write: change only the phase being advanced, `current_phase`, and `last_updated`. Never change `run_id`. When Clarify completes, set `phases.clarify` to `"completed"` and `current_phase` to `"design"`.
 

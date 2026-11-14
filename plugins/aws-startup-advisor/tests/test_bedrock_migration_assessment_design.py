@@ -93,12 +93,62 @@ def test_skill_runs_design_after_clarify_and_stops_after_design() -> None:
     assert '"design": "pending"' in discover
 
 
+def _rule_for(status: dict) -> int:
+    """The Step 0 rule a phase-status matches, read from SKILL.md's first-match list."""
+    p = status["phases"]
+    if p.get("clarify") == "in_progress":
+        return 1
+    if p.get("design") == "in_progress" or (p.get("clarify") == "completed" and p.get("design", "pending") == "pending"):
+        return 2
+    if p.get("design") == "completed":
+        return 3
+    if p.get("discover") == "completed" and p.get("clarify") == "pending":
+        return 4
+    return 5 if p.get("discover") == "in_progress" else 6
+
+
+def test_resume_rules_put_an_active_clarify_before_a_completed_design() -> None:
+    step0 = SKILL[SKILL.index("## Step 0"):SKILL.index("## Step 1:")]
+    rules = [line for line in step0.splitlines() if line[:3] in {f"{n}. " for n in range(1, 7)}]
+    assert [r[:2] for r in rules] == ["1.", "2.", "3.", "4.", "5.", "6."]
+    assert '`phases.clarify` set to `"in_progress"`, resume at Clarify, whatever `phases.design` says' in rules[0]
+    assert 'resume at Design' in rules[1] and 'If that file has `phases.design` set to `"completed"`' in rules[2]
+    assert '`phases.clarify` to `"in_progress"`, `phases.design` to `"pending"`, and `current_phase` to `"clarify"` in one write' in rules[2]
+    assert "Use the first rule that matches, and never change `run_id`" in step0
+    step2 = SKILL[SKILL.index("## Step 2: Clarify"):SKILL.index("## Step 3: Design")]
+    assert 'If `phases.design` is `"in_progress"` or `"completed"`, set it to `"pending"` in the same write' in step2
+
+
+@pytest.mark.parametrize(("phases", "rule"), [
+    ({"discover": "completed", "clarify": "in_progress", "design": "completed"}, 1),
+    ({"discover": "completed", "clarify": "in_progress", "design": "pending"}, 1),
+    ({"discover": "completed", "clarify": "completed", "design": "pending"}, 2),
+    ({"discover": "completed", "clarify": "completed"}, 2),
+    ({"discover": "completed", "clarify": "completed", "design": "in_progress"}, 2),
+    ({"discover": "completed", "clarify": "completed", "design": "completed"}, 3),
+    ({"discover": "completed", "clarify": "pending"}, 4),
+    ({"discover": "in_progress", "clarify": "pending"}, 5),
+])
+def test_interrupted_reentry_resumes_the_active_phase(phases, rule) -> None:
+    assert _rule_for({"phases": phases}) == rule
+
+
+def test_reentry_state_after_changing_answers_resumes_clarify_then_design() -> None:
+    status = {"phases": {"discover": "completed", "clarify": "completed", "design": "completed"}}
+    assert _rule_for(status) == 3
+    status["phases"].update(clarify="in_progress", design="pending")
+    assert _rule_for(status) == 1
+    status["phases"]["clarify"] = "completed"
+    assert _rule_for(status) == 2
+
+
 def test_design_doc_runs_the_plan_and_the_check() -> None:
     assert "scripts/design-ai.py plan $MIGRATION_DIR" in DESIGN_DOC
     assert "scripts/design-ai.py check $MIGRATION_DIR" in DESIGN_DOC
     for lane in ("runtime", "mantle", "in_region_check", "api_conflict", "provider_mismatch", "no_mantle_path", "api_unknown"):
         assert f"| `{lane}`" in DESIGN_DOC, lane
     assert DESIGN.ASSUMPTION.format(ids="<ids>") in DESIGN_DOC
+    assert "Do not redirect it to a file: this phase writes nothing outside `$MIGRATION_DIR`" in DESIGN_DOC
 
 
 # --------------------------------------------------------------------------- fixtures
@@ -468,16 +518,85 @@ def test_check_accepts_a_catalog_requirement_and_rejects_one_without_evidence() 
     assert "mantle_requirement_evidence" in _mutated(MANTLE_FIXTURE, catalog(None))
 
 
+W_RESP, W_CHAT = "openai_api.gpt-5.5.openai.responses.create.plain", "openai_api.gpt-5.5.openai.chat.completions.create.plain"
+CHAT = "openai.chat.completions.create"
+
+
+def _two_gpt_workloads(d: dict, p: dict, f: dict, first_method: str, mantle: list[dict]) -> None:
+    """Both GPT-5.5 workloads on one target; the embedding row stays as it is."""
+    p["workloads"][0]["sdk_method"] = first_method
+    f["ai_constraints"]["mantle_requirements"]["value"] = mantle
+    d["ai_architecture"]["bedrock_models"] = [r for r in d["ai_architecture"]["bedrock_models"] if r["aws_model_id"] == EMB_ID]
+
+
+def _runtime_row(ids: list[str], api: str) -> dict:
+    base = copy.deepcopy(_load(MANTLE_FIXTURE)[0]["ai_architecture"]["bedrock_models"][1])
+    base.update(required_client_api=api, capability_gaps=[], endpoint_assumption=DESIGN.ASSUMPTION.format(ids=", ".join(ids)))
+    return base
+
+
+def _mantle_row(path: str, api: str, req: dict) -> dict:
+    base = copy.deepcopy(_load(MANTLE_FIXTURE)[0]["ai_architecture"]["bedrock_models"][0])
+    base.update(aws_model_id=RUNTIME_ID, migration_path=path, required_client_api=api, mantle_selector=req["selector"], mantle_requirement=req)
+    return base
+
+
+def _same_target(d: dict, rows: list[dict]) -> None:
+    for block in d["design_blocks"][:2]:
+        block["target_bedrock_model"] = RUNTIME_ID
+    d["metadata"]["bedrock_models_selected"] = [RUNTIME_ID, EMB_ID]
+    d["ai_architecture"]["bedrock_models"] = rows + d["ai_architecture"]["bedrock_models"]
+
+
 def test_check_names_every_workload_sharing_a_runtime_row() -> None:
     def mutate(d, p, f):
-        f["ai_constraints"]["mantle_requirements"]["value"] = []
-        d["design_blocks"][0]["target_bedrock_model"] = RUNTIME_ID
-        d["metadata"]["bedrock_models_selected"] = [RUNTIME_ID, EMB_ID]
-        d["ai_architecture"]["bedrock_models"] = [r for r in d["ai_architecture"]["bedrock_models"] if r["aws_model_id"] != MANTLE_ID]
-        row = _row(d, RUNTIME_ID)
-        row["capability_gaps"] = []
-        row["endpoint_assumption"] = DESIGN.ASSUMPTION.format(ids=", ".join(b["workload_id"] for b in d["design_blocks"][:2]))
+        _two_gpt_workloads(d, p, f, CHAT, [])
+        _same_target(d, [_runtime_row([W_RESP, W_CHAT], "chat_completions")])
     assert _mutated(MANTLE_FIXTURE, mutate) == set()
+
+
+def test_check_rejects_a_shared_row_that_changes_one_workloads_api() -> None:
+    def mutate(d, p, f):
+        _two_gpt_workloads(d, p, f, "openai.responses.create", [])
+        _same_target(d, [_runtime_row([W_RESP, W_CHAT], "chat_completions")])
+    assert _mutated(MANTLE_FIXTURE, mutate) == {"client_api_changed"}
+
+
+def test_check_accepts_split_runtime_rows_for_responses_and_chat_on_one_target() -> None:
+    def mutate(d, p, f):
+        _two_gpt_workloads(d, p, f, "openai.responses.create", [])
+        _same_target(d, [_runtime_row([W_RESP], "responses"), _runtime_row([W_CHAT], "chat_completions")])
+    assert _mutated(MANTLE_FIXTURE, mutate) == set()
+
+
+def test_check_accepts_projects_mantle_rows_that_keep_each_workloads_api() -> None:
+    req = {"workload_id": "*", "selector": "projects", "source": "user"}
+    def mutate(d, p, f):
+        _two_gpt_workloads(d, p, f, "openai.responses.create", [req])
+        _row(d, EMB_ID)["capability_gaps"] = ["projects (user, Q10.5): embeddings have no bedrock-mantle path"]
+        _same_target(d, [_mantle_row("mantle_openai_responses", "responses", req), _mantle_row("mantle_openai_chat", "chat_completions", req)])
+    assert _mutated(MANTLE_FIXTURE, mutate) == set()
+    def one_row(d, p, f):
+        mutate(d, p, f)
+        d["ai_architecture"]["bedrock_models"].pop(1)
+    assert "mantle_path_api" in _mutated(MANTLE_FIXTURE, one_row)
+
+
+def test_check_honours_distinct_named_mantle_requirements_on_one_target() -> None:
+    first = {"workload_id": W_RESP, "selector": "projects", "source": "user"}
+    second = {"workload_id": W_CHAT, "selector": "projects", "source": "user"}
+    def mutate(d, p, f):
+        _two_gpt_workloads(d, p, f, "openai.responses.create", [first, second])
+        _same_target(d, [_mantle_row("mantle_openai_responses", "responses", first), _mantle_row("mantle_openai_chat", "chat_completions", second)])
+    assert _mutated(MANTLE_FIXTURE, mutate) == set()
+    def dropped(d, p, f):
+        mutate(d, p, f)
+        d["ai_architecture"]["bedrock_models"][1]["mantle_requirement"] = first
+    assert "block_without_row" in _mutated(MANTLE_FIXTURE, dropped)
+    def one_row(d, p, f):
+        mutate(d, p, f)
+        d["ai_architecture"]["bedrock_models"].pop(1)
+    assert "mantle_requirement_unrecorded" in _mutated(MANTLE_FIXTURE, one_row)
 
 
 def test_check_allows_one_mantle_and_one_runtime_row_for_the_same_model_and_target() -> None:
@@ -489,6 +608,70 @@ def test_check_allows_one_mantle_and_one_runtime_row_for_the_same_model_and_targ
     assert "duplicate_row" not in codes and "block_without_row" not in codes
     twice = _mutated(MANTLE_FIXTURE, lambda d, p, f: d["ai_architecture"]["bedrock_models"].append(copy.deepcopy(_row(d, MANTLE_ID))))
     assert "duplicate_row" in twice
+
+
+def _runtime_web_search(target: str, path: str, api: str):
+    def mutate(d, p, f):
+        row = _row(d, MANTLE_ID)
+        row.update(aws_model_id=target, migration_path=path, required_client_api=api,
+                   capability_gaps=["web_search (detected, app/research.py:14) stays on bedrock-runtime"],
+                   endpoint_assumption=DESIGN.ASSUMPTION.format(ids=W_RESP), model_change=path == "converse")
+        row.pop("mantle_selector"); row.pop("mantle_requirement")
+        d["design_blocks"][0]["target_bedrock_model"] = target
+        d["metadata"]["bedrock_models_selected"][0] = target
+    return mutate
+
+
+def test_check_rejects_a_same_protocol_runtime_row_that_only_mentions_the_mantle_selector() -> None:
+    codes = _mutated(MANTLE_FIXTURE, _runtime_web_search("us.openai.gpt-5.5x", "runtime_openai_cris", "responses"))
+    assert codes == {"mantle_requirement_unhonored"}
+
+
+def test_check_accepts_a_cross_family_runtime_row_that_discloses_the_selector() -> None:
+    assert _mutated(MANTLE_FIXTURE, _runtime_web_search("us.anthropic.claude-sonnet-5-5", "converse", "converse")) == set()
+
+
+@pytest.mark.parametrize(("mutate", "code"), [
+    (lambda d: d["ai_architecture"]["bedrock_models"].append(copy.deepcopy(d["ai_architecture"]["bedrock_models"][1])), "duplicate_row"),
+    (lambda d: d["ai_architecture"]["bedrock_models"].append("row"), "row_not_object"),
+    (lambda d: d["ai_architecture"]["bedrock_models"].append(None), "row_not_object"),
+    (lambda d: d["ai_architecture"]["bedrock_models"][1].update(capability_gaps="web_search"), "row_bad_list"),
+    (lambda d: d["ai_architecture"]["bedrock_models"][0].update(mantle_requirement="web_search"), "row_bad_type"),
+    (lambda d: d["ai_architecture"]["bedrock_models"][0].update(aws_model_id=7), "row_bad_type"),
+    (lambda d: d["ai_architecture"]["capability_mapping"].update(text_generation="full"), "capability_mapping"),
+    (lambda d: d["ai_architecture"].update(tiered_strategy=[]), "tiered_strategy"),
+    (lambda d: d["multi_model_warnings"].append({"type": ["x"], "message": "m"}), "multi_model_warning_shape"),
+], ids=["duplicate-same-lane", "string-row", "null-row", "gaps-string", "requirement-string", "id-number",
+        "mapping-string", "tiered-list", "warning-type-list"])
+def test_cli_returns_structured_errors_for_malformed_rows(mutate, code, tmp_path: Path, capsys) -> None:
+    for name in ("ai-workload-profile.json", "preferences.json"):
+        shutil.copy(MANTLE_FIXTURE / name, tmp_path / name)
+    design = copy.deepcopy(_load(MANTLE_FIXTURE)[0])
+    mutate(design)
+    (tmp_path / "aws-design-ai.json").write_text(json.dumps(design))
+    assert DESIGN.main(["check", str(tmp_path)]) == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["ok"] is False and code in {e["code"] for e in out["errors"]}
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda f: f.update(metadata="x"),
+    lambda f: f.update(ai_constraints=[]),
+    lambda f: f["ai_constraints"].update(ai_priority="balanced"),
+    lambda f: f["ai_constraints"]["ai_token_volume"].update(value=["high"]),
+    lambda f: f["ai_constraints"]["mantle_requirements"].update(value="none"),
+    lambda f: f["ai_constraints"]["mantle_requirements"].update(value=["web_search"]),
+    lambda f: f["design_constraints"]["compliance"].update(value="gdpr"),
+], ids=["metadata", "section", "entry", "volume-list", "requirements-string", "requirement-entry", "compliance-string"])
+def test_cli_rejects_malformed_preferences_with_json(mutate, tmp_path: Path, capsys) -> None:
+    for name in ("ai-workload-profile.json", "aws-design-ai.json"):
+        shutil.copy(MANTLE_FIXTURE / name, tmp_path / name)
+    prefs = copy.deepcopy(_load(MANTLE_FIXTURE)[2])
+    mutate(prefs)
+    (tmp_path / "preferences.json").write_text(json.dumps(prefs))
+    for command in ("plan", "check"):
+        assert DESIGN.main([command, str(tmp_path)]) == 1
+        assert json.loads(capsys.readouterr().out)["error"] == "preferences_invalid"
 
 
 @pytest.mark.parametrize(("service", "ok"), [("transcribe", True), ("polly", False), (None, True)])

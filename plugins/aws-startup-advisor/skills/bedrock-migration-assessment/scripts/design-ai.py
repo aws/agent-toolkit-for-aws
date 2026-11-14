@@ -48,6 +48,9 @@ ASSESSMENTS = ("strong_migrate", "moderate_migrate", "weak_migrate", "recommend_
 QUOTA_RISKS = {"low", "medium", "high"}
 WARNING_TYPES = {"embeddings_reindex", "cascade_pair", "multi_model_tiered", "image_separate", "speech_separate"}
 AGENTIC_APPROACHES = {"retarget", "harness", "strands", "undecided"}
+ROW_STRING_KEYS = ("source_model_id", "aws_model_id", "honest_assessment", "source_provider_price", "bedrock_price",
+                   "price_comparison", "migration_complexity", "migration_path", "quota_risk", "required_client_api",
+                   "mantle_selector", "endpoint_assumption")
 ROW_KEYS = ("source_model_id", "aws_model_id", "capabilities_matched", "capability_gaps", "honest_assessment",
             "source_provider_price", "bedrock_price", "price_comparison", "migration_complexity", "model_change",
             "migration_path", "quota_risk", "required_client_api")
@@ -57,6 +60,7 @@ HIGH_VOLUMES = {"high", "very_high"}
 SPEECH_SERVICES = {"speech_to_text": "transcribe", "text_to_speech": "polly"}
 DEFAULTS = {"ai_priority": "balanced", "ai_latency": "important", "ai_complexity": "moderate", "ai_token_volume": "medium",
             "ai_vision": "text-only", "ai_critical_feature": "none", "cross_cloud": "latency-acceptable"}
+ASSUMPTION_PREFIX = "No Mantle-only requirement was recorded for "
 ASSUMPTION = ("No Mantle-only requirement was recorded for {ids}; bedrock-runtime selected. If this workload needs "
               "background inference, server-side tools, Projects/Workspaces, or single-Region processing, re-run Clarify.")
 GUIDE_DIR = "references/vendored/ai"
@@ -99,6 +103,33 @@ def _constraint(prefs: dict, section: str, key: str, default: Any = None) -> dic
     if isinstance(entry, dict) and "value" in entry:
         return {"value": entry["value"], "chosen_by": entry.get("chosen_by")}
     return {"value": default, "chosen_by": "absent"}
+
+
+def _check_preferences(prefs: dict) -> None:
+    def bad(where: str) -> None:
+        raise DesignInputError("preferences_invalid", f"preferences.json {where}; re-run Clarify")
+    if not isinstance(prefs.get("metadata"), dict):
+        bad("metadata must be an object")
+    for section in ("design_constraints", "ai_constraints", "startup_constraints"):
+        if section in prefs and not isinstance(prefs[section], dict):
+            bad(f"{section} must be an object")
+        for key, entry in (prefs.get(section) or {}).items():
+            if not isinstance(entry, dict) or "value" not in entry:
+                bad(f"{section}.{key} must be an object with a value")
+    ai, design = prefs.get("ai_constraints") or {}, prefs.get("design_constraints") or {}
+    for key in DEFAULTS:
+        if key in ai and not isinstance(ai[key]["value"], (str, list)):
+            bad(f"ai_constraints.{key}.value must be a string or a list")
+    if "ai_token_volume" in ai and not isinstance(ai["ai_token_volume"]["value"], str):
+        bad("ai_constraints.ai_token_volume.value must be a string")
+    if "target_region" in design and not isinstance(design["target_region"]["value"], str):
+        bad("design_constraints.target_region.value must be a string")
+    if "compliance" in design and not (isinstance(design["compliance"]["value"], list)
+                                       and all(isinstance(v, str) for v in design["compliance"]["value"])):
+        bad("design_constraints.compliance.value must be a list of strings")
+    if "mantle_requirements" in ai and not (isinstance(ai["mantle_requirements"]["value"], list)
+                                            and all(isinstance(v, dict) for v in ai["mantle_requirements"]["value"])):
+        bad("ai_constraints.mantle_requirements.value must be a list of objects")
 
 
 def _requests_for(row: dict, prefs: dict, profile: dict) -> list[dict]:
@@ -177,7 +208,8 @@ def _rows(profile: dict) -> list[dict]:
 
 
 def build_plan(profile: dict, prefs: dict) -> dict:
-    if (prefs.get("metadata") or {}).get("migration_type") != "ai-only":
+    _check_preferences(prefs)
+    if prefs["metadata"].get("migration_type") != "ai-only":
         raise DesignInputError("preferences_not_ai_only", "preferences.json metadata.migration_type must be \"ai-only\"")
     rows = _rows(profile)
     for row in rows:
@@ -214,6 +246,26 @@ def build_plan(profile: dict, prefs: dict) -> dict:
 
 def _err(errors: list, code: str, detail: str) -> None:
     errors.append({"code": code, "detail": detail})
+
+
+def _row_shape_errors(rows: list) -> list[dict]:
+    errors: list[dict] = []
+    for index, row in enumerate(rows):
+        label = f"bedrock_models[{index}]"
+        if not isinstance(row, dict):
+            _err(errors, "row_not_object", f"{label} must be an object")
+            continue
+        for key in ROW_STRING_KEYS:
+            if key in row and not isinstance(row[key], str):
+                _err(errors, "row_bad_type", f"{label}.{key} must be a string")
+        for key in ("capabilities_matched", "capability_gaps"):
+            if key in row and not (isinstance(row[key], list) and all(isinstance(v, str) for v in row[key])):
+                _err(errors, "row_bad_list", f"{label}.{key} must be a list of strings")
+        if "mantle_requirement" in row and not isinstance(row["mantle_requirement"], dict):
+            _err(errors, "row_bad_type", f"{label}.mantle_requirement must be an object")
+        if "model_change" in row and not isinstance(row["model_change"], bool):
+            _err(errors, "row_bad_model_change", f"{label}.model_change must be a boolean")
+    return errors
 
 
 def _check_row_shape(row: dict, label: str, errors: list) -> None:
@@ -283,23 +335,31 @@ def check_design(design: Any, profile: dict, prefs: dict, schema: dict | None = 
     if not isinstance(bedrock_rows, list) or (targets and not bedrock_rows):
         _err(errors, "no_bedrock_models", "ai_architecture.bedrock_models must list one row per source model and target")
         return {"ok": False, "errors": errors}
+    shape = _row_shape_errors(bedrock_rows)
+    if shape:
+        return {"ok": False, "errors": errors + shape}
     by_key: dict[tuple[str, str], list[dict]] = {}
+    seen: set[str] = set()
     for row in bedrock_rows:
         label = f"{row.get('source_model_id')}->{row.get('aws_model_id')}"
         _check_row_shape(row, label, errors)
-        key = (row.get("source_model_id"), row.get("aws_model_id"))
-        lanes = [str(r.get("migration_path", "")).startswith("mantle_") for r in by_key.get(key, [])]
-        if str(row.get("migration_path", "")).startswith("mantle_") in lanes:
-            _err(errors, "duplicate_row", f"{label}: one Mantle row and one non-Mantle row at most per source model and target")
-        by_key.setdefault(key, []).append(row)
+        identity = json.dumps([row.get(k) for k in ("source_model_id", "aws_model_id", "migration_path", "required_client_api", "mantle_requirement")],
+                              sort_keys=True)
+        if identity in seen:
+            _err(errors, "duplicate_row", f"{label}: two rows share the same path, client API and mantle_requirement")
+        seen.add(identity)
+        by_key.setdefault((row.get("source_model_id"), row.get("aws_model_id")), []).append(row)
+    if any(e["code"] == "duplicate_row" for e in errors):
+        return {"ok": False, "errors": errors}
     assigned: dict[int, list[str]] = {}
     pairs = []
     for block, plan_row in zip(blocks, rows):
         if block["target_bedrock_model"] is None:
             continue
-        row = _row_for(plan_row, by_key.get((block["model_id"], block["target_bedrock_model"]), []))
+        row = _row_for(block["workload_id"], plan_row, by_key.get((block["model_id"], block["target_bedrock_model"]), []))
         if row is None:
-            _err(errors, "block_without_row", f"{block['workload_id']}: no bedrock_models row for {block['model_id']} -> {block['target_bedrock_model']}")
+            _err(errors, "block_without_row", f"{block['workload_id']}: no bedrock_models row for {block['model_id']} -> {block['target_bedrock_model']} "
+                 "that carries this workload's mantle_requirement or names it in endpoint_assumption")
             continue
         assigned.setdefault(id(row), []).append(block["workload_id"])
         pairs.append((block, plan_row, row))
@@ -317,7 +377,7 @@ def check_design(design: Any, profile: dict, prefs: dict, schema: dict | None = 
     if (overall == "recommend_stay") != isinstance(reason, str) or (isinstance(reason, str) and not reason.strip()):
         _err(errors, "assessment_reason", "honest_assessment_reason is a non-cost blocker for recommend_stay and null otherwise")
     tiered = arch.get("tiered_strategy")
-    if plan["tiered_strategy_required"] != isinstance(tiered, dict):
+    if not (isinstance(tiered, dict) if plan["tiered_strategy_required"] else tiered is None):
         _err(errors, "tiered_strategy", f"tiered_strategy must be {'an object' if plan['tiered_strategy_required'] else 'null'} for this token volume")
     if plan["quota_risk_floor"]:
         for row in bedrock_rows:
@@ -348,7 +408,8 @@ def check_design(design: Any, profile: dict, prefs: dict, schema: dict | None = 
             _err(errors, "regional_warning_shape", "each regional_warnings entry needs service, target_region, nearest_available, impact")
     types = set()
     for item in design["multi_model_warnings"]:
-        if not isinstance(item, dict) or item.get("type") not in WARNING_TYPES or not isinstance(item.get("message"), str):
+        if not isinstance(item, dict) or not isinstance(item.get("type"), str) or item["type"] not in WARNING_TYPES \
+                or not isinstance(item.get("message"), str):
             _err(errors, "multi_model_warning_shape", f"multi_model_warnings entry {item!r}")
         else:
             types.add(item["type"])
@@ -382,16 +443,31 @@ def check_design(design: Any, profile: dict, prefs: dict, schema: dict | None = 
     return {"ok": not errors, "errors": errors} if errors else {"ok": True, "bedrock_models": len(bedrock_rows), "design_blocks": len(blocks)}
 
 
-def _mantle_paths(provider: str, selector: str) -> set[str]:
-    return {MANTLE_PATH[a] for a in SELECTOR_APIS.get(selector, set()) & PROVIDER_APIS.get(provider, set())}
+def _mantle_paths(provider: str, api: str | None, selector: str) -> set[str]:
+    usable = SELECTOR_APIS.get(selector, set()) & PROVIDER_APIS.get(provider, set())
+    return {MANTLE_PATH[api]} if api in usable else {MANTLE_PATH[a] for a in usable}
 
 
-def _row_for(plan_row: dict, candidates: list[dict]) -> dict | None:
-    if len(candidates) < 2:
-        return candidates[0] if candidates else None
-    mantle = next(r for r in candidates if str(r.get("migration_path", "")).startswith("mantle_"))
-    runtime = next(r for r in candidates if r is not mantle)
-    return mantle if mantle.get("mantle_requirement") in plan_row["mantle_requests"] else runtime
+def _names(row: dict, workload_id: str) -> bool:
+    text = str(row.get("endpoint_assumption", ""))
+    if not text.startswith(ASSUMPTION_PREFIX):
+        return False
+    return workload_id in [w.strip() for w in text[len(ASSUMPTION_PREFIX):].split(";", 1)[0].split(",")]
+
+
+def _row_for(workload_id: str, plan_row: dict, candidates: list[dict]) -> dict | None:
+    if len(candidates) == 1:
+        return candidates[0]
+    mantle = [r for r in candidates if str(r.get("migration_path", "")).startswith("mantle_")]
+    runtime = [r for r in candidates if r not in mantle]
+    chosen = [r for r in mantle if r.get("mantle_requirement") in plan_row["mantle_requests"]
+              or (isinstance(r.get("mantle_requirement"), dict) and r["mantle_requirement"].get("source") == "catalog"
+                  and r["mantle_requirement"].get("workload_id") == workload_id)]
+    if len(chosen) > 1:
+        chosen = [r for r in chosen if r.get("migration_path") in
+                  _mantle_paths(plan_row["provider"], plan_row["source_api"], str(r.get("mantle_selector")))]
+    chosen = chosen or [r for r in runtime if _names(r, workload_id)]
+    return chosen[0] if len(chosen) == 1 else None
 
 
 def _check_endpoint(block: dict, plan_row: dict, row: dict, row_workloads: list[str], design: dict, errors: list) -> None:
@@ -416,11 +492,20 @@ def _check_endpoint(block: dict, plan_row: dict, row: dict, row_workloads: list[
                 _err(errors, "mantle_requirement_evidence", f"{label}: a catalog requirement names the catalog row as evidence")
         elif req not in requests:
             _err(errors, "mantle_requirement_unrecorded", f"{label}: mantle_requirement must copy a Clarify mantle_requirements entry for this workload")
-        elif path not in _mantle_paths(plan_row["provider"], selector):
-            _err(errors, "mantle_path_api", f"{label}: {path} cannot serve {selector} for a {plan_row['provider']} model")
+        elif path not in _mantle_paths(plan_row["provider"], plan_row["source_api"], selector):
+            _err(errors, "mantle_path_api", f"{label}: {path} does not keep the source API {plan_row['source_api']!r} or serve {selector} for a {plan_row['provider']} model")
         return
     if "mantle_selector" in row or "mantle_requirement" in row:
         _err(errors, "runtime_row_selector", f"{label}: a non-Mantle row carries no mantle_selector or mantle_requirement")
+    lane = plan_row["mantle"]
+    if lane["lane"] == "mantle" and path in ("runtime_openai_cris", "runtime_messages"):
+        _err(errors, "mantle_requirement_unhonored", f"{label}: the recorded {lane['selector']} requirement has a Mantle path for this "
+             f"same-protocol target; write {lane['mantle_path']} with that mantle_requirement instead of disclosing it")
+    api = row.get("required_client_api")
+    if path == "runtime_openai_cris" and plan_row["source_api"] in ("responses", "chat_completions") and api not in (plan_row["source_api"], "converse"):
+        _err(errors, "client_api_changed", f"{label}: the source calls {plan_row['source_api']}; required_client_api {api!r} changes it without a Converse-only need")
+    if path == "runtime_messages" and plan_row["source_api"] not in (None, "messages", "framework"):
+        _err(errors, "client_api_changed", f"{label}: runtime_messages is for an Anthropic Messages source, not {plan_row['source_api']!r}")
     expected = ASSUMPTION.format(ids=", ".join(row_workloads))
     if row.get("endpoint_assumption") != expected:
         _err(errors, "endpoint_assumption", f"{label}: endpoint_assumption must be exactly: {expected}")

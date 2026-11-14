@@ -10,12 +10,15 @@ Chooses a Bedrock target, endpoint, and client API for every workload and writes
 python3 <SKILL_BASE>/scripts/design-ai.py plan $MIGRATION_DIR
 ```
 
+Read the JSON it prints. Do not redirect it to a file: this phase writes nothing outside `$MIGRATION_DIR`, and no temporary files.
+
 On a non-zero exit, stop and tell the user:
 
 | `error`                   | What to tell the user                                                                 |
 | ------------------------- | ------------------------------------------------------------------------------------- |
 | `preferences_not_found`   | Clarify has not finished; resume at Clarify.                                          |
 | `preferences_not_ai_only` | `preferences.json` was not written by this skill's Clarify; re-run Clarify.           |
+| `preferences_invalid`     | A `preferences.json` field has the wrong type; quote `detail` and re-run Clarify.     |
 | `profile_*`               | The profile no longer validates; quote `detail` and re-run Discover.                  |
 | any other value           | Quote `detail`.                                                                       |
 
@@ -91,8 +94,8 @@ A Claude target from any source follows the target contract for that model in `a
 - **Disclose** means: the row keeps `bedrock-runtime`, writes `endpoint_assumption`, and names the selector, its `source`, and its `evidence` in `capability_gaps[]` and the rationale. A recorded requirement is never dropped silently.
 - **`mantle_only_model_or_api`** is never in Clarify. When the chosen model or API exists only on `bedrock-mantle` per `ai-openai-to-bedrock.md` and `openai-on-bedrock.md`, write the Mantle path for the source API with `mantle_requirement: {"workload_id": "<id>", "selector": "mantle_only_model_or_api", "source": "catalog", "evidence": "<catalog file and row>"}`.
 - **`endpoint_assumption`** is exactly: `No Mantle-only requirement was recorded for <ids>; bedrock-runtime selected. If this workload needs background inference, server-side tools, Projects/Workspaces, or single-Region processing, re-run Clarify.`, where `<ids>` are the workload ids on that row, joined by a comma and a space, with no quotes or backticks.
-- **`migration_path` and `required_client_api`:** a same-model GPT target on `bedrock-runtime` is `runtime_openai_cris` with a CRIS-prefixed id and the source's own API (`responses` or `chat_completions`); `converse` only for a Converse-only need such as Guardrails. An Anthropic SDK source is `runtime_messages` with `messages`. A cross-family text target is `converse` with `converse`. An embedding or image target is `direct` with `invoke`. A bare `openai.gpt-*` id is a Mantle id and never goes on a non-Mantle row.
-- Two workloads with the same source model and target share one row, unless only one of them takes Mantle: then write one Mantle row and one non-Mantle row.
+- **`migration_path` and `required_client_api`:** a same-model GPT target on `bedrock-runtime` is `runtime_openai_cris` with a CRIS-prefixed id and the source's own API (`responses` or `chat_completions`); `converse` only when the workload needs a feature that `ai-openai-to-bedrock.md` lists on Converse alone for that model, such as Guardrails on GPT-5.x or GPT-6 Astra. GPT-6 Sol and GPT-6 Luna list Guardrails on Responses and Chat Completions too, and GPT-6.1 Sol on Chat Completions, so those keep the source API. An Anthropic SDK source is `runtime_messages` with `messages`. A cross-family text target is `converse` with `converse`. An embedding or image target is `direct` with `invoke`. A bare `openai.gpt-*` id is a Mantle id and never goes on a non-Mantle row.
+- Two workloads with the same source model and target share one row only when they also share the `migration_path`, `required_client_api`, and `mantle_requirement`. Otherwise give each its own row, so no workload's API changes and no recorded requirement is dropped.
 
 ## Step 4: Assessment, price, and quota per row
 
@@ -129,7 +132,7 @@ Write `$MIGRATION_DIR/aws-design-ai.json` with `phase: "design"`, `focus: "ai"`,
 python3 <SKILL_BASE>/scripts/design-ai.py check $MIGRATION_DIR
 ```
 
-Fix every reported `errors[]` entry and run the check again until it prints `"ok": true`. Do not complete Design while it fails. The check enforces the contract, the verbatim projection, the row order, the endpoint rules in Step 3, and the assessment, quota, and warning rules above; it cannot judge the model choice itself, so Steps 2 and 4 stay your responsibility.
+Fix every reported `errors[]` entry and run the check again until it prints `"ok": true`. Do not complete Design while it fails. The check enforces the contract, the verbatim projection, the row order, the endpoint and client-API rules in Step 3, the weakest-row roll-up and the `recommend_stay` reason, and the quota and warning rules above. It cannot judge the model choice or the Step 4 price comparison, so those stay your responsibility.
 
 ## Step 8: Present the summary
 
