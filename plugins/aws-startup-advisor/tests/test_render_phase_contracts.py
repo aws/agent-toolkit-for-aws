@@ -306,3 +306,45 @@ def test_render_is_registered_without_mcp_or_plan_handoff_drift() -> None:
     mcp = json.loads((PLUGIN_ROOT / ".mcp.json").read_text())
     assert set(mcp["mcpServers"]) == {"aws-mcp"}
     assert not (SKILL_ROOT / "plan.json").exists()
+CLARIFY_ROOT = PHASE_ROOT / "clarify"
+NEW_CLARIFY_FRAGMENTS = ["identity", "database-migration", "cutover", "delivery", "governance"]
+def clarify_question_rows() -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for fragment_id in NEW_CLARIFY_FRAGMENTS:
+        header: list[str] = []
+        for line in (CLARIFY_ROOT / f"clarify-{fragment_id}.md").read_text(encoding="utf-8").splitlines():
+            if not line.startswith("|"):
+                continue
+            cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+            if "`question_id`" in cells:
+                header = [cell.strip("`") for cell in cells]
+            elif header and not set(line) <= set("|- "):
+                rows.append({**dict(zip(header, cells)), "fragment": fragment_id})
+    return rows
+def test_clarify_depth_fragments_are_registered_and_assembled() -> None:
+    clarify = phase("clarify")
+    registered = {fragment["_id"]: fragment for fragment in clarify["_fragments"]}
+    assert set(NEW_CLARIFY_FRAGMENTS) <= set(registered)
+    assert registered["database-migration"]["_trigger"] == {"_when": "the inventory contains PostgreSQL or Key Value"}
+    for fragment_id in ("identity", "cutover", "delivery", "governance"):
+        assert registered[fragment_id]["_trigger"] == {"_always": True}
+    assembler = frontmatter(CLARIFY_ROOT / "clarify-assemble.md")
+    assert assembler["_reads"] == list(registered)
+def test_every_new_clarify_question_names_a_decision_and_a_consumer() -> None:
+    rows = clarify_question_rows()
+    ids = [row["question_id"].strip("`") for row in rows]
+    assert len(ids) == len(set(ids))
+    assert len(ids) == 15
+    for row in rows:
+        assert row["decision_changed"], row
+        assert row["Consumer"], row
+        assert row["Default and consequence"], row
+    consumers = " ".join(
+        (SKILL_ROOT / "references" / path).read_text(encoding="utf-8")
+        for path in (
+            "design-refs/data.md", "design-refs/networking.md", "design-refs/delivery.md",
+            "phases/estimate/estimate-infra.md", "phases/generate/generate-artifacts-docs.md",
+        )
+    )
+    for question_id in ids:
+        assert question_id in consumers, f"{question_id} has no downstream reference"

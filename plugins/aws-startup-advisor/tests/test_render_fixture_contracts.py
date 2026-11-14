@@ -1145,3 +1145,13 @@ def test_complete_mocked_pipeline_replays_all_phases_from_same_inventory(tmp_pat
     second = _materialize_independent_mixed_pipeline(tmp_path / "second")
     assert first == second
 
+def test_golden_preferences_cover_every_new_clarify_question() -> None:
+    from test_render_phase_contracts import clarify_question_rows
+    expected_ids = {row["question_id"].strip("`") for row in clarify_question_rows()}
+    questions = load(EXPECTED / "preferences.json")["questions"]
+    assert expected_ids <= {row["question_id"] for row in questions}
+    keys = [((row["resource_id"] or "").encode(), row["question_id"].encode()) for row in questions]
+    assert keys == sorted(keys) and len(set(keys)) == len(keys)
+    for row in questions:
+        if row["question_id"] in expected_ids:
+            assert row["decision_changed"].strip()

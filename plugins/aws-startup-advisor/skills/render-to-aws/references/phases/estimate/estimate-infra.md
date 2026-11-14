@@ -35,4 +35,4 @@ For each scenario:
 4. Require every design mapping to produce a priced, no-direct-charge, or explicitly unpriced line.
 5. Compute delta only from the two known-cost floors and carry incompleteness into the explanation.
 
-Human labor, migration engineering, and downtime are considerations with no dollar amount. Commitment opportunities follow the vendored eligibility matrix and do not reduce the capacity-preserving on-demand total; Compute Savings Plans remain percent-only until 30–90 days of AWS usage establishes a floor.
+Add a CloudWatch Logs ingestion and storage line sized from `observability.log_retention`, and a KMS line for each store with `data.regulated_data` true. When `cost.budget_guardrail` is a limit, compare the known-cost floor to it in the explanation and say when the floor is incomplete. Human labor, migration engineering, and downtime are considerations with no dollar amount. Commitment opportunities follow the vendored eligibility matrix and do not reduce the capacity-preserving on-demand total; Compute Savings Plans remain percent-only until 30–90 days of AWS usage establishes a floor.

@@ -28,6 +28,21 @@ _fragments:
   - _id: network
     _trigger: { _when: "the inventory contains public domains, private services, routes, IP rules, or cross-service calls" }
     _file: phases/clarify/clarify-network.md
+  - _id: identity
+    _trigger: { _always: true }
+    _file: phases/clarify/clarify-identity.md
+  - _id: database-migration
+    _trigger: { _when: "the inventory contains PostgreSQL or Key Value" }
+    _file: phases/clarify/clarify-database-migration.md
+  - _id: cutover
+    _trigger: { _always: true }
+    _file: phases/clarify/clarify-cutover.md
+  - _id: delivery
+    _trigger: { _always: true }
+    _file: phases/clarify/clarify-delivery.md
+  - _id: governance
+    _trigger: { _always: true }
+    _file: phases/clarify/clarify-governance.md
 _assemble:
   _file: phases/clarify/clarify-assemble.md
 _produces:

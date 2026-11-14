@@ -8,12 +8,14 @@ Candidate set: `Amazon RDS for PostgreSQL`, `Amazon Aurora PostgreSQL`, `Self-ma
 2. Select Aurora when an Aurora-specific outcome is required: Global Database, Aurora reader/autoscaling behavior, Aurora Serverless behavior, or an evidence-backed availability/performance requirement that RDS cannot satisfy.
 3. Select RDS for a conventional single-instance or HA PostgreSQL workload with stable demand when it satisfies RTO/RPO, connection, storage, and scaling requirements and no Aurora-specific rule fired.
 4. When both managed targets satisfy all requirements, estimate both internally at the required topology and select the lower projected cost unless the user explicitly values an Aurora-only benefit enough to justify its premium.
-5. If the required facts for rules 1–4 are missing, return only those question IDs to Clarify.
-6. If both remain valid with no demonstrated differentiator, select RDS as the lower-change startup default. Record this default and reject Aurora with the trigger that would have selected it.
+5. Clarify inputs `database.extensions` (rule 1) and `database.reader_topology` (rule 2) are decisive when present; `reader_topology` also sets the reader count carried into Estimate. When `data.regulated_data` is true for a store, its mapping selects a customer-managed KMS key and in-Region-only backups and rejects cross-Region replicas.
+6. If the required facts for rules 1–4 are missing, return only those question IDs to Clarify.
+7. If both remain valid with no demonstrated differentiator, select RDS as the lower-change startup default. Record this default and reject Aurora with the trigger that would have selected it.
 
 The output has one target and records evidence, every rule evaluated/fired, questions/defaults, and both rejected candidates. It never says “RDS or Aurora.”
 
 ## PostgreSQL migration method
+Clarify inputs per PostgreSQL resource: `database.downtime_tolerance` and `database.replication_privilege`. A `not_available` privilege answer rejects logical replication and AWS DMS CDC, with that answer as the rejection reason.
 
 Candidate set: `pg_dump and pg_restore`, `logical replication`, `AWS Database Migration Service`.
 
@@ -31,6 +33,6 @@ Candidate set: `Amazon ElastiCache for Valkey serverless`, `Amazon ElastiCache f
 3. Select ElastiCache Serverless when compatibility is established, demand is variable/unknown, serverless constraints fit, and persistence/eviction semantics are preserved.
 4. Select node-based ElastiCache when stable capacity, node-level control, reserved-node economics, or serverless incompatibility is established.
 5. If both ElastiCache modes fit and no differentiator exists, select node-based ElastiCache sized from the source memory plan as the capacity-preserving startup default; record the trigger for Serverless.
-6. Missing role, persistence, eviction, compatibility, cross-Region, or sizing facts return to Clarify when they can change the winner.
+6. Missing role, persistence, eviction, compatibility, cross-Region, or sizing facts return to Clarify when they can change the winner. `key_value.migration_strategy` does not change the target; it selects the migration method written to Generate.
 
 A source with persistence off is described as a cache/ephemeral queue unless user evidence says otherwise. Preserve maxmemory policy, pub/sub, streams, Lua, accepted data loss, failover, and connection behavior.
