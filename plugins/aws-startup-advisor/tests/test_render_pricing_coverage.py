@@ -81,6 +81,15 @@ def test_rds_sizing_classes_have_rate_rows() -> None:
     assert classes - set(PRICING["rds_postgresql"]["instances"]) == set()
 
 
+def test_aurora_sizing_classes_have_rate_rows_or_unavailable_entries() -> None:
+    classes = {row["instance_class"] for row in _load(DESIGN_DIR / "postgres-rds-sizing.json")["classes"]}
+    aurora = PRICING["aurora_postgresql"]
+    covered = set(aurora["instances"]) | set(aurora["_unavailable_instances"])
+    assert classes - covered == set()
+    assert not set(aurora["instances"]) & set(aurora["_unavailable_instances"])
+    assert all(reason.strip() for reason in aurora["_unavailable_instances"].values())
+
+
 def test_elasticache_sizing_nodes_have_rate_rows() -> None:
     nodes = {row["node_type"] for row in _load(DESIGN_DIR / "keyvalue-elasticache-sizing.json")["node_targets"]}
     assert nodes - set(PRICING["elasticache"]["nodes"]) == set()

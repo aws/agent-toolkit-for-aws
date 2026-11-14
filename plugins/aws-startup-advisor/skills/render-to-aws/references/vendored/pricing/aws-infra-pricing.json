@@ -88,6 +88,11 @@
       "db.r6g.16xlarge": 8.306
     },
     "_instances_note": "Re-verified via the AWS Pricing MCP server on 2026-10-05 (AmazonRDS, databaseEngine=Aurora PostgreSQL, deploymentOption=Single-AZ, non-IO-optimized). r6g.xlarge/2xlarge/4xlarge/8xlarge/16xlarge moved down ~6% from the previous extrapolated values; db.t4g.* and db.r6g.large were unchanged.",
+    "_unavailable_instances": {
+      "db.t4g.micro": "No Aurora PostgreSQL row in the AWS Price List (AmazonRDS, databaseEngine=Aurora PostgreSQL, us-east-1; queried via the AWS Pricing MCP server on 2026-11-14, version 20261113215233). Do not price it from rds_postgresql. An Aurora design must pick db.t4g.medium or larger.",
+      "db.t4g.small": "No Aurora PostgreSQL row in the AWS Price List (same query and date as db.t4g.micro). An Aurora design must pick db.t4g.medium or larger.",
+      "db.m6g.large": "No Aurora PostgreSQL row in the AWS Price List (same query and date as db.t4g.micro). Use db.r6g.large for Aurora."
+    },
     "storage_per_gb_month": 0.1,
     "io_per_million": 0.2
   },
