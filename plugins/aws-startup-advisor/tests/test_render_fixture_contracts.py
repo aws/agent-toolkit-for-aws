@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import os
 import re
 import shutil
@@ -1145,3 +1146,41 @@ def test_complete_mocked_pipeline_replays_all_phases_from_same_inventory(tmp_pat
     second = _materialize_independent_mixed_pipeline(tmp_path / "second")
     assert first == second
 
+
+
+def test_golden_baseline_and_operations_terraform() -> None:
+    terraform = EXPECTED / "generated/terraform"
+    for name in ("baseline.tf", "monitoring.tf", "backup.tf"):
+        assert (terraform / name).is_file(), name
+    assert not (terraform / "kms.tf").exists()
+    baseline = (terraform / "baseline.tf").read_text(encoding="utf-8")
+    for resource in (
+        "aws_iam_account_password_policy", "aws_s3_account_public_access_block",
+        "aws_ebs_encryption_by_default", "aws_accessanalyzer_analyzer",
+        "aws_ec2_instance_metadata_defaults", "aws_cloudtrail", "aws_budgets_budget",
+        "aws_guardduty_detector",
+    ):
+        assert f'resource "{resource}"' in baseline, resource
+    assert baseline.count('resource "aws_account_alternate_contact"') == 3
+    assert 'resource "aws_s3_bucket" "tfstate"' in baseline
+    assert 'resource "aws_dynamodb_table" "tfstate_lock"' in baseline
+    assert "aws_config_" not in baseline and "aws_securityhub_" not in baseline
+    estimate = load(EXPECTED / "estimation-infra.json")
+    limit = max(50, math.ceil(Decimal(str(estimate["projected_costs"]["aws_monthly_balanced"])) * Decimal("1.2")))
+    assert f'limit_amount = "{limit}"' in baseline
+    monitoring = (terraform / "monitoring.tf").read_text(encoding="utf-8")
+    targets = re.findall(r'resource "aws_appautoscaling_target" "(\w+)"', monitoring)
+    assert targets == ["web"]
+    assert "aws_ecs_service.web.name" in monitoring.split('resource "aws_appautoscaling_target"')[1]
+    for namespace in ("AWS/ECS", "AWS/ApplicationELB", "AWS/RDS", "AWS/ElastiCache"):
+        assert f'namespace           = "{namespace}"' in monitoring, namespace
+    alarms = monitoring.split('resource "aws_cloudwatch_metric_alarm"')[1:]
+    assert alarms
+    for alarm in alarms:
+        assert "alarm_actions" in alarm.split("\nresource ")[0]
+    backup = (terraform / "backup.tf").read_text(encoding="utf-8")
+    assert "aws_efs_file_system.application.arn" in backup
+    assert "aws_efs_backup_policy" not in backup
+    for name in ("baseline.tf", "monitoring.tf", "backup.tf"):
+        text = (terraform / name).read_text(encoding="utf-8")
+        assert not re.search(r"(?m)secret_key|^\s*password\s*=", text), name
