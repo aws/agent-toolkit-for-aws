@@ -77,7 +77,7 @@ Interpret:
 
 ```
 1 -> compute_model: "managed_platform" — Elastic Beanstalk recommended
-2 -> compute_model: "container_orchestration" — ECS Fargate recommended
+2 -> compute_model: "container_orchestration" — ECS Fargate recommended (ECS Express Mode for HTTP web services, standard ECS services for workers)
 3 -> compute_model: "serverless" — Lambda recommended
 4 -> same as default (1)
 ```
@@ -121,7 +121,7 @@ Interpret:
 ```
 1 -> kubernetes: "eks-managed" — EKS recommended, preserves K8s investment
 2 -> kubernetes: "eks-or-ecs" — EKS with managed node groups to reduce operational burden
-3 -> kubernetes: "ecs-fargate" — Strong ECS Fargate recommendation, eliminates K8s management
+3 -> kubernetes: "ecs-fargate" — Strong ECS Fargate recommendation (ECS Express Mode for HTTP web services, standard ECS services for workers), eliminates K8s management
 4 -> (no constraint written — no K8s workloads)
 5 -> same as default — see IaC-signal default rule below
 ```
@@ -200,6 +200,58 @@ Interpret:
 ```
 
 Default: 3 — `cloud_run_traffic_pattern: "constant-24-7"`.
+
+---
+
+## Q10b — How do you release new versions of your containerized services?
+
+_Fire when:_ Any workload will land on ECS Fargate (Cloud Run / Cloud Run v2 services, Cloud Functions routed to Fargate, GKE with `kubernetes: "ecs-fargate"`, or App Engine with `compute_model: "container_orchestration"`) AND the inventory does not already show a deployment strategy.
+
+**Auto-extract signal:** `google_cloud_run_v2_service` traffic splits with more than one revision receiving traffic, or Cloud Deploy pipelines, indicate a canary/progressive practice → extract `release_strategy: "canary"` and skip. Nothing in GCP IaC declares a blue/green requirement, so the question is asked unless that signal is present.
+
+**Rationale:** ECS Express Mode (the default shape for an HTTP web service on Fargate) deploys with canary rollouts only. A team that requires rolling or blue/green releases needs a standard ECS service instead, and that decision changes what Generate emits.
+
+> How do you release new versions of your services?
+>
+> 1. Progressive / canary rollouts are fine (recommended — matches ECS Express Mode)
+> 2. We need rolling updates (replace tasks in place, no traffic shifting)
+> 3. We need blue/green with a separate environment and an explicit cutover
+> 4. I don't know
+
+Interpret:
+
+```
+1 -> release_strategy: "canary"     — Fargate web services use ECS Express Mode
+2 -> release_strategy: "rolling"    — standard ECS service with a rolling deployment controller
+3 -> release_strategy: "blue_green" — standard ECS service with CodeDeploy blue/green
+4 -> same as default (1)
+```
+
+**Default:** 1 (`release_strategy: "canary"`).
+
+---
+
+## Q10c — Does this service receive HTTP(S) traffic through a load balancer?
+
+_Fire when:_ A Fargate-bound workload's shape cannot be derived from the inventory (billing-only or partial Terraform with no `template.containers[].ports`, `ingress`, or trigger evidence). Ask once per undetermined service; never ask for a service whose shape Design can read.
+
+**Auto-extract signal (Design derives this; Clarify records it only when asked):** a Cloud Run service with an HTTP container port and `ingress` other than none → `http_service`; a Cloud Run job, a Pub/Sub- or Eventarc-triggered service with no public ingress, or a Cloud Function with a non-HTTP trigger → `worker`; a gRPC service with `use_http2` and no HTTP/2 termination at the edge, or a TCP forwarding rule → `tcp_or_grpc_passthrough`.
+
+> Does `<service>` serve HTTP(S) requests through a load balancer?
+>
+> 1. Yes — a web service or API (HTTP/HTTPS)
+> 2. No — a background worker, queue consumer, or scheduled job
+> 3. It needs raw TCP/UDP, gRPC passthrough, or no load balancer
+
+Interpret:
+
+```
+1 -> compute_shape[<service>]: "http_service"             — eligible for ECS Express Mode
+2 -> compute_shape[<service>]: "worker"                   — standard ECS service, no load balancer
+3 -> compute_shape[<service>]: "tcp_or_grpc_passthrough"  — standard ECS service behind an NLB
+```
+
+**Default:** none — when unanswered, Design records `compute_shape: "unknown"` and selects `ecs_mode: "standard"` with the reason `shape_unknown`.
 
 ---
 

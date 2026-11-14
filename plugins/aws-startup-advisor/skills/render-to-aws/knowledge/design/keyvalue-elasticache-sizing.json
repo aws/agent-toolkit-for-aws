@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "rule": "Resolve the captured plan through plan_normalized (or the shared alias table) before the exact source_memory_gb lookup; an unresolved plan stays unavailable and never borrows a nearby plan. Then preserve source memory independently, add required headroom, and choose the smallest supported mode/node that meets memory and connection requirements.",
+  "alias_table": "references/shared/render-plan-aliases.json",
+  "legacy_aliases": {"starter": "256mb", "standard": "1g", "pro": "5g", "pro_plus": "10g", "pro_max": "20g", "pro_ultra": "40g"},
+  "source_memory_gb": {"free": 0.025, "256mb": 0.25, "1g": 1, "3g": 3, "5g": 5, "10g": 10, "20g": 20, "40g": 40, "50g": 50},
+  "node_targets": [
+    {"node_type": "cache.t4g.micro", "memory_gb": 0.5},
+    {"node_type": "cache.t4g.small", "memory_gb": 1.37},
+    {"node_type": "cache.t4g.medium", "memory_gb": 3.09},
+    {"node_type": "cache.m6g.large", "memory_gb": 6.38},
+    {"node_type": "cache.m6g.xlarge", "memory_gb": 12.93},
+    {"node_type": "cache.m6g.2xlarge", "memory_gb": 26.04},
+    {"node_type": "cache.m6g.4xlarge", "memory_gb": 52.26}
+  ]
+}

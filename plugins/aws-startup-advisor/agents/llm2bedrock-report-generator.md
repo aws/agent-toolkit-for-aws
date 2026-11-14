@@ -630,9 +630,12 @@ plan, which has no Responses row on either endpoint — report that verbatim (th
 recorded ops for such a source) and do not add the actions by hand. When the field is absent or `[]`, omit
 the flag; the policy then carries no `GetInvoke` / `CancelInvoke` / `DeleteInvoke`.
 
-**Web Search needs its own grants.** When any `bedrock_models[]` row has `mantle_selector: web_search`,
-pass `--mantle-selector web_search` (join every `mantle_*` row's `mantle_selector` with commas; the other
-selectors add nothing) and the helper adds a `BedrockWebSearch` statement: `bedrock-websearch:InvokeSearch`
+**Web Search needs its own grants.** Pass every confirmed selector, not only each row's primary
+`mantle_selector`. Union `preferences.json` → `ai_constraints.mantle_requirements.value[]` entries whose
+`source` is `detected` or `user` with every `bedrock_models[].mantle_selector`. When that set contains
+`web_search` — including when the row's primary selector is `background_inference` and Web Search is only
+named in `rationale` — pass `--mantle-selector web_search` joined with the other confirmed selectors (those
+other selectors add no Web Search actions) and the helper adds a `BedrockWebSearch` statement: `bedrock-websearch:InvokeSearch`
 and `bedrock-websearch:InvokeFetch` on resource `*` with an `aws:RequestedRegion` condition — the three
 `bedrock-websearch` actions all take `*` and that global key is the service's only condition key
 (<https://docs.aws.amazon.com/bedrock/latest/userguide/security-web-search.html>, read 2026-11-09). The
@@ -952,7 +955,7 @@ line `*Monthly estimate unavailable — sample has no time-span information.*`
      prove retrieval is authorized. <For a `mantle_openai_responses` plan run the same
      `responses.create` / `responses.retrieve(r.id)` pair against the Mantle base URL with the bare Mantle
      id; a 403 there means the `BedrockMantleInference` statement is not attached.>
-   - <Render ONLY when a `bedrock_models[]` row has `mantle_selector: web_search`; delete this bullet otherwise.>
+   - <Render ONLY when `web_search` is a confirmed mantle requirement (a row's `mantle_selector`, or any other `detected`/`user` entry in `ai_constraints.mantle_requirements`), even if the row's primary selector is `background_inference`; delete this bullet otherwise.>
      **Tool-level permission check** (a plain model ping passing does not prove the Web Search grant):
      under the attached identity run `client.responses.create(model="<bare Mantle id>",
      input="<a time-sensitive question>", tools=[{"type": "web_search", "external_web_access": False}])`

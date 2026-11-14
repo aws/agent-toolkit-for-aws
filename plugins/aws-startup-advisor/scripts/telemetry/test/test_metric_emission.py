@@ -47,7 +47,7 @@ SKILLS_DIR = PLUGIN_ROOT / "skills"
 NOT_A_SKILL = {"shared"}
 
 # Skills PluginSkillId has no member for yet; reporting one would 400 the whole request.
-NOT_YET_MODELLED = {"bedrock-migration-assessment"}
+NOT_YET_MODELLED = {"bedrock-migration-assessment", "render-to-aws"}
 
 
 def accept(home):
@@ -78,8 +78,8 @@ class TestSkillIdMap:
             for path in SKILLS_DIR.iterdir()
             if path.is_dir() and path.name not in NOT_A_SKILL | NOT_YET_MODELLED
         }
-        # The map is an allowlist, so a new skill is invisible until added here,
-        # and a renamed directory stops being counted silently.
+        # The map remains exact after explicitly excluding skills the service model
+        # cannot represent yet.
         assert set(skill_invoked.SKILL_IDS) == on_disk
 
     def test_unmodelled_skills_exist_and_are_not_reported(self):

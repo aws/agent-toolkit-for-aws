@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "rule": "Resolve the captured plan through plan_normalized (or the shared alias table) before the exact source_plans lookup; an unresolved plan stays unavailable and never borrows a nearby plan. Then select the smallest valid Fargate CPU/memory pair that independently meets both normalized dimensions; preserve desired count.",
+  "alias_table": "references/shared/render-plan-aliases.json",
+  "legacy_aliases": {"starter": "0.5c-512mb", "standard": "1c-2gb", "pro": "2c-4gb", "pro_plus": "4c-8gb", "pro_max": "4c-16gb", "pro_ultra": "8c-32gb"},
+  "source_plans": {
+    "0.5c-512mb": {"cpu": 0.5, "memory_gb": 0.5},
+    "1c-2gb": {"cpu": 1, "memory_gb": 2},
+    "2c-4gb": {"cpu": 2, "memory_gb": 4},
+    "2c-8gb": {"cpu": 2, "memory_gb": 8},
+    "4c-8gb": {"cpu": 4, "memory_gb": 8},
+    "4c-16gb": {"cpu": 4, "memory_gb": 16},
+    "4c-32gb": {"cpu": 4, "memory_gb": 32},
+    "8c-32gb": {"cpu": 8, "memory_gb": 32}
+  },
+  "valid_pairs": [
+    {"vcpu": 0.25, "memory_gb": [0.5, 1, 2]},
+    {"vcpu": 0.5, "memory_gb": [1, 2, 3, 4]},
+    {"vcpu": 1, "memory_gb": [2, 3, 4, 5, 6, 7, 8]},
+    {"vcpu": 2, "memory_gb_min": 4, "memory_gb_max": 16, "increment_gb": 1},
+    {"vcpu": 4, "memory_gb_min": 8, "memory_gb_max": 30, "increment_gb": 1},
+    {"vcpu": 8, "memory_gb_min": 16, "memory_gb_max": 60, "increment_gb": 4},
+    {"vcpu": 16, "memory_gb_min": 32, "memory_gb_max": 120, "increment_gb": 8}
+  ]
+}

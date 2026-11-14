@@ -129,8 +129,10 @@ is added and the helper does not refuse. `setup_bedrock.sh`'s verification then 
 response it just created (`r = client.responses.create(...)`, then `client.responses.retrieve(r.id)`):
 a 403 on the second call means the grant is missing even though creation passed.
 
-**Web Search grants.** When a `bedrock_models[]` row has `mantle_selector: web_search`, pass
-`iam_policy.py --mantle-selector web_search` and the policy gains a `BedrockWebSearch` statement:
+**Web Search grants.** When `web_search` is a confirmed mantle requirement — the row's
+`mantle_selector`, or any other `detected`/`user` entry in `ai_constraints.mantle_requirements`,
+including when the primary selector is `background_inference` — pass
+`iam_policy.py --mantle-selector web_search` (joined with the other confirmed selectors) and the policy gains a `BedrockWebSearch` statement:
 `bedrock-websearch:InvokeSearch` and `bedrock-websearch:InvokeFetch` on resource `*` with an
 `aws:RequestedRegion` condition (all three `bedrock-websearch` actions take `*`; that is the service's
 only condition key — <https://docs.aws.amazon.com/bedrock/latest/userguide/security-web-search.html>,

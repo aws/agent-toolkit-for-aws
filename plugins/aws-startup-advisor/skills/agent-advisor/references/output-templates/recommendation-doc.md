@@ -42,6 +42,16 @@ blocks themselves, pasted in. Not "see diagram.md": this doc is read on its own.
 
 <eliminated/lower-scored runtimes and why.>
 
+### When to revisit AgentCore (only when design.json lists triggers)
+
+<Include this subsection only for a unit whose design.json `agentcore_revisit_triggers` is
+non-empty; omit it entirely otherwise, and never when the unit runs on AgentCore. One sentence
+saying the recommendation fits what is known about the workload today, then one bullet per
+trigger, quoting its `trigger` text; for a trigger whose `current` is `unknown`, say the question
+was not answered. Do not add triggers the list lacks or claim AgentCore would win: each trigger
+moves AgentCore closer to the recommended runtime and calls for re-running the advisor, nothing
+more.>
+
 ## 6. Comparison
 
 `<relevant rows from the runtime service cards.>`

@@ -358,7 +358,7 @@ limited to:
    `bedrock-mantle:CreateInference`, same page, read 2026-11-09) and gets no `bedrock:GetInvoke`. Verify with
    create-plus-retrieve: `r = client.responses.create(...)` then `client.responses.retrieve(r.id)` under the
    attached role.
-6. Web Search → a row with `mantle_selector: web_search` needs `bedrock-websearch:InvokeSearch` and
+6. Web Search → a confirmed `web_search` requirement (the row's `mantle_selector`, or any other `detected`/`user` entry in `ai_constraints.mantle_requirements`, including when the primary selector is `background_inference`) needs `bedrock-websearch:InvokeSearch` and
    `bedrock-websearch:InvokeFetch` on `*` (`iam_policy.py --mantle-selector web_search` emits them with an
    `aws:RequestedRegion` condition); the client sets `"external_web_access": false` on the `web_search` tool
    unless the user explicitly confirmed external access, in which case `--external-web-access` also grants
@@ -409,7 +409,17 @@ logs, Guardrails and application inference profiles (both Converse API only), an
 prompt caching (both Responses API only) — per the GPT-5.4 / GPT-5.5 model cards read 2026-11-06. Knowledge
 Bases and intelligent prompt routing still require a Bedrock-native model. The same-model `bedrock-runtime` path
 is the default; the Bedrock-native path is the most feature-complete; the mantle GPT path is reserved for a
-recorded `mantle_selector`.
+recorded `mantle_selector`. Guardrails API scope is per model card (read 2026-11-08): GPT-6 Sol and
+GPT-6 Luna list Guardrails on Responses, Chat Completions, InvokeModel and Converse; GPT-6.1 Sol on
+Chat Completions, InvokeModel and Converse (not Responses); GPT-5.6 Sol/Terra/Luna, GPT-5.5, GPT-5.4
+and GPT-6 Astra on Converse only — the catalog row flag `guardrails_supported` carries this. The row flag
+`prompt_caching_supported` carries the per-API prompt-caching scope the same way (cards read 2026-11-09):
+GPT-5.5 and GPT-5.4 list implicit caching on the `bedrock-runtime` Responses API only and none on
+`bedrock-mantle`; GPT-5.6 Sol/Terra/Luna on every `bedrock-runtime` API and on `bedrock-mantle` Responses
+only; GPT-6 Sol, GPT-6 Luna and GPT-6.1 Sol on every API of both endpoints. A required `prompt_caching` is
+checked on the selected API row for every candidate, so a GPT-5.5 Chat Completions workload that needs
+caching is never a clean same-API recommendation — it is a same-family candidate whose Chat row caches, or
+an explicit Chat-versus-Responses continuity decision.
 
 ### High-spend tiering
 

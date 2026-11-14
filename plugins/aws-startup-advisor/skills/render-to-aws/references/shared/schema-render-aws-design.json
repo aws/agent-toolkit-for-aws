@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:awslabs:startups:render-to-aws:design:1.0",
+  "type": "object",
+  "required": ["schema_version", "phase", "inventory_fingerprint", "preferences_fingerprint", "mappings", "accounting", "ai_track"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "phase": {"const": "design"},
+    "inventory_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "preferences_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "mappings": {"type": "array", "items": {"$ref": "#/$defs/mapping"}},
+    "accounting": {"type": "object", "required": ["inventory_resource_count", "mapped_resource_count", "accounted_resource_ids"], "additionalProperties": false, "properties": {"inventory_resource_count": {"type": "integer", "minimum": 0}, "mapped_resource_count": {"type": "integer", "minimum": 0}, "accounted_resource_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}}},
+    "ai_track": {"type": ["object", "null"], "oneOf": [{"type": "null"}, {"$ref": "#/$defs/aiTrack"}]}
+  },
+  "$defs": {
+    "orderedText": {"type": "object", "required": ["ordinal", "value"], "additionalProperties": false, "properties": {"ordinal": {"type": "integer", "minimum": 1}, "value": {"type": "string", "minLength": 1}}},
+    "rejected": {"type": "object", "required": ["ordinal", "aws_service", "reason"], "additionalProperties": false, "properties": {"ordinal": {"type": "integer", "minimum": 1}, "aws_service": {"type": "string", "minLength": 1}, "reason": {"type": "string", "minLength": 1}}},
+    "decision": {"type": "object", "required": ["selector", "candidate_set", "evidence", "rules_evaluated", "rules_fired", "questions_asked", "defaults_used", "rejected_candidates"], "additionalProperties": false, "properties": {"selector": {"type": "string", "minLength": 1}, "candidate_set": {"type": "array", "minItems": 2, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}, "evidence": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/orderedText"}}, "rules_evaluated": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/orderedText"}}, "rules_fired": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/orderedText"}}, "questions_asked": {"type": "array", "items": {"$ref": "#/$defs/orderedText"}}, "defaults_used": {"type": "array", "items": {"$ref": "#/$defs/orderedText"}}, "rejected_candidates": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/rejected"}}}},
+    "mapping": {"type": "object", "required": ["source_resource_id", "render_kind", "aws_service", "aws_config", "confidence", "disposition", "rationale", "decision"], "additionalProperties": false, "properties": {"source_resource_id": {"type": "string", "minLength": 1}, "render_kind": {"type": "string", "pattern": "^render\\.[a-z_]+$"}, "aws_service": {"type": "string", "minLength": 1, "not": {"pattern": "(?i)(^|\\s)(or|unknown|pending|tbd)(\\s|$)"}}, "aws_config": {"type": "object"}, "confidence": {"enum": ["deterministic", "measured", "inferred", "billing_inferred"]}, "disposition": {"enum": ["mapped", "consumed_topology", "skipped_with_reason"]}, "rationale": {"type": "string", "minLength": 1}, "decision": {"$ref": "#/$defs/decision"}}},
+    "aiTrack": {"type": "object", "required": ["status", "profile_path", "profile_digest", "reason", "resume_from", "infrastructure_status"], "additionalProperties": false, "properties": {"status": {"const": "deferred_shared_ai_engine"}, "profile_path": {"const": "ai-workload-profile.json"}, "profile_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "reason": {"const": "provider-neutral AI Design, Estimate, and Generate execution is not available"}, "resume_from": {"const": "ai-workload-profile.json"}, "infrastructure_status": {"const": "completed"}}}
+  }
+}
