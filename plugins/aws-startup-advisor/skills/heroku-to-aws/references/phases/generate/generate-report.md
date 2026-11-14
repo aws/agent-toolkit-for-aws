@@ -78,6 +78,59 @@ whose `resource_id` appears as a `source_resource_id` in `aws-design.json` `serv
 (no replacement selected). Both counts are inputs to the row's status — on this
 branch `advanced-scheduler` has no fast-path row or alias, so Design defers it.
 
+From the inventory: `shared_data_stores.cohorts` (for the conditional
+`shared-data-stores` section) and `metadata.apps_by_environment_tier` (one line in
+`decision-summary` **only when the field is present**: "N apps, of which M are
+production by name or pipeline stage", where `N` is the sum of all tier counts and `M`
+is the `prod` count. When the field is absent, omit the line and never derive the counts
+here).
+
+From `estimation-infra.json` `current_costs.rightsizing_candidates[]` (present when any
+Postgres database holds 25% or less of its plan's storage and a smaller same-family plan
+fits twice its data — the Clarify Q6d Right-sizing rule): render a **Right-size before
+you move** table inside `exec-costs`, below the Heroku-vs-AWS table — top ten by saving,
+columns Database (`heroku_app` plus the add-on `resource_id`, so two databases on one app
+stay distinct) / Role (`unknown` when discovery wrote no `pg_role`) / Plan / Plan storage /
+Data / Used % / Fitting plan / Saving per month, then one line with the total
+`rightsizing_monthly_saving_usd` and the sentences: "This is a Heroku-side saving available
+today, before any migration; it is not counted in the AWS figure. Fitting plan is chosen
+by storage only; a plan sized for memory, connections or query load may be correct as it
+is." When `database_sizing_basis` is `measured`, add: "AWS targets for the databases
+confirmed in Clarify Q6d are sized from measured data."
+
+From `estimation-infra.json` `current_costs.contract` (present only when the user
+supplied a Heroku order form in Clarify): render a **Contract reconciliation** table
+inside `exec-costs`, below the Heroku-vs-AWS table — rows per contract category
+(dynos, add-on credits, support, Private Spaces, Connect rows, other) with Contract
+$/mo, Discovered $/mo, Gap, and the `gap_explanation`. Follow it with this sentence,
+verbatim in substance: "The contract comparison overstates savings: the contract
+includes support, credits and committed headroom that discovery cannot see, while
+the AWS figure leaves out any add-ons marked Deferred, AWS Support and data
+transfer. Use the discovered like-for-like figure for a scope-matched comparison and
+treat both as floors on AWS cost." Never present "contract minus AWS" as the
+headline saving.
+
+From `estimation-infra.json` `cost_comparison.like_for_like_comparison` (present whenever
+any add-on was Deferred): render it as its own row block in `exec-costs`, directly under
+the full-baseline comparison — "Scope-matched: Heroku $X/mo (excludes $D/mo of add-ons
+with no AWS mapping yet) vs AWS Balanced $Y/mo → $Z/mo {more|less} on AWS ({P}%)". Keep
+the full-baseline row and its caveat above it. Wrap the like-for-like Heroku figure in
+`data-cost-key="heroku_monthly_like_for_like"` so the validator can cross-check it (the
+validator requires that anchor inside `exec-costs` whenever `like_for_like_comparison`
+exists, and fails the report when its rendered dollars differ from
+`cost_comparison.heroku_monthly_like_for_like`). Two variants of that line:
+
+- `like_for_like_comparison.difference_pct` absent/null (`heroku_monthly_like_for_like`
+  is $0; `pct_note` present): render "(percentage not applicable)" in place of "({P}%)".
+  Keep the dollar `$Z/mo`.
+- `like_for_like_comparison.attribution == "incomplete"`: the label is "Scope-matched
+  (provisional — N deferred add-on(s) could not be attributed and remain in the Heroku
+  figure: `<names from unattributed_deferred_services>`)" instead of "Scope-matched", and
+  the block must not say "decision-grade" or "both sides exclude" — the named add-ons are
+  still only on the Heroku side. Only `attribution == "complete"` may be labelled
+  decision-grade.
+
+These rules apply in both report modes (`report-decision-core.md` reuses this section).
 From `heroku-resource-inventory.json` (when present — older inventories omit
 these keys; treat absence as no finding):
 
@@ -98,6 +151,7 @@ Write a **self-contained** HTML file to `$MIGRATION_DIR/migration-report.html`
 | `exec-costs`        | Heroku-vs-AWS side-by-side when a Heroku baseline exists (`current_costs.source != "unavailable"`); otherwise the AWS three-tier table with a one-line note that no Heroku baseline was available. Estimated monthly; Balanced primary. **When `current_costs.baseline_note` is present (any derived — not invoiced — source, including the Postgres Advanced per-pool formula), render it as a visible caveat line directly beside the Heroku current-monthly figure — never only in the accuracy band.** This is mandatory, not conditional on which derived source produced the note. **When `cost_comparison.comparison_status == "incomplete_unmatched_services"`, render the same mandatory caveat-beside-the-figure treatment, naming `cost_comparison.unmatched_deferred_services` and `unmatched_deferred_cost` directly beside the savings/difference figure — never present that dollar delta as decision-grade savings without it.** This file is the single source of truth for `exec-costs` content rules, so `report-decision-core.md`'s reuse of these rules picks this up automatically. |
 | `cost-optimization` | Reserved Instance / Savings Plan opportunities table, or the explicit no-eligible-commitment statement — see below. Always present, never omitted                                                                                                                                            |
 | `developer-workflow` | Always render — in both report modes (`report-decision-core.md` renders it in `decision-report.html` / `DECISION.md` too, with its pre-execution wording override). Heading "Developer workflow: what stays, what changes, what you build". One line stating the Q5c answer. Then the table defined in § `developer-workflow` below. Then the closing paragraph(s) defined there. Reader vocabulary only — no file names or resource IDs |
+| `shared-data-stores` | **Conditional** — only when the inventory has `shared_data_stores.cohorts` with at least one entry. One table: Cohort / Apps (count) / Shared stores (count) / App names. One sentence above it: apps in a cohort read the same database, cache or Kafka cluster and cannot be cut over strictly one at a time without cross-cloud access to that store; sequence them as a group or plan the interim connectivity. No ordering, no recommendation of which cohort goes first |
 | `next-steps`        | Ordered list pointing to `MIGRATION_GUIDE.md` phases (not a procedure dump). Include one bullet noting the Terraform ships with `baseline.tf` (account security baseline — GuardDuty, CloudTrail, budget alerts) and that three contact emails must be set in tfvars before `terraform plan` |
 
 **Cost-figure anchor (machine-checkable).** In `exec-costs`, wrap the recommended AWS

@@ -109,6 +109,7 @@ Compute `fast_path_question_count` from this table against the inventory and use
 
 - `migration_approach`: `full_cutover`
 - `migration_method`: `pg_dump_restore`
+- `database_sizing_basis`: `plan` (only when Q6d would have fired; write `rightsizing_candidates_shown[]` too and record `Q6d` in `metadata.questions_defaulted` — the measured basis is never applied without the user seeing the list)
 - `containerization_status`: `buildpack_only`
 - `database_ha`: matches Q3 availability
 - `redis_ha`: `true` (unless § Extraction Rules read a `mini`/hobby Redis tier — then the proposed `false` is the applied default, still recorded under `Q7` in `metadata.questions_defaulted`)
@@ -146,6 +147,7 @@ Before generating questions, scan the inventory to determine which questions app
 | Q6b — Migration approach             | Postgres add-on present                                          | No Postgres in inventory                  |
 | Q6c — DB migration method            | **Deferred to Generate** — defaulted here when Postgres present, asked at [C] Generate | No Postgres, or never asked in Clarify |
 | Q7 — Redis HA                        | Redis add-on present                                             | No Redis in inventory                     |
+| Q6d — Database sizing basis          | Any Postgres add-on is a right-sizing candidate (§ Q6d Right-sizing rule: `data_size_gb > 0`, at or below 25% of the plan's Storage in the pricing cache, AND a smaller same-family plan fits 2× the data) | No measured sizes (`data_size_gb` absent or `≤ 0`), or no database has a smaller fitting plan |
 | Q8 — Kafka retention                 | Kafka add-on present                                             | No Kafka in inventory                     |
 | Q9 — VPC subnet IDs                  | Private Space with peering detected BUT subnet IDs not available | No Private Space or subnets already known |
 | Q9b — VPC ID                         | Peering detected but VPC ID not found in Terraform               | VPC ID already available or no peering    |
@@ -159,6 +161,7 @@ Before generating questions, scan the inventory to determine which questions app
 | Q13 — Log retention                  | Always                                                           | Never                                     |
 | Q14 — Alerting preference            | Always                                                           | Never                                     |
 | Q15 — Cost optimization              | Always                                                           | Never                                     |
+| Q16 — Heroku contract                | `billing_profile` absent, `null`, or `available != true` (no invoice) | `billing_profile.available == true`, or user says "none" |
 
 ### Extraction Rules (answer from the inventory before asking)
 
@@ -226,14 +229,14 @@ After determining active questions, organize them into **three progressive batch
 | Batch | Name                      | Questions              | Content                                                                                                                                               |
 | ----- | ------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **1** | Global / Strategic        | Q1–Q3, Q5, Q5c, Q12c   | Region, compliance, availability, environment naming, developer workflow priority, compute target recommendation (Q5c before Q12c — Q12c reads it)   |
-| **2** | Data / Network            | Q6, Q6b, Q7–Q10        | Database HA, migration approach, Redis HA, Kafka retention, VPC subnets, DNS strategy                                                                 |
+| **2** | Data / Network            | Q6, Q6b, Q6d, Q7–Q10   | Database HA, migration approach, database sizing basis (only when a right-sizing candidate exists), Redis HA, Kafka retention, VPC subnets, DNS strategy |
 
 **Not in any batch — Generate-time questions:** Q4 (maintenance window), Q6c (DB migration method), Q12d (EB deploy method). Nothing before Generate reads their fields; asking them in Clarify makes a user who stops at the decision answer questions they will never use. Clarify writes their documented defaults and lists them in `metadata.questions_deferred_to_generate`; `estimate-assemble.md` § Confirm execution choices asks them when the user chooses **[C] Generate**.
-| **3** | Operational / Conditional | Q11, Q12b, Q12–Q15     | Fir intent, containerization status, container registry, log retention, alerting, cost optimization                                                   |
+| **3** | Operational / Conditional | Q11, Q12b, Q12–Q16     | Fir intent, containerization status, container registry, log retention, alerting, cost optimization                                                   |
 
 **Batch 2 is active** if ANY of: Postgres present, Redis present, Kafka present, Private Space detected, or DNS question is needed (always true → Batch 2 always fires with at least Q10).
 
-**Batch 3 is always active** (Q12–Q15 always fire; Q11 fires only if Fir detected).
+**Batch 3 is always active** (Q12–Q15 always fire; Q11 fires only if Fir detected; Q16 fires whenever `billing_profile` is absent, `null`, or has `available != true` — Discover omits the section entirely when no billing file was supplied, and that is the common no-invoice case; see Conditional Question Rules).
 
 Record the ordered list of active batches and count questions per batch after filtering. **Exclude questions resolved on the Assumption Sheet** (extracted, defaulted-and-confirmed, or corrected) — batches contain only the questions the user must actually answer.
 
@@ -273,7 +276,7 @@ You can answer each, skip individual ones, or say "use defaults for the rest."
 
 --- Data / Network ---
 
-[Present active questions Q6, Q6b, Q7–Q10 — never Q6c]
+[Present active questions Q6, Q6b, Q6d, Q7–Q10 — Q6d only when it fired, with its candidate table; never Q6c]
 ```
 
 **Batch 3 — Operational / Conditional:**
@@ -286,7 +289,7 @@ You can answer each, skip individual ones, or say "use defaults for the rest."
 
 --- Operational / Conditional ---
 
-[Present active questions Q11–Q15]
+[Present active questions Q11–Q16 — Q16 only when it is active; it may be answered "none"]
 ```
 
 #### 3b. Wait for Response
@@ -615,6 +618,71 @@ built.
 
 ---
 
+#### Q6d — Database Sizing Basis
+
+> _Fires only when at least one Heroku Postgres database is a right-sizing candidate under
+> the rule below. Show the list first:_
+>
+> These databases are on plans far larger than the data they hold:
+>
+> | Database | Plan | Plan storage | Data | Used | Fitting plan |
+> | --- | --- | --- | --- | --- | --- |
+> | `<heroku_app>` | `<plan>` | `<storage>` | `<data_size_gb> GB` | `<pct>%` | `<fitting_plan>` |
+>
+> The fitting plan is chosen by storage only; a plan sized for memory, connections or
+> query load may be correct as it is. How should we size their AWS targets?
+>
+> 1. From measured data, with 2× headroom — the AWS instance and storage match what the database actually holds. Pick this if the plan was chosen for storage, or you intend to right-size before moving.
+> 2. From the current Heroku plan (default) — match plan RAM and storage one-for-one. Pick this if the plan was chosen for query load or cache size, not data volume, or if you are not sure.
+
+**Right-sizing rule** (the one rule set shared by this question, Design 2B step 2a and the
+Estimate's right-sizing candidates — change it here and nowhere else):
+
+- `plan_storage_gb` is the plan's **Storage** column in
+  `references/shared/heroku-pricing-cache.md` (never `storage_gb` from
+  `knowledge/design/postgres-rds-sizing.json`, which exists for AWS row lookup and may
+  differ for some plans).
+- Assess only `heroku-postgresql` add-ons with `data_size_gb > 0` and `pg_role` other than
+  `"follower"` (a missing `pg_role` is treated as a leader). Skip Advanced-tier add-ons
+  (`tier: "advanced"`, usage-billed) and treat `data_size_gb` absent or `≤ 0` as "no
+  measurement" — such a database is never a candidate.
+- `utilization_pct = data_size_gb / plan_storage_gb × 100`, compared against 25 **before**
+  rounding; record it rounded to 2 decimal places.
+- `fitting_plan` = within the same plan family (`essential-*`, `standard-*`, `premium-*`,
+  `private-*`, `shield-*`; legacy `hobby-*` is assessed as its `essential-*` successor),
+  the row with the smallest Storage that is `≥ data_size_gb × 2`. Never pick a row with
+  more Storage than the current plan: if no smaller or equal row fits, `fitting_plan` is
+  the current plan.
+- A database is a **candidate** when `utilization_pct ≤ 25` AND `fitting_plan != plan`.
+  A database whose fitting plan is its own plan (for example a `*-0` plan, or a `*-2`
+  plan holding 32–64 GB) is not a candidate and is not listed.
+- No RDS storage minimum applies here; the 20 GB floor applies only to the allocated AWS
+  storage in Design 2B step 6.
+
+**Interpret:**
+
+- 1 → `preferences.data.database_sizing_basis: "measured"`, `sources.Q6d: "user"`
+- 2 → `preferences.data.database_sizing_basis: "plan"`, `sources.Q6d: "user"`
+- Either way write `preferences.data.rightsizing_candidates_shown[]` = the `resource_id` of
+  every database in the table above. Design applies the measured basis to these add-ons
+  only, so the user never has a database re-sized that they did not see.
+
+**Default:** 2 → `database_sizing_basis: "plan"`. The measured basis re-selects the sizing
+row, which changes the instance class as well as the storage, and one point-in-time
+`data_size_gb` is no evidence about CPU, memory, connections or query load (the shared
+cost-appetite rule: right-size only where utilization data supports it). So `measured` is
+written only when `sources.Q6d` is `"user"`: a skipped question, "use defaults for the
+rest", or the fast path all write `plan` (fast path: record `Q6d` in
+`metadata.questions_defaulted` when it would have fired). The candidates are still listed
+by the Estimate either way.
+
+**Design impact:** `measured` makes Design step 2B look the sizing row up by required storage
+instead of by plan name (2B step 2a), for the add-ons in `rightsizing_candidates_shown`
+only. `plan` keeps the plan-name lookup. Either way the Estimate lists the candidates as
+Heroku-side right-sizing candidates.
+
+---
+
 #### Q6b — Migration Approach
 
 > _Fires only when Heroku Postgres add-on is present in inventory._
@@ -930,6 +998,51 @@ value will be rounded up this way.
 
 ---
 
+#### Q16 — Heroku Contract (Enterprise order form)
+
+> _Fires when the inventory has no invoice: `billing_profile` absent or `null`, or `billing_profile.available` is anything but `true`._
+>
+> Do you have a Heroku Enterprise contract or order form? If so, share the committed
+> lines (totals only — no unit prices needed): term start and end, and the total for
+> each of: dyno units, add-on credits, support plan, Private Spaces, Connect rows,
+> anything else. Say "none" if you pay list price month to month.
+
+**Why:** discovery prices what the CLI can see at list rates. An Enterprise contract
+commits spend that discovery cannot see (support, credits, headroom, apps outside the
+CLI's view). Without the contract the Heroku baseline looks too low and the AWS
+saving looks too high; with it the Estimate can reconcile the two and say which
+part of the gap is scope and which is price.
+
+**Interpret:** write `preferences.commercial.heroku_contract`:
+
+```json
+{
+  "term_start": "YYYY-MM-DD",
+  "term_end": "YYYY-MM-DD",
+  "lines": [
+    {
+      "category": "dynos|addon_credits|support|private_spaces|connect|other",
+      "label": "<as written on the order form>",
+      "total_usd": 0,
+      "months": 12
+    }
+  ],
+  "prior_term_annual_usd": null
+}
+```
+
+- A line that spans the whole term (e.g. support, Private Spaces) gets `months` equal
+  to the term length; a per-year line gets `12`. Monthly run-rate is
+  `total_usd / months`, computed in the Estimate, not here.
+- Record totals exactly as given. Do NOT ask for or record unit prices, quantities,
+  discounts, or the counterparty's name.
+- "none" / no contract → omit `preferences.commercial` entirely.
+
+**Default:** omitted (no contract) — the Estimate then shows the discovered baseline
+only.
+
+---
+
 ## Defaults Table
 
 | Question                  | Default                                 | Constraint                                                                                                  |
@@ -943,6 +1056,7 @@ value will be rounded up this way.
 | Q6 — Database HA          | 4 (match Q3)                            | `database_ha: <Q3 value>`                                                                                   |
 | Q6b — Migration approach  | 1 (full cutover)                        | `migration_approach: "full_cutover"`                                                                        |
 | Q6c — DB migration method | 1 (pg_dump)                             | `migration_method: "pg_dump_restore"`                                                                       |
+| Q6d — DB sizing basis     | 2 (plan)                                | `database_sizing_basis: "plan"` + `rightsizing_candidates_shown[]` (only when the question fired; `measured` needs `sources.Q6d: "user"`) |
 | Q7 — Redis HA             | 1 (yes) if source plan has HA, else 2 (no) | `redis_ha: true` for a `premium-*` source tier; `false` for `mini`/hobby (Q7 § Default)                     |
 | Q8 — Kafka retention      | 3 (7 days)                              | `kafka_retention_days: 7`                                                                                   |
 | Q9 — Subnet IDs           | _(no default — must ask if applicable)_ | —                                                                                                           |
@@ -957,6 +1071,7 @@ value will be rounded up this way.
 | Q13 — Log retention       | 3 (30 days)                             | `log_retention_days: 30`                                                                                    |
 | Q14 — Alerting            | 1 (CloudWatch)                          | `alerting: "cloudwatch"`                                                                                    |
 | Q15 — Cost optimization   | 2 (balanced)                            | `cost_optimization: "balanced"`                                                                             |
+| Q16 — Heroku contract     | none                                    | `preferences.commercial` omitted                                                                            |
 
 **Important:** Q9 and Q9b have no default — they are only asked when Private Space peering exists and required data is missing. If they fire, they must be answered (the system cannot proceed without subnet/VPC information for existing VPC references).
 
