@@ -93,14 +93,35 @@ Write `$MIGRATION_DIR/preferences.json`:
     },
     "eb_deploy_method": { "value": "<Q12d value; omit when resolved compute plan has no EB formations>", "chosen_by": "user|default" }
   },
+  "commercial": {
+    "heroku_contract": {
+      "term_start": "<Q16 ISO date>",
+      "term_end": "<Q16 ISO date>",
+      "lines": [
+        {
+          "category": "dynos|addon_credits|support|private_spaces|connect|other",
+          "label": "<as written on the order form>",
+          "total_usd": 0,
+          "months": 12
+        }
+      ],
+      "prior_term_annual_usd": null
+    }
+  },
   "defaults_applied": ["<list of defaulted question IDs>"],
   "sources": {
     "Q1": "user|extracted|default",
     "Q2": "user|extracted|default",
+    "Q16": "user|default",
     ...
   }
 }
 ```
+
+`commercial` is OPTIONAL: write it only when Q16 fired and the user supplied an
+order form (interview § Q16). Omit the whole object on "none" or when Q16 did not
+fire (an invoice was present); `sources.Q16` is then `"default"` when Q16 fired and
+was answered "none", and absent when it never fired.
 
 Do **not** write a `workshop` object from Clarify. The what-if workshop
 (`references/phases/workshop/`) creates/patches `preferences.workshop` later

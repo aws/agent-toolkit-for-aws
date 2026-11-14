@@ -120,6 +120,12 @@ redispatch Generate: it re-authors `terraform/` and would wipe manual fixes.
 
 Only after `HANDOFF_OK`, apply the phase-status update protocol (`INTERPRETER.md` § The interpreter loop) — mark `phases.generate` completed and advance per `_advances_to` (the `complete` terminal) — in the **same turn** as the output message below.
 
+**Refresh the estate workbook (fail-open):** run
+`python3 "<SKILL_BASE>/scripts/emit-estate-workbook.py" --migration-dir "$MIGRATION_DIR"`
+(absolute paths). It rewrites `$MIGRATION_DIR/heroku-estate.xlsx` from the final
+inventory, design and estimate, printing `ESTATE_OK | …` or `ESTATE_SKIP | reason=…`.
+On skip, continue and omit the workbook line from the artifact list.
+
 **Write the web-handoff summary (fail-open):** run
 `python3 "<SKILL_BASE>/scripts/emit-plan-json.py" --migration-dir "$MIGRATION_DIR" --plugin-json "$PLUGIN_ROOT/.claude-plugin/plugin.json"`
 (absolute paths — cwd must not be load-bearing). It reads the estimate artifacts and writes `$MIGRATION_DIR/plan.json`, the uploadable handoff file, printing `PLAN_OK | …` or `PLAN_SKIP | reason=…`. This is an optional enhancement, never a gate: on any skip or error the migration is still complete — continue without it and do not surface the script output to the user. When it printed `PLAN_OK`, present the web-handoff block described after the Output section below.
@@ -134,6 +140,7 @@ Artifacts produced:
 • MIGRATION_GUIDE.md — Step-by-step migration procedure
 • README.md — Artifact listing and quick start
 • migration-report.html — Stakeholder summary (costs + what-if scenarios when present)
+• heroku-estate.xlsx — Reviewable estate inventory with AWS mapping and costs   (show this line only when the workbook writer above printed ESTATE_OK)
 • scripts/ — Database migration scripts
 [• generation-warnings.json — N service(s) require manual setup]   (show this line only when warnings is non-empty; the file is always written)
 

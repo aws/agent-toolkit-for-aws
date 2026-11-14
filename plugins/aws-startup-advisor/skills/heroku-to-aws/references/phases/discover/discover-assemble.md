@@ -55,6 +55,28 @@ the path and retry before assembly; do not continue with an unread schema.
     when none). These are Heroku facts about the source estate, not migration
     advice.
 
+11. **Shared data stores.** When live discovery wrote `attached_apps` on any
+    `heroku-postgresql`, `heroku-redis` or `heroku-kafka` add-on, write the top-level
+    `shared_data_stores` section (schema § `shared_data_stores`):
+    - For each such add-on with a non-empty `attached_apps`, the set
+      `{ heroku_app } ∪ attached_apps` is one link. Apps that share any link are in the
+      same cohort (take the connected components over those sets).
+    - Name cohorts `C1`, `C2`, … ordered by app count descending, then by first app
+      name. `shared_stores` lists the linking add-ons' `resource_id`s.
+    - Set `apps_in_cohorts` to the number of distinct apps across all cohorts.
+    - Apps whose data stores are attached to no other app form no cohort — do not
+      emit single-app cohorts.
+
+    This is a label for the report and the estate workbook, not a dependency graph:
+    no `cluster_id` on resources, no edges, no ordering. It tells a reviewer which apps
+    cannot move strictly one at a time without cross-cloud access to a shared store.
+    Skip the section entirely when no add-on carries `attached_apps` (Terraform-only
+    runs cannot see attachments).
+
+    (The estate workbook is NOT written here: this assembler runs in the dispatched
+    `rw` worker, which has no shell. `discover.md` § Handoff runs the export in the main
+    window after `HANDOFF_OK`.)
+
 ## Merge & Drift Rules (when BOTH terraform and live fragments contributed)
 
 Resource identity is `resource_id` (both fragments use the same deterministic ID

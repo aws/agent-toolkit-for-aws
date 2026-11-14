@@ -72,6 +72,7 @@ For each add-on attached to a selected app:
 | `addon_service.name`                              | `provider` — `"heroku"` when the service name starts with `heroku-` (first-party data add-ons), otherwise the service name itself (matches the Terraform fragment's convention) |
 | `name`                                             | `addon_name` — the add-on's actual Heroku-assigned name                                                                                                                         |
 | `plan.price` (`cents`, `unit`)                    | `monthly_price_usd` = `cents / 100` when `unit == "month"` (optional field)                                                                                                     |
+| `attachments[]` (`app.name`)                      | `attached_apps` — the OTHER apps this add-on is attached to (owning app excluded, de-duplicated, sorted). Always write the field: `[]` when the add-on has no cross-app attachments. If the capture carries no `attachments` key at all, write `[]` and add `"add-on attachments not present in capture; shared data stores cannot be detected"` once to `live_metadata.limitations` |
 
 Resource entry: `resource_id: "addon:{app_name}:{addon_service}:{plan}:{addon_name}"`,
 `resource_type: "addon"`, `source: "live"`. `addon_name` is that add-on's `name`
