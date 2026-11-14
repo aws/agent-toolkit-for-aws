@@ -28,4 +28,4 @@ Hands off to the source-platform migration skill (`gcp-to-aws` or `heroku-to-aws
 
 ## Serving & security notes
 
-Entry: container behind Ingress/Service exposing your HTTP/gRPC endpoint. IAM: IRSA for pod-level permissions with `bedrock:InvokeModel` (model-bearing units only — a model-less unit omits it) + service-specific permissions. Networking: in-VPC by nature; Service/Ingress endpoints over TLS; VPC endpoints for AWS services.
+Entry: container behind Ingress/Service exposing your HTTP/gRPC endpoint. IAM: IRSA for pod-level permissions with `bedrock:InvokeModel` (model-bearing units only — a model-less unit omits it) + service-specific permissions. Networking: in-VPC by nature; Service/Ingress endpoints over TLS; VPC endpoints for AWS services; EKS Auto Mode (K8s 1.36+) also supports Security Groups for Pods via SecurityGroupPolicy for per-Pod EC2 security group rules (e.g., direct authorized access to RDS/ElastiCache by security group), at no additional charge.
