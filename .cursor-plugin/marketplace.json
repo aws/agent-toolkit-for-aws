@@ -31,6 +31,12 @@
       "name": "aws-startup-advisor",
       "source": "./plugins/aws-startup-advisor",
       "description": "AWS Startup Advisor puts an AWS Startups Solutions Architect in your coding assistant. It recommends the smallest architecture that fits your stage, credits, and team, then can scaffold it, migrate you from Azure, Google Cloud, or Heroku, move your model calls to Amazon Bedrock, and investigate production incidents. It also answers your AWS Activate credits eligibility questions and finds startup offers you can use."
+    },
+    {
+      "name": "aws-continuum",
+      "source": "./plugins/aws-continuum",
+      "description": "Discover, prioritize, validate, and remediate security risks across the software development lifecycle with AWS Continuum, right from your coding agent. See which risks are real and drive each one to a tested fix.",
+      "version": "1.0.0"
     }
   ]
 }

@@ -1,0 +1,21 @@
+{
+  "name": "aws-continuum",
+  "version": "1.0.0",
+  "description": "Discover, prioritize, validate, and remediate security risks across the software development lifecycle with AWS Continuum, right from your coding agent. See which risks are real and drive each one to a tested fix.",
+  "author": {
+    "name": "Amazon Web Services"
+  },
+  "homepage": "https://aws.amazon.com/products/developer-tools/agent-toolkit-for-aws/",
+  "repository": "https://github.com/aws/agent-toolkit-for-aws/tree/main/plugins/aws-continuum",
+  "license": "Apache-2.0",
+  "keywords": [
+    "aws",
+    "continuum",
+    "security",
+    "code-scanning",
+    "remediation",
+    "skills",
+    "scripts"
+  ],
+  "skills": "./skills/"
+}

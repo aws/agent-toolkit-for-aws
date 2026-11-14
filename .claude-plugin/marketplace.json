@@ -362,6 +362,20 @@
       "name": "aws-startup-advisor",
       "source": "./plugins/aws-startup-advisor",
       "version": "2.0.3"
+    },
+    {
+      "category": "cloud",
+      "description": "Discover, prioritize, validate, and remediate security risks across the software development lifecycle with AWS Continuum, right from your coding agent. See which risks are real and drive each one to a tested fix.",
+      "keywords": [
+        "aws",
+        "continuum",
+        "security",
+        "code-scanning",
+        "remediation"
+      ],
+      "name": "aws-continuum",
+      "source": "./plugins/aws-continuum",
+      "version": "1.0.0"
     }
   ]
 }
