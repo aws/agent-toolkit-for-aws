@@ -2,7 +2,7 @@
 
 ## Overview and scope
 
-This execution pack implements the supported infrastructure mappings in `aws-design.json`. Project and environment rows are consumed as topology. AI remains `deferred_shared_ai_engine`; Workflow and task Terraform remain `conditional_workflow_generation_unsupported` until their callback, compensation, retry, and state-retention semantics have dedicated tests.
+This execution pack implements the supported infrastructure mappings in `aws-design.json`. Project and environment rows are consumed as topology. AI remains `deferred_shared_ai_engine`. Workflow and task Terraform is generated in `terraform/workflow.tf` for the semantics covered by the generation contract tests (task order, per-task retry, timeout, task-token callback, retained logging); a Workflow outside that set is reported as `conditional_workflow_generation_unsupported` and emits no Terraform. Render execution parity is not claimed.
 
 ## Prerequisites
 
@@ -38,6 +38,10 @@ Create the encrypted EFS access point for `/var/data`. Check capacity, ownership
 
 Verify private service discovery before public traffic. Drain the worker and preserve graceful shutdown/idempotency. Disable the Render cron before enabling EventBridge Scheduler, preventing overlap. Restore desired counts and pass health checks before proceeding.
 
+## Workflow cutover
+
+Build and upload the reviewed Lambda package, then set the `rr_workflow_task_package_path`, `rr_workflow_task_runtime`, `rr_workflow_task_handler`, and `rr_workflow_task_memory_mb` variables; this pack contains no function source. Render starts runs through its API or SDK, so replace each caller with `states:StartExecution` on the generated state machine. The callback sender needs `states:SendTaskSuccess`, `states:SendTaskFailure`, and `states:SendTaskHeartbeat`, which Terraform does not grant because those actions cannot be scoped to one state machine. Run a few executions in parallel with Render before disabling Render runs, and do not migrate Render run history.
+
 ## DNS and traffic cutover
 
 Lower external DNS TTL in advance. Before applying the listener, request the certificate in ACM, create every ACM DNS validation record at the external DNS provider, wait until ACM reports `Issued`, and provide the issued ARN to Terraform. Freeze releases, quiesce data writers, complete final deltas, shift a small traffic slice, observe, then move fully. DNS remains external; Terraform must not fabricate Route 53 ownership.
@@ -50,7 +54,7 @@ Lower external DNS TTL in advance. Before applying the listener, request the cer
 - Verify EFS ownership, permissions, locking, and integrity.
 - Verify worker drain/retry/idempotency and cron overlap policy.
 - Verify the running image digest is the promoted ECR digest.
-- Manually test Workflow callbacks, retries, compensation, and retained state.
+- Run Workflow executions and confirm the console shows the declared retries with their backoff, the per-attempt timeout, and the task-token callback completing before `callback_timeout_seconds`. Execution history stays in Step Functions for 90 days; execution logs follow `workflow_log_retention_days`. Confirm the three Workflow alarms exist and `workflow_alarm_actions` points at an owned notification target.
 
 ## Rollback and source retention
 
@@ -58,4 +62,4 @@ Trigger rollback on error rate, integrity mismatch, unacceptable lag, or failed 
 
 ## Known limitations
 
-Both estimate scenarios are floors because EFS is unpriced. AI execution is `deferred_shared_ai_engine`. Workflow generation is `conditional_workflow_generation_unsupported`; the report preserves the selected targets but no unvalidated Workflow artifacts are emitted.
+Both estimate scenarios are floors because EFS is unpriced. AI execution is `deferred_shared_ai_engine`. Workflow generation covers only the tested semantics; any other Workflow is `conditional_workflow_generation_unsupported` and emits no Terraform. Render run, retry-timing, and platform-error behavior are not claimed to match, and Render run history is not migrated.
