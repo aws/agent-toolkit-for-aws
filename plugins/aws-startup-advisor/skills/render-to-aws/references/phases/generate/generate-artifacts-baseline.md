@@ -22,7 +22,7 @@ Read compliance from `preferences.json` → `global.compliance` (array). Treat `
 1. **Retention.** `cloudtrail_retention_days` is the maximum across declared frameworks, default 90: `soc2` 365, `pci` 365, `gdpr` 365, `fedramp` 1095, `hipaa` 2190.
 2. **Budget.** `limit_amount = max(50, ceil(aws_monthly_balanced * 1.2))` with `aws_monthly_balanced` from `estimation-infra.json` → `projected_costs`. If the key is missing use 50 and say so in a comment.
 3. **Header and locals.** A header comment names the resolved retention. A `locals` block holds `cloudtrail_retention_days` and `baseline_tags = { Component = "security-baseline" }`.
-4. **Declarations owned by this file.** `variable "operations_email"`, `variable "billing_email"`, `variable "security_email"` (required, no defaults), `data.aws_caller_identity.current` and `data.aws_partition.current`. Append the three email rows to `terraform.tfvars.example` with `.invalid` placeholder addresses. Do not edit `variables.tf` or `main.tf`.
+4. **Declarations owned by this file.** Shared declarations come first, outside every marker pair, because other files use them: `variable "operations_email"` (also used by `monitoring.tf`) and `data.aws_partition.current` (also used by `backup.tf` and `monitoring.tf`). Everything else this file owns goes inside the `########## Account Baseline ##########` / `########## End Account Baseline ##########` markers, which wrap the `locals` block and items 5 and 6: `variable "billing_email"`, `variable "security_email"` (required, no defaults), `data.aws_caller_identity.current` and the `locals` block. All variables have no defaults. Append the three email rows to `terraform.tfvars.example` with `.invalid` placeholder addresses. Do not edit `variables.tf` or `main.tf`.
 5. **Always-on resources**, in this order:
    - `aws_account_alternate_contact` for OPERATIONS, BILLING and SECURITY (pinned `name` and `title`, `phone_number = "+1-555-0100"` with a comment to replace it).
    - `aws_iam_account_password_policy` (length 14, reuse prevention 24, max age 90, all four character classes).
@@ -34,10 +34,10 @@ Read compliance from `preferences.json` → `global.compliance` (array). Treat `
    - `aws_budgets_budget` with notifications at 50, 80 and 100 percent ACTUAL to `var.billing_email`.
    - `aws_guardduty_detector` (`defense-in-depth`; comment the 30-day trial).
 6. **Compliance-conditional**, only when `global.compliance` contains `soc2`, `pci`, `hipaa` or `fedramp`, wrapped in `########## Compliance-Conditional ##########` markers and placed before Remote State: Config role (partition-aware `arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AWS_ConfigRole`), configuration recorder, delivery channel, recorder status, Config bucket with the same hardening, `aws_securityhub_account`, the FSBP standards subscription, and the PCI standard only for `pci`. No NIST 800-53 subscription. `gdpr` changes retention only.
-7. **Remote State**, always the final section, wrapped in `########## Remote State ##########` markers: `aws_s3_bucket.tfstate` with versioning, SSE (`aws:kms`) and public-access block, and `aws_dynamodb_table.tfstate_lock` (`PAY_PER_REQUEST`, hash key `LockID`). It uses a literal `{ Component = "terraform-state" }` tag and references nothing outside its own section. Do not add an active `backend` block to `main.tf`; the README names the bootstrap step.
+7. **Remote State**, always the final section, wrapped in `########## Remote State ##########` markers: `aws_s3_bucket.tfstate` with versioning, SSE (`aws:kms`) and public-access block, and `aws_dynamodb_table.tfstate_lock` (`PAY_PER_REQUEST`, hash key `LockID`). It declares its own `data "aws_caller_identity" "tfstate"` for the bucket name and uses a literal `{ Component = "terraform-state" }` tag. Besides `var.project_name` and `var.environment` from `variables.tf`, it references nothing outside its own section. Do not add an active `backend` block to `main.tf`; the README names the bootstrap step.
 8. **Lifecycle.** Omit the `STANDARD_IA` transition when retention is under 90 days and `GLACIER` when under 365 days.
 
-**Opting out:** delete everything in `baseline.tf` outside the Remote State markers, remove the three email variables and their tfvars rows, and keep the `data` sources only if another file uses them.
+**Opting out:** delete the block from `########## Account Baseline ##########` through `########## End Account Baseline ##########` (it includes the Compliance-Conditional block), and remove the `billing_email` and `security_email` tfvars rows. Keep the shared declarations above the block and the Remote State section. Keep `operations_email` while `monitoring.tf` exists. The result must pass `terraform validate`.
 
 ## monitoring.tf (each group gated)
 
@@ -47,14 +47,14 @@ Read compliance from `preferences.json` → `global.compliance` (array). Treat `
 | ECS alarms | Every emitted `aws_ecs_service` | CPU and memory high alarms in `AWS/ECS` (dimensions `ClusterName`, `ServiceName`) |
 | ALB alarms | An `aws_lb` is emitted | `HTTPCode_ELB_5XX_Count`, `UnHealthyHostCount`, `TargetResponseTime` in `AWS/ApplicationELB` |
 | RDS alarms | RDS is generated | `CPUUtilization`, `FreeStorageSpace`, `DatabaseConnections` in `AWS/RDS` |
-| ElastiCache alarms | ElastiCache is generated | `CPUUtilization`, `DatabaseMemoryUsagePercentage`, `Evictions` in `AWS/ElastiCache` (dimension `ReplicationGroupId`) |
-| Alerts topic | At least one alarm is emitted | `aws_sns_topic.alerts` with SSE, an email subscription to `var.operations_email`, and `alarm_actions` and `ok_actions` on every alarm |
+| ElastiCache alarms | ElastiCache is generated | `CPUUtilization`, `DatabaseMemoryUsagePercentage`, `Evictions` in `AWS/ElastiCache`, one alarm per member cache cluster with dimension `CacheClusterId` (`<replication_group_id>-001` and so on, one per `num_cache_clusters`). Node-based metrics are not published under `ReplicationGroupId` alone |
+| Alerts topic | At least one alarm is emitted | `aws_sns_topic.alerts` encrypted with a customer-managed key, an email subscription to `var.operations_email`, and `alarm_actions` and `ok_actions` on every alarm |
 
-The SNS topic uses `alias/aws/sns` unless `kms.tf` is emitted, then the customer-managed key.
+CloudWatch alarm actions cannot publish to a topic encrypted with the AWS managed `alias/aws/sns` key, so never use it for the alerts topic. When `kms.tf` is emitted the topic uses that key. Otherwise `monitoring.tf` emits its own `aws_kms_key.alerts` (rotation enabled) and alias, with its own `data.aws_caller_identity.monitoring`. In both cases the key policy has an explicit account-root statement and a statement granting `cloudwatch.amazonaws.com` `kms:GenerateDataKey*` and `kms:Decrypt`, scoped by `aws:SourceAccount` and an `aws:SourceArn` pattern for alarms named `${local.name_prefix}-*`.
 
 ## kms.tf (gated)
 
-Emit only when `global.compliance` contains `hipaa`, `pci` or `fedramp`, or an `aws_config` in `aws-design.json` sets `customer_managed_key: true` or `kms: "customer_managed"`. Emit `aws_kms_key` with rotation enabled, an alias, and a key policy with an explicit account-root statement. Then set `kms_key_id` on the generated RDS instance, ElastiCache replication group and EFS file system, and on the SNS topic.
+Emit only when `global.compliance` contains `hipaa`, `pci` or `fedramp`, or an `aws_config` in `aws-design.json` sets `customer_managed_key: true` or `kms: "customer_managed"`. Emit `aws_kms_key` with rotation enabled, an alias, and a key policy with an explicit account-root statement. When `monitoring.tf` emits the alerts topic, also add the CloudWatch statement from the monitoring section to this key policy (declare any data source the key needs in `kms.tf` itself). Then set `kms_key_id` on the generated RDS instance, ElastiCache replication group and EFS file system, and on the SNS topic.
 
 ## RDS backup and point-in-time recovery
 
@@ -62,6 +62,6 @@ Verify only. Generated RDS blocks keep `backup_retention_period` at 7 or higher 
 
 ## backup.tf (gated)
 
-Emit only when an `Amazon EFS` mapping exists. Emit `aws_backup_vault` (the customer-managed key when `kms.tf` is emitted), `aws_backup_plan` with a daily rule and `delete_after = max(35, min(retention, 365))`, an `aws_iam_role` trusted by `backup.amazonaws.com` with `AWSBackupServiceRolePolicyForBackup` attached through a partition-aware ARN, and `aws_backup_selection` of the EFS file system ARN. Do not also emit `aws_efs_backup_policy`.
+Emit only when an `Amazon EFS` mapping exists. Emit `aws_backup_vault` (the customer-managed key when `kms.tf` is emitted), `aws_backup_plan` with a daily rule and `delete_after` = 35 when no framework is declared, otherwise `max(35, min(cloudtrail_retention_days, 365))`, an `aws_iam_role` trusted by `backup.amazonaws.com` with `AWSBackupServiceRolePolicyForBackup` attached through a partition-aware ARN, and `aws_backup_selection` of the EFS file system ARN. Do not also emit `aws_efs_backup_policy`.
 
 A stack with no EFS, no RDS, no alarms to create and compliance `none` emits `baseline.tf` only.

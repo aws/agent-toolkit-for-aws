@@ -1,7 +1,46 @@
 # Operational resources: alerts topic, alarms, and ECS autoscaling for services with desired_count > 1.
+data "aws_caller_identity" "monitoring" {}
+# CloudWatch alarm actions cannot publish to a topic encrypted with the AWS managed alias/aws/sns key,
+# so the alerts topic uses a customer managed key that grants cloudwatch.amazonaws.com.
+resource "aws_kms_key" "alerts" {
+  description         = "${local.name_prefix} alerts topic encryption"
+  enable_key_rotation = true
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "EnableAccountAdministration"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.monitoring.account_id}:root" }
+        Action    = "kms:*"
+        Resource  = "*"
+      },
+      {
+        Sid       = "AllowCloudWatchAlarmsToPublish"
+        Effect    = "Allow"
+        Principal = { Service = "cloudwatch.amazonaws.com" }
+        Action    = ["kms:GenerateDataKey*", "kms:Decrypt"]
+        Resource  = "*"
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.monitoring.account_id
+          }
+          ArnLike = {
+            "aws:SourceArn" = "arn:${data.aws_partition.current.partition}:cloudwatch:${var.aws_region}:${data.aws_caller_identity.monitoring.account_id}:alarm:${local.name_prefix}-*"
+          }
+        }
+      }
+    ]
+  })
+  tags = { Component = "monitoring" }
+}
+resource "aws_kms_alias" "alerts" {
+  name          = "alias/${local.name_prefix}-alerts"
+  target_key_id = aws_kms_key.alerts.key_id
+}
 resource "aws_sns_topic" "alerts" {
   name              = "${local.name_prefix}-alerts"
-  kms_master_key_id = "alias/aws/sns"
+  kms_master_key_id = aws_kms_key.alerts.arn
   tags              = { Component = "monitoring" }
 }
 resource "aws_sns_topic_subscription" "operations_email" {
@@ -149,8 +188,16 @@ resource "aws_cloudwatch_metric_alarm" "rds_connections_high" {
   alarm_actions = [aws_sns_topic.alerts.arn]
   ok_actions    = [aws_sns_topic.alerts.arn]
 }
+# Node-based ElastiCache publishes these metrics per CacheClusterId; the group has num_cache_clusters = 2, so members are -001 and -002.
+locals {
+  cache_member_clusters = {
+    for index in range(aws_elasticache_replication_group.valkey.num_cache_clusters) :
+    format("%03d", index + 1) => format("%s-%03d", aws_elasticache_replication_group.valkey.replication_group_id, index + 1)
+  }
+}
 resource "aws_cloudwatch_metric_alarm" "elasticache_cpu_high" {
-  alarm_name          = "${local.name_prefix}-cache-cpu-high"
+  for_each            = local.cache_member_clusters
+  alarm_name          = "${local.name_prefix}-cache-${each.key}-cpu-high"
   namespace           = "AWS/ElastiCache"
   metric_name         = "CPUUtilization"
   statistic           = "Average"
@@ -160,13 +207,14 @@ resource "aws_cloudwatch_metric_alarm" "elasticache_cpu_high" {
   comparison_operator = "GreaterThanThreshold"
   treat_missing_data  = "notBreaching"
   dimensions = {
-    ReplicationGroupId = aws_elasticache_replication_group.valkey.replication_group_id
+    CacheClusterId = each.value
   }
   alarm_actions = [aws_sns_topic.alerts.arn]
   ok_actions    = [aws_sns_topic.alerts.arn]
 }
 resource "aws_cloudwatch_metric_alarm" "elasticache_memory_high" {
-  alarm_name          = "${local.name_prefix}-cache-memory-high"
+  for_each            = local.cache_member_clusters
+  alarm_name          = "${local.name_prefix}-cache-${each.key}-memory-high"
   namespace           = "AWS/ElastiCache"
   metric_name         = "DatabaseMemoryUsagePercentage"
   statistic           = "Average"
@@ -176,13 +224,14 @@ resource "aws_cloudwatch_metric_alarm" "elasticache_memory_high" {
   comparison_operator = "GreaterThanThreshold"
   treat_missing_data  = "notBreaching"
   dimensions = {
-    ReplicationGroupId = aws_elasticache_replication_group.valkey.replication_group_id
+    CacheClusterId = each.value
   }
   alarm_actions = [aws_sns_topic.alerts.arn]
   ok_actions    = [aws_sns_topic.alerts.arn]
 }
 resource "aws_cloudwatch_metric_alarm" "elasticache_evictions" {
-  alarm_name          = "${local.name_prefix}-cache-evictions"
+  for_each            = local.cache_member_clusters
+  alarm_name          = "${local.name_prefix}-cache-${each.key}-evictions"
   namespace           = "AWS/ElastiCache"
   metric_name         = "Evictions"
   statistic           = "Sum"
@@ -192,7 +241,7 @@ resource "aws_cloudwatch_metric_alarm" "elasticache_evictions" {
   comparison_operator = "GreaterThanThreshold"
   treat_missing_data  = "notBreaching"
   dimensions = {
-    ReplicationGroupId = aws_elasticache_replication_group.valkey.replication_group_id
+    CacheClusterId = each.value
   }
   alarm_actions = [aws_sns_topic.alerts.arn]
   ok_actions    = [aws_sns_topic.alerts.arn]

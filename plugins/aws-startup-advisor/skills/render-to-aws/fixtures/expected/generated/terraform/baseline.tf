@@ -4,6 +4,8 @@ variable "operations_email" {
   description = "Operations alternate contact and alert subscription email"
   type        = string
 }
+data "aws_partition" "current" {}
+########## Account Baseline ##########
 variable "billing_email" {
   description = "Billing alternate contact and budget notification email"
   type        = string
@@ -13,7 +15,6 @@ variable "security_email" {
   type        = string
 }
 data "aws_caller_identity" "current" {}
-data "aws_partition" "current" {}
 locals {
   cloudtrail_retention_days = 90
   baseline_tags = {
@@ -180,9 +181,11 @@ resource "aws_guardduty_detector" "baseline" {
   finding_publishing_frequency = "FIFTEEN_MINUTES"
   tags                         = local.baseline_tags
 }
+########## End Account Baseline ##########
 ########## Remote State ##########
+data "aws_caller_identity" "tfstate" {}
 resource "aws_s3_bucket" "tfstate" {
-  bucket = "${var.project_name}-${var.environment}-tfstate-${data.aws_caller_identity.current.account_id}"
+  bucket = "${var.project_name}-${var.environment}-tfstate-${data.aws_caller_identity.tfstate.account_id}"
   tags   = { Component = "terraform-state" }
 }
 resource "aws_s3_bucket_versioning" "tfstate" {

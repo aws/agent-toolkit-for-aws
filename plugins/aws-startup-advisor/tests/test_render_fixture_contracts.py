@@ -9,6 +9,7 @@ import shutil
 from html import escape
 import subprocess  # nosec B404 - fixed local validation tools, no shell
 import sys
+import time
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -1181,6 +1182,71 @@ def test_golden_baseline_and_operations_terraform() -> None:
     backup = (terraform / "backup.tf").read_text(encoding="utf-8")
     assert "aws_efs_file_system.application.arn" in backup
     assert "aws_efs_backup_policy" not in backup
+    # delete_after: 35 when no framework is declared, else max(35, min(cloudtrail_retention_days, 365)).
+    preferences = load(EXPECTED / "preferences.json")
+    frameworks = [f for f in preferences["global"].get("compliance", []) if f not in ("none", "unknown")]
+    cloudtrail_retention_days = int(re.search(r"cloudtrail_retention_days = (\d+)", baseline).group(1))
+    expected_delete_after = max(35, min(cloudtrail_retention_days, 365)) if frameworks else 35
+    assert f"delete_after = {expected_delete_after}\n" in backup
+    assert expected_delete_after == 35
+    # CloudWatch alarm actions cannot use the AWS managed SNS key.
+    assert not re.search(r'kms_master_key_id\s*=\s*"alias/aws/sns"', monitoring)
+    topic = monitoring.split('resource "aws_sns_topic" "alerts"')[1].split("\nresource ")[0]
+    assert "kms_master_key_id = aws_kms_key.alerts.arn" in topic
+    key = monitoring.split('resource "aws_kms_key" "alerts"')[1].split("\nresource ")[0]
+    assert "enable_key_rotation = true" in key
+    for needle in ('"cloudwatch.amazonaws.com"', '"kms:GenerateDataKey*"', '"kms:Decrypt"', '"aws:SourceAccount"', '"aws:SourceArn"'):
+        assert needle in key, needle
+    # Node-based ElastiCache metrics are published per CacheClusterId.
+    cache_alarms = [a for a in alarms if '"AWS/ElastiCache"' in a]
+    assert len(cache_alarms) == 3
+    for alarm in cache_alarms:
+        assert "CacheClusterId = each.value" in alarm and "ReplicationGroupId" not in alarm
+    assert "format(\"%s-%03d\"" in monitoring and "num_cache_clusters" in monitoring
     for name in ("baseline.tf", "monitoring.tf", "backup.tf"):
         text = (terraform / name).read_text(encoding="utf-8")
         assert not re.search(r"(?m)secret_key|^\s*password\s*=", text), name
+
+
+def test_baseline_opt_out_leaves_valid_terraform(tmp_path: Path) -> None:
+    terraform_binary = shutil.which("terraform")
+    if not terraform_binary:
+        pytest.skip("terraform is not installed")
+    copy = tmp_path / "terraform"
+    shutil.copytree(EXPECTED / "generated/terraform", copy)
+    baseline = (copy / "baseline.tf").read_text(encoding="utf-8")
+    opted_out, count = re.subn(
+        r"########## Account Baseline ##########.*?########## End Account Baseline ##########\n",
+        "",
+        baseline,
+        flags=re.S,
+    )
+    assert count == 1
+    assert "########## Remote State ##########" in opted_out
+    assert 'variable "operations_email"' in opted_out and 'data "aws_partition" "current"' in opted_out
+    (copy / "baseline.tf").write_text(opted_out, encoding="utf-8")
+    tfvars = copy / "terraform.tfvars.example"
+    tfvars.write_text(
+        "".join(
+            line
+            for line in tfvars.read_text(encoding="utf-8").splitlines(keepends=True)
+            if not line.startswith(("billing_email", "security_email"))
+        ),
+        encoding="utf-8",
+    )
+    env = {**os.environ, "TF_PLUGIN_CACHE_DIR": os.environ.get("TF_PLUGIN_CACHE_DIR", str(Path.home() / ".terraform.d/plugin-cache"))}
+    Path(env["TF_PLUGIN_CACHE_DIR"]).mkdir(parents=True, exist_ok=True)
+    transient = ("Failed to load plugin schemas", "does not match any of the checksums")
+    for attempt in range(5):
+        for args in (["init", "-backend=false", "-input=false"], ["validate"]):
+            result = subprocess.run(  # nosec B603
+                [terraform_binary, *args], cwd=copy, env=env, text=True, capture_output=True, check=False
+            )
+            if result.returncode != 0:
+                break
+        output = result.stdout + result.stderr
+        # The provider plugin can fail to start or be rewritten in the shared cache under load; retry only that.
+        if result.returncode == 0 or not any(message in output for message in transient):
+            break
+        time.sleep(15)
+    assert result.returncode == 0, result.stdout + result.stderr

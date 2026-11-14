@@ -323,6 +323,7 @@ def test_baseline_fragment_registered_and_gated() -> None:
     for phrase in (
         "desired_count", "global.compliance", "soc2", "pci", "hipaa", "fedramp", "Remote State",
         "monitoring.tf", "kms.tf", "backup.tf", "Amazon EFS", "exempt", "no new warning code",
+        "CacheClusterId", "cloudwatch.amazonaws.com", "aws:SourceAccount", "cloudtrail_retention_days", "End Account Baseline",
     ):
         assert phrase in text, phrase
     assert "{{" not in text
