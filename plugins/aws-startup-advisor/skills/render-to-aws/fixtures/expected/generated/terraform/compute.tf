@@ -1,3 +1,5 @@
+data "aws_partition" "current" {}
+
 resource "aws_ecs_cluster" "main" {
   name = local.name_prefix
 
@@ -26,7 +28,19 @@ resource "aws_iam_role" "ecs_execution" {
 
 resource "aws_iam_role_policy_attachment" "ecs_execution" {
   role       = aws_iam_role.ecs_execution.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+  policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+resource "aws_iam_role" "ecs_task" {
+  name = "${local.name_prefix}-ecs-task"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "ecs-tasks.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
 }
 
 resource "aws_ecs_task_definition" "web" {
@@ -36,6 +50,7 @@ resource "aws_ecs_task_definition" "web" {
   cpu                      = 1024
   memory                   = 2048
   execution_role_arn       = aws_iam_role.ecs_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
   container_definitions = jsonencode([{
     name         = "web"
     image        = var.web_image
@@ -70,6 +85,17 @@ resource "aws_ecs_service" "web" {
     container_port   = 8080
     target_group_arn = aws_lb_target_group.web.arn
   }
+
+  health_check_grace_period_seconds  = 60
+  deployment_minimum_healthy_percent = 100
+  deployment_maximum_percent         = 200
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
+  depends_on = [aws_lb_listener.https]
 }
 
 resource "aws_service_discovery_private_dns_namespace" "application" {
@@ -103,6 +129,7 @@ resource "aws_ecs_task_definition" "private" {
   cpu                      = 512
   memory                   = 1024
   execution_role_arn       = aws_iam_role.ecs_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
   container_definitions = jsonencode([{
     name         = "private"
     image        = var.private_image
@@ -113,6 +140,14 @@ resource "aws_ecs_task_definition" "private" {
       containerPath = "/var/data"
       readOnly      = false
     }]
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        awslogs-group         = aws_cloudwatch_log_group.application.name
+        awslogs-region        = var.aws_region
+        awslogs-stream-prefix = "private"
+      }
+    }
   }])
 
   volume {
@@ -147,6 +182,14 @@ resource "aws_ecs_service" "private" {
     registry_arn = aws_service_discovery_service.private.arn
   }
 
+  deployment_minimum_healthy_percent = 100
+  deployment_maximum_percent         = 200
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
   depends_on = [aws_efs_mount_target.application]
 }
 
@@ -157,11 +200,20 @@ resource "aws_ecs_task_definition" "worker" {
   cpu                      = 512
   memory                   = 1024
   execution_role_arn       = aws_iam_role.ecs_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
   container_definitions = jsonencode([{
     name        = "worker"
     image       = var.worker_image
     essential   = true
     stopTimeout = 30
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        awslogs-group         = aws_cloudwatch_log_group.application.name
+        awslogs-region        = var.aws_region
+        awslogs-stream-prefix = "worker"
+      }
+    }
   }])
 }
 
@@ -177,6 +229,14 @@ resource "aws_ecs_service" "worker" {
     security_groups  = [aws_security_group.worker.id]
     subnets          = aws_subnet.private[*].id
   }
+
+  deployment_minimum_healthy_percent = 100
+  deployment_maximum_percent         = 200
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
 }
 
 resource "aws_ecs_task_definition" "cron" {
@@ -186,10 +246,19 @@ resource "aws_ecs_task_definition" "cron" {
   cpu                      = 512
   memory                   = 1024
   execution_role_arn       = aws_iam_role.ecs_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
   container_definitions = jsonencode([{
     name      = "cron"
     image     = var.cron_image
     essential = true
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        awslogs-group         = aws_cloudwatch_log_group.application.name
+        awslogs-region        = var.aws_region
+        awslogs-stream-prefix = "cron"
+      }
+    }
   }])
 }
 
@@ -211,11 +280,20 @@ resource "aws_iam_role_policy" "scheduler" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
-      { Effect = "Allow", Action = ["ecs:RunTask"], Resource = [aws_ecs_task_definition.cron.arn] },
+      {
+        Effect   = "Allow"
+        Action   = ["ecs:RunTask"]
+        Resource = [aws_ecs_task_definition.cron.arn]
+        Condition = {
+          ArnLike = {
+            "ecs:cluster" = aws_ecs_cluster.main.arn
+          }
+        }
+      },
       {
         Effect   = "Allow"
         Action   = ["iam:PassRole"]
-        Resource = [aws_iam_role.ecs_execution.arn]
+        Resource = [aws_iam_role.ecs_execution.arn, aws_iam_role.ecs_task.arn]
         Condition = {
           StringEquals = {
             "iam:PassedToService" = "ecs-tasks.amazonaws.com"

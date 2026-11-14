@@ -1187,7 +1187,7 @@ def assert_generated_infrastructure_graph(terraform: Path) -> None:
     assert 'resource "aws_iam_role_policy" "scheduler"' in compute
     assert re.search(r'Action\s*=\s*\["ecs:RunTask"\]', compute)
     assert re.search(r'Action\s*=\s*\["iam:PassRole"\]', compute)
-    assert re.search(r'Resource\s*=\s*\[aws_iam_role\.ecs_execution\.arn\]', compute)
+    assert re.search(r'Resource\s*=\s*\[aws_iam_role\.ecs_execution\.arn(,\s*aws_iam_role\.ecs_task\.arn)?\]', compute)
     assert '"iam:PassedToService" = "ecs-tasks.amazonaws.com"' in compute
     assert 'role_arn = aws_iam_role.scheduler.arn' in compute
     assert "arn:aws:iam::000000000000:role/render-migration-scheduler" not in compute

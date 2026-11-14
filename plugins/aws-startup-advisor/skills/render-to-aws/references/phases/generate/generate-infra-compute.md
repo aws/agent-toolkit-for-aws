@@ -7,13 +7,18 @@ _contributes:
 
 # Generate compute.tf
 
-Apply this guidance only to design rows routed to `terraform/compute.tf`. Network, data, storage, and delivery resources stay with their own guidance; reference them by variable or resource address and do not re-create them here.
+This fragment is the only writer of `terraform/compute.tf`; `artifacts-infra` writes the other Terraform files. Apply this guidance only to design rows routed to `terraform/compute.tf`. Network, data, storage, and delivery resources stay with their own guidance; reference them by variable or resource address and do not re-create them here.
 
 ## Common rules
 
 - Emit one resource set per design row and tag it `SourceResourceId = "<source_resource_id>"`.
 - Name resources `"${local.name_prefix}-<role>"`, unique per source resource. Target group names are at most 32 characters and Scheduler schedule names at most 64.
-- Read `aws_config.vcpu`, `memory_gb`, `desired_count`, `graceful_shutdown_seconds`, `time_zone`, `duration_minutes`, and the architecture from `aws-design.json`. Never invent counts or sizes. If `desired_count` is absent, return to Design; do not default to 2.
+- Read `aws_config.vcpu`, `memory_gb`, `desired_count`, `graceful_shutdown_seconds`, `time_zone`, `duration_minutes`, and the architecture from `aws-design.json` when present. Never invent counts or sizes beyond the fallbacks below.
+- Fallbacks when `aws_config` omits a field (the representative design omits them for `rr-private`, `rr-worker`, and `rr-cron`). Generate resolves them without returning to Design:
+  - `vcpu` and `memory_gb`: resolve the captured plan through `knowledge/design/service-plan-fargate-sizing.json` and take the smallest valid pair. With no resolvable plan, use 0.5 vCPU and 1 GB (`cpu = 512`, `memory = 1024`).
+  - `desired_count`: preserve the captured instance count. With none captured, use 1. Never default to 2.
+  - `time_zone`: `UTC`. `graceful_shutdown_seconds`: omit `stopTimeout` so the ECS default applies.
+  - `duration_minutes` has no fallback. It is required only for Lambda and Batch timeouts. If it is absent there, return to Design.
 - Images come only from per-service `<name>_image` variables holding an ECR digest reference. Never use `:latest` or a mutable tag.
 - Secrets use Secrets Manager or Parameter Store ARNs only: `secrets = [{ name, valueFrom }]` for ECS, `aws:elasticbeanstalk:application:environmentsecrets` for Elastic Beanstalk, and a runtime lookup for Lambda. Never put a secret in an `environment` value. A JSON secret key uses `${arn}:key::`.
 - IAM trust policies name the exact service principal. Every Allow lists actions and resource ARNs. Never use `Action = "*"`. Use `Resource = "*"` only where the API requires it, in its own statement. Build managed-policy ARNs with `data.aws_partition.current.partition`. Never write a literal account ID.
@@ -84,7 +89,8 @@ Emit one `aws_elastic_beanstalk_application` and one `aws_elastic_beanstalk_envi
   - `aws:ec2:vpc`: `ELBSubnets` and `ELBScheme` (`public` only for a public web service, otherwise `internal`).
   - `aws:elasticbeanstalk:environment`: `EnvironmentType = "LoadBalanced"`, `LoadBalancerType = "application"`.
   - `aws:elasticbeanstalk:environment:process:default`: `HealthCheckPath`, `Port`.
-  - HTTPS: `aws:elbv2:listener:443` with `SSLCertificateArns` from the already-issued certificate variable and a TLS 1.2 or newer `SSLPolicy`.
+  - HTTPS: `aws:elbv2:listener:443` with `Protocol = "HTTPS"` (the Application Load Balancer default is HTTP), `SSLCertificateArns` from the already-issued certificate variable, and a TLS 1.2 or newer `SSLPolicy`.
+  - Default listener: `aws:elbv2:listener:default` is enabled on port 80 by default. Set `ListenerEnabled = "false"` on it, or use it only as a redirect to HTTPS. Never serve traffic from it.
 - Worker tier only (background workers): set `tier = "Worker"` on the environment. Emit no ELB, listener, `HealthCheckPath`, or HTTPS settings. Add `aws:elasticbeanstalk:sqsd` settings (`WorkerQueueURL` or the managed queue, `HttpPath`, `MaxRetries`) when the worker consumes a queue.
 - Anti-patterns: pasted platform names, `MinSize = 0`, public instances, an HTTP-only listener on a public environment, secrets in `aws:elasticbeanstalk:application:environment`.
 

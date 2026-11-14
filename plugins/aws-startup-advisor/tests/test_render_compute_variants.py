@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import re
 import sys
 from pathlib import Path
@@ -74,6 +75,11 @@ def test_elastic_beanstalk_variant_follows_the_compute_guidance() -> None:
         "DeploymentPolicy",
     ):
         assert term in compute, term
+    assert re.search(r'"aws:elbv2:listener:443"\s*\n\s*name\s*=\s*"Protocol"\s*\n\s*value\s*=\s*"HTTPS"', compute)
+    assert re.search(r'"aws:elbv2:listener:default"\s*\n\s*name\s*=\s*"ListenerEnabled"\s*\n\s*value\s*=\s*"false"', compute)
+    fragment = (GENERATE / "generate-infra-compute.md").read_text(encoding="utf-8")
+    assert 'Protocol = "HTTPS"' in fragment
+    assert "aws:elbv2:listener:default" in fragment and 'ListenerEnabled = "false"' in fragment
     retention = re.search(r'"RetentionInDays"\s*\n\s*value\s*=\s*"(\d+)"', compute)
     assert retention and int(retention.group(1)) in EB_RETENTION_VALUES
     min_size = re.search(r'"MinSize"\s*\n\s*value\s*=\s*"(\d+)"', compute)
@@ -131,3 +137,52 @@ def test_compute_fragment_is_registered_and_covers_every_compute_target() -> Non
         assert term in text, term
     assert "ecs_mode" not in text
     assert "Express" not in text
+
+
+def test_assembler_reads_the_compute_fragment_and_one_fragment_writes_compute_tf() -> None:
+    assemble = _frontmatter(GENERATE / "generate-assemble.md")
+    reads = [str(entry) for entry in assemble["_reads"]]
+    compute_reads = [entry for entry in reads if entry.startswith("infra-compute")]
+    assert len(compute_reads) == 1
+    assert "terraform/compute.tf" in compute_reads[0]
+    writers = [
+        path.name
+        for path in sorted(GENERATE.glob("generate-*.md"))
+        if "terraform/compute.tf" in (_frontmatter(path).get("_contributes") or [])
+    ]
+    assert writers == ["generate-infra-compute.md"]
+    assert "only writer of `terraform/compute.tf`" in (GENERATE / "generate-infra-compute.md").read_text(encoding="utf-8")
+
+
+def test_representative_design_is_covered_by_the_documented_sizing_fallbacks() -> None:
+    design = json.loads((SKILL_ROOT / "fixtures/expected/aws-design.json").read_text(encoding="utf-8"))
+    fragment = (GENERATE / "generate-infra-compute.md").read_text(encoding="utf-8")
+    golden = (SKILL_ROOT / "fixtures/expected/generated/terraform/compute.tf").read_text(encoding="utf-8")
+    assert "Fallbacks when `aws_config` omits a field" in fragment
+    assert "`cpu = 512`, `memory = 1024`" in fragment
+    for row in design["mappings"]:
+        if not row["aws_service"].startswith(("ECS on Fargate", "Amazon EventBridge Scheduler + ECS")):
+            continue
+        name = row["source_resource_id"].removeprefix("rr-")
+        task = golden.split(f'resource "aws_ecs_task_definition" "{name}"', 1)[1].split("\n}\n", 1)[0]
+        config = row["aws_config"]
+        cpu, memory = (int(config["vcpu"] * 1024), int(config["memory_gb"] * 1024)) if "vcpu" in config else (512, 1024)
+        assert f"cpu                      = {cpu}" in task, name
+        assert f"memory                   = {memory}" in task, name
+        service = golden.split(f'resource "aws_ecs_service" "{name}"', 1)
+        if len(service) == 2:
+            assert f"desired_count   = {config.get('desired_count', 1)}" in service[1].split("\n}\n", 1)[0], name
+
+
+def test_golden_compute_follows_the_mandatory_fragment_rules() -> None:
+    golden = (SKILL_ROOT / "fixtures/expected/generated/terraform/compute.tf").read_text(encoding="utf-8")
+    assert "arn:aws:iam::aws:policy" not in golden
+    assert "data.aws_partition.current.partition" in golden
+    assert golden.count("task_role_arn") == golden.count('resource "aws_ecs_task_definition"') == 4
+    for name in ("web", "private", "worker"):
+        service = golden.split(f'resource "aws_ecs_service" "{name}"', 1)[1].split("\n}\n", 1)[0]
+        assert "deployment_circuit_breaker" in service and "rollback = true" in service, name
+    web = golden.split('resource "aws_ecs_service" "web"', 1)[1].split("\n}\n", 1)[0]
+    assert "health_check_grace_period_seconds" in web
+    assert re.search(r'ArnLike\s*=\s*\{\s*"ecs:cluster"', golden)
+    assert golden.count("awslogs-group") == 4
