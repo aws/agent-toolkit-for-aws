@@ -32,4 +32,5 @@ if this skill needs one, add the copy **and** a row in the table below.
 | `ai/bedrock-pricing-cache.md`    | `skills/shared/ai/bedrock-pricing-cache.md`    |
 | `ai/bedrock-quotas.md`           | `skills/shared/ai/bedrock-quotas.md`           |
 | `ai/schema-design-aws-ai.md`     | `skills/shared/ai/schema-design-aws-ai.md`     |
+| `ai/token-volume-tiers.json`     | `skills/shared/ai/token-volume-tiers.json`     |
 | `state/phase-status.schema.json` | `skills/shared/state/phase-status.schema.json` |

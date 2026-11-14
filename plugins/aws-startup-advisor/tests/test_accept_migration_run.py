@@ -506,9 +506,9 @@ class AcceptanceTests(unittest.TestCase):
             self.assertEqual("PASS", by_name(report, "shell_syntax")["status"])
 
     def test_heroku_beanstalk_requires_selected_deploy_artifacts(self):
-        for method, artifact in ((None, ".github/workflows/deploy-eb.yml"),
-                                 ("github_actions", ".github/workflows/deploy-eb.yml"),
-                                 ("codepipeline", "terraform/pipeline.tf"), ("manual", None)):
+        github = [".github/workflows/deploy-eb.yml", ".github/workflows/promote.yml"]
+        for method, artifacts in ((None, github), ("github_actions", github),
+                                  ("codepipeline", ["terraform/pipeline.tf"]), ("manual", [])):
             with self.subTest(method=method), tempfile.TemporaryDirectory() as temp:
                 root = heroku_execution_run(Path(temp))
                 write_json(root / "aws-design.json", {"services": [{"aws_service": "Elastic Beanstalk"}]})
@@ -517,22 +517,31 @@ class AcceptanceTests(unittest.TestCase):
                     preferences["design_constraints"]["eb_deploy_method"] = {"value": method}
                 write_json(root / "preferences.json", preferences)
                 result = by_name(acceptance.accept(root, "heroku-to-aws"), "conditional_outputs")
-                expected = ["terraform/beanstalk.tf"] + ([artifact] if artifact else [])
-                self.assertEqual(expected, result["detail"]["missing"])
+                self.assertEqual(["terraform/beanstalk.tf"] + artifacts, result["detail"]["missing"])
                 (root / "terraform/beanstalk.tf").write_text(
                     'resource "aws_elastic_beanstalk_application" "example" { name = "example" }\n'
                     'resource "aws_elastic_beanstalk_environment" "example_worker" {\n'
                     '  name = "example-worker"\n'
                     '  application = aws_elastic_beanstalk_application.example.name\n'
                     '}\n')
-                if artifact:
+                for artifact in artifacts:
                     path = root / artifact
                     path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_text(
-                        'resource "aws_codepipeline" "example_deploy" { name = "example" }\n'
-                        if method == "codepipeline" else
-                        "name: Deploy\non: push\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n"
-                        "    steps:\n      - uses: einaregilsson/beanstalk-deploy@v22\n")
+                    if method == "codepipeline":
+                        path.write_text('resource "aws_codepipeline" "example_deploy" { name = "example" }\n')
+                    elif artifact.endswith("deploy-eb.yml"):
+                        path.write_text(
+                            "name: Deploy\non: push\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n"
+                            "    steps:\n      - uses: einaregilsson/beanstalk-deploy@v22\n")
+                    else:
+                        # The automatic workflow alone must not satisfy the GitHub Actions floor.
+                        result = by_name(acceptance.accept(root, "heroku-to-aws"), "conditional_outputs")
+                        self.assertEqual("FAIL", result["status"])
+                        self.assertEqual([artifact], result["detail"]["missing"])
+                        path.write_text(
+                            "name: Promote\non: workflow_dispatch\njobs:\n  promote:\n"
+                            "    runs-on: ubuntu-latest\n    environment: production\n"
+                            "    steps:\n      - uses: einaregilsson/beanstalk-deploy@v22\n")
                 report = acceptance.accept(root, "heroku-to-aws")
                 result = by_name(report, "conditional_outputs")
                 self.assertEqual("PASS", result["status"], result)

@@ -962,3 +962,7 @@ in this file before emitting it** — an improvised code is indistinguishable fr
 typo to whatever groups the report.
 
 When Parts 1–8 are complete, control passes to `estimate-assemble.md`.
+
+## ECS Express Mode pricing note
+
+A Fargate entry with `aws_config.ecs_mode: "express"` is priced like a standard Fargate service (task vCPU/GB-hours) plus its share of an ALB; Express Mode has no service charge. Its ALB is shared by up to 25 Express services per compatible group, and Express Mode provisions another ALB once a group exceeds 25 ([resource sharing](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html#express-service-resource-sharing)). Group Express entries by **VPC and ALB scheme** (public-subnet placement → `internet-facing`, private-subnet placement → `internal`; never combine the two in one group), then emit **`ceil(count / 25)`** `alb.monthly_fixed` lines per group (1–25 services → 1, 26–50 → 2, 51 → 3) as one `alb_express_shared` line item with `quantity = ceil(count / 25)`, and attribute LCU estimates per service. Do not emit one ALB fixed charge per Express service, and do not emit a single flat charge regardless of count. Standard-mode HTTP services (including any Fargate entry with no `ecs_mode` key, which is `standard`) keep one ALB line each and never join an Express group.

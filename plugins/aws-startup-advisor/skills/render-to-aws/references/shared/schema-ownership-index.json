@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["schema_version", "status", "attempt_id", "workspace_id", "consent_digest", "resources"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "status": {"const": "active"},
+    "attempt_id": {"type": "string", "format": "uuid"},
+    "workspace_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "consent_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "resources": {"type": "array", "maxItems": 5000, "items": {"type": "object", "required": ["id", "kind", "workspace_id"], "additionalProperties": false, "properties": {"id": {"type": "string", "minLength": 1, "maxLength": 128}, "kind": {"enum": ["service", "disk", "project", "environment", "postgres", "key_value", "build_source", "workflow", "workflow_version", "task", "task_run", "environment_group", "any"]}, "workspace_id": {"type": "string", "minLength": 1, "maxLength": 128}, "parent_id": {"type": ["string", "null"], "maxLength": 128}}}}
+  }
+}
