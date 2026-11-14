@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0",
+  "as_of": "2026-10-21",
+  "currency": "USD",
+  "max_age_days": 90,
+  "source_url": "https://render.com/pricing",
+  "source_digest": "sha256:1133a4e71ea22b6c3dcbaff5ef738308e96c34cbab24cf038989ed2ced0ad6a0",
+  "supporting_sources": [
+    "https://render.com/blog/lower-prices-for-key-value-services",
+    "https://render.com/docs/workflows-limits",
+    "https://pricingsaas.com/companies/render"
+  ],
+  "alias_table": "references/shared/render-plan-aliases.json",
+  "rule": "Resolve the captured plan through plan_normalized (or the shared alias table) before the exact row lookup; a plan the table leaves null, or a canonical id with no row here, is unavailable and never borrows a nearby plan.",
+  "service_compute": {
+    "legacy_aliases": {"starter": "0.5c-512mb", "standard": "1c-2gb", "pro": "2c-4gb", "pro_plus": "4c-8gb", "pro_max": "4c-16gb", "pro_ultra": "8c-32gb"},
+    "plans": {
+      "0.5c-512mb": {"cpu": 0.5, "ram_gb": 0.5, "monthly_usd": 7},
+      "1c-2gb": {"cpu": 1, "ram_gb": 2, "monthly_usd": 25},
+      "2c-4gb": {"cpu": 2, "ram_gb": 4, "monthly_usd": 85},
+      "4c-8gb": {"cpu": 4, "ram_gb": 8, "monthly_usd": 175},
+      "4c-16gb": {"cpu": 4, "ram_gb": 16, "monthly_usd": 225},
+      "8c-32gb": {"cpu": 8, "ram_gb": 32, "monthly_usd": 450}
+    }
+  },
+  "key_value": {
+    "legacy_aliases": {"starter": "256mb", "standard": "1g", "pro": "5g", "pro_plus": "10g", "pro_max": "20g", "pro_ultra": "40g"},
+    "plans": {
+      "free": {"ram_gb": 0.025, "monthly_usd": 0},
+      "256mb": {"ram_gb": 0.25, "monthly_usd": 10},
+      "1g": {"ram_gb": 1, "monthly_usd": 20},
+      "3g": {"ram_gb": 3, "monthly_usd": 60},
+      "5g": {"ram_gb": 5, "monthly_usd": 100},
+      "10g": {"ram_gb": 10, "monthly_usd": 200},
+      "20g": {"ram_gb": 20, "monthly_usd": 350},
+      "40g": {"ram_gb": 40, "monthly_usd": 600},
+      "50g": {"ram_gb": 50, "monthly_usd": 750}
+    }
+  },
+  "workflow": {
+    "legacy_aliases": {"starter": "flex", "standard": "flex", "pro": "2c-4g", "pro_plus": "4c-8g", "pro_max": "4c-16g", "pro_ultra": "8c-32g"},
+    "flex": {"max_cpu": 1, "max_ram_gb": 4, "cpu_hour_usd": 0.2, "ram_gb_hour_usd": 0.05, "minimum_run_seconds": 1, "minimum_cpu": 0.1, "minimum_ram_gb": 0.1},
+    "fixed_plans": {
+      "2c-4g": {"cpu": 2, "ram_gb": 4, "hourly_usd": 0.4},
+      "2c-8g": {"cpu": 2, "ram_gb": 8, "hourly_usd": 0.7},
+      "4c-8g": {"cpu": 4, "ram_gb": 8, "hourly_usd": 1.0},
+      "4c-16g": {"cpu": 4, "ram_gb": 16, "hourly_usd": 1.5},
+      "8c-32g": {"cpu": 8, "ram_gb": 32, "hourly_usd": 2.5}
+    },
+    "state_retention": {"retention_days": 30, "per_gb_month_usd": 0.25, "bill_once_per_task_run": true}
+  },
+  "unmatched_behavior": "unavailable"
+}

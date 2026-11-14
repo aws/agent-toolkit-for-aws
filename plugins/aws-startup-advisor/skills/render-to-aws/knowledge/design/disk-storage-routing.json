@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "selector": "storage.persistent_disk",
+  "candidate_set": ["Amazon EFS", "Amazon EBS", "Amazon S3", "Amazon S3-backed file access"],
+  "ordered_rules": [
+    {"ordinal": 1, "when": "object_semantics_and_object_api_compatible", "select": "Amazon S3"},
+    {"ordinal": 2, "when": "s3_system_of_record_and_verified_path_access_required", "select": "Amazon S3-backed file access"},
+    {"ordinal": 3, "when": "posix_and_container_or_multiple_instances_or_multiple_clients", "select": "Amazon EFS"},
+    {"ordinal": 4, "when": "explicit_ec2_and_single_az_attachment_accepted_and_requirements_fit", "select": "Amazon EBS"},
+    {"ordinal": 5, "when": "posix_single_client_container_and_no_other_rule", "select": "Amazon EFS", "default": "container_posix_startup_default"}
+  ],
+  "clarify_if_missing": ["access_semantics", "sharing_and_clients", "compute_host", "single_az_coupling", "performance", "recovery", "transfer_and_cutover"]
+}

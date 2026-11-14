@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aws-startup-advisor.example/schemas/render-generation-warnings-v1.json",
+  "title": "Render generation accounting and warnings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "phase", "generated", "consumed_topology", "deferred", "unsupported", "warnings", "accounting"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "phase": {"const": "generate"},
+    "generated": {"type": "array", "items": {"$ref": "#/$defs/classified"}},
+    "consumed_topology": {"type": "array", "items": {"$ref": "#/$defs/classified"}},
+    "deferred": {"type": "array", "items": {"$ref": "#/$defs/classified"}},
+    "unsupported": {"type": "array", "items": {"$ref": "#/$defs/classified"}},
+    "warnings": {"type": "array", "items": {"$ref": "#/$defs/warning"}},
+    "accounting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["design_count", "generated_count", "consumed_topology_count", "deferred_count", "unsupported_count", "accounted_count", "source_resource_ids"],
+      "properties": {
+        "design_count": {"type": "integer", "minimum": 0},
+        "generated_count": {"type": "integer", "minimum": 0},
+        "consumed_topology_count": {"type": "integer", "minimum": 0},
+        "deferred_count": {"type": "integer", "minimum": 0},
+        "unsupported_count": {"type": "integer", "minimum": 0},
+        "accounted_count": {"type": "integer", "minimum": 0},
+        "source_resource_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    }
+  },
+  "$defs": {
+    "classified": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_resource_id", "render_kind", "aws_service", "reason", "target_files"],
+      "properties": {
+        "source_resource_id": {"type": "string", "minLength": 1},
+        "render_kind": {"type": "string", "pattern": "^render\\."},
+        "aws_service": {"type": "string", "minLength": 1},
+        "reason": {"type": "string", "minLength": 1},
+        "target_files": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "warning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "subject", "detail", "blocking"],
+      "properties": {
+        "code": {"enum": ["deferred_shared_ai_engine", "conditional_workflow_generation_unsupported", "unpriced_cost_floor"]},
+        "subject": {"type": "string", "minLength": 1},
+        "detail": {"type": "string", "minLength": 1},
+        "blocking": {"type": "boolean"}
+      }
+    }
+  }
+}
