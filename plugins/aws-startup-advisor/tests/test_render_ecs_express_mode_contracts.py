@@ -88,3 +88,33 @@ def test_golden_design_records_ecs_mode_on_every_fargate_mapping() -> None:
             assert config["placement"] in {"public_subnets", "private_subnets"}
     web = next(m for m in fargate if m["render_kind"] == "render.web_service")
     assert web["aws_config"]["ecs_mode_reason"] == "custom_domain_alb"
+def test_design_finalize_walk_covers_every_fargate_aws_service_name() -> None:
+    text = read(REFS / "phases" / "design" / "design-infra.md")
+    assert "`ECS on Fargate`, `ECS on Fargate service`, or `ECS on Fargate task`" in text
+    assert "`ECS on Fargate task` mappings" in text and "`no_http_listener`" in text
+def test_estimate_allocates_the_shared_alb_across_mapping_lines() -> None:
+    text = read(REFS / "phases" / "estimate" / "estimate-infra.md")
+    assert "exactly one estimate line per design mapping" in text
+    assert "floor(fee_cents / count)" in text and "fee_cents mod count" in text and "byte order" in text
+    assert "accounting.accounted_resource_ids" in text
+    assert "own line" in text and "never becomes its own line" in text
+def test_report_reference_lists_both_express_warning_codes_and_mode_statement() -> None:
+    text = read(REFS / "phases" / "generate" / "generate-artifacts-report.md")
+    for code in ("ecs_express_public_subnet_placement", "ecs_express_not_selected_rolling_release"):
+        assert code in text, code
+    assert "Express or standard" in text
+def test_golden_pack_warns_for_rr_web_and_states_the_mode_of_every_fargate_service() -> None:
+    design = json.loads(read(SKILL / "fixtures" / "expected" / "aws-design.json"))
+    generated = SKILL / "fixtures" / "expected" / "generated"
+    warnings = json.loads(read(generated / "generation-warnings.json"))["warnings"]
+    rolling = [row for row in warnings if row["code"] == "ecs_express_not_selected_rolling_release"]
+    assert [row["subject"] for row in rolling] == ["rr-web"]
+    assert "custom_domain_alb" in rolling[0]["detail"] and rolling[0]["blocking"] is False
+    assert not [row for row in warnings if row["code"] == "ecs_express_public_subnet_placement"]
+    assert "ecs_express_not_selected_rolling_release" in read(generated / "terraform" / "README.md")
+    for name in ("MIGRATION_GUIDE.md", "migration-report.html"):
+        text = read(generated / name)
+        for mapping in design["mappings"]:
+            if "Fargate" in mapping["aws_service"]:
+                config = mapping["aws_config"]
+                assert mapping["source_resource_id"] in text and config["ecs_mode_reason"] in text, (name, mapping["source_resource_id"])
