@@ -2,7 +2,7 @@
 _fragment: artifacts-infra-workflow
 _of_phase: generate
 _contributes:
-  - terraform/workflow.tf
+  - { file: terraform/workflow.tf, _when: "a Render Workflow is classified supported" }
 ---
 
 # Generate Workflow infrastructure
@@ -25,7 +25,7 @@ Only the orchestrator `AWS Step Functions Standard` is generated. Task targets a
 | --- | --- | --- | --- |
 | Task sequence | Workflow `task_order`, at least one unique mapped task | `StartAt` is the first task state, `Next` follows `task_order`, the last state has `End` | `test_sequence_chain_matches_task_order` |
 | Lambda task | task `aws_service` is `AWS Lambda` | `arn:aws:states:::lambda:invoke`, `Payload.$` is the state input, `OutputPath` is `$.Payload` | `test_lambda_task_integration_and_packaging` |
-| ECS Fargate task | task `aws_service` is `ECS on Fargate task` | `arn:aws:states:::ecs:runTask.sync`, `LaunchType` `FARGATE`, private subnets, the worker security group, no public IP | `test_ecs_task_integration_and_iam` |
+| ECS Fargate task | task `aws_service` is `ECS on Fargate task` | `arn:aws:states:::ecs:runTask.sync`, `LaunchType` `FARGATE`, private subnets, the worker security group, no public IP. The state input (the item inside a Map) reaches the container as the `STEP_INPUT` environment variable through `Overrides.ContainerOverrides` and `States.JsonToString($)`, within the 8192-character `RunTask` overrides limit. `runTask.sync` returns the task description, not container output, so `ResultPath` is `null`: the input passes through to the next state, a Map fan-in array holds the items, and the container returns no data to the Workflow | `test_ecs_task_integration_and_iam`, `test_every_supported_ecs_state_receives_input` |
 | Per-attempt timeout | exactly one of `timeout_seconds` or `timeout_minutes`, 30 to 86400 seconds, at most 900 for Lambda | `TimeoutSeconds` on the Task state, equal Lambda `timeout` | `test_timeout_matches_source_and_lambda_bound` |
 | Retry with backoff | task `retry` with `max_retries` (at least 1), `wait_duration_ms` (whole seconds), `backoff_scaling` (at least 1.0) | `Retry` with `MaxAttempts` = `max_retries`, `IntervalSeconds` = `wait_duration_ms / 1000`, `BackoffRate` = `backoff_scaling`, `ErrorEquals` `States.TaskFailed` and `States.Timeout` | `test_retry_mapping_exact_and_absent_means_unsupported` |
 | Fan-out and fan-in | task `fan_out` with `max_concurrency` 1 to 40 | Inline `Map`, `ItemsPath` `$.items`, `MaxConcurrency` as declared, no tolerated-failure fields, so any item failure fails the Map and the result array is the fan-in | `test_fan_out_fan_in_map_structure` |

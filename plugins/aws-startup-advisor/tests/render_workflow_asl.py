@@ -37,6 +37,7 @@ MAP_MAX_CONCURRENCY = 40
 RETRY_ERRORS = ["States.TaskFailed", "States.Timeout"]
 CALLBACK_RETRY_ERRORS = ["States.TaskFailed"]
 ECS_RULE = "StepFunctionsGetEventsForECSTaskRule"
+ECS_INPUT_ENV = "STEP_INPUT"
 LOG_RETENTION_VALUES = [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653]
 
 
@@ -352,8 +353,15 @@ def _task_state(task: Task, spec: Spec) -> dict[str, Any]:
                     "SecurityGroups": [Ref("aws_security_group.worker.id")],
                     "AssignPublicIp": "DISABLED",
                 }},
+                # The state input (or the Map item) reaches the container as one JSON string.
+                "Overrides": {"ContainerOverrides": [{
+                    "Name": task.state,
+                    "Environment": [{"Name": ECS_INPUT_ENV, "Value.$": "States.JsonToString($)"}],
+                }]},
             },
-            "ResultPath": f"$.{task.state}",
+            # runTask.sync returns the task description, not container output, so it is discarded and the
+            # state input passes through. A non-null ResultPath fails on non-object Map items.
+            "ResultPath": None,
             "TimeoutSeconds": task.timeout,
         }
     state["Retry"] = _retrier(task.retry, task.callback)

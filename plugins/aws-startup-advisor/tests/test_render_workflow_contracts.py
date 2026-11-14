@@ -143,12 +143,49 @@ def test_ecs_task_integration_and_iam(variant: Any) -> None:
         assert network["AssignPublicIp"] == "DISABLED"
         assert network["SecurityGroups"] == [asl.Ref("aws_security_group.worker.id")]
         assert network["Subnets"] == asl.Ref("aws_subnet.private[*].id")
+        # F1: the container must receive the state input (the Map item inside the Map) as STEP_INPUT.
+        assert params["Overrides"] == {"ContainerOverrides": [{
+            "Name": "task_render",
+            "Environment": [{"Name": "STEP_INPUT", "Value.$": "States.JsonToString($)"}],
+        }]}
+        # Output contract: the task description is discarded, so the input passes through and
+        # non-object Map items cannot hit States.ResultPathMatchFailure.
+        assert render["ResultPath"] is None
     text = variant[1]
     assert 'resource "aws_ecs_task_definition" "task_render"' in text
     assert 'requires_compatibilities = ["FARGATE"]' in text
     assert "var.task_render_image" in text
     assert re.search(r'variable "task_render_image" \{(?:(?!\n\}).)*?validation', text, re.S)
     assert "default" not in re.search(r'variable "task_render_image" \{(.*?)\n\}', text, re.S).group(1)  # type: ignore[union-attr]
+
+
+def test_every_supported_ecs_state_receives_input(variant: Any) -> None:
+    """F1 guard: no generated runTask.sync state, at any depth, may run without the step input."""
+
+    def walk(states: dict[str, Any]) -> list[dict[str, Any]]:
+        found: list[dict[str, Any]] = []
+        for state in states.values():
+            if state.get("Resource") == "arn:aws:states:::ecs:runTask.sync":
+                found.append(state)
+            if "ItemProcessor" in state:
+                found.extend(walk(state["ItemProcessor"]["States"]))
+        return found
+
+    for definition in each(variant):
+        ecs_states = walk(definition["States"])
+        assert ecs_states
+        for state in ecs_states:
+            overrides = state["Parameters"].get("Overrides", {}).get("ContainerOverrides", [])
+            assert [entry["Environment"] for entry in overrides] == [[{"Name": asl.ECS_INPUT_ENV, "Value.$": "States.JsonToString($)"}]]
+            assert state["ResultPath"] is None
+
+
+def test_assemble_reads_every_infra_fragment_and_workflow_contribution_is_conditional() -> None:
+    """F2 guard."""
+    assemble = (SKILL_ROOT / "references/phases/generate/generate-assemble.md").read_text(encoding="utf-8")
+    assert "\n  - artifacts-infra-workflow\n" in assemble
+    fragment = FRAGMENT.read_text(encoding="utf-8")
+    assert re.search(r"_contributes:\n  - \{ file: terraform/workflow\.tf, _when: \"[^\"]+\" \}", fragment)
 
 
 def test_timeout_matches_source_and_lambda_bound(golden: Any, variant: Any) -> None:
