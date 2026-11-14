@@ -46,7 +46,7 @@
       "additionalProperties": false,
       "required": ["code", "subject", "detail", "blocking"],
       "properties": {
-        "code": {"enum": ["deferred_shared_ai_engine", "conditional_workflow_generation_unsupported", "unpriced_cost_floor"]},
+        "code": {"enum": ["deferred_shared_ai_engine", "conditional_workflow_generation_unsupported", "unpriced_cost_floor", "ecs_express_public_subnet_placement", "ecs_express_not_selected_rolling_release"]},
         "subject": {"type": "string", "minLength": 1},
         "detail": {"type": "string", "minLength": 1},
         "blocking": {"type": "boolean"}

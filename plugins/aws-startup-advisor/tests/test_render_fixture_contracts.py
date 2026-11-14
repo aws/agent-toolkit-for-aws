@@ -86,6 +86,8 @@ def test_design_selectors_emit_one_target_all_rejections_and_exact_accounting() 
     assert private["aws_config"] == {
         "ingress": "AWS Cloud Map or ECS Service Connect",
         "public_load_balancer": False,
+        "ecs_mode": "standard",
+        "ecs_mode_reason": "private_discovery",
     }
     assert "Amazon CloudWatch Logs, Metrics, and Alarms" == by_kind["render.web_service"]["aws_config"]["observability"]
     assert "App Runner" not in json.dumps(design)
