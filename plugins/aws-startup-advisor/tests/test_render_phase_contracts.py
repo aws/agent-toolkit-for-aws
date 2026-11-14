@@ -359,6 +359,13 @@ def test_discover_uv_gate_precedes_consent_and_capture() -> None:
     assert "mint no attempt ID" in gate_text
     assert "no consent prompt" in gate_text
     assert "no capture" in gate_text
+    assert "whether or not" in gate_text
+    assert "leaves Discover `in_progress`" in gate_text
+    assert "stays pending" not in gate_text
+    skill = (SKILL_ROOT / "SKILL.md").read_text().split("Steps that need `uv`:")[1].split("\n")[0]
+    assert "`blueprint_validate`" in skill
+    assert "leaves Discover `in_progress`" in skill
+    assert "stays pending" not in skill
 
 
 def test_script_free_phases_do_not_invoke_scripts() -> None:
@@ -372,15 +379,33 @@ def test_script_free_phases_do_not_invoke_scripts() -> None:
 def test_generate_report_stage_blocks_without_uv_and_has_no_skip() -> None:
     for name in ("generate-assemble.md", "generate-artifacts-report.md"):
         text = (PHASE_ROOT / "generate" / name).read_text()
-        assert "stage 7 is `not_run`, completion stays blocked" in text
+        assert "stage 7 is recorded as `failed`" in text
+        assert "stage 7 is `not_run`" not in text
         assert "There is no validation skip" in text
     assemble = (PHASE_ROOT / "generate/generate-assemble.md").read_text()
     assert "No `not_run`" in assemble
+
+
+def test_no_uv_validation_report_shape_is_schema_valid() -> None:
+    validator = jsonschema.Draft202012Validator(
+        json.loads((SKILL_ROOT / "references/shared/schema-validation-report.json").read_text())
+    )
+    report = json.loads((SKILL_ROOT / "fixtures/expected/generated/validation-report.json").read_text())
+    report["status"] = "failed"
+    report["checks"]["report"] = {
+        "status": "failed",
+        "command": "uv run --project SKILL_BASE/scripts --frozen python validate-render-migration-report.py",
+        "evidence": "uv or the frozen environment is unavailable; report validation did not run.",
+    }
+    validator.validate(report)
+    report["checks"]["report"]["status"] = "not_run"
+    assert list(validator.iter_errors(report))
 
 
 def test_readme_uv_prerequisite_wording() -> None:
     readme = (PLUGIN_ROOT / "README.md").read_text()
     line = next(l for l in readme.splitlines() if "docs.astral.sh/uv" in l)
     assert "render-to-aws" in line
-    assert "fresh Render run" in line
+    assert "unfinished Render Discover" in line
     assert "report validation" in line
+    assert "Blueprint semantic revalidation" in line
