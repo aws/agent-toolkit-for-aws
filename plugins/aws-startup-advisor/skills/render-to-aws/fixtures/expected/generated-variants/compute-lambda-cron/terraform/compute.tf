@@ -63,9 +63,6 @@ resource "aws_lambda_function" "cron" {
   memory_size                    = var.cron_memory_mb
   reserved_concurrent_executions = 1
 
-  tracing_config {
-    mode = "Active"
-  }
 
   dead_letter_config {
     target_arn = aws_sqs_queue.cron_dlq.arn

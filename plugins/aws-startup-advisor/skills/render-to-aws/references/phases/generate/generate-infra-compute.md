@@ -57,10 +57,11 @@ Required resources: a task definition with its own log group and roles, an `aws_
 
 Required resources: `aws_lambda_function`, an explicit log group named `/aws/lambda/<function name>`, an execution role trusting `lambda.amazonaws.com`, and an SQS dead-letter queue.
 
-- Function: `package_type = "Image"` with `image_uri = var.<name>_image` (a zip package only when the design says so), `timeout` from `duration_minutes` (at most 900 seconds), `memory_size`, `architectures`, `reserved_concurrent_executions = 1` for cron overlap protection, `tracing_config { mode = "Active" }`, `dead_letter_config`, and `depends_on` the log group.
+- Function: `package_type = "Image"` with `image_uri = var.<name>_image` (a zip package only when the design says so), `timeout` from `duration_minutes` (at most 900 seconds), `memory_size`, `architectures`, `reserved_concurrent_executions = 1` for cron overlap protection, `dead_letter_config`, and `depends_on` the log group.
 - Execution role: `logs:CreateLogStream` and `logs:PutLogEvents` on that log group only, plus `sqs:SendMessage` on the dead-letter queue. Do not attach `AWSLambdaBasicExecutionRole` and widen it. Attach `AWSLambdaVPCAccessExecutionRole` only when the design places the function in a VPC.
 - Schedule: `schedule_expression_timezone`, `retry_policy`, and `dead_letter_config`, with `arn = aws_lambda_function.<name>.arn`. The scheduler role gets `lambda:InvokeFunction` on only that function ARN; no `aws_lambda_permission` is needed for a role-based Scheduler target.
 - Environment values are non-secret only.
+- Do not set `tracing_config { mode = "Active" }` unless the design asks for tracing. If it does, add `xray:PutTraceSegments` and `xray:PutTelemetryRecords` on `Resource = "*"` as a separate statement in the execution role.
 - Anti-patterns: Lambda for work longer than 15 minutes, Lambda for a continuous worker, `Resource = "*"`, unbounded retries.
 
 ## Elastic Beanstalk (traditional)
@@ -70,17 +71,21 @@ Emit one `aws_elastic_beanstalk_application` and one `aws_elastic_beanstalk_envi
 - `solution_stack_name` comes from `data "aws_elastic_beanstalk_solution_stack"` with `most_recent = true` and a `name_regex`. Never paste a platform label.
 - Instance profile: an `aws_iam_role` trusting `ec2.amazonaws.com`, an `aws_iam_instance_profile`, and the partition-built `AWSElasticBeanstalkWebTier` (web) or `AWSElasticBeanstalkWorkerTier` (worker) and `AmazonSSMManagedInstanceCore` policies. Scope secret access with an inline policy on the exact secret ARNs.
 - Service role: trust `elasticbeanstalk.amazonaws.com`, attach `AWSElasticBeanstalkEnhancedHealth` and `AWSElasticBeanstalkManagedUpdatesCustomerRolePolicy`.
-- Required `setting` blocks:
+- Required `setting` blocks, all tiers:
   - `aws:autoscaling:launchconfiguration`: `IamInstanceProfile`, `InstanceType` (from `knowledge/design/service-plan-eb-sizing.json`), `SecurityGroups`.
   - `aws:autoscaling:asg`: `MinSize` (at least 1) and `MaxSize`.
-  - `aws:ec2:vpc`: `VPCId`, `Subnets`, `ELBSubnets`, `ELBScheme` (`public` only for a public web service, otherwise `internal`), `AssociatePublicIpAddress = "false"`.
-  - `aws:elasticbeanstalk:environment`: `EnvironmentType = "LoadBalanced"`, `LoadBalancerType = "application"`, `ServiceRole`.
-  - `aws:elasticbeanstalk:environment:process:default`: `HealthCheckPath`, `Port`.
+  - `aws:ec2:vpc`: `VPCId`, `Subnets`, `AssociatePublicIpAddress = "false"`.
+  - `aws:elasticbeanstalk:environment`: `ServiceRole`.
   - `aws:elasticbeanstalk:healthreporting:system`: `SystemType = "enhanced"`.
   - `aws:elasticbeanstalk:command`: `DeploymentPolicy` (`Rolling` by default, `Immutable` when the design asks).
   - `aws:elasticbeanstalk:cloudwatch:logs`: `StreamLogs = "true"` and `RetentionInDays`, which accepts only 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, or 3653 (round up).
   - `aws:elasticbeanstalk:application:environmentsecrets`: one entry per secret.
+- Web tier only (web and private services):
+  - `aws:ec2:vpc`: `ELBSubnets` and `ELBScheme` (`public` only for a public web service, otherwise `internal`).
+  - `aws:elasticbeanstalk:environment`: `EnvironmentType = "LoadBalanced"`, `LoadBalancerType = "application"`.
+  - `aws:elasticbeanstalk:environment:process:default`: `HealthCheckPath`, `Port`.
   - HTTPS: `aws:elbv2:listener:443` with `SSLCertificateArns` from the already-issued certificate variable and a TLS 1.2 or newer `SSLPolicy`.
+- Worker tier only (background workers): set `tier = "Worker"` on the environment. Emit no ELB, listener, `HealthCheckPath`, or HTTPS settings. Add `aws:elasticbeanstalk:sqsd` settings (`WorkerQueueURL` or the managed queue, `HttpPath`, `MaxRetries`) when the worker consumes a queue.
 - Anti-patterns: pasted platform names, `MinSize = 0`, public instances, an HTTP-only listener on a public environment, secrets in `aws:elasticbeanstalk:application:environment`.
 
 ## Elastic Beanstalk Cluster Mode and Amazon EKS
