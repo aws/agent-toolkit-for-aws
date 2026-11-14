@@ -264,8 +264,8 @@ unavailable region/stack rather than inventing a provider default.
   "provider": "heroku",
   "addon_name": "postgresql-cubed-12345",
   "addon_name_source": "tf_resource_name_fallback",
-  "connection_pooling": true,
   "attached_apps": ["my-worker-app"],
+  "connection_pooling": true,
   "ha_enabled": false,
   "encryption_in_transit": true,
   "redis_version": "7.0",
@@ -487,9 +487,9 @@ The following fields MUST NOT appear anywhere in `heroku-resource-inventory.json
         "addon_service": "heroku-postgresql",
         "plan": "standard-0",
         "provider": "heroku",
+        "attached_apps": [],
         "addon_name": "postgresql-cubed-12345",
-        "connection_pooling": true,
-        "attached_apps": []
+        "connection_pooling": true
       }
     },
     {

@@ -78,13 +78,6 @@ whose `resource_id` appears as a `source_resource_id` in `aws-design.json` `serv
 (no replacement selected). Both counts are inputs to the row's status — on this
 branch `advanced-scheduler` has no fast-path row or alias, so Design defers it.
 
-From `heroku-resource-inventory.json` (when present — older inventories omit
-these keys; treat absence as no finding):
-
-- `metadata.apps_by_stack_status` (`eol` / `deprecated` / `supported` /
-  `container` / `unknown` counts)
-- `metadata.eol_stack_apps` (sorted app names on end-of-life stacks)
-
 From the inventory: `shared_data_stores.cohorts` (for the conditional
 `shared-data-stores` section) and `metadata.apps_by_environment_tier` (one line in
 `decision-summary` **only when the field is present**: "N apps, of which M are
@@ -138,6 +131,12 @@ exists, and fails the report when its rendered dollars differ from
   decision-grade.
 
 These rules apply in both report modes (`report-decision-core.md` reuses this section).
+From `heroku-resource-inventory.json` (when present — older inventories omit
+these keys; treat absence as no finding):
+
+- `metadata.apps_by_stack_status` (`eol` / `deprecated` / `supported` /
+  `container` / `unknown` counts)
+- `metadata.eol_stack_apps` (sorted app names on end-of-life stacks)
 
 ---
 
