@@ -23,6 +23,8 @@ If any gate fails, right-sized capacity equals capacity-preserving capacity, con
 
 Cron runtime is unavailable unless customer-provided or captured run history establishes actual duration with sufficient evidence. A schedule alone never creates monthly runtime. Workflow and task durations follow the same evidence rule.
 
+## AWS rate rows
+Price each AWS component of a mapping from `references/vendored/pricing/aws-infra-pricing.json`. `knowledge/estimate/render-service-rate-map.json` names the row, `_no_cost_services` entry, or `_absent_services` entry for every component a selector can emit. A line is null only when a component is in `_absent_services`; otherwise it carries an amount, or a stated missing quantity (for example EFS with no captured capacity), never a substituted neighbouring rate. `tests/test_render_pricing_coverage.py` fails when a sizing-table output or design service has no row or entry.
 ## Dual totals and floors
 
 For each selected AWS mapping, emit parallel `capacity_preserving` and `right_sized` line objects with quantity, unit, rate, formula, monthly amount or null, pricing source, confidence, and exclusion reason. Apply service-specific Multi-AZ handling from the cache; never use a blanket multiplier. A target-region mismatch keeps the us-east-1 amount but adds the required region note and widens confidence; it does not invent a multiplier.

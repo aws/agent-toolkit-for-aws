@@ -25,8 +25,7 @@
   ],
   "warnings": [
     {"code": "conditional_workflow_generation_unsupported", "subject": "rr-workflow and rr-workflow-task", "detail": "The selected Step Functions Standard and Lambda design is reported, but no Workflow artifacts are fabricated until callback, compensation, retry, and state-retention semantics pass dedicated generation tests.", "blocking": false},
-    {"code": "deferred_shared_ai_engine", "subject": "ai-workload-profile.json", "detail": "Infrastructure artifacts are usable; provider-neutral AI Design, Estimate, Generate, model, adapter, and pricing execution remain unavailable and resume from the preserved profile.", "blocking": false},
-    {"code": "unpriced_cost_floor", "subject": "Amazon EFS", "detail": "Both AWS scenario totals are known-cost floors because the reviewed estimate has no EFS rate row.", "blocking": false}
+    {"code": "deferred_shared_ai_engine", "subject": "ai-workload-profile.json", "detail": "Infrastructure artifacts are usable; provider-neutral AI Design, Estimate, Generate, model, adapter, and pricing execution remain unavailable and resume from the preserved profile.", "blocking": false}
   ],
   "accounting": {
     "design_count": 15,

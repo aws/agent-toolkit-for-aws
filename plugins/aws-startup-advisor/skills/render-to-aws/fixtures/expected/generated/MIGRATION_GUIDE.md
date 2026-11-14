@@ -58,4 +58,4 @@ Trigger rollback on error rate, integrity mismatch, unacceptable lag, or failed 
 
 ## Known limitations
 
-Both estimate scenarios are floors because EFS is unpriced. AI execution is `deferred_shared_ai_engine`. Workflow generation is `conditional_workflow_generation_unsupported`; the report preserves the selected targets but no unvalidated Workflow artifacts are emitted.
+Both estimate scenarios price every line, including EFS at the 5 GB Blueprint disk size. AI execution is `deferred_shared_ai_engine`. Workflow generation is `conditional_workflow_generation_unsupported`; the report preserves the selected targets but no unvalidated Workflow artifacts are emitted.

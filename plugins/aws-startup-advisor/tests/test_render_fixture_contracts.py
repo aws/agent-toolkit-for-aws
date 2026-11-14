@@ -310,7 +310,6 @@ def test_generate_ledger_schemas_and_complete_target_accounting() -> None:
     assert codes == {
         "conditional_workflow_generation_unsupported",
         "deferred_shared_ai_engine",
-        "unpriced_cost_floor",
     }
     assert all(row["target_files"] == [] for row in ledger["unsupported"])
     assert not any("ai" in path.lower() for row in ledger["generated"] for path in row["target_files"])
