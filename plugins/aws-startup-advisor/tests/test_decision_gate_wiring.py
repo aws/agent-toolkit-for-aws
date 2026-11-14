@@ -111,7 +111,7 @@ def test_readme_uses_qualification_based_migration_credit_copy() -> None:
 
     assert text.count(APPROVED_CREDIT_COPY) == 3
     assert all(unsupported not in text for unsupported in SUPERSEDED_CREDIT_COPY)
-    assert "GCP and Heroku currently write importable plans" in text
+    assert "GCP, Heroku, and Render currently write importable plans" in text
     assert "returns `PLAN_SKIP` until the downstream importer accepts Azure plans" in text
 
 
