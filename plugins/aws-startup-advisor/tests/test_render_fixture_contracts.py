@@ -1189,6 +1189,10 @@ def test_golden_baseline_and_operations_terraform() -> None:
     expected_delete_after = max(35, min(cloudtrail_retention_days, 365)) if frameworks else 35
     assert f"delete_after = {expected_delete_after}\n" in backup
     assert expected_delete_after == 35
+    assert "local.cloudtrail_retention_days" not in backup
+    assert "never reference `local.cloudtrail_retention_days`" in (
+        SKILL_ROOT / "references/phases/generate/generate-artifacts-baseline.md"
+    ).read_text(encoding="utf-8").lower()
     # CloudWatch alarm actions cannot use the AWS managed SNS key.
     assert not re.search(r'kms_master_key_id\s*=\s*"alias/aws/sns"', monitoring)
     topic = monitoring.split('resource "aws_sns_topic" "alerts"')[1].split("\nresource ")[0]

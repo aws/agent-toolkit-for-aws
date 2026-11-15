@@ -62,6 +62,8 @@ Verify only. Generated RDS blocks keep `backup_retention_period` at 7 or higher 
 
 ## backup.tf (gated)
 
-Emit only when an `Amazon EFS` mapping exists. Emit `aws_backup_vault` (the customer-managed key when `kms.tf` is emitted), `aws_backup_plan` with a daily rule and `delete_after` = 35 when no framework is declared, otherwise `max(35, min(cloudtrail_retention_days, 365))`, an `aws_iam_role` trusted by `backup.amazonaws.com` with `AWSBackupServiceRolePolicyForBackup` attached through a partition-aware ARN, and `aws_backup_selection` of the EFS file system ARN. Do not also emit `aws_efs_backup_policy`.
+Emit only when an `Amazon EFS` mapping exists. Emit `aws_backup_vault` (the customer-managed key when `kms.tf` is emitted), `aws_backup_plan` with a daily rule, an `aws_iam_role` trusted by `backup.amazonaws.com` with `AWSBackupServiceRolePolicyForBackup` attached through a partition-aware ARN, and `aws_backup_selection` of the EFS file system ARN. Do not also emit `aws_efs_backup_policy`.
+
+`delete_after` is the resolved integer written as a literal: 35 when no framework is declared, otherwise `max(35, min(cloudtrail_retention_days, 365))`. Never reference `local.cloudtrail_retention_days`. Account Baseline opt-out removes that local, and a reference would fail validation.
 
 A stack with no EFS, no RDS, no alarms to create and compliance `none` emits `baseline.tf` only.
