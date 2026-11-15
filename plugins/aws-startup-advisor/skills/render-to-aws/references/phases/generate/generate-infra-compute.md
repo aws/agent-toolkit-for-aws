@@ -31,7 +31,7 @@ Required resources: cluster with Container Insights, log group, execution role, 
 
 - Execution role: trust `ecs-tasks.amazonaws.com`, attach `AmazonECSTaskExecutionRolePolicy`, and add an inline policy scoped to the exact secret and parameter ARNs (`secretsmanager:GetSecretValue`, `ssm:GetParameters`, and `kms:Decrypt` only when the design names a customer-managed key).
 - Task role: application permissions only, empty by default, never the same role as the execution role. Add the `ssmmessages` channel actions only when `enable_execute_command = true`.
-- Task definition: `network_mode = "awsvpc"`, `requires_compatibilities = ["FARGATE"]`, a valid Fargate cpu/memory pair, `essential = true`, an `awslogs` log configuration, a `healthCheck` (command, interval, timeout, retries, `startPeriod`) when the source declares a health path, `stopTimeout` from `graceful_shutdown_seconds` (Fargate maximum 120), and `readonlyRootFilesystem = true` where the source allows it.
+- Task definition: `network_mode = "awsvpc"`, `requires_compatibilities = ["FARGATE"]`, a valid Fargate cpu/memory pair, `essential = true`, an `awslogs` log configuration, `stopTimeout` from `graceful_shutdown_seconds` (Fargate maximum 120), and `readonlyRootFilesystem = true` where the source allows it. Add a container `healthCheck` (command, interval, timeout, retries, `startPeriod`) when the source declares a health path and no load balancer health check already covers that path. When an ALB target group checks the path, omit the container `healthCheck`.
 - Service: `launch_type = "FARGATE"`, `desired_count` from design, private subnets with `assign_public_ip = false`, `health_check_grace_period_seconds` behind an ALB, `deployment_circuit_breaker { enable = true, rollback = true }`, explicit `deployment_minimum_healthy_percent` and `deployment_maximum_percent`, and `depends_on` the listener.
 - Anti-patterns: public IPs on tasks, a public ALB for private or worker services, one role serving as both task and execution role, `latest` tags, secrets in `environment`, missing log retention.
 
@@ -52,7 +52,7 @@ Follow the public web rules without a public ALB or public ingress.
 
 ## EventBridge Scheduler + ECS RunTask
 
-Required resources: a task definition with its own log group and roles, an `aws_scheduler_schedule`, and a scheduler role trusting `scheduler.amazonaws.com`.
+Required resources: a task definition that logs to a retained log group (its own group, or the shared application log group with its own stream prefix) and uses execution and task roles (its own, or the shared ECS roles), an `aws_scheduler_schedule`, and a scheduler role trusting `scheduler.amazonaws.com`.
 
 - Schedule: `schedule_expression`, `schedule_expression_timezone` from `aws_config.time_zone`, `flexible_time_window { mode = "OFF" }`, `retry_policy`, and `ecs_parameters` with `task_definition_arn`, `launch_type`, `task_count = 1`, and a private `network_configuration`.
 - Scheduler role policy: `ecs:RunTask` on the exact task definition ARN with an `ArnLike` condition on `ecs:cluster`, and `iam:PassRole` on only the task role and execution role ARNs with `iam:PassedToService = ecs-tasks.amazonaws.com`.

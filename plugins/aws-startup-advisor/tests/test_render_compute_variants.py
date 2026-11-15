@@ -178,6 +178,12 @@ def test_golden_compute_follows_the_mandatory_fragment_rules() -> None:
     golden = (SKILL_ROOT / "fixtures/expected/generated/terraform/compute.tf").read_text(encoding="utf-8")
     assert "arn:aws:iam::aws:policy" not in golden
     assert "data.aws_partition.current.partition" in golden
+    assert 'data "aws_partition" "current"' not in golden
+    main = (SKILL_ROOT / "fixtures/expected/generated/terraform/main.tf").read_text(encoding="utf-8")
+    assert main.count('data "aws_partition" "current"') == 1
+    fragment = (GENERATE / "generate-infra-compute.md").read_text(encoding="utf-8")
+    assert "shared application log group" in fragment
+    assert "When an ALB target group checks the path, omit the container `healthCheck`." in fragment
     assert golden.count("task_role_arn") == golden.count('resource "aws_ecs_task_definition"') == 4
     for name in ("web", "private", "worker"):
         service = golden.split(f'resource "aws_ecs_service" "{name}"', 1)[1].split("\n}\n", 1)[0]
