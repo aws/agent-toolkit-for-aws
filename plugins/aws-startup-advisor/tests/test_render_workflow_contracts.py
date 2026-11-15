@@ -508,3 +508,18 @@ def test_generation_guidance_names_every_rubric_key() -> None:
         assert token in text
     generate = (SKILL_ROOT / "references/phases/generate/generate.md").read_text(encoding="utf-8")
     assert "_id: artifacts-infra-workflow" in generate and "phases/generate/generate-infra-workflow.md" in generate
+
+
+def test_ecs_workflow_input_and_no_return_data_reach_the_owner_guide() -> None:
+    # The fragment says an ECS task gets its input only as STEP_INPUT and returns no data. Without the same words in
+    # the guide, an owner who moves a Render task image unchanged starts it without arguments and nothing fails.
+    fragment = FRAGMENT.read_text(encoding="utf-8")
+    assert "`STEP_INPUT`" in fragment and "8192" in fragment and "`ResultPath` is `null`" in fragment
+    docs = (SKILL_ROOT / "references/phases/generate/generate-artifacts-docs.md").read_text(encoding="utf-8")
+    cutover = next(line for line in docs.splitlines() if line.startswith("7. **Deployment and service cutover**"))
+    limits = next(line for line in docs.splitlines() if line.startswith("11. **Known limitations**"))
+    for needed in ("`STEP_INPUT`", "8192", "nothing would fail", "make the container read"):
+        assert needed in cutover, needed
+    for needed in ("returns no data", "`ResultPath` is `null`", "Map fan-in", "S3 or DynamoDB"):
+        assert needed in limits, needed
+
