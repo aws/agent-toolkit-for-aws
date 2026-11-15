@@ -304,9 +304,10 @@
     "_no_invocation_data_note": "Lambda cost is invocation-driven, and IaC declares no invocation count. With no measured request volume there is no figure to compute: emit null with a stated reason rather than a remembered default. A source consumption plan provisions no worker capacity, so there is no source-side number to carry across either."
   },
   "efs": {
-    "_comment": "Amazon EFS rates (us-east-1). Verified 2026-11-14 via the AWS Pricing MCP server (get_pricing, us-east-1, OnDemand), service code AmazonEFS. Storage is per GB-month of data stored (Regional, Elastic Throughput default). Multi-AZ is intrinsic to Regional file systems; One Zone classes are not listed here. Elastic Throughput read/write is per GB transferred; Provisioned Throughput is per MiBps-month and applies only when the design states Provisioned mode.",
+    "_comment": "Amazon EFS rates (us-east-1). Verified 2026-11-14 via the AWS Pricing MCP server (get_pricing, us-east-1, OnDemand), service code AmazonEFS. Storage is per GB-month of data stored (Regional, Elastic Throughput default; infrequent_access_per_gb_month is the Elastic Throughput SKU USE1-IATimedStorage-ET-ByteHrs, and infrequent_access_legacy_throughput_per_gb_month is USE1-IATimedStorage-ByteHrs, which applies only to file systems on the legacy Provisioned or Bursting throughput modes; Price List publication 2026-11-04). Multi-AZ is intrinsic to Regional file systems; One Zone classes are not listed here. Elastic Throughput read/write is per GB transferred; Provisioned Throughput is per MiBps-month and applies only when the design states Provisioned mode.",
     "standard_per_gb_month": 0.3,
-    "infrequent_access_per_gb_month": 0.025,
+    "infrequent_access_per_gb_month": 0.016,
+    "infrequent_access_legacy_throughput_per_gb_month": 0.025,
     "elastic_throughput_read_per_gb": 0.03,
     "elastic_throughput_write_per_gb": 0.06,
     "provisioned_throughput_per_mibps_month": 6.0,

@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "pricing_file": "references/vendored/pricing/aws-infra-pricing.json",
-  "rule": "Every AWS service component Render's design selectors can emit resolves to exactly one of: a priced section in the pricing file (pricing, dotted JSON path), a _no_cost_services entry (no_cost), an _absent_services entry (absent), or a topology boundary that is not an AWS resource (topology, reason required). A design aws_service joined with ' + ' is split into components. An estimate line is null only when a component is absent; a line whose components are all pricing, no_cost or topology must carry an amount.",
+  "rule": "Every AWS service component Render's design selectors can emit resolves to exactly one of: a priced section in the pricing file (pricing, dotted JSON path), a _no_cost_services entry (no_cost), an _absent_services entry (absent), or a topology boundary that is not an AWS resource (topology, reason required). A design aws_service joined with ' + ' is split into components. An estimate line is null in exactly two cases, each with an `exclusion_reason` and an entry in `unpriced_line_ids`: a component is absent (`no_rate`), or the quantity its rate multiplies is not established (`no_quantity`: a cron with no run history, a Workflow with no duration, Step Functions or ECR with no captured volume, or Aurora sized to a class in `_unavailable_instances`). A line whose components are all pricing, no_cost or topology and whose quantity is established must carry an amount. Never invent a quantity to avoid a null.",
   "components": {
     "Amazon S3": {"pricing": "fast_path_services.s3"},
     "Amazon S3-backed file access": {"pricing": "fast_path_services.s3"},

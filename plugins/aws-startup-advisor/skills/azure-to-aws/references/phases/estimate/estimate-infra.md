@@ -342,6 +342,18 @@ each:
    **floors**."
 4. Add the `service_id` to `pricing_source.services_with_missing_fallback[]`.
 
+**Azure Files (NFS) → Amazon EFS and Azure Container Registry → Amazon ECR stay excluded
+lines here, whatever the pricing file holds.** The shared pricing file carries `efs` and
+`ecr` rate rows that only `render-to-aws` reads. This skill has not adopted them: its
+goldens, its sizing and its Azure-specific quantities (capacity, transfer, image
+storage) are not defined for those rows. So a design line whose `aws_service` is
+`EFS` or `ECR` is treated exactly like the absent services above: apply the four
+steps, with `pricing_source: "unavailable"` and `exclusion_reason: "no_rate"`,
+and never price it from those rows. Rung 1 of `pricing-mode.md` ("Service found in
+the pricing file") does not apply to them. Adopting the rows is a deliberate change
+to this file and to the Azure goldens, not a side effect of the shared file gaining
+a section.
+
 **Never substitute a neighbouring rate.** `db.t3.medium` on a DocumentDB line is
 not an `rds_postgresql` class: different service, and those rates are baked-in
 Multi-AZ, so the wrong table would be wrong twice over. A near-miss rate is
