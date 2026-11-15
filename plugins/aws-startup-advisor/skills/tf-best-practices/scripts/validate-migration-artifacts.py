@@ -881,6 +881,210 @@ def _allows_port(body: str, port: int, policy: Any) -> bool:
     return protocol in {"tcp", "6"} and low is not None and high is not None and low <= port <= high
 
 
+# Resource kinds whose `name` must be unique (Elastic Beanstalk names per account and region, IAM
+# role and instance profile names per account): two of them with the same name cannot both be created.
+_UNIQUE_NAME_KINDS = {
+    "aws_elastic_beanstalk_application", "aws_elastic_beanstalk_environment",
+    "aws_iam_role", "aws_iam_instance_profile",
+}
+
+
+def _normalize_name_expression(expression: str) -> str:
+    """Drop whitespace that is only HCL syntax, keep every character that is part of a name.
+
+    `"my app"` and `"myapp"` are different names (Elastic Beanstalk accepts spaces), so whitespace
+    inside a quoted literal stays, including a literal nested in an interpolation:
+    `"${format("my app-%s", var.p)}"` keeps the space in `"my app-%s"`. Whitespace that is syntax,
+    around `=` or between the tokens of an interpolation, is dropped, so `"${ var.p }-web"` and
+    `"${var.p}-web"` still compare equal.
+    """
+    out: list[str] = []
+    stack: list[list[Any]] = [["code", 0]]  # ["code"|"string"|"interp", brace depth]
+    i = 0
+    while i < len(expression):
+        char = expression[i]
+        mode = stack[-1][0]
+        if mode == "string":
+            if char == "\\":
+                out.append(expression[i:i + 2]); i += 2; continue
+            if expression.startswith(("$${", "%%{"), i):
+                out.append(expression[i:i + 3]); i += 3; continue
+            if expression.startswith(("${", "%{"), i):
+                out.append(expression[i:i + 2]); stack.append(["interp", 0]); i += 2; continue
+            out.append(char)
+            if char == '"':
+                stack.pop()
+            i += 1
+            continue
+        if char == '"':
+            out.append(char); stack.append(["string", 0])
+        elif char.isspace():
+            pass
+        elif mode == "interp" and char == "{":
+            stack[-1][1] += 1; out.append(char)
+        elif mode == "interp" and char == "}":
+            out.append(char)
+            if stack[-1][1] == 0:
+                stack.pop()
+            else:
+                stack[-1][1] -= 1
+        else:
+            out.append(char)
+        i += 1
+    return "".join(out)
+
+
+# Attributes of an AWS provider block that can point it at a different account. Providers that differ in
+# any of them are not assumed to share an account. A nested block is compared by its contents: two
+# `assume_role` blocks are not the same identity merely because both blocks exist.
+_PROVIDER_IDENTITY_ATTRS = (
+    "profile", "access_key", "secret_key", "token", "shared_config_files", "shared_credentials_files",
+    "assume_role", "assume_role_with_web_identity", "allowed_account_ids", "forbidden_account_ids", "endpoints",
+)
+
+
+def _aws_providers(root: Path, policy: Any) -> dict[str | None, dict[str, Any]]:
+    """The root's `provider "aws"` blocks by alias (None is the default), each with its region as a
+    string literal (or None when it is not one) and its account-identity attributes."""
+    found: dict[str | None, dict[str, Any]] = {}
+    for path in _files(root, "terraform", (".tf",)):
+        text = _read(root, path)
+        depths, codes, _ = policy._lex_hcl(text)
+        for match in re.finditer(r'\bprovider\s+"aws"\s*\{', text):
+            if not codes[match.start()] or depths[match.start()] != 0:
+                continue
+            body, _ = policy._extract_braced_block(text, match.end() - 1)
+            try:
+                alias = _string(_attr(body, "alias", policy))
+                region = _string(_attr(body, "region", policy))
+                identity = tuple(
+                    (name, _normalize_name_expression(value))
+                    for name in _PROVIDER_IDENTITY_ATTRS
+                    if (value := _provider_attr(body, name, policy)) is not None
+                )
+            except ValueError:
+                alias, region, identity = None, None, (("unparsed", ""),)
+            found[alias] = {"region": region, "identity": identity}
+    return found
+
+
+def _provider_attr(body: str, name: str, policy: Any) -> str | None:
+    """A provider attribute that is either `name = ...` or a nested block `name { ... }`.
+
+    Nested-block contents are kept and normalized the same way a name expression is, so
+    `role_arn = "arn:aws:iam::111:role/a"` and `role_arn = "arn:aws:iam::222:role/b"` stay
+    distinct while syntax-only whitespace does not. Collapsing every block to one literal
+    made two accounts look like one namespace.
+    """
+    direct = _attr(body, name, policy)
+    if direct is not None:
+        return direct
+    cleaned = _uncomment_hcl(body, policy)
+    lexed = policy._lex_hcl(cleaned)
+    depths, codes, _ = lexed
+    base = 1 if cleaned.lstrip().startswith("{") else 0
+    matches = [
+        match for match in re.finditer(rf"\b{re.escape(name)}\s*\{{", cleaned)
+        if codes[match.start()] and depths[match.start()] == base
+    ]
+    if not matches:
+        return None
+    parts = [
+        _normalize_name_expression(policy._extract_braced_block(cleaned, match.end() - 1, lexed)[0])
+        for match in matches
+    ]
+    return "".join(parts)
+
+
+def _provider_ref(resource: Resource, policy: Any) -> str | None | bool:
+    """The alias a resource uses, None for the default provider, False when it is not `aws[.alias]`."""
+    explicit = _attr(resource.body, "provider", policy)
+    if explicit is None:
+        return None
+    compact = re.sub(r"\s+", "", explicit)
+    match = re.fullmatch(r"aws(?:\.([A-Za-z_][A-Za-z0-9_-]*))?", compact)
+    return (match.group(1) or None) if match else False
+
+
+def _same_namespace(
+    kind: str, first: Resource, second: Resource,
+    providers: dict[str | None, dict[str, Any]], policy: Any,
+) -> bool | None:
+    """Whether two resources of one kind compete for a name: True, False, or None when the provider
+    scope (account and, for Elastic Beanstalk, region) cannot be established from the source."""
+    one, two = _provider_ref(first, policy), _provider_ref(second, policy)
+    if one is False or two is False:
+        return None
+    if one == two:
+        return True  # the same provider configuration is the same account and region
+    info_one, info_two = providers.get(one), providers.get(two)
+    if one is not None and info_one is None or two is not None and info_two is None:
+        return None
+    info_one = info_one or {"region": None, "identity": ()}
+    info_two = info_two or {"region": None, "identity": ()}
+    if kind not in _ACCOUNT_LEVEL_NAME_KINDS and info_one["region"] and info_two["region"] \
+            and info_one["region"] != info_two["region"]:
+        return False  # Elastic Beanstalk names are per account and region: two regions never collide
+    if info_one["identity"] != info_two["identity"]:
+        return None  # could be different accounts
+    if kind in _ACCOUNT_LEVEL_NAME_KINDS:
+        return True  # IAM names are per account, in every region
+    if info_one["region"] is None or info_two["region"] is None:
+        return None
+    return True  # the same region and no sign of a different account
+
+
+_ACCOUNT_LEVEL_NAME_KINDS = {"aws_iam_role", "aws_iam_instance_profile"}
+
+
+def _eb_duplicate_names(
+    resources: list[Resource], policy: Any, findings: list[Finding], root: Path | None = None,
+) -> None:
+    """Two Elastic Beanstalk applications, environments, roles or instance profiles written with
+    the same `name` expression in one Terraform root and one provider namespace.
+
+    A migration with several Heroku apps on Elastic Beanstalk that names every application
+    `var.project_name` makes the second `apply` fail, and a staging and a production app then
+    resolve to the same environments. The comparison is of the expression text, so
+    `"${var.project_name}-web"` written twice is caught even though its value is not resolvable.
+    Names are unique per account and region for Elastic Beanstalk and per account for IAM, so two
+    resources are compared only when they use the same provider, or providers that provably share the
+    account (and region): a `us-east-1` and a `us-west-2` application may share a name. When the scope
+    cannot be established from the source the finding is `eb_duplicate_name_scope_unverified`, not a
+    proven collision. A resource with a dynamic count or for_each is skipped, never guessed at.
+    """
+    providers = _aws_providers(root, policy) if root is not None else {}
+    seen: dict[tuple[str, str], list[Resource]] = {}
+    for resource in resources:
+        if resource.kind not in _UNIQUE_NAME_KINDS or _instances(resource, policy) is not True:
+            continue
+        expression = _attr(resource.body, "name", policy)
+        if expression is None:
+            continue
+        key = (resource.kind, _normalize_name_expression(expression))
+        earlier = seen.setdefault(key, [])
+        for first in earlier:
+            same = _same_namespace(resource.kind, first, resource, providers, policy)
+            if same is False:
+                continue
+            if same is True:
+                findings.append(Finding(
+                    resource.file, resource.line, "eb_duplicate_name",
+                    f"{resource.address} and {first.address} both set name = {expression}; two "
+                    f"{resource.kind} resources cannot share a name. Give each Heroku app its own name "
+                    "(generate-terraform.md, EB name resolution).",
+                ))
+            else:
+                findings.append(Finding(
+                    resource.file, resource.line, "eb_duplicate_name_scope_unverified",
+                    f"{resource.address} and {first.address} both set name = {expression}, but their "
+                    "AWS provider account or region cannot be established from the source; confirm they "
+                    "are in different accounts or regions.",
+                ))
+            break
+        earlier.append(resource)
+
+
 def _eb_database_access(resources: list[Resource], policy: Any, findings: list[Finding]) -> None:
     databases = [r for r in resources if r.kind in {"aws_db_instance", "aws_rds_cluster"}]
     environments = [r for r in resources if r.kind == "aws_elastic_beanstalk_environment"]
@@ -1994,7 +2198,7 @@ def _workflows(
     )
     pipeline_satisfies_requirement = has_pipeline and not require_workflow
     expect_deployment = require_workflow or (
-        has_eb and any(path.stem == "deploy-eb" for path in paths)
+        has_eb and any(path.stem == "deploy-eb" or path.stem.startswith("deploy-eb-") for path in paths)
     )
     if expect_deployment and not paths and not pipeline_satisfies_requirement:
         findings.append(Finding(
@@ -2004,6 +2208,7 @@ def _workflows(
             "Elastic Beanstalk has neither a generated workflow nor CodePipeline.",
         ))
     found_deployment = False
+    deployed_here: set[str] = set()
     for path in paths:
         relative = path.relative_to(root).as_posix()
         try:
@@ -2080,6 +2285,7 @@ def _workflows(
                     continue
                 if deploy_action:
                     found_deployment = True
+                    deployed_here.add(relative)
                 if deploy_run:
                     if _run_shell(step, job) not in {"bash", "sh"}:
                         findings.append(Finding(
@@ -2093,6 +2299,19 @@ def _workflows(
                         ))
                     else:
                         found_deployment = True
+                        deployed_here.add(relative)
+    if found_deployment and not pipeline_satisfies_requirement:
+        # Per-app mode writes one deploy-eb-<slug>.yml per Elastic Beanstalk app, and each must deploy its
+        # own app: one workflow that deploys must not stand in for a sibling that only echoes.
+        for path in paths:
+            relative = path.relative_to(root).as_posix()
+            if path.stem.startswith("deploy-eb-") and relative not in deployed_here:
+                findings.append(Finding(
+                    relative, 0, "eb_deploy_missing",
+                    "This per-app Elastic Beanstalk workflow has no active, supported deploy action, "
+                    "`eb deploy`, or AWS update-environment --version-label command. Each app needs its "
+                    "own; another workflow's deployment does not cover it.",
+                ))
     if expect_deployment and paths and not found_deployment and not pipeline_satisfies_requirement:
         findings.append(Finding(
             ".github/workflows", 0, "eb_deploy_missing",
@@ -2116,6 +2335,7 @@ def validate(
         _database_credential_wiring(root, resources, policy, findings)
         _rds_windows(resources, policy, windows, findings)
         _eb_database_access(resources, policy, findings)
+        _eb_duplicate_names(resources, policy, findings, root)
         _postgres(root, resources, policy, findings, require_postgres_script)
         _workflows(root, resources, policy, findings, require_eb_workflow)
     except ValueError as exc:
@@ -2127,13 +2347,14 @@ def validate(
         "artifact_status": status,
         "verdict": status,
         "checks_run": [
-            "postgres_verify", "eb_database_access", "workflow_deploy", "rds_windows",
-            "ecs_database_credentials",
+            "postgres_verify", "eb_database_access", "eb_duplicate_names", "workflow_deploy",
+            "rds_windows", "ecs_database_credentials",
             "database_credential_wiring",
         ],
         "scope": [
             "supported PostgreSQL verification control flow and Bash syntax",
             "explicit Elastic Beanstalk to RDS security-group references",
+            "duplicate names among Elastic Beanstalk applications, environments, IAM roles and instance profiles",
             "GitHub Actions step IDs and presence of an EB deployment operation",
             "literal RDS backup and maintenance window overlap",
             "placeholder passwords in literal ECS DATABASE_URL environment entries",
