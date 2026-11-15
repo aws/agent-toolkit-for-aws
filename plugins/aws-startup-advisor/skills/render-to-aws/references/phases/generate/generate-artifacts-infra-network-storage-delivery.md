@@ -15,6 +15,7 @@ This fragment refines the rows of `generate-artifacts-infra.md` for `network.tf`
 - At least two Availability Zones from `data.aws_availability_zones` with `state = "available"`. Public subnets hold only the ALB. Private subnets hold tasks. Use one route table per tier. Only the public table has the internet gateway default route.
 - Egress, NAT mode: one `aws_eip` and `aws_nat_gateway` per the HA choice in `aws-design.json`, `depends_on` the internet gateway, and a private default route to the NAT.
 - Egress, endpoint mode: no `aws_nat_gateway`, no `aws_eip`, and no `0.0.0.0/0` route on private tables. Attach an S3 gateway endpoint to the private route tables. Add interface endpoints with `private_dns_enabled = true` in the private subnets, behind an endpoint security group, for `ecr.api`, `ecr.dkr`, `logs`, `secretsmanager` and `sts`. ECR image layers are served from S3, so the S3 gateway endpoint is mandatory. Add an `ssm` endpoint only when the design reads Parameter Store values at task start.
+- Name lengths: ALB and target group names are limited to 32 characters and `bucket_prefix` to 37. With `local.name_prefix` as `<project_name>-<environment>`, the suffixes are `-alb-logs-` (10, so `name_prefix` of 27 or fewer), `-web` (4, so 28 or fewer) and `-static-` (8, so 29 or fewer). Validate `project_name` and `environment` with length limits that fit the longest suffix the stack uses (for example 16 and 10 with an ALB, 18 and 10 for a static site) so an over-long value fails at plan with a clear message. Never let derived names exceed the limits.
 - Choosing the mode: use NAT when `aws-design.json` or the inventory records an outbound internet need (third-party APIs, package downloads at runtime). Use the endpoint set when the design records none. When the evidence is absent or ambiguous, keep NAT. Never ask a new question and never fail on this choice.
 - Security groups, one per tier: edge (ALB), web tasks, private tasks, worker tasks, endpoints, EFS. The data tier is owned by the data fragment. Prefer standalone `aws_vpc_security_group_ingress_rule` and `aws_vpc_security_group_egress_rule` on groups with no inline rules. Never mix inline and standalone rules on one group.
 - ALB: `internal = false` only for the public web service, `drop_invalid_header_fields = true`, `enable_deletion_protection` from a variable. HTTPS 443 listener with `ssl_policy = "ELBSecurityPolicy-TLS13-1-2-2021-06"` and a forward action. HTTP 80 listener that only redirects (`HTTP_301` to 443).
@@ -28,7 +29,7 @@ This fragment refines the rows of `generate-artifacts-infra.md` for `network.tf`
 - Ingress rules use `referenced_security_group_id` or `security_groups`. The only CIDR ingress is the ALB on 80 and 443 from `0.0.0.0/0` (or `::/0`).
 - Edge egress reaches only the web task security group on the application port.
 - Endpoint security group allows 443 from the task security groups only.
-- In endpoint mode, task egress is 443 to the endpoint security group, 443 to the S3 prefix list (`aws_vpc_endpoint.s3.prefix_list_id`), and 2049 to the EFS security group when EFS is selected. No `-1` protocol egress.
+- In endpoint mode, task egress replaces only the internet and AWS API paths: 443 to the endpoint security group, 443 to the S3 prefix list (`aws_vpc_endpoint.s3.prefix_list_id`), and 2049 to the EFS security group when EFS is selected. Also emit security-group-referenced egress for every selected internal flow: task groups to the data security group on the database and cache ports (for example 5432, 6379), and callers to the private-service security group on its port. Stateful return traffic does not replace the initiating egress rule. No `-1` protocol egress and no CIDR egress.
 
 ### Anti-patterns
 
@@ -37,7 +38,8 @@ This fragment refines the rows of `generate-artifacts-infra.md` for `network.tf`
 - Choosing NAT with no outbound need when endpoints would do.
 - Missing `ecr.dkr` or the S3 gateway endpoint, which leaves tasks unable to pull images.
 - Interface endpoints in a VPC without DNS hostnames.
-- Open `0.0.0.0/0` task egress in endpoint mode.
+- Open `0.0.0.0/0` or `-1` task egress in endpoint mode.
+- Endpoint mode that drops the task egress to the data tier or private service, which leaves connections to them timing out.
 - One shared security group for every tier.
 - An HTTP listener that forwards.
 - A public listener or `0.0.0.0/0` ingress for a private service.
@@ -95,7 +97,7 @@ File system, security group, mount targets, access point, file system policy. Ou
 ### Anti-patterns
 
 - Public S3 website hosting.
-- A bucket policy with `Principal = "*"`.
+- A bucket policy `Allow` with `Principal = "*"`.
 - Origin access identity instead of OAC.
 - `s3:*` granted to CloudFront.
 - An SPA fallback on a non-SPA site.
@@ -109,6 +111,8 @@ Bucket and controls, OAC, cache and response headers policies, distribution, buc
 
 - [ ] The VPC has DNS support and hostnames, two or more AZs, one route table per tier.
 - [ ] Endpoint mode has no NAT, no EIP, no private default route, the S3 gateway endpoint and all five interface endpoints.
+- [ ] Endpoint mode keeps security-group-referenced task egress for the selected database, cache and private-service flows, with no `-1` or CIDR egress.
+- [ ] `project_name` and `environment` have length validation so ALB and target group names fit 32 characters and `bucket_prefix` fits 37.
 - [ ] Every ingress rule references a security group, except the ALB 80 and 443.
 - [ ] The HTTPS listener uses `var.issued_certificate_arn` and the HTTP listener only redirects.
 - [ ] No `aws_acm_certificate` is attached to a listener.

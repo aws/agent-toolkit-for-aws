@@ -8,12 +8,20 @@ variable "project_name" {
   description = "Stable project name used for tags and resource names."
   type        = string
   default     = "render-migration"
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9-]{0,15}$", var.project_name))
+    error_message = "project_name must be 1 to 16 characters of lowercase letters, digits and hyphens, starting with a letter or digit, so derived ALB, target group and bucket_prefix names stay within the 32 and 37 character provider limits."
+  }
 }
 
 variable "environment" {
   description = "Deployment environment represented by this stack."
   type        = string
   default     = "production"
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9-]{0,9}$", var.environment))
+    error_message = "environment must be 1 to 10 characters of lowercase letters, digits and hyphens, starting with a letter or digit, so derived ALB, target group and bucket_prefix names stay within the 32 and 37 character provider limits."
+  }
 }
 
 variable "vpc_cidr" {

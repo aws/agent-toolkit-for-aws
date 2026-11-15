@@ -238,3 +238,55 @@ def test_network_storage_delivery_guidance_is_registered_and_complete() -> None:
         assert anchor in fragment, anchor
     for out_of_scope in ("aws_ecs_service", "aws_db_instance", "aws_elasticache"):
         assert out_of_scope not in fragment, out_of_scope
+
+def _max_len(variables: str, name: str) -> int:
+    body = _block(variables, f'variable "{name}"')
+    return int(re.search(r"\{0,(\d+)\}", body).group(1)) + 1
+@pytest.mark.parametrize(
+    "variant,suffixes",
+    [
+        ("network-vpc-endpoints", {"-alb-logs-": 37, "-web": 32}),
+        ("delivery-static-spa", {"-static-": 37}),
+    ],
+)
+def test_derived_names_fit_provider_limits_at_validation_maximum(variant: str, suffixes: dict[str, int]) -> None:
+    terraform = VARIANTS_ROOT / variant / "terraform"
+    variables = (terraform / "variables.tf").read_text(encoding="utf-8")
+    longest = _max_len(variables, "project_name") + 1 + _max_len(variables, "environment")
+    for suffix, limit in suffixes.items():
+        assert f'"${{local.name_prefix}}{suffix}"' in _read(terraform), suffix
+        assert longest + len(suffix) <= limit, f"{variant}: {suffix} exceeds {limit}"
+    for default_name in ("project_name", "environment"):
+        default = re.search(r'default\s*=\s*"([^"]+)"', _block(variables, f'variable "{default_name}"')).group(1)
+        assert len(default) <= _max_len(variables, default_name), default_name
+@pytest.mark.parametrize("variant", sorted(EXPECTED_VARIANTS))
+def test_over_long_names_fail_validation_at_plan_time(variant: str, tmp_path: Path) -> None:
+    terraform_binary = shutil.which("terraform")
+    if not terraform_binary:
+        pytest.skip("terraform binary not available")
+    # Variable validation runs before any provider is needed, so only variables.tf is evaluated.
+    work = tmp_path / "terraform"
+    work.mkdir()
+    shutil.copy(VARIANTS_ROOT / variant / "terraform/variables.tf", work / "variables.tf")
+    (work / "locals.tf").write_text('locals {\n  name_prefix = "${var.project_name}-${var.environment}"\n}\n', encoding="utf-8")
+    for name, value in (("project_name", "acme-marketing-website-long"), ("environment", "production-eu-west")):
+        result = subprocess.run(  # nosec B603
+            [terraform_binary, "console", "-no-color", f"-var={name}={value}"],
+            cwd=work,
+            input="local.name_prefix\n",
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        output = result.stdout + result.stderr
+        assert result.returncode != 0 and f"{name} must be 1 to" in output, output
+def test_guidance_states_endpoint_egress_name_limits_and_tls_deny_wording() -> None:
+    fragment = FRAGMENT.read_text(encoding="utf-8")
+    assert "every selected internal flow" in fragment
+    assert "5432" in fragment and "6379" in fragment and "private-service security group" in fragment
+    assert "No `-1` protocol egress and no CIDR egress" in fragment
+    assert "Endpoint mode keeps security-group-referenced task egress" in fragment
+    assert "32 characters" in fragment and "37" in fragment and "`bucket_prefix`" in fragment
+    assert "`project_name` and `environment` have length validation" in fragment
+    assert 'A bucket policy `Allow` with `Principal = "*"`' in fragment
+    assert '- A bucket policy with `Principal = "*"`' not in fragment
