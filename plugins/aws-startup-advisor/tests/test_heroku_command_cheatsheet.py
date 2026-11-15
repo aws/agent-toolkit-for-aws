@@ -557,7 +557,8 @@ def test_eb_rollback_gives_each_cnb_environment_its_own_process_label() -> None:
     assert CNB_GUARD in rollback
     cnb, dockerfile = rollback.split("{{ELSE}}", 1)
     assert "for proc in {{EB_PROCESS_TYPES}}" in cnb
-    assert "--environment-name {{project_name}}-$proc" in cnb
+    assert "--environment-name {{EB_APPLICATION}}-$proc" in cnb
+    assert "--environment-name {{project_name}}-$proc" not in cnb, "a per-app EB environment name starts with the EB application name, not var.project_name"
     assert '--version-label <previous base>-$proc' in cnb
     assert "<previous label>" not in cnb
     # Dockerfile apps keep the single shared label

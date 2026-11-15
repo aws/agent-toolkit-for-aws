@@ -41,7 +41,7 @@ Also extract:
 - `target_region` — from `preferences.json`.global.target_region (default: `us-east-1`)
 - `heroku_apps[]` — list of unique app names from design services
 - `beanstalk_web_apps[]` — unique app names from Elastic Beanstalk web services, plus each name sanitized by replacing `-` with `_`
-- `eb_processes[]` — per app, one entry per Elastic Beanstalk service in `aws-design.json`.services[]: `{ heroku_app, process_type, environment_name }` where `environment_name` is the generated `${project_name}-<process_type>` (the same names `EB_ENVIRONMENT_NAMES` lists). `app_has_eb_web` is true when that app's `web` formation is among them.
+- `eb_processes[]` — per app, one entry per Elastic Beanstalk service in `aws-design.json`.services[]: `{ heroku_app, process_type, environment_name }` where `environment_name` is the generated environment name from `generate-terraform.md` § EB name resolution: `${project_name}-<process_type>` with one EB app, `${project_name}-<eb_app_slug>-<process_type>` with two or more (the same names `EB_ENVIRONMENT_NAMES` lists). `app_has_eb_web` is true when that app's `web` formation is among them.
 - `fargate_processes[]` — per app, one entry per Fargate service in `aws-design.json`.services[]: `{ heroku_app, process_type, service_name, log_group }` where `service_name` is the generated service and task family name `<cluster>-<process_type>`, the container name is `<process_type>`, and `log_group` is `/ecs/<cluster>/<process_type>`. `app_has_fargate_web` is true when that app's `web` formation is among them (an `ALB` service exists). A web app whose `worker` formation was routed to Fargate by the Horizontal Non-Web Capacity Guard (`design-mapping.md`) has `app_has_eb_web = true`, `app_has_fargate_web = false`, and a `fargate_processes[]` entry only for `worker`.
 - `postgres_engine` — `"aurora"` when the Postgres service's `aws_service == "Aurora PostgreSQL"`, else `"rds"` (only meaningful when `has_postgres`)
 - `migration_approach` — from `preferences.json`.global.migration_approach (`"full_cutover"` or `"interim_cutover_data_first"`)
@@ -900,7 +900,7 @@ The generated EB path deploys a source bundle containing your Dockerfile. GitHub
 ### GitHub Actions Deploy (Default)
 
 {{IF app_containerization_method == "cnb_heroku_builder"}}
-The generated `.github/workflows/deploy-eb.yml` workflow uses GitHub OIDC role assumption, builds the image with `pack` and the Heroku builder for `linux/amd64` (the architecture of the generated compute), publishes it to ECR tagged with the commit SHA (reusing the image when a rerun finds that tag already published and verified as `amd64`; a tag of another architecture fails the run and names the tag to delete), writes one `Dockerrun.aws.json` bundle per process type, creates one Elastic Beanstalk application version per bundle (label `<sha>-<run number>-<run attempt>-<process>`, so a rerun after a failed environment update gets a fresh label), and updates each generated EB environment. Keep `EB_CONTAINER_PORT` in the workflow equal to `eb_application_port_{{app_sanitized}}_web` in `terraform.tfvars` when this app has an EB web environment: it is the port the EB `PORT` property and the Dockerrun `ContainerPort` both carry. A worker-only app has no such variable and uses `8080` (EB's Docker platform requires a `ContainerPort`; nothing listens on it).
+The generated `.github/workflows/deploy-eb.yml` workflow (with two or more Elastic Beanstalk apps, one `.github/workflows/deploy-eb-<eb_app_slug>.yml` per app) uses GitHub OIDC role assumption, builds the image with `pack` and the Heroku builder for `linux/amd64` (the architecture of the generated compute), publishes it to ECR tagged with the commit SHA (reusing the image when a rerun finds that tag already published and verified as `amd64`; a tag of another architecture fails the run and names the tag to delete), writes one `Dockerrun.aws.json` bundle per process type, creates one Elastic Beanstalk application version per bundle (label `<sha>-<run number>-<run attempt>-<process>`, so a rerun after a failed environment update gets a fresh label), and updates each generated EB environment of its app. An app that is the production side of a Heroku pipeline has a manually run workflow only, so a push to `main` cannot reach production; its approved releases come through `promote.yml` (see below). Keep `EB_CONTAINER_PORT` in the workflow equal to `eb_application_port_{{app_sanitized}}_web` in `terraform.tfvars` when this app has an EB web environment: it is the port the EB `PORT` property and the Dockerrun `ContainerPort` both carry. A worker-only app has no such variable and uses `8080` (EB's Docker platform requires a `ContainerPort`; nothing listens on it).
 
 Before first run, create or provide a GitHub OIDC IAM role with permissions to call `elasticbeanstalk create-storage-location`, `elasticbeanstalk create-application-version`, `elasticbeanstalk update-environment`, and upload the bundles to the EB storage bucket. Because this app's image is built by `pack` and pushed to ECR, the same role also needs two ECR statements:
 
@@ -909,7 +909,7 @@ Before first run, create or provide a GitHub OIDC IAM role with permissions to c
 
 Store the role ARN as the repository secret `AWS_ROLE_ARN`.
 {{ELSE}}
-The generated `.github/workflows/deploy-eb.yml` workflow uses GitHub OIDC role assumption, packages the source bundle, creates an Elastic Beanstalk application version, and updates each generated EB environment of its push target: the staging app when a promote pair exists (see below), otherwise this app.
+The generated `.github/workflows/deploy-eb.yml` workflow (with two or more Elastic Beanstalk apps, one `.github/workflows/deploy-eb-<eb_app_slug>.yml` per app) uses GitHub OIDC role assumption, packages the source bundle, creates an Elastic Beanstalk application version, and updates each generated EB environment of its app. An app that is the production side of a Heroku pipeline has a manually run workflow only, so a push to `main` cannot reach production; its approved releases come through `promote.yml` (see below).
 
 Before first run, create or provide a GitHub OIDC IAM role with permissions to call `elasticbeanstalk create-storage-location`, `elasticbeanstalk create-application-version`, `elasticbeanstalk update-environment`, and upload the source bundle to the EB storage bucket. Store the role ARN as the repository secret `AWS_ROLE_ARN`.
 {{ENDIF}}
@@ -918,8 +918,8 @@ Before first run, create or provide a GitHub OIDC IAM role with permissions to c
 
 {{IF promote_pair}}
 Your Heroku pipeline `{{pipeline_name}}` maps staging `{{STAGING_APP_NAME}}` → production
-`{{app_name}}`. `deploy-eb.yml` deploys every push to `main` to the staging environments
-only (`{{STAGING_EB_ENVIRONMENT_NAMES}}`). Production receives versions only through the
+`{{app_name}}`. The staging app's deploy workflow deploys every push to `main` to the staging environments
+only (`{{STAGING_EB_ENVIRONMENT_NAMES}}`); this app's own deploy workflow runs only when you start it. Production receives versions only through the
 generated `.github/workflows/promote.yml`: it reads the version label running on
 `{{STAGING_EB_ENVIRONMENT}}`, registers that same source bundle in the production
 application, and updates `{{EB_ENVIRONMENT_NAMES}}`. Elastic Beanstalk builds the
@@ -928,10 +928,7 @@ source version tested on staging; the image itself is rebuilt unless you switch 
 image-based (`Dockerrun.aws.json`) bundle variant.
 {{ELSE}}
 This app has no generated staging source: it is in no Heroku pipeline, its pipeline
-partner was not migrated, or its staging partner and this app resolve to the same
-generated Elastic Beanstalk names (the generated Terraform names every EB application
-from one `project_name`, so two apps in one design would share an application and its
-environments; a "staging" deploy would then land in production). `deploy-eb.yml` deploys every push to `main` to this app's
+partner was not migrated, or the two apps do not share one repository. This app's deploy workflow deploys every push to `main` to this app's
 environments (`{{EB_ENVIRONMENT_NAMES}}`). The generated `.github/workflows/promote.yml`
 is an approval-gated redeploy of a version label you choose to those same environments:
 use it for controlled releases and rollbacks, with `version_label` always filled in.
@@ -1050,14 +1047,14 @@ for PROCESS in {{EB_PROCESS_TYPES}}; do          # e.g. web worker — never rel
 }
 JSON
   zip -q -j "dockerrun/${PROCESS}.zip" "dockerrun/${PROCESS}/Dockerrun.aws.json"
-  aws s3 cp "dockerrun/${PROCESS}.zip" "s3://${BUCKET}/{{project_name}}/${VERSION_BASE}-${PROCESS}.zip" --region {{target_region}}
+  aws s3 cp "dockerrun/${PROCESS}.zip" "s3://${BUCKET}/{{EB_APPLICATION}}/${VERSION_BASE}-${PROCESS}.zip" --region {{target_region}}
   aws elasticbeanstalk create-application-version \
-    --application-name {{project_name}} \
+    --application-name {{EB_APPLICATION}} \
     --version-label "${VERSION_BASE}-${PROCESS}" \
-    --source-bundle "S3Bucket=${BUCKET},S3Key={{project_name}}/${VERSION_BASE}-${PROCESS}.zip" \
+    --source-bundle "S3Bucket=${BUCKET},S3Key={{EB_APPLICATION}}/${VERSION_BASE}-${PROCESS}.zip" \
     --region {{target_region}}
   aws elasticbeanstalk update-environment \
-    --environment-name "{{project_name}}-${PROCESS}" \
+    --environment-name "{{EB_APPLICATION}}-${PROCESS}" \
     --version-label "${VERSION_BASE}-${PROCESS}" \
     --region {{target_region}}
 done
@@ -1069,11 +1066,11 @@ done
 VERSION_LABEL="v$(date +%Y%m%d%H%M%S)"
 BUCKET="$(aws elasticbeanstalk create-storage-location --query S3Bucket --output text --region {{target_region}})"
 zip -r app.zip . -x '.git/*' 'node_modules/*'
-aws s3 cp app.zip "s3://${BUCKET}/{{app_name}}/${VERSION_LABEL}.zip" --region {{target_region}}
+aws s3 cp app.zip "s3://${BUCKET}/{{EB_APPLICATION}}/${VERSION_LABEL}.zip" --region {{target_region}}
 aws elasticbeanstalk create-application-version \
-  --application-name {{app_name}} \
+  --application-name {{EB_APPLICATION}} \
   --version-label "${VERSION_LABEL}" \
-  --source-bundle "S3Bucket=${BUCKET},S3Key={{app_name}}/${VERSION_LABEL}.zip" \
+  --source-bundle "S3Bucket=${BUCKET},S3Key={{EB_APPLICATION}}/${VERSION_LABEL}.zip" \
   --region {{target_region}}
 for ENVIRONMENT in {{EB_ENVIRONMENT_NAMES}}; do
   aws elasticbeanstalk update-environment \
@@ -1812,7 +1809,7 @@ Elastic Beanstalk runs one environment per process type:{{FOR proc IN eb_process
 {{ENDFOR}}
 | `heroku restart -a {{app_name}}` | `for env in {{EB_ENVIRONMENT_NAMES}}; do aws elasticbeanstalk restart-app-server --environment-name $env; done` (not while `writers_quiesced = true`) |
 | `heroku releases -a {{app_name}}` | `aws elasticbeanstalk describe-application-versions --application-name {{EB_APPLICATION}} --query 'ApplicationVersions[].[VersionLabel,DateCreated]' --output table`{{IF app_containerization_method == "cnb_heroku_builder"}} Each deploy registers one label per process type, `<base>-<process_type>` (for example `<base>-web` and `<base>-worker`), so the shared `<base>` is what identifies one release{{ENDIF}} |
-| `heroku rollback -a {{app_name}}` | {{IF app_containerization_method == "cnb_heroku_builder"}}Each environment runs its own process, so each needs its own label: take the previous `<base>` from the `releases` row, then `for proc in {{EB_PROCESS_TYPES}}; do aws elasticbeanstalk update-environment --application-name {{EB_APPLICATION}} --environment-name {{project_name}}-$proc --version-label <previous base>-$proc; done`. Never give one label to every environment: the `-web` bundle starts `/cnb/process/web` in whatever environment receives it, so a worker or clock environment would run the web process{{ELSE}}`for env in {{EB_ENVIRONMENT_NAMES}}; do aws elasticbeanstalk update-environment --application-name {{EB_APPLICATION}} --environment-name $env --version-label <previous label>; done`{{ENDIF}} |
+| `heroku rollback -a {{app_name}}` | {{IF app_containerization_method == "cnb_heroku_builder"}}Each environment runs its own process, so each needs its own label: take the previous `<base>` from the `releases` row, then `for proc in {{EB_PROCESS_TYPES}}; do aws elasticbeanstalk update-environment --application-name {{EB_APPLICATION}} --environment-name {{EB_APPLICATION}}-$proc --version-label <previous base>-$proc; done`. Never give one label to every environment: the `-web` bundle starts `/cnb/process/web` in whatever environment receives it, so a worker or clock environment would run the web process{{ELSE}}`for env in {{EB_ENVIRONMENT_NAMES}}; do aws elasticbeanstalk update-environment --application-name {{EB_APPLICATION}} --environment-name $env --version-label <previous label>; done`{{ENDIF}} |
 {{IF app_has_eb_web}}
 | `heroku maintenance:on -a {{app_name}}` | {{IF has_route53_dns}}`beanstalk.tf` sets `LoadBalancerType=application`. EB leaves its default HTTP listener on 80 forwarding to the app next to the HTTPS listener on 443, so switch **every** forwarding listener, not one. Find the load balancer (EB reports a name, `describe-listeners` needs the ARN): `lb_name=$(aws elasticbeanstalk describe-environment-resources --environment-name {{EB_RUN_ENVIRONMENT}} --query 'EnvironmentResources.LoadBalancers[0].Name' --output text)` then `lb_arn=$(aws elbv2 describe-load-balancers --names "$lb_name" --query 'LoadBalancers[0].LoadBalancerArn' --output text)`. `maintenance:on` saves each forwarding listener's actions, then replaces them: `for l in $(aws elbv2 describe-listeners --load-balancer-arn "$lb_arn" --query "Listeners[?DefaultActions[0].Type=='forward'].ListenerArn" --output text); do aws elbv2 describe-listeners --listener-arns "$l" --query 'Listeners[0].DefaultActions' > "maint-$(basename "$l").json"; aws elbv2 modify-listener --listener-arn "$l" --default-actions Type=fixed-response,FixedResponseConfig='{StatusCode=503,ContentType=text/plain,MessageBody="Maintenance"}'; done`. `maintenance:off` restores each from its saved file: `for l in $(aws elbv2 describe-listeners --load-balancer-arn "$lb_arn" --query "Listeners[?DefaultActions[0].Type=='fixed-response'].ListenerArn" --output text); do f="maint-$(basename "$l").json"; [ -f "$f" ] && aws elbv2 modify-listener --listener-arn "$l" --default-actions "file://$f"; done` (keep the `maint-*.json` files until then; a listener that redirects is left alone){{ELSE}}`beanstalk.tf` emits no `LoadBalancerType` without Route 53 DNS, so the web environment runs the EB default, a Classic Load Balancer; `aws elbv2 modify-listener` / fixed-response actions do not exist for it. Supported procedure: keep an application version whose container answers 503 on every path, then `aws elasticbeanstalk update-environment --environment-name {{EB_RUN_ENVIRONMENT}} --version-label <maintenance-version>`; `maintenance:off` = `update-environment` back to the previous label (the `releases` row lists them). For a listener-level switch, the environment needs `LoadBalancerType=application` in `beanstalk.tf` — settable only at creation, so that is a new environment, not an edit{{ENDIF}} |
 {{ENDIF}}
@@ -1920,7 +1917,7 @@ Replace template variables using these sources:
 | `{{migration_method}}` | `preferences.json` → `data.migration_method` |
 | `{{containerization_status}}` | `preferences.json` → `operational.containerization_status` |
 | `{{containerization_method}}` | `preferences.json` → `operational.containerization_method`, `"dockerfile"` when absent |
-| `{{EB_PROCESS_TYPES}}` | Space-separated process types with a generated EB environment for the app (never `release`); environment names are `{{project_name}}-<process_type>` |
+| `{{EB_PROCESS_TYPES}}` | Space-separated process types with a generated EB environment for the app (never `release`); environment names are `{{EB_APPLICATION}}-<process_type>` |
 | `{{project_name}}` | `var.project_name` from `terraform.tfvars` — the EB application name and the ECR repository prefix |
 | `{{app_sanitized}}` | `{{app_name}}` with `-` replaced by `_` (the per-app Terraform variable suffix) |
 | `{{cnb_builder_tag}}` | Step 0 `cnb_builder_tag` for the app (`22`, `24` or `26`) |
@@ -1937,16 +1934,16 @@ Replace template variables using these sources:
 | `{{EB_ENVIRONMENT_URL}}` | Elastic Beanstalk web environment CNAME output |
 | `{{EB_ENVIRONMENT_NAMES}}` | Space-separated generated Elastic Beanstalk environment names for all EB process types |
 | `{{PROJECT_NAME}}` | The `project_name` value written to `terraform/terraform.tfvars` (`var.project_name`); the EB instance role reads only `secret:<project_name>/*` and `parameter/<project_name>/*`, so new secrets and parameters go under this prefix |
-| `{{EB_APPLICATION}}` | `name` of the generated `aws_elastic_beanstalk_application` — `var.project_name`, not the Heroku app name |
+| `{{EB_APPLICATION}}` | `name` of the generated `aws_elastic_beanstalk_application`, never the Heroku app name: `var.project_name` with one EB app, `var.project_name-<eb_app_slug>` with two or more (`generate-terraform.md` § EB name resolution) |
 | `{{DB_CREDENTIALS_SECRET}}` | `name` of the generated `aws_secretsmanager_secret.db_credentials` (`${var.project_name}-${var.environment}/db-credentials`, JSON `{username,password}`); emitted with RDS Proxy |
 | `{{FOR proc IN eb_processes}}` / `{{FOR proc IN fargate_processes}}` | Step 0 `eb_processes[]` / `fargate_processes[]` for the app being rendered — one table row per process type (`proc.process_type`, `proc.environment_name` / `proc.service_name`, `proc.log_group`) |
-| `{{EB_RUN_ENVIRONMENT}}` | The EB environment where `heroku run` / `config` equivalents land: the app's `web` environment (`${project_name}-web`) when `app_has_eb_web`, else the app's first `eb_processes[]` entry |
+| `{{EB_RUN_ENVIRONMENT}}` | The EB environment where `heroku run` / `config` equivalents land: the app's `web` environment (its `eb_processes[]` entry's `environment_name`) when `app_has_eb_web`, else the app's first `eb_processes[]` entry |
 | `{{ECS_CLUSTER}}` | `${var.project_name}-${var.environment}` — the generated ECS cluster name; service names and log groups are `<cluster>-<process_type>` and `/ecs/<cluster>/<process_type>` |
 | `{{FARGATE_SERVICE_NAMES}}` | Space-separated `service_name` of every `fargate_processes[]` entry for the app |
 | `{{FARGATE_RUN_SERVICE}}` / `{{FARGATE_RUN_PROCESS}}` | The service/task family and container (`process_type`) where `heroku run` / `config` equivalents land: the app's `web` entry when `app_has_fargate_web`, else its first `fargate_processes[]` entry |
 | `{{DB_INSTANCE_IDENTIFIER}}` | `identifier` of the generated `aws_db_instance` (`${var.project_name}-${var.environment}-postgres`); used when `postgres_engine == "rds"` |
 | `{{DB_CLUSTER_IDENTIFIER}}` | `cluster_identifier` of the generated `aws_rds_cluster` (`${var.project_name}-${var.environment}-aurora`); used when `postgres_engine == "aurora"` |
-| `{{promote_pair}}` / `{{pipeline_name}}` / `{{STAGING_APP_NAME}}` | Resolved as in generate-terraform.md § `promote.yml`: true only when this app sits at `stage: "production"` in a `pipeline` resource AND the app at `stage: "staging"` (else `"development"`) in it has Elastic Beanstalk services in `aws-design.json` AND the staging and production sides resolve to different generated EB application and environment names (today every EB app is named from the one `var.project_name`, so they do not, and `promote_pair` is false); that pipeline's name; that staging app |
+| `{{promote_pair}}` / `{{pipeline_name}}` / `{{STAGING_APP_NAME}}` | Resolved as in generate-terraform.md § `promote.yml`: true only when this app sits at `stage: "production"` in a `pipeline` resource AND the app at `stage: "staging"` (else `"development"`) in it has Elastic Beanstalk services in `aws-design.json` AND the staging and production sides resolve to different generated EB application and environment names (always true with two or more EB apps, because EB name resolution gives each app its own); that pipeline's name; that staging app |
 | `{{STAGING_EB_ENVIRONMENT}}` / `{{STAGING_EB_ENVIRONMENT_NAMES}}` | Promote pair only: one generated EB environment of the staging app (`web` if present, else the first; a worker-only app has no web environment) and all of its generated EB environment names |
 | `{{MSK_CLUSTER_ARN}}` | Placeholder — user fills from Terraform output |
 | `{{MIGRATION_BUCKET}}` | Placeholder — user creates an S3 bucket for migration artifacts |
@@ -2009,7 +2006,7 @@ This directory contains all artifacts needed to migrate your Heroku application(
 {{IF has_beanstalk}}
 | `terraform/beanstalk.tf` | Elastic Beanstalk applications and environments |
 {{IF eb_deploy_method == "github_actions"}}
-| `.github/workflows/deploy-eb.yml` | GitHub Actions deploy workflow, one variant per app (buildpack image build via `pack` plus Dockerrun bundles for CNB apps; source bundle for apps with a Dockerfile) |
+| `.github/workflows/deploy-eb.yml` (or one `deploy-eb-<eb_app_slug>.yml` per EB app when the design has two or more) | GitHub Actions deploy workflow, one variant per app (buildpack image build via `pack` plus Dockerrun bundles for CNB apps; source bundle for apps with a Dockerfile) |
 | `.github/workflows/promote.yml` | Approval-gated promote of a running version to production (`heroku pipelines:promote` equivalent) |
 {{ENDIF}}
 {{IF eb_deploy_method == "codepipeline"}}
