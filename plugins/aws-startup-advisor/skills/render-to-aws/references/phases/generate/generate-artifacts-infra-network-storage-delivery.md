@@ -28,8 +28,8 @@ This fragment refines the rows of `generate-artifacts-infra.md` for `network.tf`
 
 - Ingress rules use `referenced_security_group_id` or `security_groups`. The only CIDR ingress is the ALB on 80 and 443 from `0.0.0.0/0` (or `::/0`).
 - Edge egress reaches only the web task security group on the application port.
-- Endpoint security group allows 443 from the task security groups only.
-- In endpoint mode, task egress replaces only the internet and AWS API paths: 443 to the endpoint security group, 443 to the S3 prefix list (`aws_vpc_endpoint.s3.prefix_list_id`), and 2049 to the EFS security group when EFS is selected. Also emit security-group-referenced egress for every selected internal flow: task groups to the data security group on the database and cache ports (for example 5432, 6379), and callers to the private-service security group on its port. Stateful return traffic does not replace the initiating egress rule. No `-1` protocol egress and no CIDR egress.
+- Endpoint security group allows 443 from the task security groups only: every group that holds tasks, including a private-service group.
+- In endpoint mode, task egress replaces only the internet and AWS API paths: 443 to the endpoint security group, 443 to the S3 prefix list (`aws_vpc_endpoint.s3.prefix_list_id`), and 2049 to the EFS security group when EFS is selected. This applies to every group that holds tasks, a private-service group included: Terraform removes the default allow-all egress from a group it creates, so a private-service group with no egress rules cannot pull images, write logs or read secrets, and its tasks fail to start. Give it the same 443 egress to the endpoint security group and the S3 prefix list, and add the matching 443 ingress on the endpoint security group from it. Also emit security-group-referenced egress for every selected internal flow: task groups to the data security group on the database and cache ports (for example 5432, 6379), and callers to the private-service security group on its port. Stateful return traffic does not replace the initiating egress rule. No `-1` protocol egress and no CIDR egress.
 
 ### Anti-patterns
 
@@ -112,6 +112,7 @@ Bucket and controls, OAC, cache and response headers policies, distribution, buc
 - [ ] The VPC has DNS support and hostnames, two or more AZs, one route table per tier.
 - [ ] Endpoint mode has no NAT, no EIP, no private default route, the S3 gateway endpoint and all five interface endpoints.
 - [ ] Endpoint mode keeps security-group-referenced task egress for the selected database, cache and private-service flows, with no `-1` or CIDR egress.
+- [ ] Every group that holds tasks in endpoint mode, a private-service group included, has 443 egress to the endpoint security group and the S3 prefix list, and the endpoint security group admits 443 from it.
 - [ ] `project_name` and `environment` have length validation so ALB and target group names fit 32 characters and `bucket_prefix` fits 37.
 - [ ] Every ingress rule references a security group, except the ALB 80 and 443.
 - [ ] The HTTPS listener uses `var.issued_certificate_arn` and the HTTP listener only redirects.

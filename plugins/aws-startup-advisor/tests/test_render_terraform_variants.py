@@ -94,6 +94,22 @@ def assert_endpoint_variant(terraform: Path) -> None:
     assert "from_port                    = 10000" in private_ingress
     assert "referenced_security_group_id = aws_security_group.task.id" in private_ingress
     assert "cidr_ipv4" not in private_ingress
+    # The private service is a task tier too: with no egress of its own it cannot reach ECR, Logs or Secrets Manager.
+    to_endpoints = _block(text, 'resource "aws_vpc_security_group_egress_rule" "private_service_to_endpoints"')
+    assert "security_group_id            = aws_security_group.private_service.id" in to_endpoints
+    assert "from_port                    = 443" in to_endpoints
+    assert "referenced_security_group_id = aws_security_group.endpoints.id" in to_endpoints
+    assert "cidr_ipv4" not in to_endpoints
+    to_s3 = _block(text, 'resource "aws_vpc_security_group_egress_rule" "private_service_to_s3"')
+    assert "security_group_id = aws_security_group.private_service.id" in to_s3
+    assert "from_port         = 443" in to_s3
+    assert "prefix_list_id    = aws_vpc_endpoint.s3.prefix_list_id" in to_s3
+    assert "cidr_ipv4" not in to_s3
+    from_private = _block(text, 'resource "aws_vpc_security_group_ingress_rule" "endpoints_from_private_service"')
+    assert "security_group_id            = aws_security_group.endpoints.id" in from_private
+    assert "from_port                    = 443" in from_private
+    assert "referenced_security_group_id = aws_security_group.private_service.id" in from_private
+    assert "cidr_ipv4" not in from_private
     ecr = _block(text, 'resource "aws_ecr_repository" "application"')
     assert 'image_tag_mutability = "IMMUTABLE"' in ecr and "scan_on_push = true" in ecr
     assert 'resource "aws_ecr_lifecycle_policy"' in text

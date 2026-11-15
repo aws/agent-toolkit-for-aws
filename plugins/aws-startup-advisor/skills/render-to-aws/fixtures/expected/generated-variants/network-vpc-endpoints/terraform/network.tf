@@ -164,6 +164,33 @@ resource "aws_vpc_security_group_ingress_rule" "endpoints_from_task" {
   ip_protocol                  = "tcp"
   referenced_security_group_id = aws_security_group.task.id
 }
+# The private service is its own task tier: its tasks pull images from ECR, write logs and read secrets, so it
+# needs the same endpoint and S3 egress as the task group. Terraform removes the default allow-all egress from a
+# group it creates, so without these rules its tasks could not start in endpoint mode.
+resource "aws_vpc_security_group_egress_rule" "private_service_to_endpoints" {
+  security_group_id            = aws_security_group.private_service.id
+  description                  = "HTTPS to interface endpoints"
+  from_port                    = 443
+  to_port                      = 443
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.endpoints.id
+}
+resource "aws_vpc_security_group_egress_rule" "private_service_to_s3" {
+  security_group_id = aws_security_group.private_service.id
+  description       = "HTTPS to the S3 gateway endpoint for ECR image layers"
+  from_port         = 443
+  to_port           = 443
+  ip_protocol       = "tcp"
+  prefix_list_id    = aws_vpc_endpoint.s3.prefix_list_id
+}
+resource "aws_vpc_security_group_ingress_rule" "endpoints_from_private_service" {
+  security_group_id            = aws_security_group.endpoints.id
+  description                  = "HTTPS from the private service"
+  from_port                    = 443
+  to_port                      = 443
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.private_service.id
+}
 
 # VPC endpoints replace the NAT gateway. ECR image layers are served from S3,
 # so the S3 gateway endpoint is required together with ecr.api and ecr.dkr.
