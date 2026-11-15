@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:awslabs:startups:render-to-aws:blueprint-validation:1.0",
+  "title": "Consent-bound Render Blueprint semantic validation evidence",
+  "type": "object",
+  "required": ["schema_version", "source_path", "source_digest", "manifest_digest", "attempt_id", "workspace_id", "consent_digest", "validated_at", "outcome", "errors"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "source_path": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^(?!/)(?!.*(?:^|/)[.][.](?:/|$)).+$"},
+    "source_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "manifest_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "attempt_id": {"type": "string", "format": "uuid"},
+    "workspace_id": {"type": "string", "pattern": "^[A-Za-z0-9-]{1,128}$"},
+    "consent_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "validated_at": {"type": "string", "format": "date-time"},
+    "outcome": {"enum": ["valid", "schema_invalid", "semantic_invalid", "capability_unavailable", "payment_required", "transient_failure"]},
+    "errors": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {"$ref": "#/$defs/error"}
+    }
+  },
+  "$defs": {
+    "identity": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._ -]*$"},
+    "error": {
+      "type": "object",
+      "required": ["code", "path", "line", "column", "source_kind", "source_name", "target_kind", "target_name"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
+        "path": {"type": "string", "maxLength": 1024, "pattern": "^/"},
+        "line": {"type": "integer", "minimum": 0},
+        "column": {"type": "integer", "minimum": 0},
+        "source_kind": {"$ref": "#/$defs/identity"},
+        "source_name": {"$ref": "#/$defs/identity"},
+        "target_kind": {"$ref": "#/$defs/identity"},
+        "target_name": {"$ref": "#/$defs/identity"}
+      }
+    }
+  }
+}

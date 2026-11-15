@@ -336,6 +336,14 @@ volume:
    OpenAI usage data — call sites not yet located in code" }`. Code-derived
    entries always win on conflict; usage-only entries tell Clarify what code
    analysis missed.
+   - **Mantle signal (`projects`):** when `$PROJECT_IDS` (the `project_filter`
+     written in Step 2) names more than one project, or a project the user
+     identified as non-default, append `{ "selector": "projects", "file":
+     "<usage_api>", "line": 0, "construct": "openai-usage-profile.json
+     project_filter: <ids>" }` to `mantle_signals` of every OpenAI workload
+     row in `workloads[]` (existing or usage-only; create the array if absent,
+     skip an identical entry). Project ids only — never a key value. Clarify
+     confirms the signal (`schema-discover-ai.md` § workloads[]).
 5. If `summary.ai_source` is `"gemini"` and OpenAI usage was found, set it to
    `"both"`.
 

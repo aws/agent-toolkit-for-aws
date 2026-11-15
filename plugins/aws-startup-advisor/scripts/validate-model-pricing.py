@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Require a numeric Active cache row for every default Anthropic candidate."""
+"""Require a numeric Active cache row for every selectable default Anthropic candidate."""
 
 import json
 import math
@@ -31,8 +31,16 @@ def validate_model_pricing(plugin_root: Path) -> list[str]:
                 continue
             if all(math.isfinite(rate) and rate > 0 for rate in rates):
                 priced.add(re.sub(r"^(us|eu|au|jp|global)\.", "", row[1]))
-        for model in catalog["models"].values():
-            model_id = model["paths"]["runtime_converse"]["model_id"]
+        for key, model in catalog["models"].items():
+            # Only automatic-selection candidates need a price; reference_only records are
+            # readable for lookups but never picked (model-selection-catalog.schema.json).
+            if model.get("selection_status", "selectable") == "reference_only":
+                continue
+            runtime = model["paths"].get("runtime_converse")
+            if not runtime or not runtime.get("model_id"):
+                errors.append(f"{cloud}: candidate {key} has no runtime_converse model_id to price.")
+                continue
+            model_id = runtime["model_id"]
             if model_id not in priced:
                 errors.append(f"{cloud}: candidate {model_id} has no numeric Active price row.")
     return errors
@@ -46,7 +54,7 @@ def main() -> int:
     if errors:
         print("\n".join(errors), file=sys.stderr)
         return 1
-    print("Model pricing coverage: all Anthropic candidates have numeric Active cache rows.")
+    print("Model pricing coverage: all selectable Anthropic candidates have numeric Active cache rows.")
     return 0
 
 

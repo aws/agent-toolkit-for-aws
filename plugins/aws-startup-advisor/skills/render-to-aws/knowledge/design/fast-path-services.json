@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "evaluation_order": ["skip", "specialist", "eliminator", "deterministic", "cluster", "rubric", "preferred_target", "sizing_architecture"],
+  "rows": [
+    {"render_kind": "render.web_service", "disposition": "selector", "selector": "compute.management_model"},
+    {"render_kind": "render.static_site", "disposition": "deterministic", "aws_service": "Amazon S3 + Amazon CloudFront", "selector": "delivery.static_site"},
+    {"render_kind": "render.private_service", "disposition": "selector", "selector": "compute.management_model_private"},
+    {"render_kind": "render.background_worker", "disposition": "selector", "selector": "compute.worker"},
+    {"render_kind": "render.cron_job", "disposition": "selector", "selector": "compute.cron"},
+    {"render_kind": "render.workflow", "disposition": "selector", "selector": "workflow.orchestrator"},
+    {"render_kind": "render.workflow_version", "disposition": "consumed", "aws_service": "Selected AWS workflow orchestrator version", "selector": "workflow.version"},
+    {"render_kind": "render.workflow_task", "disposition": "selector", "selector": "workflow.task"},
+    {"render_kind": "render.task_run", "disposition": "consumed", "aws_service": "AWS workflow execution history", "selector": "workflow.run_history"},
+    {"render_kind": "render.task_attempt", "disposition": "consumed", "aws_service": "AWS workflow retry history", "selector": "workflow.attempt_history"},
+    {"render_kind": "render.postgres", "disposition": "selector", "selector": "data.postgresql"},
+    {"render_kind": "render.key_value", "disposition": "selector", "selector": "data.key_value"},
+    {"render_kind": "render.persistent_disk", "disposition": "selector", "selector": "storage.persistent_disk"},
+    {"render_kind": "render.environment_group", "disposition": "deterministic", "aws_service": "AWS Secrets Manager + AWS Systems Manager Parameter Store", "selector": "delivery.environment_group"},
+    {"render_kind": "render.project", "disposition": "consumed", "aws_service": "AWS account and VPC environment strategy", "selector": "network.project_boundary"},
+    {"render_kind": "render.environment", "disposition": "consumed", "aws_service": "AWS deployment environment stack", "selector": "network.environment_boundary"},
+    {"render_kind": "render.custom_domain", "disposition": "deterministic", "aws_service": "AWS Certificate Manager + selected serving endpoint", "selector": "network.custom_domain"},
+    {"render_kind": "render.preview_environment", "disposition": "deterministic", "aws_service": "CI/CD ephemeral AWS stack", "selector": "delivery.preview"},
+    {"render_kind": "render.build_source", "disposition": "deterministic", "aws_service": "Amazon ECR + CI/CD immutable digest promotion", "selector": "delivery.build_source"},
+    {"render_kind": "render.build_artifact", "disposition": "consumed", "aws_service": "Amazon ECR immutable image digest", "selector": "delivery.build_artifact"}
+  ]
+}

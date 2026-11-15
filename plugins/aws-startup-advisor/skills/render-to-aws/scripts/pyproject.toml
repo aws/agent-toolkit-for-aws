@@ -1,0 +1,13 @@
+[project]
+name = "render-to-aws-scripts"
+version = "0.1.0"
+requires-python = "==3.12.*"
+dependencies = [
+  "jsonschema==4.23.0",
+  "PyYAML==6.0.2",
+]
+
+[dependency-groups]
+dev = [
+  "pytest==9.0.3",
+]

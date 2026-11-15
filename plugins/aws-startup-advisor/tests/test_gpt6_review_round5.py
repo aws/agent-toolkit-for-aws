@@ -114,6 +114,12 @@ def test_behavior_delta_no_longer_claims_chat_completions_unverified() -> None:
     assert "OPTIONAL" in text, (
         "openai-to-bedrock.md must make the Responses reshape optional, not mandatory"
     )
+    # GPT-5.5 / GPT-5.4 model cards (read 2026-11-06) list Chat Completions on both
+    # bedrock-mantle and bedrock-runtime — the reshape is optional for them too.
+    assert "GPT-5.5 / GPT-5.4 follow the same rule" in text
+    assert "model-card-openai-gpt-54.html" in text and "model-card-openai-gpt-55.html" in text
+    assert "mantle-only, no CRIS" not in text
+    assert "still unconfirmed" not in text
 
 
 def test_both_design_ai_no_longer_force_gpt6_chat_completions_reshape() -> None:
@@ -122,12 +128,17 @@ def test_both_design_ai_no_longer_force_gpt6_chat_completions_reshape() -> None:
         assert "near-drop-in" in text.lower() or "optional" in text.lower(), (
             f"{f}: a GPT-6/GPT-5.6 Chat Completions source must not be forced to reshape"
         )
-        assert "GPT-5.5" in text and "GPT-5.4" in text, (
-            f"{f}: the mandatory-reshape exception must still be scoped to GPT-5.5/GPT-5.4"
+        assert "GPT-5.5 and GPT-5.4 follow the same rule" in text, (
+            f"{f}: GPT-5.5/GPT-5.4 Chat Completions is listed on both endpoints (cards read "
+            "2026-11-06); they must not be the mandatory-reshape exception"
         )
+        assert "GPT-5.5 and GPT-5.4 are the exception" not in text
+        assert "unconfirmed" not in text
 
 
 def test_gcp_generate_ai_no_longer_forces_gpt6_chat_completions_reshape() -> None:
     text = _norm(GCP_GENERATE_AI_MD.read_text(encoding="utf-8"))
     assert "optional" in text.lower()
-    assert "GPT-5.5" in text and "GPT-5.4" in text
+    assert "GPT-5.5/GPT-5.4 follow the same rule" in text
+    assert "still need a reshape" not in text
+    assert "unconfirmed" not in text

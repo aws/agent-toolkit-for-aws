@@ -248,7 +248,23 @@ grep -rn "embedding\|embed_query\|create_embedding" <REPO> --include="*.py" --in
 
 # Vision / image input
 grep -rn "image_url\|image_file\|vision\|ImageBlock" <REPO> --include="*.py" --include="*.js" --include="*.ts" | grep -v node_modules
+
+# Stored-response operations (OpenAI Responses API only): retrieve / cancel / delete by id
+grep -rn "responses\.retrieve(\|responses\.cancel(\|responses\.delete(\|/responses/[^\"']*\(/cancel\)\?[\"']" <REPO> --include="*.py" --include="*.js" --include="*.ts" | grep -v node_modules
 ```
+
+**`stored_response_ops`** (typed field, optional — emit it whenever the source is an OpenAI
+Responses app): the subset of `["retrieve", "cancel", "delete"]` whose `client.responses.<op>(id)`
+call sites (or raw `GET /responses/{id}`, `POST /responses/{id}/cancel`, `DELETE /responses/{id}`
+requests) the last grep found and a runtime rewrite keeps. Creation (`responses.create`) is NOT
+one of them. On `bedrock-runtime`, retrieving, canceling or deleting a stored response authorizes
+`bedrock:GetInvoke` / `bedrock:CancelInvoke` / `bedrock:DeleteInvoke` on the account's default
+project, separately from the `bedrock:InvokeModel` that creation needs
+(<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html>, "Permissions",
+read 2026-11-08) — the report generator's §6.4 IAM recipe reads this field so a retained
+`responses.retrieve(id)` is not denied after creation and the preflight ping both passed. Emit `[]`
+(or omit) when no such call exists; never emit it for a Chat Completions, Converse or Anthropic
+Messages source, which have no stored responses.
 
 # 9. Detect behavior deltas (user-visible parameter-surface differences)
 
@@ -365,7 +381,7 @@ Write your result to `<Phase results directory>/analysis.json` with the `Write` 
 
 Return ONE flat object: the typed fields and `summary` are all top-level siblings (no `data` wrapper — the strict schema rejects a nested `data` key).
 
-- **Typed fields** — the fields in the analysis schema (`AiAnalysisData`), at top level. Always populate every required field; use `""` / `0` / `[]` / `false` / `"none"` for absent values. The nested `special_patterns` object MUST include all four booleans.
+- **Typed fields** — the fields in the analysis schema (`AiAnalysisData`), at top level. Always populate every required field; use `""` / `0` / `[]` / `false` / `"none"` for absent values. The nested `special_patterns` object MUST include all four booleans. `stored_response_ops` (§8.3) is the one optional typed field: an array drawn from `["retrieve", "cancel", "delete"]`, `[]` or omitted when the source retains no stored-response operation.
 - **`summary`** — short prose for the user / sidebar, a top-level field alongside the typed fields. ~1–3 sentences. Mention framework, file count, key special patterns.
 - **`errors`** — string log of resolution decisions and warnings: rule-of-thumb / defaulted entries from §7.2 Tier 2/3, model-ID corrections from §10, the Vertex substring from §7.1.2, and any non-fatal scan failures. **Multiple entries: join with `"; "` (semicolon + space) on a single line.** Use `"none"` if nothing notable.
 

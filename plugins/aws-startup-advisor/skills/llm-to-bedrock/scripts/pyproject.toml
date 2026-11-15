@@ -6,12 +6,16 @@ dependencies = [
     "boto3>=1.35,<2",
     "botocore>=1.35,<2",
     "jsonschema>=4,<5",
-    # Required to preflight OpenAI's proprietary GPT models, which are
-    # bedrock-mantle-only and speak neither Converse nor InvokeModel. Without
-    # these, probe_mantle_model cannot run and preflight cannot verify
-    # endpoint/model/IAM access for any openai.gpt-5* target.
+    # Required to preflight the OpenAI-compatible APIs: bare proprietary GPT ids
+    # are the bedrock-mantle form (OpenAI Responses/Chat on that endpoint) and
+    # CRIS ids take the runtime /openai/v1 APIs. Without these, probe_mantle_model
+    # and probe_runtime_openai_model cannot run and preflight cannot verify
+    # endpoint/model/IAM access for those targets.
     "openai>=2.45.0,<3",
     "aws-bedrock-token-generator>=1,<2",
+    # Required to preflight the bedrock-runtime Anthropic Messages API
+    # (probe_runtime_messages_model) for runtime_messages plans.
+    "anthropic>=0.75,<1",
 ]
 
 [dependency-groups]

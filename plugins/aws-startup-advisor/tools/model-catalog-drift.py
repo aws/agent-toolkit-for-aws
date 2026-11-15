@@ -5,11 +5,13 @@ Why
 ---
 Two shared sources describe Bedrock models:
 
-- `skills/shared/ai/ai-model-lifecycle.md` is the canonical Active/Legacy/EOL registry. It is
-  kept current (the knowledge auto-update pipeline edits it, and `model-staleness.py` fails it
-  after its staleness window).
+- `skills/shared/ai/ai-model-lifecycle.md` is the canonical Active/Legacy/EOL lifecycle registry.
+  It is kept current (the knowledge auto-update pipeline edits it, and `model-staleness.py` fails
+  it after its staleness window).
 - `skills/shared/ai/models/*-bedrock.json` are the machine-readable selection catalogs that the
-  agent-advisor engine reads (vendored into the skill by `sync-vendored.py`).
+  agent-advisor engine reads (vendored into the skill by `sync-vendored.py`). They are rendered
+  from `bedrock-model-registry.json` by `build-model-catalogs.py`, so fixes belong in that model
+  registry, not in the catalogs.
 
 Nothing tied the two together, so a model could launch, land in the registry, and never reach
 the catalog the engine actually selects from. `model-id-lint.py` already keeps retired IDs out of
@@ -20,11 +22,11 @@ Rules
 1. Coverage: every Anthropic or OpenAI model the registry's Capability Constraints table marks
    **Active** must appear in a catalog, either as a model entry (any path's `model_id`) or in
    that catalog's optional top-level `registry_exclusions` object (`{"<model id>": "<reason>"}`),
-   which records an intentional omission. The catalogs have no non-selectable status: the
-   selection engine treats every entry under `models` as a candidate, so a model that should not
-   be selected belongs in `registry_exclusions`, not in `models`. Each exclusion needs a
-   non-empty reason (else an error) and must name a model that is Active in the registry (else
-   a warning).
+   which records an intentional omission. A model entry counts whatever its `selection_status`:
+   `selectable` entries are automatic-selection candidates, while `reference_only` entries are
+   readable but never picked (see scripts/contracts/model-selection-catalog.schema.json). Each
+   exclusion needs a non-empty reason (else an error) and must name a model that is Active in
+   the registry (else a warning).
 2. Freshness: each catalog's `verified_at` must fall inside the registry's staleness window
    and must not be in the future.
 
@@ -153,8 +155,10 @@ def check(plugin: Path, today: dt.date) -> tuple[list[str], list[str]]:
         if model_id not in covered[provider]:
             warnings.append(
                 f"{CATALOG_DIR_REL / f'{provider}-bedrock.json'}: `{model_id}` is Active in "
-                f"{REGISTRY_REL.name} but missing from the catalog; add a complete model entry "
-                f"(every entry under `models` is a selection candidate) or record it under "
+                f"the lifecycle registry ({REGISTRY_REL.name}) but missing from the catalog; add it to "
+                f"the model registry (bedrock-model-registry.json) "
+                f"(a record with selection_status `selectable`, or `reference_only` to keep it out of "
+                f"automatic selection, plus a view entry) or record it under the view header's "
                 f"registry_exclusions with a reason")
     return errors, warnings
 

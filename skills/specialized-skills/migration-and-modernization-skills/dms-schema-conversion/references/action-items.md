@@ -107,9 +107,17 @@ aws dms describe-metadata-model \
      --selection-rules '<json>'
    ```
 
-   > **Important:** The `server-name` must be the target data provider server name (e.g., `"virtual"` for virtual targets), NOT the source server name. The schema name also uses the target naming convention (e.g., `bobsusedbookstore_dbo` instead of `dbo`).
+   > **Important:** Use `server-name` from `TargetMetadataModels[0].SelectionRules` rather than reconstructing it from provider settings or a displayed name. It must identify the target data provider, never the source provider, and must not be an assumed fixed value. The schema name also uses the target naming convention (e.g., `bobsusedbookstore_dbo` instead of `dbo`).
 
-   Wait via `aws dms wait metadata-model-exported-as-script --migration-project-identifier <migration_project_identifier>`. Download the exported SQL file from S3 and restrict permissions:
+   Extract `RequestIdentifier` from the response, then wait for that export request:
+
+   ```
+   aws dms wait metadata-model-exported-as-script \
+     --migration-project-identifier <migration_project_identifier> \
+     --filter 'Name=request-id,Values=<RequestIdentifier>'
+   ```
+
+   Download the exported SQL file from S3 and restrict permissions:
 
    ```
    aws s3 cp s3://<bucket>/<S3ObjectKey> ./exported_target.sql

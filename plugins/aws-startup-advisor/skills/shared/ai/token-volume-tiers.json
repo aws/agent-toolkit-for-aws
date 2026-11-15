@@ -1,0 +1,42 @@
+{
+  "description": "The one definition of the ai_token_volume tiers: Clarify Q7 asks with these bands, a measured volume is placed in a band with these bounds, and Estimate prices a tier from these bounds.",
+  "unit": "total tokens per month: input and output, including cache reads and cache writes",
+  "bounds": "min_tokens is inclusive and max_tokens is exclusive; max_tokens null means no upper bound",
+  "input_share": 0.6,
+  "estimate_basis": "Price a tier at both min_tokens and max_tokens and report the range. A tier without max_tokens is priced at min_tokens and reported as a lower bound. A measured volume replaces the tier.",
+  "tiers": [
+    {
+      "value": "low",
+      "q7_option": 1,
+      "label": "< 1M tokens",
+      "min_tokens": 0,
+      "max_tokens": 1000000
+    },
+    {
+      "value": "medium",
+      "q7_option": 2,
+      "label": "1M to under 10M",
+      "min_tokens": 1000000,
+      "max_tokens": 10000000
+    },
+    {
+      "value": "high",
+      "q7_option": 3,
+      "label": "10M to under 100M",
+      "min_tokens": 10000000,
+      "max_tokens": 100000000
+    },
+    {
+      "value": "very_high",
+      "q7_option": 4,
+      "label": "100M or more",
+      "min_tokens": 100000000,
+      "max_tokens": null
+    }
+  ],
+  "dont_know": {
+    "q7_option": 5,
+    "label": "Don't know",
+    "default": "medium"
+  }
+}

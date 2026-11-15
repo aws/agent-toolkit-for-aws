@@ -1,7 +1,7 @@
 # Report Decision Core (shared renderer spec)
 
-The `decision-summary` / `decision-basis` / `exec-costs` / `what-if-scenarios` /
-`next-steps` sections below are the **decision core** — the single source of
+The `decision-summary` / `decision-basis` / `exec-costs` / `developer-workflow` /
+`what-if-scenarios` / `next-steps` sections below are the **decision core** — the single source of
 truth for verdict, cost, and next-step rendering. Two consumers load this
 file; the content rules are identical in both:
 
@@ -42,15 +42,36 @@ fresh decision without being touched or archived.
   Migration Assessment — Decision Report". Body contains `<nav class="toc">`
   then the sections below, in the same order `generate-report.md`'s skeleton
   uses: `decision-summary` → `decision-basis` (when present) → `exec-costs` →
-  `what-if-scenarios` (when present) → `decision-cta` (new, decision-mode
-  only, replaces `next-steps`).
+  `developer-workflow` → `what-if-scenarios` (when present) → `decision-cta`
+  (new, decision-mode only, replaces `next-steps`).
 - **Required section IDs in decision mode:** `decision-summary`, `exec-costs`
   (+ conditional `decision-basis`, `what-if-scenarios` per their triggers in
-  `generate-report.md`).
-- **Section content:** render `decision-summary`, `decision-basis`, and
-  `exec-costs` / `what-if-scenarios` using the **exact same rules** as
-  `generate-report.md` Step 2 — do not restate them here; that file is the
-  single source of truth for content rules in both modes.
+  `generate-report.md`). `developer-workflow` is always rendered (the
+  `decision-summary` pointer for a `critical` DX answer links to it, so the
+  link must resolve) but is not in the validator's required set.
+- **Section content:** render `decision-summary`, `decision-basis`,
+  `exec-costs` / `what-if-scenarios`, and `developer-workflow` using the
+  **exact same rules** as `generate-report.md` Step 2 — do not restate them
+  here; that file is the single source of truth for content rules in both
+  modes.
+- **`developer-workflow` pre-execution wording (decision-mode override):**
+  nothing has been generated yet, so the status word **Generated** reads
+  **Will be generated**, and "is generated" / "the generated Terraform" in a
+  cell read "will be generated" / "the Terraform that Generate will produce".
+  **Covered**, **Build** and **No equivalent** are unchanged — they do not
+  depend on Generate having run. The status rules themselves are the same in
+  both modes: the per-target one-off-command and log-tailing rules (EKS apps
+  get `kubectl exec` / `kubectl run` / a Kubernetes Job and `kubectl logs -f`,
+  with CloudWatch tailing **Build** because log forwarding is additional setup;
+  never ECS Exec, `eb ssh` or run-task), the per-target config-vars rules (EB / Fargate / EKS each have
+  their own rule — EKS apps get the Kubernetes Secret + `secretKeyRef` wording,
+  never the Fargate task-definition wording) and the Scheduler row's status,
+  which is **computed** from `aws-design.json` `services[]` vs `deferred[]`
+  (both exist at the Decision gate) and never asserted — a deferred
+  `advanced-scheduler` renders as **Build** with its deferred count in
+  `decision-report.html` and `DECISION.md` exactly as in the full report. The
+  decision report shows the user what Generate will and will not emit before
+  they commit to it.
 - **`decision-cta` (required, replaces `next-steps` in decision mode):**
   `<section id="decision-cta">` — "**Ready to execute?** Say \"generate the
   Terraform and migration scripts\" and I'll produce the full execution pack
@@ -59,7 +80,10 @@ fresh decision without being touched or archived.
   artifacts; the full migration report replaces it if you proceed."
 - **`DECISION.md` (required twin):** same content as the HTML, as plain
   Markdown (Slack/GitHub-friendly): verdict headline, cost line/table,
-  timeline band, `would_flip_if[]` when present, the CTA line. No HTML tags.
+  timeline band, `would_flip_if[]` when present, the developer-workflow
+  table and its closing paragraph(s) as a Markdown table under a "Developer
+  workflow" heading (same pre-execution wording as the HTML), the CTA line.
+  No HTML tags.
 - **Validation:** run
   `python3 "<SKILL_BASE>/scripts/validate-heroku-migration-report.py" "$MIGRATION_DIR/decision-report.html" --mode decision --migration-dir "$MIGRATION_DIR"`
   (absolute paths — cwd must not be load-bearing; `--migration-dir` is required so the

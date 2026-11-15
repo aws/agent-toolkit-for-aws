@@ -45,6 +45,7 @@ Core skills cover:
 - Application integration (messaging, streaming)
 - Cost management (Billing and Cost Management)
 - Full-stack applictaion development (AWS Blocks)
+- Local development and testing against AWS service APIs (AWS Emulator)
 - Generative AI (Bedrock)
 - Databases (service selection and routing)
 

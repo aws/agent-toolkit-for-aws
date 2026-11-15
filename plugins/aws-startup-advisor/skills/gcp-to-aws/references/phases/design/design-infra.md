@@ -103,6 +103,10 @@ For each SECONDARY resource:
 2. Apply fast-path (most secondaries have deterministic mappings)
 3. If rubric needed: apply the **BigQuery specialist gate** (Pass 2 step 0) first when `gcp_type` starts with `google_bigquery_`; otherwise apply the same 6-criteria approach as Pass 2
 
+### Finalize `ecs_mode` (every Fargate mapping — fast-path and rubric alike)
+
+After Pass 1, Pass 2, and Step 3 have run for a cluster, and after sizing (`aws_config.cpu` / `memory_mb`) and the Graviton block are set, walk **every** mapping in the cluster with `aws_service: "Fargate"` — `google_cloud_run_service` and `google_cloud_run_v2_service` from the `Always` direct path, Cloud Functions or App Engine routed to Fargate by the rubric, GKE workloads under `kubernetes: "ecs-fargate"` — and apply `design-refs/compute.md` § ECS Fargate Mode to set `aws_config.ecs_mode` (`"express"` | `"standard"`) and `aws_config.ecs_mode_reason`. This step runs regardless of whether `compute.md` was loaded for a rubric decision: a v2-only Cloud Run inventory never enters Pass 2, so this is the only place its mode is decided. No Fargate mapping leaves Design without `ecs_mode`; Estimate and Generate read it, and both treat a design saved without the key (pre-dating this step) as `"standard"`. Deterministic service selection is unchanged — this step sets a field on the mapping, it never changes `aws_service` or `confidence`.
+
 ## Step 3.5: Validate AWS Architecture (using AWS MCP Server)
 
 If `aws_service` is **`Deferred — specialist engagement`**, **do not** validate against concrete AWS analytics SKUs; add a `warnings[]` entry that specialist engagement is required.
@@ -208,6 +212,7 @@ application replica requirement.
 - Every `google_sql_database_instance` resource has `aws_service` ∈ {`RDS PostgreSQL`, `RDS MySQL`, `Aurora PostgreSQL`, `Aurora MySQL`} with non-empty `rationale` citing Q6 availability value. If `availability` is `single-az` or `multi-az`, `aws_service` MUST be RDS (not Aurora). If `multi-az-ha` or `multi-region`, MUST be Aurora.
 - All `confidence` values are either `"deterministic"` or `"inferred"`
 - All `rationale` fields are non-empty
+- Every `aws_service: "Fargate"` resource has `aws_config.ecs_mode` ∈ {`"express"`, `"standard"`} and a non-empty `aws_config.ecs_mode_reason` (Finalize `ecs_mode` step — both Cloud Run API versions included)
 - Every resource from every evaluated cluster appears in the output
 - No duplicate `gcp_address` values across clusters
 - Output is valid JSON

@@ -77,9 +77,8 @@ def test_missing_active_model_is_a_warning_and_fails_strict(tmp_path, capsys):
     errors, warnings = drift.check(plugin, TODAY)
     assert errors == []
     assert len(warnings) == 1 and "`anthropic.claude-new`" in warnings[0]
-    # Every entry under `models` is a selection candidate, so the remediation must not suggest a
-    # non-selectable "reference-only" entry; it points at registry_exclusions instead.
-    assert "registry_exclusions" in warnings[0] and "reference-only" not in warnings[0]
+    # The remediation names the real options: a selectable or reference_only entry, or an exclusion.
+    assert all(term in warnings[0] for term in ("`selectable`", "`reference_only`", "registry_exclusions"))
     assert drift.main(["--plugin-root", str(plugin), "--today", "2026-11-04"]) == 0
     assert drift.main(["--plugin-root", str(plugin), "--today", "2026-11-04", "--strict"]) == 1
     assert "anthropic.claude-new" in capsys.readouterr().out
@@ -148,3 +147,12 @@ def test_unparseable_registry_is_an_error_even_without_strict(tmp_path):
 def test_real_plugin_has_no_structural_errors():
     errors, _ = drift.check(PLUGIN_ROOT, TODAY)
     assert errors == []
+
+
+def test_real_plugin_has_no_drift_warnings_now_that_ci_is_strict():
+    # Stage 2 of #566 added the last Active models and switched lint:model-catalog-drift to
+    # --strict, so any new warning fails CI.
+    # Fixed date: freshness against the real date is enforced by the lint:model-catalog-drift task.
+    _, warnings = drift.check(PLUGIN_ROOT, dt.date(2026, 11, 10))
+    assert warnings == []
+    assert "model-catalog-drift.py --strict" in (PLUGIN_ROOT / "mise.toml").read_text()
