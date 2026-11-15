@@ -15,7 +15,7 @@ _fragments:
     _trigger: { _always: true }
     _file: phases/generate/generate-artifacts-infra.md
   - _id: infra-data
-    _trigger: { _always: true }
+    _trigger: { _when: "aws-design.json maps any resource to terraform/data.tf (a render.postgres or render.key_value row)" }
     _file: phases/generate/generate-infra-data.md
   - _id: artifacts-docs
     _trigger: { _always: true }

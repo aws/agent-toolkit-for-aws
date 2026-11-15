@@ -32,6 +32,31 @@ def _text(name: str) -> str:
     return "\n".join(path.read_text(encoding="utf-8") for path in sorted(_terraform(name).glob("*.tf")))
 
 
+def _generate_fragment(fragment_id: str) -> dict:
+    # The same loader the phase-contract tests use, so the trigger is read as the interpreter reads it.
+    from test_render_phase_contracts import phase
+    entries = [item for item in phase("generate")["_fragments"] if item["_id"] == fragment_id]
+    assert len(entries) == 1, fragment_id
+    return entries[0]
+
+
+def test_data_fragment_loads_only_when_a_data_row_exists() -> None:
+    # 16 KB of guidance for data.tf must not load for a static site or a worker-only design. The trigger names
+    # every row type the fragment handles, so a design with a database or cache still gets the guidance.
+    fragment = _generate_fragment("infra-data")
+    assert "_always" not in fragment["_trigger"]
+    condition = fragment["_trigger"]["_when"]
+    assert "render.postgres" in condition and "render.key_value" in condition and "terraform/data.tf" in condition
+    guidance = FRAGMENT.read_text(encoding="utf-8")
+    assert "`render.postgres` and `render.key_value` rows" in guidance
+    # the assembler lists the same condition, so its read list does not claim an always-present contribution
+    assemble = (SKILL_ROOT / "references/phases/generate/generate-assemble.md").read_text(encoding="utf-8")
+    assert "infra-data (fragment contribution, when aws-design.json maps a render.postgres or render.key_value row" in assemble
+    # always-loaded fragments still carry the data.tf routing, so a data design is never left without a pointer
+    infra = (SKILL_ROOT / "references/phases/generate/generate-artifacts-infra.md").read_text(encoding="utf-8")
+    assert "generate-infra-data.md" in infra
+
+
 def test_data_fragment_is_registered_and_routed() -> None:
     phase = (SKILL_ROOT / "references/phases/generate/generate.md").read_text(encoding="utf-8")
     assert "phases/generate/generate-infra-data.md" in phase
