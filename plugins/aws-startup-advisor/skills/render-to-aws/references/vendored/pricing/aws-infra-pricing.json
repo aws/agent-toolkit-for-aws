@@ -358,6 +358,52 @@
     "multi_az_handling": "intrinsic",
     "_note": "Cost = stored GB x hours x valkey_data_per_gb_hour + ECPUs/1e6 x valkey_per_million_ecpus. ECPU volume is not knowable from Render plan memory; with no captured request rate price the data component only and say so."
   },
+  "cognito": {
+    "_comment": "Amazon Cognito user pool rates (us-east-1). Verified 2026-11-14 via the AWS Pricing MCP server (get_pricing, us-east-1, OnDemand), service code AmazonCognito. Unit is USD per monthly active user (MAU) per month, tiered by MAU count. Prices are the per-MAU rate within each tier, not a blended rate.",
+    "essentials_per_mau": 0.015,
+    "plus_per_mau": 0.02,
+    "lite_per_mau_tiers": [
+      {"from_mau": 0, "to_mau": 90000, "rate": 0.0055},
+      {"from_mau": 90000, "to_mau": 990000, "rate": 0.0046},
+      {"from_mau": 990000, "to_mau": 9990000, "rate": 0.00325},
+      {"from_mau": 9990000, "to_mau": null, "rate": 0.0025}
+    ],
+    "user_pools_legacy_per_mau_tiers": [
+      {"from_mau": 0, "to_mau": 50000, "rate": 0.0055},
+      {"from_mau": 50000, "to_mau": 950000, "rate": 0.0046},
+      {"from_mau": 950000, "to_mau": 9950000, "rate": 0.00325},
+      {"from_mau": 9950000, "to_mau": null, "rate": 0.0025}
+    ],
+    "multi_region_replication_per_mau": {"essentials": 0.0045, "plus": 0.006},
+    "m2m_per_token_request_tiers": [
+      {"from_requests": 0, "to_requests": 250000, "rate": 0.00225},
+      {"from_requests": 250000, "to_requests": 5000000, "rate": 0.0015},
+      {"from_requests": 5000000, "to_requests": null, "rate": 0.001125}
+    ],
+    "multi_az_handling": "intrinsic",
+    "_note": "The Price List returns the Lite/Essentials/Plus feature plans and the legacy User Pool MAU SKUs side by side. Render's design does not select a plan; with no captured MAU count and no chosen plan, price Essentials (the default feature plan) as MAU x essentials_per_mau and name the assumption. Free-tier allowances are not in the Price List rows and are not modelled. Advanced-security, enterprise-federation and incremental-RPS SKUs exist in the Price List and are not recorded here."
+  },
+  "dms": {
+    "_comment": "AWS Database Migration Service replication-instance rates (us-east-1, single-AZ, On Demand, no license-included engines). Verified 2026-11-14 via the AWS Pricing MCP server (get_pricing, us-east-1, OnDemand), service code AWSDatabaseMigrationSvc, filtered on usagetype InstanceUsg:dms.<class>. Unit is USD per instance-hour. Multi-AZ, DMS Serverless (per DCU-hour) and replication storage SKUs also exist and are not recorded here.",
+    "instances": {
+      "dms.t3.micro": 0.0186,
+      "dms.t3.small": 0.0372,
+      "dms.t3.medium": 0.0745,
+      "dms.t3.large": 0.1489,
+      "dms.c5.large": 0.119,
+      "dms.r5.large": 0.176
+    },
+    "multi_az_handling": "single_az_only",
+    "_note": "Render emits DMS only as a PostgreSQL migration method with no replication-instance sizing table. Price it as a one-time cutover cost: instance-hour rate x expected migration hours; do not add it to the steady-state monthly total."
+  },
+  "lambda_durable_functions": {
+    "_comment": "AWS Lambda durable functions rates (us-east-1). Verified 2026-11-14 via the AWS Pricing MCP server (get_pricing, us-east-1, OnDemand), service code AWSLambda, filtered on usagetype containing 'urable'. Durable-execution SKUs are billed in addition to the standard lambda request and duration rates in the lambda section.",
+    "per_durable_operation": 0.000008,
+    "data_written_per_gb": 0.25,
+    "retained_data_per_gb_month": 0.15,
+    "multi_az_handling": "intrinsic",
+    "_note": "Units: Lambda-Durable-Execution-Operations is USD per DurableOperation; Written-Bytes is USD per GB written; TimedStorage is USD per GB-month retained. Operation and data volumes are not knowable from a Render Workflow definition; price only what a captured volume supports and say so."
+  },
   "_rate_row_coverage": {
     "_comment": "THE GAP CLASS this file kept hitting: a service can be present here while the specific RATE ROW a design needs is absent. 'ec2' is in the file; a design emitting m6i.2xlarge finds no row. The shared pricing-mode.md hierarchy keyed its first rung on SERVICE presence, so that case fell through labeled 'cached' with no number behind it. Rung 1b in pricing-mode.md now covers it.",
     "_who_owes_what": "A skill's sizing tables and this file are a PAIR: every instance_type/instance_class/node_type a sizing table can emit needs a row here, or the estimate has a hole. The pair is not enforced by any tool today. heroku never diverged because its sizing table and these rates were co-authored; a skill whose sizing tables were written from source-cloud SKUs will diverge on day one.",
@@ -369,9 +415,6 @@
     "fsx_windows": "Azure Files (SMB) maps to FSx for Windows File Server. No fsx section exists. Needs per-GiB-month SSD/HDD, single-AZ vs multi-AZ, and throughput capacity. MCP: AmazonFSx.",
     "ec2_windows_license": "See ec2._windows_note. MCP: AmazonEC2 with operatingSystem=Windows.",
     "memorydb": "Render Key Value can map to Amazon MemoryDB (data.md candidate set). Render emits no MemoryDB node-class sizing table, so there is no class to price. One class (db.r7g.large Valkey) was seen on 2026-11-14 but a single row is not a sizing table. MCP: AmazonMemoryDB.",
-    "dms": "AWS Database Migration Service is a Render PostgreSQL migration method (data.md). The 2026-11-14 AWSDatabaseMigrationSvc query filtered on instanceType=dms.t3.micro returned no rows, so no replication-instance rate was verified. Cutover cost; excluded line. MCP: AWSDatabaseMigrationSvc.",
-    "cognito": "Render access protection can select Amazon Cognito (networking.md). Pricing is per monthly active user with tiers and feature plans; not queried or verified. MCP: AmazonCognito.",
-    "lambda_durable_functions": "Render Workflow orchestrator candidate (workflows.md). No dedicated durable-functions rate was verified; do not substitute the plain lambda rates. MCP: AWSLambda.",
     "dynamodb": "Azure Cosmos DB (Core/Table API) maps to DynamoDB. No dynamodb rates here. Needs on-demand vs provisioned WCU/RCU + storage. Surface as a visible excluded line; never fabricate. MCP: AmazonDynamoDB.",
     "kinesis": "Azure Event Hubs (AMQP/SDK) maps to Kinesis Data Streams. No kinesis rates. Needs shard-hour + PUT payload units (on-demand vs provisioned). Excluded line. MCP: AmazonKinesis.",
     "neptune": "Azure Cosmos DB (Gremlin API) maps to Neptune. No neptune rates. Needs instance-hour + I/O + storage. Excluded line. MCP: AmazonNeptune.",
