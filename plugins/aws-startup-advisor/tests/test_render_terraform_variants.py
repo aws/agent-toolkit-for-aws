@@ -87,6 +87,13 @@ def assert_endpoint_variant(terraform: Path) -> None:
     assert "from_port                    = 2049" in efs_ingress
     assert "referenced_security_group_id = aws_security_group.task.id" in efs_ingress
     assert "cidr_ipv4" not in efs_ingress
+    private_egress = _block(text, 'resource "aws_vpc_security_group_egress_rule" "task_to_private_service"')
+    assert "from_port                    = 10000" in private_egress
+    assert "referenced_security_group_id = aws_security_group.private_service.id" in private_egress
+    private_ingress = _block(text, 'resource "aws_vpc_security_group_ingress_rule" "private_service_from_task"')
+    assert "from_port                    = 10000" in private_ingress
+    assert "referenced_security_group_id = aws_security_group.task.id" in private_ingress
+    assert "cidr_ipv4" not in private_ingress
     ecr = _block(text, 'resource "aws_ecr_repository" "application"')
     assert 'image_tag_mutability = "IMMUTABLE"' in ecr and "scan_on_push = true" in ecr
     assert 'resource "aws_ecr_lifecycle_policy"' in text

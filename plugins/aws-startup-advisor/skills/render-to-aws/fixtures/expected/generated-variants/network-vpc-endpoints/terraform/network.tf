@@ -69,6 +69,12 @@ resource "aws_security_group" "endpoints" {
   vpc_id      = aws_vpc.main.id
 }
 
+resource "aws_security_group" "private_service" {
+  name        = "${local.name_prefix}-private-service"
+  description = "Private service reachable from application tasks only"
+  vpc_id      = aws_vpc.main.id
+}
+
 resource "aws_vpc_security_group_ingress_rule" "edge_http" {
   security_group_id = aws_security_group.edge.id
   description       = "HTTP redirect from public clients"
@@ -130,6 +136,24 @@ resource "aws_vpc_security_group_egress_rule" "task_to_efs" {
   to_port                      = 2049
   ip_protocol                  = "tcp"
   referenced_security_group_id = aws_security_group.efs.id
+}
+
+resource "aws_vpc_security_group_egress_rule" "task_to_private_service" {
+  security_group_id            = aws_security_group.task.id
+  description                  = "Private service port from application tasks"
+  from_port                    = 10000
+  to_port                      = 10000
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.private_service.id
+}
+
+resource "aws_vpc_security_group_ingress_rule" "private_service_from_task" {
+  security_group_id            = aws_security_group.private_service.id
+  description                  = "Private service port from application tasks"
+  from_port                    = 10000
+  to_port                      = 10000
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.task.id
 }
 
 resource "aws_vpc_security_group_ingress_rule" "endpoints_from_task" {
@@ -293,7 +317,8 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-# Private services resolve each other through Cloud Map; nothing is exposed publicly.
+# Private services resolve each other through Cloud Map. Callers reach them on port 10000
+# through aws_security_group.private_service; nothing is exposed publicly.
 resource "aws_service_discovery_private_dns_namespace" "internal" {
   name        = "${local.name_prefix}.internal"
   description = "Private service discovery for internal services"
