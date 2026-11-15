@@ -7,6 +7,7 @@ golden design fixture must record `ecs_mode` on every ECS on Fargate mapping.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
 
@@ -103,6 +104,32 @@ def test_report_reference_lists_both_express_warning_codes_and_mode_statement() 
     for code in ("ecs_express_public_subnet_placement", "ecs_express_not_selected_rolling_release"):
         assert code in text, code
     assert "Express or standard" in text
+def test_canary_warning_follows_the_answered_release_not_only_the_reason() -> None:
+    spec = importlib.util.spec_from_file_location(
+        "render_pipeline_harness_express_release",
+        Path(__file__).with_name("render_pipeline_harness.py"),
+    )
+    harness = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(harness)
+    design = {
+        "mappings": [
+            {
+                "source_resource_id": "rr-web",
+                "aws_service": "ECS on Fargate",
+                "aws_config": {"ecs_mode": "standard", "ecs_mode_reason": "passthrough"},
+            }
+        ]
+    }
+    rolling = {"questions": [{"question_id": "compute.release_strategy", "resource_id": "rr-web", "value": "rolling"}]}
+    blue_green = {"questions": [{"question_id": "compute.release_strategy", "resource_id": "rr-web", "value": "blue_green"}]}
+    canary = {"questions": [{"question_id": "compute.release_strategy", "resource_id": "rr-web", "value": "canary"}]}
+    assert harness.express_not_selected_warnings(design, rolling) == []
+    assert harness.express_not_selected_warnings(design, blue_green) == []
+    warned = harness.express_not_selected_warnings(design, canary)
+    assert [row["subject"] for row in warned] == ["rr-web"]
+    assert harness.express_not_selected_warnings(design), "an absent answer defaults to canary"
+
+
 def test_golden_pack_warns_for_rr_web_and_states_the_mode_of_every_fargate_service() -> None:
     design = json.loads(read(SKILL / "fixtures" / "expected" / "aws-design.json"))
     generated = SKILL / "fixtures" / "expected" / "generated"

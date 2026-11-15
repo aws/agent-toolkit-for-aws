@@ -1074,7 +1074,7 @@ def _materialize_independent_mixed_pipeline(root: Path) -> dict[str, bytes]:
     for scenario in estimate["scenarios"].values():
         assert [row["source_resource_id"] for row in scenario["lines"]] == design["accounting"]["accounted_resource_ids"]
 
-    ledger = harness.ledger_from_design(design)
+    ledger = harness.ledger_from_design(design, preferences)
     jsonschema.Draft202012Validator(
         load(SKILL_ROOT / "references/shared/schema-generation-warnings.json")
     ).validate(ledger)

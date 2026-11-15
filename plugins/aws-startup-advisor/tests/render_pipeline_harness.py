@@ -256,7 +256,24 @@ def fargate_mode_statement(design: dict[str, Any]) -> str:
     return "Fargate deployment mode per service: " + "; ".join(parts) + "."
 
 
-def express_not_selected_warnings(design: dict[str, Any]) -> list[dict[str, Any]]:
+def _canary_release(preferences: dict[str, Any] | None, source_id: str) -> bool:
+    """True when this service's release is canary, answered or defaulted.
+
+    An explicit rolling or blue_green answer is not the canary branch, even when an
+    earlier eliminator such as passthrough is the recorded ecs_mode_reason. No
+    compute.release_strategy answer defaults to canary.
+    """
+    if not preferences:
+        return True
+    for row in preferences.get("questions", []):
+        if row.get("question_id") == "compute.release_strategy" and row.get("resource_id") == source_id:
+            return row.get("value") == "canary"
+    return True
+
+
+def express_not_selected_warnings(
+    design: dict[str, Any], preferences: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
     return [
         {
             "code": "ecs_express_not_selected_rolling_release",
@@ -265,11 +282,13 @@ def express_not_selected_warnings(design: dict[str, Any]) -> list[dict[str, Any]
             "blocking": False,
         }
         for source_id, mode, reason in fargate_mode_rows(design)
-        if mode == "standard" and reason in NON_RELEASE_STANDARD_REASONS
+        if mode == "standard"
+        and reason in NON_RELEASE_STANDARD_REASONS
+        and _canary_release(preferences, source_id)
     ]
 
 
-def ledger_from_design(design: dict[str, Any]) -> dict[str, Any]:
+def ledger_from_design(design: dict[str, Any], preferences: dict[str, Any] | None = None) -> dict[str, Any]:
     buckets: dict[str, list[dict[str, Any]]] = {name: [] for name in ("generated", "consumed_topology", "deferred", "unsupported")}
     for mapping in design["mappings"]:
         kind = mapping["render_kind"]
@@ -293,7 +312,7 @@ def ledger_from_design(design: dict[str, Any]) -> dict[str, Any]:
         {"code": "deferred_shared_ai_engine", "subject": "AI execution", "detail": "AI execution remains deferred to the provider-neutral shared engine.", "blocking": False},
         {"code": "conditional_workflow_generation_unsupported", "subject": "Workflow artifacts", "detail": "Workflow execution semantics require manual validation before artifact generation.", "blocking": False},
         {"code": "unpriced_cost_floor", "subject": "Estimate floor", "detail": "EFS has no reviewed rate and both totals are known-cost floors.", "blocking": False},
-        *express_not_selected_warnings(design),
+        *express_not_selected_warnings(design, preferences),
     ]
     return {
         "schema_version": "1.0",
@@ -1478,7 +1497,11 @@ def emit_pack(root: Path, design: dict[str, Any], estimate: dict[str, Any], ledg
     _write_text(
         terraform / "README.md",
         "# Terraform\n\nBalanced infrastructure generated from the canonical Design mappings. For external DNS, request the public certificate in ACM, create its DNS validation records, wait for `Issued`, then supply `issued_certificate_arn`. Each service uses its own immutable image input bound to its Render source ID."
-        + "".join(f"\n\n{row['detail']} (`{row['code']}`)" for row in express_not_selected_warnings(design)),
+        + "".join(
+            f"\n\n{row['detail']} (`{row['code']}`)"
+            for row in ledger["warnings"]
+            if row["code"] == "ecs_express_not_selected_rolling_release"
+        ),
     )
     _write_text(
         terraform / "terraform.tfvars.example",
