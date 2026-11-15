@@ -204,22 +204,22 @@ Has the user provided a pull request/merge request link or ID?
 
 > **STRICT SEQUENCING**: Steps below are numbered. You MUST complete each step before moving to the next. In particular, step 1 (automated testing prompt) MUST NOT happen until the entire "Gathering execution parameters" flow above is fully complete — all git operations done, branch pushed (if local flow), content object built, and user informed of the branch. Only THEN proceed to step 1.
 
-### 1. Determine `skip_automated_testing` (ask ONLY after content is ready)
+### 1. Determine `review_depth` (ask ONLY after content is ready)
 
-The `skip_automated_testing` parameter controls whether the agent runs automated testing (automated verification tests) or only static analysis.
+The `review_depth` parameter controls how deep the analysis goes: static analysis only, or static analysis plus automated testing (automated verification tests).
 
 | Value | Behavior |
 |-------|----------|
-| `true` | Skip automated testing, run static analysis only (fast — code review, risk assessment, dependency checks) |
-| `false` | Full analysis including automated testing (longer — spins up a testing environment, builds code, runs automated verification tests) |
+| `static-analysis` | Static analysis only, no automated testing (fast — code review, risk assessment, dependency checks) |
+| `verification-testing` | Full analysis including automated testing (longer — spins up a testing environment, builds code, runs automated verification tests). Automated testing runs only on repositories where it is enabled in the agent space. |
 
 Present the choice and wait for a response:
 > "Would you like a quick static analysis (code review, risk assessment, dependency checks), or a full analysis that also includes automated testing? Automated testing spins up a testing environment, builds your code, and runs automated verification tests — it's more thorough but takes longer."
 
 **Do NOT proceed until the user answers.**
 
-- If the user says "yes" / "include testing" / "full analysis" / "run tests" → use `skip_automated_testing=false`
-- If the user says "no" / "static only" / "skip testing" / "quick" / declines → use `skip_automated_testing=true`
+- If the user says "yes" / "include testing" / "full analysis" / "run tests" → use `review_depth="verification-testing"`
+- If the user says "no" / "static only" / "skip testing" / "quick" / declines → use `review_depth="static-analysis"`
 - If the response is ambiguous (e.g., "go ahead", "sure", "proceed") → ask the user to clarify which option they prefer.
 
 ### 2. Check tool availability
@@ -231,7 +231,7 @@ Verify that the following tools are available: `aws_devops_agent__create_code_ch
 ```
 aws_devops_agent__create_code_change_risk_analysis(
     content={...},
-    skip_automated_testing=true/false
+    review_depth="static-analysis" | "verification-testing"
 )
 → {"taskId": "...", "executionId": "...", "status": "started"}
 ```
@@ -315,6 +315,7 @@ aws_devops_agent__cancel_code_change_risk_analysis(task_id=TASK_ID)
 2. If job does not reach `IN_PROGRESS` within 5 minutes — cancel with `cancel_code_change_risk_analysis`.
 3. If throttled (`429` or `ThrottlingException`) — wait 30 seconds, retry up to 3 times.
 4. If the error does not match any known pattern above, present the raw error output to the user.
+5. If a tool is missing, rejected or behaves differently from these instructions, read the plugin's [CHANGELOG.md](../../CHANGELOG.md) for recent changes (renamed tools, `review_depth`) and how to resolve them.
 
 ## Fallback (aws-mcp)
 
@@ -340,13 +341,13 @@ aws devops-agent create-backlog-task \
   --task-type CODE_CHANGE_RISK_ANALYSIS \
   --title 'Code Change Risk Analysis' \
   --priority MEDIUM \
-  --description '{\"agentInput\": {\"content\": <CONTENT_JSON>, \"metadata\": {\"skipAutomatedTesting\": true}}}' \
+  --description '{\"agentInput\": {\"content\": <CONTENT_JSON>, \"metadata\": {\"reviewDepth\": \"static-analysis\", \"skipAutomatedTesting\": true}}}' \
   --region us-east-1
 ```
 
 > **CRITICAL:** The `content` value must be a single object — NOT wrapped in a list. Correct: `"content": {"githubPrContent": [...]}`. Incorrect: `"content": [{"githubPrContent": [...]}]`. Wrapping in a list causes a Pydantic validation failure on the backend. The values in the content should all be of string format e.g. the PR number should be a string.
 
-Default is `"skipAutomatedTesting": true` (static only). Set to `false` only if user explicitly opted into automated testing.
+Default is `"reviewDepth": "static-analysis"` with `"skipAutomatedTesting": true` (static only). Set `"reviewDepth": "verification-testing"` with `"skipAutomatedTesting": false` only if the user explicitly opted into automated testing. Always set both together.
 
 ### 3. Poll for Status
 

@@ -92,9 +92,10 @@ def get(key: str, path: str, params: dict) -> list:
                 sleep(30)
                 continue
             try:
-                message = json.loads(err.read()).get("error", {}).get("message", "")
-            except ValueError:
-                message = ""
+                error = json.loads(err.read()).get("error")
+            except (ValueError, AttributeError):
+                error = None
+            message = error.get("message", "") if isinstance(error, dict) else str(error or "")
             raise RuntimeError(f"HTTP {err.code} {re.sub(r'sk-[A-Za-z0-9_*-]+', 'sk-[redacted]', message)}".strip()) from None
         retried = False
         data += body.get("data", [])

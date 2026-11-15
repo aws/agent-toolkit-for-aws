@@ -1,6 +1,6 @@
 ---
 name: bedrock-migration-assessment
-description: "Source-cloud-neutral assessment of AI/LLM usage for a migration to Amazon Bedrock. Use when the user wants to find which OpenAI (direct or Azure OpenAI), Anthropic, Google/Gemini, or OpenRouter calls their code makes, or already has a provider-neutral ai-workload-profile.json (schema 1.0 or 1.1), and wants to answer the AI migration questions. It scans the code or validates the profile, can measure OpenAI and Anthropic usage read-only with the user's consent and an Admin key, shows a short preview, then runs Clarify, and needs no infrastructure skill installed. This release stops after Clarify: it does not design, estimate, generate artifacts, or rewrite code. To rewrite SDK calls to Bedrock and get a branch, use llm-to-bedrock; for infrastructure migrations use gcp-to-aws, azure-to-aws, or heroku-to-aws."
+description: "Source-cloud-neutral assessment of AI/LLM usage for a migration to Amazon Bedrock. Use when the user wants to find which OpenAI (direct or Azure OpenAI), Anthropic, Google/Gemini, or OpenRouter calls their code makes, or already has a provider-neutral ai-workload-profile.json (schema 1.0 or 1.1), and wants to answer the AI migration questions. It scans the code or validates the profile, can measure OpenAI, Anthropic, and OpenRouter usage read-only with the user's consent and an admin or management key, shows a short preview, then runs Clarify, and needs no infrastructure skill installed. This release stops after Clarify: it does not design, estimate, generate artifacts, or rewrite code. To rewrite SDK calls to Bedrock and get a branch, use llm-to-bedrock; for infrastructure migrations use gcp-to-aws, azure-to-aws, or heroku-to-aws."
 ---
 
 # Bedrock Migration Assessment
@@ -11,7 +11,7 @@ This release covers two phases:
 
 | Phase    | What it does                                                                                   | Output                                         |
 | -------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| Discover | Runs `references/phases/discover/discover.md`: scans the code or accepts a supplied profile, validates it with `scripts/validate-ai-profile.py`, optionally measures OpenAI and Anthropic usage, and writes a preview | `ai-workload-profile.json`, `migration-preview.json`, `.phase-status.json`, and `openai-usage-profile.json` when usage was measured |
+| Discover | Runs `references/phases/discover/discover.md`: scans the code or accepts a supplied profile, validates it with `scripts/validate-ai-profile.py`, optionally measures OpenAI, Anthropic, and OpenRouter usage, and writes a preview | `ai-workload-profile.json`, `migration-preview.json`, `.phase-status.json`, and `openai-usage-profile.json`, `anthropic-usage-profile.json`, and `openrouter-usage-profile.json` when that usage was measured |
 | Clarify  | Runs `references/phases/clarify/clarify-ai-only.md`                                            | `preferences.json`                             |
 
 Design, Estimate, and Generate are not in this skill yet. After Clarify, tell the user their answers are saved and stop. Do not load phase files from any other skill.

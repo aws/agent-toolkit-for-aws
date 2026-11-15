@@ -1,0 +1,40 @@
+{
+  "schema_version": "1.0",
+  "phase": "generate",
+  "generated": [
+    {"source_resource_id": "rr-build", "render_kind": "render.build_source", "aws_service": "Amazon ECR + CI/CD immutable digest promotion", "reason": "The environment-bound helper verifies and promotes the exact ECR digest without rebuilding.", "target_files": ["terraform/delivery.tf", "scripts/promote-image.sh"]},
+    {"source_resource_id": "rr-cron", "render_kind": "render.cron_job", "aws_service": "Amazon EventBridge Scheduler + ECS on Fargate RunTask", "reason": "The selected scheduled ECS task is generated.", "target_files": ["terraform/compute.tf"]},
+    {"source_resource_id": "rr-db", "render_kind": "render.postgres", "aws_service": "Amazon RDS for PostgreSQL", "reason": "The selected private encrypted RDS target is generated.", "target_files": ["terraform/data.tf", "scripts/migrate-postgres.sh"]},
+    {"source_resource_id": "rr-disk", "render_kind": "render.persistent_disk", "aws_service": "Amazon EFS", "reason": "The selected shared POSIX filesystem and access point are generated.", "target_files": ["terraform/storage.tf", "scripts/migrate-disk.sh"]},
+    {"source_resource_id": "rr-domain", "render_kind": "render.custom_domain", "aws_service": "AWS Certificate Manager + external DNS", "reason": "The certificate is generated while DNS remains external.", "target_files": ["terraform/network.tf"]},
+    {"source_resource_id": "rr-env-group", "render_kind": "render.environment_group", "aws_service": "AWS Secrets Manager + AWS Systems Manager Parameter Store", "reason": "Secret and non-secret configuration references are generated without source values.", "target_files": ["terraform/delivery.tf"]},
+    {"source_resource_id": "rr-kv", "render_kind": "render.key_value", "aws_service": "Amazon ElastiCache for Valkey node-based", "reason": "The selected encrypted node-based cache is generated.", "target_files": ["terraform/data.tf"]},
+    {"source_resource_id": "rr-private", "render_kind": "render.private_service", "aws_service": "ECS on Fargate", "reason": "The private Fargate service is generated without public ingress.", "target_files": ["terraform/compute.tf"]},
+    {"source_resource_id": "rr-static", "render_kind": "render.static_site", "aws_service": "Amazon S3 + Amazon CloudFront", "reason": "The private static origin and distribution are generated.", "target_files": ["terraform/delivery.tf"]},
+    {"source_resource_id": "rr-web", "render_kind": "render.web_service", "aws_service": "ECS on Fargate", "reason": "The public Fargate web service and HTTPS edge are generated.", "target_files": ["terraform/compute.tf", "terraform/network.tf"]},
+    {"source_resource_id": "rr-worker", "render_kind": "render.background_worker", "aws_service": "ECS on Fargate service", "reason": "The continuously supervised worker service is generated.", "target_files": ["terraform/compute.tf"]}
+  ],
+  "consumed_topology": [
+    {"source_resource_id": "rr-env", "render_kind": "render.environment", "aws_service": "AWS deployment environment stack", "reason": "The environment boundary is consumed by VPC, state, and tags.", "target_files": ["terraform/main.tf", "terraform/network.tf"]},
+    {"source_resource_id": "rr-project", "render_kind": "render.project", "aws_service": "AWS account and VPC environment strategy", "reason": "The project boundary is consumed by naming, state, tags, and network isolation.", "target_files": ["terraform/main.tf", "terraform/network.tf"]}
+  ],
+  "deferred": [],
+  "unsupported": [
+    {"source_resource_id": "rr-workflow", "render_kind": "render.workflow", "aws_service": "AWS Step Functions Standard", "reason": "Automatic generation is conditional because callback, compensation, retry, and retained-state semantics lack a validated fixture contract.", "target_files": []},
+    {"source_resource_id": "rr-workflow-task", "render_kind": "render.workflow_task", "aws_service": "AWS Lambda", "reason": "Task generation remains coupled to the unsupported parent Workflow definition and is not emitted independently.", "target_files": []}
+  ],
+  "warnings": [
+    {"code": "conditional_workflow_generation_unsupported", "subject": "rr-workflow and rr-workflow-task", "detail": "The selected Step Functions Standard and Lambda design is reported, but no Workflow artifacts are fabricated until callback, compensation, retry, and state-retention semantics pass dedicated generation tests.", "blocking": false},
+    {"code": "deferred_shared_ai_engine", "subject": "ai-workload-profile.json", "detail": "Infrastructure artifacts are usable; provider-neutral AI Design, Estimate, Generate, model, adapter, and pricing execution remain unavailable and resume from the preserved profile.", "blocking": false},
+    {"code": "unpriced_cost_floor", "subject": "Amazon EFS", "detail": "Both AWS scenario totals are known-cost floors because the reviewed estimate has no EFS rate row.", "blocking": false}
+  ],
+  "accounting": {
+    "design_count": 15,
+    "generated_count": 11,
+    "consumed_topology_count": 2,
+    "deferred_count": 0,
+    "unsupported_count": 2,
+    "accounted_count": 15,
+    "source_resource_ids": ["rr-build", "rr-cron", "rr-db", "rr-disk", "rr-domain", "rr-env", "rr-env-group", "rr-kv", "rr-private", "rr-project", "rr-static", "rr-web", "rr-worker", "rr-workflow", "rr-workflow-task"]
+  }
+}

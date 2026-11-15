@@ -47,7 +47,9 @@ Where should your App Service workloads run on AWS?
 [A] Elastic Beanstalk — closest to App Service: AWS manages deployment,
     scaling, patching and health checks                        (default)
 [B] ECS Fargate — you own the container lifecycle, and get direct
-    control over task definitions and scaling
+    control over task definitions and scaling (HTTP web services land on
+    ECS Express Mode: ALB, HTTPS, auto scaling and logs provisioned for you;
+    workers get a standard ECS service)
 [C] EKS — only if your team already runs Kubernetes
 ```
 
@@ -160,6 +162,34 @@ gcp's Q7 (cutover strategy), which is also ESSENTIAL and also never assumed.
 will **refuse** the image until it is re-imaged to a standard Windows Server edition. Say
 so as a warning on the sheet, and do not present option [A] as available for that VM.
 There is nothing to weigh, so offering a choice would imply one of the answers works.
+
+### Q-C7 — Release strategy for Fargate services
+
+**N/A when no workload lands on Fargate** (Q-C1 is `elastic_beanstalk` or `eks` with no
+Container Apps, Container Instances, or `DOCKER|` App Service site in the estate).
+
+**Disposition:** DETECTED when every Fargate-bound source already uses a progressive
+rollout (Container Apps revision traffic splits, or App Service slots used only for
+staging-then-swap are NOT this — a slot swap is blue/green); PROPOSED otherwise.
+**Default:** `canary`.
+
+```
+How do you release new versions of your containerized services?
+[A] Progressive / canary rollouts are fine                      (default)
+[B] Rolling updates — replace tasks in place, no traffic shifting
+[C] Blue/green — separate environment and an explicit cutover
+```
+
+**Consequence line:** _Assuming canary → HTTP web services on Fargate use ECS Express
+Mode (AWS-provisioned ALB, HTTPS, auto scaling, logs, canary deployments). Rolling or
+blue/green needs a standard ECS service; a `Microsoft.Web/sites/slots` child on a plan
+routed to Fargate is read as a blue/green signal and proposes [C]._
+
+Writes `design_constraints.release_strategy` (`canary` | `rolling` | `blue_green`).
+The service shape (`http_service` / `worker` / `tcp_or_grpc_passthrough`) is derived by
+Design from the inventory (Container Apps `ingress`, Container Instances ports, site
+`kind`); Clarify asks for it only when a Fargate-bound workload has no ingress evidence,
+recording `design_constraints.compute_shape[<service>]`.
 
 ## Step 3: Rows returned
 

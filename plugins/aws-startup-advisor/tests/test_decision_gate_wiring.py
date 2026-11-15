@@ -111,8 +111,15 @@ def test_readme_uses_qualification_based_migration_credit_copy() -> None:
 
     assert text.count(APPROVED_CREDIT_COPY) == 3
     assert all(unsupported not in text for unsupported in SUPERSEDED_CREDIT_COPY)
-    assert "GCP and Heroku currently write importable plans" in text
-    assert "returns `PLAN_SKIP` until the downstream importer accepts Azure plans" in text
+    # Azure writes importable plans like GCP and Heroku: the importer accepts `AZURE`, and the writer maps
+    # AZURE_TO_AWS to it for infrastructure or mixed runs. Only an AI-only run is skipped.
+    assert "mixed Azure, GCP, or Heroku assessment" in text
+    assert "Azure, GCP, and Heroku write importable plans" in text
+    assert "importer's `AZURE` platform for infrastructure or mixed runs" in text
+    assert "`PLAN_SKIP` (no file, migration unaffected) for an AI-only run" in text
+    # the superseded claim that Azure is held back until the importer supports it must be gone
+    assert "until the downstream importer accepts Azure plans" not in text
+    assert "GCP and Heroku currently write importable plans" not in text
 
 
 def test_llm_migration_credit_notice_runs_once_before_delegated_discover() -> None:

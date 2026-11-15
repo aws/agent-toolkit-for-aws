@@ -138,7 +138,7 @@ this whole file exists to prevent.
 | Third-party auth in use               | Keep the existing provider                                                 | A startup on Entra External ID, Auth0, or Clerk should not be moved to Cognito |
 
 **AWS App Runner is not a candidate anywhere**, at any step, including as a
-"forward-look" — it stopped accepting new customers in April 2026. ECS Express Mode
-may be mentioned only as a forward-look on the Fargate override path. A `_postcondition`
+"forward-look" — it stopped accepting new customers in April 2026. ECS Express Mode is
+the default shape for HTTP web services on the Fargate override path (`compute.md` § 7). A `_postcondition`
 on the design phase asserts App Runner appears nowhere in `aws-design.json`; that
 assert has no mechanical teeth, so the real enforcement is here.

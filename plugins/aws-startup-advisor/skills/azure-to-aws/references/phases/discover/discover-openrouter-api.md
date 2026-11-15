@@ -795,6 +795,14 @@ volume:
       existing `workloads[]` entry already has this exact `workload_id` (the
       sha256 is deterministic per model, so a second merge of the same model
       naturally collides on it instead of duplicating).
+   c. **Mantle signal (`web_search`):** for any `usage_by_model` model string
+      carrying the `:online` suffix (OpenRouter's web-search plugin shorthand),
+      append `{ "selector": "web_search", "file": "<usage_api>", "line": 0,
+      "construct": "openrouter-usage-profile.json model: <string>" }` to
+      `mantle_signals` of that model's workload row (create the array if
+      absent, skip an identical entry). OpenRouter's `workspace_id` scoping
+      (Step 1.5) is OpenRouter's own account concept and is NOT a `workspaces`
+      signal. Clarify confirms the signal (`schema-discover-ai.md` § workloads[]).
 
    Recompute `summary.total_models_detected` to include any (a) addition (it
    counts `models[]` length, not just code-derived models).

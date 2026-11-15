@@ -1,4 +1,5 @@
-"""Build image-bearing request payloads for Converse, Responses and Chat Completions.
+"""Build image-bearing request payloads for Converse, Responses, Chat Completions and
+the Anthropic Messages API.
 
 Two mistakes are easy to make by hand and both produce a confusing failure mode
 where the vision smoke test passes (it hardcodes a known-good jpeg) while every
@@ -13,8 +14,13 @@ golden case fails:
    declares `ResponseInputImageParam.detail` as `Required`, so omitting it is a
    contract violation even though a TypedDict will not catch it at runtime.
 
-Callers should use `converse_message` / `responses_message` / `chat_message` rather than assembling
-these dicts inline, so the shape is decided in one tested place.
+4. **Messages images are a base64 `source` block, not a data URL.** The Anthropic
+   Messages API takes `{"type": "image", "source": {"type": "base64", "media_type":
+   "image/jpeg", "data": "<base64>"}}`; the OpenAI-style `image_url` shape is rejected.
+
+Callers should use `converse_message` / `responses_message` / `chat_message` /
+`messages_message` rather than assembling these dicts inline, so the shape is decided
+in one tested place.
 """
 from pathlib import Path
 
@@ -99,4 +105,24 @@ def chat_message(prompt: str, image_path: str | None = None,
             raise ValueError("raw image bytes are required when image_path is given")
         content.append({"type": "image_url", "image_url": {
             "url": data_url(image_path, raw)}})
+    return {"role": "user", "content": content}
+
+
+def messages_message(prompt: str, image_path: str | None = None,
+                     raw: bytes | None = None) -> dict:
+    """One Anthropic Messages `messages[]` item. Image block precedes the text block.
+
+    The image is a base64 `source` block with the normalized MIME type — the same
+    `.jpg` -> `image/jpeg` rule as the other builders; the Messages API rejects
+    `image/jpg`.
+    """
+    import base64
+    content: list[dict] = []
+    if image_path is not None:
+        if raw is None:
+            raise ValueError("raw image bytes are required when image_path is given")
+        content.append({"type": "image", "source": {
+            "type": "base64", "media_type": mime_type(image_path),
+            "data": base64.b64encode(raw).decode()}})
+    content.append({"type": "text", "text": prompt})
     return {"role": "user", "content": content}

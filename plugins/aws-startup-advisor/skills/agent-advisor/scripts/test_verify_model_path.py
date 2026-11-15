@@ -1,5 +1,7 @@
 import json
 import pathlib
+import sys
+import types
 
 import jsonschema
 import pytest
@@ -78,15 +80,38 @@ def _verify(requirements=None, **kwargs):
     )
 
 
+# Mantle is probed only when a mantle_selector put the workload there.
+MANTLE_SELECTED = {"mantle_selector": "workspaces"}
+
+
 def test_mantle_probe_uses_recommended_clean_id():
     client = FakeMantleClient()
-    result = _verify(mantle_client_factory=lambda region: client)
+    result = _verify(MANTLE_SELECTED, mantle_client_factory=lambda region: client)
     verification = result["workloads"]["support-agent"]
 
     assert verification["status"] == "passed"
+    assert verification["api_path"] == "mantle_messages"
     assert verification["response_model_id"] == "anthropic.claude-sonnet-5"
     assert client.messages.calls[0]["model"] == "anthropic.claude-sonnet-5"
     assert client.messages.calls[0]["max_tokens"] == 8
+
+
+def test_default_messages_probe_uses_runtime_messages_with_resolved_cris():
+    messages = FakeMessages(response={"model": "global.anthropic.claude-sonnet-5-5"})
+    client = FakeMantleClient(messages)
+    mantle_calls = []
+    result = _verify(
+        {"data_residency": "global_allowed"},
+        mantle_client_factory=lambda region: mantle_calls.append(region),
+        runtime_messages_client_factory=lambda region: client,
+    )
+    verification = result["workloads"]["support-agent"]
+
+    assert verification["status"] == "passed"
+    assert verification["api_path"] == "runtime_messages"
+    assert verification["response_model_id"] == "global.anthropic.claude-sonnet-5-5"
+    assert messages.calls[0]["model"] == "global.anthropic.claude-sonnet-5-5"
+    assert mantle_calls == []
 
 
 def test_converse_probe_uses_resolved_cris_without_substitution():
@@ -139,7 +164,7 @@ def test_unresolved_runtime_cris_does_not_create_client():
 
 def test_probe_failure_is_structured():
     client = FakeMantleClient(FakeMessages(error=PermissionError("denied")))
-    result = _verify(mantle_client_factory=lambda region: client)
+    result = _verify(MANTLE_SELECTED, mantle_client_factory=lambda region: client)
     verification = result["workloads"]["support-agent"]
 
     assert verification["status"] == "failed"
@@ -161,7 +186,7 @@ def test_decision_required_is_not_probed():
 
 
 def test_verification_output_matches_schema():
-    result = _verify(mantle_client_factory=lambda region: FakeMantleClient())
+    result = _verify(MANTLE_SELECTED, mantle_client_factory=lambda region: FakeMantleClient())
     schema = json.loads(
         (
             pathlib.Path(verify_model_path.__file__).parent
@@ -217,20 +242,28 @@ class FakeOpenAIClient:
         self.chat = chat or FakeChat()
 
 
-@pytest.mark.parametrize("region", ["us-east-1", "us-west-2"])
-@pytest.mark.parametrize("surface", ["chat_completions", "responses"])
-def test_astra_recommendation_probes_selected_api_in_supported_regions(region, surface):
-    data = _openai_input()
-    data["region"] = region
-    data["workloads"][0]["source"].update(
-        model_ids=["gpt-6-astra"], api_surface=surface
-    )
-    recommendation = model_recommendation.recommend(data)
+def _astra_api_client():
     completions = FakeResponses(response={"model": "openai.gpt-6-astra"})
     client = type("ChatClient", (), {
         "chat": type("Chat", (), {"completions": completions})(),
         "responses": completions,
     })()
+    return completions, client
+
+
+@pytest.mark.parametrize("region", ["us-east-1", "us-west-2"])
+@pytest.mark.parametrize("surface", ["chat_completions", "responses"])
+def test_astra_recommendation_probes_selected_api_in_supported_regions(region, surface):
+    # Mantle is probed only when a mantle_selector put the workload there. The selector must be
+    # surface-neutral: server_side_tools / web_search / background_inference are Responses-only
+    # (PR 588 F4) and turn a Chat Completions source into a decision, not a Mantle Chat probe.
+    data = _openai_input({"mantle_selector": "mantle_only_model_or_api"})
+    data["region"] = region
+    data["workloads"][0]["source"].update(
+        model_ids=["gpt-6-astra"], api_surface=surface
+    )
+    recommendation = model_recommendation.recommend(data)
+    completions, client = _astra_api_client()
     result = verify_model_path.verify_recommendation(
         recommendation, now=NOW,
         openai_responses_client_factory=lambda region: client,
@@ -247,6 +280,35 @@ def test_astra_recommendation_probes_selected_api_in_supported_regions(region, s
         assert completions.calls[0]["messages"][0]["role"] == "user"
     else:
         assert completions.calls[0]["input"] == verify_model_path.PROMPT
+
+
+@pytest.mark.parametrize("region", ["us-east-1", "us-west-2"])
+@pytest.mark.parametrize("surface", ["chat_completions", "responses"])
+def test_astra_default_recommendation_probes_runtime_api_with_cris_id(region, surface):
+    # No selector: the default bedrock-runtime OpenAI path is probed through the
+    # runtime factories with the resolved Global CRIS id; Mantle factories stay idle.
+    data = _openai_input({"data_residency": "global_allowed"})
+    data["region"] = region
+    data["workloads"][0]["source"].update(
+        model_ids=["gpt-6-astra"], api_surface=surface
+    )
+    recommendation = model_recommendation.recommend(data)
+    completions, client = _astra_api_client()
+    mantle_calls = []
+    result = verify_model_path.verify_recommendation(
+        recommendation, now=NOW,
+        openai_responses_client_factory=lambda region: mantle_calls.append(region),
+        openai_chat_client_factory=lambda region: mantle_calls.append(region),
+        runtime_openai_responses_client_factory=lambda region: client,
+        runtime_openai_chat_client_factory=lambda region: client,
+    )
+    verification = result["workloads"]["openai-svc"]
+    assert verification["status"] == "passed"
+    assert verification["api_path"] == (
+        "runtime_openai_chat" if surface == "chat_completions" else "runtime_openai_responses"
+    )
+    assert mantle_calls == []
+    assert completions.calls[0]["model"] == "global.openai.gpt-6-astra"
 
 
 @pytest.mark.parametrize("prefix", ["us", "global"])
@@ -314,7 +376,9 @@ APPLICATION_ARN = "arn:aws:bedrock:us-east-1:123456789012:application-inference-
 
 
 def _opus_recommendation(provider, path, profile):
-    data = _input() if provider == "anthropic" else _openai_input()
+    # The OpenAI case uses an unrecognized source id (gpt-4) so governance lands on
+    # the Claude cross-family Converse tier (Opus under priority quality).
+    data = _input() if provider == "anthropic" else _openai_input(source={"model_ids": ["gpt-4"]})
     data["region"] = "us-east-1"
     requirements = data["workloads"][0]["requirements"]
     requirements.update(priority="quality", data_residency="geo_required",
@@ -601,7 +665,7 @@ def test_recommendation_cli_drops_orphaned_verification_before_first_write(tmp_p
 ])
 @pytest.mark.parametrize("regions", [("eu-west-2",), ("eu-west-2", "eu-west-1")])
 def test_london_application_profile_accepts_in_region_or_matching_geo_destinations(provider, path, regions):
-    data = _input() if provider == "anthropic" else _openai_input()
+    data = _input() if provider == "anthropic" else _openai_input(source={"model_ids": ["gpt-4"]})
     data["region"] = "eu-west-2"
     arn = APPLICATION_ARN.replace("us-east-1", "eu-west-2")
     requirements = data["workloads"][0]["requirements"]
@@ -682,10 +746,17 @@ def test_changed_in_region_allowance_invalidates_same_arn_verification(tmp_path)
     assert "allowed_in_region_model_arns" not in workload["verification"]
 
 
+# Mantle OpenAI paths are probed only when a mantle_selector put the workload there.
+MANTLE_OPENAI = {"api_continuity": "required", "mantle_selector": "background_inference"}
+# Background inference is a Responses API feature on bedrock-mantle, so a Chat
+# Completions source needs a Chat-compatible selector to land on mantle_openai_chat.
+MANTLE_OPENAI_CHAT = {"api_continuity": "required", "mantle_selector": "projects"}
+
+
 def test_mantle_responses_probe_calls_responses_create_with_exact_id():
     client = FakeOpenAIClient()
     result = _verify_openai(
-        {"api_continuity": "required"},
+        MANTLE_OPENAI, source={"model_ids": ["gpt-5.6-sol"]},
         openai_responses_client_factory=lambda region: client,
         openai_chat_client_factory=lambda region: client,
     )
@@ -701,7 +772,7 @@ def test_mantle_responses_probe_calls_responses_create_with_exact_id():
 def test_mantle_responses_failure_does_not_substitute_model():
     client = FakeOpenAIClient(FakeResponses(error=RuntimeError("access denied")))
     result = _verify_openai(
-        {"api_continuity": "required"},
+        MANTLE_OPENAI, source={"model_ids": ["gpt-5.6-sol"]},
         openai_responses_client_factory=lambda region: client,
         openai_chat_client_factory=lambda region: client,
     )
@@ -713,10 +784,26 @@ def test_mantle_responses_failure_does_not_substitute_model():
     assert [c["model"] for c in client.responses.calls] == ["openai.gpt-5.6-sol"]
 
 
+def test_default_openai_recommendation_probes_runtime_responses_not_mantle():
+    client = FakeOpenAIClient(FakeResponses(response={"model": "global.openai.gpt-5.4"}))
+    mantle_calls = []
+    result = _verify_openai(
+        {"api_continuity": "required", "data_residency": "global_allowed"},
+        openai_responses_client_factory=lambda region: mantle_calls.append(region),
+        runtime_openai_responses_client_factory=lambda region: client,
+    )
+    verification = result["workloads"]["openai-svc"]
+
+    assert verification["status"] == "passed"
+    assert verification["api_path"] == "runtime_openai_responses"
+    assert mantle_calls == []
+    assert [c["model"] for c in client.responses.calls] == ["global.openai.gpt-5.4"]
+
+
 def test_mantle_chat_probe_calls_chat_completions_with_exact_id():
     client = FakeOpenAIClient()
     result = _verify_openai(
-        {"api_continuity": "required"},
+        MANTLE_OPENAI_CHAT,
         source={"model_ids": ["gpt-6-sol"], "api_surface": "chat_completions"},
         region="us-east-1",
         openai_chat_client_factory=lambda region: client,
@@ -747,7 +834,7 @@ def test_mantle_chat_failure_does_not_substitute_model():
     completions = FakeCompletions(error=RuntimeError("access denied"))
     client = FakeOpenAIClient(chat=FakeChat(completions))
     result = _verify_openai(
-        {"api_continuity": "required"},
+        MANTLE_OPENAI_CHAT,
         source={"model_ids": ["gpt-6-sol"], "api_surface": "chat_completions"},
         region="us-east-1",
         openai_chat_client_factory=lambda region: client,
@@ -774,3 +861,291 @@ def test_openai_decision_required_is_not_probed():
 
     assert verification["status"] == "not_applicable"
     assert called["n"] == 0  # no client constructed for a non-selected recommendation
+
+
+# --- bedrock-runtime Responses / Chat Completions / Messages probes -----------
+#
+# These recommendations are built by hand from a recommended result and re-pointed
+# at the path under test, so every apiPath enum value stays covered independently
+# of the engines' defaults.
+
+RECOMMENDATION_SCHEMA = json.loads(
+    (pathlib.Path(verify_model_path.__file__).parent / "schemas" / "model-recommendation.json").read_text()
+)
+VERIFICATION_SCHEMA = json.loads(
+    (pathlib.Path(verify_model_path.__file__).parent / "schemas" / "model-verification.json").read_text()
+)
+API_PATHS = RECOMMENDATION_SCHEMA["$defs"]["apiPath"]["enum"]
+
+
+def _runtime_recommendation(provider, path, path_model_id, invocation_model_id):
+    if provider == "openai":
+        data = _openai_input({"api_continuity": "required"})
+    else:
+        data = _input()
+    recommendation = model_recommendation.recommend(data)
+    workload = next(iter(recommendation["workloads"].values()))
+    assert workload["decision_status"] == "recommended"
+    workload["api_path"] = path
+    workload["invocation_model_id"] = invocation_model_id
+    workload["primary_model"] = path_model_id
+    workload["model_identity"]["path_model_id"] = path_model_id
+    workload["model_identity"]["requires_cris"] = True
+    workload["verification"]["invocation_model_id"] = invocation_model_id
+    # The output schema requires a string mantle_selector on every mantle_* path.
+    workload["mantle_selector"] = "workspaces" if path.startswith("mantle_") else None
+    jsonschema.validate(recommendation, RECOMMENDATION_SCHEMA)
+    return recommendation
+
+
+def test_output_schema_rejects_mantle_path_without_selector():
+    recommendation = _runtime_recommendation(
+        "openai", "mantle_openai_responses", "openai.gpt-5.4", "openai.gpt-5.4"
+    )
+    workload = next(iter(recommendation["workloads"].values()))
+    workload["mantle_selector"] = None
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(recommendation, RECOMMENDATION_SCHEMA)
+    del workload["mantle_selector"]
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(recommendation, RECOMMENDATION_SCHEMA)
+
+
+def test_runtime_responses_probe_calls_responses_create_with_exact_cris_id():
+    client = FakeOpenAIClient(FakeResponses(response={"model": "global.openai.gpt-5.4"}))
+    recommendation = _runtime_recommendation(
+        "openai", "runtime_openai_responses", "openai.gpt-5.4", "global.openai.gpt-5.4"
+    )
+    result = verify_model_path.verify_recommendation(
+        recommendation, now=NOW,
+        runtime_openai_responses_client_factory=lambda region: client,
+    )
+    jsonschema.validate(result, VERIFICATION_SCHEMA, format_checker=jsonschema.FormatChecker())
+    verification = result["workloads"]["openai-svc"]
+
+    assert verification["status"] == "passed"
+    assert verification["api_path"] == "runtime_openai_responses"
+    assert verification["response_model_id"] == "global.openai.gpt-5.4"
+    assert client.responses.calls == [{"model": "global.openai.gpt-5.4", "input": verify_model_path.PROMPT}]
+    assert client.chat.completions.calls == []
+
+
+def test_runtime_responses_failure_does_not_substitute_model():
+    client = FakeOpenAIClient(FakeResponses(error=PermissionError("AccessDeniedException")))
+    recommendation = _runtime_recommendation(
+        "openai", "runtime_openai_responses", "openai.gpt-5.4", "global.openai.gpt-5.4"
+    )
+    result = verify_model_path.verify_recommendation(
+        recommendation, now=NOW,
+        runtime_openai_responses_client_factory=lambda region: client,
+    )
+    jsonschema.validate(result, VERIFICATION_SCHEMA, format_checker=jsonschema.FormatChecker())
+    verification = result["workloads"]["openai-svc"]
+
+    assert verification["status"] == "failed"
+    assert verification["error"] == {"type": "PermissionError", "message": "AccessDeniedException"}
+    assert verification["invocation_model_id"] == "global.openai.gpt-5.4"
+    assert [call["model"] for call in client.responses.calls] == ["global.openai.gpt-5.4"]
+
+
+def test_runtime_chat_probe_calls_chat_completions_with_exact_cris_id():
+    completions = FakeCompletions(response={"model": "us.openai.gpt-6-sol"})
+    client = FakeOpenAIClient(chat=FakeChat(completions))
+    recommendation = _runtime_recommendation(
+        "openai", "runtime_openai_chat", "openai.gpt-6-sol", "us.openai.gpt-6-sol"
+    )
+    result = verify_model_path.verify_recommendation(
+        recommendation, now=NOW,
+        runtime_openai_chat_client_factory=lambda region: client,
+    )
+    jsonschema.validate(result, VERIFICATION_SCHEMA, format_checker=jsonschema.FormatChecker())
+    verification = result["workloads"]["openai-svc"]
+
+    assert verification["status"] == "passed"
+    assert verification["api_path"] == "runtime_openai_chat"
+    assert verification["response_model_id"] == "us.openai.gpt-6-sol"
+    assert completions.calls == [
+        {
+            "model": "us.openai.gpt-6-sol",
+            "max_completion_tokens": 8,
+            "messages": [{"role": "user", "content": verify_model_path.PROMPT}],
+        }
+    ]
+    assert client.responses.calls == []
+
+
+def test_runtime_chat_failure_does_not_substitute_model():
+    completions = FakeCompletions(error=RuntimeError("access denied"))
+    client = FakeOpenAIClient(chat=FakeChat(completions))
+    recommendation = _runtime_recommendation(
+        "openai", "runtime_openai_chat", "openai.gpt-6-sol", "us.openai.gpt-6-sol"
+    )
+    result = verify_model_path.verify_recommendation(
+        recommendation, now=NOW,
+        runtime_openai_chat_client_factory=lambda region: client,
+    )
+    verification = result["workloads"]["openai-svc"]
+
+    assert verification["status"] == "failed"
+    assert verification["error"] == {"type": "RuntimeError", "message": "access denied"}
+    assert verification["invocation_model_id"] == "us.openai.gpt-6-sol"
+    assert [call["model"] for call in completions.calls] == ["us.openai.gpt-6-sol"]
+
+
+@pytest.mark.parametrize("path,factory_kwarg", [
+    ("runtime_openai_responses", "runtime_openai_responses_client_factory"),
+    ("runtime_openai_chat", "runtime_openai_chat_client_factory"),
+])
+def test_application_profile_on_a_runtime_openai_api_needs_resolution_without_a_client(
+    path, factory_kwarg
+):
+    # bedrock-runtime Responses/Chat Completions reject application inference profiles
+    # with HTTP 400 (inference-responses-api.html, read 2026-11-08): the verifier says
+    # so before building any client, instead of probing an id the API cannot accept.
+    recommendation = _runtime_recommendation("openai", path, "openai.gpt-5.4", APPLICATION_ARN)
+    result = verify_model_path.verify_recommendation(
+        recommendation, now=NOW,
+        **{factory_kwarg: lambda region: pytest.fail("client must not be built")},
+    )
+    jsonschema.validate(result, VERIFICATION_SCHEMA, format_checker=jsonschema.FormatChecker())
+    verification = result["workloads"]["openai-svc"]
+
+    assert verification["status"] == "needs_resolution"
+    assert verification["error"]["type"] == "ApplicationProfileUnsupportedOnApi"
+    assert "inference-responses-api" in verification["error"]["message"]
+    assert "Converse" in verification["error"]["message"]
+    assert verification["invocation_model_id"] == APPLICATION_ARN
+    assert verification["response_model_id"] is None
+
+
+def test_runtime_messages_probe_calls_messages_create_with_exact_cris_id():
+    messages = FakeMessages(response={"model": "global.anthropic.claude-sonnet-5"})
+    client = FakeMantleClient(messages)
+    recommendation = _runtime_recommendation(
+        "anthropic", "runtime_messages", "anthropic.claude-sonnet-5", "global.anthropic.claude-sonnet-5"
+    )
+    result = verify_model_path.verify_recommendation(
+        recommendation, now=NOW,
+        runtime_messages_client_factory=lambda region: client,
+    )
+    jsonschema.validate(result, VERIFICATION_SCHEMA, format_checker=jsonschema.FormatChecker())
+    verification = result["workloads"]["support-agent"]
+
+    assert verification["status"] == "passed"
+    assert verification["api_path"] == "runtime_messages"
+    assert verification["response_model_id"] == "global.anthropic.claude-sonnet-5"
+    assert messages.calls == [
+        {
+            "model": "global.anthropic.claude-sonnet-5",
+            "max_tokens": 8,
+            "messages": [{"role": "user", "content": verify_model_path.PROMPT}],
+        }
+    ]
+
+
+def test_runtime_messages_failure_does_not_substitute_model():
+    messages = FakeMessages(error=PermissionError("denied"))
+    recommendation = _runtime_recommendation(
+        "anthropic", "runtime_messages", "anthropic.claude-sonnet-5", "global.anthropic.claude-sonnet-5"
+    )
+    result = verify_model_path.verify_recommendation(
+        recommendation, now=NOW,
+        runtime_messages_client_factory=lambda region: FakeMantleClient(messages),
+    )
+    verification = result["workloads"]["support-agent"]
+
+    assert verification["status"] == "failed"
+    assert verification["error"] == {"type": "PermissionError", "message": "denied"}
+    assert verification["invocation_model_id"] == "global.anthropic.claude-sonnet-5"
+    assert [call["model"] for call in messages.calls] == ["global.anthropic.claude-sonnet-5"]
+
+
+def test_runtime_factories_do_not_fall_back_to_mantle_factories():
+    mantle_calls = []
+    recommendation = _runtime_recommendation(
+        "openai", "runtime_openai_responses", "openai.gpt-5.4", "global.openai.gpt-5.4"
+    )
+    runtime_client = FakeOpenAIClient()
+    verify_model_path.verify_recommendation(
+        recommendation, now=NOW,
+        openai_responses_client_factory=lambda region: mantle_calls.append(region),
+        openai_chat_client_factory=lambda region: mantle_calls.append(region),
+        runtime_openai_responses_client_factory=lambda region: runtime_client,
+    )
+    assert mantle_calls == []
+    assert [call["model"] for call in runtime_client.responses.calls] == ["global.openai.gpt-5.4"]
+
+
+@pytest.mark.parametrize("path", API_PATHS)
+def test_every_api_path_enum_value_is_probed(path):
+    provider = "openai" if "openai" in path else "anthropic"
+    path_model_id = "openai.gpt-5.4" if provider == "openai" else "anthropic.claude-sonnet-5"
+    invocation_model_id = f"global.{path_model_id}"
+    recommendation = _runtime_recommendation(provider, path, path_model_id, invocation_model_id)
+    result = verify_model_path.verify_recommendation(
+        recommendation, now=NOW,
+        mantle_client_factory=lambda region: FakeMantleClient(),
+        runtime_client_factory=lambda region: FakeRuntimeClient(),
+        openai_responses_client_factory=lambda region: FakeOpenAIClient(),
+        openai_chat_client_factory=lambda region: FakeOpenAIClient(),
+        runtime_openai_responses_client_factory=lambda region: FakeOpenAIClient(),
+        runtime_openai_chat_client_factory=lambda region: FakeOpenAIClient(),
+        runtime_messages_client_factory=lambda region: FakeMantleClient(),
+    )
+    jsonschema.validate(result, VERIFICATION_SCHEMA, format_checker=jsonschema.FormatChecker())
+    verification = next(iter(result["workloads"].values()))
+
+    assert verification["status"] == "passed", verification["error"]
+    assert verification["error"] is None
+    assert verification["api_path"] == path
+
+
+@pytest.mark.parametrize("builder,module,package", [
+    (verify_model_path._default_runtime_openai_responses_client, "openai", "openai"),
+    (verify_model_path._default_runtime_openai_chat_client, "openai", "openai"),
+    (verify_model_path._default_runtime_messages_client, "anthropic", "anthropic"),
+])
+def test_runtime_default_clients_name_the_missing_package(monkeypatch, builder, module, package):
+    monkeypatch.setitem(sys.modules, module, None)
+    with pytest.raises(RuntimeError, match=f"requires the {package} package"):
+        builder("us-east-1")
+
+
+def _install_fake_sdk(monkeypatch, module, class_name, captured):
+    def constructor(**kwargs):
+        captured.append(kwargs)
+        return object()
+
+    fake = types.ModuleType(module)
+    setattr(fake, class_name, constructor)
+    monkeypatch.setitem(sys.modules, module, fake)
+    token_module = types.ModuleType("aws_bedrock_token_generator")
+    token_module.provide_token = lambda region: f"token-for-{region}"
+    monkeypatch.setitem(sys.modules, "aws_bedrock_token_generator", token_module)
+
+
+@pytest.mark.parametrize("builder,base_url", [
+    (verify_model_path._default_runtime_openai_responses_client,
+     "https://bedrock-runtime.us-west-2.amazonaws.com/openai/v1"),
+    (verify_model_path._default_runtime_openai_chat_client,
+     "https://bedrock-runtime.us-west-2.amazonaws.com/openai/v1"),
+    (verify_model_path._default_openai_responses_client,
+     "https://bedrock-mantle.us-west-2.api.aws/openai/v1"),
+    (verify_model_path._default_openai_chat_client,
+     "https://bedrock-mantle.us-west-2.api.aws/openai/v1"),
+])
+def test_openai_default_clients_point_at_their_endpoint(monkeypatch, builder, base_url):
+    captured = []
+    _install_fake_sdk(monkeypatch, "openai", "OpenAI", captured)
+    builder("us-west-2")
+    assert captured == [{"base_url": base_url, "api_key": "token-for-us-west-2"}]
+
+
+def test_runtime_messages_default_client_points_at_bedrock_runtime_anthropic(monkeypatch):
+    captured = []
+    _install_fake_sdk(monkeypatch, "anthropic", "Anthropic", captured)
+    verify_model_path._default_runtime_messages_client("eu-west-2")
+    assert captured == [{
+        "base_url": "https://bedrock-runtime.eu-west-2.amazonaws.com/anthropic",
+        "api_key": "token-for-eu-west-2",
+    }]
