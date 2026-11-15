@@ -3,7 +3,7 @@ _assemble: assemble-generation
 _of_phase: generate
 _reads:
   - artifacts-infra
-  - infra-data (fragment contribution, when aws-design.json maps a render.postgres or render.key_value row to terraform/data.tf)
+  - infra-data (fragment contribution, when aws-design.json has a render.postgres or render.key_value mapping with disposition mapped)
   - artifacts-docs
   - artifacts-report
 _produces:

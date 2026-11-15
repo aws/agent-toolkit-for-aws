@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -46,12 +47,21 @@ def test_data_fragment_loads_only_when_a_data_row_exists() -> None:
     fragment = _generate_fragment("infra-data")
     assert "_always" not in fragment["_trigger"]
     condition = fragment["_trigger"]["_when"]
-    assert "render.postgres" in condition and "render.key_value" in condition and "terraform/data.tf" in condition
+    assert "render.postgres" in condition and "render.key_value" in condition
+    # The trigger may only name what aws-design.json records. A mapping has render_kind and disposition and no
+    # file field (additionalProperties is false), so a trigger on "maps to terraform/data.tf" is never true.
+    schema = json.loads((SKILL_ROOT / "references/shared/schema-render-aws-design.json").read_text(encoding="utf-8"))
+    mapping = schema["$defs"]["mapping"]
+    assert mapping["additionalProperties"] is False
+    assert {"render_kind", "disposition"} <= set(mapping["properties"])
+    assert "mapped" in mapping["properties"]["disposition"]["enum"]
+    assert "terraform/" not in condition and ".tf" not in condition
+    assert "disposition mapped" in condition
     guidance = FRAGMENT.read_text(encoding="utf-8")
     assert "`render.postgres` and `render.key_value` rows" in guidance
     # the assembler lists the same condition, so its read list does not claim an always-present contribution
     assemble = (SKILL_ROOT / "references/phases/generate/generate-assemble.md").read_text(encoding="utf-8")
-    assert "infra-data (fragment contribution, when aws-design.json maps a render.postgres or render.key_value row" in assemble
+    assert "infra-data (fragment contribution, when aws-design.json has a render.postgres or render.key_value mapping with disposition mapped)" in assemble
     # always-loaded fragments still carry the data.tf routing, so a data design is never left without a pointer
     infra = (SKILL_ROOT / "references/phases/generate/generate-artifacts-infra.md").read_text(encoding="utf-8")
     assert "generate-infra-data.md" in infra
@@ -96,6 +106,38 @@ def test_aurora_variant_follows_guidance() -> None:
     assert logical
     assert "allocated_storage" not in tf
     assert "master_user_secret[0].secret_arn" in tf
+
+
+def _resource_block(text: str, header: str) -> str:
+    start = text.index(header)
+    depth = 0
+    for index in range(text.index("{", start), len(text)):
+        depth += {"{": 1, "}": -1}.get(text[index], 0)
+        if depth == 0:
+            return text[start:index + 1]
+    raise AssertionError(header)
+
+
+def test_aurora_engine_version_ignores_minor_upgrade_drift() -> None:
+    # The cluster pins a version and allows automatic minor upgrades. Without ignore_changes the next plan after an
+    # upgrade proposes a downgrade, which RDS rejects. The cluster and EVERY instance must carry the rule: a bare
+    # substring count would still pass with one of them removed, so each resource's own block is checked.
+    tf = _text("data-aurora-postgres")
+    for header in ('resource "aws_rds_cluster" "postgres"', 'resource "aws_rds_cluster_instance" "postgres"'):
+        block = _resource_block(tf, header)
+        assert re.search(r"lifecycle\s*\{[^{}]*ignore_changes\s*=\s*\[[^\]]*engine_version[^\]]*\]", block), header
+    # the same rule is stated in the fragment, both as guidance and as an anti-pattern
+    guidance = FRAGMENT.read_text(encoding="utf-8")
+    assert guidance.count("ignore_changes = [engine_version]") >= 2
+    # removing either block must be detected by this module
+    for header in ('resource "aws_rds_cluster" "postgres"', 'resource "aws_rds_cluster_instance" "postgres"'):
+        block = _resource_block(tf, header)
+        stripped = tf.replace(block, re.sub(r"lifecycle\s*\{[^{}]*\}", "", block))
+        assert stripped != tf
+        assert not re.search(
+            r"lifecycle\s*\{[^{}]*ignore_changes\s*=\s*\[[^\]]*engine_version[^\]]*\]",
+            _resource_block(stripped, header),
+        ), header
 
 
 def test_valkey_serverless_variant_follows_guidance() -> None:
