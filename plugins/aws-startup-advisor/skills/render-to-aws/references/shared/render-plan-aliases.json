@@ -1,0 +1,49 @@
+{
+  "schema_version": "1.0",
+  "normalization": "Lowercase and trim the raw plan string, collapse every run of whitespace, hyphens, or underscores into a single '_', then compare that token against the same normalization of every canonical id and alias key of the surface. A match returns the canonical id spelled as the knowledge tables key it; an unpriced or unknown token stays null and is never replaced by a neighbouring plan.",
+  "surfaces": {
+    "service_compute": {
+      "canonical": ["0.5c-512mb", "1c-2gb", "2c-4gb", "2c-8gb", "4c-8gb", "4c-16gb", "4c-32gb", "8c-32gb"],
+      "aliases": {
+        "starter": "0.5c-512mb",
+        "standard": "1c-2gb",
+        "pro": "2c-4gb",
+        "pro_plus": "4c-8gb",
+        "pro_max": "4c-16gb",
+        "pro_ultra": "8c-32gb",
+        "1c-2g": "1c-2gb",
+        "2c-4g": "2c-4gb",
+        "2c-8g": "2c-8gb",
+        "4c-8g": "4c-8gb",
+        "4c-16g": "4c-16gb",
+        "4c-32g": "4c-32gb",
+        "8c-32g": "8c-32gb"
+      },
+      "unpriced": ["free", "2c-16g", "8c-16g", "8c-64g", "12c-24g", "12c-48g", "12c-96g"]
+    },
+    "key_value": {
+      "canonical": ["free", "256mb", "1g", "3g", "5g", "10g", "20g", "40g", "50g"],
+      "aliases": {
+        "starter": "256mb",
+        "standard": "1g",
+        "pro": "5g",
+        "pro_plus": "10g",
+        "pro_max": "20g",
+        "pro_ultra": "40g"
+      },
+      "unpriced": []
+    },
+    "workflow": {
+      "canonical": ["flex", "2c-4g", "2c-8g", "4c-8g", "4c-16g", "8c-32g"],
+      "aliases": {
+        "starter": "flex",
+        "standard": "flex",
+        "pro": "2c-4g",
+        "pro_plus": "4c-8g",
+        "pro_max": "4c-16g",
+        "pro_ultra": "8c-32g"
+      },
+      "unpriced": []
+    }
+  }
+}
