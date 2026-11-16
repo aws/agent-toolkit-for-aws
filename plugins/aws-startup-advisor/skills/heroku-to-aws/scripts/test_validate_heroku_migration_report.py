@@ -986,3 +986,43 @@ def test_decision_basis_commented_placeholder_does_not_satisfy() -> None:
         code, out = run(html, migration_dir=d)
     assert code == 1, out
     assert "decision-basis" in out
+
+
+def _lfl_report(anchor_usd: str) -> str:
+    return GOOD.replace(
+        '<table>',
+        f'<p>Heroku like-for-like: <span data-cost-key="heroku_monthly_like_for_like">${anchor_usd}</span></p><table>',
+        1,
+    )
+
+
+def _lfl_run(anchor_usd: str, cost_comparison: dict) -> tuple[int, str]:
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp)
+        (d / "estimation-infra.json").write_text(json.dumps({"cost_comparison": cost_comparison}), encoding="utf-8")
+        return run(_lfl_report(anchor_usd), d)
+
+
+def test_like_for_like_anchor_matching_both_figures_passes() -> None:
+    code, out = _lfl_run("140", {"heroku_monthly_like_for_like": 140,
+                                 "like_for_like_comparison": {"heroku_monthly_like_for_like": 140}})
+    assert code == 0, out
+
+
+def test_like_for_like_block_without_top_level_figure_fails_even_with_a_wrong_anchor() -> None:
+    # The block exists, so the anchor is required, but the figure the anchor is compared with
+    # is the top-level one. Missing it used to skip the comparison and pass any amount.
+    code, out = _lfl_run("999", {"like_for_like_comparison": {"heroku_monthly_like_for_like": 140}})
+    assert code != 0 and "cost_comparison.heroku_monthly_like_for_like is missing" in out
+
+
+def test_like_for_like_top_level_and_nested_figures_that_disagree_fail() -> None:
+    code, out = _lfl_run("140", {"heroku_monthly_like_for_like": 140,
+                                 "like_for_like_comparison": {"heroku_monthly_like_for_like": 100}})
+    assert code != 0 and "disagrees with itself" in out
+
+
+def test_like_for_like_without_the_block_is_not_affected() -> None:
+    # No scope-matched block, so the new source check does not apply.
+    code, out = _lfl_run("140", {"heroku_monthly_like_for_like": 140})
+    assert code == 0, out
