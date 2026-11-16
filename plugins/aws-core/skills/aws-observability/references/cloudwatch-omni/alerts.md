@@ -4,8 +4,9 @@ Reference for **CloudWatch Omni alerts** — what they are, how they are evaluat
 to create, update, delete, tag, and fetch them through the public API, and a section
 per API operation.
 
-On an Omni-enabled account "alert" and "alarm" both mean the Omni alert resource
-described here — a separate resource from a CloudWatch alarm, with its own API.
+An Omni alert is a separate resource from a CloudWatch alarm, with its own API. When the
+request does not name the product, the Space probe in SKILL.md Step 0 rule 3 decides it:
+say in the answer which product the probe picked and that the other one is available.
 
 Alert operations belong to the **`cloudwatchomni`** service — `aws cloudwatchomni
 <operation>`, `boto3.client("cloudwatchomni")` — and are signed with the SigV4 signing
@@ -162,8 +163,12 @@ enough:
    only target is an SNS topic, needs nothing from the profile here.
 
 The grant shapes, the exact action names, and which permission levels confer them are
-in Creating, Step 6; how to create and verify such a profile is covered in
-`setting-up-cloudwatch-observability` → `references/cloudwatch-omni/access-profiles.md`.
+in Creating, Step 6. A question about the grants themselves — whether one exists, its
+shape, why an alert cannot assume its profile or is denied after assuming it, or vetting
+a profile — is answered from `setting-up-cloudwatch-observability`: load that skill and
+read `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/access-profiles.md`
+and `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/access-grants.md`
+before answering. This section covers only what `CreateAlert` needs.
 
 ### Query languages
 
@@ -186,7 +191,7 @@ The two languages in full:
   [query/sql-logs-traces.md](query/sql-logs-traces.md).
 - **`PROMQL`** — PromQL over metrics, for every metric-shaped condition: gauges,
   counters, and histogram percentiles via `histogram_quantile`. See
-  [query/promql-metrics.md](query/promql-metrics.md).
+  [../cloudwatch/promql.md](../cloudwatch/promql.md).
 
 **A condition on a metric MUST use `PROMQL`.** Metrics are the `metrics.default` data
 set, but it is not a queryable SQL target in CloudWatch Omni: SQL over it fails with
@@ -485,16 +490,19 @@ recovery-side damping and omitted-duration-reads-UNSET behavior from the "Cadenc
 and the `ORDER BY`-is-meaningless-for-`COUNT_OF_RESULTS` point from the `COUNT_OF_RESULTS`
 bullet. Surface what fits the request rather than reciting every bullet.
 
-- **Never invent a field or a threshold. — NON-OPTIONAL.** An alert on a non-existent
-  field is SILENTLY DEAD (sits at NODATA/OK forever) — worse than one that errors. A
+- **Never invent a field or a threshold. — NON-OPTIONAL.** An alert whose query names
+  something that does not exist — a field, metric, or label, or a series Omni does not
+  expose such as `_bucket` — is accepted without error and is SILENTLY DEAD (sits at
+  NODATA/OK forever) — worse than one that errors. A
   guessed threshold fires never or always. Ask for the field and the number.
 - **Ground the query by running it once — NON-OPTIONAL.** Do it before proposing the
   query — it proves the names resolve and shows the current value as context for the
   threshold.
-- **Match the threshold's unit to the metric's unit. — NON-OPTIONAL.** ALB
-  `TargetResponseTime` and RDS `*Latency` are seconds; Lambda `Duration`, DynamoDB, EBS
-  `VolumeAvg*` are ms. 500 ms on a seconds metric is 0.5, not 500 — a unit-mismatched
-  threshold effectively never fires.
+- **Match the threshold's unit to the metric's unit. — NON-OPTIONAL.** Take the metric's
+  unit from its catalog row ([../cloudwatch/promql.md](../cloudwatch/promql.md), section 5;
+  seconds and milliseconds are the usual mismatch) and convert the user's number to it: 500 ms
+  on a seconds metric is 0.5, not 500. State the metric's unit, the converted value, and that a
+  unit-mismatched threshold effectively never fires.
 - **COUNT_OF_RESULTS:** no `LIMIT` (caps the count → "more than N" never fires) and no
   `ORDER BY` (cannot change a row count). Prefer `COUNT(*) AS n` + `FIELD_VALUE` on `n`.
 - **FIELD_VALUE (SQL):** a named numeric alias is required (it becomes `thresholdField`).
@@ -561,7 +569,7 @@ into an alert. An alert on a field that does not exist is silently dead — it s
 
 | The ask | Route | `language` | Dialect reference |
 |---|---|---|---|
-| A **metric** (gauge, counter, histogram percentile) | raw PromQL over the metric | `PROMQL` | [query/promql-metrics.md](query/promql-metrics.md) |
+| A **metric** (gauge, counter, histogram percentile) | raw PromQL over the metric | `PROMQL` | [../cloudwatch/promql.md](../cloudwatch/promql.md) |
 | A condition over **logs or traces** | SQL over `logs.default` / `traces.default` (or a [view](query/views.md)) | `SQL` | [query/sql-logs-traces.md](query/sql-logs-traces.md) |
 
 - **A metric alert MUST be raw PromQL — never SQL.** There is no SQL path to a
@@ -575,7 +583,7 @@ into an alert. An alert on a field that does not exist is silently dead — it s
   a `_bucket`/`by (le)` query returns **empty** and the alert never fires).
 
 **Windowing a metric alert.** The `[5m]` window has to sit where the instrument type
-allows a range vector ([query/promql-metrics.md](query/promql-metrics.md), section 3):
+allows a range vector ([../cloudwatch/promql.md](../cloudwatch/promql.md), section 4, "Gauge, counter, histogram"):
 
 | Instrument (from the series' `__type__` / `__temporality__`) | Alert expression |
 |---|---|
@@ -604,7 +612,7 @@ drops series.
 schema is permissive and a misspelled field returns `NULL` rather than an error
 (see [query/sql-logs-traces.md](query/sql-logs-traces.md), Schema Discovery). For
 PromQL, confirm the metric name and the identity labels you filter on exist by
-querying them (see [query/promql-metrics.md](query/promql-metrics.md)). Pass the ask
+querying them (see [../cloudwatch/promql.md](../cloudwatch/promql.md#3-discovering-metric-names-and-labels)). Pass the ask
 at the **user's** level of specificity — do not invent a service or field name to
 make the query look complete. If you cannot ground the request, ask the user **one**
 question — nearly always which service or which field — rather than emitting an
@@ -719,7 +727,8 @@ name the candidate to the user and confirm it.
 
 - **The user supplied the number** ("above 75 percent", "more than 500 ms") — take
   `criticalThreshold` from it and `comparator` from the wording's direction, check the
-  unit matches the metric's unit, and still consult published guidance for the
+  unit matches the metric's unit (when it does not, convert, and tell the user the metric's
+  unit and the converted value), and still consult published guidance for the
   **statistic** (2c). Restate the number and unit for confirmation; do not ask for it
   again and do not replace it with a published value.
 - **AWS-vended metric** — consult AWS's **published recommended thresholds** for
@@ -818,7 +827,7 @@ An alert with no notification is valid and common — it shows state in the cons
 fires.** If they did not, skip it and send no `notificationRules`.
 
 Infer intent; the word "notification" is often absent. "Send a slack message to
-`#oncall when this fires`", "ping the team on Slack", and "publish to my SNS topic"
+`#oncall` when this fires", "ping the team on Slack", and "publish to my SNS topic"
 are all notification requests.
 
 `sns` and `slack` targets can be combined on one alert, up to **5 rules** in
@@ -895,6 +904,9 @@ fabricate a config for one.**
   critical" → `["CRITICAL"]`; "also tell me when it recovers" → add `OK`.
 
 ### Step 6 — Resolve the access profile
+
+Checking, auditing or troubleshooting a profile's grants is answered from
+`setting-up-cloudwatch-observability` → `references/cloudwatch-omni/access-profiles.md`.
 
 An alert evaluates its query under an **access profile**, and `CreateAlert` requires
 its `profileId`. This is required for **every** alert — SQL and PromQL, logs and
@@ -974,7 +986,9 @@ Resolve the profile **before** confirming, so the confirmation can name it.
 **Propose; let the user decide.** Restate the parts they are agreeing to — the
 **name**, what the query measures (quote the exact query text; do not paraphrase),
 the **query `language`** and its **relative window** and **aggregation** (for PromQL:
-`PROMQL`, the `[5m]` range and where it sits for the instrument type), the **threshold with its unit**,
+`PROMQL`, the `[5m]` range and where it sits for the instrument type), the **threshold with its unit**
+(if the user's unit differed from the metric's: the metric's unit, the conversion, and that the
+unconverted number would never fire),
 the **comparator**, the **evaluation interval** and **no-data treatment**, and the
 **access profile** the alert will run under —
 e.g. "…and I'll run it under profile `alert-profile`, which grants this data and
