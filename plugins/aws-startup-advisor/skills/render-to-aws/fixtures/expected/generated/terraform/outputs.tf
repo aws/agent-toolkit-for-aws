@@ -37,6 +37,14 @@ output "efs_access_point_id" {
   value       = aws_efs_access_point.application.id
 }
 
+output "service_discovery_namespace_id" {
+  description = "Cloud Map private DNS namespace ID."
+  value       = aws_service_discovery_private_dns_namespace.application.id
+}
+output "service_discovery_service_arn" {
+  description = "Cloud Map service ARN that compute registers private ECS services against."
+  value       = aws_service_discovery_service.private.arn
+}
 output "static_distribution_domain" {
   description = "CloudFront domain used before external DNS cutover."
   value       = aws_cloudfront_distribution.static.domain_name

@@ -6,6 +6,7 @@ _reads:
   - artifacts-infra-network-storage-delivery
   - infra-data (fragment contribution, when aws-design.json has a render.postgres or render.key_value mapping with disposition mapped)
   - artifacts-baseline
+  - infra-compute (fragment contribution, when aws-design.json maps any resource to terraform/compute.tf, or maps a Workflow task row to ECS)
   - artifacts-docs
   - artifacts-report
 _produces:
