@@ -47,23 +47,20 @@ def test_rule_states_the_tie_break() -> None:
     assert "lower `$/month`" in INTERVIEW
 
 
-def test_tb_cells_convert_to_whole_gb_and_keep_the_plan_order() -> None:
+def test_tb_cells_convert_to_whole_gb() -> None:
     rows = list(_plan_rows())
     assert rows, "no plan rows parsed from the pricing cache"
-    by_family = defaultdict(list)
     for name, _price, gb in rows:
         assert gb == int(gb), f"{name} converts to a fractional GB value"
-        by_family[name.split("-")[0]].append((name, gb))
-    for family, plans in by_family.items():
-        sizes = [gb for _name, gb in plans]
-        assert sizes == sorted(sizes), f"{family} plans are not in Storage order"
-
-
-def test_cache_has_no_equal_storage_plans_the_tie_break_would_decide() -> None:
+def test_equal_storage_plans_have_distinct_prices_so_the_tie_break_decides() -> None:
+    # The cache lists plans out of Storage order and has equal-Storage plans in the same
+    # family (for example premium-l-6 and premium-7, both 2 TB). The rule picks the smallest
+    # Storage that fits, then the lower $/month, so every tie must be separable by price.
     seen = defaultdict(list)
-    for name, _price, gb in _plan_rows():
-        seen[(name.split("-")[0], gb)].append(name)
-    ties = {key: names for key, names in seen.items() if len(names) > 1}
-    # The tie-break is a guard, not a rule that fires today. If a tie is ever added to
-    # the cache, this fails so the author checks the lower-price pick is the intended one.
-    assert not ties, f"equal-Storage plans now exist: {ties}"
+    for name, price, gb in _plan_rows():
+        seen[(name.split("-")[0], gb)].append((name, price))
+    ties = {key: plans for key, plans in seen.items() if len(plans) > 1}
+    assert ties, "expected equal-Storage plans in the cache; update the rule text if they are gone"
+    for key, plans in ties.items():
+        prices = [price for _name, price in plans]
+        assert len(set(prices)) == len(prices), f"equal-Storage plans {key} also tie on price: {plans}"

@@ -653,8 +653,8 @@ Estimate's right-sizing candidates — change it here and nowhere else):
 - `fitting_plan` = within the same plan family (`essential-*`, `standard-*`, `premium-*`,
   `private-*`, `shield-*`; legacy `hobby-*` is assessed as its `essential-*` successor),
   the row with the smallest Storage that is `≥ data_size_gb × 2`. When two rows in the
-  family have the same Storage, pick the one with the lower `$/month` (the pricing cache
-  has no such tie today; this keeps the result deterministic if one is added). Never pick
+  family have the same Storage, pick the one with the lower `$/month` (the pricing cache has
+  such ties, for example `premium-l-6` and `premium-7`, both 2 TB; the lower price wins). Never pick
   a row with more Storage than the current plan: if no smaller or equal row fits,
   `fitting_plan` is the current plan.
 - A database is a **candidate** when `utilization_pct ≤ 25` AND `fitting_plan != plan`.
