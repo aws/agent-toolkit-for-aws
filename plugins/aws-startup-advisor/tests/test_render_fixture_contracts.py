@@ -303,19 +303,18 @@ def test_generate_ledger_schemas_and_complete_target_accounting() -> None:
     assert len(classified) == len(set(classified)) == ledger["accounting"]["accounted_count"]
     assert ledger["accounting"] == {
         "design_count": 15,
-        "generated_count": 11,
+        "generated_count": 13,
         "consumed_topology_count": 2,
         "deferred_count": 0,
-        "unsupported_count": 2,
+        "unsupported_count": 0,
         "accounted_count": 15,
         "source_resource_ids": design_ids,
     }
     codes = {row["code"] for row in ledger["warnings"]}
-    assert codes == {
-        "conditional_workflow_generation_unsupported",
-        "deferred_shared_ai_engine",
-        "ecs_express_not_selected_rolling_release",
-    }
+    assert codes == {"deferred_shared_ai_engine", "ecs_express_not_selected_rolling_release"}
+    workflow_rows = {row["source_resource_id"]: row for row in ledger["generated"] if row["source_resource_id"].startswith("rr-workflow")}
+    assert set(workflow_rows) == {"rr-workflow", "rr-workflow-task"}
+    assert all(row["target_files"] == ["terraform/workflow.tf"] for row in workflow_rows.values())
     assert all(row["target_files"] == [] for row in ledger["unsupported"])
     assert not any("ai" in path.lower() for row in ledger["generated"] for path in row["target_files"])
 
@@ -325,7 +324,7 @@ def test_generated_terraform_docs_and_scripts_cover_cutover_and_rollback() -> No
     terraform = generated / "terraform"
     required = {
         "main.tf", "variables.tf", "outputs.tf", "network.tf", "compute.tf",
-        "data.tf", "storage.tf", "delivery.tf", "README.md",
+        "data.tf", "storage.tf", "delivery.tf", "workflow.tf", "README.md",
         "terraform.tfvars.example", ".gitignore",
     }
     assert required <= {path.name for path in terraform.iterdir()}
@@ -358,7 +357,7 @@ def test_generated_terraform_docs_and_scripts_cover_cutover_and_rollback() -> No
     assert 'file_system_id     = aws_efs_file_system.application.id' in compute
     assert 'access_point_id = aws_efs_access_point.application.id' in compute
     assert 'transit_encryption = "ENABLED"' in compute
-    assert "aws_sfn_state_machine" not in tf
+    assert "aws_sfn_state_machine" in tf
     assert "bedrock" not in tf.lower()
     assert re.search(r"publicly_accessible\s*=\s*false", tf)
     assert re.search(r"storage_encrypted\s*=\s*true", tf)
@@ -1001,6 +1000,8 @@ def _materialize_complete_mocked_pipeline(root: Path) -> dict[str, bytes]:
         else:
             classified.append(record)
     warnings = load(EXPECTED / "generated/generation-warnings.json")["warnings"]
+    if unsupported and not any(row["code"] == "conditional_workflow_generation_unsupported" for row in warnings):
+        warnings = [*warnings, {"code": "conditional_workflow_generation_unsupported", "subject": "Workflow artifacts", "detail": "This mocked estate declares no Workflow semantics that the generation contract tests cover.", "blocking": False}]
     ledger = {"schema_version": "1.0", "phase": "generate", "generated": classified, "consumed_topology": consumed, "deferred": [], "unsupported": unsupported, "warnings": warnings, "accounting": {"design_count": len(source_ids), "generated_count": len(classified), "consumed_topology_count": len(consumed), "deferred_count": 0, "unsupported_count": len(unsupported), "accounted_count": len(source_ids), "source_resource_ids": source_ids}}
     jsonschema.Draft202012Validator(load(SKILL_ROOT / "references/shared/schema-generation-warnings.json")).validate(ledger)
 

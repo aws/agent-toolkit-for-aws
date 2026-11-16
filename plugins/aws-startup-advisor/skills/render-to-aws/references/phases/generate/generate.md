@@ -20,6 +20,9 @@ _fragments:
   - _id: infra-data
     _trigger: { _when: "aws-design.json has a render.postgres or render.key_value mapping with disposition mapped" }
     _file: phases/generate/generate-infra-data.md
+  - _id: artifacts-infra-workflow
+    _trigger: { _always: true }
+    _file: phases/generate/generate-infra-workflow.md
   - _id: artifacts-baseline
     _trigger: { _always: true }
     _file: phases/generate/generate-artifacts-baseline.md
@@ -63,7 +66,7 @@ _postconditions:
     _on_failure: _halt_and_inform
   - _assert: "validation-report.json is passed or passed_degraded_offline under the strict Render validation contract; every independent local check passed and policy_status is POLICY_OK"
     _on_failure: _halt_and_inform
-  - _assert: "deferred_shared_ai_engine and conditionally unsupported Workflow generation are warnings, never fabricated artifacts"
+  - _assert: "deferred_shared_ai_engine and any Workflow outside the proven rubric are warnings, never fabricated artifacts"
     _on_failure: _halt_and_inform
 _forbids_files:
   - render-resource-inventory.json
@@ -84,7 +87,7 @@ Before the worker starts, the main window inspects the validated inventory's `di
 ## Worker sequence
 
 1. Re-read and validate inventory, preferences, design, and estimate inputs.
-2. Emit Terraform for every supported selected target by following `generate-artifacts-infra.md`.
+2. Emit Terraform for every supported selected target by following `generate-artifacts-infra.md` and, for Workflow rows, `generate-infra-workflow.md`.
 3. Emit cutover, migration, verification, and rollback documentation and scripts by following `generate-artifacts-docs.md`.
 4. Emit the report and warnings by following `generate-artifacts-report.md`.
 5. Run the file-only accounting and scan rules in `generate-assemble.md`. The worker does not create `validation-report.json`.
