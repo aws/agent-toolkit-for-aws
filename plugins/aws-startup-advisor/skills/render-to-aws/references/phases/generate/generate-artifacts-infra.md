@@ -16,6 +16,7 @@ Always emit `terraform/main.tf`, `variables.tf`, `outputs.tf`, `.gitignore`, `te
 
 For each `service_to_disk` edge selected as EFS, bind the access point to the owning task definition with transit encryption, mount it at the selected absolute path, permit NFS only from that task's security group, and make service startup depend on mount-target readiness.
 
+For `data.tf` (RDS, Aurora, and Key Value targets), follow `phases/generate/generate-infra-data.md`. `network.tf` owns `aws_security_group.data` (ingress from the compute security groups on the database or cache port); `data.tf` only references it.
 Route each supported selected target to a domain file and record that file in `generation-warnings.json`:
 
 | Design target | Required generated content |
