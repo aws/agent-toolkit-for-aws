@@ -968,3 +968,69 @@ def test_design_reads_the_entry_for_the_effective_runtime():
               / "design.md").read_text()
     assert "agentcore_revisit_triggers_by_runtime[<effective_runtime>]" in design
     assert "Never use the entry for the scored verdict" in " ".join(design.split())
+
+
+# --- Nitro Sandboxes: EKS pods can run in their own Nitro-enforced VM ---
+
+NITRO_EKS_BASE = {
+    "session_duration": "15min_to_8hr", "traffic_pattern": "steady", "platform_fit": "eks",
+    "session_state": "stateless", "ops_preference": "full_control", "memory_needs": "none",
+    "multi_agent": "unknown", "framework": "custom", "existing_cluster": "eks",
+    "multi_cloud": "no", "idle_resume": "none", "compute_tier": "heavy_non_gpu",
+    "launch_concurrency": "moderate", "instance_type_requirement": "no",
+}
+
+
+def _verdict_members(result):
+    return set(result["co_recommend"]) if result["verdict"] == "co_recommend" else {result["verdict"]}
+
+
+def test_isolation_required_now_credits_eks():
+    """Nitro Sandboxes give EKS per-pod isolation, so `isolation: required` scores EKS
+    above its neutral value, still below AgentCore and Lambda MicroVMs (no managed
+    session routing). ECS stays put: Fargate already isolated tasks."""
+    profiles = scoring.load_profiles()
+    base = scoring.score({"answers": {**NITRO_EKS_BASE, "isolation": "not_needed"}}, profiles)
+    req = scoring.score({"answers": {**NITRO_EKS_BASE, "isolation": "required"}}, profiles)
+    assert req["scores"]["eks"] - base["scores"]["eks"] == 1
+    assert req["scores"]["ecs"] == base["scores"]["ecs"]
+    by_id = {p["id"]: p["affinities"]["isolation"] for p in profiles}
+    assert by_id["agentcore"]["required"] > by_id["eks"]["required"]
+    assert by_id["lambda_microvms"]["required"] > by_id["eks"]["required"]
+
+
+def test_isolation_required_flips_agentcore_to_co_recommend_with_eks():
+    # A sampled case whose verdict was AgentCore alone before the EKS isolation credit.
+    answers = {
+        "session_duration": "unknown", "traffic_pattern": "idle", "platform_fit": "unknown",
+        "session_state": "stateless", "ops_preference": "moderate", "isolation": "required",
+        "memory_needs": "session_only", "multi_agent": "yes", "framework": "custom",
+        "existing_cluster": "eks", "multi_cloud": "unknown", "idle_resume": "process_level",
+        "compute_tier": "unknown", "launch_concurrency": "low", "instance_type_requirement": "yes",
+    }
+    result = scoring.score({"answers": answers}, scoring.load_profiles())
+    assert _verdict_members(result) == {"agentcore", "eks"}
+
+
+def test_eks_isolation_warning_names_sandbox_prerequisites():
+    result = scoring.score(
+        {"answers": {**NITRO_EKS_BASE, "isolation": "required"}}, scoring.load_profiles())
+    assert "eks" in _verdict_members(result)
+    [warning] = [w for w in result["warnings"] if "Nitro Sandboxes" in w]
+    assert "runtimeClassName" in warning and "1.36" in warning
+    assert "GPU" not in warning
+
+
+def test_eks_isolation_warning_flags_gpu_conflict():
+    answers = {**NITRO_EKS_BASE, "isolation": "required", "compute_tier": "gpu"}
+    result = scoring.score({"answers": answers}, scoring.load_profiles())
+    assert "eks" in _verdict_members(result)
+    [warning] = [w for w in result["warnings"] if "Nitro Sandboxes" in w]
+    assert "GPU passthrough" in warning
+
+
+@pytest.mark.parametrize("isolation", ["nice_to_have", "not_needed", "unknown"])
+def test_no_nitro_warning_without_required_isolation(isolation):
+    result = scoring.score(
+        {"answers": {**NITRO_EKS_BASE, "isolation": isolation}}, scoring.load_profiles())
+    assert not [w for w in result["warnings"] if "Nitro Sandboxes" in w]

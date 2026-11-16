@@ -378,6 +378,20 @@ def _collect_warnings(
             warnings.append(
                 "High launch concurrency requires current-run verification of Lambda "
                 "MicroVMs launch capacity before selection.")
+    eks_is_winner = verdict == "eks" or (
+        verdict == "co_recommend" and "eks" in (co_recommend or []))
+    if eks_is_winner and answers.get("isolation") == "required":
+        warning = (
+            "EKS isolation relies on AWS Nitro Sandboxes: set runtimeClassName "
+            "isolated-sandbox (or confidential-sandbox) on each pod; requires "
+            "Kubernetes 1.36+ and a supported Nitro instance type. It isolates pods, "
+            "not sessions: per-user session routing is still yours to build.")
+        if answers.get("compute_tier") == "gpu":
+            warning += (
+                " GPU passthrough into a Nitro Sandbox is unavailable, so GPU pods "
+                "cannot be sandboxed; split GPU work into a separate unsandboxed unit "
+                "or choose another isolation boundary.")
+        warnings.append(warning)
     if agentcore_compute_type == "instances":
         warnings.append(
             "AgentCore Instances compute type: sessions persist up to 14 days "
