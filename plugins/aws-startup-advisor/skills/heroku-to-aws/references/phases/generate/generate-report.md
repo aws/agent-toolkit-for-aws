@@ -85,6 +85,16 @@ these keys; treat absence as no finding):
   `container` / `unknown` counts)
 - `metadata.eol_stack_apps` (sorted app names on end-of-life stacks)
 
+From `heroku-resource-inventory.json` and `aws-design.json` metadata (both optional — tolerate absence):
+
+- `heroku-resource-inventory.json` `metadata.apps_by_environment_tier` (Discover assemble
+  rule 5a) — the per-tier app counts; when present, `decision-summary` quotes the
+  production share (see below) instead of recounting apps.
+- `aws-design.json` `metadata.postgres_followers_collapsed[]` (Design 2B-F) — Heroku
+  followers served by a read replica / Aurora reader of their leader rather than a
+  separate database; when non-empty, `exec-costs` lists them (see below) so the reader
+  can see why the AWS database count is lower than the Heroku add-on count.
+
 ---
 
 ## Step 2: Write `migration-report.html`
@@ -95,7 +105,7 @@ Write a **self-contained** HTML file to `$MIGRATION_DIR/migration-report.html`
 | Section ID          | Content                                                                                                                                                                                                                                                                                      |
 | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `decision-summary`  | Typography-first verdict (see below), cost one-liner, next action                                                                                                                                                                                                                            |
-| `exec-costs`        | Heroku-vs-AWS side-by-side when a Heroku baseline exists (`current_costs.source != "unavailable"`); otherwise the AWS three-tier table with a one-line note that no Heroku baseline was available. Estimated monthly; Balanced primary. **When `current_costs.baseline_note` is present (any derived — not invoiced — source, including the Postgres Advanced per-pool formula), render it as a visible caveat line directly beside the Heroku current-monthly figure — never only in the accuracy band.** This is mandatory, not conditional on which derived source produced the note. **When `cost_comparison.comparison_status == "incomplete_unmatched_services"`, render the same mandatory caveat-beside-the-figure treatment, naming `cost_comparison.unmatched_deferred_services` and `unmatched_deferred_cost` directly beside the savings/difference figure — never present that dollar delta as decision-grade savings without it.** This file is the single source of truth for `exec-costs` content rules, so `report-decision-core.md`'s reuse of these rules picks this up automatically. |
+| `exec-costs`        | Heroku-vs-AWS side-by-side when a Heroku baseline exists (`current_costs.source != "unavailable"`); otherwise the AWS three-tier table with a one-line note that no Heroku baseline was available. Estimated monthly; Balanced primary. **When `current_costs.baseline_note` is present (any derived — not invoiced — source, including the Postgres Advanced per-pool formula), render it as a visible caveat line directly beside the Heroku current-monthly figure — never only in the accuracy band.** This is mandatory, not conditional on which derived source produced the note. **When `cost_comparison.comparison_status == "incomplete_unmatched_services"`, render the same mandatory caveat-beside-the-figure treatment, naming `cost_comparison.unmatched_deferred_services` and `unmatched_deferred_cost` directly beside the savings/difference figure — never present that dollar delta as decision-grade savings without it.** **When `aws-design.json` `metadata.postgres_followers_collapsed[]` is non-empty, add one line under the database rows listing each collapsed follower and what serves it (`served_by`: `rds_read_replica` → "RDS read replica of `{leader_resource_id}`", `aurora_reader` → "Aurora reader of `{leader_resource_id}`"), so the reader sees why the AWS database count is lower than the Heroku add-on count; skip silently when empty or absent.** This file is the single source of truth for `exec-costs` content rules, so `report-decision-core.md`'s reuse of these rules picks this up automatically. |
 | `cost-optimization` | Reserved Instance / Savings Plan opportunities table, or the explicit no-eligible-commitment statement — see below. Always present, never omitted                                                                                                                                            |
 | `developer-workflow` | Always render — in both report modes (`report-decision-core.md` renders it in `decision-report.html` / `DECISION.md` too, with its pre-execution wording override). Heading "Developer workflow: what stays, what changes, what you build". One line stating the Q5c answer. Then the table defined in § `developer-workflow` below. Then the closing paragraph(s) defined there. Reader vocabulary only — no file names or resource IDs |
 | `next-steps`        | Ordered list pointing to `MIGRATION_GUIDE.md` phases (not a procedure dump). Include one bullet noting the Terraform ships with `baseline.tf` (account security baseline — GuardDuty, CloudTrail, budget alerts) and that three contact emails must be set in tfvars before `terraform plan` |
@@ -133,6 +143,12 @@ Only untagged _illustrative_ numbers are skipped.
    <a href="#decision-basis">What This Assessment Rests On</a>.`
 3. **Cost one-liner** — Balanced AWS monthly vs Heroku baseline when available
    (estimated monthly), else AWS Balanced alone.
+   - **Estate line (when `metadata.apps_by_environment_tier` exists):** one line
+     directly under the cost one-liner — `N apps, of which M are production by name or
+     pipeline stage`, where `N` is the sum of all tier counts and `M` is the `prod`
+     count. This is the only rule for this line; the estate-workbook change reads the
+     same field and quotes the same sentence. Skip silently when the tier map is absent
+     (Terraform-only discovery).
 4. **What would flip this (v2):** from `recommendation.would_flip_if[]` when
    present — short unordered list. Skip silently when absent.
    - **End-of-life stacks (conditional):** when
