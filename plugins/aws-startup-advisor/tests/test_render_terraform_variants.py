@@ -181,7 +181,8 @@ def test_variant_negative_controls_fail_closed(name: str, terraform: Path, mutat
     with pytest.raises(AssertionError):
         check(copy)
 def test_variant_set_is_deliberate_and_clean() -> None:
-    found = {path.name for path in VARIANTS_ROOT.iterdir() if path.is_dir()}
+    # compute-* variants belong to test_render_compute_variants.py.
+    found = {path.name for path in VARIANTS_ROOT.iterdir() if path.is_dir() and not path.name.startswith("compute-")}
     assert found == EXPECTED_VARIANTS
     for name in found:
         terraform = VARIANTS_ROOT / name / "terraform"

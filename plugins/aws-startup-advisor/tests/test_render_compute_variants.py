@@ -42,7 +42,8 @@ def _frontmatter(path: Path) -> dict:
 
 
 def test_compute_variant_set_is_exactly_the_reviewed_set() -> None:
-    assert {path.name for path in VARIANTS.iterdir()} == set(EXPECTED_FILES)
+    # Other domains keep their own variants beside these; this test owns only the compute-* set.
+    assert {path.name for path in VARIANTS.iterdir() if path.name.startswith("compute-")} == set(EXPECTED_FILES)
     for name, files in EXPECTED_FILES.items():
         terraform = VARIANTS / name / "terraform"
         assert {path.name for path in terraform.iterdir()} == files
