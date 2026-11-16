@@ -17,10 +17,11 @@ Write `generation-warnings.json` against `references/shared/schema-generation-wa
 - `deferred_shared_ai_engine` whenever the design AI track has that exact status. The warning states that `ai-workload-profile.json` conforms to the shared #415 contract and that AI execution resumes once `bedrock-migration-assessment` consumes it (future; not implemented). No AI target, cost, model, adapter, or Terraform may appear.
 - `conditional_workflow_generation_unsupported` for each Workflow or task whose automatic artifacts lack validated semantic coverage. The selected design still appears in the report, while the report plainly states that its Terraform was not generated and lists the manual validation needed.
 - `unpriced_cost_floor` when either estimate scenario has unpriced lines.
+- `ecs_express_public_subnet_placement` for each Express service placed in public subnets, and `ecs_express_not_selected_rolling_release` for each service the Generate rules in `generate-artifacts-infra.md` name. The report states for every Fargate mapping whether it is Express or standard and its `ecs_mode_reason`.
 
 The report must not contain captured secrets, environment values, email/account/workspace/project/environment IDs, repository URLs, or local paths. It is a draft for review, not a deployment-success claim.
 
-The worker writes the candidate as `migration-report.html` but does not validate it. In the main window, run the skill-local validator with absolute paths:
+The worker writes the candidate as `migration-report.html` but does not validate it. In the main window, run the skill-local validator with absolute paths. If `uv` or the frozen environment is unavailable, stage 7 is recorded as `failed` (`checks.report.status: failed`, top-level `status: failed`) with evidence naming the missing `uv` or frozen environment, the incomplete-HTML rename still applies, completion stays blocked, and the preflight warning plus the rerun command are shown. There is no validation skip; stages 1 to 6 are unaffected.
 
 ```bash
 uv run --project "$SKILL_BASE/scripts" --frozen python \
