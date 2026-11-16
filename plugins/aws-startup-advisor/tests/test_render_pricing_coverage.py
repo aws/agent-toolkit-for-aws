@@ -136,7 +136,7 @@ def null_line_errors(line: dict, scenario: dict, kinds: set[str]) -> list[str]:
         problems.append("a null line must be listed in unpriced_line_ids")
     if reason == "no_rate" and "absent" not in kinds:
         problems.append("no_rate is only for a component in _absent_services")
-    if reason == "no_quantity" and not str(line.get("evidence_sufficient", "")).strip() and "evidence_sufficient" not in line:
+    if reason == "no_quantity" and line.get("evidence_sufficient") is not False:
         problems.append("no_quantity must say what evidence is missing")
     return problems
 
@@ -173,7 +173,7 @@ def test_rate_map_rule_and_estimate_rules_state_the_same_two_null_cases() -> Non
     rule = RATE_MAP["rule"]
     guidance = (SKILL_ROOT / "references/phases/estimate/estimate-infra.md").read_text(encoding="utf-8")
     for text in (rule, guidance):
-        assert "no_quantity" in text and "no_rate" in text or "`no_rate`" in text, text[:80]
+        assert "no_quantity" in text and "no_rate" in text, text[:80]
         assert "Never invent a quantity" in text
     assert "null only when a component is absent" not in rule
 
