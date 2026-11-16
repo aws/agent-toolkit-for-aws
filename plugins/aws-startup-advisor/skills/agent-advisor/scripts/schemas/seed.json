@@ -106,8 +106,21 @@
         "framework": { "enum": ["strands", "langgraph", "crewai", "custom", "none", "unknown"] },
         "existing_cluster": { "enum": ["eks", "ecs", "none", "unknown"] },
         "multi_cloud": { "enum": ["yes", "no", "unknown"] },
-        "platform_fit": { "enum": ["ecs", "eks", "lambda", "none", "unknown"] }
+        "platform_fit": { "enum": ["ecs", "eks", "lambda", "none", "unknown"] },
+        "usage_volume": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Not scored. Rough monthly volume for this agent unit; Estimate turns it into the model_tokens band.",
+          "properties": {
+            "sessions_per_month": { "$ref": "#/definitions/volumeCount" },
+            "input_tokens_per_session": { "$ref": "#/definitions/volumeCount" },
+            "output_tokens_per_session": { "$ref": "#/definitions/volumeCount" }
+          }
+        }
       }
+    },
+    "volumeCount": {
+      "oneOf": [{ "type": "integer", "minimum": 0 }, { "const": "unknown" }]
     }
   }
 }

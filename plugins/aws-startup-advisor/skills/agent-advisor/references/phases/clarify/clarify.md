@@ -268,6 +268,15 @@ Collect answers for these keys. Legal values are fixed (Plan 1 Data Model):
   recommended runtime, Design verifies via MCP and flags it; (b) **CRIS / data residency** — for
   EU users or when `compliance` includes `gdpr`, Design surfaces the geo-CRIS vs global-CRIS
   choice. Ask it; it's a compliance/feasibility gate, not a scoring input.
+- `usage_volume` (per agent_session unit, NOT scored): `{"sessions_per_month": <integer> |
+  "unknown", "input_tokens_per_session": <integer> | "unknown", "output_tokens_per_session":
+  <integer> | "unknown"}`. Rough numbers are fine. Estimate turns it into the unit's
+  `model_tokens` band, so without it the model cost is a guess. A missing or `unknown` field
+  keeps `unknown` here; Estimate then applies its stated default and says so. Never invent a
+  number in Clarify. On migrate runs, Discover evidence (code, logs or a billing export) may
+  pre-fill it with provenance `detected`; confirm it with the user when it is only inferred.
+  Write it to `answers.json.units[<unit_id>].usage_volume` (a seed supplies the same object
+  under `units.<unit_id>.usage_volume`) and record its provenance like any other dimension.
 
 **Critical-question rule:** if `session_duration` is blank/unknown, **OR was only inferred by
 Discover and not confirmed by the user**, ask it directly in chat before scoring — it gates hard
