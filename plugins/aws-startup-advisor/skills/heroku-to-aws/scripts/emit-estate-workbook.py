@@ -250,6 +250,25 @@ def _proven_follower_copies(resources: list, design) -> set:
     return proven
 
 
+def _follower_leaders(resources: list, design) -> dict:
+    """follower resource_id -> the leader add-on it was collapsed into as a read replica.
+
+    Same resolution as _proven_follower_copies (Design's 2B-F list when present, else the
+    attachment-name rule on the same app). The leader is None when Design lists the follower
+    as collapsed but the leader cannot be found in the inventory."""
+    copies = _proven_follower_copies(resources, design)
+    pg = [r for r in resources if (r.get("config") or {}).get("addon_service") == "heroku-postgresql"]
+    out: dict = {}
+    for r in pg:
+        if r.get("resource_id") not in copies:
+            continue
+        c = r.get("config") or {}
+        matches = [x for x in pg if x.get("heroku_app") == r.get("heroku_app") and x is not r
+                   and c.get("pg_leader") in ((x.get("config") or {}).get("pg_attachment_names") or [])]
+        out[r.get("resource_id")] = matches[0] if len(matches) == 1 else None
+    return out
+
+
 def _design_index(design) -> tuple[dict, dict]:
     """source_resource_id -> (target aws_service, sizing, associated services); addon (name, plan) -> deferred reason.
 
@@ -301,6 +320,7 @@ def build_sheets(inv: dict, design, est) -> tuple[list[tuple[str, list[list]]], 
     live = inv.get("live_metadata") or {}
     by_source, deferred = _design_index(design)
     has_design = bool(by_source or deferred)
+    leaders = _follower_leaders(resources, design) if has_design else {}
 
     def status_for(res) -> tuple[str, str, str]:
         """(AWS status, proposed target, proposed sizing)"""
@@ -310,6 +330,12 @@ def build_sheets(inv: dict, design, est) -> tuple[list[tuple[str, list[list]]], 
         reason = _deferred_reason(deferred, res)
         if reason:
             return f"Deferred - {reason}", "", ""
+        if res.get("resource_id") in leaders:
+            lead = leaders[res.get("resource_id")]
+            if lead is None:
+                return "Collapsed into read replica of its leader", "", ""
+            name = f"{lead.get('heroku_app')} ({(lead.get('config') or {}).get('plan')})"
+            return f"Collapsed into read replica of {name}", "", ""
         return ("Not in design" if has_design else "Design not run"), "", ""
 
     def associated_for(res) -> str:
@@ -545,7 +571,7 @@ def build_sheets(inv: dict, design, est) -> tuple[list[tuple[str, list[list]]], 
               ["Summary: headline counts."],
               ["Apps: one row per Heroku app with tier, dynos, add-ons, cohort and AWS mapping status."],
               ["Formations: process types and dyno sizes with the proposed AWS target."],
-              ["Postgres / Redis / Kafka / Other add-ons: every add-on, its plan, measured size where captured, and AWS mapping status."],
+              ["Postgres / Redis / Kafka / Other add-ons: every add-on, its plan, measured size where captured, and AWS mapping status. A Postgres follower that Design folded into its leader's read replicas shows as collapsed into that leader."],
               ["Shared data stores: apps linked by an add-on attached to more than one app (cohorts). Apps in a cohort cannot move strictly one at a time without cross-cloud access to the shared store."],
               ["Cost estimate: present only when the Estimate phase ran."],
               ["Right-sizing: present only when the Estimate found Postgres databases holding 25% or less of their plan storage with a smaller plan that fits. Heroku-side savings, not AWS; chosen by storage only."],

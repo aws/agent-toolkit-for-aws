@@ -490,3 +490,33 @@ def test_mixed_roles_do_not_claim_the_unknown_database_was_checked():
     assert "<v>30.75</v>" in summary
     assert "roles unknown" not in summary  # not every database lacks a role
     assert "1 database(s) have no recorded role and are counted in full" in summary
+
+
+def _follower_fixture():
+    leader = _pg("addon:a:heroku-postgresql:standard-2", "a", plan="standard-2", pg_role="leader",
+                 pg_attachment_names=["DATABASE"], data_size_gb=10)
+    follower = _pg("addon:a:heroku-postgresql:standard-2:f", "a", plan="standard-2", pg_role="follower",
+                   pg_leader="DATABASE", data_size_gb=10)
+    return leader, follower
+
+
+def test_follower_collapsed_into_read_replica_is_not_labelled_not_in_design():
+    leader, follower = _follower_fixture()
+    design = {"services": [{"service_id": "rds:a", "source_resource_id": leader["resource_id"], "heroku_app": "a",
+                            "aws_service": "RDS PostgreSQL",
+                            "aws_config": {"instance_class": "db.m6g.large", "read_replicas": 1}}],
+              "deferred": [],
+              "metadata": {"postgres_followers_collapsed": [
+                  {"resource_id": follower["resource_id"], "leader_resource_id": leader["resource_id"]}]}}
+    pg = _build(_inventory_with([leader, follower]), design)["Postgres"]
+    assert "Collapsed into read replica of a (standard-2)" in pg
+    assert "Not in design" not in pg
+
+
+def test_follower_design_does_not_map_still_not_in_design():
+    leader, follower = _follower_fixture()
+    design = {"services": [{"service_id": "rds:a", "source_resource_id": leader["resource_id"], "heroku_app": "a",
+                            "aws_service": "RDS PostgreSQL", "aws_config": {"instance_class": "db.m6g.large"}}],
+              "deferred": [], "metadata": {"postgres_followers_collapsed": []}}
+    pg = _build(_inventory_with([leader, follower]), design)["Postgres"]
+    assert "Not in design" in pg and "Collapsed into read replica" not in pg
