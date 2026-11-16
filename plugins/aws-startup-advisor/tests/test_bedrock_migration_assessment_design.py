@@ -149,6 +149,7 @@ def test_design_doc_runs_the_plan_and_the_check() -> None:
         assert f"| `{lane}`" in DESIGN_DOC, lane
     assert DESIGN.ASSUMPTION.format(ids="<ids>") in DESIGN_DOC
     assert "Do not redirect it to a file: this phase writes nothing outside `$MIGRATION_DIR`" in DESIGN_DOC
+    assert "a Responses source on GPT-6.1 Sol that needs Guardrails uses `converse`" in DESIGN_DOC
 
 
 # --------------------------------------------------------------------------- fixtures
@@ -625,6 +626,24 @@ def _runtime_web_search(target: str, path: str, api: str):
 def test_check_rejects_a_same_protocol_runtime_row_that_only_mentions_the_mantle_selector() -> None:
     codes = _mutated(MANTLE_FIXTURE, _runtime_web_search("us.openai.gpt-5.5x", "runtime_openai_cris", "responses"))
     assert codes == {"mantle_requirement_unhonored"}
+
+
+@pytest.mark.parametrize("change", [False, True])
+def test_check_rejects_a_same_model_target_relabelled_converse_on_a_mantle_lane(change) -> None:
+    def mutate(d, p, f):
+        _runtime_web_search("us.openai.gpt-5.5x", "converse", "converse")(d, p, f)
+        _row(d, "us.openai.gpt-5.5x")["model_change"] = change
+    assert _mutated(MANTLE_FIXTURE, mutate) == {"mantle_requirement_unhonored"}
+
+
+@pytest.mark.parametrize(("provider", "target", "same"), [
+    ("openai", "openai.gpt-5.5", True), ("openai", "us.openai.gpt-6-sol", True), ("openai", "global.openai.gpt-5.6-terra", True),
+    ("openai", "openai.gpt-oss-120b-1:0", False), ("openai", "us.anthropic.claude-sonnet-5-5", False),
+    ("anthropic", "us.anthropic.claude-sonnet-5", True), ("anthropic", "anthropic.claude-haiku-5-5", True),
+    ("anthropic", "us.openai.gpt-5.5", False), ("google", "us.anthropic.claude-haiku-5-5", False),
+])
+def test_same_family_reads_the_target_id(provider, target, same) -> None:
+    assert DESIGN._same_family(provider, target) is same
 
 
 def test_check_accepts_a_cross_family_runtime_row_that_discloses_the_selector() -> None:

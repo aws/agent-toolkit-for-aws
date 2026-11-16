@@ -455,6 +455,12 @@ def _names(row: dict, workload_id: str) -> bool:
     return workload_id in [w.strip() for w in text[len(ASSUMPTION_PREFIX):].split(";", 1)[0].split(",")]
 
 
+def _same_family(provider: str, aws_model_id: str) -> bool:
+    model = CRIS_PREFIX.sub("", aws_model_id)
+    return (provider == "openai" and model.startswith("openai.gpt-") and not model.startswith("openai.gpt-oss")) \
+        or (provider == "anthropic" and model.startswith("anthropic.claude"))
+
+
 def _row_for(workload_id: str, plan_row: dict, candidates: list[dict]) -> dict | None:
     if len(candidates) == 1:
         return candidates[0]
@@ -498,7 +504,7 @@ def _check_endpoint(block: dict, plan_row: dict, row: dict, row_workloads: list[
     if "mantle_selector" in row or "mantle_requirement" in row:
         _err(errors, "runtime_row_selector", f"{label}: a non-Mantle row carries no mantle_selector or mantle_requirement")
     lane = plan_row["mantle"]
-    if lane["lane"] == "mantle" and path in ("runtime_openai_cris", "runtime_messages"):
+    if lane["lane"] == "mantle" and _same_family(plan_row["provider"], str(row.get("aws_model_id", ""))):
         _err(errors, "mantle_requirement_unhonored", f"{label}: the recorded {lane['selector']} requirement has a Mantle path for this "
              f"same-protocol target; write {lane['mantle_path']} with that mantle_requirement instead of disclosing it")
     api = row.get("required_client_api")
