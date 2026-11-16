@@ -244,6 +244,7 @@ RUN_CONTEXT = {
                        "aws_model_id": "us.anthropic.claude-sonnet-4-6",
                        "use_case": "primary"}],
     "resolved_model_overrides": {},
+    "resolved_runtime_api": "chat_completions",
     "source_provider": "openai", "source_baseline_available": True,
     "source_key_sha256": "c" * 64,
     "log_files": [{"path": "logs/traces.jsonl", "sha256": "d" * 64}],
@@ -397,3 +398,28 @@ def test_empty_array_mismatch_detected(tmp_path, capsys):
     c = write(tmp_path, "c.json", cur)
     assert vr.main(["--check-run-context", s, "--current", c]) == 1
     assert "log_files" in capsys.readouterr().out
+
+
+def test_resolved_runtime_api_round_trips_through_the_resume_gate(tmp_path, capsys):
+    # PR 585 review, finding 4: SKILL.md saved `resolved_runtime_api` but C0 rebuilt
+    # current-context.json from a field list that omitted it, so an unchanged resume
+    # reported MISMATCH $.resolved_runtime_api saved="chat_completions" current="<absent>".
+    # Both contexts now carry the field: an unchanged resume matches, a dropped field or a
+    # changed API is a single named mismatch for the scoped-invalidation table.
+    s = write(tmp_path, "saved.json", RUN_CONTEXT)
+    c = write(tmp_path, "current.json", RUN_CONTEXT)
+    assert vr.main(["--check-run-context", s, "--current", c]) == 0
+    assert capsys.readouterr().out.strip() == "RUN_CONTEXT=match"
+
+    dropped = {k: v for k, v in RUN_CONTEXT.items() if k != "resolved_runtime_api"}
+    c = write(tmp_path, "current.json", dropped)
+    assert vr.main(["--check-run-context", s, "--current", c]) == 1
+    out = capsys.readouterr().out
+    assert 'MISMATCH $.resolved_runtime_api saved="chat_completions" current="<absent>"' in out
+
+    changed = copy.deepcopy(RUN_CONTEXT)
+    changed["resolved_runtime_api"] = "responses"
+    c = write(tmp_path, "current.json", changed)
+    assert vr.main(["--check-run-context", s, "--current", c]) == 1
+    lines = [l for l in capsys.readouterr().out.splitlines() if l.startswith("MISMATCH")]
+    assert lines == ['MISMATCH $.resolved_runtime_api saved="chat_completions" current="responses"']

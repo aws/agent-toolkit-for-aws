@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:awslabs:startups:render-to-aws:preferences:1.0",
+  "type": "object",
+  "required": ["schema_version", "phase", "inventory_fingerprint", "questions", "global", "ai_track"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "phase": {"const": "clarify"},
+    "inventory_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "questions": {"type": "array", "items": {"$ref": "#/$defs/question"}},
+    "global": {"type": "object", "required": ["aws_region", "availability", "compliance", "cost_posture", "cpu_architecture"], "additionalProperties": true, "properties": {"aws_region": {"type": "string"}, "availability": {"type": "string"}, "compliance": {"type": "array", "items": {"type": "string"}}, "cost_posture": {"type": "string"}, "cpu_architecture": {"enum": ["x86_64", "arm64"]}}},
+    "ai_track": {"type": ["object", "null"], "oneOf": [{"type": "null"}, {"$ref": "#/$defs/aiTrack"}]}
+  },
+  "$defs": {
+    "question": {"type": "object", "required": ["question_id", "resource_id", "topic", "decision_changed", "disposition", "value", "provenance", "default_rule", "consequence"], "additionalProperties": false, "properties": {"question_id": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]+$"}, "resource_id": {"type": ["string", "null"]}, "topic": {"enum": ["global", "compute", "data", "storage", "workflow", "network", "delivery", "ai"]}, "decision_changed": {"type": "string", "minLength": 1}, "disposition": {"enum": ["answered", "defaulted", "not_applicable"]}, "value": {}, "provenance": {"enum": ["user", "discovered", "default"]}, "default_rule": {"type": ["string", "null"]}, "consequence": {"type": "string", "minLength": 1}}},
+    "aiTrack": {"type": "object", "required": ["status", "profile_path", "profile_digest", "reason", "resume_from"], "additionalProperties": false, "properties": {"status": {"const": "deferred_shared_ai_engine"}, "profile_path": {"const": "ai-workload-profile.json"}, "profile_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "reason": {"const": "provider-neutral AI Design, Estimate, and Generate execution is not available"}, "resume_from": {"const": "ai-workload-profile.json"}}}
+  }
+}

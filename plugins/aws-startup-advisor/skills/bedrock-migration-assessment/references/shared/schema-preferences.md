@@ -14,7 +14,7 @@ Every key in `design_constraints`, `ai_constraints`, and `startup_constraints` (
 | `chosen_by`          | string | yes      | `"user"` \| `"default"` \| `"extracted"` \| `"derived"`                                                                                                                  |
 | `prompt`             | string | yes      | Question shown to the user, or a short detection label when skipped                                                                                                      |
 | `design_consequence` | string | yes      | One sentence: how this choice shaped the AWS design, estimate, or plan                                                                                                   |
-| `question_id`        | string | no       | AI-only catalog ID (`Q1`–`Q11`, `Q1.5`) when mapped; omit for derived values                                                                                             |
+| `question_id`        | string | no       | AI-only catalog ID (`Q1`–`Q11`, `Q1.5`, `Q10.5`) when mapped; omit for derived values                                                                                    |
 | `source`             | string | no       | Raw provenance signal. Required when `chosen_by` is `"extracted"` (prefix `ai-profile:`) or `"default"` (`"default:<Qid>"`). Omit for `"user"` and `"derived"`. |
 
 **Do not write null values.** Omit keys that produce no constraint.
@@ -81,7 +81,7 @@ Use the **Impact** row for the selected answer from `clarify-ai-only.md` when th
 }
 ```
 
-`metadata.report_caveats` is present only when a caveat was added (Q1.5 default).
+`metadata.report_caveats` is present only when a caveat was added (Q1.5 or Q10.5 default).
 
 ---
 
@@ -93,7 +93,7 @@ Use the **Impact** row for the selected answer from `clarify-ai-only.md` when th
 | `compliance`             | `design_constraints`  | Q1.5          | Do you have any compliance or regulatory requirements?        | `[value]` gates Bedrock models, regions, and logging. `["unknown"]` requires a report caveat      |
 | `ai_framework`           | `ai_constraints`      | Q1            | Which AI framework or orchestration layer are you using?      | `[value]` determines migration effort (gateway config vs SDK swap vs agent framework migration)   |
 | `ai_priority`            | `ai_constraints`      | Q2            | What matters most for your AI application?                    | `[value]` drives Bedrock model selection (quality vs cost vs latency)                             |
-| `ai_monthly_spend`       | `ai_constraints`      | Q3            | Monthly AI spend on OpenAI or Gemini?                         | `[value]` band sets token volume and model tier assumptions                                       |
+| `ai_monthly_spend`       | `ai_constraints`      | Q3            | Monthly AI spend with your current AI providers?              | `[value]` band sets token volume and model tier assumptions                                       |
 | `cross_cloud`            | `ai_constraints`      | Q4            | Cross-cloud API call concerns                                 | `[value]` selects endpoint type (public, VPC endpoint, PrivateLink) and rollout approach          |
 | `ai_model_baseline`      | `ai_constraints`      | Q5            | Current model in use?                                         | `[value]` is the quality/latency baseline for Bedrock comparison                                  |
 | `ai_vision`              | `ai_constraints`      | Q6            | What input types must the model accept?                       | `[value]` requires vision- or audio-capable Bedrock models when not text-only                     |
@@ -101,6 +101,7 @@ Use the **Impact** row for the selected answer from `clarify-ai-only.md` when th
 | `ai_latency`             | `ai_constraints`      | Q8            | Response speed importance                                     | `[value]` adds latency success criteria and model filtering                                       |
 | `ai_complexity`          | `ai_constraints`      | Q9            | AI task complexity                                            | `[value]` affects recommended model size and agentic path                                         |
 | `ai_critical_feature`    | `ai_constraints`      | Q10           | Specialized features needed                                   | `[value]` gates the model shortlist and capability validation                                     |
+| `mantle_requirements`    | `ai_constraints`      | Q10.5         | Mantle-only requirements (asynchronous inference, provider-run tools, Projects/Workspaces, single-Region processing) | `[value]` entries with a selector route that workload to `bedrock-mantle`; no entry keeps `bedrock-runtime` with an explicit assumption |
 | `startup_program_status` | `startup_constraints` | Q11           | Have you applied for AWS Activate credits?                    | `[value]` triggers the Activate credits callout in the plan                                       |
 
 ---

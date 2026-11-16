@@ -147,3 +147,12 @@ def test_unparseable_registry_is_an_error_even_without_strict(tmp_path):
 def test_real_plugin_has_no_structural_errors():
     errors, _ = drift.check(PLUGIN_ROOT, TODAY)
     assert errors == []
+
+
+def test_real_plugin_has_no_drift_warnings_now_that_ci_is_strict():
+    # Stage 2 of #566 added the last Active models and switched lint:model-catalog-drift to
+    # --strict, so any new warning fails CI.
+    # Fixed date: freshness against the real date is enforced by the lint:model-catalog-drift task.
+    _, warnings = drift.check(PLUGIN_ROOT, dt.date(2026, 11, 10))
+    assert warnings == []
+    assert "model-catalog-drift.py --strict" in (PLUGIN_ROOT / "mise.toml").read_text()

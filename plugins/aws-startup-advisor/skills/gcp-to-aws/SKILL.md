@@ -369,7 +369,7 @@ gcp-to-aws/
         ├── ai-migration-guardrails.md          # shared constraints for every agentic migration path
         ├── bedrock-quotas.md                   # Bedrock TPM/RPM quota awareness, burndown rates, capacity planning
         ├── ai-openai-to-bedrock.md             # OpenAI-protocol → Bedrock model selection
-        ├── ai-anthropic-to-bedrock.md          # Anthropic SDK → Bedrock Converse client swap
+        ├── ai-anthropic-to-bedrock.md          # Anthropic SDK → Bedrock Runtime Messages (default) / Converse alternative
         ├── design-ref-harness.md               # AgentCore Harness design reference
         ├── design-ref-agentic-to-agentcore.md  # Strands Agents + AgentCore Runtime design reference
         └── sdk-capability-map.json             # SDK method → capability lookup (discover-app-code.md)

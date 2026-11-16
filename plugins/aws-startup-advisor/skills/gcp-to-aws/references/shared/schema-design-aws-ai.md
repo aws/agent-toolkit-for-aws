@@ -78,9 +78,52 @@ Bedrock-model capabilities: `text_generation`, `structured_output`, `image_gener
 Traditional-AI capabilities (AWS AI service, not Bedrock): `document_extraction`,
 `image_analysis`, `speech_transcription`.
 
+## migration_path, required_client_api, mantle_selector, openrouter_path vocabulary
+
+`ai_architecture.code_migration.migration_path` and the per-row `bedrock_models[]` fields use the
+same vocabulary as the shared contract (`references/vendored/ai/schema-design-aws-ai.md`), with
+**`bedrock-runtime` as the default endpoint** (`references/vendored/ai/bedrock-endpoint-policy.md`):
+
+- `runtime_openai_cris` — same-model OpenAI-protocol move on `bedrock-runtime` `/openai/v1` with a
+  CRIS id (`us.`/`in.`/`global.` for GPT-5.6 Terra and Luna; `us.`/`global.` only for GPT-5.6 Sol,
+  GPT-6, GPT-5.5 and GPT-5.4), `model_change: false`, `required_client_api` = the API the source
+  app already calls (`responses` or `chat_completions`; `converse` only for a Converse-only
+  feature such as Guardrails). This is the default for every proprietary GPT target.
+- `runtime_messages` — Anthropic SDK kept on `bedrock-runtime` `/anthropic` with a Claude profile
+  id, `required_client_api: "messages"`.
+- `mantle_openai_responses` / `mantle_openai_chat` / `mantle_messages` — the `bedrock-mantle`
+  endpoint; each such row MUST carry `mantle_selector`, one of `background_inference |
+  server_side_tools | web_search | projects | workspaces | mantle_only_model_or_api |
+  in_region_processing`. API continuity alone is not a selector. A matched selector is validated against the API it requires before the path is chosen (`web_search`, `background_inference`, and `server_side_tools` require the Responses API; `workspaces` the Anthropic Messages API; `projects` an OpenAI-compatible API — read 2026-11-09): a Chat Completions or Anthropic Messages source matched by a Responses-only selector is an explicit API-continuity decision — keep the source API on `bedrock-runtime` and drop the requirement (disclosed in `capability_gaps[]`), or move to `mantle_openai_responses` — never a silent same-API Mantle row; a provider mismatch (`workspaces` on OpenAI, `projects` on Anthropic) keeps `bedrock-runtime` and re-runs Clarify.
+- `bedrock_models[].mantle_requirement` — object, REQUIRED on every `mantle_*` row, absent
+  otherwise: `{ workload_id, selector, source, evidence?, region? }` — `selector` equals the row's
+  `mantle_selector`; `source` ∈ `detected | user | catalog` (`detected`/`user` entries are copied
+  from `preferences.json → ai_constraints.mantle_requirements.value[]`, the Clarify Q22b / Q10.5
+  answer `design-ai.md` Step 0.8 reads; `catalog` only for `mantle_only_model_or_api`, derived by
+  Design from the model catalog); `evidence` present when `source` is `detected` or `catalog`;
+  `region` present iff `selector` is `in_region_processing`.
+- `bedrock_models[].endpoint_assumption` — string, REQUIRED on every row whose `migration_path`
+  does NOT start with `mantle_`, exactly: `No Mantle-only requirement was recorded for
+  <workload_id>; bedrock-runtime selected. If this workload needs background inference,
+  server-side tools, Projects/Workspaces, or single-Region processing, re-run Clarify.` where
+  `<workload_id>` is the `design_blocks[].workload_id` whose `model_id` equals the row's
+  `source_model_id` (several → comma-joined). A Clarify entry on a workload whose source API has
+  no Mantle path (Gemini / Vertex AI, or a cross-family `direct` / `converse` / `gpt-oss` target)
+  keeps this sentence and is disclosed in the row's `rationale` and `capability_gaps[]` instead.
+- `converse`, `gpt-oss`, `direct` — Bedrock-native paths; never paired with a **bare**
+  proprietary `openai.gpt-*` id.
+- `code_migration.openrouter_path` (router detected) — `same_model_runtime` (default same-model
+  route) | `same_model_mantle` (requires `mantle_selector`) | `direct` | `litellm` |
+  `keep_openrouter`.
+
 ## Validation Checklist
 
 - [ ] `metadata.ai_source` matches `summary.ai_source` from `ai-workload-profile.json`.
+- [ ] Every `bedrock_models[]` row whose `migration_path` starts with `mantle_` carries a
+      `mantle_selector`; a same-model proprietary GPT row records `runtime_openai_cris` by default.
+- [ ] Every `mantle_*` row carries `mantle_requirement` with `selector == mantle_selector`
+      (derived from `ai_constraints.mantle_requirements` or the catalog); every non-`mantle_*`
+      row carries the `endpoint_assumption` sentence naming its workload.
 - [ ] Every `design_blocks[]` row has exactly one of `target_bedrock_model` /
       `target_aws_service` non-null (XOR).
 - [ ] Every traditional-AI row (`document_extraction`/`image_analysis`/`speech_transcription`)

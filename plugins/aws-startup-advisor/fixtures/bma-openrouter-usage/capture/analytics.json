@@ -1,0 +1,63 @@
+{
+ "data": [
+  {
+   "model_permaslug": "anthropic/claude-sonnet-5-20260901",
+   "response": {
+    "data": {
+     "data": [
+      {
+       "byok_usage": 2.0,
+       "openrouter_usage": 0
+      }
+     ],
+     "metadata": {
+      "truncated": false
+     }
+    }
+   }
+  },
+  {
+   "model_permaslug": "anthropic/claude-sonnet-5-20261001",
+   "response": {
+    "data": {
+     "data": [],
+     "metadata": {
+      "truncated": true
+     }
+    }
+   }
+  },
+  {
+   "model_permaslug": "google/gemini-2.5-flash",
+   "response": {
+    "data": {
+     "data": [
+      {
+       "byok_usage": 0,
+       "openrouter_usage": 0.5
+      }
+     ],
+     "metadata": {
+      "truncated": false
+     }
+    }
+   }
+  },
+  {
+   "model_permaslug": "openai/gpt-4.1-2025-04-14",
+   "response": {
+    "data": {
+     "data": [
+      {
+       "byok_usage": 0,
+       "openrouter_usage": 4.0
+      }
+     ],
+     "metadata": {
+      "truncated": false
+     }
+    }
+   }
+  }
+ ]
+}

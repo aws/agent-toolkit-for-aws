@@ -1,0 +1,74 @@
+{
+  "captured_at": "2026-10-31T06:00:00Z",
+  "window_days": 30,
+  "window_start_utc": "2026-10-01T00:00:00Z",
+  "window_end_utc": "2026-10-31T00:00:00Z",
+  "workspace_scope": null,
+  "result": "complete",
+  "captures": [
+    {
+      "endpoint": "/credits",
+      "file": "credits.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "endpoint": "/activity",
+      "file": "activity.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "endpoint": "/key",
+      "file": "key.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "endpoint": "/analytics/meta",
+      "file": "analytics-meta.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "endpoint": "/analytics/query",
+      "file": "analytics.json",
+      "status": "ok",
+      "note": "truncated for anthropic/claude-sonnet-5-20261001",
+      "metrics": [
+        "byok_usage",
+        "openrouter_usage"
+      ]
+    },
+    {
+      "endpoint": "/analytics/query",
+      "file": "analytics-volume.json",
+      "status": "ok",
+      "note": "truncated for anthropic/claude-sonnet-5-20261001",
+      "metrics": [
+        "tokens_prompt",
+        "tokens_completion",
+        "reasoning_tokens",
+        "cached_tokens",
+        "byok_fees",
+        "byok_request_count",
+        "request_count",
+        "p95_latency",
+        "p95_throughput",
+        "usage_web",
+        "guardrail_invoked_count"
+      ]
+    },
+    {
+      "endpoint": "/analytics/query",
+      "file": "analytics-hourly.json",
+      "status": "ok",
+      "note": "truncated for anthropic/claude-sonnet-5-20261001",
+      "metrics": [
+        "tokens_prompt",
+        "tokens_completion",
+        "request_count"
+      ]
+    }
+  ]
+}

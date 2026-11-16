@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["schema_version", "inventory_fingerprint", "clusters", "unclustered_resource_ids"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1.0"}, "inventory_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "clusters": {"type": "array", "items": {"type": "object", "required": ["id", "seed", "member_ids"], "additionalProperties": false, "properties": {"id": {"type": "string", "pattern": "^rcl-[0-9a-f]{24}$"}, "seed": {"type": "string"}, "member_ids": {"type": "array", "minItems": 1, "uniqueItems": true}}}}, "unclustered_resource_ids": {"type": "array", "uniqueItems": true}
+  }
+}

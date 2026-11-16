@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "rule": "Resolve the captured plan through plan_normalized (or the shared alias table) before the exact source_plans lookup; an unresolved plan stays unavailable and never borrows a nearby plan. Then choose the smallest instance whose vCPU and memory both meet or exceed the normalized Render plan dimensions; multiply by desired instance count.",
+  "alias_table": "references/shared/render-plan-aliases.json",
+  "legacy_aliases": {"starter": "0.5c-512mb", "standard": "1c-2gb", "pro": "2c-4gb", "pro_plus": "4c-8gb", "pro_max": "4c-16gb", "pro_ultra": "8c-32gb"},
+  "source_plans": {
+    "0.5c-512mb": {"cpu": 0.5, "memory_gb": 0.5},
+    "1c-2gb": {"cpu": 1, "memory_gb": 2},
+    "2c-4gb": {"cpu": 2, "memory_gb": 4},
+    "2c-8gb": {"cpu": 2, "memory_gb": 8},
+    "4c-8gb": {"cpu": 4, "memory_gb": 8},
+    "4c-16gb": {"cpu": 4, "memory_gb": 16},
+    "4c-32gb": {"cpu": 4, "memory_gb": 32},
+    "8c-32gb": {"cpu": 8, "memory_gb": 32}
+  },
+  "x86_64_targets": [
+    {"instance_type": "t3.micro", "cpu": 2, "memory_gb": 1},
+    {"instance_type": "t3.small", "cpu": 2, "memory_gb": 2},
+    {"instance_type": "t3.medium", "cpu": 2, "memory_gb": 4},
+    {"instance_type": "t3.large", "cpu": 2, "memory_gb": 8},
+    {"instance_type": "m6i.xlarge", "cpu": 4, "memory_gb": 16},
+    {"instance_type": "r6i.xlarge", "cpu": 4, "memory_gb": 32},
+    {"instance_type": "r6i.2xlarge", "cpu": 8, "memory_gb": 64}
+  ]
+}
