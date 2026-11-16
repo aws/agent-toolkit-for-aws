@@ -11,7 +11,7 @@ Ask it things like:
 - "Which runtime should this agent use?"
 - "Our API started returning 502s after the last deploy."
 
-The fourteen skills below are the catalog. Install them together.
+The sixteen skills below are the catalog. Install them together.
 
 ## Agent Skills
 
@@ -30,7 +30,9 @@ The fourteen skills below are the catalog. Install them together.
 | 11 | `knowledge-base-for-startups` | AWS Activate FAQ, credits guide, programs, partner offers, sample architectures, and AWS-curated learn articles | [SKILL.md](skills/knowledge-base-for-startups/SKILL.md) |
 | 12 | `prompt-library-for-startups` | AWS-curated copy-paste prompts for AI coding agents, plus downloadable installable agents | [SKILL.md](skills/prompt-library-for-startups/SKILL.md) |
 | 13 | `contextual-offers-for-startups` | Appends at most one relevant AWS Activate partner offer as optional context after another skill's output is final | [SKILL.md](skills/contextual-offers-for-startups/SKILL.md) |
-| 14 | `bedrock-migration-assessment` | Scans your code for OpenAI, Anthropic, Gemini, and OpenRouter calls (or validates a provider-neutral `ai-workload-profile.json`), can measure OpenAI, Anthropic, and OpenRouter usage read-only with your consent, runs the AI-only migration questions, and designs a Bedrock target, endpoint, and client API per workload. Needs no infrastructure skill. This release stops after Design; Estimate and Generate land in later releases | [SKILL.md](skills/bedrock-migration-assessment/SKILL.md) |
+| 14 | `bedrock-migration-assessment` | Scans your code for OpenAI, Anthropic, Gemini, and OpenRouter calls (or validates a provider-neutral `ai-workload-profile.json`), can measure OpenAI, Anthropic, and OpenRouter usage read-only with your consent, and runs the AI-only migration questions. Needs no infrastructure skill. This release stops after Clarify; Design, Estimate, and Generate land in later releases | [SKILL.md](skills/bedrock-migration-assessment/SKILL.md) |
+| 15 | `cost-regression-check` | Prices an infrastructure-as-code change on every pull request before apply: the fixed monthly floor it adds and the change in cost per unit of usage, at list price before credits, against thresholds derived from your monthly ceiling | [SKILL.md](skills/cost-regression-check/SKILL.md) |
+| 16 | `self-hosted-llm-batch-inference` | Recurring offline inference for a self-hosted 1B to 8B model on one GPU with AWS Batch on Spot, vLLM, deterministic shards, and verified completion and capacity release | [SKILL.md](skills/self-hosted-llm-batch-inference/SKILL.md) |
 
 `contextual-offers-for-startups` is consulted by the other skills rather than invoked directly: it runs only after a recommendation, plan, or build is already final, and it never influences the technical advice.
 
@@ -70,12 +72,12 @@ For standalone skill installs — Kiro, fx, and other hosts that consume skills 
 npx skills add aws/agent-toolkit-for-aws/plugins/aws-startup-advisor/skills --skill '*'
 ```
 
-Install all 14 skills together rather than a subset: `agent-advisor` delegates to `gcp-to-aws`, and the migration skills share vendored fragments. A standalone install covers the skills only — it does not configure the `aws-mcp` server declared in `.mcp.json`, which the host needs separately.
+Install all 16 skills together rather than a subset: `agent-advisor` delegates to `gcp-to-aws`, and the migration skills share vendored fragments. A standalone install covers the skills only — it does not configure the `aws-mcp` server declared in `.mcp.json`, which the host needs separately.
 
 ## Development checks
 
 From the repository root, run `mise -C plugins/aws-startup-advisor run ci`.
-The plugin's [`mise.toml`](mise.toml) inherits the root tool configuration and runs model-reference lint plus the contract tests in `tests/`.
+The plugin's [`mise.toml`](mise.toml) inherits the root tool configuration. It runs the lint tasks, including model-reference lint, and every test suite: the contract tests in `tests/`, the agent-advisor, llm-to-bedrock, render-to-aws, and skill-script suites, telemetry, and the Heroku source-review tests.
 It also declares Terraform under `[tools]`: the Render replay test runs `terraform fmt`, `init -backend=false`, and `validate` against each generated migration pack and fails closed if the binary is missing, so the workflow installs it through mise rather than relying on the runner image.
 To add a check, define a task in this file and add it to `tasks.ci.depends`; the workflow keeps calling the same `ci` task. To add a tool a check needs, pin it under `[tools]` in this file; the workflow's `mise-action` step installs whatever this file declares.
 
@@ -146,6 +148,7 @@ The `architect-for-startups` skill answers "what should we build on AWS?" for a 
 - **Stage-aware defaults** — Recommendations differ for a pre-revenue prototype and a Series B workload with paying customers; the skill asks before it assumes.
 - **Cost and credit awareness** — Options are framed in terms of run-rate and credit burn, so the architecture stretches AWS Activate credits rather than consuming them in a month.
 - **Reviews and diligence** — Existing architectures can be reviewed for a fundraise or technical diligence conversation, with gaps ranked by what an investor or acquirer will ask about.
+- **Multi-tenant isolation** — For a multi-tenant SaaS, picks a silo, pool, or bridge model per layer and pushes isolation into IAM and the database, so a missing tenant filter fails closed rather than leaking another tenant's data.
 - **Advice, not edits** — This skill recommends and reviews. When you want the architecture written into the repository, it hands off to `start-building-for-startups`. When the workload is an AI agent — deploying one, picking its runtime, or moving agents to AWS — it hands off to `agent-advisor`.
 
 ### Examples
@@ -154,6 +157,7 @@ The `architect-for-startups` skill answers "what should we build on AWS?" for a 
 - "Review our architecture before our Series A technical diligence"
 - "How do we make our Activate credits last another six months?"
 - "Is Aurora Serverless the right call at our stage?"
+- "How should we isolate tenants in our pooled SaaS before our first enterprise customer?"
 
 ## Guided Building
 
@@ -192,9 +196,9 @@ The `azure-to-aws`, `gcp-to-aws`, `heroku-to-aws`, and `render-to-aws` skills ru
 
 ### How It Works
 
-- **Discover** — `azure-to-aws` reads Terraform (`azurerm_*`) and application code, can capture a live subscription through the `az` CLI (read-only, consent-gated), and can parse a customer-supplied Resource Discovery for Azure (RDfA) report (read-only, file-only). It does not read Bicep or ARM templates or Azure billing exports. `gcp-to-aws` reads Terraform, application code, and billing exports, and can capture a live project through `gcloud` (read-only, consent-gated). BigQuery is recorded and left for a specialist; the skill does not pick an AWS analytics service for it. `azure-to-aws` and `gcp-to-aws` can also read aggregate AI spend when the app calls OpenAI directly, calls it through OpenRouter, or calls the Anthropic API — from the OpenAI Admin API (Usage Read), the OpenRouter API, or the Anthropic Admin API. Each is consent-gated and optional, and none replaces the code scan. `heroku-to-aws` discovers through the authenticated Heroku CLI (read-only, consent-gated) or from `Procfile` and `app.json`. `render-to-aws` reads `render.yaml`, application and billing files, and optionally captures the official Render CLI and an exact GET-only REST allowlist after explicit workspace confirmation and consent; it never uses Render MCP or Render-side mutation.
+- **Discover** — `azure-to-aws` reads Terraform (`azurerm_*`) and application code, can capture a live subscription through the `az` CLI (read-only, consent-gated), and can parse a customer-supplied Resource Discovery for Azure (RDfA) report (read-only, file-only). It does not read Bicep or ARM templates or Azure billing exports. `gcp-to-aws` reads Terraform, application code, and billing exports, and can capture a live project through `gcloud` (read-only, consent-gated). BigQuery is recorded and left for a specialist; the skill does not pick an AWS analytics service for it. It points users to `bq-assess` as a read-only first step. `azure-to-aws` and `gcp-to-aws` can also read aggregate AI spend when the app calls OpenAI directly, calls it through OpenRouter, or calls the Anthropic API — from the OpenAI Admin API (Usage Read), the OpenRouter API, or the Anthropic Admin API. Each is consent-gated and optional, and none replaces the code scan. `heroku-to-aws` discovers through the authenticated Heroku CLI (read-only, consent-gated) or from `Procfile` and `app.json`. `render-to-aws` reads `render.yaml`, application and billing files, and optionally captures the official Render CLI and an exact GET-only REST allowlist after explicit workspace confirmation and consent; it never uses Render MCP or Render-side mutation.
 - **Clarify** — Resolves the requirements that change the target architecture: availability, compliance, data residency, cutover tolerance, and team capacity.
-- **Design** — Maps source resources to AWS services using deterministic mapping tables — for example Heroku dynos to AWS Elastic Beanstalk, Heroku Postgres to Amazon RDS or Aurora, Heroku Redis to Amazon ElastiCache, Heroku Kafka to Amazon MSK, Cloud SQL to Amazon RDS, GKE to Amazon EKS, Cloud Run to AWS Fargate, Azure App Service to AWS Elastic Beanstalk, AKS to Amazon EKS, Azure SQL to Amazon RDS, and Cosmos DB to Amazon DynamoDB or DocumentDB. `render-to-aws` adds ordered exactly-one selectors — for example Render static sites to Amazon S3 and CloudFront, Render services to Elastic Beanstalk or AWS Fargate according to management model, Render Postgres to one selected PostgreSQL target, Render Key Value to Amazon ElastiCache, and Render persistent disks to one storage target.
+- **Design** — Maps source resources to AWS services using deterministic mapping tables — for example Heroku dynos to AWS Elastic Beanstalk, Heroku Postgres to Amazon RDS or Aurora, Heroku Redis to Amazon ElastiCache for Valkey (the default engine; ElastiCache for Redis OSS is also selectable), Heroku Kafka to Amazon MSK, Cloud SQL to Amazon RDS, GKE to Amazon EKS, Cloud Run to AWS Fargate, Azure App Service to AWS Elastic Beanstalk, AKS to Amazon EKS, Azure SQL to Amazon RDS, and Cosmos DB to Amazon DynamoDB or DocumentDB. `render-to-aws` adds ordered exactly-one selectors — for example Render static sites to Amazon S3 and CloudFront, Render services to Elastic Beanstalk or AWS Fargate according to management model, Render Postgres to one selected PostgreSQL target, Render Key Value to Amazon ElastiCache, and Render persistent disks to one storage target.
 - **Estimate** — Costs the target architecture from the plugin's bundled rate reference data and a documented cost algorithm, with an estimation schema and complexity tiers so two runs of the same workload agree. Estimates are planning figures; confirm them against the [AWS Pricing Calculator](https://calculator.aws/) before committing budget.
 - **Generate** — Emits migration artifacts, including Terraform, gated by the `tf-best-practices` policy check and a validated migration report. On the infrastructure route, `heroku-to-aws`, `gcp-to-aws`, and `azure-to-aws` also emit `baseline.tf` — an account-wide security baseline (GuardDuty, CloudTrail, IMDSv2, EBS encryption, budget alerts) — with AWS Config and Security Hub controls added when the declared compliance set includes SOC 2, PCI, HIPAA, or FedRAMP. `gcp-to-aws`'s AI-only and billing-only routes emit monitoring or skeleton Terraform instead and skip the baseline.
 - **Workshop mode** — After estimate, `azure-to-aws`, `gcp-to-aws`, `heroku-to-aws`, and `render-to-aws` can reprice region, high-availability, compute, and AWS Graviton scenarios without repeating discovery.
@@ -272,6 +276,44 @@ The DevOps Agent MCP server is region-specific and per-user, so the skill regist
 - "Set up AWS DevOps Agent for us — what will it cost?"
 - "Pause DevOps Agent, we're burning credits"
 
+## Cost Regression Checks
+
+The `cost-regression-check` skill reports what an infrastructure change adds to the AWS bill on the pull request that adds it, before apply. It is for a company that pays from a fixed monthly ceiling, often funded by credits, where a new NAT gateway or database minimum can take a visible share of the budget before the product has users.
+
+### How It Works
+
+- **Two numbers, not one** — Each pull request gets the fixed monthly floor the change adds at zero traffic and the change in cost per unit of your own usage, so a blended estimate cannot hide which one moved.
+- **Thresholds from your ceiling** — Absolute thresholds derived from the monthly ceiling live in a reviewed file in the repository, with an owner, rather than a percentage of last month's bill.
+- **List price before credits** — Every number is the public on-demand price, so the comment describes the bill that arrives when credits run out.
+- **Set up once, no model per pull request** — The skill adds a CI job and a repository-owned cost script that runs after plan, synth, or change set. It starts advisory and blocks only after estimates are checked against the bill.
+
+It works with Terraform, AWS CDK, and AWS CloudFormation, and defers to the `aws-core` plugin's skills for pricing data, IaC mechanics, and billing comparisons, so install `aws-core` alongside it.
+
+### Examples
+
+- "What will this Terraform PR add to our monthly AWS bill before we apply it?"
+- "Add a cost check to every pull request that flags new fixed costs against our $3,000 monthly ceiling"
+- "Set up Infracost in CI so the bill owner sees the cost of each infrastructure change"
+
+## Self-Hosted LLM Batch Inference
+
+The `self-hosted-llm-batch-inference` skill builds a repeatable offline inference path for a self-hosted 1B to 8B generative model, for a startup that wants GPU economics without running an ML platform.
+
+### How It Works
+
+- **One Batch job per corpus run** — AWS Batch on Amazon ECS Managed Instances Spot runs vLLM on one GPU, with model weights staged in Amazon S3 and the corpus split into deterministic shards.
+- **Spot without babysitting** — Bounded retries and resumable shards recover from Spot interruption automatically.
+- **Nothing idle** — Sizing comes from the measured prompt and model footprint, networking avoids an idle cost floor, and GPU capacity scales in to zero when the job ends.
+- **Verified, not assumed** — A run succeeds only after output records reconcile with input, and verification confirms the GPU capacity is gone.
+
+It is not for online endpoints, training, embeddings, or multi-GPU inference. For moving managed-API model calls to Amazon Bedrock, use `llm-to-bedrock`. It defers to the `aws-core` plugin's skills for container, IAM, storage, and cost mechanics, so install `aws-core` alongside it.
+
+### Examples
+
+- "Run nightly batch inference with Llama 3.1 8B over our document corpus on Spot GPUs"
+- "Set up AWS Batch to classify a million support tickets with a self-hosted model"
+- "Our offline LLM jobs keep losing work to Spot interruptions. How should we structure them?"
+
 ## Supported Environments
 
 ### Using the plugin in your local compute
@@ -282,7 +324,7 @@ In your local environment, configure AWS credentials and set your target region 
 
 - An AWS account
 - Local AWS credentials and config
-- [uv](https://docs.astral.sh/uv/getting-started/installation/) (for the MCP server and the locked `render-to-aws` Python tools)
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) (for the MCP server and the locked `render-to-aws` Python tools; an unfinished Render Discover halts before capture without it, later phases on a run with completed Discover output do not need it except Generate's Blueprint semantic revalidation and final report validation, and ambient Python never replaces it)
 - Python 3.12 (required by the locked `render-to-aws` script project; other bundled validators require Python 3)
 - Git (the `llm-to-bedrock` flow delivers its rewrite on a branch)
 - The Heroku CLI, authenticated, only if you want live discovery in `heroku-to-aws`
@@ -302,6 +344,8 @@ Documentation search, regional availability lookups, and the reference-content s
 
 - `sts` - Caller identity and account context checks
 - `bedrock`, `bedrock-runtime` - Model availability and prompt evaluation for the Bedrock migration flow
+- `bedrock-mantle` - Calls to the Bedrock Mantle endpoint (Projects, Workspaces and other Mantle-only features, and a few Mantle-only models). It is a separate IAM service prefix, so a `bedrock:*` grant does not cover it; the Bedrock migration flow only needs it when a plan uses a Mantle path
+- `bedrock-websearch` - Bedrock Web Search tool calls, only when a plan uses Web Search. It is a separate prefix from both `bedrock` and `bedrock-mantle`, so a custom policy limited to those two can authorize inference while the tool's permission checks fail. Grant `InvokeSearch` and `InvokeFetch`, and add `ExternalWebAccess` only if you enable retrieval from the live web. AWS managed policies may already include these actions
 - `ec2`, `rds`, `s3` - Read-only discovery of existing compute, database, and storage resources
 - `iam` - Reviewing roles and policies referenced by a design or security baseline
 - `cloudformation` - Inspecting and deploying generated infrastructure

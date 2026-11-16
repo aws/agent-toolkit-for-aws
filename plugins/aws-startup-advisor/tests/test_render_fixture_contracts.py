@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import os
 import re
 import shutil
 from html import escape
 import subprocess  # nosec B404 - fixed local validation tools, no shell
 import sys
+import time
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -86,6 +88,8 @@ def test_design_selectors_emit_one_target_all_rejections_and_exact_accounting() 
     assert private["aws_config"] == {
         "ingress": "AWS Cloud Map or ECS Service Connect",
         "public_load_balancer": False,
+        "ecs_mode": "standard",
+        "ecs_mode_reason": "private_discovery",
     }
     assert "Amazon CloudWatch Logs, Metrics, and Alarms" == by_kind["render.web_service"]["aws_config"]["observability"]
     assert "App Runner" not in json.dumps(design)
@@ -311,6 +315,7 @@ def test_generate_ledger_schemas_and_complete_target_accounting() -> None:
         "conditional_workflow_generation_unsupported",
         "deferred_shared_ai_engine",
         "unpriced_cost_floor",
+        "ecs_express_not_selected_rolling_release",
     }
     assert all(row["target_files"] == [] for row in ledger["unsupported"])
     assert not any("ai" in path.lower() for row in ledger["generated"] for path in row["target_files"])
@@ -1071,7 +1076,7 @@ def _materialize_independent_mixed_pipeline(root: Path) -> dict[str, bytes]:
     for scenario in estimate["scenarios"].values():
         assert [row["source_resource_id"] for row in scenario["lines"]] == design["accounting"]["accounted_resource_ids"]
 
-    ledger = harness.ledger_from_design(design)
+    ledger = harness.ledger_from_design(design, preferences)
     jsonschema.Draft202012Validator(
         load(SKILL_ROOT / "references/shared/schema-generation-warnings.json")
     ).validate(ledger)
@@ -1145,3 +1150,110 @@ def test_complete_mocked_pipeline_replays_all_phases_from_same_inventory(tmp_pat
     second = _materialize_independent_mixed_pipeline(tmp_path / "second")
     assert first == second
 
+
+
+def test_golden_baseline_and_operations_terraform() -> None:
+    terraform = EXPECTED / "generated/terraform"
+    for name in ("baseline.tf", "monitoring.tf", "backup.tf"):
+        assert (terraform / name).is_file(), name
+    assert not (terraform / "kms.tf").exists()
+    baseline = (terraform / "baseline.tf").read_text(encoding="utf-8")
+    for resource in (
+        "aws_iam_account_password_policy", "aws_s3_account_public_access_block",
+        "aws_ebs_encryption_by_default", "aws_accessanalyzer_analyzer",
+        "aws_ec2_instance_metadata_defaults", "aws_cloudtrail", "aws_budgets_budget",
+        "aws_guardduty_detector",
+    ):
+        assert f'resource "{resource}"' in baseline, resource
+    assert baseline.count('resource "aws_account_alternate_contact"') == 3
+    assert 'resource "aws_s3_bucket" "tfstate"' in baseline
+    assert 'resource "aws_dynamodb_table" "tfstate_lock"' in baseline
+    assert "aws_config_" not in baseline and "aws_securityhub_" not in baseline
+    estimate = load(EXPECTED / "estimation-infra.json")
+    limit = max(50, math.ceil(Decimal(str(estimate["projected_costs"]["aws_monthly_balanced"])) * Decimal("1.2")))
+    assert f'limit_amount = "{limit}"' in baseline
+    monitoring = (terraform / "monitoring.tf").read_text(encoding="utf-8")
+    targets = re.findall(r'resource "aws_appautoscaling_target" "(\w+)"', monitoring)
+    assert targets == ["web"]
+    assert "aws_ecs_service.web.name" in monitoring.split('resource "aws_appautoscaling_target"')[1]
+    for namespace in ("AWS/ECS", "AWS/ApplicationELB", "AWS/RDS", "AWS/ElastiCache"):
+        assert f'namespace           = "{namespace}"' in monitoring, namespace
+    alarms = monitoring.split('resource "aws_cloudwatch_metric_alarm"')[1:]
+    assert alarms
+    for alarm in alarms:
+        assert "alarm_actions" in alarm.split("\nresource ")[0]
+    backup = (terraform / "backup.tf").read_text(encoding="utf-8")
+    assert "aws_efs_file_system.application.arn" in backup
+    assert "aws_efs_backup_policy" not in backup
+    # delete_after: 35 when no framework is declared, else max(35, min(cloudtrail_retention_days, 365)).
+    preferences = load(EXPECTED / "preferences.json")
+    frameworks = [f for f in preferences["global"].get("compliance", []) if f not in ("none", "unknown")]
+    cloudtrail_retention_days = int(re.search(r"cloudtrail_retention_days = (\d+)", baseline).group(1))
+    expected_delete_after = max(35, min(cloudtrail_retention_days, 365)) if frameworks else 35
+    assert f"delete_after = {expected_delete_after}\n" in backup
+    assert expected_delete_after == 35
+    assert "local.cloudtrail_retention_days" not in backup
+    assert "never reference `local.cloudtrail_retention_days`" in (
+        SKILL_ROOT / "references/phases/generate/generate-artifacts-baseline.md"
+    ).read_text(encoding="utf-8").lower()
+    # CloudWatch alarm actions cannot use the AWS managed SNS key.
+    assert not re.search(r'kms_master_key_id\s*=\s*"alias/aws/sns"', monitoring)
+    topic = monitoring.split('resource "aws_sns_topic" "alerts"')[1].split("\nresource ")[0]
+    assert "kms_master_key_id = aws_kms_key.alerts.arn" in topic
+    key = monitoring.split('resource "aws_kms_key" "alerts"')[1].split("\nresource ")[0]
+    assert "enable_key_rotation = true" in key
+    for needle in ('"cloudwatch.amazonaws.com"', '"kms:GenerateDataKey*"', '"kms:Decrypt"', '"aws:SourceAccount"', '"aws:SourceArn"'):
+        assert needle in key, needle
+    # Node-based ElastiCache metrics are published per CacheClusterId.
+    cache_alarms = [a for a in alarms if '"AWS/ElastiCache"' in a]
+    assert len(cache_alarms) == 3
+    for alarm in cache_alarms:
+        assert "CacheClusterId = each.value" in alarm and "ReplicationGroupId" not in alarm
+    assert "format(\"%s-%03d\"" in monitoring and "num_cache_clusters" in monitoring
+    for name in ("baseline.tf", "monitoring.tf", "backup.tf"):
+        text = (terraform / name).read_text(encoding="utf-8")
+        assert not re.search(r"(?m)secret_key|^\s*password\s*=", text), name
+
+
+def test_baseline_opt_out_leaves_valid_terraform(tmp_path: Path) -> None:
+    terraform_binary = shutil.which("terraform")
+    if not terraform_binary:
+        pytest.skip("terraform is not installed")
+    copy = tmp_path / "terraform"
+    shutil.copytree(EXPECTED / "generated/terraform", copy)
+    baseline = (copy / "baseline.tf").read_text(encoding="utf-8")
+    opted_out, count = re.subn(
+        r"########## Account Baseline ##########.*?########## End Account Baseline ##########\n",
+        "",
+        baseline,
+        flags=re.S,
+    )
+    assert count == 1
+    assert "########## Remote State ##########" in opted_out
+    assert 'variable "operations_email"' in opted_out and 'data "aws_partition" "current"' in opted_out
+    (copy / "baseline.tf").write_text(opted_out, encoding="utf-8")
+    tfvars = copy / "terraform.tfvars.example"
+    tfvars.write_text(
+        "".join(
+            line
+            for line in tfvars.read_text(encoding="utf-8").splitlines(keepends=True)
+            if not line.startswith(("billing_email", "security_email"))
+        ),
+        encoding="utf-8",
+    )
+    env = {**os.environ, "TF_PLUGIN_CACHE_DIR": os.environ.get("TF_PLUGIN_CACHE_DIR", str(Path.home() / ".terraform.d/plugin-cache"))}
+    Path(env["TF_PLUGIN_CACHE_DIR"]).mkdir(parents=True, exist_ok=True)
+    transient = ("Failed to load plugin schemas", "does not match any of the checksums")
+    for attempt in range(5):
+        for args in (["init", "-backend=false", "-input=false"], ["validate"]):
+            result = subprocess.run(  # nosec B603
+                [terraform_binary, *args], cwd=copy, env=env, text=True, capture_output=True, check=False
+            )
+            if result.returncode != 0:
+                break
+        output = result.stdout + result.stderr
+        # The provider plugin can fail to start or be rewritten in the shared cache under load; retry only that.
+        if result.returncode == 0 or not any(message in output for message in transient):
+            break
+        time.sleep(15)
+    assert result.returncode == 0, result.stdout + result.stderr

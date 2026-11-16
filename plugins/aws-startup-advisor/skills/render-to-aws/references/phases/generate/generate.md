@@ -14,6 +14,12 @@ _fragments:
   - _id: artifacts-infra
     _trigger: { _always: true }
     _file: phases/generate/generate-artifacts-infra.md
+  - _id: artifacts-infra-network-storage-delivery
+    _trigger: { _always: true }
+    _file: phases/generate/generate-artifacts-infra-network-storage-delivery.md
+  - _id: artifacts-baseline
+    _trigger: { _always: true }
+    _file: phases/generate/generate-artifacts-baseline.md
   - _id: artifacts-docs
     _trigger: { _always: true }
     _file: phases/generate/generate-artifacts-docs.md
