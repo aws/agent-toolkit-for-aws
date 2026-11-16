@@ -14,6 +14,9 @@ _fragments:
   - _id: artifacts-infra
     _trigger: { _always: true }
     _file: phases/generate/generate-artifacts-infra.md
+  - _id: artifacts-infra-network-storage-delivery
+    _trigger: { _always: true }
+    _file: phases/generate/generate-artifacts-infra-network-storage-delivery.md
   - _id: infra-data
     _trigger: { _when: "aws-design.json has a render.postgres or render.key_value mapping with disposition mapped" }
     _file: phases/generate/generate-infra-data.md
