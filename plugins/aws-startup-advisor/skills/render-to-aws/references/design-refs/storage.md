@@ -8,7 +8,7 @@ Candidate set: `Amazon EFS`, `Amazon EBS`, `Amazon S3`, `Amazon S3-backed file a
 4. Select EBS only when compute is explicitly EC2-hosted, single-AZ block coupling and attachment mode are accepted, and discovered POSIX, performance, backup, and recovery requirements fit EBS.
 5. If object-versus-file semantics, sharing, compute host, AZ coupling, performance, or recovery facts are missing and can change the winner, return to Clarify.
 
-When `data.regulated_data` is true for the disk, the selected target uses a customer-managed KMS key and keeps backups in the same Region only (no cross-Region replication or backup copy).
+When `data.regulated_data` is true for the disk, the selected target records `customer_managed_key: true` in `aws_config` (customer-managed KMS key) and keeps backups in the same Region only (no cross-Region replication or backup copy).
 EBS is never a generic Fargate disk. S3 is never selected for an application that requires unsupported POSIX locking/rename semantics. S3-backed file access is not a vague compromise: it requires evidence that S3 remains authoritative and the selected path-access mechanism meets consistency and operation requirements.
 
 Record evidence, ordered rules evaluated/fired, defaults used, and three rejected candidates with concrete reasons. Preserve mount path, used/provisioned capacity and growth, sharing/concurrency, ownership/permissions/locking/rename, latency/throughput/IOPS, backup/RPO/RTO, region/AZ coupling, and data-transfer/cutover requirements.

@@ -157,7 +157,7 @@ resource "aws_cloudtrail" "baseline" {
   tags                          = local.baseline_tags
   depends_on                    = [aws_s3_bucket_policy.cloudtrail_logs]
 }
-# Budget limit = max(50, ceil(aws_monthly_balanced * 1.2)) = max(50, ceil(352.0 * 1.2)).
+# Budget limit = max(50, ceil(aws_monthly_balanced * 1.2)) = max(50, ceil(358.5 * 1.2)) = 431.
 resource "aws_budgets_budget" "monthly_spend" {
   name         = "${local.name_prefix}-monthly"
   budget_type  = "COST"
