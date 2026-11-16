@@ -9,7 +9,7 @@
     "hours_per_month": 730,
     "staleness_days": 30,
     "staleness_note": "If more than staleness_days past last_updated, infrastructure rates remain reliable; set pricing_source=cached_stale and note it. AI-model rates (not used for heroku->aws) may have drifted.",
-    "last_verification": "2026-11-09 ElastiCache node rates switched to the Valkey engine via the AWS Pricing MCP server (AmazonElastiCache, cacheEngine=Valkey); all other rates unchanged from the 2026-10-05 refreshed via the AWS Pricing MCP server (AmazonEC2/AmazonRDS/AmazonElastiCache/AmazonMSK/AmazonEKS/AWSLambda/AWSELB/AmazonEC2 NAT Gateway/AmazonRoute53/AWSQueueService/AmazonSNS/AmazonSES/AmazonCloudFront/AmazonCloudWatch/AWSXRay/AWSSecretsManager/AmazonRDS RDSProxy, us-east-1). Confirmed changes this refresh: EC2 r6i family down ~16.7% (e.g. r6i.large 0.1512->0.126); RDS PostgreSQL Multi-AZ m6g/m6i/r6i/t3/x2g families repriced (t4g family unchanged); Aurora PostgreSQL r6g sizes above .large down ~6%; ElastiCache cache.m6g family down ~28% (e.g. cache.m6g.large 0.206->0.149); EC2 t4g/m6g family rates shifted by <1% (rounding-level). Fargate, Lambda, ALB/NLB, NAT Gateway, Route53, SQS, SNS, MSK, EKS cluster fee, EBS gp3, RDS Proxy, Secrets Manager, S3, SES, CloudFront, CloudWatch, and X-Ray all verified unchanged."
+    "last_verification": "2026-11-09 ElastiCache node rates switched to the Valkey engine via the AWS Pricing MCP server (AmazonElastiCache, cacheEngine=Valkey); all other rates unchanged from the 2026-10-05 refreshed via the AWS Pricing MCP server (AmazonEC2/AmazonRDS/AmazonElastiCache/AmazonMSK/AmazonEKS/AWSLambda/AWSELB/AmazonEC2 NAT Gateway/AmazonRoute53/AWSQueueService/AmazonSNS/AmazonSES/AmazonCloudFront/AmazonCloudWatch/AWSXRay/AWSSecretsManager/AmazonRDS RDSProxy, us-east-1). Confirmed changes this refresh: EC2 r6i family down ~16.7% (e.g. r6i.large 0.1512->0.126); RDS PostgreSQL Multi-AZ m6g/m6i/r6i/t3/x2g families repriced (t4g family unchanged); Aurora PostgreSQL r6g sizes above .large down ~6%; ElastiCache cache.m6g family down ~28% (e.g. cache.m6g.large 0.206->0.149); EC2 t4g/m6g family rates shifted by <1% (rounding-level). Fargate, Lambda, ALB/NLB, NAT Gateway, Route53, SQS, SNS, MSK, EKS cluster fee, EBS gp3, RDS Proxy, Secrets Manager, S3, SES, CloudFront, CloudWatch, and X-Ray all verified unchanged. 2026-11-14 additive rows via the same MCP server (us-east-1): efs, ecr, step_functions, eventbridge_scheduler, cloud_map, ssm_parameter_store, elasticache_serverless; efs and ecr moved out of _absent_services. No existing rate was re-verified or changed; _meta.last_updated is therefore not bumped."
   },
   "_multi_az_convention": {
     "_comment": "THE TRAP: a design's multi_az:true means different things per service. Each service rate below carries multi_az_handling so the formula applies the RIGHT adjustment, never a blanket multiplier.",
@@ -88,6 +88,11 @@
       "db.r6g.16xlarge": 8.306
     },
     "_instances_note": "Re-verified via the AWS Pricing MCP server on 2026-10-05 (AmazonRDS, databaseEngine=Aurora PostgreSQL, deploymentOption=Single-AZ, non-IO-optimized). r6g.xlarge/2xlarge/4xlarge/8xlarge/16xlarge moved down ~6% from the previous extrapolated values; db.t4g.* and db.r6g.large were unchanged.",
+    "_unavailable_instances": {
+      "db.t4g.micro": "No Aurora PostgreSQL row in the AWS Price List (AmazonRDS, databaseEngine=Aurora PostgreSQL, us-east-1; queried via the AWS Pricing MCP server on 2026-11-14, version 20261113215233). Do not price it from rds_postgresql. An Aurora design must pick db.t4g.medium or larger.",
+      "db.t4g.small": "No Aurora PostgreSQL row in the AWS Price List (same query and date as db.t4g.micro). An Aurora design must pick db.t4g.medium or larger.",
+      "db.m6g.large": "No Aurora PostgreSQL row in the AWS Price List (same query and date as db.t4g.micro). Use db.r6g.large for Aurora."
+    },
     "storage_per_gb_month": 0.1,
     "io_per_million": 0.2
   },
@@ -298,6 +303,108 @@
     "multi_az_handling": "intrinsic",
     "_no_invocation_data_note": "Lambda cost is invocation-driven, and IaC declares no invocation count. With no measured request volume there is no figure to compute: emit null with a stated reason rather than a remembered default. A source consumption plan provisions no worker capacity, so there is no source-side number to carry across either."
   },
+  "efs": {
+    "_comment": "Amazon EFS rates (us-east-1). Verified 2026-11-14 via the AWS Pricing MCP server (get_pricing, us-east-1, OnDemand), service code AmazonEFS. Storage is per GB-month of data stored (Regional, Elastic Throughput default; infrequent_access_per_gb_month is the Elastic Throughput SKU USE1-IATimedStorage-ET-ByteHrs, and infrequent_access_legacy_throughput_per_gb_month is USE1-IATimedStorage-ByteHrs, which applies only to file systems on the legacy Provisioned or Bursting throughput modes; Price List publication 2026-11-04). Multi-AZ is intrinsic to Regional file systems; One Zone classes are not listed here. Elastic Throughput read/write is per GB transferred; Provisioned Throughput is per MiBps-month and applies only when the design states Provisioned mode.",
+    "standard_per_gb_month": 0.3,
+    "infrequent_access_per_gb_month": 0.016,
+    "infrequent_access_legacy_throughput_per_gb_month": 0.025,
+    "elastic_throughput_read_per_gb": 0.03,
+    "elastic_throughput_write_per_gb": 0.06,
+    "provisioned_throughput_per_mibps_month": 6.0,
+    "multi_az_handling": "intrinsic",
+    "_note": "Capacity-preserving line = provisioned/used GB x standard_per_gb_month. Throughput lines need transfer volume; with no measured volume, price storage only and say so. Consumer scope: only render-to-aws estimate rules read this row today. azure-to-aws and heroku-to-aws have not adopted it; their designs that emit EFS keep surfacing a visible excluded line (formerly _absent_services.efs) until their estimate rules and goldens are updated deliberately. The Price List shows 0.00 per MiBps-month for throughput included with Standard storage."
+  },
+  "ecr": {
+    "_comment": "Amazon ECR rates (us-east-1). Verified 2026-11-14 via the AWS Pricing MCP server (get_pricing, us-east-1, OnDemand), service code AmazonECR.",
+    "storage_per_gb_month": 0.1,
+    "image_signing_per_request": 0.02,
+    "multi_az_handling": "intrinsic",
+    "_note": "Storage only. Data transfer out of ECR is a DataTransfer line, not priced here. Image count and size come from the Build Source; with no captured image size the line has no quantity. Consumer scope: only render-to-aws estimate rules read this row today. azure-to-aws (Azure Container Registry) has not adopted it; keep surfacing ECR as a visible excluded line there (formerly _absent_services.ecr) until its estimate rules and goldens are updated deliberately."
+  },
+  "step_functions": {
+    "_comment": "AWS Step Functions rates (us-east-1). Verified 2026-11-14 via the AWS Pricing MCP server (get_pricing, us-east-1, OnDemand), service code AmazonStates. Standard is billed per state transition; Express per request plus duration in GB-seconds.",
+    "standard_per_state_transition": 2.5e-05,
+    "express_per_request": 1e-06,
+    "express_per_gb_second_first_3_6m": 1.667e-05,
+    "express_per_gb_second_next_14_4m": 8.33e-06,
+    "express_per_gb_second_over_18m": 4.56e-06,
+    "multi_az_handling": "intrinsic",
+    "_note": "Both modes are usage-priced; the estimate needs executions per month and transitions (or duration and memory) per execution. With no captured run history the line has no quantity."
+  },
+  "eventbridge_scheduler": {
+    "_comment": "Amazon EventBridge Scheduler rate (us-east-1). Verified 2026-11-14 via the AWS Pricing MCP server (get_pricing, us-east-1, OnDemand), service code AWSEvents, usagetype ScheduledInvocation.",
+    "per_million_scheduled_invocations": 1.0,
+    "free_invocations_per_month": 14000000,
+    "multi_az_handling": "intrinsic",
+    "_note": "The first 14M scheduled invocations per month are free. This is NOT the custom-event-bus rate in fast_path_services.eventbridge (that row prices events put on a bus)."
+  },
+  "cloud_map": {
+    "_comment": "AWS Cloud Map rates (us-east-1). Verified 2026-11-14 via the AWS Pricing MCP server (get_pricing, us-east-1, OnDemand), service code AWSCloudMap.",
+    "per_resource_month": 0.1,
+    "per_million_api_calls": 1.0,
+    "multi_az_handling": "intrinsic",
+    "_note": "Resources are registered service instances. ECS Service Connect is not a separate Price List item."
+  },
+  "ssm_parameter_store": {
+    "_comment": "AWS Systems Manager Parameter Store rates (us-east-1). Verified 2026-11-14 via the AWS Pricing MCP server (get_pricing, us-east-1, OnDemand), service code AWSSystemsManager. The Price List carries SKUs for Advanced parameters only; Standard parameters have no SKU and no charge.",
+    "advanced_parameter_per_month": 0.05,
+    "advanced_api_per_10k_interactions_standard_throughput": 0.05,
+    "multi_az_handling": "intrinsic"
+  },
+  "elasticache_serverless": {
+    "_comment": "Amazon ElastiCache Serverless rates for the Valkey engine (us-east-1). Verified 2026-11-14 via the AWS Pricing MCP server (get_pricing, us-east-1, OnDemand), service code AmazonElastiCache, productFamily=ElastiCache Serverless, cacheEngine=Valkey. Node-based Valkey rates stay in elasticache.nodes.",
+    "valkey_data_per_gb_hour": 0.084,
+    "valkey_per_million_ecpus": 0.0023,
+    "valkey_backup_per_gb_month": 0.085,
+    "multi_az_handling": "intrinsic",
+    "_note": "Cost = stored GB x hours x valkey_data_per_gb_hour + ECPUs/1e6 x valkey_per_million_ecpus. ECPU volume is not knowable from Render plan memory; with no captured request rate price the data component only and say so."
+  },
+  "cognito": {
+    "_comment": "Amazon Cognito user pool rates (us-east-1). Verified 2026-11-14 via the AWS Pricing MCP server (get_pricing, us-east-1, OnDemand), service code AmazonCognito. Unit is USD per monthly active user (MAU) per month, tiered by MAU count. Prices are the per-MAU rate within each tier, not a blended rate.",
+    "essentials_per_mau": 0.015,
+    "plus_per_mau": 0.02,
+    "lite_per_mau_tiers": [
+      {"from_mau": 0, "to_mau": 90000, "rate": 0.0055},
+      {"from_mau": 90000, "to_mau": 990000, "rate": 0.0046},
+      {"from_mau": 990000, "to_mau": 9990000, "rate": 0.00325},
+      {"from_mau": 9990000, "to_mau": null, "rate": 0.0025}
+    ],
+    "user_pools_legacy_per_mau_tiers": [
+      {"from_mau": 0, "to_mau": 50000, "rate": 0.0055},
+      {"from_mau": 50000, "to_mau": 950000, "rate": 0.0046},
+      {"from_mau": 950000, "to_mau": 9950000, "rate": 0.00325},
+      {"from_mau": 9950000, "to_mau": null, "rate": 0.0025}
+    ],
+    "multi_region_replication_per_mau": {"essentials": 0.0045, "plus": 0.006},
+    "m2m_per_token_request_tiers": [
+      {"from_requests": 0, "to_requests": 250000, "rate": 0.00225},
+      {"from_requests": 250000, "to_requests": 5000000, "rate": 0.0015},
+      {"from_requests": 5000000, "to_requests": null, "rate": 0.001125}
+    ],
+    "multi_az_handling": "intrinsic",
+    "_note": "The Price List returns the Lite/Essentials/Plus feature plans and the legacy User Pool MAU SKUs side by side. Render's design does not select a plan; with no captured MAU count and no chosen plan, price Essentials (the default feature plan) as MAU x essentials_per_mau and name the assumption. Free-tier allowances are not in the Price List rows and are not modelled. Advanced-security, enterprise-federation and incremental-RPS SKUs exist in the Price List and are not recorded here."
+  },
+  "dms": {
+    "_comment": "AWS Database Migration Service replication-instance rates (us-east-1, single-AZ, On Demand, no license-included engines). Verified 2026-11-14 via the AWS Pricing MCP server (get_pricing, us-east-1, OnDemand), service code AWSDatabaseMigrationSvc, filtered on usagetype InstanceUsg:dms.<class>. Unit is USD per instance-hour. Multi-AZ, DMS Serverless (per DCU-hour) and replication storage SKUs also exist and are not recorded here.",
+    "instances": {
+      "dms.t3.micro": 0.0186,
+      "dms.t3.small": 0.0372,
+      "dms.t3.medium": 0.0745,
+      "dms.t3.large": 0.1489,
+      "dms.c5.large": 0.119,
+      "dms.r5.large": 0.176
+    },
+    "multi_az_handling": "single_az_only",
+    "_note": "Render emits DMS only as a PostgreSQL migration method with no replication-instance sizing table. Price it as a one-time cutover cost: instance-hour rate x expected migration hours; do not add it to the steady-state monthly total."
+  },
+  "lambda_durable_functions": {
+    "_comment": "AWS Lambda durable functions rates (us-east-1). Verified 2026-11-14 via the AWS Pricing MCP server (get_pricing, us-east-1, OnDemand), service code AWSLambda, filtered on usagetype containing 'urable'. Durable-execution SKUs are billed in addition to the standard lambda request and duration rates in the lambda section.",
+    "per_durable_operation": 0.000008,
+    "data_written_per_gb": 0.25,
+    "retained_data_per_gb_month": 0.15,
+    "multi_az_handling": "intrinsic",
+    "_note": "Units: Lambda-Durable-Execution-Operations is USD per DurableOperation; Written-Bytes is USD per GB written; TimedStorage is USD per GB-month retained. Operation and data volumes are not knowable from a Render Workflow definition; price only what a captured volume supports and say so."
+  },
   "_rate_row_coverage": {
     "_comment": "THE GAP CLASS this file kept hitting: a service can be present here while the specific RATE ROW a design needs is absent. 'ec2' is in the file; a design emitting m6i.2xlarge finds no row. The shared pricing-mode.md hierarchy keyed its first rung on SERVICE presence, so that case fell through labeled 'cached' with no number behind it. Rung 1b in pricing-mode.md now covers it.",
     "_who_owes_what": "A skill's sizing tables and this file are a PAIR: every instance_type/instance_class/node_type a sizing table can emit needs a row here, or the estimate has a hole. The pair is not enforced by any tool today. heroku never diverged because its sizing table and these rates were co-authored; a skill whose sizing tables were written from source-cloud SKUs will diverge on day one.",
@@ -308,9 +415,8 @@
     "documentdb": "Azure Cosmos DB (Mongo API) maps to DocumentDB. No documentdb section exists. db.t3.medium is a DOCUMENTDB instance class here — do not read it from rds_postgresql.instances: different service, and those rates are baked-in Multi-AZ. MCP: AmazonDocDB.",
     "fsx_windows": "Azure Files (SMB) maps to FSx for Windows File Server. No fsx section exists. Needs per-GiB-month SSD/HDD, single-AZ vs multi-AZ, and throughput capacity. MCP: AmazonFSx.",
     "ec2_windows_license": "See ec2._windows_note. MCP: AmazonEC2 with operatingSystem=Windows.",
-    "ecr": "Azure Container Registry maps to Amazon ECR. No ecr rates here or in the gcp-to-aws pricing cache. Needs per-GB-month storage + data-transfer rates. Surface it as a visible excluded line rather than pricing it silently. MCP: AmazonECR.",
+    "memorydb": "Render Key Value can map to Amazon MemoryDB (data.md candidate set). Render emits no MemoryDB node-class sizing table, so there is no class to price. One class (db.r7g.large Valkey) was seen on 2026-11-14 but a single row is not a sizing table. MCP: AmazonMemoryDB.",
     "dynamodb": "Azure Cosmos DB (Core/Table API) maps to DynamoDB. No dynamodb rates here. Needs on-demand vs provisioned WCU/RCU + storage. Surface as a visible excluded line; never fabricate. MCP: AmazonDynamoDB.",
-    "efs": "Azure Files (NFS) maps to EFS. No efs section. Needs per-GiB-month (Standard/IA) + throughput mode. Excluded line until priced. MCP: AmazonEFS.",
     "kinesis": "Azure Event Hubs (AMQP/SDK) maps to Kinesis Data Streams. No kinesis rates. Needs shard-hour + PUT payload units (on-demand vs provisioned). Excluded line. MCP: AmazonKinesis.",
     "neptune": "Azure Cosmos DB (Gremlin API) maps to Neptune. No neptune rates. Needs instance-hour + I/O + storage. Excluded line. MCP: AmazonNeptune.",
     "keyspaces": "Azure Cosmos DB (Cassandra API) maps to Amazon Keyspaces. No keyspaces rates. Needs on-demand/provisioned RU + storage. Excluded line. MCP: AmazonMCS.",
@@ -330,6 +436,9 @@
     "acm_certificate": "Public ACM certificates are free.",
     "route53_routing_policy": "A routing policy is a config of a hosted zone (route53 is priced); no separate charge.",
     "session_manager": "Systems Manager Session Manager (Azure Bastion target) has no per-hour charge — the deliberate cost win over an EC2 bastion.",
-    "ami": "An AMI itself has no charge beyond the EBS snapshot backing it (ebs snapshot is a separate concern)."
+    "ami": "An AMI itself has no charge beyond the EBS snapshot backing it (ebs snapshot is a separate concern).",
+    "aws_batch": "AWS Batch has no Price List service code (service-code search for 'batch' returned none on 2026-11-14) and AWS documents no additional charge for Batch itself. The EC2/Fargate/Lambda capacity it launches is priced on its own lines.",
+    "elastic_beanstalk": "Elastic Beanstalk has no Price List service code (service-code search for 'beanstalk' returned none on 2026-11-14) and AWS documents no additional charge for the service itself. Its EC2 instances, EBS root volumes, load balancer and data transfer are priced on their own lines (ec2, ebs, alb).",
+    "cicd_ephemeral_stack": "A preview environment is delivery behavior, not an AWS resource. The resources it creates are priced on their own lines; lifetime-dependent cost is a consideration, not a standalone rate."
   }
 }
