@@ -154,7 +154,7 @@ Before generating questions, scan the inventory to determine which questions app
 | Q10 — DNS strategy                   | Always                                                           | Never                                     |
 | Q11 — Fir intent                     | At least one app has `heroku_generation == "fir"`                | No Fir-generation apps                    |
 | Q12b — Containerization status       | Always                                                           | Never                                     |
-| Q12e — Containerization method       | Q12b answer is `buildpack_only` or `partial`                     | Every app already has a Dockerfile        |
+| Q12f — Containerization method       | Q12b answer is `buildpack_only` or `partial`                     | Every app already has a Dockerfile        |
 | Q12c — Compute target recommendation | Always                                                           | Never                                     |
 | Q12d — EB deploy method              | **Deferred to Generate** — defaulted here when the Q12c plan includes EB, asked at [C] Generate | All-Fargate/EKS plan, or never asked in Clarify |
 | Q12e — Release strategy              | Q12c plan routes a `web` formation to Fargate AND `dns_strategy` is `external` AND no Private Space | No Fargate web formation, or `dns_strategy` is `route53`, or a Private Space is detected (standard ECS forced) |
@@ -232,7 +232,7 @@ After determining active questions, organize them into **three progressive batch
 | **2** | Data / Network            | Q6, Q6b, Q7–Q10        | Database HA, migration approach, Redis HA, Kafka retention, VPC subnets, DNS strategy                                                                 |
 
 **Not in any batch — Generate-time questions:** Q4 (maintenance window), Q6c (DB migration method), Q12d (EB deploy method). Nothing before Generate reads their fields; asking them in Clarify makes a user who stops at the decision answer questions they will never use. Clarify writes their documented defaults and lists them in `metadata.questions_deferred_to_generate`; `estimate-assemble.md` § Confirm execution choices asks them when the user chooses **[C] Generate**.
-| **3** | Operational / Conditional | Q11, Q12b, Q12–Q15     | Fir intent, containerization status, container registry, log retention, alerting, cost optimization                                                   |
+| **3** | Operational / Conditional | Q11, Q12b, Q12f, Q12–Q15 | Fir intent, containerization status, container registry, log retention, alerting, cost optimization                                                   |
 
 **Batch 2 is active** if ANY of: Postgres present, Redis present, Kafka present, Private Space detected, or DNS question is needed (always true → Batch 2 always fires with at least Q10).
 
@@ -545,7 +545,7 @@ built.
 >
 > 1. Use this recommendation (default)
 > 2. Use Elastic Beanstalk for all EB-compatible formations; keep system-forced Fargate overrides for scaled non-web workers
-> 3. Use ECS Fargate for all dyno formations (web dynos land on ECS Express Mode — ALB, HTTPS, auto scaling and logs provisioned for you — unless Q12e or Q10 rules it out; workers get standard ECS services)
+> 3. Use ECS Fargate for all dyno formations (web dynos land on ECS Express Mode — ALB, HTTPS, auto scaling and logs provisioned for you — unless the release strategy (Q12e) or Q10 rules it out; workers get standard ECS services)
 > 4. Use EKS — team has Kubernetes expertise and wants full K8s control
 > 5. EKS acceptable — team can operate K8s, prefers managed node groups to reduce burden
 > 6. Set per-formation targets manually
@@ -868,11 +868,11 @@ per-app Dockerfile status, and Generate resolves the method per app from
 § "Containerization method per app"). It is not asked on the fast path (which defaults
 Q12b to `buildpack_only`).
 
-**Design impact:** Options 2 and 3 trigger Q12e and a "Containerization Prerequisites" section in the MIGRATION_GUIDE.md — Procfile→Dockerfile guidance for common buildpacks (Ruby, Node.js, Python, Go, Java) when Q12e is `dockerfile`, `pack`/Heroku-builder guidance when it is `cnb_heroku_builder`. Does not change design mappings. EB and Fargate Docker paths both require a Dockerfile/source bundle; EKS also requires containerization.
+**Design impact:** Options 2 and 3 trigger the containerization-method question (Q12f) and a "Containerization Prerequisites" section in the MIGRATION_GUIDE.md — Procfile→Dockerfile guidance for common buildpacks (Ruby, Node.js, Python, Go, Java) when Q12f is `dockerfile`, `pack`/Heroku-builder guidance when it is `cnb_heroku_builder`. Does not change design mappings. EB and Fargate Docker paths both require a Dockerfile/source bundle; EKS also requires containerization.
 
 ---
 
-#### Q12e — Containerization Method
+#### Q12f — Containerization Method
 
 > _Fires only when Q12b is `buildpack_only` or `partial`._
 >
@@ -933,7 +933,7 @@ are containerized for AWS.
 
 **Default:** 1 → `container_registry: "ecr"`
 
-**Validate (CNB):** when Q12e stored `containerization_method: "cnb_heroku_builder"`, option 2 is **not offered**. Present option 1 with: "Your buildpack apps are built by `pack` and published to ECR; Elastic Beanstalk and Fargate pull them with their ECR permissions. An existing registry is not supported for that path — choose a Dockerfile in Q12e if you need one." An answer of 2 in that case is invalid — re-ask with that sentence and never store `external` alongside `cnb_heroku_builder`. Generate halts on the combination if a stale preferences file carries it (`generate-terraform.md` Step 5.5), so the contradiction is resolved here, before it is written.
+**Validate (CNB):** when Q12f (containerization method) stored `containerization_method: "cnb_heroku_builder"`, option 2 is **not offered**. Present option 1 with: "Your buildpack apps are built by `pack` and published to ECR; Elastic Beanstalk and Fargate pull them with their ECR permissions. An existing registry is not supported for that path — choose a Dockerfile in Q12e if you need one." An answer of 2 in that case is invalid — re-ask with that sentence and never store `external` alongside `cnb_heroku_builder`. Generate halts on the combination if a stale preferences file carries it (`generate-terraform.md` Step 5.5), so the contradiction is resolved here, before it is written.
 
 ---
 
@@ -1025,7 +1025,7 @@ value will be rounded up this way.
 | Q10 — DNS                 | 1 (Route 53)                            | `dns_strategy: "route53"`                                                                                   |
 | Q11 — Fir intent          | 1 (exit Heroku)                         | `fir_intent: "exit_heroku"`                                                                                 |
 | Q12b — Containerization   | 2 (buildpack_only)                      | `containerization_status: "buildpack_only"` (no `dockerfile_apps`; the follow-up fires only on an explicit `partial` answer) |
-| Q12e — Containerization method | 1 (CNB, Heroku builder)            | `containerization_method: "cnb_heroku_builder"` (`"dockerfile"` without asking when Q12b is `containerized`) |
+| Q12f — Containerization method | 1 (CNB, Heroku builder)            | `containerization_method: "cnb_heroku_builder"` (`"dockerfile"` without asking when Q12b is `containerized`) |
 
 | Q12c — Compute target     | 1 (use computed recommendation)         | `design_constraints.compute_target` follows the computed plan: `default: "elastic_beanstalk"` plus any `system_forced` Fargate overrides at 40 or fewer non-release formations; `default: "ecs-fargate"` with `recommendation.scale_note` at 41 or more |
 | Q12d — EB deploy method   | 1 (GitHub Actions)                      | `eb_deploy_method: "github_actions"` when resolved compute plan includes EB                                 |

@@ -69,7 +69,7 @@ Write `$MIGRATION_DIR/preferences.json`:
     "container_registry": "<Q12 value>",
     "containerization_status": "<Q12b value>",
     "dockerfile_apps": ["<Q12b follow-up, partial estates only: inventory app names that already have a Dockerfile>"],
-    "containerization_method": "<Q12e value: cnb_heroku_builder|dockerfile>",
+    "containerization_method": "<Q12f value: cnb_heroku_builder|dockerfile>",
     "log_retention_days": "<Q13 value>",
     "alerting": "<Q14 value>",
     "cost_optimization": "<Q15 value>"

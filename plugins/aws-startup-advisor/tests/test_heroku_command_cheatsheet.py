@@ -100,12 +100,23 @@ def test_eb_shell_uses_ssm_session_not_eb_ssh() -> None:
     assert "GetParameter" not in ssm
     read = beanstalk[beanstalk.index('resource "aws_iam_role_policy" "eb_read_secrets_<app_name>"'):]
     assert ":parameter/${var.project_name}/*" in read
-    # The only managed policies on the role: the web tier, plus read-only ECR pull that the
-    # CNB path attaches so the Docker platform can fetch the pack-built image.
+    # The only managed policy on the role is the web tier. The CNB image pull is an inline,
+    # repository-scoped policy: AmazonEC2ContainerRegistryReadOnly reads every repository.
     assert re.findall(r'policy_arn\s+= "([^"]+)"', beanstalk) == [
         "arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier",
-        "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
     ]
+    assert "AmazonEC2ContainerRegistryReadOnly" not in re.sub(r"(?m)^#.*$", "", beanstalk)
+    ecr = beanstalk[beanstalk.index('resource "aws_iam_role_policy" "eb_ecr_pull_<app_name>"'):]
+    ecr = ecr[: ecr.index("\n}\n")]
+    statements = re.findall(r'Action\s*=\s*\[([^\]]*)\]\s*Resource\s*=\s*([^\n]+)', ecr)
+    scoped = {tuple(re.findall(r'"(ecr:[A-Za-z]+)"', actions)): resource.strip() for actions, resource in statements}
+    assert scoped == {
+        ("ecr:GetAuthorizationToken",): '"*"',
+        ("ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:BatchCheckLayerAvailability"): "aws_ecr_repository.<app_name>.arn",
+    }
+    assert "reads on Resource \"*\"" in beanstalk[: beanstalk.index('resource "aws_iam_role_policy" "eb_ecr_pull_<app_name>"')], (
+        "the template must explain why the managed ECR policy is not used"
+    )
 
 
 def test_config_rows_follow_the_backing_store() -> None:

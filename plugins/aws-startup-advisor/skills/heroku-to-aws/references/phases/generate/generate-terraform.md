@@ -1532,6 +1532,7 @@ resource "aws_codedeploy_deployment_group" "<app_sanitized>_web" {
 
 ### Express Mode web services (`aws_config.ecs_mode == "express"`)
 
+**Express Mode never receives a CNB app.** Its `image = var.<container_image_variable>` line needs a `container_image_*` variable, which a CNB app (`app_containerization_method == "cnb_heroku_builder"`) never declares: its image comes from `aws_ecr_repository.<app>.repository_url` and `var.image_tag_<app>`, with `desired_count` 0 until the tag is set. Design therefore records `ecs_mode: "standard"` with `ecs_mode_reason: "cnb_image"` for CNB web formations, and they take the standard ECS service path above. If a saved design carries `ecs_mode: "express"` for a CNB app, do not emit this block for it: emit the standard task definition, service and ALB instead and tell the user to re-run Design.
 For a Fargate entry with `aws_config.ecs_mode == "express"`, emit the following **instead of** the task definition, `aws_ecs_service`, and ALB resources above (the log group and the `ecs_execution` / `ecs_task` IAM roles from Step 5 are still emitted). Every reference below resolves to a resource this skill emits: the infrastructure role carries its own inline `jsonencode` trust policy like the other ECS roles in Step 5 (there is no `data.aws_iam_policy_document.ecs_assume` in this skill), the task security group is `aws_security_group.app` from Step 5 (there is no `aws_security_group.ecs_tasks`), and the infrastructure role's managed policy is the documented `service-role/` ARN.
 
 ```hcl
@@ -1734,7 +1735,7 @@ Skip this step if no services in `aws-design.json` have `aws_service: "Elastic B
 
 ### CNB apps on Elastic Beanstalk
 
-`app_containerization_method` is resolved per app in Step 5.5 § "Containerization method per app", and `ecr.tf` is emitted there (it does not depend on this step). For every EB app whose `app_containerization_method` is `"cnb_heroku_builder"`: add the ECR read-only attachment to that app's EB instance role (`beanstalk.tf` below) and emit the CNB variant of the deploy workflow for that app — it has no Dockerfile, so its EB source bundle is a `Dockerrun.aws.json` that points at the image in ECR.
+`app_containerization_method` is resolved per app in Step 5.5 § "Containerization method per app", and `ecr.tf` is emitted there (it does not depend on this step). For every EB app whose `app_containerization_method` is `"cnb_heroku_builder"`: add the repository-scoped inline ECR pull policy (`eb_ecr_pull_<app_name>`, no account-wide managed policy) to that app's EB instance role (`beanstalk.tf` below) and emit the CNB variant of the deploy workflow for that app — it has no Dockerfile, so its EB source bundle is a `Dockerrun.aws.json` that points at the image in ECR.
 
 Read `preferences.design_constraints.eb_deploy_method.value`; default to `"github_actions"` when the field is absent. Always generate `beanstalk.tf` for EB services, then generate exactly one deploy path:
 
@@ -1997,10 +1998,34 @@ resource "aws_iam_role_policy_attachment" "eb_web_tier_<app_name>" {
 }
 
 # Only when this app's app_containerization_method == "cnb_heroku_builder": the EB
-# Docker platform pulls the pack-built image from ECR, so the instance role needs read access.
-resource "aws_iam_role_policy_attachment" "eb_ecr_pull_<app_name>" {
-  role       = aws_iam_role.eb_instance_<app_name>.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+# Docker platform pulls the pack-built image from ECR, so the instance role needs read access
+# to this app's repository.
+# Do NOT attach the AmazonEC2ContainerRegistryReadOnly managed policy here: it allows image
+# reads on Resource "*", so every app's instance role could pull every repository in the
+# account. This inline policy scopes the pull actions to this app's repository;
+# ecr:GetAuthorizationToken is not resource-scoped and must stay on "*".
+resource "aws_iam_role_policy" "eb_ecr_pull_<app_name>" {
+  name = "${var.project_name}-eb-ecr-pull"
+  role = aws_iam_role.eb_instance_<app_name>.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["ecr:GetAuthorizationToken"]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ecr:BatchGetImage",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchCheckLayerAvailability"
+        ]
+        Resource = aws_ecr_repository.<app_name>.arn
+      }
+    ]
+  })
 }
 # Session Manager access for `aws ssm start-session` (the `heroku run bash` equivalent in
 # MIGRATION_GUIDE.md § Day-to-day commands). The environment has no EC2 key pair and no

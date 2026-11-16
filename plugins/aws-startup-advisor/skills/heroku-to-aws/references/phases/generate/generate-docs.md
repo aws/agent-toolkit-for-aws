@@ -27,7 +27,7 @@ Scan `aws-design.json`.services[] to determine which compute and data store type
 | Fargate present       | Any service with `aws_service == "Fargate"` or `aws_service == "ALB"`                        | `has_fargate = true`       |
 | Fargate web present   | Any service with `aws_service == "ALB"`, or `aws_service == "Fargate"` and `aws_config.process_type == "web"` (workers alone never count) | `has_fargate_web = true` |
 | Standard ALB present  | Any service with `aws_service == "ALB"` (a standard-mode Fargate web formation; a Fargate entry with no `ecs_mode` key is standard and always has one) | `has_alb = true`           |
-| Express web present   | Any service with `aws_service == "Fargate"`, `aws_config.process_type == "web"`, and `aws_config.ecs_mode == "express"` | `has_express = true`       |
+| Express web present   | Any service with `aws_service == "Fargate"`, `aws_config.process_type == "web"`, and `aws_config.ecs_mode == "express"` (never a CNB app: Design records `standard` with `ecs_mode_reason: "cnb_image"` for those) | `has_express = true`       |
 | Blue/green web present | Any service with `aws_service == "Fargate"`, `aws_config.process_type == "web"`, `aws_config.ecs_mode == "standard"`, and `preferences.design_constraints.release_strategy == "blue_green"` | `has_blue_green = true`    |
 | EKS present           | Any service with `aws_service == "EKS"` (`design-eks.md` "All-or-Nothing Rule": then no EB or Fargate web service exists) | `has_eks = true`           |
 | Postgres present      | Any service with `aws_service` containing `"RDS PostgreSQL"` or `"Aurora PostgreSQL"`        | `has_postgres = true`      |
@@ -47,7 +47,7 @@ Also extract:
 - `migration_approach` — from `preferences.json`.global.migration_approach (`"full_cutover"` or `"interim_cutover_data_first"`)
 - `migration_method` — from `preferences.json`.data.migration_method (`"pg_dump_restore"`, `"dms"`, `"bucardo"`, `"wal_g"`)
 - `containerization_status` — from `preferences.json`.operational.containerization_status (`"containerized"`, `"buildpack_only"`, `"partial"`)
-- `containerization_method` — from `preferences.json`.operational.containerization_method; **default `"dockerfile"` when absent** (preferences written before Q12e existed have no field — the same fallback `generate-terraform.md` Step 5.5 applies, so the Dockerfile branches below still render for them). `"cnb_heroku_builder"` or `"dockerfile"`.
+- `containerization_method` — from `preferences.json`.operational.containerization_method; **default `"dockerfile"` when absent** (preferences written before the containerization-method question (Q12f) existed have no field — the same fallback `generate-terraform.md` Step 5.5 applies, so the Dockerfile branches below still render for them). `"cnb_heroku_builder"` or `"dockerfile"`.
 - `app_containerization_method` — per app, resolved as in `generate-terraform.md` Step 5.5 § "Containerization method per app": `"dockerfile"` when the app's inventory `stack` is `"container"` **or** its name is in `preferences.json`.operational.dockerfile_apps (the Q12b follow-up: apps that already have a Dockerfile, whatever stack they run on today), or when `containerization_status` is `"containerized"`; otherwise `containerization_method`. `has_cnb_app = true` when any app resolves to `"cnb_heroku_builder"`; `has_dockerfile_app = true` when any app resolves to `"dockerfile"`. Per-app blocks (`{{app_name}}` sections) test `app_containerization_method`; estate-level sections test these two flags.
 - `cnb_builder_tag` — per app: `22` for stack `heroku-22`, `24` for `heroku-24`, otherwise `26`
 - `target_exit_date` — from `preferences.json`.global.target_exit_date (ISO date or null)
@@ -1245,7 +1245,7 @@ Export all Heroku config vars and import to AWS Secrets Manager / Parameter Stor
 
 ### ECS Express Mode (web dynos on Fargate)
 
-Web formations routed to Fargate with `aws_config.ecs_mode: "express"` are emitted as `aws_ecs_express_gateway_service` (see `generate-terraform.md` Step 6): AWS provisions the ALB, HTTPS listener and certificate, auto scaling, and logs, and exposes an AWS-provided HTTPS endpoint (`<app>_web_endpoint` output). Workers, Route 53-cutover designs, oversized tasks, and non-canary release strategies use the standard ECS/Fargate Terraform. Express Mode is a shape of the Fargate override, not a replacement for the Elastic Beanstalk default without explicit user choice.
+Web formations routed to Fargate with `aws_config.ecs_mode: "express"` (never a CNB app, whose image comes from its own ECR repository and a tag variable that Express Mode cannot reference; those get a standard ECS service and ALB) are emitted as `aws_ecs_express_gateway_service` (see `generate-terraform.md` Step 6): AWS provisions the ALB, HTTPS listener and certificate, auto scaling, and logs, and exposes an AWS-provided HTTPS endpoint (`<app>_web_endpoint` output). Workers, Route 53-cutover designs, oversized tasks, and non-canary release strategies use the standard ECS/Fargate Terraform. Express Mode is a shape of the Fargate override, not a replacement for the Elastic Beanstalk default without explicit user choice.
 
 {{ENDIF}}
 

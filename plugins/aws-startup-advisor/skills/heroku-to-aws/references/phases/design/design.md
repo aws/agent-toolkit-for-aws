@@ -84,6 +84,7 @@ it maps ALL formations to EKS pods + an `eks_cluster` aggregate instead of the
 EB/Fargate paths. On the EB default path, persistent non-web formations with
 `quantity > 1` route to Fargate to preserve Heroku worker capacity because EB
 SingleInstance cannot horizontally scale that process model.
+On the Fargate path, a web formation gets `ecs_mode: "express"` only when its app does not resolve to CNB (`app_containerization_method != "cnb_heroku_builder"`); CNB web formations use a standard ECS service (`ecs_mode_reason: "cnb_image"`) because their image comes from the app's ECR repository and an image-tag variable, which the Express template does not support.
 
 ---
 
