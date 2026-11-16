@@ -4,7 +4,6 @@ variable "operations_email" {
   description = "Operations alternate contact and alert subscription email"
   type        = string
 }
-data "aws_partition" "current" {}
 ########## Account Baseline ##########
 variable "billing_email" {
   description = "Billing alternate contact and budget notification email"
