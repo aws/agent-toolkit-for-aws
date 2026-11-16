@@ -31,6 +31,7 @@ Route each supported selected target to a domain file and record that file in `g
 | Project/environment boundaries | Consume into VPC, tags, state, and deployment boundaries without a fake standalone service |
 
 Workflow and Workflow task rows follow `generate-infra-workflow.md`: Terraform is emitted only for the semantics that file proves, and every other Workflow stays `unsupported` with `conditional_workflow_generation_unsupported`. AI is always `deferred_shared_ai_engine`; emit no model, adapter, Bedrock, or AI Terraform.
+For `terraform/network.tf`, `storage.tf` and `delivery.tf`, also follow `references/phases/generate/generate-artifacts-infra-network-storage-delivery.md`; its rules refine the matching rows above.
 
 Branch each Fargate mapping on `aws_config.ecs_mode`. A mapping with no `ecs_mode` key is `"standard"`, never an error and never `"express"`.
 
