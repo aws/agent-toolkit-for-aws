@@ -282,7 +282,7 @@ In your local environment, configure AWS credentials and set your target region 
 
 - An AWS account
 - Local AWS credentials and config
-- [uv](https://docs.astral.sh/uv/getting-started/installation/) (for the MCP server and the locked `render-to-aws` Python tools)
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) (for the MCP server and the locked `render-to-aws` Python tools; an unfinished Render Discover halts before capture without it, later phases on a run with completed Discover output do not need it except Generate's Blueprint semantic revalidation and final report validation, and ambient Python never replaces it)
 - Python 3.12 (required by the locked `render-to-aws` script project; other bundled validators require Python 3)
 - Git (the `llm-to-bedrock` flow delivers its rewrite on a branch)
 - The Heroku CLI, authenticated, only if you want live discovery in `heroku-to-aws`
