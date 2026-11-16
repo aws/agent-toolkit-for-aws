@@ -308,6 +308,33 @@ def test_render_is_registered_without_mcp_or_plan_handoff_drift() -> None:
     assert not (SKILL_ROOT / "plan.json").exists()
 
 
+def test_baseline_fragment_registered_and_gated() -> None:
+    generate_dir = PHASE_ROOT / "generate"
+    generate = frontmatter(generate_dir / "generate.md")
+    entry = next(item for item in generate["_fragments"] if item["_id"] == "artifacts-baseline")
+    assert entry["_trigger"] == {"_always": True}
+    fragment = PLUGIN_ROOT / "skills/render-to-aws/references" / entry["_file"]
+    assert fragment.is_file()
+    assert frontmatter(fragment)["_fragment"] == "artifacts-baseline"
+    assert "artifacts-baseline" in frontmatter(generate_dir / "generate-assemble.md")["_reads"]
+    infra = (generate_dir / "generate-artifacts-infra.md").read_text(encoding="utf-8")
+    assert infra.count("artifacts-baseline") == 1
+    text = fragment.read_text(encoding="utf-8")
+    for phrase in (
+        "desired_count", "global.compliance", "soc2", "pci", "hipaa", "fedramp", "Remote State",
+        "monitoring.tf", "kms.tf", "backup.tf", "Amazon EFS", "exempt", "no new warning code",
+        "CacheClusterId", "cloudwatch.amazonaws.com", "aws:SourceAccount", "cloudtrail_retention_days", "End Account Baseline",
+    ):
+        assert phrase in text, phrase
+    assert "{{" not in text
+
+
+def test_warning_code_enum_keeps_existing_order_for_append_only_merges() -> None:
+    schema = json.loads((SKILL_ROOT / "references/shared/schema-generation-warnings.json").read_text(encoding="utf-8"))
+    codes = schema["$defs"]["warning"]["properties"]["code"]["enum"]
+    assert codes[:3] == ["deferred_shared_ai_engine", "conditional_workflow_generation_unsupported", "unpriced_cost_floor"]
+
+
 PREFIX = 'uv run --project "$SKILL_BASE/scripts" --frozen python'
 
 
