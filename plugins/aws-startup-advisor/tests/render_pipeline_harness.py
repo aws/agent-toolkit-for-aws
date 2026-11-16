@@ -78,6 +78,7 @@ CAPACITY_COSTS = {
     "render.environment_group": 2.0,
     "render.build_source": 10.0,
     "render.build_artifact": 0.0,
+    "render.persistent_disk": 1.5,
     "render.custom_domain": 0.0,
     "render.project": 0.0,
     "render.environment": 0.0,
@@ -174,8 +175,6 @@ def estimate_from_design(design: dict[str, Any]) -> dict[str, Any]:
         for index, mapping in enumerate(design["mappings"], 1):
             kind = mapping["render_kind"]
             amount = CAPACITY_COSTS.get(kind)
-            if kind == "render.persistent_disk":
-                amount = None
             evidence_sufficient = scenario_name == "right_sized" and kind in RIGHT_SIZED_FACTORS
             if amount is not None and evidence_sufficient:
                 amount = round(amount * RIGHT_SIZED_FACTORS[kind], 2)
@@ -187,7 +186,7 @@ def estimate_from_design(design: dict[str, Any]) -> dict[str, Any]:
                     "monthly_amount": amount,
                     "pricing_source": "unavailable" if amount is None else ("no_direct_charge" if amount == 0 else "cached"),
                     "confidence": "measured" if evidence_sufficient else mapping["confidence"],
-                    "exclusion_reason": "No reviewed EFS rate row" if amount is None else None,
+                    "exclusion_reason": "No reviewed rate row" if amount is None else None,
                     "evidence_sufficient": evidence_sufficient,
                 }
             )
@@ -208,11 +207,11 @@ def estimate_from_design(design: dict[str, Any]) -> dict[str, Any]:
         "timestamp": "2026-10-21T12:00:00Z",
         "pricing_source": {
             "status": "cached",
-            "message": "Deterministic mixed-estate rates use the reviewed cache; EFS remains unavailable.",
+            "message": "Deterministic mixed-estate rates use the reviewed cache, including the EFS row.",
             "services_by_source": {"cached": sorted({row["aws_service"] for row in design["mappings"]}), "fallback": [], "estimated": []},
-            "services_with_missing_fallback": ["efs"],
+            "services_with_missing_fallback": [],
         },
-        "accuracy_confidence": "known-cost floors; EFS is unpriced",
+        "accuracy_confidence": "all lines priced from the reviewed cache",
         "current_costs": {"source": "user_stated", "render_monthly": 123.45, "baseline_note": "Fixture user-stated monthly amount", "breakdown": {}},
         "projected_costs": {
             "aws_monthly_premium": capacity,
@@ -223,7 +222,7 @@ def estimate_from_design(design: dict[str, Any]) -> dict[str, Any]:
         },
         "scenarios": scenarios,
         "delta_monthly_usd": delta,
-        "delta_explanation": f"Evidence-based right-sizing changes the known-cost floor by ${delta:.2f}; EFS remains unpriced.",
+        "delta_explanation": f"Evidence-based right-sizing changes the known-cost floor by ${delta:.2f}.",
         "cost_comparison": {},
         "migration_cost_considerations": {"human_labor_monthly_usd": None},
         "roi_analysis": {},
@@ -231,7 +230,7 @@ def estimate_from_design(design: dict[str, Any]) -> dict[str, Any]:
         "complexity_tier": "large",
         "complexity_inputs": {"service_count": len(design["mappings"])},
         "financial_summary": {},
-        "recommendation": {"path": "migrate_phased", "migrate_if": ["Validate EFS pricing"], "stay_if": []},
+        "recommendation": {"path": "migrate_phased", "migrate_if": ["Confirm EFS provisioned capacity"], "stay_if": []},
         "ai_track": {"status": "deferred_shared_ai_engine", "estimated_cost": None},
     }
 
@@ -311,7 +310,6 @@ def ledger_from_design(design: dict[str, Any], preferences: dict[str, Any] | Non
     warnings = [
         {"code": "deferred_shared_ai_engine", "subject": "AI execution", "detail": "AI execution remains deferred to the provider-neutral shared engine.", "blocking": False},
         {"code": "conditional_workflow_generation_unsupported", "subject": "Workflow artifacts", "detail": "Workflow execution semantics require manual validation before artifact generation.", "blocking": False},
-        {"code": "unpriced_cost_floor", "subject": "Estimate floor", "detail": "EFS has no reviewed rate and both totals are known-cost floors.", "blocking": False},
         *express_not_selected_warnings(design, preferences),
     ]
     return {
@@ -1556,7 +1554,7 @@ Fence target writers, restore Render writers and DNS, preserve copied data, and 
 
 ## Known limitations
 
-EFS remains an unpriced floor. AI is `deferred_shared_ai_engine`; Workflow automation is `conditional_workflow_generation_unsupported`.
+EFS is priced from the reviewed rate row. AI is `deferred_shared_ai_engine`; Workflow automation is `conditional_workflow_generation_unsupported`.
 
 ## Complete source accounting
 
