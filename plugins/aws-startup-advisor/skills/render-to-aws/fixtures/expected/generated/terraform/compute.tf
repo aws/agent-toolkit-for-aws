@@ -100,30 +100,6 @@ resource "aws_ecs_service" "web" {
   }
 }
 
-resource "aws_service_discovery_private_dns_namespace" "application" {
-  name = "${var.environment}.render-migration.internal"
-  vpc  = aws_vpc.main.id
-}
-
-resource "aws_service_discovery_service" "private" {
-  name = "private"
-
-  dns_config {
-    namespace_id = aws_service_discovery_private_dns_namespace.application.id
-
-    dns_records {
-      ttl  = 10
-      type = "A"
-    }
-
-    routing_policy = "MULTIVALUE"
-  }
-
-  health_check_custom_config {
-    failure_threshold = 1
-  }
-}
-
 resource "aws_ecs_task_definition" "private" {
   family                   = "${local.name_prefix}-private"
   network_mode             = "awsvpc"

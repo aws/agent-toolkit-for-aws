@@ -9,6 +9,8 @@ _contributes:
 
 This fragment is the only writer of `terraform/compute.tf`; `artifacts-infra` writes the other Terraform files. Apply this guidance only to design rows routed to `terraform/compute.tf`. Network, data, storage, and delivery resources stay with their own guidance; reference them by variable or resource address and do not re-create them here.
 
+This fragment owns three shared addresses that other fragments (for example `workflow.tf` ECS tasks) reference by name: the cluster `aws_ecs_cluster.main`, the task execution role `aws_iam_role.ecs_execution`, and the task role `aws_iam_role.ecs_task`. Declare them under exactly these addresses whenever this fragment runs, including for an Express-only stack (Express takes the cluster and `execution_role_arn`) and for a stack whose only ECS rows are Workflow ECS tasks. Network owns `aws_security_group.data`, the Cloud Map namespace, and the Cloud Map service.
+
 ## Common rules
 
 - Emit one resource set per design row and tag it `SourceResourceId = "<source_resource_id>"`.
@@ -23,23 +25,31 @@ This fragment is the only writer of `terraform/compute.tf`; `artifacts-infra` wr
 - Secrets use Secrets Manager or Parameter Store ARNs only: `secrets = [{ name, valueFrom }]` for ECS, `aws:elasticbeanstalk:application:environmentsecrets` for Elastic Beanstalk, and a runtime lookup for Lambda. Never put a secret in an `environment` value. A JSON secret key uses `${arn}:key::`.
 - IAM trust policies name the exact service principal. Every Allow lists actions and resource ARNs. Never use `Action = "*"`. Use `Resource = "*"` only where the API requires it, in its own statement. Build managed-policy ARNs with `data.aws_partition.current.partition`. Never write a literal account ID.
 - Architecture defaults to x86_64 unless the design records `arm64`. For `arm64`, set `runtime_platform { cpu_architecture = "ARM64" }` on ECS, `architectures = ["arm64"]` on Lambda, or Graviton instance types.
-- Create every log group in Terraform with `retention_in_days` set (default 30, or the recorded preference). Never rely on implicit log group creation.
+- Create every log group in Terraform with `retention_in_days` set (the resolved Clarify answer `observability.log_retention`, default 30 days; for Elastic Beanstalk `RetentionInDays` round up to an accepted value). Never rely on implicit log group creation.
+
+## ECS on Fargate: Express vs standard mode
+
+Branch each Fargate mapping on `aws_config.ecs_mode`. A mapping with no `ecs_mode` key is `"standard"`, never an error and never `"express"`.
+
+- `"express"`: emit one `aws_ecs_express_gateway_service` (provider 6.23.0 or newer, `cpu_architecture` 6.71.0 or newer) instead of the task definition, `aws_ecs_service`, ALB, target group, and listener. Pass `cluster`, `execution_role_arn`, `infrastructure_role_arn` (one IAM role per design, trusting `ecs.amazonaws.com`, attached to `arn:aws:iam::aws:policy/service-role/AmazonECSInfrastructureRoleforExpressGatewayServices`), a `service_name` containing the sanitized Render service name, `wait_for_steady_state = true`, `cpu` and `memory` within 256 to 4096 units and 512 to 8192 MiB, `cpu_architecture`, `primary_container` (image digest from ECR promotion, port, log group, `environment`, `secret` references only), `network_configuration`, `scaling_target`, and `health_check_path`. Subnets follow `aws_config.placement`: public placement uses the public subnets and records the accepted deviation from the private-subnet rule as a non-blocking `ecs_express_public_subnet_placement` warning and in the Terraform README. Output `ingress_paths[0].endpoint` as the service URL. Add `depends_on` on the infrastructure role's policy attachment. Emit no separate ALB for this service. Express rows skip the target group and listener, so the target group, listener and `depends_on` rules in the sections below apply only to `"standard"` rows.
+- `"standard"`: emit the existing task definition, service, and ALB set. Write the deployment strategy explicitly from `compute.release_strategy`: `rolling` means no `deployment_controller` block; `blue_green` on a load-balanced service means `deployment_controller { type = "CODE_DEPLOY" }`, a green target group, a test listener, and CodeDeploy resources; `canary` (answered or defaulted) where Express was ruled out means a rolling update plus a non-blocking `ecs_express_not_selected_rolling_release` warning for that service, naming `ecs_mode_reason` and repeated in the Terraform README. The warning applies when `ecs_mode_reason` is anything other than `release_strategy`, `no_http_listener`, or `private_discovery`: the user got canary by default or by choice and loses it, and a service with no `compute.release_strategy` answer (worker, cron, private discovery) never warns.
 
 ## ECS on Fargate: public web service
 
 Required resources: cluster with Container Insights, log group, execution role, task role, task definition, service, and an ALB target group with `target_type = "ip"`. The listener and certificate belong to network guidance; the service only references the target group.
 
-- Execution role: trust `ecs-tasks.amazonaws.com`, attach `AmazonECSTaskExecutionRolePolicy`, and add an inline policy scoped to the exact secret and parameter ARNs (`secretsmanager:GetSecretValue`, `ssm:GetParameters`, and `kms:Decrypt` only when the design names a customer-managed key).
+- Execution role: trust `ecs-tasks.amazonaws.com`, attach `AmazonECSTaskExecutionRolePolicy`, and add an inline policy scoped to the exact secret and parameter ARNs (`secretsmanager:GetSecretValue`, `ssm:GetParameters`, and `kms:Decrypt` on the key that encrypts any referenced secret). That key is the customer-managed key the design names, or the data-tier key `aws_kms_key.stack` from `kms.tf` when it exists and the secret (for example the database master secret) is encrypted with it. Scope the statement to those exact key ARNs, and omit it when every referenced secret uses an AWS-managed key.
 - Task role: application permissions only, empty by default, never the same role as the execution role. Add the `ssmmessages` channel actions only when `enable_execute_command = true`.
 - Task definition: `network_mode = "awsvpc"`, `requires_compatibilities = ["FARGATE"]`, a valid Fargate cpu/memory pair, `essential = true`, an `awslogs` log configuration, `stopTimeout` from `graceful_shutdown_seconds` (Fargate maximum 120), and `readonlyRootFilesystem = true` where the source allows it. Add a container `healthCheck` (command, interval, timeout, retries, `startPeriod`) when the source declares a health path and no load balancer health check already covers that path. When an ALB target group checks the path, omit the container `healthCheck`.
 - Service: `launch_type = "FARGATE"`, `desired_count` from design, private subnets with `assign_public_ip = false`, `health_check_grace_period_seconds` behind an ALB, `deployment_circuit_breaker { enable = true, rollback = true }`, explicit `deployment_minimum_healthy_percent` and `deployment_maximum_percent`, and `depends_on` the listener.
+- Autoscaling: when `monitoring.tf` attaches an `aws_appautoscaling_target` to a service (its `desired_count` is greater than 1 or the design records a scaling preference), write `lifecycle { ignore_changes = [desired_count] }` on that `aws_ecs_service` here, so `monitoring.tf` never edits `compute.tf`.
 - Anti-patterns: public IPs on tasks, a public ALB for private or worker services, one role serving as both task and execution role, `latest` tags, secrets in `environment`, missing log retention.
 
 ## ECS on Fargate: private service
 
 Follow the public web rules without a public ALB or public ingress.
 
-- Register a Cloud Map service (`aws_service_discovery_service` with `health_check_custom_config { failure_threshold = 1 }`) and set `service_registries` on the ECS service.
+- Set `service_registries` on the ECS service from the network output `service_discovery_service_arn`. Do not declare the Cloud Map namespace or `aws_service_discovery_service` here; `network.tf` owns both.
 - Allow security group ingress only from the named caller security groups.
 - For EFS, declare the task `volume` with `transit_encryption = "ENABLED"` and an access point, add `mountPoints` to the container, and set `depends_on = [aws_efs_mount_target.<name>]` on the service so each mount target exists before tasks start.
 - Add an internal ALB only when the design row says so.

@@ -136,8 +136,7 @@ def test_compute_fragment_is_registered_and_covers_every_compute_target() -> Non
         "mount target",
     ):
         assert term in text, term
-    assert "ecs_mode" not in text
-    assert "Express" not in text
+    assert "`aws_config.ecs_mode`" in text and "aws_ecs_express_gateway_service" in text
 
 
 def test_assembler_reads_the_compute_fragment_and_one_fragment_writes_compute_tf() -> None:
@@ -193,3 +192,31 @@ def test_golden_compute_follows_the_mandatory_fragment_rules() -> None:
     assert "health_check_grace_period_seconds" in web
     assert re.search(r'ArnLike\s*=\s*\{\s*"ecs:cluster"', golden)
     assert golden.count("awslogs-group") == 4
+
+GENERATE_REFS = SKILL_ROOT / "references/phases/generate"
+def test_compute_fragment_pins_shared_addresses_and_cloud_map_ownership() -> None:
+    fragment = (GENERATE_REFS / "generate-infra-compute.md").read_text(encoding="utf-8")
+    for address in ("aws_ecs_cluster.main", "aws_iam_role.ecs_execution", "aws_iam_role.ecs_task"):
+        assert f"`{address}`" in fragment, address
+    assert "Do not declare the Cloud Map namespace or `aws_service_discovery_service` here" in fragment
+    assert "`service_discovery_service_arn`" in fragment
+    assert "Register a Cloud Map service" not in fragment
+    assert "`observability.log_retention`" in fragment
+    assert "`aws_kms_key.stack`" in fragment and "kms:Decrypt" in fragment
+    assert "lifecycle { ignore_changes = [desired_count] }" in fragment
+    golden = SKILL_ROOT / "fixtures/expected/generated/terraform"
+    compute = (golden / "compute.tf").read_text(encoding="utf-8")
+    network = (golden / "network.tf").read_text(encoding="utf-8")
+    assert "aws_service_discovery_service" not in compute.replace("aws_service_discovery_service.private.arn", "")
+    assert network.count('resource "aws_service_discovery_service"') == 1
+    assert 'output "service_discovery_service_arn"' in (golden / "outputs.tf").read_text(encoding="utf-8")
+def test_compute_trigger_includes_workflow_ecs_rows_in_both_fragment_lists() -> None:
+    generate = (GENERATE_REFS / "generate.md").read_text(encoding="utf-8")
+    assemble = (GENERATE_REFS / "generate-assemble.md").read_text(encoding="utf-8")
+    assert "maps a Workflow task row to ECS" in generate
+    assert "maps a Workflow task row to ECS" in assemble
+def test_baseline_leaves_autoscaling_lifecycle_to_compute_and_covers_per_target_alarms() -> None:
+    baseline = (GENERATE_REFS / "generate-artifacts-baseline.md").read_text(encoding="utf-8")
+    assert "this file never edits `compute.tf`" in baseline
+    for resource in ("aws_ecs_express_gateway_service", "aws_rds_cluster", "aws_elasticache_serverless_cache"):
+        assert resource in baseline, resource

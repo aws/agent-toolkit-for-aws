@@ -446,7 +446,7 @@ resource "aws_ecs_service" "__NAME__" {
     return network, compute
 
 
-def _service_blocks(name: str, source_id: str, kind: str) -> str:
+def _service_blocks(name: str, source_id: str, kind: str) -> tuple[str, str]:
     port = 10000 if kind == "private" else None
     security_group = "private" if kind == "private" else "worker"
     port_mapping = '    portMappings = [{ containerPort = 10000, hostPort = 10000, protocol = "tcp" }]\n' if port else ""
@@ -463,7 +463,7 @@ def _service_blocks(name: str, source_id: str, kind: str) -> str:
   }
 }
 ''' if kind == "private" else ""
-    block = discovery + '''resource "aws_ecs_task_definition" "__NAME__" {
+    block = '''resource "aws_ecs_task_definition" "__NAME__" {
   family                   = "render-__NAME_HYPHEN__"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
@@ -501,7 +501,8 @@ __REGISTRY__  tags = { SourceResourceId = "__SOURCE_ID__" }
     }
     for old, new in substitutions.items():
         block = block.replace(old, new)
-    return block
+        discovery = discovery.replace(old, new)
+    return discovery, block
 
 
 def _cron_blocks(name: str, source_id: str) -> str:
@@ -857,21 +858,6 @@ resource "aws_ecs_service" "web" {
   depends_on = [aws_lb_listener.https]
   tags       = { SourceResourceId = "__WEB_SOURCE_ID__" }
 }
-resource "aws_service_discovery_private_dns_namespace" "application" {
-  name = "production.render-migration.internal"
-  vpc  = aws_vpc.main.id
-}
-resource "aws_service_discovery_service" "private" {
-  name = "private"
-  dns_config {
-    namespace_id = aws_service_discovery_private_dns_namespace.application.id
-    dns_records {
-      ttl  = 10
-      type = "A"
-    }
-    routing_policy = "MULTIVALUE"
-  }
-}
 resource "aws_ecs_task_definition" "private" {
   family                   = "render-migration-private"
   network_mode             = "awsvpc"
@@ -1134,6 +1120,22 @@ resource "aws_s3_bucket_policy" "static_cloudfront" {
   })
 }
 '''
+    network += '''resource "aws_service_discovery_private_dns_namespace" "application" {
+  name = "production.render-migration.internal"
+  vpc  = aws_vpc.main.id
+}
+resource "aws_service_discovery_service" "private" {
+  name = "private"
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.application.id
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+    routing_policy = "MULTIVALUE"
+  }
+}
+'''
     first_by_kind = {kind: rows[0] for kind, rows in mappings_by_kind.items()}
     compute = (
         compute.replace("__WEB_SOURCE_ID__", first_by_kind["render.web_service"]["source_resource_id"])
@@ -1148,7 +1150,9 @@ resource "aws_s3_bucket_policy" "static_cloudfront" {
         compute += extra_compute
     for kind, service_kind in (("render.private_service", "private"), ("render.background_worker", "worker")):
         for index, mapping in enumerate(mappings_by_kind[kind][1:], 2):
-            compute += _service_blocks(_mapping_name(kind, index), mapping["source_resource_id"], service_kind)
+            extra_network, extra_compute = _service_blocks(_mapping_name(kind, index), mapping["source_resource_id"], service_kind)
+            network += extra_network
+            compute += extra_compute
     for index, mapping in enumerate(mappings_by_kind["render.cron_job"][1:], 2):
         compute += _cron_blocks(_mapping_name("render.cron_job", index), mapping["source_resource_id"])
     cron_task_arns = ", ".join(
