@@ -147,8 +147,10 @@ Conservative scope — only universally-junk patterns; `.venv/` / `node_modules/
 ## Strategy selection (check FIRST)
 
 If your context has `Rewrite strategy: runtime_openai`, use the runtime OpenAI lane below.
-For `Rewrite strategy: mantle`, use the Mantle express lane. Otherwise use the Converse
-rewrite. The selected `Target API surface` must match what the evaluator verified.
+For `Rewrite strategy: runtime_messages`, use the Runtime Anthropic Messages lane.
+For `Rewrite strategy: mantle`, use the Mantle express lane. Otherwise (an explicit `converse`
+plan) use the Converse rewrite. The selected `Target API surface` must match what the
+evaluator verified.
 
 ### Runtime OpenAI lane
 
@@ -176,6 +178,59 @@ In §12 keep `openai>=2.45.0,<3` and `aws-bedrock-token-generator>=1,<2`; do not
 analyzer's generic OpenAI-to-boto3 dependency replacement to this lane. Apply confirmed deltas
 in §9, then skip the Converse-specific §8 rewrite guidance.
 
+### Runtime Anthropic Messages lane
+
+Keep the Anthropic SDK and its Messages request/response shapes (`messages.create`,
+`messages.stream`, `system=`, content blocks, tool use). Point the client at the runtime
+endpoint `https://bedrock-runtime.{region}.amazonaws.com/anthropic` (the SDK appends
+`/v1/messages`) with the exact validated profile ID from the plan, not a bare model ID
+(except the documented eu-west-2 Opus 5.5 route) and not a Mantle URL. Public basis:
+<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-messages-api.html> (read 2026-11-07).
+
+The pinned Anthropic SDK takes a **string** credential only — `api_key` is the Bedrock bearer
+token minted by `provide_token`, **never a callable**, and the token has a bounded lifetime.
+Mint the token per client, create the client at the request boundary, and close it when the
+request is done; never keep one client alive past the token lifetime. For Python:
+
+```python
+import anthropic
+from aws_bedrock_token_generator import provide_token   # aws-bedrock-token-generator
+
+REGION = "<REGION>"
+
+
+def bedrock_anthropic() -> anthropic.Anthropic:
+    """One client per request boundary; the token is a string minted right here."""
+    return anthropic.Anthropic(
+        base_url=f"https://bedrock-runtime.{REGION}.amazonaws.com/anthropic",
+        api_key=provide_token(region=REGION),
+    )
+
+
+with bedrock_anthropic() as client:
+    r = client.messages.create(model="<TARGET_MODEL_ID>", max_tokens=1024, messages=msgs)
+    text = "".join(block.text for block in r.content if block.type == "text")
+
+# Streaming keeps the SDK's own helper:
+with bedrock_anthropic() as client, client.messages.stream(
+        model="<TARGET_MODEL_ID>", max_tokens=1024, messages=msgs) as stream:
+    for chunk in stream.text_stream:
+        print(chunk, end="")
+```
+
+For a short CLI or one-shot script, `api_key=os.environ["AWS_BEARER_TOKEN_BEDROCK"]` is
+acceptable (that token also expires within 12 hours); a server, worker, scheduled job, ECS
+service or Lambda uses the factory above and `.env.example` does **not** set
+`AWS_BEARER_TOKEN_BEDROCK`. Remove the old `ANTHROPIC_API_KEY` read.
+
+Runtime permissions are `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream` on
+the inference-profile ARN and the foundation-model ARN(s) of its destination Regions, plus
+`bedrock:GetInferenceProfile` on the profile ARN — not Mantle actions. In §12 keep `anthropic`
+and add `aws-bedrock-token-generator>=1,<2`; do not apply an analyzer's generic
+Anthropic-to-boto3 dependency replacement to this lane. Apply confirmed deltas in §9 (the
+native `type: text` block shape and message history are preserved on this lane), then skip
+the Converse-specific §8 rewrite guidance.
+
 ### Mantle express lane
 
 The source SDK stays. Per client, change only three things:
@@ -186,7 +241,7 @@ The source SDK stays. Per client, change only three things:
   | ---------------------------------------- | ------------------------------------------------------ |
   | Proprietary OpenAI GPT (`openai.gpt-5*` / `openai.gpt-6*`) | `https://bedrock-mantle.<REGION>.api.aws/openai/v1`    |
   | Other OpenAI-compatible targets          | `https://bedrock-mantle.<REGION>.api.aws/v1`           |
-  | Anthropic SDK                            | `https://bedrock-mantle.<REGION>.api.aws/anthropic/v1` |
+  | Anthropic SDK                            | `https://bedrock-mantle.<REGION>.api.aws/anthropic` (the SDK appends `/v1/messages`) |
 
   If your context has a `Mantle base path` line, use it verbatim — it is authoritative over this table.
 - **Credential** → a Bedrock bearer token, NOT the original provider key. For a short CLI or one-shot script, read it from the `AWS_BEARER_TOKEN_BEDROCK` env var; for any long-running process use the auto-refreshing `provide_token` client shown below (the env-var form expires within 12 hours). Do not leave the old `api_key=os.environ["OPENAI_API_KEY"]` line in place.
@@ -250,16 +305,19 @@ client = anthropic.Anthropic()
 import os
 import anthropic
 client = anthropic.Anthropic(
-    base_url="https://bedrock-mantle.us-east-1.api.aws/anthropic/v1",
-    auth_token=os.environ["AWS_BEARER_TOKEN_BEDROCK"],
+    base_url="https://bedrock-mantle.us-east-1.api.aws/anthropic",
+    api_key=os.environ["AWS_BEARER_TOKEN_BEDROCK"],
 )
+# Same base_url/api_key form as the public Messages API page
+# (https://docs.aws.amazon.com/bedrock/latest/userguide/inference-messages-api.html, read 2026-11-07);
+# the SDK appends /v1/messages and the anthropic-version header itself.
 ```
 
 Preserve compatible SDK request/response shapes. A model version change still requires §9 target checks, including typed response parsing for Opus 5.5. Apply the Chat Completions → Responses reshape only when that API change was selected. Preserve the exact validated runtime profile ID or ARN. After applying the changes above, skip the Converse-specific guidance in the rest of §8; the §9 behavior-delta application still applies normally.
 
-**Converse for a proprietary GPT target is id-form-dependent, not family-dependent.** A **bare** proprietary GPT id (`openai.gpt-5.5`, `openai.gpt-5.4`, `openai.gpt-5.6-*`, `openai.gpt-6-*`) is a `bedrock-mantle` id with no `bedrock-runtime` in-region form — a boto3 `converse()` call against a bare id fails at runtime; if your context pairs a bare id with the Converse path, stop and report the contradiction. GPT-5.6, GPT-6 (Astra, Sol, Luna, 6.1 Sol) **and GPT-5.5 / GPT-5.4** (model cards read 2026-11-06: `us.openai.gpt-5.5` / `global.openai.gpt-5.5`, `us.openai.gpt-5.4` / `global.openai.gpt-5.4`; Responses, Chat Completions and Converse on runtime, no Invoke) all have a `bedrock-runtime` path via CRIS ids (`us.`/`in.`/`global.` prefixed for GPT-5.6 Terra and Luna; `us.`/`global.` only for GPT-5.6 Sol, GPT-6, GPT-5.5 and GPT-5.4 — those cards publish no `in.` profile): when the plan says `migration_path: runtime_openai_cris`, a Converse, Responses or Chat Completions rewrite against the CRIS id is valid (base URL `bedrock-runtime.{region}.amazonaws.com/openai/v1` for the OpenAI-compatible APIs; note Guardrails are Converse-only and prompt caching Responses-only on runtime). For a Responses-based source app, the mantle express lane above remains the default and smallest change.
+**Converse for a proprietary GPT target is id-form-dependent, not family-dependent.** A **bare** proprietary GPT id (`openai.gpt-5.5`, `openai.gpt-5.4`, `openai.gpt-5.6-*`, `openai.gpt-6-*`) is a `bedrock-mantle` id with no `bedrock-runtime` in-region form — a boto3 `converse()` call against a bare id fails at runtime; if your context pairs a bare id with the Converse path, stop and report the contradiction. GPT-5.6, GPT-6 (Astra, Sol, Luna, 6.1 Sol) **and GPT-5.5 / GPT-5.4** (model cards read 2026-11-06: `us.openai.gpt-5.5` / `global.openai.gpt-5.5`, `us.openai.gpt-5.4` / `global.openai.gpt-5.4`; Responses, Chat Completions and Converse on runtime, no Invoke) all have a `bedrock-runtime` path via CRIS ids (`us.`/`in.`/`global.` prefixed for GPT-5.6 Terra and Luna; `us.`/`global.` only for GPT-5.6 Sol, GPT-6, GPT-5.5 and GPT-5.4 — those cards publish no `in.` profile): when the plan says `migration_path: runtime_openai_cris`, a Converse, Responses or Chat Completions rewrite against the CRIS id is valid (base URL `bedrock-runtime.{region}.amazonaws.com/openai/v1` for the OpenAI-compatible APIs; Guardrails and prompt-caching API scope are per model card and are carried by `bedrock_models[].required_client_api`: GPT-6 Sol / Luna list Guardrails on Responses, Chat Completions, InvokeModel and Converse; GPT-6.1 Sol on Chat Completions, InvokeModel and Converse (not Responses); GPT-5.6 Sol / Terra / Luna, GPT-5.5, GPT-5.4 and GPT-6 Astra on Converse only; implicit prompt caching is Responses-only on runtime for GPT-5.5 / GPT-5.4 and on Responses, Chat Completions and Converse for GPT-5.6 / GPT-6 — cards read 2026-11-09). The Runtime OpenAI lane is the default for a compatible source; use the Mantle express lane only when the plan recorded a `mantle_*` path with a `mantle_selector`.
 
-### Converse rewrite (default)
+### Converse rewrite (explicit `converse` plans)
 
 Choose the rewrite approach based on framework:
 
@@ -887,11 +945,15 @@ grep -rl "from openai\|import openai\|require.*openai\|from anthropic\|import an
 
 If any files still contain source SDK references, fix them before proceeding. Test directories are NOT excluded from this scan on purpose: the source SDK package is being removed from the manifest, so a leftover `import openai` in a customer test means `pytest` ImportErrors on the customer's machine — §18.0 should have migrated those tests; if one appears here, go back and fix it.
 
-**OpenAI-compatible lane exception:** when this run used `Rewrite strategy: mantle` or
-`Rewrite strategy: runtime_openai`, the source-SDK imports are expected to remain, so this
-residual scan does not apply. Verify the selected endpoint's `base_url`, Bedrock credentials
-and model identifiers instead: bare IDs for Mantle, exact validated profiles for runtime.
-The runtime lane must retain the Chat/Responses API verified by the evaluator.
+**Source-SDK lane exception:** when this run used `Rewrite strategy: mantle`,
+`Rewrite strategy: runtime_openai` or `Rewrite strategy: runtime_messages`, the source-SDK
+imports are expected to remain, so this residual scan does not apply. Verify the selected
+endpoint's `base_url`, Bedrock credentials and model identifiers instead: bare IDs for Mantle,
+exact validated profiles for runtime. The runtime OpenAI lane must retain the Chat/Responses
+API verified by the evaluator. For `runtime_messages`, Anthropic imports are expected: verify
+the `base_url` ends at `bedrock-runtime.<REGION>.amazonaws.com/anthropic`, the credential is a
+string Bedrock token (no callable, no `ANTHROPIC_API_KEY`), and the model is the exact
+validated profile ID.
 
 - **Short CLI / one-shot script:** `base_url` set to the Mantle path and `api_key=os.environ["AWS_BEARER_TOKEN_BEDROCK"]`.
 - **Server, worker, scheduled job, ECS service, or Lambda:** `BedrockOpenAI(..., bedrock_token_provider=lambda: provide_token(...))` (or the equivalent auto-refreshing client for the SDK in use), **no** `AWS_BEARER_TOKEN_BEDROCK` read in code, and `.env.example` does **not** set it.

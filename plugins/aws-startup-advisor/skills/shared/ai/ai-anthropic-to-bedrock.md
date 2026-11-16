@@ -1,16 +1,23 @@
 # Anthropic SDK → Amazon Bedrock Migration
 
-> Canonical Anthropic-SDK → Bedrock client-swap guide. Source-cloud agnostic:
-> the mapping depends on the SDK the code uses, never on which cloud hosted it.
-> Vendored into each consuming skill as
+> Canonical Anthropic SDK → Bedrock Runtime Messages (default) / Converse
+> alternative guide. Source-cloud agnostic: the mapping depends on the SDK the
+> code uses, never on which cloud hosted it. Vendored into each consuming skill as
 > `references/vendored/ai/ai-anthropic-to-bedrock.md` and kept byte-identical by
 > `shared:check`; edit HERE, then run `shared:sync`.
 >
 > Loaded by `design-ai.md` for an Anthropic source, or when Claude Haiku 5.5 is a candidate or selected target.
 > For a non-Anthropic source, only the Haiku 5.5 target contract below applies;
 > use the source provider guide for SDK and request translation. Steps 1–7 and
-> the Anthropic client-swap checklist apply only to Anthropic-source migrations.
-> For an Anthropic source, the user is already on Claude via the Anthropic SDK. Migration is a client swap only.
+> the Anthropic Messages checklist apply only to Anthropic-source migrations.
+> For an Anthropic source, the user is already on Claude via the Anthropic SDK.
+> The default migration keeps that SDK and points it at the `bedrock-runtime`
+> Anthropic Messages endpoint (`migration_path: "runtime_messages"`,
+> `required_client_api: "messages"`), per
+> [Inference using Anthropic Messages API](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-messages-api.html)
+> (read 2026-11-07) and `references/vendored/ai/bedrock-endpoint-policy.md`.
+> A Converse rewrite (`migration_path: "converse"`) is an explicit alternative;
+> Mantle Messages (`migration_path: "mantle_messages"`) is selector-gated.
 > Mapping an older Claude version to a newer target is a model change. Validate
 > request controls and output behavior before cutover.
 
@@ -35,57 +42,86 @@ Older Claude models — Claude 3.5 Haiku, Claude 3 Sonnet, Claude 3.5 Sonnet (v1
 
 ---
 
-## Step 2: Rewrite client
+## Step 2: Repoint the client (Runtime Messages, default)
 
-Before: `anthropic.Anthropic(api_key=...)`
-After: `boto3.client("bedrock-runtime", region_name="us-east-1")`
+Keep `anthropic.Anthropic`. Change only the base URL and the credential
+([Inference using Anthropic Messages API](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-messages-api.html), read 2026-11-07):
 
-Remove ANTHROPIC_API_KEY. Use IAM role with bedrock:InvokeModel.
+Before: `anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])`
+
+After:
+
+```python
+from anthropic import Anthropic
+from aws_bedrock_token_generator import provide_token
+
+region = "us-east-1"
+
+def handle_request(prompt: str) -> str:
+    # Mint one short-term Bedrock bearer token per client; the SDK accepts only a
+    # string credential here, so create the client per request boundary and close it.
+    with Anthropic(
+        base_url=f"https://bedrock-runtime.{region}.amazonaws.com/anthropic",
+        api_key=provide_token(region=region),
+    ) as client:
+        ...
+```
+
+- The base URL ends at `/anthropic`; the SDK appends `/v1/messages` itself and adds the
+  required `anthropic-version` header.
+- `api_key` is a **string** Bedrock token from `aws_bedrock_token_generator.provide_token`
+  minted from the application's IAM credentials. Mint it per client and re-create the client at
+  each request boundary; do not cache one token for the process lifetime.
+- A short-lived CLI or test may instead export `AWS_BEARER_TOKEN_BEDROCK` (a Bedrock API key)
+  and pass it as `api_key`; long-running services use `provide_token`.
+- Remove `ANTHROPIC_API_KEY` from environment and secrets; the credential is now IAM-derived.
 
 ---
 
-## Step 3: Rewrite API calls
+## Step 3: API calls
 
-Before: `client.messages.create(model=..., max_tokens=1024, messages=[{"role": "user", "content": "Hello"}])`
+`client.messages.create(...)` is unchanged except for the model ID: use a supported `global.`
+or Geo (`us.`/`eu.`/`au.`/`jp.`) inference-profile ID from Step 1 (for example
+`global.anthropic.claude-sonnet-5`). Use the bare `anthropic.claude-*` ID only where the model
+card documents an in-region runtime endpoint (today the `eu-west-2` Opus 5.5 route below).
 
-After: `client.converse(modelId="anthropic.claude-sonnet-5", messages=[{"role": "user", "content": [{"text": "Hello"}]}], inferenceConfig={"maxTokens": 1024})`
-
-Key differences:
-
-- content is typed blocks [{"text": "..."}] not a plain string
-- max_tokens moves to inferenceConfig.maxTokens
-- Select text blocks by their `text` key; reasoning and tool blocks can appear first.
+Response parsing keeps the native shape: select text blocks by `type == "text"`, never by
+position, because thinking and tool-use blocks can appear first.
 
 ```python
-text = "".join(block["text"] for block in response["output"]["message"]["content"] if "text" in block)
-stop_reason = response.get("stopReason", "unknown")
-if not text or stop_reason in ("max_tokens", "model_context_window_exceeded", "guardrail_intervened", "content_filtered", "refusal", "tool_use"):
-    raise ValueError(f"No complete text response (stopReason={stop_reason})")
+answer = "".join(block.text for block in response.content if block.type == "text")
+if not answer or response.stop_reason in ("max_tokens", "refusal", "tool_use"):
+    raise ValueError(f"No complete text response (stop_reason={response.stop_reason})")
 ```
 
-For tool loops, retain the original `response["output"]["message"]` in assistant history,
-including signed reasoning blocks, and handle every tool request before continuing.
-The extraction above is for calls that expect a final text answer.
+For tool loops, retain the complete assistant `response.content` in history, including
+signed thinking blocks, and handle every tool request before continuing.
 
 ---
 
 ## Step 4: System prompts
 
-Before: `system="You are helpful"` as a string param
-After: `system=[{"text": "You are helpful"}]` as a list of blocks
+Unchanged: `system="You are helpful"` stays a string (or a list of native blocks) parameter.
 
 ---
 
 ## Step 5: Streaming
 
-Before: `client.messages.stream()` context manager
-After: `client.converse_stream()` — iterate `response["stream"]` for `contentBlockDelta` events
+Unchanged: `with client.messages.stream(...) as stream:` and `stream.text_stream` /
+`stream.get_final_message()` work as before. Keep the SDK accumulator so signed blocks stay
+complete while only text deltas reach text consumers.
 
 ---
 
 ## Step 6: IAM permissions
 
-Add bedrock:InvokeModel and bedrock:InvokeModelWithResponseStream on arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-*
+Source: [Prerequisites for inference profiles](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-prereq.html) (read 2026-11-07).
+
+- `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream` on the inference-profile ARN
+  (`arn:aws:bedrock:{region}:{account}:inference-profile/global.anthropic.claude-sonnet-5`) **and**
+  on the `foundation-model/anthropic.claude-*` ARN in every destination Region the profile routes to.
+- `bedrock:GetInferenceProfile` on the inference-profile ARN.
+- No `bedrock-mantle:*` permission is involved on this lane.
 
 ---
 
@@ -95,16 +131,53 @@ Request TPM increases via Service Quotas. Cross-region inference profiles (us.* 
 
 ---
 
-## Validation checklist
+## Validation checklist (Runtime Messages lane)
 
-- [ ] anthropic.Anthropic() replaced with boto3.client("bedrock-runtime")
-- [ ] client.messages.create() replaced with client.converse()
-- [ ] content blocks use typed format [{"text": "..."}]
-- [ ] max_tokens moved to inferenceConfig.maxTokens
-- [ ] Streaming uses converse_stream with contentBlockDelta events
-- [ ] ANTHROPIC_API_KEY removed from environment/secrets
-- [ ] IAM role has bedrock:InvokeModel permission
-- [ ] Model IDs updated to Bedrock format (Claude 4.x recommended)
+- [ ] `anthropic.Anthropic` retained; `base_url` is `https://bedrock-runtime.{region}.amazonaws.com/anthropic` (ends at `/anthropic`; the SDK sends `/anthropic/v1/messages`)
+- [ ] `api_key` is a string Bedrock token (`provide_token(region=...)` per client, or `AWS_BEARER_TOKEN_BEDROCK` for a short CLI); `ANTHROPIC_API_KEY` removed from environment/secrets
+- [ ] Client created per request boundary and closed (`with Anthropic(...) as client:`)
+- [ ] `messages.create` / `messages.stream` calls unchanged apart from the model ID
+- [ ] Model IDs are supported `global.`/Geo inference profiles (bare ID only on a documented in-region route)
+- [ ] Text selected by `type == "text"`; signed thinking/tool blocks preserved in tool history
+- [ ] IAM grants `bedrock:InvokeModel*` on the profile and destination foundation-model ARNs plus `bedrock:GetInferenceProfile` on the profile
+- [ ] `aws-design-ai.json` row records `migration_path: "runtime_messages"` and `required_client_api: "messages"`
+
+## Converse alternative (explicit)
+
+Record `migration_path: "converse"` only when the user asks for a Bedrock-native request shape or
+needs a Converse-only feature (Guardrails on Converse, application inference profiles, per-request
+metadata). This is a rewrite, not a repoint:
+
+- Client: `anthropic.Anthropic(api_key=...)` → `boto3.client("bedrock-runtime", region_name="us-east-1")`.
+- Calls: `client.messages.create(model=..., max_tokens=1024, messages=[{"role": "user", "content": "Hello"}])`
+  → `client.converse(modelId="anthropic.claude-sonnet-5", messages=[{"role": "user", "content": [{"text": "Hello"}]}], inferenceConfig={"maxTokens": 1024})`.
+  Content becomes typed blocks `[{"text": "..."}]`; `max_tokens` moves to `inferenceConfig.maxTokens`;
+  select text blocks by their `text` key because reasoning and tool blocks can appear first:
+
+```python
+text = "".join(block["text"] for block in response["output"]["message"]["content"] if "text" in block)
+stop_reason = response.get("stopReason", "unknown")
+if not text or stop_reason in ("max_tokens", "model_context_window_exceeded", "guardrail_intervened", "content_filtered", "refusal", "tool_use"):
+    raise ValueError(f"No complete text response (stopReason={stop_reason})")
+```
+
+For tool loops on Converse, retain the original `response["output"]["message"]` in assistant
+history, including signed reasoning blocks, and handle every tool request before continuing.
+
+- System prompts: `system="You are helpful"` → `system=[{"text": "You are helpful"}]`.
+- Streaming: `client.messages.stream()` → `client.converse_stream()`; iterate `response["stream"]`
+  for `contentBlockDelta` events.
+- IAM: the same `bedrock:InvokeModel*` grants as Step 6; `ANTHROPIC_API_KEY` removed.
+
+## Mantle Messages (selector-gated)
+
+Record `migration_path: "mantle_messages"` only together with a `bedrock_models[].mantle_selector`
+from `references/vendored/ai/bedrock-endpoint-policy.md` — normally `workspaces` (Anthropic-compatible
+Workspaces exist only on `bedrock-mantle`). The client shape is the Step 2 repoint with
+`base_url="https://bedrock-mantle.{region}.api.aws/anthropic"`, a Bedrock API key or token as the
+string `api_key`, the bare `anthropic.claude-*` model ID in a Mantle-listed Region, and
+`bedrock-mantle:*` IAM instead of `bedrock:InvokeModel*`. API continuity alone never selects Mantle;
+the Runtime lane above already keeps the Anthropic SDK.
 
 ## Opus 5.5 target contract (verified 2026-09-24)
 

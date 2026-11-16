@@ -93,6 +93,9 @@ def test_azure_design_assert_scopes_gpt_ban_to_bare_ids_and_carves_out_cris() ->
     assert "GPT-5.5/GPT-5.4 us./global. profiles" in text
     assert "no proprietary GPT-5.5 or GPT-5.4 model ID is paired" not in text
     assert "no proprietary openai.gpt-* model ID is paired" not in text
+    assert "records migration_path runtime_openai_cris by default" in text, (
+        "design.md _assert must state the bedrock-runtime default for same-model GPT rows"
+    )
 
 
 def test_azure_generate_assert_scopes_gpt_ban_to_bare_ids_and_carves_out_cris() -> None:
@@ -105,6 +108,9 @@ def test_azure_generate_assert_scopes_gpt_ban_to_bare_ids_and_carves_out_cris() 
     assert "GPT-5.5/GPT-5.4 us./global. profiles" in text
     assert "no proprietary GPT-5.5 or GPT-5.4 model ID is paired" not in text
     assert "no proprietary openai.gpt-* model ID is paired" not in text
+    assert "records migration_path runtime_openai_cris by default" in text, (
+        "generate.md _assert must state the bedrock-runtime default for same-model GPT rows"
+    )
 
 
 # --- Finding 0.2: GCP generate-ai.md Part 1 routing ---

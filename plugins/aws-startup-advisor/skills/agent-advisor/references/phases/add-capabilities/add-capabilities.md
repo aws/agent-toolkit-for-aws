@@ -42,13 +42,15 @@ stated it in their opening message, skip this question.)
 
 ## Step 2 — Capabilities needed (multi-select)
 
-Identity, Gateway, Memory, Policy, Observability, Managed KB, Code Interpreter, Browser,
-Web Search, Sandbox. For each selected, load the relevant section of
+Identity, Gateway, Memory, Policy, Observability, Evaluations, Optimization, Managed KB, Code
+Interpreter, Browser, Web Search, Sandbox. For each selected, load the relevant section of
 `${CLAUDE_PLUGIN_ROOT}/skills/agent-advisor/references/decision-refs/agentcore.md`.
 Also offer AWS Agent Registry when the user requests a shared catalog, resource discovery, or
 approval-based governance. Use the service card's conditional-service guidance: a single agent
 can need Registry, while multiple agents alone do not justify it. Load the Registry section
 when selected and keep the recommendation conditional until Step 4 verifies its Region.
+Recommend only the capabilities listed in this step, even on request; say this skill does not
+configure any other.
 
 ## Step 3 — Native vs bring-your-own
 

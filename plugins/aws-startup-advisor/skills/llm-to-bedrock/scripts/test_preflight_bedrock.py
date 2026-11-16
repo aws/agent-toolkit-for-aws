@@ -322,3 +322,295 @@ def test_mantle_deps_are_declared_in_pinned_env():
     toml = (pathlib.Path(__file__).resolve().parent / "pyproject.toml").read_text()
     assert "openai>=2.45.0" in toml
     assert "aws-bedrock-token-generator" in toml
+    assert "anthropic>=" in toml
+
+
+def test_messages_missing_deps_fails_closed(monkeypatch):
+    # Same contract as the mantle probe: a missing Anthropic SDK must not turn the
+    # runtime Messages preflight into an unconditional pass.
+    import builtins
+    real_import = builtins.__import__
+
+    def no_anthropic(name, *a, **k):
+        if name in ("anthropic", "aws_bedrock_token_generator"):
+            raise ImportError(f"No module named {name!r}")
+        return real_import(name, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", no_anthropic)
+    v = p.probe_runtime_messages_model("global.anthropic.claude-sonnet-5", "us-west-2")
+    assert v["ok"] is False
+    assert v["reason"] == "messages_deps_missing"
+    assert "NOT verified" in v["detail"]
+
+
+def test_runtime_openai_cris_plan_without_api_fails_closed():
+    # Regression: a runtime_openai_cris plan with no recorded API used to resolve to
+    # Converse silently; the source app's API must be recorded (or explicit converse).
+    with pytest.raises(ValueError, match="never the implicit default"):
+        p.normalize_api_path("runtime_openai_cris", ["us.openai.gpt-5.5"], None)
+    assert p.normalize_api_path("runtime_openai_cris", ["us.openai.gpt-5.5"], "converse") == "runtime_openai_cris"
+    assert p.normalize_api_path("runtime_messages", ["global.anthropic.claude-sonnet-5"]) == "runtime_messages"
+
+
+def test_main_routes_messages_api_to_the_messages_probe(monkeypatch, capsys):
+    import boto3
+    import json
+    calls = []
+    monkeypatch.setattr(boto3, "client", lambda *a, **k: object())
+    monkeypatch.setattr(p, "fetch_bedrock_quotas", lambda region: [])
+    monkeypatch.setattr(p, "probe_runtime_messages_model",
+                        lambda mid, region: calls.append(("messages", mid, region)) or
+                        {"ok": True, "reason": "ok", "detail": "ok"})
+    monkeypatch.setattr(p, "probe_model",
+                        lambda client, mid: (_ for _ in ()).throw(AssertionError("Converse probe must not run")))
+    monkeypatch.setattr(p, "probe_runtime_openai_model",
+                        lambda *a: (_ for _ in ()).throw(AssertionError("OpenAI probe must not run")))
+    rc = p.main(["--region", "us-west-2", "--models", "global.anthropic.claude-sonnet-5",
+                 "--runtime-api", "messages"])
+    assert rc == 0
+    assert calls == [("messages", "global.anthropic.claude-sonnet-5", "us-west-2")]
+    assert json.loads(capsys.readouterr().out)["ok"] is True
+
+
+class _FakeRuntimeClient:
+    """Offline stand-in for boto3's bedrock-runtime client."""
+
+    def __init__(self):
+        self.calls = []
+        self.meta = type("Meta", (), {"region_name": "us-west-2"})()
+
+    def converse(self, **kwargs):
+        self.calls.append(("converse", kwargs["modelId"]))
+        return {}
+
+    def invoke_model(self, **kwargs):
+        self.calls.append(("invoke_model", kwargs["modelId"]))
+        return {}
+
+
+class _FakeMessagesClient:
+    """Offline stand-in for anthropic.Anthropic at the runtime /anthropic base URL."""
+    calls = []
+
+    def __init__(self):
+        self.messages = self
+
+    def create(self, **kwargs):
+        _FakeMessagesClient.calls.append(("messages", kwargs["model"]))
+        return {}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class _FakeOpenAIClient:
+    """Offline stand-in for openai.OpenAI at the runtime /openai/v1 base URL."""
+    calls = []
+
+    def __init__(self):
+        self.chat = type("Chat", (), {"completions": self})()
+        self.responses = self
+
+    def create(self, **kwargs):
+        surface = "chat_completions" if "messages" in kwargs else "responses"
+        _FakeOpenAIClient.calls.append((surface, kwargs["model"]))
+        return {}
+
+
+@pytest.fixture
+def offline_clients(monkeypatch):
+    """Route every real probe function at offline fake SDK clients and collect calls."""
+    import boto3
+    runtime = _FakeRuntimeClient()
+    _FakeMessagesClient.calls = []
+    _FakeOpenAIClient.calls = []
+    monkeypatch.setattr(boto3, "client", lambda *a, **k: runtime)
+    monkeypatch.setattr(p, "fetch_bedrock_quotas", lambda region: [])
+    monkeypatch.setattr(p, "create_messages_client", lambda region, **k: _FakeMessagesClient())
+    monkeypatch.setattr(p, "create_openai_client", lambda mid, region, **k: _FakeOpenAIClient())
+    monkeypatch.setattr(p, "probe_mantle_model",
+                        lambda *a: (_ for _ in ()).throw(AssertionError("Mantle probe must not run")))
+
+    def all_calls():
+        return runtime.calls + _FakeMessagesClient.calls + _FakeOpenAIClient.calls
+    return all_calls
+
+
+def test_mixed_claude_messages_and_gpt_chat_each_reach_their_own_probe(offline_clients, capsys):
+    # PR 585 review, finding 2: B1 collected every aws_model_id and B4 passed one
+    # --runtime-api, so a Claude Messages primary + GPT Chat secondary POSTed both to
+    # /anthropic/v1/messages. Each --target row now carries its own API.
+    import json
+    rc = p.main(["--region", "us-west-2",
+                 "--target", "global.anthropic.claude-sonnet-5=messages",
+                 "--target", "us.openai.gpt-5.6-sol=chat_completions"])
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0 and out["ok"] is True
+    assert sorted(offline_clients()) == sorted([
+        ("messages", "global.anthropic.claude-sonnet-5"),
+        ("chat_completions", "us.openai.gpt-5.6-sol"),
+    ])
+    assert [(m["model_id"], m["selected_api"]) for m in out["models"]] == [
+        ("global.anthropic.claude-sonnet-5", "messages"),
+        ("us.openai.gpt-5.6-sol", "chat_completions"),
+    ]
+
+
+def test_mixed_claude_messages_nova_converse_and_embeddings_each_reach_their_own_probe(
+        offline_clients, capsys):
+    import json
+    rc = p.main(["--region", "us-west-2",
+                 "--target", "global.anthropic.claude-sonnet-5=messages",
+                 "--target", "us.amazon.nova-lite-v1:0=converse",
+                 "--target", "amazon.titan-embed-text-v2:0=invoke"])
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0 and out["ok"] is True
+    assert sorted(offline_clients()) == sorted([
+        ("messages", "global.anthropic.claude-sonnet-5"),
+        ("converse", "us.amazon.nova-lite-v1:0"),
+        ("invoke_model", "amazon.titan-embed-text-v2:0"),
+    ])
+
+
+def test_gpt_responses_row_reaches_the_responses_probe_not_chat(offline_clients, capsys):
+    import json
+    rc = p.main(["--region", "us-west-2",
+                 "--target", "global.openai.gpt-6-astra=responses",
+                 "--target", "in.openai.gpt-5.6-terra=chat_completions"])
+    assert rc == 0
+    assert sorted(offline_clients()) == sorted([
+        ("responses", "global.openai.gpt-6-astra"),
+        ("chat_completions", "in.openai.gpt-5.6-terra"),
+    ])
+    out = json.loads(capsys.readouterr().out)
+    assert "input tokens + 10 * output tokens" in out["models"][0]["quota_note"]
+
+
+@pytest.mark.parametrize("spec", [
+    "global.anthropic.claude-sonnet-5",            # no =API
+    "global.anthropic.claude-sonnet-5=mantle_messages",  # a path, not an API
+    "us.openai.gpt-5.6-sol=invoke",                 # invoke is not a chat lane
+    "us.amazon.nova-lite-v1:0=",                    # empty API
+])
+def test_target_with_unknown_api_fails_closed_before_any_probe(spec, offline_clients, capsys):
+    import json
+    rc = p.main(["--region", "us-west-2",
+                 "--target", "global.anthropic.claude-sonnet-5=messages", "--target", spec])
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 1
+    assert out["ok"] is False
+    assert out["reason"] == "unknown_runtime_api"
+    assert out["models"] == []
+    assert offline_clients() == []  # nothing probed on a guessed endpoint
+
+
+def test_parse_targets_is_pure_and_fails_closed():
+    pairs, failure = p.parse_targets(["a.model=converse,b.embed-v1=invoke", "c.model=messages"])
+    assert failure is None
+    assert pairs == [("a.model", "converse"), ("b.embed-v1", "invoke"), ("c.model", "messages")]
+    pairs, failure = p.parse_targets(["a.model=converse", "d.model=responses_v2"])
+    assert pairs == [] and failure["reason"] == "unknown_runtime_api"
+    assert failure["failing_models"] == ["d.model"]
+
+
+def test_legacy_models_flag_still_applies_one_api_to_every_id(offline_clients, capsys):
+    # The single-API form is unchanged for callers that have one row.
+    rc = p.main(["--region", "us-west-2", "--models", "global.anthropic.claude-sonnet-5",
+                 "--runtime-api", "messages"])
+    assert rc == 0
+    assert offline_clients() == [("messages", "global.anthropic.claude-sonnet-5")]
+
+
+# --- PR 585 review, finding 3: stop a mantle_messages plan before B4 / Phase C ---
+
+def _design(rows, plan_path="runtime_messages"):
+    return {"ai_architecture": {"bedrock_models": rows,
+                                "code_migration": {"migration_path": plan_path}}}
+
+
+def test_unsupported_lane_stop_names_the_deferred_lane_and_workspaces_selector():
+    rows = [{"source_model": "claude-sonnet-4-5", "aws_model_id": "anthropic.claude-sonnet-5",
+             "use_case": "chat", "migration_path": "mantle_messages", "mantle_selector": "workspaces"}]
+    stop = p.unsupported_lane_stop(rows, "mantle_messages")
+    assert stop["ok"] is False
+    assert stop["reason"] == "unsupported_lane"
+    assert stop["lane"] == "mantle_messages"
+    assert stop["lane_status"] == "deferred"
+    assert stop["mantle_selector"] == "workspaces"
+    assert stop["failing_models"] == ["anthropic.claude-sonnet-5"]
+    assert "bedrock-mantle.{region}.api.aws/anthropic" in stop["lane_description"]
+    assert "do not run the B4 preflight" in stop["detail"]
+    assert "runtime_messages" in stop["detail"]
+
+
+@pytest.mark.parametrize("rows,plan_path", [
+    ([{"aws_model_id": "global.anthropic.claude-sonnet-5", "migration_path": "runtime_messages",
+       "required_client_api": "messages"}], "runtime_messages"),
+    ([{"aws_model_id": "us.openai.gpt-5.6-sol", "migration_path": "runtime_openai_cris",
+       "required_client_api": "responses"},
+      {"aws_model_id": "amazon.titan-embed-text-v2:0"}], "runtime_openai_cris"),
+    ([{"aws_model_id": "openai.gpt-6-astra", "migration_path": "mantle_openai_chat",
+       "mantle_selector": "server_side_tools"}], "mantle_openai_chat"),
+])
+def test_supported_lanes_do_not_stop(rows, plan_path):
+    assert p.unsupported_lane_stop(rows, plan_path) is None
+
+
+def test_check_lanes_cli_stops_on_mantle_messages_and_passes_runtime_messages(tmp_path, capsys):
+    import json
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps(_design(
+        [{"aws_model_id": "anthropic.claude-sonnet-5", "migration_path": "mantle_messages",
+          "mantle_selector": "workspaces"}], "mantle_messages")))
+    assert p.main(["--check-lanes", str(bad)]) == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["reason"] == "unsupported_lane" and out["mantle_selector"] == "workspaces"
+
+    good = tmp_path / "good.json"
+    good.write_text(json.dumps(_design(
+        [{"aws_model_id": "global.anthropic.claude-sonnet-5", "migration_path": "runtime_messages",
+          "required_client_api": "messages"}])))
+    assert p.main(["--check-lanes", str(good)]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["ok"] is True and out["reason"] == "lanes_supported"
+
+
+def test_check_lanes_uses_plan_level_path_when_rows_omit_it(tmp_path, capsys):
+    import json
+    design = tmp_path / "design.json"
+    design.write_text(json.dumps(_design(
+        [{"aws_model_id": "anthropic.claude-sonnet-5"}], "mantle_messages")))
+    assert p.main(["--check-lanes", str(design)]) == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["reason"] == "unsupported_lane"
+    assert out["failing_models"] == ["anthropic.claude-sonnet-5"]
+
+
+def test_main_messages_plan_probes_embedding_ids_via_invoke_model(monkeypatch, capsys):
+    # Regression: B1 collects every bedrock_models[].aws_model_id into $TARGET_MODELS and
+    # B4 passes the whole list with one --runtime-api. A runtime_messages plan with a
+    # Claude profile plus an embedding id POSTed the embedding id to /anthropic/v1/messages
+    # and failed preflight spuriously; embeddings must still go via InvokeModel.
+    import boto3
+    import json
+    calls = []
+    monkeypatch.setattr(boto3, "client", lambda *a, **k: object())
+    monkeypatch.setattr(p, "fetch_bedrock_quotas", lambda region: [])
+    monkeypatch.setattr(p, "probe_runtime_messages_model",
+                        lambda mid, region: calls.append(("messages", mid)) or
+                        {"ok": True, "reason": "ok", "detail": "ok"})
+    monkeypatch.setattr(p, "probe_model",
+                        lambda client, mid: calls.append(("invoke_model", mid)) or
+                        {"ok": True, "reason": "ok", "detail": "ok"})
+    monkeypatch.setattr(p, "probe_runtime_openai_model",
+                        lambda *a: (_ for _ in ()).throw(AssertionError("OpenAI probe must not run")))
+    rc = p.main(["--region", "us-west-2",
+                 "--models", "global.anthropic.claude-sonnet-5,amazon.titan-embed-text-v2:0",
+                 "--runtime-api", "messages"])
+    assert rc == 0
+    assert calls == [("messages", "global.anthropic.claude-sonnet-5"),
+                     ("invoke_model", "amazon.titan-embed-text-v2:0")]
+    assert json.loads(capsys.readouterr().out)["ok"] is True

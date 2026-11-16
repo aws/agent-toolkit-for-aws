@@ -178,7 +178,32 @@ path for any GPT-6 model.
 
 ### Client setup
 
-Requires the OpenAI SDK at **>= 2.45.0**. Preferred client auto-refreshes a short-term Bedrock token:
+Requires the OpenAI SDK at **>= 2.45.0**. The default client targets `bedrock-runtime` (`runtime_openai_cris`) and
+auto-refreshes a short-term Bedrock token through a callable `api_key`:
+
+```python
+from aws_bedrock_token_generator import provide_token
+from openai import OpenAI
+
+region = "us-east-1"
+client = OpenAI(
+    base_url=f"https://bedrock-runtime.{region}.amazonaws.com/openai/v1",
+    api_key=lambda: provide_token(region=region),
+    max_retries=6,
+)
+
+response = client.responses.create(
+    model="us.openai.gpt-5.6-terra",  # the CRIS inference-profile id, never the bare id, on runtime
+    input="...",
+    reasoning={"effort": "medium"},
+)
+```
+
+Keep the API the source app already calls (`responses.create` or `chat.completions.create`); the runtime endpoint
+serves both for these models.
+
+**Mantle form (only when Design recorded a `mantle_selector`):** the `BedrockOpenAI` client targets
+`bedrock-mantle` with the bare model id:
 
 ```python
 from aws_bedrock_token_generator import provide_token
@@ -198,15 +223,19 @@ response = client.responses.create(
 )
 ```
 
-The alternative — `OpenAI(base_url=".../openai/v1", api_key=os.environ["AWS_BEARER_TOKEN_BEDROCK"])` — uses a key
+The alternative on either endpoint — `api_key=os.environ["AWS_BEARER_TOKEN_BEDROCK"]` — uses a key
 that expires within 12 hours and is not refreshed. Do not recommend it for production.
 
 **IAM:** on the mantle path, the managed policy `AmazonBedrockMantleInferenceAccess` grants what inference needs,
 including `bedrock-mantle:CreateInference` and `bedrock-mantle:CallWithBearerToken` — `bedrock:InvokeModel` does not
 authorize mantle calls. On the GPT-5.6 / GPT-5.5 / GPT-5.4 `bedrock-runtime` path the usual `bedrock:InvokeModel*`
-against the CRIS inference-profile ARN applies, as for any other runtime model; the GPT-5.5 / GPT-5.4 cards add
-that the identity also needs `bedrock:InvokeModel` on the account's default project
-(`arn:aws:bedrock:{region}:{account-id}:project/default`).
+against the CRIS inference-profile ARN applies, as for any other runtime model, and every runtime Responses /
+Chat Completions target additionally needs `bedrock:InvokeModel` on the account's default project
+(`arn:aws:bedrock:{region}:{account-id}:project/default`): the Responses API authorizes the default project
+separately from the inference target
+(<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html>, read 2026-11-07), and the
+GPT-5.6 Sol / Terra / Luna cards as well as the GPT-5.5 / GPT-5.4 cards (read 2026-11-07) repeat it for their
+runtime CRIS ids. A Converse-only route needs no project grant.
 
 **Reasoning effort:** the five GPT-5.x models accept `none`, `low`, `medium`, `high`, `xhigh`, `max`. Astra's card
 does not enumerate these values; verify its accepted settings rather than inheriting the GPT-5.x list. Because these models reason

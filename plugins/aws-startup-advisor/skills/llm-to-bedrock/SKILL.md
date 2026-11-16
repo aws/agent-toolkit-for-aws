@@ -505,6 +505,29 @@ extrapolated cost table (`llm2bedrock-report-generator.md` §6.3) run exactly as
 
 ---
 
+## Endpoint policy (bedrock-runtime default)
+
+`bedrock-runtime` is the default endpoint for new applications and for every migration
+lane in this skill (Converse, the runtime OpenAI-compatible APIs and the runtime Anthropic
+Messages API). `bedrock-mantle` is selected only when the saved plan records a verified
+`mantle_selector`: background inference, server-side/preconfigured tools (including Web
+Search), customer-created Projects or Workspaces, a model or API that exists only on Mantle,
+or strict in-Region processing where Runtime offers only a cross-region profile. API
+continuity alone never selects Mantle — keeping the OpenAI or Anthropic SDK is a Runtime
+lane. See `skills/shared/ai/bedrock-endpoint-policy.md` (vendored at
+`$ASSESS_BASE/references/vendored/ai/bedrock-endpoint-policy.md`) for the public sources.
+
+**How this skill learns a Mantle requirement.** Phase A's delegated Discover records
+code-visible selectors as `mantle_signals`; Clarify's Mantle-only requirements block (full flow
+Q22b, AI-only Q10.5) confirms them or asks outright and writes
+`preferences.json → ai_constraints.mantle_requirements`; Design derives
+`bedrock_models[].mantle_selector` only from that field (plus the catalog for
+`mantle_only_model_or_api`) and records `mantle_requirement` on Mantle rows and the
+`endpoint_assumption` sentence on every runtime row. A row with no recorded requirement is a
+runtime lane by design, not an inference.
+
+---
+
 ## Phase A — Assess (runs $ASSESS_SKILL's own AI-path files, inline)
 
 **Do NOT read source code, detect AI SDKs, or ask Clarify questions yourself from scratch.**
@@ -703,11 +726,34 @@ work to the telemetry hooks.
 
 Read `$MIGRATION_DIR/aws-design-ai.json` and extract:
 
-- `ai_architecture.bedrock_models[]` → array of `{source_model, aws_model_id, use_case}`
-- Collect all `aws_model_id` values into `$TARGET_MODELS` (array). Keep the `use_case` of each:
-  the preflight script probes each model by the right API automatically (Converse for chat,
-  InvokeModel for embeddings), but the evaluator's quality scoring only applies to chat models —
-  embedding targets get format/dimension validation only.
+- `ai_architecture.bedrock_models[]` → array of `{source_model, aws_model_id, use_case,
+  migration_path, required_client_api, mantle_selector, mantle_requirement, endpoint_assumption}`
+  (the last five may be absent on older plans; `mantle_requirement` sits on Mantle rows,
+  `endpoint_assumption` on runtime rows — keep both for the C6 `Endpoint basis:` line, and keep
+  `migration_path` / `mantle_selector` so a Mantle row from a plan that predates
+  `mantle_requirement` is still reported as Mantle)
+- Collect all `aws_model_id` values into `$TARGET_MODELS` (array). Keep the `use_case` AND the
+  `required_client_api` of each row: B4 passes every row to preflight as its own
+  `<aws_model_id>=<required_client_api>` pair, so a Claude Messages primary and a GPT Chat or Nova
+  Converse secondary are each probed on their own API (embedding rows are always probed via
+  InvokeModel; pass `invoke` for them). The evaluator's quality scoring only applies to chat
+  models — embedding targets get format/dimension validation only.
+- **Lane gate (before B2, B4 and every Phase C dispatch).** Run
+
+  ```bash
+  uv run --project $SCRIPTS python $SCRIPTS/preflight_bedrock.py --check-lanes $MIGRATION_DIR/aws-design-ai.json
+  ```
+
+  Exit 1 with `reason: unsupported_lane` means a row's `migration_path` is `mantle_messages` —
+  the deferred **Mantle Messages** execution lane (Anthropic SDK on
+  `https://bedrock-mantle.{region}.api.aws/anthropic`), which Design records only for the
+  `workspaces` mantle selector. This skill has no preflight, evaluation or rewrite route for that
+  lane: STOP here. Show the user the result's `lane`, `mantle_selector` and `failing_models`,
+  say the lane is not yet supported by llm-to-bedrock, and offer to re-run Design without the
+  Workspaces requirement so the row takes the supported `runtime_messages` route. Do NOT run B4
+  against the bare Claude id, do NOT dispatch C1–C6, and do NOT generate IAM for it
+  (`iam_policy.py --migration-path mantle_messages` refuses with the same `unsupported_lane`
+  reason). Exit 0 (`lanes_supported`) → continue.
 
 Read `$MIGRATION_DIR/ai-workload-profile.json` and extract:
 
@@ -824,11 +870,52 @@ reliably visible, and even that must be materialized to the file for the baselin
 
 ### B4 — Bedrock preflight
 
+**Resolve the primary row's API first (`$RESOLVED_RUNTIME_API`).** The primary chat row's
+`required_client_api` (older plans: that row's `runtime_api`, then
+`ai_architecture.code_migration.runtime_api`) is the API B4, the context block and C0 all use.
+When the plan records one, `$RESOLVED_RUNTIME_API` is that value. When a `runtime_openai_cris`
+plan records none, check the saved answer's identity BEFORE reusing it — the saved
+`resolved_runtime_api` in `$REPO/.saws-migrate/phase-results/run-context.json` (C0's
+`$PHASE_DIR`) belongs to the design it was given for, and C0's `assess_design_sha256`
+comparison runs only AFTER these probes:
+
 ```bash
-uv run --project $SCRIPTS python $SCRIPTS/preflight_bedrock.py --region $REGION --models <comma-separated $TARGET_MODELS> --dataset-size 200 --runtime-api <selected bedrock_models[].required_client_api; legacy runtime_api or the saved-plan default>
+uv run --project $SCRIPTS python $SCRIPTS/preflight_bedrock.py --resume-runtime-api $PHASE_DIR/run-context.json --design $MIGRATION_DIR/aws-design-ai.json
+```
+
+Exit 0 (`reason: saved_identity_match`) means the saved answer exists AND the saved
+`assess_design_sha256` equals the current design's sha256 AND the saved `target_models`
+(source model, `aws_model_id`) pairs equal the current `bedrock_models[]` rows: set
+`$RESOLVED_RUNTIME_API` to the printed `resolved_runtime_api` and reuse it without asking.
+Exit 1 (`no_saved_context`, `no_saved_runtime_api`, or `saved_identity_mismatch` with the
+differing fields) means the design, source model or target changed since the answer was
+recorded: do NOT read the saved value — AskUserQuestion "Which API does the source app call:
+Responses or Chat Completions?" now, before any probe, and set `$RESOLVED_RUNTIME_API` to the
+answer (C0 later archives the stale units per its table). A cached `messages` answer must never
+send a new GPT row to the Anthropic endpoint, and a stale `responses` answer must never override
+a Chat Completions source. Other paths that
+record no API resolve from the path itself: `runtime_messages` → `messages`;
+`mantle_openai_chat` → `chat_completions`; `mantle` / `mantle_openai_responses` → `responses`
+(a bare GPT id is probed on the Mantle Responses API either way); `converse` / `direct` /
+`gpt-oss` → `converse`. `$RESOLVED_RUNTIME_API` is therefore always one of `responses`,
+`chat_completions`, `converse`, `messages`. Never fall back to Converse by omission — a
+`runtime_openai_cris` row without an API is resolved here, not guessed.
+
+```bash
+uv run --project $SCRIPTS python $SCRIPTS/preflight_bedrock.py --region $REGION --target <aws_model_id>=<that row's required_client_api> [--target ... one per bedrock_models[] row] --dataset-size 200
 ```
 
 (`--dataset-size 200` matches the golden-dataset cap, so the quota warning reflects the worst case. Prefix with `AWS_PROFILE=$AWS_PROFILE_CHOICE` if B2 chose a non-default profile.)
+
+Each `--target` pair carries ITS OWN row's API, so a mixed plan is probed correctly: the
+primary row gets `$RESOLVED_RUNTIME_API`; a secondary row gets its own `required_client_api`
+(`messages` → Anthropic SDK against the runtime `/anthropic` endpoint; `responses` /
+`chat_completions` → the runtime OpenAI-compatible APIs; `converse` → Converse); an embedding
+row gets `invoke`. A row whose API is missing or unknown makes preflight fail closed
+(`reason: unknown_runtime_api`, nothing probed) — resolve that row's API in the saved plan,
+do not substitute Converse. The legacy single-API form
+`--models <comma-separated $TARGET_MODELS> --runtime-api $RESOLVED_RUNTIME_API` is still
+accepted for a plan with exactly one chat row and no secondary targets.
 
 Parse the JSON output. On failure the TOP LEVEL carries `reason`/`detail` (lifted from the
 first failing model) plus `failing_models` (all failing ids); per-model verdicts are in `models[]`:
@@ -838,7 +925,9 @@ first failing model) plus `failing_models` (all failing ids); per-model verdicts
 - `ok == false` + `reason: authz` → IAM denies inference. For a Converse/InvokeModel target the action to grant is `bedrock:InvokeModel`; for a bare proprietary GPT target (GPT-5.x or `openai.gpt-6-astra`) it is the `bedrock-mantle:*` set (see B4a). The `detail` names which. Tell the user the action to grant; stop.
 - `ok == false` + `reason: mantle_deps_missing` → the pinned scripts environment lacks `openai` / `aws-bedrock-token-generator`, so a mantle-only target could not be probed at all. This is an environment fault, not a Bedrock verdict: tell the user to re-sync (`uv sync --project $SCRIPTS`) and stop. Do NOT proceed — access was never verified.
 - `ok == false` + `reason: openai_deps_missing` → the selected runtime Chat/Responses API could not be probed because its SDK is missing. Re-sync the same scripts environment and stop; do not substitute Converse.
+- `ok == false` + `reason: messages_deps_missing` → the selected runtime Anthropic Messages API could not be probed because `anthropic` / `aws-bedrock-token-generator` is missing from the pinned scripts environment. Re-sync (`uv sync --project $SCRIPTS`) and stop; do not substitute Converse — access was never verified.
 - `ok == false` + `reason: model_unavailable` → Read the `resolve-bedrock-model-id` reference at `$HELPERS/resolve-bedrock-model-id/resolve-bedrock-model-id.md` and follow its procedure with each ID from `failing_models` + region. AskUserQuestion with the candidates: "Use `<candidate>` (cross-region inference profile)" / "Paste a different model ID" / "Abort". On a choice, replace the ID in `$TARGET_MODELS` and re-run B4.
+- `ok == false` + `reason: unknown_runtime_api` → a `--target` row's API was missing or not one of `converse` / `responses` / `chat_completions` / `messages` (`invoke` for embeddings). Nothing was probed. Resolve that row's `required_client_api` (the B4 resolution step above for the primary row; the saved plan for a secondary row) and re-run B4; never guess Converse.
 - `ok == false` + any other `reason` → show `detail` and stop.
 - `ok == true` → proceed. Surface any `quota_warning`, and any model whose `reason` is
   `embedding_unprobed` (embedding family the preflight can't probe — remind the user to confirm
@@ -887,13 +976,25 @@ resolved_api_path = normalize_api_path(
     plan_migration_path, validated_target_model_ids, plan_runtime_api)
 ```
 
-Read `plan_runtime_api` from the selected model row's `required_client_api`. For older
-plans, fall back to that row's `runtime_api`, then `ai_architecture.code_migration.runtime_api`.
-A current Design CRIS plan without an explicit API uses `responses`; only a legacy
-Converse plan retains `None`. An explicit `invoke` surface is unsupported by this
-execution lane: stop for an explicit supported API decision rather than treating it as Converse. A `runtime_openai_cris`
-plan resolves to `runtime_openai_chat` or `runtime_openai_responses` when that API is explicit,
-and retains the Converse default otherwise. Do not ignore this field on dispatch or resume.
+`plan_runtime_api` is B4's `$RESOLVED_RUNTIME_API`: the selected
+model row's `required_client_api`, for older plans that row's `runtime_api`, then
+`ai_architecture.code_migration.runtime_api`, and for a `runtime_openai_cris` plan that records
+none, the user's B4 answer. An explicit `invoke` surface is unsupported by this execution lane:
+stop for an explicit supported API decision rather than treating it as Converse. A
+`runtime_openai_cris` plan resolves to `runtime_openai_chat` or `runtime_openai_responses` from
+that explicit API and **fails closed when none is recorded**: `normalize_api_path` raises
+`ValueError` ("Converse is never the implicit default"). Reaching that error here means B4's
+resolution step was skipped — do not catch it and guess; go back to B4, resolve
+`$RESOLVED_RUNTIME_API` (on resume, reuse the saved `resolved_runtime_api` only when B4's
+`--resume-runtime-api` gate reports `saved_identity_match`; otherwise ask), and re-normalize.
+The same value is written to current-context.json as
+`resolved_runtime_api` (C0), so an unchanged resume matches without re-asking. An explicit
+`required_client_api: "converse"` is the ONLY route to a Converse rewrite for a
+`runtime_openai_cris` plan. `runtime_messages` (Anthropic SDK on the runtime `/anthropic`
+endpoint) passes through `normalize_api_path` unchanged. `mantle_messages` never reaches this
+block: the B1 lane gate (`preflight_bedrock.py --check-lanes`) halts it as an unsupported lane
+before B4 and before any dispatch — it is NOT a Converse plan and must not be labelled one.
+Do not ignore this field on dispatch or resume.
 The legacy `migration_path: "mantle"` alias with bare proprietary GPT targets resolves to
 `mantle_openai_responses`, so evaluator and rewriter keep the documented Responses default.
 Other explicit `migration_path` values are preserved. With no path, an all-bare proprietary GPT target
@@ -911,12 +1012,13 @@ AWS region: <$REGION>
 AWS profile (pass as --profile / AWS_PROFILE= inline on every aws/boto3 invocation): <$AWS_PROFILE_CHOICE — omit line if default>
 Target Bedrock model(s): <comma-joined $TARGET_MODELS, with any resolved overrides already applied>
 Target API path: <resolved_api_path from normalize_api_path above>
-Target API surface: <chat_completions for *_openai_chat, responses for *_openai_responses, otherwise converse>
+Target API surface: <chat_completions for *_openai_chat, responses for *_openai_responses, messages for runtime_messages, otherwise converse — mantle_messages never reaches a dispatch (B1 lane gate)>
 Migration plan dir: <$MIGRATION_DIR>
 Resolved target model id: <override for the primary chat model — omit if none>
 Scripts directory (pinned uv toolchain): <$SCRIPTS>
 Report date suffix: <saved suffix from run-context — C5/C6 dispatches only>
 Usage baseline path: <$BEDROCK_RUN_DIR/usage-baseline.json — C5/C6 dispatches only, omit line if the file is absent>
+Endpoint basis: <per target, semicolon-separated: "<aws_model_id>: bedrock-mantle (<mantle_selector>; <mantle_requirement.source>; <mantle_requirement.evidence>)" or the row's endpoint_assumption sentence verbatim — C6 dispatch only; a Mantle row (migration_path mantle_* or mantle_selector present) that lacks mantle_requirement renders "<aws_model_id>: bedrock-mantle (<mantle_selector or 'selector unrecorded'>; source unknown — plan predates mantle_requirements)"; emit the line whenever any row carries migration_path mantle_*, mantle_selector, mantle_requirement or endpoint_assumption; omit it only when no row carries any of them (older runtime-only plan)>
 Source baseline available: <true|false>
 Source provider env file: <path — omit if none>
 User-supplied log files: <comma-joined — omit if none>
@@ -964,6 +1066,7 @@ Bedrock at their expense, capped at 200 cases.
   "repo_dirty_sha256": "<sha256 of: git status --porcelain + git diff + git diff --cached, EACH with pathspecs -- . ':(exclude).saws-migrate' ':(exclude).migration' ':(exclude)MIGRATION_REPORT_*.md'; \"\" when all three are empty>",
   "target_models": [{"source_model": "...", "aws_model_id": "...", "use_case": "..."}],
   "resolved_model_overrides": {},
+  "resolved_runtime_api": "<$RESOLVED_RUNTIME_API from B4: responses | chat_completions | converse | messages — ALWAYS present, so saved and current contexts compare field-for-field>",
   "source_provider": "<from B1>",
   "source_baseline_available": <true|false from B3>,
   "source_key_sha256": "<sha256 of .source-provider-env contents, \"\" when absent>",
@@ -1017,6 +1120,7 @@ uv run --project $SCRIPTS python $SCRIPTS/validate_result.py --check-run-context
 | repo_root, migration_dir, region, aws_profile, aws_account, source_provider, assess_design_sha256, schema_version, plugin_version | everything                      | —         |
 | repo_head_sha / repo_branch / repo_dirty_sha256                                                                                   | everything                      | —         |
 | target_models / resolved_model_overrides                                                                                          | ANALYSIS, EVAL, REWRITE, REPORT | INGESTION |
+| resolved_runtime_api                                                                                                              | EVAL, REWRITE, REPORT           | ANALYSIS, INGESTION |
 | evaluation_contract_version                                                                                                     | ANALYSIS, EVAL, REWRITE, REPORT | INGESTION |
 | log_files / max_golden_cases                                                                                                      | everything                      | —         |
 | source_key_sha256 / source_baseline_available                                                                                     | ANALYSIS, EVAL, REWRITE, REPORT | INGESTION |
@@ -1101,9 +1205,12 @@ Below, AskUserQuestion:
 **Gate (a.5) — Rewrite strategy (from the normalized API path).** Reuse
 `resolved_api_path` from the context-block normalization above. If it starts with `mantle`,
 set `rewrite_strategy = "mantle"`. For `runtime_openai_chat` or `runtime_openai_responses`,
-set `rewrite_strategy = "runtime_openai"`; otherwise set `rewrite_strategy = "converse"`.
+set `rewrite_strategy = "runtime_openai"`. For `runtime_messages`,
+set `rewrite_strategy = "runtime_messages"`; otherwise set `rewrite_strategy = "converse"`.
 An absent legacy plan field is not a second Converse default here: a validated bare Astra
-plan without that field has already resolved to Mantle Responses before C3. Explicit
+plan without that field has already resolved to Mantle Responses before C3, and a
+`runtime_openai_cris` plan without an API has already failed closed (and been resolved by
+the user) in the context-block normalization. Explicit
 `mantle_openai_chat`, `mantle_openai_responses`, and runtime CRIS choices stay unchanged.
 
 **Gate (b) — Behavior-delta resolution.** For each `analysis.behavior_deltas[]` with
@@ -1148,6 +1255,12 @@ When `rewrite_strategy == "mantle"`, C5's context block ALSO includes:
 When `rewrite_strategy == "runtime_openai"`, add `Rewrite strategy: runtime_openai`.
 C5 must use the shared `Target API surface` and exact target profile at the runtime
 `/openai/v1` endpoint; it must not use the Mantle client or a Converse rewrite.
+
+When `rewrite_strategy == "runtime_messages"`, add `Rewrite strategy: runtime_messages`.
+C5 keeps the Anthropic SDK and its Messages request/response shapes on the runtime
+`/anthropic` endpoint (`https://bedrock-runtime.{region}.amazonaws.com/anthropic`) with the
+exact validated profile ID and a STRING Bedrock token (`provide_token(region=...)` minted per
+client, never a callable); it must not use the Mantle URL or a Converse rewrite.
 
 Rebuild these context lines from the same normalized path on every dispatch/resume. The existing
 `assess_design_sha256` run-context check detects a changed model/API decision. If a bare
@@ -1205,6 +1318,10 @@ Tell the user, before collecting models:
 
 ### AC2 — Collect requested models and region (do NOT resolve friendly names yet)
 
+- **Default endpoint for new work is `bedrock-runtime`:** when the user has not yet chosen an
+  ID form, offer the runtime form (bare foundation-model ID or a supported `us.`/`global.`
+  cross-region profile) first; a bare proprietary GPT ID (`bedrock-mantle`) is checked only
+  when the user names it or has a verified Mantle-only need (see the Endpoint policy section).
 - **Models (raw request only):** if `$ARGUMENTS` names model IDs, use them directly — skip
   resolution, they're already IDs. Otherwise **AskUserQuestion**: "Which models do you want
   access to? Give Bedrock model IDs (e.g. `anthropic.claude-sonnet-5`,

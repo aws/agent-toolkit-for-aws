@@ -208,13 +208,21 @@ after Clarify confirms them**, not this array.
   "capability": "text_generation", // see enum below
   "capability_confidence": "high", // high | medium | low
   "structured_output": false,
-  "call_sites": [{ "file": "app/llm.py", "line": 42 }] // non-empty, POSIX repo-relative
+  "call_sites": [{ "file": "app/llm.py", "line": 42 }], // non-empty, POSIX repo-relative
+  "mantle_signals": [{ "selector": "projects", "file": "app/llm.py", "line": 9, "construct": "default_headers={\"OpenAI-Project\": os.environ[\"OPENAI_PROJECT_ID\"]}" }] // optional — discover-app-code.md Step 5C
 }
 ```
 
 `capability` enum: `text_generation`, `structured_output`, `image_generation`, `embedding`,
 `speech_to_text`, `text_to_speech`, `document_extraction`, `image_analysis`, `speech_transcription`,
-`unknown`. The capability map is `references/vendored/ai/sdk-capability-map.json` (keys on SDK call
+`unknown`.
+`mantle_signals[].selector` enum: `background_inference`, `web_search`, `server_side_tools`,
+`projects`, `workspaces` — the only code-detectable Mantle selectors; never
+`mantle_only_model_or_api` (Design derives it) or `in_region_processing` (Clarify always asks).
+Written by `discover-app-code.md` Step 5C with a real file:line and the matched source text as
+`construct` (never a secret value), and by the usage-API Step 4 merges (`discover-openai-api.md` →
+`projects`, `discover-anthropic-api.md` → `workspaces`, `discover-openrouter-api.md` → `web_search`)
+with the `"<usage_api>"` / `line: 0` sentinel. Omit or `[]` when nothing matched. The capability map is `references/vendored/ai/sdk-capability-map.json` (keys on SDK call
 pattern, so Azure-OpenAI-via-openai-SDK is already covered). Azure Cognitive SDK methods
 (`azure.ai.vision.*`, `azure.ai.formrecognizer.*`, `azure.cognitiveservices.speech.*`,
 `azure.ai.textanalytics.*`) map to `image_analysis` / `document_extraction` / `speech_transcription`

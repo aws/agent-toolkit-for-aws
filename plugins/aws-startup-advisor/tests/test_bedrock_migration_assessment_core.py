@@ -86,7 +86,7 @@ def test_every_neutral_fixture_is_accepted_without_a_sidecar(fixture_path: Path)
     result = BMA_VALIDATOR.validate_profile(_load(fixture_path))
     assert result["ok"] is True
     assert set(result) == {"ok", "schema_version", "ai_sources", "gateways", "models_extractable",
-                           "ai_framework_detected", "ai_vision_detected"}
+                           "ai_framework_detected", "ai_vision_detected", "mantle_signals_detected"}
 
 
 @pytest.mark.parametrize("fixture_path", PROFILE_FIXTURES, ids=lambda p: p.parent.name)

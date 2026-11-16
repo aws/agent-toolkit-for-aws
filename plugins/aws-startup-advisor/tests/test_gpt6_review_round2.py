@@ -89,6 +89,14 @@ def test_design_ai_gives_gpt55_gpt54_the_runtime_cris_path() -> None:
         assert "GPT-5.5 and GPT-5.4 are `bedrock-mantle` only" not in text
         assert "no CRIS" not in text
         assert "No Converse fallback for GPT-5.5/GPT-5.4" not in text
+        # bedrock-runtime is the default; a mantle_* row needs a recorded selector
+        # and the OpenRouter same-model route has a runtime spelling.
+        assert "mantle_selector" in text, (
+            f"{f}: design must require bedrock_models[].mantle_selector on mantle_* rows"
+        )
+        assert "same_model_runtime" in text, (
+            f"{f}: openrouter_path vocabulary must include same_model_runtime"
+        )
 
 
 def test_generate_artifacts_ai_dispatches_runtime_openai_cris() -> None:
@@ -122,6 +130,11 @@ def test_schema_design_aws_ai_vocabulary_includes_runtime_openai_cris() -> None:
     assert "mantle-only, no CRIS" not in normalized
     assert "**bare** proprietary `openai.gpt-*`" in normalized
     assert "us.openai.gpt-5.5" in normalized or "GPT-5.5 / GPT-5.4 runtime support" in normalized
+    # Runtime-default vocabulary: Anthropic SDK on bedrock-runtime, the runtime
+    # OpenRouter route, and the selector every mantle_* row must carry.
+    assert "runtime_messages" in text
+    assert "same_model_runtime" in text
+    assert "mantle_selector" in text
 
 
 # --- Finding 3: Astra Invoke-support correction ---

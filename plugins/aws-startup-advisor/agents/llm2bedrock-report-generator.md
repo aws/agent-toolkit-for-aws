@@ -34,7 +34,7 @@ Read accumulated state from prompt context (forwarded from every prior Track 2 p
 - **`<REGION>`** — AWS region for Bedrock (the `AWS region:` line in your context).
 - **AWS profile** — the `AWS profile` line, when present: prepend `AWS_PROFILE=<profile>` inline to the §6.1 pricing-script invocation and any other aws/boto3 command; omit when absent.
 - **`<scriptsDir>`** — the pinned-toolchain scripts directory, the `Scripts directory (pinned uv toolchain):` line in your context. Used to run `bedrock_pricing.py`.
-- **From `llm2bedrock-code-analyzer` (`AiAnalysisData`)** — `source_provider`, `ai_framework`, `source_models`, `target_models` (`<source-model> -> <bedrock-model>` pairs), `coverage_level`, `use_case_type`, `errors`.
+- **From `llm2bedrock-code-analyzer` (`AiAnalysisData`)** — `source_provider`, `ai_framework`, `source_models`, `target_models` (`<source-model> -> <bedrock-model>` pairs — the FINAL validated ids §6.4's IAM recipe joins the plan rows to), `stored_response_ops` (optional: retained `responses.retrieve` / `cancel` / `delete` ops, §6.4), `coverage_level`, `use_case_type`, `errors`.
 - **From `llm2bedrock-log-ingestor` (`LogIngestionData`)** — `total_golden_cases`, `coverage_level`, `gaps`. Drives the Risk Assessment + Coverage sections.
 - **From `llm2bedrock-prompt-evaluator` (`EvalData` + `notes` prefixes)** — top-level fields:
   - `pass_rate` (fraction in [0,1]), `total_cases`, `failures`, `live_source_baseline` (bool), `judge_model`.
@@ -565,13 +565,95 @@ Generate a least-privilege IAM policy scoped to the exact model ARNs selected du
 
 ```bash
 uv run --project <scriptsDir> python <scriptsDir>/iam_policy.py \
-  --models <comma-separated target model ids> \
+  --target <aws_model_id>=<that row's required_client_api> [--target ... one per bedrock_models[] row] \
+  [--stored-response-ops <comma-joined analysis.stored_response_ops — omit when absent or empty>] \
+  [--mantle-selector <bedrock_models[].mantle_selector of every mantle_* row — omit when no row has one>] \
+  [--external-web-access — ONLY when the user explicitly confirmed external web access for a web_search row] \
   --region <REGION> \
   --account-id <AWS account id from run-context> \
+  --migration-path <Target API path from your context> \
   --output <repo>/.saws-migrate/iam-policy.json
 ```
 
-The script handles the dual-ARN pattern: foundation-model ARNs for plain model IDs and inference-profile ARNs for geo-prefixed IDs (e.g. `us.anthropic.claude-sonnet-4-6`). For a GPT-6 CRIS id and for the GPT-5.5 / GPT-5.4 CRIS ids (`us.`/`global.openai.gpt-5.5`, `us.`/`global.openai.gpt-5.4`, or their `inference-profile/` ARNs) it adds a third resource, `arn:aws:bedrock:<region>:<account>:project/default`, because those model cards (GPT-5.4 / GPT-5.5 read 2026-11-07) require `bedrock:InvokeModel` on the default project in addition to the inference profile; do not strip it from the report's policy excerpt. The output is a ready-to-use IAM policy JSON file.
+**The ids come from the VALIDATED mapping, the APIs from the plan rows — join them.** `<aws_model_id>` in the
+command above is the VALIDATED target id for that row, not the design row's own `aws_model_id`.
+`aws-design-ai.json` keeps the ORIGINAL design id after the user changes a target in C4 (recorded in run-context
+`resolved_model_overrides`; the dispatch context's `Target Bedrock model(s)` line and the re-run
+analysis already carry the new target), so re-reading `bedrock_models[].aws_model_id` would emit the old
+model's permissions — a Sol → Terra change would grant `us.openai.gpt-5.6-sol` and omit the Terra profile
+the rewritten app calls. Instead, for every `ai_architecture.bedrock_models[]` row in
+`<Migration plan dir>/aws-design-ai.json`, take the row's `source_model_id` (older plans `source_model`),
+look it up in the analyzer's validated `target_models` (`"<source-model> -> <bedrock-model>"`, one entry per
+row — the right-hand side is the FINAL validated id with every override applied), and emit
+`<that validated id>=<the row's required_client_api>`. This is exactly `iam_policy.validated_target_pairs(rows,
+analysis["target_models"], primary_model_id, primary_api)` in `<scriptsDir>`; use it when a row's API has to
+be filled in, and run `python -c` against it rather than hand-joining. Control: the set of ids you emit MUST
+equal the set on your context's `Target Bedrock model(s)` line; a row whose source model has no validated
+entry makes the helper raise — stop and report it, never fall back to the row's original `aws_model_id`.
+
+**One `--target` pair per row, each with ITS OWN API** (`responses` | `chat_completions` | `converse` |
+`messages`; `invoke` for an embedding row). The primary chat row's API is the `Target API surface` from
+your context (the value B4 resolved; use it when that row records no `required_client_api`). Do NOT apply
+the primary's surface to the other rows: the grant is decided per row, so a `runtime_messages` plan whose
+secondary is a GPT Chat / Responses CRIS id still gets `project/default` for that secondary, while a Nova
+Converse secondary does not. Do not deduplicate rows: when one id appears in two rows with different APIs (a
+`converse` row for a Guardrails / application-inference-profile call site and a `chat_completions` /
+`responses` row for another source model), pass both pairs in any order — the helper grants
+`project/default` once if ANY of that id's rows is on `responses` / `chat_completions`, and never if none
+is. If any row's API is missing or unknown the helper exits 1 with `reason: unknown_runtime_api` and writes
+no policy — report that verbatim, do not substitute an API and do not hand-write a policy. The legacy
+single-API form `--models <comma-separated ids> --runtime-api <Target API surface>` is still accepted but
+applies ONE API to every id; use it only for a single-row plan (and still with the validated id, not the
+design's). A `mantle_messages` path never reaches this agent (the orchestrator's lane gate stops it before
+Phase C); if it somehow does, the helper exits 1 with `reason: unsupported_lane` — report that verbatim and
+do not hand-write a policy.
+
+**Retained stored-response operations need their own grant.** Read `stored_response_ops` from
+`analysis.json` (the analyzer's §8.3 scan for `client.responses.retrieve(id)` / `.cancel(id)` /
+`.delete(id)` call sites the rewrite keeps). When it is non-empty, pass
+`--stored-response-ops <comma-joined values>` and the helper adds a `BedrockStoredResponseOps` statement
+on `arn:aws:bedrock:<region>:<account>:project/default` with ONLY the retained actions —
+`bedrock:GetInvoke` for `retrieve`, `bedrock:CancelInvoke` for `cancel`, `bedrock:DeleteInvoke` for
+`delete`: creating a response authorizes `bedrock:InvokeModel` on the inference target and the default
+project, while retrieving, canceling or deleting a stored response authorizes those three actions on the
+project (<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html>,
+"Permissions", read 2026-11-08). Without it, creation and the preflight ping pass while the app's
+existing `responses.retrieve(id)` is denied. Stored responses exist on the Responses API of either endpoint
+and the grant is dispatched by endpoint: the helper emits the `BedrockStoredResponseOps` statement only when
+a `--target` row is a runtime GPT CRIS id on `responses`; a `--target` row that is a bare Mantle id on
+`responses` (a `mantle_openai_responses` plan) satisfies retained ops through the `BedrockMantleInference`
+statement — stored responses are retrievable on Mantle at `GET /v1/responses/{id}` and Mantle inference
+authorizes `bedrock-mantle:CreateInference` (same page, "Permissions", read 2026-11-09) — so no
+`bedrock:GetInvoke` is added for it and the helper does not exit 1. The helper exits 1 with
+`reason: stored_response_ops_no_responses_row` for a Converse / Anthropic Messages / Chat Completions
+plan, which has no Responses row on either endpoint — report that verbatim (the analyzer should not have
+recorded ops for such a source) and do not add the actions by hand. When the field is absent or `[]`, omit
+the flag; the policy then carries no `GetInvoke` / `CancelInvoke` / `DeleteInvoke`.
+
+**Web Search needs its own grants.** Pass every confirmed selector, not only each row's primary
+`mantle_selector`. Union `preferences.json` → `ai_constraints.mantle_requirements.value[]` entries whose
+`source` is `detected` or `user` with every `bedrock_models[].mantle_selector`. When that set contains
+`web_search` — including when the row's primary selector is `background_inference` and Web Search is only
+named in `rationale` — pass `--mantle-selector web_search` joined with the other confirmed selectors (those
+other selectors add no Web Search actions) and the helper adds a `BedrockWebSearch` statement: `bedrock-websearch:InvokeSearch`
+and `bedrock-websearch:InvokeFetch` on resource `*` with an `aws:RequestedRegion` condition — the three
+`bedrock-websearch` actions all take `*` and that global key is the service's only condition key
+(<https://docs.aws.amazon.com/bedrock/latest/userguide/security-web-search.html>, read 2026-11-09). The
+generated client MUST set `"external_web_access": false` on the `web_search` tool unless the user
+explicitly confirmed external web access in Clarify: the parameter defaults to `true`, and without the
+`bedrock-websearch:ExternalWebAccess` action every Fetch then fails authorization before the cache is read
+while the Responses request still returns 200 and may still carry `url_citation` annotations
+(<https://docs.aws.amazon.com/bedrock/latest/userguide/web-search.html>, "Controlling external web access",
+read 2026-11-09). Only when the user confirmed external access, pass `--external-web-access` too and the
+statement also grants `bedrock-websearch:ExternalWebAccess`; say in the report that request data may then
+leave the AWS boundary. Web Search is served on the `bedrock-mantle` Responses API only, so the helper exits
+1 with `reason: web_search_without_mantle_row` when no `--target` row is a bare Mantle id, and with
+`reason: external_web_access_without_web_search` when the flag is passed without the selector — report
+either verbatim. A plan with no `web_search` row gets no `bedrock-websearch:*` action; do not add one by hand.
+
+The script handles the dual-ARN pattern: foundation-model ARNs for plain model IDs and inference-profile ARNs for geo-prefixed IDs (e.g. `us.anthropic.claude-sonnet-4-6`). For any cross-region (CRIS) target it also emits a `BedrockGetInferenceProfile` statement (`bedrock:GetInferenceProfile` on the profile ARNs) — the documented prerequisite for invoking through a profile (<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-prereq.html>, read 2026-11-07). For every runtime Responses / Chat Completions target — any proprietary GPT CRIS id by id form (GPT-5.6 Sol / Terra / Luna, the GPT-6 family, GPT-5.5 / GPT-5.4: `us.openai.gpt-5.5` / `global.openai.gpt-5.5`, `us.openai.gpt-5.4` / `global.openai.gpt-5.4`, or their `inference-profile/` ARNs) whose own `--target` API is `responses` or `chat_completions` (legacy form: `--runtime-api` set to one of those, or omitted) — it adds a third resource, `arn:aws:bedrock:<region>:<account>:project/default`, because a Responses request on `bedrock-runtime` authorizes the default project separately from the inference target (<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html>, read 2026-11-07) and each of those model cards (read 2026-11-07) repeats the requirement; do not strip it from the report's policy excerpt. A row on `converse` or `messages` and every Anthropic / Nova / gpt-oss / embedding id get no project resource. The output is a ready-to-use IAM policy JSON file.
+
+**Runtime OpenAI and Runtime Messages lanes need no Mantle statement.** A `Rewrite strategy: runtime_openai` or `Rewrite strategy: runtime_messages` run keeps the source SDK but authorizes through `bedrock:InvokeModel*` (+ `GetInferenceProfile`, and the default-project ARN for every runtime Responses / Chat Completions GPT CRIS id above) on the `bedrock-runtime` endpoint; report exactly the statements the script produced and do not add `bedrock-mantle:*` for them. Per-token model pricing is the same on both endpoints (<https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints.html>, read 2026-11-07), so the endpoint choice does not change the §6.3 cost table.
 
 **Mantle targets get different actions.** When any target is a bare proprietary OpenAI GPT model (GPT-5.x or `openai.gpt-6-astra`), the script also emits `bedrock-mantle:CreateInference` / `Get*` / `List*` scoped to `arn:aws:bedrock-mantle:<region>:<account>:project/*`, plus `bedrock-mantle:CallWithBearerToken` on `*` (AWS does not permit narrowing that one). `bedrock:InvokeModel` alone does **not** authorize these models. Two consequences to carry into the report:
 
@@ -698,12 +780,13 @@ banner. Do NOT use the plain ✅ banner just because
 - **Migration Track:** Track 2 (AI-Only — no infrastructure changes)
 - **Deliverable:** Git branch `<branch_name>` (the rewriter's returned `branch_name` — may be collision-suffixed, e.g. `bedrock-migration-2`)
 - **Side-by-side validation:** <one of: `Yes — live same-model baseline` / `Yes — live substitute-model baseline (<live_source_baseline_used_model> instead of <source_model_id>)` / `No — static baselines only` / `N/A — connectivity only (same-family)` / `N/A — no golden cases`> (matches the banner block chosen above)
+- **Endpoint:** <from the `Endpoint basis:` context line — `bedrock-runtime` or `bedrock-mantle (<selector>, <source>)` per target; when a target is on bedrock-runtime, quote its `endpoint_assumption` sentence verbatim on the next line; a Mantle target the line marks `source unknown — plan predates mantle_requirements` is still rendered as `bedrock-mantle (<selector or 'selector unrecorded'>; source unknown)`; the line is absent only when no row carries a Mantle marker or either field — then render `bedrock-runtime (plan predates mantle_requirements; re-run Clarify to record a Mantle-only requirement)`>
 
 ### Model Mapping
 
 | Source Model     | Bedrock Model     | Notes   |
 | ---------------- | ----------------- | ------- |
-| <source_model_1> | <bedrock_model_1> | <notes> |
+| <source_model_1> | <bedrock_model_1> | <notes — for a Mantle target: `mantle (<mantle_selector>; <mantle_requirement.source>; <mantle_requirement.evidence>)` from the `Endpoint basis:` line; for a runtime target: `bedrock-runtime`> |
 
 ### Overall Status: <READY TO MERGE / NEEDS REVIEW / BLOCKED>
 
@@ -862,6 +945,24 @@ line `*Monthly estimate unavailable — sample has no time-span information.*`
    - `.env.example` sets `AWS_REGION` and the model id. Access keys stay commented. A Mantle bearer token, when present, is commented, expires within 12 hours, and is for a short local run — not an ECS task or a Lambda environment.
    - Apply the generated least-privilege IAM policy: `.saws-migrate/iam-policy.json`
      (scoped to the exact model ARNs used in this migration — review before attaching to a role)
+   - <Render ONLY when `analysis.stored_response_ops` is non-empty; delete this bullet otherwise.>
+     **Create-plus-retrieve permission check** (the preflight ping only exercises creation): under
+     the attached role, run `r = client.responses.create(model="<primary validated id>", input="ping")`
+     and then `client.responses.retrieve(r.id)` (<and `.cancel(r.id)` / `.delete(r.id)` for each other
+     retained op>). A 403 on the second call means the policy's `BedrockStoredResponseOps`
+     statement (`bedrock:GetInvoke` <, `CancelInvoke`, `DeleteInvoke`> on
+     `arn:aws:bedrock:<region>:<account>:project/default`) is not attached — creation passing does not
+     prove retrieval is authorized. <For a `mantle_openai_responses` plan run the same
+     `responses.create` / `responses.retrieve(r.id)` pair against the Mantle base URL with the bare Mantle
+     id; a 403 there means the `BedrockMantleInference` statement is not attached.>
+   - <Render ONLY when `web_search` is a confirmed mantle requirement (a row's `mantle_selector`, or any other `detected`/`user` entry in `ai_constraints.mantle_requirements`), even if the row's primary selector is `background_inference`; delete this bullet otherwise.>
+     **Tool-level permission check** (a plain model ping passing does not prove the Web Search grant):
+     under the attached identity run `client.responses.create(model="<bare Mantle id>",
+     input="<a time-sensitive question>", tools=[{"type": "web_search", "external_web_access": False}])`
+     against the Mantle base URL, confirm the output contains a `web_search_call` item or a `url_citation`
+     annotation, and check CloudTrail Web Search data events for a denied `InvokeSearch` / `InvokeFetch` —
+     a denied call is not disclosed in the model response. <Only when the user confirmed external web
+     access: repeat with `"external_web_access": True` and confirm no denied `ExternalWebAccess`.>
 
 3. **Run tests:**
 
@@ -912,6 +1013,8 @@ This evaluation was based on **<coverage_level>**:
 ## Limitations
 
 <Honest list of what wasn't tested or verified>
+
+- **Endpoint choice:** the bedrock-runtime / bedrock-mantle decision above rests on the Mantle-only requirements Clarify recorded (a detected code signal the user confirmed, or the user's own answer) — not on an inspection of every request this app sends. bedrock-runtime rejects `background=true` with a 400 (https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html, read 2026-11-07); if a workload turns out to need background inference, server-side tools, Projects/Workspaces, or single-Region processing, re-run Clarify rather than editing the generated client.
 
 ### Evaluation methodology disclosure
 
