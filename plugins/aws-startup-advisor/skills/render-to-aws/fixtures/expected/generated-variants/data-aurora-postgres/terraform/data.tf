@@ -1,13 +1,4 @@
-resource "aws_kms_key" "data" {
-  description             = "Encryption key for ${local.name_prefix} Aurora storage, Performance Insights, and master secret"
-  enable_key_rotation     = true
-  deletion_window_in_days = 30
-}
 
-resource "aws_kms_alias" "data" {
-  name          = "alias/${local.name_prefix}-data"
-  target_key_id = aws_kms_key.data.key_id
-}
 
 resource "aws_db_subnet_group" "main" {
   name       = local.name_prefix
@@ -52,12 +43,12 @@ resource "aws_rds_cluster" "postgres" {
   database_name                       = "application"
   master_username                     = "migration_admin"
   manage_master_user_password         = true
-  master_user_secret_kms_key_id       = aws_kms_key.data.arn
+  master_user_secret_kms_key_id       = aws_kms_key.stack.arn
   db_subnet_group_name                = aws_db_subnet_group.main.name
   vpc_security_group_ids              = [aws_security_group.data.id]
   db_cluster_parameter_group_name     = aws_rds_cluster_parameter_group.postgres.name
   storage_encrypted                   = true
-  kms_key_id                          = aws_kms_key.data.arn
+  kms_key_id                          = aws_kms_key.stack.arn
   iam_database_authentication_enabled = true
   backup_retention_period             = var.backup_retention_days
   preferred_backup_window             = "07:00-08:00"
@@ -83,7 +74,7 @@ resource "aws_rds_cluster_instance" "postgres" {
   publicly_accessible             = false
   auto_minor_version_upgrade      = true
   performance_insights_enabled    = true
-  performance_insights_kms_key_id = aws_kms_key.data.arn
+  performance_insights_kms_key_id = aws_kms_key.stack.arn
   promotion_tier                  = count.index
   lifecycle {
     ignore_changes = [engine_version]

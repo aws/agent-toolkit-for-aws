@@ -152,6 +152,69 @@ def test_valkey_serverless_variant_follows_guidance() -> None:
     assert "cidr_blocks" not in tf
 
 
+DATA_SELECTORS = SKILL_ROOT / "references/design-refs/data.md"
+# nearest heading in the fragment -> (selector section in data.md, words the cited rule must contain)
+CITED_RULES = {
+    "Amazon RDS for PostgreSQL (`aws_db_instance`)": ("PostgreSQL target", "Select RDS for a conventional"),
+    "Amazon Aurora PostgreSQL (`aws_rds_cluster` and `aws_rds_cluster_instance`)": ("PostgreSQL target", "Aurora-specific"),
+    "ElastiCache for Valkey Serverless (`aws_elasticache_serverless_cache`)": ("Key Value target", "ElastiCache Serverless"),
+}
+
+
+def _selector_rules(section: str) -> dict[int, str]:
+    text = DATA_SELECTORS.read_text(encoding="utf-8")
+    body = text.split(f"## {section}", 1)[1].split("\n## ", 1)[0]
+    return {int(m.group(1)): m.group(2) for m in re.finditer(r"^(\d+)\. (.+)$", body, re.MULTILINE)}
+
+
+def test_selector_rule_numbers_cited_by_the_data_fragment_have_the_cited_meaning() -> None:
+    heading = ""
+    cited = 0
+    for line in FRAGMENT.read_text(encoding="utf-8").splitlines():
+        if line.startswith("#"):
+            heading = line.lstrip("#").strip()
+        for number in (int(n) for n in re.findall(r"\brule (\d+)\b", line)):
+            cited += 1
+            assert heading in CITED_RULES, f"rule {number} cited under unmapped heading {heading!r}"
+            section, words = CITED_RULES[heading]
+            assert words in _selector_rules(section).get(number, ""), f"rule {number} under {heading!r}"
+    assert cited >= 3
+    # the RDS startup default is cited by name, because its number moves when the selector gains rules
+    startup = [rule for rule in _selector_rules("PostgreSQL target").values() if "lower-change startup default" in rule]
+    assert startup and "select RDS" in startup[0]
+    assert "RDS startup default" in FRAGMENT.read_text(encoding="utf-8")
+    assert not re.search(r"rule 3 or 6", FRAGMENT.read_text(encoding="utf-8"))
+
+
+def test_data_tier_uses_the_single_stack_key_from_kms_tf() -> None:
+    guidance = FRAGMENT.read_text(encoding="utf-8")
+    baseline = (SKILL_ROOT / "references/phases/generate/generate-artifacts-baseline.md").read_text(encoding="utf-8")
+    kms_section = baseline.split("## kms.tf (gated)", 1)[1].split("\n## ", 1)[0]
+    assert "`aws_kms_key.stack`" in kms_section and "`kms_key_arn`" in kms_section
+    assert "aws_kms_key.stack" in guidance and "`kms_key_arn`" in guidance
+    assert "aws_kms_key.data" in guidance and "never an `aws_kms_key.data`" in guidance
+    for name in VARIANT_NAMES:
+        files = {path.name: path.read_text(encoding="utf-8") for path in _terraform(name).glob("*.tf")}
+        assert files["kms.tf"].count('resource "aws_kms_key" "stack"') == 1
+        assert 'output "kms_key_arn"' in files["kms.tf"]
+        assert "aws_kms_key.data" not in "".join(files.values())
+        assert "aws_kms_key" not in files["data.tf"].replace("aws_kms_key.stack", "")
+    golden = (SKILL_ROOT / "fixtures/expected/generated/terraform").glob("*.tf")
+    golden_text = {path.name: path.read_text(encoding="utf-8") for path in golden}
+    assert "kms.tf" not in golden_text
+    assert "kms_key" not in golden_text["data.tf"] and "aws_kms" not in golden_text["data.tf"]
+
+
+def test_data_security_group_is_declared_once_in_network_and_referenced_by_data() -> None:
+    fragment = (SKILL_ROOT / "references/phases/generate/generate-artifacts-infra-network-storage-delivery.md").read_text(encoding="utf-8")
+    line = next(item for item in fragment.splitlines() if item.startswith("- Security groups, one per tier"))
+    assert "`network.tf` also declares `aws_security_group.data`" in line and "`data.tf` references it" in line
+    assert "The data tier is owned by the data fragment" not in fragment
+    terraform = SKILL_ROOT / "fixtures/expected/generated/terraform"
+    assert (terraform / "network.tf").read_text(encoding="utf-8").count('resource "aws_security_group" "data"') == 1
+    assert 'resource "aws_security_group" "data"' not in (terraform / "data.tf").read_text(encoding="utf-8")
+
+
 @pytest.fixture(scope="module", autouse=True)
 def _shared_provider_cache(tmp_path_factory: pytest.TempPathFactory):
     """Download the AWS provider once for both variants unless the caller already set a cache."""

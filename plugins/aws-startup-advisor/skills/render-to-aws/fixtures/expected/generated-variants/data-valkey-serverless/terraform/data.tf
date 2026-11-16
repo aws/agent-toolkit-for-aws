@@ -1,8 +1,3 @@
-resource "aws_kms_key" "data" {
-  description             = "Encryption key for ${local.name_prefix} Valkey data at rest"
-  enable_key_rotation     = true
-  deletion_window_in_days = 30
-}
 
 
 resource "aws_elasticache_user" "default" {
@@ -37,7 +32,7 @@ resource "aws_elasticache_serverless_cache" "valkey" {
   major_engine_version     = var.valkey_major_version
   subnet_ids               = aws_subnet.private[*].id
   security_group_ids       = [aws_security_group.data.id]
-  kms_key_id               = aws_kms_key.data.arn
+  kms_key_id               = aws_kms_key.stack.arn
   user_group_id            = aws_elasticache_user_group.app.user_group_id
   snapshot_retention_limit = var.snapshot_retention_days
   daily_snapshot_time      = "07:00"

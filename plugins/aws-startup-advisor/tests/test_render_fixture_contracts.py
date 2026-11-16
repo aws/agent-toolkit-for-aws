@@ -386,7 +386,7 @@ def test_generated_terraform_docs_and_scripts_cover_cutover_and_rollback() -> No
     assert 'security_groups  = [aws_security_group.worker.id]' in compute
     assert 'subnets          = aws_subnet.private[*].id' in compute
     assert 'from_port   = 5432' in network and 'from_port   = 6379' in network
-    assert 'vpc_security_group_ids      = [aws_security_group.data.id]' in tf
+    assert 'vpc_security_group_ids          = [aws_security_group.data.id]' in tf
     assert 'security_group_ids         = [aws_security_group.data.id]' in tf
     assert "certificate_arn   = var.issued_certificate_arn" in network
     assert "aws_acm_certificate.web.arn" not in network
@@ -578,6 +578,51 @@ def test_fixture_promotion_script_matches_harness_emitter() -> None:
     assert fixture == harness._promotion_script().encode("utf-8")
     assert b'promotion_tag="deploy-${target_environment}-${digest_short}"' in fixture
     assert b'image_reference="${repository_url}@${digest}"' in fixture
+
+
+def test_generated_data_tf_and_outputs_satisfy_the_data_fragment() -> None:
+    terraform = EXPECTED / "generated/terraform"
+    data_tf = (terraform / "data.tf").read_text(encoding="utf-8")
+    outputs_tf = (terraform / "outputs.tf").read_text(encoding="utf-8")
+    parameter_group = re.search(r'resource "aws_db_parameter_group" "postgres" \{.*?\n\}\n', data_tf, flags=re.DOTALL)
+    assert parameter_group and re.search(r'family\s*=\s*"postgres16"', parameter_group.group(0))
+    assert re.search(r'name\s*=\s*"rds\.force_ssl"\s*value\s*=\s*"1"', parameter_group.group(0))
+    instance = re.search(r'resource "aws_db_instance" "postgres" \{.*?\n\}\n', data_tf, flags=re.DOTALL)
+    assert instance
+    for pattern in (
+        r"parameter_group_name\s*=\s*aws_db_parameter_group\.postgres\.name",
+        r"max_allocated_storage\s*=\s*\d+",
+        r'storage_type\s*=\s*"gp3"',
+        r"performance_insights_enabled\s*=\s*true",
+        r'enabled_cloudwatch_logs_exports\s*=\s*\["postgresql", "upgrade"\]',
+        r"copy_tags_to_snapshot\s*=\s*true",
+        r"maintenance_window\s*=",
+        r"apply_immediately\s*=\s*false",
+        r"deletion_protection\s*=\s*true",
+        r"skip_final_snapshot\s*=\s*false",
+    ):
+        assert re.search(pattern, instance.group(0)), pattern
+    assert int(re.search(r"max_allocated_storage\s*=\s*(\d+)", instance.group(0)).group(1)) > int(
+        re.search(r"\ballocated_storage\s*=\s*(\d+)", instance.group(0)).group(1)
+    )
+    cache = re.search(r'resource "aws_elasticache_replication_group" "valkey" \{.*?\n\}\n', data_tf, flags=re.DOTALL)
+    assert cache
+    for pattern in (
+        r"parameter_group_name\s*=\s*aws_elasticache_parameter_group\.valkey\.name",
+        r"user_group_ids\s*=",
+        r"snapshot_retention_limit\s*=\s*\d+",
+        r"snapshot_window\s*=",
+        r"maintenance_window\s*=",
+        r"multi_az_enabled\s*=\s*true",
+        r"apply_immediately\s*=\s*false",
+    ):
+        assert re.search(pattern, cache.group(0)), pattern
+    assert re.search(r'family\s*=\s*"valkey8"', data_tf) and re.search(r'name\s*=\s*"maxmemory-policy"', data_tf)
+    for output in ("database_endpoint", "database_port", "database_secret_arn", "valkey_endpoint"):
+        assert f'output "{output}"' in outputs_tf, output
+    assert "password" not in data_tf.replace("manage_master_user_password", "").replace("no_password_required", "")
+    # no kms.tf in the golden pack, so the data tier uses AWS-managed encryption and names no key
+    assert not (terraform / "kms.tf").exists() and "kms" not in data_tf
 
 
 def test_generated_valkey_engine_matches_design_selection() -> None:

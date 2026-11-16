@@ -1257,7 +1257,7 @@ def assert_generated_infrastructure_graph(terraform: Path) -> None:
     assert re.search(r'from_port\s*=\s*6379', network)
     for security_group in ("web", "private", "worker"):
         assert f"aws_security_group.{security_group}.id" in network
-    assert 'vpc_security_group_ids      = [aws_security_group.data.id]' in data
+    assert re.search(r'vpc_security_group_ids\s*=\s*\[aws_security_group\.data\.id\]', data)
     assert 'security_group_ids         = [aws_security_group.data.id]' in data
 
     for name in ("web", "private", "worker", "cron"):
