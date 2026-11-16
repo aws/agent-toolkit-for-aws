@@ -22,6 +22,14 @@
     "launch_concurrency": { "high": 3, "moderate": 2, "low": 2, "unknown": 2 },
     "instance_type_requirement": { "yes": 5, "no": 2, "unknown": 2 }
   },
+  "conditional_affinities": [
+    {
+      "when": { "compute_tier": "gpu" },
+      "dimension": "isolation",
+      "scores": { "required": 2 },
+      "reason": "GPU passthrough into a Nitro Sandbox is unavailable, so GPU pods cannot be sandboxed and get no Nitro Sandbox credit (EKS keeps its base score)."
+    }
+  ],
   "deployment_models": [],
   "volatile_facts": [{ "key": "regions", "value": "all", "verify_via_mcp": false }]
 }

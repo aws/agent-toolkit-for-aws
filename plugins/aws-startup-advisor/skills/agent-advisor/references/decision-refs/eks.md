@@ -33,9 +33,13 @@ pod its own Nitro-enforced VM: set `runtimeClassName: isolated-sandbox`, or
 
 - Requires Kubernetes 1.36 or later and a supported Nitro instance type. Flex instances
   and some of the smallest and metal sizes are excluded.
-- EKS Auto Mode includes both runtime classes and provisions capable nodes. Self-managed
-  node groups or Karpenter need a sandbox-enabled AMI.
-- No GPU passthrough: on accelerated instances a sandboxed pod runs CPU work only.
+- EKS Auto Mode includes both runtime classes and provisions capable nodes. You do not
+  build an AMI.
+- Managed node groups, self-managed node groups, and Karpenter need a sandbox-enabled AMI,
+  launched with Nitro Enclaves enabled (`EnclaveOptions.Enabled=true`). A supported instance
+  type alone does not advertise sandbox capacity.
+- No GPU passthrough: on accelerated instances a sandboxed pod runs CPU work only, so the
+  engine gives EKS no Nitro Sandbox credit for `compute_tier: gpu`.
 - No charge beyond the instances.
 - Isolates workloads, not sessions: per-user session routing is still yours to build.
 Source: https://docs.aws.amazon.com/eks/latest/userguide/sandboxing.html

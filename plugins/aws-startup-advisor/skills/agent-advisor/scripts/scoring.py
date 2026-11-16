@@ -169,12 +169,23 @@ def _apply_hard_constraints(answers, profiles, run_evidence=None):
     return _evaluate_hard_constraints(answers, profiles, verifications)[0]
 
 
+def _apply_conditional_affinities(affinities, profile, answers):
+    """`affinities` with the profile's `conditional_affinities` applied. Each rule replaces some
+    scores in one dimension when every `when` answer matches, for example no Nitro Sandbox credit
+    on EKS for GPU sessions, which a sandbox cannot isolate."""
+    for rule in profile.get("conditional_affinities", []):
+        if all(answers.get(field, "unknown") == value for field, value in rule["when"].items()):
+            dim = rule["dimension"]
+            affinities = {**affinities, dim: {**affinities.get(dim, {}), **rule["scores"]}}
+    return affinities
+
+
 def _compute_scores(answers, profiles, eliminated):
     scores = {}
     for profile in profiles:
         if profile["id"] in eliminated:
             continue
-        affinities = profile.get("affinities", {})
+        affinities = _apply_conditional_affinities(profile.get("affinities", {}), profile, answers)
         total = 0
         for dim in DIMENSIONS:
             value = answers.get(dim, "unknown")
@@ -270,8 +281,12 @@ def _agentcore_revisit_triggers_by_runtime(answers, profiles, eliminated):
         return {}
 
     def gain(profile, field, value, current):
-        dimension = profile.get("affinities", {}).get(field, {})
-        return dimension.get(value, NEUTRAL_SCORE) - dimension.get(current, NEUTRAL_SCORE)
+        # Reads only the trigger's own dimension: a conditional rule keyed on `field` that changes
+        # another dimension is not counted. No AgentCore trigger is on a `when` field today.
+        base = profile.get("affinities", {})
+        after = _apply_conditional_affinities(base, profile, {**answers, field: value}).get(field, {})
+        before = _apply_conditional_affinities(base, profile, answers).get(field, {})
+        return after.get(value, NEUTRAL_SCORE) - before.get(current, NEUTRAL_SCORE)
 
     result = {}
     for runtime, profile in sorted(by_id.items()):
@@ -389,8 +404,8 @@ def _collect_warnings(
         if answers.get("compute_tier") == "gpu":
             warning += (
                 " GPU passthrough into a Nitro Sandbox is unavailable, so GPU pods "
-                "cannot be sandboxed; split GPU work into a separate unsandboxed unit "
-                "or choose another isolation boundary.")
+                "cannot be sandboxed and EKS got no Nitro Sandbox credit here; split GPU work "
+                "into a separate unsandboxed unit or choose another isolation boundary.")
         warnings.append(warning)
     if agentcore_compute_type == "instances":
         warnings.append(

@@ -1034,3 +1034,42 @@ def test_no_nitro_warning_without_required_isolation(isolation):
     result = scoring.score(
         {"answers": {**NITRO_EKS_BASE, "isolation": isolation}}, scoring.load_profiles())
     assert not [w for w in result["warnings"] if "Nitro Sandboxes" in w]
+
+
+# --- Gen's review on #665: no EKS isolation credit for GPU sessions ---------------------------
+
+@pytest.mark.parametrize("tier", ["light", "heavy_non_gpu", "unknown"])
+def test_isolation_required_adds_one_to_eks_off_gpu(tier):
+    answers = {**NITRO_EKS_BASE, "compute_tier": tier}
+    base = scoring.score({"answers": {**answers, "isolation": "not_needed"}})["scores"]["eks"]
+    req = scoring.score({"answers": {**answers, "isolation": "required"}})["scores"]["eks"]
+    assert req - base == 1
+
+
+def test_isolation_required_gives_eks_nothing_for_gpu_sessions():
+    answers = {**NITRO_EKS_BASE, "compute_tier": "gpu"}
+    base = scoring.score({"answers": {**answers, "isolation": "not_needed"}})["scores"]["eks"]
+    req = scoring.score({"answers": {**answers, "isolation": "required"}})["scores"]["eks"]
+    assert req == base
+
+
+@pytest.mark.parametrize(("tier", "listed"), [("gpu", True), ("heavy_non_gpu", False)])
+def test_isolation_revisit_trigger_against_eks_follows_the_gpu_rule(tier, listed):
+    # nice_to_have -> required gains AgentCore 1. EKS gains 1 off GPU (equal, not listed) and 0 on
+    # GPU (listed), so the trigger must read the same effective scores as the verdict.
+    triggers = scoring._agentcore_revisit_triggers_by_runtime(
+        {**NITRO_EKS_BASE, "compute_tier": tier, "isolation": "nice_to_have"},
+        scoring.load_profiles(), [])
+    assert ("isolation" in [t["field"] for t in triggers["eks"]]) is listed
+
+
+@pytest.mark.parametrize("profile", scoring.load_profiles(
+    statuses=frozenset({"ga", "preview", "coming_soon"})), ids=lambda p: p["id"])
+def test_conditional_affinities_are_well_formed(profile):
+    for rule in profile.get("conditional_affinities", []):
+        assert set(rule) == {"when", "dimension", "scores", "reason"}
+        assert rule["when"], "an empty `when` would match every answer set"
+        for field, value in rule["when"].items():
+            assert value in scoring.LEGAL_VALUES[field], (field, value)
+        assert rule["dimension"] in profile["affinities"]
+        assert set(rule["scores"]) <= set(scoring.LEGAL_VALUES[rule["dimension"]]) - {"unknown"}
