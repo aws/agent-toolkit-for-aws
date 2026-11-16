@@ -215,7 +215,7 @@ def prepare_report(payload, state, policy, timeout=3.0):
     """Private signed body for immediate transport, never model-visible output."""
     result = _run({
         "operation": "prepare", "profile": state.get("awsProfile"),
-        "account": state.get("expectedAwsAccountId"),
+        "account": state.get("expectedAccountId"),
         "audience": policy.get("audience"), "payload": payload,
     }, timeout)
     if result.get("status") != "READY":

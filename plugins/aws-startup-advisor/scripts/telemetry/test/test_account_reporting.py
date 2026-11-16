@@ -71,7 +71,7 @@ def selected_account():
 def report_payload(values=None):
     return {
         "reportingMode": "AWS_ACCOUNT",
-        "expectedAwsAccountId": ACCOUNT,
+        "expectedAccountId": ACCOUNT,
         "noticeVersion": "test-notice-v1",
         **(values or {}),
     }
@@ -609,7 +609,7 @@ def test_rfc8785_float_encoding_matches_fixed_expected_bytes(
     )
 
     assert prepared.payload == (
-        b'{"decimal":1,"expectedAwsAccountId":"123456789012",'
+        b'{"decimal":1,"expectedAccountId":"123456789012",'
         b'"exponent":1e+30,"fraction":4.5,"negativeZero":0,'
         b'"noticeVersion":"test-notice-v1","reportingMode":"AWS_ACCOUNT",'
         b'"tiny":1e-27}'
@@ -625,7 +625,7 @@ def test_rfc8785_sorts_keys_by_utf16_not_python_codepoint(
     )
 
     assert prepared.payload == (
-        '{"a":1,"expectedAwsAccountId":"123456789012",'
+        '{"a":1,"expectedAccountId":"123456789012",'
         '"noticeVersion":"test-notice-v1","reportingMode":"AWS_ACCOUNT",'
         '"€":2,"😀":3,"�":4}'
     ).encode("utf-8")
@@ -706,7 +706,7 @@ def test_request_body_adds_only_top_level_proof_and_hashes_every_other_field(
     "change,code",
     [
         ({"reportingMode": "ANONYMOUS"}, "ACCOUNT_REPORTING_REQUIRED"),
-        ({"expectedAwsAccountId": OTHER_ACCOUNT}, "ACCOUNT_CHANGED"),
+        ({"expectedAccountId": OTHER_ACCOUNT}, "ACCOUNT_CHANGED"),
         ({"noticeVersion": None}, "NOTICE_VERSION_REQUIRED"),
         ({"noticeVersion": ""}, "NOTICE_VERSION_REQUIRED"),
         ({"noticeVersion": "  "}, "NOTICE_VERSION_REQUIRED"),

@@ -112,7 +112,7 @@ class SharingServer(http.server.ThreadingHTTPServer):
             "anonymousNotice": notice.NOTICE_BODY.format(opt_out=record.OPT_OUT_INSTRUCTION),
             "accountAvailable": configured is not None,
             "accountNotice": configured["noticeText"] if configured else None,
-            "selectedAccount": state.get("expectedAwsAccountId"),
+            "selectedAccount": state.get("expectedAccountId"),
             "selectedProfile": state.get("awsProfile"),
             **status_result(),
         }
