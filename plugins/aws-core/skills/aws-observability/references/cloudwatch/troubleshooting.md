@@ -78,6 +78,16 @@ Error → cause → fix for CloudWatch, X-Ray, and CloudTrail issues. Start with
 | Wrong metric values | Dimension mismatch | Each unique dimension combination is a separate metric — verify exact combo |
 | Metric shows in wrong namespace | Namespace typo | Namespace is case-sensitive and cannot be changed after creation |
 
+### OTel metric missing from PromQL
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| OTLP metric never arrives | gRPC exporter, wrong host, or unsigned request | HTTP only, `monitoring.<region>.amazonaws.com/v1/metrics`, SigV4 service `monitoring` — [otel-metrics.md](otel-metrics.md) |
+| Some data points missing, HTTP 200 | Partial rejection (label limit, timestamp window) | Read the response body; trim labels at the collector |
+| Metric visible as a namespace metric but not in PromQL | Published with `PutMetricData`, EMF, or the `awsemf` exporter — classic metrics | Publish over OTLP |
+| Vended metric empty in PromQL | OTel enrichment off for the account/Region, or its prerequisite missing | [otel-metrics.md](otel-metrics.md) |
+| Query empty, or a parse error, on a metric that exists | `max()`/`min()` on a histogram, a wrong scope literal (empty), an unquoted dotted label (parse error) | [promql.md](promql.md), section 6 |
+
 ### High metric costs
 
 | Cause | Fix |

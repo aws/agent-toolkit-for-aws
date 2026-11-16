@@ -45,7 +45,11 @@ A tool span is any span whose role attribute says TOOL (`openinference.span.kind
 `aws.genai.span_kind` = `'TOOL'`) or whose `gen_ai.operation.name` is `'execute_tool'`; when
 the agent's family is not yet known, match all three. Token counts may be ingested as
 strings — `TRY_CAST(... AS BIGINT)` before summing. Report a span that has no input, output
-or token attribute as having none; never fill one in.
+or token attribute as having none; never fill one in. Spans or GenAI attributes missing
+after instrumenting (no message content, only HTTP spans, no token counts) is an
+instrumentation question: load `setting-up-cloudwatch-observability` →
+`references/cloudwatch-omni/omni-agents-instrumentation/` before concluding the content is
+lost.
 
 ---
 
