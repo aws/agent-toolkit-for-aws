@@ -36,3 +36,13 @@ For each scenario:
 5. Compute delta only from the two known-cost floors and carry incompleteness into the explanation.
 
 Estate-wide costs attach to Design mappings so every line keeps a `source_resource_id` in the Design set. Fold the CloudWatch Logs ingestion and storage cost, sized from `observability.log_retention`, into the line for the `render.environment` mapping and name it in `aws_service` (for example `AWS deployment environment stack + Amazon CloudWatch Logs (30-day retention)`). Fold the KMS key cost for each store with `data.regulated_data` true into that store's own line. Do not emit separate estate-wide lines. When `cost.budget_guardrail` is a limit, compare the known-cost floor to it in the explanation and say when the floor is incomplete. Human labor, migration engineering, and downtime are considerations with no dollar amount. Commitment opportunities follow the vendored eligibility matrix and do not reduce the capacity-preserving on-demand total; Compute Savings Plans remain percent-only until 30–90 days of AWS usage establishes a floor.
+## ECS Express Mode pricing
+A Fargate mapping with `aws_config.ecs_mode: "express"` is priced like a standard Fargate service: task vCPU and GB-hours from the same tables plus its allocated share of the ALB fixed fee. Express Mode has no service charge, but up to 25 Express services share one ALB per VPC and scheme. Render keeps exactly one estimate line per design mapping, so the shared ALB never becomes its own line. Allocate it across the mapping lines instead:
+
+1. Group Express mappings by VPC and ALB scheme (public placement is internet-facing, private placement is internal, never combined). Let `count` be the group size.
+2. The group's fixed fee is `ceil(count / 25)` times the reviewed `alb.monthly_fixed` rate, converted to whole cents.
+3. Sort the group's mappings by `source_resource_id` in byte order. Each line carries `floor(fee_cents / count)` cents, and the first `fee_cents mod count` lines carry one extra cent, so the allocated amounts sum to the group fee exactly.
+4. Show the allocated fixed amount as its own component in that line's formula, next to its Fargate and LCU components. LCU is estimated per service and stays on that service's line.
+5. Apply the same allocation in `capacity_preserving` and `right_sized`; the group and its fee do not change between scenarios.
+
+A standard HTTP service, including any mapping with no `ecs_mode`, keeps its own ALB cost inside its single line and never joins an Express group. The scenario lines stay equal to `accounting.accounted_resource_ids`, and one ALB fixed fee is charged per 25 Express services per VPC and scheme.

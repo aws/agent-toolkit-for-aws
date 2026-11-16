@@ -398,3 +398,106 @@ def test_estate_wide_estimate_costs_attach_to_design_mappings() -> None:
         env = next(line for line in scenario["lines"] if line["source_resource_id"] == "rr-env")
         assert "CloudWatch Logs (30-day retention)" in env["aws_service"]
         assert env["monthly_amount"] and env["monthly_amount"] > 0
+
+
+PREFIX = 'uv run --project "$SKILL_BASE/scripts" --frozen python'
+
+
+def _render_md() -> list[Path]:
+    return sorted(SKILL_ROOT.rglob("*.md"))
+
+
+def test_runtime_prefix_and_preflight_are_declared() -> None:
+    skill = (SKILL_ROOT / "SKILL.md").read_text()
+    assert PREFIX in skill
+    assert "python -c 'import yaml,jsonschema'" in skill
+    for rel in (
+        "references/shared/script-abis.md",
+        "references/phases/discover/discover.md",
+        "references/phases/generate/generate-artifacts-report.md",
+    ):
+        text = (SKILL_ROOT / rel).read_text()
+        assert PREFIX in text
+        for line in text.splitlines():
+            if "uv run" in line:
+                assert PREFIX in line, (rel, line)
+
+
+def test_no_ambient_python_fallback_is_preserved() -> None:
+    skill = (SKILL_ROOT / "SKILL.md").read_text()
+    assert "Do not fall back to an ambient Python environment" in skill
+    bad = re.compile(r'python3?\s+"?\$SKILL_BASE|python3?\s+\S*(parse|normalize)-render')
+    for path in _render_md():
+        assert not bad.search(path.read_text()), path
+
+
+def test_missing_uv_degradation_is_declared() -> None:
+    skill = (SKILL_ROOT / "SKILL.md").read_text()
+    assert "https://docs.astral.sh/uv/getting-started/installation/" in skill
+    assert "`uv --version`" in skill
+    assert "rerun the same request" in skill
+    assert "Discover Steps 1 to 3" in skill
+    assert "Generate stage 7" in skill
+    assert "Clarify, Design, Estimate, Workshop, Feedback" in skill
+    assert "do not" in skill.split("Steps that need `uv`:")[1].split("\n")[0]
+
+
+def test_discover_uv_gate_precedes_consent_and_capture() -> None:
+    text = (PHASE_ROOT / "discover/discover.md").read_text()
+    body = text.split("### Step 0 ", 1)[1]
+    gate = body.index("### Step 0b")
+    assert gate < body.index("### Step 1")
+    gate_text = body[gate : body.index("### Step 1")]
+    assert "mint no attempt ID" in gate_text
+    assert "no consent prompt" in gate_text
+    assert "no capture" in gate_text
+    assert "whether or not" in gate_text
+    assert "leaves Discover `in_progress`" in gate_text
+    assert "stays pending" not in gate_text
+    skill = (SKILL_ROOT / "SKILL.md").read_text().split("Steps that need `uv`:")[1].split("\n")[0]
+    assert "`blueprint_validate`" in skill
+    assert "leaves Discover `in_progress`" in skill
+    assert "stays pending" not in skill
+
+
+def test_script_free_phases_do_not_invoke_scripts() -> None:
+    pattern = re.compile(r"uv run|--frozen python|\.py\b")
+    for phase in ("clarify", "design", "estimate", "workshop", "feedback"):
+        for path in (PHASE_ROOT / phase).rglob("*"):
+            if path.is_file():
+                assert not pattern.search(path.read_text()), path
+
+
+def test_generate_report_stage_blocks_without_uv_and_has_no_skip() -> None:
+    for name in ("generate-assemble.md", "generate-artifacts-report.md"):
+        text = (PHASE_ROOT / "generate" / name).read_text()
+        assert "stage 7 is recorded as `failed`" in text
+        assert "stage 7 is `not_run`" not in text
+        assert "There is no validation skip" in text
+    assemble = (PHASE_ROOT / "generate/generate-assemble.md").read_text()
+    assert "No `not_run`" in assemble
+
+
+def test_no_uv_validation_report_shape_is_schema_valid() -> None:
+    validator = jsonschema.Draft202012Validator(
+        json.loads((SKILL_ROOT / "references/shared/schema-validation-report.json").read_text())
+    )
+    report = json.loads((SKILL_ROOT / "fixtures/expected/generated/validation-report.json").read_text())
+    report["status"] = "failed"
+    report["checks"]["report"] = {
+        "status": "failed",
+        "command": "uv run --project SKILL_BASE/scripts --frozen python validate-render-migration-report.py",
+        "evidence": "uv or the frozen environment is unavailable; report validation did not run.",
+    }
+    validator.validate(report)
+    report["checks"]["report"]["status"] = "not_run"
+    assert list(validator.iter_errors(report))
+
+
+def test_readme_uv_prerequisite_wording() -> None:
+    readme = (PLUGIN_ROOT / "README.md").read_text()
+    line = next(l for l in readme.splitlines() if "docs.astral.sh/uv" in l)
+    assert "render-to-aws" in line
+    assert "unfinished Render Discover" in line
+    assert "report validation" in line
+    assert "Blueprint semantic revalidation" in line
