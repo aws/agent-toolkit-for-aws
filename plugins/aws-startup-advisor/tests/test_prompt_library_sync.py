@@ -126,13 +126,81 @@ def test_local_changes_target_approved_entries_and_record_why():
         assert c["reason"] and c["origin"] and c["find"] and c["find"] != c["replace"]
 
 
-def test_removed_entries_are_not_mentioned_where_the_skill_routes():
+REMOVED_TITLES = [
+    "AI Support Ticket Triage",
+    "Security Baseline: Terraform Deployment Kit",
+    "Bedrock Quota Manager",
+    "Cost Anomaly Detection",
+    "Deploy GitHub Repo",
+    "Kiro Project Init",
+    "MVSP",
+    "Well Architecture Review",
+    "DB Advisor",
+    "AWS Migration Agent",
+]
+# Topic phrases sibling skills used to advertise removed entries. Matched only on lines that
+# hand off to the prompt library, because a skill may still say it does not do these itself.
+REMOVED_TOPICS = ["cost anomaly", "well-architected review", "quota manager", "db advisor", "migration agent"]
+
+
+def _routing_docs() -> dict[str, str]:
+    docs = {str(p.relative_to(PLUGIN)): p.read_text(encoding="utf-8") for p in sorted(PLUGIN.glob("skills/*/SKILL.md"))}
+    docs["README.md"] = (PLUGIN / "README.md").read_text(encoding="utf-8")
+    docs[str(pls.INDEX.relative_to(PLUGIN))] = pls.INDEX.read_text(encoding="utf-8")
+    return docs
+
+
+def test_removed_entries_are_not_mentioned_where_any_skill_routes():
+    for name, text in _routing_docs().items():
+        for slug in REMOVED:
+            assert slug not in text, f"{name} mentions removed entry {slug}"
+        for title in REMOVED_TITLES:
+            assert title.lower() not in text.lower(), f"{name} mentions removed entry {title!r}"
+        assert "aws.amazon.com/startups/prompt-library" not in text, f"{name} uses the old library URL"
+        for line in text.splitlines():
+            if "prompt-library-for-startups" in line:
+                for topic in REMOVED_TOPICS:
+                    assert topic not in line.lower(), f"{name} hands off {topic!r} to the prompt library"
     skill = (pls.SKILL / "SKILL.md").read_text(encoding="utf-8")
     index = pls.INDEX.read_text(encoding="utf-8")
-    for slug in REMOVED:
-        assert slug not in skill and slug not in index
-    assert "DB Advisor" not in skill and "DB Advisor" not in index
     assert pls.FULL_LIBRARY in skill and pls.FULL_LIBRARY in index
+
+
+def test_split_audit_load_set_names_every_shared_part():
+    """Running one phase must load every part that defines rules the phases rely on."""
+    slug = "read-only-aws-cost-optimization-audit"
+    parts = sorted(p.name for p in (pls.ENTRIES / slug).glob("*.md"))
+    sections = [(_heading(pls.ENTRIES / slug / name), "") for name in parts]
+    shared, appendices = pls.shared_parts(sections)
+    assert "01-system-prompt.md" in shared and "16-key-principles.md" in shared
+    assert appendices and not any("phase" in n for n in shared + appendices)
+    skill = (pls.SKILL / "SKILL.md").read_text(encoding="utf-8")
+    detail = (pls.ENTRIES / f"{slug}.md").read_text(encoding="utf-8")
+    for name in shared + appendices:
+        assert f"`{name}`" in skill, f"SKILL.md load set omits {name}"
+        assert f"`{name}`" in detail, f"{slug}.md load set omits {name}"
+
+
+def _heading(path: Path) -> str:
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("## "):
+            return line[3:].strip()
+    return ""
+
+
+@pytest.mark.parametrize(
+    "error",
+    [ConnectionResetError("reset by peer"), pls.http.client.IncompleteRead(b"partial"), TimeoutError("timed out")],
+)
+def test_transient_fetch_errors_exit_2_not_drift(monkeypatch, capsys, error):
+    def boom(*_args, **_kwargs):
+        raise error
+
+    monkeypatch.setattr(pls.urllib.request, "urlopen", boom)
+    monkeypatch.setattr(pls.time, "sleep", lambda _s: None)
+    assert pls.main(["--check"]) == 2
+    assert pls.main(["--report"]) == 2
+    assert "could not fetch" in capsys.readouterr().err
 
 
 def test_index_links_resolve():

@@ -12,8 +12,9 @@ Audits your AWS account for waste, rightsizing, and savings opportunities, then 
 ## System Prompt
 
 This prompt is long, so it is split into one file per section below. Read the parts in
-order to reproduce the full System Prompt. To run or adapt one phase, load the overview,
-operating rules, prerequisites, tool map and CLI conventions, then only that phase's file.
+order to reproduce the full System Prompt. To run or adapt one phase, load every shared
+part (`00-overview.md`, `01-system-prompt.md`, `02-operating-rules.md`, `03-prerequisites.md`, `04-tool-selection-map.md`, `05-conventions-for-the-cli-blocks.md`, `16-key-principles.md`), then only that phase's file.
+For the report phase, also load the appendices (`14-appendix-a-proposed-remediation-human.md`, `15-appendix-b-audit-trail.md`).
 
 | Part | Section |
 | ---- | ------- |

@@ -47,10 +47,15 @@ jobs:
         working-directory: plugins/aws-startup-advisor
         run: |
           set +e
-          python3 tools/prompt-library-sync.py --check > /dev/null 2>&1
+          python3 tools/prompt-library-sync.py --report > "$RUNNER_TEMP/report.md"
           status=$?
           set -e
-          python3 tools/prompt-library-sync.py --report > "$RUNNER_TEMP/report.md"
+          # Exit 2 is a fetch failure: the report is empty or partial, so fail the job and
+          # leave the drift issue as it is rather than opening, editing or closing it.
+          if [ "$status" -eq 2 ]; then
+            echo "::error::Could not fetch the published pages; drift issue left unchanged."
+            exit 1
+          fi
           echo "status=$status" >> "$GITHUB_OUTPUT"
           cat "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
       - name: Open, update or close the drift issue

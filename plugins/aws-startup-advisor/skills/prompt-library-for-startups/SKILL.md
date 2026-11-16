@@ -101,7 +101,7 @@ Boundary cases — invoke both. Example: _"how do I start with RAG on Bedrock?"_
 
 Open `references/prompt-library.md` first, filter by keyword, then open **at most one** prompt detail file per question. MUST NOT speculatively load multiple detail files. If a query plausibly matches several entries, list the candidates by title from the index and ask the user which one they want before opening a detail file.
 
-One exception: `read-only-aws-cost-optimization-audit` is split into parts under `references/prompt-library/read-only-aws-cost-optimization-audit/`. Open its detail file first, then load the overview, operating rules, prerequisites, tool map and CLI conventions parts, plus only the phase the user is working on. To hand over the whole prompt, read every part in order and quote them together.
+One exception: `read-only-aws-cost-optimization-audit` is split into parts under `references/prompt-library/read-only-aws-cost-optimization-audit/`. Open its detail file first, then load every shared part (`00-overview.md`, `01-system-prompt.md`, `02-operating-rules.md`, `03-prerequisites.md`, `04-tool-selection-map.md`, `05-conventions-for-the-cli-blocks.md`, `16-key-principles.md`), plus only the phase the user is working on. For the report phase, also load `14-appendix-a-proposed-remediation-human.md` and `15-appendix-b-audit-trail.md`. To hand over the whole prompt, read every part in order and quote them together.
 
 ## Scope notes
 

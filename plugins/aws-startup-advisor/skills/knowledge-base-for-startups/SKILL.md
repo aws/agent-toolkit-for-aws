@@ -46,7 +46,7 @@ Two pages are deliberately minimal stubs. The live content (events, showcase dir
 
 This skill is **reference content only**. Two sibling skills cover adjacent jobs:
 
-- **`prompt-library-for-startups`** — copy-paste AI prompts and downloadable agents from `aws.amazon.com/startups/prompt-library` (MVP scaffolding, RAG chatbot, security baseline, cost anomaly detection, GPU quota, AWS Migration Agent, Bill Shock Preventer, etc.). When the user asks for _"a prompt for X"_ or wants an installable agent, hand off to that skill.
+- **`prompt-library-for-startups`** — an approved subset of the copy-paste AI prompts and downloadable agents from <https://startups.aws.com/prompt-library> (MVP scaffolding, RAG chatbot, security baseline, GPU quota, cost optimization audit, Bill Shock Preventer, etc.). When the user asks for _"a prompt for X"_ or wants an installable agent, hand off to that skill.
 - **`start-building-for-startups`** — interactive discovery + implementation workflow (picker-based questions, then writes code). When the user wants to _build_, _scaffold_, or _expand_ an app, hand off to that skill. This skill stays in lookup mode.
 
 Boundary cases (a query that fits two skills) — read both. Example: _"how do I start with RAG on Bedrock?"_ → consult this skill's `references/learn/genai/...` for an article AND `prompt-library-for-startups` for a starter prompt.

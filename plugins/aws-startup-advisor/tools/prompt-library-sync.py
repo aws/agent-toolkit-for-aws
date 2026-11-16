@@ -14,7 +14,8 @@ Modes
 -----
 --write   Fetch every approved page and rewrite the generated files.
 --check   Fetch, regenerate in memory, and exit 1 if any file on disk differs (CI).
---report  Same comparison, but print a Markdown report and exit 0 (scheduled job).
+--report  Same comparison and exit codes as --check, but print a Markdown report to stdout
+          (scheduled job: the status and the report come from one fetch).
 
 --pages DIR reads `<slug>.html` files from DIR instead of the network (tests, offline).
 
@@ -31,11 +32,11 @@ from __future__ import annotations
 import argparse
 import difflib
 import html
+import http.client
 import json
 import re
 import sys
 import time
-import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -170,7 +171,9 @@ def fetch_page(slug: str, pages_dir: Path | None) -> str:
             req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
             with urllib.request.urlopen(req, timeout=30) as resp:
                 return resp.read().decode("utf-8")
-        except (urllib.error.URLError, TimeoutError) as exc:
+        # OSError covers URLError, timeouts and connection resets; HTTPException covers
+        # IncompleteRead. Both are transient fetch failures (exit 2), never drift (exit 1).
+        except (OSError, http.client.HTTPException) as exc:
             last = exc
             time.sleep(2 * (attempt + 1))
     raise FetchError(f"{slug}: could not fetch {url}: {last}")
@@ -326,6 +329,23 @@ def _part_name(n: int, heading: str) -> str:
     return f"{n:02d}-{name}.md"
 
 
+def shared_parts(sections: list[tuple[str, str]]) -> tuple[list[str], list[str]]:
+    """Split the part files into the rules every phase depends on and the report appendices.
+
+    Derived from the headings rather than listed by hand, so a shared section added on the
+    published page lands in the load set (and the SKILL.md contract test) automatically.
+    """
+    shared, appendices = [], []
+    for n, (heading, _) in enumerate(sections):
+        name = _part_name(n, heading or "overview")
+        upper = heading.upper()
+        if upper.startswith("APPENDIX"):
+            appendices.append(name)
+        elif not upper.startswith("PHASE"):
+            shared.append(name)
+    return shared, appendices
+
+
 def render(slug: str, kind: str, entry: dict, changes: list[dict], split: bool) -> dict[Path, str]:
     title = (entry.get("title") or slug).strip()
     url = BASE_URL + slug
@@ -370,13 +390,15 @@ def render(slug: str, kind: str, entry: dict, changes: list[dict], split: bool) 
         files[part_dir / name] = (
             f"{LINT_OFF}\n\n{section.strip()}\n\n{LINT_ON}\n"
         )
+    shared, appendices = shared_parts(sections)
     body = head + [
         "",
         "## System Prompt",
         "",
         "This prompt is long, so it is split into one file per section below. Read the parts in",
-        "order to reproduce the full System Prompt. To run or adapt one phase, load the overview,",
-        "operating rules, prerequisites, tool map and CLI conventions, then only that phase's file.",
+        "order to reproduce the full System Prompt. To run or adapt one phase, load every shared",
+        f"part ({', '.join(f'`{n}`' for n in shared)}), then only that phase's file.",
+        f"For the report phase, also load the appendices ({', '.join(f'`{n}`' for n in appendices)}).",
         "",
         "| Part | Section |",
         "| ---- | ------- |",
@@ -546,7 +568,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print("Run `python3 tools/prompt-library-sync.py --write` and review the diff:\n")
             print("\n".join(f"- {p}" for p in problems))
-        return 0
+        return 1 if problems else 0
     for p in problems:
         print(f"DRIFT {p}", file=sys.stderr)
     if problems:
