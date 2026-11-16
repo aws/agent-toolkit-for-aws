@@ -62,10 +62,17 @@ def test_estimate_shares_one_alb_per_twenty_five_express_services() -> None:
 
 
 def test_generate_emits_express_resource_and_pins_provider() -> None:
-    text = read(REFS / "phases" / "generate" / "generate-artifacts-infra.md")
+    generate = REFS / "phases" / "generate"
+    pointer = read(generate / "generate-artifacts-infra.md")
+    assert "compute fragment" in pointer and "skip the target group and listener" in pointer
+    assert "AmazonECSInfrastructureRoleforExpressGatewayServices" not in pointer
+    text = read(generate / "generate-infra-compute.md")
+    assert "## ECS on Fargate: Express vs standard mode" in text
+    assert "Express rows skip the target group and listener" in text
     assert "aws_ecs_express_gateway_service" in text
     assert "AmazonECSInfrastructureRoleforExpressGatewayServices" in text
-    assert "`~> 6.71`" in text and "6.23.0" in text and "6.71.0" in text
+    assert "6.23.0" in text and "6.71.0" in text
+    assert "`~> 6.71`" in pointer
     assert "A mapping with no `ecs_mode` key is `\"standard\"`" in text
     for code in ("ecs_express_public_subnet_placement", "ecs_express_not_selected_rolling_release"):
         assert code in text, code
