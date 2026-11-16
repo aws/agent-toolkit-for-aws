@@ -184,17 +184,17 @@ def test_real_worker_signs_synthetic_credentials_without_sts_or_model_output(hom
         "installId": "11111111-2222-3333-4444-555555555555", "source": "OTHER",
         "pluginVersion": "2.0.4", "occurredAt": 1700000000000,
         "pluginTelemetryEvent": {"consentRecorded": {}}, "reportingMode": "AWS_ACCOUNT",
-        "expectedAwsAccountId": "123456789012", "noticeVersion": 3,
+        "expectedAccountId": "123456789012", "noticeVersion": 3,
     }
     result = credentials.prepare_report(
-        payload, {"expectedAwsAccountId": "123456789012"},
+        payload, {"expectedAccountId": "123456789012"},
         {"audience": "startup-advisor:test:report:v1"}, timeout=3,
     )
     if result.get("reasonCode") in ("SDK_UNAVAILABLE", "PYTHON_VERSION_UNSUPPORTED"):
         pytest.skip("locked SDK not installed")
     assert result["status"] == "READY"
     wire = json.loads(result["requestBody"])
-    assert wire["expectedAwsAccountId"] == "123456789012"
+    assert wire["expectedAccountId"] == "123456789012"
     assert wire["awsIdentityProof"]["headers"]["x-amz-security-token"] == "synthetic-session-token"
     assert "synthetic-secret-never-a-real-key" not in result["requestBody"].decode()
     assert capsys.readouterr() == ("", "")

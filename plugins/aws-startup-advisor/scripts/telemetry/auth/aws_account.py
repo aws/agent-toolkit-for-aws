@@ -335,7 +335,7 @@ class AwsAccountReporter:
             raise AccountReportingError("PAYLOAD_INVALID")
         if payload.get("reportingMode") != "AWS_ACCOUNT":
             raise AccountReportingError("ACCOUNT_REPORTING_REQUIRED")
-        if payload.get("expectedAwsAccountId") != selected_account.account_id:
+        if payload.get("expectedAccountId") != selected_account.account_id:
             raise AccountReportingError("ACCOUNT_CHANGED")
         notice_version = payload.get("noticeVersion")
         if not (

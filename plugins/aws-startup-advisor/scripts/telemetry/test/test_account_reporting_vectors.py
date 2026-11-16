@@ -60,7 +60,7 @@ def test_account_reporting_signer_matches_shared_full_request_vector():
         if key != "awsIdentityProof"
     }
     prepared = reporter.prepare_report(
-        unsigned, module.AccountIdentity(unsigned["expectedAwsAccountId"])
+        unsigned, module.AccountIdentity(unsigned["expectedAccountId"])
     )
     assert prepared.payload == vector["canonicalWithoutProof"].encode("utf-8")
     assert prepared.headers[module.PAYLOAD_HASH_HEADER] == vector["sha256"]
@@ -92,7 +92,7 @@ def test_account_reporting_reproduces_complete_fixed_signature(vector, monkeypat
         if key != "awsIdentityProof"
     }
     prepared = reporter.prepare_report(
-        unsigned, module.AccountIdentity(unsigned["expectedAwsAccountId"])
+        unsigned, module.AccountIdentity(unsigned["expectedAccountId"])
     )
     assert prepared.payload.decode() == vector["canonicalWithoutProof"]
     assert json.loads(prepared.request_body()) == vector["request"]
@@ -129,7 +129,7 @@ def test_account_reporting_fixture_signature_verifies_without_sdk_signer(vector)
 
 
 @pytest.mark.parametrize("field,replacement", [
-    ("expectedAwsAccountId", "210987654321"),
+    ("expectedAccountId", "210987654321"),
     ("noticeVersion", 4),
     ("reportingMode", "ANONYMOUS"),
 ])
