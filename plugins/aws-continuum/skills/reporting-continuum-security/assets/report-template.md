@@ -19,8 +19,8 @@ Evidence rules:
 
 Markdown rules:
 - Use GFM headings, tables, fenced mermaid diagrams and <details> for long registers.
-- Use --> for attack attempts, -.-> for refused attempts only in After diagrams,
-  and ==> for permitted or safe flows.
+- Follow the diagram edge rules in SKILL.md (attack attempts, refused attempts
+  only in After diagrams, and permitted or safe flows).
 - Do not add classDef, class, style, linkStyle, click or theme directives.
 - Use trustworthy HTTPS, heading anchors or safe repository-relative links only.
 - Do not use scripts, images, external assets or viewer-specific controls.
