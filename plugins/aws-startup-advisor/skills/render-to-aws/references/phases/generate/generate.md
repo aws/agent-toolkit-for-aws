@@ -17,6 +17,9 @@ _fragments:
   - _id: artifacts-infra-network-storage-delivery
     _trigger: { _always: true }
     _file: phases/generate/generate-artifacts-infra-network-storage-delivery.md
+  - _id: artifacts-baseline
+    _trigger: { _always: true }
+    _file: phases/generate/generate-artifacts-baseline.md
   - _id: infra-compute
     _trigger: { _when: "aws-design.json maps any resource to terraform/compute.tf (ECS on Fargate, Elastic Beanstalk, Elastic Beanstalk Cluster Mode, Amazon EKS, AWS Lambda, AWS Batch, or an EventBridge Scheduler target)" }
     _file: phases/generate/generate-infra-compute.md

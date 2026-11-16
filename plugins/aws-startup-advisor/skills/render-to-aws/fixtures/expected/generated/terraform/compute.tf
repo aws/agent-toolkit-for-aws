@@ -94,6 +94,10 @@ resource "aws_ecs_service" "web" {
   }
 
   depends_on = [aws_lb_listener.https]
+
+  lifecycle {
+    ignore_changes = [desired_count]
+  }
 }
 
 resource "aws_service_discovery_private_dns_namespace" "application" {
