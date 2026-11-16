@@ -4,11 +4,29 @@ output "alb_dns_name" {
 }
 
 output "database_endpoint" {
-  description = "Private PostgreSQL endpoint."
+  description = "Private PostgreSQL endpoint handed to compute as a non-secret setting."
   value       = aws_db_instance.postgres.address
-  sensitive   = true
 }
-
+output "database_port" {
+  description = "PostgreSQL port handed to compute as a non-secret setting."
+  value       = aws_db_instance.postgres.port
+}
+output "database_secret_arn" {
+  description = "Secrets Manager ARN of the RDS-managed master credentials; compute injects it by reference."
+  value       = aws_db_instance.postgres.master_user_secret[0].secret_arn
+}
+output "database_security_group_id" {
+  description = "Data security group that the network domain references for application access."
+  value       = aws_security_group.data.id
+}
+output "valkey_endpoint" {
+  description = "Private Valkey primary endpoint address handed to compute as a non-secret setting."
+  value       = aws_elasticache_replication_group.valkey.primary_endpoint_address
+}
+output "valkey_app_user_id" {
+  description = "ElastiCache user ID that compute uses for IAM authentication; no static password exists."
+  value       = aws_elasticache_user.app.user_id
+}
 output "ecr_repository_url" {
   description = "Build-once immutable image repository URL."
   value       = aws_ecr_repository.application.repository_url
