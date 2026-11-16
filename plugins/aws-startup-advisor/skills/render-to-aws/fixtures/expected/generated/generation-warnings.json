@@ -24,7 +24,6 @@
   "unsupported": [],
   "warnings": [
     {"code": "deferred_shared_ai_engine", "subject": "ai-workload-profile.json", "detail": "Infrastructure artifacts are usable; provider-neutral AI Design, Estimate, Generate, model, adapter, and pricing execution remain unavailable and resume from the preserved profile.", "blocking": false},
-    {"code": "unpriced_cost_floor", "subject": "Amazon EFS", "detail": "Both AWS scenario totals are known-cost floors because the reviewed estimate has no EFS rate row.", "blocking": false},
     {"code": "ecs_express_not_selected_rolling_release", "subject": "rr-web", "detail": "ECS Express Mode was not selected for rr-web because ecs_mode_reason is custom_domain_alb, so the default canary release becomes a rolling update on the standard ECS service.", "blocking": false}
   ],
   "accounting": {
