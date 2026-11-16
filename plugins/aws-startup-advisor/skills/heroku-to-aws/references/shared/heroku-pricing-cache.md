@@ -1,6 +1,6 @@
 # Heroku Pricing Cache
 
-**Last updated:** 2026-10-05 (dyno rates re-verified against devcenter.heroku.com/articles/dyno-sizes and heroku.com/pricing — Eco $5 flat, Basic $7, Standard-1X $25, Standard-2X $50, Performance-M $250, Performance-L/L-RAM $500 all unchanged; no rate changes this refresh); 2026-10-11 added Heroku Postgres Advanced Tier compute-month rates and storage-overage rate (4G/8G/16G/32G-Performance confirmed; 64G-1536G-Performance marked `unverified` — see Advanced Tier section); 2026-10-11 extended live discovery to capture `data:pg:info` pool breakdown so this cache can price every pool/instance of a live-discovered Advanced addon (see Usage Rule 9)
+**Last updated:** 2026-11-10 (Postgres: full Standard/Premium/Private/Shield plan lists incl. -8/-9/-10 and L/XL variants from elements.heroku.com + devcenter; Private/Shield prices corrected — they are NOT equal to Premium. Dyno rates unchanged since 2026-10-05: dyno rates re-verified against devcenter.heroku.com/articles/dyno-sizes and heroku.com/pricing — Eco $5 flat, Basic $7, Standard-1X $25, Standard-2X $50, Performance-M $250, Performance-L/L-RAM $500 all unchanged; no rate changes this refresh); 2026-10-11 added Heroku Postgres Advanced Tier compute-month rates and storage-overage rate (4G/8G/16G/32G-Performance confirmed; 64G-1536G-Performance marked `unverified` — see Advanced Tier section); 2026-10-11 extended live discovery to capture `data:pg:info` pool breakdown so this cache can price every pool/instance of a live-discovered Advanced addon (see Usage Rule 9)
 **Source:** https://elements.heroku.com/addons/heroku-postgresql, https://elements.heroku.com/addons/heroku-redis, https://elements.heroku.com/addons/heroku-kafka, https://devcenter.heroku.com/articles/dyno-sizes, https://devcenter.heroku.com/articles/postgres-advanced-usage-billing, https://devcenter.heroku.com/articles/heroku-postgres-plans, https://devcenter.heroku.com/articles/provisioning-postgres-advanced, https://www.heroku.com/blog/new-era-managed-databases-announcing-heroku-postgres-advanced/
 **Currency:** USD
 **Accuracy:** ±5% for dynos (published flat rates); ±10% for data services (Elements "Max of" pricing, actual may vary by usage pattern)
@@ -65,55 +65,86 @@ Source: https://elements.heroku.com/addons/heroku-postgresql
 
 ### Standard Tier (Classic)
 
-| Plan       | $/month | RAM    | Storage | Connections |
-| ---------- | ------- | ------ | ------- | ----------- |
-| standard-0 | 50      | 4 GB   | 64 GB   | 200         |
-| standard-2 | 200     | 8 GB   | 256 GB  | 500         |
-| standard-3 | 400     | 15 GB  | 512 GB  | 500         |
-| standard-4 | 750     | 30 GB  | 768 GB  | 500         |
-| standard-5 | 1400    | 61 GB  | 1 TB    | 500         |
-| standard-6 | 2000    | 122 GB | 1.5 TB  | 500         |
-| standard-7 | 3500    | 244 GB | 2 TB    | 500         |
+No HA. Standard has no L/XL variants.
+
+| Plan        | $/month | RAM    | Storage | Connections |
+| ----------- | ------- | ------ | ------- | ----------- |
+| standard-0  | 50      | 4 GB   | 64 GB   | 200         |
+| standard-2  | 200     | 8 GB   | 256 GB  | 500         |
+| standard-3  | 400     | 15 GB  | 512 GB  | 500         |
+| standard-4  | 750     | 30 GB  | 768 GB  | 500         |
+| standard-5  | 1400    | 61 GB  | 1 TB    | 500         |
+| standard-6  | 2000    | 122 GB | 1.5 TB  | 500         |
+| standard-7  | 3500    | 244 GB | 2 TB    | 500         |
+| standard-8  | 4500    | 488 GB | 3 TB    | 500         |
+| standard-9  | 5800    | 768 GB | 4 TB    | 500         |
+| standard-10 | 12000   | 1 TB   | 8 TB    | 500         |
 
 ### Premium Tier (Classic)
 
-| Plan      | $/month | RAM    | Storage | Connections |
-| --------- | ------- | ------ | ------- | ----------- |
-| premium-0 | 200     | 4 GB   | 64 GB   | 200         |
-| premium-2 | 350     | 8 GB   | 256 GB  | 500         |
-| premium-3 | 750     | 15 GB  | 512 GB  | 500         |
-| premium-4 | 1200    | 30 GB  | 768 GB  | 500         |
-| premium-5 | 2500    | 61 GB  | 1 TB    | 500         |
-| premium-6 | 3500    | 122 GB | 1.5 TB  | 500         |
-| premium-7 | 6000    | 244 GB | 2 TB    | 500         |
+HA included. L/XL variants carry the same RAM as the base number with more storage.
+
+| Plan         | $/month | RAM    | Storage | Connections |
+| ------------ | ------- | ------ | ------- | ----------- |
+| premium-0    | 200     | 4 GB   | 64 GB   | 200         |
+| premium-2    | 350     | 8 GB   | 256 GB  | 500         |
+| premium-3    | 750     | 15 GB  | 512 GB  | 500         |
+| premium-4    | 1200    | 30 GB  | 768 GB  | 500         |
+| premium-5    | 2500    | 61 GB  | 1 TB    | 500         |
+| premium-6    | 3500    | 122 GB | 1.5 TB  | 500         |
+| premium-l-6  | 4750    | 122 GB | 2 TB    | 500         |
+| premium-xl-6 | 6000    | 122 GB | 3 TB    | 500         |
+| premium-7    | 6000    | 244 GB | 2 TB    | 500         |
+| premium-8    | 8500    | 488 GB | 3 TB    | 500         |
+| premium-9    | 11000   | 768 GB | 4 TB    | 500         |
+| premium-l-9  | 12500   | 768 GB | 5 TB    | 500         |
+| premium-xl-9 | 14000   | 768 GB | 6 TB    | 500         |
+| premium-10   | 24000   | 1 TB   | 8 TB    | 500         |
 
 ### Private Tier (Classic)
 
-Private-tier pricing matches Premium-tier pricing. The Private Space base fee is charged separately.
+Private Space plans. Priced ABOVE the Premium plan of the same number (not equal to it — an
+earlier version of this cache said they matched; they do not). The Private Space base fee
+is charged separately. Source: devcenter.heroku.com/articles/heroku-postgres-and-private-spaces.
 
-| Plan      | $/month | RAM    | Storage | Connections |
-| --------- | ------- | ------ | ------- | ----------- |
-| private-0 | 200     | 4 GB   | 64 GB   | 200         |
-| private-2 | 350     | 8 GB   | 256 GB  | 500         |
-| private-3 | 750     | 15 GB  | 512 GB  | 500         |
-| private-4 | 1200    | 30 GB  | 768 GB  | 500         |
-| private-5 | 2500    | 61 GB  | 1 TB    | 500         |
-| private-6 | 3500    | 122 GB | 1.5 TB  | 500         |
-| private-7 | 6000    | 244 GB | 2 TB    | 500         |
+| Plan         | $/month | RAM    | Storage | Connections |
+| ------------ | ------- | ------ | ------- | ----------- |
+| private-0    | 300     | 4 GB   | 64 GB   | 200         |
+| private-2    | 600     | 8 GB   | 256 GB  | 500         |
+| private-3    | 1000    | 15 GB  | 512 GB  | 500         |
+| private-4    | 1500    | 30 GB  | 768 GB  | 500         |
+| private-5    | 2800    | 61 GB  | 1 TB    | 500         |
+| private-6    | 3600    | 122 GB | 1.5 TB  | 500         |
+| private-l-6  | 5300    | 122 GB | 2 TB    | 500         |
+| private-xl-6 | 6800    | 122 GB | 3 TB    | 500         |
+| private-7    | 7000    | 244 GB | 2 TB    | 500         |
+| private-8    | 10000   | 488 GB | 3 TB    | 500         |
+| private-9    | 13000   | 768 GB | 4 TB    | 500         |
+| private-l-9  | 15000   | 768 GB | 5 TB    | 500         |
+| private-xl-9 | 17000   | 768 GB | 6 TB    | 500         |
+| private-10   | 28000   | 1 TB   | 8 TB    | 500         |
 
 ### Shield Tier (Classic)
 
-Shield-tier pricing matches Premium-tier pricing. The Shield Space base fee is charged separately.
+Shield Space plans (compliance-capable). Priced above Private. The Shield Space base fee is
+charged separately.
 
-| Plan     | $/month | RAM    | Storage | Connections |
-| -------- | ------- | ------ | ------- | ----------- |
-| shield-0 | 200     | 4 GB   | 64 GB   | 200         |
-| shield-2 | 350     | 8 GB   | 256 GB  | 500         |
-| shield-3 | 750     | 15 GB  | 512 GB  | 500         |
-| shield-4 | 1200    | 30 GB  | 768 GB  | 500         |
-| shield-5 | 2500    | 61 GB  | 1 TB    | 500         |
-| shield-6 | 3500    | 122 GB | 1.5 TB  | 500         |
-| shield-7 | 6000    | 244 GB | 2 TB    | 500         |
+| Plan        | $/month | RAM    | Storage | Connections |
+| ----------- | ------- | ------ | ------- | ----------- |
+| shield-0    | 350     | 4 GB   | 64 GB   | 200         |
+| shield-2    | 750     | 8 GB   | 256 GB  | 500         |
+| shield-3    | 1200    | 15 GB  | 512 GB  | 500         |
+| shield-4    | 1800    | 30 GB  | 768 GB  | 500         |
+| shield-5    | 3400    | 61 GB  | 1 TB    | 500         |
+| shield-6    | 4400    | 122 GB | 1.5 TB  | 500         |
+| shield-l-6  | 6400    | 122 GB | 2 TB    | 500         |
+| shield-xl-6 | 8400    | 122 GB | 3 TB    | 500         |
+| shield-7    | 8400    | 244 GB | 2 TB    | 500         |
+| shield-8    | 12250   | 488 GB | 3 TB    | 500         |
+| shield-9    | 16000   | 768 GB | 4 TB    | 500         |
+| shield-l-9  | 18500   | 768 GB | 5 TB    | 500         |
+| shield-xl-9 | 21000   | 768 GB | 6 TB    | 500         |
+| shield-10   | 34000   | 1 TB   | 8 TB    | 500         |
 
 ### Advanced Tier
 
