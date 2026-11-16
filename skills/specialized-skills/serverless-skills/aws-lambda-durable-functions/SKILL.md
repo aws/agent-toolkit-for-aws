@@ -10,7 +10,7 @@ Durable functions are Lambda functions that checkpoint progress and can run mult
 
 ## Use the developer guides for APIs
 
-Do not write SDK method signatures, configuration objects, or IaC properties from memory. Read the relevant page first. The SDK guide covers TypeScript, Python, Java, Go, and C#, and the API names differ between languages.
+Do not write SDK method signatures, configuration objects, or IaC properties from memory. Read the relevant page first. The SDK guide covers TypeScript, Python, Java, Go, Rust, and C#, and the API names differ between languages.
 
 [AWS Durable Execution SDK Developer Guide](https://docs.aws.amazon.com/durable-execution/):
 
@@ -47,14 +47,14 @@ Do not write SDK method signatures, configuration objects, or IaC properties fro
 | Best practices | <https://docs.aws.amazon.com/lambda/latest/dg/durable-best-practices.html> |
 | Supported runtimes | <https://docs.aws.amazon.com/lambda/latest/dg/durable-supported-runtimes.html> |
 
-**Works best with** the [AWS MCP server](https://docs.aws.amazon.com/aws-mcp/) for reading these pages, but it is not required.
+**Works best with** the [AWS MCP Server](https://docs.aws.amazon.com/agent-toolkit/latest/userguide/mcp-server.html) for reading these pages, but it is not required.
 
 ## Critical rules: Lambda
 
 1. **Durable execution is enabled only when a function is created.** It cannot be added to an existing function. Create a new function with durable execution (`DurableConfig` in IaC) and move the logic into it.
 2. **The handler must be wrapped with the SDK** (`withDurableExecution` in TypeScript, `@durable_execution` in Python). A plain handler deployed to a durable function fails every execution, so when moving existing code, wrap it rather than copying it unchanged.
 3. **Invoke with a qualified ARN**: a version, an alias, or `$LATEST` (for example `my-function:live`). An unqualified function name fails.
-4. **The execution role needs `AWSLambdaBasicDurableExecutionRolePolicy`.** It grants `lambda:CheckpointDurableExecution`, `lambda:GetDurableExecutionState`, and CloudWatch Logs permissions. Durable invokes also need `lambda:InvokeFunction` on the target. External systems that complete callbacks need `lambda:SendDurableExecutionCallbackSuccess` and `lambda:SendDurableExecutionCallbackFailure`.
+4. **The execution role needs `lambda:CheckpointDurableExecution`, `lambda:GetDurableExecutionState`, and CloudWatch Logs permissions.** The managed policy `AWSLambdaBasicDurableExecutionRolePolicy` grants these on all resources and is fine for getting started; for production, use a policy scoped to the function's ARN. Durable invokes also need `lambda:InvokeFunction` on the target. External systems that complete callbacks need `lambda:SendDurableExecutionCallbackSuccess` and `lambda:SendDurableExecutionCallbackFailure`, plus `lambda:SendDurableExecutionCallbackHeartbeat` if they send heartbeats.
 
 ## Critical rules: the replay model
 
