@@ -4,7 +4,7 @@
     "clarify_mode": "full",
     "timestamp": "2026-10-30T18:00:00Z",
     "discovery_artifacts": ["ai-workload-profile.json"],
-    "questions_asked": ["Q1", "Q1.5", "Q2", "Q4", "Q5", "Q6", "Q7", "Q8", "Q9", "Q10", "Q11"],
+    "questions_asked": ["Q1", "Q1.5", "Q2", "Q4", "Q5", "Q6", "Q7", "Q8", "Q9", "Q10", "Q10.5", "Q11"],
     "questions_defaulted": ["Q3"],
     "questions_extracted": []
   },
@@ -41,7 +41,7 @@
     "ai_monthly_spend": {
       "value": "$500-$2K",
       "chosen_by": "default",
-      "prompt": "Monthly AI spend on OpenAI or Gemini? (default applied)",
+      "prompt": "Monthly AI spend with your current AI providers? (default applied)",
       "design_consequence": "$500-$2K band sets token volume and model tier assumptions",
       "question_id": "Q3",
       "source": "default:Q3"
@@ -94,6 +94,13 @@
       "prompt": "Specialized features needed",
       "design_consequence": "Default recommendation from Q2 priority stands",
       "question_id": "Q10"
+    },
+    "mantle_requirements": {
+      "value": [{ "workload_id": "*", "selector": "none", "source": "user" }],
+      "chosen_by": "user",
+      "prompt": "Mantle-only requirements (asynchronous inference, provider-run tools, Projects/Workspaces, single-Region processing)",
+      "design_consequence": "No Mantle-only requirement; bedrock-runtime selected for every workload with an explicit assumption in the design",
+      "question_id": "Q10.5"
     }
   },
   "startup_constraints": {

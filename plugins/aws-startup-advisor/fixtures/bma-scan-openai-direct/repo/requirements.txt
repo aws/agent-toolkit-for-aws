@@ -1,0 +1,2 @@
+openai>=1.40
+auth0-python>=4.7

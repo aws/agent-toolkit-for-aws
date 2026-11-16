@@ -199,19 +199,19 @@ For Multi-AZ, approximately double these rates.
 | Write per million WRU | $0.625 |
 | Storage per GB-month  | $0.25  |
 
-### ElastiCache Redis (On-Demand)
+### ElastiCache Valkey (On-Demand)
 
-Single-AZ pricing. For Multi-AZ, approximately double.
+Single-AZ pricing, Valkey engine (the default target). All seven rows were read from the AWS Price List API via the AWS Pricing MCP server on 2026-11-09 (`AmazonElastiCache`, `cacheEngine=Valkey`, standard `NodeUsage` SKUs, us-east-1; `cache.r6g.large` is SKU `RV2VBCDBY8RZE2WZ`, $0.1648, against $0.206 for Redis OSS). For Multi-AZ, approximately double. Redis OSS node rates are 1.25x these values; use them only when `aws_config.engine` is `"redis"`.
 
 | Node             | $/hour | $/month |
 | ---------------- | ------ | ------- |
-| cache.t3.micro   | 0.017  | 12.41   |
-| cache.t3.small   | 0.034  | 24.82   |
-| cache.t3.medium  | 0.068  | 49.64   |
-| cache.t4g.micro  | 0.016  | —       |
-| cache.t4g.small  | 0.032  | —       |
-| cache.t4g.medium | 0.065  | —       |
-| cache.r6g.large  | 0.206  | 150.38  |
+| cache.t3.micro   | 0.0136 | 9.93    |
+| cache.t3.small   | 0.0272 | 19.86   |
+| cache.t3.medium  | 0.0544 | 39.71   |
+| cache.t4g.micro  | 0.0128 | 9.34    |
+| cache.t4g.small  | 0.0256 | 18.69   |
+| cache.t4g.medium | 0.052  | 37.96   |
+| cache.r6g.large  | 0.1648 | 120.30  |
 
 ---
 
@@ -408,20 +408,29 @@ Use alongside Bedrock pricing to calculate migration ROI.
 
 ### Gemini (Standard Tier)
 
-Prices per 1M tokens. Source: [ai.google.dev/gemini-api/docs/pricing](https://ai.google.dev/gemini-api/docs/pricing), verified May 2026.
+Prices per 1M tokens. Source: [ai.google.dev/gemini-api/docs/pricing](https://ai.google.dev/gemini-api/docs/pricing), verified May 2026; Gemini 3.8 Flash, 3.5 Flash-Lite, and the 2.5 retirement status re-read from the [Gemini Developer API pricing page](https://aistudio.google.com/docs/pricing) on 2026-11-08; the 2.0 Flash / Flash Lite retirement status from the [Vertex AI model versions page](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions) and the [Gemini Developer API deprecations page](https://aistudio.google.com/docs/deprecations), read the same day (their May 2026 prices are kept as historical figures, not refreshed).
 
-| Model                 | Input $/1M | Output $/1M | Context | Tier     |
-| --------------------- | ---------- | ----------- | ------- | -------- |
-| Gemini 3.5 Flash      | 1.50       | 9.00        | 1M      | flagship |
-| Gemini 3.1 Pro        | 2.00       | 12.00       | 1M      | flagship |
-| Gemini 3.1 Flash-Lite | 0.25       | 1.50        | 1M      | budget   |
-| Gemini 2.5 Pro        | 1.25       | 10.00       | 1M      | flagship |
-| Gemini 2.5 Flash      | 0.30       | 2.50        | 1M      | fast     |
-| Gemini 2.0 Flash      | 0.10       | 0.40        | 1M      | fast     |
-| Gemini 2.0 Flash Lite | 0.075      | 0.30        | 1M      | budget   |
+| Model                 | Input $/1M | Output $/1M | Context | Tier                                                                                                       |
+| --------------------- | ---------- | ----------- | ------- | ---------------------------------------------------------------------------------------------------------- |
+| Gemini 4 Argon (Global endpoint / Developer API) | 2.00 | 10.00 | 1M | flagship reasoning (rate through 2026-11-30; **4.00 / 20.00 from 2026-12-01**; no free tier; thinking tokens billed) — Developer API pricing and Vertex AI **Global** endpoint, read 2026-11-09 / 2026-11-10 |
+| Gemini 4 Argon (Vertex AI non-global / regional endpoint) | 2.20 | 11.00 | 1M | flagship reasoning (rate through 2026-11-30; **4.40 / 22.00 from 2026-12-01**) — [Vertex AI pricing](https://cloud.google.com/vertex-ai/generative-ai/pricing) non-global rows, read 2026-11-10. A Vertex AI workload pinned to a Region (data residency, regional endpoint) is billed here, 10% above Global; serving endpoint unknown → present both as labeled alternatives |
+| Gemini 3.8 Flash      | 0.75       | 3.75        | 1M      | flagship Flash (rate through 2026-12-31; 1.50 / 7.50 from 2027-01-01)                                      |
+| Gemini 3.6 Flash      | 0.75       | 3.75        | 1M      | previous-generation Flash on the Developer API (rate through 2026-12-31; 1.50 / 7.50 from 2027-01-01); **retired on Vertex AI 2026-11-19** → 3.8 Flash |
+| Gemini 3.7 Flash      | _unverified_ | _unverified_ | 1M    | Developer API routes `gemini-3.7-flash` to 3.8 Flash (bill at the 3.8 Flash row); Vertex AI retires it 2027-01-28 — no standalone list rate published |
+| Gemini 3.5 Flash      | 1.50       | 9.00        | 1M      | **Vertex AI list rate only** (GA until at least 2027-05-19). On the Developer API `gemini-3.5-flash` is removed from AI Studio and routed to 3.6 Flash — bill at the 3.6 Flash row. Serving API unknown → present both as labeled alternatives (Q19b) |
+| Gemini 3.1 Pro        | 2.00       | 12.00       | 1M      | flagship                                                                                                   |
+| Gemini 3.5 Flash-Lite | 0.30       | 2.50        | 1M      | fast                                                                                                       |
+| Gemini 3.1 Flash-Lite | 0.25       | 1.50        | 1M      | budget                                                                                                     |
+| Gemini 2.5 Pro        | 1.25       | 10.00       | 1M      | **retired** — Vertex AI 2026-10-20; Developer API shutdown 2026-12-01, then billed at 3.8 Flash rates      |
+| Gemini 2.5 Flash      | 0.30       | 2.50        | 1M      | **retired** — Vertex AI 2026-10-20; Developer API shutdown 2026-12-01, then billed at 3.5 Flash-Lite rates |
+| Gemini 2.5 Flash-Lite | 0.10       | 0.40        | 1M      | **retired** on Vertex AI 2026-10-20; not deprecated on the Developer API (no shutdown date)                 |
+| Gemini 2.0 Flash      | 0.10       | 0.40        | 1M      | **retired** — Vertex AI and Developer API shutdown 2026-06-01; upgrade 3.5 Flash-Lite (Vertex) / 3.6 Flash (Developer API) |
+| Gemini 2.0 Flash Lite | 0.075      | 0.30        | 1M      | **retired** — Vertex AI and Developer API shutdown 2026-06-01; upgrade 3.5 Flash-Lite (Vertex) / 3.1 Flash-Lite (Developer API) |
 
 > **Gemini 3.1 Pro breakpoint pricing:** $4.00/$18.00 per 1M for prompts >200k tokens (vs $2.00/$12.00 for ≤200k). Table above uses ≤200k rates.
-> **Gemini 3.5 Flash** is now GA and the current flagship Flash model, replacing Gemini 2.5 Flash as the primary Flash-tier recommendation. At $1.50/$9.00 it is 5x more expensive than Gemini 2.5 Flash — the Bedrock cost savings case is significantly stronger against 3.5 Flash.
+> **Gemini 3.8 Flash** (GA Sep 2, 2026) is the current Flash model and Google's upgrade for 3.5 / 3.6 / 3.7 Flash and the retired 2.5 Pro / 2.5 Flash. **Gemini 3.5 Flash** is still GA on Vertex AI at $1.50/$9.00 (5x the retired 2.5 Flash), but it has been removed from AI Studio and Developer API requests route to 3.6 Flash at $0.75/$3.75 — price a Developer API customer at the routed rate, a Vertex AI customer at the list price (read 2026-11-09).
+> **Gemini 2.5 retirement — which row is the source baseline depends on the serving API and the date.** The 2.5 rows are not current models (never a target or a current-recommendation row), but they are still the price some customers pay today. A measured bill (`current_costs.monthly_ai_spend`, billing CSV, usage profile) always outranks these list prices; when only token volume is known, pick the baseline from Clarify's `ai_constraints.ai_source_serving_api` first; only when it is absent, read `ai-workload-profile.json → models[]` and treat a row as Vertex AI only when its `service` is `vertex_ai_generative` **and** its `detected_via` includes `terraform` or `monitoring` (`vertex_ai_generative` alone is the Gemini category Discover assigns to every Gemini SDK, not a Vertex AI serving signal — a code-only row is `unknown`: compute both figures and label them): **Vertex AI** workloads on any 2.5 model are past the Oct 20, 2026 retirement — estimate against Google's named replacement (3.8 Flash with its 2027-01-01 step, or 3.5 Flash-Lite), never the 2.5 row. **Gemini Developer API** `gemini-2.5-flash-lite` is not deprecated and has no shutdown date — its 0.10 / 0.40 row is the correct baseline, with no forced cutoff (3.5 Flash-Lite's 0.30 / 2.50 would overstate a 150M / 75M workload from $45 to $232.50). **Gemini Developer API** `gemini-2.5-pro` and `gemini-2.5-flash` are billed at their own rows until Dec 1, 2026 (2.5 Pro at 150M / 75M is $937.50, not 3.8 Flash's $393.75); on or after Dec 1, 2026 Google auto-routes them and bills Gemini 3.8 Flash (0.75 / 3.75 through 2026-12-31; 1.50 / 7.50 from 2027-01-01) and Gemini 3.5 Flash-Lite (0.30 / 2.50) respectively — use the routed row from that date. Sources: [Gemini Developer API pricing](https://aistudio.google.com/docs/pricing), [Vertex AI model versions](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions), and [Gemini API deprecations](https://aistudio.google.com/docs/deprecations), all read 2026-11-08.
+> **Gemini 2.0 retirement:** the 2.0 Flash and 2.0 Flash Lite rows stay as historical figures so a user already on them can see what they paid. Both shut down on Vertex AI and the Gemini Developer API on Jun 1, 2026 (same two sources, read 2026-11-08); Google names Gemini 3.5 Flash-Lite as the Vertex upgrade and Gemini 3.6 Flash / 3.1 Flash-Lite on the Developer API, with no auto-routing. A workload that still names a 2.0 id is past a hard cutoff on both APIs — map it from the legacy rows and estimate against the replacement's rate (a measured bill, if one exists, still wins). Never use a 2.0 row as the live comparison baseline for a new estimate.
 
 ### OpenAI (Standard Tier)
 
@@ -460,18 +469,20 @@ resulting rates).
 | GPT-5.4 Nano  | 0.20         | 1.25         | —       | budget    |
 | GPT-5.4 Pro   | 30.00        | 180.00       | 1.05M   | premium   |
 | GPT-5.2       | 1.75         | 14.00        | 200K    | flagship  |
-| GPT-5.1       | 1.25         | 10.00        | 200K    | flagship  |
-| GPT-5 Mini    | 0.25         | 2.00         | 200K    | fast      |
-| GPT-5 Nano    | 0.05         | 0.40         | 128K    | budget    |
-| GPT-4.1       | 2.00         | 8.00         | 1M      | flagship  |
-| GPT-4.1 Mini  | 0.40         | 1.60         | 1M      | fast      |
-| GPT-4.1 Nano  | 0.10         | 0.40         | 1M      | budget    |
-| GPT-4o        | 2.50         | 10.00        | 128K    | flagship  |
-| o3            | 2.00         | 8.00         | 200K    | reasoning |
-| o4-mini       | 1.10         | 4.40         | 200K    | reasoning |
+| GPT-5.1       | 1.25         | 10.00        | 200K    | flagship — OpenAI shutdown 2027-04-01 → `gpt-6-sol` |
+| GPT-5 Mini    | 0.25         | 2.00         | 200K    | fast — OpenAI shutdown 2026-12-11 → `gpt-5.6-terra` |
+| GPT-5 Nano    | 0.05         | 0.40         | 128K    | budget — OpenAI shutdown 2026-12-11 → `gpt-5.6-luna` |
+| GPT-4.1       | 2.00         | 8.00         | 1M      | flagship — OpenAI shutdown 2027-01-14 → `gpt-6-luna` |
+| GPT-4.1 Mini  | 0.40         | 1.60         | 1M      | fast — OpenAI shutdown 2027-01-14 → `gpt-6-luna` |
+| GPT-4.1 Nano  | 0.10         | 0.40         | 1M      | **shut down 2026-10-23** on OpenAI → `gpt-5.6-luna` (historical row; see the shutdown note below) |
+| GPT-4o        | 2.50         | 10.00        | 128K    | flagship — OpenAI shutdown 2027-01-14 → `gpt-6-luna` |
+| o3            | 2.00         | 8.00         | 200K    | reasoning — OpenAI shutdown 2026-12-11 → `gpt-5.6-sol` |
+| o4-mini       | 1.10         | 4.40         | 200K    | **shut down 2026-10-23** on OpenAI → `gpt-5.6-terra` (historical row; see the shutdown note below) |
 
 *GPT-6 rows: 1.05M is the model's max window, not this rate's valid range. Requests >272,000 input tokens reprice input/cache 2x and output 1.5x — see the breakpoint note above and pricing-cache.md's long-context tables.
 
+> **OpenAI shutdowns — which row is the source baseline depends on the serving provider and the date** ([OpenAI deprecations](https://developers.openai.com/api/docs/deprecations), read 2026-11-09). A measured bill always wins. For a **direct OpenAI** source with token volume only: before the row's shutdown date, use the row; on or after it, use the **substitute's** source row (`gpt-4.1-nano` → GPT-5.6 Luna 0.20 / 1.20; `o4-mini` → GPT-5.6 Terra, which is `_unverified_` here, so the baseline is **unavailable** — fall to the multi-tier presentation, never the retired row). Already past shutdown (2026-10-23): `o1`, `o1-pro`, `o3-mini`, `o4-mini`, `gpt-4`, `gpt-4-turbo`, `gpt-4.1-nano`, `gpt-3.5-turbo`; `o1-mini` since 2025-10-27. These dates are OpenAI-hosted dates only — an **Azure OpenAI** deployment of the same model follows Microsoft's retirement schedule, so keep the row until that schedule is confirmed.
+>
 > **GPT-6.1 Terra:** confirm availability, token limits, and pricing with the source provider.
 > Use measured/stated source spend or `pricing-fallback.md` when verified source rates are unavailable.
 > See `shared/openai-on-bedrock.md` for Bedrock availability and prices.

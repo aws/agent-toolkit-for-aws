@@ -53,16 +53,30 @@ except ImportError as _exc:  # pragma: no cover - exercised only in offline envi
 # expose EBS/NIC throughput caps or partition limits, so they stay hardcoded here. On-demand
 # instance price (USD/hr) is fetched live per-region by fetch_pricing() instead of stored here.
 #
-# Standard (M5 / M7g):
+# Standard (M5 / M7g / M8g):
 #   ebs_throughput_mbs     – maximum provisionable EBS volume throughput per broker (MiB/s);
 #                            also used as the documented PST cap for the instance
 #   network_throughput_mbs – NIC bandwidth available to the broker (MiB/s)
 #   rec_partitions         – recommended max partitions per broker (leaders + followers)
 #   max_partitions         – hard max partitions per broker
 #
-# Express (M7g):
+# Express (M7g / M8g):
 #   ingress_mbs    – max producer throughput per broker (MiB/s); used directly
 #   rec_partitions, max_partitions as above
+#   cross_az_billed_fraction – optional, default 1.0. Fraction of the client<->broker
+#                  cross-AZ transfer rate that is billed. Express M8g is 0.5: MSK does not
+#                  bill the broker side of an AZ crossing, only the client side. This is a
+#                  billing rule, not a price — the EC2 IntraRegion SKU the Pricing API
+#                  returns is unchanged — so it lives here rather than in Pricing.
+#
+# Standard M8g mirrors Standard M7g exactly (capacity and list price). Standard M8g 24xlarge
+# has no M7g counterpart: network throughput and price are extrapolated linearly from
+# 16xlarge, and EBS throughput and partition limits are held at the 16xlarge values (EBS is
+# already at the 1000 MiB/s cap). Replace with published limits at launch. Express M8g keeps
+# Express M7g ingress and partition limits at every size. Express M8g 24xlarge has no M7g
+# counterpart: its ingress is the published 667 MiB/s, and its partition limits are held at
+# the 16xlarge values rather than extrapolated, so sizing never assumes more partition
+# capacity than is published. Replace with published limits at launch.
 
 INSTANCE_SPECS = {
     "kafka.m5.large": {
@@ -155,6 +169,54 @@ INSTANCE_SPECS = {
         "rec_partitions": 4000,
         "max_partitions": 6000,
     },
+    "kafka.m8g.large": {
+        "ebs_throughput_mbs": 78.75,
+        "network_throughput_mbs": 117,
+        "rec_partitions": 1000,
+        "max_partitions": 1500,
+    },
+    "kafka.m8g.xlarge": {
+        "ebs_throughput_mbs": 156.25,
+        "network_throughput_mbs": 234,
+        "rec_partitions": 1000,
+        "max_partitions": 1500,
+    },
+    "kafka.m8g.2xlarge": {
+        "ebs_throughput_mbs": 312.5,
+        "network_throughput_mbs": 469,
+        "rec_partitions": 2000,
+        "max_partitions": 3000,
+    },
+    "kafka.m8g.4xlarge": {
+        "ebs_throughput_mbs": 625.0,
+        "network_throughput_mbs": 937,
+        "rec_partitions": 4000,
+        "max_partitions": 6000,
+    },
+    "kafka.m8g.8xlarge": {
+        "ebs_throughput_mbs": 1000.0,
+        "network_throughput_mbs": 1875,
+        "rec_partitions": 4000,
+        "max_partitions": 6000,
+    },
+    "kafka.m8g.12xlarge": {
+        "ebs_throughput_mbs": 1000.0,
+        "network_throughput_mbs": 2812,
+        "rec_partitions": 4000,
+        "max_partitions": 6000,
+    },
+    "kafka.m8g.16xlarge": {
+        "ebs_throughput_mbs": 1000.0,
+        "network_throughput_mbs": 3750,
+        "rec_partitions": 4000,
+        "max_partitions": 6000,
+    },
+    "kafka.m8g.24xlarge": {
+        "ebs_throughput_mbs": 1000.0,
+        "network_throughput_mbs": 5625,
+        "rec_partitions": 4000,
+        "max_partitions": 6000,
+    },
     "kafka.m7g.large (Express)": {
         "ingress_mbs": 15.625,
         "rec_partitions": 1000,
@@ -190,6 +252,54 @@ INSTANCE_SPECS = {
         "rec_partitions": 20000,
         "max_partitions": 32000,
     },
+    "kafka.m8g.large (Express)": {
+        "ingress_mbs": 15.625,
+        "rec_partitions": 1000,
+        "max_partitions": 1500,
+        "cross_az_billed_fraction": 0.5,
+    },
+    "kafka.m8g.xlarge (Express)": {
+        "ingress_mbs": 31.25,
+        "rec_partitions": 1000,
+        "max_partitions": 2000,
+        "cross_az_billed_fraction": 0.5,
+    },
+    "kafka.m8g.2xlarge (Express)": {
+        "ingress_mbs": 62.5,
+        "rec_partitions": 2500,
+        "max_partitions": 4000,
+        "cross_az_billed_fraction": 0.5,
+    },
+    "kafka.m8g.4xlarge (Express)": {
+        "ingress_mbs": 125.0,
+        "rec_partitions": 6000,
+        "max_partitions": 8000,
+        "cross_az_billed_fraction": 0.5,
+    },
+    "kafka.m8g.8xlarge (Express)": {
+        "ingress_mbs": 250.0,
+        "rec_partitions": 12000,
+        "max_partitions": 16000,
+        "cross_az_billed_fraction": 0.5,
+    },
+    "kafka.m8g.12xlarge (Express)": {
+        "ingress_mbs": 375.0,
+        "rec_partitions": 16000,
+        "max_partitions": 24000,
+        "cross_az_billed_fraction": 0.5,
+    },
+    "kafka.m8g.16xlarge (Express)": {
+        "ingress_mbs": 500.0,
+        "rec_partitions": 20000,
+        "max_partitions": 32000,
+        "cross_az_billed_fraction": 0.5,
+    },
+    "kafka.m8g.24xlarge (Express)": {
+        "ingress_mbs": 667.0,
+        "rec_partitions": 20000,
+        "max_partitions": 32000,
+        "cross_az_billed_fraction": 0.5,
+    },
 }
 
 # Only 4xlarge and larger support Provisioned Storage Throughput (PST)
@@ -203,6 +313,11 @@ PST_ELIGIBLE = {
     "kafka.m7g.12xlarge",
     "kafka.m7g.16xlarge",
     "kafka.m5.24xlarge",
+    "kafka.m8g.4xlarge",
+    "kafka.m8g.8xlarge",
+    "kafka.m8g.12xlarge",
+    "kafka.m8g.16xlarge",
+    "kafka.m8g.24xlarge",
 }
 
 
@@ -234,7 +349,7 @@ DEFAULT_BROKER_QUOTA = 60
 
 # NOTE: Entitlement-Factor Constants
 #
-# Standard (M5 / M7g):
+# Standard (M5 / M7g / M8g):
 #   All broker I/O operations (ingress, replication, TS writes, consumer lag,
 #   rebalancing) consume EBS and NIC bandwidth as multiples of ingress rate,
 #   sized for a 1-AZ-down state.
@@ -253,7 +368,7 @@ DEFAULT_BROKER_QUOTA = 60
 #
 #   Tiered Storage is detected as "in use" when retention_hours > primary_retention_hours.
 #
-# Express (M7g):
+# Express (M7g / M8g):
 #   No inter-broker replication or EBS writes.  ingress_mbs is the published
 #   per-broker ingress limit.  Egress capacity = ingress_mbs * EXPRESS_EGRESS_FACTOR.
 
@@ -415,6 +530,28 @@ STATIC_BROKER_PRICE_PER_HR = {
     "kafka.m7g.8xlarge (Express)": 6.528,
     "kafka.m7g.12xlarge (Express)": 9.792,
     "kafka.m7g.16xlarge (Express)": 13.056,
+    # M8g entries below are announced list prices, not yet captured from the Pricing API:
+    # Standard M8g at the Standard M7g price (24xlarge per-size linear), Express M8g at 85% of the Express M7g price
+    # (24xlarge at 85% of the per-size-linear M7g equivalent). Until the API
+    # publishes them, `api` sizing omits M8g while `static` includes it. Refresh with
+    # --emit-static-pricing once published; test_pricing_regions.py checks them against
+    # live rates as soon as the API returns them.
+    "kafka.m8g.large": 0.204,
+    "kafka.m8g.xlarge": 0.408,
+    "kafka.m8g.2xlarge": 0.816,
+    "kafka.m8g.4xlarge": 1.632,
+    "kafka.m8g.8xlarge": 3.264,
+    "kafka.m8g.12xlarge": 4.896,
+    "kafka.m8g.16xlarge": 6.528,
+    "kafka.m8g.24xlarge": 9.792,
+    "kafka.m8g.large (Express)": 0.3468,
+    "kafka.m8g.xlarge (Express)": 0.6936,
+    "kafka.m8g.2xlarge (Express)": 1.3872,
+    "kafka.m8g.4xlarge (Express)": 2.7744,
+    "kafka.m8g.8xlarge (Express)": 5.5488,
+    "kafka.m8g.12xlarge (Express)": 8.3232,
+    "kafka.m8g.16xlarge (Express)": 11.0976,
+    "kafka.m8g.24xlarge (Express)": 16.6464,
 }
 
 # Shared (non-per-instance) dimensions. cross_az_cost_per_gb is already doubled, because
@@ -451,16 +588,11 @@ def static_pricing(region: str, broker_classes: List[str]) -> Pricing:
     """Build a Pricing object from the embedded tables, with no AWS calls whatsoever."""
     _assert_static_region(region)
 
-    selected_groups = {cls for group in broker_classes for cls in BROKER_CLASS_GROUPS[group]}
-    need_standard = bool({"m5_standard", "m7g_standard"} & selected_groups)
-    need_express = "express" in selected_groups
+    selected, need_standard, need_express = _selected_classes(broker_classes)
 
     broker_price_per_hr: Dict[str, float] = {}
     for instance_type in INSTANCE_SPECS:
-        cls = _classify(instance_type)
-        if cls == "express" and not need_express:
-            continue
-        if cls in ("m5_standard", "m7g_standard") and not need_standard:
+        if _classify(instance_type) not in selected:
             continue
         price = STATIC_BROKER_PRICE_PER_HR.get(instance_type)
         if price is None:
@@ -613,9 +745,7 @@ def fetch_pricing(region: str, broker_classes: List[str]) -> Pricing:
     (filtered only by regionCode + operation=RunBroker) and matched locally by
     computeFamily, rather than one call per instance type.
     """
-    selected_groups = {cls for group in broker_classes for cls in BROKER_CLASS_GROUPS[group]}
-    need_standard = bool({"m5_standard", "m7g_standard"} & selected_groups)
-    need_express = "express" in selected_groups
+    selected, need_standard, need_express = _selected_classes(broker_classes)
 
     broker_price_per_hr: Dict[str, float] = {}
     if need_standard or need_express:
@@ -627,21 +757,24 @@ def fetch_pricing(region: str, broker_classes: List[str]) -> Pricing:
             for p in broker_products
             if (attrs := p["product"]["attributes"]).get("computeFamily")
         }
+        unpriced: List[str] = []
         for instance_type in INSTANCE_SPECS:
-            cls = _classify(instance_type)
-            if cls == "express" and not need_express:
-                continue
-            if cls in ("m5_standard", "m7g_standard") and not need_standard:
+            if _classify(instance_type) not in selected:
                 continue
             compute_family = _compute_family(instance_type)
             if compute_family in price_by_compute_family:
                 broker_price_per_hr[instance_type] = price_by_compute_family[compute_family]
             else:
-                print(
-                    f"WARNING: no {region} pricing found for {instance_type} "
-                    f"(computeFamily={compute_family}); excluding from sizing",
-                    file=sys.stderr,
-                )
+                unpriced.append(compute_family)
+        # One line, not one per type: a family not yet offered in a region (e.g. M8g during
+        # a regional rollout) would otherwise print a dozen warnings on every run.
+        if unpriced:
+            print(
+                f"WARNING: the Pricing API publishes no {region} price for "
+                f"{len(unpriced)} instance type(s), usually because they are not offered "
+                f"in {region} yet; excluding from sizing: {', '.join(unpriced)}",
+                file=sys.stderr,
+            )
 
     ebs_cost = tiered_cost = pst_cost = 0.0
     express_storage_cost = express_data_in = 0.0
@@ -808,7 +941,7 @@ def _brokers_for(demand: float, per_broker_capacity: float) -> int:
 def calculate_standard_sizing(
     inputs: SizingInputs, pricing: Pricing, discount_pct: float = 0.0
 ) -> List[SizingResult]:
-    """Calculate sizing for all Standard (M5 / M7g) instance types."""
+    """Calculate sizing for all Standard (M5 / M7g / M8g) instance types."""
     discount = discount_multiplier(discount_pct)
     results = []
 
@@ -826,13 +959,12 @@ def calculate_standard_sizing(
     storage_factor = STORAGE_IO_FACTOR_BASE + (STORAGE_IO_FACTOR_TS_ADD if ts_in_use else 0.0)
     network_base = NETWORK_IO_BASE + (NETWORK_IO_TS_ADD if ts_in_use else 0.0)
 
+    # Kafka copies each log segment to tiered storage as soon as it closes, regardless of
+    # local retention, so the tier holds the full retention period, not just the part beyond
+    # primary retention. Stored once (not per replica). See
+    # https://docs.aws.amazon.com/msk/latest/developerguide/msk-tiered-storage-retention-rules.html
     if ts_in_use:
-        ts_gb = (
-            inputs.avg_data_in_mbs
-            * (inputs.retention_hours - inputs.primary_retention_hours)
-            * 3600
-            / 1024
-        )
+        ts_gb = inputs.avg_data_in_mbs * inputs.retention_hours * 3600 / 1024
     else:
         ts_gb = 0.0
 
@@ -960,7 +1092,7 @@ def calculate_standard_sizing(
 def calculate_express_sizing(
     inputs: SizingInputs, pricing: Pricing, discount_pct: float = 0.0
 ) -> List[SizingResult]:
-    """Calculate sizing for all Express (M7g) instance types."""
+    """Calculate sizing for all Express (M7g / M8g) instance types."""
     discount = discount_multiplier(discount_pct)
     results = []
 
@@ -968,7 +1100,8 @@ def calculate_express_sizing(
     if not inputs.rack_affined_consumers:
         cross_az_mbs += inputs.avg_data_out_mbs * (NUM_AZS - 1) / NUM_AZS
     cross_az_gb_mo = cross_az_mbs * 3600 * HOURS_PER_MONTH / 1024
-    monthly_cross_az_cost = cross_az_gb_mo * pricing.cross_az_cost_per_gb * discount
+    # Full two-sided cost; scaled per instance by cross_az_billed_fraction below.
+    full_cross_az_cost = cross_az_gb_mo * pricing.cross_az_cost_per_gb * discount
 
     data_in_gb_mo = inputs.avg_data_in_mbs * 3600 * HOURS_PER_MONTH / 1024
     monthly_data_in_cost = data_in_gb_mo * pricing.express_data_in_per_gb * discount
@@ -1024,6 +1157,7 @@ def calculate_express_sizing(
         bottleneck = max(details, key=lambda k: details[k].brokers_needed)
 
         monthly_broker_cost = broker_count * price_per_hr * HOURS_PER_MONTH * discount
+        monthly_cross_az_cost = full_cross_az_cost * specs.get("cross_az_billed_fraction", 1.0)
 
         results.append(
             SizingResult(
@@ -1050,9 +1184,11 @@ def calculate_express_sizing(
 
 
 def _classify(instance_type: str) -> str:
-    """Group results into the three classes used for recommendations."""
+    """Group results into the classes used for recommendations (one pick per class)."""
     if "Express" in instance_type:
-        return "express"
+        return "express_m8g" if instance_type.startswith("kafka.m8g.") else "express_m7g"
+    if instance_type.startswith("kafka.m8g."):
+        return "m8g_standard"
     if instance_type.startswith("kafka.m7g."):
         return "m7g_standard"
     if instance_type.startswith("kafka.m5."):
@@ -1069,7 +1205,7 @@ def recommend_per_class(
     Returns a dict keyed by class with the recommended SizingResult, or None when
     no instance in that class fits within the quota.
     """
-    by_class: Dict[str, List[SizingResult]] = {"m5_standard": [], "m7g_standard": [], "express": []}
+    by_class: Dict[str, List[SizingResult]] = {cls: [] for cls in _CLASS_LABELS}
     for r in results:
         cls = _classify(r.instance_type)
         if cls in by_class:
@@ -1085,15 +1221,28 @@ def recommend_per_class(
 _CLASS_LABELS = {
     "m5_standard": "Standard M5",
     "m7g_standard": "Standard M7g",
-    "express": "Express M7g",
+    "m8g_standard": "Standard M8g",
+    "express_m7g": "Express M7g",
+    "express_m8g": "Express M8g",
 }
 
 # Broker classes selectable via --broker-classes, mapped to the recommendation classes
-# they cover.
+# they cover. Each generation is its own recommendation class so a newer, cheaper family
+# never silently hides the older one, and so a region without the newer family still
+# gets a pick from the older one.
 BROKER_CLASS_GROUPS = {
-    "standard": ("m5_standard", "m7g_standard"),
-    "express": ("express",),
+    "standard": ("m5_standard", "m7g_standard", "m8g_standard"),
+    "express": ("express_m7g", "express_m8g"),
 }
+
+
+def _selected_classes(broker_classes: List[str]) -> Tuple[set, bool, bool]:
+    """Recommendation classes covered by *broker_classes*, plus whether any Standard or
+    any Express class is among them (which decides the shared dimensions to price)."""
+    selected = {cls for group in broker_classes for cls in BROKER_CLASS_GROUPS[group]}
+    need_standard = bool(selected & set(BROKER_CLASS_GROUPS["standard"]))
+    need_express = bool(selected & set(BROKER_CLASS_GROUPS["express"]))
+    return selected, need_standard, need_express
 
 
 def parse_broker_classes(value: str) -> List[str]:
@@ -1341,10 +1490,16 @@ def _print_recommendations(
     recs = recommend_per_class(results, broker_quota=broker_quota)
     print(f"\n=== Recommended pick per class (≤ {broker_quota} brokers, lowest monthly cost) ===")
     print("  Cost breakdown for each pick is in the sizing sections above.")
+    sized_classes = {_classify(r.instance_type) for r in results}
     for cls in classes:
         label = _CLASS_LABELS[cls]
         rec = recs[cls]
-        if rec is None:
+        if cls not in sized_classes:
+            # Nothing in this class was priced, so nothing was sized. Saying "no instance
+            # fits the quota" here would send the user after a quota increase that cannot
+            # help.
+            print(f"  {label}: not sized — no pricing for this class in this region")
+        elif rec is None:
             print(
                 f"  {label}: no instance fits within {broker_quota} brokers — request a quota increase or pick a larger size"
             )
@@ -1399,7 +1554,7 @@ def _parse_args():
     p.add_argument(
         "--primary-retention-hours",
         type=int,
-        help="Primary (EBS) retention (hours); remainder goes to Tiered Storage",
+        help="Primary (EBS) retention (hours). Set below --retention-hours to enable Tiered Storage, which holds the full retention",
     )
     p.add_argument(
         "--utilization-standard",
@@ -1609,8 +1764,12 @@ if __name__ == "__main__":
     if standard_results:
         _print_sizing_section(f"Standard Sizing ({section_suffix})", standard_results)
 
-    if express_results:
-        _print_sizing_section(f"Express Sizing ({section_suffix})", express_results)
+    # One section per Express generation: their cross-AZ cost differs, so a combined table
+    # cannot hoist it into the shared costs, and the wider mixed table is easy to misread.
+    for cls in BROKER_CLASS_GROUPS["express"]:
+        section = [r for r in express_results if _classify(r.instance_type) == cls]
+        if section:
+            _print_sizing_section(f"{_CLASS_LABELS[cls]} Sizing ({section_suffix})", section)
 
     _print_recommendations(
         all_results,

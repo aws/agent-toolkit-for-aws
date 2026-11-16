@@ -26,10 +26,13 @@ in-block literal evidence, so a valid stack is never falsely blocked):
     IPv6-only or dual-stack VPC is exposed by ::/0 exactly as IPv4 is by
     0.0.0.0/0.
   - no_wildcard_iam: a literal IAM policy document with Effect "Allow" must not
-    use Action "*" or Resource "*", except an isolated
-    elasticbeanstalk:CreateStorageLocation statement because AWS provides no
-    resource-level permission for it (fail-open on aws_iam_policy_document data
-    sources, whose statements are not visible as literal JSON here).
+    use Action "*" or Resource "*", except two statement shapes whose actions
+    have no resource-level permissions in AWS: an isolated
+    elasticbeanstalk:CreateStorageLocation statement, and an ECS Exec statement
+    listing only the four ssmmessages channel actions (Create/Open
+    Control/DataChannel). Any other action in the same statement disqualifies it
+    (fail-open on aws_iam_policy_document data sources, whose statements are not
+    visible as literal JSON here).
   - rds_encryption_at_rest: aws_db_instance / aws_rds_cluster must set
     storage_encrypted = true (RDS defaults to UNENCRYPTED). Fail-open when
     variable-driven. S3 is intentionally NOT checked: buckets have default
@@ -760,13 +763,32 @@ def _iam_key_is_wildcard(body: str, key: str) -> bool:
     return False
 
 
+# ECS Exec channel actions. AWS defines no resource-level permissions for any
+# ssmmessages action, so the task-role statement that enables
+# `aws ecs execute-command` can only be written with Resource "*".
+_ECS_EXEC_SSMMESSAGES_ACTIONS = frozenset(
+    {
+        "ssmmessages:CreateControlChannel",
+        "ssmmessages:CreateDataChannel",
+        "ssmmessages:OpenControlChannel",
+        "ssmmessages:OpenDataChannel",
+    }
+)
+
+
 def _remove_allowed_resource_wildcard_statements(body: str) -> str:
     """Remove narrowly-approved IAM statements whose actions require Resource "*".
 
     Keep this allowlist statement-shaped rather than action-token-shaped so an
     approved action cannot hide a second, over-broad action in the same statement.
+    Two shapes are approved:
+      - an isolated elasticbeanstalk:CreateStorageLocation statement;
+      - an ECS Exec statement whose Action list contains ONLY the four
+        ssmmessages channel actions as string literals (any subset, any order,
+        nothing else — a non-literal member such as `local.extra_action`
+        disqualifies the statement).
     """
-    return re.sub(
+    body = re.sub(
         r"""
         \{\s*
         "?Effect"?\s*[:=]\s*"Allow"\s*,?\s*
@@ -775,6 +797,34 @@ def _remove_allowed_resource_wildcard_statements(body: str) -> str:
         \}
         """,
         "",
+        body,
+        flags=re.DOTALL | re.VERBOSE,
+    )
+
+    def _drop_if_only_ssmmessages(m: re.Match[str]) -> str:
+        # Every list member must be a quoted string literal from the allowlist.
+        # An expression member (local.x, var.y, a function call) is kept — the
+        # checker cannot know what it resolves to, so the statement stays
+        # subject to the wildcard rule.
+        members = [p.strip() for p in m.group("actions").split(",")]
+        members = [p for p in members if p]  # tolerate a trailing comma
+        if not members:
+            return m.group(0)
+        for member in members:
+            lit = re.fullmatch(r'"([^"]*)"', member)
+            if lit is None or lit.group(1) not in _ECS_EXEC_SSMMESSAGES_ACTIONS:
+                return m.group(0)
+        return ""
+
+    return re.sub(
+        r"""
+        \{\s*
+        "?Effect"?\s*[:=]\s*"Allow"\s*,?\s*
+        "?Action"?\s*[:=]\s*\[(?P<actions>[^\]]*)\]\s*,?\s*
+        "?Resource"?\s*[:=]\s*"\*"\s*,?\s*
+        \}
+        """,
+        _drop_if_only_ssmmessages,
         body,
         flags=re.DOTALL | re.VERBOSE,
     )

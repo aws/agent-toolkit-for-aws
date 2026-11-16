@@ -220,12 +220,17 @@ Continue with the next resource after the Fargate entry is appended. This guard 
        "desired_count": <desired_count>,
        "container_image": "placeholder:{heroku_app}-{process_type}",
        "process_type": "{process_type}",
-       "load_balancer": <true if process_type == "web", false otherwise>
+       "load_balancer": <true if process_type == "web", false otherwise>,
+       "ecs_mode": "<express|standard>",
+       "ecs_mode_reason": "<one line>",
+       "placement": "<public_subnets when ecs_mode == \"express\", otherwise omit>"
      }
    }
    ```
 
-6. **ALB for web process types**: If `process_type == "web"`, produce an additional ALB entry:
+   **`ecs_mode`:** `"express"` when ALL of: `process_type == "web"`; `fargate_cpu <= 4096` and `fargate_memory <= 8192`; `preferences.design_constraints.release_strategy` is absent or `"canary"`; `dns_strategy != "route53"` (a Route 53 cutover needs a Terraform-owned ALB); the app is **not** in a Private Space (§ 3D restricted inbound rules need tasks in private subnets behind a Terraform-owned ALB whose security group this skill controls). Otherwise `"standard"`, with the first failing condition as the reason (`worker`, `task_size`, `release_strategy`, `route53_cutover`, `private_space`). ECS Express Mode is a standard ECS service AWS provisions — Fargate cluster, ALB with HTTPS and ACM certificate, auto scaling, logs, canary deployments, AWS-provided endpoint — at no extra charge; up to 25 Express services share one ALB ([docs](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html)). **Public ingress vs task placement:** Express Mode derives the ALB scheme from the task subnets — public subnets give an internet-facing ALB with public task IPs, private subnets give an internal ALB ([network defaults](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html#express-service-network-defaults)). A Heroku web dyno is internet-facing, so an `express` web formation is generated with its tasks in the **public** subnets (record `"placement": "public_subnets"` in `aws_config`); a web formation whose tasks must stay in private subnets is `standard`. Estimate and Generate read `ecs_mode` from this entry; a design with no `ecs_mode` key (saved before this field existed) is read as `"standard"` by both.
+
+6. **ALB for web process types**: If `process_type == "web"` AND `aws_config.ecs_mode == "standard"`, produce an additional ALB entry (an `express` web formation gets its ALB from Express Mode — do not emit one):
 
    ```json
    {
@@ -339,31 +344,33 @@ Continue with the next resource after the Fargate entry is appended. This guard 
      - Set `multi_az: false`
      - Set `automatic_failover: false`
 
-5. **Engine version**: Use the source plan's Redis Version column. Select a compatible ElastiCache engine version (same major version). For example, source `7.0` → ElastiCache `7.0`.
+5. **Engine**: `valkey`. Valkey is ElastiCache's default engine for new clusters, is compatible with Redis OSS commands, data structures, and clients, costs 20% less per node (33% less on ElastiCache Serverless), and is the only ElastiCache engine Database Savings Plans cover. Select Redis OSS only when the source depends on a Redis module or feature Valkey does not provide, and record why in the rationale. Heroku Key-Value Store (Heroku Redis) exposes no modules, so Valkey is always the default here; set `aws_config.engine: "redis"` only on an explicit user request and record the reason.
+6. **Engine version**: engine-aware. For `engine: "valkey"` pick the current ElastiCache Valkey version that is at least as new as the source Redis version's feature set — source Redis `6.2` or `7.0` → Valkey `7.2` (or the latest 8.x when the user wants the newest engine). For the explicit `engine: "redis"` exception pick a supported ElastiCache Redis OSS version with the same major as the source (`7.0` → `7.1`; ElastiCache Redis OSS supports 7.1 and earlier) and label the entry `aws_service: "ElastiCache Redis"`. The source `redis_version` is provenance, not the target value.
 
-6. **Encryption in-transit**: If `config.encryption_in_transit == true` (or table Encryption column is "Yes"), set `transit_encryption: true`.
+7. **Encryption in-transit**: If `config.encryption_in_transit == true` (or table Encryption column is "Yes"), set `transit_encryption: true`.
 
-7. **Produce ElastiCache entry**:
+8. **Produce ElastiCache entry**:
 
    ```json
    {
      "service_id": "elasticache:{heroku_app}:redis",
      "source_resource_id": "{resource_id}",
      "heroku_app": "{heroku_app}",
-     "aws_service": "ElastiCache Redis",
+     "aws_service": "<ElastiCache Valkey | ElastiCache Redis — matches aws_config.engine>",
      "confidence": "deterministic",
      "aws_config": {
        "region": "{target_region}",
+       "engine": "<valkey | redis>",
        "node_type": "<from table>",
        "multi_az": <true|false>,
        "automatic_failover": <true|false>,
        "transit_encryption": <true|false>,
-       "engine_version": "<compatible version>"
+       "engine_version": "<engine-aware version, e.g. Valkey 7.2 or Redis OSS 7.1>"
      }
    }
    ```
 
-8. Append to `services[]`. Increment `metadata.total_services`.
+9. Append to `services[]`. Increment `metadata.total_services`.
 
 ---
 

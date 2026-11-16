@@ -1,0 +1,257 @@
+{
+  "schema_version": "1.1",
+  "ai_sources": [
+    {
+      "provider": "anthropic",
+      "source_service": "anthropic_api",
+      "model_families": [
+        "claude"
+      ],
+      "model_evidence": "observed",
+      "models": [
+        "claude-sonnet-4-5"
+      ],
+      "model_observations": [
+        {
+          "normalized_model": "claude-sonnet-4-5",
+          "raw_model": "claude-sonnet-4-5",
+          "model_family": "claude",
+          "evidence": [
+            {
+              "provenance": "code",
+              "confidence": "high",
+              "detail": "app/review.py:12 claude.messages.create"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "provider": "google",
+      "source_service": "gemini_api",
+      "model_families": [
+        "embedding",
+        "gemini"
+      ],
+      "model_evidence": "observed",
+      "models": [
+        "gemini-2.5-flash",
+        "text-embedding-004"
+      ],
+      "model_observations": [
+        {
+          "normalized_model": "gemini-2.5-flash",
+          "raw_model": "gemini-2.5-flash",
+          "model_family": "gemini",
+          "evidence": [
+            {
+              "provenance": "code",
+              "confidence": "high",
+              "detail": "app/review.py:19 gemini.models.generate_content"
+            }
+          ]
+        },
+        {
+          "normalized_model": "text-embedding-004",
+          "raw_model": "text-embedding-004",
+          "model_family": "embedding",
+          "evidence": [
+            {
+              "provenance": "code",
+              "confidence": "high",
+              "detail": "app/review.py:23 gemini.models.embed_content"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model_families": [
+        "gpt"
+      ],
+      "model_evidence": "observed",
+      "models": [
+        "ft:gpt-4o-mini-2024-07-18:acme:triage:a1b2",
+        "gpt-4.1",
+        "gpt-4o"
+      ],
+      "model_observations": [
+        {
+          "normalized_model": "ft:gpt-4o-mini-2024-07-18:acme:triage:a1b2",
+          "raw_model": "ft:gpt-4o-mini-2024-07-18:acme:triage:a1b2",
+          "model_family": "gpt",
+          "evidence": [
+            {
+              "provenance": "code",
+              "confidence": "high",
+              "detail": "app/assistant.py:32 client.chat.completions.create"
+            }
+          ]
+        },
+        {
+          "normalized_model": "gpt-4.1",
+          "raw_model": "gpt-4.1",
+          "model_family": "gpt",
+          "evidence": [
+            {
+              "provenance": "code",
+              "confidence": "high",
+              "detail": "app/assistant.py:24 client.responses.create"
+            }
+          ]
+        },
+        {
+          "normalized_model": "gpt-4o",
+          "raw_model": "gpt-4o",
+          "model_family": "gpt",
+          "evidence": [
+            {
+              "provenance": "code",
+              "confidence": "high",
+              "detail": "app/assistant.py:8 client.chat.completions.create"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "gateways": [],
+  "workloads": [
+    {
+      "workload_id": "openai_api.gpt-4o.openai.chat.completions.create.plain",
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model": "gpt-4o",
+      "sdk_method": "openai.chat.completions.create",
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "structured_output": false,
+      "call_sites": [
+        {
+          "file": "app/assistant.py",
+          "line": 8
+        },
+        {
+          "file": "app/assistant.py",
+          "line": 19
+        }
+      ]
+    },
+    {
+      "workload_id": "openai_api.gpt-4o.openai.chat.completions.create.structured",
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model": "gpt-4o",
+      "sdk_method": "openai.chat.completions.create",
+      "capability": "structured_output",
+      "capability_confidence": "high",
+      "structured_output": true,
+      "call_sites": [
+        {
+          "file": "app/assistant.py",
+          "line": 13
+        }
+      ]
+    },
+    {
+      "workload_id": "openai_api.gpt-4.1.openai.responses.create.plain",
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model": "gpt-4.1",
+      "sdk_method": "openai.responses.create",
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "structured_output": false,
+      "call_sites": [
+        {
+          "file": "app/assistant.py",
+          "line": 24
+        }
+      ]
+    },
+    {
+      "workload_id": "openai_api.ft_3agpt-4o-mini-2024-07-18_3aacme_3atriage_3aa1b2.openai.chat.completions.create.plain",
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model": "ft:gpt-4o-mini-2024-07-18:acme:triage:a1b2",
+      "sdk_method": "openai.chat.completions.create",
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "structured_output": false,
+      "call_sites": [
+        {
+          "file": "app/assistant.py",
+          "line": 32
+        }
+      ]
+    },
+    {
+      "workload_id": "anthropic_api.claude-sonnet-4-5.anthropic.messages.create.structured",
+      "provider": "anthropic",
+      "source_service": "anthropic_api",
+      "model": "claude-sonnet-4-5",
+      "sdk_method": "anthropic.messages.create",
+      "capability": "structured_output",
+      "capability_confidence": "high",
+      "structured_output": true,
+      "call_sites": [
+        {
+          "file": "app/review.py",
+          "line": 12
+        }
+      ]
+    },
+    {
+      "workload_id": "gemini_api.gemini-2.5-flash.genai.models.generate_content.structured",
+      "provider": "google",
+      "source_service": "gemini_api",
+      "model": "gemini-2.5-flash",
+      "sdk_method": "genai.models.generate_content",
+      "capability": "structured_output",
+      "capability_confidence": "high",
+      "structured_output": true,
+      "call_sites": [
+        {
+          "file": "app/review.py",
+          "line": 19
+        }
+      ]
+    },
+    {
+      "workload_id": "gemini_api.text-embedding-004.genai.models.embed_content.plain",
+      "provider": "google",
+      "source_service": "gemini_api",
+      "model": "text-embedding-004",
+      "sdk_method": "genai.models.embed_content",
+      "capability": "embedding",
+      "capability_confidence": "high",
+      "structured_output": false,
+      "call_sites": [
+        {
+          "file": "app/review.py",
+          "line": 23
+        }
+      ]
+    }
+  ],
+  "integration": {
+    "pattern": "direct_sdk",
+    "languages": [
+      "python"
+    ],
+    "frameworks": [],
+    "capabilities_summary": {
+      "text_generation": true,
+      "streaming": true,
+      "function_calling": true,
+      "vision": true,
+      "embeddings": true,
+      "batch_processing": false,
+      "speech_to_text": false,
+      "text_to_speech": false,
+      "image_generation": false
+    }
+  }
+}

@@ -1,5 +1,6 @@
 """Opus 5.5 selection, profile, pricing, and estimate-contract regressions."""
 
+import copy
 import importlib.util
 import shutil
 import sys
@@ -48,9 +49,20 @@ def _script(name):
     return module
 
 
-@pytest.mark.parametrize("path", ["runtime_converse", "runtime_invoke", "mantle_messages"])
+ANTHROPIC_PATHS = ["runtime_converse", "runtime_invoke", "runtime_messages", "mantle_messages"]
+
+
+def _preferred(path):
+    # A preferred Mantle path needs a mantle_selector; nothing else moves a workload off runtime.
+    requirements = {"preferred_api_path": path}
+    if path == "mantle_messages":
+        requirements["mantle_selector"] = "workspaces"
+    return requirements
+
+
+@pytest.mark.parametrize("path", ANTHROPIC_PATHS)
 def test_quality_and_thinking_select_opus55_on_each_supported_path(path):
-    rec = _recommend(preferred_api_path=path, thinking_enabled=True, min_context_tokens=1000000)
+    rec = _recommend(thinking_enabled=True, min_context_tokens=1000000, **_preferred(path))
     assert rec["primary_model"] == MODEL
     assert rec["model_identity"]["output_token_ceiling"] == 128000
     assert rec["invocation_model_id"] == (MODEL if path == "mantle_messages" else "global." + MODEL)
@@ -83,7 +95,7 @@ def test_invalid_or_forbidden_profiles_remain_blocked(region, requirements):
 
 
 def test_mantle_unavailable_region_does_not_restore_opus48():
-    rec = _recommend("eu-west-1", preferred_api_path="mantle_messages")
+    rec = _recommend("eu-west-1", **_preferred("mantle_messages"))
     assert rec["primary_model"] == "anthropic.claude-sonnet-5"
     assert all("opus-4-8" not in item["model"] for item in rec["alternatives"])
 
@@ -111,14 +123,23 @@ def test_batch_migration_does_not_suggest_an_unsupported_opus55_batch_job():
 
 
 def test_old_catalog_does_not_restore_opus48_to_the_current_pool():
-    catalog = mr.load_catalog(mr.MODELS_DIR / "anthropic-bedrock-2026-07-21.json")
+    # An older-shaped catalog (Opus 4.8 in place of Opus 5.5) must not put Opus 4.8 back in the
+    # automatic selection pool. Built in memory so the guard does not depend on a superseded file.
+    # The pool is key-allowlisted (_PRIORITY_ORDER / _FEATURE_ORDER name only current model keys),
+    # so this fails if someone adds claude_opus_4_8 to those preference lists.
+    catalog = copy.deepcopy(mr.load_catalog())
+    opus48 = catalog["models"].pop("claude_opus_5_5")
+    opus48.update(display_name="Claude Opus 4.8", version="4.8")
+    for path in opus48["paths"].values():
+        path["model_id"] = "anthropic.claude-opus-4-8"
+    catalog["models"]["claude_opus_4_8"] = opus48
     workload = {
         "workload_id": "old",
         "source": {"provider": "none"},
         "requirements": {"priority": "quality"},
     }
     rec = mr.recommend({"region": "us-east-1", "primary_unit": "old", "workloads": [workload]}, catalog)
-    assert rec["workloads"]["old"]["primary_model"] == "anthropic.claude-sonnet-5"
+    assert rec["workloads"]["old"]["primary_model"] == "anthropic.claude-sonnet-5-5"
 
 
 def test_openai_quality_cross_family_path_uses_the_same_opus55_contract():
@@ -159,7 +180,7 @@ def test_openai_quality_does_not_restore_opus48_when_opus55_is_unavailable():
         catalog, "runtime_converse", [], requirements,
         candidate_order=oai._converse_candidate_order(source, requirements),
     )
-    assert chosen[0] == "anthropic_claude_sonnet_5"
+    assert chosen[0] == "anthropic_claude_sonnet_5_5"
     assert not unmet
 
 
@@ -169,10 +190,10 @@ def test_current_catalogs_have_no_opus48_migration_target():
     assert "anthropic_claude_opus_4_8" not in oai._CONVERSE_TIER_ORDER
 
 
-@pytest.mark.parametrize("path", ["runtime_converse", "runtime_invoke", "mantle_messages"])
+@pytest.mark.parametrize("path", ANTHROPIC_PATHS)
 @pytest.mark.parametrize("feature", ["structured_output", "assistant_prefill"])
 def test_opus55_structured_remedies_never_prescribe_forced_tool_choice(path, feature):
-    rec = _recommend(preferred_api_path=path, detected_features=[feature])
+    rec = _recommend(detected_features=[feature], **_preferred(path))
     assert rec["primary_model"] == MODEL
     code = "assistant_prefill_removed" if feature == "assistant_prefill" else "structured_output_portable_pattern"
     remedy = next(item["remediation"] for item in rec["blocks"] if item["code"] == code)
@@ -199,9 +220,9 @@ def test_price_cache_preserves_existing_deployment_rates_without_recommending_op
 
 
 @pytest.mark.parametrize("priority", ["quality", "balanced", "speed", "cost", "unknown"])
-@pytest.mark.parametrize("path", ["runtime_converse", "runtime_invoke", "mantle_messages"])
+@pytest.mark.parametrize("path", ANTHROPIC_PATHS)
 def test_automatic_primary_and_alternatives_never_select_opus48(priority, path):
-    rec = _recommend(priority=priority, preferred_api_path=path)
+    rec = _recommend(priority=priority, **_preferred(path))
     targets = [rec["primary_model"], *(item["model"] for item in rec["alternatives"])]
     assert all("opus-4-8" not in target for target in targets)
 
@@ -279,7 +300,7 @@ def test_build_price_guard_rejects_a_missing_default_model_rate(tmp_path, cloud)
     spec.loader.exec_module(guard)
     paths = [
         "agent-advisor/scripts/model_recommendation.py",
-        f"agent-advisor/references/models/{mr.DEFAULT_CATALOG.name}",
+        f"shared/ai/models/{mr.DEFAULT_CATALOG.name}",
         "gcp-to-aws/references/vendored/ai/bedrock-pricing-cache.md",
         "azure-to-aws/references/vendored/ai/bedrock-pricing-cache.md",
     ]

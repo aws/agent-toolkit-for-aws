@@ -16,6 +16,7 @@
     "bedrock",
     "amazon-bedrock",
     "aws-blocks",
+    "aws-emulator",
     "billing",
     "cost-explorer",
     "cost-optimization",

@@ -155,7 +155,21 @@
                   "mantle_openai_chat",
                   "mantle_openai_responses",
                   "runtime_converse",
-                  "runtime_invoke"
+                  "runtime_invoke",
+                  "runtime_messages",
+                  "runtime_openai_chat",
+                  "runtime_openai_responses"
+                ]
+              },
+              "mantle_selector": {
+                "enum": [
+                  "background_inference",
+                  "server_side_tools",
+                  "web_search",
+                  "projects",
+                  "workspaces",
+                  "mantle_only_model_or_api",
+                  "in_region_processing"
                 ]
               },
               "min_context_tokens": {
@@ -170,10 +184,10 @@
                 "type": "boolean"
               },
               "data_residency": {
-                "enum": ["global_allowed", "geo_required", "unknown"]
+                "enum": ["global_allowed", "geo_required", "in_region_required", "unknown"]
               },
               "cris_geography": {
-                "enum": ["us", "eu", "jp", "au"]
+                "enum": ["us", "ca", "eu", "jp", "au"]
               },
               "inference_profile_id": {
                 "type": "string",

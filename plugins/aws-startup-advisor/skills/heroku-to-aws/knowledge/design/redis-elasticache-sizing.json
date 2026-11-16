@@ -4,7 +4,7 @@
   "_on_not_found": "defer to specialist gate; append warning 'Unrecognized heroku-redis plan tier: {plan}. Cannot determine ElastiCache node type. Deferring to specialist engagement.'; continue",
   "_ha": "if row ha == true OR config.ha_enabled == true -> multi_az: true, automatic_failover: true; else both false",
   "_transit_encryption": "if config.encryption_in_transit == true OR row encryption == true -> transit_encryption: true",
-  "_engine_version": "use design-defaults.json engine_versions.elasticache_redis (pinned); the row redis_version is PROVENANCE only (why the node meets the source) — do not derive the engine from it",
+  "_engine_version": "engine-aware (design-mapping.md 2C steps 5-6): the default engine is Valkey — emit a Valkey engine_version (7.2 or later) that covers the source feature set; the explicit Redis OSS exception emits a supported Redis OSS version with the same major (7.0 -> 7.1) and the ElastiCache Redis label; the row redis_version is PROVENANCE only (why the node meets the source) — do not derive the engine from it",
   "rows": {
     "hobby": {
       "memory_limit": "25 MB",

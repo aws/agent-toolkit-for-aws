@@ -30,7 +30,7 @@
     "agents": [
       {"agent_id": "research-agent", "file": "agents/research.py", "line": 22, "model": "claude-3-5-sonnet-20240620", "tools": ["web_search", "read_document"], "memory_type": "conversation_buffer", "role": "Researches a topic and drafts notes"}
     ],
-    "orchestration_pattern": "single_agent",
+    "orchestration_pattern": "single",
     "has_memory": true,
     "memory_backend": "in_memory",
     "has_human_in_loop": false

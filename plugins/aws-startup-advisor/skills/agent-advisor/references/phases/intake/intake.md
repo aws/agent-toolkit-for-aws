@@ -50,7 +50,7 @@ Ask BOTH in one AskUserQuestion call (two questions):
 **Q1 — Starting point** (header "Starting point"):
 
 - Build from scratch — I have an idea, no code → `build_scratch`
-- Deploy existing code — I have working agent code → `build_deploy`
+- Deploy existing code — I have working agent code, or want to check it is on the right runtime → `build_deploy`
 - Migrate — I have agents running elsewhere → `migrate`
 - Add capabilities — already on AWS, want to add services → `add_capabilities`
 

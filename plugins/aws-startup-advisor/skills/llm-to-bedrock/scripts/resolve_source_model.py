@@ -144,7 +144,7 @@ def list_gemini() -> list[str]:
     url = "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000"
     while True:
         data = _get_json(url, headers)
-        # Gemini returns names like "models/gemini-1.5-pro"; strip the prefix.
+        # Gemini returns names like "models/gemini-3.8-flash"; strip the prefix.
         ids += [m["name"].split("/", 1)[-1] for m in data.get("models", [])]
         token = data.get("nextPageToken")
         if not token:

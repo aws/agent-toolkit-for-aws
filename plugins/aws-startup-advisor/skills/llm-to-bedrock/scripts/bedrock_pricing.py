@@ -90,7 +90,11 @@ STATIC_FALLBACK = {
     #     price — cost PARITY, for workloads with no residency constraint
     # The GPT-5.6 family also has a LONG-CONTEXT (1M) tier at 2.0x input / 1.5x
     # output per option, NOT represented here — a >272K workload priced from this
-    # table is understated. GPT-5.5 and GPT-5.4: mantle-only, no CRIS, no 1M tier.
+    # table is understated. GPT-5.5 and GPT-5.4 (model cards read 2026-11-06) also
+    # have a long-context (>272K) tier (5.5: 11.00/49.50; 5.4: 5.50/24.75 per 1M),
+    # likewise NOT represented here. Their cards publish the In-Region option only;
+    # the us./global. CRIS ids they list on bedrock-runtime carry no separate price
+    # row, so no prefixed GPT-5.5/5.4 entries are added below until one is published.
     "openai.gpt-5.6-sol":                           {"input_per_1k_usd": 0.0044, "output_per_1k_usd": 0.022},
     "openai.gpt-5.6-terra":                         {"input_per_1k_usd": 0.0022, "output_per_1k_usd": 0.0132},
     "openai.gpt-5.6-luna":                          {"input_per_1k_usd": 0.00022, "output_per_1k_usd": 0.00132},
@@ -135,9 +139,12 @@ STATIC_FALLBACK = {
 
 
 def is_mantle_gpt(model_id: str) -> bool:
-    """Pure: OpenAI's proprietary GPT models (GPT-5.5/5.4/5.6 and GPT-6
-    Astra/Sol/Luna/6.1 Sol), which the AWS PriceList API does not carry. The
-    open-weight gpt-oss models ARE in the PriceList API and must not match."""
+    """Pure: BARE ids of OpenAI's proprietary GPT models (GPT-5.5/5.4/5.6 and GPT-6
+    Astra/Sol/Luna/6.1 Sol) — the bedrock-mantle id form — which the AWS PriceList
+    API does not carry. The `us.`/`in.`/`global.` CRIS forms (bedrock-runtime; GPT-5.5
+    and 5.4 have `us.`/`global.` ids too) do not match here; callers pair this with
+    an explicit prefixed-id regex. The open-weight gpt-oss models ARE in the
+    PriceList API and must not match."""
     mid = model_id.lower()
     return (mid.startswith("openai.gpt-5") or mid.startswith("openai.gpt-6")) and "oss" not in mid
 

@@ -6,7 +6,7 @@ description: >
   and teaches runtime dynamic references with asm-exec so plaintext never enters
   the LLM context window.
 metadata:
-  version: "1"
+  version: "2"
 ---
 
 # Using Secrets Safely with Agents
@@ -96,6 +96,14 @@ asm-exec -- mysql \
 > `aws secretsmanager get-secret-value` to resolve references. Resolution happens
 > only through SMA or the MCP endpoint, so the plaintext value is never written to
 > a local process's stdout where it could be captured.
+
+**Prefer SMA for repeated or automated use.** The
+[AWS Secrets Manager Agent](https://docs.aws.amazon.com/secretsmanager/latest/userguide/secrets-manager-agent.html)
+serves secrets from a local in-memory cache on `localhost`, so lookups return
+in milliseconds, repeated runs make fewer Secrets Manager API calls, and
+cached values refresh automatically. Agents and scripts that call asm-exec
+often should run SMA locally; asm-exec uses it automatically when it is
+reachable.
 
 ### SigV4 signing
 

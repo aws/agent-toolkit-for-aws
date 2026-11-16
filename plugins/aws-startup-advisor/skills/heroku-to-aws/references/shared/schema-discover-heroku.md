@@ -17,7 +17,9 @@ Complete inventory of discovered Heroku resources. Uses a **flat resource model*
     "total_apps_discovered": 4,
     "discovery_sources": ["terraform", "procfile"],
     "confidence": "full|reduced",
-    "confidence_note": "Terraform had parse errors on some files (if reduced)"
+    "confidence_note": "Terraform had parse errors on some files (if reduced)",
+    "apps_by_stack_status": { "eol": 0, "deprecated": 1, "supported": 3, "container": 0, "unknown": 0 },
+    "eol_stack_apps": []
   },
   "apps": [
     {
@@ -32,7 +34,9 @@ Complete inventory of discovered Heroku resources. Uses a **flat resource model*
       "discovery_status": "success|discovery_failed",
       "failure_reason": null,
       "procfile_parse_warning": null,
-      "app_json_parse_warning": null
+      "app_json_parse_warning": null,
+      "stack_status": "eol|deprecated|supported|container|unknown",
+      "stack_eol_date": "2027-04-30"
     }
   ],
   "resources": [
@@ -69,6 +73,8 @@ Report-level information about the discovery run.
 | `discovery_sources`     | string[]          | ✅       | Sources used: `"terraform"`, `"procfile"`, `"billing"`, `"live"`                                                                                                                |
 | `confidence`            | string            | ✅       | `"full"` (primary source(s) parsed/captured successfully) or `"reduced"` (partial data, e.g., Terraform parse errors, failed/skipped live captures, missing expected resources) |
 | `confidence_note`       | string            | ❌       | Explanation when confidence is `"reduced"`                                                                                                                                      |
+| `apps_by_stack_status`  | object            | ❌       | Count of `apps[]` per `stack_status`: `{ "eol": N, "deprecated": N, "supported": N, "container": N, "unknown": N }` (all keys present)                                           |
+| `eol_stack_apps`        | string[]          | ❌       | Sorted `app_name` list of apps whose `stack_status` is `"eol"`; empty array when none                                                                                            |
 
 ### `apps[]` (REQUIRED)
 
@@ -88,6 +94,8 @@ Per-app metadata entries. One entry per discovered Heroku app.
 | `failure_reason`         | string \| null | ✅       | Error description when `discovery_status` is `"discovery_failed"`, otherwise `null`                       |
 | `procfile_parse_warning` | string \| null | ✅       | Warning text if Procfile parsing failed, otherwise `null`                                                 |
 | `app_json_parse_warning` | string \| null | ✅       | Warning text if app.json parsing failed, otherwise `null`                                                 |
+| `stack_status`           | string         | ❌       | `"eol"`, `"deprecated"`, `"supported"`, `"container"`, or `"unknown"` — exact lookup of `stack` in `knowledge/discover/heroku-stack-support.json`; `"unknown"` when `stack` is `null` or unlisted |
+| `stack_eol_date`         | string \| null | ❌       | `eol_date` copied from the same lookup row (YYYY-MM-DD), or `null`                                         |
 
 `region` and `stack` are source facts, not migration preferences. Do not convert
 `"us"` into an AWS region or replace `"heroku-22"` with the derived `"cedar"`

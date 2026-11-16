@@ -98,15 +98,16 @@
       "service_id": "elasticache:acme-web:redis",
       "source_resource_id": "addon:acme-web:heroku-redis:premium-0",
       "heroku_app": "acme-web",
-      "aws_service": "ElastiCache Redis",
+      "aws_service": "ElastiCache Valkey",
       "confidence": "deterministic",
       "aws_config": {
+        "engine": "valkey",
         "region": "us-east-1",
         "node_type": "cache.t4g.micro",
         "multi_az": true,
         "automatic_failover": true,
         "transit_encryption": true,
-        "engine_version": "7.0"
+        "engine_version": "7.2"
       }
     },
     {

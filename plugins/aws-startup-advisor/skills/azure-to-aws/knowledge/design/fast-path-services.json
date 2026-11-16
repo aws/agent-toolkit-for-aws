@@ -69,9 +69,9 @@
       "notes": "Add KMS when the vault holds keys rather than only secrets (a Microsoft.KeyVault/vaults/keys child, or an inventory note that key operations are in use). Certificates go to ACM. The additional services are additive; the row stays deterministic."
     },
     "Microsoft.Cache/Redis": {
-      "aws_service": "ElastiCache Redis",
+      "aws_service": "ElastiCache Valkey",
       "condition": "Always",
-      "notes": "Spelled with a capital R by this skill's emission convention, not by ARM \u2014 see arm-type-canonicalization.md section 'Casing is a convention, not a fact'; matching folds case. Microsoft.Cache/redisEnterprise is NOT this row; it goes through the rubric (modules such as RediSearch have no ElastiCache equivalent)."
+      "notes": "Target engine is Valkey (aws_config.engine = \"valkey\"): ElastiCache's default engine, Redis OSS-compatible, 20% cheaper per node, and the only ElastiCache engine Database Savings Plans cover. Plain Azure Cache for Redis has no modules, so nothing blocks Valkey. Spelled with a capital R by this skill's emission convention, not by ARM \u2014 see arm-type-canonicalization.md section 'Casing is a convention, not a fact'; matching folds case. Microsoft.Cache/redisEnterprise is NOT this row; it goes through the rubric (modules such as RediSearch have no ElastiCache equivalent)."
     },
     "Microsoft.ContainerRegistry/registries": {
       "aws_service": "ECR",

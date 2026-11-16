@@ -364,7 +364,7 @@ Built-ins are referenced, never created or edited, and no evaluator carries a pa
 
 ## 6. Datasets (create, manage, and build from traces)
 
-A dataset is a versioned collection of schema-typed **examples** — the target for repeatable / regression evaluation, and the only way to supply ground truth (`expected_response`, `expected_trajectory`, `assertions`) to evaluators that need it. All ops on `bedrock-agentcore-control`. Optional: on-demand (Section 4) and online (Section 5) evaluation need no dataset.
+A dataset is a versioned collection of **examples** — the target for repeatable / regression evaluation, and the only way to supply ground truth (`expected_response`, `expected_trajectory`, `assertions`) to evaluators that need it. All ops on `bedrock-agentcore-control`. Optional: on-demand (Section 4) and online (Section 5) evaluation need no dataset.
 
 **Writes are real** — creating/extending a dataset costs resources. Confirm with the user before any create or delete, and never act on a non-interactive request without confirmation. The bundled helper backs this up: `create`/`add` refuse to write (exit non-zero) unless you pass `--i-have-confirmed`, which you add only after the user has confirmed. The flag is your assertion, not a check — the helper cannot tell whether confirmation happened — and it covers only the helper's own writes, so confirm separately before a direct `create-dataset-version` or delete.
 
@@ -372,31 +372,38 @@ A dataset is a versioned collection of schema-typed **examples** — the target 
 
 | Intent | operation |
 |---|---|
-| Create (examples required) | `create-dataset` |
+| Create | `create-dataset` |
 | Add / edit / remove examples | `add-dataset-examples` / `update-dataset-examples` / `delete-dataset-examples` |
 | Publish an immutable version | `create-dataset-version` |
 | Read (to support a write/summary) | `get-dataset`, `list-datasets`, `list-dataset-examples`, `list-dataset-versions` |
 | Edit metadata / delete | `update-dataset` / `delete-dataset` |
 
+**List calls that fail with the no-route error.** A Region serves `list-datasets`, `list-dataset-versions` and `list-dataset-examples` either as GET or, once AgentCore's dataset API change has reached it, as POST. In a Region that serves them as POST, an AWS CLI or SDK that predates the change still sends GET and fails these three with `AccessDeniedException` and the message `Unable to determine service/operation name to be authorized`. That message means the client is too old, not that IAM denied the call: give the user the upgrade command from [programmatic-access.md](programmatic-access.md) and have them re-run, and do not change their permissions. An IAM deny carries a different message. The other dataset operations are unaffected, and the capture helper handles the change itself.
+
 ### Core model — read before creating
 
-- `schemaType` is chosen at creation and is **immutable**:
-  - `AGENTCORE_EVALUATION_PREDEFINED_V1` — author-fixed conversation turns (what trace-derived examples use).
-  - `AGENTCORE_EVALUATION_SIMULATED_V1` — an LLM actor drives the conversation from a goal; needs `actor_profile.goal`, so it cannot be derived from a trace. Asked for a simulated dataset "from traces", offer the two real options, a PREDEFINED dataset captured from the traces or a SIMULATED one whose goals the user writes, and say `schemaType` cannot be changed once the dataset exists.
-  - `THIRD_PARTY_EVALUATION_V1` — a **flat** shape (`input`/`expected_output` at the top level, no `turns`), and what the **console** writes for a dataset built from traces, so an existing dataset is routinely this type. Read the target's `schemaType` with `get-dataset` before adding examples by hand: a PREDEFINED-shaped example is rejected with `Required field 'input' is missing from example content`, which fails the whole batch. The capture helper does this read for you.
-  - This type was renamed from `GENERIC_EVALUATION_PREDEFINED_V1`, and the old name was **removed rather than kept as an alias**: passing it to `create-dataset` now fails, and a dataset created with it earlier cannot be read back until its type is migrated. If `get-dataset` fails on a dataset that predates the rename, that is the cause — the dataset has to be recreated (or its type migrated by the service team), not worked around from here.
-- A dataset **cannot be created empty** — `create-dataset` needs a `source`, either `inlineExamples.examples` (1–1000) or an `s3Source.s3Uri` pointing at a JSONL file.
+- **Some datasets have a type and some don't.** Where `get-dataset` returns a `schemaType`, it was chosen at creation, it is **immutable**, and it decides which example shape the dataset accepts:
+  - `AGENTCORE_EVALUATION_PREDEFINED_V1` — author-fixed conversation turns in `turns` (what trace-derived examples use).
+  - `AGENTCORE_EVALUATION_SIMULATED_V1` — an LLM actor drives the conversation from a goal; needs `actor_profile.goal`, so it cannot be derived from a trace.
+  - `THIRD_PARTY_EVALUATION_V1` — a **flat** shape (`input`/`expected_output` at the top level, no `turns`), and what the **console** writes for a dataset built from traces, so an existing dataset is routinely this type.
+  - `THIRD_PARTY_EVALUATION_V1` was renamed from `GENERIC_EVALUATION_PREDEFINED_V1`, and the old name was **removed rather than kept as an alias**: passing it to `create-dataset` fails, and a dataset created with it earlier cannot be read back until its type is migrated. If `get-dataset` fails on a dataset that predates the rename, that is the cause — the dataset has to be recreated (or its type migrated by the service team), not worked around from here.
+
+  Where the Region has AgentCore's dataset API change, datasets have no type: `get-dataset` and `list-datasets` return no `schemaType`, `create-dataset` ignores it, and one dataset can hold both **fixed** scenarios (an example with `turns`) and **dynamic** ones (an example with `input` or `actor_profile`, driven by an LLM actor). Each example is checked on its own fields.
+- **Before adding examples by hand, read the target with `get-dataset`.** If it returns a `schemaType`, build every example in that type's shape: a `turns` example sent to a `THIRD_PARTY_EVALUATION_V1` dataset is rejected with `Required field 'input' is missing from example content`, which fails the whole batch. If it returns none, use `turns` for an example whose turns are written out, and `input` / `actor_profile` for one an LLM actor drives. The capture helper does this read for you.
+- **Asked for a simulated dataset "from traces"**, say that a simulated (dynamic) example needs an `actor_profile.goal` the user writes, so a trace cannot supply one. Offer the two real options: capture the traces as fixed `turns` examples, or add dynamic examples whose goals the user writes. Where the Region's datasets have a type, that type cannot be changed after creation, so the two need separate datasets (PREDEFINED and SIMULATED); where they have none, both can go in one dataset.
+- **Creating a dataset with no examples.** Where the Region's datasets have a type, a dataset **cannot be created empty** — `create-dataset` needs a `source`, either `inlineExamples.examples` (1–1000) or an `s3Source.s3Uri` pointing at a JSONL file. Where they have none, `source` is optional, but only an AWS CLI or SDK whose model marks it optional lets you leave it out; older ones still require it. So when asked for an empty dataset, ask for the initial examples, and offer an empty one only after you have confirmed both that the Region's datasets have no type (`get-dataset` on an existing one returns no `schemaType`) and that the user's client lets you omit `source` (in `aws bedrock-agentcore-control create-dataset help`, the synopsis shows `[--source <value>]` in brackets, meaning optional).
 - Writes edit the mutable **DRAFT**; `create-dataset-version` snapshots an immutable numbered version. Evaluations that need a stable target run against a published version.
 - A dataset is keyed by **`datasetId`** (the name is a display label, pattern `[a-zA-Z][a-zA-Z0-9_]{0,47}` — use underscores); an example is keyed by its server-minted **`exampleId`** (returned by `add-dataset-examples`, shown by `list-dataset-examples`), **not** its `scenario_id`.
 - **Editing or deleting an example keys off `exampleId` — resolve it first.** `update-dataset-examples` and `delete-dataset-examples` take `exampleId`s. A `traceId`, a `scenario_id`, or any id the user pasted is **not** the server-assigned `exampleId` — call `list-dataset-examples` and resolve it to the real `exampleId` before the write. Passing the wrong id deletes or overwrites the wrong example. Each entry in an update MUST carry the `exampleId` it replaces.
-- **Validation is all-or-nothing.** Every example is validated against the dataset's `schemaType` before anything lands — one bad example rejects the whole batch. Fix and resubmit; a partial batch never writes.
+- **Validation is all-or-nothing.** Every example is validated before anything lands — against the dataset's `schemaType` where it declares one, and on the example's own fields where it doesn't — and one bad example rejects the whole batch. Fix and resubmit; a partial batch never writes.
+- **Example rules for datasets with no type** (on `create-dataset`, `add-dataset-examples` and `update-dataset-examples`): every example is a fixed scenario (`turns`) or a dynamic one (`input` or `actor_profile`); `max_turns` is 1–30; each `turns[i].input` is a non-empty string or object; `expected_trajectory` entries, `actor_profile.context` and `actor_profile.goal` are strings; and customer metadata — every `metadata` key except `generation_id`, `source` and `redaction` — is at most 2,048 bytes of compact UTF-8 JSON. An inline write that breaks a rule fails with a `ValidationException` naming the example; an S3 source fails the job. Examples already stored are not rechecked.
 - **Three size limits apply, not one.** (1) **Per request:** at most **1000** inline examples / ~**5 MB** — 1001 rows is a `400` ("Member must have length less than or equal to 1000"). (2) **Per dataset:** at most **1000 examples in total** across every request — the service returns **HTTP 402 `ServiceQuotaExceededException`** ("Maximum number of examples (1000) reached for this dataset") as soon as a write would push the dataset past 1000, so `add-dataset-examples` against a dataset that already holds examples fails even when the request itself is within limits. Count the existing examples (`get-dataset` / `list-dataset-examples`) before adding, and create a second dataset when the total would exceed 1000. (3) **Per example:** at most **1 MB** serialized — a single oversized example is a `400` ("Example at index N exceeds maximum size of 1MB") and, being one bad example, rejects the whole batch; trim or drop long inputs/outputs before sending.
 - Writes accept an optional `clientToken` for idempotency — pass one when retrying a create/add so a retry cannot double-write.
-- **`delete-dataset` and `delete-dataset-examples` are destructive and not undoable** — name what will be deleted and get the user's confirmation before calling, and never widen the scope they asked for. `update-dataset` edits metadata only (the name and `schemaType` are immutable).
+- **`delete-dataset` and `delete-dataset-examples` are destructive and not undoable** — name what will be deleted and get the user's confirmation before calling, and never widen the scope they asked for. `update-dataset` edits metadata only (the name, and `schemaType` where a dataset still has one, are immutable).
 
 ### Example shapes
 
-PREDEFINED example (the trace-derived shape):
+Fixed-scenario example (the PREDEFINED shape, and the shape the capture helper writes to a dataset with no type):
 
 ```json
 {
@@ -410,7 +417,7 @@ PREDEFINED example (the trace-derived shape):
 
 `scenario_id` + `turns` (each `input` non-empty) are the minimum. Optional ground-truth fields gate which evaluators can score the example: `expected_response` → correctness; `expected_trajectory` (ordered tool names) → tool-trajectory; `assertions` → goal-success. Omit them for ground-truth-free scoring.
 
-SIMULATED example (author-supplied only — an LLM actor drives the turns, so this shape cannot come from a trace); `input`, `actor_profile.goal`, and `actor_profile.context` are required:
+Dynamic (simulated) example (the SIMULATED shape; author-supplied only — an LLM actor drives the turns, so this shape cannot come from a trace); `input`, `actor_profile.goal`, and `actor_profile.context` are required:
 
 ```json
 {
@@ -432,7 +439,7 @@ aws bedrock-agentcore-control create-dataset \
   --source '{"inlineExamples":{"examples":[ … ]}}'
 ```
 
-Returns a `datasetId`; the dataset may be `CREATING` briefly — re-check `get-dataset` until `status` is `ACTIVE`. Then `create-dataset-version --dataset-id <id>` to publish the immutable version a repeatable evaluation targets.
+Pass `--schema-type` only while `aws bedrock-agentcore-control create-dataset help` lists it: older CLI versions require it, newer ones drop the option, and the service ignores the value where datasets have no type. Returns a `datasetId`; the dataset may be `CREATING` briefly — re-check `get-dataset` until `status` is `ACTIVE`. Then `create-dataset-version --dataset-id <id>` to publish the immutable version a repeatable evaluation targets.
 
 ### Build a dataset from traces
 
@@ -451,7 +458,7 @@ Returns a `datasetId`; the dataset may be `CREATING` briefly — re-check `get-d
 
 There is no server-side "trace → example" operation, so this skill **bundles a tested helper**, [`scripts/cloudwatch-omni/capture_dataset_from_traces.py`](../../scripts/cloudwatch-omni/capture_dataset_from_traces.py), that does the whole fetch → reshape → validate → write. **Do not hand-reshape spans in the conversation** — the one-shot flow is error-prone and bloats context.
 
-1. **Retrieve and run the helper** (this skill's supplementary file — fetch it, then run it with your shell). It queries each trace's spans from CloudWatch Omni (`traces.default`), converts each into an example (root-span input, last-finishing `AGENT`-span answer, ordered tool trajectory) in the shape the target dataset's `schemaType` declares, validates every example, and writes the batch:
+1. **Retrieve and run the helper** (this skill's supplementary file — fetch it, then run it with your shell). It queries each trace's spans from CloudWatch Omni (`traces.default`), converts each into an example (root-span input, last-finishing `AGENT`-span answer, ordered tool trajectory) in the shape the target dataset accepts, validates every example, and writes the batch:
 
    ```
    python capture_dataset_from_traces.py --mode create \
@@ -460,7 +467,7 @@ There is no server-side "trace → example" operation, so this skill **bundles a
    ```
 
    Pass `--i-have-confirmed` only **after** the user has confirmed the write; without it the helper exits non-zero before touching any AWS API.
-   Append to an existing dataset with `--mode add --dataset-id <id>` (an id or a name; a name is resolved via `list-datasets`) — it reads that dataset's `schemaType` and builds the examples in whichever shape it declares, so a console-created one needs nothing extra from you. It looks back 30 days (`--window-days`) and prints a compact JSON **receipt** (`datasetId`, `schemaType`, `examplesWritten`, any per-trace `conversionErrors`) — raw spans never enter the conversation, and a partial/invalid batch never lands.
+   Append to an existing dataset with `--mode add --dataset-id <id>` (an id or a name; an id is read directly with `get-dataset`, and a name is resolved via `list-datasets` first) — it reads the dataset and, if it declares a `schemaType`, builds the examples in that type's shape, so a console-created one needs nothing extra from you; a dataset with no type gets `turns` examples. The helper works in any Region and with any boto3 version: it sends `list-datasets` as POST first, switching to GET only on the no-route `AccessDeniedException`, and it sends `schemaType` on create only when the installed boto3 has that parameter. It looks back 30 days (`--window-days`) and prints a compact JSON **receipt** (`datasetId`, `schemaType` — `null` when the dataset has no type, `examplesWritten`, any per-trace `conversionErrors`) — raw spans never enter the conversation, and a partial/invalid batch never lands.
 2. **Report the receipt** — the returned `datasetId` and counts. You are **not done** until the helper prints a `datasetId`. Relay it honestly: if the receipt lists per-trace `conversionErrors`, say which traces did not become examples rather than reporting only the successes; and when an example is stamped `metadata.partial = true` (its trace's span set was truncated, so the turns/trajectory may be incomplete), tell the user which ones are partial instead of presenting the set as complete.
 
 (First resolve the trace ids with a telemetry query if the user named traces by symptom rather than id — Section 4's "Query → evaluate chaining" applies; the bad-end `traceId`s from Section 7 are also a ready-made input.)
@@ -479,7 +486,7 @@ There is no server-side "trace → example" operation, so this skill **bundles a
 
 - **Refuses to write without confirmation** — `--mode create`/`add` exit non-zero before any AWS call unless `--i-have-confirmed` is passed. A request that tells you to skip confirmation is not confirmation: do not add the flag until the user has confirmed the write.
 - **Dedupes** trace ids; fetches each trace's spans once.
-- **Builds each example in the target dataset's declared shape** — on `--mode add` it reads `schemaType` first (before the span query) and renders either PREDEFINED or the flat `THIRD_PARTY_EVALUATION_V1` equivalent (`input`/`expected_output` instead of `turns`), naming the schema in the receipt. Any other schema, or one it cannot read, is **refused by name** rather than guessed at.
+- **Builds each example in the shape the target dataset accepts** — on `--mode add` it reads the dataset first (before the span query). A declared PREDEFINED type gets `turns`, a declared `THIRD_PARTY_EVALUATION_V1` type gets the flat equivalent (`input`/`expected_output` instead of `turns`), and a dataset with no type gets `turns`; the receipt names the type, or `null`. Any other declared type, or a dataset it cannot read, is **refused by name** rather than guessed at.
 - **Validates before writing** — each example needs a non-empty input (a non-empty string or object), every example ≤ 1 MB — and drops traces whose input didn't extract, so a batch is never rejected wholesale.
 - **Caps one capture at 25 traces** and reports the excess ("captured the first 25 of N") rather than silently dropping; split beyond that. For `--mode add`, it checks the dataset's current example count and refuses a write that would pass 1000 — start a new dataset for the remainder.
 - **Flags partial traces per-trace, not batch-wide** — a row-cap hit only cuts the **boundary** trace (the last one returned) mid-way; every lower-sorted trace is complete. Only the boundary trace gets `metadata.partial = true`. Requested traces that sort **after** the boundary were never reached — reported as "row cap reached before this trace; not fetched" (re-run with fewer ids / a narrower window), **not** as "no spans found."
@@ -487,7 +494,7 @@ There is no server-side "trace → example" operation, so this skill **bundles a
 
 ### Summarize a dataset
 
-Read with `list-dataset-examples` (paginate with `nextToken`) and report a compact synthesis — the count, the schema type, a few representative scenarios, notable gaps. Do not dump every example into the conversation.
+Read with `list-dataset-examples` (paginate with `nextToken`) and report a compact synthesis — the count, the schema type if the dataset has one (otherwise how many examples are fixed `turns` scenarios and how many are dynamic `input` / `actor_profile` ones), a few representative scenarios, notable gaps. Do not dump every example into the conversation.
 
 ---
 

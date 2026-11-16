@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "rule": "Choose the smallest class meeting independently established CPU, memory, connection, storage, and IOPS requirements; never infer utilization from plan name alone.",
+  "startup_defaults": {"architecture": "arm64", "minimum_storage_gb": 20, "storage_type": "gp3"},
+  "classes": [
+    {"instance_class": "db.t4g.micro", "vcpu": 2, "memory_gb": 1},
+    {"instance_class": "db.t4g.small", "vcpu": 2, "memory_gb": 2},
+    {"instance_class": "db.t4g.medium", "vcpu": 2, "memory_gb": 4},
+    {"instance_class": "db.t4g.large", "vcpu": 2, "memory_gb": 8},
+    {"instance_class": "db.m6g.large", "vcpu": 2, "memory_gb": 8},
+    {"instance_class": "db.r6g.large", "vcpu": 2, "memory_gb": 16},
+    {"instance_class": "db.r6g.xlarge", "vcpu": 4, "memory_gb": 32},
+    {"instance_class": "db.r6g.2xlarge", "vcpu": 8, "memory_gb": 64}
+  ]
+}
