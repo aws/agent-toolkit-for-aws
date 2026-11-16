@@ -38,6 +38,8 @@ Create the encrypted EFS access point for `/var/data`. Check capacity, ownership
 
 Verify private service discovery before public traffic. Drain the worker and preserve graceful shutdown/idempotency. Disable the Render cron before enabling EventBridge Scheduler, preventing overlap. Restore desired counts and pass health checks before proceeding.
 
+Fargate deployment mode per service: `rr-web` is standard with a hand-built ALB (`custom_domain_alb`) and its default canary release becomes a rolling update; `rr-private` is standard (`private_discovery`); `rr-worker` is standard (`no_http_listener`); `rr-cron` is standard (`no_http_listener`). No service uses ECS Express Mode.
+
 ## Workflow cutover
 
 Build and upload the reviewed Lambda package, then set the `rr_workflow_task_package_path`, `rr_workflow_task_runtime`, `rr_workflow_task_handler`, and `rr_workflow_task_memory_mb` variables; this pack contains no function source. Render starts runs through its API or SDK, so replace each caller with `states:StartExecution` on the generated state machine. The callback sender needs `states:SendTaskSuccess`, `states:SendTaskFailure`, and `states:SendTaskHeartbeat`, which Terraform does not grant because those actions cannot be scoped to one state machine. Run a few executions in parallel with Render before disabling Render runs, and do not migrate Render run history.
