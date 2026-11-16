@@ -641,7 +641,9 @@ Estimate's right-sizing candidates — change it here and nowhere else):
 - `plan_storage_gb` is the plan's **Storage** column in
   `references/shared/heroku-pricing-cache.md` (never `storage_gb` from
   `knowledge/design/postgres-rds-sizing.json`, which exists for AWS row lookup and may
-  differ for some plans).
+  differ for some plans). A Storage cell in TB is converted at **1 TB = 1024 GB**
+  (so `1 TB` = 1024, `1.5 TB` = 1536, `2 TB` = 2048), which matches the cache's `768 GB`
+  rows as 0.75 TB; a cell in GB is used as written.
 - Assess only `heroku-postgresql` add-ons with `data_size_gb > 0` and `pg_role` other than
   `"follower"` (a missing `pg_role` is treated as a leader). Skip Advanced-tier add-ons
   (`tier: "advanced"`, usage-billed) and treat `data_size_gb` absent or `≤ 0` as "no
@@ -650,9 +652,11 @@ Estimate's right-sizing candidates — change it here and nowhere else):
   rounding; record it rounded to 2 decimal places.
 - `fitting_plan` = within the same plan family (`essential-*`, `standard-*`, `premium-*`,
   `private-*`, `shield-*`; legacy `hobby-*` is assessed as its `essential-*` successor),
-  the row with the smallest Storage that is `≥ data_size_gb × 2`. Never pick a row with
-  more Storage than the current plan: if no smaller or equal row fits, `fitting_plan` is
-  the current plan.
+  the row with the smallest Storage that is `≥ data_size_gb × 2`. When two rows in the
+  family have the same Storage, pick the one with the lower `$/month` (the pricing cache
+  has no such tie today; this keeps the result deterministic if one is added). Never pick
+  a row with more Storage than the current plan: if no smaller or equal row fits,
+  `fitting_plan` is the current plan.
 - A database is a **candidate** when `utilization_pct ≤ 25` AND `fitting_plan != plan`.
   A database whose fitting plan is its own plan (for example a `*-0` plan, or a `*-2`
   plan holding 32–64 GB) is not a candidate and is not listed.
