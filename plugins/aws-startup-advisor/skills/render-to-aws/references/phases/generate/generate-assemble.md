@@ -3,6 +3,7 @@ _assemble: assemble-generation
 _of_phase: generate
 _reads:
   - artifacts-infra
+  - artifacts-infra-network-storage-delivery
   - infra-compute (fragment contribution, when aws-design.json maps any resource to terraform/compute.tf)
   - artifacts-docs
   - artifacts-report

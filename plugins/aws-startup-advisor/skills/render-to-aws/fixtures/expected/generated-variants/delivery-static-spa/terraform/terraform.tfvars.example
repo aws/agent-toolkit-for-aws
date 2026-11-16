@@ -1,0 +1,5 @@
+aws_region          = "us-east-1"
+project_name        = "render-static-site"
+environment         = "production"
+custom_domain_names = []
+price_class         = "PriceClass_100"
