@@ -1230,7 +1230,7 @@ def test_baseline_opt_out_leaves_valid_terraform(tmp_path: Path) -> None:
     )
     assert count == 1
     assert "########## Remote State ##########" in opted_out
-    assert 'variable "operations_email"' in opted_out and 'data "aws_partition" "current"' in opted_out
+    assert 'variable "operations_email"' in opted_out and 'data "aws_partition" "current"' not in opted_out
     (copy / "baseline.tf").write_text(opted_out, encoding="utf-8")
     tfvars = copy / "terraform.tfvars.example"
     tfvars.write_text(
