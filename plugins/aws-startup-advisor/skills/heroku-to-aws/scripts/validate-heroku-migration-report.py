@@ -225,15 +225,24 @@ _ANCHOR_INERT_TAGS = {"script", "style", "template"}
 
 
 # data-cost-key anchor -> estimation-infra.json path. Heroku asserts the recommended
-# AWS monthly (Balanced) figure only; the current-spend comparator is a follow-up
-# (Heroku's current_costs key is not yet settled — heroku_monthly_baseline vs _estimated).
+# AWS monthly (Balanced) figure and the scope-matched Heroku baseline that
+# generate-report.md anchors as `heroku_monthly_like_for_like`; the full
+# current-spend comparator is a follow-up (Heroku's current_costs key is not yet
+# settled — heroku_monthly_baseline vs _estimated).
 _COST_ANCHORS = {
     "aws_monthly_balanced": ("projected_costs", "aws_monthly_balanced"),
+    "heroku_monthly_like_for_like": ("cost_comparison", "heroku_monthly_like_for_like"),
 }
-# Load-bearing key: when its JSON value exists AND exec-costs is present, the anchor
+# Load-bearing keys: when the JSON value exists AND exec-costs is present, the anchor
 # MUST be present (a missing anchor is a FAIL, not a skip — otherwise an un-anchored
-# wrong figure passes, the bug P1-C exists to catch).
-_REQUIRED_COST_KEYS = ("aws_monthly_balanced",)
+# wrong figure passes, the bug P1-C exists to catch). Each entry maps the anchor key
+# to the JSON path whose presence makes it required: the like-for-like anchor is
+# required only when the estimate carries a `like_for_like_comparison` block (the
+# report's scope-matched row block exists exactly then); otherwise it is optional.
+_REQUIRED_COST_KEYS = {
+    "aws_monthly_balanced": ("projected_costs", "aws_monthly_balanced"),
+    "heroku_monthly_like_for_like": ("cost_comparison", "like_for_like_comparison"),
+}
 
 
 class _CostAnchorParser(HTMLParser):
@@ -371,6 +380,10 @@ def _validate_cost_figures(html: str, migration_dir: Path | None) -> list[str]:
       un-anchored wrong figure, or an anchor placed elsewhere e.g. decision-summary,
       must not pass) — mirrors validate-migration-report.py's required-anchors
       section scoping.
+    - cost_comparison.like_for_like_comparison present in JSON + exec-costs present
+      -> a `heroku_monthly_like_for_like` anchor MUST exist inside exec-costs (the
+      scope-matched row block is rendered exactly then); otherwise that anchor is
+      optional but still cross-checked when present.
     - Anchor present anywhere + JSON value present but rendered dollars differ -> FAIL
       (any anchor is still cross-checked against the estimate, even outside exec-costs).
     - Anchored element with a real JSON value but no $ rendered -> FAIL.
@@ -429,10 +442,11 @@ def _validate_cost_figures(html: str, migration_dir: Path | None) -> list[str]:
     # customers read as the authoritative cost comparison.
     exec_costs_html = _section_html(html, "exec-costs")
     if exec_costs_html is not None:
+        errors.extend(_like_for_like_source_errors(est))
         exec_costs_keys = {k.lower() for k, _ in _cost_anchor_matches(exec_costs_html)}
-        for key in _REQUIRED_COST_KEYS:
+        for key, trigger in _REQUIRED_COST_KEYS.items():
             path = _COST_ANCHORS[key]
-            if _dig(est, path) is None:
+            if _dig(est, trigger) is None:
                 continue
             if key not in exec_costs_keys:
                 errors.append(
@@ -444,6 +458,43 @@ def _validate_cost_figures(html: str, migration_dir: Path | None) -> list[str]:
                 )
 
     return errors
+
+
+def _like_for_like_source_errors(est: dict) -> list[str]:
+    """The like-for-like anchor is required when `cost_comparison.like_for_like_comparison`
+    exists, but the figure it is compared with is the top-level
+    `cost_comparison.heroku_monthly_like_for_like`. Two estimate shapes would let a wrong
+    anchored figure through, so both are failures:
+
+    - the block exists and the top-level value is missing: there is nothing to compare the
+      anchor with, so any amount would pass;
+    - the block carries its own `heroku_monthly_like_for_like` and it differs from the
+      top-level one: the estimate disagrees with itself, so the anchor cannot be right
+      against both."""
+    cmp_ = est.get("cost_comparison")
+    block = cmp_.get("like_for_like_comparison") if isinstance(cmp_, dict) else None
+    if block is None:
+        return []
+    top = cmp_.get("heroku_monthly_like_for_like")
+    if top is None:
+        return [
+            "estimation-infra.json cost_comparison.like_for_like_comparison exists but "
+            "cost_comparison.heroku_monthly_like_for_like is missing; the "
+            'data-cost-key="heroku_monthly_like_for_like" anchor has no figure to be checked against '
+            "(write the like-for-like Heroku figure at cost_comparison.heroku_monthly_like_for_like)"
+        ]
+    nested = block.get("heroku_monthly_like_for_like") if isinstance(block, dict) else None
+    if nested is None:
+        return []
+    try:
+        if _canonical_money(float(top)) != _canonical_money(float(nested)):
+            return [
+                "estimation-infra.json disagrees with itself: cost_comparison.heroku_monthly_like_for_like = "
+                f"{top!r} but cost_comparison.like_for_like_comparison.heroku_monthly_like_for_like = {nested!r}"
+            ]
+    except (TypeError, ValueError):
+        pass  # a non-numeric figure is reported by the anchor comparison itself
+    return []
 
 
 def _body_scope(html: str) -> str:

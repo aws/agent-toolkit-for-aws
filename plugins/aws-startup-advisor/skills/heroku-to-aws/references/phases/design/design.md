@@ -10,7 +10,7 @@ _knowledge:
   - { file: knowledge/design/dyno-fargate-sizing.json, _when: "inventory has a formation AND (design_constraints.compute_target.default is ecs-fargate OR design_constraints.compute_target.value is ecs-fargate OR design_constraints.compute_target.default is elastic_beanstalk OR design_constraints.compute_target.value is elastic_beanstalk OR design_constraints.compute_target is absent OR any compute_target override is ecs-fargate)" }
   - { file: knowledge/design/eks-pod-sizing.json, _when: "inventory has a formation AND (design_constraints.compute_target.default is eks-managed or eks-or-ecs OR design_constraints.compute_target.value is eks-managed or eks-or-ecs)" }
   - { file: knowledge/design/postgres-rds-sizing.json, _when: "inventory has a heroku-postgresql addon" }
-  - { file: knowledge/design/redis-elasticache-sizing.json, _when: "inventory has a heroku-redis addon" }
+  - { file: knowledge/design/redis-elasticache-sizing.json, _when: "inventory has a heroku-redis addon OR a rediscloud addon" }
   - { file: knowledge/design/kafka-msk-sizing.json, _when: "inventory has a heroku-kafka addon" }
   - { file: knowledge/design/fast-path-addons.json, _when: "inventory has a non-core addon (not postgresql/redis/kafka)" }
 _fragments:
