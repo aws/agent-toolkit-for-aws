@@ -8,6 +8,11 @@ _reads:
   - storage
   - workflow
   - network
+  - identity
+  - database-migration
+  - cutover
+  - delivery
+  - governance
 _produces:
   - preferences.json
 ---
@@ -23,4 +28,5 @@ Present one consolidated assumption sheet. Ask unresolved essential questions in
 - `not_applicable`: an eliminator or inventory fact proves the question cannot affect this resource.
 - `unresolved`: no decisive fact or approved default exists. This disposition blocks completion.
 
+Batch by theme in this order: identity, data and migration method, cutover, delivery, governance. Show each row's default and consequence so the user can accept a theme with one reply. For an unambiguous estate (for example one static site or one stateless service, no data store, no custom domain), accept the stated defaults for the cutover, delivery, and governance rows in one confirmation and record them `defaulted`. A row whose `Ask when` condition is false is `not_applicable`. Drop any candidate row that cannot name a non-empty `decision_changed`.
 Do not create a preference row merely to ask the user to select an AWS product. Re-read the inventory and preferences, verify the raw-inventory SHA-256, reject duplicate rows, require every applicable resource selector's decisive inputs, validate against `schema-render-preferences.json`, and write canonical JSON atomically. Only a document with zero `unresolved` rows may hand off to Design.

@@ -12,11 +12,14 @@ This execution pack implements the supported infrastructure mappings in `aws-des
 - Confirm PostgreSQL version, extensions, replication privileges, network paths, and maintenance window.
 - Confirm external DNS ownership. Request the public web certificate in ACM, create every DNS validation record at the external DNS provider, wait until ACM reports `Issued`, and supply its ARN as `issued_certificate_arn` before applying this stack.
 - Define source-retention and rollback owners before any writer cutover.
+- Human sign-in uses a new IAM Identity Center directory, so re-invite the team. The CI role assumed through OIDC pushes to ECR without long-lived keys.
+- No store is marked as holding regulated data, so no customer-managed KMS key or in-Region-only backup constraint is required.
+- CloudWatch Logs retention is 30 days.
 - This fixture assumes the source web service must call AWS during coexistence. Use [Render-managed OIDC](https://render.com/docs/oidc) with a least-privilege AWS role scoped to the confirmed Render workspace and service subject instead of long-lived AWS access keys. Set `AWS_ROLE_ARN`, redeploy the service, and let Render set `AWS_WEB_IDENTITY_TOKEN_FILE`; do not set that variable manually. Render-managed OIDC requires a Pro workspace or higher.
 
 ## Build and deployment migration
 
-Run `scripts/promote-image.sh ECR_REPOSITORY_URL SHA256_DIGEST TARGET_ENVIRONMENT` to preview promotion, then repeat with `--execute`. The helper verifies an immutable ECR repository, resolves the exact source digest, and creates the environment promotion tag from that manifest without rebuilding. Deploy the emitted `repository@sha256:...` reference, not the environment tag. Record the serving deploy separately from the newest deploy, preserve auto-deploy state, and capture rollback lineage.
+GitHub Actions is the promotion runner. Run `scripts/promote-image.sh ECR_REPOSITORY_URL SHA256_DIGEST TARGET_ENVIRONMENT` to preview promotion, then repeat with `--execute`. The helper verifies an immutable ECR repository, resolves the exact source digest, and creates the environment promotion tag from that manifest without rebuilding. Deploy the emitted `repository@sha256:...` reference, not the environment tag. Record the serving deploy separately from the newest deploy, preserve auto-deploy state, and capture rollback lineage.
 
 ## PostgreSQL migration
 
@@ -28,7 +31,7 @@ Run `scripts/promote-image.sh ECR_REPOSITORY_URL SHA256_DIGEST TARGET_ENVIRONMEN
 
 ## Key Value migration
 
-Verify supported commands, persistence, eviction, pub/sub, streams, and Lua behavior. Use a rehearsed downtime or dual-write transition, validate key-count/sample behavior without recording values, then switch the endpoint. Document that rollback cannot merge divergent writes.
+Verify supported commands, persistence, eviction, pub/sub, streams, and Lua behavior. Use an empty start: no data is copied, so queued and session data is lost at cutover. Validate key-count/sample behavior without recording values, then switch the endpoint. Document that rollback cannot merge divergent writes.
 
 ## Persistent-disk migration
 
@@ -38,9 +41,11 @@ Create the encrypted EFS access point for `/var/data`. Check capacity, ownership
 
 Verify private service discovery before public traffic. Drain the worker and preserve graceful shutdown/idempotency. Disable the Render cron before enabling EventBridge Scheduler, preventing overlap. Restore desired counts and pass health checks before proceeding.
 
+Fargate deployment mode per service: `rr-web` is standard with a hand-built ALB (`custom_domain_alb`) and its default canary release becomes a rolling update; `rr-private` is standard (`private_discovery`); `rr-worker` is standard (`no_http_listener`); `rr-cron` is standard (`no_http_listener`). No service uses ECS Express Mode.
+
 ## DNS and traffic cutover
 
-Lower external DNS TTL in advance. Before applying the listener, request the certificate in ACM, create every ACM DNS validation record at the external DNS provider, wait until ACM reports `Issued`, and provide the issued ARN to Terraform. Freeze releases, quiesce data writers, complete final deltas, shift a small traffic slice, observe, then move fully. DNS remains external; Terraform must not fabricate Route 53 ownership.
+Lower external DNS TTL 24 hours in advance. Before applying the listener, request the certificate in ACM, create every ACM DNS validation record at the external DNS provider, wait until ACM reports `Issued`, and provide the issued ARN to Terraform. Freeze releases, quiesce data writers, complete final deltas, switch traffic once inside the planned maintenance window with traffic stopped, then observe. The short window selects a single switch, so traffic is not shifted in stages. DNS remains external; Terraform must not fabricate Route 53 ownership.
 
 ## Verification
 
@@ -54,8 +59,8 @@ Lower external DNS TTL in advance. Before applying the listener, request the cer
 
 ## Rollback and source retention
 
-Trigger rollback on error rate, integrity mismatch, unacceptable lag, or failed behavior checks. Fence target writers before re-enabling Render writers; never permit two database primaries. Restore traffic and external DNS, retain target evidence, and keep Render resources through the agreed source-retention window.
+Trigger rollback on error rate, integrity mismatch, unacceptable lag, or failed behavior checks. Fence target writers before re-enabling Render writers; never permit two database primaries. Restore traffic and external DNS, retain target evidence, and keep Render resources for 14 days after cutover and until sign-off.
 
 ## Known limitations
 
-Both estimate scenarios are floors because EFS is unpriced. AI execution is `deferred_shared_ai_engine`. Workflow generation is `conditional_workflow_generation_unsupported`; the report preserves the selected targets but no unvalidated Workflow artifacts are emitted.
+Both estimate scenarios price every line, including EFS at the 5 GB Blueprint disk size. AI execution is `deferred_shared_ai_engine`. Workflow generation is `conditional_workflow_generation_unsupported`; the report preserves the selected targets but no unvalidated Workflow artifacts are emitted.

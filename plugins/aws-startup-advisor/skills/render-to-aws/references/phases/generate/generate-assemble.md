@@ -3,6 +3,10 @@ _assemble: assemble-generation
 _of_phase: generate
 _reads:
   - artifacts-infra
+  - artifacts-infra-network-storage-delivery
+  - infra-data (fragment contribution, when aws-design.json has a render.postgres or render.key_value mapping with disposition mapped)
+  - artifacts-baseline
+  - infra-compute (fragment contribution, when aws-design.json maps any resource to terraform/compute.tf, or maps a Workflow task row to ECS)
   - artifacts-docs
   - artifacts-report
 _produces:
@@ -21,7 +25,7 @@ The worker performs file-only assembly and writes `generation-warnings.json`; th
 
 ## Worker accounting gate
 
-Validate the warnings ledger against `schema-generation-warnings.json`. Every `aws-design.json` mapping appears in exactly one classification array, with no duplicate or unknown ID. A generated row names existing target files; consumed topology names the concrete files into which it was folded; deferred and unsupported rows carry an explicit reason and no fabricated target file. Recompute all counts and byte-sort source IDs. Scan all outputs for captured secret values, credential patterns, `{{VARIABLE}}`, unexpanded tokens, and prohibited AI artifacts. Any mismatch is a gate failure.
+Validate the warnings ledger against `schema-generation-warnings.json`. Every `aws-design.json` mapping appears in exactly one classification array, with no duplicate or unknown ID. A generated row names existing target files; consumed topology names the concrete files into which it was folded; deferred and unsupported rows carry an explicit reason and no fabricated target file. Recompute all counts and byte-sort source IDs. Scan all outputs for captured secret values, credential patterns, `{{VARIABLE}}`, unexpanded tokens, and prohibited AI artifacts. Any mismatch is a gate failure. The files from `artifacts-baseline` (`baseline.tf`, `monitoring.tf`, `kms.tf`, `backup.tf`) are not design mappings and are exempt from per-mapping classification.
 
 ## Main-window validation protocol
 
@@ -35,6 +39,6 @@ Run these independent checks after all worker writes, recording the exact comman
 6. **schemas** — validate `generation-warnings.json` and the prospective validation report against their skill-local schemas and re-run cross-artifact accounting. Any error blocks completion.
 7. **report** — run `validate-render-migration-report.py` with its absolute-path ABI. Only `REPORT_OK` passes. On failure rename the HTML to `migration-report.incomplete.html` and block completion.
 
-Write one atomic `validation-report.json` conforming to `schema-validation-report.json`. `status: passed` requires every stage passed. `status: passed_degraded_offline` requires only `terraform_init` and optionally `terraform_validate` to be `provider_registry_unavailable`; fmt, policy, secret, schema, and report checks remain passed. No `not_run`, skipped, user-continue, warning-only, or policy override status can complete Generate.
+Write one atomic `validation-report.json` conforming to `schema-validation-report.json`. `status: passed` requires every stage passed. `status: passed_degraded_offline` requires only `terraform_init` and optionally `terraform_validate` to be `provider_registry_unavailable`; fmt, policy, secret, schema, and report checks remain passed. No `not_run`, skipped, user-continue, warning-only, or policy override status can complete Generate. If `uv` or the frozen environment is unavailable, stage 7 is recorded as `failed` (`checks.report.status: failed`, top-level `status: failed`) with evidence naming the missing `uv` or frozen environment, the incomplete-HTML rename still applies, completion stays blocked, and the preflight warning plus the rerun command are shown. There is no validation skip; stages 1 to 6 are unaffected.
 
 After writing, re-read and schema-validate the report, confirm the recorded commands correspond to the final file digests, then evaluate Generate postconditions. The main window emits `HANDOFF_OK` and updates phase state only on success.

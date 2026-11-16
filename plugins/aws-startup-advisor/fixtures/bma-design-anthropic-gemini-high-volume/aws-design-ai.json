@@ -1,0 +1,192 @@
+{
+  "phase": "design",
+  "focus": "ai",
+  "timestamp": "2026-11-12T18:30:00Z",
+  "source_profile": "ai-workload-profile.json",
+  "metadata": {
+    "ai_sources": [
+      {
+        "provider": "anthropic",
+        "source_service": "anthropic_api",
+        "model_families": [
+          "claude"
+        ],
+        "model_evidence": "observed",
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "model_observations": [
+          {
+            "normalized_model": "claude-sonnet-5",
+            "raw_model": "claude-sonnet-5",
+            "model_family": "claude",
+            "evidence": [
+              {
+                "provenance": "code",
+                "confidence": "high",
+                "detail": "svc/agent.py:22 client.messages.create"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "provider": "google",
+        "source_service": "gemini_api",
+        "model_families": [
+          "gemini"
+        ],
+        "model_evidence": "observed",
+        "models": [
+          "gemini-2.5-flash"
+        ],
+        "model_observations": [
+          {
+            "normalized_model": "gemini-2.5-flash",
+            "raw_model": "gemini-2.5-flash",
+            "model_family": "gemini",
+            "evidence": [
+              {
+                "provenance": "code",
+                "confidence": "high",
+                "detail": "svc/summarize.py:9 client.models.generate_content"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "gateways": [],
+    "bedrock_models_selected": [
+      "us.anthropic.claude-sonnet-5",
+      "us.anthropic.claude-haiku-5-5"
+    ],
+    "regional_validation": "checked"
+  },
+  "design_blocks": [
+    {
+      "workload_id": "anthropic_api.claude-sonnet-5.anthropic.messages.create.plain",
+      "model_id": "claude-sonnet-5",
+      "target_bedrock_model": "us.anthropic.claude-sonnet-5",
+      "target_aws_service": null,
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "rationale": "Same model on Bedrock; the Anthropic SDK keeps the Messages API on bedrock-runtime with the US profile.",
+      "confidence_warning": null
+    },
+    {
+      "workload_id": "gemini_api.gemini-2.5-flash.genai.models.generate_content.plain",
+      "model_id": "gemini-2.5-flash",
+      "target_bedrock_model": "us.anthropic.claude-haiku-5-5",
+      "target_aws_service": null,
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "rationale": "Gemini is not on Bedrock. Claude Haiku 5.5 is the cost-first fit for summarization; it is a model change that needs prompt and eval validation. The provider-run tools the user named have no Mantle path from a Gemini source.",
+      "confidence_warning": null
+    }
+  ],
+  "ai_architecture": {
+    "honest_assessment": "strong_migrate",
+    "honest_assessment_reason": null,
+    "tiered_strategy": {
+      "tiers": [
+        {
+          "tier": 1,
+          "traffic_share": 0.6,
+          "model": "us.anthropic.claude-haiku-5-5",
+          "use_cases": "classification, extraction, short answers"
+        },
+        {
+          "tier": 2,
+          "traffic_share": 0.3,
+          "model": "us.anthropic.claude-sonnet-5",
+          "use_cases": "summarization and moderate generation"
+        },
+        {
+          "tier": 3,
+          "traffic_share": 0.1,
+          "model": "us.anthropic.claude-sonnet-5",
+          "use_cases": "reasoning and tool use"
+        }
+      ],
+      "prompt_routing": "Intelligent Prompt Routing can route between Claude models within the family."
+    },
+    "bedrock_models": [
+      {
+        "source_model_id": "claude-sonnet-5",
+        "aws_model_id": "us.anthropic.claude-sonnet-5",
+        "capabilities_matched": [
+          "text_generation"
+        ],
+        "capability_gaps": [],
+        "honest_assessment": "strong_migrate",
+        "source_provider_price": "2.00/10.00 per 1M tokens",
+        "bedrock_price": "2.20/11.00 per 1M tokens (US Geo)",
+        "price_comparison": "about 10% higher",
+        "migration_complexity": "low",
+        "model_change": false,
+        "migration_path": "runtime_messages",
+        "quota_risk": "high",
+        "required_client_api": "messages",
+        "endpoint_assumption": "No Mantle-only requirement was recorded for anthropic_api.claude-sonnet-5.anthropic.messages.create.plain; bedrock-runtime selected. If this workload needs background inference, server-side tools, Projects/Workspaces, or single-Region processing, re-run Clarify."
+      },
+      {
+        "source_model_id": "gemini-2.5-flash",
+        "aws_model_id": "us.anthropic.claude-haiku-5-5",
+        "capabilities_matched": [
+          "text_generation"
+        ],
+        "capability_gaps": [
+          "server_side_tools (user, Q10.5) stays unserved: a Gemini source has no bedrock-mantle path"
+        ],
+        "honest_assessment": "strong_migrate",
+        "source_provider_price": "0.30/2.50 per 1M tokens",
+        "bedrock_price": "0.11/0.55 per 1M tokens (US Geo, up to 100K prompt tokens)",
+        "price_comparison": "cheaper",
+        "migration_complexity": "medium",
+        "model_change": true,
+        "migration_path": "converse",
+        "quota_risk": "high",
+        "required_client_api": "converse",
+        "endpoint_assumption": "No Mantle-only requirement was recorded for gemini_api.gemini-2.5-flash.genai.models.generate_content.plain; bedrock-runtime selected. If this workload needs background inference, server-side tools, Projects/Workspaces, or single-Region processing, re-run Clarify."
+      }
+    ],
+    "capability_mapping": {
+      "text_generation": {
+        "parity": "full",
+        "notes": "Messages API on bedrock-runtime and Converse."
+      },
+      "streaming": {
+        "parity": "full",
+        "notes": "Messages streaming and ConverseStream."
+      }
+    },
+    "code_migration": {
+      "primary_pattern": "direct_sdk",
+      "framework": "none",
+      "files_to_modify": [
+        "svc/agent.py",
+        "svc/summarize.py"
+      ],
+      "dependency_changes": "anthropic SDK pointed at bedrock-runtime /anthropic; boto3 Converse replaces google-genai."
+    },
+    "infrastructure": [],
+    "services_to_migrate": [
+      {
+        "source_service": "anthropic_api",
+        "aws_service": "Amazon Bedrock",
+        "effort": "low",
+        "notes": "Client swap only."
+      },
+      {
+        "source_service": "gemini_api",
+        "aws_service": "Amazon Bedrock",
+        "effort": "medium",
+        "notes": "Model change to Claude Haiku 5.5."
+      }
+    ]
+  },
+  "regional_warnings": [],
+  "multi_model_warnings": [],
+  "agentic_design": null
+}
