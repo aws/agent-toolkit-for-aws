@@ -7,3 +7,6 @@ private_image               = "000000000000.dkr.ecr.us-east-1.amazonaws.com/rend
 worker_image                = "000000000000.dkr.ecr.us-east-1.amazonaws.com/render-migration@sha256:3333333333333333333333333333333333333333333333333333333333333333"
 cron_image                  = "000000000000.dkr.ecr.us-east-1.amazonaws.com/render-migration@sha256:4444444444444444444444444444444444444444444444444444444444444444"
 runtime_configuration_value = "supply-at-deployment"
+operations_email            = "operations@example.invalid"
+billing_email               = "billing@example.invalid"
+security_email              = "security@example.invalid"

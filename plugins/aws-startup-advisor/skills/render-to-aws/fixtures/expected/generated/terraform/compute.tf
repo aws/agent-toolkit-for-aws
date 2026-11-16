@@ -70,6 +70,9 @@ resource "aws_ecs_service" "web" {
     container_port   = 8080
     target_group_arn = aws_lb_target_group.web.arn
   }
+  lifecycle {
+    ignore_changes = [desired_count]
+  }
 }
 
 resource "aws_service_discovery_private_dns_namespace" "application" {
