@@ -88,6 +88,8 @@ def test_design_selectors_emit_one_target_all_rejections_and_exact_accounting() 
     assert private["aws_config"] == {
         "ingress": "AWS Cloud Map or ECS Service Connect",
         "public_load_balancer": False,
+        "ecs_mode": "standard",
+        "ecs_mode_reason": "private_discovery",
     }
     assert "Amazon CloudWatch Logs, Metrics, and Alarms" == by_kind["render.web_service"]["aws_config"]["observability"]
     assert "App Runner" not in json.dumps(design)
@@ -313,6 +315,7 @@ def test_generate_ledger_schemas_and_complete_target_accounting() -> None:
         "conditional_workflow_generation_unsupported",
         "deferred_shared_ai_engine",
         "unpriced_cost_floor",
+        "ecs_express_not_selected_rolling_release",
     }
     assert all(row["target_files"] == [] for row in ledger["unsupported"])
     assert not any("ai" in path.lower() for row in ledger["generated"] for path in row["target_files"])
@@ -1073,7 +1076,7 @@ def _materialize_independent_mixed_pipeline(root: Path) -> dict[str, bytes]:
     for scenario in estimate["scenarios"].values():
         assert [row["source_resource_id"] for row in scenario["lines"]] == design["accounting"]["accounted_resource_ids"]
 
-    ledger = harness.ledger_from_design(design)
+    ledger = harness.ledger_from_design(design, preferences)
     jsonschema.Draft202012Validator(
         load(SKILL_ROOT / "references/shared/schema-generation-warnings.json")
     ).validate(ledger)

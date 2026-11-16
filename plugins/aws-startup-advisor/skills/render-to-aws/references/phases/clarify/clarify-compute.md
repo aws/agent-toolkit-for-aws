@@ -13,4 +13,5 @@ For each background worker, establish whether it is a continuously supervised qu
 
 For each cron job, resolve UTC versus named time zone and DST intent, actual execution duration, package/runtime/resources, VPC access, filesystem, overlap/concurrency, retry/catch-up policy, idempotency, and outbound dependencies. A schedule is not runtime evidence. Lambda eligibility requires all Lambda eliminators to be answered; otherwise the documented default is EventBridge Scheduler with ECS RunTask.
 
+For each web service that can select ECS on Fargate, ask `compute.release_strategy` (`canary`, `rolling`, `blue_green`) unless the user already stated it. The documented default is `canary`, recorded as `defaulted` with `default_rule: "release.canary_default"` and the consequence that ECS Express Mode remains eligible. `rolling` and `blue_green` select standard ECS because Express Mode deploys canary only. Never ask it for Beanstalk, EKS, workers, cron, or static sites.
 Static sites never receive runtime-capacity questions. Build/runtime version pinning is a delivery question, not a reason to allocate compute to a static site.
