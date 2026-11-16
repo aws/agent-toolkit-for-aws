@@ -616,3 +616,20 @@ def test_cnb_builds_pass_build_time_config_vars_by_name_only() -> None:
     for line in (l for l in docs.splitlines() if l.lstrip().startswith("pack build") and "--publish" in l):
         assert 'BUILD_ENV_FLAGS[@]' in line, line
     assert "Build-time config vars" in docs and "heroku config -a {{app_name}}" in docs
+
+
+def test_pack_build_snippets_declare_build_env_flags_before_use() -> None:
+    # An undeclared array makes "${BUILD_ENV_FLAGS[@]}" fail under zsh (and `set -u` bash).
+    root = Path(__file__).resolve().parent.parent / "skills" / "heroku-to-aws"
+    checked = 0
+    for path in root.rglob("*.md"):
+        lines = path.read_text().splitlines()
+        for i, line in enumerate(lines):
+            if "pack build" not in line or "BUILD_ENV_FLAGS[@]" not in line or not line.lstrip().startswith("pack build"):
+                continue
+            start = i
+            while start > 0 and not lines[start - 1].startswith("```"):
+                start -= 1
+            checked += 1
+            assert any(l.strip() == "BUILD_ENV_FLAGS=()" for l in lines[start:i]), f"{path.name}:{i + 1}"
+    assert checked >= 3

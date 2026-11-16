@@ -1026,6 +1026,7 @@ if aws ecr describe-images --repository-name {{project_name}}/{{app_name}} --ima
 else
   # BUILD_ENV_FLAGS: one `--env NAME` per build-time config var (names only, values come from your
   # shell environment), e.g. BUILD_ENV_FLAGS=(--env NPM_TOKEN --env RAILS_MASTER_KEY); empty when none.
+  BUILD_ENV_FLAGS=()
   pack build "${IMAGE}" --builder heroku/builder:{{cnb_builder_tag}} --platform linux/amd64 --publish "${BUILD_ENV_FLAGS[@]}"
 fi
 
@@ -1111,6 +1112,7 @@ if aws ecr describe-images --repository-name {{project_name}}/{{app_name}} --ima
 else
   # BUILD_ENV_FLAGS: one `--env NAME` per build-time config var (names only, values come from your
   # shell environment), e.g. BUILD_ENV_FLAGS=(--env NPM_TOKEN --env RAILS_MASTER_KEY); empty when none.
+  BUILD_ENV_FLAGS=()
   pack build "${IMAGE}" --builder heroku/builder:{{cnb_builder_tag}} --platform linux/amd64 --publish "${BUILD_ENV_FLAGS[@]}"
 fi
 # The task definition selects the process type with entryPoint = ["/cnb/process/<process_type>"]
