@@ -22,6 +22,8 @@ provider "aws" {
   }
 }
 
+data "aws_partition" "current" {}
+
 locals {
   name_prefix   = "${var.project_name}-${var.environment}"
   private_cidrs = ["10.42.1.0/24", "10.42.2.0/24"]
