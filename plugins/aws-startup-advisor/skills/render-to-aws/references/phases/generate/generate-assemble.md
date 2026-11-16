@@ -5,6 +5,7 @@ _reads:
   - artifacts-infra
   - artifacts-infra-network-storage-delivery
   - infra-data (fragment contribution, when aws-design.json has a render.postgres or render.key_value mapping with disposition mapped)
+  - artifacts-baseline
   - artifacts-docs
   - artifacts-report
 _produces:
@@ -23,7 +24,7 @@ The worker performs file-only assembly and writes `generation-warnings.json`; th
 
 ## Worker accounting gate
 
-Validate the warnings ledger against `schema-generation-warnings.json`. Every `aws-design.json` mapping appears in exactly one classification array, with no duplicate or unknown ID. A generated row names existing target files; consumed topology names the concrete files into which it was folded; deferred and unsupported rows carry an explicit reason and no fabricated target file. Recompute all counts and byte-sort source IDs. Scan all outputs for captured secret values, credential patterns, `{{VARIABLE}}`, unexpanded tokens, and prohibited AI artifacts. Any mismatch is a gate failure.
+Validate the warnings ledger against `schema-generation-warnings.json`. Every `aws-design.json` mapping appears in exactly one classification array, with no duplicate or unknown ID. A generated row names existing target files; consumed topology names the concrete files into which it was folded; deferred and unsupported rows carry an explicit reason and no fabricated target file. Recompute all counts and byte-sort source IDs. Scan all outputs for captured secret values, credential patterns, `{{VARIABLE}}`, unexpanded tokens, and prohibited AI artifacts. Any mismatch is a gate failure. The files from `artifacts-baseline` (`baseline.tf`, `monitoring.tf`, `kms.tf`, `backup.tf`) are not design mappings and are exempt from per-mapping classification.
 
 ## Main-window validation protocol
 
