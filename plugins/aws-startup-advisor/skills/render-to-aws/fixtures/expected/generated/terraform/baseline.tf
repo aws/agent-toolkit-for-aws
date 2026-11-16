@@ -161,7 +161,7 @@ resource "aws_cloudtrail" "baseline" {
 resource "aws_budgets_budget" "monthly_spend" {
   name         = "${local.name_prefix}-monthly"
   budget_type  = "COST"
-  limit_amount = "423"
+  limit_amount = "425"
   limit_unit   = "USD"
   time_unit    = "MONTHLY"
   dynamic "notification" {
