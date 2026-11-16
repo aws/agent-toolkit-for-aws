@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "source": "Render region identifiers",
+  "fallback": "clarify_required",
+  "regions": {
+    "virginia": {"aws_region": "us-east-1", "confidence": "deterministic"},
+    "ohio": {"aws_region": "us-east-2", "confidence": "deterministic"},
+    "oregon": {"aws_region": "us-west-2", "confidence": "deterministic"},
+    "frankfurt": {"aws_region": "eu-central-1", "confidence": "deterministic"},
+    "singapore": {"aws_region": "ap-southeast-1", "confidence": "deterministic"}
+  }
+}

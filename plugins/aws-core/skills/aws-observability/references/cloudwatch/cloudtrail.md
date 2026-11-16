@@ -7,6 +7,7 @@ Using CloudTrail for operational debugging: who changed what, when. Not for secu
 - [Event types](#event-types)
 - [Event history](#event-history)
 - [Common operational queries](#common-operational-queries)
+- [Auditing CloudWatch's own data plane](#auditing-cloudwatchs-own-data-plane)
 - [Querying CloudTrail logs](#querying-cloudtrail-logs)
 - [CloudTrail → CloudWatch integration](#cloudtrail--cloudwatch-integration)
 
@@ -106,6 +107,30 @@ aws cloudtrail put-event-selectors --trail-name my-trail \
     ]
   }]'
 ```
+
+---
+
+## Auditing CloudWatch's own data plane
+
+Metric publishing and metric queries are CloudWatch **data events**, so they only appear in a
+trail or event data store that logs data events for the matching resource type (use the
+merge-first selector procedure above). Choose by resource type rather than event name — one
+event name shows up under both:
+
+| `resources.type` | Records |
+|---|---|
+| `AWS::CloudWatch::Metric` | Classic metric APIs — `PutMetricData` (SDK and CLI calls), `GetMetricData`, `GetMetricStatistics`, `ListMetrics`, `GetMetricWidgetImage` |
+| `AWS::CloudWatch::Dataset` | OpenTelemetry metrics — OTLP ingestion to `monitoring.<region>.amazonaws.com/v1/metrics`, recorded as `PutMetricData` (`readOnly: false`) with the dataset ARN; and PromQL queries, recorded as `QueryMetrics` (`/api/v1/query`, `/api/v1/query_range`), `GetSeries` (`/api/v1/series`), and `GetLabels` (`/api/v1/labels`, `/api/v1/label/<name>/values`), all `readOnly: true` |
+
+- A trail that selects only `AWS::CloudWatch::Metric` misses all OTLP ingestion and every
+  PromQL query.
+- To tell an OTLP ingestion `PutMetricData` from a classic one in queried logs, read
+  `additionalEventData.protocol` (`OTLP`); for PromQL events, `requestParameters.path` names
+  the endpoint called.
+- Filter on `readOnly` within `AWS::CloudWatch::Dataset` to log only ingestion (`false`) or
+  only queries (`true`).
+- Bearer-token (API key) senders appear under the IAM user that owns the key.
+- Data events never appear in CloudTrail Event history (`lookup-events`): say so, and read them from the trail's S3 logs or a CloudTrail Lake event data store.
 
 ---
 

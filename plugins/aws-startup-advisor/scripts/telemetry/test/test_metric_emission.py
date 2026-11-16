@@ -27,12 +27,14 @@ MODELLED_SKILL_IDS = {
     "ARCHITECT_FOR_STARTUPS",
     "AZURE_TO_AWS",
     "CONTEXTUAL_OFFERS_FOR_STARTUPS",
+    "COST_REGRESSION_CHECK",
     "GCP_TO_AWS",
     "HEROKU_TO_AWS",
     "KNOWLEDGE_BASE_FOR_STARTUPS",
     "LLM_TO_BEDROCK",
     "OPERATE_ON_AWS",
     "PROMPT_LIBRARY_FOR_STARTUPS",
+    "SELF_HOSTED_LLM_BATCH_INFERENCE",
     "START_BUILDING_FOR_STARTUPS",
     "TF_BEST_PRACTICES",
 }
@@ -47,7 +49,7 @@ SKILLS_DIR = PLUGIN_ROOT / "skills"
 NOT_A_SKILL = {"shared"}
 
 # Skills PluginSkillId has no member for yet; reporting one would 400 the whole request.
-NOT_YET_MODELLED = {"bedrock-migration-assessment"}
+NOT_YET_MODELLED = {"bedrock-migration-assessment", "render-to-aws"}
 
 
 def accept(home):
@@ -78,8 +80,8 @@ class TestSkillIdMap:
             for path in SKILLS_DIR.iterdir()
             if path.is_dir() and path.name not in NOT_A_SKILL | NOT_YET_MODELLED
         }
-        # The map is an allowlist, so a new skill is invisible until added here,
-        # and a renamed directory stops being counted silently.
+        # The map remains exact after explicitly excluding skills the service model
+        # cannot represent yet.
         assert set(skill_invoked.SKILL_IDS) == on_disk
 
     def test_unmodelled_skills_exist_and_are_not_reported(self):

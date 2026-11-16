@@ -148,6 +148,85 @@ Use the best available source for Heroku monthly baseline (first match wins):
    - Set `current_costs.source: "unavailable"`
    - Note: "Heroku baseline unavailable — AWS costs shown without comparison."
 
+### Contract reconciliation (when `preferences.commercial.heroku_contract` exists)
+
+The baseline above is what discovery can see at list or live plan prices. An Enterprise
+order form commits spend discovery cannot see. Reconcile the two rather than picking one:
+
+1. For each contract line, `monthly_usd = total_usd / months`. Sum to
+   `contract.monthly_run_rate`.
+2. Bucket the discovered baseline into the contract categories (the same enum Q16
+   records: `dynos|addon_credits|support|private_spaces|connect|other`):
+   - `dynos` — formations × dyno rate.
+   - `addon_credits` — every add-on resource's priced contribution. Contract add-on
+     credits are what the order form pre-pays for add-ons, so discovered add-on spend
+     is the only discovered counterpart it has; there is no separate "credits" bucket.
+   - `private_spaces` — space base fees, when spaces exist in the inventory.
+   - `support`, `connect` — no discovered counterpart; `discovered_usd` is 0.
+   - `other` — any priced baseline component none of the above claims (write 0 when
+     there is none), so that every discovered dollar lands in exactly one line.
+
+   One line per category that appears on the contract OR carries discovered spend;
+   `monthly_usd` is 0 for a category the contract has no line for. The per-line
+   `discovered_usd` values MUST sum to `discovered_monthly` (the Part 1 baseline), and
+   the per-line `monthly_usd` values to `monthly_run_rate`; if they do not, the
+   bucketing is wrong — fix it rather than writing the lines.
+3. Write `current_costs.contract`:
+
+   ```json
+   {
+     "term_start": "...", "term_end": "...",
+     "monthly_run_rate": <sum of contract lines>,
+     "discovered_monthly": <Part 1 baseline total>,
+     "gap_monthly": <monthly_run_rate - discovered_monthly>,
+     "lines": [
+       { "category": "dynos", "monthly_usd": <contract>, "discovered_usd": <discovered>, "gap_usd": <diff>, "note": "<one-line explanation>" }
+     ],
+     "gap_explanation": "<two sentences, see below>",
+     "prior_term_annual_usd": <copied when given, else null>
+   }
+   ```
+
+4. `gap_explanation` must name the mechanisms, not just the number: negotiated vs
+   list rates; committed headroom and scaled-to-zero formations; apps or accounts
+   outside the CLI's view; usage-based add-ons; support and Connect being invisible to
+   discovery. Say plainly that the gap is **not** evidence of unused commitment.
+5. The scope-matched Heroku figure is **not** a contract field. It is
+   `cost_comparison.heroku_monthly_like_for_like` (Part 3) = the Part 1 baseline minus
+   `current_costs.deferred_resource_cost`, written whenever any add-on is Deferred,
+   contract or not. `heroku_monthly_baseline` keeps the full figure unchanged — the
+   like-for-like value is an ADDITIONAL field shown beside it, never a replacement
+   (Part 3 § "Keep the full baseline"). `deferred_resource_cost` is Part 1b's sum of
+   what the **selected baseline actually counted** for the Deferred add-ons (invoice
+   amounts under `billing_data`, live plan prices under `live_prices_plus_cache`, cache
+   prices under `pricing_cache`); do not re-derive it here. Never substitute list
+   prices: with a $150 invoice baseline that includes $50 of deferred spend whose list
+   price is $100, the matched baseline is $100 and the removed amount disclosed is $50.
+   If the selected baseline cannot attribute an amount to a deferred add-on (e.g. a
+   billing line that does not break it out), leave that add-on out of the subtraction,
+   list it in `like_for_like_comparison.unattributed_deferred_services`, set
+   `like_for_like_comparison.attribution` to `"incomplete"` and say so in its `note`
+   rather than inventing a figure. An incomplete comparison is **provisional, not
+   decision-grade** (Part 3 § Attribution): the unattributed add-on's spend is still on
+   the Heroku side only.
+
+The contract run-rate is never the baseline used for savings headlines. It is shown
+beside the discovered figure so the reader can see both and why they differ.
+
+**Scope-matched comparison is mandatory whenever any add-on is Deferred**, contract or
+not: Part 3 must compute `cost_comparison.like_for_like_comparison` (AWS Balanced minus
+the like-for-like baseline, with the percentage and the deferred contribution it removed)
+and the financial roll-up must present that difference alongside — never instead of — the
+full-baseline difference and its caveat. The subtraction and the disclosed removed amount
+are the same number, `current_costs.deferred_resource_cost` from Part 1b. Example: full baseline $740, deferred add-ons
+$600, AWS $200 → full view says "$540 less on AWS", scope-matched view says "$60 more on
+AWS ($200 vs $140)". Both are shown; the second is the one labelled decision-grade — but
+only when `like_for_like_comparison.attribution == "complete"`. When it is `"incomplete"`
+the second view is labelled "Scope-matched (provisional — N deferred add-on(s) could not
+be attributed and remain in the Heroku figure: `<names>`)" instead, and is never called
+decision-grade. When the matched baseline is $0, the percentage is omitted and rendered as
+"(percentage not applicable)" (Part 3 § Zero matched baseline).
+
 Whenever a baseline was determined (any source except `"unavailable"`), present it as:
 
 - Total monthly cost, with its source and accuracy stated plainly (invoice data vs actual plan prices vs rate card vs user estimate)
@@ -197,11 +276,11 @@ Rates below come from the named keys in `aws-infra-pricing.json` — do not hard
 | AWS Service               | Formula (rates from `aws-infra-pricing.json`)                                                                                                            | Key inputs from `aws_config`                                                  |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | **Elastic Beanstalk**     | EC2: `ec2.instances[instance_type]` × 730 × running instance estimate + ALB: `alb.monthly_fixed` + LCU estimate (if LoadBalanced). EB service fee is $0. | `instance_type`, `min_instances`, `max_instances`, `environment_type`         |
-| **Fargate**               | (task_cpu/1024 × `fargate.per_vcpu_hour` + task_memory/1024 × `fargate.per_gb_mem_hour`) × 730 × desired_count                                           | `task_cpu`, `task_memory`, `desired_count`                                    |
+| **Fargate**               | (task_cpu/1024 × `fargate.per_vcpu_hour` + task_memory/1024 × `fargate.per_gb_mem_hour`) × 730 × desired_count; plus the shared Express Mode ALB lines below when `ecs_mode == "express"` | `task_cpu`, `task_memory`, `desired_count`, `ecs_mode`                        |
 | **EKS (cluster + nodes)** | `eks.control_plane_monthly` + `eks.node_rates_monthly[type]` × node_count + ALB per web service                                                          | `eks_cluster.node_groups[].instance_types`, `desired_size`, web service count |
-| **ALB**                   | `alb.monthly_fixed` + LCU estimate (`alb.per_lcu_hour` × 730)                                                                                            | Per web service with `load_balancer: true`                                    |
-| **RDS PostgreSQL**        | `rds_postgresql.instances[class]` × 730 + storage_gb × `rds_postgresql.storage_per_gb_month` (rate is baked_in Multi-AZ — do NOT double)                 | `instance_class`, `storage_gb`, `multi_az`                                    |
-| **Aurora PostgreSQL**     | `aurora_postgresql.instances[class]` × 730 + storage_gb × `aurora_postgresql.storage_per_gb_month` + I/O estimate (intrinsic multi-AZ)                   | `instance_class`, `storage_gb`                                                |
+| **ALB**                   | `alb.monthly_fixed` + LCU estimate (`alb.per_lcu_hour` × 730)                                                                                            | Per web service with `load_balancer: true` and `ecs_mode != "express"`        |
+| **RDS PostgreSQL**        | `rds_postgresql.instances[class]` × 730 × (1 + `read_replicas`) + storage_gb × (1 + `read_replicas`) × `rds_postgresql.storage_per_gb_month` (rate is baked_in Multi-AZ — do NOT double for multi_az; each read replica is one more instance at the same rate — conservative, a single-AZ replica lists lower)                 | `instance_class`, `storage_gb`, `multi_az`                                    |
+| **Aurora PostgreSQL**     | `aurora_postgresql.instances[class]` × 730 × (1 + max(1, `read_replicas`)) + storage_gb × `aurora_postgresql.storage_per_gb_month` + I/O estimate (intrinsic multi-AZ; the generated cluster always has a writer + one reader, extra Heroku followers add readers)                   | `instance_class`, `storage_gb`                                                |
 | **ElastiCache Valkey** (ElastiCache Redis OSS: × `elasticache.redis_oss_multiplier`) | `elasticache.nodes[type]` × 730 (× 2 if Multi-AZ — `multiplier_x2`)                                                                                      | `node_type`, `multi_az`                                                       |
 | **MSK**                   | `msk.brokers[type]` × 730 × broker_count + storage_gb × `msk.storage_per_gb_month` (intrinsic multi-AZ)                                                  | `broker_instance_type`, `broker_count`, `storage_per_broker_gb`               |
 | **CloudWatch Logs**       | log_volume_gb × `cloudwatch.log_ingestion_per_gb` + storage × `cloudwatch.log_storage_per_gb_month`                                                      | `retention_days`, estimated log volume                                        |
@@ -226,13 +305,24 @@ IF pricing data for a service is unavailable from both MCP and cache:
 3. Add to `warnings[]`: "Pricing unavailable for [service_id] ([aws_service]). Requires manual cost verification."
 4. Add service name to `pricing_source.services_with_missing_fallback[]`
 
+### Fargate Cost Calculation — ECS Express Mode ALB
+
+This step runs on the **common Fargate path**, for every design with at least one `aws_service: "Fargate"` entry whose `aws_config.ecs_mode == "express"` — with or without EKS or Elastic Beanstalk in the same design, and independent of `ALB` entries (Design emits no `alb:` entry for an Express web formation, so the per-entry ALB formula never sees it). A Fargate entry with no `ecs_mode` key is `standard` and is priced through its own `ALB` entry as before.
+
+1. **Tasks**: the Fargate formula above — Express Mode has no service charge of its own.
+2. **Shared ALB fixed charge**: Express Mode shares one ALB among up to **25** Express services per compatible group, and provisions another ALB when a group exceeds 25 ([resource sharing](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html#express-service-resource-sharing)). Group the Express entries by **VPC and ALB scheme** (`internet-facing` for public-subnet placement, `internal` for private-subnet placement — never combine the two in one group; a Heroku design has one VPC, and its Express web formations are all internet-facing, so this is normally one group). For each group emit **`ceil(count / 25)`** `alb.monthly_fixed` lines (1–25 services → 1 ALB, 26–50 → 2, 51–75 → 3), as a single `alb_express_shared` line item per group with `quantity = ceil(count / 25)`. Do not emit one fixed charge per Express service, and do not emit a single flat charge regardless of count.
+3. **LCU**: attribute the LCU estimate (`alb.per_lcu_hour` × 730) per Express service, as for a standard web service.
+4. **No double counting**: Elastic Beanstalk LoadBalanced environments and standard-mode `ALB` entries keep their own one-ALB-each lines; they never join an Express group, and an Express service is never also priced through the `ALB` row.
+
+Checks: one Express web formation and no EKS → exactly one `alb.monthly_fixed` plus its LCUs; 25 → 1 fixed line; 26 → 2; 50 → 2; 51 → 3.
+
 ### EKS Cost Calculation
 
 When `aws-design.json` contains EKS services (`aws_service: "EKS"`):
 
 1. **EKS Control Plane**: `eks.control_plane_monthly` (fixed, one cluster regardless of node count)
 2. **EC2 Node Group**: Look up the node instance type's monthly rate in `eks.node_rates_monthly[type]` × `desired_size` nodes. The monthly rates (m6i.large, m6i.xlarge, m6i.4xlarge, r6i.4xlarge, m6i.8xlarge, m6i.16xlarge) are maintained in `aws-infra-pricing.json` — do not hardcode them here.
-3. **ALB for web services**: Same as Fargate ALB pricing (`alb.monthly_fixed` per web service)
+3. **ALB for web services**: Same as Fargate ALB pricing (`alb.monthly_fixed` per web service). Express Mode is a Fargate shape and is priced in "Fargate Cost Calculation — ECS Express Mode ALB" above, not here (an EKS design has no Fargate formations — `design-eks.md` "All-or-Nothing Rule")
 4. **NAT Gateway** (if private subnets): Same as Fargate path (`nat_gateway.monthly_fixed` + data processing)
 
 **Total EKS monthly cost** = `eks.control_plane_monthly` + (node_monthly_rate × node_count) + ALB_costs + NAT_costs. Pods are NOT charged a per-task cost (compute is billed via the EC2 nodes); ALB and NAT are the separate lines above, not re-added here.
@@ -361,6 +451,19 @@ Include in `estimation-infra.json`:
 "cost_comparison": {
   "heroku_monthly_baseline": "<Part 1 baseline total>",
   "baseline_source": "<current_costs.source>",
+  "heroku_monthly_like_for_like": "<heroku_monthly_baseline minus current_costs.deferred_resource_cost (Part 1b; § Contract reconciliation step 5 points here). An ADDITIONAL field: heroku_monthly_baseline above stays the full figure. Present whenever deferred add-ons exist, contract or not>",
+  "heroku_monthly_contract": "<current_costs.contract.monthly_run_rate, when a contract exists; else omit>",
+  "like_for_like_comparison": {
+    "aws_monthly_balanced": "<projected_costs.aws_monthly_balanced>",
+    "heroku_monthly_like_for_like": "<as above>",
+    "monthly_difference": "<aws_monthly_balanced − heroku_monthly_like_for_like; positive = AWS costs more>",
+    "difference_pct": "<monthly_difference / heroku_monthly_like_for_like; OMIT (null) when heroku_monthly_like_for_like == 0 — never divide by zero>",
+    "pct_note": "<ONLY when heroku_monthly_like_for_like == 0: 'percentage not applicable: matched Heroku baseline is $0'; omit otherwise>",
+    "deferred_contribution_monthly": "<current_costs.deferred_resource_cost from Part 1b — the amount the selected baseline counted for the Deferred add-ons, NOT their list prices; same figure the subtraction above removed>",
+    "unattributed_deferred_services": "<deferred add-ons the selected baseline could not attribute an amount to (left in the baseline); [] when none>",
+    "attribution": "complete" | "incomplete",
+    "note": "<attribution == complete: 'Scope-matched: both sides exclude the add-ons that have no AWS mapping yet. This is the comparison to quote; the full-baseline figures above include spend the AWS estimate does not replace.' | attribution == incomplete: 'Scope-matched (provisional — N deferred add-on(s) could not be attributed and remain in the Heroku figure: <names>). The Heroku side still carries spend the AWS estimate does not replace; do not quote this as decision-grade.'>"
+  },
   "option_a_premium": {
     "aws_monthly": "<premium total>",
     "monthly_difference": "<premium - heroku>",
@@ -390,8 +493,32 @@ Set `comparison_status` to `"incomplete_unmatched_services"` whenever
 This mirrors the existing `found`/`available`-style status flag convention
 already used in `billing_profile` / `terraform_metadata` / `live_metadata`.
 
+**Zero matched baseline.** A supported estate can have a matched Heroku baseline of
+$0 (e.g. every formation scaled to quantity 0 and the whole invoice attributable to a
+Deferred add-on) while the AWS mapping keeps a positive minimum instance count and so a
+positive AWS cost. `monthly_difference` is still the dollar figure (= AWS Balanced);
+`difference_pct` is omitted (null) — never divided by zero — and `pct_note` carries
+`"percentage not applicable: matched Heroku baseline is $0"`. The report renders
+"(percentage not applicable)" in place of the percentage; the workbook leaves the
+percentage cell blank.
+
+**Attribution.** Set `attribution` to `"incomplete"` whenever
+`unattributed_deferred_services` is non-empty (§ Contract reconciliation step 5: the
+selected baseline could not itemize that add-on, so its spend stays in the Heroku
+figure), else `"complete"`. Only a `complete` comparison may be labelled decision-grade
+or described as "both sides exclude add-ons with no AWS mapping". An `incomplete`
+comparison is labelled provisional and names the services in every presentation (estimate
+note, both HTML report modes, workbook): with a $150 invoice baseline, $100 AWS, zero
+attributable deferred spend and one unattributed database, the $50 "saving" is NOT
+scope-matched — the database is only on the Heroku side — and must say so.
+
 **Keep the full baseline — do not subtract or hide the deferred resource's
-cost.** When `comparison_status == "incomplete_unmatched_services"`, every
+cost.** `heroku_monthly_baseline` and the three option differences are always
+computed on the full figure. The scope-matched `heroku_monthly_like_for_like` /
+`like_for_like_comparison` above is an additional view shown beside them — it
+does not replace or reduce the full baseline, and the amount it removes is
+disclosed as `deferred_contribution_monthly`. When
+`comparison_status == "incomplete_unmatched_services"`, every
 presentation of the savings/difference figures (chat summary,
 `financial_summary`, `migration-report.html`/`decision-report.html`
 `exec-costs`) MUST render a caveat naming the unmatched service and its

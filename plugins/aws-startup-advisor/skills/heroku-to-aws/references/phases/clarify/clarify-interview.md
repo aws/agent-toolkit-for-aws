@@ -154,10 +154,12 @@ Before generating questions, scan the inventory to determine which questions app
 | Q12b — Containerization status       | Always                                                           | Never                                     |
 | Q12c — Compute target recommendation | Always                                                           | Never                                     |
 | Q12d — EB deploy method              | **Deferred to Generate** — defaulted here when the Q12c plan includes EB, asked at [C] Generate | All-Fargate/EKS plan, or never asked in Clarify |
+| Q12e — Release strategy              | Q12c plan routes a `web` formation to Fargate AND `dns_strategy` is `external` AND no Private Space | No Fargate web formation, or `dns_strategy` is `route53`, or a Private Space is detected (standard ECS forced) |
 | Q12 — Container registry             | Always                                                           | Never                                     |
 | Q13 — Log retention                  | Always                                                           | Never                                     |
 | Q14 — Alerting preference            | Always                                                           | Never                                     |
 | Q15 — Cost optimization              | Always                                                           | Never                                     |
+| Q16 — Heroku contract                | `billing_profile` absent, `null`, or `available != true` (no invoice) | `billing_profile.available == true`, or user says "none" |
 
 ### Extraction Rules (answer from the inventory before asking)
 
@@ -228,11 +230,11 @@ After determining active questions, organize them into **three progressive batch
 | **2** | Data / Network            | Q6, Q6b, Q7–Q10        | Database HA, migration approach, Redis HA, Kafka retention, VPC subnets, DNS strategy                                                                 |
 
 **Not in any batch — Generate-time questions:** Q4 (maintenance window), Q6c (DB migration method), Q12d (EB deploy method). Nothing before Generate reads their fields; asking them in Clarify makes a user who stops at the decision answer questions they will never use. Clarify writes their documented defaults and lists them in `metadata.questions_deferred_to_generate`; `estimate-assemble.md` § Confirm execution choices asks them when the user chooses **[C] Generate**.
-| **3** | Operational / Conditional | Q11, Q12b, Q12–Q15     | Fir intent, containerization status, container registry, log retention, alerting, cost optimization                                                   |
+| **3** | Operational / Conditional | Q11, Q12b, Q12–Q16     | Fir intent, containerization status, container registry, log retention, alerting, cost optimization                                                   |
 
 **Batch 2 is active** if ANY of: Postgres present, Redis present, Kafka present, Private Space detected, or DNS question is needed (always true → Batch 2 always fires with at least Q10).
 
-**Batch 3 is always active** (Q12–Q15 always fire; Q11 fires only if Fir detected).
+**Batch 3 is always active** (Q12–Q15 always fire; Q11 fires only if Fir detected; Q16 fires whenever `billing_profile` is absent, `null`, or has `available != true` — Discover omits the section entirely when no billing file was supplied, and that is the common no-invoice case; see Conditional Question Rules).
 
 Record the ordered list of active batches and count questions per batch after filtering. **Exclude questions resolved on the Assumption Sheet** (extracted, defaulted-and-confirmed, or corrected) — batches contain only the questions the user must actually answer.
 
@@ -285,7 +287,7 @@ You can answer each, skip individual ones, or say "use defaults for the rest."
 
 --- Operational / Conditional ---
 
-[Present active questions Q11–Q15]
+[Present active questions Q11–Q16 — Q16 only when it is active; it may be answered "none"]
 ```
 
 #### 3b. Wait for Response
@@ -541,7 +543,7 @@ built.
 >
 > 1. Use this recommendation (default)
 > 2. Use Elastic Beanstalk for all EB-compatible formations; keep system-forced Fargate overrides for scaled non-web workers
-> 3. Use ECS Fargate for all dyno formations
+> 3. Use ECS Fargate for all dyno formations (web dynos land on ECS Express Mode — ALB, HTTPS, auto scaling and logs provisioned for you — unless Q12e or Q10 rules it out; workers get standard ECS services)
 > 4. Use EKS — team has Kubernetes expertise and wants full K8s control
 > 5. EKS acceptable — team can operate K8s, prefers managed node groups to reduce burden
 > 6. Set per-formation targets manually
@@ -581,7 +583,7 @@ built.
 
 **Default:** 1 → `design_constraints.eb_deploy_method: { "value": "github_actions", "chosen_by": "default" }`
 
-**Generate impact:** `"github_actions"` emits `.github/workflows/deploy-eb.yml`; `"codepipeline"` emits `terraform/pipeline.tf`; `"manual"` emits neither automation artifact and keeps the CLI path in `MIGRATION_GUIDE.md`.
+**Generate impact:** `"github_actions"` emits `.github/workflows/deploy-eb.yml` (one `deploy-eb-<eb_app_slug>.yml` per app when two or more apps run on Elastic Beanstalk) and the approval-gated `promote.yml` (the `pipelines:promote` equivalent); `"codepipeline"` emits `terraform/pipeline.tf`; `"manual"` emits neither automation artifact and keeps the CLI path in `MIGRATION_GUIDE.md`.
 
 ---
 
@@ -805,6 +807,26 @@ Validate: must be valid ISO 8601 date, must be in the future.
 
 ---
 
+#### Q12e — Release Strategy for Fargate Web Formations
+
+> _Fires when the resolved Q12c plan routes at least one `web` formation to `ecs-fargate` AND `dns_strategy` is `"external"`. Skipped (defaulted to `canary`) when no web formation lands on Fargate; skipped as N/A when `dns_strategy` is `"route53"`, because the generated Route 53 cutover needs a Terraform-owned ALB and that already forces standard ECS services, and when a Private Space is detected, because its restricted inbound rules keep tasks in private subnets behind a Terraform-owned ALB (`design-mapping.md` 2A `private_space`)._
+
+Ask:
+
+> How do you release new versions of your web dynos?
+>
+> 1. Progressive / canary rollouts are fine (default — web dynos use ECS Express Mode)
+> 2. Rolling updates — replace tasks in place, no traffic shifting
+> 3. Blue/green — separate environment and an explicit cutover (Heroku pipelines + preview apps map here)
+
+**Interpret:**
+
+- 1 → `design_constraints.release_strategy: "canary"` — Fargate web formations get `aws_config.ecs_mode: "express"`
+- 2 → `design_constraints.release_strategy: "rolling"` — standard ECS service, rolling deployment controller
+- 3 → `design_constraints.release_strategy: "blue_green"` — standard ECS service with CodeDeploy blue/green
+
+**Default:** 1 (`canary`). Heroku's `web` process type is the shape signal (`http_service`); non-web process types are `worker` and never use Express Mode, so no shape question is asked.
+
 #### Q12b — Containerization Status
 
 > Is your application already containerized (has a Dockerfile)?
@@ -909,6 +931,51 @@ value will be rounded up this way.
 
 ---
 
+#### Q16 — Heroku Contract (Enterprise order form)
+
+> _Fires when the inventory has no invoice: `billing_profile` absent or `null`, or `billing_profile.available` is anything but `true`._
+>
+> Do you have a Heroku Enterprise contract or order form? If so, share the committed
+> lines (totals only — no unit prices needed): term start and end, and the total for
+> each of: dyno units, add-on credits, support plan, Private Spaces, Connect rows,
+> anything else. Say "none" if you pay list price month to month.
+
+**Why:** discovery prices what the CLI can see at list rates. An Enterprise contract
+commits spend that discovery cannot see (support, credits, headroom, apps outside the
+CLI's view). Without the contract the Heroku baseline looks too low and the AWS
+saving looks too high; with it the Estimate can reconcile the two and say which
+part of the gap is scope and which is price.
+
+**Interpret:** write `preferences.commercial.heroku_contract`:
+
+```json
+{
+  "term_start": "YYYY-MM-DD",
+  "term_end": "YYYY-MM-DD",
+  "lines": [
+    {
+      "category": "dynos|addon_credits|support|private_spaces|connect|other",
+      "label": "<as written on the order form>",
+      "total_usd": 0,
+      "months": 12
+    }
+  ],
+  "prior_term_annual_usd": null
+}
+```
+
+- A line that spans the whole term (e.g. support, Private Spaces) gets `months` equal
+  to the term length; a per-year line gets `12`. Monthly run-rate is
+  `total_usd / months`, computed in the Estimate, not here.
+- Record totals exactly as given. Do NOT ask for or record unit prices, quantities,
+  discounts, or the counterparty's name.
+- "none" / no contract → omit `preferences.commercial` entirely.
+
+**Default:** omitted (no contract) — the Estimate then shows the discovered baseline
+only.
+
+---
+
 ## Defaults Table
 
 | Question                  | Default                                 | Constraint                                                                                                  |
@@ -931,10 +998,12 @@ value will be rounded up this way.
 | Q12b — Containerization   | 2 (buildpack_only)                      | `containerization_status: "buildpack_only"`                                                                 |
 | Q12c — Compute target     | 1 (use computed recommendation)         | `design_constraints.compute_target` follows the computed plan: `default: "elastic_beanstalk"` plus any `system_forced` Fargate overrides at 40 or fewer non-release formations; `default: "ecs-fargate"` with `recommendation.scale_note` at 41 or more |
 | Q12d — EB deploy method   | 1 (GitHub Actions)                      | `eb_deploy_method: "github_actions"` when resolved compute plan includes EB                                 |
+| Q12e — Release strategy   | 1 (canary)                              | `release_strategy: "canary"` when a web formation lands on Fargate with `dns_strategy: "external"`; N/A otherwise |
 | Q12 — Registry            | 1 (ECR)                                 | `container_registry: "ecr"`                                                                                 |
 | Q13 — Log retention       | 3 (30 days)                             | `log_retention_days: 30`                                                                                    |
 | Q14 — Alerting            | 1 (CloudWatch)                          | `alerting: "cloudwatch"`                                                                                    |
 | Q15 — Cost optimization   | 2 (balanced)                            | `cost_optimization: "balanced"`                                                                             |
+| Q16 — Heroku contract     | none                                    | `preferences.commercial` omitted                                                                            |
 
 **Important:** Q9 and Q9b have no default — they are only asked when Private Space peering exists and required data is missing. If they fire, they must be answered (the system cannot proceed without subnet/VPC information for existing VPC references).
 

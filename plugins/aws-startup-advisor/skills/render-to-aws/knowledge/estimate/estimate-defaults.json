@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "currency": "USD",
+  "hours_per_month": 730,
+  "rounding": {"mode": "ROUND_HALF_EVEN", "line_decimals": 2, "sum_rounded_lines": true},
+  "source_cost_precedence": ["customer_invoice_or_export", "user_stated_monthly", "fresh_exact_render_pricing_cache", "unavailable"],
+  "aws_scenarios": ["capacity_preserving", "right_sized"],
+  "delta_formula": "right_sized_known_cost_monthly_usd - capacity_preserving_known_cost_monthly_usd",
+  "missing_rate": {"monthly_amount": null, "exclude_from_sum": true, "total_label": "known-cost floor", "is_floor": true},
+  "region_mismatch": {"reprice": false, "basis": "us-east-1", "require_region_note": true, "widen_accuracy": true},
+  "human_labor": {"include_as_consideration": true, "monthly_amount": null},
+  "cron_runtime": {"default": null, "schedule_is_runtime_evidence": false},
+  "calculator_url": null
+}

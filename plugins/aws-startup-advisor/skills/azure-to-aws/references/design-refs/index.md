@@ -53,7 +53,7 @@ Design runs.
 | `Microsoft.ContainerService/managedClusters`                                        | fast-path: **direct** | EKS                                                                             |
 | `Microsoft.ContainerService/managedClusters/agentPools`                             | fast-path: skip       | EKS node-group sizing on the parent                                             |
 | `Microsoft.ContainerRegistry/registries`                                            | fast-path: **direct** | ECR                                                                             |
-| `Microsoft.App/containerApps`                                                       | `compute.md`          | {Fargate}                                                                       |
+| `Microsoft.App/containerApps`                                                       | `compute.md`          | {Fargate} — ECS Express Mode when `ingress` is HTTP, standard service otherwise (`compute.md` § 7)                                                                       |
 | `Microsoft.ContainerInstance/containerGroups`                                       | `compute.md`          | {Fargate task} — a one-shot container group is a task, not a service            |
 | `Microsoft.App/managedEnvironments`                                                 | `compute.md`          | {ECS cluster + VPC}; usually a config source for its container apps instead     |
 
