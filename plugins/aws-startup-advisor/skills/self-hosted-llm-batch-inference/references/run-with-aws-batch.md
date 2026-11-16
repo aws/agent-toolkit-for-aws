@@ -48,6 +48,7 @@ Provision reusable resources with AWS CloudFormation or AWS CDK:
 
 - AWS Batch compute environment using `ECS_MANAGED_INSTANCES`.
 - `InstanceLaunchTemplate.CapacityOptionType` set to `SPOT`.
+- `InstanceLaunchTemplate.InstanceRequirements.AllowedInstanceTypes` set to the measured single-GPU candidates, since without it any eligible instance type can launch.
 - `ManagedInstancesProvider.InfrastructureOptimization.ScaleInAfter` set explicitly to `0`.
 - Batch job queue and job definition.
 - ECR repository with immutable image identification.
@@ -178,6 +179,8 @@ Map stable process exit classes to the AWS Batch retry strategy:
 | Missing authorization or staged artifact                           | Exit without retry.                                                       |
 | Persistent GPU out-of-memory at the declared contract              | Exit without retry.                                                       |
 | Invalid individual record                                          | Quarantine it; fail the run only when the declared threshold is exceeded. |
+
+AWS Batch retries every non-zero exit by default, so a row marked "Exit without retry" needs a matching `evaluateOnExit` entry with action `EXIT`, and a final entry that exits for any unmatched failure.
 
 Keep retry attempts bounded. A retry is useful only when replacement capacity or a transient
 dependency can change the outcome.
