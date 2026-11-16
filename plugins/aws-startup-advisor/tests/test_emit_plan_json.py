@@ -85,12 +85,16 @@ def test_azure_infra_run_emits_plan(tmp_path: Path) -> None:
 
 def test_invalid_or_missing_azure_estimates_still_fail_open(tmp_path: Path) -> None:
     golden = PLUGIN_ROOT / "fixtures" / "azure-iac-terraform" / "after-estimate"
+    expected_reason = {
+        "missing": "PLAN_SKIP | reason=no cost estimate to hand off",
+        "malformed": "PLAN_SKIP | reason=unreadable input:",
+    }
     for case in ("missing", "malformed"):
         run = tmp_path / case
         shutil.copytree(golden, run)
         status_path = run / ".phase-status.json"
         status = json.loads(status_path.read_text())
-        status.update({"owning_skill": "AZURE_TO_AWS", "run_id": f"azure-{case}"})
+        status.update({"owning_skill": "AZURE_TO_AWS", "run_id": "8c1e4f2a-3b6d-4a7e-9f10-5d2c8b7a6e41"})
         status_path.write_text(json.dumps(status, indent=2))
         estimate = run / "estimation-infra.json"
         if case == "missing":

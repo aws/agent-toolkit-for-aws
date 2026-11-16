@@ -641,15 +641,11 @@ Then, in order:
    not perpetuating into this generalized sentence — note this as an adjacent, pre-existing
    inaccuracy fixed at its source rather than carried forward.)
 
-   When Discover initializes the run's `.phase-status.json`, it must record
-   `"initiated_by": "LLM_TO_BEDROCK"` beside `owning_skill` (which is set to whichever of
-   `GCP_TO_AWS` / `AZURE_TO_AWS` actually ran — i.e. `$ASSESS_SKILL`'s own identifier — per
-   `discover.md`'s own instruction for a run started by another skill) **before** the provider
-   evaluates its infrastructure/mixed migration-credit notice suppression. GCP writes this
-   field in Discover Step 0 and then evaluates the notice; Azure's special early `_init`
-   explicitly writes it before evaluating the notice. This run was started by llm-to-bedrock,
-   and that is how telemetry attributes it.
-
+   The preinitialized `.phase-status.json` already records `"initiated_by": "LLM_TO_BEDROCK"`
+   beside `owning_skill` (`GCP_TO_AWS` or `AZURE_TO_AWS`, per `$ASSESS_SKILL`), so telemetry
+   attributes the run to llm-to-bedrock. Discover reuses that envelope and does not rewrite
+   it. Because the field is already present, the provider's infrastructure/mixed
+   migration-credit notice is suppressed.
    On `HANDOFF_OK`: at least one of `ai-workload-profile.json`, `gcp-resource-inventory.json`
    / `azure-resource-inventory.json`, or `billing-profile.json` is present in
    `$MIGRATION_DIR`.

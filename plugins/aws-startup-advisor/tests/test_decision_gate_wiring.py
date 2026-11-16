@@ -40,6 +40,7 @@ PLUGIN_README = PLUGIN_ROOT / "README.md"
 UPFRONT_DISCOVER_FILES = {
     "gcp": PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "phases" / "discover" / "discover.md",
     "heroku": PLUGIN_ROOT / "skills" / "heroku-to-aws" / "references" / "phases" / "discover" / "discover.md",
+    "azure": PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "phases" / "discover" / "discover.md",
 }
 AGENT_ADVISOR_MIGRATION_PLAN = (
     PLUGIN_ROOT / "skills" / "agent-advisor" / "references" / "phases"
@@ -69,7 +70,7 @@ def test_migration_credit_notice_is_vendored_and_qualified() -> None:
     assert APPROVED_CREDIT_COPY in text
     assert all(unsupported not in text for unsupported in SUPERSEDED_CREDIT_COPY)
     assert "plan.json" in text and "migrate/credits" in text
-    assert "GCP or Heroku" in text
+    assert "Azure, GCP, or Heroku" in text
     assert "upload below" not in text.lower()
     for provider in UPFRONT_DISCOVER_FILES:
         vendored = (
@@ -78,16 +79,6 @@ def test_migration_credit_notice_is_vendored_and_qualified() -> None:
         )
         assert vendored.read_bytes() == canonical
 
-    azure_vendored = (
-        PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "vendored"
-        / "migration" / "upfront-credits.md"
-    )
-    azure_discover = (
-        PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "phases"
-        / "discover" / "discover.md"
-    ).read_text(encoding="utf-8")
-    assert not azure_vendored.exists()
-    assert "upfront-credits.md" not in azure_discover
 
 
 def test_llm_migration_credit_notice_is_vendored_and_qualified() -> None:
@@ -269,6 +260,15 @@ def test_migration_credit_notice_runs_once_at_fresh_discover_start() -> None:
             assert initiated_by_write_idx < notice_idx < text.index("## Step 1: Scan")
             assert "AI-only" in text[notice_idx:notice_idx + 600]
             assert "initiated_by: LLM_TO_BEDROCK" in text[notice_idx:notice_idx + 600]
+        elif provider == "azure":
+            window = text[notice_idx - 1200:notice_idx + 900]
+            assert "LLM-preinitialized delegation" in window
+            assert "schema-valid `.phase-status.json`" in window
+            assert "do not\nrender the migration-credit notice" in window
+            assert "direct AI-only" in text[notice_idx:notice_idx + 900]
+            assert notice_idx < text.index("Discovery orientation", notice_idx)
+            assert "records `initiated_by: \"LLM_TO_BEDROCK\"`" not in text
+            assert "MUST include `initiated_by" not in text
         else:
             assert notice_idx < text.index("**When to offer capture:**", notice_idx)
 
@@ -303,7 +303,7 @@ def test_agent_advisor_delegation_uses_resume_routable_state(tmp_path: Path) -> 
     assert '{"initiated_by":"AGENT_ADVISOR"}' not in advisor_text
     assert envelope_start < advisor_text.index("### Phase A — Discover")
     for required in (
-        '"migration_id": "[MMDD-HHMM]"',
+        '"migration_id": "[selected $MIGRATION_DIR directory name, including any collision suffix]"',
         '"run_id": "[fresh random UUID from uuidgen]"',
         '"owning_skill": "GCP_TO_AWS"',
         '"current_phase": "discover"',
@@ -330,8 +330,17 @@ def test_agent_advisor_delegation_uses_resume_routable_state(tmp_path: Path) -> 
         "run_id": "11111111-2222-4333-8444-555555555555",
         "owning_skill": "GCP_TO_AWS",
         "initiated_by": "AGENT_ADVISOR",
+        "last_updated": "2026-04-01T12:00:00Z",
         "current_phase": "design",
-        "phases": {"discover": "completed", "clarify": "completed", "design": "in_progress"},
+        "phases": {
+            "discover": "completed",
+            "clarify": "completed",
+            "design": "in_progress",
+            "estimate": "pending",
+            "workshop": "pending",
+            "generate": "pending",
+            "feedback": "pending",
+        },
     }
     advisor_path = tmp_path / "advisor-state.json"
     provider_path = original_dir / ".phase-status.json"
