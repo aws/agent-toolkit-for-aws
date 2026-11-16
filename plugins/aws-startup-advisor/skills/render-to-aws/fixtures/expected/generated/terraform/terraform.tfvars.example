@@ -14,3 +14,4 @@ rr_workflow_task_package_path = "build/replace-with-reviewed-package.zip"
 rr_workflow_task_runtime      = "replace-with-runtime"
 rr_workflow_task_handler      = "replace-with-handler"
 rr_workflow_task_memory_mb    = 128
+workflow_log_retention_days = 30

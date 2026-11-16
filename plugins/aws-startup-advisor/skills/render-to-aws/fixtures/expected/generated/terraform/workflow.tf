@@ -1,7 +1,7 @@
 variable "workflow_log_retention_days" {
   description = "CloudWatch retention in days for Workflow execution logs and task logs."
   type        = number
-  default     = 90
+  default     = 30
   validation {
     condition     = contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653], var.workflow_log_retention_days)
     error_message = "workflow_log_retention_days must be a CloudWatch Logs retention value."

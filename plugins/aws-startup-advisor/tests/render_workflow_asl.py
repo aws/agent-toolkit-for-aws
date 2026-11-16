@@ -528,7 +528,7 @@ def _shared_variables() -> list[str]:
         block('variable "workflow_log_retention_days"', [
             A("description", "CloudWatch retention in days for Workflow execution logs and task logs."),
             A("type", S("number")),
-            A("default", 90),
+            A("default", 30),
             B("validation", [
                 A("condition", S(f"contains({retention}, var.workflow_log_retention_days)")),
                 A("error_message", "workflow_log_retention_days must be a CloudWatch Logs retention value."),
@@ -628,6 +628,7 @@ def _ecs_task(task: Task) -> list[str]:
             A("cpu", S(f"var.{r}_cpu")),
             A("memory", S(f"var.{r}_memory_mb")),
             A("execution_role_arn", S("aws_iam_role.ecs_execution.arn")),
+            A("task_role_arn", S("aws_iam_role.ecs_task.arn")),
             A("container_definitions", S("jsonencode(" + hcl_value(container, 2) + ")")),
             _tags(task.source_id),
         ]),
@@ -661,7 +662,7 @@ def _workflow(spec: Spec) -> list[str]:
         statements.append({
             "Effect": "Allow",
             "Action": ["iam:PassRole"],
-            "Resource": [Ref("aws_iam_role.ecs_execution.arn")],
+            "Resource": [Ref("aws_iam_role.ecs_execution.arn"), Ref("aws_iam_role.ecs_task.arn")],
             "Condition": {"StringEquals": {"iam:PassedToService": "ecs-tasks.amazonaws.com"}},
         })
         statements.append({

@@ -312,7 +312,7 @@ def test_standard_logging_retention_and_alarms(golden: Any, variant: Any) -> Non
     assert re.search(r'variable "workflow_tracing_enabled" \{.*?default\s+= false', text, re.S)
     assert re.search(r'variable "workflow_alarm_actions" \{.*?default\s+= \[\]', text, re.S)
     retention = re.search(r'variable "workflow_log_retention_days" \{(.*?)\n\}', text, re.S)
-    assert retention and "contains([1, 3, 5, 7, 14, 30, 60, 90," in retention.group(1) and "default     = 90" in retention.group(1)
+    assert retention and "contains([1, 3, 5, 7, 14, 30, 60, 90," in retention.group(1) and "default     = 30" in retention.group(1)
     # No DLQ: Step Functions invokes tasks synchronously, so nothing is asynchronous and nothing is dropped.
     assert "aws_sqs_queue" not in text and "dead_letter" not in text
 
@@ -330,7 +330,7 @@ def test_iam_scope_is_exact(golden: Any, variant: Any) -> None:
     assert statements == [
         {"Effect": "Allow", "Action": ["lambda:InvokeFunction"], "Resource": [asl.Ref("aws_lambda_function.task_prepare.arn"), asl.Ref("aws_lambda_function.task_undo.arn")]},
         {"Effect": "Allow", "Action": ["ecs:RunTask"], "Resource": [asl.Ref("aws_ecs_task_definition.task_render.arn")]},
-        {"Effect": "Allow", "Action": ["iam:PassRole"], "Resource": [asl.Ref("aws_iam_role.ecs_execution.arn")], "Condition": {"StringEquals": {"iam:PassedToService": "ecs-tasks.amazonaws.com"}}},
+        {"Effect": "Allow", "Action": ["iam:PassRole"], "Resource": [asl.Ref("aws_iam_role.ecs_execution.arn"), asl.Ref("aws_iam_role.ecs_task.arn")], "Condition": {"StringEquals": {"iam:PassedToService": "ecs-tasks.amazonaws.com"}}},
         {"Effect": "Allow", "Action": ["events:PutTargets", "events:PutRule", "events:DescribeRule"], "Resource": [asl.Ref('"arn:aws:events:${var.aws_region}:${data.aws_caller_identity.wf_ship.account_id}:rule/StepFunctionsGetEventsForECSTaskRule"')]},
     ]
     # No wildcard Action or Resource in any literal role policy of either Terraform.
@@ -483,6 +483,10 @@ def test_workflow_terraform_toolchain(name: str, tmp_path: Path) -> None:
             ('resource "aws_subnet" "private"', "network.tf"),
         ))
     target = _terraform(tmp_path, text)
+    compute = target / "compute.tf"
+    if 'resource "aws_iam_role" "ecs_task"' not in compute.read_text(encoding="utf-8"):
+        # The compute fragment owns the task role; stand in for it until the golden compute.tf declares it.
+        compute.write_text(compute.read_text(encoding="utf-8") + '\nresource "aws_iam_role" "ecs_task" {\n  name               = "${local.name_prefix}-ecs-task"\n  assume_role_policy = aws_iam_role.ecs_execution.assume_role_policy\n}\n', encoding="utf-8")
     policy = _run([sys.executable, str(POLICY), str(target)], tmp_path)
     assert policy.returncode == 0 and policy.stdout.startswith("POLICY_OK"), policy.stdout + policy.stderr
     terraform = shutil.which("terraform")
@@ -523,3 +527,35 @@ def test_ecs_workflow_input_and_no_return_data_reach_the_owner_guide() -> None:
     for needed in ("returns no data", "`ResultPath` is `null`", "Map fan-in", "S3 or DynamoDB"):
         assert needed in limits, needed
 
+
+
+def test_ecs_task_roles_logs_and_dependencies_are_stated_and_passable(variant: Any) -> None:
+    text = variant[1]
+    definition = re.search(r'resource "aws_ecs_task_definition" "task_render" \{(.*?)\n\}', text, re.S).group(1)  # type: ignore[union-attr]
+    roles = re.findall(r"(?:execution|task)_role_arn\s+= (aws_iam_role\.\w+\.arn)", definition)
+    assert roles == ["aws_iam_role.ecs_execution.arn", "aws_iam_role.ecs_task.arn"]
+    # Every role the task definition passes is covered by iam:PassRole.
+    passed = next(s for s in _statements(text, 'resource "aws_iam_role_policy" "wf_ship_tasks"') if s["Action"] == ["iam:PassRole"])
+    assert passed["Resource"] == [asl.Ref(role) for role in roles]
+    # Log group with retention variable, and awslogs configuration referencing it.
+    assert re.search(r'resource "aws_cloudwatch_log_group" "task_render" \{.*?retention_in_days = var\.workflow_log_retention_days', text, re.S)
+    assert re.search(r"awslogs-group\s+= aws_cloudwatch_log_group\.task_render\.name", text)
+    fragment = FRAGMENT.read_text(encoding="utf-8")
+    for token in ("aws_ecs_cluster.main", "aws_iam_role.ecs_execution", "aws_iam_role.ecs_task", "`awslogs`", "`observability.log_retention`", "compute-owned"):
+        assert token in fragment, token
+    # The compute dependency is described in the fragment; the compute trigger itself belongs to the compute PR.
+    assert "needs the compute fragment to run too" in fragment
+
+
+def test_workflow_retention_default_follows_clarify_default() -> None:
+    assert 'default     = 30' in (GOLDEN_TF / "workflow.tf").read_text(encoding="utf-8").split('variable "workflow_tracing_enabled"')[0]
+    example = (GOLDEN_TF / "terraform.tfvars.example").read_text(encoding="utf-8")
+    assert re.search(r"^workflow_log_retention_days\s+= 30$", example, re.M)
+
+
+def test_workflow_cutover_does_not_promise_unqualified_parallel_runs() -> None:
+    docs = (SKILL_ROOT / "references/phases/generate/generate-artifacts-docs.md").read_text(encoding="utf-8")
+    guide = (EXPECTED / "generated/MIGRATION_GUIDE.md").read_text(encoding="utf-8")
+    assert "side-effect-free verification executions" in docs and "`cutover.downtime_window`" in docs
+    assert "side-effect-free verification executions" in guide and "Run a few executions in parallel" not in guide
+    assert "\n### Workflow cutover\n" in guide and "\n## Workflow cutover\n" not in guide
