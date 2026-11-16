@@ -235,7 +235,59 @@ def estimate_from_design(design: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def ledger_from_design(design: dict[str, Any]) -> dict[str, Any]:
+# Reasons that rule Express Mode out for an HTTP service with some cause other than its release strategy.
+NON_RELEASE_STANDARD_REASONS = {"passthrough", "task_size", "efs_mount", "custom_domain_alb", "private_tasks"}
+
+
+def fargate_mode_rows(design: dict[str, Any]) -> list[tuple[str, str, str]]:
+    return [
+        (row["source_resource_id"], row["aws_config"].get("ecs_mode", "standard"), row["aws_config"].get("ecs_mode_reason", "unrecorded"))
+        for row in design["mappings"]
+        if "Fargate" in row["aws_service"]
+    ]
+
+
+def fargate_mode_statement(design: dict[str, Any]) -> str:
+    parts = []
+    for source_id, mode, reason in fargate_mode_rows(design):
+        shape = "ECS Express Mode with an AWS-provided HTTPS endpoint" if mode == "express" else "standard with a hand-built ALB or no load balancer"
+        parts.append(f"{source_id} is {shape} ({reason})")
+    return "Fargate deployment mode per service: " + "; ".join(parts) + "."
+
+
+def _canary_release(preferences: dict[str, Any] | None, source_id: str) -> bool:
+    """True when this service's release is canary, answered or defaulted.
+
+    An explicit rolling or blue_green answer is not the canary branch, even when an
+    earlier eliminator such as passthrough is the recorded ecs_mode_reason. No
+    compute.release_strategy answer defaults to canary.
+    """
+    if not preferences:
+        return True
+    for row in preferences.get("questions", []):
+        if row.get("question_id") == "compute.release_strategy" and row.get("resource_id") == source_id:
+            return row.get("value") == "canary"
+    return True
+
+
+def express_not_selected_warnings(
+    design: dict[str, Any], preferences: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "code": "ecs_express_not_selected_rolling_release",
+            "subject": source_id,
+            "detail": f"ECS Express Mode was not selected for {source_id} because ecs_mode_reason is {reason}, so the default canary release becomes a rolling update on the standard ECS service.",
+            "blocking": False,
+        }
+        for source_id, mode, reason in fargate_mode_rows(design)
+        if mode == "standard"
+        and reason in NON_RELEASE_STANDARD_REASONS
+        and _canary_release(preferences, source_id)
+    ]
+
+
+def ledger_from_design(design: dict[str, Any], preferences: dict[str, Any] | None = None) -> dict[str, Any]:
     buckets: dict[str, list[dict[str, Any]]] = {name: [] for name in ("generated", "consumed_topology", "deferred", "unsupported")}
     for mapping in design["mappings"]:
         kind = mapping["render_kind"]
@@ -258,6 +310,7 @@ def ledger_from_design(design: dict[str, Any]) -> dict[str, Any]:
     warnings = [
         {"code": "deferred_shared_ai_engine", "subject": "AI execution", "detail": "AI execution remains deferred to the provider-neutral shared engine.", "blocking": False},
         {"code": "conditional_workflow_generation_unsupported", "subject": "Workflow artifacts", "detail": "Workflow execution semantics require manual validation before artifact generation.", "blocking": False},
+        *express_not_selected_warnings(design, preferences),
     ]
     return {
         "schema_version": "1.0",
@@ -1441,7 +1494,12 @@ def emit_pack(root: Path, design: dict[str, Any], estimate: dict[str, Any], ledg
         _write_text(terraform / name, content)
     _write_text(
         terraform / "README.md",
-        "# Terraform\n\nBalanced infrastructure generated from the canonical Design mappings. For external DNS, request the public certificate in ACM, create its DNS validation records, wait for `Issued`, then supply `issued_certificate_arn`. Each service uses its own immutable image input bound to its Render source ID.",
+        "# Terraform\n\nBalanced infrastructure generated from the canonical Design mappings. For external DNS, request the public certificate in ACM, create its DNS validation records, wait for `Issued`, then supply `issued_certificate_arn`. Each service uses its own immutable image input bound to its Render source ID."
+        + "".join(
+            f"\n\n{row['detail']} (`{row['code']}`)"
+            for row in ledger["warnings"]
+            if row["code"] == "ecs_express_not_selected_rolling_release"
+        ),
     )
     _write_text(
         terraform / "terraform.tfvars.example",
@@ -1480,6 +1538,8 @@ Pre-copy `/var/data` to EFS, apply the final delta under writer quiescence, and 
 
 Validate private discovery, worker draining, cron overlap, health, and capacity.
 
+{fargate_mode_statement(design)}
+
 ## DNS and traffic cutover
 
 Lower DNS TTL, validate the certificate, stage traffic, and preserve writer quiescence.
@@ -1509,7 +1569,7 @@ EFS is priced from the reviewed rate row. AI is `deferred_shared_ai_engine`; Wor
 
     sections = {
         "decision-summary": "Complete deterministic decision summary.",
-        "architecture": "Build-once private managed architecture.",
+        "architecture": f"Build-once private managed architecture. {escape(fargate_mode_statement(design))}",
         "exec-targets": "".join(f'<p data-source-resource-id="{escape(row["source_resource_id"])}" data-aws-service="{escape(row["aws_service"])}">{escape(row["aws_service"])}</p>' for row in design["mappings"]),
         "exec-costs": f'<span data-cost-key="current_render">{estimate["current_costs"]["render_monthly"]}</span><span data-cost-key="capacity_preserving">{estimate["scenarios"]["capacity_preserving"]["known_cost_monthly_usd"]}</span><span data-cost-key="right_sized">{estimate["scenarios"]["right_sized"]["known_cost_monthly_usd"]}</span><span data-cost-key="delta">{estimate["delta_monthly_usd"]}</span>',
         "migration-data": "Postgres Database Migration Service writer quiescence integrity source retention.",

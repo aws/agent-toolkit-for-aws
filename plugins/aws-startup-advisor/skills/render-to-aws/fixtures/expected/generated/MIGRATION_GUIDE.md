@@ -38,6 +38,8 @@ Create the encrypted EFS access point for `/var/data`. Check capacity, ownership
 
 Verify private service discovery before public traffic. Drain the worker and preserve graceful shutdown/idempotency. Disable the Render cron before enabling EventBridge Scheduler, preventing overlap. Restore desired counts and pass health checks before proceeding.
 
+Fargate deployment mode per service: `rr-web` is standard with a hand-built ALB (`custom_domain_alb`) and its default canary release becomes a rolling update; `rr-private` is standard (`private_discovery`); `rr-worker` is standard (`no_http_listener`); `rr-cron` is standard (`no_http_listener`). No service uses ECS Express Mode.
+
 ## DNS and traffic cutover
 
 Lower external DNS TTL in advance. Before applying the listener, request the certificate in ACM, create every ACM DNS validation record at the external DNS provider, wait until ACM reports `Issued`, and provide the issued ARN to Terraform. Freeze releases, quiesce data writers, complete final deltas, shift a small traffic slice, observe, then move fully. DNS remains external; Terraform must not fabricate Route 53 ownership.
