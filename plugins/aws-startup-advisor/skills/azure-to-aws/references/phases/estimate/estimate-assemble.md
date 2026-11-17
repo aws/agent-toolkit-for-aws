@@ -108,7 +108,7 @@ Say a row name to change it — I'll re-run Design and Estimate and show this pa
 
 [A] That's what I needed for now — stop here with the design and the estimate
 [B] Explore what-if scenarios (region, HA, compute target, architecture) before deciding
-[C] Generate the migration artifacts — Terraform, migration scripts, and docs
+[C] Generate the migration artifacts — Terraform, the migration guide, and the report
 ```
 
 For an AI-only run (Step 1 item 0 — no `estimation-infra.json` because

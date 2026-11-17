@@ -184,13 +184,13 @@ knowledge, never as a two-pass edit of an already-shown message:
 
 - If the writer printed `PLAN_SKIP` (no `plan.json`), close with: "Your decision is
   saved at `DECISION.md`. If you decide to migrate, say 'generate the Terraform and
-  migration scripts' — everything is saved and I'll pick up from here."
+  the migration guide' — everything is saved and I'll pick up from here."
 - If the writer printed `PLAN_OK`, close with that same sentence and also name
   `plan.json` in it as plain text, with no link (the What's next block below
   carries the only link) — e.g. "Your decision is saved at `DECISION.md`, and your
   uploadable plan at `plan.json` — upload it to AWS Startups Migrate to see if you
   qualify for AWS credits. If you decide to migrate, say 'generate the Terraform
-  and migration scripts' — everything is saved and I'll pick up from here."
+  and the migration guide' — everything is saved and I'll pick up from here."
 
 **Web-handoff — only when the writer above printed `PLAN_OK`** (if it printed
 `PLAN_SKIP`, omit this whole block; there is no file to upload).

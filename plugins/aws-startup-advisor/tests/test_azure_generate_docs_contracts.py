@@ -14,6 +14,9 @@ SKILL = PLUGIN_ROOT / "skills" / "azure-to-aws"
 DOCS = SKILL / "references" / "phases" / "generate" / "generate-artifacts-docs.md"
 GENERATE = SKILL / "references" / "phases" / "generate" / "generate.md"
 SKILL_MD = SKILL / "SKILL.md"
+ESTIMATE = SKILL / "references" / "phases" / "estimate" / "estimate.md"
+ESTIMATE_ASSEMBLE = SKILL / "references" / "phases" / "estimate" / "estimate-assemble.md"
+DECISION_CORE = SKILL / "references" / "shared" / "report-decision-core.md"
 
 
 def _read(path: Path) -> str:
@@ -83,6 +86,16 @@ def test_generate_skill_text_does_not_promise_migration_scripts() -> None:
     assert "Emit the Terraform, the scripts, the docs, and the report" not in generate
     assert "Emit the Terraform, the docs, and the report (no migration scripts yet)" in generate
     assert "asked for Terraform/migration scripts" not in generate
+    # The decision gate and the decision report speak for the same Generate phase, so
+    # they must not offer migration scripts either.
+    gate = _read(ESTIMATE_ASSEMBLE)
+    assert "[C] Generate the migration artifacts — Terraform, migration scripts, and docs" not in gate
+    assert "[C] Generate the migration artifacts — Terraform, the migration guide, and the report" in gate
+    for path in (ESTIMATE, DECISION_CORE):
+        text = _read(path)
+        assert "generate the Terraform and migration scripts" not in text
+        assert "and migration scripts'" not in text
+        assert "generate the Terraform and the migration guide" in text or "and the migration guide'" in text
 
 
 def test_generate_postconditions_still_require_a_verification_section() -> None:
