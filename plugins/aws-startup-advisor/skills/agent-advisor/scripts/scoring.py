@@ -16,7 +16,7 @@ DIMENSIONS = [
     "session_duration", "traffic_pattern", "platform_fit", "session_state",
     "ops_preference", "isolation", "memory_needs", "multi_agent", "framework",
     "existing_cluster", "multi_cloud", "idle_resume", "compute_tier",
-    "launch_concurrency", "instance_type_requirement",
+    "launch_concurrency", "instance_type_requirement", "expected_scale",
 ]
 
 # Legal answer values per scoring dimension (the closed set the engine reasons about).
@@ -36,6 +36,7 @@ LEGAL_VALUES = {
     "compute_tier": ["light", "heavy_non_gpu", "gpu", "unknown"],
     "launch_concurrency": ["high", "moderate", "low", "unknown"],
     "instance_type_requirement": ["yes", "no", "unknown"],
+    "expected_scale": ["prototype", "growing", "high", "unknown"],
 }
 
 DEFAULTS = {
@@ -169,6 +170,16 @@ def _apply_hard_constraints(answers, profiles, run_evidence=None):
     return _evaluate_hard_constraints(answers, profiles, verifications)[0]
 
 
+def _agentcore_needs_instances(answers):
+    """Answers that require AgentCore's Instances compute type (AWS-managed EC2 via a capacity
+    provider): sessions over 8h, GPU or heavy compute, or a chosen instance type."""
+    return (
+        answers.get("session_duration") == "over_8hr"
+        or answers.get("compute_tier") in ("gpu", "heavy_non_gpu")
+        or answers.get("instance_type_requirement") == "yes"
+    )
+
+
 def _apply_conditional_affinities(affinities, profile, answers):
     """`affinities` with the profile's `conditional_affinities` applied. Each rule replaces some
     scores in one dimension when every `when` answer matches, for example no Nitro Sandbox credit
@@ -180,12 +191,23 @@ def _apply_conditional_affinities(affinities, profile, answers):
     return affinities
 
 
+def _effective_affinities(profile, answers):
+    """A profile's affinities as scored for these answers: compute-type overrides first (AgentCore
+    Instances bills EC2 plus a management fee with no scale-to-zero, so its cost-driven dimensions
+    such as expected_scale use the Instances values), then the profile's conditional_affinities."""
+    affinities = profile.get("affinities", {})
+    overrides = profile.get("compute_type_affinities", {})
+    if profile["id"] == "agentcore" and "instances" in overrides and _agentcore_needs_instances(answers):
+        affinities = {**affinities, **overrides["instances"]}
+    return _apply_conditional_affinities(affinities, profile, answers)
+
+
 def _compute_scores(answers, profiles, eliminated):
     scores = {}
     for profile in profiles:
         if profile["id"] in eliminated:
             continue
-        affinities = _apply_conditional_affinities(profile.get("affinities", {}), profile, answers)
+        affinities = _effective_affinities(profile, answers)
         total = 0
         for dim in DIMENSIONS:
             value = answers.get(dim, "unknown")
@@ -239,12 +261,7 @@ def _select_agentcore_compute_type(answers, verdict, co_recommend=None):
     )
     if not agentcore_wins:
         return None
-    needs_instances = (
-        answers.get("session_duration") == "over_8hr"
-        or answers.get("compute_tier") in ("gpu", "heavy_non_gpu")
-        or answers.get("instance_type_requirement") == "yes"
-    )
-    return "instances" if needs_instances else "microvms"
+    return "instances" if _agentcore_needs_instances(answers) else "microvms"
 
 
 AGENTCORE_ALWAYS_SERVICES = ["identity", "observability", "evaluations", "optimization"]
@@ -283,9 +300,8 @@ def _agentcore_revisit_triggers_by_runtime(answers, profiles, eliminated):
     def gain(profile, field, value, current):
         # Reads only the trigger's own dimension: a conditional rule keyed on `field` that changes
         # another dimension is not counted. No AgentCore trigger is on a `when` field today.
-        base = profile.get("affinities", {})
-        after = _apply_conditional_affinities(base, profile, {**answers, field: value}).get(field, {})
-        before = _apply_conditional_affinities(base, profile, answers).get(field, {})
+        after = _effective_affinities(profile, {**answers, field: value}).get(field, {})
+        before = _effective_affinities(profile, answers).get(field, {})
         return after.get(value, NEUTRAL_SCORE) - before.get(current, NEUTRAL_SCORE)
 
     result = {}
