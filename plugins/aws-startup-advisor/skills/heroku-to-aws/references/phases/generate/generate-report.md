@@ -85,6 +85,19 @@ production by name or pipeline stage", where `N` is the sum of all tier counts a
 is the `prod` count. When the field is absent, omit the line and never derive the counts
 here).
 
+From `estimation-infra.json` `current_costs.rightsizing_candidates[]` (present when any
+Postgres database holds 25% or less of its plan's storage and a smaller same-family plan
+fits twice its data — the Clarify Q6d Right-sizing rule): render a **Right-size before
+you move** table inside `exec-costs`, below the Heroku-vs-AWS table — top ten by saving,
+columns Database (`heroku_app` plus the add-on `resource_id`, so two databases on one app
+stay distinct) / Role (`unknown` when discovery wrote no `pg_role`) / Plan / Plan storage /
+Data / Used % / Fitting plan / Saving per month, then one line with the total
+`rightsizing_monthly_saving_usd` and the sentences: "This is a Heroku-side saving available
+today, before any migration; it is not counted in the AWS figure. Fitting plan is chosen
+by storage only; a plan sized for memory, connections or query load may be correct as it
+is." When `database_sizing_basis` is `measured`, add: "AWS targets for the databases
+confirmed in Clarify Q6d are sized from measured data."
+
 From `estimation-infra.json` `current_costs.contract` (present only when the user
 supplied a Heroku order form in Clarify): render a **Contract reconciliation** table
 inside `exec-costs`, below the Heroku-vs-AWS table — rows per contract category
