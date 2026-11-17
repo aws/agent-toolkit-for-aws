@@ -17,8 +17,8 @@ PRICING_CACHE_FILES = [
 ]
 
 OPENAI_ON_BEDROCK_FILES = [
-    PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "shared" / "openai-on-bedrock.md",
-    PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "shared" / "openai-on-bedrock.md",
+    PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "vendored" / "ai" / "openai-on-bedrock.md",
+    PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "vendored" / "ai" / "openai-on-bedrock.md",
 ]
 
 DESIGN_AI_FILES = [

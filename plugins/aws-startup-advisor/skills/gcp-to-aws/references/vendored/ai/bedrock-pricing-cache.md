@@ -305,7 +305,7 @@ Per [Amazon Bedrock pricing](https://aws.amazon.com/bedrock/pricing/) (DeepSeek)
 
 ### OpenAI on Bedrock (GPT-6, GPT-5.6, and gpt-oss)
 
-See `shared/openai-on-bedrock.md` for model IDs, endpoint paths, regions, quotas, and caching rules. **Bedrock
+See `references/vendored/ai/openai-on-bedrock.md` for model IDs, endpoint paths, regions, quotas, and caching rules. **Bedrock
 in-region is priced at parity with OpenAI's _data residency_ tier — exactly 1.10x OpenAI's standard list price** — so
 a same-model migration costs about 10% MORE, not the same. Do not describe it as cost-neutral.
 
@@ -338,7 +338,7 @@ Full request — input, cache, and output — is repriced at 2x input/cache and 
 
 GPT-6 Astra and GPT-6.1 Sol also support a 6x-Standard **Ultrafast** service tier (`service_tier: "ultrafast"`),
 confirmed on both model cards' "Service Tiers" sections; GPT-6 Sol, GPT-6 Luna, and GPT-6.1 Terra are Standard-only. None of the
-five GPT-6 models support Priority, Flex, or Reserved. See `shared/openai-on-bedrock.md` for the full breakdown,
+five GPT-6 models support Priority, Flex, or Reserved. See `references/vendored/ai/openai-on-bedrock.md` for the full breakdown,
 including per-model Ultrafast availability by region.
 
 #### Proprietary GPT models — short context (272K), in-region

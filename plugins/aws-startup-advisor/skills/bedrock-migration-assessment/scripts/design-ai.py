@@ -222,7 +222,7 @@ def build_plan(profile: dict, prefs: dict) -> dict:
         if provider in providers:
             guides += [f"{GUIDE_DIR}/{g}" for g in PROVIDER_GUIDES[provider]]
     if "openai" in providers:
-        guides.append("references/shared/openai-on-bedrock.md")
+        guides.append(f"{GUIDE_DIR}/openai-on-bedrock.md")
     if any(g["product"] == "openrouter" for g in profile["gateways"]):
         guides.append(f"{GUIDE_DIR}/ai-openrouter-to-bedrock.md")
     constraints = {key: _constraint(prefs, "ai_constraints", key, default) for key, default in DEFAULTS.items()}

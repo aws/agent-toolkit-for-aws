@@ -57,7 +57,7 @@ lower-cost reasoning alternative; Astra does not make existing GPT-5.x sources r
 > the blog, the cards still win.
 
 **Not on Bedrock (as of this refresh):** GPT-4o, GPT-4.1, GPT-4 / GPT-4 Turbo, GPT-3.5 Turbo, the o-series
-(o1/o3/o4-mini), GPT-5 / GPT-5.1 / GPT-5.2, Codex (unverified — see the Codex note below), and the `*-Pro` variants
+(o1/o3/o4-mini), GPT-5 / GPT-5.1 / GPT-5.2, Codex-specific API models (see the Codex note below), and the `*-Pro` variants
 (GPT-5.5 Pro, GPT-5.4 Pro). Sources whose model is on this list have no same-model landing target — see
 `ai-openai-to-bedrock.md` for the two-option path.
 
@@ -132,7 +132,7 @@ row (In-Region "Not supported"; Geo `us.openai.gpt-5.5` / `us.openai.gpt-5.4`; G
 | Endpoint          | Reach                         | Model id form                                                                           | Base URL                                                   |
 | ----------------- | ----------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | `bedrock-mantle`  | In-region only                | `openai.gpt-5.6-sol` / `-terra` / `-luna`                                               | `https://bedrock-mantle.{region}.api.aws/openai/v1`        |
-| `bedrock-runtime` | CRIS only (no in-region form) | Geo `us.openai.gpt-5.6-*` (or `in.` in India Regions), Global `global.openai.gpt-5.6-*` | `https://bedrock-runtime.{region}.amazonaws.com/openai/v1` |
+| `bedrock-runtime` | CRIS only (no in-region form) | Geo `us.openai.gpt-5.6-*` (Terra/Luna also `in.`, `us-gov.`), Global `global.openai.gpt-5.6-*` | `https://bedrock-runtime.{region}.amazonaws.com/openai/v1` |
 
 The GPT-5.6 model cards now carry an explicit tip: _"Whenever possible, we recommend using the `bedrock-runtime`
 endpoint for new applications."_
@@ -142,13 +142,15 @@ Constraints that still break naive assumptions:
 1. **The path segment is `/openai/v1` on BOTH endpoints** — a bare `/v1` 404s. Every GPT model card states the
    mantle path explicitly, and the runtime example gives `bedrock-runtime.{region}.amazonaws.com/openai/v1`.
 2. **The endpoints take different model-id forms.** Mantle takes the bare `openai.gpt-5.6-*` id and has no CRIS;
-   `bedrock-runtime` takes ONLY a CRIS inference-profile id (`us.` / `in.` / `global.` prefixed) and has no
+   `bedrock-runtime` takes ONLY a CRIS inference-profile id (`us.` or `global.` prefixed; Terra and Luna also have `in.` for India Regions and `us-gov.` for GovCloud) and has no
    in-region form. `bedrock:ListInferenceProfiles` returns the CRIS profiles (5.6, and `us.`/`global.` for
    GPT-5.5 / GPT-5.4 per their cards); it never returns the bare mantle ids.
 3. **API surfaces differ by endpoint.** The 5.6 cards list `Responses`, `Chat Completions`, `Invoke`, and
-   `Converse` as supported APIs, with runtime-side feature splits: **Guardrails are Converse-only; prompt caching is
-   Responses-only on runtime**; server-side tool use, structured outputs, and application inference profiles are NOT
-   supported on runtime (server-side tool calling IS supported on mantle). The GPT-5.5 / GPT-5.4 cards (read
+   `Converse` as supported APIs, with runtime-side feature splits (cards read 2026-11-08): **Guardrails and
+   application inference profiles are Converse-only; implicit prompt caching applies on all four APIs and explicit
+   caching is Responses-only; JSON Schema structured outputs are documented for non-streaming Responses and Chat
+   Completions calls**; server-side tool use is NOT supported on runtime (server-side tool calling IS supported on
+   mantle). The GPT-5.5 / GPT-5.4 cards (read
    2026-11-06) list `Responses`, `Chat Completions` and `Converse` on runtime (no `Invoke`) and `Responses` and
    `Chat Completions` on mantle; on runtime they list Guardrails and application inference profiles as
    Converse-only, and implicit prompt caching and structured outputs as Responses-only. Chat Completions is a
@@ -274,8 +276,8 @@ only.** All five additionally reach broad commercial regions via `bedrock-runtim
 inference profiles), same as GPT-5.6 — a region outside the mantle matrix does not block the same-model path for
 any GPT-6 model, it just means using the runtime endpoint with a CRIS id.
 
-**GPT-5.6 additionally reaches most commercial regions via `bedrock-runtime` CRIS** (Geo `us.` / `in.`, Global
-`global.` inference profiles; the Sol card's runtime footprint spans 30+ regions). So a region outside the mantle
+**GPT-5.6 additionally reaches most commercial regions via `bedrock-runtime` CRIS** (Geo `us.`, plus `in.` and
+`us-gov.` for Terra and Luna; Global `global.` inference profiles; the Sol card's runtime footprint spans 30+ regions). So a region outside the mantle
 matrix does NOT make the same-model path unavailable for GPT-5.6 — it means using the runtime endpoint with a CRIS
 id, with the data-residency implications of cross-region routing.
 
@@ -455,14 +457,17 @@ days for automated abuse detection; retained inputs/outputs are stored and proce
 OpenAI unless the customer opts in. Prompts and completions are not used to train models. Calls run under the
 customer's IAM policies, inside their VPC, logged to CloudTrail, and in-region inference keeps data in-region.
 
-**Codex on Bedrock: unverified — do not price it.** An earlier revision of this file stated Codex is GA on Bedrock
-with pay-per-token pricing. As of 2026-09-02, Codex does not appear on the
-[OpenAI model card index](https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards-openai.html), and no
-Codex rate exists on the Bedrock pricing page, in `references/vendored/ai/bedrock-pricing-cache.md`, or in `bedrock_pricing.py`'s static table.
-When the source workload is a coding agent, re-check the model card index first; if Codex is still absent, treat it
-as "a model not in the catalog above" (see the table in this section): plan a cross-family target (GPT-5.6 Sol /
-Terra are the coding-agent tier fits) and price that target — or report `pricing_source: "unverified"` with no
-dollar figure. Never attach a fabricated Codex rate to an estimate.
+**Codex on Bedrock: the agent, not a model.** OpenAI's Codex coding agent can send its model requests to Bedrock
+with the GPT-5.6 models (Sol, Terra, Luna): runtime CRIS ids such as `us.openai.gpt-5.6-sol`, or the bare mantle id
+([AWS Machine Learning Blog, 2026-11-11](https://aws.amazon.com/blogs/machine-learning/openai-codex-on-amazon-bedrock/)).
+There is no separate Codex model on Bedrock: it is not on the
+[OpenAI model card index](https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards-openai.html) (checked
+2026-11-16), and no Codex rate exists on the Bedrock pricing page or in `references/vendored/ai/bedrock-pricing-cache.md`.
+So a coding-agent source that keeps the Codex agent is a same-model GPT-5.6 plan, priced at the GPT-5.6 model it
+calls. A source that calls a Codex-specific API model has no same-model target: treat it as "a model not in the
+catalog above" (see the table in this section), plan a cross-family target (GPT-5.6 Sol / Terra are the coding-agent
+tier fits) and price that target, or report `pricing_source: "unverified"` with no dollar figure. Never attach a
+Codex rate to an estimate.
 
 ---
 
@@ -478,7 +483,8 @@ This model family is moving fast (two GA waves and a repricing inside 10 weeks).
 4. Recheck whether the Price List API has gained GPT-5.x coverage; if it has, drop the caveat above and let
    `estimate-ai.md` price these models from the MCP.
 5. Recheck whether Chat Completions and `bedrock-runtime` support have been added or clarified.
-6. Feed any lifecycle change into `ai-model-lifecycle.md` and any rate change into `references/vendored/ai/bedrock-pricing-cache.md`.
+6. Feed any lifecycle change into `ai-model-lifecycle.md` and any Bedrock rate change into
+   `references/vendored/ai/bedrock-pricing-cache.md` through its canonical shared source.
 7. **Re-verify within 14 days of any merge touching this file.** Item 5's prediction fired on 2026-08-21: between
    2026-08-10 and 2026-08-21 the GPT-5.6 family gained a `bedrock-runtime`/CRIS path, published Global CRIS pricing
    at standard-price parity, and listed Chat Completions/Converse as supported — invalidating three of this file's
