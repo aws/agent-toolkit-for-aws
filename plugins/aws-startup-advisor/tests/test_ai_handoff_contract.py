@@ -26,7 +26,8 @@ def test_heroku_discover_writes_the_shared_profile_and_does_not_design_it():
     text = _text(HEROKU_DISCOVER)
     assert "skills/bedrock-migration-assessment/references/phases/discover/discover-app-code.md" in text
     assert "ai-workload-profile.json" in text
-    assert "validate-ai-profile.py" in text
+    assert "skills/bedrock-migration-assessment/scripts/validate-ai-profile.py" in text
+    assert "$PLUGIN_ROOT/" not in text
     assert '"status": "deferred_shared_ai_engine"' in text
     assert "Do not put this object in `.phase-status.json`" in text
     assert "openai-on-bedrock.md" not in text
