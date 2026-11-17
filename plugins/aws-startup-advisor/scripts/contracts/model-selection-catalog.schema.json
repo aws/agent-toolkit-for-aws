@@ -155,10 +155,6 @@
             "evidence": { "type": "string" }
           }
         },
-        "pricing": {
-          "description": "Cached Standard-tier price table for the model (USD per 1M tokens) with its source and read date; the estimate phases read it.",
-          "type": "object"
-        },
         "paths": {
           "type": "object",
           "minProperties": 1,

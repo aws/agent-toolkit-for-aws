@@ -290,25 +290,6 @@
         "govcloud": [],
         "evidence": "bedrock-mantle in-region rows of the GPT-5.5 model card, read 2026-11-06: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html"
       },
-      "pricing": {
-        "source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html (read 2026-11-06); USD per 1M tokens, Standard tier; the card lists the In-Region inference option only",
-        "commercial_short_context_le_272k": {
-          "input": 5.5,
-          "cache_read": 0.55,
-          "output": 33.0
-        },
-        "commercial_long_context_gt_272k": {
-          "input": 11.0,
-          "cache_read": 1.1,
-          "output": 49.5
-        },
-        "service_tiers": {
-          "standard": true,
-          "priority": false,
-          "flex": false,
-          "reserved": false
-        }
-      },
       "paths": {
         "mantle_openai_responses": {
           "available": true,
@@ -687,30 +668,6 @@
           "us-gov-west-1"
         ],
         "evidence": "bedrock-mantle in-region rows of the GPT-5.4 model card, read 2026-11-06: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html"
-      },
-      "pricing": {
-        "source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html (read 2026-11-06); USD per 1M tokens, Standard tier; the card lists the In-Region inference option only",
-        "commercial_short_context_le_272k": {
-          "input": 2.75,
-          "cache_read": 0.275,
-          "output": 16.5
-        },
-        "commercial_long_context_gt_272k": {
-          "input": 5.5,
-          "cache_read": 0.55,
-          "output": 24.75
-        },
-        "govcloud_us_west_short_context_le_272k": {
-          "input": 3.375,
-          "cache_read": 0.3375,
-          "output": 20.25
-        },
-        "service_tiers": {
-          "standard": true,
-          "priority": false,
-          "flex": false,
-          "reserved": false
-        }
       },
       "paths": {
         "mantle_openai_responses": {
