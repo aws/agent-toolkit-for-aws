@@ -73,3 +73,11 @@ def test_feature_table_codex_row_matches_the_guide():
     row = next(line for line in table.splitlines() if line.startswith("| Codex "))
     assert "Not verified on Bedrock" not in row and "Do not price" not in row
     assert "coding agent on GPT-5.6" in row and "Price the GPT-5.6 model it calls" in row
+
+
+def test_no_shared_file_points_at_the_deleted_private_copies():
+    # The private copies are gone; a shared file vendored into a skill must name the vendored
+    # path. (check-skill-refs skips shared/vendored files, so it cannot catch this.)
+    for f in (SKILLS / "shared").rglob("*.md"):
+        text = f.read_text()
+        assert not re.search(r"(?<![/\w])(references/)?shared/openai-on-bedrock\.md", text), f
