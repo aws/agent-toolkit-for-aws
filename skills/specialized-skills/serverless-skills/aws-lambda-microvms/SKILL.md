@@ -1,7 +1,7 @@
 ---
 name: aws-lambda-microvms
 description: Builds, runs, debugs, and operates applications on AWS Lambda MicroVMs — Firecracker-isolated, snapshot-resumable serverless compute environments running inside a container with up to 8 hr lifetimes. Applicable when workloads need strong isolation between tenants, isolated serverless compute, sandbox compute, or secure multi-tenant execution. Also suited for AI/agent code-execution sandboxes, interactive code playgrounds and notebooks (Jupyter, REPLs, dev environments running user-supplied code), reinforcement-learning environments, multi-tenant CI executors and build runners, sessionful game or simulation servers, or isolated security scanners. Also applicable when the workload needs long-lived sessions, a real port-listening server (gRPC, WebSocket, custom TCP protocols), state preserved across periods of inactivity (suspend/resume), container-level access (FUSE, eBPF, custom syscalls), or session-affine routing.
-version: 3
+version: 4
 ---
 
 # AWS Lambda MicroVMs
@@ -205,7 +205,7 @@ Pick the reference that matches your task:
 - [`references/getting-started.md`](references/getting-started.md) — prerequisites (S3 bucket, build role trust policy), packaging, end-to-end CLI walkthrough, first run + token + curl.
 - [`references/lifecycle-model.md`](references/lifecycle-model.md) — image vs. MicroVM state machines, the six lifecycle hooks (paths, timeouts, what to do in each), idle/suspend/resume semantics, hook payloads.
 - [`references/snapshots-and-uniqueness.md`](references/snapshots-and-uniqueness.md) — what gets snapshotted, the uniqueness pitfall, CSPRNGs by language, env vars vs. run configuration, snapshot size inspection.
-- [`references/networking.md`](references/networking.md) — ingress vs. egress connectors, port routing, `X-aws-proxy-*` headers, WebSocket subprotocols, HTTP/2 / gRPC, VPC egress.
+- [`references/networking.md`](references/networking.md) — ingress vs. egress connectors, port routing, `X-aws-proxy-*` headers, WebSocket subprotocols, HTTP/2 / gRPC, VPC egress. For public IPv4 egress through a VPC egress connector without a NAT gateway, set `ElasticIpConfiguration` `Type: ServiceManaged` on the connector (public subnets and an internet gateway required).
 - [`references/iam-and-security.md`](references/iam-and-security.md) — build role vs. execution role, trust policies, auth tokens (regular vs. shell), `lambda:PassNetworkConnector`.
 - [`references/troubleshooting.md`](references/troubleshooting.md) — image build error codes, run/connect failures, hook timeouts, network connector issues, debugging via shell access.
 
