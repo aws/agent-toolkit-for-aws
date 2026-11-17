@@ -23,7 +23,7 @@ collaboration, and workloads that must pick an instance type (Instances).
 | Host model   | one agent per microVM           | multiple agents share host + filesystem (`/tmp/agentcore-session/<session-id>/`) |
 | Billing      | consumption; $0 during I/O wait | EC2 in YOUR account (Savings Plans / ODCRs apply) + AgentCore management fee     |
 | Idle         | scale to zero                   | session stop/restart (hibernate)                                                 |
-| Launch scope | all AgentCore regions           | Linux only; limited launch regions — verify via MCP                              |
+| Launch scope | all AgentCore regions           | Linux only; 15 Regions (2026-11-16 snapshot, see Hard limits) — verify via MCP   |
 
 Routing (mirrors `scoring.py::_select_agentcore_compute_type`): >8h sessions, GPU or
 heavy compute, or an instance-type requirement → Instances; everything else → microVMs.
@@ -33,7 +33,12 @@ An always-on service is still a better ECS/EKS fit — Instances sessions end at
 
 - microVMs session cap: 8h; Instances session cap: 14 days (not indefinite)
 - microVMs compute cap: 2 vCPU / 8 GB (Instances lifts this via EC2 instance choice)
-- Instances launch regions: limited set at launch (2026-08) — verify current list
+- Instances Regions (2026-11-16 snapshot, 15 Regions): `us-east-1`, `us-east-2`, `us-west-1`,
+  `us-west-2`, `ca-central-1`, `eu-central-1`, `eu-west-1`, `eu-west-2`, `eu-west-3`, `eu-north-1`,
+  `ap-south-1`, `ap-northeast-1`, `ap-northeast-2`, `ap-southeast-1`, `ap-southeast-2`
+  ([Region expansion announcement](https://aws.amazon.com/about-aws/whats-new/2026/11/agentcore-aws-regions/)).
+  Verify Instances availability in the intended Region before recommending the Instances
+  compute type; microVMs availability does not establish Instances availability.
 - AWS Agent Registry GA Regions (2026-10-28 snapshot, 9 Regions): `us-east-1`, `us-west-2`,
   `ap-northeast-1`, `ap-southeast-2`, `eu-west-1`, `eu-west-2`, `eu-central-1`, `us-east-2`, `ca-central-1`
   ([Region expansion announcement](https://aws.amazon.com/about-aws/whats-new/2026/10/aws-agent-registry-four-regions/)).
