@@ -119,6 +119,24 @@ def test_guide_and_endpoint_pointers_name_the_assessment_skills_copies() -> None
 # --------------------------------------------------------------------------- (b) readiness handshake only
 
 READINESS = 'python3 "$BMA_BASE/scripts/readiness.py" "$MIGRATION_DIR" --through estimate'
+# The heading itself, at the start of a line: Step 1.5 quotes the heading text in prose.
+A3_HEADING = "\n### A3 — Locate Assess output"
+
+
+def _readiness_reasons() -> set[str]:
+    """Every reason readiness.py can return: the first argument of each NotReady(...) and the
+    missing/unreadable reasons passed to _json(...)."""
+    import ast
+    tree = ast.parse((BMA / "scripts" / "readiness.py").read_text(encoding="utf-8"))
+    reasons = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            args = [a.value for a in node.args if isinstance(a, ast.Constant) and isinstance(a.value, str)]
+            if node.func.id == "NotReady":
+                reasons.update(args[:1])
+            elif node.func.id == "_json":
+                reasons.update(args)
+    return reasons
 
 
 def test_a2_runs_readiness_through_estimate_and_stops_on_any_non_ready_answer() -> None:
@@ -130,15 +148,16 @@ def test_a2_runs_readiness_through_estimate_and_stops_on_any_non_ready_answer() 
     assert '**Exit 1, `"ready": false`**' in a2 and "→ **stop.**" in a2
     assert "tell them to resume the run with bedrock-migration-assessment" in a2
     # every reason the script can return is named, so none is treated as ready
-    readiness = (BMA / "scripts" / "readiness.py").read_text(encoding="utf-8")
-    reasons = set(re.findall(r'NotReady\("([a-z_]+)"', readiness)) | {"artifact_missing", "artifact_unreadable"}
+    reasons = _readiness_reasons()
+    assert {"status_not_found", "status_unreadable", "artifact_missing", "not_this_skill"} <= reasons, reasons
+    assert len(reasons) == 12, reasons
     for reason in reasons:
         assert f"`{reason}`" in a2, reason
     assert "**Re-check before every later re-read.**" in a2 and "compare each printed `sha256`" in a2
 
 
 def test_readiness_answer_and_hashes_are_recorded_in_this_skills_own_run() -> None:
-    a3 = _flat(_section(TEXT, "### A3 — Locate Assess output", "## Phase B — Execute Prep"))
+    a3 = _flat(_section(TEXT, A3_HEADING, "## Phase B — Execute Prep"))
     assert "Write A2's readiness JSON, exactly as printed, to `$BEDROCK_RUN_DIR/assessment-readiness.json`" in a3
     assert "`migration_id`, `run_id`, and each artifact's `path` and `sha256`" in a3
     b1 = _flat(_section(TEXT, "### B1 — Read Assess outputs", "### B2"))
@@ -149,13 +168,24 @@ def test_the_assessment_runs_state_file_is_never_read_or_written_by_this_skill()
     for gone in ("State Validation", "phases.workshop", "Workshop guard", "$MIGRATION_DIR/.phase-status.json",
                  "HANDOFF_OK", "GATE_FAIL"):
         assert gone not in TEXT, gone
-    # Outside A3 (which creates $BEDROCK_RUN_DIR/.phase-status.json), a sentence naming a state
-    # file is a prohibition, this skill's own file, or bedrock-migration-assessment's own updates.
-    a3 = _section(TEXT, "### A3 — Locate Assess output", "## Phase B — Execute Prep")
+    # Outside A3 (which creates $BEDROCK_RUN_DIR/.phase-status.json), every sentence naming a
+    # state file is one of these: a prohibition, this skill's own file, or
+    # bedrock-migration-assessment's own updates while its phase files run.
+    allowed = (
+        "Never read a candidate's `.phase-status.json` yourself.",
+        "its readiness check returns `not_this_skill` for any run whose `.phase-status.json` carries `owning_skill`.",
+        "This skill also never reads that run's `.phase-status.json` to make its own decisions:",
+        "including each step's own `.phase-status.json` updates.",
+        "(read-merge-write on `$BEDROCK_RUN_DIR/.phase-status.json`):",
+    )
+    a3 = _section(TEXT, A3_HEADING, "## Phase B — Execute Prep")
+    seen = set()
     for sentence in _sentences(TEXT.replace(a3, "")):
         if ".phase-status.json" in sentence:
-            assert ("never" in sentence.lower() or "$BEDROCK_RUN_DIR" in sentence
-                    or "including each step's own `.phase-status.json` updates" in sentence), sentence[:200]
+            hits = [ok for ok in allowed if ok in sentence]
+            assert hits, sentence[:200]
+            seen.update(hits)
+    assert seen == set(allowed), set(allowed) - seen
 
 
 def test_nothing_is_written_into_the_assessment_run() -> None:
@@ -164,7 +194,7 @@ def test_nothing_is_written_into_the_assessment_run() -> None:
             "no other field and no other file.") in phase_a
     assert '"initiated_by"' not in TEXT
     assert TEXT.count('"owning_skill"') == 1
-    a3 = _section(TEXT, "### A3 — Locate Assess output", "## Phase B — Execute Prep")
+    a3 = _section(TEXT, A3_HEADING, "## Phase B — Execute Prep")
     assert a3.index("Set `$BEDROCK_RUN_DIR`") < a3.index('"owning_skill": "LLM_TO_BEDROCK"')
     assert '"migration_id": ".bedrock-<id>"' in a3 and ".bedrock-bma-0910-1100" in a3
 
@@ -335,3 +365,48 @@ def test_a_run_another_skill_created_is_not_ready(tmp_path: Path) -> None:
     (run / ".phase-status.json").write_text(json.dumps({**status, "owning_skill": "LLM_TO_BEDROCK"}))
     code, out = _readiness(run)
     assert code == 1 and out["reason"] == "not_this_skill"
+
+
+# --------------------------------------------------------------------------- chat-row choice and row role
+
+def _chat_rows(rows: list[dict]) -> list[dict]:
+    return [r for r in rows if not (r["migration_path"] == "direct" and r["required_client_api"] == "invoke")]
+
+
+@pytest.mark.parametrize("fixture", ["bma-estimate-price-unavailable", "bma-design-openai-mantle-and-runtime"])
+def test_one_source_model_with_two_chat_rows_makes_b1_ask_not_pick_the_first(fixture) -> None:
+    rows = json.loads((FIXTURES / fixture / "aws-design-ai.json").read_text())["ai_architecture"]["bedrock_models"]
+    chat = [r for r in _chat_rows(rows) if r["source_model_id"] == "gpt-5.5"]
+    # The rows disagree: "first chat row" would move a Chat Completions workload onto Mantle Responses.
+    assert {(r["migration_path"], r["required_client_api"]) for r in chat} == {
+        ("mantle_openai_responses", "responses"), ("runtime_openai_cris", "chat_completions")}
+    assert chat[0]["migration_path"] == "mantle_openai_responses"
+    b1 = _flat(_section(TEXT, "### B1 — Read Assess outputs", "### B2"))
+    assert "the first chat row is the primary chat row" not in b1
+    assert 'Never take "the first chat row".' in b1
+    assert ("If every chat row has the same `migration_path` and `required_client_api`, use them all; "
+            "the first one is the primary chat row.") in b1
+    assert "Otherwise **stop and AskUserQuestion** before B2." in b1
+    for field in ("`source_model_id`", "`aws_model_id`", "`migration_path`", "`required_client_api`",
+                  "`endpoint_assumption`", "`mantle_requirement.workload_id`"):
+        assert field in b1.split("Otherwise **stop and AskUserQuestion**", 1)[1][:600], field
+    assert "`$BEDROCK_RUN_DIR/chat-row-choice.json`" in b1
+    c5 = _flat(_section(TEXT, "### C5 — Rewriter", "### C7"))
+    assert "a source model appears exactly once; never list a second target for it" in c5
+
+
+def test_a_row_is_embedding_or_image_only_on_direct_invoke_with_a_matching_capability() -> None:
+    source = (BMA / "scripts" / "design-ai.py").read_text(encoding="utf-8")
+    paths = re.search(r"PATH_CLIENT_APIS = \{(.*?)\n\}", source, re.S).group(1)
+    # invoke is legal on two paths, so the API alone cannot mark a row as embedding/image.
+    assert sorted(re.findall(r'"([a-z_-]+)": \{[^}]*"invoke"', paths)) == ["direct", "gpt-oss"]
+    b1 = _flat(_section(TEXT, "### B1 — Read Assess outputs", "### B2"))
+    assert ("A row is an embedding or image row only when `migration_path` is `direct` AND "
+            "`required_client_api` is `invoke`") in b1
+    assert "an embedding or image row lists `embedding` or `image_generation`" in b1
+    assert "When the two signals disagree" in b1 and "stop and AskUserQuestion which role the row has" in b1
+    for fixture in FIXTURE_RUNS:
+        for row in json.loads((FIXTURES / fixture / "aws-design-ai.json").read_text())["ai_architecture"]["bedrock_models"]:
+            direct_invoke = row["migration_path"] == "direct" and row["required_client_api"] == "invoke"
+            capability = bool({"embedding", "image_generation"} & set(row["capabilities_matched"]))
+            assert direct_invoke == capability, (fixture, row["aws_model_id"])

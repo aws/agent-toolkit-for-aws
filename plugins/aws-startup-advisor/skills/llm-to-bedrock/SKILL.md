@@ -164,7 +164,15 @@ If a GitHub URL, `git clone` it to a temp dir; use that path as `$REPO`.
 
    If uncommitted changes exist, show them and AskUserQuestion: "Continue anyway" or "Let me clean up first".
 
-Record `$REPO` for all subsequent steps.
+Record `$REPO` for all subsequent steps as an absolute, resolved path:
+
+```bash
+REPO="$(cd "$REPO" && pwd -P)"
+```
+
+`readiness.py` prints each artifact path relative to the run directory it was given, so a
+relative `$REPO` would give Phase B paths that break as soon as the working directory
+changes.
 
 ---
 
@@ -172,9 +180,9 @@ Record `$REPO` for all subsequent steps.
 
 Before Phase A begins, check whether a prior bedrock-migration-assessment run already
 captured real OpenAI/OpenRouter/Anthropic usage-API spend for this repo. If so, reuse it as
-the cost baseline instead of later falling back to golden-dataset extrapolation. Phase A's own
-`$MIGRATION_DIR` resolution starts fresh each time Phase A is entered, so this step must run
-strictly before that to have a chance to short-circuit it.
+the cost baseline instead of later falling back to golden-dataset extrapolation. This step
+runs strictly before Phase A, because A1 decides which assessment run to start or resume
+and the baseline figures must already be in hand when it does.
 
 1. **Glob** every `.migration/bma-*/<provider>-usage-profile.json` under `$REPO`. Only a
    bedrock-migration-assessment run has a `bma-` directory name (its `discover.md` Step 4
@@ -196,7 +204,7 @@ strictly before that to have a chance to short-circuit it.
 3. **Check each candidate run with readiness, then pick one (deterministic tiebreak,
    source-run status surfaced).** Never read a candidate's `.phase-status.json` yourself.
    For each distinct run directory with at least one match, run bedrock-migration-assessment's
-   readiness script from its own directory:
+   readiness script (the absolute `$BMA_BASE` path makes it work from any directory):
 
    ```bash
    python3 "$BMA_BASE/scripts/readiness.py" "<candidate run dir>" --through design
@@ -207,7 +215,8 @@ strictly before that to have a chance to short-circuit it.
    directory is not a usable bedrock-migration-assessment run: drop it. Any other non-ready
    `reason` (for example `phase_incomplete`) keeps it as a candidate: its usage profiles are
    still real captured data, but surface the `reason` and `detail` as its status, since it
-   tells the user the session was likely abandoned or declined partway.
+   tells the user the session was likely abandoned or declined partway. Any other exit code,
+   or output that is not one JSON object, is an error: stop and show the user the output.
 
    The **primary** sort key is the greatest `metadata.captured_at` (a full ISO-8601 UTC
    timestamp, which DOES carry the year) across the candidate's usage profiles. All three
@@ -385,8 +394,8 @@ strictly before that to have a chance to short-circuit it.
    `$BEDROCK_RUN_DIR` is set — see the cross-reference there.
 8. **This step never prompts for consent** — it only reads a file a prior, already-consented
    run already wrote. No new attack surface; no new consent gate needed.
-9. **Idempotency:** this step is safe to re-run on every Phase-B start, including a resumed
-   session (A1 step 1's resume path). It performs read-only file operations only — the actual write
+9. **Idempotency:** this step is safe to re-run on every invocation of this skill, including
+   a session that A1 step 2 resumes. It performs read-only file operations only — the actual write
    of `usage-baseline.json` happens later, in A3 (see step 7 above), and that write is itself
    idempotent — overwriting `usage-baseline.json` on a rerun with the same inputs produces the
    same output, and a rerun with DIFFERENT inputs (e.g. a newer profile appeared since the
@@ -565,14 +574,23 @@ Tell the user, before starting:
 Then, in order:
 
 1. **Load `$BMA_BASE/SKILL.md`** and follow its Definitions, Input security, and "Step 0:
-   Resume or start" sections, with `<SKILL_BASE>` = `$BMA_BASE`. When `$REPO/.migration/`
-   already has `bma-*` run directories, list them and ask the user whether to resume one or
-   start fresh. A resumed run is the one the user names, and that skill's Step 0 rules decide
-   where it resumes. Otherwise its Discover creates a new `$REPO/.migration/bma-MMDD-HHMM/`.
-   Set `$MIGRATION_DIR` to that directory. A run directory made by another skill (a
-   gcp-to-aws or azure-to-aws assessment, for example) is not reused: say so, and run Assess
-   again here.
-2. **Read and execute** that skill's Steps 1 to 4 exactly as written: Discover
+   Resume or start" sections, with `<SKILL_BASE>` = `$BMA_BASE`. **The project root and the
+   code directory for that skill are both `$REPO`** (Step 1's absolute path, including a temp
+   clone of a GitHub URL): its Discover takes the scan route against `$REPO`, and its run
+   directory lands at `$REPO/.migration/bma-MMDD-HHMM/`, never under the agent's working
+   directory.
+2. **Pick the run.** When `$REPO/.migration/` already has `bma-*` run directories, list them
+   and ask the user whether to resume one or start fresh. On a resumed llm-to-bedrock
+   migration (a `$REPO/.migration/.bedrock-bma-<id>/` already exists), offer `bma-<id>` first,
+   since that is the assessment this migration already consumed. A resumed run is the one the
+   user names, and that skill's Step 0 rules decide where it resumes. Otherwise its Discover
+   creates a new `$REPO/.migration/bma-MMDD-HHMM/`. Set `$MIGRATION_DIR` to that directory. A
+   run directory made by another skill (a gcp-to-aws or azure-to-aws assessment, for example)
+   is not reused: say so, and run Assess again here.
+3. **Skip a finished assessment.** When the chosen run already exists, run A2's readiness
+   command on it first. On `ready: true`, do not load that skill's phases: go straight to A2.
+   Any other answer continues with step 4.
+4. **Read and execute** that skill's Steps 1 to 4 exactly as written: Discover
    (`$BMA_BASE/references/phases/discover/discover.md`), Clarify
    (`$BMA_BASE/references/phases/clarify/clarify-ai-only.md`), Design
    (`$BMA_BASE/references/phases/design/design-ai.md`), and Estimate
@@ -580,7 +598,7 @@ Then, in order:
    `.phase-status.json` updates. Discover's Step 2c offers the OpenAI, Anthropic and
    OpenRouter usage readers when they apply; accepting any of them gives Estimate real spend
    and token volumes without manual exports.
-3. **Stop after Estimate.** bedrock-migration-assessment stops after Estimate on its own:
+5. **Stop after Estimate.** bedrock-migration-assessment stops after Estimate on its own:
    show its summary, then continue to A2. Do not load phase files from any other skill.
 
 If a phase file's own check fails (for example `$BMA_BASE/scripts/design-ai.py check` or
@@ -589,8 +607,9 @@ patch an artifact to force a check to pass.
 
 ### A2 — Confirm Assess is complete (readiness handshake)
 
-Run bedrock-migration-assessment's readiness script, from that skill's own directory, as its
-SKILL.md section "Readiness for other skills" requires:
+Run bedrock-migration-assessment's readiness script as its SKILL.md section "Readiness for
+other skills" requires. The absolute `$BMA_BASE` path makes the command work from any
+directory (the script loads its siblings relative to its own file):
 
 ```bash
 python3 "$BMA_BASE/scripts/readiness.py" "$MIGRATION_DIR" --through estimate
@@ -607,10 +626,13 @@ python3 "$BMA_BASE/scripts/readiness.py" "$MIGRATION_DIR" --through estimate
   `detail`, and tell them to resume the run with bedrock-migration-assessment (name
   `$MIGRATION_DIR`), then ask me to migrate again. Do not repair the run or its state file
   yourself, and do not continue to Phase B.
+- **Any other exit code, or output that is not one JSON object** → **stop** and show the
+  user the command's output. Do not treat it as ready.
 
 **Re-check before every later re-read.** Whenever this skill reads one of those artifacts
-again after A2 (B1, B4's `--design` argument, C0's `assess_design_sha256`, or any step of a
-resumed session), run the same readiness command first and compare each printed `sha256`
+again after A2 (B1, B4's `--design` argument, C0's `assess_design_sha256`, **before each
+C1 to C6 dispatch**, since every agent reads `Migration plan dir:`, or any step of a resumed
+session), run the same readiness command first and compare each printed `sha256`
 with the one recorded in `$BEDROCK_RUN_DIR/assessment-readiness.json` (A3). A non-ready
 answer stops as above. A changed hash means the assessment changed since this skill recorded
 it: tell the user which file changed, overwrite `assessment-readiness.json` with the new
@@ -711,10 +733,32 @@ Read `$MIGRATION_DIR/aws-design-ai.json` and extract:
   and keep `migration_path` / `mantle_selector` so a Mantle row is reported as Mantle. An
   older plan may name the source `source_model` instead of `source_model_id`: read
   `source_model_id`, else `source_model`. Below, "the row's source model" means that value.
-- **Row role.** bedrock-migration-assessment rows have no `use_case`. A row whose
-  `required_client_api` is `invoke` is an embedding or image row (Design gives those targets
-  `migration_path: direct` with `invoke`); every other row is a chat row, and the first chat
-  row is the primary chat row. An older plan's `use_case`, when present, still names the role.
+- **Row role.** bedrock-migration-assessment rows have no `use_case`. A row is an embedding
+  or image row only when `migration_path` is `direct` AND `required_client_api` is `invoke`
+  (Design gives embedding and image targets exactly that pair; `gpt-oss` rows may also use
+  `invoke`, so the API alone does not decide). Cross-check `capabilities_matched[]`: an
+  embedding or image row lists `embedding` or `image_generation`. When the two signals
+  disagree (a `direct`/`invoke` row without either capability, or either capability on
+  another path), stop and AskUserQuestion which role the row has. Every other row is a chat
+  row. An older plan's `use_case`, when present, still names the role.
+- **Choosing the chat row for this rewrite.** Design can emit several chat rows for one
+  source model, for example `openai.gpt-5.5` on `mantle_openai_responses` for a Web Search
+  workload and `us.openai.gpt-5.5` on `runtime_openai_cris` / `chat_completions` for the
+  rest. Never take "the first chat row".
+  - If every chat row has the same `migration_path` and `required_client_api`, use them all;
+    the first one is the primary chat row.
+  - Otherwise **stop and AskUserQuestion** before B2. List every chat row with its
+    `source_model_id`, `aws_model_id`, `migration_path`, `required_client_api`,
+    `endpoint_assumption`, and `mantle_requirement.workload_id` when present, and ask which
+    row this rewrite uses. The chosen row is the primary chat row. Drop the other chat rows
+    for the same source model from everything below; chat rows for other source models stay
+    as secondaries on their own API. Record the choice in
+    `$BEDROCK_RUN_DIR/chat-row-choice.json` as `{"assess_design_sha256": ...,
+    "source_model_id": ..., "aws_model_id": ..., "migration_path": ...,
+    "required_client_api": ...}`. On a resume, reuse it only when its `assess_design_sha256`
+    equals the current readiness hash of `aws-design-ai.json`; otherwise ask again.
+  - The rows kept here are "the plan's rows" for B4, the context block, C0 and C5: one row
+    per source model for chat, plus every embedding or image row.
 - Collect all `aws_model_id` values into `$TARGET_MODELS` (array). Keep the role AND the
   `required_client_api` of each row: B4 passes every row to preflight as its own
   `<aws_model_id>=<required_client_api>` pair, so a Claude Messages primary and a GPT Chat or Nova
@@ -798,6 +842,11 @@ skill's parser expects — a bare key without the `NAME=` prefix will NOT be par
 - `openai` → `OPENAI_API_KEY`
 - `anthropic` → `ANTHROPIC_API_KEY`
 - `google` / `gemini` → `GEMINI_API_KEY`
+
+These names hold only for the direct APIs (`source_service` `openai_api`, `anthropic_api`,
+`gemini_api`). When B1's `source_service` is `azure_openai` or `vertex_ai`, do not assume
+`OPENAI_API_KEY` or `GEMINI_API_KEY`: ask the user which credentials the source app uses, and
+offer **Skip** if none of the key forms below fits.
 
 **The key must never enter this conversation (HARD RULE).** Do not ask the user to paste the
 key in chat, and never echo, cat, or interpolate its VALUE into any command, question, or
@@ -1041,6 +1090,10 @@ The Eval phase makes one paid Bedrock call per golden case (and, with a source k
 source-provider call per case). Before any dispatch, tell the user evaluation will invoke
 Bedrock at their expense, capped at 200 cases.
 
+0. **Readiness re-check.** Run A2's readiness command and compare its hashes with
+   `$BEDROCK_RUN_DIR/assessment-readiness.json`, as A2's "Re-check before every later
+   re-read" rule says. A non-ready answer stops here. Repeat this check before every C1 to C6
+   dispatch, including a re-dispatch after a blocked or partial flow.
 1. `mkdir -p $PHASE_DIR`. Build `$PHASE_DIR/current-context.json` with exactly these fields
    (hashes via `shasum -a 256`; key hash is a fingerprint — never store the key value):
 
@@ -1229,9 +1282,10 @@ When `rewrite_strategy == "mantle"`, C5's context block ALSO includes:
 
 - `Rewrite strategy: mantle` (omit this line entirely for Converse — its absence is the
   signal for the default Converse path)
-- `Mantle model map: <source-model> -> <bedrock-model-id>` — sourced from the plan's
-  `ai_architecture.bedrock_models[]` entries (each row's `source_model_id`, older plans
-  `source_model`, → `aws_model_id` pair).
+- `Mantle model map: <source-model> -> <bedrock-model-id>` — sourced from the rows B1 kept
+  (each row's `source_model_id`, older plans `source_model`, → `aws_model_id` pair). B1 keeps
+  one chat row per source model, so a source model appears exactly once; never list a second
+  target for it, even when the design has one on another path.
 - `Mantle base path: /openai/v1` for bare proprietary GPT targets (`openai.gpt-5*`
   excluding gpt-oss, or `openai.gpt-6*`). Do not use `/v1` for Astra.
 - `Mantle surface: chat_completions` when `resolved_api_path` is `mantle_openai_chat`;
