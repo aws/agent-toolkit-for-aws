@@ -317,7 +317,7 @@
     },
     "openai.gpt-6-astra": {
       "display_name": "GPT-6 Astra",
-      "source": "skills/azure-to-aws/references/shared/openai-on-bedrock.md (GPT-6 short-context table)",
+      "source": "OpenAI-on-Bedrock guide (openai-on-bedrock.md), GPT-6 short-context table",
       "verified_at": "2026-10-10",
       "rates": {
         "bare": {
@@ -336,7 +336,7 @@
     },
     "openai.gpt-6-sol": {
       "display_name": "GPT-6 Sol",
-      "source": "skills/azure-to-aws/references/shared/openai-on-bedrock.md (GPT-6 short-context table)",
+      "source": "OpenAI-on-Bedrock guide (openai-on-bedrock.md), GPT-6 short-context table",
       "verified_at": "2026-10-10",
       "rates": {
         "bare": {
@@ -355,7 +355,7 @@
     },
     "openai.gpt-6-luna": {
       "display_name": "GPT-6 Luna",
-      "source": "skills/azure-to-aws/references/shared/openai-on-bedrock.md (GPT-6 short-context table)",
+      "source": "OpenAI-on-Bedrock guide (openai-on-bedrock.md), GPT-6 short-context table",
       "verified_at": "2026-10-10",
       "rates": {
         "bare": {
@@ -374,7 +374,7 @@
     },
     "openai.gpt-6.1-sol": {
       "display_name": "GPT-6.1 Sol",
-      "source": "skills/azure-to-aws/references/shared/openai-on-bedrock.md (GPT-6 short-context table)",
+      "source": "OpenAI-on-Bedrock guide (openai-on-bedrock.md), GPT-6 short-context table",
       "verified_at": "2026-10-10",
       "rates": {
         "bare": {

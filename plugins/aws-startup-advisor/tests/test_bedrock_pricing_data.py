@@ -136,3 +136,17 @@ def test_cache_points_readers_at_the_json_for_profile_rates():
     text = " ".join(CACHE_PATH.read_text().replace("\n> ", "\n").split())
     assert "The per-profile source of truth is `bedrock-pricing.json`" in text
     assert "STATIC_FALLBACK" not in text
+
+
+def test_every_vendored_cache_has_the_json_it_points_to():
+    # Review on #669: the cache says bedrock-pricing.json is "in this directory", so every
+    # skill that vendors the cache must vendor the JSON beside it, byte-identical.
+    caches = sorted((PLUGIN_ROOT / "skills").glob("*/references/vendored/ai/bedrock-pricing-cache.md"))
+    assert len(caches) >= 4, caches
+    canonical = PRICING_PATH.read_bytes()
+    for cache in caches:
+        sibling = cache.with_name("bedrock-pricing.json")
+        assert sibling.is_file(), f"{cache.parent}: has the cache but not bedrock-pricing.json"
+        assert sibling.read_bytes() == canonical, sibling
+        manifest = (cache.parent.parent / "README.md").read_text()
+        assert "| `ai/bedrock-pricing.json`" in manifest, cache.parent.parent
