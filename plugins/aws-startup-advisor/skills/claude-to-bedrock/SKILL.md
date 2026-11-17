@@ -105,7 +105,10 @@ Do not assume or state "Pro only" anywhere.
    alias on Bedrock resolves to Claude Code's built-in default, which can lag
    the newest release.
 5. **Always confirm the app is FULLY quit** (app + menu-bar/tray) before any
-   desktop file operation, or the app overwrites the change on exit.
+   desktop file operation, or the app overwrites the change on exit. Check and
+   quit it yourself with the commands in `references/terminal-helpers.md`; ask
+   the person to quit from the menu bar or tray only if it's still running.
+   Never force-kill it.
 6. **Back up before editing; never echo secrets; rotate any exposed key.** Never
    read or print `~/.aws/credentials`, SSO caches, or API keys. To check AWS
    access, run `aws sts get-caller-identity` (and `aws configure list` for where
@@ -162,12 +165,16 @@ learned in Phase 0; keep every part:
 >
 > **What I'll change on this computer:** back up, then edit
 > `~/.claude/settings.json` (Claude Code's Bedrock settings), and later, only
-> if you ask, `~/.claude/CLAUDE.md` (a pointer to your old chat history). I
-> won't touch AWS credential files or anything IT manages. Claude Desktop
+> if you ask, `~/.claude/CLAUDE.md` (a pointer to your old chat history). To
+> save you steps I'll also open pages in your browser, quit and reopen Claude
+> Desktop when a step needs it, and start AWS sign-ins that you approve in the
+> browser. I won't read or edit AWS credential files (a sign-in refreshes
+> AWS's own token cache) or change anything IT manages. Claude Desktop
 > settings are changed by you, in the app, with my step-by-step prompts.
 >
-> **AWS:** I'll check which AWS account your credentials use and make one tiny
-> test call to Claude on Bedrock (a few tokens, well under a cent). After the
+> **AWS:** I'll check which AWS account your credentials use, check whether
+> Claude model access is already set up (read-only), and make one tiny test
+> call to Claude on Bedrock (a few tokens, well under a cent). After the
 > switch, your Claude usage is billed to that AWS account. AWS Activate credits
 > can cover it if you have them.
 >
@@ -183,9 +190,11 @@ learned in Phase 0; keep every part:
   person can follow on their own.
 - **Anything else, or no answer** → make no changes. Clarify only if needed.
 
-Adjust the notice to the route: for **Route B** (admin), list the AWS setup
-and the scripts you'll generate instead of local file edits, and say that
-nothing is deployed to devices until the admin uploads it to Jamf or Intune.
+Adjust the notice to the route: for **Route B** (admin), list the scripts and
+profiles you'll generate instead of local file edits, and say that nothing is
+deployed to devices until the admin uploads it to Jamf or Intune. Creating or
+changing IAM or Identity Center resources is never covered by this Yes; it
+always needs its own explicit yes (`references/aws-setup.md` section 2b).
 For **Route C** (managed user), say you won't change any settings and only
 walk the sign-in and import steps.
 
@@ -214,7 +223,9 @@ For SSO profiles, also set `awsAuthRefresh` (`aws sso login --profile
 To revert to 1P, remove the Bedrock keys above.
 
 ### Phase 2 — Switch Claude Desktop to 3P (Route A; HUMAN STEP + your prep)
-Your prep: make AWS creds work (named profile resolves / generate a bearer token
+Your prep: check Bedrock model access read-only
+(`references/terminal-helpers.md`) and, if the use case form is still needed,
+open the Model catalog for the person; make AWS creds work (named profile resolves / generate a bearer token
 via `aws-bedrock-token-generator` / set up IAM Identity Center). Then walk the
 user through the in-app window; the field-by-field UI is in
 `references/desktop-inapp-config.md`. Prescriptive prompt:
@@ -325,9 +336,9 @@ Read the manifest (local file) and list every entry, then:
 > `light_metadata-*`. Let each download finish before the next.
 > [export_url + filename list]"
 
-Optional: if the default browser is the signed-in one, offer to open each link
-with `open "<url>"` (macOS) / `start "" "<url>"` (Windows). Never fetch with
-curl/wget. Verify each zip starts with `PK` (a 403 page starts with
+If the default browser is the signed-in one, open each link for the person,
+one at a time, with the commands in `references/terminal-helpers.md`. Never
+fetch with curl/wget. Verify each zip starts with `PK` (a 403 page starts with
 `<!DOCTYPE html>`), then run `<SKILL_BASE>/references/process_export.py` — it reads every
 part, de-duplicates, and writes per-conversation `.md`,
 `COMBINED-1p-history.md`, and `GLOBAL-INSTRUCTIONS.txt` to `~/claude_export_md/`.
@@ -336,7 +347,8 @@ part, de-duplicates, and writes per-conversation `.md`,
 **Desktop:** push a managed configuration so every device enters 3P at launch.
 Recommended fleet auth: **in-app AWS sign-in (IAM Identity Center)**.
 
-- AWS one-time setup: `references/aws-setup.md`.
+- AWS one-time setup: `references/aws-setup.md` (section 2b can create the
+  Identity Center permission set from the CLI, after a separate yes).
 - macOS/Jamf: `references/mdm-macos-mobileconfig.md` (preference domain
   `com.anthropic.claudefordesktop`).
 - Windows/Intune: `references/mdm-windows-intune.md` (`REG_SZ` values directly
@@ -397,6 +409,11 @@ admin through end-user steps unless they're piloting on their own device.
   CloudTrail shows invocation); if 3B was done, it can describe past topics.
 
 ## Human-intervention checklist (always give a prescriptive prompt)
+
+Before handing a step over, do the terminal part yourself: open the page or
+file, check status read-only, or start `aws sso login`
+(`references/terminal-helpers.md`). The person should only have to sign in,
+click, or approve.
 **Admin (Route B):**
 
 - AWS Console / IAM Identity Center setup — `references/aws-setup.md`.
@@ -427,6 +444,8 @@ admin through end-user steps unless they're piloting on their own device.
 
 ## Reference files
 
+- `references/terminal-helpers.md` — open pages and files for the person, quit
+  Claude Desktop safely, check Bedrock model access, start an SSO sign-in.
 - `references/roles-and-steps.md` — routes, machine checks, who-does-what
   tables (Jamf + Intune), admin↔user message templates.
 - `references/desktop-import-wizard.md` — Import from Claude wizard: enable,

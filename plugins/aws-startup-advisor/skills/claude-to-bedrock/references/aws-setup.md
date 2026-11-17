@@ -4,6 +4,11 @@ Performed once per AWS org by an admin. HUMAN STEP — done in the AWS Console.
 
 ## 1. Enable Claude models in Amazon Bedrock
 
+**Agent first (read-only):** check whether the account already submitted the
+form with `aws bedrock get-use-case-for-model-access` (see
+`terminal-helpers.md`). If it did, skip the form. If not, open the Model
+catalog for the person and give the prompt below.
+
 - AWS Console → **Amazon Bedrock → Model catalog** → open an Anthropic model
   (e.g. Claude Sonnet 5.5, Opus 5.5, Haiku 5.5) → complete the **use case
   form**. You do this once per AWS account, and access is granted right after
@@ -75,6 +80,83 @@ Skip for bearer-token or IdP auth. For named-profile and in-app AWS sign-in:
 - (Optional) Federate Identity Center to your IdP (Entra ID / Okta) so users
   sign in with corporate credentials.
 - Assign the permission set to the Bedrock account + the users/groups.
+
+### 2b. Optional: create it from the CLI (admin; ask first)
+
+Only for Route B, and only after a **separate, explicit yes** for this step:
+it gives a whole group permission to call Bedrock in an AWS account, which the
+CONFIRM notice never covers. Rules:
+
+- Run it from the Identity Center management account or its delegated
+  administrator, with a role that can manage Identity Center. Never switch to a
+  more powerful role than the one the person gave you without asking.
+- Prefer a test or sandbox account first. Treat any account you can't confirm
+  as non-production as production.
+- Run the preflight block, show the person its output and every command below
+  with the values filled in, and have them **retype the Bedrock account ID**
+  before you run anything that writes.
+- Write `bedrock-policy.json` yourself from the policy in section 2, in a new
+  temp folder, and show it.
+
+Preflight (read-only):
+
+```bash
+set -euo pipefail
+REGION="<identity-center-region>"; ACCOUNT="<bedrock-account-id>"; GROUP="<group display name>"
+aws sts get-caller-identity --query '[Account,Arn]' --output text
+read -r INSTANCE_ARN STORE_ID < <(aws sso-admin list-instances --region "$REGION" \
+  --query 'Instances[0].[InstanceArn,IdentityStoreId]' --output text)
+case "$INSTANCE_ARN" in arn:*) ;; *) echo "No Identity Center instance in $REGION"; exit 1;; esac
+case "$GROUP" in *'"'*) echo "Group names with double quotes aren't supported here"; exit 1;; esac
+GROUP_ID=$(aws identitystore get-group-id --region "$REGION" --identity-store-id "$STORE_ID" \
+  --alternate-identifier "{\"UniqueAttribute\":{\"AttributePath\":\"displayName\",\"AttributeValue\":\"$GROUP\"}}" \
+  --query GroupId --output text)
+for ps in $(aws sso-admin list-permission-sets --region "$REGION" --instance-arn "$INSTANCE_ARN" \
+  --query 'PermissionSets[]' --output text); do
+  aws sso-admin describe-permission-set --region "$REGION" --instance-arn "$INSTANCE_ARN" \
+    --permission-set-arn "$ps" --query 'PermissionSet.Name' --output text
+done | grep -qx ClaudeBedrockInference && { echo "ClaudeBedrockInference already exists; stop and ask"; exit 1; }
+echo "Instance: $INSTANCE_ARN  Group: $GROUP ($GROUP_ID)  Target account: $ACCOUNT"
+```
+
+Create and assign (only after the retyped account ID matches `$ACCOUNT`):
+
+```bash
+PS_ARN=$(aws sso-admin create-permission-set --region "$REGION" \
+  --instance-arn "$INSTANCE_ARN" --name ClaudeBedrockInference \
+  --description "Claude Desktop and Claude Code on Amazon Bedrock" \
+  --session-duration PT12H --query 'PermissionSet.PermissionSetArn' --output text)
+aws sso-admin put-inline-policy-to-permission-set --region "$REGION" \
+  --instance-arn "$INSTANCE_ARN" --permission-set-arn "$PS_ARN" \
+  --inline-policy file://bedrock-policy.json
+aws sso-admin create-account-assignment --region "$REGION" \
+  --instance-arn "$INSTANCE_ARN" --permission-set-arn "$PS_ARN" \
+  --principal-type GROUP --principal-id "$GROUP_ID" \
+  --target-type AWS_ACCOUNT --target-id "$ACCOUNT" \
+  --query 'AccountAssignmentCreationStatus.RequestId' --output text
+```
+
+Check the request ID with `aws sso-admin
+describe-account-assignment-creation-status --instance-arn "$INSTANCE_ARN"
+--account-assignment-creation-request-id <id>`. A new assignment provisions the
+permission set itself. If you change the inline policy later, run
+`aws sso-admin provision-permission-set --instance-arn "$INSTANCE_ARN"
+--permission-set-arn "$PS_ARN" --target-type ALL_PROVISIONED_ACCOUNTS` so the
+change reaches the account. The permission set name (`ClaudeBedrockInference`)
+is the `inferenceBedrockSsoRoleName` / `sso_role_name` value for device
+configuration.
+
+Undo (also ask first):
+
+```bash
+aws sso-admin delete-account-assignment --region "$REGION" \
+  --instance-arn "$INSTANCE_ARN" --permission-set-arn "$PS_ARN" \
+  --principal-type GROUP --principal-id "$GROUP_ID" \
+  --target-type AWS_ACCOUNT --target-id "$ACCOUNT"
+# after the deletion request completes:
+aws sso-admin delete-permission-set --region "$REGION" \
+  --instance-arn "$INSTANCE_ARN" --permission-set-arn "$PS_ARN"
+```
 
 ## 3. Record values for device configuration
 From IAM Identity Center → Settings:
