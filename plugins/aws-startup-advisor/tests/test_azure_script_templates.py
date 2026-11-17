@@ -296,8 +296,8 @@ def test_postgres_offline_copy_runs_dump_restore_then_verifier_without_leaking_p
     assert result.returncode == 0, result.stderr
     assert [c[0] for c in calls] == ["pg_dump", "pg_restore", "verifier"]
     dump, restore, verifier = calls
-    assert "source.postgres.database.azure.com" in dump and "--no-password" in dump
-    assert "target.example.rds.amazonaws.com" in restore and "--exit-on-error" in restore
+    assert dump[dump.index("-h") + 1] == "source.postgres.database.azure.com" and "--no-password" in dump
+    assert restore[restore.index("-h") + 1] == "target.example.rds.amazonaws.com" and "--exit-on-error" in restore
     for command in (dump, restore):
         assert "--no-owner" in command and "--no-acl" in command
     assert verifier[verifier.index("--engine") + 1] == "postgresql"
