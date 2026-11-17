@@ -9,7 +9,7 @@ Adds a subsequent fine-tuning round on top of an already-customized model. Uses 
 | Requirement                                                                  | How to obtain                                                                         |
 | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | Training data S3 path for current round                                      | Collect from the conversation context, ask user if not available                      |
-| Confirmation that data is in correct format for current finetuning strategy  | From dataset-evaluation reference or user is sure it's correct                            |
+| Confirmation that data is in correct format for current finetuning strategy  | From dataset-quality reference or user is sure it's correct                               |
 | Fine-tuning technique                                                        | If not available from context, ask which technique for this round: SFT, DPO, RLVR, or RLAIF |
 | Previous model package group name                                            | From the prior output, or help the user find it (Section A instructions)              |
 | Previous training job name                                                   | Ask user or get from user's account (Section B instructions)                          |

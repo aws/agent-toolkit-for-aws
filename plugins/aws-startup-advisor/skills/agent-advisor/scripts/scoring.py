@@ -180,15 +180,26 @@ def _agentcore_needs_instances(answers):
     )
 
 
+def _apply_conditional_affinities(affinities, profile, answers):
+    """`affinities` with the profile's `conditional_affinities` applied. Each rule replaces some
+    scores in one dimension when every `when` answer matches, for example no Nitro Sandbox credit
+    on EKS for GPU sessions, which a sandbox cannot isolate."""
+    for rule in profile.get("conditional_affinities", []):
+        if all(answers.get(field, "unknown") == value for field, value in rule["when"].items()):
+            dim = rule["dimension"]
+            affinities = {**affinities, dim: {**affinities.get(dim, {}), **rule["scores"]}}
+    return affinities
+
+
 def _effective_affinities(profile, answers):
-    """A profile's affinities with any compute-type overrides applied. AgentCore Instances bills
-    EC2 plus a management fee with no scale-to-zero, so its cost-driven dimensions (expected_scale)
-    use the Instances values instead of the microVMs ones."""
+    """A profile's affinities as scored for these answers: compute-type overrides first (AgentCore
+    Instances bills EC2 plus a management fee with no scale-to-zero, so its cost-driven dimensions
+    such as expected_scale use the Instances values), then the profile's conditional_affinities."""
     affinities = profile.get("affinities", {})
     overrides = profile.get("compute_type_affinities", {})
     if profile["id"] == "agentcore" and "instances" in overrides and _agentcore_needs_instances(answers):
-        return {**affinities, **overrides["instances"]}
-    return affinities
+        affinities = {**affinities, **overrides["instances"]}
+    return _apply_conditional_affinities(affinities, profile, answers)
 
 
 def _compute_scores(answers, profiles, eliminated):
@@ -287,8 +298,11 @@ def _agentcore_revisit_triggers_by_runtime(answers, profiles, eliminated):
         return {}
 
     def gain(profile, field, value, current):
-        dimension = profile.get("affinities", {}).get(field, {})
-        return dimension.get(value, NEUTRAL_SCORE) - dimension.get(current, NEUTRAL_SCORE)
+        # Reads only the trigger's own dimension: a conditional rule keyed on `field` that changes
+        # another dimension is not counted. No AgentCore trigger is on a `when` field today.
+        after = _effective_affinities(profile, {**answers, field: value}).get(field, {})
+        before = _effective_affinities(profile, answers).get(field, {})
+        return after.get(value, NEUTRAL_SCORE) - before.get(current, NEUTRAL_SCORE)
 
     result = {}
     for runtime, profile in sorted(by_id.items()):
@@ -395,6 +409,20 @@ def _collect_warnings(
             warnings.append(
                 "High launch concurrency requires current-run verification of Lambda "
                 "MicroVMs launch capacity before selection.")
+    eks_is_winner = verdict == "eks" or (
+        verdict == "co_recommend" and "eks" in (co_recommend or []))
+    if eks_is_winner and answers.get("isolation") == "required":
+        warning = (
+            "EKS isolation relies on AWS Nitro Sandboxes: set runtimeClassName "
+            "isolated-sandbox (or confidential-sandbox) on each pod; requires "
+            "Kubernetes 1.36+ and a supported Nitro instance type. It isolates pods, "
+            "not sessions: per-user session routing is still yours to build.")
+        if answers.get("compute_tier") == "gpu":
+            warning += (
+                " GPU passthrough into a Nitro Sandbox is unavailable, so GPU pods "
+                "cannot be sandboxed and EKS got no Nitro Sandbox credit here; split GPU work "
+                "into a separate unsandboxed unit or choose another isolation boundary.")
+        warnings.append(warning)
     if agentcore_compute_type == "instances":
         warnings.append(
             "AgentCore Instances compute type: sessions persist up to 14 days "

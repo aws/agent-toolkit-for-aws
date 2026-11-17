@@ -1,0 +1,6 @@
+{
+  "us-west-2": { "firstParty": { "account": "760144414246", "imageName": "label-studio-jupyterlab", "alias": "3.0" } },
+  "us-east-1": { "firstParty": { "account": "580446611608", "imageName": "label-studio-jupyterlab", "alias": "3.0" } },
+  "eu-west-1": { "firstParty": { "account": "352985111457", "imageName": "label-studio-jupyterlab", "alias": "3.0" } },
+  "ap-northeast-1": { "firstParty": { "account": "580921164859", "imageName": "label-studio-jupyterlab", "alias": "3.0" } }
+}

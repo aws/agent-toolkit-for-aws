@@ -1,0 +1,14 @@
+<View>
+  <Paragraphs name="dialogue" value="$conversation"
+              nameKey="role" textKey="content"
+              layout="dialogue"/>
+  <Header value="Rate the overall conversation quality"/>
+  <Rating name="quality" toName="dialogue" maxRating="5"/>
+  <Choices name="issues" toName="dialogue" choice="multiple">
+    <Choice value="hallucination"/>
+    <Choice value="off topic"/>
+    <Choice value="repetitive"/>
+    <Choice value="unsafe content"/>
+  </Choices>
+  <TextArea name="notes" toName="dialogue" rows="2" placeholder="Additional feedback"/>
+</View>
