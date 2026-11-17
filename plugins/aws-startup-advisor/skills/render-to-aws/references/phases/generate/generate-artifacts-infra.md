@@ -32,10 +32,10 @@ Route each supported selected target to a domain file and record that file in `g
 | ECR immutable promotion | ECR repository with immutable tags and scan-on-push plus promotion outputs |
 | Project/environment boundaries | Consume into VPC, tags, state, and deployment boundaries without a fake standalone service |
 
+Workflow and Workflow task rows follow `generate-infra-workflow.md`: Terraform is emitted only for the semantics that file proves, and every other Workflow stays `unsupported` with `conditional_workflow_generation_unsupported`. AI is always `deferred_shared_ai_engine`; emit no model, adapter, Bedrock, or AI Terraform.
 The `infra-compute` fragment is the only writer of `terraform/compute.tf`. This fragment writes every other file under `terraform/` and must not write `compute.tf`. For every row routed to `terraform/compute.tf`, follow `generate-infra-compute.md` for per-target resources, IAM, health, logging, and anti-patterns.
 
 For `terraform/network.tf`, `storage.tf` and `delivery.tf`, also follow `references/phases/generate/generate-artifacts-infra-network-storage-delivery.md`; its rules refine the matching rows above.
-The checked-in representative design selects Step Functions Standard and Lambda for a Workflow whose callback, retry, compensation, and state-retention semantics are not fixture-validated for automatic generation. Classify those rows as `unsupported`, emit `conditional_workflow_generation_unsupported`, and emit no Workflow Terraform. For another run, Workflow artifacts may be generated only when the rubric marks every required semantic supported and the generated definition has dedicated contract tests. AI is always `deferred_shared_ai_engine`; emit no model, adapter, Bedrock, or AI Terraform.
 
 Fargate mappings branch on `aws_config.ecs_mode`; the Express and standard rules live in the compute fragment (section "ECS on Fargate: Express vs standard mode"). Express rows emit `aws_ecs_express_gateway_service` and skip the target group and listener.
 The report and migration guide each state, for every Fargate mapping, whether it got an AWS-provided HTTPS endpoint (express) or a hand-built ALB (standard) and the `ecs_mode_reason`.

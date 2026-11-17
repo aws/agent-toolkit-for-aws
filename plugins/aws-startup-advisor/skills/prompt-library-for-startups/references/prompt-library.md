@@ -1,5 +1,5 @@
 ---
-source_url: https://aws.amazon.com/startups/prompt-library
+source_url: https://startups.aws.com/prompt-library
 title: "Prompt & Agent Library"
 ---
 
@@ -17,124 +17,50 @@ You are solely responsible for reviewing and validating any outputs generated fr
 
 ---
 
+<!-- prompt-library-sync:start (generated; edit tools/prompt-library-sync.py) -->
+
 ## Prompts — searchable index
 
-Searchable index of copy-paste prompts for AI coding tools (Kiro, Claude Code, Cursor, etc.). Each row links to a detail file with the full System Prompt. Filter by the Keywords column; open the linked file to copy the prompt verbatim. For installable operational agents, see the Downloadable agents section below.
+This plugin carries the 22 prompts and 5 downloadable agents approved for it. The full AWS Startups prompt library is at <https://startups.aws.com/prompt-library>; point the user there for anything not listed below.
 
-| Prompt                                                                                                                    | Summary                                                                                                                                                                                                  | Keywords                                                                                                                      |
-| ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| [Day 1 AWS Foundation Setup for Startups](prompt-library/day-one-aws-foundation-setup.md)                                 | This prompt enables startups to achieve professional-grade AWS setup independently through a self-service approach powered by generative AI.                                                             | Getting Started, Beginner, IAM, CloudFormation                                                                                |
-| [AWSome MVP Builder](prompt-library/awsome-mvp-builder.md)                                                                | The MVP Builder helps founders go from idea to a deployable AWS MVP — generating architecture, frontend, backend, and IaC ready to deploy via Kiro CLI.                                                  | Deployment, Beginner, Lambda, S3, Prototyping, DynamoDB                                                                       |
-| [RAG Chatbot with Claude](prompt-library/rag-chatbot-with-claude.md)                                                      | Create a serverless, React-based chatbot using Claude on Bedrock with RAG capabilities for PDF documents.                                                                                                | Prototyping, Deployment, Beginner, Lambda, S3                                                                                 |
-| [Kiro Project Init: Automated Spec-Driven Development Setup](prompt-library/kiro-project-init.md)                         | One-command project setup with AI-powered specs, automated testing, and AWS integrations. Generates structured requirements, design docs, and deployment-ready code—eliminating hours of manual setup.   | Prototyping, Deployment, Kiro, Lambda, Beginner, DynamoDB, API Gateway                                                        |
-| [AWS Architecture Assessment with MCP Integration](prompt-library/aws-architecture-assessment-with-mcp-integration.md)    | Systematic roadmap for scaling infrastructure as you grow. Get phased architecture recommendations, cost projections, and implementation guidance validated against AWS best practices.                  | Architecture, Scaling, AWS MCP Server, MCP, Cost Optimization, Infrastructure-as-Code, Intermediate                        |
-| [AWS Bedrock Quota Manager: TPM/RPM/CRIS Navigator](prompt-library/bedrock-quota-manager.md)                              | Navigates Bedrock's quota system by finding correct codes, routing API vs Support requests, and generating pre-filled templates so startups avoid rate limiting blocking production launches.            | Bedrock, Beginner, Infrastructure-as-Code, Generative AI, Getting Started                                                     |
-| [AWS EC2 & SageMaker GPU Instance Quota Increase Assistant](prompt-library/gpu-instance-quota-assistant.md)               | Assists with scaling GPU workloads on AWS by finding correct quota codes and generating commands to request EC2 and SageMaker capacity increases so startups can train models without manual errors.     | Beginner, GPU Computing, Capacity Planning, Generative AI, SageMaker, EC2                                                     |
-| [Startup Pitch to AWS Architecture Generator](prompt-library/startup-pitch.md)                                            | Turn any startup pitch or product description into a production-ready AWS architecture recommendation.                                                                                                   | Architecture, Prototyping, Beginner                                                                                           |
-| [Amazon GenAI Powered - Well Architecture Review](prompt-library/well-architecture-review.md)                             | Comprehensive AWS infrastructure assessment across 6 Well-Architected pillars. Generates actionable reports on cost optimization, security hardening, reliability, and compliance readiness.             | Well Architected Framework, Security & Compliance, Intermediate, Architecture                                                 |
-| [Startup Landing Page Deployment](prompt-library/startup-landing-page-deployment.md)                                      | Creates an AI DevOps consultant that guides startup founders from their current state to a production-ready AWS environment using opinionated best practices and Infrastructure-as-Code.                 | Deployment, Prototyping, Beginner, S3, Lambda                                                                                 |
-| [AWS Startup Security Baseline Evaluation](prompt-library/security-baseline-evaluation.md)                                | AWS security baseline assessment framework with risk scoring and remediation roadmaps for startup production readiness and compliance certification.                                                     | Security & Compliance, AWS SSB, AWS MCP Server, Security Posture, Compliance, Intermediate                                 |
-| [AWS Security Baseline: Terraform Deployment Kit](prompt-library/aws-security-baseline-terraform-deployment-kit.md)       | Deploy comprehensive AWS security baseline using Terraform with automated monitoring, threat detection, and compliance controls so startups meet enterprise security requirements faster.                | Deployment, Security & Compliance, Intermediate, Terraform, GuardDuty, Security Hub                                           |
-| [AWS ECS Express Deployment Assistant](prompt-library/aws-ecs-express-deployment-assistant.md)                            | Accelerates containerized app deployment to AWS ECS Express by automating Docker builds, ECR setup, and IAM configuration so startups deploy applications in minutes while maintaining best practices.   | Beginner, ECS Express, ECR, ECS, EC2, Deployment                                                                              |
-| [Elasticsearch to OpenSearch Migration](prompt-library/elasticsearch-to-opensearch-migration.md)                          | Developing a systematic, production-ready migration strategy with execution guides and script code is critical for startups to successfully transition to OpenSearch.                                    | Cloud Migration, Advanced, OpenSearch                                                                                         |
-| [OpenAPI to AgentCore Gateway Deployment](prompt-library/openapi-to-agentcore-gateway-deployment.md)                      | Convert your REST API to MCP using AgentCore Gateway. Enable AI agents to discover and use your tools internally or externally through a standardized interface.                                         | Bedrock, AgentCore, API Integration                                                                                           |
-| [OpenSearch Cluster Operational Review](prompt-library/opensearch-cluster-operational-review.md)                          | Automated operational review of your OpenSearch cluster across 6 pillars. Analyzes performance, security, costs, and configurations—generating actionable recommendations with prioritized fixes.        | Architecture, Advanced, OpenSearch                                                                                            |
-| [Karpenter + KEDA: Cost-Optimized EKS with Spot Instances](prompt-library/cost-optimized-eks-with-spot-instances.md)      | Deploy production-ready EKS with Karpenter auto-scaling, KEDA pod management, and Spot instance prioritization. Includes Bottlerocket OS, encryption, and multi-AZ high availability—optimized for cost. | Cost Optimization, Deployment, Advanced, EKS, EC2                                                                             |
-| [AWS Cost Anomaly Detection: Intelligent Spend Monitoring & Alert Architecture](prompt-library/cost-anomaly-detection.md) | Design a comprehensive AWS Cost Anomaly Detection architecture tailored to your startup's stage, architecture, and spending patterns.                                                                    | Cost Optimization, Cost Anomaly Detection, FinOps, AWS Budgets, Monitoring, AWS Organizations, Intermediate                   |
-| [AI Support Ticket Triage & Routing Assistant](prompt-library/ai-support-ticket-triage-and-routing-assistant.md)          | Respond to customers in minutes instead of hours by automatically analyzing tickets, detecting churn risk, and routing to the right team so you keep customers happy and growing.                        | Operations Automation, Customer Support, Intermediate, Bedrock, Prototyping                                                   |
-| [Full AWS Deployment Agent](prompt-library/full-aws-deployment-agent.md)                                                  | An AI-powered Full AWS Deployment Agent that guides startups from local development to production-ready cloud infrastructure.                                                                            | Deployment, DevOps, Terraform, CI/CD, Infrastructure-as-Code, CloudTrail, GuardDuty, Secrets Manager, Migration, Intermediate |
-| [AWS Startup Resiliency Baseline Evaluation](prompt-library/resiliency-baseline-evaluation.md)                            | AWS resilience baseline assessment framework with RTO/RPO gap analysis, prioritized remediation roadmaps, and cost estimates for startup resilience and disaster recovery readiness.                     | Resilience, Disaster Recovery, RTO, RPO, AWS SRB, AWS MCP Server, Intermediate                                             |
-| [Local Code to Cloud](prompt-library/local-code-to-cloud.md)                                                              | Get help deploying your local dev environment to AWS with this prompt.                                                                                                                                   | Deployment, Migration, Architecture, Full-Stack, Beginner                                                                     |
-| [MVSP-Compliant AWS Infrastructure Builder](prompt-library/mvsp.md)                                                       | Builds AWS infrastructure that passes enterprise security audits—encryption, private networks, least-privilege access—so you close B2B deals instead of scrambling to fix security gaps.                 | Security & Compliance, Infrastructure-as-Code, Intermediate, IAM                                                              |
-| [AWS CDK TypeScript Pipeline Generator](prompt-library/aws-cdk-typescript-pipeline-generator.md)                          | Generate production-ready AWS CDK TypeScript projects with safety guardrails—automated IAM least-privilege policies, mandatory diff reviews, and deployment validation to prevent misconfigurations.     | Security & Compliance, Automation, Intermediate, CDK, IAM                                                                     |
-| [Open-Source LLM Inference on EKS with vLLM](prompt-library/open-source-llm-inference.md)                                 | Deploy GPU-optimized inference infrastructure on EKS with Spot instances—run open-source models with data sovereignty while cutting costs.                                                               | EKS, EC2, Advanced, Deployment                                                                                                |
-| [AI-Powered Multi-Region AWS Security Assessment](prompt-library/multi-region-assessment.md)                              | Automate comprehensive security assessments across all 33+ AWS regions using AI-driven analysis to identify vulnerabilities, compliance gaps, and misconfigurations.                                     | Security & Compliance, Advanced, Security Hub, IAM                                                                            |
-| [Deploy GitHub Repo](prompt-library/deploy-github-repo.md)                                                                | Have a GitHub repo? This prompt will help you deploy it to AWS.                                                                                                                                          | GitHub Integration, Deployment, Beginner                                                                                      |
-| [Container Orchestration](prompt-library/container-orchestration.md)                                                      | Get help creating an AWS EKS-based containerized application deployment for a Node.js app with PostgreSQL database that can auto-scale and handle traffic spikes cost-effectively.                       | Container Orchestration, EKS, Kubernetes, Auto-Scaling, Docker, ECR, RDS, ALB, Spot Instances, Node.js                        |
-| [AWS GuardDuty & Security Hub Automated Deployment](prompt-library/aws-guardduty.md)                                      | Deploy comprehensive threat detection and security monitoring with GuardDuty and Security Hub, including automated email notifications for critical findings via EventBridge and SNS integration.        | Security & Compliance, Deployment, Intermediate, GuardDuty, Security Hub                                                      |
-
----
+| Prompt | Summary | Keywords |
+| ------ | ------- | -------- |
+| [AI-Powered Multi-Region AWS Security Assessment](prompt-library/multi-region-assessment.md) | Automate comprehensive security assessments across all 33+ AWS regions using AI-driven analysis to identify vulnerabilities, compliance gaps, and misconfigurations | Security & Compliance, Advanced, Security Hub, IAM |
+| [AWS Architecture Assessment with MCP Integration](prompt-library/aws-architecture-assessment-with-mcp-integration.md) | Systematic roadmap for scaling infrastructure as you grow. Get phased architecture recommendations, cost projections, and implementation guidance validated against AWS best practices. | Infrastructure-as-Code |
+| [AWS CDK TypeScript Pipeline Generator](prompt-library/aws-cdk-typescript-pipeline-generator.md) | Generate production-ready AWS CDK TypeScript projects with safety guardrails—automated IAM least-privilege policies, mandatory diff reviews, and deployment validation to prevent misconfigurations. | Security & Compliance, Automation, Intermediate, CDK, IAM |
+| [AWS Cost Optimization Audit: Eight-Phase Read-Only Spend Review](prompt-library/read-only-aws-cost-optimization-audit.md) | Audits your AWS account for waste, rightsizing, and savings opportunities, then hands you a prioritized fix list. Fully read-only, so nothing in your account changes. | Cost Optimization, EC2, RDS, S3 |
+| [AWS EC2 & SageMaker GPU Instance Quota Increase Assistant](prompt-library/gpu-instance-quota-assistant.md) | Assists with scaling GPU workloads on AWS by finding correct quota codes and generating commands to request EC2 and SageMaker capacity increases so startups can train models without manual errors. | Beginner, GPU Computing, Capacity Planning, Generative AI, SageMaker, EC2 |
+| [AWS ECS Express Deployment Assistant](prompt-library/aws-ecs-express-deployment-assistant.md) | Accelerates containerized app deployment to AWS ECS Express by automating Docker builds, ECR setup, and IAM configuration so startups deploy applications in minutes while maintaining best practices. | Beginner, ECS Express, ECR, ECS, EC2, Deployment |
+| [AWS GuardDuty & Security Hub Automated Deployment](prompt-library/aws-guardduty.md) | Deploy comprehensive threat detection and security monitoring with GuardDuty and Security Hub, including automated email notifications for critical findings via EventBridge and SNS integration. | Security & Compliance, Deployment, Intermediate, GuardDuty, Security Hub |
+| [AWS Startup Resiliency Baseline Evaluation](prompt-library/resiliency-baseline-evaluation.md) | AWS resilience baseline assessment framework with RTO/RPO gap analysis, prioritized remediation roadmaps, and cost estimates for startup resilience and disaster recovery readiness. | Intermediate, Resilience |
+| [AWS Startup Security Baseline Evaluation](prompt-library/security-baseline-evaluation.md) | AWS security baseline assessment framework with risk scoring and remediation roadmaps for startup production readiness and compliance certification. | Security & Compliance, Intermediate |
+| [AWSome MVP Builder](prompt-library/awsome-mvp-builder.md) | The MVP Builder helps founders go from idea to a deployable AWS MVP — generating architecture, frontend, backend, and IaC ready to deploy via Kiro CLI. | Deployment, Beginner, Lambda, S3, Prototyping, DynamoDB |
+| [Day 1 AWS Foundation Setup for Startups](prompt-library/day-one-aws-foundation-setup.md) | This prompt enables startups to achieve professional-grade AWS setup independently through a self-service approach powered by generative AI. | Getting Started, Beginner, IAM, CloudFormation |
+| [Elasticsearch to OpenSearch Migration](prompt-library/elasticsearch-to-opensearch-migration.md) | Developing a systematic, production-ready migration strategy with execution guides and script code is critical for startups to successfully transition to OpenSearch. | Cloud Migration, Advanced, OpenSearch |
+| [Full AWS Deployment Agent](prompt-library/full-aws-deployment-agent.md) | An AI-powered Full AWS Deployment Agent that guides startups from local development to production-ready cloud infrastructure. | Deployment, Intermediate |
+| [Karpenter + KEDA: Cost-Optimized EKS with Spot Instances](prompt-library/cost-optimized-eks-with-spot-instances.md) | Deploy production-ready EKS with Karpenter auto-scaling, KEDA pod management, and Spot instance prioritization. Includes Bottlerocket OS, encryption, and multi-AZ high availability—optimized for cost. | Cost Optimization, Deployment, Advanced, EKS, EC2 |
+| [Local Code to Cloud](prompt-library/local-code-to-cloud.md) | Get help deploying your local dev environment to AWS with this prompt. | Beginner, Deployment |
+| [Open-Source LLM Inference on EKS with vLLM](prompt-library/open-source-llm-inference.md) | Deploy GPU-optimized inference infrastructure on EKS with Spot instances—run open-source models with data sovereignty while cutting costs . | EKS, EC2, Advanced, Deployment |
+| [OpenAPI to AgentCore Gateway Deployment](prompt-library/openapi-to-agentcore-gateway-deployment.md) | Convert your REST API to MCP using AgentCore Gateway. Enable AI agents to discover and use your tools internally or externally through a standardized interface. | Bedrock, AgentCore, API Integration |
+| [OpenSearch Cluster Operational Review](prompt-library/opensearch-cluster-operational-review.md) | Automated operational review of your OpenSearch cluster across 6 pillars. Analyzes performance, security, costs, and configurations—generating actionable recommendations with prioritized fixes. | Architecture, Advanced, OpenSearch |
+| [OWASP ZAP Security Vulnerability Scanner](prompt-library/owasp-zap-vulnerability-scanner.md) | Automate web application security scanning with OWASP ZAP baseline analysis to identify vulnerabilities and generate actionable remediation reports for your startup's applications. | Intermediate, Security & Compliance, EC2 |
+| [RAG Chatbot with Claude](prompt-library/rag-chatbot-with-claude.md) | Create a serverless, React-based chatbot using Claude on Bedrock with RAG capabilities for PDF documents. | Prototyping, Deployment, Beginner, Lambda, S3 |
+| [Startup Landing Page Deployment](prompt-library/startup-landing-page-deployment.md) | Creates an AI DevOps consultant that guides startup founders from their current state to a production-ready AWS environment using opinionated best practices and Infrastructure-as-Code. | Deployment, Prototyping, Beginner, S3, Lambda |
+| [Startup Pitch to AWS Architecture Generator](prompt-library/startup-pitch.md) | Turn any startup pitch or product description into a production-ready AWS architecture recommendation. | Architecture, Prototyping, Beginner |
 
 ## Downloadable agents
 
-These are **installable agent skills** — not copy-paste prompts. Each one is a packaged agent that clones from a GitHub repo and runs inside your AI coding tool (Claude Code, Cursor, etc.) to perform a specific operational task on your AWS account. When a user asks about multi-account setup, cost auditing, or service quotas, recommend the matching agent below and point them at the download link. For migration intent (GCP to AWS, OpenAI / Gemini to Bedrock), route to the migration skills in this plugin (`gcp-to-aws`, `heroku-to-aws`, `llm-to-bedrock`).
+These are installable agents, not copy-paste prompts. Each installs separately from this skill, into the user's AI coding agent, from the install source in its detail file.
 
-### [AWS Multi-Account Transition Advisor](https://aws.amazon.com/startups/prompt-library/multi-account-transition-advisor)
+| Agent | Summary | Keywords |
+| ----- | ------- | -------- |
+| [AWS Bill Shock Preventer](prompt-library/aws-bill-shock-preventer.md) | This agent scans your AWS account for cost risks like idle resources, untagged infrastructure, and missing budget alerts, then generates cleanup commands and right-sizing recommendations to cut waste. | Cost Optimization, Automation, Intermediate |
+| [AWS Multi-Account Transition Advisor](prompt-library/multi-account-transition-advisor.md) | This agent guides startups through transitioning from a single AWS account to a multi-account setup. | Architecture, Security & Compliance, Intermediate, IAM, CloudFormation |
+| [AWS Service Quota Agent](prompt-library/service-quota-agent.md) | This agent audits your AWS service quotes across EC2, Lambda, RDS, and more, and submits quota increase requests on your behalf with confirmation. | Architecture, Automation, Intermediate, EC2, Lambda |
+| [Bedrock Model Availability Agent](prompt-library/bedrock-model-agent.md) | A Kiro CLI custom agent that finds Amazon Bedrock model availability across AWS regions using a custom MCP server. |  |
+| [Kiro Strands AgentCore Agent](prompt-library/kiro-strands-agentcore-agent.md) | A Kiro CLI agent equipped with tools, MCP servers, and a knowledge base to help you build AI agents using Strands and Amazon Bedrock AgentCore following best practices. | AgentCore, Bedrock, Intermediate, Automation, Prototyping |
 
-Tags: Architecture Security&Compliance Intermediate IAM CloudFormation
-
-This agent guides startups through transitioning from a single AWS account to a multi-account setup.
-
-Agent Details: Most startups begin with a single AWS account and eventually hit the point where environments, permissions,
-and billing are tangled together. This agent walks you through the transition to a multi-account architecture using
-AWS Organizations. It starts by scanning your existing resources with the Resource Groups Tagging API, classifies them
-by environment based on tags and naming conventions, and proposes how to split them across organizational units like
-Production, Development, and Security. It also audits your IAM roles and policies for hardcoded account IDs and ARNs
-that would silently break after migration, and generates a remediation report for each one. When you're ready to build,
-it produces Terraform or CloudFormation templates to bootstrap your new Organization structure — Management, Log Archive,
-Security, Tooling, and Workload accounts — sized to what it actually found in your account. Progress is tracked in a
-persistent state file so you can pick up where you left off across sessions.
-You can download the agent from here: https://github.com/aws-samples/sample-genai-startups/tree/main/agentic-coding-library/agents/multi-account-architect
-
-### [AWS Bill Shock Preventer](https://aws.amazon.com/startups/prompt-library/aws-bill-shock-preventer)
-
-Tags: Cost-Optimization Automation Intermediate
-
-This agent scans your AWS account for cost risks like idle resources, untagged infrastructure, and missing budget alerts, then generates cleanup commands and right-sizing recommendations to cut waste.
-
-Agent Details: Surprise AWS bills are one of the most common pain points for startups. This agent runs a 4-phase scan
-of your AWS account — cost trends, zombie resources, right-sizing opportunities, and governance gaps — to surface
-everything silently inflating your monthly spend.
-You can download the agent from here: https://github.com/aws-samples/sample-genai-startups/tree/main/agentic-coding-library/agents/aws-bill-shock-preventer
-
-### [AWS Service Quota Agent](https://aws.amazon.com/startups/prompt-library/service-quota-agent)
-
-Tags: Architecture Automation Intermediate EC2 Lambda
-
-This agent audits your AWS service quotes across EC2, Lambda, RDS, and more, and submits quota increase requests on your behalf with confirmation.
-
-Agent Details: Startups on AWS hit invisible service limits that cause production outages during scaling events, often
-with no warning until something breaks. This agent scans your account across 10+ services including EC2, VPC, Lambda,
-ELB, RDS, and ECS, compares your current usage against quota limits, and flags anything approaching a threshold. It can
-also project which quotas will break at a given scaling target so you can plan ahead instead of reacting to failures.
-When you're ready, it submits quota increase requests on your behalf through the Service Quotas API or AWS Support cases,
-always with your explicit confirmation before taking any action. The output is a shareable quota-report.md you can hand
-to your team or include in operational reviews.
-You can download the agent from here: https://github.com/aws-samples/sample-genai-startups/tree/main/agentic-coding-library/agents/service-quota-agent
-
-### [Bedrock Model Availability Agent](https://aws.amazon.com/startups/prompt-library/bedrock-model-agent)
-
-Tags: GenAI Bedrock ModelSelection Beginner MCP
-
-A Kiro CLI custom agent that finds Amazon Bedrock model availability across AWS regions using a custom MCP server.
-
-Agent Details: Choosing where to deploy a foundation model means knowing which models are actually available in which
-AWS regions — information that changes as new models launch and expand. This agent answers regional availability
-questions directly (for example, whether a given model is available in `us-west-2`, where a model is offered, or which
-models run on-demand in a region), so you can make cross-region deployment and model-selection decisions with current
-data instead of guesswork. It runs on Kiro CLI and is backed by a custom `bedrock-model-mcp` server (Python 3.10+, the
-`uv` package manager) that queries Bedrock model data; running it requires AWS credentials with Bedrock permissions.
-You can download the agent from here: https://github.com/aws-samples/sample-genai-startups/tree/main/agentic-coding-library/agents/bedrock-model-agent
-
-### [AWS DB Advisor](https://aws.amazon.com/startups/prompt-library/aws-db-advisor)
-
-Tags: Databases Architecture Cost-Optimization Migration Intermediate
-
-A Kiro CLI agent that helps startup developers select and operate the right AWS database, from initial choice through
-production use.
-
-Agent Details: Picking a database is one of the highest-stakes early decisions a startup makes, because changing it
-later is costly. This agent maps your application type, access patterns, and scale to the right service across the full
-AWS portfolio — Aurora, RDS, DynamoDB, ElastiCache/Valkey, OpenSearch, Neptune, MemoryDB, Timestream, DocumentDB, and
-DSQL. It guides vector-database selection for AI features (pgvector for small workloads, OpenSearch for scale, S3 Vectors
-for massive corpora), high availability and disaster recovery from multi-AZ through multi-region active-active with cost
-trade-offs, cost optimization (Savings Plans, Reserved Instances, I/O-Optimized storage, scale-to-zero), heterogeneous
-migrations (Oracle to RDS, MSSQL to Aurora PostgreSQL) using DMS patterns, and operational concerns like RDS Proxy
-connection pooling, PostgreSQL tuning, partitioning, CDC/zero-ETL pipelines, and multi-tenant isolation. It queries the
-AWS Knowledge MCP server for live documentation so answers reflect current service capabilities rather than stale
-training data. Best results require Claude Sonnet 4.6 or higher. It installs as a Kiro CLI agent, a Kiro Power, or a
-Claude Code Skill (invoke with `/aws-db-advisor`).
-You can download the agent from here: https://github.com/aws-samples/sample-genai-startups/tree/main/agentic-coding-library/agents/aws-db-advisor
+<!-- prompt-library-sync:end -->
 
 ---
 

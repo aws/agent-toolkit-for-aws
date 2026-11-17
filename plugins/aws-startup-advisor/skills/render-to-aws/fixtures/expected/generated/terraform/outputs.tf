@@ -54,10 +54,10 @@ output "migration_summary" {
   description = "Machine-readable accounting summary for the generated infrastructure."
   value = {
     accounted_count          = 15
-    generated_count          = 11
-    unsupported_count        = 2
+    generated_count          = 13
+    unsupported_count        = 0
     estimate_alignment       = "balanced"
-    workflow_artifacts_state = "conditional_workflow_generation_unsupported"
+    workflow_artifacts_state = "generated"
     ai_track_state           = "deferred_shared_ai_engine"
   }
 }

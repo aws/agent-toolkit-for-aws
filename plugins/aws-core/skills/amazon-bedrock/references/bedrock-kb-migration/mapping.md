@@ -46,7 +46,7 @@
   `managed-kb-api.md` §2d.
 - **`Retrieve` is `HYBRID`-only** on MANAGED (`overrideSearchType` does not exist on the managed wrapper);
   self-managed accepts both. **Scores are on different, non-portable scales**, and on MANAGED the scale also
-  depends on the reranking mode — re-tune any threshold after migration (full caller list:
+  depends on the reranking mode — re-tune any threshold on the new KB, before cutover (full caller list:
   `managed-kb-api.md` §3 "What changes for existing `Retrieve` callers"). **`Retrieve` is not the only query surface:** MANAGED also
   exposes `AgenticRetrieveStream`, a planning-loop retrieval API that does not exist on `VECTOR` at all —
   see "Managed-only capabilities" below and `managed-kb-api.md` §3.
@@ -79,7 +79,7 @@
 MANAGED beat self-managed's default parser on image-bearing PDFs; parity on pure text; tables weakest on
 both. A **text** embedding model does not cover image/audio/video-only answers, whereas a **multimodal
 `CUSTOM`** model (if the docs list one) embeds that content directly. State this as a capability difference
-if the user asks — **do not assess, classify, or advise on what the user's corpus contains**; corpus content
+if the customer asks — **do not assess, classify, or advise on what the customer's corpus contains**; corpus content
 type is out of scope for this tool.
 
 > **These are single-shot `Retrieve` comparisons.** Agentic retrieval is a *different surface* with its own
@@ -97,7 +97,7 @@ type is out of scope for this tool.
 >    client-side parameter validation plus a live `us-west-2` call, and the applied managed chunking/parsing
 >    config read back from live managed KBs. The caller-impact consequences are in
 >    `managed-kb-api.md` §3. **Neither this file nor `managed-kb-api.md` carries runtime request
->    shapes** — for those the user goes to the AWS API reference or `--generate-cli-skeleton`, never to an
+>    shapes** — for those the customer goes to the AWS API reference or `--generate-cli-skeleton`, never to an
 >    example.
 > 2. **Documented only** — the capability narrative and every benchmark or limit figure (MuSiQue gains,
 >    parsing size ceilings, the number of KBs one agentic call can route across, per-call prices, real-time ACL checks,
@@ -159,7 +159,7 @@ structure-blind. Two details govern how to describe it:
   server rejects *every* strategy including `FIXED_SIZE`/`NONE` — also invisible client-side. Both are why
   live testing, not the schema, is the authority here (`managed-kb-api.md` §6).
 
-**Do not tell a user their `SEMANTIC` chunking is replaced by something semantically equivalent.** State the
+**Do not tell a customer their `SEMANTIC` chunking is replaced by something semantically equivalent.** State the
 substitution (managed default chunking, not customer-readable) and, if it matters to them, that the structure
 awareness lives in *parsing* rather than in the chunker.
 
@@ -178,7 +178,7 @@ before quoting specifics — note that page does not document the managed-embedd
 planning loop instead of a single similarity search: it decomposes the query into sub-queries, retrieves per
 sub-query, judges whether the evidence is sufficient, and iterates — then generates a grounded answer in the
 same call by default. How it behaves, when to choose it, and its cost and permission shape:
-**`managed-kb-api.md` §3** (a conceptual overview — running it is the user's step, so no request shapes there).
+**`managed-kb-api.md` §3** (a conceptual overview — running it is the customer's step, so no request shapes there).
 
 **This is the largest capability MANAGED adds, and it does not exist on a `VECTOR` KB at all** —
 `AgenticRetrieveStream` is documented as Managed-KB-only. A team that hand-built a plan → retrieve →
@@ -197,9 +197,11 @@ exploratory and cross-KB questions, and the wrong one for direct lookups.
 It also **routes across several knowledge bases in one request**, picking per sub-query from a
 natural-language `description` attached to each retriever. That is the capability to reach for whenever a
 migration splits one KB into several (the data-sources-per-KB split) — see "Gap coverage". How many KBs one
-call may route across is a **server-side quota, not a contract bound** (verified: the `retrievers` list has
-`min=1` and no maximum in the API model), so read it from the quotas page and don't expect client
-validation to catch one too many.
+call may route across is stated in the `retrievers` row of the request-field table in the
+[agentic retrieval guide](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-test-agentic-retrieve.html);
+read it there before quoting it, never from memory. It is **not a contract bound** (verified: the
+`retrievers` list has `min=1` and no maximum in the API model), so don't expect client validation to catch
+one too many.
 
 ### 3. Service-managed storage — the accuracy argument, not only the ops one
 
@@ -238,16 +240,19 @@ Two production behaviors round it out, neither of which is simply "the self-mana
 ### 4. Scale and quota differences — the biggest gap, and the easiest to verify
 
 **Read every limit live; never quote one from this file or from memory.** AWS's own pages disagree on
-several of these (values and whether they can be raised), so the customer's account is the only source.
-Whenever limits come up (Explore or Plan), run, for each quota code below (READ-ONLY, pre-approved):
+several of these (values and whether they can be raised), so the customer's account is the only source,
+and a docs page's default is no substitute. Whenever limits come up (Explore or Plan), run, for each quota
+code below (READ-ONLY, pre-approved: run it without asking):
 
 ```bash
 aws service-quotas get-service-quota --service-code bedrock --quota-code <QUOTA_CODE> \
   --region <REGION> --profile <READ_ONLY_PROFILE>
 ```
 
+Use the Region and profile this session already uses; ask the customer for them only when none is set.
 Quote `Quota.Value` and `Quota.Adjustable` exactly as returned. If a call fails (denied, throttled, no
-such code), say "check Service Quotas in your account" for that quota and give **no number** for it.
+such code) or can't run, name the quota, say "check Service Quotas in your account" for it, and give **no
+number** for it, not a docs default either.
 **Note the official terminology:** AWS calls the self-managed type a **Customer-managed Knowledge Base**;
 this file says "self-managed" / `VECTOR` for the same thing.
 
@@ -256,9 +261,10 @@ this file says "self-managed" / `VECTOR` for the same thing.
 | Knowledge bases per account, per Region | `L-60DA3E0D` | `L-5C7643AC` |
 | Data sources per knowledge base | `L-679D8304` | `L-F02D918A` |
 | Concurrent ingestion jobs per knowledge base | `L-31BC8F89` | `L-D74F6A4C` |
+| Concurrent ingestion jobs per account | `L-795A8608` | `L-FE507178` |
 | Query input size (characters) | `L-0495104E` | `L-08DDCA8C` (`Retrieve`) |
 | `Retrieve` throughput | `L-F0D0E0B9` (requests per second, shared across the account) | `L-3FE71326` (requests per second per account) and `L-4064C85B` (requests per minute per KB) |
-| Raw data storage per knowledge base (TB) | n/a — bounded by the store you run | `L-BEE3FA31` |
+| Raw data storage per knowledge base (TB); in Service Quotas, "(Managed Knowledge Bases) Total storage size per knowledge base (TB)" | n/a — bounded by the store you run | `L-BEE3FA31` |
 | `AgenticRetrieveStream` requests per minute per account | n/a | `L-315A9D5B` |
 
 **How to frame throughput.** Self-managed `Retrieve` is one ceiling shared by every KB in the account;
@@ -292,7 +298,7 @@ From the AWS comparison table — these are **"Supported" vs "Not supported"** r
 > **The connector row needs care — do not overstate it.** AWS's comparison table lists Customer-managed as
 > "S3 and Custom", and that is the line to quote. But the **shared API model still exposes `WEB`,
 > `CONFLUENCE`, `SHAREPOINT` and `SALESFORCE` as `VECTOR` data-source types**, and real customer estates use
-> them — this tool's own migration mapping exists precisely to translate them. So **never tell a user their
+> them — this tool's own migration mapping exists precisely to translate them. So **never tell a customer their
 > existing self-managed Confluence, SharePoint or Salesforce connector "doesn't exist."** The defensible
 > claims are: managed's native connector suite is the documented differentiator, and it is **broader than
 > self-managed's** — managed **adds Google Drive, OneDrive, Box, Zendesk and Confluence Data Center**, and
@@ -326,7 +332,7 @@ ease-of-use, accuracy and cost. That is a citable position, not this tool's opin
 | Inference profile embedding | `embeddingModelArn` = IP ARN | `embeddingModelArn` = IP ARN | Supported in both, but on MANAGED the profile's model must use the managed dimension and data type (create page) |
 | KB-level CMK encryption | KB-level `serverSideEncryptionConfiguration` | `managedKnowledgeBaseConfiguration.serverSideEncryptionConfiguration.kmsKeyArn` | Required grant is provisioned automatically |
 | KB identity (name / description / roleArn) | Same request fields | Same request fields | Identical |
-| Retrieval metadata filtering | `vectorSearchConfiguration.filter` | `managedSearchConfiguration.filter` | Same syntax for most operators inside the new wrapper; `startsWith` and `stringContains` are rejected on managed (`managed-kb-api.md` §3) |
+| Retrieval metadata filtering | `vectorSearchConfiguration.filter` | `managedSearchConfiguration.filter` | Same syntax for most operators inside the new wrapper; managed rejects `startsWith` and `stringContains`, boolean values, non-integer numbers, some metadata key names and more than 10 filters in one `andAll`/`orAll` (`managed-kb-api.md` §3) |
 | Fixed-size chunking | `FIXED_SIZE` | `FIXED_SIZE` **only with a custom embedding model** (with the managed embedding model, chunking config is rejected — omit it) | Carry `FIXED_SIZE` over only on a custom-embedding KB. On a managed-embedding KB emit no `chunkingConfiguration`; the managed default applies |
 | No chunking | `NONE` | `NONE` **only with a custom embedding model** | On a custom-embedding KB `NONE` is accepted verbatim (**recommended: switch to `FIXED_SIZE`** — `NONE` produces one oversized chunk per document, degrading retrieval and possibly exceeding the embedding model's token limit; pre-split upstream if one-chunk-per-file is genuinely required). On a managed-embedding KB even `NONE` is rejected — omit `chunkingConfiguration` |
 | Data source connectors | S3, Web, Confluence, SharePoint, Salesforce, Custom | Same sources plus more, via `connectorParameters.type` (`S3`/`ONEDRIVE`/`CONFLUENCE`/`CONFLUENCEONPREM`/`SHAREPOINT`/`WEB`/`GOOGLEDRIVE`/`SALESFORCE`/`ZENDESK`/`CUSTOM`, `version` `"1"`; see "The managed connector set") | The managed connector *shape* differs: `connectionConfiguration.secretArn` (not `credentialsSecretArn`), `aclEnabled` (no `crawlAcl`), managed `authType` values — see `managed-kb-api.md` §2b. Managed names are `WEB`/`GOOGLEDRIVE` (not `WEB_CRAWLER`/`GOOGLE_DRIVE`). Managed also adds `SALESFORCE`, `ZENDESK` and `CONFLUENCEONPREM` (Confluence Data Center) connectors that self-managed does not have. `CUSTOM` is a direct-ingestion source, no crawl or secret (§2d) |
@@ -372,7 +378,9 @@ this page, is a blocker:
 moving the transform upstream or into a pre-processing step, not a migrated file "if you drop it", and not
 an offer to build on any of these. Each one changes what gets indexed, which is a decision for the customer
 and AWS Support, not a migration step. Say "this KB can't move yet — contact AWS Support", and what managed
-would give them once it is resolved.
+would give them once it is resolved. The same rule rules out an offer to re-run, restart or redo the migration
+once the customer removes, moves or changes the blocking feature themselves: if they later bring a changed
+KB, that is a new migration they start, not one you offered.
 
 Before keeping either, check the managed KB docs for an equivalent; keep it only if the docs show none
 (both were re-checked against `kb-managed-connect-ds.md` and the managed KB user guide, which document no
@@ -398,15 +406,21 @@ for the full `connectionConfiguration` shape, never invent fields):
 | Amazon S3 | `S3` | Credential-free; `connectionConfiguration.bucketName` |
 | SharePoint | `SHAREPOINT` | Secrets Manager credentials |
 | Confluence (Cloud) | `CONFLUENCE` | Secrets Manager credentials |
-| Confluence Data Center | `CONFLUENCEONPREM` | Secrets Manager creds (`BASIC` or `PERSONAL_TOKEN`); requires a VPC configuration; `aclEnabled` defaults to `false`, permanent after create. [kb-managed-ds-confluence-onprem.html](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-managed-ds-confluence-onprem.html) |
+| Confluence Data Center | `CONFLUENCEONPREM` | Secrets Manager creds (`BASIC` or `PERSONAL_TOKEN`); requires a VPC configuration; before create, read its `aclEnabled` default from its [ACL page](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-managed-ds-confluence-onprem-acl.html); the ACL decision is a create-time decision (`managed-kb-api.md` §3b). [kb-managed-ds-confluence-onprem.html](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-managed-ds-confluence-onprem.html) |
 | Web Crawler | `WEB` | |
 | Google Drive | `GOOGLEDRIVE` | |
 | OneDrive | `ONEDRIVE` | |
-| Salesforce | `SALESFORCE` | `connectorType` also `SALESFORCE`; `authType: OAUTH2`; `connectionConfiguration.secretArn` + `hostUrl`; **no document-level ACL** (all authenticated KB queriers see all crawled content; the self-managed Salesforce connector has none either, see the Salesforce row under Gap coverage). [kb-managed-ds-salesforce.html](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-managed-ds-salesforce.html) |
+| Salesforce | `SALESFORCE` | `connectorType` also `SALESFORCE`; `authType: OAUTH2` with ACLs off (read the ACL `authType` from the connector page); `connectionConfiguration.secretArn` + `hostUrl`. [kb-managed-ds-salesforce.html](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-managed-ds-salesforce.html) |
 | Zendesk | `ZENDESK` | Crawls Zendesk articles and community posts. Confirm the exact `connectionConfiguration` fields from its connector page before writing them |
-| Box | `BOX` | Secrets Manager credentials; `authType` `CCG` (Client Credentials Grant, recommended, supports ACLs) or `OAUTH2` (no ACLs). [kb-managed-ds-box](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-managed-ds-box.html) |
-| ServiceNow | `SERVICENOW` | `connectorType` also `SERVICENOW`; `authType: OAUTH2` (client credentials, 2LO); ACLs enforce ServiceNow user criteria. [kb-managed-ds-servicenow](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-managed-ds-servicenow.html) |
+| Box | `BOX` | Secrets Manager credentials; `authType` `CCG` (Client Credentials Grant, recommended) or `OAUTH2`. [kb-managed-ds-box](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-managed-ds-box.html) |
+| ServiceNow | `SERVICENOW` | `connectorType` also `SERVICENOW`; `authType: OAUTH2` (client credentials, 2LO). [kb-managed-ds-servicenow](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-managed-ds-servicenow.html) |
 | Custom | `CUSTOM` | Direct ingestion, no crawl or secret |
+
+This table gives no ACL support facts; they change over time. Before you call a connector's document-level ACL
+support a loss, the same on both, or a gain, read it for both products: managed (and the `authType` ACLs need)
+from the live
+[connector support matrix](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-managed-acl.html#kb-managed-acl-connector-support),
+self-managed from that connector's own page where one exists (otherwise from the connector the original KB uses).
 
 **Do not write a connector count** — the connect-ds overview's "Supported type values" sentence has not been
 updated for the newest connectors, and the set is expanding; rely on each connector's own page and confirm
@@ -435,10 +449,10 @@ named explicitly, not folded silently into the closed list above.
 Every `adjusted` row above is something managed **handles differently**. Most are covered by something
 managed *adds*; a few genuinely are not, and saying which is which plainly is what makes the rest credible.
 This is how to present any difference — use it whenever a difference comes up (including
-when the user asks "what do I lose?"), when Plan lists substitutions, and when Implement reports caller
+when the customer asks "what do I lose?"), when Plan lists substitutions, and when Implement reports caller
 impacts.
 
-**Frame each row as what's different and how managed does it, not as what the user gives up.** A wording
+**Frame each row as what's different and how managed does it, not as what the customer gives up.** A wording
 rule, not a softening of the grades: the residual on a `Partly` and an honest `No` still have to be stated.
 It is also the more accurate framing — the index-tuning surface goes away *because the decisions it existed
 to make go away with it*, and direct store access is replaced by an access path that still supports querying
@@ -447,7 +461,10 @@ and writing documents.
 **Never name a difference without its pairing in the same breath.** A bare list of removed knobs is a
 misdescription, because it reports the control and omits the capability that replaced it. Every difference
 you raise carries three things: how managed does it instead, **the acceptable substitute where one exists —
-stated explicitly, not left for the user to infer** — and the `Covers?` grade.
+stated explicitly, not left for the customer to infer** — and the `Covers?` grade. A closing list of other
+differences follows the same rule: give each item its pairing and grade, or leave that item out, unless
+another rule requires it (the caller impacts in `managed-kb-api.md` §3, the residuals under "What keeps this
+honest"); then pair it.
 
 **A `Partly` row the customer says they need:** state the gap accurately, say what managed offers instead,
 and say which parts of the workload can move without it. A hard requirement managed cannot meet is a
@@ -462,10 +479,15 @@ real exception (see the `SEMANTIC`-only row); say so plainly, with the fact behi
   ingestion, or an AgentCore Gateway/MCP target), and **never offer one of the three capabilities as a
   substitute for something it doesn't actually replace.**
 
-| Difference (what managed handles differently) | What covers it | Covers? | What to tell the user |
+| Difference (what managed handles differently) | What covers it | Covers? | What to tell the customer |
 |---|---|---|---|
 | **Vector-store choice + index tuning** (`storageConfiguration` gone) | Service-managed **auto-scaling** store | **Yes** | The tuning surface disappears because the decisions it existed for do too: dimensions and similarity metric are fixed and correct by construction, hybrid search is on with no index config, encryption is KMS-backed. AWS's own comparison is blunt — managed is an "auto-scaling datastore of embeddings, text, metadata and raw files, managed completely by Bedrock" against "customers choose, provision, scale, and update" — so what is lost is the *ability* to tune, not an outcome tuning was achieving. **State the one real ceiling: raw data storage per KB, read live from Service Quotas (§4, `L-BEE3FA31`)** |
 | **`SEMANTIC`-only search** (`overrideSearchType` rejected) | Always-on hybrid + Agentic Retrieval | **Partly** | Hybrid is a superset of the *matching* — keyword *and* semantic on every query — and where semantic-only was serving multi-intent questions, `AgenticRetrieveStream` serves that intent far better by decomposing the query instead of trusting one embedding. Residual to state: hybrid is **not configurable**, so semantic-only cannot be forced and keyword matching always participates in ranking. A caller with a hard requirement to exclude lexical matching is a genuine exception, not a preference to talk them out of. Application code must drop the parameter either way |
+| **`startsWith` / `stringContains` filter operators** (rejected on managed: "Managed knowledge base considerations" on [kb-test-retrieve](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-test-retrieve.html)) | The other filter operators, unchanged inside `managedSearchConfiguration.filter` | **No** for these two operators | Metadata filtering keeps working with the other operators. For prefix or substring matching itself no managed equivalent is known (check the live [RetrievalFilter](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_agent-runtime_RetrievalFilter.html) operator list): say so, and that a caller using these two must change its filter. The managed store also rejects boolean values, non-integer numbers, metadata keys outside `[a-zA-Z0-9_][a-zA-Z0-9_-]*` and more than 10 filters in one `andAll`/`orAll`, so the customer runs each filter the callers send against the new KB before cutover. An application code change, not a blocker; the exact errors are in `managed-kb-api.md` §3 |
+| **`implicitFilterConfiguration`** (not a member of `managedSearchConfiguration`) | An explicit `filter` the caller builds | **No** | No managed setting is known that derives a filter from the query (the live [ManagedSearchConfiguration](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_agent-runtime_ManagedSearchConfiguration.html) reference lists its members). The real alternative: the caller builds the filter in its own code and passes it in `managedSearchConfiguration.filter`. An application code change, not a blocker |
+| **Score scale** (scores move to a different scale, which also depends on the reranking mode) | Managed relevance scores, with thresholds re-tuned per reranking mode | **Yes**, once re-tuned | A threshold carried over unchanged silently admits more or fewer results. The customer re-tunes it on the new KB built alongside, before cutover, comparing ranking and content rather than score size ([handoff](references/bedrock-kb-migration/handoff.md) → Validate). Not a blocker |
+| **Result location and system metadata keys** (the `s3://` URI and the `x-amz-bedrock-kb-*` keys change form) | The new `documentId` field and the `_`-prefixed system keys | **Yes** for each value with a counterpart in `managed-kb-api.md` §3 | `location.s3Location.uri` changes from `s3://<bucket>/<key>` to an `https://` URL whose host form has varied by Region (`https://<bucket>.s3.amazonaws.com/<key>` in us-east-1, `https://<bucket>.s3.<region>.amazonaws.com/<key>` in us-west-2), and the new `documentId` field carries the `s3://` URI (or the page URL). The system keys take `_`-prefixed names; user metadata keys are unchanged. Caller code must read the new forms (an old key raises `KeyError`; splitting the new `location.s3Location.uri` on `s3://` gives a wrong value): read `documentId` for the `s3://` URI rather than parsing the `https://` one. For a system key the caller reads that has no counterpart there, the customer checks it on a `Retrieve` result from the new KB before cutover; until then, say no equivalent is known. Not a blocker |
+| **Overlapping data sources** (two data sources over the same content return each chunk twice, with different `_chunk_id`s) | Data sources scoped so no two cover the same content (for S3, the `filterConfiguration` prefixes and patterns in "1:1 mapping") | **Yes** when the data sources are scoped apart; **Partly** where two must overlap | Whether to scope them apart is the customer's call. Where two must overlap, `Retrieve` returns both copies and the caller removes the duplicates itself. Not a blocker |
 | **Custom parser** (`BEDROCK_FOUNDATION_MODEL` / BDA not selectable) | Smart Parsing | **Yes** for a source on the default parser; **Partly** for a source that uses `BEDROCK_FOUNDATION_MODEL` or BDA parsing | Parsing isn't removed, it's standardized and automatic: per-connector data models, bounding-box → FM extraction, captioning, video scene description, documented per-file size ceilings. Beats the self-managed default parser on image-bearing PDFs. What is lost is *parser choice*, not parsing capability. **Partly residual** (FM or BDA parser on the source): compare retrieval on a sample of those documents in the target Region before cutover — scanned, image-heavy or non-English content is where results differ most. A multimodal `CUSTOM` embedding model is the managed path for figure-heavy content (it turns off the managed reranker) |
 | **`SEMANTIC` / `HIERARCHICAL` chunking** (rejected on managed) | Smart Parsing's structure awareness | **Partly** | The strategies are rejected; the managed fixed-size default applies. Structure awareness moves upstream into parsing. Residual: no chunk-boundary control. Two embedding-model rules govern what you may emit: on a **managed-embedding** KB emit no `chunkingConfiguration` at all (any strategy is rejected); on a **custom-embedding** KB `FIXED_SIZE` may be carried over |
 | **Multi-hop / relationship-aware retrieval** (GraphRAG — closed blocker) | Agentic Retrieval | **Partly — blocker stands** | This is where the new capability changes the answer most, and it still **does not lift the blocker**. Agentic retrieval delivers real multi-hop reasoning (the documented gains grow with hop count; agentic-retrieval blog), so a customer who adopted GraphRAG *for multi-hop question answering* now has a managed capability for that need. It provides **no graph traversal and no explicit entity-relationship structure**. GraphRAG stays on the closed list — offer this as context for the AWS Support conversation, **never as a migration path** |
@@ -476,17 +498,17 @@ real exception (see the `SEMANTIC`-only row); say so plainly, with the fact behi
 | **Cross-account access** to the KB (previously done by granting the store directly) | **Resource-based policies** — MANAGED-only | **Yes — and self-managed cannot do this at all** | Where the direct-index grant existed *to share the KB across accounts*, managed replaces it with a first-class mechanism: a resource policy on the knowledge base with `Allow`/`Deny` over `bedrock:Retrieve` and `bedrock:GetDocumentContent`. The docs ([kb-managed-cross-account](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-managed-cross-account.html)) state plainly that **`VECTOR` KBs do not support resource policies**, so this is a capability gained, not a workaround. Separate the two motives before answering: sharing → covered and improved; raw index queries → the row above |
 | **`RETAIN` deletion policy** | Connector `deletionProtectionConfiguration` | **Partly** | Managed defaults to `DELETE` with optional deletion protection (+ threshold) on the connector. Protection exists; an explicit `RETAIN` policy does not |
 | **Data-source-level SSE** | KB-level CMK | **Partly** | Encryption is covered — at rest and in transit, AWS-managed or CMK. The per-data-source *granularity* is not |
-| **ACL mapping control** (`crawlAcl` / `accessControlConfiguration` gone) | `aclEnabled` + two-stage ACL-aware retrieval | **Yes — and stronger** | The knob narrows to one flag, but enforcement improves: crawled pre-retrieval filtering **plus real-time verification against the source** on SharePoint/OneDrive/Google Drive/Confluence, deny-overrides-allow, and it **fails closed**. Three caveats you must state, not one: **ACL awareness is not authorization** (your app authenticates users and passes verified identity — never present it as a security boundary); **Web Crawler cannot use ACLs at all** and S3/Custom get pre-filtering only; and enabling ACLs **can force an `authType`**, while `aclEnabled` is immutable after create on S3 and permanent on Confluence. Detail: `managed-kb-api.md` §3b |
+| **ACL mapping control** (`crawlAcl` / `accessControlConfiguration` gone) | `aclEnabled` + two-stage ACL-aware retrieval | **Yes — and stronger** | The knob narrows to one flag, but enforcement improves: crawled pre-retrieval filtering **plus real-time verification against the source** on the connectors the live [connector support matrix](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-managed-acl.html#kb-managed-acl-connector-support) marks for it, deny-overrides-allow, and it **fails closed**. Three caveats you must state, not one: **ACL awareness is not authorization** (your app authenticates users and passes verified identity — never present it as a security boundary); **not every connector supports ACLs, and some get pre-filtering only** (read the customer's connector in that matrix); and enabling ACLs **can force an `authType`**, while `aclEnabled` is immutable after create on S3 and permanent on Confluence. Detail: `managed-kb-api.md` §3b |
 | **One KB became several** (data-sources-per-KB split) | A much higher data-sources-per-KB limit, then Agentic Retrieval multi-KB routing | **Yes — and it usually runs the other way** | Lead with the direction of the change: read both data-sources-per-KB quotas live (§4: `L-679D8304` self-managed, `L-F02D918A` managed) — managed's is far higher, so a migration far more often **consolidates** a fragmented estate than splits it, and the split only bites at genuinely large ones. When it does apply, the usual cost is a caller-side lookup to resolve which shard holds a tenant — and `AgenticRetrieveStream` absorbs that by registering several KBs in one request and routing per sub-query from each retriever's `description`. Write those descriptions specifically; vague descriptions route vaguely |
 | **Custom transformation Lambda** (closed blocker) | nothing | **No** | No in-pipeline hook exists, and the `CUSTOM` connector is **direct ingestion, not a transform substitute** (`managed-kb-api.md` §2d). Removing the hook would silently change what gets indexed. Contact AWS Support |
-| **Salesforce / Zendesk / Confluence Data Center source** | Native managed connectors (`SALESFORCE` / `ZENDESK` / `CONFLUENCEONPREM`) | **Yes** | These migrate: managed has native Salesforce and Zendesk connectors and Confluence Data Center (`CONFLUENCEONPREM`). State the Salesforce ACL point as a limit both products share: the Salesforce managed connector has **no document-level ACL** (all authenticated KB queriers see all crawled content), and neither does the self-managed one, whose [connector page](https://docs.aws.amazon.com/bedrock/latest/userguide/salesforce-data-source-connector.html) says synced data "becomes available to anyone with `bedrock:Retrieve` permissions". It is not something lost by moving. **Managed gain (R1):** new VECTOR Confluence/SharePoint/Salesforce/Web Crawler connectors can no longer be created, so for these sources managed is the way forward |
+| **Salesforce / Zendesk / Confluence Data Center source** | Native managed connectors (`SALESFORCE` / `ZENDESK` / `CONFLUENCEONPREM`) | **Yes** | These migrate: managed has native Salesforce and Zendesk connectors and Confluence Data Center (`CONFLUENCEONPREM`). Read each one's document-level ACL support for both products before you call it a loss, the same on both, or a gain: managed from the live [connector support matrix](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-managed-acl.html#kb-managed-acl-connector-support), self-managed from that connector's own page (for Salesforce, the self-managed [connector page](https://docs.aws.amazon.com/bedrock/latest/userguide/salesforce-data-source-connector.html)). **Managed gain (R1):** new VECTOR Confluence/SharePoint/Salesforce/Web Crawler connectors can no longer be created, so for these sources managed is the way forward |
 
 ### Why most of these are not really tradeoffs
 
-A user can read the `adjusted` list as a column of losses and reasonably ask whether migrating is a
+A customer can read the `adjusted` list as a column of losses and reasonably ask whether migrating is a
 downgrade. It generally isn't, and the argument does not depend on rhetoric — it depends on noticing that
 **almost every apparent loss is the removal of a control, while the gains are removals of *limits*.** Use
-this framing when a user pushes back, and keep it factual:
+this framing when a customer pushes back, and keep it factual:
 
 1. **The controls being removed mostly existed to compensate for running your own store.** Index tuning,
    dimension reduction, similarity-metric choice and parser selection are all work that exists *because* the
@@ -494,7 +516,7 @@ this framing when a user pushes back, and keep it factual:
    and ships a managed embedding model and managed re-ranker **at no extra cost** where self-managed offers
    **none**.
 2. **The limits being removed are order-of-magnitude, and they are the ones that shape architecture:** data
-   sources per KB, KBs per account, concurrent ingestion jobs and query characters. Quote the values read
+   sources per KB, KBs per account, concurrent ingestion jobs per KB and per account, and query characters. Quote the values read
    live from Service Quotas (§4), never fixed numbers. Those are not conveniences; they decide whether "a KB per team" or
    "one KB for the whole estate" is even expressible. One apparent migration cost, splitting a KB across
    several, is an artifact of self-managed limits that managed simply doesn't have.
@@ -509,8 +531,9 @@ this framing when a user pushes back, and keep it factual:
 **per-KB raw-storage ceiling** (read live, `L-BEE3FA31`); **no customer-visible index**, so a consumer doing raw index queries must
 change how it works; **no reduced-dimension or `BINARY` footprint**, so the index gets larger; **no
 supplemental-media bucket you own**; **ACL awareness is filtering, not authorization**; and callers must
-**change `Retrieve` request bodies and re-tune score thresholds**. Lead with the reframing, then name these
-without being asked. A user who discovers an unmentioned residual later will discount everything else in the
+**change `Retrieve` request bodies and re-tune score thresholds**; and the **`startsWith` /
+`stringContains` filter operators** and **implicit filtering** have no managed equivalent (Gap coverage). Lead with the reframing, then name these
+without being asked. A customer who discovers an unmentioned residual later will discount everything else in the
 table.
 
 **None of this reopens the blocker list.** The same two features block: the Lambda transform and GraphRAG.
@@ -534,7 +557,7 @@ Agentic retrieval narrows the GraphRAG *use case* and must never be used to recl
 ## Public reference links
 
 > **Reading these:** fetch via `curl` + `.md` (swap `.html`→`.md`), never `web_fetch` — full rule in
-> [safety-and-iam](references/bedrock-kb-migration/safety-and-iam.md) → "Reading public AWS docs". Re-verify against live docs; prefer the user's Region.
+> [safety-and-iam](references/bedrock-kb-migration/safety-and-iam.md) → "Reading public AWS docs". Re-verify against live docs; prefer the customer's Region.
 
 - Embedding-model options (authoritative `CUSTOM` model list — fetch, don't hardcode): https://docs.aws.amazon.com/bedrock/latest/userguide/kb-managed-create.html#kb-managed-embedding-models
 - Create a managed knowledge base (managed vs custom embedding rules; console parsing/chunking flow; `CreateDataSource` `vectorIngestionConfiguration`): https://docs.aws.amazon.com/bedrock/latest/userguide/kb-managed-create.html
@@ -567,7 +590,7 @@ Agentic retrieval narrows the GraphRAG *use case* and must never be used to recl
 >
 > **Take capability descriptions from these posts, never request shapes.** Request shapes come from the AWS
 > API reference or `--generate-cli-skeleton` — the skills carry none for the runtime surfaces, because
-> querying a knowledge base is the user's step.
+> querying a knowledge base is the customer's step.
 
 - Managed Knowledge Base announcement (Smart Parsing, Agentic Retriever, connectors, AgentCore Gateway target, pricing dimensions): https://aws.amazon.com/blogs/aws/introducing-amazon-bedrock-managed-knowledge-base-for-faster-more-accurate-enterprise-ai-applications/
 - Enterprise search deep-dive (service-managed storage, real-time ACL checks, incremental sync, parsing size ceilings, three-call setup, Gateway/MCP): https://aws.amazon.com/blogs/machine-learning/build-enterprise-search-for-agents-with-amazon-bedrock-managed-knowledge-base/

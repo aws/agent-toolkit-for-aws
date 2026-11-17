@@ -1,6 +1,7 @@
 ---
-source_url: https://aws.amazon.com/startups/prompt-library/cost-optimized-eks-with-spot-instances
+source_url: "https://startups.aws.com/prompt-library/cost-optimized-eks-with-spot-instances"
 title: "Karpenter + KEDA: Cost-Optimized EKS with Spot Instances"
+kind: "prompt"
 tags: ["Cost Optimization", "Deployment", "Advanced", "EKS", "EC2"]
 ---
 
@@ -9,6 +10,8 @@ tags: ["Cost Optimization", "Deployment", "Advanced", "EKS", "EC2"]
 Deploy production-ready EKS with Karpenter auto-scaling, KEDA pod management, and Spot instance prioritization. Includes Bottlerocket OS, encryption, and multi-AZ high availability—optimized for cost.
 
 ## System Prompt
+
+<!-- markdownlint-disable -->
 
 Deploy Cost-Optimized Karpenter on EKS with Bottlerocket, Spot Instances, and KEDA
 
@@ -49,3 +52,5 @@ If the cluster doesn't exist, ask me if I want to create it and provide the crea
 Check the Kubernetes cluster version and verify compatibility with Karpenter
 Recommend the appropriate Karpenter version based on the cluster version
 If there's a version incompatibility, suggest either upgrading the cluster or using a compatible Karpenter version
+
+<!-- markdownlint-enable -->

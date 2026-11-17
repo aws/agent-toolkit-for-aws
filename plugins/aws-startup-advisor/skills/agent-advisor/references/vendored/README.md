@@ -16,6 +16,7 @@ see a new `skills/shared/` file no skill vendors yet — adding one here means t
 | Vendored path                      | Canonical source                                 |
 | ---------------------------------- | ------------------------------------------------ |
 | `ai/bedrock-endpoint-policy.md`    | `skills/shared/ai/bedrock-endpoint-policy.md`    |
+| `ai/bedrock-pricing.json`          | `skills/shared/ai/bedrock-pricing.json`          |
 | `ai/bedrock-pricing-cache.md`      | `skills/shared/ai/bedrock-pricing-cache.md`      |
 | `ai/models/anthropic-bedrock.json` | `skills/shared/ai/models/anthropic-bedrock.json` |
 | `ai/models/openai-bedrock.json`    | `skills/shared/ai/models/openai-bedrock.json`    |

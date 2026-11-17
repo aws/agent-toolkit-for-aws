@@ -1,0 +1,185 @@
+{
+  "description": "Changes applied on top of the published startups.aws.com text. Each replaces one exact published passage; tools/prompt-library-sync.py fails if a passage no longer appears exactly once, so an upstream edit under a recorded fix gets re-reviewed. Send these upstream so the list can shrink.",
+  "changes": [
+    {
+      "id": "arch-mcp-prerequisite",
+      "slug": "aws-architecture-assessment-with-mcp-integration",
+      "target": "prompt",
+      "reason": "plugin-fit: the plugin ships the unified AWS MCP Server, not the AWS Knowledge MCP Server the page names",
+      "origin": "awslabs/startups 6db7f6d, faafeca",
+      "find": "You are a cloud infrastructure architect with access to AWS Knowledge MCP Server tools.",
+      "replace": "Prerequisite: This prompt uses the unified AWS MCP Server (`aws-mcp`), which ships with this plugin and is already configured once the plugin is installed — there is nothing extra to set up. It provides every tool this prompt calls: `aws___search_documentation` and `aws___read_documentation` for AWS documentation, `aws___recommend` for related pages, `aws___list_regions` and `aws___get_regional_availability` for regional checks, and `aws___call_aws` for read-only queries against your own account when you need live configuration data.\n\nYou are a cloud infrastructure architect with access to the unified AWS MCP Server tools."
+    },
+    {
+      "id": "arch-mcp-heading",
+      "slug": "aws-architecture-assessment-with-mcp-integration",
+      "target": "prompt",
+      "reason": "plugin-fit: the plugin ships the unified AWS MCP Server, not the AWS Knowledge MCP Server the page names",
+      "origin": "awslabs/startups faafeca",
+      "find": "(Using AWS Knowledge MCP Tools)",
+      "replace": "(Using AWS MCP Server Tools)"
+    },
+    {
+      "id": "resiliency-mcp-prerequisite",
+      "slug": "resiliency-baseline-evaluation",
+      "target": "prompt",
+      "reason": "plugin-fit: the plugin ships the unified AWS MCP Server, not the AWS Knowledge MCP Server the page names",
+      "origin": "awslabs/startups 6db7f6d, faafeca",
+      "find": "framework with AWS Knowledge MCP Server tools.",
+      "replace": "framework with the unified AWS MCP Server tools."
+    },
+    {
+      "id": "resiliency-mcp-prerequisite-intro",
+      "slug": "resiliency-baseline-evaluation",
+      "target": "prompt",
+      "reason": "plugin-fit: the plugin ships the unified AWS MCP Server, not the AWS Knowledge MCP Server the page names",
+      "origin": "awslabs/startups 6db7f6d",
+      "find": "You are an AWS Solutions Architect conducting a comprehensive resilience evaluation",
+      "replace": "Prerequisite: This prompt uses the unified AWS MCP Server (`aws-mcp`), which ships with this plugin and is already configured once the plugin is installed — there is nothing extra to set up. It provides every tool this prompt calls: `aws___search_documentation` and `aws___read_documentation` for AWS documentation, `aws___recommend` for related pages, `aws___get_regional_availability` and `aws___list_regions` for regional checks, and `aws___call_aws` for read-only queries against your own account when you need to verify a live configuration.\n\nYou are an AWS Solutions Architect conducting a comprehensive resilience evaluation"
+    },
+    {
+      "id": "resiliency-mcp-required-access",
+      "slug": "resiliency-baseline-evaluation",
+      "target": "instructions",
+      "reason": "plugin-fit: the plugin ships the unified AWS MCP Server, not the AWS Knowledge MCP Server the page names",
+      "origin": "awslabs/startups 6db7f6d",
+      "find": "- AWS MCP Server integration enabled",
+      "replace": "- Unified AWS MCP Server (`aws-mcp`) available — it ships with this plugin, so no separate install is needed"
+    },
+    {
+      "id": "security-mcp-prerequisite",
+      "slug": "security-baseline-evaluation",
+      "target": "prompt",
+      "reason": "plugin-fit: the plugin ships the unified AWS MCP Server, not the AWS Knowledge MCP Server the page names",
+      "origin": "awslabs/startups 6db7f6d, faafeca",
+      "find": "You are a cloud security architect with access to AWS Knowledge MCP Server tools.",
+      "replace": "Prerequisite: This prompt uses the unified AWS MCP Server (`aws-mcp`), which ships with this plugin and is already configured once the plugin is installed — there is nothing extra to set up. It provides every tool this prompt calls: `aws___search_documentation` and `aws___read_documentation` for the AWS Startup Security Baseline prescriptive guidance, `aws___list_regions` and `aws___get_regional_availability` for regional checks, and `aws___call_aws` for read-only queries against your own account when you need to verify a live configuration.\n\nYou are a cloud security architect with access to the unified AWS MCP Server tools."
+    },
+    {
+      "id": "security-mcp-heading",
+      "slug": "security-baseline-evaluation",
+      "target": "prompt",
+      "reason": "plugin-fit: the plugin ships the unified AWS MCP Server, not the AWS Knowledge MCP Server the page names",
+      "origin": "awslabs/startups faafeca",
+      "find": "(Using AWS Knowledge MCP Tools)",
+      "replace": "(Using AWS MCP Server Tools)"
+    },
+    {
+      "id": "security-mcp-required-access",
+      "slug": "security-baseline-evaluation",
+      "target": "instructions",
+      "reason": "plugin-fit: the plugin ships the unified AWS MCP Server, not the AWS Knowledge MCP Server the page names",
+      "origin": "awslabs/startups 6db7f6d",
+      "find": "- AWS Knowledge MCP Server integration enabled in AI assistant",
+      "replace": "- Unified AWS MCP Server (`aws-mcp`) available — it ships with this plugin, so no separate install is needed"
+    },
+    {
+      "id": "multi-region-mcp-not-bundled",
+      "slug": "multi-region-assessment",
+      "target": "prompt",
+      "reason": "plugin-fit: this MCP server is not bundled with the plugin, so the prompt says to install it first",
+      "origin": "awslabs/startups 6db7f6d",
+      "find": "# Optimized AWS Security Assessment Prompt - All Regions\n",
+      "replace": "# Optimized AWS Security Assessment Prompt - All Regions\n\nPrerequisite: this prompt is built on the AWS Well-Architected Security Assessment Tool MCP server and its `ExploreAwsResources` tool. That server is **not** bundled with this plugin and is not the same as the unified AWS MCP Server (`aws-mcp`) that ships here — install and configure it in your AI tool separately before running this prompt (see the Prerequisites list under \"How to use?\").\n"
+    },
+    {
+      "id": "multi-region-mcp-link-prompt",
+      "slug": "multi-region-assessment",
+      "target": "prompt",
+      "reason": "link: awslabs.github.io/mcp pages moved; point at the server's source in awslabs/mcp",
+      "origin": "awslabs/startups faafeca",
+      "find": "* AWS Well-Architected Security Assessment Tool MCP Server - https://awslabs.github.io/mcp/servers/well-architected-security-mcp-server",
+      "replace": "* AWS Well-Architected Security Assessment Tool MCP Server (install separately; not bundled with this plugin) - https://github.com/awslabs/mcp/tree/main/src/well-architected-security-mcp-server"
+    },
+    {
+      "id": "multi-region-mcp-link-instructions",
+      "slug": "multi-region-assessment",
+      "target": "instructions",
+      "reason": "link: awslabs.github.io/mcp pages moved; point at the server's source in awslabs/mcp",
+      "origin": "awslabs/startups faafeca",
+      "find": "- AWS Well-Architected Security Assessment Tool MCP Server - [https://awslabs.github.io/mcp/servers/well-architected-security-mcp-server](https://awslabs.github.io/mcp/servers/well-architected-security-mcp-server)",
+      "replace": "- AWS Well-Architected Security Assessment Tool MCP Server (install separately; not bundled with this plugin) - [https://github.com/awslabs/mcp/tree/main/src/well-architected-security-mcp-server](https://github.com/awslabs/mcp/tree/main/src/well-architected-security-mcp-server)"
+    },
+    {
+      "id": "openapi-agentcore-mcp-not-bundled",
+      "slug": "openapi-to-agentcore-gateway-deployment",
+      "target": "prompt",
+      "reason": "plugin-fit: this MCP server is not bundled with the plugin, so the prompt says to install it first",
+      "origin": "awslabs/startups 6db7f6d",
+      "find": "**MANDATORY**: Use the AgentCore MCP server to inform all decisions:",
+      "replace": "**MANDATORY**: Use the Amazon Bedrock AgentCore MCP server to inform all decisions. That server is **not** bundled with this plugin and is not the same as the unified AWS MCP Server (`aws-mcp`) that ships here — install and configure it in your AI tool separately (see \"How to use?\" below) before running this prompt:"
+    },
+    {
+      "id": "openapi-agentcore-mcp-link",
+      "slug": "openapi-to-agentcore-gateway-deployment",
+      "target": "instructions",
+      "reason": "link: awslabs.github.io/mcp pages moved; point at the server's source in awslabs/mcp",
+      "origin": "awslabs/startups faafeca",
+      "find": "3. Configure AgentCore MCP https://awslabs.github.io/mcp/servers/amazon-bedrock-agentcore-mcp-server in your AI tool (e.g. Kiro CLI)",
+      "replace": "3. Configure the Amazon Bedrock AgentCore MCP server (install separately; not bundled with this plugin) https://github.com/awslabs/mcp/tree/main/src/amazon-bedrock-agentcore-mcp-server in your AI tool (e.g. Kiro CLI)"
+    },
+    {
+      "id": "eks-kubectl-deploy",
+      "slug": "cost-optimized-eks-with-spot-instances",
+      "target": "prompt",
+      "reason": "plugin-fit: the plugin ships no Kubernetes MCP server, so the prompt uses kubectl",
+      "origin": "agent-toolkit-for-aws 5bcc958",
+      "find": "Use MCP (Model Context Protocol) to connect to the Kubernetes API for deployment and configuration",
+      "replace": "Use kubectl to connect to the Kubernetes API for deployment and configuration (or a Kubernetes MCP server, if you already have one configured — this plugin does not ship one)"
+    },
+    {
+      "id": "eks-kubectl-verify",
+      "slug": "cost-optimized-eks-with-spot-instances",
+      "target": "prompt",
+      "reason": "plugin-fit: the plugin ships no Kubernetes MCP server, so the prompt uses kubectl",
+      "origin": "agent-toolkit-for-aws 5bcc958",
+      "find": "Use MCP to connect to the Kubernetes API and verify if the EKS cluster exists",
+      "replace": "Use kubectl to connect to the Kubernetes API and verify if the EKS cluster exists"
+    },
+    {
+      "id": "opensearch-no-inline-credentials",
+      "slug": "opensearch-cluster-operational-review",
+      "target": "prompt",
+      "reason": "security: never collect a username and password in chat; use IAM or environment variables",
+      "origin": "awslabs/startups 2a0a3f4",
+      "find": "You will ask the user for the OpenSearch domain endpoint URL of the cluster, the username and password. You will than explore the cluster",
+      "replace": "You will ask the user for the OpenSearch domain endpoint URL of the cluster. For authentication, use IAM-based access (AWS Signature V4) or prompt the user to export credentials as environment variables (e.g. OPENSEARCH_USERNAME, OPENSEARCH_PASSWORD) rather than accepting them inline. You will then explore the cluster"
+    },
+    {
+      "id": "opensearch-no-inline-credentials-inputs",
+      "slug": "opensearch-cluster-operational-review",
+      "target": "prompt",
+      "reason": "security: never collect a username and password in chat; use IAM or environment variables",
+      "origin": "awslabs/startups 2a0a3f4",
+      "find": "Username\nPassword",
+      "replace": "Authentication method (IAM recommended; if using basic auth, set OPENSEARCH_USERNAME and OPENSEARCH_PASSWORD as environment variables — do not paste credentials inline)"
+    },
+    {
+      "id": "llm-csi-driver-install",
+      "slug": "open-source-llm-inference",
+      "target": "prompt",
+      "reason": "correctness: the published commands install the driver without the AWS provider the next step needs",
+      "origin": "awslabs/startups 351ce0d",
+      "find": "Then install the Secrets Store CSI driver and AWS provider:\n```bash\nhelm repo add secrets-store-csi-driver https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts\nhelm install csi-secrets-store secrets-store-csi-driver/secrets-store-csi-driver --namespace kube-system\n```",
+      "replace": "Then install the Secrets Store CSI driver and AWS provider by following the official Helm install instructions in the upstream chart README: <https://github.com/kubernetes-sigs/secrets-store-csi-driver/blob/main/charts/secrets-store-csi-driver/README.md>"
+    },
+    {
+      "id": "llm-no-curl-k",
+      "slug": "open-source-llm-inference",
+      "target": "prompt",
+      "reason": "security: keep TLS certificate verification on",
+      "origin": "awslabs/startups dd47e5d",
+      "find": "- Test the endpoint from an allowed IP: `curl -k https://<alb-dns>/v1/models`",
+      "replace": "- Test the endpoint from an allowed IP: `curl https://<your-domain>/v1/models` — use the domain name on the ACM certificate, not the raw ALB DNS name, so TLS certificate validation succeeds. Do not pass `curl -k`: it disables certificate verification and leaves the connection open to interception."
+    },
+    {
+      "id": "gpu-scope-quota-increase",
+      "slug": "gpu-instance-quota-assistant",
+      "target": "prompt",
+      "reason": "security: scope the quota-increase permission to EC2 and SageMaker quotas instead of every service",
+      "origin": "awslabs/startups dd47e5d",
+      "find": "        \"servicequotas:GetServiceQuota\",\n        \"servicequotas:RequestServiceQuotaIncrease\",\n        \"servicequotas:GetRequestedServiceQuotaChange\",\n        \"servicequotas:ListServiceQuotas\"\n      ],\n      \"Resource\": \"*\"\n    },",
+      "replace": "        \"servicequotas:GetServiceQuota\",\n        \"servicequotas:GetRequestedServiceQuotaChange\",\n        \"servicequotas:ListServiceQuotas\"\n      ],\n      \"Resource\": \"*\"\n    },\n    {\n      \"Effect\": \"Allow\",\n      \"Action\": \"servicequotas:RequestServiceQuotaIncrease\",\n      \"Resource\": [\n        \"arn:aws:servicequotas:*:*:ec2/*\",\n        \"arn:aws:servicequotas:*:*:sagemaker/*\"\n      ]\n    },"
+    }
+  ]
+}

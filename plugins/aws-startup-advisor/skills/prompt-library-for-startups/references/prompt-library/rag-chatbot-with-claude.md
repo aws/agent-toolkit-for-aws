@@ -1,6 +1,7 @@
 ---
-source_url: https://aws.amazon.com/startups/prompt-library/rag-chatbot-with-claude
+source_url: "https://startups.aws.com/prompt-library/rag-chatbot-with-claude"
 title: "RAG Chatbot with Claude"
+kind: "prompt"
 tags: ["Prototyping", "Deployment", "Beginner", "Lambda", "S3"]
 ---
 
@@ -10,12 +11,12 @@ Create a serverless, React-based chatbot using Claude on Bedrock with RAG capabi
 
 ## System Prompt
 
-## AWS Claude RAG Chatbot Architecture Design Request
+<!-- markdownlint-disable -->
+
+# AWS Claude RAG Chatbot Architecture Design Request
 
 ## Project Overview
-
 I need a comprehensive design for a web-based chatbot application with the following key components:
-
 - Claude on Amazon Bedrock as the LLM (use the latest available Claude Sonnet model in your region)
 - RAG capabilities for PDF documents stored in S3
 - React frontend with real-time chat functionality
@@ -23,7 +24,6 @@ I need a comprehensive design for a web-based chatbot application with the follo
 ## Detailed Requirements
 
 ### 1. Core Functionality
-
 - **User Interface**: Web-based chat interface built with React
 - **AI Backend**: Claude via Amazon Bedrock API (use the latest Claude Sonnet model available in your region — see [supported models](https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html))
 - **RAG System**:
@@ -35,20 +35,17 @@ I need a comprehensive design for a web-based chatbot application with the follo
   - User authentication and session management
 
 ### 2. Performance Requirements
-
 - Support for 100 concurrent users
 - Response times under 2 seconds for typical queries
 - Ability to process and index documents up to 100MB each
 
 ### 3. Cost Optimization Targets
-
 - Monthly operational cost under \$200 for moderate usage
 - Strategic use of spot instances where appropriate
 - Caching implementation to minimize Bedrock API calls
 - Pay-per-use services prioritized
 
 ### 4. Technical Architecture Preferences
-
 - Serverless backend architecture (AWS Lambda)
 - Vector database for embeddings (OpenSearch or equivalent)
 - PDF processing pipeline for text extraction and embedding
@@ -56,14 +53,12 @@ I need a comprehensive design for a web-based chatbot application with the follo
 - API Gateway for REST endpoint management
 
 ### 5. Security & Compliance Requirements
-
 - End-to-end encryption for documents (at rest and in transit)
 - IAM roles configured with least privilege principle
 - Rate limiting implementation to prevent system abuse
 - Comprehensive audit logging for all system interactions
 
 ## Deliverables Requested
-
 1. Complete AWS solution architecture diagram
 2. Infrastructure as Code (Terraform preferred)
 3. Detailed deployment guide with step-by-step instructions
@@ -73,3 +68,5 @@ I need a comprehensive design for a web-based chatbot application with the follo
 
 Please provide a solution that adheres to AWS Well-Architected Framework principles, with particular attention to reliability, performance efficiency, and cost optimization.
 Provide your complete solution architecture without any preamble, starting with the high-level architecture diagram description.
+
+<!-- markdownlint-enable -->
