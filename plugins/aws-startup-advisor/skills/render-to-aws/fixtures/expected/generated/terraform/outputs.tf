@@ -4,11 +4,29 @@ output "alb_dns_name" {
 }
 
 output "database_endpoint" {
-  description = "Private PostgreSQL endpoint."
+  description = "Private PostgreSQL endpoint handed to compute as a non-secret setting."
   value       = aws_db_instance.postgres.address
-  sensitive   = true
 }
-
+output "database_port" {
+  description = "PostgreSQL port handed to compute as a non-secret setting."
+  value       = aws_db_instance.postgres.port
+}
+output "database_secret_arn" {
+  description = "Secrets Manager ARN of the RDS-managed master credentials; compute injects it by reference."
+  value       = aws_db_instance.postgres.master_user_secret[0].secret_arn
+}
+output "database_security_group_id" {
+  description = "Data security group that the network domain references for application access."
+  value       = aws_security_group.data.id
+}
+output "valkey_endpoint" {
+  description = "Private Valkey primary endpoint address handed to compute as a non-secret setting."
+  value       = aws_elasticache_replication_group.valkey.primary_endpoint_address
+}
+output "valkey_app_user_id" {
+  description = "ElastiCache user ID that compute uses for IAM authentication; no static password exists."
+  value       = aws_elasticache_user.app.user_id
+}
 output "ecr_repository_url" {
   description = "Build-once immutable image repository URL."
   value       = aws_ecr_repository.application.repository_url
@@ -36,10 +54,10 @@ output "migration_summary" {
   description = "Machine-readable accounting summary for the generated infrastructure."
   value = {
     accounted_count          = 15
-    generated_count          = 11
-    unsupported_count        = 2
+    generated_count          = 13
+    unsupported_count        = 0
     estimate_alignment       = "balanced"
-    workflow_artifacts_state = "conditional_workflow_generation_unsupported"
+    workflow_artifacts_state = "generated"
     ai_track_state           = "deferred_shared_ai_engine"
   }
 }
