@@ -67,6 +67,20 @@ class ProcessExportTest(unittest.TestCase):
         self.assertIn(text, combined)
         self.assertIn("Café plans 🚀", (self.out / "GLOBAL-INSTRUCTIONS.txt").read_text(encoding="utf-8"))
 
+    def test_output_file_names_are_ascii(self):
+        # Linux with LANG=C can't create non-ASCII file names; macOS can, so
+        # check the names directly rather than relying on the OS to fail.
+        make_export(self.downloads, [
+            conv("u1", "Café plans 🚀", "2026-10-01T10:00:00Z", "hi"),
+            conv("u2", "日本語のメモ", "2026-10-02T10:00:00Z", "hi"),
+        ])
+        r = self.run_script()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        names = sorted(p.name for p in self.out.iterdir())
+        self.assertTrue(all(n.isascii() for n in names), names)
+        self.assertIn("2026-10-01-cafe-plans.md", names)
+        self.assertIn("2026-10-02-untitled.md", names)
+
     def test_same_date_and_title_do_not_overwrite(self):
         make_export(self.downloads, [
             conv("u1", "Standup", "2026-10-01T09:00:00Z", "first"),

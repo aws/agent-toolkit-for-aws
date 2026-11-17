@@ -18,7 +18,7 @@ Produces:
     <output_dir>/GLOBAL-INSTRUCTIONS.txt  paste into Desktop → Settings → General →
                                           Instructions for Claude (every chat)
 """
-import json, os, sys, zipfile, re, glob, shutil
+import json, os, sys, zipfile, re, glob, shutil, unicodedata
 
 downloads = os.path.expanduser(sys.argv[1] if len(sys.argv) > 1 else "~/Downloads")
 out = os.path.expanduser(sys.argv[2] if len(sys.argv) > 2 else "~/claude_export_md")
@@ -67,8 +67,12 @@ convs.sort(key=lambda c: c.get("created_at", ""))
 print(f"found {len(convs)} conversations across {len(conv_files)} file(s)")
 
 def slug(s):
-    s = re.sub(r"[^\w\s-]", "", (s or "untitled")).strip().lower()
-    return re.sub(r"\s+", "-", s)[:60] or "untitled"
+    # ASCII-only file names: on Linux with a non-UTF-8 locale (e.g. LANG=C in a
+    # container) the OS can't encode names like "café.md". Accents fold to
+    # their base letter; other non-ASCII characters (emoji, CJK) are dropped.
+    s = unicodedata.normalize("NFKD", s or "untitled").encode("ascii", "ignore").decode()
+    s = re.sub(r"[^a-z0-9\s-]", "", s.lower()).strip()
+    return re.sub(r"\s+", "-", s)[:60].strip("-") or "untitled"
 
 def msg_text(m):
     t = m.get("text")
