@@ -120,7 +120,7 @@ and return control without changing `current_phase`.
 
 - **Single run directory.** Use ONE `$MIGRATION_DIR` (`<run root>/[MMDD-HHMM]/`;
   default `.migration/[MMDD-HHMM]/`) for the entire migration; do not mix artifacts
-  across sessions under the run root.
+  across sessions under the run root. A `bma-[MMDD-HHMM]` directory under the run root belongs to `bedrock-migration-assessment`, not to this skill: it is not a run of this skill, so it is never counted, listed, or resumed here.
 - **Re-read from disk.** Before each phase and before each gate, read the required
   artifacts from `$MIGRATION_DIR/`. Do not rely on chat memory.
 
@@ -150,8 +150,10 @@ backbone phase is `"in_progress"` at a time.
 When reading `.phase-status.json`, STOP (surface the diagnostic, do not proceed or
 guess) on any of:
 
-1. **Multiple run directories** under the skill's run root: list them with their
+1. **Multiple run directories** under the skill's run root, not counting `bma-`
+   directories (see § State discipline): list them with their
    phase status and ask `[A] Resume latest / [B] Start fresh / [C] Cancel`.
+   "Resume latest" never selects a `bma-` directory.
 2. **Invalid JSON:** "State file corrupted (invalid JSON). Delete the file and
    restart the current phase."
 3. **Unrecognized phase name** in `phases` (not a phase the skill declares).

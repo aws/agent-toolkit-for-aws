@@ -75,9 +75,19 @@ When adding new reference files, verify the phase's total loaded instructions re
 
 ## AI handoff
 
-Heroku Discover does not design a Bedrock target. When the workspace has application source, Discover follows `bedrock-migration-assessment`'s application-code scan and, if that scan finds an AI provider, writes `$MIGRATION_DIR/ai-workload-profile.json` plus `ai-track.json` with status `deferred_shared_ai_engine`. This skill does not vendor `openai-on-bedrock.md` and does not read it.
+Heroku Discover does not design a Bedrock target. When the workspace has application source and the sibling skill `<SKILL_BASE>/../bedrock-migration-assessment/` is installed, Discover follows its application-code scan and, if that scan finds an AI provider, writes `$MIGRATION_DIR/ai-workload-profile.json` plus `ai-track.json` with status `deferred_shared_ai_engine`. When that skill is not installed, Discover skips the AI scan, tells the user so once, and the migration continues without an AI handoff. This skill does not vendor `openai-on-bedrock.md` and does not read it.
 
-After Discover emits `HANDOFF_OK` and that profile exists and validates, pause infrastructure. Load `skills/bedrock-migration-assessment/SKILL.md` and run it on the profile route with that file. It copies the profile into its own `bma-` directory, then runs Clarify and Design and stops. When its Design summary has been shown, return here and load Clarify. Do not copy `aws-design-ai.json` into this skill's design, estimate, or Terraform, and do not invent a model, a price, an adapter, or AI Terraform here. If no profile was written, go straight to Clarify.
+Before loading Clarify, every time you are about to (the turn that emits `HANDOFF_OK | phase=discover` and every later resume at Clarify), do this in order:
+
+1. If `$MIGRATION_DIR/ai-workload-profile.json` does not exist, or `<SKILL_BASE>/../bedrock-migration-assessment/SKILL.md` does not exist, delete `$MIGRATION_DIR/ai-handoff.json` if it is there and load Clarify.
+2. Read `$MIGRATION_DIR/ai-handoff.json` if it exists. Compare its `profile_digest` with the SHA-256 of the profile file's bytes (`sha256:<hex>`):
+   - Same digest and `status` is `design_completed` or `skipped`: load Clarify.
+   - Same digest and `status` is `in_progress`: the assessment did not finish. Ask the user to resume it or skip it for now. To resume, load `<SKILL_BASE>/../bedrock-migration-assessment/SKILL.md` and give it `.migration/<assessment_dir>` as the run to resume (its Step 0 resumes it). To skip, set `status` to `skipped`.
+   - No file, or a different digest: go to step 3.
+3. Pause infrastructure. Load `<SKILL_BASE>/../bedrock-migration-assessment/SKILL.md` and run it on the profile route with the absolute path of `$MIGRATION_DIR/ai-workload-profile.json`. It copies the profile into its own `.migration/bma-[MMDD-HHMM]/` directory, then runs Clarify and Design and stops. As soon as that directory exists, write `$MIGRATION_DIR/ai-handoff.json`: `{"profile_digest": "sha256:<hex>", "assessment_dir": "bma-[MMDD-HHMM]", "status": "in_progress"}`. When its Design summary has been shown, set `status` to `design_completed`.
+4. Return here and load Clarify with this skill's own `$MIGRATION_DIR`, never the `bma-` directory. A `bma-` directory under `.migration/` is not an infrastructure run: the single-run check does not count it and Resume latest never selects it (`INTERPRETER.md` § State discipline).
+
+Do not copy `aws-design-ai.json` into this skill's design, estimate, or Terraform, and do not invent a model, a price, an adapter, or AI Terraform here.
 
 ## Execution
 
