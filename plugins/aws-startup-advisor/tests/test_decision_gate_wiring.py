@@ -28,13 +28,6 @@ HANDOFF_FILES = [
 ]
 
 UPFRONT_NOTICE = PLUGIN_ROOT / "skills" / "shared" / "migration" / "upfront-credits.md"
-LLM_UPFRONT_NOTICE = (
-    PLUGIN_ROOT / "skills" / "shared" / "migration" / "upfront-credits-llm.md"
-)
-LLM_VENDORED_NOTICE = (
-    PLUGIN_ROOT / "skills" / "llm-to-bedrock" / "references" / "vendored"
-    / "migration" / "upfront-credits-llm.md"
-)
 LLM_SKILL = PLUGIN_ROOT / "skills" / "llm-to-bedrock" / "SKILL.md"
 PLUGIN_README = PLUGIN_ROOT / "README.md"
 UPFRONT_DISCOVER_FILES = {
@@ -45,10 +38,6 @@ UPFRONT_DISCOVER_FILES = {
 AGENT_ADVISOR_MIGRATION_PLAN = (
     PLUGIN_ROOT / "skills" / "agent-advisor" / "references" / "phases"
     / "migration-plan" / "migration-plan.md"
-)
-AGENT_ADVISOR_LLM_HANDOFF = (
-    PLUGIN_ROOT / "skills" / "agent-advisor" / "references" / "handoff"
-    / "handoff-migration.md"
 )
 APPROVED_CREDIT_COPY = (
     "Get $1,500 in AWS Promotional Credits for your migration when you create "
@@ -81,26 +70,10 @@ def test_migration_credit_notice_is_vendored_and_qualified() -> None:
 
 
 
-def test_llm_migration_credit_notice_is_vendored_and_qualified() -> None:
-    canonical = LLM_UPFRONT_NOTICE.read_bytes()
-    text = canonical.decode()
-
-    assert LLM_VENDORED_NOTICE.read_bytes() == canonical
-    assert APPROVED_CREDIT_COPY in text
-    assert all(unsupported not in text for unsupported in SUPERSEDED_CREDIT_COPY)
-    assert (
-        "[AWS Startups Migrate](https://startups.aws.com/startups/en-US/"
-        "migrate/credits?source=plugin)" in text
-    )
-    assert "does not currently create an uploadable `plan.json`" in text
-    assert "upload below" not in text.lower()
-    assert "upload that" not in text.lower()
-
-
 def test_readme_uses_qualification_based_migration_credit_copy() -> None:
     text = PLUGIN_README.read_text(encoding="utf-8")
 
-    assert text.count(APPROVED_CREDIT_COPY) == 3
+    assert text.count(APPROVED_CREDIT_COPY) == 1
     assert all(unsupported not in text for unsupported in SUPERSEDED_CREDIT_COPY)
     # Azure writes importable plans like GCP and Heroku: the importer accepts `AZURE`, and the writer maps
     # AZURE_TO_AWS to it for infrastructure or mixed runs. Only an AI-only run is skipped.
@@ -113,139 +86,31 @@ def test_readme_uses_qualification_based_migration_credit_copy() -> None:
     assert "GCP and Heroku currently write importable plans" not in text
 
 
-def test_llm_migration_credit_notice_runs_once_before_delegated_discover() -> None:
-    text = LLM_SKILL.read_text(encoding="utf-8")
-    a1_start = text.index("### A1 — Run Discover, Clarify, Design, and Estimate")
-    a2_start = text.index("### A2 — Confirm Assess is complete", a1_start)
-    a1 = text[a1_start:a2_start]
-    resolution_idx = a1.index("Resume/Fresh/Cancel choices")
-    notice_ref = "references/vendored/migration/upfront-credits-llm.md"
-    marker = ".llm-upfront-credits-offered"
-    reservation_idx = a1.index("set -o noclobber")
-    notice_idx = a1.index(notice_ref)
-    discover_idx = a1.index(
-        "$ASSESS_BASE/references/phases/discover/discover.md", notice_idx
-    )
-
-    assert a1.count(notice_ref) == 1
-    assert resolution_idx < reservation_idx < notice_idx < discover_idx
-    contract = a1[resolution_idx:discover_idx]
-    for required in (
-        "stateless directory carrying",
-        marker,
-        "Resume",
-        "same directory",
-        "explicit",
-        "Fresh",
-        "genuinely unused",
-        "standalone full migrations only",
-        "A2 re-entry",
-        "access-only mode",
-        "agent-advisor delegation",
-    ):
-        assert required in contract
-    assert "set -o noclobber" in contract
-    assert "OFFER_FIRST_ATTEMPT" in contract
-    assert "OFFER_ALREADY_RECORDED" in contract
-    assert "$INVOCATION_ORIGIN` is not `AGENT_ADVISOR" in contract
-
-
-def test_llm_stateless_marked_run_resumes_without_reoffering(tmp_path: Path) -> None:
+def test_llm_a1_preinitializes_provider_state_in_the_selected_directory() -> None:
     llm_text = LLM_SKILL.read_text(encoding="utf-8")
     a1 = llm_text[
         llm_text.index("### A1 — Run Discover, Clarify, Design, and Estimate"):
         llm_text.index("### A2 — Confirm Assess is complete")
     ]
-    assert "marked-stateless" in a1
     assert "Never create provider state in another path" in a1
     assert "`GCP_TO_AWS` or `AZURE_TO_AWS`" in a1
     assert "skip the provider's resume/Fresh prompt" in a1
-
-    def initialize_selected_provider(run: Path, owning_skill: str) -> dict[str, object]:
-        state_path = run / ".phase-status.json"
-        assert not state_path.exists()
-        state: dict[str, object] = {
-            "migration_id": run.name,
-            "run_id": "11111111-2222-4333-8444-555555555555",
-            "owning_skill": owning_skill,
-            "initiated_by": "LLM_TO_BEDROCK",
-            "last_updated": "2026-04-01T12:01:00Z",
-            "current_phase": "discover",
-            "phases": {
-                "discover": "in_progress",
-                "clarify": "pending",
-                "design": "pending",
-                "estimate": "pending",
-                "workshop": "pending",
-                "generate": "pending",
-                "feedback": "pending",
-            },
-        }
-        state_path.write_text(json.dumps(state), encoding="utf-8")
-        return state
-
-    for provider in ("GCP_TO_AWS", "AZURE_TO_AWS"):
-        migration_root = tmp_path / provider / ".migration"
-        old_run = migration_root / "0101-1200"
-        current_run = migration_root / "0101-1201"
-        old_run.mkdir(parents=True)
-        current_run.mkdir()
-        marker = old_run / ".llm-upfront-credits-offered"
-        marker.touch()
-
-        interrupted = sorted(
-            path for path in migration_root.iterdir()
-            if (path / ".phase-status.json").exists()
-            or (path / ".llm-upfront-credits-offered").exists()
-        )
-        assert interrupted == [old_run]
-
-        resumed = interrupted[0]
-        result = subprocess.run(
-            [
-                "bash",
-                "-c",
-                'if (set -o noclobber; : > "$1/.llm-upfront-credits-offered") '
-                '2>/dev/null; then echo OFFER_FIRST_ATTEMPT; '
-                'else echo OFFER_ALREADY_RECORDED; fi',
-                "bash",
-                str(resumed),
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        assert resumed == old_run
-        assert result.stdout.strip() == "OFFER_ALREADY_RECORDED"
-
-        resumed_state = initialize_selected_provider(resumed, provider)
-        assert resumed_state["migration_id"] == old_run.name
-        assert resumed_state["owning_skill"] == provider
-        assert resumed_state["initiated_by"] == "LLM_TO_BEDROCK"
-        assert (old_run / ".phase-status.json").exists()
-        assert not (current_run / ".phase-status.json").exists()
-
-        fresh = migration_root / "0101-1201-2"
-        fresh.mkdir()
-        (fresh / ".llm-upfront-credits-offered").touch(exist_ok=False)
-        fresh_state = initialize_selected_provider(fresh, provider)
-        assert fresh != old_run and fresh != current_run
-        assert fresh_state["migration_id"] == fresh.name
-        assert (fresh / ".phase-status.json").exists()
+    assert "`initiated_by` to `LLM_TO_BEDROCK`" in a1
+    assert "genuinely unused" in a1
+    # the LLM-only offer is gone until this flow can write plan.json
+    assert "upfront-credits-llm" not in a1
+    assert ".llm-upfront-credits-offered" not in llm_text
+    assert "INVOCATION_ORIGIN" not in llm_text
 
 
-def test_agent_advisor_handoff_durably_suppresses_llm_notice() -> None:
-    handoff = AGENT_ADVISOR_LLM_HANDOFF.read_text(encoding="utf-8")
-    llm = LLM_SKILL.read_text(encoding="utf-8")
-    marker = "initiated_by: AGENT_ADVISOR"
-    origin_check = "first line is exactly\n`initiated_by: AGENT_ADVISOR`"
-    a1_start = llm.index("### A1 — Run Discover, Clarify, Design, and Estimate")
-
-    assert marker in handoff
-    assert "durable downstream origin" in handoff
-    assert origin_check in llm[:a1_start]
-    assert "$INVOCATION_ORIGIN=AGENT_ADVISOR" in llm[:a1_start]
-    assert "$INVOCATION_ORIGIN` is not `AGENT_ADVISOR" in llm[a1_start:]
+def test_llm_flow_has_no_standalone_credit_notice_until_it_writes_plan_json() -> None:
+    notice = "upfront-credits-llm.md"
+    migration_dirs = (
+        PLUGIN_ROOT / "skills" / "shared" / "migration",
+        PLUGIN_ROOT / "skills" / "llm-to-bedrock" / "references" / "vendored" / "migration",
+    )
+    assert not any((d / notice).exists() for d in migration_dirs)
+    assert notice not in PLUGIN_README.read_text(encoding="utf-8")
 
 
 def test_migration_credit_notice_runs_once_at_fresh_discover_start() -> None:

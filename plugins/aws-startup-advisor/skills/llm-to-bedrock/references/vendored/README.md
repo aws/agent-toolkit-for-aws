@@ -17,7 +17,6 @@ any row in the table below with no file on disk, and any file on disk with no ro
 | `ai/bedrock-pricing.json`          | `skills/shared/ai/bedrock-pricing.json`          |
 | `ai/models/anthropic-bedrock.json` | `skills/shared/ai/models/anthropic-bedrock.json` |
 | `ai/models/openai-bedrock.json`    | `skills/shared/ai/models/openai-bedrock.json`    |
-| `migration/upfront-credits-llm.md` | `skills/shared/migration/upfront-credits-llm.md` |
 
 This skill vendors the Bedrock token-rate table read by `scripts/bedrock_pricing.py`, and the
 Anthropic/OpenAI model catalogs read by `scripts/model_catalog.py` (inference-profile prefixes and
