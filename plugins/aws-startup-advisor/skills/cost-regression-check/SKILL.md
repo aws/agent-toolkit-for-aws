@@ -59,7 +59,7 @@ Do not apply it to spend that already happened (use `Skill("aws-core:aws-billing
 
 The general estimator and CI mechanics live upstream. Invoke these for what they own, and use the reference files here only for what the ceiling changes. The `aws-core:` skills ship in the separate `aws-core` plugin. If it is not installed, tell the user, recommend installing it, and continue with the steps that do not depend on it. Do not reproduce its content from memory.
 
-- **`Skill("aws-core:aws-billing-and-cost-management")`**: Price List service codes, attribute filters, tiered rates and the 730-hour month, the deterministic-calculation rule, Cost Explorer with credits excluded to compare estimates with the bill, and Budgets and Cost Anomaly Detection for spend after merge.
+- **`Skill("aws-core:aws-billing-and-cost-management")`**: Price List service codes, attribute filters, tiered rates and the 730-hour month, the deterministic-calculation rule, Cost Explorer with credits excluded to compare estimates with the bill, and Budgets and unusual-spend alerts after merge.
 - **`Skill("aws-core:aws-cdk")`**: `cdk synth` and `cdk diff`. It prices nothing.
 - **`Skill("aws-core:aws-cloudformation")`**: change sets and pre-deployment validation. It prices nothing.
 - **`Skill("aws-core:aws-database")`** and **`Skill("aws-core:aws-compute")`**: the minimums and hourly charges of the services they own, such as Aurora serverless minimum capacity and public IPv4 addresses.
