@@ -239,7 +239,7 @@ Then append the What's next block below, verbatim, replacing `<run_id>` in both 
 with the run's `run_id` (from `.phase-status.json`), lowercased if it is a UUID so
 the `run=` value matches the plan's `runId`. It MUST begin with the "💬 What's next"
 heading. The call-to-action must be a Markdown link so it renders as clickable text
-with no bare URL. Do not reword it — this copy is owned by the web experience. Never name AWS Startup Advisor's import page without its address: if you shorten or restate any of this, keep the address. (The plain-text mentions use `?source=plugin` without `run=` on purpose, to stay short; the two links in this block carry the run.) Name
+with no bare URL. Never name AWS Startup Advisor's import page without its address: if you shorten or restate any of this, keep the address. (The plain-text mentions use `?source=plugin` without `run=` on purpose, to stay short; the two links in this block carry the run.) Do not reword it — this copy is owned by the web experience. Name
 `plan.json` in exactly one place in the close above; this block is the link, not a
 second mention of the filename as a file the user must hunt for.
 
