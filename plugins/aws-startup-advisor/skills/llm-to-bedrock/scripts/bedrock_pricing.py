@@ -16,6 +16,25 @@ import argparse, json, re, sys
 from pathlib import Path
 
 
+def _load_model_catalog():
+    """Import the sibling model_catalog.py, also when this file is loaded by path from
+    another skill's tests (its directory is then not on sys.path)."""
+    import importlib.util
+    import sys as _sys
+    from pathlib import Path as _Path
+    if "model_catalog" in _sys.modules:
+        return _sys.modules["model_catalog"]
+    path = _Path(__file__).resolve().with_name("model_catalog.py")
+    spec = importlib.util.spec_from_file_location("model_catalog", path)
+    module = importlib.util.module_from_spec(spec)
+    _sys.modules["model_catalog"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+model_catalog = _load_model_catalog()
+
+
 def parse_price_dimensions(price_item: dict) -> dict:
     """Pure: pull input/output per-1K-token USD rates from one PriceList item.
     Only matches base input/output token dimensions — excludes cache read/write
@@ -45,7 +64,7 @@ def parse_price_dimensions(price_item: dict) -> dict:
 # for it instead of borrowing another prefix's or another model's rate.
 PRICING_PATH = (Path(__file__).resolve().parent.parent
                 / "references" / "vendored" / "ai" / "bedrock-pricing.json")
-_PROFILE_PREFIXES = {"global", "us", "eu", "in", "au", "jp", "ca", "apac", "us-gov"}
+_PROFILE_PREFIXES = model_catalog.profile_prefixes()
 
 
 def _per_1k(rate_per_1m: float) -> float:
@@ -107,60 +126,12 @@ def unavailable(note: str) -> dict:
 # AWS Price List API, AmazonBedrockFoundationModels, verified 2026-09-24.
 # servicename: Claude Opus 5.5 (Amazon Bedrock Edition). Prices are per 1K.
 # Runtime uses Geo/Global profiles, or the bare ID in eu-west-2 (verified 2026-10-03).
-_OPUS55_ID = "anthropic.claude-opus-5-5"
-_OPUS55_PROFILE_REGIONS = {'us': ['us-east-1',
-        'us-east-2',
-        'us-west-1',
-        'us-west-2',
-        'ca-central-1',
-        'ca-west-1',
-        'us-gov-east-1',
-        'us-gov-west-1'],
- 'eu': ['eu-central-1',
-        'eu-central-2',
-        'eu-north-1',
-        'eu-south-1',
-        'eu-south-2',
-        'eu-west-1',
-        'eu-west-2',
-        'eu-west-3'],
- 'au': ['ap-southeast-2', 'ap-southeast-4'],
- 'jp': ['ap-northeast-1', 'ap-northeast-3'],
- 'global': ['af-south-1',
-            'ap-east-2',
-            'ap-northeast-1',
-            'ap-northeast-2',
-            'ap-northeast-3',
-            'ap-south-1',
-            'ap-south-2',
-            'ap-southeast-1',
-            'ap-southeast-2',
-            'ap-southeast-3',
-            'ap-southeast-4',
-            'ap-southeast-5',
-            'ap-southeast-6',
-            'ap-southeast-7',
-            'ca-central-1',
-            'ca-west-1',
-            'eu-central-1',
-            'eu-central-2',
-            'eu-north-1',
-            'eu-south-1',
-            'eu-south-2',
-            'eu-west-1',
-            'eu-west-2',
-            'eu-west-3',
-            'il-central-1',
-            'me-central-1',
-            'me-south-1',
-            'mx-central-1',
-            'sa-east-1',
-            'us-east-1',
-            'us-east-2',
-            'us-west-1',
-            'us-west-2']}
-_OPUS55_MANTLE_REGIONS = {"us-east-1", "ap-southeast-4", "us-gov-west-1"}
-_OPUS55_RUNTIME_IN_REGION_REGIONS = {"eu-west-2"}
+_OPUS55_ID = model_catalog.OPUS_55_ID
+# Opus 5.5's inference-profile, Mantle and runtime in-region Regions come from the shared model
+# catalog (references/vendored/ai/models/); only its rates are restated in _opus55_pricing.
+_OPUS55_PROFILE_REGIONS = model_catalog.opus_55_profile_regions()
+_OPUS55_MANTLE_REGIONS = model_catalog.opus_55_mantle_regions()
+_OPUS55_RUNTIME_IN_REGION_REGIONS = model_catalog.opus_55_runtime_in_region_regions()
 
 
 def _opus55_pricing(region: str, model_id: str) -> dict:
@@ -275,7 +246,7 @@ def display_name_guess(model_id: str) -> str:
     'us.anthropic.claude-haiku-4-5-20251001-v1:0' -> 'Claude Haiku 4.5'.
     The Pricing API's 'model' attribute holds display names, not model ids."""
     base = model_id.split(":", 1)[0]
-    base = re.sub(r"^(us|eu|apac|global)\.", "", base)
+    base = model_catalog.profile_prefix_regex().sub("", base)
     base = base.split(".", 1)[-1]                      # drop vendor prefix
     base = re.sub(r"-v\d+$", "", base)                 # drop -v1
     base = re.sub(r"-\d{8}$", "", base)                # drop date stamp
