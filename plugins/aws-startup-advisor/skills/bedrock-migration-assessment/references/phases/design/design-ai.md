@@ -99,7 +99,7 @@ A Claude target from any source follows the target contract for that model in `a
 
 ## Step 4: Assessment, price, and quota per row
 
-1. **Price:** read the target's rate for the selected inference option from `bedrock-pricing-cache.md` and the guide, and the source's rate from the guide. When `migration-preview.json` has measured spend for the source, cite it in the rationale. A rate the cache does not publish is `"unverified"`, never an estimate. Fill `source_provider_price`, `bedrock_price`, and `price_comparison`.
+1. **Price:** read the target's rate for the selected inference option from `bedrock-pricing-cache.md` and the guide, and the source's rate from `source-provider-pricing.md`. When `migration-preview.json` has measured spend for the source, cite it in the rationale. A rate the cache does not publish is `"unverified"`, never an estimate. Fill `source_provider_price`, `bedrock_price`, and `price_comparison`. Write each price as `<input>/<output> per 1M tokens`, `<rate> per 1M tokens` (an embedding), `<rate> per image`, or `unverified`, optionally followed by a note such as `(US Geo)`: Estimate reads these numbers.
 2. **`honest_assessment`:** the same eligible model is `strong_migrate`, justified by zero behavior change and AWS commitments, not by an assumed saving. Otherwise: Bedrock cheaper is `strong_migrate`; within 25% and `ai_priority` not `cost` is `moderate_migrate`; the source more than 25% cheaper with `ai_priority` `cost` is `weak_migrate` or `recommend_stay`. `recommend_stay` needs a non-cost blocker in `honest_assessment_reason` (a Region with no suitable model, a Realtime API dependency, an Assistants feature with no Bedrock equivalent, or an unsupported API surface). The top-level `honest_assessment` is the weakest row value.
 3. **`quota_risk`:** apply `bedrock-quotas.md` § Quota Risk Assessment and its Observed on-demand peak rule, reading the peaks from the usage profiles in `$MIGRATION_DIR`. When `quota_risk_floor` is `"high"`, every row is `"high"`.
 4. **`model_change`:** `false` only when the target is the source model itself.
@@ -143,4 +143,4 @@ In under 25 lines:
 3. The integration pattern and migration complexity.
 4. Capability gaps, including every disclosed Mantle requirement and every `not_designed[]` source.
 5. The compliance regimes applied, or the caveat when compliance was not confirmed.
-6. That Estimate and Generate are not in this skill yet.
+6. That Estimate runs next.
