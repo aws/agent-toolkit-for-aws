@@ -24,7 +24,7 @@ it with a no-mutation DRY_RUN, and runs it only after explicit approval of that 
 
 This phase is **mutating**, under the strictest controls in the flow. It **provisions only**:
 it creates the new Managed KB and its data sources, owned by the migration, in the source KB's
-Region. It does **not** ingest, retrieve, validate, cut over, or decommission — those are user-run
+Region. It does **not** ingest, retrieve, validate, cut over, or decommission — those are customer-run
 handoff steps performed after provisioning completes (see the Handoff phase). The source
 self-managed KB (`VECTOR`; the host skill calls this a Customer-managed KB) is never touched.
 
@@ -32,9 +32,10 @@ Read [mapping](references/bedrock-kb-migration/mapping.md) for the substitutions
 [managed KB API](references/bedrock-kb-migration/managed-kb-api.md) for request shapes, error→fix,
 connector auth and batching, and [safety-and-iam](references/bedrock-kb-migration/safety-and-iam.md)
 for the owned-resource ledger, IAM policies and the public-docs reading rule. Honor the
-explanation style chosen at Identify (technical = exact calls/fields; plain = what each step builds
-and why); it is presentation only — the script and every real run are still shown in full and run
-only on explicit per-run approval.
+explanation style chosen in Phase 0 of the [guide](references/migrate-knowledge-base-to-managed.md)
+(technical = exact calls/fields; plain = what each step builds and why, worded as Phase 0 item 2
+defines plain); it is presentation only — the script and every real run are still shown in full
+and run only on explicit per-run approval.
 
 ## Hard invariants
 
@@ -55,7 +56,7 @@ only on explicit per-run approval.
    when the customer gives it after seeing that preview; "approved in advance", "don't show me the
    preview" or a hurry approves nothing. Never run `--execute` in the same turn as the preview it executes.
 3. **Provisions only; never ingests, retrieves, or validates.** Neither the script nor the agent calls
-   `start-ingestion-job`. Ingestion and retrieval validation are user-run handoff steps on the new
+   `start-ingestion-job`. Ingestion and retrieval validation are customer-run handoff steps on the new
    (owned) data sources after provisioning completes.
 4. **Never touch the original.** No edit/sync/delete/ingest of the source KB or its data sources.
 5. **No cut-over / no decommission.** Never repoint the app or delete the original.
@@ -82,24 +83,62 @@ Checked before any mutation. If unmet, the phase returns `NEEDS_INPUT` or `BLOCK
   `list-tags-for-resource` (the list and get calls do not return tags; policy B grants the tag read on
   tagged KBs). Any resource already `ACTIVE` / `AVAILABLE` from a prior run and on the ledger is
   **reused, not recreated** — the script skips creates whose target exists and fills gaps. With the plan's
-  client tokens, an interrupted build is safe to **resume, not duplicate**. **A planned name that already
-  exists but is not on the ledger (or lacks the ownership tag) is `BLOCKED`** — never reused, never renamed
-  silently; report it and ask.
+  client tokens, an interrupted build is safe to **resume, not duplicate**. **A planned KB or data-source
+  name that already exists but is not on the ledger (or lacks the ownership tag) is `BLOCKED`** — never
+  reused, never renamed silently; report it and ask. A planned role or bucket the customer created exists
+  and is not on the ledger by design (Step 1).
 - **Every create-only choice decided.** Never emit a connector while any of its create-only fields (for
   example `aclEnabled`) is undecided.
 - **Credential posture — build profile.** Credentials allow the creates on the needed types, with every
   action except the configuration reads denied on each source KB ARN (policy B in
   [safety-and-iam](references/bedrock-kb-migration/safety-and-iam.md)); never admin/full-access. Confirm it
-  with the read-only `simulate-principal-policy` check in safety-and-iam before showing the `--execute`
-  command. If write is not available, or the check shows the original is not protected (an Admin-only
-  session included), return `BLOCKED`.
+  with the read-only `simulate-principal-policy` deny check in safety-and-iam before showing the `--execute`
+  command. On credentials, only two things make the build `BLOCKED`:
+  1. **The deny check shows an original KB is not protected** (an Admin-only session included). On an
+     original KB only `explicitDeny` passes; any other result, whatever its reason, is this cause. The rule
+     about conditioned allows below never applies to the originals.
+  2. **The build role cannot perform an action the build needs on the resources the build uses** (the new
+     KBs and their data sources, the execution role it passes, the KMS key when the new KB uses one),
+     dependent permissions such as `bedrock:TagResource` and `iam:PassRole` included: with every value
+     passed, no policy allows it, or one of the role's own policies, an SCP or a permissions boundary
+     denies it.
+
+  An admin or full-access session that also carries policy B and passes both checks is still not the
+  build profile, so it fails the pre-implement gate in safety-and-iam: ask for the build profile
+  (`NEEDS_INPUT`), not `BLOCKED`.
+
+  An `implicitDeny` from simulating a conditioned allow on the resources the build uses without the values
+  its condition tests is neither cause: it shows a missing value, not a missing allow. On that result, never report a
+  missing permission or ask for a new policy or a role tag. Pass the values the build's requests would
+  carry (the request's keys and its Region, keys the service sets such as `kms:ViaService`, and the
+  ownership tag the new KB is created with as its resource tag; for a principal tag, ask the customer which
+  value the build session carries) and simulate again. `allowed` confirms that allow; the deny check is
+  still required. When the customer gives the principal-tag value but cannot say whether or how the session
+  carries it, simulate with that value: `allowed` lets the build go on to the preview and its approval. The
+  simulator tests the value you pass, not the session's
+  ([IAM policy simulator](https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_testing-policies.html)),
+  so say in the reply that shows the preview that if the session does not carry that value, every create
+  that needs that allow (as its own action or as a dependent permission) is refused with an access-denied error
+  ([Troubleshoot access denied](https://docs.aws.amazon.com/IAM/latest/UserGuide/troubleshoot_access-denied.html)),
+  and what the build would have created before that point, from the preview's call order (nothing, when
+  the first create needs that allow). A refused create ends the phase as the guide's Phase 4 says: stop
+  and offer teardown of the owned resources created so far ([Teardown posture](#teardown-posture)).
+  An action the build needs that is still denied with every value passed (`implicitDeny`
+  or `explicitDeny`, from the role's own policies, an SCP or a permissions boundary), or a session that
+  carries no such tag (the customer says it doesn't, or a create is refused for lack of it), is the second
+  cause. For a session with no such tag, the `BLOCKED` reply names the
+  tag the role's policy tests and says the build session must carry it. See safety-and-iam, "Reading a
+  simulated allow".
 - **Region** matches the source KB's Region.
 - **`output_dir`** is the working directory from Identify; the generated script and any logs go there.
-- **Runtime.** Python 3 + `boto3` available to run the script; if not, say so and hand the script to the
-  user to run (still never run it unapproved). The handoff contains everything it refers to: the plan file
-  (or its path and content), the build policy to attach, and the prerequisites that must exist first (for
-  example the execution role and its policies), each written out — never "the plan above" when the plan
-  was not shown.
+- **Runtime.** Whoever runs the script needs Python 3 and `boto3`; if they are missing where you would run
+  it, say so. If you cannot run it, or the customer will, hand it to them (still never run it unapproved).
+  The handoff contains everything it refers to: the runtime it needs (and, when a piece is missing, whether
+  the customer said so or your own check found it, how to install it, from the
+  [Boto3 Quickstart](https://boto3.amazonaws.com/v1/documentation/api/latest/guide/quickstart.html)), the
+  plan file (or its path and content), the build policy to attach, and the prerequisites that must exist
+  first (for example the execution role and its policies), each written out — never "the plan above" when
+  the plan was not shown.
 
 ## Build rules and request shapes
 
@@ -123,7 +162,7 @@ Verify — do not hallucinate.
   after creation. Exact shape: [managed KB API](references/bedrock-kb-migration/managed-kb-api.md).
 - **Data-source shapes** come from [managed KB API](references/bedrock-kb-migration/managed-kb-api.md)
   (S3, the auth connectors + secret-key table, CUSTOM direct-ingestion). Do not re-derive them from memory;
-  reconcile once with `create-data-source --generate-cli-skeleton` for the user's Region before a real run.
+  reconcile once with `create-data-source --generate-cli-skeleton` for the customer's Region before a real run.
 - **Managed-connector gotchas** (the top causes of `FAILED`): the managed shape differs from self-managed —
   the secret is `connectionConfiguration.secretArn` (not `credentialsSecretArn`); no
   `accessControlConfiguration` / `crawlAcl` (use the flat `connectorParameters.aclEnabled`); no
@@ -138,8 +177,9 @@ Bedrock build-time control-plane APIs are throttled per-account/Region, and ther
 sources per KB** (quota `L-F02D918A`, read live; one past it → `ServiceQuotaExceededException`; split across KBs). Firing creates
 back-to-back invites `ThrottlingException`, which is why a batched script is used instead of one-by-one CLI.
 The script's constants (`CONTROL_PLANE_RPS`, `DATA_SOURCE_BATCH_SIZE`, `INTER_BATCH_PAUSE_SECONDS`) are
-**conservative defaults** — read the per-KB and per-account quotas from `kb-managed-quotas` and the
-Service Quotas console before execution, lower the rate if throttling
+**conservative defaults** — read the per-KB and per-account quotas from Service Quotas in the customer's
+account (codes and the read in [mapping](references/bedrock-kb-migration/mapping.md) §4) before
+execution, lower the rate if throttling
 appears, and never hardcode an unverified quota as fixed truth.
 
 ## The plan file and the ledger file the script reads
@@ -151,8 +191,14 @@ The script reads data, not prose. Write two JSON files to `output_dir` before ge
   its data sources (each with `name`, `client_token` and request body). Discovered free text (a KB
   description, a data source description) goes in this file only as JSON data, never into Python source.
 - `owned-resources.json` (the ledger): every resource this migration created, keyed by ID, with its type,
-  name and client token; execution roles with the names of their inline policies, so a later teardown can
-  remove the policies before the role.
+  name and client token. The execution role and the build role are the customer's prerequisites and are
+  never on it (Step 1).
+
+Parse both files as JSON each time you write them, before the customer sees them or the script reads them, as
+Discover does for its templates ([discovery](references/bedrock-kb-migration/discovery.md), KB path step 8). A
+local parse needs no credentials. Fix any parse error and parse again. A file that does not parse is `invalid`,
+never `unverified`, which covers only checks that could not run; the script is not run on an `invalid` file,
+and an `invalid` file is not given to the customer.
 
 **Approval is bound to the previewed plan.** The preview prints the SHA-256 of `migration-plan.json`;
 `--execute` requires `--expect-plan-sha256 <that value>` and refuses, before any SDK call, when it is missing
@@ -161,7 +207,7 @@ or does not match the file on disk. A changed plan therefore needs a fresh previ
 ## The provisioning script the agent generates
 
 The agent adapts a template into a concrete script written to `<output_dir>/provision_managed_kb.py` (or a
-user-chosen path — never silently). The template is **not shipped**; it is specified here. The generated
+customer-chosen path — never silently). The template is **not shipped**; it is specified here. The generated
 script MUST:
 
 - **Preview by default.** `DRY_RUN = True` at module top; `--execute` is required to mutate. The DRY_RUN
@@ -197,8 +243,16 @@ script MUST:
 - **Fill every placeholder.** `REGION`, `PROFILE`, source KB id (guard/reference only), KB execution role
   ARN, embedding model (per the rule above), and one `KNOWLEDGE_BASES` entry per KB with data sources
   already translated to `MANAGED`-accepted values. An unfilled script with placeholders left in is not
-  valid: if a value is unknown (a profile name, a role ARN), ask the customer for it, or do not write the
-  script yet. Never write `<FILL_IN_...>` or a similar marker.
+  valid: if a value is unknown (an existing profile's name, an existing role's ARN), ask the customer for it, or do not write the
+  script yet. Never write `<FILL_IN_...>` or a similar marker. A role or profile the customer will create before the
+  run (the execution role and the build profile, Step 1) is not unknown: propose its planned name from the plan, confirm it with
+  the customer, and fill it in (for a role, its ARN from that name, the account ID and the path the handoff's
+  create uses, if any). Then write the script, and list
+  creating it under that name as a prerequisite in the handoff
+  ([safety-and-iam](references/bedrock-kb-migration/safety-and-iam.md) → "Build-profile handoff"). The
+  DRY_RUN preview does not need the role to exist. This rule is for the script: a customer command in the
+  handoff may carry a named profile placeholder such as `<YOUR_PROFILE>` while you ask for the name
+  ([handoff](references/bedrock-kb-migration/handoff.md) → "How to write the handoff").
 - **Degrade gracefully.** On missing tools or credentials, state the runtime requirements plainly rather
   than failing obscurely; the DRY_RUN preview must work without a filled profile.
 
@@ -297,8 +351,8 @@ The script is **fail-fast up front and has no automatic teardown**. Its only saf
 validation (no KB is created until the whole plan validates) plus the immutable source. There is no teardown
 function and none is generated.
 
-- **Rollback for the user = keep the untouched original.** The source KB is never mutated, so at any point
-  the fallback is simply to keep using it / point the app back. Nothing of the user's is deleted.
+- **Rollback for the customer = keep the untouched original.** The source KB is never mutated, so at any point
+  the fallback is simply to keep using it / point the app back. Nothing of the customer's is deleted.
 - **On a mid-run failure**, owned resources created before the failure are listed **from the ledger**, and
   the agent **offers an owned-only teardown as a separate, explicitly approved step** — it is not performed
   automatically and never targets anything outside the ledger.
@@ -312,22 +366,32 @@ the original KB or anything that existed before. Then ask whether they want it.
 
 Build → review → DRY_RUN preview → approve that run → execute → confirm → handoff.
 
-### Step 1 — Provision supporting resources the agent owns (as needed)
+### Step 1 — Give the customer the prerequisites they create (as needed)
 
-If the plan needs an isolation bucket or an execution role for the new KB, ensure they exist first and add
-each to `owned_resources` (or hand off to the user if out of scope for the build profile). Never reuse the
-source's resources for writes.
+The execution role for the new KB and the build profile are the customer's to create: give the files and steps in
+[safety-and-iam](references/bedrock-kb-migration/safety-and-iam.md) → "Build-profile handoff". These
+prerequisites must exist before the `--execute` run, not before the script: write the script and run its
+DRY_RUN preview (Steps 2-3) while the customer creates them ("Fill every placeholder"). Roles and
+profiles the customer creates are prerequisites, not owned resources: never add them to `owned_resources`
+and never include them in an owned-only teardown, even though they carry this migration's tag. The customer
+removes them when done with them (the build role and profile:
+[handoff](references/bedrock-kb-migration/handoff.md) block 5). Never reuse the source's resources for
+writes.
 
 ### Step 1b — Provision connector authentication (auth connectors only)
 
 S3 / Web / CUSTOM need no secret — skip. Confluence / SharePoint / OneDrive / Google Drive each need a
 Secrets Manager secret — the #1 cause of `FAILED` data sources. Before putting such a data source in the
-script:
+script (a check on the execution role waits until before `--execute` while the customer is still creating
+the role):
 
-- **The user provisions the secret** (it holds credentials the agent must not see) — present it as a user
+- **The customer provisions the secret** (it holds credentials the agent must not see) — present it as a customer
   step. It must be in the **KB's Region** with keys matching the connector and managed `authType`.
-- **Grant the KB role** `secretsmanager:GetSecretValue` on the ARN (+ `kms:Decrypt` for a CMK; +
-  `s3:GetObject` / `s3:ListBucket` on the `.p12` for certificate methods).
+- **The KB role needs** `secretsmanager:GetSecretValue` on the ARN (+ `kms:Decrypt` for a CMK; +
+  `s3:GetObject` / `s3:ListBucket` on the `.p12` for certificate methods). These go in the execution role's
+  permissions policy, which the customer puts on the role
+  ([safety-and-iam](references/bedrock-kb-migration/safety-and-iam.md) → "Build-profile handoff", items 1
+  and 4); you never grant them yourself.
 - **Precondition gate — do not put speculative auth in the script, do not loop.** Confirm the secret exists
   (right ARN/Region/keys), the role can read it (and the certificate for Entra/App-ID methods), and
   `siteUrls` / `hostUrl` / `tenantId` are correctly shaped **before** the create runs. If anything is unmet
@@ -342,7 +406,7 @@ Produce `provision_managed_kb.py` per
 `create-data-source` calls (each with the validated config and its mapping rationale) across all KBs and
 poll to `AVAILABLE` — owned-only, provisioning only.
 
-### Step 3 — Review with the user, then run a DRY_RUN preview
+### Step 3 — Review with the customer, then run a DRY_RUN preview
 
 Show the script (or its key sections). Then run the no-mutation preview (note it changes nothing; run after
 approval):
@@ -385,17 +449,20 @@ Verify each KB `ACTIVE` and **every** data source `AVAILABLE` (or report the err
 
 ### Step 6 — Confirm provisioning complete, then return for handoff
 
-Hand off **only after all planned KBs are `ACTIVE` and every data source `AVAILABLE`**. Ingestion (per data
-source, to `COMPLETE`), retrieval validation, cut-over and decommission are all **user-run** handoff steps —
-surface them as the user's next actions, each with a public doc link (verification runs the same
-representative queries against the source and new KBs and compares ranking and content, not score magnitude,
-`Retrieve` against `Retrieve`; the source is kept until the user is satisfied). Never run them here
-(invariant 3).
+Hand off **only after all planned KBs are `ACTIVE` and every data source `AVAILABLE`**. The handoff is not
+given in this step: after Step 7's report, in the same reply, the guide's Phase 5 gives it. Read
+[handoff](references/bedrock-kb-migration/handoff.md) again then, even if you read it earlier, and give its
+six items. Ingestion (per data source, to `COMPLETE`), retrieval validation, cut-over and decommission are
+**customer-run** steps in its item 2. Never run them here (invariant 3).
 
 ### Step 7 — Report the phase outcome
 
 Report every owned resource and its readiness, the script path, the naming convention applied, resources
-reused from a prior run, and the substitutions applied; then yield to the Handoff phase.
+reused from a prior run, and the substitutions applied. On `COMPLETE`, after the report and in the same
+reply, read [handoff](references/bedrock-kb-migration/handoff.md) and give its six blocks (the guide's
+Phase 5). A `BLOCKED` or `FAILED` outcome gets no six-block handoff (Step 6); it ends as "Phase outcome"
+says, and an Admin-only `BLOCKED` stop still gives the build-profile setup (safety-and-iam, "Build-profile
+handoff").
 
 ## Phase outcome
 
@@ -404,14 +471,23 @@ The phase ends in one of `COMPLETE | NEEDS_INPUT | BLOCKED | FAILED`.
 - `COMPLETE` — all planned KBs `ACTIVE`, all data sources `AVAILABLE`; provisioning script written. Named
   outputs the next phase needs: the new KB id(s) (one per created KB — a bulk run lists them all), the data
   source id(s), `naming_convention`, resources reused, substitutions applied, and the script path.
-- `NEEDS_INPUT` — a precondition (plan, naming convention, secret) is missing; relay it to the user.
-- `BLOCKED` — credential posture does not permit the build; stop.
+- `NEEDS_INPUT` — a precondition (plan, naming convention, secret) is missing; relay it to the customer.
+- `BLOCKED` — credential posture does not permit the build: the deny check shows an original KB is not
+  protected (an Admin-only session included), or the build role cannot perform an action the build needs
+  on the resources the build uses, dependent permissions such as `bedrock:TagResource` and `iam:PassRole`
+  included (with every value passed, no policy allows it, or one of the role's own policies, an SCP or a
+  permissions boundary denies it), or the session lacks a principal tag the role's policy tests. An
+  `implicitDeny` on a conditioned allow on the resources the build uses, simulated without its condition
+  values, is neither (never on an original KB, where only `explicitDeny` passes); see Preconditions. Stop.
+  When a create was refused mid-run, also list the owned resources created so far from the ledger and
+  offer an owned-only teardown, as for `FAILED`.
 - `FAILED` — a mid-run failure. Report the specific cause, list the owned resources created so far **from the
   ledger**, and **offer an owned-only teardown as a separate approved step** (there is no automatic
-  teardown; rollback for the user is keeping the untouched original).
+  teardown; rollback for the customer is keeping the untouched original).
 
-Phase completion means the required artifacts are present and non-empty on disk **and** the user confirmed —
+Phase completion means the required artifacts are present and non-empty on disk **and** the customer confirmed —
 confirming a file merely exists is not the same as confirming the build reached `ACTIVE` / `AVAILABLE`.
+The six-block handoff in the same reply as the Step 7 report does not wait for that confirmation.
 
 ## Refusal behavior
 

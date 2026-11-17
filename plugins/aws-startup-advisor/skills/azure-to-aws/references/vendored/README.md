@@ -38,6 +38,7 @@ if this skill needs one, add the copy **and** a row in the table below.
 | `ai/ai-gemini-to-bedrock.md`            | `skills/shared/ai/ai-gemini-to-bedrock.md`            |
 | `ai/ai-openrouter-to-bedrock.md`        | `skills/shared/ai/ai-openrouter-to-bedrock.md`        |
 | `ai/bedrock-endpoint-policy.md`         | `skills/shared/ai/bedrock-endpoint-policy.md`         |
+| `ai/bedrock-pricing.json`               | `skills/shared/ai/bedrock-pricing.json`               |
 | `ai/bedrock-pricing-cache.md`           | `skills/shared/ai/bedrock-pricing-cache.md`           |
 | `ai/bedrock-quotas.md`                  | `skills/shared/ai/bedrock-quotas.md`                  |
 | `ai/design-ref-agentic-to-agentcore.md` | `skills/shared/ai/design-ref-agentic-to-agentcore.md` |

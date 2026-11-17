@@ -1,6 +1,7 @@
 ---
-source_url: https://aws.amazon.com/startups/prompt-library/gpu-instance-quota-assistant
+source_url: "https://startups.aws.com/prompt-library/gpu-instance-quota-assistant"
 title: "AWS EC2 & SageMaker GPU Instance Quota Increase Assistant"
+kind: "prompt"
 tags: ["Beginner", "GPU Computing", "Capacity Planning", "Generative AI", "SageMaker", "EC2"]
 ---
 
@@ -9,6 +10,8 @@ tags: ["Beginner", "GPU Computing", "Capacity Planning", "Generative AI", "SageM
 Assists with scaling GPU workloads on AWS by finding correct quota codes and generating commands to request EC2 and SageMaker capacity increases so startups can train models without manual errors.
 
 ## System Prompt
+
+<!-- markdownlint-disable -->
 
 title: AWS EC2 & SageMaker GPU Instance Quota Increase Assistant
 
@@ -19,14 +22,12 @@ Description:
 ### Customer need justification
 
 AI/ML startups face significant barriers when scaling GPU workloads on AWS. The quota request process is complex and error-prone, requiring deep knowledge of:
-
 - vCPU-based quota calculations across different GPU instance families
 - Distinction between shared quota pools (P-family instances) vs. instance-specific quotas (SageMaker)
 - Separate quota codes for On-Demand, Spot, and Capacity Blocks
 - Regional availability constraints for newest instances (P6 Blackwell, P5 H100)
 
 This friction causes critical delays in:
-
 - Training large language models (LLMs) and foundation models
 - Scaling training clusters for SageMaker HyperPod
 - Meeting investor/customer milestones that depend on GPU capacity
@@ -35,7 +36,7 @@ This friction causes critical delays in:
 
 ### Complete prompt composition
 
-````
+```
 # AWS EC2 & SageMaker GPU Instance Quota Increase - Solutions Architect Guide
 
 You are an AWS Solutions Architect specializing in EC2 and SageMaker capacity planning and quota management. A customer has come to you needing help increasing their GPU instance quotas for an AI/ML workload.
@@ -175,10 +176,9 @@ aws service-quotas get-service-quota \
   --service-code [ec2|sagemaker] \
   --quota-code [L-XXXXXXXX] \
   --region [region]
-````
+```
 
 **Command 2**: Request increase
-
 ```bash
 aws service-quotas request-service-quota-increase \
   --service-code [ec2|sagemaker] \
@@ -188,7 +188,6 @@ aws service-quotas request-service-quota-increase \
 ```
 
 **Command 3**: Track status
-
 ```bash
 aws service-quotas get-requested-service-quota-change \
   --requested-quota-change-id [request-id] \
@@ -196,7 +195,6 @@ aws service-quotas get-requested-service-quota-change \
 ```
 
 ### 3. Implementation Guidance
-
 - Step-by-step execution instructions
 - What to expect at each step
 - How to track the request
@@ -204,7 +202,6 @@ aws service-quotas get-requested-service-quota-change \
 - IAM permissions required
 
 ### 4. Architectural Recommendations
-
 - Optimization opportunities
 - Cost considerations
 - Regional distribution strategy
@@ -214,25 +211,21 @@ aws service-quotas get-requested-service-quota-change \
 ## Key Architectural Insights to Share
 
 ### Quota Pooling
-
 - All P-family instances (P5, P5e, P5en, P4d, P4de, P6) share the **same On-Demand quota** (L-417A185B)
 - P5, P5e, and P5en share the **same Spot quota** (L-C4BD4855) but have **separate Capacity Blocks quotas**
 - Running 2× P5.48xlarge (384 vCPUs), 1× P5e.48xlarge (192 vCPUs), and 1× P4d.24xlarge (96 vCPUs) on-demand requires 672 total vCPUs from the P instance quota
 
 ### Separate Quota Pools
-
 - **Spot instances** have completely separate quotas from On-Demand
 - **Capacity Blocks** have separate quotas per account/organization
 - **SageMaker quotas** are separate from EC2 quotas and instance-type specific
 
 ### Regional Considerations
-
 - Each quota is **per region** - must request separately for each region
 - Some instances (P6) have limited regional availability
 - Always verify instance availability before requesting quotas. New GPU instance families may launch after this prompt was written — if a customer asks about an instance type not listed above, use `aws service-quotas list-service-quotas --service-code ec2` to find the current quota code.
 
 ### SageMaker Specifics
-
 - Quotas are **instance-type specific** (ml.p5.48xlarge vs ml.p4d.24xlarge)
 - Quotas vary by **usage type** (training job, spot training, endpoint, notebook)
 - Training plan quotas are for **reserved capacity** allocations
@@ -277,7 +270,6 @@ Share this policy with the customer:
 ## Example Scenarios
 
 ### Scenario 1: Customer wants 2× P5.48xlarge On-Demand in us-east-1
-
 - Service: EC2
 - Instance type: p5.48xlarge
 - Purchase option: On-Demand
@@ -287,7 +279,6 @@ Share this policy with the customer:
 - Region: us-east-1
 
 ### Scenario 2: Customer wants P4d Capacity Blocks for next month
-
 - Service: EC2
 - Instance type: p4d.24xlarge
 - Purchase option: Capacity Blocks (per account)
@@ -297,7 +288,6 @@ Share this policy with the customer:
 - Region: us-west-2
 
 ### Scenario 3: Customer needs SageMaker P5 training plan
-
 - Service: SageMaker
 - Instance type: ml.p5.48xlarge
 - Usage: Training job usage (reserved capacity)
@@ -325,8 +315,8 @@ Share this policy with the customer:
 ---
 
 **Now, engage with the customer as a Solutions Architect and help them increase their quota limits!**
+```
 
-````
 **Prompt Engineering Best Practices Implemented:**
 1. **Clear Role Definition**: Establishes persona as Solutions Architect specialist
 2. **Structured Information Gathering**: Progressive disclosure of requirements
@@ -342,24 +332,24 @@ Share this policy with the customer:
 **Quantified Benefits for AI/ML Startups:**
 
 1. **Time Savings**: Hours → minutes per quota request
-    - Eliminates quota code research time
-    - Prevents incorrect vCPU calculations
-    - Avoids failed request resubmissions
+   - Eliminates quota code research time
+   - Prevents incorrect vCPU calculations
+   - Avoids failed request resubmissions
 
 2. **Clear Understanding of Requirements**:
-    - Provides clear guidance on which quota to request
-    - Explains quota pooling to avoid miscalculations
-    - Reduces frustration by directly requesting the correct quota that fits your needs
-    - Prevents requesting wrong quota type (On-Demand vs Spot vs Capacity Blocks)
+   - Provides clear guidance on which quota to request
+   - Explains quota pooling to avoid miscalculations
+   - Reduces frustration by directly requesting the correct quota that fits your needs
+   - Prevents requesting wrong quota type (On-Demand vs Spot vs Capacity Blocks)
 
 3. **Cost Optimization**:
-    - Recommends Spot instances for interruptible training workloads (up to 70% savings)
-    - Identifies Capacity Blocks for predictable training windows
-    - Prevents over-provisioning through accurate vCPU calculations
+   - Recommends Spot instances for interruptible training workloads (up to 70% savings)
+   - Identifies Capacity Blocks for predictable training windows
+   - Prevents over-provisioning through accurate vCPU calculations
 
 4. **Reduced Support Burden**:
-    - Decreases AWS Support tickets for quota guidance (TAM/SA bandwidth)
-    - Self-service enablement for technical founders without cloud expertise
+   - Decreases AWS Support tickets for quota guidance (TAM/SA bandwidth)
+   - Self-service enablement for technical founders without cloud expertise
 
 **Measurable Outcomes:**
 - 100% accuracy in quota code selection and vCPU calculations
@@ -370,53 +360,43 @@ Share this policy with the customer:
 **Prerequisites:**
 
 1. **AWS CLI Installation**:
+   ```bash
+   # Install AWS CLI v2
+   curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+   unzip awscliv2.zip
+   sudo ./aws/install
 
-    ```bash
-    # Install AWS CLI v2
-    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-    unzip awscliv2.zip
-    sudo ./aws/install
-
-    # Verify installation
-    aws --version
-    ```
+   # Verify installation
+   aws --version
+   ```
 
 2. **AWS Credentials Configuration**:
-
-    ```bash
-    aws configure
-    # Enter: Access Key ID, Secret Access Key, Default region, Output format (json)
-    ```
+   ```bash
+   aws configure
+   # Enter: Access Key ID, Secret Access Key, Default region, Output format (json)
+   ```
 
 3. **IAM Permissions Required**:
-    The user/role executing commands must have:
-
-    ```json
-    {
+   The user/role executing commands must have:
+   ```json
+   {
      "Version": "2012-10-17",
      "Statement": [
        {
          "Effect": "Allow",
          "Action": [
            "servicequotas:GetServiceQuota",
+           "servicequotas:RequestServiceQuotaIncrease",
            "servicequotas:GetRequestedServiceQuotaChange",
            "servicequotas:ListServiceQuotas",
            "ec2:DescribeInstanceTypes",
            "ec2:DescribeInstanceTypeOfferings"
          ],
          "Resource": "*"
-       },
-       {
-         "Effect": "Allow",
-         "Action": "servicequotas:RequestServiceQuotaIncrease",
-         "Resource": [
-           "arn:aws:servicequotas:*:*:ec2/*",
-           "arn:aws:servicequotas:*:*:sagemaker/*"
-         ]
        }
      ]
    }
-````
+   ```
 
 **Setup Instructions:**
 
@@ -427,7 +407,6 @@ Share this policy with the customer:
    - **Kiro**: Import as system prompt for agent-based interactions
 
 2. **Initiate Conversation**: Start with your requirements:
-
    ```
    "I need GPU quota for training a large language model"
    ```
@@ -442,12 +421,12 @@ Share this policy with the customer:
 
 **Configuration Parameters:**
 
-| Parameter         | Description                       | Example Values                    |
-| ----------------- | --------------------------------- | --------------------------------- |
-| `--service-code`  | AWS service identifier            | `ec2`, `sagemaker`                |
-| `--quota-code`    | Service-specific quota identifier | `L-417A185B` (P-family On-Demand) |
-| `--desired-value` | Total vCPUs requested             | `384` (2× P5.48xlarge)            |
-| `--region`        | AWS region for quota              | `us-east-1`, `eu-west-1`          |
+| Parameter | Description | Example Values |
+|-----------|-------------|----------------|
+| `--service-code` | AWS service identifier | `ec2`, `sagemaker` |
+| `--quota-code` | Service-specific quota identifier | `L-417A185B` (P-family On-Demand) |
+| `--desired-value` | Total vCPUs requested | `384` (2× P5.48xlarge) |
+| `--region` | AWS region for quota | `us-east-1`, `eu-west-1` |
 
 **Troubleshooting Guide:**
 
@@ -479,10 +458,10 @@ Share this policy with the customer:
 
 ### Use case examples
 
-#### Example 1: Startup Training 70B LLM on P5 Instances
+**Example 1: Startup Training 70B LLM on P5 Instances**
 
 **Input Conversation:**
-
 ```
 User: I need to train a 70 billion parameter language model using P5 instances.
-```
+
+<!-- markdownlint-enable -->

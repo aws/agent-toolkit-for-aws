@@ -27,7 +27,7 @@ Discovery is strictly **read-only** and **provisions nothing**. It branches on t
 | `iac` | existing Terraform / CloudFormation that declares a self-managed KB | [IaC path](#iac-path--existing-infrastructure-as-code) |
 
 **The path is never inferred.** It is set in Phase 0 and read from the session state
-here; if it is unset, the phase ends `NEEDS_INPUT` and asks the user — never guess it. Switching the
+here; if it is unset, the phase ends `NEEDS_INPUT` and asks the customer — never guess it. Switching the
 target type restarts the flow from Identify for the new type. Read this file's branch for the active
 path before reading any source: it defines what counts as source, the field surface to capture, and
 the completeness rules, none of which should be reconstructed from memory.
@@ -78,8 +78,13 @@ which is why it is excluded here.
 
 ### Steps
 
-1. **Confirm identity and region.** `aws sts get-caller-identity`; confirm the account is the
-   expected one and the profile is read-only.
+1. **Confirm identity and region, and tell the customer.** `aws sts get-caller-identity`; confirm the
+   account is the expected one and the profile is read-only. Before the first KB read, tell the customer
+   the account ID and principal ARN it returns, the Region the probes pass in `--region`, and that every
+   probe in this phase is read-only (the probes are, whatever the profile allows; an over-privileged
+   profile is noted once, as the guide's Phase 1 step 1 says).
+   Telling the customer is a statement, not a question: when the account is the expected one, go on to
+   step 2 in the same reply.
 2. **List knowledge bases.** Capture each `knowledgeBaseId` and `name`. If several exist, ask which
    to migrate — one, several, or all.
 3. **Get each KB's details.** Extract public fields only: `knowledgeBaseConfiguration.type`, the
@@ -97,7 +102,7 @@ which is why it is excluded here.
 5. **Review ingestion history** (required) with `list-ingestion-jobs` for every data source — a KB can be
    `ACTIVE` with every ingestion job failed. Flag a `FAILED` or partial last job (documents failed or
    skipped) in the summary before any retrieval comparison is suggested. Do not start a job. If the
-   history cannot be read (the call is denied, or the user runs the commands by hand and does not return
+   history cannot be read (the call is denied, or the customer runs the commands by hand and does not return
    this one), record `ingestion_history: unavailable: <reason>` in the summary and continue; a missing
    history is a gap to report, never a `BLOCKED` outcome.
 6. **Cost analysis** — only when `cost_analysis: enabled`. See the [cost analysis hook](#cost-analysis-hook).
@@ -118,9 +123,18 @@ which is why it is excluded here.
    run, suffix each file with the KB id (`source-config-<kb-id>.yaml` / `managed-target-<kb-id>.yaml`)
    so nothing overwrites.
 
+   Then parse each file you wrote, before the customer sees it, with a YAML parser that accepts
+   CloudFormation tags such as `!Ref` (`cfn-lint` when it is installed,
+   [Validate templates with cfn-lint](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cfn-lint.html);
+   otherwise a local parse). A local parse needs no credentials, so it runs even when the live schema read
+   is denied. Fix any parse error and parse again. A file that does not parse is `invalid`, never
+   `unverified`, which covers only checks that could not run. A file still `invalid` after your fix is
+   withheld from the deployable set, as the `invalid` row of
+   [IaC schema](references/bedrock-kb-migration/iac-schema.md) §0 says.
+
 ### Configuration coverage (capture ALL — do not sample-and-skip)
 
-Discovery is **exhaustive**: enumerate **every** KB the user wants migrated and **every** data source
+Discovery is **exhaustive**: enumerate **every** KB the customer wants migrated and **every** data source
 on each — connectors, chunking and parsing often differ per data source. Capture each item present;
 explicitly mark any absent or unreadable field as **unknown, never "not present"**. If a `list-*`
 call paginates, follow `nextToken` to the end. Capture:
@@ -228,7 +242,7 @@ block), Terraform (`resource "aws_bedrockagent_knowledge_base"` HCL or `.tf.json
    `source-iac.<ext>`: the source unchanged except that it starts with a comment line
    "SOURCE — DO NOT DEPLOY" (for a format with no comments, such as JSON, put the marker in the file name:
    `source-iac.DO-NOT-DEPLOY.json`), and any inline secret is redacted to an ARN/placeholder. It is a copy
-   of what you read, never a modification of the user's file.
+   of what you read, never a modification of the customer's file.
 5a. **Cost signal** — only when `cost_analysis: enabled`. See the [cost analysis hook](#cost-analysis-hook).
 5b. **Classify the non-KB resources** in the source (buckets, collections or indexes, vector buckets,
    roles, policies, keys): for each, whether it stays (still used, including a bucket the new data source
@@ -236,9 +250,9 @@ block), Terraform (`resource "aws_bedrockagent_knowledge_base"` HCL or `.tf.json
    from this list.
 6. **Summarize per KB** — produce the per-KB IaC discovery summary (the [output shape](#output-shapes) below).
 
-**Whether the IaC is deployed comes from the user or the source, not from a search.**
+**Whether the IaC is deployed comes from the customer or the source, not from a search.**
 
-- **The user says it was never deployed, or the source shows it:** scope that KB out. Say why, and
+- **The customer says it was never deployed, or the source shows it:** scope that KB out. Say why, and
   write no target file for it.
 - **Unknown, and no matching KB in the account you can reach:** that proves nothing. The file may
   deploy into another account or Region than your credentials reach. Say "no matching KB found in
@@ -310,7 +324,7 @@ embedding_model_arn: <arn>
 embedding_dimensions: <n or model default>   # read the model's default from its Bedrock model page
 embedding_data_type: <FLOAT32 | BINARY>
 vector_store: <type>
-encryption: <aws-owned | cmk-arn>
+encryption: <aws-owned | cmk-arn | unknown: <reason>>   # unknown when the store's key can't be read
 data_sources:                           # enumerate EVERY data source
   - id: <ds-id>
     name: <name>
@@ -340,7 +354,7 @@ logical_id: <template logical id>
 kb_name: <name, may hold a template expression such as ${NameSuffix}>
 kb_type: VECTOR
 vector_store: <type or unknown>
-encryption: <aws-owned | cmk-arn>
+encryption: <aws-owned | cmk-arn | unknown: <reason>>   # unknown when the store's key can't be read
 embedding_model_arn: <arn or unknown>
 embedding_dimensions: <n or unknown>
 embedding_data_type: <FLOAT32 | BINARY | unknown>
@@ -382,9 +396,9 @@ The phase ends in one of `COMPLETE | NEEDS_INPUT | BLOCKED | FAILED`:
 
 - **COMPLETE** — the path's required artifacts exist and are non-empty on disk (KB path: both
   templates per selected KB; IaC path: `source-iac.<ext>`), every coverage item is
-  captured or marked `unknown`, and the user confirmed. A declined cost gate, an unmeasurable cost
+  captured or marked `unknown`, and the customer confirmed. A declined cost gate, an unmeasurable cost
   figure, and a denied *cost* read all still allow COMPLETE.
-- **NEEDS_INPUT** — relayed to the user: the target type or cost gate is unset, the source was not
+- **NEEDS_INPUT** — relayed to the customer: the target type or cost gate is unset, the source was not
   supplied, or multiple KBs exist and no scope was chosen. A chosen set is not `NEEDS_INPUT`.
 - **BLOCKED** — a configuration/source read was denied, or the source has no KB. Stops here.
 - **FAILED** — an unexpected failure. (Teardown of owned resources applies only to the Implement
@@ -398,7 +412,7 @@ Named outputs the Plan phase needs: the per-KB discovery summary above, and (KB 
 ## Common mistakes
 
 - **Guessing the path or the cost gate** instead of reading the value — `unset` is `NEEDS_INPUT`, not
-  an implied yes. Running cost analysis on a declined session spends budget the user turned down;
+  an implied yes. Running cost analysis on a declined session spends budget the customer turned down;
   skipping it on an enabled one drops the most-requested part of discovery.
 - **Running any mutating command** (`start-ingestion-job`, `terraform apply`, `cloudformation deploy`,
   `create-*`) or a content-exposing `retrieve` "to check" — discovery is strictly read-only.

@@ -1,0 +1,15 @@
+<View>
+  <Text name="prompt"     value="$prompt"/>
+  <Text name="completion" value="$completion"/>
+
+  <Header value="LLM judge scored this. Do you agree?"/>
+  <Rating name="human_accuracy"     toName="completion" maxRating="5"/>
+  <Rating name="human_completeness" toName="completion" maxRating="5"/>
+  <Rating name="human_harmlessness" toName="completion" maxRating="5"/>
+  <Choices name="agree_with_judge" toName="completion" choice="single" showInLine="true">
+    <Choice value="agree"/>
+    <Choice value="disagree"/>
+    <Choice value="partial"/>
+  </Choices>
+  <TextArea name="rationale" toName="completion" rows="2" placeholder="Optional notes"/>
+</View>

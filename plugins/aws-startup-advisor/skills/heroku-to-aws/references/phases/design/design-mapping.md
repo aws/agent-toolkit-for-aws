@@ -65,6 +65,7 @@ Extract from `preferences.json`:
 Resolve once before mapping formations:
 
 1. `cpu_architecture` = `preferences.workshop.cpu_architecture` if set, else `"x86_64"`.
+   - **CNB override (per app):** when `preferences.operational.containerization_method == "cnb_heroku_builder"` and the formation's app resolves to CNB per app (`apps[].stack` other than `"container"` **and** the app is not listed in `preferences.operational.dockerfile_apps[]`, and `containerization_status` is not `"containerized"` — the same rule as `generate-terraform.md` Step 5.5 § "Containerization method per app"), use `"x86_64"` for that app's formations regardless of the preference, and append warning `cnb_architecture_x86` naming the app once: "App `{heroku_app}` is built with Cloud Native Buildpacks; the generated build publishes a linux/amd64 image (`pack build --platform linux/amd64`; `heroku/builder:22` is amd64-only and `:24`/`:26` are multi-arch), so its formations stay on x86_64." Apps that ship their own Dockerfile (`stack == "container"` or listed in `dockerfile_apps`) follow the preference as usual.
 2. When `"arm64"`:
    - **Elastic Beanstalk**: use `ec2_instance_type_arm64` from the matched `dyno-eb-sizing.json` row when present; else use `ec2_instance_type` and append warning `architecture_fallback_x86` naming the formation.
    - **Fargate**: set `aws_config.cpu_architecture` to `"ARM64"` (task size from `dyno-fargate-sizing.json` unchanged — Fargate ARM is a runtime arch flag). Prefer Estimate rates `fargate.per_vcpu_hour_arm64` / `per_gb_mem_hour_arm64` when present.
@@ -229,7 +230,7 @@ Continue with the next resource after the Fargate entry is appended. This guard 
    }
    ```
 
-   **`ecs_mode`:** `"express"` when ALL of: `process_type == "web"`; `fargate_cpu <= 4096` and `fargate_memory <= 8192`; `preferences.design_constraints.release_strategy` is absent or `"canary"`; `dns_strategy != "route53"` (a Route 53 cutover needs a Terraform-owned ALB); the app is **not** in a Private Space (§ 3D restricted inbound rules need tasks in private subnets behind a Terraform-owned ALB whose security group this skill controls). Otherwise `"standard"`, with the first failing condition as the reason (`worker`, `task_size`, `release_strategy`, `route53_cutover`, `private_space`). ECS Express Mode is a standard ECS service AWS provisions — Fargate cluster, ALB with HTTPS and ACM certificate, auto scaling, logs, canary deployments, AWS-provided endpoint — at no extra charge; up to 25 Express services share one ALB ([docs](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html)). **Public ingress vs task placement:** Express Mode derives the ALB scheme from the task subnets — public subnets give an internet-facing ALB with public task IPs, private subnets give an internal ALB ([network defaults](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html#express-service-network-defaults)). A Heroku web dyno is internet-facing, so an `express` web formation is generated with its tasks in the **public** subnets (record `"placement": "public_subnets"` in `aws_config`); a web formation whose tasks must stay in private subnets is `standard`. Estimate and Generate read `ecs_mode` from this entry; a design with no `ecs_mode` key (saved before this field existed) is read as `"standard"` by both.
+   **`ecs_mode`:** `"express"` when ALL of: `process_type == "web"`; `fargate_cpu <= 4096` and `fargate_memory <= 8192`; `preferences.design_constraints.release_strategy` is absent or `"canary"`; `dns_strategy != "route53"` (a Route 53 cutover needs a Terraform-owned ALB); the app is **not** in a Private Space (§ 3D restricted inbound rules need tasks in private subnets behind a Terraform-owned ALB whose security group this skill controls); the app does **not** resolve to CNB (`app_containerization_method != "cnb_heroku_builder"`, resolved per app by the CNB override rule in step 3: a CNB image comes from the app's own ECR repository and a `var.image_tag_<app>` that stays empty until the first build, with `desired_count` 0 until then, and the Express template takes its image from a `container_image_*` variable that a CNB app never declares, so a CNB web formation uses the standard ECS service path). Otherwise `"standard"`, with the first failing condition as the reason (`worker`, `task_size`, `release_strategy`, `route53_cutover`, `private_space`, `cnb_image`). ECS Express Mode is a standard ECS service AWS provisions — Fargate cluster, ALB with HTTPS and ACM certificate, auto scaling, logs, canary deployments, AWS-provided endpoint — at no extra charge; up to 25 Express services share one ALB ([docs](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html)). **Public ingress vs task placement:** Express Mode derives the ALB scheme from the task subnets — public subnets give an internet-facing ALB with public task IPs, private subnets give an internal ALB ([network defaults](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html#express-service-network-defaults)). A Heroku web dyno is internet-facing, so an `express` web formation is generated with its tasks in the **public** subnets (record `"placement": "public_subnets"` in `aws_config`); a web formation whose tasks must stay in private subnets is `standard`. Estimate and Generate read `ecs_mode` from this entry; a design with no `ecs_mode` key (saved before this field existed) is read as `"standard"` by both.
 
 6. **ALB for web process types**: If `process_type == "web"` AND `aws_config.ecs_mode == "standard"`, produce an additional ALB entry (an `express` web formation gets its ALB from Express Mode — do not emit one):
 
@@ -297,9 +298,41 @@ Continue with the next resource after the Fargate entry is appended. This guard 
    - `single-az` or `multi-az` → **RDS PostgreSQL** (use "Recommended RDS Instance Class" column)
    - `multi-az-ha` or `multi-region` → **Aurora PostgreSQL** (use "Recommended Aurora Instance Class" column)
 
+   2a. **Sizing basis** (after the plan row is found). Applies only when ALL of:
+   `preferences.data.database_sizing_basis == "measured"` (written only with
+   `sources.Q6d: "user"`); this add-on's `resource_id` is in
+   `preferences.data.rightsizing_candidates_shown[]` (the databases the user saw in Q6d —
+   never re-size one they did not see); and the add-on is still a candidate under the
+   Clarify Q6d **Right-sizing rule** (`clarify-interview.md` § Q6d). That rule is the only
+   definition of `plan_storage_gb`, the follower and `pg_role` handling, `utilization_pct`,
+   `fitting_plan` and what makes a database a candidate: apply it exactly as written
+   there and do not restate or vary it here. This step only does the lookup:
+   - Use the `fitting_plan` row of `postgres-rds-sizing.json` for steps 5–6 below instead
+     of the plan-name row. This is still a direct lookup — by storage instead of by name —
+     not a recomputation of instance class from RAM. No rounding and no 20 GB minimum is
+     applied when choosing the row; the RDS storage minimum applies to allocated storage
+     in step 6 only.
+   - Set `aws_config.sizing_basis: "measured"`, `aws_config.sized_as_plan: "<fitting_plan>"`,
+     and keep `aws_config.source_plan: "<config.plan>"`. These three keys are provenance
+     for the report and workbook; nothing else reads them.
+   - Add one warning per app: "`{heroku_app}` Postgres sized from measured data
+     ({data_size_gb} GB on a {plan} plan with {plan_storage_gb} GB): using the
+     {sized_as_plan} row. The row was chosen by storage only; confirm the plan was not
+     chosen for memory, connections or query load."
+
+   Otherwise set `aws_config.sizing_basis: "plan"` and continue with the plan-name row.
+   Never apply this to Advanced-tier add-ons (`tier: "advanced"`), which are sized from
+   `advanced_pools[]`.
+
+   Worked cases (pricing-cache Storage): `standard-4` (768 GB) holding 200 GB is 26.04% →
+   not a candidate, `plan` row. `standard-2` (256 GB) holding 31 GB is 12.11%, 62 GB fits
+   `standard-0` (64 GB) → `standard-0` row. `standard-2` holding 40.5 GB is 15.82% but 81 GB
+   does not fit `standard-0`, so `fitting_plan == plan` → not a candidate. `essential-0`
+   (1 GB) holding 0.1 GB → no smaller row exists → not a candidate.
+
 5. **Instance class**: Read directly from the matched table row. The table already provides the minimum adequate instance class.
 
-6. **Storage**: Read the Storage column from the matched row. Configure storage allocation ≥ this value.
+6. **Storage**: Read the Storage column from the matched row. Configure storage allocation ≥ this value and ≥ 20 GB (the RDS minimum for gp3; this floor applies to allocated storage only, never to the row selection in step 2a).
 
 7. **Multi-AZ deployment**: If availability is `multi-az`, `multi-az-ha`, or `multi-region`, set `multi_az: true`.
 
@@ -806,14 +839,14 @@ After all resources are mapped:
 
 2. **If Fir workloads exist**:
    - Add each Fir app name to `metadata.fir_workloads_detected[]`.
-   - Set `metadata.fir_generation_note`: "Fir-generation workloads detected. No Fir-specific Terraform (ARM/Graviton instance targeting, CNB buildpack configuration) is generated in v1. These workloads are deferred to a future version."
+   - Set `metadata.fir_generation_note`: "Fir-generation workloads detected. No Fir-specific Terraform (ARM/Graviton instance targeting, Fir builder `project.toml` configuration) is generated in v1. These workloads are deferred to a future version."
    - Add a warning: "Fir-generation workloads deferred to future version: {comma-separated app names}"
 
 3. **If NO Fir workloads**:
    - Set `metadata.fir_workloads_detected` to `[]`.
    - Set `metadata.fir_generation_note`: "No Fir workloads detected; all Cedar generation."
 
-4. **CRITICAL CONSTRAINT**: Do NOT produce ARM/Graviton instance targeting or CNB buildpack configuration in ANY output, regardless of `heroku_generation` value. Fir detection is **detect-only** in v1.
+4. **CRITICAL CONSTRAINT**: Do NOT produce ARM/Graviton instance targeting or Fir-specific buildpack configuration (Fir builder `project.toml`, Fir-only process definitions) in ANY output, regardless of `heroku_generation` value. Fir detection is **detect-only** in v1. This constraint is about Fir. It does not cover `preferences.operational.containerization_method == "cnb_heroku_builder"`, which uses Cloud Native Buildpacks to containerize **Cedar** apps for AWS compute; Generate emits that path normally. CNB apps are pinned to x86_64 by the "CPU architecture resolution" step above (warning `cnb_architecture_x86`), not by this constraint.
 
 ---
 
