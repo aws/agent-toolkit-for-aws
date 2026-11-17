@@ -114,7 +114,8 @@
           "properties": {
             "sessions_per_month": { "$ref": "#/definitions/volumeCount" },
             "input_tokens_per_session": { "$ref": "#/definitions/volumeCount" },
-            "output_tokens_per_session": { "$ref": "#/definitions/volumeCount" }
+            "output_tokens_per_session": { "$ref": "#/definitions/volumeCount" },
+            "session_length": { "enum": ["short", "medium", "long"] }
           }
         }
       }

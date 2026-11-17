@@ -95,7 +95,7 @@ def test_estimate_postcondition_requires_the_share_fields():
 
 def test_dominant_driver_levers_are_real_cost_levers():
     est, levers = _flat(ESTIMATE_MD), COST_LEVERS_MD.read_text()
-    rule = est[est.index("When `model_spend_dominates` is true (Step 5)"):]
+    rule = est[est.index("When `model_spend_dominates` is true, the FIRST"):]
     rule = rule[:rule.index("latency tolerance")]
     for lever in TOKEN_LEVERS:
         assert f'"{lever}"' in rule, lever
@@ -162,3 +162,73 @@ def test_seed_rejects_bad_usage_volume(volume):
     schema = json.loads(SEED_SCHEMA.read_text())
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate({"units": {"agent": {"usage_volume": volume}}}, schema)
+
+
+# --- Logan's and Gen's reviews on #667 ---------------------------------------------------------
+
+def test_estimate_example_leads_with_the_token_driver_when_model_spend_dominates():
+    example = _estimate_example()
+    assert example["model_spend_dominates"] is True
+    first = example["drivers"][0]
+    assert "model tokens" in first["driver"]
+    assert first["lever"] in TOKEN_LEVERS
+    # The effect is sized from the unit's own model band (40-120 for 1,000 sessions).
+    unit = example["units"][first["unit"]]
+    assert unit["breakdown"]["model_tokens"] in first["effect"]
+
+
+def test_driver_order_is_applied_in_step_5_after_the_flag():
+    est = _flat(ESTIMATE_MD)
+    step4 = est[est.index("## Step 4"):est.index("## Step 5")]
+    # The flag needs the Step 5 totals (system-level lines included), so Step 4 cannot order.
+    assert "Step 5 applies the rule below once the flag is computed" in step4
+    step5 = est[est.index("**Model spend share (always emitted).**"):]
+    assert "move the model-token driver of the unit with the largest `model_tokens` band to `drivers[0]`" in step5
+    # The agent_session example driver is the token driver the rule asks for.
+    assert '"driver": "model tokens (sessions × tokens per session)"' in step4
+
+
+def test_compute_and_model_tokens_use_one_session_count():
+    est = _flat(ESTIMATE_MD)
+    assert "The session count for compute is the same `sessions_per_month` the model line uses" in est
+
+
+def test_other_classes_keep_their_own_volume():
+    est = _flat(ESTIMATE_MD)
+    rule = est[est.index("**Model tokens for other classes**"):]
+    rule = rule[:rule.index("**batch units**")]
+    assert "OWN volume" in rule
+    assert "Never apply the 1,000-session agent default" in rule
+    # The service bullet states no volume, so the rule must supply one.
+    assert "service unit that calls a model, also state a requests-per-month assumption" in rule
+    assert "assumed (not answered): tokens per call" in rule
+
+
+def test_clarify_asks_usage_volume_and_never_inherits_it():
+    clarify = _flat(CLARIFY / "clarify.md")
+    full_set = clarify[clarify.index("walks the FULL existing per-unit question set"):]
+    full_set = full_set[:full_set.index(")")+1]
+    assert "`usage_volume`" in full_set
+    delta = clarify[clarify.index("ONE batched delta question"):]
+    delta = delta[:delta.index("Non-agent units")]
+    assert "usage volume" in delta
+    assert "EXCEPT `usage_volume`: an unmentioned volume stays `unknown`" in delta
+
+
+def test_length_mapping_is_recorded_and_reaches_the_assumptions():
+    assert "set `session_length` to the length picked" in _flat(CLARIFY / "clarify-business.md")
+    assert "`usage_volume.session_length` records which length" in _flat(CLARIFY / "clarify.md")
+    assert "length mapping\" to the unit's `assumptions`" in _flat(ESTIMATE_MD)
+    assert "only when both token fields came from that mapping" in _flat(ESTIMATE_MD)
+    assert "drop `session_length`" in _flat(CLARIFY / "clarify.md")
+
+
+@pytest.mark.parametrize(("length", "valid"), [("medium", True), ("long", True), ("huge", False)])
+def test_seed_session_length(length, valid):
+    schema = json.loads(SEED_SCHEMA.read_text())
+    seed = {"units": {"agent": {"usage_volume": {"session_length": length}}}}
+    if valid:
+        jsonschema.validate(seed, schema)
+    else:
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(seed, schema)

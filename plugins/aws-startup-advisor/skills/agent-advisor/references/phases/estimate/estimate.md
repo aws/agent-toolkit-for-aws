@@ -89,7 +89,9 @@ this rule governs it, NOT the class default below.
 
 - **agent_session units** (effective_runtime = agentcore | lambda_microvms | ecs | eks | lambda):
   estimate as today — runtime + model + stated usage assumption (sessions/mo, duration, I/O wait
-  %). Apply the cached anchors from Step 2 (AgentCore vCPU/GB, Lambda MicroVMs, Fargate) plus
+  %). The session count for compute is the same `sessions_per_month` the model line uses below
+  (or the same 1,000-session default, marked the same way), so the two lines compare like with
+  like. Apply the cached anchors from Step 2 (AgentCore vCPU/GB, Lambda MicroVMs, Fargate) plus
   Bedrock model token rates. For a `lambda` runtime use Lambda request pricing (invocations ×
   duration × memory). For `eks`, apply the EKS pricing rule above. Any runtime missing a cached
   anchor: set `pricing_source: cached_stale` and state the assumption.
@@ -102,9 +104,19 @@ this rule governs it, NOT the class default below.
   Any field that is missing or `unknown` takes this stated default: 1,000 sessions a month,
   20,000 input and 2,000 output tokens per session. Name every defaulted field in the unit's
   `assumptions` as "assumed (not answered): ..." so the reader can see which part of the model
-  line is a placeholder. A unit calls a model when design.json gives it a
-  `model_recommendation`; `model_tokens` is `null` only when it has none. A unit of another
-  class that calls a model states its token-volume assumption the same way.
+  line is a placeholder. When `usage_volume.session_length` is present, the token counts came
+  from the business wording's length mapping, not from the user: add "tokens per session from
+  the '<session_length>' length mapping" to the unit's `assumptions`. This applies only when
+both token fields came from that mapping; a token field the user or Discover supplied, or one
+still `unknown`, is described as such instead. A unit calls a model when
+  design.json gives it a `model_recommendation`; `model_tokens` is `null` only when it has none.
+- **Model tokens for other classes** (batch, light_io, service units that call a model): size
+  `model_tokens` from that unit's OWN volume, the run count or request count its class bullet
+  below states, times tokens per call. A service unit's bullet states no volume, so for a
+  service unit that calls a model, also state a requests-per-month assumption for its model
+  calls. Never apply the 1,000-session agent default to
+  them. When tokens per call are not known, assume 20,000 input and 2,000 output per call and
+  record "assumed (not answered): tokens per call" in the unit's `assumptions`.
 
 - **batch units** (verdict from workload-classes.md: AWS Batch → Fargate compute; scheduled Lambda):
   - When `effective_runtime == "eks"` (W1 existing-cluster reuse or a consolidation onto EKS):
@@ -214,7 +226,11 @@ For each unit, determine what moves the cost and which optimization levers apply
 Load `references/decision-refs/cost-levers.md` and cite only the levers documented in that table.
 Do not invent discounts or optimizations outside of the table.
 
-When `model_spend_dominates` is true (Step 5), the FIRST `drivers[]` entry is the model-token
+Write `drivers[]` here in any order. Its final order depends on `model_spend_dominates`, which
+needs the Step 5 totals (system-level lines included), so Step 5 applies the rule below once
+the flag is computed.
+
+When `model_spend_dominates` is true, the FIRST `drivers[]` entry is the model-token
 driver of the unit with the largest `model_tokens` band, and its lever is one of "Model tier
 routing (Sonnet→Haiku for triage/simple items)", "Prompt caching", or "Batch inference":
 "Batch inference" only when that unit tolerates asynchronous results (scheduled or batch work);
@@ -240,8 +256,8 @@ Example for an agent_session unit:
 ```json
 {
   "unit": "ai-customer-support",
-  "driver": "session count × avg duration",
-  "effect": "+$10-30 per 1k sessions",
+  "driver": "model tokens (sessions × tokens per session)",
+  "effect": "+$40-120 per 1k sessions",
   "lever": "Model tier routing (Sonnet→Haiku for triage/simple items)"
 }
 ```
@@ -287,8 +303,8 @@ legacy mirror from the primary unit, and include the `drivers[]` array:
   "drivers": [
     {
       "unit": "<unit_id>",
-      "driver": "session count × avg duration",
-      "effect": "+$10-30 per 1k sessions",
+      "driver": "model tokens (sessions × tokens per session)",
+      "effect": "+$40-120 per 1k sessions",
       "lever": "Model tier routing (Sonnet→Haiku for triage/simple items)"
     },
     {
@@ -327,7 +343,9 @@ and append a `"+ unverified"` suffix to that total's band (e.g. `total_compute` 
 unverified"`, and `total_monthly_magnitude_usd` likewise carries `"+ unverified SW polling"`).
 Never coerce an unverified component to $0 — an excluded-and-flagged band, never a silent drop.
 
-**Model spend share (always emitted).** `model_share_of_total` is the midpoint of `total_model`
+**Model spend share (always emitted).** Compute it after the totals above, then apply the
+Step 4 first-driver rule: when `model_spend_dominates` is true, move the model-token driver of
+the unit with the largest `model_tokens` band to `drivers[0]`. `model_share_of_total` is the midpoint of `total_model`
 divided by the midpoint of `total_monthly_magnitude_usd`, rounded to the nearest 0.05 (the
 example: 80 / 120 = 0.67 → 0.65). The denominator is `total_monthly_magnitude_usd` as written,
 including any system-level line such as Temporal Cloud orchestration; do not recompute it from
