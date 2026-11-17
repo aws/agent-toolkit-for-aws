@@ -190,12 +190,19 @@ def test_tiebreak_no_longer_claims_unconditional_lexicographic_chronology() -> N
     )
 
 
-def test_tiebreak_uses_last_updated_as_primary_sort_key() -> None:
+def test_tiebreak_uses_captured_at_as_primary_sort_key() -> None:
+    # The candidates are bedrock-migration-assessment runs, whose .phase-status.json a
+    # consumer must not read: the timestamp comes from the usage profiles' own
+    # metadata.captured_at, and the run's status from readiness.py.
     text = SKILL_MD.read_text(encoding="utf-8")
     step15_section = _section(text, "## Step 1.5", "## Phase A")
-    assert "last_updated" in step15_section, (
-        "Step 1.5's tiebreak no longer references last_updated at all"
+    assert "`metadata.captured_at`" in step15_section, (
+        "Step 1.5's tiebreak no longer references the usage profiles' metadata.captured_at"
     )
+    assert "last_updated" not in step15_section and "current_phase" not in step15_section, (
+        "Step 1.5 must not sort or describe runs from the assessment run's .phase-status.json"
+    )
+    assert "readiness.py" in step15_section
     assert "primary" in step15_section, (
         "Step 1.5's tiebreak no longer names last_updated as the primary "
         "sort key"

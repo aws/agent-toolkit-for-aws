@@ -18,14 +18,15 @@ A token in a skill file that looks like a repository path to an instruction/data
 `references/…`, `knowledge/…`, `scripts/…`, `skills/…`, `agents/…`, `data/…`, and the
 agent-advisor short forms `phases/…`, `shared/…`, `design-refs/…`, with an extension in
 md/json/py/sh/tf/yml/yaml/html/txt. Optional prefixes `$PLUGIN_ROOT/`,
-`${CLAUDE_PLUGIN_ROOT}/`, `$SKILL_BASE/`, `<SKILL_BASE>/`, `$GCP_BASE/`, `./`, `../`.
+`${CLAUDE_PLUGIN_ROOT}/`, `$SKILL_BASE/`, `<SKILL_BASE>/`, `$GCP_BASE/`, `$BMA_BASE/`, `./`, `../`.
 
 Not references (skipped): run-artifact paths (`$MIGRATION_DIR/…`, `$RUN_DIR/…`, `$REPO/…`,
 `.migration/…`, `<PLAN_DIR>/…`, `.saws-migrate/…`, `terraform/…`), templated tokens
 (`<slug>`, `{name}`, `*`, `NNN`), and URLs.
 
 Resolution order for a bare path `P` found in `skills/<skill>/…/file.md`:
-  1. explicit prefix → plugin root / skill root / gcp-to-aws root / referencing file's dir.
+  1. explicit prefix → plugin root / skill root / gcp-to-aws root / bedrock-migration-assessment
+     root / referencing file's dir.
      An explicit prefix is authoritative: the agent runs `<SKILL_BASE>/scripts/x.py`,
      `./scripts/x.py`, or `../../knowledge/estimate/estimate-defaults.json` as written.
      A same-named file under the skill root does not make a wrong relative path exist,
@@ -77,9 +78,10 @@ _ROOTS_RE = re.compile(rf"^{ROOTS}/")
 # the vendored/shared library speaks from the CONSUMING skill's point of view; its references
 # resolve against skills/shared and against any skill that vendors it
 _LIBRARY_ORIGIN_RE = re.compile(r"/skills/(shared/|[^/]+/references/(vendored|shared)/)")
-# skills that execute gcp-to-aws's phase files inline (agent-advisor) or by Skill invocation
-# (llm-to-bedrock) legitimately name paths inside gcp-to-aws's tree
-_GCP_DEPENDENTS = {"agent-advisor", "llm-to-bedrock"}
+# skills that execute gcp-to-aws's phase files inline (agent-advisor) legitimately name paths
+# inside gcp-to-aws's tree. llm-to-bedrock runs bedrock-migration-assessment instead, through
+# `$BMA_BASE/` paths, so it gets no gcp-to-aws fallback.
+_GCP_DEPENDENTS = {"agent-advisor"}
 # the skill whose subagents live in plugins/<plugin>/agents/
 _AGENTS_OWNER = "llm-to-bedrock"
 # anything carrying a run-artifact prefix or templating is not a repo path
@@ -128,6 +130,8 @@ def _candidates(prefix: str, path: str, source: Path, plugin: Path) -> List[Path
         cands.append(plugin / path)
     elif "GCP_BASE" in p:
         cands.append(plugin / "skills" / "gcp-to-aws" / path)
+    elif "BMA_BASE" in p:
+        cands.append(plugin / "skills" / "bedrock-migration-assessment" / path)
     elif "SKILL_BASE" in p or "SKILL_DIR" in p:
         if skill is not None:
             cands.append(skill / path)

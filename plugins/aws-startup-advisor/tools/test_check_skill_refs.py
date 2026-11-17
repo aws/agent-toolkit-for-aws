@@ -114,6 +114,20 @@ def test_gcp_dependents_may_name_gcp_tree_and_agents_search_skills(tmp_path: Pat
     assert got2 == {"scripts/tool.py": False}
 
 
+def test_llm_to_bedrock_names_assessment_paths_through_bma_base_only(tmp_path: Path):
+    """llm-to-bedrock runs bedrock-migration-assessment, not gcp-to-aws: `$BMA_BASE/` resolves
+    into that skill, and a bare path that exists only under gcp-to-aws is MISSING."""
+    plugin = _plugin(tmp_path)
+    bma = plugin / "skills" / "bedrock-migration-assessment" / "scripts"
+    bma.mkdir(parents=True)
+    (bma / "readiness.py").write_text("x")
+    (plugin / "skills" / "llm-to-bedrock").mkdir()
+    got = _refs(plugin, "llm-to-bedrock", "run `$BMA_BASE/scripts/readiness.py`, `<BMA_BASE>/scripts/readiness.py`, "
+                "`$BMA_BASE/scripts/nope.py`; read `design-refs/ai.md`")
+    assert got == {"$BMA_BASE/scripts/readiness.py": True, "<BMA_BASE>/scripts/readiness.py": True,
+                   "$BMA_BASE/scripts/nope.py": False, "design-refs/ai.md": False}
+
+
 def test_agents_resolve_only_against_llm_to_bedrock(tmp_path: Path):
     """Review finding on #387: the agent loop searched every skill and kept the first hit, so
     `scripts/pyproject.toml` present only under agent-advisor made a dead llm-to-bedrock

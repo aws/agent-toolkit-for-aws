@@ -153,8 +153,8 @@ If the source model is not in this table (likely for any model released after th
 Before doing anything else in this section, read the **`Usage baseline path:`** line from
 your own context block (passed by `SKILL.md`'s dispatch — do NOT derive or assume
 `$BEDROCK_RUN_DIR` yourself; you are a fresh, stateless dispatch and have no other way to
-resolve it). That line is written by `SKILL.md`'s Step 1.5 / A3 (from either `gcp-to-aws`'s
-or `azure-to-aws`'s Discover) and is omitted entirely from your context when no baseline file
+resolve it). That line is written by `SKILL.md`'s Step 1.5 / A3 (from the usage profiles
+`bedrock-migration-assessment`'s Discover captured) and is omitted entirely from your context when no baseline file
 exists. **If the line is absent, nothing below changes — run the rest of §6.3 exactly as
 written, extrapolating from the golden-dataset sample.** If the line is present, read the
 `usage-baseline.json` file at that path:

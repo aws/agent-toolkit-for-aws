@@ -48,7 +48,7 @@ aws bedrock list-foundation-models \
 **OpenAI proprietary GPT IDs.**
 
 **Check this before Step 1.** Route by family and endpoint (GPT-5 verified 2026-08-21; Astra regions verified 2026-09-30; see
-`gcp-to-aws/references/shared/openai-on-bedrock.md`):
+`skills/bedrock-migration-assessment/references/shared/openai-on-bedrock.md`):
 
 **Case A — bare GPT-5.5 / GPT-5.4 ids (`openai.gpt-5.5`, `openai.gpt-5.4`) when the plan targets the mantle
 endpoint: bare mantle id, not an inference profile.** The inference-profile path below cannot resolve the bare form —
@@ -126,7 +126,7 @@ inference-profile procedure instead — same routing rule as GPT-5.6, just a dif
   A different region returns `blocked` with `reason: model_unresolvable`; offer Virginia, Oregon, or a supported
   runtime CRIS path through the orchestrator. Do not silently add a prefix or change endpoints.
 - `us.` / `global.` id → Step 1, then require an exact live profile match in the caller region.
-  Check the Astra runtime matrix in `gcp-to-aws/references/shared/openai-on-bedrock.md`;
+  Check the Astra runtime matrix in `skills/bedrock-migration-assessment/references/shared/openai-on-bedrock.md`;
   a Global-only caller region does not satisfy US Geo residency.
 - An `in.` / `eu.` prefix, version suffix, partial id, or conflicting endpoint/id pair → `blocked`.
   Do not substitute GPT-5.6 or manufacture an Astra profile.
@@ -227,7 +227,7 @@ stops on abort.
   inference profile. Bare mantle ids (any proprietary GPT model — GPT-5.5/5.4, GPT-5.6, GPT-6 — when the plan
   targets the mantle endpoint), and London in-region Opus 5.5, are handled entirely in Step 0; GPT-5.6/GPT-6 and
   GPT-5.5/5.4 CRIS ids flow through Steps 1–5 like any other inference profile. See
-  `$ASSESS_BASE/references/shared/openai-on-bedrock.md` for the authoritative
+  `skills/bedrock-migration-assessment/references/shared/openai-on-bedrock.md` for the authoritative
   family split.
 - A `runtime_messages` plan (Anthropic SDK on the `bedrock-runtime` `/anthropic` endpoint)
   resolves exactly like Converse: a supported `us.`/`eu.`/`global.` inference profile through
