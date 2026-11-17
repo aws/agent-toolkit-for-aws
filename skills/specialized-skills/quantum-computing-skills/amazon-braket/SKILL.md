@@ -2,7 +2,7 @@
 name: amazon-braket
 description: "Runs quantum workflows on AWS / Amazon Braket: circuits and algorithms, QPU/device and ARN discovery, LocalSimulator, tasks, program sets, Hybrid Jobs, S3 results, pricing, account setup, and spending limits. Applies to quantum programs and execution, AHS, OpenQASM, pulse control, reservations, notebooks, or Qiskit or PennyLane integrations."
 metadata:
-  version: "2"
+  version: "3"
 ---
 
 <!-- markdownlint-disable MD013 -->
