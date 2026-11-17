@@ -73,6 +73,12 @@ When adding new reference files, verify the phase's total loaded instructions re
 
 ---
 
+## AI handoff
+
+Heroku Discover does not design a Bedrock target. When the workspace has application source, Discover follows `bedrock-migration-assessment`'s application-code scan and, if that scan finds an AI provider, writes `$MIGRATION_DIR/ai-workload-profile.json` plus `ai-track.json` with status `deferred_shared_ai_engine`. This skill does not vendor `openai-on-bedrock.md` and does not read it.
+
+After Discover emits `HANDOFF_OK` and that profile exists and validates, pause infrastructure. Load `skills/bedrock-migration-assessment/SKILL.md` and run it on the profile route with that file. It copies the profile into its own `bma-` directory, then runs Clarify and Design and stops. When its Design summary has been shown, return here and load Clarify. Do not copy `aws-design-ai.json` into this skill's design, estimate, or Terraform, and do not invent a model, a price, an adapter, or AI Terraform here. If no profile was written, go straight to Clarify.
+
 ## Execution
 
 This skill is driven by the interpreter loop in `INTERPRETER.md` (§ The interpreter
