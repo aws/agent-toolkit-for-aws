@@ -10,7 +10,7 @@ If the output format has already been decided in the conversation context, keep 
 
 - Use EXACTLY the imports shown in each code template — do not add extras
 - Replace `[PLACEHOLDER]` values with user-specific configuration
-- Include `set_attribution(Attribution.SAGEMAKER_AGENT_PLUGIN)` in the setup cell/section
+- When generated code imports the SageMaker SDK, include `set_attribution(Attribution.SAGEMAKER_AGENT_PLUGIN)` in its setup cell/section
 
 ## Reading Code Templates
 
@@ -23,13 +23,13 @@ Write a `.ipynb` file in `<project-dir>/notebooks/`.
 **Naming and appending:**
 
 - Notebook path: `<project-dir>/notebooks/<project-name>.ipynb`
-- If the notebook already exists → ask: _"Would you like me to append cells to the existing notebook, or create a new one?"_
+- If the notebook already exists → append a new run section; never replace or fork the singular project notebook
 - If it doesn't exist → create it
 - When appending, use the template's `# Cell 0 [markdown]:` cell as the section divider before the new cells
 
 **Formatting:**
 
-- Use your file write tool to create the complete notebook JSON, OR use notebook MCP tools (`create_notebook`, `add_cell`) if available
+- Use a file-writing or notebook-capable tool to create the complete notebook JSON
 - Do NOT use bash commands, shell scripts, or `echo`/`cat` piping
 - 2-space JSON indentation
 - Each source line is a separate string ending with `\n` (except the last)
@@ -45,7 +45,7 @@ Write a `.ipynb` file in `<project-dir>/notebooks/`.
 
 **Execution:**
 
-- If notebook execution tools are available (e.g., `run_cell` MCP), offer to run cells for the user. If not available, tell the user to run cells themselves.
+- If notebook execution is available, offer to run cells for the user. Otherwise, tell the user to run cells themselves.
 - Do NOT use bash commands or inline scripts to execute notebook cells.
 
 ## Script Mode
@@ -65,7 +65,7 @@ Write a numbered `.py` file in `<project-dir>/scripts/`.
 
 **Dependencies:**
 
-- Install any required pip packages directly (e.g., `pip install 'sagemaker>=3.7.1,<4.0'`) before writing or running the script. Do not embed install commands in the script itself.
+- Verify every required package with a plain import check before execution. If one is missing, present the install command for the user to run, wait for confirmation, and re-verify. Do not install packages on the user's behalf or embed install commands in the script itself.
 
 **Execution:**
 

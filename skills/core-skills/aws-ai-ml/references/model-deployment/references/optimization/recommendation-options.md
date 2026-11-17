@@ -41,6 +41,8 @@ The `Workload.from_dataset(...)` alternative is **Cell 3 of `../../code_template
 
 Required. Defined as Cell 3 of the notebook (from `../../code_templates/optimize-recommendation.py`). `generate_deployment_recommendations` takes the `Workload` object via `workload=` and **auto-creates** the underlying `AIWorkloadConfig` from it. `workload_config_name=` is the **name to give that newly-created config** (not a reference to a pre-existing one) — the template passes the agent-generated `WORKLOAD_CONFIG_NAME` from Cell 2; if you omit it, the SDK auto-generates a name. Do not pass a config name into `workload=` — that parameter expects a `Workload` object.
 
+For a model already on a SageMaker endpoint, size the workload from the endpoint (concurrency from CloudWatch, prompts from Data Capture when it's on) — see `workload-from-endpoint.md`.
+
 ## Inference Framework (optional)
 
 > "Which inference framework?
