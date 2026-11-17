@@ -59,7 +59,7 @@ MODEL_ORDER = ("display_name", "selection_status", "family", "generation", "vers
                "forced_tool_choice_supported", "native_structured_output_supported",
                "sampling_parameters_supported", "runtime_in_region_regions",
                "runtime_in_region_verified_at", "mantle_regions", "service_tiers",
-               "inference_profiles", "region_availability", "pricing",
+               "inference_profiles", "region_availability",
                "paths")
 PATH_ORDER = ("available", "model_id", "requires_cris", "guardrails_supported",
               "prompt_caching_supported", "server_side_tools_supported", "evidence", "capabilities", "regions", "supported_regions", "inference_profile_regions")

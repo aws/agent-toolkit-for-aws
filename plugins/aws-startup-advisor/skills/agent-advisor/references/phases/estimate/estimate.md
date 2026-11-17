@@ -107,8 +107,8 @@ this rule governs it, NOT the class default below.
   line is a placeholder. When `usage_volume.session_length` is present, the token counts came
   from the business wording's length mapping, not from the user: add "tokens per session from
   the '<session_length>' length mapping" to the unit's `assumptions`. This applies only when
-both token fields came from that mapping; a token field the user or Discover supplied, or one
-still `unknown`, is described as such instead. A unit calls a model when
+  both token fields came from that mapping; a token field the user or Discover supplied, or one
+  still `unknown`, is described as such instead. A unit calls a model when
   design.json gives it a `model_recommendation`; `model_tokens` is `null` only when it has none.
 - **Model tokens for other classes** (batch, light_io, service units that call a model): size
   `model_tokens` from that unit's OWN volume, the run count or request count its class bullet
@@ -351,7 +351,9 @@ example: 80 / 120 = 0.67 → 0.65). The denominator is `total_monthly_magnitude_
 including any system-level line such as Temporal Cloud orchestration; do not recompute it from
 the unit bands. When either band carries an `"+ unverified"` suffix, use its numeric part (the
 share of the priced cost) and add an assumption saying the share excludes the unverified
-component. Set it to `null` only when `total_model` is `null` (no unit calls a model).
+component. Set it to `null` only when `total_model` is `null` (no unit calls a model) or the
+midpoint of `total_monthly_magnitude_usd` is 0, including a `0 + unverified` band (no spend to
+divide by, for example a seed with `sessions_per_month: 0`), and say which in `assumptions`.
 `model_spend_dominates` is evaluated on the rounded share: `true` when it is above 0.5, `false`
 when it is 0.5 or below, and `false` when the share is `null`. When it is `true`, `note` opens with "Model
 spend dominates this estimate (about N% of the total)" and points to the token levers in

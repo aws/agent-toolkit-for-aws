@@ -31,6 +31,9 @@ clarify.md Step 3 (do not invent new keys/values).
   it paused?" → process_level / filesystem / none.
 - **launch_concurrency**: "At peak, roughly how many new sessions start per second?" → high
   (many) / moderate / low.
+- **expected_scale**: "Over the next few months, roughly how many sessions (conversations or tasks)
+  will the agent handle per day: under 100, 100 to 10,000, or more than 10,000?" → prototype /
+  growing / high; unknown if unsure.
 - **multi_agent**: "One agent, or several working together?" → no / yes.
 - **deployment_preference**: "Would you rather AWS fully manage the agent for you (you just
   describe it — no code to maintain), bring your own agent code, or let me recommend?" →

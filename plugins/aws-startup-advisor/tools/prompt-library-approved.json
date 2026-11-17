@@ -1,0 +1,116 @@
+{
+  "description": "Prompt library entries approved for the aws-startup-advisor plugin. Generated files under skills/prompt-library-for-startups/references/prompt-library/ come from these pages; see tools/prompt-library-sync.py.",
+  "approved_on": "2026-10-30",
+  "source": "https://startups.aws.com/prompt-library",
+  "entries": [
+    {
+      "slug": "aws-architecture-assessment-with-mcp-integration",
+      "kind": "prompt"
+    },
+    {
+      "slug": "aws-bill-shock-preventer",
+      "kind": "agent"
+    },
+    {
+      "slug": "aws-cdk-typescript-pipeline-generator",
+      "kind": "prompt"
+    },
+    {
+      "slug": "aws-ecs-express-deployment-assistant",
+      "kind": "prompt"
+    },
+    {
+      "slug": "aws-guardduty",
+      "kind": "prompt"
+    },
+    {
+      "slug": "awsome-mvp-builder",
+      "kind": "prompt"
+    },
+    {
+      "slug": "bedrock-model-agent",
+      "kind": "agent"
+    },
+    {
+      "slug": "cost-optimized-eks-with-spot-instances",
+      "kind": "prompt"
+    },
+    {
+      "slug": "day-one-aws-foundation-setup",
+      "kind": "prompt"
+    },
+    {
+      "slug": "elasticsearch-to-opensearch-migration",
+      "kind": "prompt"
+    },
+    {
+      "slug": "full-aws-deployment-agent",
+      "kind": "prompt"
+    },
+    {
+      "slug": "gpu-instance-quota-assistant",
+      "kind": "prompt"
+    },
+    {
+      "slug": "kiro-strands-agentcore-agent",
+      "kind": "agent"
+    },
+    {
+      "slug": "local-code-to-cloud",
+      "kind": "prompt"
+    },
+    {
+      "slug": "multi-account-transition-advisor",
+      "kind": "agent"
+    },
+    {
+      "slug": "multi-region-assessment",
+      "kind": "prompt"
+    },
+    {
+      "slug": "open-source-llm-inference",
+      "kind": "prompt"
+    },
+    {
+      "slug": "openapi-to-agentcore-gateway-deployment",
+      "kind": "prompt"
+    },
+    {
+      "slug": "opensearch-cluster-operational-review",
+      "kind": "prompt"
+    },
+    {
+      "slug": "owasp-zap-vulnerability-scanner",
+      "kind": "prompt"
+    },
+    {
+      "slug": "rag-chatbot-with-claude",
+      "kind": "prompt"
+    },
+    {
+      "slug": "read-only-aws-cost-optimization-audit",
+      "kind": "prompt",
+      "split": true
+    },
+    {
+      "slug": "resiliency-baseline-evaluation",
+      "kind": "prompt"
+    },
+    {
+      "slug": "security-baseline-evaluation",
+      "kind": "prompt"
+    },
+    {
+      "slug": "service-quota-agent",
+      "kind": "agent"
+    },
+    {
+      "slug": "startup-landing-page-deployment",
+      "kind": "prompt"
+    },
+    {
+      "slug": "startup-pitch",
+      "kind": "prompt"
+    }
+  ]
+}

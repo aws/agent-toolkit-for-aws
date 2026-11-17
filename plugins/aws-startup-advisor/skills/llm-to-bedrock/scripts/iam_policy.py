@@ -8,7 +8,28 @@ import json
 import re
 import sys
 
-_GEO_PREFIX = re.compile(r"^(us|eu|apac|au|jp|in|us-gov|global)\.")
+
+def _load_model_catalog():
+    """Import the sibling model_catalog.py, also when this file is loaded by path from
+    another skill's tests (its directory is then not on sys.path)."""
+    import importlib.util
+    import sys as _sys
+    from pathlib import Path as _Path
+    if "model_catalog" in _sys.modules:
+        return _sys.modules["model_catalog"]
+    path = _Path(__file__).resolve().with_name("model_catalog.py")
+    spec = importlib.util.spec_from_file_location("model_catalog", path)
+    module = importlib.util.module_from_spec(spec)
+    _sys.modules["model_catalog"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+model_catalog = _load_model_catalog()
+
+# Every inference-profile prefix the shared model catalogs publish (plus legacy `apac.`),
+# read from references/vendored/ai/models/ rather than restated here.
+_GEO_PREFIX = model_catalog.profile_prefix_regex()
 
 # The runtime APIs a plan can select (bedrock_models[].required_client_api). The
 # OpenAI-compatible pair is what the default-project grant keys on.
@@ -83,16 +104,23 @@ def is_mantle_model(model_id: str, region: str = "") -> bool:
     bedrock-mantle (Responses/Chat Completions and Messages respectively). They need
     `bedrock-mantle:*` actions — a policy
     granting only `bedrock:InvokeModel` against a foundation-model ARN cannot
-    authorize these bare IDs. Opus 5.5 in eu-west-2 is a runtime in-region
-    target (model card verified 2026-10-03); its other bare-ID regions use Mantle.
+    authorize these bare IDs. Bare Opus 5.5 is a Mantle target only in the Regions
+    the shared catalog lists for its Mantle Messages path (and, when the Region is not
+    known, it is assumed to be one); in a runtime in-region Region (eu-west-2) or any
+    other Region it is not a Mantle id.
     The `us.`/`in.`/`global.` prefixed forms use bedrock-runtime instead — for every
     proprietary GPT model, GPT-5.5/5.4 included (their model cards list `us.`/`global.`
     CRIS ids; none has a runtime in-region form), so a prefixed id must NOT match.
     The open-weight gpt-oss models DO use bedrock-runtime and must not match."""
     mid = model_id.lower()
-    return ((mid.startswith("openai.gpt-5") or mid.startswith("openai.gpt-6")) and "oss" not in mid) or (
-        mid == "anthropic.claude-opus-5-5" and region != "eu-west-2"
-    )
+    if (mid.startswith("openai.gpt-5") or mid.startswith("openai.gpt-6")) and "oss" not in mid:
+        return True
+    if mid == model_catalog.OPUS_55_ID:
+        # Outside the Mantle Regions (and eu-west-2, a runtime in-region target) the bare id
+        # is not invocable at all; it gets an inert foundation-model grant here, and
+        # preflight_bedrock.probe_model blocks it with `inference_profile_required`.
+        return not region or region in model_catalog.opus_55_mantle_regions()
+    return False
 
 
 def _partition(region: str) -> str:
