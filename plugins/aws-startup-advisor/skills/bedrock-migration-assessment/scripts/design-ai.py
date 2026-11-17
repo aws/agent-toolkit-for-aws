@@ -62,6 +62,17 @@ HIGH_VOLUMES = {"high", "very_high"}
 SPEECH_SERVICES = {"speech_to_text": "transcribe", "text_to_speech": "polly"}
 DEFAULTS = {"ai_priority": "balanced", "ai_latency": "important", "ai_complexity": "moderate", "ai_token_volume": "medium",
             "ai_vision": "text-only", "ai_critical_feature": "none", "cross_cloud": "latency-acceptable"}
+TIERS_PATH = SKILL_ROOT / "references" / "vendored" / "ai" / "token-volume-tiers.json"
+# The values clarify-ai-only.md Q2, Q6-Q10 write; Q7's come from token-volume-tiers.json.
+PREFERENCE_VALUES = {
+    "ai_priority": ("quality", "speed", "cost", "balanced"),
+    "ai_latency": ("critical", "important", "flexible"),
+    "ai_complexity": ("simple", "moderate", "complex"),
+    "ai_token_volume": tuple(t["value"] for t in json.loads(TIERS_PATH.read_text(encoding="utf-8"))["tiers"]),
+    "ai_vision": ("text-only", "vision", "audio"),
+    "ai_critical_feature": ("function_calling", "ultra_long_context", "extended_thinking", "prompt_caching", "rag",
+                            "agentic", "realtime_speed", "image_generation", "speech", "none"),
+}
 ASSUMPTION_PREFIX = "No Mantle-only requirement was recorded for "
 ASSUMPTION = ("No Mantle-only requirement was recorded for {ids}; bedrock-runtime selected. If this workload needs "
               "background inference, server-side tools, Projects/Workspaces, or single-Region processing, re-run Clarify.")
@@ -119,11 +130,12 @@ def _check_preferences(prefs: dict) -> None:
             if not isinstance(entry, dict) or "value" not in entry:
                 bad(f"{section}.{key} must be an object with a value")
     ai, design = prefs.get("ai_constraints") or {}, prefs.get("design_constraints") or {}
+    for key, values in PREFERENCE_VALUES.items():
+        if key in ai and not (isinstance(ai[key]["value"], str) and ai[key]["value"] in values):
+            bad(f"ai_constraints.{key}.value {ai[key]['value']!r} must be one of {', '.join(values)}")
     for key in DEFAULTS:
         if key in ai and not isinstance(ai[key]["value"], (str, list)):
             bad(f"ai_constraints.{key}.value must be a string or a list")
-    if "ai_token_volume" in ai and not isinstance(ai["ai_token_volume"]["value"], str):
-        bad("ai_constraints.ai_token_volume.value must be a string")
     if "target_region" in design and not isinstance(design["target_region"]["value"], str):
         bad("design_constraints.target_region.value must be a string")
     if "compliance" in design and not (isinstance(design["compliance"]["value"], list)

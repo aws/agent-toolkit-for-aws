@@ -16,7 +16,7 @@ Read the JSON it prints. Do not redirect it to a file. On a non-zero exit, stop 
 | ----------------------- | ---------------------------------------------------------------------------------------- |
 | `design_not_found`      | Design has not finished; resume at Design.                                               |
 | `design_invalid`        | `aws-design-ai.json` no longer passes `design-ai.py check`; re-run Design.               |
-| `token_volume_unknown`  | Clarify's Q7 answer is not a known tier; re-run Clarify.                                 |
+| `preferences_invalid`   | A `preferences.json` value is not one Clarify writes, such as an unknown Q7 tier; quote `detail` and re-run Clarify. |
 | `usage_unreadable`      | A usage profile is damaged; re-run that usage reader in Discover, or remove the file.    |
 | any other value         | Quote `detail`.                                                                          |
 

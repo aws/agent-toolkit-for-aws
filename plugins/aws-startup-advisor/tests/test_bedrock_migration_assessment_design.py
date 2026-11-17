@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -244,6 +245,109 @@ def test_plan_fills_documented_defaults_for_unanswered_keys() -> None:
     assert constraints["compliance"] == {"value": ["unknown"], "chosen_by": "absent"}
 
 
+CLARIFY = (BMA / "references/phases/clarify/clarify-ai-only.md").read_text(encoding="utf-8")
+PINNED_QUESTIONS = {"ai_priority": "Q2", "ai_vision": "Q6", "ai_token_volume": "Q7", "ai_latency": "Q8",
+                    "ai_complexity": "Q9", "ai_critical_feature": "Q10"}
+PINNED = {
+    "ai_priority": ("quality", "speed", "cost", "balanced"),
+    "ai_latency": ("critical", "important", "flexible"),
+    "ai_complexity": ("simple", "moderate", "complex"),
+    "ai_token_volume": ("low", "medium", "high", "very_high"),
+    "ai_vision": ("text-only", "vision", "audio"),
+    "ai_critical_feature": ("function_calling", "ultra_long_context", "extended_thinking", "prompt_caching", "rag",
+                            "agentic", "realtime_speed", "image_generation", "speech", "none"),
+}
+
+
+def _interpret(key: str) -> tuple[dict[int, str], tuple[int, str]]:
+    line = next(l for l in CLARIFY.splitlines() if l.startswith(f"Interpret → `{key}`"))
+    mapping, _, default = line.partition("Default:")
+    pairs = {int(n): v for n, v in re.findall(r"(\d+) → `\"([a-z_-]+)\"`", mapping)}
+    n, value = re.search(r"(\d+) → `\"([a-z_-]+)\"`", default).groups()
+    return pairs, (int(n), value)
+
+
+def _with_value(prefs: dict, key: str, value) -> dict:
+    prefs = copy.deepcopy(prefs)
+    prefs["ai_constraints"][key] = {"value": value, "chosen_by": "user"}
+    return prefs
+
+
+def test_design_pins_the_clarify_values_with_a_listed_default() -> None:
+    assert DESIGN.PREFERENCE_VALUES == PINNED
+    for key, values in PINNED.items():
+        assert DESIGN.DEFAULTS[key] in values, key
+
+
+def test_token_volume_values_come_from_the_tier_table() -> None:
+    tiers = json.loads((BMA / "references/vendored/ai/token-volume-tiers.json").read_text(encoding="utf-8"))
+    assert PINNED["ai_token_volume"] == tuple(t["value"] for t in tiers["tiers"])
+
+
+@pytest.mark.parametrize(("key", "value"), [(k, v) for k, vs in PINNED.items() for v in vs])
+def test_plan_accepts_and_copies_every_pinned_value(key, value) -> None:
+    _, profile, prefs = _load(V10_FIXTURE)
+    assert DESIGN.build_plan(profile, _with_value(prefs, key, value))["constraints"][key] == {"value": value, "chosen_by": "user"}
+
+
+@pytest.mark.parametrize(("key", "value"), [
+    ("ai_priority", "fastest"), ("ai_priority", "Balanced"), ("ai_priority", ["balanced"]), ("ai_latency", "low"),
+    ("ai_complexity", "hard"), ("ai_token_volume", "huge"), ("ai_vision", "image"), ("ai_vision", ["vision"]),
+    ("ai_critical_feature", "long_context"), ("ai_critical_feature", ""), ("ai_critical_feature", None)])
+def test_plan_rejects_an_off_list_value_and_names_the_allowed_ones(key, value) -> None:
+    _, profile, prefs = _load(V10_FIXTURE)
+    with pytest.raises(DESIGN.DesignInputError) as err:
+        DESIGN.build_plan(profile, _with_value(prefs, key, value))
+    assert err.value.code == "preferences_invalid" and key in err.value.detail
+    assert all(v in err.value.detail for v in PINNED[key])
+
+
+def test_unpinned_keys_keep_their_free_form_values() -> None:
+    _, profile, prefs = _load(V10_FIXTURE)
+    prefs = _with_value(_with_value(prefs, "cross_cloud", "egress-concerned"), "ai_framework", ["direct", "langchain"])
+    assert DESIGN.build_plan(profile, prefs)["constraints"]["cross_cloud"]["value"] == "egress-concerned"
+
+
+@pytest.mark.parametrize("key", list(PINNED_QUESTIONS))
+def test_clarify_interpret_line_writes_exactly_the_pinned_values(key) -> None:
+    pairs, (_, default) = _interpret(key)
+    assert set(pairs.values()) == set(PINNED[key]) and default == DESIGN.DEFAULTS[key]
+
+
+@pytest.mark.parametrize("key", list(PINNED_QUESTIONS))
+def test_clarify_interpret_line_maps_every_answer_option(key) -> None:
+    section = CLARIFY[CLARIFY.index(f"## {PINNED_QUESTIONS[key]} — "):]
+    options = next(l for l in section.splitlines() if re.match(r"^> 1\\\)", l))
+    count = len(re.findall(r"(?:^> |\| )(\d+)\\\)", options))
+    pairs, (n, value) = _interpret(key)
+    dont_know = {"ai_token_volume": 5}.get(key)
+    assert sorted(pairs) == [i for i in range(1, count + 1) if i != dont_know] and pairs.get(n, value) == value
+
+
+def test_clarify_maps_specialized_and_dont_know_priority_to_balanced() -> None:
+    pairs, _ = _interpret("ai_priority")
+    assert (pairs[4], pairs[5], pairs[6]) == ("balanced", "balanced", "balanced")
+    line = next(l for l in CLARIFY.splitlines() if l.startswith("Interpret → `ai_priority`"))
+    assert "Q10 decides" in line
+
+
+def test_design_keeps_an_eligible_same_model_for_every_priority() -> None:
+    item = DESIGN_DOC[DESIGN_DOC.index("   2. The same model on Bedrock"):DESIGN_DOC.index("   3. `ai_priority`")]
+    assert "No `ai_priority` moves it to another family" in item
+    assert all(f"`{p}`" in item for p in ("quality", "speed", "cost"))
+
+
+def test_clarify_q5_agrees_that_a_priority_never_moves_a_same_model_source() -> None:
+    q5 = CLARIFY[CLARIFY.index("## Q5 — "):CLARIFY.index("### Batch 1 → Save Draft")]
+    assert "Q10 special features > the same model on Bedrock > Q2 priority" in q5
+    assert "GPT-5.5 + Q2=cost → GPT-5.5" in q5 and "GPT-5.5 + Q2=cost → Sonnet 5" not in q5
+
+
+def test_design_reads_guide_volume_sections_by_tier_name() -> None:
+    step2 = DESIGN_DOC[DESIGN_DOC.index("## Step 2"):DESIGN_DOC.index("## Step 3")]
+    assert "by tier name" in step2 and "token-volume-tiers.json" in step2 and "per-day" in step2
+
+
 def test_plan_maps_an_unknown_capability_to_unknown_with_low_confidence() -> None:
     profile = _openai_profile("openai.responses.create")
     profile["workloads"][0]["capability"] = "moderation"
@@ -385,6 +489,19 @@ def test_tiered_strategy_and_quota_floor_follow_volume(volume, required) -> None
     prefs["ai_constraints"]["ai_token_volume"]["value"] = volume
     plan = DESIGN.build_plan(profile, prefs)
     assert plan["tiered_strategy_required"] is required and (plan["quota_risk_floor"] == "high") is required
+
+
+@pytest.mark.parametrize("volume", PINNED["ai_token_volume"])
+@pytest.mark.parametrize("tiered", [True, False])
+def test_check_enforces_the_volume_rules_for_every_tier(volume, tiered) -> None:
+    def mutate(d, p, f):
+        f["ai_constraints"]["ai_token_volume"]["value"] = volume
+        d["ai_architecture"]["tiered_strategy"] = {"tiers": [], "note": "60/30/10"} if tiered else None
+        for row in d["ai_architecture"]["bedrock_models"]:
+            row["quota_risk"] = "high" if tiered else "low"
+    codes = _mutated(MANTLE_FIXTURE, mutate) & {"tiered_strategy", "quota_risk_floor"}
+    high = volume in ("high", "very_high")
+    assert codes == (set() if tiered == high else {"tiered_strategy", "quota_risk_floor"} if high else {"tiered_strategy"})
 
 
 # --------------------------------------------------------------------------- check: negatives

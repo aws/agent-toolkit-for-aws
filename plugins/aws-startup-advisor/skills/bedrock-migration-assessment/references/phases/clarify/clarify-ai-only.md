@@ -183,7 +183,7 @@ Interpret → `design_constraints.compliance` array (same format as the full flo
 | Special  | Deferred to Q10                                     |
 | Balanced | Claude Sonnet 5                                     |
 
-Interpret → `ai_priority`. Default: 5 → `"balanced"`.
+Interpret → `ai_priority`: 1 → `"quality"`, 2 → `"speed"`, 3 → `"cost"`, 4 → `"balanced"` (Q10 decides), 5 → `"balanced"`, 6 → `"balanced"`. Default: 5 → `"balanced"`.
 
 ## Q3 — Monthly AI spend with your current AI providers?
 
@@ -210,7 +210,7 @@ Interpret → `cross_cloud`. Default: 2 → `"latency-acceptable"`.
 
 ## Q5 — Current model in use?
 
-Establishes baseline Bedrock recommendation. Override hierarchy: Q10 special features > Q2 priority > Q7/Q8 volume/latency > Q5 baseline.
+Establishes baseline Bedrock recommendation. Override hierarchy: Q10 special features > the same model on Bedrock > Q2 priority > Q7/Q8 volume/latency > Q5 baseline.
 
 _Skip when:_ the validator summary reports `models_extractable: true` — every source has `model_evidence: "observed"` and every observed model has at least one `confidence: "high"` evidence entry (user-confirmed evidence is always `high`) — auto-detect with `chosen_by: "extracted"`, `source: "ai-profile:ai_sources[].models"`, and do not present this question. The detected models are already shown in the Step 1 summary. Otherwise, present the question with the detected model(s) offered as the suggested answer. With 2+ detected models, record `ai_model_baseline` as an array (one entry per model).
 
@@ -243,7 +243,7 @@ while GPT-5.6 Global CRIS uses the standard rate. For Astra, compare its separat
 inference/context tier against the source price before claiming savings or parity.
 For sources without a Bedrock equivalent, present a same-vendor upgrade and a cross-family option.
 
-Override examples: GPT-4 + Q2=cost → Haiku; Flash + Q10=extended thinking → Sonnet; GPT-4o + Q10=speech → Nova 2 Sonic; GPT-5.5 + Q2=cost → Sonnet 5.
+Override examples: GPT-4 + Q2=cost → Haiku; Flash + Q10=extended thinking → Sonnet; GPT-4o + Q10=speech → Nova 2 Sonic; GPT-5.5 + Q2=cost → GPT-5.5, with Sonnet 5 named as the cost alternative.
 
 Interpret → `ai_model_baseline`. Default: auto-detect, fallback Q2 priority-based.
 
@@ -331,7 +331,7 @@ Present with concrete anchors: Critical = autocomplete/live chat; Important = ch
 | Important | Sonnet 5 with streaming; standard on-demand                  |
 | Flexible  | Any model; batch inference for cost savings                  |
 
-Interpret → `ai_latency`. Default: 2 → `"important"`.
+Interpret → `ai_latency`: 1 → `"critical"`, 2 → `"important"`, 3 → `"flexible"`. Default: 2 → `"important"`.
 
 ## Q9 — AI task complexity
 
@@ -345,7 +345,7 @@ Present with concrete examples: Simple = classify/extract/summarize; Moderate = 
 | Moderate | Sonnet 5 recommended; Haiku may suffice with prompt engineering       |
 | Complex  | Sonnet 5 required; extended thinking considered (note: on Sonnet 5.5, turning off up-front thinking requires `thinking: {"type": "between_tools"}` instead of "disabled" at high effort or below); Opus 5.5 for hardest |
 
-Interpret → `ai_complexity`. Default: 2 → `"moderate"`.
+Interpret → `ai_complexity`: 1 → `"simple"`, 2 → `"moderate"`, 3 → `"complex"`. Default: 2 → `"moderate"`.
 
 ## Q10 — Specialized features needed
 
@@ -364,7 +364,7 @@ Interpret → `ai_complexity`. Default: 2 → `"moderate"`.
 | Real-time conversational speech      | Amazon Nova 2 Sonic recommended for speech-to-speech; latency guidance included                                                                                                                                                                                                                                                                                                                                     |
 | None                                 | Default recommendation from Q2 priority stands                                                                                                                                                                                                                                                                                                                                                                     |
 
-Interpret → `ai_critical_feature`. Default: 10 → no override.
+Interpret → `ai_critical_feature`: 1 → `"function_calling"`, 2 → `"ultra_long_context"`, 3 → `"extended_thinking"`, 4 → `"prompt_caching"`, 5 → `"rag"`, 6 → `"agentic"`, 7 → `"realtime_speed"`, 8 → `"image_generation"`, 9 → `"speech"`, 10 → `"none"`. Default: 10 → `"none"` (no override).
 
 ## Q10.5 — Mantle-only requirements (asynchronous inference, provider-run tools, Projects/Workspaces, single-Region processing)
 
