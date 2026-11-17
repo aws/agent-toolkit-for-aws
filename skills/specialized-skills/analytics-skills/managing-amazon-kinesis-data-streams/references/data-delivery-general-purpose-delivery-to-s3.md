@@ -4,7 +4,7 @@ Delivers records from a Kinesis stream to a general-purpose S3 bucket as objects
 
 Records are batched into objects: multiple stream records land in a single S3 object, keyed by the output key template.
 
-See [monitoring-security-and-limits.md](monitoring-security-and-limits.md) for metrics, alarms, channel states, encryption, quotas, and update constraints.
+See [data-delivery-monitoring-security-and-limits.md](data-delivery-monitoring-security-and-limits.md) for metrics, alarms, channel states, encryption, quotas, and update constraints.
 
 ## Constraints
 
