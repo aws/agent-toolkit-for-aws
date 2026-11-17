@@ -64,3 +64,12 @@ def test_gpt_5_6_runtime_caching_matches_the_registry():
     catalog = (SKILLS / "shared" / "ai" / "models" / "openai-bedrock.json").read_text()
     assert ("implicit prompt caching applies on Responses/Chat Completions/Invoke/Converse "
             "and explicit caching is Responses-only") in catalog
+
+
+def test_feature_table_codex_row_matches_the_guide():
+    # Logan's review on #672: the feature table is read before the guide, so its Codex row
+    # must give the same verdict.
+    table = (SKILLS / "shared" / "ai" / "ai-openai-to-bedrock.md").read_text()
+    row = next(line for line in table.splitlines() if line.startswith("| Codex "))
+    assert "Not verified on Bedrock" not in row and "Do not price" not in row
+    assert "coding agent on GPT-5.6" in row and "Price the GPT-5.6 model it calls" in row

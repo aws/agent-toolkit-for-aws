@@ -317,7 +317,7 @@ rather than dismissing it. For a long-context (>272K) workload the gap is much w
 | TTS                                        | Amazon Polly / Nova 2 Sonic                                 | Different pricing model                                                                              |
 | Assistants API                             | See decision tree below                                     | Path depends on which features are used                                                              |
 | Realtime API                               | No equivalent                                               | Stay on OpenAI for this                                                                              |
-| Codex                                      | Not verified on Bedrock — see `references/vendored/ai/openai-on-bedrock.md` | Do not price; re-check the OpenAI model card index first                                             |
+| Codex                                      | The coding agent on GPT-5.6 (Sol, Terra, Luna), not a Bedrock model. See `references/vendored/ai/openai-on-bedrock.md` | Price the GPT-5.6 model it calls. A Codex-specific API model has no same-model target. Do not attach a Codex rate. |
 | Guardrails / KB / invocation logging       | `bedrock-runtime` CRIS path (Guardrails via Converse; logging on every runtime API); KB needs a Bedrock-native model or gpt-oss | None of these are available through the mantle GPT path                                  |
 
 ---
