@@ -150,7 +150,7 @@ Share migration-report.html with stakeholders; use MIGRATION_GUIDE.md for cutove
 
 **Web-handoff — only when the writer above printed `PLAN_OK`** (if it printed `PLAN_SKIP`, omit this whole block; there is no file to upload). Do three things, in order:
 
-- **(a)** In the "Artifacts produced" list in the output above, add exactly one entry as **plain text** — that list renders inside a code block, where Markdown links do not work, so do not link it here (the clickable link is the What's next call-to-action below): `plan.json — upload to AWS Startups Migrate to see if you qualify for AWS credits`. Keep every existing entry on its own line; do not merge, collapse, or re-wrap them.
+- **(a)** In the "Artifacts produced" list in the output above, add exactly one entry as **plain text** — that list renders inside a code block, where Markdown links do not work, so write the address out as text here (the clickable link is the What's next call-to-action below): `plan.json — upload at AWS Startup Advisor (https://startups.aws.com/migrate/plans/import?source=plugin) to see if you qualify for AWS credits`. Keep every existing entry on its own line; do not merge, collapse, or re-wrap them.
 - **(b)** Then show the user their `plan.json`. The `.migration` folder is hidden by default
   on macOS and Linux, so open the file's location for them instead of leaving them
   to find it. Run the command for the user's OS once, as an ordinary command — the
@@ -199,16 +199,16 @@ Share migration-report.html with stakeholders; use MIGRATION_GUIDE.md for cutove
   drop that sentence when the user declined or the command failed for another
   reason.
 
-- **(c)** Then append the What's next block below, verbatim, replacing `<run_id>` in the link with the run's `run_id` (from `.phase-status.json`), lowercased if it is a UUID so the `run=` value matches the plan's `runId`. It MUST begin with the "💬 What's next" heading. The call-to-action must be a Markdown link so it renders as clickable text with no bare URL. Do not reword it — this copy is owned by the web experience:
+- **(c)** Then append the What's next block below, verbatim, replacing `<run_id>` in both links with the run's `run_id` (from `.phase-status.json`), lowercased if it is a UUID so the `run=` value matches the plan's `runId`. It MUST begin with the "💬 What's next" heading. The call-to-action must be a Markdown link so it renders as clickable text with no bare URL. Do not reword it — this copy is owned by the web experience: Never name AWS Startup Advisor's import page without its address: if you shorten or restate any of this, keep the address. (The plain-text mentions use `?source=plugin` without `run=` on purpose, to stay short; the two links in this block carry the run.)
 
 > **💬 What's next**
 >
 > - **Refine your plan**
 >   Tell me what to change. For example: "use Fargate instead," "make it multi-region," or "reduce the cost."
 > - **See your AWS credits**
->   Sign in or create an account on AWS Startups Migrate, then upload plan.json to see the AWS migration credits you qualify for.
+>   Sign in with your AWS Builder ID (or create one) on [AWS Startup Advisor](https://startups.aws.com/migrate/plans/import?source=plugin&run=<run_id>), the AWS Startups site where you import your migration plan, then upload plan.json to see the AWS migration credits you qualify for.
 >
-> [Go to AWS Startups Migrate →](https://startups.aws.com/startups/en-US/migrate/credits?source=plugin&run=<run_id>)
+> [Go to AWS Startup Advisor →](https://startups.aws.com/migrate/plans/import?source=plugin&run=<run_id>)
 >
 > After you upload, you also get:
 >
@@ -216,7 +216,7 @@ Share migration-report.html with stakeholders; use MIGRATION_GUIDE.md for cutove
 > - Monthly cost estimate
 > - Migration paths: AI agent, AWS expert, or AWS Partner
 
-Ship note: this reaches customers only after the import page and the ImportPlan API are both live in production. This `plan.json` import handoff is separate from the base64url plan-share link gated off in `SKILL.md`/`feedback-collect.md`.
+Note: this `plan.json` import handoff is separate from the base64url plan-share link gated off in `SKILL.md`/`feedback-collect.md`.
 
 After this output, SKILL.md handles the post-Generate share prompt and feedback finalization.
 
