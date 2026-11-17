@@ -149,9 +149,10 @@ guide to Azure Database for PostgreSQL flexible server as a source:
 **Source prerequisites: Azure Database for MySQL Flexible Server.**
 
 - [ ] Confirm binary logging is on with `binlog_format` `ROW` and `binlog_row_image`
-  `FULL`, per the AWS DMS MySQL source requirements. AWS also recommends `binlog_checksum`
-  `NONE` for CDC; check whether the Flexible Server exposes that parameter and follow the
-  current AWS DMS and Azure documentation.
+  `FULL`, per the AWS DMS MySQL source requirements. The AWS DMS MySQL source page asks for
+  `binlog_checksum` `NONE` only for DMS version 3.4.7 or earlier; on a newer replication
+  engine version it is not required. If the task uses an older version, check whether the
+  Flexible Server exposes that parameter in the current Azure documentation.
 - [ ] Set binary log retention (`binlog_expire_logs_seconds`) to at least 24 hours, and long enough to cover the full
   load plus any outage of the DMS task; a retention of zero deletes logs as soon as they
   are not needed and can break CDC. Longer retention uses more storage.
