@@ -1,0 +1,144 @@
+{
+  "metadata": {
+    "migration_type": "ai-only",
+    "clarify_mode": "full",
+    "timestamp": "2026-11-12T18:00:00Z",
+    "discovery_artifacts": [
+      "ai-workload-profile.json"
+    ],
+    "questions_asked": [
+      "Q1",
+      "Q1.5",
+      "Q2",
+      "Q4",
+      "Q6",
+      "Q7",
+      "Q8",
+      "Q9",
+      "Q10",
+      "Q10.5",
+      "Q11"
+    ],
+    "questions_defaulted": [
+      "Q3"
+    ],
+    "questions_extracted": [
+      "Q5"
+    ]
+  },
+  "design_constraints": {
+    "target_region": {
+      "value": "us-east-1",
+      "chosen_by": "derived",
+      "prompt": "Derived from cross-cloud answer: latency-acceptable → region by cost (us-east-1)",
+      "design_consequence": "Bedrock resources deploy in us-east-1; model availability is checked for this region"
+    },
+    "compliance": {
+      "value": [
+        "none"
+      ],
+      "chosen_by": "user",
+      "prompt": "Do you have any compliance or regulatory requirements?",
+      "design_consequence": "Full model catalog, any Bedrock region; global. inference profiles allowed",
+      "question_id": "Q1.5"
+    }
+  },
+  "ai_constraints": {
+    "ai_framework": {
+      "value": [
+        "direct"
+      ],
+      "chosen_by": "user",
+      "prompt": "Which AI framework or orchestration layer are you using?",
+      "design_consequence": "Swap SDK calls to Bedrock SDK; evaluate AgentCore (Harness) if planning agentic",
+      "question_id": "Q1"
+    },
+    "ai_priority": {
+      "value": "cost",
+      "chosen_by": "user",
+      "prompt": "What matters most for your AI application?",
+      "design_consequence": "cost drives Bedrock model selection",
+      "question_id": "Q2"
+    },
+    "ai_monthly_spend": {
+      "value": "$500-$2K",
+      "chosen_by": "default",
+      "prompt": "Monthly AI spend with your current AI providers? (default applied)",
+      "design_consequence": "$500-$2K band sets token volume and model tier assumptions",
+      "question_id": "Q3",
+      "source": "default:Q3"
+    },
+    "cross_cloud": {
+      "value": "latency-acceptable",
+      "chosen_by": "user",
+      "prompt": "Cross-cloud API call concerns",
+      "design_consequence": "Standard endpoint; region by cost",
+      "question_id": "Q4"
+    },
+    "ai_model_baseline": {
+      "value": "auto",
+      "chosen_by": "extracted",
+      "prompt": "Detected models from the AI profile",
+      "design_consequence": "The detected models are the quality/latency baseline for Bedrock comparison",
+      "question_id": "Q5",
+      "source": "ai-profile:ai_sources[].models"
+    },
+    "ai_vision": {
+      "value": "text-only",
+      "chosen_by": "user",
+      "prompt": "What input types must the model accept: text only, images (vision), or audio/video?",
+      "design_consequence": "Full model catalog",
+      "question_id": "Q6"
+    },
+    "ai_token_volume": {
+      "value": "high",
+      "chosen_by": "user",
+      "prompt": "Monthly AI usage volume",
+      "design_consequence": "high sets throughput and caching analysis",
+      "question_id": "Q7"
+    },
+    "ai_latency": {
+      "value": "important",
+      "chosen_by": "user",
+      "prompt": "Response speed importance",
+      "design_consequence": "Sonnet 5 with streaming; standard on-demand",
+      "question_id": "Q8"
+    },
+    "ai_complexity": {
+      "value": "moderate",
+      "chosen_by": "user",
+      "prompt": "AI task complexity",
+      "design_consequence": "Sonnet 5 recommended; Haiku may suffice with prompt engineering",
+      "question_id": "Q9"
+    },
+    "ai_critical_feature": {
+      "value": "none",
+      "chosen_by": "user",
+      "prompt": "Specialized features needed",
+      "design_consequence": "Default recommendation from Q2 priority stands",
+      "question_id": "Q10"
+    },
+    "mantle_requirements": {
+      "value": [
+        {
+          "workload_id": "gemini_api.gemini-2.5-flash.genai.models.generate_content.plain",
+          "selector": "server_side_tools",
+          "source": "user"
+        }
+      ],
+      "chosen_by": "user",
+      "prompt": "Mantle-only requirements (asynchronous inference, provider-run tools, Projects/Workspaces, single-Region processing)",
+      "design_consequence": "Entries with a selector route that workload to bedrock-mantle; no entry keeps bedrock-runtime with an explicit assumption",
+      "question_id": "Q10.5"
+    }
+  },
+  "startup_constraints": {
+    "startup_program_status": {
+      "value": "unknown",
+      "chosen_by": "user",
+      "prompt": "Have you applied for AWS Activate credits?",
+      "design_consequence": "Surface both tiers; recommend checking with investors/accelerator for Org ID",
+      "question_id": "Q11"
+    }
+  }
+}

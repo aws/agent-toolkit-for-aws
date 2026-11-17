@@ -49,3 +49,9 @@ clarify.md Step 3 (do not invent new keys/values).
 - **region**: "Where are your users — one region, a few, or global? Anywhere with data-residency
   rules, like the EU?" Used to check the recommended service is available there, and — for EU or
   GDPR — to flag the data-residency (CRIS) choice. Doesn't change which runtime is recommended.
+- **usage_volume**: "Roughly how many conversations or tasks a month? And is a typical one
+  short (a few messages), medium (a longer back-and-forth), or long (it reads documents or
+  calls many tools)?" → `sessions_per_month` from the count; tokens per session from the
+  length: short ≈ 5,000 input / 1,000 output, medium ≈ 20,000 / 2,000, long ≈ 100,000 /
+  5,000, and set `session_length` to the length picked. Unsure → unknown. Doesn't change which
+  runtime is recommended; it sizes the AI cost.
