@@ -129,11 +129,13 @@ single workload), treat it as `agent_session` and proceed.
   question set
   (`session_duration`, `traffic_pattern`, `session_state`, `isolation`,
   `memory_needs`, `multi_agent`, `framework`, `idle_resume`, `compute_tier`,
-  `launch_concurrency`, `instance_type_requirement`, `expected_scale`).
+  `launch_concurrency`, `instance_type_requirement`, `expected_scale`, `usage_volume`).
 - **Every other unit: ONE batched delta question** — "How does `<id>` differ from
-  `<primary>`? (session duration / traffic / volume / compute / state / memory / isolation — name
-  only what differs)". Parse the reply into per-dimension overrides; dimensions the
-  user does not mention inherit the primary unit's answers. Non-agent units only need
+  `<primary>`? (session duration / traffic / scale / compute / state / memory / isolation /
+  usage volume: name only what differs)". Parse the reply into per-dimension overrides; dimensions the
+  user does not mention inherit the primary unit's answers, EXCEPT `usage_volume`: an
+  unmentioned volume stays `unknown` (never copied from the primary), so Estimate defaults it
+  and marks it assumed. Non-agent units only need
   the dimensions their workload-classes rules read (traffic, duration, compute) —
   do not ask agent-only dimensions for them.
 - **Temporal units (when `units` contains temporal units from Discover):**
@@ -272,6 +274,19 @@ Collect answers for these keys. Legal values are fixed (Plan 1 Data Model):
   recommended runtime, Design verifies via MCP and flags it; (b) **CRIS / data residency** — for
   EU users or when `compliance` includes `gdpr`, Design surfaces the geo-CRIS vs global-CRIS
   choice. Ask it; it's a compliance/feasibility gate, not a scoring input.
+- `usage_volume` (per agent_session unit, NOT scored): `{"sessions_per_month": <integer> |
+  "unknown", "input_tokens_per_session": <integer> | "unknown", "output_tokens_per_session":
+  <integer> | "unknown", "session_length": "short" | "medium" | "long" (optional)}`. Rough
+  numbers are fine. Estimate turns it into the unit's
+  `model_tokens` band, so without it the model cost is a guess. A missing or `unknown` field
+  keeps `unknown` here; Estimate then applies its stated default and says so. Never invent a
+  count in Clarify. The only derived values are the business wording's tokens per session from
+  a short / medium / long answer, and then `usage_volume.session_length` records which length
+  was picked so Estimate can say the tokens came from that mapping. If token counts are later
+  supplied directly (by the user or Discover), drop `session_length`. On migrate runs, Discover evidence (code, logs or a billing export) may
+  pre-fill it with provenance `detected`; confirm it with the user when it is only inferred.
+  Write it to `answers.json.units[<unit_id>].usage_volume` (a seed supplies the same object
+  under `units.<unit_id>.usage_volume`) and record its provenance like any other dimension.
 
 **Critical-question rule:** if `session_duration` is blank/unknown, **OR was only inferred by
 Discover and not confirmed by the user**, ask it directly in chat before scoring — it gates hard

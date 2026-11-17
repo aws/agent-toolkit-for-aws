@@ -25,3 +25,13 @@ Evaluate every task class independently. Candidate set: `AWS Lambda`, `ECS on Fa
 5. Missing duration, runtime, package, resources, network, filesystem, queue, array-job, or GPU facts return to Clarify when they can change the winner.
 
 The Workflow mapping references each task mapping ID. Each mapping emits one `aws_service`; no task target inherits the orchestrator by implication. Record all rejected candidates with the first concrete eliminator or preference reason.
+
+## Semantics recorded for Generate
+
+Generate emits Workflow Terraform only from `aws_config` values recorded here, so Design copies them from answered Clarify rows or captured values and never invents them. Discovery captures Workflow metadata, versions, tasks, and run records, not task code, so these keys come from Clarify.
+
+- Workflow: `history` (`auditable`), `callbacks`, `callback_timeout_seconds`, `task_order` (ordered task mapping IDs).
+- Task: exactly one of `timeout_seconds` or `timeout_minutes`; `retry` as `max_retries`, `wait_duration_ms`, `backoff_scaling`; optional `fan_out` as `max_concurrency`; optional `compensation_task` naming another mapped task.
+- Record a key as truthy only when the source needs it: `branching`, `dynamic_graph`, `approvals`, `trigger`, `schedule`, `idempotency_key`, `concurrency`, `cancellation`. These leave the Workflow `unsupported` in Generate.
+
+Generate treats an omitted `retry` or timeout as unsupported because Render applies its own defaults. Details and reasons are in `generate-infra-workflow.md`.

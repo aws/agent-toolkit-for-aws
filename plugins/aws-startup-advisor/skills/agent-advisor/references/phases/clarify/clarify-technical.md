@@ -42,3 +42,6 @@ Use direct technical terms. Map each answer onto the keys in clarify.md Step 3.
 - **region**: "Where are your users / where must this run — single region, multi-region, or
   global? Any specific region (e.g. EU)?" Gates runtime availability (AgentCore/Harness aren't
   everywhere) and, for EU/GDPR, the geo-CRIS vs global-CRIS data-residency choice. Not scored.
+- **usage_volume** (per agent unit): "Rough monthly sessions, and input / output tokens per
+  session (including tool results and retrieved context)?" Numbers or unknown. Not scored;
+  sizes the model-token estimate.

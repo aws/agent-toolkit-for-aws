@@ -15,7 +15,7 @@ Use a **Customer-managed Knowledge Base only if the user explicitly asks** for o
 
 ## Query a knowledge base
 
-- **Managed KB:** you MUST read [managed KB retrieval](managed-knowledge-bases-retrieval.md). Use `Retrieve` (single-shot chunks) or `AgenticRetrieveStream` (agentic: plan → retrieve → evaluate → iterate across multiple KBs — check the service quota). `AgenticRetrieveStream` is streaming ⇒ **SDK-only** (not the AWS CLI). `RetrieveAndGenerate` (synthesized answer with citations) is the Customer-managed path; if you specifically need it on MKB, verify support against the docs.
+- **Managed KB:** you MUST read [managed KB retrieval](managed-knowledge-bases-retrieval.md). Use `Retrieve` (single-shot chunks) or `AgenticRetrieveStream` (agentic: plan → retrieve → evaluate → iterate across multiple KBs; the `retrievers` row of the [agentic retrieval guide](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-test-agentic-retrieve.html)'s request-field table states how many). `AgenticRetrieveStream` is streaming ⇒ **SDK-only** (not the AWS CLI). `RetrieveAndGenerate` (synthesized answer with citations) is the Customer-managed path; if you specifically need it on MKB, verify support against the docs.
 - **Customer-managed KB:** you MUST read [customer-managed KB retrieval](knowledge-bases-retrieval.md). Present the retrieve-and-generate / retrieve / manual modes so the user selects the right one.
 
 ## Security

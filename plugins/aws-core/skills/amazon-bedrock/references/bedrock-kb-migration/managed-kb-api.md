@@ -13,15 +13,17 @@
 > [safety-and-iam](references/bedrock-kb-migration/safety-and-iam.md) (curl + the `.md` endpoint, never
 > `web_fetch`).
 >
-> **Ingestion and retrieval are user-run steps, and this file gives no interface for either.** The agent
-> provisions only. Afterwards the **user** starts ingestion and runs the retrieval comparison against the
-> new (owned) data sources, never the original. §3 and §5 describe those surfaces well enough to explain
-> them, plan around them and report what changes for callers — for request shapes the user goes to the AWS
-> API reference. The shapes in this file are the ones the **agent itself** issues: creates and read-only
-> probes.
+> **Ingestion and retrieval are customer-run steps; the agent never runs them.** The agent provisions only.
+> Afterwards the **customer** starts ingestion on the new (owned) data sources, never the original, and runs
+> the retrieval comparison, which queries both the original and the new KB. §3 and §5 describe those
+> surfaces well enough to explain them, plan around them and report what changes for callers. This file
+> stores no request shapes for either: the
+> [handoff](references/bedrock-kb-migration/handoff.md) gives the customer the command from the current CLI
+> reference, as theirs to run. The shapes in this file are the ones the **agent itself** issues: creates
+> and read-only probes.
 >
 > **Never invent a request shape, supported model, or dimension count.** Confirm parameter names against
-> the public docs and/or `aws bedrock-agent <command> --generate-cli-skeleton`, preferring the user's
+> the public docs and/or `aws bedrock-agent <command> --generate-cli-skeleton`, preferring the customer's
 > Region. If it isn't confirmed, say so and re-verify against the docs. **The one exception is
 > `connectorParameters`** — free-form in the API model, so the skeleton renders it as `{}` and proves
 > nothing. For the connector body this file and the per-connector doc page (§2b/§2c) are the authority;
@@ -34,10 +36,10 @@
 - [2b. Auth-based connectors — exact managed shapes](#2b-auth-based-connectors-sharepoint-confluence-onedrive--exact-managed-shapes)
 - [2c. Doc sources](#2c--doc-sources)
 - [2d. CUSTOM connector (direct ingestion)](#2d-custom-connector-direct-ingestion--no-crawl-documents-are-pushed-in)
-- [3. Retrieval surfaces (runtime, user-run)](#3-retrieval-surfaces-runtime--user-run-what-they-are-and-when-each-fits)
+- [3. Retrieval surfaces (runtime, customer-run)](#3-retrieval-surfaces-runtime--customer-run-what-they-are-and-when-each-fits)
 - [3b. ACL-aware retrieval — capability and its boundary](#3b-acl-aware-retrieval-managed--capability-and-its-boundary)
 - [4. Read / status commands (read-only probes)](#4-read--status-commands-pre-approved-read-only-probes)
-- [5. StartIngestionJob — a user-run handoff step](#5-startingestionjob--a-user-run-handoff-step)
+- [5. StartIngestionJob — a customer-run handoff step](#5-startingestionjob--a-customer-run-handoff-step)
 - [6. API error → cause → fix](#6-api-error--cause--fix)
 - [7. Client tokens (idempotency)](#7-client-tokens-idempotency--attach-to-mutating-calls)
 - [9. Rate limits & batching](#9-rate-limits--batching-build-with-a-script-not-rapid-one-by-one-cli)
@@ -121,12 +123,18 @@ rotate, and revoke. Because migration is create-new-then-cut-over, a fresh `serv
 is chosen at create time — so a source KB that used a CMK **silently drops to the AWS-owned key** unless the
 key is carried forward.
 
-Discovery already records the source `encryption` value (`aws-owned | cmk-arn`). Use it:
+Discovery already records the source `encryption` value (`aws-owned | cmk-arn | unknown: <reason>`). Use it:
 
 1. **If the source used a CMK, ask the customer explicitly** which they want on the new KB: reuse the same
    key ARN (default recommendation — preserves posture), use a different CMK, or accept the AWS-owned
    default. If the source had no CMK, state plainly that the new KB will use the AWS-owned key, and offer the
    CMK path if they want to *raise* posture during the migration. Never decide silently.
+   The AWS-owned key is the default
+   ([Encryption of knowledge base resources](https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html)),
+   so a source with no CMK is not a no-default stop: write the file or script with it, say so, and make the
+   CMK offer in the same reply. If the source's key could not be read (`unknown`, for example a store in an
+   account these credentials do not reach), say so, use the same default, and ask the customer whether the
+   source used a CMK.
 2. **The same CMK can serve the source and the new KB at the same time.** A KMS key is account-level and
    referenced by ARN; passing the source's key to the new KB is normal — both run on it during the
    parallel-validation window.
@@ -301,6 +309,11 @@ certificate problem. Re-verify these shapes against the per-connector doc pages 
   Point the customer to it as a sample, not as part of this migration: ask before suggesting any change on
   the Microsoft, Google or Atlassian side, refer to secrets by ARN only, prefer the least privilege the
   source supports (for SharePoint, `Sites.Selected`), and do not copy its code into the migration.
+  `Sites.Selected` (an `ENTRA_ID_APP_ONLY` option) takes one grant per site, made by the customer's Entra or
+  SharePoint administrator, not by the agent
+  ([kb-managed-sharepoint-entra-setup](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-managed-sharepoint-entra-setup.html),
+  step "Grant per-site access"), so a customer with many sites should plan or script the grants. A site
+  added to the data source later (`siteUrls`) needs its own grant before the next sync, or it is not crawled.
 
 Common wrapper: `deletionProtectionConfiguration` (`deletionProtectionStatus`) and
 `mediaExtractionConfiguration` are **siblings of `connectorParameters`**; `aclEnabled` is a flat boolean
@@ -494,8 +507,9 @@ dropped `maxPages` in the plan and offer the managed controls that narrow a craw
 **`authType` is required and never inferred.** Do not default a web data source to `NO_AUTH`. Resolve it
 with the customer: `NO_AUTH` only once they confirm the site is public; otherwise `BASIC_AUTH` / `FORM` /
 `SAML` with a Secrets Manager `secretArn` (by ARN only). A generic example uses `<AUTH_TYPE>`, not a
-concrete value. **The web crawler has no ACL support** — there is no `aclEnabled` on this connector (web
-content has no permission model; see §3b), so never add one to a WEB data source.
+concrete value. The WEB connector page lists no `aclEnabled` field, so never add one to a WEB data source.
+Whether this connector supports ACL awareness is in the live
+[connector support matrix](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-managed-acl.html#kb-managed-acl-connector-support).
 
 > **Connector-name enum conflict (resolved).** `kb-managed-connect-ds.md` lists the supported types as
 > `S3, ONEDRIVE, CONFLUENCE, SHAREPOINT, WEB_CRAWLER, GOOGLE_DRIVE`, but the per-connector page
@@ -526,7 +540,7 @@ content has no permission model; see §3b), so never add one to a WEB data sourc
 3. The KB role can read the secret (`secretsmanager:GetSecretValue`, + `kms:Decrypt` for a CMK).
 4. `siteUrls` (array) / `hostUrl` / `tenantId` / `aclEnabled` are present and correctly shaped.
 
-If any precondition is unmet or unknown, **stop and ask the user (or hand off the secret-creation as a user
+If any precondition is unmet or unknown, **stop and ask the customer (or hand off the secret-creation as a customer
 step) — do NOT submit the call to the live service to "see if it works."** On a `FAILED` data source, run
 **one** diagnosis pass against this checklist and the error, report the specific missing item, and stop.
 **Never resubmit the same call or try random variations** — auth failures are config/permission problems
@@ -598,7 +612,7 @@ the customer chose (`true` to enforce ACL filtering, `false` to accept none). **
 `aclEnabled` immutable** — that page states it can be set **on create or update**. This provisioning
 workflow still sets it **explicitly at create** and makes **no update call**, so it is fixed at create by
 this workflow, but it is not immutable at the API level for CUSTOM. When `aclEnabled` is `true`, each
-`IngestKnowledgeBaseDocuments` push (a user-run step) **must supply the document's ACL metadata** (allowed
+`IngestKnowledgeBaseDocuments` push (a customer-run step) **must supply the document's ACL metadata** (allowed
 / denied principals) — a document pushed without it is not access-controlled. **Deletion protection still
 does not apply to the CUSTOM connector** — it is a direct-push target, not a crawl, so do not add a
 `deletionProtectionConfiguration` block to a CUSTOM data source (the secure `ENABLED` default in §2 is for
@@ -613,10 +627,10 @@ the connectors that support it).
 | `connectorParameters.aclEnabled` | optional (**explicit choice**) | Service default `false`; **set it explicitly** with the customer. `true` enables document-level ACL filtering and requires ACL metadata on every `IngestKnowledgeBaseDocuments` push. Settable on create or update (not immutable for CUSTOM); this workflow sets it at create only. See the Custom ACL doc below |
 | `vectorIngestionConfiguration.chunkingConfiguration` | optional | Managed chunking rules apply (§6): **forbidden with the managed embedding model** (omit it); with a custom embedding model, `FIXED_SIZE` or `NONE` only |
 
-**Filling it is a user-run step, and this file gives no interface for it.** A CUSTOM source is never
-synced: the **user** pushes documents straight in, and they become part of both the data source and the KB
+**Filling it is a customer-run step, and this file gives no interface for it.** A CUSTOM source is never
+synced: the **customer** pushes documents straight in, and they become part of both the data source and the KB
 with no sync step at all. The agent creates the data source and stops there. What the agent should tell the
-user about the model, without handing them a call:
+customer about the model, without handing them a call:
 
 - **Push, don't sync.** Never run a sync against a CUSTOM data source — pushing and syncing the same source
   is a conflict, not a belt-and-braces approach.
@@ -627,10 +641,10 @@ user about the model, without handing them a call:
 - **Pushes are batched and rate-limited**, so a bulk load is a script with pacing, not a loop of one-off
   commands ([mapping](references/bedrock-kb-migration/mapping.md) carries the current batch size and rate).
 - **Listing, fetching and deleting pushed documents is available directly** — no console round-trip needed
-  when the user wants to check or clean up what they sent.
+  when the customer wants to check or clean up what they sent.
 
 Retrieval is unchanged (§3). The `create-data-source` shape above reaches `AVAILABLE`; the document-push
-behavior described here comes from the public direct-ingestion docs, which is where the user should get the
+behavior described here comes from the public direct-ingestion docs, which is where the customer should get the
 request shapes.
 
 **Doc sources:**
@@ -643,14 +657,16 @@ request shapes.
 
 ---
 
-## 3. Retrieval surfaces (runtime) — user-run; what they are and when each fits
+## 3. Retrieval surfaces (runtime) — customer-run; what they are and when each fits
 
 > **The agent never queries a knowledge base.** Both surfaces below return document text, so running them is
-> the **user's** step — during their own validation of the new KB, and in their application code. This
+> the **customer's** step — during their own validation of the new KB, and in their application code. This
 > section exists so the agent can *explain* the surfaces (the Explore mode), reason about **gap coverage**,
-> and report **caller impact** in a plan. It deliberately carries no request shapes, parameter tables or CLI
-> invocations: the user takes those from the API reference linked at the end, or generates a skeleton from
-> their own SDK. For applied *configuration* the agent uses the §4 read-only probes, which return
+> and report **caller impact** in a plan. It carries no request shapes or parameter tables, and the agent
+> never runs these surfaces: for the validation step, the [handoff](references/bedrock-kb-migration/handoff.md)
+> gives the customer the command from the current CLI reference, as theirs to run; for application code the
+> customer takes the shapes from the API reference linked at the end, or generates a skeleton from their own SDK.
+> For applied *configuration* the agent uses the §4 read-only probes, which return
 > configuration only, never document text.
 >
 > **A content-returning read needs the customer's explicit yes first** — the rule is in
@@ -678,8 +694,9 @@ description, and the planner chooses per sub-query, tagging each result with the
 descriptions are the routing contract — a specific one-sentence pitch per KB routes well, "internal docs"
 does not. This is what keeps a data-sources-per-KB split invisible to the caller
 ([mapping](references/bedrock-kb-migration/mapping.md) → "Gap coverage"). How many
-knowledge bases one call may route across is a **quota** — read it from `kb-managed-quotas` before quoting
-it, not a fixed law.
+knowledge bases one call may route across is stated in the `retrievers` row of the request-field table in
+the [agentic retrieval guide](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-test-agentic-retrieve.html);
+read it there before quoting it, never from memory.
 
 **This surface does not exist on a self-managed (`VECTOR`) KB at all.** It is the single largest capability
 the migration gains, and three rows of the mapping's "Gap coverage" table lean on it. **The agent should
@@ -693,13 +710,13 @@ like-for-like port.
 | Best for | short, well-scoped lookups; FAQ; latency-critical paths | multi-part, comparative, exploratory, cross-KB questions |
 | Output | ranked chunks + scores | deduplicated chunks (streaming) + optional grounded answer |
 | Query decomposition | no | yes |
-| Multiple knowledge bases | no | yes — up to a published ceiling, enforced as a quota (read it live) |
+| Multiple knowledge bases | no | yes — up to the number the agentic retrieval guide states (read it live) |
 | Whole-document expansion | no | yes, when passages are insufficient |
 | Streaming | no | always |
-| FM cost per call | none | one planner invocation per iteration |
+| FM cost per call | none | managed mode (`MANAGED`): the built-in model's planning and its answer are in the agentic rate (the pricing page names only the planning); custom mode (`CUSTOM`): no agentic rate; one planner invocation of your model per iteration, plus the answer when one is generated, at its model price |
 | Latency | lowest | highest |
 | Relevance scores | in the results | in the trace events only |
-| Guardrails | supported, including the masking action | supported, but effectively blocking-only |
+| Guardrails | `guardrailConfiguration` in the request; `guardrailAction` in the response | `policyConfiguration`; only the `BLOCK` action, and only with `foundationModelType` `CUSTOM` |
 | Self-managed (`VECTOR`) KB | yes | **no — MANAGED only** |
 
 Reranking is optional on both. Start with `Retrieve` for direct lookups; reach for the agentic surface when
@@ -711,7 +728,9 @@ The **operation names are unchanged**, which makes repointing at the new knowled
 It is not: the request body differs, and so does the meaning of a score. Report all of the following on
 **every** plan that changes the target KB, and in any answer about whether callers keep working. Give each
 item's concrete before and after value as written here (the old and new URI form, the old and new key
-names, the zero-result behaviour), not only that something changes:
+names, the zero-result behaviour), not only that something changes. In a plain-style Explore answer, give
+the same items in everyday words and offer the exact names instead
+([guide](references/migrate-knowledge-base-to-managed.md) Phase 0 item 2):
 
 - **The new knowledge base id.** Callers must repoint at the owned KB's id; the source id keeps working
   against the untouched source.
@@ -730,9 +749,11 @@ names, the zero-result behaviour), not only that something changes:
   `rerankingModelType`. Omitted, it means `MANAGED` on a managed-embedding KB and behaves as `NONE` on a
   `CUSTOM`-embedding KB; an explicit `MANAGED` on a `CUSTOM` KB returns `ValidationException: Managed
   reranking is not supported for knowledge bases with custom embedding models.`
-- **The result location changes form.** `location.s3Location.uri` changes from `s3://<bucket>/<key>` to
-  `https://<bucket>.s3.amazonaws.com/<key>`, and a new `documentId` field carries the `s3://` URI (or the
-  page URL). Code that splits on `s3://` gets no error, just a wrong value.
+- **The result location changes form.** `location.s3Location.uri` changes from `s3://<bucket>/<key>` to an
+  `https://` URL whose host form has varied by Region (`https://<bucket>.s3.amazonaws.com/<key>` in
+  us-east-1, `https://<bucket>.s3.<region>.amazonaws.com/<key>` in us-west-2), and a new `documentId` field
+  carries the `s3://` URI (or the page URL). Code that splits on `s3://` gets no error, just a wrong value:
+  read `documentId` for the `s3://` URI rather than parsing the `https://` one.
 - **The system metadata keys change.** `x-amz-bedrock-kb-*` keys (for example
   `x-amz-bedrock-kb-data-source-id`) become `_`-prefixed keys (`_data_source_id`, `_chunk_id`,
   `_source_uri`, `_document_title`, `_file_type`, `_language_code`, `_created_at`, `_last_updated_at`,
@@ -740,7 +761,11 @@ names, the zero-result behaviour), not only that something changes:
 - **Some filter operators are not supported.** `startsWith` returns `STARTS_WITH operation type is not
   supported for managed store.` and `stringContains` returns `STRING_CONTAINS operation type is not
   supported for managed store.`; `implicitFilterConfiguration` is not a member of
-  `managedSearchConfiguration`. Other operators keep their syntax inside the new wrapper.
+  `managedSearchConfiguration`. The managed store also rejects boolean values (`Managed store doesn't
+  support filtering on Boolean type.`), non-integer numbers (number filters take integers only), metadata
+  keys that don't match `[a-zA-Z0-9_][a-zA-Z0-9_-]*`, and more than 10 filters in one `andAll` or `orAll`.
+  Other operators keep their syntax inside the new wrapper. A filter the original accepts can fail on the
+  new KB, so each filter the callers send is run against it before cutover.
 - **An ACL knowledge base returns nothing without a user.** With `aclEnabled`, a call with no `userContext`
   returns 0 results and no error; a non-email `userId` also returns 0 results. Matching on the email ignores
   case and surrounding spaces.
@@ -748,8 +773,10 @@ names, the zero-result behaviour), not only that something changes:
   twice (different `_chunk_id`s).
 
 Several of these return empty or wrong results rather than errors, so a caller cannot rely on an exception
-to find them. In the handoff, compare `Retrieve` against `Retrieve` with the reranking mode held constant,
-and on an ACL KB query as a known in-ACL user.
+to find them. In the handoff, compare `Retrieve` against `Retrieve` first with the same reranking on both
+(reranking off on the new KB, `rerankingModelType` `NONE`, when the original has no reranker; the same
+custom reranker on both when it has one), then once with the new KB's default, which is what callers get
+after cutover. On an ACL KB, query as a known in-ACL user.
 
 - **A threshold does not port between the two query surfaces either.** `Retrieve` returns scores in the
   results; the agentic surface exposes them only in trace events, so validation built on thresholds has to
@@ -757,12 +784,18 @@ and on an ACL KB query as a known in-ACL user.
 
 Filter syntax carries over unchanged, and metadata filtering keeps working.
 
-### If the user plans to adopt the agentic surface
+### If the customer plans to adopt the agentic surface
 
-- **Cost has a different shape.** It bills the agentic call **plus** the underlying retrieval calls it
-  issues, times the iteration count, so an estimate from `Retrieve` volume alone understates it; the planner
-  model sets the rate. Fetch current rates ([cost-analysis](references/bedrock-kb-migration/cost-analysis.md)
-  rules apply: fetched rates only, never recalled).
+- **Cost has a different shape.** It bills the underlying retrieval calls it issues (more iterations, more
+  of them) **plus** what the chosen model mode charges: in managed mode, an agentic rate that covers the
+  built-in model's planning and its answer (the pricing page names only the planning); in custom mode, no
+  agentic rate, and the customer's own model at its model price.
+  An estimate from `Retrieve` volume alone understates it. Read each mode's charges from the pricing page,
+  and fetch current rates ([cost-analysis](references/bedrock-kb-migration/cost-analysis.md) rules apply:
+  fetched rates only, never recalled).
+- **The model mode is a trade-off.** The managed model mode (`MANAGED`) gives no model choice and allows no
+  guardrail on the agentic call; custom mode
+  keeps the customer's own model and bills its tokens. Recommend neither; the customer decides.
 - **It needs permissions beyond plain retrieval**, including one for fetching whole documents; without that
   last one, retrieval still works and only document-expansion fails (weak summarization answers, not an
   error). Take the current action list from the API reference at adoption time.
@@ -776,7 +809,8 @@ user guide governs behavior and defaults:**
 
 - Retrieve API reference: https://docs.aws.amazon.com/bedrock/latest/APIReference/API_agent-runtime_Retrieve.html
 - AgenticRetrieveStream API reference: https://docs.aws.amazon.com/bedrock/latest/APIReference/API_agent-runtime_AgenticRetrieveStream.html
-- Quotas and limits (knowledge bases per agentic call, iteration default and maximum — quota, not contract): https://docs.aws.amazon.com/bedrock/latest/userguide/quotas.html
+- Agentic retrieval guide (how it works, the model types, guardrail support, and where its quotas are listed): https://docs.aws.amazon.com/bedrock/latest/userguide/kb-test-agentic-retrieve.html
+- Service quotas for managed knowledge bases (quota, not contract; read each value live): https://docs.aws.amazon.com/bedrock/latest/userguide/kb-managed-quotas.html
 
 ---
 
@@ -806,17 +840,12 @@ connector represents them (name, id, other) and are matched against crawled memb
 automatically at query time but are **only as fresh as the last sync** unless real-time verification covers
 that connector.
 
-**Connector support — not uniform, and it constrains `authType`:**
-
-| Connector | Pre-retrieval filter | Real-time ACL | Constraint to plan around |
-|---|---|---|---|
-| SharePoint | ✅ | ✅ | Application-level permissions (2LO); **requires `ENTRA_ID_APP_ONLY`** |
-| OneDrive | ✅ | ✅ | 2LO; requires the Entra app-id auth type |
-| Google Drive | ✅ | ✅ | Domain-wide delegation (2LO); **requires `SERVICE_ACCOUNT`** |
-| Confluence | ✅ | ✅ | Admin API token for the live check; **requires `BASIC`** |
-| Amazon S3 | ✅ | ❌ | ACLs come from a **customer-provided ACL configuration file in S3** — that file is the source of truth, so there is nothing live to verify |
-| Custom | ✅ | ❌ | ACLs from customer-provided metadata, same reasoning |
-| Web Crawler | ❌ | n/a | **ACL awareness cannot be enabled** — web content has no permission model |
+**Connector support — not uniform, and it constrains `authType`.** Which connectors support pre-retrieval
+filtering and real-time verification, and the `authType` each needs for ACLs, change over time. Before you
+plan `aclEnabled` or `authType`, read the customer's connector in the live
+[connector support matrix](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-managed-acl.html#kb-managed-acl-connector-support)
+and the connector's ACL page linked from it, and confirm there any ACL `authType` that §2 gives for that
+connector.
 
 Two planning consequences: **enabling ACLs can force an `authType`** (a SharePoint source needing real-time
 ACL cannot use `OAUTH2_APP`), and **`aclEnabled` is immutable after create on S3 and permanent on
@@ -838,19 +867,25 @@ aws bedrock-agent get-ingestion-job    --region <REGION> --profile <PROFILE> --k
 
 ---
 
-## 5. StartIngestionJob — a user-run handoff step
+## 5. StartIngestionJob — a customer-run handoff step
 
-Ingestion is **not** an agent action, and this file gives no interface for running one. Once the agent
-confirms KB `ACTIVE` and all data sources `AVAILABLE`, the **user** starts ingestion on each new (owned)
-data source — never the original — and waits for `COMPLETE`. The agent's part is to sequence the handoff
-and say what to expect, not to issue the call; the user takes the command from the AWS documentation.
+Ingestion is **not** an agent action; the agent never runs it. Once the agent confirms KB `ACTIVE` and all
+data sources `AVAILABLE`, the **customer** starts ingestion on each new (owned) data source — never the
+original — and waits for `COMPLETE`. The agent's part is to sequence the handoff and say what to expect,
+not to issue the call: the [handoff](references/bedrock-kb-migration/handoff.md) gives the customer the
+command from the current CLI reference, as theirs to run.
 
-Two things worth telling them up front, so a normal result is not read as a failure:
+Three things worth telling them up front, so a normal result is not read as a failure:
 
 - The ingestion job's `numberOfMetadataDocumentsScanned` count is not a health signal: do not tell the
   customer to expect a particular value; metadata filtering works either way.
 - An ingestion that ends `FAILED` having scanned 0 documents is an environment or pipeline issue, not a
   configuration problem — re-check access to the source before touching the config the agent created.
+- When they migrate many KBs, they start ingestion in batches that stay below the Managed quota
+  "Concurrent ingestion jobs per account" (`L-FE507178`, read live,
+  [mapping](references/bedrock-kb-migration/mapping.md) §4), and start each batch after the previous one
+  has finished. The source itself (for example SharePoint) may slow down many crawls running at once, so a
+  slower crawl is not by itself a failure. They run these jobs; the agent still doesn't.
 
 ---
 
@@ -876,7 +911,7 @@ Two things worth telling them up front, so a normal result is not read as a fail
 | SharePoint data source ingests nothing / rejected on `siteUrls` | `siteUrls` passed as a string, not a JSON array | Pass `siteUrls` as a JSON array of full site URLs |
 | `Value at 'dataEntityConfiguration' failed to satisfy constraint: Member must not be null` on a Confluence `create-data-source` | `dataEntityConfiguration` omitted (the page marks it optional; the service requires it) | Send the block with the entity types the source crawled (§2b Confluence), then create the data source again |
 | `Value at 'connectionConfiguration.hostUrl' failed to satisfy constraint` on a Confluence create | `hostUrl` copied with a trailing slash, or not an `.atlassian.net` base URL | Use the base URL with no trailing slash |
-| `AccessDeniedException` reading the secret during sync | KB role lacks `secretsmanager:GetSecretValue` / `kms:Decrypt` | Grant those to the KB execution role on the secret (and its CMK) |
+| `AccessDeniedException` reading the secret during sync | KB role lacks `secretsmanager:GetSecretValue` / `kms:Decrypt` | The customer adds those to the execution role's permissions policy, on the secret (and its CMK) |
 
 ---
 
@@ -908,7 +943,7 @@ the same token with the same parameters.
 - **Read/poll calls carry NO client token.** `get-knowledge-base`, `list-knowledge-bases`,
   `get-data-source`, `list-data-sources`, `get-ingestion-job` and `sts get-caller-identity` do not accept
   one. Never invent a correlation token for a read.
-- **Record the client token alongside the operation and the resulting resource ID** so the user can
+- **Record the client token alongside the operation and the resulting resource ID** so the customer can
   correlate a logged mutating call with the exact resource and safely re-issue it. The token is an input
   only — it never appears in a `get-*` response, so capture it at call time.
 
@@ -947,7 +982,7 @@ larger source set across multiple KBs — the script's `KNOWLEDGE_BASES` is a li
 
 The script's defaults (`CONTROL_PLANE_RPS`, batch size, pause, concurrency) are **conservative starting
 points, not authoritative numbers.** Re-check `kb-managed-quotas`
-and the current per-Region values for the user's account in the **Service Quotas console**
+and the current per-Region values for the customer's account in the **Service Quotas console**
 (`https://console.aws.amazon.com/servicequotas/home/services/bedrock/quotas`; search the relevant
 `CreateDataSource` / `StartIngestionJob` / `CreateKnowledgeBase` "requests per second" quotas) and lower the
 rate if throttling appears. Never assert a quota you have not verified.

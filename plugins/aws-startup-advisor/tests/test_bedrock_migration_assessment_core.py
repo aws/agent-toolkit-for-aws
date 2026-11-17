@@ -223,11 +223,20 @@ def _skill_text_files() -> list[Path]:
 
 def _instruction_lines(path: Path) -> list[str]:
     text = path.read_text(encoding="utf-8")
-    if path == BMA / "references/vendored/ai/schema-design-aws-ai.md":
-        # The shared contract's Status section names the gcp/azure shadow contracts; it is not an instruction to load them.
+    if path.parent == BMA / "references/vendored/ai" and path.name in ("schema-design-aws-ai.md", "schema-estimate-ai.md"):
+        # A shared contract's intro note and Status section name the gcp/azure producers; they are not instructions to load them.
         head, _, tail = text.partition("## Status")
-        text = head + "\n" * tail.count("\n")
+        lines = [("" if line.startswith(">") and i < head.find("## Shape") else line) for i, line in _offsets(head)]
+        text = "\n".join(lines) + "\n" * (tail.count("\n") + 1)
     return text.splitlines()
+
+
+def _offsets(text: str) -> list[tuple[int, str]]:
+    out, pos = [], 0
+    for line in text.split("\n"):
+        out.append((pos, line))
+        pos += len(line) + 1
+    return out
 
 
 def test_skill_never_reaches_into_another_skill() -> None:
