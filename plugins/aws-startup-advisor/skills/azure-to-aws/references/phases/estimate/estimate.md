@@ -186,9 +186,8 @@ knowledge, never as a two-pass edit of an already-shown message:
   saved at `DECISION.md`. If you decide to migrate, say 'generate the Terraform and
   migration scripts' — everything is saved and I'll pick up from here."
 - If the writer printed `PLAN_OK`, close with that same sentence and also name
-  `plan.json` in it as plain text, with no link (the What's next block below
-  carries the only link) — e.g. "Your decision is saved at `DECISION.md`, and your
-  uploadable plan at `plan.json` — upload it to AWS Startups Migrate to see if you
+  `plan.json` in it as plain text, with the import page's address written out (the What's next block carries the clickable link) — e.g. "Your decision is saved at `DECISION.md`, and your
+  uploadable plan at `plan.json` — upload it at AWS Startup Advisor (https://startups.aws.com/migrate/plans/import?source=plugin) to see if you
   qualify for AWS credits. If you decide to migrate, say 'generate the Terraform
   and migration scripts' — everything is saved and I'll pick up from here."
 
@@ -236,11 +235,11 @@ not hidden, so omit the last line. Keep "The open command is blocked in your
 permissions." only when a permission rule blocked it, and drop that sentence when the
 user declined or the command failed for another reason.
 
-Then append the What's next block below, verbatim, replacing `<run_id>` in the link
+Then append the What's next block below, verbatim, replacing `<run_id>` in both links
 with the run's `run_id` (from `.phase-status.json`), lowercased if it is a UUID so
 the `run=` value matches the plan's `runId`. It MUST begin with the "💬 What's next"
 heading. The call-to-action must be a Markdown link so it renders as clickable text
-with no bare URL. Do not reword it — this copy is owned by the web experience. Name
+with no bare URL. Never name AWS Startup Advisor's import page without its address: if you shorten or restate any of this, keep the address. (The plain-text mentions use `?source=plugin` without `run=` on purpose, to stay short; the two links in this block carry the run.) Do not reword it — this copy is owned by the web experience. Name
 `plan.json` in exactly one place in the close above; this block is the link, not a
 second mention of the filename as a file the user must hunt for.
 
@@ -249,9 +248,9 @@ second mention of the filename as a file the user must hunt for.
 > - **Refine your plan**
 >   Tell me what to change. For example: "use Fargate instead," "make it multi-region," or "reduce the cost."
 > - **See your AWS credits**
->   Sign in or create an account on AWS Startups Migrate, then upload plan.json to see the AWS migration credits you qualify for.
+>   Sign in with your AWS Builder ID (or create one) on [AWS Startup Advisor](https://startups.aws.com/migrate/plans/import?source=plugin&run=<run_id>), the AWS Startups site where you import your migration plan, then upload plan.json to see the AWS migration credits you qualify for.
 >
-> [Go to AWS Startups Migrate →](https://startups.aws.com/startups/en-US/migrate/credits?source=plugin&run=<run_id>)
+> [Go to AWS Startup Advisor →](https://startups.aws.com/migrate/plans/import?source=plugin&run=<run_id>)
 >
 > After you upload, you also get:
 >
