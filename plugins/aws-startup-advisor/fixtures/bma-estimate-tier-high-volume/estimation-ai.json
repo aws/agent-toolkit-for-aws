@@ -1,0 +1,200 @@
+{
+  "phase": "estimate",
+  "timestamp": "2026-11-16T19:00:00Z",
+  "pricing_source": "cached",
+  "accuracy_confidence": "±15-25%",
+  "current_costs": {
+    "source": "unknown",
+    "monthly_ai_spend": null,
+    "services": [
+      "anthropic_api",
+      "gemini_api"
+    ]
+  },
+  "token_volume": {
+    "basis": "tier",
+    "tier": "high",
+    "min_tokens": 10000000,
+    "max_tokens": 100000000,
+    "input_share": 0.6
+  },
+  "model_comparison": [
+    {
+      "model": "us.anthropic.claude-sonnet-5",
+      "monthly_cost": {
+        "low": 57.2,
+        "high": 572.0,
+        "source_low": 52.0,
+        "source_high": 520.0
+      },
+      "vs_current": "about 10% above Anthropic list",
+      "quality": "same model",
+      "capabilities_match": true,
+      "missing_capabilities": []
+    },
+    {
+      "model": "us.anthropic.claude-haiku-5-5",
+      "monthly_cost": {
+        "low": 2.86,
+        "high": 28.6,
+        "source_low": 11.8,
+        "source_high": 118.0
+      },
+      "vs_current": "below Gemini 2.5 Flash list",
+      "quality": "different family; needs evals",
+      "capabilities_match": true,
+      "missing_capabilities": [
+        "server_side_tools"
+      ]
+    }
+  ],
+  "recommended_model": {
+    "model": "us.anthropic.claude-sonnet-5",
+    "monthly_cost": {
+      "low": 57.2,
+      "high": 572.0,
+      "source_low": 52.0,
+      "source_high": 520.0
+    },
+    "breakdown": {
+      "note": "Q7 band 10M to under 100M tokens; no measured usage"
+    },
+    "rationale": "Same model for the agent workload; cost priority and a high Q7 band make the range the honest figure."
+  },
+  "backup_model": {
+    "model": "us.anthropic.claude-haiku-5-5",
+    "monthly_cost": {
+      "low": 2.86,
+      "high": 28.6,
+      "source_low": 11.8,
+      "source_high": 118.0
+    },
+    "rationale": "The summarization target, and the cheapest model in the design."
+  },
+  "cost_comparison": {
+    "current_source_monthly": null,
+    "projected_bedrock_monthly": null,
+    "monthly_difference": null,
+    "annual_difference": null,
+    "percent_change": null
+  },
+  "migration_cost_considerations": {
+    "categories": [],
+    "complexity_factors": [
+      "direct_sdk integration",
+      "2 models",
+      "quota_risk high: request a quota increase"
+    ],
+    "note": "Human and professional-services one-time migration costs are intentionally excluded from this advisor."
+  },
+  "roi_analysis": {
+    "projected_bedrock_monthly_range": {
+      "low": 2.86,
+      "high": 572.0
+    },
+    "source_list_monthly_range": {
+      "low": 11.8,
+      "high": 520.0
+    },
+    "source_measured_monthly": null,
+    "monthly_cost_delta": null,
+    "annual_cost_delta": null,
+    "justification": "No measured spend; the band ranges overlap, so cost alone does not decide the move.",
+    "non_cost_benefits": [
+      "Usage counts toward existing AWS commitments",
+      "IAM, CloudTrail and VPC endpoint governance"
+    ]
+  },
+  "optimization_opportunities": [
+    {
+      "opportunity": "Model tiering",
+      "type": "model_tiering",
+      "target_services": [
+        "Bedrock"
+      ],
+      "commitment": "none",
+      "potential_savings_monthly": null,
+      "potential_savings_percent": "60-87%",
+      "available": "day_1",
+      "implementation_effort": "low",
+      "description": "model_tiering applies to this workload."
+    },
+    {
+      "opportunity": "Multi model routing",
+      "type": "multi_model_routing",
+      "target_services": [
+        "Bedrock"
+      ],
+      "commitment": "none",
+      "potential_savings_monthly": null,
+      "potential_savings_percent": "60-87%",
+      "available": "day_1",
+      "implementation_effort": "low",
+      "description": "multi_model_routing applies to this workload."
+    },
+    {
+      "opportunity": "Intelligent prompt routing",
+      "type": "intelligent_prompt_routing",
+      "target_services": [
+        "Bedrock"
+      ],
+      "commitment": "none",
+      "potential_savings_monthly": null,
+      "potential_savings_percent": "up to 30%",
+      "available": "after_2_weeks_production_traffic",
+      "implementation_effort": "low",
+      "description": "intelligent_prompt_routing applies to this workload."
+    },
+    {
+      "opportunity": "Prompt caching",
+      "type": "prompt_caching",
+      "target_services": [
+        "Bedrock"
+      ],
+      "commitment": "none",
+      "potential_savings_monthly": null,
+      "potential_savings_percent": "up to 90% on cached input tokens",
+      "available": "day_1",
+      "implementation_effort": "low",
+      "description": "prompt_caching applies to this workload."
+    }
+  ],
+  "optimized_projection": {
+    "monthly_with_optimizations": null,
+    "vs_current": null,
+    "note": "The base figure is a range, so no single optimized figure is given."
+  },
+  "recommendation": {
+    "path": "migrate_optimized",
+    "path_label": "Migrate to Bedrock",
+    "migrate_if": "Measured volume confirms the Q7 band and the Haiku summaries pass evals.",
+    "stay_if": "The Gemini workload's provider-run tools are essential and cannot move client-side.",
+    "confidence": "low",
+    "rationale": "On the Q7 band the Bedrock range is $2.86 to $572.0 a month against $11.8 to $520.0 at list prices; confidence is low because no usage was measured."
+  },
+  "cost_by_source": [
+    {
+      "provider": "anthropic",
+      "source_service": "anthropic_api",
+      "models": [
+        {
+          "model": "claude-sonnet-5",
+          "monthly_cost": null,
+          "vs_source_percent": null
+        }
+      ]
+    },
+    {
+      "provider": "google",
+      "source_service": "gemini_api",
+      "models": [
+        {
+          "model": "gemini-2.5-flash",
+          "monthly_cost": null,
+          "vs_source_percent": null
+        }
+      ]
+    }
+  ],
+  "services_not_estimated": []
+}

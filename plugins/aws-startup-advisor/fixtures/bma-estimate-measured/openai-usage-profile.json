@@ -1,0 +1,21 @@
+{
+  "metadata": {
+    "source": "openai_usage_api",
+    "window_days": 30,
+    "active_days": 30,
+    "partial_window": false,
+    "cost_status": "complete",
+    "capture_warnings": []
+  },
+  "summary": {
+    "monthly_cost_usd": 17.5
+  },
+  "usage_by_model": [
+    {
+      "model": "gpt-4o",
+      "input_tokens": 3000000,
+      "output_tokens": 1000000,
+      "monthly_cost_usd": 17.5
+    }
+  ]
+}
