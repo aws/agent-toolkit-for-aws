@@ -363,8 +363,7 @@
         "render-to-aws"
       ],
       "name": "aws-startup-advisor",
-      "source": "./plugins/aws-startup-advisor",
-      "version": "2.0.3"
+      "source": "./plugins/aws-startup-advisor"
     },
     {
       "category": "cloud",
