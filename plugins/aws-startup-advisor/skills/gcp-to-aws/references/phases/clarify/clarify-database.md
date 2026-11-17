@@ -152,10 +152,10 @@ If multiple instances disagree, ask Q13b. Record raw GB in `metadata.inventory_c
 | Answer          | Tooling Recommendation                                                                                                                                                        |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | < 10 GB         | **pg_dump/pg_restore** — fast, simple, no extra tooling required                                                                                                              |
-| 10 GB – 100 GB  | **pgcopydb** — parallel table copy + index rebuild; 3–5x faster than pg_dump; requires `wal_level=logical` on Cloud SQL if CDC mode used                                      |
+| 10 GB – 100 GB  | **pgcopydb** — parallel table copy + index rebuild; 3–5x faster than pg_dump; offline parallel copy only; the generated template does not configure CDC                                      |
 | 100 GB – 500 GB | **pgcopydb** required — pg_dump at this size risks exceeding maintenance window; plan for 4–12 hour window depending on table count and index complexity                      |
-| > 500 GB        | **AWS DMS strongly recommended** — single-pass export/import at this scale is high-risk; DMS provides continuous replication with minimal cutover window (minutes, not hours) |
-| I don't know    | Default to pgcopydb (safer than pg_dump at unknown scale); flag for user to verify before migration                                                                           |
+| > 500 GB        | **AWS DMS strongly recommended** — single-pass export/import at this scale is high-risk; DMS provides continuous replication with minimal cutover window (minutes, not hours); Generate marks the data step HOLD (DMS is not generated today) |
+| I don't know    | Treated as HOLD in Generate until actual data size and the permitted maintenance window are verified                                                                            |
 
 Interpret:
 
@@ -163,11 +163,11 @@ Interpret:
 1 -> design_constraints.db_size: { value: "<10GB", chosen_by: "user" } — pg_dump/pg_restore recommended
 2 -> design_constraints.db_size: { value: "10-100GB", chosen_by: "user" } — pgcopydb recommended
 3 -> design_constraints.db_size: { value: "100-500GB", chosen_by: "user" } — pgcopydb required; flag extended window
-4 -> design_constraints.db_size: { value: ">500GB", chosen_by: "user" } — AWS DMS strongly recommended; flag in migration plan
-5 -> design_constraints.db_size: { value: "unknown", chosen_by: "default" } — default to pgcopydb; flag for verification
+4 -> design_constraints.db_size: { value: ">500GB", chosen_by: "user" } — AWS DMS strongly recommended; Generate marks the data step HOLD (DMS is not generated today); flag in migration plan
+5 -> design_constraints.db_size: { value: "unknown", chosen_by: "default" } — Generate HOLDs the data step until size is verified
 ```
 
-Default: 5 — `design_constraints.db_size: { value: "unknown", chosen_by: "default" }` (default to pgcopydb; safer than pg_dump at unknown scale).
+Default: 5 — `design_constraints.db_size: { value: "unknown", chosen_by: "default" }` (Generate HOLDs the data step until actual size and the maintenance window are verified).
 
 ## Rows returned
 
@@ -189,7 +189,7 @@ re-asked or re-resolved per database category.
 | ------------------ | ------------------------------------------------------------------------------------- |
 | `database_traffic` | Design's read-replica / write-capacity sizing, within the family `availability` chose |
 | `db_io_workload`   | Design's storage type selection (gp3 / io2 / Provisioned IOPS / I/O-Optimized)        |
-| `db_size`          | Generate's migration tooling selection (pg_dump / pgcopydb / DMS)                     |
+| `db_size`          | Generate's copy-tool selection (pg_dump / pgcopydb); `>500GB` and `unknown` make Generate emit a HOLD |
 
 ## Status — build step 5 (restructure)
 
