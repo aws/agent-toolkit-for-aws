@@ -2,7 +2,7 @@
 
 Streaming tables deliver records from a Kinesis stream to Apache Iceberg tables on S3 Tables. Serverless, no consumer management, 5-minute minimum data freshness, exactly-once delivery to Iceberg. Records are converted to Parquet with inline compaction, and become queryable in Athena, EMR, Redshift, Spark, or Managed Service for Apache Flink within minutes.
 
-See [monitoring-security-and-limits.md](monitoring-security-and-limits.md) for metrics, alarms, channel states, encryption, quotas, and update constraints.
+See [data-delivery-monitoring-security-and-limits.md](data-delivery-monitoring-security-and-limits.md) for metrics, alarms, channel states, encryption, quotas, and update constraints.
 
 ## Constraints
 
