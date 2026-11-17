@@ -8,13 +8,8 @@ description: "Use when a person or team wants to move the Claude apps they use, 
 Move **both** Claude surfaces to third-party inference on Amazon Bedrock while
 keeping conversation history, for a single user or a whole fleet.
 
-**Last updated:** 2026-11-10 (Claude Desktop 4.4212 and later; Anthropic and AWS
+**Last updated:** 2026-11-16 (Claude Desktop 4.4212 and later; Anthropic and AWS
 documentation as of November 2026).
-
-**`<SKILL_BASE>`** = the "Base directory for this skill" the harness reports at
-load time. Every `references/...` path below is relative to it. Run scripts as
-`python3 <SKILL_BASE>/references/process_export.py` (on Windows use `py` or
-`python` if `python3` isn't found); never assume the user's working directory.
 
 Claude Desktop and Claude Code change often. When a screen, setting name, or key
 doesn't match what the user sees, trust the current Anthropic docs
@@ -22,6 +17,20 @@ doesn't match what the user sees, trust the current Anthropic docs
 https://code.claude.com/docs/en/amazon-bedrock) over this skill and tell the
 user. Tell admins once, at the start, that the MDM scripts are templates to
 review and pilot on a few devices before a broad rollout.
+
+## Definitions
+
+- **"Load"** = Read the file and follow its instructions. Do not summarize or
+  skip sections.
+- **`<SKILL_BASE>`** = the "Base directory for this skill" the harness reports
+  at load time. Every `references/...` path in this skill is relative to it. Run
+  scripts as `python3 <SKILL_BASE>/references/process_export.py` (on Windows use
+  `py` or `python` if `python3` isn't found); never assume the user's working
+  directory.
+- **HUMAN STEP** = something only the person can do (a browser sign-in, a click
+  in Claude Desktop, an approval in Jamf or Intune). Give the exact prompt, then
+  wait for them to say it's done.
+- **Route A / B / C** = individual, IT admin, or managed user (Phase 0).
 
 ## Before you start: what changes for the user
 
@@ -141,6 +150,44 @@ Third-Party Inference…**, edit `~/.claude/settings.json` Bedrock keys, or touc
 managed files. If something is missing (no Bedrock connection, "Import isn't
 enabled", no **Export data** on claude.ai), give them the "message to your
 admin" template from `roles-and-steps.md` and stop that step.
+
+### CONFIRM — one notice, one question (before the first change)
+
+The Phase 0 checks are read-only. Before you write any file, run any AWS call,
+or generate scripts for an admin, show one notice that covers what you will
+change and what it costs, then ask once and **wait**. Fill it in from what you
+learned in Phase 0; keep every part:
+
+> **Move Claude to Amazon Bedrock?**
+>
+> **What I'll change on this computer:** back up, then edit
+> `~/.claude/settings.json` (Claude Code's Bedrock settings), and later, only
+> if you ask, `~/.claude/CLAUDE.md` (a pointer to your old chat history). I
+> won't touch AWS credential files or anything IT manages. Claude Desktop
+> settings are changed by you, in the app, with my step-by-step prompts.
+>
+> **AWS:** I'll check which AWS account your credentials use and make one tiny
+> test call to Claude on Bedrock (a few tokens, well under a cent). After the
+> switch, your Claude usage is billed to that AWS account. AWS Activate credits
+> can cover it if you have them.
+>
+> **Undo:** I'll tell you how to switch back at each step; the backups make it
+> one command for Claude Code.
+>
+> **Would you like me to go ahead? (Yes/No)**
+
+- **Yes** → continue with your route. A Yes covers the changes listed above,
+  for the account identified. Ask again before anything not listed, such as
+  creating IAM resources or submitting the Bedrock use case form.
+- **No** → stop. Change nothing, and offer the steps as a written checklist the
+  person can follow on their own.
+- **Anything else, or no answer** → make no changes. Clarify only if needed.
+
+Adjust the notice to the route: for **Route B** (admin), list the AWS setup
+and the scripts you'll generate instead of local file edits, and say that
+nothing is deployed to devices until the admin uploads it to Jamf or Intune.
+For **Route C** (managed user), say you won't change any settings and only
+walk the sign-in and import steps.
 
 ### Phase 1 — Switch the CLI to 3P (Route A)
 See `references/cli-3p-setup.md`. Preferred: give the user the prompt for
