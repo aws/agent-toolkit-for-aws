@@ -148,6 +148,44 @@ Use the best available source for Heroku monthly baseline (first match wins):
    - Set `current_costs.source: "unavailable"`
    - Note: "Heroku baseline unavailable — AWS costs shown without comparison."
 
+### Right-sizing candidates (whenever any Postgres add-on carries `data_size_gb`)
+
+Large estates usually carry databases on plans chosen years ago. Before comparing Heroku
+to AWS, show the customer what they could stop paying for on Heroku today:
+
+Apply the Clarify Q6d **Right-sizing rule** (`clarify-interview.md` § Q6d) — the one rule
+set shared with Clarify and Design 2B step 2a. That rule defines which add-ons are
+assessed, `utilization_pct`, `fitting_plan` and what makes a database a candidate; apply
+it exactly as written and do not restate or vary it here. This step adds only what the
+Estimate produces:
+
+1. Assess the add-ons the rule selects, and look up each plan's Storage and $/month in
+   `references/shared/heroku-pricing-cache.md`. The rule treats a missing `pg_role`
+   (Classic discovery does not write one, and a failed `pg:info` capture leaves it unset
+   for that database) as a leader. Record such a candidate with `role: "unknown"` so the
+   report can say so.
+2. `monthly_saving_usd = plan $/mo − fitting_plan $/mo` for each candidate.
+3. Write `current_costs.rightsizing_candidates[]`, largest saving first. Example: a
+   `standard-4` ($750, 768 GB) holding 1.5 GB — 0.1953% → `0.2`; 3 GB fits `standard-0`
+   ($50, 64 GB):
+
+   ```json
+   { "resource_id": "...", "heroku_app": "...", "role": "leader|unknown", "plan": "standard-4", "plan_storage_gb": 768,
+     "data_size_gb": 1.5, "utilization_pct": 0.2, "plan_monthly_usd": 750,
+     "fitting_plan": "standard-0", "fitting_plan_monthly_usd": 50, "monthly_saving_usd": 700 }
+   ```
+
+   and `current_costs.rightsizing_monthly_saving_usd` (sum). Leave the Heroku baseline
+   itself unchanged — it is what they pay today — and add to `baseline_note`: "Of the
+   Heroku baseline, ${sum}/mo is on Postgres plans holding 25% or less of their storage;
+   see right-sizing candidates." This saving is available on Heroku before any migration
+   and is independent of the AWS figure, except that `database_sizing_basis: "measured"`
+   (Clarify Q6d) also shrinks the AWS side for the databases in
+   `preferences.data.rightsizing_candidates_shown[]`. The fitting plan is chosen by
+   storage only; a plan sized for memory, connections or query load may be correct as it
+   is — carry that sentence wherever the candidates are shown.
+4. Redis add-ons are not assessed: live discovery captures plan memory, not used memory.
+
 ### Contract reconciliation (when `preferences.commercial.heroku_contract` exists)
 
 The baseline above is what discovery can see at list or live plan prices. An Enterprise
