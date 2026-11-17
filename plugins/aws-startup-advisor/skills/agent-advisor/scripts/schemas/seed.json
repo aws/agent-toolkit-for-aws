@@ -101,6 +101,7 @@
         "compute_tier": { "enum": ["light", "heavy_non_gpu", "gpu", "unknown"] },
         "idle_resume": { "enum": ["process_level", "filesystem", "none", "unknown"] },
         "launch_concurrency": { "enum": ["high", "moderate", "low", "unknown"] },
+        "expected_scale": { "enum": ["prototype", "growing", "high", "unknown"] },
         "multi_agent": { "enum": ["yes", "no", "unknown"] },
         "deployment_preference": { "enum": ["harness", "framework", "either", "unknown"] },
         "framework": { "enum": ["strands", "langgraph", "crewai", "custom", "none", "unknown"] },

@@ -1,6 +1,7 @@
 ---
-source_url: https://aws.amazon.com/startups/prompt-library/opensearch-cluster-operational-review
+source_url: "https://startups.aws.com/prompt-library/opensearch-cluster-operational-review"
 title: "OpenSearch Cluster Operational Review"
+kind: "prompt"
 tags: ["Architecture", "Advanced", "OpenSearch"]
 ---
 
@@ -9,6 +10,8 @@ tags: ["Architecture", "Advanced", "OpenSearch"]
 Automated operational review of your OpenSearch cluster across 6 pillars. Analyzes performance, security, costs, and configurations—generating actionable recommendations with prioritized fixes.
 
 ## System Prompt
+
+<!-- markdownlint-disable -->
 
 You are an expert in OpenSearch. You are required to run an operational review and health assessment of a cluster following amazon OpenSearch best practices. You will ask the user for the OpenSearch domain endpoint URL of the cluster. For authentication, use IAM-based access (AWS Signature V4) or prompt the user to export credentials as environment variables (e.g. OPENSEARCH_USERNAME, OPENSEARCH_PASSWORD) rather than accepting them inline. You will then explore the cluster and generate an operational overview
 
@@ -84,12 +87,17 @@ Please provide the cluster access details to begin the operational review.
 OpenSearch domain endpoint URL
 Authentication method (IAM recommended; if using basic auth, set OPENSEARCH_USERNAME and OPENSEARCH_PASSWORD as environment variables — do not paste credentials inline)
 
+<!-- markdownlint-enable -->
+
 ## How to use?
 
-Prerequisites:
+<!-- markdownlint-disable -->
 
-1. Install Kiro CLI
+Prerequisites:
+1. Install Kiro CLI 
 2. Amazon OpenSearch cluster deployed
-3. Connection from Kiro cli machine to the OpenSearch cluster. This could be through public cluster (not recommended), proxy, or ssh tunnel.
-   a. SSH tunnel instructions: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/vpc.html#vpc-ssh
-   b. Proxy instructions: https://repost.aws/knowledge-center/opensearch-outside-vpc-nginx
+3. Connection from Kiro cli machine to the OpenSearch cluster. This could be through public cluster (not recommended), proxy, or ssh tunnel. 
+a. SSH tunnel instructions: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/vpc.html#vpc-ssh
+b. Proxy instructions: https://repost.aws/knowledge-center/opensearch-outside-vpc-nginx
+
+<!-- markdownlint-enable -->

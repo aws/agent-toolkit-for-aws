@@ -129,10 +129,10 @@ single workload), treat it as `agent_session` and proceed.
   question set
   (`session_duration`, `traffic_pattern`, `session_state`, `isolation`,
   `memory_needs`, `multi_agent`, `framework`, `idle_resume`, `compute_tier`,
-  `launch_concurrency`, `instance_type_requirement`, `usage_volume`).
+  `launch_concurrency`, `instance_type_requirement`, `expected_scale`, `usage_volume`).
 - **Every other unit: ONE batched delta question** — "How does `<id>` differ from
-  `<primary>`? (session duration / traffic / compute / state / memory / isolation / usage
-  volume: name only what differs)". Parse the reply into per-dimension overrides; dimensions the
+  `<primary>`? (session duration / traffic / scale / compute / state / memory / isolation /
+  usage volume: name only what differs)". Parse the reply into per-dimension overrides; dimensions the
   user does not mention inherit the primary unit's answers, EXCEPT `usage_volume`: an
   unmentioned volume stays `unknown` (never copied from the primary), so Estimate defaults it
   and marks it assumed. Non-agent units only need
@@ -243,6 +243,10 @@ Collect answers for these keys. Legal values are fixed (Plan 1 Data Model):
   wins, routes it to the Instances compute type (capacity provider).
 - `idle_resume`: process_level | filesystem | none | unknown
 - `launch_concurrency`: high | moderate | low | unknown
+- `expected_scale`: prototype | growing | high | unknown. Expected sessions per day over the next
+  few months: prototype under 100, growing 100 to 10,000, high over 10,000. This is volume, not the
+  traffic shape (`traffic_pattern`) or the peak start rate (`launch_concurrency`). Never derive it
+  from `target_maturity`: when it is not asked or answered it stays `unknown`, which scores neutral.
 - `multi_agent`: yes | no | unknown
 - `deployment_preference`: harness | framework | either | unknown — do you want a no-code
   **managed** agent runtime (AgentCore Harness — declare the agent as config, AWS runs the loop),

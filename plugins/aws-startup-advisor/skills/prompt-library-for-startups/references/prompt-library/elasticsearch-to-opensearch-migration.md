@@ -1,6 +1,7 @@
 ---
-source_url: https://aws.amazon.com/startups/prompt-library/elasticsearch-to-opensearch-migration
+source_url: "https://startups.aws.com/prompt-library/elasticsearch-to-opensearch-migration"
 title: "Elasticsearch to OpenSearch Migration"
+kind: "prompt"
 tags: ["Cloud Migration", "Advanced", "OpenSearch"]
 ---
 
@@ -9,6 +10,8 @@ tags: ["Cloud Migration", "Advanced", "OpenSearch"]
 Developing a systematic, production-ready migration strategy with execution guides and script code is critical for startups to successfully transition to OpenSearch.
 
 ## System Prompt
+
+<!-- markdownlint-disable -->
 
 ```
 <role>
@@ -305,4 +308,7 @@ Provide:
 - Use clear format (Markdown)
 - Minimize redundant explanations for token optimization
 </considerations>
+
 ```
+
+<!-- markdownlint-enable -->
