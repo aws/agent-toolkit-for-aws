@@ -2,7 +2,7 @@
 
 ## Overview
 
-AWS Startup Advisor puts an [AWS Startups](https://aws.amazon.com/startups/) Solutions Architect in your coding assistant. It recommends the smallest architecture that fits your stage, credits, and team, then can scaffold it, migrate you from Azure, Google Cloud, Heroku, or Render, move your model calls to Amazon Bedrock, and investigate production incidents. It also answers your AWS Activate credits eligibility questions and finds startup offers you can use.
+AWS Startup Advisor puts an [AWS Startups](https://aws.amazon.com/startups/) Solutions Architect in your coding assistant. It recommends the smallest architecture that fits your stage, credits, and team, then can scaffold it, migrate you from Azure, Google Cloud, Heroku, or Render, move your model calls and your team's Claude apps to Amazon Bedrock, and investigate production incidents. It also answers your AWS Activate credits eligibility questions and finds startup offers you can use.
 
 Ask it things like:
 
@@ -11,7 +11,7 @@ Ask it things like:
 - "Which runtime should this agent use?"
 - "Our API started returning 502s after the last deploy."
 
-The sixteen skills below are the catalog. Install them together.
+The seventeen skills below are the catalog. Install them together.
 
 ## Agent Skills
 
@@ -33,6 +33,7 @@ The sixteen skills below are the catalog. Install them together.
 | 14 | `bedrock-migration-assessment` | Scans your code for OpenAI, Anthropic, Gemini, and OpenRouter calls (or validates a provider-neutral `ai-workload-profile.json`), can measure OpenAI, Anthropic, and OpenRouter usage read-only with your consent, runs the AI-only migration questions, designs a Bedrock target, endpoint, and client API per workload, and estimates the monthly Bedrock cost. Needs no infrastructure skill. This release stops after Estimate; Generate lands in a later release | [SKILL.md](skills/bedrock-migration-assessment/SKILL.md) |
 | 15 | `cost-regression-check` | Prices an infrastructure-as-code change on every pull request before apply: the fixed monthly floor it adds and the change in cost per unit of usage, at list price before credits, against thresholds derived from your monthly ceiling | [SKILL.md](skills/cost-regression-check/SKILL.md) |
 | 16 | `self-hosted-llm-batch-inference` | Recurring offline inference for a self-hosted 1B to 8B model on one GPU with AWS Batch on Spot, vLLM, deterministic shards, and verified completion and capacity release | [SKILL.md](skills/self-hosted-llm-batch-inference/SKILL.md) |
+| 17 | `claude-to-bedrock` | Moves the Claude apps a team uses, Claude Desktop and Claude Code, from Anthropic direct to Claude on Amazon Bedrock without losing claude.ai history. Guides an individual, an IT admin rolling out with Jamf or Intune, or a user on a managed computer. No application code changes; for those use `llm-to-bedrock` | [SKILL.md](skills/claude-to-bedrock/SKILL.md) |
 
 `contextual-offers-for-startups` is consulted by the other skills rather than invoked directly: it runs only after a recommendation, plan, or build is already final, and it never influences the technical advice.
 

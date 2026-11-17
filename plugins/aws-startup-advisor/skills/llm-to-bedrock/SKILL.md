@@ -55,6 +55,10 @@ This skill has two modes. Decide which the user wants **before** the Assess-sibl
 — the access-only mode does not use `gcp-to-aws`/`azure-to-aws` at all, so requiring one of them
 there would block a user who only wants access enablement.
 
+If the user wants the Claude apps themselves (Claude Desktop or Claude Code) running on Bedrock,
+with no application code to migrate, stop and use `claude-to-bedrock` instead; it covers model
+access for that case.
+
 Route to **Access-only mode** (jump to the "## Access-only mode" section below, skip 0b and
 Steps 1+) when either is true:
 
