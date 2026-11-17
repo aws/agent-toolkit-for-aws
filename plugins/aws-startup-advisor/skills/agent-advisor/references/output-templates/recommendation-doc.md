@@ -74,6 +74,8 @@ include "see the llm-to-bedrock skill for pricing".>
 
 ## 10. Cost magnitude
 
+<When estimate.json.model_spend_dominates is true, the first sentence of this section is "Model spend dominates: about N% of the estimated monthly cost" (N = 100 × model_share_of_total) and name the token levers from cost-levers.md (model tier routing, prompt caching, batch inference) before the table.>
+
 <Build paths (estimate.json exists): the band + assumptions + "order-of-magnitude" disclaimer; note that per-unit breakdown and cost drivers are detailed in estimate.json.
 Migrate (estimate.json exists): present the per-unit target-state bands + breakdown from estimate.json. ALSO note that precise TCO comparison and current-spend delta are produced by the migration plugins. Do NOT invent a dollar band for anything estimate.json lacks (e.g., if Estimate failed, or for add_capabilities which bypasses Estimate).>
 
