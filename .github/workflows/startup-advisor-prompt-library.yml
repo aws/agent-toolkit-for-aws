@@ -1,0 +1,76 @@
+name: Startup advisor prompt library
+
+# The bundled prompt-library entries are generated from startups.aws.com. A website edit
+# must not fail unrelated pull requests, so drift fails CI only on pull requests that touch
+# the prompt library or its generator; everything else is reported weekly in an issue.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "plugins/aws-startup-advisor/skills/prompt-library-for-startups/**"
+      - "plugins/aws-startup-advisor/tools/prompt-library-sync.py"
+      - "plugins/aws-startup-advisor/tools/prompt-library-approved.json"
+      - ".github/workflows/startup-advisor-prompt-library.yml"
+  schedule:
+    - cron: "0 14 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift-check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Compare entries with their published pages
+        working-directory: plugins/aws-startup-advisor
+        run: python3 tools/prompt-library-sync.py --check
+
+  weekly-report:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the drift report
+        id: report
+        working-directory: plugins/aws-startup-advisor
+        run: |
+          set +e
+          python3 tools/prompt-library-sync.py --report > "$RUNNER_TEMP/report.md"
+          status=$?
+          set -e
+          # Exit 2 is a fetch failure: the report is empty or partial, so fail the job and
+          # leave the drift issue as it is rather than opening, editing or closing it.
+          if [ "$status" -eq 2 ]; then
+            echo "::error::Could not fetch the published pages; drift issue left unchanged."
+            exit 1
+          fi
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Open, update or close the drift issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATUS: ${{ steps.report.outputs.status }}
+        run: |
+          title="Prompt library drift report"
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+          if [ "$STATUS" = "0" ]; then
+            if [ -n "$existing" ]; then
+              gh issue close "$existing" --repo "$GITHUB_REPOSITORY" --comment "No drift as of this week's run."
+            fi
+          elif [ -n "$existing" ]; then
+            gh issue edit "$existing" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/report.md"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$RUNNER_TEMP/report.md"
+          fi
