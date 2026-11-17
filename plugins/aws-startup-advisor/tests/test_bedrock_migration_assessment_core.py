@@ -221,12 +221,21 @@ def _skill_text_files() -> list[Path]:
     return [p for p in BMA.rglob("*") if p.is_file() and p.suffix in {".md", ".py", ".json"}]
 
 
+def _instruction_lines(path: Path) -> list[str]:
+    text = path.read_text(encoding="utf-8")
+    if path == BMA / "references/vendored/ai/schema-design-aws-ai.md":
+        # The shared contract's Status section names the gcp/azure shadow contracts; it is not an instruction to load them.
+        head, _, tail = text.partition("## Status")
+        text = head + "\n" * tail.count("\n")
+    return text.splitlines()
+
+
 def test_skill_never_reaches_into_another_skill() -> None:
     forbidden = re.compile(r"gcp-to-aws/|azure-to-aws/|heroku-to-aws/|render-to-aws/|\$GCP_BASE|\$ASSESS_BASE|\.\./")
     offenders = [
         f"{p.relative_to(BMA)}:{n}"
         for p in _skill_text_files()
-        for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+        for n, line in enumerate(_instruction_lines(p), 1)
         if forbidden.search(line)
     ]
     assert offenders == []

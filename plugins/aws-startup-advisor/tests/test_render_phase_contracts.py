@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from pathlib import Path
 
@@ -298,7 +299,7 @@ def test_render_is_registered_without_mcp_or_plan_handoff_drift() -> None:
     codex = json.loads((PLUGIN_ROOT / ".codex-plugin/plugin.json").read_text())
     assert "Migrate my Render services to AWS" in codex["interface"]["defaultPrompt"]
     readme = (PLUGIN_ROOT / "README.md").read_text(encoding="utf-8")
-    assert "Install all 14 skills together" in readme
+    assert "Install all 16 skills together" in readme
     assert "| 7 | `render-to-aws` |" in readme
     assert "Render CLI 2.35.0" in readme
     assert "neither configures nor invokes a Render MCP server" in readme
@@ -306,6 +307,130 @@ def test_render_is_registered_without_mcp_or_plan_handoff_drift() -> None:
     mcp = json.loads((PLUGIN_ROOT / ".mcp.json").read_text())
     assert set(mcp["mcpServers"]) == {"aws-mcp"}
     assert not (SKILL_ROOT / "plan.json").exists()
+CLARIFY_ROOT = PHASE_ROOT / "clarify"
+NEW_CLARIFY_FRAGMENTS = ["identity", "database-migration", "cutover", "delivery", "governance"]
+WORKFLOW_FRAGMENT = "workflow"
+WORKFLOW_STRUCTURED_KEYS = (
+    "task_order", "callbacks", "callback_timeout_seconds", "timeout_seconds", "timeout_minutes", "max_retries",
+    "wait_duration_ms", "backoff_scaling", "fan_out.max_concurrency", "compensation_task", "history",
+)
+def clarify_question_rows(fragments: list[str] = NEW_CLARIFY_FRAGMENTS) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for fragment_id in fragments:
+        header: list[str] = []
+        for line in (CLARIFY_ROOT / f"clarify-{fragment_id}.md").read_text(encoding="utf-8").splitlines():
+            if not line.startswith("|"):
+                continue
+            cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+            if "`question_id`" in cells:
+                header = [cell.strip("`") for cell in cells]
+            elif header and not set(line) <= set("|- "):
+                rows.append({**dict(zip(header, cells)), "fragment": fragment_id})
+    return rows
+def test_clarify_depth_fragments_are_registered_and_assembled() -> None:
+    clarify = phase("clarify")
+    registered = {fragment["_id"]: fragment for fragment in clarify["_fragments"]}
+    assert set(NEW_CLARIFY_FRAGMENTS) | {WORKFLOW_FRAGMENT} <= set(registered)
+    assert registered["database-migration"]["_trigger"] == {"_when": "the inventory contains PostgreSQL or Key Value"}
+    for fragment_id in ("identity", "cutover", "delivery", "governance"):
+        assert registered[fragment_id]["_trigger"] == {"_always": True}
+    assembler = frontmatter(CLARIFY_ROOT / "clarify-assemble.md")
+    assert assembler["_reads"] == list(registered)
+def test_every_new_clarify_question_names_a_decision_and_a_consumer() -> None:
+    rows = clarify_question_rows()
+    ids = [row["question_id"].strip("`") for row in rows]
+    assert len(ids) == len(set(ids))
+    assert len(ids) == 15
+    for row in rows:
+        assert row["decision_changed"], row
+        assert row["Consumer"], row
+        assert row["Default and consequence"], row
+    consumers = " ".join(
+        (SKILL_ROOT / "references" / path).read_text(encoding="utf-8")
+        for path in (
+            "design-refs/data.md", "design-refs/networking.md", "design-refs/delivery.md",
+            "phases/estimate/estimate-infra.md", "phases/generate/generate-artifacts-docs.md",
+        )
+    )
+    for question_id in ids:
+        assert question_id in consumers, f"{question_id} has no downstream reference"
+
+
+def _read_ref(path: str) -> str:
+    return (SKILL_ROOT / "references" / path).read_text(encoding="utf-8")
+
+
+def _clarify_row(question_id: str) -> dict[str, str]:
+    return next(row for row in clarify_question_rows() if row["question_id"].strip("`") == question_id)
+
+
+def test_sub_hour_downtime_and_data_bearing_key_value_never_default_to_data_loss_or_dump_restore() -> None:
+    privilege = _clarify_row("database.replication_privilege")["Default and consequence"]
+    assert privilege.startswith("none"), privilege
+    assert "falls back to dump/restore" not in privilege
+    strategy = _clarify_row("key_value.migration_strategy")["Default and consequence"]
+    assert strategy.startswith("none"), strategy
+    data = _read_ref("design-refs/data.md")
+    assert "never fall back to dump/restore through a default" in data
+    assert "`replication_privilege` when the tolerance is below one hour" in data
+
+
+def test_cutover_precedence_table_covers_every_downtime_and_ttl_combination() -> None:
+    text = _read_ref("phases/clarify/clarify-cutover.md")
+    for window in ("short_window", "staged_shift"):
+        for ttl in ("ttl_lowered_24h_ahead", "cannot_lower"):
+            assert f"- `{window}` with `{ttl}`:" in text, (window, ttl)
+    docs = _read_ref("phases/generate/generate-artifacts-docs.md")
+    assert "`staged_shift`" in docs and "`short_window`" in docs
+    assert "stage traffic, observe, then move fully; otherwise" not in docs
+
+
+def test_regulated_data_control_is_designed_and_generated_for_every_covered_store() -> None:
+    row = _clarify_row("data.regulated_data")
+    assert "PostgreSQL, Key Value, persistent disk" in row["Resource"]
+    assert "customer-managed KMS" in _read_ref("design-refs/data.md")
+    assert "customer-managed KMS" in _read_ref("design-refs/storage.md")
+    infra = _read_ref("phases/generate/generate-artifacts-infra.md")
+    for service in ("Amazon RDS for PostgreSQL", "ElastiCache for Valkey", "Amazon EFS"):
+        line = next(item for item in infra.splitlines() if item.startswith(f"| {service} |"))
+        assert "data.regulated_data" in line and "aws_kms_key" in line, service
+
+
+def test_estate_wide_estimate_costs_attach_to_design_mappings() -> None:
+    text = _read_ref("phases/estimate/estimate-infra.md")
+    assert "Do not emit separate estate-wide lines." in text
+    estimate = json.loads((SKILL_ROOT / "fixtures/expected/estimation-infra.json").read_text(encoding="utf-8"))
+    for scenario in estimate["scenarios"].values():
+        env = next(line for line in scenario["lines"] if line["source_resource_id"] == "rr-env")
+        assert "CloudWatch Logs, Metrics, and Alarms (30-day retention)" in env["aws_service"]
+        assert env["monthly_amount"] and env["monthly_amount"] > 0
+
+
+def test_baseline_fragment_registered_and_gated() -> None:
+    generate_dir = PHASE_ROOT / "generate"
+    generate = frontmatter(generate_dir / "generate.md")
+    entry = next(item for item in generate["_fragments"] if item["_id"] == "artifacts-baseline")
+    assert entry["_trigger"] == {"_always": True}
+    fragment = PLUGIN_ROOT / "skills/render-to-aws/references" / entry["_file"]
+    assert fragment.is_file()
+    assert frontmatter(fragment)["_fragment"] == "artifacts-baseline"
+    assert "artifacts-baseline" in frontmatter(generate_dir / "generate-assemble.md")["_reads"]
+    infra = (generate_dir / "generate-artifacts-infra.md").read_text(encoding="utf-8")
+    assert infra.count("artifacts-baseline") == 1
+    text = fragment.read_text(encoding="utf-8")
+    for phrase in (
+        "desired_count", "global.compliance", "soc2", "pci", "hipaa", "fedramp", "Remote State",
+        "monitoring.tf", "kms.tf", "backup.tf", "Amazon EFS", "exempt", "no new warning code",
+        "CacheClusterId", "cloudwatch.amazonaws.com", "aws:SourceAccount", "cloudtrail_retention_days", "End Account Baseline",
+    ):
+        assert phrase in text, phrase
+    assert "{{" not in text
+
+
+def test_warning_code_enum_keeps_existing_order_for_append_only_merges() -> None:
+    schema = json.loads((SKILL_ROOT / "references/shared/schema-generation-warnings.json").read_text(encoding="utf-8"))
+    codes = schema["$defs"]["warning"]["properties"]["code"]["enum"]
+    assert codes[:3] == ["deferred_shared_ai_engine", "conditional_workflow_generation_unsupported", "unpriced_cost_floor"]
 
 
 PREFIX = 'uv run --project "$SKILL_BASE/scripts" --frozen python'
@@ -409,3 +534,64 @@ def test_readme_uv_prerequisite_wording() -> None:
     assert "unfinished Render Discover" in line
     assert "report validation" in line
     assert "Blueprint semantic revalidation" in line
+
+
+def test_workflow_clarify_rows_cover_the_structured_keys_the_workflow_rubric_reads() -> None:
+    rows = clarify_question_rows([WORKFLOW_FRAGMENT])
+    ids = [row["question_id"].strip("`") for row in rows]
+    assert len(ids) == len(set(ids))
+    assert {row["fragment"] for row in rows} == {WORKFLOW_FRAGMENT}
+    for row in rows:
+        assert row["decision_changed"] and row["Default and consequence"] and row["Consumer"], row
+    structured = [row for row in rows if "generate-infra-workflow.md" in row["Consumer"]]
+    assert {row["question_id"].strip("`") for row in structured} == {
+        "workflow.task_order", "workflow.callback_wait", "workflow.timeout", "workflow.task_retry",
+        "workflow.fan_out_concurrency", "workflow.compensation", "workflow.history",
+    }
+    for row in structured:
+        assert row["Default and consequence"].startswith("none."), row
+    text = " ".join(row["Default and consequence"] + " " + row["decision_changed"] for row in structured)
+    for key in WORKFLOW_STRUCTURED_KEYS:
+        assert f"`{key}`" in text, f"{key} has no Clarify row"
+
+
+def test_golden_preferences_use_only_question_ids_a_clarify_fragment_defines() -> None:
+    defined = {row["question_id"].strip("`") for row in clarify_question_rows([*NEW_CLARIFY_FRAGMENTS, WORKFLOW_FRAGMENT])}
+    for fragment in ("global", "compute", "data", "storage", "network"):
+        for line in (CLARIFY_ROOT / f"clarify-{fragment}.md").read_text(encoding="utf-8").splitlines():
+            defined.update(re.findall(r"`([a-z_]+\.[a-z_]+)`", line))
+    preferences = json.loads((SKILL_ROOT / "fixtures/expected/preferences.json").read_text(encoding="utf-8"))
+    for row in preferences["questions"]:
+        if row["topic"] == "workflow":
+            assert row["question_id"] in defined, row["question_id"]
+
+
+def test_customer_managed_key_field_is_one_name_across_design_estimate_and_kms_gate() -> None:
+    field = "customer_managed_key: true"
+    for path in ("design-refs/data.md", "design-refs/storage.md", "phases/generate/generate-artifacts-infra.md"):
+        assert field in _read_ref(path), path
+    assert "customer_managed_key: true" in _read_ref("phases/generate/generate-artifacts-baseline.md")
+    assert field in _read_ref("phases/estimate/estimate-infra.md")
+    assert "aws_kms_key.stack" in _read_ref("phases/estimate/estimate-infra.md")
+    infra = _read_ref("phases/generate/generate-artifacts-infra.md")
+    assert "customer-managed `aws_kms_key`" not in infra
+    assert "aws_kms_key.stack" in infra
+
+
+def test_log_retention_lists_generate_consumers() -> None:
+    row = _clarify_row("observability.log_retention")
+    for name in ("generate-infra-compute.md", "generate-infra-workflow.md", "generate-infra-data.md"):
+        assert name in row["Consumer"], name
+
+
+def test_budget_uses_stated_guardrail_else_documented_default() -> None:
+    baseline = _read_ref("phases/generate/generate-artifacts-baseline.md")
+    assert "`cost.budget_guardrail`" in baseline and "is a number" in baseline
+    assert "max(50, ceil(aws_monthly_balanced * 1.2))" in baseline
+    governance = _clarify_row("cost.budget_guardrail")["Default and consequence"]
+    assert "1.2" in governance and "no AWS Budgets alert" not in governance
+    estimation = json.loads((SKILL_ROOT / "fixtures/expected/estimation-infra.json").read_text(encoding="utf-8"))
+    limit = max(50, math.ceil(estimation["projected_costs"]["aws_monthly_balanced"] * 1.2))
+    golden = (SKILL_ROOT / "fixtures/expected/generated/terraform/baseline.tf").read_text(encoding="utf-8")
+    assert f'limit_amount = "{limit}"' in golden
+    assert f"ceil({estimation['projected_costs']['aws_monthly_balanced']} * 1.2)" in golden
