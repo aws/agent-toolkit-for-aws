@@ -3,7 +3,7 @@
 Q-D2 is confirmed at the Decision gate (estimate-assemble.md Step 3b) and Generate refuses
 to start with it unconfirmed. These tests pin the consumer: the MIGRATION_GUIDE section that
 holds one branch per answer, the explicit "not covered" note for other engines, the rule that
-replication is operator-run, and the wording that Generate emits no migration scripts today.
+replication is operator-run, and the wording that Generate emits dry-run-by-default migration scripts.
 """
 from __future__ import annotations
 
@@ -69,33 +69,39 @@ def test_other_engines_get_an_explicit_not_covered_note() -> None:
     assert "is not covered by this runbook" in note
 
 
-def test_database_runbook_adds_no_scripts_or_untested_commands_claim() -> None:
+def test_database_runbook_has_no_replication_script_or_untested_flag() -> None:
     text = _read(DOCS)
-    section = text.split("## Step 1a:", 1)[1].split("## Step 2", 1)[0]
-    assert "writes no database migration script" in section
+    section = text.split("## Step 1a:", 1)[1].split("## Step 1b:", 1)[0]
+    assert "runs no database command" in section
+    assert "contains no replication step" in section
     assert "--final-sync" not in section
 
 
-def test_generate_skill_text_does_not_promise_migration_scripts() -> None:
+def test_generate_skill_text_matches_the_scripts_that_are_now_emitted() -> None:
     skill = _read(SKILL_MD)
     generate = _read(GENERATE)
-    assert "Terraform, migration scripts, and docs are produced" not in skill
-    assert "Terraform configurations, migration scripts, and documentation" not in skill
-    assert "Terraform, docs, and the report are produced only after the user chooses Execute" in skill
-    assert "no migration scripts yet" in skill
-    assert "Emit the Terraform, the scripts, the docs, and the report" not in generate
-    assert "Emit the Terraform, the docs, and the report (no migration scripts yet)" in generate
-    assert "asked for Terraform/migration scripts" not in generate
-    # The decision gate and the decision report speak for the same Generate phase, so
-    # they must not offer migration scripts either.
+    assert "Terraform, migration scripts (dry-run by default), docs, and the report are produced" in skill
+    assert "no migration scripts yet" not in skill and "no migration scripts yet" not in generate
+    assert "Emit the Terraform, the scripts, the docs, and the report. Scripts are written, never run." in generate
+    assert "phases/generate/generate-artifacts-scripts.md" in generate
+    # Old promise-without-scripts wording must not come back.
+    assert "Terraform, docs, and the report are produced only after" not in skill
+    assert "Emit the Terraform, the docs, and the report (no migration scripts yet)" not in generate
+    # The decision gate and the decision report speak for the same Generate phase, so they
+    # must name what Generate really produces: Terraform, migration scripts, the guide, the report.
     gate = _read(ESTIMATE_ASSEMBLE)
-    assert "[C] Generate the migration artifacts — Terraform, migration scripts, and docs" not in gate
-    assert "[C] Generate the migration artifacts — Terraform, the migration guide, and the report" in gate
-    for path in (ESTIMATE, DECISION_CORE):
-        text = _read(path)
-        assert "generate the Terraform and migration scripts" not in text
-        assert "and migration scripts'" not in text
-        assert "generate the Terraform and the migration guide" in text or "and the migration guide'" in text
+    assert (
+        "[C] Generate the migration artifacts — Terraform, migration scripts (operator-run, dry-run by default), "
+        "the migration guide, and the report"
+    ) in gate
+    assert "[C] Generate the migration artifacts — Terraform, the migration guide, and the report" not in gate
+    estimate = _read(ESTIMATE)
+    assert estimate.count("generate the Terraform, migration scripts, and the migration guide") == 2
+    assert "generate the Terraform and the migration guide" not in estimate
+    core = _read(DECISION_CORE)
+    assert "generate the Terraform, migration scripts, and the migration guide" in core
+    assert "migration scripts you run yourself and that are dry-run by default" in core
+    assert "generate the Terraform and the migration guide" not in core
 
 
 def test_generate_postconditions_still_require_a_verification_section() -> None:

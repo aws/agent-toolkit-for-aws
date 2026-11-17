@@ -72,9 +72,11 @@ confirmed it (the Generate precondition refuses a row still flagged
 `deferred_to_generate`), so write exactly the branch the user chose and no other. Do not
 re-derive the answer from database size.
 
-Everything below is a checklist the operator carries out. This phase writes no database
-migration script, runs no database command, and does not start replication. The guide
-must say so plainly. Any statement that a cutover is online or near-zero-downtime needs a
+Everything below is a checklist the operator carries out. This phase runs no database
+command and does not start replication. For `dump_restore` on PostgreSQL or MySQL the offline
+copy has a script, `scripts/02-migrate-data.sh`, that the operator previews and runs. For `dms`
+and for every unsupported engine that script is a named HOLD and contains no replication
+step. The guide must say so plainly. Any statement that a cutover is online or near-zero-downtime needs a
 tested mechanism behind it; none exists in this skill, so the `dms` branch is an
 operator checklist for AWS DMS, run by the operator in AWS DMS, and never a claim that
 this plugin performs or verifies replication. This is the same rule gcp-to-aws applies in
@@ -97,8 +99,9 @@ Use when `data.db_cutover` is `dump_restore`. Number the steps:
    stays in force through verification.
 3. **Dump.** PostgreSQL: a custom-format `pg_dump` of each database, taken against the
    Flexible Server fully qualified host name over TLS. MySQL: `mysqldump` with
-   `--single-transaction`. Dump roles and extensions separately where the engine needs
-   them. Store dump files in an encrypted location and delete them after cutover.
+   `--single-transaction`. The script dumps one database: it does not dump roles, grants or
+   extensions. Create the roles the application needs, and install the extensions in use, on
+   the target before the restore. Store dump files in an encrypted location and delete them after cutover.
 4. **Restore.** Create the target database on the generated Amazon RDS or Aurora
    instance, then restore with `pg_restore` (PostgreSQL) or the `mysql` client (MySQL).
    Confirm the target engine major version is compatible and every extension in use is
@@ -199,9 +202,55 @@ Cache for Redis, Synapse, and anything else):
 Do not describe `dump_restore` or `dms` steps for these engines, and do not fall back to
 the PostgreSQL steps. Add the engine to the Deferred / specialist items section too.
 
+## Step 1b: MIGRATION_GUIDE.md — Section 3 script subsections
+Include a subsection only for a script that was generated, and say that no script has been run.
+Every script previews by default (`./scripts/NN-name.sh`) and changes something only with
+`--execute`. Start with `./scripts/01-validate-prerequisites.sh`, then `--execute` for its
+read-only checks.
+
+- **Data (`02-migrate-data.sh`).** `dump_restore`: list every input by exact name
+  (`SOURCE_HOST`, `SOURCE_PORT`, `SOURCE_DB_USER`, `SOURCE_DB_PASSWORD`, `TARGET_HOST`,
+  `TARGET_PORT`, `TARGET_DB_USER`, `TARGET_DB_PASSWORD`, `DATABASE_NAME`, `DATA_VERIFIER`,
+  `SOURCE_WRITES_FROZEN`, `TARGET_WRITES_FROZEN`), the write-freeze evidence the operator
+  must have before setting the two acknowledgements to `yes`, and the `DATA_VERIFIER`
+  contract (inventories, exact row counts, checksums, invariants; nonzero on mismatch). Never
+  write credentials into the guide. Also list the optional `DUMP_DIR_BASE` (default
+  `${TMPDIR:-/tmp}`) and tell the operator to check its free space against the database size
+  before `--execute`. PostgreSQL: the script uses `pg_dump` and `pg_restore` with `--no-owner
+  --no-acl`, so the target roles and extensions must exist first; `PGSSLMODE` defaults to
+  `require` (encrypts without verifying the server certificate), so use `verify-full` for
+  production. MySQL: confirm in current MySQL and Azure documentation which `mysqldump`
+  options a managed-server dump needs (view and routine `DEFINER` clauses, GTID settings), and
+  that your client accepts the `ssl-mode` option in the generated option file (a MySQL
+  5.7.11 or later client); the script does not set those options. `dms` or an unsupported engine: name the HOLD code the
+  script prints (`DMS_NOT_IMPLEMENTED`, `ENGINE_NOT_SUPPORTED`, `CUTOVER_UNCONFIRMED`) and
+  point at the Database migration subsection. Do not describe replication as scripted.
+- **Container images (`03-migrate-containers.sh`).** Inputs `ACR_NAME`, `IMAGE_LIST`,
+  `AWS_REGION`, optional `AWS_ACCOUNT_ID`, `ACR_LOGIN_SERVER` and `IMAGE_PLATFORM` (default
+  `linux/amd64`). The script copies one platform of each image from ACR to ECR, by
+  `repository:tag` (no digests), and checks that each tag exists in ECR; it does not compare
+  digests and does not rewrite image references in the application or Terraform. To copy a
+  multi-architecture image, the operator chooses a registry-to-registry copy tool that
+  preserves the manifest list. Run `terraform apply` first: the script creates a repository
+  only when Terraform did not.
+- **Secrets (`04-migrate-secrets.sh`).** Inputs `KEY_VAULT_NAME`, `SECRET_NAMES`, `AWS_REGION`.
+  Dry-run reads no value. Key Vault keys and certificates are manual work; list them. Run
+  `terraform apply` first and set each `SECRET_NAMES` entry to the AWS secret name Terraform
+  created (from `terraform output secret_names`; each Secrets Manager secret has the same name
+  as its Key Vault secret); the script writes a new version of that existing secret,
+  and the generated `aws_secretsmanager_secret_version` ignores changes to `secret_string`, so
+  a later apply does not restore the placeholder. A secret name cannot start with `-` and
+  should not end with a hyphen followed by six characters (for example `db-secret`):
+  Secrets Manager appends a hyphen and six random characters to the ARN, so the script warns
+  about such a name. Values are not compared after the copy.
+- **Validation (`05-validate-migration.sh`).** Inputs: `AWS_REGION` and, for the sections the
+  script contains, `ECS_CLUSTER_NAME`, `EKS_CLUSTER_NAME` and `S3_BUCKET`, all from
+  `terraform output`. It takes no argument. A zero exit code does not establish data integrity
+  or application health.
+
 ## Step 2: README.md — what was generated
 
-List the generated artifacts (the `terraform/` files, `MIGRATION_GUIDE.md`,
+List the generated artifacts (the `terraform/` files, the `scripts/` files that were generated, `MIGRATION_GUIDE.md`,
 `migration-report.html`), a one-line "how to apply" (`cd terraform && terraform init …`),
 and the cost-tier note: Premium/Balanced/Optimized are pricing scenarios on one map; this
 Terraform is the Balanced baseline. The phase `_assert` requires README to list the
