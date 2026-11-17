@@ -31,6 +31,11 @@ review and pilot on a few devices before a broad rollout.
   in Claude Desktop, an approval in Jamf or Intune). Give the exact prompt, then
   wait for them to say it's done.
 - **Route A / B / C** = individual, IT admin, or managed user (Phase 0).
+- **Sibling skill** = another aws-startup-advisor skill installed next to
+  this one. Skills can be installed one at a time, so check
+  `<SKILL_BASE>/../<skill>/SKILL.md` exists before using one, and use this
+  skill's own fallback when it doesn't. This skill uses `llm-to-bedrock`
+  (model access) and `prompt-library-for-startups` (quota requests).
 
 ## Before you start: what changes for the user
 
@@ -104,6 +109,12 @@ Do not assume or state "Pro only" anywhere.
    (`ANTHROPIC_DEFAULT_{SONNET,OPUS,HAIKU}_MODEL`): unpinned, the `sonnet`
    alias on Bedrock resolves to Claude Code's built-in default, which can lag
    the newest release.
+   **Pick the IDs from `references/vendored/ai/ai-model-lifecycle.md`**, the
+   plugin's model registry: Active Claude rows only. The defaults in this
+   skill (Sonnet 5.5 as the main model, Opus 5.5, Haiku 5.5, with the `us.`
+   profile prefix) were Active on the Last updated date. If the registry now
+   marks one Legacy or excluded, use its Active replacement everywhere it
+   appears (CLI env, Desktop model list, MDM templates) and tell the person.
 5. **Always confirm the app is FULLY quit** (app + menu-bar/tray) before any
    desktop file operation, or the app overwrites the change on exit. Check and
    quit it yourself with the commands in `references/terminal-helpers.md`; ask
@@ -144,8 +155,8 @@ Bedrock? `~/.claude/CLAUDE.md` present?) and skip any phase that's already done.
 
 | Route | Do these phases | Then ask |
 |---|---|---|
-| **A — Individual** | 1 (CLI) → 2 (Desktop, including Enable import) → 3A (import wizard) → 3B (CLI history, optional) → 5 | AWS account + region? AWS profile or bearer token? Personal or Team/Enterprise claude.ai account? |
-| **B — Admin** | 4 (fleet rollout: AWS + claude.ai prerequisites, author config, MDM deploy, pilot) → hand users the end-user message from `roles-and-steps.md` → 5 on a pilot device | Jamf or Intune? Fleet auth (IAM Identity Center recommended)? Region and models? Team/Enterprise claude.ai workspace to import from (restrict with `allowedOrganizationUuids`)? Also piloting on your own device (then also Route C there)? |
+| **A — Individual** | Model access → 1 (CLI) → 2 (Desktop, including Enable import) → 3A (import wizard) → 3B (CLI history, optional) → 4b if several people share the AWS account → 5 | AWS account + region? AWS profile or bearer token? Personal or Team/Enterprise claude.ai account? |
+| **B — Admin** | Model access → 4 (fleet rollout: AWS + claude.ai prerequisites, author config, MDM deploy, pilot) → 4b (quota) → hand users the end-user message from `roles-and-steps.md` → 5 on a pilot device | Jamf or Intune? Fleet auth (IAM Identity Center recommended)? Region and models? Team/Enterprise claude.ai workspace to import from (restrict with `allowedOrganizationUuids`)? Also piloting on your own device (then also Route C there)? |
 | **C — Managed user** | User-only steps: relaunch → Sign in with AWS → 3A (import wizard; skip "Enable import") → CLI `aws sso login` → 3B optional → 5 | Has IT announced the rollout? Personal or work claude.ai account for history? |
 
 Route C rules: never have the user change settings in **Developer → Configure
@@ -173,8 +184,8 @@ learned in Phase 0; keep every part:
 > settings are changed by you, in the app, with my step-by-step prompts.
 >
 > **AWS:** I'll check which AWS account your credentials use, check whether
-> Claude model access is already set up (read-only), and make one tiny test
-> call to Claude on Bedrock (a few tokens, well under a cent). After the
+> Claude model access is already set up, and make a tiny test call to each
+> Claude model I'll configure (a few tokens each, well under a cent in total). After the
 > switch, your Claude usage is billed to that AWS account. AWS Activate credits
 > can cover it if you have them.
 >
@@ -197,6 +208,25 @@ changing IAM or Identity Center resources is never covered by this Yes; it
 always needs its own explicit yes (`references/aws-setup.md` section 2b).
 For **Route C** (managed user), say you won't change any settings and only
 walk the sign-in and import steps.
+
+### Model access (Routes A and B, before the first Bedrock call)
+
+Check that the account can call the Claude models you'll configure, and find
+the exact fix if it can't. Skip this for Route C; IT owns the account.
+
+- **If `llm-to-bedrock` is installed** (`<SKILL_BASE>/../llm-to-bedrock/SKILL.md`
+  exists) **and `uv --version` works:** Load that file's `## Access-only mode`
+  section and run AC1 to AC5 inline, with its `<SKILL_BASE>` set to the
+  sibling's directory. Don't ask AC2's model question: use the IDs you picked
+  (core fact 4) as `$TARGET_MODELS` and the region from Phase 0 as `$REGION`.
+  Its preflight probes each model and names the fix (the Anthropic use case
+  form, Marketplace permissions, or an IAM action). The CONFIRM Yes covers its
+  identity check and test calls. Then come back here.
+- **Otherwise:** use the read-only check in `references/terminal-helpers.md`,
+  then the test call in `references/cli-3p-setup.md`.
+
+Either way, the use case form stays a HUMAN STEP: open the Model catalog for
+the person and give the prompt from `references/aws-setup.md`.
 
 ### Phase 1 — Switch the CLI to 3P (Route A)
 See `references/cli-3p-setup.md`. Preferred: give the user the prompt for
@@ -223,9 +253,7 @@ For SSO profiles, also set `awsAuthRefresh` (`aws sso login --profile
 To revert to 1P, remove the Bedrock keys above.
 
 ### Phase 2 — Switch Claude Desktop to 3P (Route A; HUMAN STEP + your prep)
-Your prep: check Bedrock model access read-only
-(`references/terminal-helpers.md`) and, if the use case form is still needed,
-open the Model catalog for the person; make AWS creds work (named profile resolves / generate a bearer token
+Your prep: run **Model access** above if you haven't; make AWS creds work (named profile resolves / generate a bearer token
 via `aws-bedrock-token-generator` / set up IAM Identity Center). Then walk the
 user through the in-app window; the field-by-field UI is in
 `references/desktop-inapp-config.md`. Prescriptive prompt:
@@ -399,6 +427,44 @@ message from `references/roles-and-steps.md`, filled in with their profile name
 (`claude-bedrock`) and support channel. Users then follow Route C. Don't walk the
 admin through end-user steps unless they're piloting on their own device.
 
+### Phase 4b — Bedrock quota for a team (Route B; Route A when several people share one AWS account)
+
+Bedrock limits tokens per minute (TPM) per model. A team on Claude Code can hit
+the default on the first day, and the error looks like throttling, not a
+setup problem. Size it before rollout.
+
+1. **Estimate.** Ask how many people will use Claude Code at the same time. With
+   no usage data, AWS's planning starting point is about 20,000 TPM per active
+   developer. Then Load `references/vendored/ai/bedrock-quotas.md` and apply
+   its output-token burndown for the model you picked: on `bedrock-runtime`,
+   each Claude output token counts several times against TPM. If the model
+   isn't listed there, check its Bedrock model card; don't guess a multiplier.
+2. **Check the current quota (read-only):**
+
+   ```bash
+   aws service-quotas list-service-quotas --service-code bedrock --region <region> \
+     --query "Quotas[?contains(QuotaName, '<model name, e.g. Claude Sonnet 5.5>') && contains(QuotaName, 'per minute')].[QuotaName,QuotaCode,Value]" \
+     --output table
+   ```
+
+   This lists the tokens and requests per minute rows. With a `us.` or
+   `global.` profile, read the cross-region rows.
+3. **Request more, only with its own yes.** Submitting a request goes to AWS,
+   so the CONFIRM Yes doesn't cover it. If `prompt-library-for-startups` is
+   installed, Load
+   `<SKILL_BASE>/../prompt-library-for-startups/references/prompt-library/bedrock-quota-manager.md`
+   and follow its steps; it finds the right quota code and says when a Support
+   case is needed instead. Otherwise, show the person:
+
+   ```bash
+   aws service-quotas request-service-quota-increase --service-code bedrock \
+     --region <region> --quota-code <QuotaCode> --desired-value <target TPM>
+   ```
+
+   Run it only after they approve the code and value. Approval can take 1 to 5
+   business days, so request it before the rollout. Until then, a cross-region
+   (`global.`) profile spreads load across Regions.
+
 ### Phase 5 — Verify end to end (all routes; both surfaces)
 
 - Desktop: a new chat uses a Bedrock model ID; no 1P email prompt.
@@ -444,6 +510,10 @@ click, or approve.
 
 ## Reference files
 
+- `references/vendored/ai/ai-model-lifecycle.md` — the plugin's model
+  registry (synced copy; don't edit here). Source of Active Claude IDs.
+- `references/vendored/ai/bedrock-quotas.md` — TPM burndown and how to size
+  and request a quota (synced copy).
 - `references/terminal-helpers.md` — open pages and files for the person, quit
   Claude Desktop safely, check Bedrock model access, start an SSO sign-in.
 - `references/roles-and-steps.md` — routes, machine checks, who-does-what
