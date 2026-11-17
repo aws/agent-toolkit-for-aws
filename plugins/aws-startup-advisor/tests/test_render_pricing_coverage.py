@@ -145,7 +145,8 @@ def test_golden_estimate_lines_are_null_only_for_a_stated_reason() -> None:
     estimate = _load(SKILL_ROOT / "fixtures/expected/estimation-infra.json")
     for scenario in estimate["scenarios"].values():
         for line in scenario["lines"]:
-            kinds = {next(iter(COMPONENTS[part])) for part in _split(line["aws_service"])}
+            # A retention qualifier such as "(30-day retention)" names the sizing input, not a separate component.
+            kinds = {next(iter(COMPONENTS[re.sub(r" \([^)]*\)$", "", part)])) for part in _split(line["aws_service"])}
             assert null_line_errors(line, scenario, kinds) == [], f"{line['line_id']} {line['aws_service']}"
 
 

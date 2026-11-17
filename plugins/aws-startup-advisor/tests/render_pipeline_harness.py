@@ -446,7 +446,7 @@ resource "aws_ecs_service" "__NAME__" {
     return network, compute
 
 
-def _service_blocks(name: str, source_id: str, kind: str) -> str:
+def _service_blocks(name: str, source_id: str, kind: str) -> tuple[str, str]:
     port = 10000 if kind == "private" else None
     security_group = "private" if kind == "private" else "worker"
     port_mapping = '    portMappings = [{ containerPort = 10000, hostPort = 10000, protocol = "tcp" }]\n' if port else ""
@@ -463,7 +463,7 @@ def _service_blocks(name: str, source_id: str, kind: str) -> str:
   }
 }
 ''' if kind == "private" else ""
-    block = discovery + '''resource "aws_ecs_task_definition" "__NAME__" {
+    block = '''resource "aws_ecs_task_definition" "__NAME__" {
   family                   = "render-__NAME_HYPHEN__"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
@@ -501,7 +501,8 @@ __REGISTRY__  tags = { SourceResourceId = "__SOURCE_ID__" }
     }
     for old, new in substitutions.items():
         block = block.replace(old, new)
-    return block
+        discovery = discovery.replace(old, new)
+    return discovery, block
 
 
 def _cron_blocks(name: str, source_id: str) -> str:
@@ -857,21 +858,6 @@ resource "aws_ecs_service" "web" {
   depends_on = [aws_lb_listener.https]
   tags       = { SourceResourceId = "__WEB_SOURCE_ID__" }
 }
-resource "aws_service_discovery_private_dns_namespace" "application" {
-  name = "production.render-migration.internal"
-  vpc  = aws_vpc.main.id
-}
-resource "aws_service_discovery_service" "private" {
-  name = "private"
-  dns_config {
-    namespace_id = aws_service_discovery_private_dns_namespace.application.id
-    dns_records {
-      ttl  = 10
-      type = "A"
-    }
-    routing_policy = "MULTIVALUE"
-  }
-}
 resource "aws_ecs_task_definition" "private" {
   family                   = "render-migration-private"
   network_mode             = "awsvpc"
@@ -1134,6 +1120,22 @@ resource "aws_s3_bucket_policy" "static_cloudfront" {
   })
 }
 '''
+    network += '''resource "aws_service_discovery_private_dns_namespace" "application" {
+  name = "production.render-migration.internal"
+  vpc  = aws_vpc.main.id
+}
+resource "aws_service_discovery_service" "private" {
+  name = "private"
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.application.id
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+    routing_policy = "MULTIVALUE"
+  }
+}
+'''
     first_by_kind = {kind: rows[0] for kind, rows in mappings_by_kind.items()}
     compute = (
         compute.replace("__WEB_SOURCE_ID__", first_by_kind["render.web_service"]["source_resource_id"])
@@ -1148,7 +1150,9 @@ resource "aws_s3_bucket_policy" "static_cloudfront" {
         compute += extra_compute
     for kind, service_kind in (("render.private_service", "private"), ("render.background_worker", "worker")):
         for index, mapping in enumerate(mappings_by_kind[kind][1:], 2):
-            compute += _service_blocks(_mapping_name(kind, index), mapping["source_resource_id"], service_kind)
+            extra_network, extra_compute = _service_blocks(_mapping_name(kind, index), mapping["source_resource_id"], service_kind)
+            network += extra_network
+            compute += extra_compute
     for index, mapping in enumerate(mappings_by_kind["render.cron_job"][1:], 2):
         compute += _cron_blocks(_mapping_name("render.cron_job", index), mapping["source_resource_id"])
     cron_task_arns = ", ".join(
@@ -1238,7 +1242,7 @@ def assert_generated_infrastructure_graph(terraform: Path) -> None:
     assert 'resource "aws_iam_role_policy" "scheduler"' in compute
     assert re.search(r'Action\s*=\s*\["ecs:RunTask"\]', compute)
     assert re.search(r'Action\s*=\s*\["iam:PassRole"\]', compute)
-    assert re.search(r'Resource\s*=\s*\[aws_iam_role\.ecs_execution\.arn\]', compute)
+    assert re.search(r'Resource\s*=\s*\[aws_iam_role\.ecs_execution\.arn(,\s*aws_iam_role\.ecs_task\.arn)?\]', compute)
     assert '"iam:PassedToService" = "ecs-tasks.amazonaws.com"' in compute
     assert 'role_arn = aws_iam_role.scheduler.arn' in compute
     assert "arn:aws:iam::000000000000:role/render-migration-scheduler" not in compute
@@ -1257,7 +1261,7 @@ def assert_generated_infrastructure_graph(terraform: Path) -> None:
     assert re.search(r'from_port\s*=\s*6379', network)
     for security_group in ("web", "private", "worker"):
         assert f"aws_security_group.{security_group}.id" in network
-    assert 'vpc_security_group_ids      = [aws_security_group.data.id]' in data
+    assert re.search(r'vpc_security_group_ids\s*=\s*\[aws_security_group\.data\.id\]', data)
     assert 'security_group_ids         = [aws_security_group.data.id]' in data
 
     for name in ("web", "private", "worker", "cron"):
@@ -1393,6 +1397,41 @@ def _validate_generated_pack(root: Path, generated: Path, ledger: dict[str, Any]
             "report": {"status": "passed", "command": "validate-render-migration-report.py", "evidence": evidence},
         },
         "timestamp": "2026-10-21T12:00:00Z",
+    }
+
+
+def validate_terraform_directory(source: Path, workdir: Path) -> dict[str, str]:
+    """Run fmt, init, validate, and the policy check on a copy of one Terraform directory."""
+    terraform_binary = shutil.which("terraform")
+    if terraform_binary is None:
+        raise AssertionError("terraform is required to validate a golden Terraform directory")
+    shutil.copytree(source, workdir, ignore=shutil.ignore_patterns(".terraform", ".terraform.lock.hcl"))
+    fmt = _run([terraform_binary, "fmt", "-check", "-recursive"], workdir)
+    if fmt.returncode != 0:
+        raise AssertionError(fmt.stdout + fmt.stderr)
+    init = _run([terraform_binary, "init", "-backend=false", "-input=false"], workdir)
+    registry_failure = (
+        init.returncode != 0
+        and classify_terraform_init_failure(init.stdout + init.stderr) == "provider_registry_unavailable"
+    )
+    if init.returncode != 0 and not registry_failure:
+        raise AssertionError(init.stdout + init.stderr)
+    if registry_failure:
+        validate_status = "provider_registry_unavailable"
+    else:
+        validate = _run([terraform_binary, "validate"], workdir)
+        if validate.returncode != 0:
+            raise AssertionError(validate.stdout + validate.stderr)
+        validate_status = "passed"
+    policy = REPO_ROOT / "plugins/aws-startup-advisor/skills/tf-best-practices/scripts/validate-terraform-policy.py"
+    policy_result = _run([sys.executable, str(policy), str(workdir)], workdir)
+    if policy_result.returncode != 0 or not policy_result.stdout.startswith("POLICY_OK"):
+        raise AssertionError(policy_result.stdout + policy_result.stderr)
+    return {
+        "fmt": "passed",
+        "init": "provider_registry_unavailable" if registry_failure else "passed",
+        "validate": validate_status,
+        "policy": "POLICY_OK",
     }
 
 

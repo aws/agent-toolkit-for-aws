@@ -382,6 +382,11 @@ restricted to the Terraform policy checker.
      enhancement, never a gate: on any skip or error the decision is still
      complete — continue without it and do not surface the script output to the
      user.
+     Then refresh the estate workbook the same way (fail-open):
+     `python3 "<SKILL_BASE>/scripts/emit-estate-workbook.py" --migration-dir "$MIGRATION_DIR"`
+     — it rewrites `$MIGRATION_DIR/heroku-estate.xlsx` with the AWS mapping status per
+     row and a Cost estimate tab. Add `heroku-estate.xlsx` to the saved-files list
+     only when it printed `ESTATE_OK`.
   4. Continue with the Feedback sidebar per `SKILL.md`. Step 3 has already run,
      so you know its `PLAN_OK`/`PLAN_SKIP` status — author the close **once** with
      that knowledge, never as a two-pass edit of an already-shown message:

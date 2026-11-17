@@ -61,9 +61,10 @@ Back to [Step 3 in setup.md](setup.md#step-3-log-in-to-aws).
 |---------|-------|------------|
 | Region not provided in prompt | User pasted the prompt without region context | Ask the user the relevant follow up question depending on their AWS experience parameter. Then, set it with `aws configure set region <value> --profile <profile_name>` |
 | command not found: `aws` | PATH not set correctly after install | Re-run `export PATH="$HOME/.local/bin:$PATH"` and retry |
-| `Profile '<profile_name>' is already configured with Access Key credentials` | User previously configured static access keys for this profile via `aws configure` | Offer the user two options: (1) Use a different profile name and re-run `aws login --profile <new_name>`, or (2) Remove the `aws_access_key_id` and `aws_secret_access_key` lines from `~/.aws/credentials` (under the `[<profile_name>]` section), then re-run `aws login --profile <profile_name>` |
-| aws login exits with non-zero | User closed the browser without completing auth, or timed out | Re-run `aws login --profile <profile_name>` and instruct the user to complete authentication in the browser |
-| Browser did not open | Headless environment or no default browser configured | Run `aws login --region <region from prompt> --profile <profile_name> --remote`. Then let the human user finish the process. |
+| `aws signup` reports an invalid choice or unknown command | Installed AWS CLI predates the `signup` command | Set the Region with `aws configure set region <region from prompt> --profile <profile_name>`, then run `aws login --region <region from prompt> --profile <profile_name>`. The sign-in page also offers sign-up |
+| `Profile '<profile_name>' is already configured with Access Key credentials` | User previously configured static access keys for this profile via `aws configure` | Offer the user two options: (1) Use a different profile name and re-run the command with `--profile <new_name>`, or (2) Remove the `aws_access_key_id` and `aws_secret_access_key` lines from `~/.aws/credentials` (under the `[<profile_name>]` section), then re-run with `--profile <profile_name>` |
+| Command exits with non-zero | User closed the browser without completing sign-up or sign-in, or timed out | Re-run the same command with `--profile <profile_name>` and instruct the user to complete the browser flow. If they finished creating an account but the command still failed, `aws login --profile <profile_name>` signs in to the new account |
+| Browser did not open | Headless environment or no default browser configured | Run the same command with `--remote` appended. Then let the human user finish the process. |
 
 ## Step 4: Verify access
 
@@ -71,7 +72,7 @@ Back to [Step 4 in setup.md](setup.md#step-4-verify-access).
 
 | Symptom | Cause | Resolution |
 |---------|-------|------------|
-| `Unable to locate credentials` or `ExpiredToken` | `aws login` did not complete successfully | Re-run Step 3 |
+| `Unable to locate credentials` or `ExpiredToken` | `aws login` or `aws signup` did not complete successfully | Re-run Step 3 |
 | `command not found: aws` | PATH not set correctly | Re-run `export PATH="$HOME/.local/bin:$PATH"` and retry |
 
 ## Step 5: Set up the Agent Toolkit
