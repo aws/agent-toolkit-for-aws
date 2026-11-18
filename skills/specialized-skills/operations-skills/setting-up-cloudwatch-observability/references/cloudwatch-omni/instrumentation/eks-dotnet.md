@@ -94,7 +94,7 @@ kubectl exec <pod> -c <my-app> -- sh -c 'head -2 /etc/os-release'
 
 The amd64 image contains `linux-x64` **and** `linux-musl-x64`, and no `linux-arm64` — so on amd64 the choice is entirely about libc. ARM64 nodes pull a different image from the manifest list.
 
-Set `OTEL_SERVICE_NAME` from the existing Deployment name or application name. Optionally add `OTEL_RESOURCE_ATTRIBUTES` for attributes such as `deployment.environment=production`.
+Set `OTEL_SERVICE_NAME` from the existing Deployment name or application name. Optionally add `OTEL_RESOURCE_ATTRIBUTES` for attributes such as `deployment.environment.name=production`.
 
 Preserve the container's existing `env`, `volumeMounts`, probes, and resources — append to them rather than replacing.
 

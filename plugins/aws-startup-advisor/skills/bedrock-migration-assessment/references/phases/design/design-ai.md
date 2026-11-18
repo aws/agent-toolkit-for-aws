@@ -25,7 +25,7 @@ On a non-zero exit, stop and tell the user:
 On success the JSON has:
 
 - `rows[]`: one entry per `design_blocks[]` row, in order, with `workload_id`, `model_id`, `provider`, `source_service`, `source_api`, `capability`, `capability_confidence`, `confidence_warning`, `fronted_by` (gateways in front of the source), `mantle_requests` (the Clarify Q10.5 entries that apply to this workload, in policy order), and `mantle.lane`.
-- `guides[]`: load every file listed, each with the Read tool. Do not copy, concatenate, or write them anywhere through the shell. Each is a vendored rubric or this skill's `references/shared/openai-on-bedrock.md`.
+- `guides[]`: load every file listed, each with the Read tool. Do not copy, concatenate, or write them anywhere through the shell. Each is a vendored rubric or this skill's `references/vendored/ai/openai-on-bedrock.md`.
 - `constraints`: the Clarify answers this phase reads, with each documented default filled in for a key Clarify did not write.
 - `projection`: the profile's `ai_sources[]` and `gateways[]`. Copy them into `metadata` verbatim.
 - `not_designed[]`: sources whose model was not observed. They get no row; name each in the summary and say Discover must record the model before it can be designed.

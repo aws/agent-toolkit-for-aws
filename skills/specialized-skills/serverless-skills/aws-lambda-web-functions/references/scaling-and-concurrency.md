@@ -80,9 +80,9 @@ to a value lower than account quotas. Optional, default is null.
 
 | Name | Configuration scope | Values | Notes |
 |---|---|---|---|
-| `serviceConfig.maxConcurrencyPerEnvironment` | Revision | Required, default 64, 1–128 | — |
-| `scalingConfig.maxEnvironments` | Endpoint | Optional, default null | — |
-| `throttleConfig.rateLimit` | Endpoint | Optional, default null; `0` blocks all traffic | — |
+| `serviceConfig.maxConcurrencyPerEnvironment` | Revision | Optional, default 64, 1–128 | — |
+| `scalingConfig.maxEnvironments` | Endpoint | Optional, 2–10000, no default | Unset means the endpoint scales within the account quotas |
+| `throttleConfig.rateLimit` | Endpoint | Optional, no default; must be one of 0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, or 10000 | Any other integer is rejected. `0` blocks all traffic |
 | Endpoint RPS limit | Account Quota | 10,000 RPS | See Service Limits in [SKILL.md](SKILL.md) |
 | Account RPS limit | Account Quota | 100,000 RPS | See Service Limits in [SKILL.md](SKILL.md) |
 | Account vCPU limit | Account Quota | 2,000 vCPUs | See Service Limits in [SKILL.md](SKILL.md) |

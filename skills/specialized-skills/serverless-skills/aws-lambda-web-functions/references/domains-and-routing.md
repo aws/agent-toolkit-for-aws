@@ -86,6 +86,17 @@ import { cors } from 'hono/cors';
 app.use('/api/*', cors({ origin: 'https://myapp.example.com' }));
 ```
 
+**CORS only matters on an `ApplicationManaged` endpoint.** An `IamAuth` endpoint accepts only
+SigV4-signed requests and rejects unsigned direct requests, and a browser's `OPTIONS` preflight is
+unsigned — so it is rejected before any CORS middleware runs. No amount of app-side CORS
+configuration makes a browser able to call an `IamAuth` domain directly. For a browser or SPA
+client against an IAM-authorized origin, put CloudFront in front with origin access control: it
+signs each origin request, so the browser never needs to. See
+[Restricting the endpoint to CloudFront with OAC](#restricting-the-endpoint-to-cloudfront-with-oac).
+
+Test the `OPTIONS` preflight separately from the actual method — a handler that answers `GET`
+correctly can still fail preflight.
+
 ## HTTPS
 
 All endpoints enforce HTTPS. Your app receives plain HTTP on the internal port — no TLS handling needed in your code.
