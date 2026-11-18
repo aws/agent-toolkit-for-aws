@@ -1,0 +1,15 @@
+{
+  "name": "aws-context",
+  "version": "0.0.1",
+  "description": "Placeholder for aws-context.",
+  "author": {
+    "name": "Amazon Web Services"
+  },
+  "homepage": "https://aws.amazon.com/products/developer-tools/agent-toolkit-for-aws/",
+  "repository": "https://github.com/aws/agent-toolkit-for-aws/tree/main/plugins/aws-context",
+  "license": "Apache-2.0",
+  "keywords": [
+    "aws",
+    "aws-context"
+  ]
+}
