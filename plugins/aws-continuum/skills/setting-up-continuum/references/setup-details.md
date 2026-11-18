@@ -7,7 +7,10 @@ All angle-bracket values are placeholders. Build JSON files with validated value
 - `s3:ListBucket` on `arn:aws:s3:::<bucket>`; include the code and context prefixes if a condition limits listing, and account for the integration's HeadBucket check.
 - `s3:GetObject` and `s3:GetObjectVersion` on `arn:aws:s3:::<bucket>/<code-prefix>*` and `arn:aws:s3:::<bucket>/<context-prefix>*`.
 - `s3:PutObject`, `s3:GetObject` and `s3:GetObjectVersion` on `arn:aws:s3:::<bucket>/continuum-patches/*` for patch delivery and reconciliation. Keep these together in the `DeliverContinuumPatches` statement described by the public getting-started guide.
-- `kms:Decrypt` on the exact customer-managed KMS key ARN if source is SSE-KMS. Resolve an alias with `aws kms describe-key`; an alias ARN is not a decrypt resource. A key policy must also allow access. Do not add KMS permissions for SSE-S3.
+- **Source reads:** `kms:Decrypt` on the exact source key ARN if source is SSE-KMS, with the matching key-policy grant.
+- **Patch destination:** separately inspect the patch bucket's default encryption. If patch delivery is enabled and the destination uses a customer-managed SSE-KMS key, grant `kms:GenerateDataKey` on that destination key, plus `kms:Decrypt` if patches are read back or uploaded multipart. The destination key policy must also authorize the source role. Source decryption alone does not authorize patch encryption; source reads can succeed while patch uploads fail.
+
+Resolve each key alias with `aws kms describe-key`; use the exact key ARN, not an alias ARN, in permission resources. Do not add KMS permissions for SSE-S3. See the [Amazon S3 SSE-KMS permissions guidance](https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingKMSEncryption.html).
 
 For existing roles, evaluate every statement including Deny, NotAction, NotResource, conditions, and boundaries. If the result is ambiguous, report unknown. Do not grant redundant wildcard access to work around uncertainty. Permission gaps can ONLY be added using `aws iam put-role-policy --role-name <role-name> --policy-name <new-unused-name> --policy-document file://<gap-policy.json>`, after listing existing names and obtaining approval. Never overwrite a name, attach a policy, create a managed policy version, or edit an existing policy.
 
