@@ -1,7 +1,7 @@
 ---
 name: aws-lambda-managed-instances
-description: "Evaluates, configures, and migrates workloads to AWS Lambda Managed Instances (LMI). Runs Lambda Event Functions (standard Lambda) on EC2 instances in the user's account while AWS manages provisioning, patching, scaling, routing, and load balancing. Triggers when queries mention Lambda Managed Instances, LMI, capacity providers, multi-concurrent execution environments, EC2-backed Lambda, persistent Lambda instances, PerExecutionEnvironmentMaxConcurrency, CapacityProviderConfig, cold start elimination via dedicated instances, SOCI (Seekable OCI) image lazy loading, migrating Lambda Event Functions to managed instances, or cost comparison between Lambda Event Functions and LMI with Savings Plans or Reserved Instances. Also covers long-running and asynchronous workloads and the 90-minute (5400s) function timeout for asynchronous and event-source-mapping (SQS, Kinesis, DynamoDB Streams / ESM) invocations, including how to raise the function timeout up to 90 minutes / 5400s and the related duration limits."
-version: 4
+description: "Evaluates, configures, and migrates workloads to AWS Lambda Managed Instances (LMI). Runs Lambda Event Functions (standard Lambda) on EC2 instances in the user's account while AWS manages provisioning, patching, scaling, routing, and load balancing. Triggers when queries mention Lambda Managed Instances, LMI, capacity providers, multi-concurrent execution environments, EC2-backed Lambda, persistent Lambda instances, PerExecutionEnvironmentMaxConcurrency, CapacityProviderConfig, cold start elimination via dedicated instances, SOCI (Seekable OCI) image lazy loading, migrating Lambda Event Functions to managed instances, or cost comparison between Lambda Event Functions and LMI with Savings Plans or Reserved Instances. Also covers long-running and asynchronous workloads, the 90-minute (5400s) timeout for asynchronous and event-source-mapping (SQS, Kinesis, DynamoDB Streams / ESM) invocations and the 30-minute (1800s) synchronous limit, including how to raise the function timeout up to 90 minutes / 5400s."
+version: 5
 ---
 
 # AWS Lambda Managed Instances (LMI)
@@ -17,7 +17,7 @@ Runs Lambda Event Functions on EC2 instances in the user's account while AWS man
 | Signal | LMI is a strong fit | Lambda Event Functions are better |
 |--------|---------------------|---------------------------|
 | Traffic | Steady, predictable, 50M+ req/mo | Bursty, unpredictable, long periods of no traffic |
-| Duration | Long-running asynchronous/ESM jobs that exceed 15 min (up to 90 min on LMI): ETL/data processing, media transcoding, ML inference, financial calc, web scraping | Short invocations; synchronous work needing >15 min (not supported on any Lambda) |
+| Duration | Long-running asynchronous/ESM jobs that exceed 30 min (up to 90 min on LMI): ETL/data processing, media transcoding, ML inference, financial calc, web scraping | Short invocations; synchronous work needing >30 min (not supported on any Lambda) |
 | Cost | Duration-heavy spend at scale | Low or sporadic invocations |
 | Cold starts | Unacceptable (LMI eliminates for provisioned capacity) | Tolerable |
 | Compute | Latest CPUs, specific families, high network bandwidth, GPU requirements | Lambda Event Functions memory/CPU sufficient |
@@ -58,7 +58,7 @@ Gather these signals before recommending:
 6. **Concurrency readiness**: Thread safety? Shared `/tmp` paths? Per-invocation DB connections?
 7. **VPC**: Already in a VPC? Private resource access needed?
 
-**Long-running asynchronous/ESM jobs that exceed 15 min are a positive fit** — LMI supports a function timeout up to 90 min (5400s) for asynchronous and event-source-mapping invocations (ETL/data processing, media transcoding, ML inference, financial calc, web scraping). Duration is the key differentiator here, not just cost.
+**Long-running asynchronous/ESM jobs that exceed 30 min are a positive fit** — LMI supports a function timeout up to 90 min (5400s) for asynchronous and event-source-mapping invocations (ETL/data processing, media transcoding, ML inference, financial calc, web scraping). Duration is the key differentiator here, not just cost.
 
 When recommending LMI, ALWAYS mention: minimum 3 execution environments for AZ resiliency (cannot go below 3 in production).
 
@@ -77,7 +77,7 @@ Rule of thumb: LMI becomes cost-competitive at 50-100M+ req/month with steady tr
 - **For I/O-bound workloads**: use the runtime default or higher PerExecutionEnvironmentMaxConcurrency (e.g., 10 for Node.js) since each request uses minimal CPU while waiting on network.
 - **For CPU-bound workloads**: set PerExecutionEnvironmentMaxConcurrency to 1-2 per vCPU since each request saturates CPU.
 - **Scaling**: MinExecutionEnvironments (default 3), MaxVCpuCount (optional, default 400 — set explicitly as best practice), TargetResourceUtilization.
-- **Function timeout up to 5400s (90 min)** — set via the existing `Timeout` field (CLI `update-function-configuration --timeout 5400`, SAM/CFN `Timeout: 5400`, or console). Uses the existing `Timeout` field — no separate API, property, tag, or code change is required. Applies to **asynchronous and ESM invocations only**; synchronous and On-Demand invocations stay capped at 15 min (even if `Timeout` is higher; `GetFunctionConfiguration` still reports the configured value). The Init phase is still capped at 15 min. Durable Functions: each step can run up to 90 min; a multi-step workflow up to 1 year.
+- **Function timeout up to 5400s (90 min)** — set via the existing `Timeout` field (CLI `update-function-configuration --timeout 5400`, SAM/CFN `Timeout: 5400`, or console). Uses the existing `Timeout` field — no separate API, property, tag, or code change is required. Applies to **asynchronous and ESM invocations only**; synchronous invocations can run for up to 30 min (1800s), so set `Timeout` up to 1800 for a synchronous job that fits; if `Timeout` is higher, Lambda stops a synchronous invocation after 30 min (`GetFunctionConfiguration` still reports the configured value). On-Demand functions allow up to 30 min for every invocation type. The Init phase is still capped at 15 min. Durable Functions: each step can run up to 90 min; a multi-step workflow up to 1 year. To invoke a durable function synchronously, through an ESM, or through a function URL, set its durable execution timeout (`DurableConfig` `ExecutionTimeout`, separate from the function `Timeout`) to 1800s (30 min) or less.
 
 ### Step 4: Migrate the Code
 
@@ -159,13 +159,14 @@ Review code for concurrency safety. LMI runs multiple invocations concurrently p
 - **SQS**: the queue visibility timeout MUST be ≥ the function timeout (≥ 5400s for a 90-min function). The ESM validates this on create and update — but once the ESM exists, the SQS visibility timeout and the function timeout can each be changed independently (outside the ESM API), which bypasses the check and can reintroduce a mismatch, causing messages to reappear and duplicate invokes.
 - **Kinesis / DynamoDB Streams**: enable **partial batch failure reporting** (`ReportBatchItemFailures`) and tune the max batching window and parallelization factor — otherwise one failed record retries the whole batch, re-running up to ~80 min of already-completed work.
 - **Asynchronous invocations**: failed or timed-out invocations follow the retry policy (up to 2 retries by default), then route to the DLQ / on-failure destination.
-- **Not all ESM sources qualify**: Amazon MQ and Amazon DocumentDB ESM remain limited to 15 min; only SQS, Kinesis, and DynamoDB Streams ESM (and asynchronous invocations) get 90 min.
+- **Not all ESM sources qualify**: Amazon MQ and Amazon DocumentDB ESM support function timeouts of up to 14 min; other ESM sources (SQS, Kinesis, DynamoDB Streams, Amazon MSK, and self-managed Kafka) and asynchronous invocations get 90 min. Confirm the limit for the source in use in the [event source mapping docs](https://docs.aws.amazon.com/lambda/latest/dg/invocation-eventsourcemapping.html).
 - **Observability is unchanged**: CloudWatch, CloudTrail (one Invoke event on completion/timeout), and X-Ray (single trace) behave identically. Use X-Ray sub-segments to find slow phases near the 90-min limit.
 
 ### Long-running networking (functions now run for tens of minutes)
 
 - **NAT Gateway idle timeout** — send periodic keep-alive packets on long-lived TCP connections through a NAT Gateway.
 - **Idle connection timeouts** (RDS, ElastiCache, external APIs) — add connection health checks / reconnection logic for connections that may go idle mid-computation.
+- **Synchronous callers** — set the client read timeout higher than the function timeout and turn on TCP keep-alive (AWS CLI: `--cli-read-timeout 0`). Some services stop waiting sooner: API Gateway REST APIs after 29s by default, HTTP APIs after 30s at most.
 - **DNS TTL** — re-resolve external hostnames periodically; the AWS SDK does this, but custom HTTP clients may cache beyond TTL.
 - **Credentials** — rely on the execution role's ephemeral credentials (automatically refreshed by the runtime). For non-IAM secrets (DB passwords, API keys), retrieve them from AWS Secrets Manager or SSM Parameter Store with SDK caching and periodic refresh; never embed long-lived credentials in code or environment variables.
 
@@ -175,9 +176,9 @@ Review code for concurrency safety. LMI runs multiple invocations concurrently p
 |----------|-------|
 | Memory | 2 GB min, 32 GB max |
 | Asynchronous/ESM invoke timeout | 90 min (5400s), via the existing Timeout field |
-| Sync + On-Demand invoke timeout | 15 min |
+| Synchronous invoke timeout | Up to 30 min (1800s); Lambda stops synchronous invocations at 30 min even if Timeout is higher |
 | Init phase | 15 min |
-| ESM sources capped at 15 min | Amazon MQ, Amazon DocumentDB (SQS/Kinesis/DynamoDB Streams get 90 min) |
+| ESM sources capped at 14 min | Amazon MQ, Amazon DocumentDB (other ESM sources get 90 min); see the [event source mapping docs](https://docs.aws.amazon.com/lambda/latest/dg/invocation-eventsourcemapping.html) |
 | Execution environments | 3 minimum (MinExecutionEnvironments, AZ resiliency) |
 | Instance lifespan | 14 days (auto-replaced) |
 | Concurrency/vCPU | 64 (Node.js), 32 (Java/.NET), 16 (Python) |
