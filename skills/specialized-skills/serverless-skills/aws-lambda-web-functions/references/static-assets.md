@@ -1,6 +1,10 @@
 # Static Assets
 
-Lambda Web Functions serves static files directly from your framework. No separate CDN setup needed for most sites.
+Lambda Web Functions serves static files directly from your framework, with no separate CDN to set
+up. That is enough for development and low-traffic internal tools, but the managed domain is
+HTTP/1.1 only and returns responses uncompressed regardless of `Accept-Encoding`, and it cannot
+carry a custom domain. For a production or performance-sensitive site, put CloudFront in front —
+see [domains-and-routing.md](references/domains-and-routing.md).
 
 ## Project Structure
 
