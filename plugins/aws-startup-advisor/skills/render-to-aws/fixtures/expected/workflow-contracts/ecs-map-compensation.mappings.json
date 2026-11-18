@@ -1,0 +1,9 @@
+{
+  "description": "Synthetic Design mappings for Workflow generation contract tests: Lambda step, ECS Fargate step with Map fan-out, and a Lambda compensation task. Only the fields read by Generate are present; this is not a full aws-design.json.",
+  "mappings": [
+    {"source_resource_id": "wf-ship", "render_kind": "render.workflow", "aws_service": "AWS Step Functions Standard", "aws_config": {"history": "auditable", "callbacks": false, "task_order": ["task-prepare", "task-render"]}},
+    {"source_resource_id": "task-prepare", "render_kind": "render.workflow_task", "aws_service": "AWS Lambda", "aws_config": {"timeout_seconds": 120, "retry": {"max_retries": 2, "wait_duration_ms": 5000, "backoff_scaling": 1.5}}},
+    {"source_resource_id": "task-render", "render_kind": "render.workflow_task", "aws_service": "ECS on Fargate task", "aws_config": {"timeout_minutes": 20, "retry": {"max_retries": 4, "wait_duration_ms": 10000, "backoff_scaling": 2.0}, "fan_out": {"max_concurrency": 4}, "compensation_task": "task-undo"}},
+    {"source_resource_id": "task-undo", "render_kind": "render.workflow_task", "aws_service": "AWS Lambda", "aws_config": {"timeout_seconds": 60, "retry": {"max_retries": 1, "wait_duration_ms": 1000, "backoff_scaling": 1.0}}}
+  ]
+}

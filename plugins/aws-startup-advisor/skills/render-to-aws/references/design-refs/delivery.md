@@ -10,7 +10,7 @@ Select `AWS Secrets Manager + AWS Systems Manager Parameter Store`. Classify nam
 
 ## Build Sources and artifacts
 
-Select `Amazon ECR + CI/CD immutable digest promotion` for a shared Build Source/artifact. Build once, scan, push, and promote the same digest across environments; do not rebuild per environment. A source-only Build Source first produces one immutable image artifact. Separate build-time and runtime variable-name scopes and keep values out of artifacts. Reject independent per-service builds because they break the discovered promotion relationship.
+Select `Amazon ECR + CI/CD immutable digest promotion` for a shared Build Source/artifact. `delivery.ci_owner` names the CI system that runs it. Build once, scan, push, and promote the same digest across environments; do not rebuild per environment. A source-only Build Source first produces one immutable image artifact. Separate build-time and runtime variable-name scopes and keep values out of artifacts. Reject independent per-service builds because they break the discovered promotion relationship.
 
 ## Projects and environments
 
@@ -22,8 +22,8 @@ Select ACM plus the already selected serving endpoint. Add Route 53 only with co
 
 ## Preview environments
 
-Select `CI/CD ephemeral AWS stack` as delivery behavior. Preserve trigger, lifetime, isolation, safe data seeding, domain pattern, cost guard, and cleanup. Automatic preview recreation may be unsupported by Generate, but Design still records one delivery target and the generation limitation explicitly.
+Select `CI/CD ephemeral AWS stack` as delivery behavior when `delivery.preview_policy` is `per_pr_stack`; `shared_staging` selects one long-lived staging stack and records the per-PR stack as rejected. Preserve trigger, lifetime, isolation, safe data seeding, domain pattern, cost guard, and cleanup. Automatic preview recreation may be unsupported by Generate, but Design still records one delivery target and the generation limitation explicitly.
 
 ## Logs, metrics, and alarms
 
-Select `Amazon CloudWatch Logs, Metrics, and Alarms` deterministically. Derive retention, alarms, dashboards, and optional tracing from preferences and observed availability. Successful-empty or plan-gated source metrics are evidence absence, not zero. Do not ingest broad application log bodies.
+Select `Amazon CloudWatch Logs, Metrics, and Alarms` deterministically. Derive retention (`observability.log_retention`), alarms, dashboards, and optional tracing from preferences and observed availability. Successful-empty or plan-gated source metrics are evidence absence, not zero. Do not ingest broad application log bodies.

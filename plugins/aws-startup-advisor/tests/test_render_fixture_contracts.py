@@ -303,19 +303,18 @@ def test_generate_ledger_schemas_and_complete_target_accounting() -> None:
     assert len(classified) == len(set(classified)) == ledger["accounting"]["accounted_count"]
     assert ledger["accounting"] == {
         "design_count": 15,
-        "generated_count": 11,
+        "generated_count": 13,
         "consumed_topology_count": 2,
         "deferred_count": 0,
-        "unsupported_count": 2,
+        "unsupported_count": 0,
         "accounted_count": 15,
         "source_resource_ids": design_ids,
     }
     codes = {row["code"] for row in ledger["warnings"]}
-    assert codes == {
-        "conditional_workflow_generation_unsupported",
-        "deferred_shared_ai_engine",
-        "ecs_express_not_selected_rolling_release",
-    }
+    assert codes == {"deferred_shared_ai_engine", "ecs_express_not_selected_rolling_release"}
+    workflow_rows = {row["source_resource_id"]: row for row in ledger["generated"] if row["source_resource_id"].startswith("rr-workflow")}
+    assert set(workflow_rows) == {"rr-workflow", "rr-workflow-task"}
+    assert all(row["target_files"] == ["terraform/workflow.tf"] for row in workflow_rows.values())
     assert all(row["target_files"] == [] for row in ledger["unsupported"])
     assert not any("ai" in path.lower() for row in ledger["generated"] for path in row["target_files"])
 
@@ -325,7 +324,7 @@ def test_generated_terraform_docs_and_scripts_cover_cutover_and_rollback() -> No
     terraform = generated / "terraform"
     required = {
         "main.tf", "variables.tf", "outputs.tf", "network.tf", "compute.tf",
-        "data.tf", "storage.tf", "delivery.tf", "README.md",
+        "data.tf", "storage.tf", "delivery.tf", "workflow.tf", "README.md",
         "terraform.tfvars.example", ".gitignore",
     }
     assert required <= {path.name for path in terraform.iterdir()}
@@ -358,7 +357,7 @@ def test_generated_terraform_docs_and_scripts_cover_cutover_and_rollback() -> No
     assert 'file_system_id     = aws_efs_file_system.application.id' in compute
     assert 'access_point_id = aws_efs_access_point.application.id' in compute
     assert 'transit_encryption = "ENABLED"' in compute
-    assert "aws_sfn_state_machine" not in tf
+    assert "aws_sfn_state_machine" in tf
     assert "bedrock" not in tf.lower()
     assert re.search(r"publicly_accessible\s*=\s*false", tf)
     assert re.search(r"storage_encrypted\s*=\s*true", tf)
@@ -386,7 +385,7 @@ def test_generated_terraform_docs_and_scripts_cover_cutover_and_rollback() -> No
     assert 'security_groups  = [aws_security_group.worker.id]' in compute
     assert 'subnets          = aws_subnet.private[*].id' in compute
     assert 'from_port   = 5432' in network and 'from_port   = 6379' in network
-    assert 'vpc_security_group_ids      = [aws_security_group.data.id]' in tf
+    assert 'vpc_security_group_ids          = [aws_security_group.data.id]' in tf
     assert 'security_group_ids         = [aws_security_group.data.id]' in tf
     assert "certificate_arn   = var.issued_certificate_arn" in network
     assert "aws_acm_certificate.web.arn" not in network
@@ -578,6 +577,51 @@ def test_fixture_promotion_script_matches_harness_emitter() -> None:
     assert fixture == harness._promotion_script().encode("utf-8")
     assert b'promotion_tag="deploy-${target_environment}-${digest_short}"' in fixture
     assert b'image_reference="${repository_url}@${digest}"' in fixture
+
+
+def test_generated_data_tf_and_outputs_satisfy_the_data_fragment() -> None:
+    terraform = EXPECTED / "generated/terraform"
+    data_tf = (terraform / "data.tf").read_text(encoding="utf-8")
+    outputs_tf = (terraform / "outputs.tf").read_text(encoding="utf-8")
+    parameter_group = re.search(r'resource "aws_db_parameter_group" "postgres" \{.*?\n\}\n', data_tf, flags=re.DOTALL)
+    assert parameter_group and re.search(r'family\s*=\s*"postgres16"', parameter_group.group(0))
+    assert re.search(r'name\s*=\s*"rds\.force_ssl"\s*value\s*=\s*"1"', parameter_group.group(0))
+    instance = re.search(r'resource "aws_db_instance" "postgres" \{.*?\n\}\n', data_tf, flags=re.DOTALL)
+    assert instance
+    for pattern in (
+        r"parameter_group_name\s*=\s*aws_db_parameter_group\.postgres\.name",
+        r"max_allocated_storage\s*=\s*\d+",
+        r'storage_type\s*=\s*"gp3"',
+        r"performance_insights_enabled\s*=\s*true",
+        r'enabled_cloudwatch_logs_exports\s*=\s*\["postgresql", "upgrade"\]',
+        r"copy_tags_to_snapshot\s*=\s*true",
+        r"maintenance_window\s*=",
+        r"apply_immediately\s*=\s*false",
+        r"deletion_protection\s*=\s*true",
+        r"skip_final_snapshot\s*=\s*false",
+    ):
+        assert re.search(pattern, instance.group(0)), pattern
+    assert int(re.search(r"max_allocated_storage\s*=\s*(\d+)", instance.group(0)).group(1)) > int(
+        re.search(r"\ballocated_storage\s*=\s*(\d+)", instance.group(0)).group(1)
+    )
+    cache = re.search(r'resource "aws_elasticache_replication_group" "valkey" \{.*?\n\}\n', data_tf, flags=re.DOTALL)
+    assert cache
+    for pattern in (
+        r"parameter_group_name\s*=\s*aws_elasticache_parameter_group\.valkey\.name",
+        r"user_group_ids\s*=",
+        r"snapshot_retention_limit\s*=\s*\d+",
+        r"snapshot_window\s*=",
+        r"maintenance_window\s*=",
+        r"multi_az_enabled\s*=\s*true",
+        r"apply_immediately\s*=\s*false",
+    ):
+        assert re.search(pattern, cache.group(0)), pattern
+    assert re.search(r'family\s*=\s*"valkey8"', data_tf) and re.search(r'name\s*=\s*"maxmemory-policy"', data_tf)
+    for output in ("database_endpoint", "database_port", "database_secret_arn", "valkey_endpoint"):
+        assert f'output "{output}"' in outputs_tf, output
+    assert "password" not in data_tf.replace("manage_master_user_password", "").replace("no_password_required", "")
+    # no kms.tf in the golden pack, so the data tier uses AWS-managed encryption and names no key
+    assert not (terraform / "kms.tf").exists() and "kms" not in data_tf
 
 
 def test_generated_valkey_engine_matches_design_selection() -> None:
@@ -956,6 +1000,8 @@ def _materialize_complete_mocked_pipeline(root: Path) -> dict[str, bytes]:
         else:
             classified.append(record)
     warnings = load(EXPECTED / "generated/generation-warnings.json")["warnings"]
+    if unsupported and not any(row["code"] == "conditional_workflow_generation_unsupported" for row in warnings):
+        warnings = [*warnings, {"code": "conditional_workflow_generation_unsupported", "subject": "Workflow artifacts", "detail": "This mocked estate declares no Workflow semantics that the generation contract tests cover.", "blocking": False}]
     ledger = {"schema_version": "1.0", "phase": "generate", "generated": classified, "consumed_topology": consumed, "deferred": [], "unsupported": unsupported, "warnings": warnings, "accounting": {"design_count": len(source_ids), "generated_count": len(classified), "consumed_topology_count": len(consumed), "deferred_count": 0, "unsupported_count": len(unsupported), "accounted_count": len(source_ids), "source_resource_ids": source_ids}}
     jsonschema.Draft202012Validator(load(SKILL_ROOT / "references/shared/schema-generation-warnings.json")).validate(ledger)
 
@@ -1149,6 +1195,42 @@ def test_complete_mocked_pipeline_replays_all_phases_from_same_inventory(tmp_pat
     second = _materialize_independent_mixed_pipeline(tmp_path / "second")
     assert first == second
 
+def test_golden_preferences_cover_every_new_clarify_question() -> None:
+    from test_render_phase_contracts import clarify_question_rows
+    expected_ids = {row["question_id"].strip("`") for row in clarify_question_rows()}
+    questions = load(EXPECTED / "preferences.json")["questions"]
+    assert expected_ids <= {row["question_id"] for row in questions}
+    keys = [((row["resource_id"] or "").encode(), row["question_id"].encode()) for row in questions]
+    assert keys == sorted(keys) and len(set(keys)) == len(keys)
+    for row in questions:
+        if row["question_id"] in expected_ids:
+            assert row["decision_changed"].strip()
+
+
+def test_golden_guide_reflects_golden_clarify_answers() -> None:
+    answers = {(row["question_id"], row["resource_id"]): row for row in load(EXPECTED / "preferences.json")["questions"]}
+    sections: dict[str, str] = {}
+    current = ""
+    for line in (EXPECTED / "generated/MIGRATION_GUIDE.md").read_text(encoding="utf-8").splitlines():
+        if line.startswith("## "):
+            current = line[3:]
+            sections[current] = ""
+        elif current:
+            sections[current] += line + "\n"
+    expectations = [
+        (("delivery.ci_owner", None), "github_actions", "Build and deployment migration", "GitHub Actions"),
+        (("identity.human_sign_in", None), "identity_center_directory", "Prerequisites", "IAM Identity Center"),
+        (("observability.log_retention", None), "30_days", "Prerequisites", "30 days"),
+        (("cutover.source_retention", None), "retain_14_days", "Rollback and source retention", "14 days"),
+        (("key_value.migration_strategy", "rr-kv"), "empty_start", "Key Value migration", "empty start"),
+        (("cutover.downtime_window", None), "short_window", "DNS and traffic cutover", "single switch"),
+    ]
+    for key, value, section, phrase in expectations:
+        assert answers[key]["value"] == value, key
+        assert phrase in sections[section], f"{section} ignores {key[0]}={value}"
+    assert "staged weighted shift" not in sections["DNS and traffic cutover"]
+    assert "dual-write transition" not in sections["Key Value migration"]
+    assert "small traffic slice" not in sections["DNS and traffic cutover"]
 
 
 def test_golden_baseline_and_operations_terraform() -> None:
@@ -1229,7 +1311,7 @@ def test_baseline_opt_out_leaves_valid_terraform(tmp_path: Path) -> None:
     )
     assert count == 1
     assert "########## Remote State ##########" in opted_out
-    assert 'variable "operations_email"' in opted_out and 'data "aws_partition" "current"' in opted_out
+    assert 'variable "operations_email"' in opted_out and 'data "aws_partition" "current"' not in opted_out
     (copy / "baseline.tf").write_text(opted_out, encoding="utf-8")
     tfvars = copy / "terraform.tfvars.example"
     tfvars.write_text(

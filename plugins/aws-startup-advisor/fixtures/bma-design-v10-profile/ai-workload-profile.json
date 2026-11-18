@@ -1,0 +1,40 @@
+{
+  "schema_version": "1.0",
+  "ai_sources": [
+    {
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model_families": [
+        "gpt"
+      ],
+      "model_evidence": "observed",
+      "models": [
+        "gpt-4o"
+      ],
+      "model_observations": [
+        {
+          "normalized_model": "gpt-4o",
+          "raw_model": "gpt-4o",
+          "model_family": "gpt",
+          "evidence": [
+            {
+              "provenance": "user_confirmed",
+              "confidence": "high"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "provider": "anthropic",
+      "source_service": "anthropic_api",
+      "model_families": [
+        "claude"
+      ],
+      "model_evidence": "not_observed",
+      "models": [],
+      "model_observations": []
+    }
+  ],
+  "gateways": []
+}

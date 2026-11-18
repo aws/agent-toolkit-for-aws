@@ -48,7 +48,7 @@ aws bedrock list-foundation-models \
 **OpenAI proprietary GPT IDs.**
 
 **Check this before Step 1.** Route by family and endpoint (GPT-5 verified 2026-08-21; Astra regions verified 2026-09-30; see
-`gcp-to-aws/references/shared/openai-on-bedrock.md`):
+`gcp-to-aws/references/vendored/ai/openai-on-bedrock.md`):
 
 **Case A — bare GPT-5.5 / GPT-5.4 ids (`openai.gpt-5.5`, `openai.gpt-5.4`) when the plan targets the mantle
 endpoint: bare mantle id, not an inference profile.** The inference-profile path below cannot resolve the bare form —
@@ -97,10 +97,11 @@ otherwise be unreachable from free text; it is not a replacement for Step 1's in
 other provider/model.
 
 **Case B — GPT-5.6, GPT-6, and GPT-5.5 / GPT-5.4 on `bedrock-runtime` (`openai.gpt-5.6-sol` / `-terra` / `-luna`,
-`openai.gpt-6-astra` / `-sol` / `-luna`, `openai.gpt-6.1-sol`, `openai.gpt-5.5` / `openai.gpt-5.4` with a runtime
-plan, or already `us.` / `in.` / `global.` prefixed): BOTH paths exist.** The bare id is the mantle form;
+`openai.gpt-6-astra` / `-sol` / `-luna`, `openai.gpt-6.1-sol` / `-terra`, `openai.gpt-5.5` / `openai.gpt-5.4` with a
+runtime plan, or already `us.` / `in.` / `us-gov.` / `global.` prefixed): BOTH paths exist.** The bare id is the mantle form;
 `bedrock-runtime` serves these models through CRIS inference profiles (`us.openai.gpt-5.6-*` / `us.openai.gpt-6-*` /
-`us.openai.gpt-5.5` / `us.openai.gpt-5.4`, `in.openai.gpt-5.6-*` in India Regions, `global.openai.gpt-5.6-*` /
+`us.openai.gpt-5.5` / `us.openai.gpt-5.4`; for GPT-5.6 Terra and Luna only, `in.` in India Regions and `us-gov.` in
+GovCloud; `global.openai.gpt-5.6-*` /
 `global.openai.gpt-6-*` / `global.openai.gpt-5.5` / `global.openai.gpt-5.4`), which `list-inference-profiles` DOES
 return. Route on the plan's intent:
 
@@ -110,7 +111,8 @@ return. Route on the plan's intent:
   continue to Step 1; the normal inference-profile resolution below applies to these ids like any other CRIS
   profile. Note the runtime base URL for these models is `bedrock-runtime.{region}.amazonaws.com/openai/v1`.
 
-The four bare GPT-6 IDs (`openai.gpt-6-astra`, `openai.gpt-6-sol`, `openai.gpt-6-luna`, `openai.gpt-6.1-sol`)
+The five bare GPT-6 IDs (`openai.gpt-6-astra`, `openai.gpt-6-sol`, `openai.gpt-6-luna`, `openai.gpt-6.1-sol`,
+`openai.gpt-6.1-terra`)
 follow Case A's catalog-lookup procedure when the plan targets the bare/mantle endpoint; when the plan targets
 `bedrock-runtime` (`migration_path: runtime_openai_cris` or an already-CRIS-prefixed id), they follow this Case's
 inference-profile procedure instead — same routing rule as GPT-5.6, just a different id family.
@@ -126,7 +128,7 @@ inference-profile procedure instead — same routing rule as GPT-5.6, just a dif
   A different region returns `blocked` with `reason: model_unresolvable`; offer Virginia, Oregon, or a supported
   runtime CRIS path through the orchestrator. Do not silently add a prefix or change endpoints.
 - `us.` / `global.` id → Step 1, then require an exact live profile match in the caller region.
-  Check the Astra runtime matrix in `gcp-to-aws/references/shared/openai-on-bedrock.md`;
+  Check the Astra runtime matrix in `gcp-to-aws/references/vendored/ai/openai-on-bedrock.md`;
   a Global-only caller region does not satisfy US Geo residency.
 - An `in.` / `eu.` prefix, version suffix, partial id, or conflicting endpoint/id pair → `blocked`.
   Do not substitute GPT-5.6 or manufacture an Astra profile.
@@ -227,7 +229,7 @@ stops on abort.
   inference profile. Bare mantle ids (any proprietary GPT model — GPT-5.5/5.4, GPT-5.6, GPT-6 — when the plan
   targets the mantle endpoint), and London in-region Opus 5.5, are handled entirely in Step 0; GPT-5.6/GPT-6 and
   GPT-5.5/5.4 CRIS ids flow through Steps 1–5 like any other inference profile. See
-  `$ASSESS_BASE/references/shared/openai-on-bedrock.md` for the authoritative
+  `$ASSESS_BASE/references/vendored/ai/openai-on-bedrock.md` for the authoritative
   family split.
 - A `runtime_messages` plan (Anthropic SDK on the `bedrock-runtime` `/anthropic` endpoint)
   resolves exactly like Converse: a supported `us.`/`eu.`/`global.` inference profile through

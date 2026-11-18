@@ -1,0 +1,21 @@
+<View>
+  <Text name="query" value="$query"/>
+  <Header value="Retrieved context"/>
+  <Text name="context" value="$context"/>
+  <Header value="Generated answer"/>
+  <Text name="answer" value="$answer"/>
+
+  <Header value="Is the answer grounded in the context?"/>
+  <Choices name="groundedness" toName="answer" choice="single" showInLine="true">
+    <Choice value="fully grounded"/>
+    <Choice value="partially grounded"/>
+    <Choice value="not grounded"/>
+  </Choices>
+  <Header value="Is the retrieved context relevant?"/>
+  <Choices name="relevance" toName="context" choice="single" showInLine="true">
+    <Choice value="relevant"/>
+    <Choice value="partially relevant"/>
+    <Choice value="irrelevant"/>
+  </Choices>
+  <Rating name="answer_quality" toName="answer" maxRating="5"/>
+</View>

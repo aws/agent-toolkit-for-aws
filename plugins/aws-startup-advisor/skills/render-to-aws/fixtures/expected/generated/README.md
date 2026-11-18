@@ -4,7 +4,7 @@ This fixture is the deterministic balanced-baseline output for the representativ
 
 ## Artifacts
 
-- `terraform/` — supported AWS infrastructure; no AI or unsupported Workflow resources.
+- `terraform/` — supported AWS infrastructure, including `workflow.tf` for the tested Workflow semantics; no AI resources.
 - `MIGRATION_GUIDE.md` — prerequisites, migration, cutover, verification, rollback, and source retention.
 - `scripts/promote-image.sh` — immutable ECR digest promotion.
 - `scripts/migrate-postgres.sh` — dry-run-first PostgreSQL migration stages.

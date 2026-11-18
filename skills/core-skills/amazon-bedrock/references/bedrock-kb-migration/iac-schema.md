@@ -19,7 +19,7 @@
 > endpoint. Terraform: the authoritative source of record is the **HashiCorp Terraform Registry** page for
 > the AWS provider (links in §3–§4), but it is JS-rendered, so `curl` its plain-text twin — the provider's
 > raw GitHub Markdown, identical content — instead. Do not download the Terraform provider to check
-> it (§0); if the user runs `terraform providers schema -json` themselves, its output wins on any conflict.
+> it (§0); if the customer runs `terraform providers schema -json` themselves, its output wins on any conflict.
 
 ## Contents
 
@@ -50,15 +50,15 @@ aws cloudformation describe-type --type RESOURCE \
 
 **Terraform: do not run a local schema check.** `terraform providers schema -json` and
 `terraform validate` need `terraform init`, which downloads the AWS provider (a large download) — too
-heavy for a migration review, and it reads the user's global Terraform configuration. Take argument
+heavy for a migration review, and it reads the customer's global Terraform configuration. Take argument
 names from the documented shapes in §3–§4 (the registry's raw GitHub Markdown, per the note above),
-record `schema_valid: unverified` for the Terraform file, show the user a `diff -u` of the source file
-against the migrated one, and give them the command to run before they deploy:
+record `schema_valid: unverified` for the Terraform file, show the customer a `diff -u` of the source file
+against the migrated one, and give them, as theirs to run before they deploy, the validation step that
+[implement IaC](references/bedrock-kb-migration/implement-iac.md) Step 4 describes. The diff below is
+only the review artifact, not that validation step:
 
 ```bash
 diff -u main.tf "$output_dir/managed-target.tf"     # the review artifact; read-only
-# for the user to run before deploy, not the agent:
-terraform init -backend=false && terraform validate
 ```
 
 **Record the verification outcome — and never upgrade an unverified shape to a verified one.** The
@@ -69,7 +69,7 @@ result of §0 is one of exactly three states, and it is what the Implement phase
 |---|---|---|
 | The check ran and the emitted shapes match | `verified` | Safe to present as deployable |
 | The check ran and found a violation | `invalid` | Report the offending resource/property, withhold from the deployable set |
-| The check **could not run** (tool absent, no credentials, no provider, region unsupported) | `unverified` | Say which command was unavailable and why. The template is **documented-shape only** — present it as needing the user's own validation before deploy. It is **not** `verified` |
+| The check **could not run** (tool absent, no credentials, no provider, region unsupported) | `unverified` | Say which command was unavailable and why. The template is **documented-shape only** — present it as needing the customer's own validation before deploy. It is **not** `verified`. Never for a file that failed to parse: that one is `invalid` ([implement IaC](references/bedrock-kb-migration/implement-iac.md) Step 4) |
 
 If `terraform` or the AWS CLI is not installed, the honest answer is `unverified`, not `true`. And if either
 live schema disagrees with this file, **trust the live schema**, generate from it, and update this reference
@@ -275,8 +275,8 @@ The provider supports the managed KB directly in recent `hashicorp/aws` versions
 exposes `managed_knowledge_base_connector_configuration`. Read the first version that adds these blocks from the
 provider's CHANGELOG (`https://github.com/hashicorp/terraform-provider-aws/blob/main/CHANGELOG.md`, search
 `managed_knowledge_base`) and say that minimum version in the output — older provider versions lack it.
-Suggest `terraform fmt` alongside `terraform validate` to the user. The agent does not
-check the installed version (§0): the shape is `unverified`, and the user's own `terraform validate`
+Suggest `terraform fmt` alongside `terraform validate` to the customer. The agent does not
+check the installed version (§0): the shape is `unverified`, and the customer's own `terraform validate`
 is what confirms it.
 
 `managed_knowledge_base_configuration` accepts exactly: `embedding_model_arn`, `embedding_model_type`,
@@ -288,9 +288,12 @@ embedding_data_type, audio { … }, video { … } } }`, and
 `storage_configuration`** (auto-provisioned). `embedding_model_type = "MANAGED"` is the service-managed
 model and keeps the managed reranker. Carry the source KB's CMK forward in
 `server_side_encryption_configuration.kms_key_arn` (see
-[managed KB API](references/bedrock-kb-migration/managed-kb-api.md) "Encryption at rest"); omit that block
-only when the customer accepts the AWS-owned default, and never silently drop a CMK the source KB was
-using:
+[managed KB API](references/bedrock-kb-migration/managed-kb-api.md) "Encryption at rest"), and never
+silently drop a CMK the source KB was using. When the source had no CMK, the customer chose the AWS-owned
+key, or the key could not be read (then also ask whether the source used a CMK, per managed KB API
+"Encryption at rest"), omit
+that block and still emit the file: the new KB uses the AWS-owned key, which is the default. Say so plainly
+and show how to add the block for a CMK. With a CMK:
 
 ```hcl
 resource "aws_bedrockagent_knowledge_base" "example" {

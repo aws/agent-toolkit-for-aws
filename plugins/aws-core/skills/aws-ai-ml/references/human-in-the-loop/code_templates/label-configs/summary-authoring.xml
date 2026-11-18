@@ -1,0 +1,5 @@
+<View>
+  <Text name="document" value="$document"/>
+  <Header value="Write a summary of the text"/>
+  <TextArea name="summary" toName="document" rows="4" maxSubmissions="1" required="true"/>
+</View>

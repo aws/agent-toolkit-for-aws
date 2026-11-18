@@ -1,6 +1,7 @@
 ---
-source_url: https://aws.amazon.com/startups/prompt-library/aws-guardduty
+source_url: "https://startups.aws.com/prompt-library/aws-guardduty"
 title: "AWS GuardDuty & Security Hub Automated Deployment"
+kind: "prompt"
 tags: ["Security & Compliance", "Deployment", "Intermediate", "GuardDuty", "Security Hub"]
 ---
 
@@ -10,7 +11,9 @@ Deploy comprehensive threat detection and security monitoring with GuardDuty and
 
 ## System Prompt
 
-## AWS GuardDuty and Security Hub Deployment
+<!-- markdownlint-disable -->
+
+# AWS GuardDuty and Security Hub Deployment
 
 ## Prompt
 
@@ -28,9 +31,9 @@ Deploy and configure the following components:
    - Enable GuardDuty in the target AWS region(s)
    - Configure detector settings with appropriate finding publishing frequency
    - Enable protection plans if related resources exist:
-     - S3 Protection
-     - EKS Protection (enable Runtime Protection too)
-     - Malware Protection
+      - S3 Protection
+      - EKS Protection (enable Runtime Protection too)
+      - Malware Protection 
    - Set up trusted IP lists and threat lists if applicable
 
 2. **AWS Security Hub**
@@ -59,13 +62,11 @@ Deploy and configure the following components:
 ## Deliverables
 
 Provide Infrastructure as Code (IaC) using one of the following:
-
 - AWS CloudFormation template (YAML or JSON)
 - Terraform configuration files
 - AWS CDK code (Python, TypeScript, or Java)
 
 Include:
-
 - Complete deployment scripts with all required resources
 - Configuration parameters for customization (email addresses, regions, severity thresholds)
 - Documentation explaining the architecture and deployment steps
@@ -75,7 +76,6 @@ Include:
 ## Expected Behavior
 
 When deployed, the solution should:
-
 1. Automatically detect and analyze security threats across the AWS environment
 2. Aggregate findings from multiple security services in Security Hub
 3. Trigger notifications via email when critical or high severity findings are detected
@@ -94,9 +94,10 @@ When deployed, the solution should:
 ## Success Criteria
 
 The deployment is successful when:
-
 - GuardDuty is actively monitoring and generating findings
 - Security Hub is aggregating findings from GuardDuty and other sources
 - Email notifications are received for test critical findings
 - All resources are properly tagged and documented
 - The solution follows AWS Well-Architected Framework security best practices
+
+<!-- markdownlint-enable -->

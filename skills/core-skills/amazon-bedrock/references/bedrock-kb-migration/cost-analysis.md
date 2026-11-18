@@ -4,13 +4,20 @@ The cost procedure for the Discover phase's optional cost analysis and for any d
 any phase. It is a **fixed sequence of steps, run in order**: scope → input gate → inputs → measurement →
 plausibility → rates → script → output table → verdict. Each step says what it needs from the previous
 one. Do not skip to a number; the inputs decide what can be said. Every read here is read-only
-(`Get*`/`List*`/`Describe*`/`BatchGet*`) and pre-approved: display each labeled READ-ONLY and run it
-without waiting. Read any public AWS page per
+(`Get*`/`List*`/`Describe*`/`BatchGet*`); display each labeled READ-ONLY. The **account cost reads**
+(CloudWatch, Cost Explorer, and S3 sizing done for cost) wait for the cost yes (Step 0); after it, run
+them without waiting. The other reads here are pre-approved: run them without waiting. Public price reads
+(the Price List API and the pricing pages) may come before the yes. A Service Quotas read is not a cost
+read and needs no cost yes. Read any public AWS page per
 [safety-and-iam](references/bedrock-kb-migration/safety-and-iam.md).
 
 **This file carries no prices, quotas or capacity figures.** Each one is read live, in this conversation,
-from the page or API named next to it. If a fetch fails or a page comes back cut off, say the figure is
-unavailable and give the link; never fill it from memory.
+from the page or API named next to it. A link is a source claim: name or link a page as a source only if
+you fetched it in this conversation, and credit a Price List rate to the Price List API (or the offer-file
+URL you read), never to a pricing page that did not show that rate. The links in these reference files say
+where to read a fact; they are not sources until you fetch them. A page you did not fetch may be linked
+only as where to check, saying you did not read it. If a fetch fails or a page comes back cut off, say the
+figure is unavailable and give the link; never fill it from memory.
 
 ## Contents
 
@@ -40,14 +47,22 @@ Reference (not steps):
 
 **The gate.** The unprompted cost analysis is **asked exactly once, at the Identify phase**, and is
 **opt-out, not automatic**. Enabling it is the recommended answer, but it still needs an **explicit yes**,
-never inferred from the request or from the fact that the user asked about migration.
+never inferred from the request or from the fact that the customer asked about migration.
 
 - **enabled** — the Discover phase runs Steps 1-9 for each KB.
 - **declined** — no cost probe runs. Record one declined outcome per KB ([E](#e-output-record)); it is an
   absence of work, not a finding about the store.
 
-The gate governs only the *unprompted* run. A user who declined and later asks a cost question **has
-requested it**: answer it in full with Steps 1-9. The gate can be re-enabled later.
+The gate governs only the *unprompted* run. A cost question from a customer who declined, or in Explore where
+the gate was never asked, opens the cost path; it is not the yes to the account cost reads. Ask once for
+that yes and end the turn, and run no account cost read until it comes; public price reads may come first.
+A question that already gives the yes in the customer's own words ("based on our actual usage") needs no
+second ask. On a yes, answer it in full with Steps 1-9; on a no, answer from public price reads and the
+figures the customer gives (Step 1), without Step 1's offer to measure. Either answer covers every later
+cost question this session: do not ask it again; the customer can still give the yes later. Neither
+changes `cost_analysis`: a declined gate still runs no unprompted analysis in Discover, and a yes in
+Explore does not answer the Identify gate. A declined gate changes only if the customer asks to turn the
+cost analysis back on.
 
 **Scope by vector store.** Decide it from the source KB's `storageConfiguration.type` and say it once:
 
@@ -107,25 +122,56 @@ supplies is customer-supplied, never measured.
 | # | Input | Side | Needed for | Where it comes from |
 |---|---|---|---|---|
 | 1 | Collection architecture (Classic, or a NextGen collection group), its capacity settings, `standbyReplicas`, KMS key, how many collections share its OCU pool | self-managed | REQUIRED (every self-managed figure is read against it) | Step 3.1 |
-| 2 | Search OCU, 30-day Average and Maximum | self-managed | REQUIRED for the self-managed total | Step 3.2, or the bill line (3.5) |
-| 3 | Indexing OCU, 30-day Average and Maximum | self-managed | REQUIRED for the self-managed total | Step 3.2, or the bill line (3.5) |
+| 2 | Search OCU, 30-day Average and Maximum | self-managed | REQUIRED for the self-managed total | Step 3.2, or the bill line when 3.5 makes it the figure |
+| 3 | Indexing OCU, 30-day Average and Maximum | self-managed | REQUIRED for the self-managed total | Step 3.2, or the bill line when 3.5 makes it the figure |
 | 4 | Vector-acceleration OCU | self-managed | when the metric reports | Step 3.2 |
 | 5 | Indexed storage GB (and hot storage GB on NextGen) | self-managed | REQUIRED for the self-managed total | Step 3.3 |
 | 6 | Raw corpus GB | Managed | REQUIRED for the Managed total | Step 3.3, or the customer |
 | 7 | **Vector count** of the KB's index | self-managed sizing | REQUIRED for Step 4 | Step 3.4 |
 | 8 | **Embedding model and dimension** | self-managed sizing | REQUIRED for Step 4 | Step 3.4 |
 | 9 | Retrieval calls per month, and the source of the number | Managed | REQUIRED for the Managed total | Step 3.6, app telemetry, or the customer |
-| 10 | Whether agentic retrieval is wanted; expected agentic calls per month | Managed | when wanted | the customer |
+| 10 | Whether agentic retrieval is wanted; expected agentic calls per month; its model mode (managed or custom); whether the app would use the agentic answer or keep writing answers with its own model; `Retrieve` calls per agentic query | Managed | when wanted | the customer; calls per query from the customer, or measured in a pilot by counting the Retrieval trace events per agentic call ([agentic retrieval guide](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-test-agentic-retrieve.html)); otherwise 2-5, an estimate that is not in the AWS documentation (the script shows both ends) |
 | 11 | Embedding token volume per ingest, and how often the corpus is re-ingested | self-managed (Managed only with a custom model) | when known; omitted from **both** sides when unknown | ingest bill, Cost Explorer model line, or the customer |
 | 12 | Parser in use (default, foundation-model, or Bedrock Data Automation) and its volume (tokens or pages) | self-managed | when not the default parser | `GetDataSource` parsing configuration; the customer |
 | 13 | Reranker in use and queries per month | self-managed | when implemented | the customer, app telemetry |
-| 14 | Whether a foundation model generates answers, which, and its token volume | both, symmetric | when known; omitted from **both** sides when unknown | the customer |
+| 14 | Which model writes the app's answers today, and its input and output tokens per answer | by case (below) | when agentic retrieval is wanted; otherwise optional (the same on both sides) | the customer |
 | 15 | Corpus growth per month and the horizon to compare over | both | optional | the customer |
+
+**Row 14, where answer generation goes.** Two settings decide it: the model mode, `foundationModelType`
+(managed mode, `MANAGED`: the service's built-in model; custom mode, `CUSTOM`: a model the customer picks),
+and `generateResponse` (true by default: the agentic call writes the answer)
+([agentic retrieval guide](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-test-agentic-retrieve.html)).
+
+| How the app gets its answer | Self-managed side | Managed side |
+|---|---|---|
+| The app's own model writes it (plain `Retrieve`, or agentic with `generateResponse` false) | the app's model tokens | the same; custom mode also pays its model's planning tokens |
+| Agentic, managed mode, its answer used | the app's model tokens | no answer line: the managed-mode agentic rate covers the planning and the answer |
+| Agentic, custom mode, its answer used | the app's model tokens | the customer's model's tokens for the planning and the answer, at its model price; there is no agentic rate in custom mode |
+
+- If the customer has not said whether the app would use the agentic answer, show both rows for their mode
+  (for each mode when none is picked).
+- An app that keeps writing its own answers sets `generateResponse` false; in custom mode an answer it
+  generates and ignores is still billed.
+- The token volume is stated by the customer or measured, never estimated (Step 2).
+
+**Agentic retrieval: the two model modes.** Say all four points whenever agentic retrieval comes up,
+including in the Step 2 ask and the Step 7 output:
+
+- Managed mode: no model choice.
+- Managed mode: no guardrail on the agentic call. A guardrail needs custom mode.
+- Managed mode: the agentic rate covers the planning and the answer. The pricing page names only the
+  planning; say the answer is covered as a fact, and that the page does not state it.
+- Custom mode: keeps the customer's own model, allows a guardrail, and bills that model's tokens. There is
+  no agentic rate.
+
+Recommend neither mode, also when the customer defers the choice to you; the customer decides.
 
 **The one rule for a stated OCU count.** A number of OCUs that the customer states, or that a
 collection's capacity settings show, counts as usage **only if** (a) it is a 30-day CloudWatch Average
 or a line on the bill, **and** (b) it passes Step 4. Otherwise it is a floor or a setting: record it as
-`capacity_setting`, do not price it as usage, and ask for the series (3.2) or the bill (3.5). A figure on
+`capacity_setting`, do not price it as usage, and ask for the series (3.2) or the bill (3.5). In the same
+reply, ask the customer where a stated count comes from (a 30-day average, a bill line, or a capacity
+setting); an offer to measure does not replace that question. A figure on
 it that passed Step 4 is allowed only labelled as resting on their stated count, with that ask (Step 1).
 "We run one search OCU and one indexing OCU" is a configuration statement until the series or the bill
 confirms it.
@@ -140,7 +186,10 @@ lines whose inputs you have, and omit the total (Step 9).
 
 Ask for everything still missing in **one message**, grouped Capacity / Data / Traffic / Models / Bill,
 only the unanswered rows, in plain words. Rows 2, 3, 5, 6 and 9 are enough for a defensible comparison
-once rows 7 and 8 have passed Step 4; lead with those.
+once rows 7 and 8 have passed Step 4; lead with those. When agentic retrieval is wanted, the same message
+asks row 10's questions and which model writes the app's answers today, with its input and output tokens
+per answer (row 14; stated by the customer or measured, never estimated). It also gives the four points
+in **Agentic retrieval: the two model modes** (after row 14).
 
 ## Step 3. Measure what can be measured
 
@@ -172,8 +221,10 @@ Capture `type` (expect `VECTORSEARCH`), `standbyReplicas`, `kmsKeyArn`, `collect
   Migrating one KB off a shared pool may free almost nothing until the pool empties, so plan the pool's KBs
   together. When other KBs share the pool, the comparison is run for the **whole pool** (every KB on it
   moved together: the sum of their Managed lines against the pool's total) as well as for this KB alone
-  (its Managed lines are added while the pool's cost stays until its last collection leaves). Ask for the
-  other KBs' raw GB and retrieval volume in the same Step 2 message.
+  (its Managed lines are added, while the pool's cost may fall little until its last collection leaves:
+  capacity scales down to what the remaining data needs, not below the configured minimum
+  ([scaling](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-scaling.html))).
+  Ask for the other KBs' raw GB and retrieval volume in the same Step 2 message.
 
 ### 3.2 OCU series, search **and** indexing, over at least 30 days
 
@@ -275,8 +326,17 @@ aws ce get-cost-and-usage --region us-east-1 --profile <READ_ONLY_PROFILE> \
   `S3_VECTORS` store repeat with `"Values":["Amazon Simple Storage Service"]` and keep the usage types that
   name vectors.
 
-The bill is the real number. Prefer it over the derived OCU × rate figure and reconcile any large gap
-rather than presenting both without comment.
+The bill is the real number, but it covers every Serverless collection in the KB's Region (for `S3_VECTORS`,
+every vector bucket there). When everything it covers is in the comparison (3.1's full list), prefer it over
+the derived OCU × rate figure: the store's bill lines are the self-managed current-cost figure in the Step 6
+script and the Step 7 table, OCU × rate (or the S3 Vectors lines) is the cross-check printed beside them, and
+a large gap is reconciled rather than shown without comment. When it also covers collections outside the
+comparison, the pool's own OCU × rate (its group-scope series, 3.2) and storage are the figure, and the bill
+is printed beside them as the account-level figure with the Region's collection count. When the pool's OCUs
+cannot be separated either (Classic: the account-scope series covers every collection in no group), the bill
+stays the figure, labelled with the number of collections it covers, and Step 8's shared-pool rule applies to
+all of them. For `S3_VECTORS`, the derived lines are the figure unless the Region's vector buckets are all in
+the comparison.
 
 ### 3.6 Retrieval volume
 
@@ -329,10 +389,13 @@ every OCU count that was stated or configured (row 1, and any customer statement
 2. **Read the vectors-per-OCU figure for the dimension nearest the KB's.** When AWS gives it only at a
    different dimension, scale it to the KB's dimension by the ratio of the two (vector memory grows with
    dimension), feed both the fetched figure and the ratio to the script, and say the result is an estimate.
-   A different dimension is not a reason to skip the check. Read from the scaling page how
-   OCUs divide between active and standby capacity when `standbyReplicas` is `ENABLED`, and compare
-   against the active share. Then let the Step 6 script evaluate, with the fetched figure as an input:
-   `stated_search_ocu_active × vectors_per_ocu_at_dimension ≥ vector_count`. Report the result as fits or
+   A different dimension is not a reason to skip the check. Read from the pages fetched in item 1 how
+   the stated search OCUs divide into replicas. The vector engine GA post describes the search OCUs as
+   active replicas across Availability Zones, and turning redundancy off as disabling the redundant
+   replica; so compare the vector count against what one replica's search OCUs hold, not against the sum
+   of every replica (with `standbyReplicas` `DISABLED` there is no redundant replica, so that is every
+   search OCU). Then let the Step 6 script evaluate, with the fetched figure as an input:
+   `stated_search_ocu_one_replica × vectors_per_ocu_at_dimension ≥ vector_count`. Report the result as fits or
    does not fit, never as a price. If you still cannot complete the check, say why.
 3. **Does not fit** → the stated capacity cannot hold this index. Say which three figures conflict (vector
    count, dimension, stated OCUs) and the fetched figure they conflict with, with its link. Drop the
@@ -354,13 +417,14 @@ A capacity figure that fails this step is never priced, and a "but if it did hol
 ## Step 5. Fetch every rate live
 
 Fetch each rate in this conversation, with its unit, source and timestamp. Field map and fallbacks are in
-[C](#c-price-list-field-map-and-fallbacks).
+[C](#c-price-list-field-map-and-fallbacks). The Page column says where each rate is published; a rate read
+from the Price List is credited to the Price List, not to that page (the link rule at the top of this file).
 
 | Component | Price List `--service-code` → what to match | Page |
 |---|---|---|
 | Managed KB storage (raw GB-month) | `AmazonBedrockAgentCore` → `usagetype` ending `Knowledge-Base:Consumption-based:Storage` | [Bedrock pricing](https://aws.amazon.com/bedrock/pricing/), Managed Knowledge Bases |
 | Managed KB retrieval (per call unit) | `AmazonBedrockAgentCore` → `...Knowledge-Base:Consumption-based:Retrieval` | same |
-| Managed KB agentic retrieval | `AmazonBedrockAgentCore` → `...Knowledge-Base:Consumption-based:AgenticRetrieval` | same; note it is charged **plus** the underlying `Retrieve` calls |
+| Managed KB agentic retrieval | `AmazonBedrockAgentCore` → `...Knowledge-Base:Consumption-based:AgenticRetrieval` | same; managed mode only (custom mode has no agentic rate and pays its model's tokens instead), plus the underlying `Retrieve` calls in both modes (Step 6) |
 | OpenSearch Serverless OCU-hours | `AmazonES` → `usagetype` ending `-SearchOCU` / `-IndexingOCU` | [OpenSearch Service pricing](https://aws.amazon.com/opensearch-service/pricing/), Serverless |
 | OpenSearch Serverless storage | `AmazonES` → `usagetype` ending `-StorageUsedInS3ByteHour` (plus `-StorageUsedInHotByteHour` for NextGen hot storage); not `ES:*-Storage` (provisioned domains) and not `OpenSearch-Vectors-TimedStorage-ByteHrs` (a different product) | same |
 | S3 Vectors storage, PUT, query request, query data | `AmazonS3` → the S3 Vectors usage types the bill shows (3.5) | [S3 pricing](https://aws.amazon.com/s3/pricing/), Vectors |
@@ -369,22 +433,38 @@ Fetch each rate in this conversation, with its unit, source and timestamp. Field
 - **The pricing pages render their rate tables in JavaScript.** A `curl` of the page returns the worked
   examples at best and no model rates at all. For every rate the path is the Price List API, then the
   credential-free offer file ([C](#c-price-list-field-map-and-fallbacks)); the page is a last resort for a
-  figure that is literally in its text.
+  figure that is literally in its text. Unlike the rate tables, the Bedrock page's Managed Knowledge Bases
+  section is in the raw page's text, and a docs tool can return the page without it: read the raw page before
+  saying that section (its rates or what they include) could not be read.
 - Bedrock model IDs are not in the pricing catalog; match `servicename`. Check the token unit the record
   states and convert before use.
-- The Managed Knowledge Bases section also lists what is **included** (parser, embedding model, reranker,
-  agentic planning model). Record that list from the page in this conversation; Step 7 uses it.
-- **Credit an inclusion only to a source you read in this conversation that states it.** A Price List
-  API result lists meters, not inclusions: never credit it, or a page you did not fetch or that came back
-  without that section, for what Managed includes. If the page did not show the list, give the
-  [mapping](references/bedrock-kb-migration/mapping.md) reference as the source and say the pricing page
-  was not read.
+- Record what the Managed Knowledge Bases section lists as included, in this conversation; Step 7 uses it.
+
+**A Managed price always comes with what it includes.** Whenever you quote a Managed KB rate (one per-call
+rate, a rate table, or a full cost analysis), say in the same reply what that price includes, as the Managed
+Knowledge Bases section of the Bedrock pricing page lists it. This holds when the cost analysis is declined:
+declining skips the comparison, not this sentence. In managed mode the agentic retrieval rate covers the
+built-in model's planning and the answer; the page names only the planning, so say the answer is covered
+and that this is not stated on the page (row 14). Custom mode has no agentic rate: it pays the underlying
+`Retrieve` calls and its model's tokens. Credit the list
+only to a source you read in this conversation that states it (that pricing section, or an AWS page or post
+you fetched that states it). The Price List API lists meters, not inclusions; never credit it for the list.
+If nothing you read shows the list (the page came back without that section even when read raw, or your own
+filter or truncation cut it), give the list from [mapping](references/bedrock-kb-migration/mapping.md) →
+"Managed-only capabilities" (its "included at no extra cost" bullet), say it comes from this skill's
+reference, and say the pricing page's list was not
+read. Never credit a page or post you did not fetch, even one the reference cites as its own source. Never say
+a Managed component is charged separately unless a source you read shows that Managed charge.
 
 ## Step 6. Compute with a script
 
 Arithmetic is done by a script, never by reasoning in prose. Write `cost_compare.py` to `output_dir`,
 feed it every input with its source tag and every rate with its unit, run it, and copy its output into
-the reply. Every number the customer sees comes from the script's output. A row whose input is missing
+the reply. If `output_dir` is unset and the request named no directory for your files, ask for it first
+and wait; never compute in prose instead. A directory the customer named in the request for your files sets
+`output_dir` to a new `kb-migration/<timestamp>/` subdirectory under it, without a question; give its full
+path ([guide](references/migrate-knowledge-base-to-managed.md) → "Cost and files in Explore"). Every
+number the customer sees comes from the script's output. A row whose input is missing
 prints `not included: <reason>` and the total that depends on it is omitted (Step 9).
 
 ```
@@ -398,7 +478,7 @@ Self-managed on OpenSearch Serverless (monthly):
 + embedding_tokens_per_ingest × embedding_rate × ingests_per_month   # omitted from both sides when unknown
 + parsing_units         × parsing_rate                                # FM tokens or BDA pages; default parser = 0
 + rerank_queries        × rerank_rate                                 # only if implemented
-+ generation_tokens     × fm_rate                                     # only if counted; symmetric with Managed
++ generation_tokens     × fm_rate                                     # only if counted (row 14)
 
 Self-managed on S3 Vectors (monthly):
   logical_vector_gb     × s3v_storage_rate_per_gb_month
@@ -408,16 +488,29 @@ Self-managed on S3 Vectors (monthly):
 + query_data_returned   × s3v_returned_rate (above the free allowance the page states)
 + embedding, parsing, reranking, generation as above
 
-Managed KB (monthly):
+Self-managed current cost, when Cost Explorer was read (3.5):
+  bill_is_figure = the bill covers only what is compared, or the pool's OCUs cannot be separated (Classic)   # 3.1's full list, 3.2
+  if bill_is_figure:
+    store_bill_usd replaces the store's compute and storage lines above in self_managed_total
+    the OCU × rate (or S3 Vectors) lines are still printed, labelled as the cross-check   # reconcile a large gap (3.5)
+  else:
+    the derived lines stay in self_managed_total; store_bill_usd is printed beside them as the account-level figure, with the Region's collection count
+
+Managed KB (monthly), per model mode; when the customer has not picked one, compute both:
   raw_gb                × managed_storage_rate_per_gb_month
 + retrieve_calls        × retrieve_rate
-+ agentic_calls         × agentic_rate
-+ agentic_underlying_retrieve_calls × retrieve_rate                   # agentic retrieval is charged plus its Retrieve calls
++ agentic_calls         × agentic_rate_for_mode                       # managed mode only; it covers the planning and the answer (row 14). Custom mode: none
++ agentic_calls × retrieve_calls_per_agentic_query × retrieve_rate    # the underlying Retrieve calls; on the 2-5 estimate (not in the AWS documentation), print both ends, 2 and 5
++ custom_mode_tokens    × model_rate                                  # custom mode only: planning tokens, plus answer tokens when generateResponse is true, the default (row 14)
 + custom_embedding_tokens × model_rate                                # only with a custom embedding model; the managed model is included
-+ generation_tokens     × fm_rate                                     # only if counted; symmetric
++ generation_tokens     × fm_rate                                     # only if counted, and only in the row 14 row where the app's own model writes the answer
+
+cost_per_1000_agentic_queries = 1000 × (agentic_rate_for_mode
+                                        + retrieve_calls_per_agentic_query × retrieve_rate
+                                        + custom_mode_tokens_per_query × model_rate)   # per mode, at both ends of the per-query count
 
 vectors_per_ocu_at_dimension = fetched_vectors_per_ocu × (fetched_dimension ÷ kb_dimension)   # Step 4; an estimate when the dimensions differ
-plausibility: stated_search_ocu_active × vectors_per_ocu_at_dimension ≥ vector_count   # Step 4, when a capacity figure was supplied
+plausibility: stated_search_ocu_one_replica × vectors_per_ocu_at_dimension ≥ vector_count   # Step 4, when a capacity figure was supplied
 delta  = managed_total − self_managed_total          # negative ⇒ Managed costs less
 ratio  = managed_total ÷ self_managed_total
 
@@ -430,8 +523,9 @@ threshold_qps            = threshold_retrieve_calls ÷ (86,400 × 30)       # th
 Rules the script enforces: the storage basis is **raw** GB on Managed and **indexed** GB on self-managed;
 the OCU lines are the pool's when `ocu_pool_shared_collections > 1` and are labeled so, and the script
 then also prints the whole-pool comparison (`pool_managed_total = Σ managed_total over every KB on the
-pool`, against the pool's self-managed total); a line that is
-unknown on one side is omitted on **both** (embedding, generation); redundancy is whatever the collection
+pool`, against the pool's self-managed total); a missing embedding volume is omitted on **both** sides; a
+missing answer-generation volume follows row 14: omitted on both sides where the app's own model writes the
+answer, and `not included: <reason>` on the side that carries it otherwise; redundancy is whatever the collection
 runs, never a dev-test setting standing in for production; a break-even is computed only across the range
 the inputs cover.
 
@@ -448,11 +542,27 @@ silently absent.
 | Parsing | | | included with the managed parser | source read (Step 5) |
 | Reranking | | | included with the managed reranker | source read (Step 5) |
 | Retrieval calls | none per call | | | |
-| Agentic retrieval (plus underlying Retrieve calls) | not offered | | | |
-| Answer generation | symmetric | | symmetric | |
+| Agentic retrieval: managed mode, the agentic rate; custom mode, the model's planning tokens; both, plus underlying Retrieve calls at both ends of the per-query count | not offered | | | |
+| Answer generation, the app's own model | the app's model tokens (row 14) | | the same, where the app still writes the answer | |
+| Answer generation, the agentic call (`generateResponse` true) | not offered | | managed mode: covered by the agentic rate, no line (not stated on the pricing page); custom mode: the model's answer tokens at its model price | |
 | Data transfer | state it; not priced | | state it; not priced | |
 | Operating the store (patching, scaling, capacity, index maintenance) | customer | qualitative | AWS | qualitative |
 | **Monthly total** | | | | |
+
+When Cost Explorer was read and the bill is the figure (3.5), the self-managed compute and storage cells show
+the bill lines, with OCU × rate (or the S3 Vectors lines) beside them as the cross-check; when it is not, they
+show OCU × rate (or the S3 Vectors lines), with the bill beside them as the account-level figure. If the
+customer has not picked a model
+mode, show the Managed side as two columns, managed mode and custom mode. When agentic retrieval is wanted,
+also give the full cost per 1,000 agentic queries for each mode, from the script's output on rates fetched
+in this conversation.
+
+When agentic retrieval is wanted, the reply gives the four points in **Agentic retrieval: the two model
+modes** (after row 14), and recommends neither mode. Read them in the
+[agentic retrieval guide](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-test-agentic-retrieve.html),
+[Bedrock pricing](https://aws.amazon.com/bedrock/pricing/) and
+[managed-kb-api](references/bedrock-kb-migration/managed-kb-api.md) → "If the customer plans to adopt the
+agentic surface".
 
 Then, in this order:
 
@@ -492,12 +602,15 @@ Only from the Step 6 output, and only after Step 7 is on the screen.
   not soften the number and do not argue with it.
 - **The result favours Managed**: report the delta and the dominant line items the same way.
 - **Shared pool** (Step 3.1): lead with the whole-pool result and recommend planning the pool's KBs
-  together. For this KB alone, say that moving it adds its Managed lines while the pool's cost stays until
-  the pool empties, and what the pool would cost with this KB gone, if the series shows it. This rule wins
-  over the one-volume threshold: give no break-even or verdict that charges the pool's bill to this KB,
-  labelled or not, including "if this KB were the pool's only tenant". A labelled what-if that prices this
-  KB on capacity of its own, at a size you state and read from the docs in this conversation, is allowed
-  (Step 1).
+  together. For this KB alone, say that moving it adds its Managed lines while the pool's cost may fall
+  little until the pool empties, and what the pool would cost with this KB gone, if the series shows it.
+  Until it does, the net effect of moving this KB, or of any stage of a staged move before the pool empties,
+  stays conditional: say what the move adds and that the pool's bill would have to fall by that much to
+  offset it, never that it is a net increase or a net saving.
+  This rule wins over the one-volume threshold: give no break-even or verdict that charges the pool's
+  bill to this KB, labelled or not, including "if this KB were the pool's only tenant". A labelled what-if
+  that prices this KB on capacity of its own, at a size you state and read from the docs in this
+  conversation, is allowed (Step 1).
 - **Either total missing for any other reason** (more than one volume, or a capacity or storage input):
   no flat verdict, no "likely", no "typically". Say which input removed which total (Step 9) and offer to
   measure. There is no typical crossover to quote. A verdict conditional on Step 1's labelled figures is
@@ -506,6 +619,12 @@ Only from the Step 6 output, and only after Step 7 is on the screen.
   never computed on a capacity figure that failed Step 4. Apart from Step 1's labelled figures, the
   one-volume threshold above is the only one computed on a missing input, and only because every other
   input is the customer's own.
+- **The overlap during the move**, whatever the result: say in one sentence that the original and the new
+  KB are both billed while they coexist (the new KB at the Managed rates, the original through its vector
+  store and any models it calls), and that deleting the original KB does not delete its vector store, which
+  keeps billing until it is removed itself
+  ([Delete a knowledge base](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-delete.html)); advise
+  keeping the overlap short ([plan](references/bedrock-kb-migration/plan.md) → "Caveats").
 
 ## Step 9. When an input is missing
 
@@ -532,7 +651,8 @@ Which missing input removes which total:
 | retrieval calls per month and another input | Managed total omitted (quote the storage line and the retrieval rate) |
 | vector count or dimension | Step 4 cannot run; every stated OCU count is a floor |
 | `S3_VECTORS` logical storage (with keys and metadata), write volume, or query volume | S3 Vectors total omitted (quote the lines you can price from supplied figures) |
-| embedding or generation volume | that line omitted on **both** sides, said in one sentence |
+| embedding volume, or answer-generation volume where the app's own model writes the answer | that line omitted on **both** sides, said in one sentence |
+| answer-generation volume on one side only (row 14) | `not included: <reason>` on that side; the totals stay, each labelled as excluding it |
 | either total | the delta, ratio, break-even and verdict go with it; never a partial comparison, except the one-volume threshold |
 
 **Denial wording.** A read-only profile that excludes the cost probes is a normal, supported posture. Name
@@ -556,7 +676,7 @@ fetched in this conversation, and give its link.
 
 | | Self-managed (OpenSearch Serverless `VECTOR` KB) | Managed KB | Where to read it live |
 |---|---|---|---|
-| What you pay for | **Capacity**: search OCU-hours and indexing OCU-hours, plus indexed storage | **Consumption**: raw data stored, plus retrieval calls (and agentic retrieval calls if used) | [OpenSearch Service pricing](https://aws.amazon.com/opensearch-service/pricing/) (Serverless); [Bedrock pricing](https://aws.amazon.com/bedrock/pricing/) (Managed Knowledge Bases) |
+| What you pay for | **Capacity**: search OCU-hours and indexing OCU-hours, plus indexed storage | **Consumption**: raw data stored, plus retrieval calls (and, if used, agentic retrieval as the page lists it for the model mode) | [OpenSearch Service pricing](https://aws.amazon.com/opensearch-service/pricing/) (Serverless); [Bedrock pricing](https://aws.amazon.com/bedrock/pricing/) (Managed Knowledge Bases) |
 | Vector store compute | You size it and pay for it; OCUs scale with vectors, dimension and traffic | None to size or pay for | [OpenSearch Serverless scaling](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-scaling.html) |
 | Parsing, embedding, reranking | You pay the models you call, on every ingest and re-ingest, and per query for reranking | Included with the managed parser, embedding model and reranker (a model of your choice is charged) | Bedrock pricing, Managed Knowledge Bases and model sections |
 | Storage basis | **Indexed** GB | **Raw** GB | both pricing pages |
@@ -613,7 +733,8 @@ aws pricing get-products --service-code AmazonBedrockFoundationModels --region u
 - **If `pricing:*` is denied**, the credential-free bulk offer file serves the same data:
   `curl -sSL "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/<SERVICE_CODE>/current/<REGION>/index.json"`.
 - **Pricing-page sections are rendered by JavaScript.** A fetched page with the heading but not the number
-  is not a source; use the API or the offer file.
+  is not a source; use the API or the offer file. The Bedrock page's Managed Knowledge Bases section is in
+  the raw page's text: read it there before saying it could not be read (Step 5).
 - Quote every rate with its unit, its source and the time you fetched it.
 
 ## D. Read-only command quick reference
@@ -645,7 +766,7 @@ USD throughout; identifiers and ARNs only, never a secret value.
 ```yaml
 source_kb_id: <live KB id>      # an IaC-only KB uses logical_id instead — exactly one
 vector_store: <OPENSEARCH_SERVERLESS | S3_VECTORS | other>
-analysis_status: performed      # performed | declined  (declined = the user said no at the gate; never means AWS said no)
+analysis_status: performed      # performed | declined  (declined = the customer said no at the gate; never means AWS said no)
 in_scope: true                  # true for OPENSEARCH_SERVERLESS and S3_VECTORS; false ⇒ omit current_self_managed, name why in scope_note
 pricing_source: { method: pricing:GetProducts, service_codes: [<AmazonES | AmazonBedrockAgentCore | AmazonS3 | AmazonBedrockFoundationModels>], region_endpoint: us-east-1, retrieved_at: <ts> }
 corpus:
@@ -706,7 +827,7 @@ scope_note: <specific reason>   # required on in_scope:false, declined, any omit
 
 - **Giving a figure before the Step 1 gate is passed** that Step 1 does not allow: a total on a guessed
   rate, an assumed input presented as theirs, or a table at volumes you chose presented as their usage.
-- **Quoting a rate without fetching it in this conversation**, or naming a page you did not fetch.
+- **Quoting a rate without fetching it in this conversation**, or crediting a page you did not fetch.
 - **Skipping Step 4** when the customer stated an OCU count, or pricing a count that failed it.
 - **Computing in prose** instead of in `cost_compare.py` in `output_dir`.
 - **An output table with a row missing** rather than marked `not included: <reason>`.
@@ -715,5 +836,5 @@ scope_note: <specific reason>   # required on in_scope:false, declined, any omit
 - **Blocking the migration because a figure was unavailable or denied**: Step 9, then move on.
 - **Mishandling a denial**: spending the 3-attempt ladder on it, writing "OCUs unavailable" instead of the
   IAM action, recording it as `declined`, or asking for broader or write credentials.
-- **Running the analysis on a declined session**, or offering a "rough idea" instead.
+- **Running the unprompted analysis on a declined session**, or offering a "rough idea" instead.
 - **Writing cost or price files outside `output_dir`**.

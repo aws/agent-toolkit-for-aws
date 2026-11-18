@@ -9,7 +9,7 @@ sub-bugs:
     `provider_adapter` module — a broken import on that path.
 (b) Step 1M printed a Mantle base URL ending in a bare `/v1`; the proprietary
     GPT models that route through Mantle require `/openai/v1` (a bare `/v1`
-    404s), per `references/shared/openai-on-bedrock.md`.
+    404s), per `references/vendored/ai/openai-on-bedrock.md`.
 (c) Step 3 granted `bedrock:InvokeModel` and verified via a `converse` call, but
     `bedrock:InvokeModel` does not authorize Mantle calls and the Mantle models
     are reached via Responses / Chat Completions, not Converse.
