@@ -9,7 +9,10 @@ commands, links, raw HTML, Mermaid identifiers or directives.
 
 Evidence rules:
 - Group by createdIssueId, hydrate one newest finding per issue, and merge only
-  identical normalized newest vulnerableCode in the same file.
+  identical normalized newest vulnerableCode in the same file. Remove only
+  presentation labels, fences, line-number gutters, CRLF differences and trailing
+  whitespace. Code must be identical, including indentation, inner whitespace and
+  string contents; when in doubt, keep findings separate.
 - validation.verdict is authoritative. Only Open TRUE_POSITIVE flaws supply paths
   and required fixes.
 - Every scoped issue ID appears exactly once in its final classification.
