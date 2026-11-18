@@ -680,10 +680,9 @@ def _mantle_regions_for(catalog, model_keys):
 def _mantle_unavailable_finding(catalog, requirements, region):
     """A [BLOCKS] finding when no Claude model meeting the requirements is served on
     bedrock-mantle in `region` but one is in another Region; None when the Region is not the
-    cause (the requirement is then unsatisfiable on Mantle everywhere)."""
-    elsewhere = _build_candidates(
-        without_mantle_regions(with_all_selectable(catalog)), ["mantle_messages"], requirements, region
-    )
+    cause. The probe uses selectable models only: when just a reference_only model would serve
+    Mantle elsewhere, the existing raise or reference_only finding applies, not a Region message."""
+    elsewhere = _build_candidates(without_mantle_regions(catalog), ["mantle_messages"], requirements, region)
     if not elsewhere:
         return None
     regions = _mantle_regions_for(catalog, dict.fromkeys(c["model_key"] for c in elsewhere))
@@ -700,37 +699,36 @@ def _mantle_unavailable_finding(catalog, requirements, region):
 
 def _mantle_tier_tradeoff(catalog, candidate, requirements, region):
     """A [TUNE] finding when the Mantle Messages model chosen in `region` is a lower class than
-    the stated priority ranks first, and only because higher-ranked models are not on Mantle in
-    this Region. Uses the priority order and the catalog `class`; no priority, no finding."""
+    the model the stated priority would pick with only the Region limit removed (the best
+    requirement-filtered candidate). Lower means later in the quality order; the class is the
+    catalog `class`. No stated priority, no finding."""
     if candidate["path"] != "mantle_messages":
         return None
-    model_order, driver = _candidate_order(requirements)
-    if driver == "unknown" or candidate["model_key"] not in model_order:
-        return None
-    requested_class = catalog["models"].get(model_order[0], {}).get("class")
-    chosen_class = candidate["model"].get("class")
-    if not requested_class or chosen_class == requested_class:
-        return None
-    position = model_order.index(candidate["model_key"])
-    if any(catalog["models"].get(key, {}).get("class") == requested_class
-           for key in model_order[position + 1:]):
+    _, driver = _candidate_order(requirements)
+    if driver in (None, "unknown"):
         return None
     elsewhere = _build_candidates(without_mantle_regions(catalog), ["mantle_messages"], requirements, region)
     if not elsewhere or elsewhere[0]["model_key"] == candidate["model_key"]:
         return None
-    preferred = elsewhere[0]
-    regions = _mantle_regions_for(
-        catalog, [c["model_key"] for c in elsewhere if c["model"].get("class") == requested_class]
-    )
+    best = elsewhere[0]
+    best_class = best["model"].get("class")
+    chosen_class = candidate["model"].get("class")
+    tier_order = _PRIORITY_ORDER["quality"]
+    if (not best_class or chosen_class == best_class
+            or best["model_key"] not in tier_order or candidate["model_key"] not in tier_order
+            or tier_order.index(candidate["model_key"]) < tier_order.index(best["model_key"])):
+        return None
+    regions = _mantle_regions_for(catalog, [best["model_key"]])
     return _finding(
         "mantle_lower_tier_in_region",
         "[TUNE]",
-        f"In {region} the only Claude model on bedrock-mantle meeting the requirements is "
-        f"{_short_name(candidate['model'])} ({chosen_class} class); the {driver} priority "
-        f"ranks {requested_class}-class models first.",
+        f"In {region} the highest-ranked Claude model on bedrock-mantle meeting the requirements "
+        f"is {_short_name(candidate['model'])} ({chosen_class} class); the {driver} priority would "
+        f"pick {_short_name(best['model'])} ({best_class} class), which is not on bedrock-mantle "
+        "in this Region.",
         f"Accept {_short_name(candidate['model'])} on Mantle, use bedrock-runtime for "
-        f"{_short_name(preferred['model'])}, or choose a Region where a {requested_class}-class "
-        "Claude model is on bedrock-mantle (" + (", ".join(regions) or "none cataloged") + ").",
+        f"{_short_name(best['model'])}, or choose a Region where {_short_name(best['model'])} is on "
+        "bedrock-mantle (" + (", ".join(regions) or "none cataloged") + ").",
     )
 
 
