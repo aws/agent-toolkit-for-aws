@@ -153,8 +153,8 @@ If the source model is not in this table (likely for any model released after th
 Before doing anything else in this section, read the **`Usage baseline path:`** line from
 your own context block (passed by `SKILL.md`'s dispatch — do NOT derive or assume
 `$BEDROCK_RUN_DIR` yourself; you are a fresh, stateless dispatch and have no other way to
-resolve it). That line is written by `SKILL.md`'s Step 1.5 / A3 (from either `gcp-to-aws`'s
-or `azure-to-aws`'s Discover) and is omitted entirely from your context when no baseline file
+resolve it). That line is written by `SKILL.md`'s Step 1.5 / A3 (from the usage profiles
+`bedrock-migration-assessment`'s Discover captured) and is omitted entirely from your context when no baseline file
 exists. **If the line is absent, nothing below changes — run the rest of §6.3 exactly as
 written, extrapolating from the golden-dataset sample.** If the line is present, read the
 `usage-baseline.json` file at that path:
@@ -230,7 +230,7 @@ The migration plan may map multiple source models to multiple Bedrock models (e.
 
 If the golden dataset records which source model each prompt used (e.g., a `source_model` field), aggregate tokens per source model. If it does not, fall back to attributing all tokens to the primary pair and flag the approximation in the Risk Assessment section.
 
-**Breakpoint pairs (GPT-6/5.6/5.5/5.4 source models) — do not compare a flat short-context source rate against a long-context Bedrock rate, or vice versa.** When a pair's source model has a documented 272K-token breakpoint (see `pricing-cache.md`'s GPT-6/5.6/5.5/5.4 breakpoint notes) AND you know (from `ai_workload_profile.json` → `workloads[].typical_request_tokens` or measured per-request usage-profile stats) that its typical single request exceeds 272,000 input tokens, populate `cost_compare.py`'s `PER_REQUEST_TOKENS` entry for that source model, add the pair's 7th/8th `MODEL_PAIRS` elements (`source_input_long`, `source_output_long`, from the source's long-context rate), and add a `BEDROCK_LONG_CONTEXT` entry (from the target's long-context rate). The script then prices that pair's ENTIRE volume at the long-context rate on BOTH sides, matching `estimate-ai.md`'s long-context-parity rule. Leave a pair's `PER_REQUEST_TOKENS` entry out entirely when the per-request size is unknown or ≤272K — it then keeps the flat short-context rate on both sides, unchanged.
+**Breakpoint pairs (GPT-6/5.6/5.5/5.4 source models) — do not compare a flat short-context source rate against a long-context Bedrock rate, or vice versa.** When a pair's source model has a documented 272K-token breakpoint (see the GPT-6/5.6/5.5/5.4 breakpoint notes in `skills/bedrock-migration-assessment/references/vendored/ai/bedrock-pricing-cache.md`) AND you know (from `ai_workload_profile.json` → `workloads[].typical_request_tokens` or measured per-request usage-profile stats) that its typical single request exceeds 272,000 input tokens, populate `cost_compare.py`'s `PER_REQUEST_TOKENS` entry for that source model, add the pair's 7th/8th `MODEL_PAIRS` elements (`source_input_long`, `source_output_long`, from the source's long-context rate), and add a `BEDROCK_LONG_CONTEXT` entry (from the target's long-context rate). The script then prices that pair's ENTIRE volume at the long-context rate on BOTH sides, matching the long-context rule in Step 1 of `skills/bedrock-migration-assessment/references/phases/estimate/estimate-ai.md`. Leave a pair's `PER_REQUEST_TOKENS` entry out entirely when the per-request size is unknown or ≤272K — it then keeps the flat short-context rate on both sides, unchanged.
 
 **Per-request tier distribution, when known, takes precedence over the single-breakpoint-decision above.** `PER_REQUEST_TOKENS` records only ONE "typical" request size per source model, so when the pair's actual traffic mixes short and long requests, applying that single breakpoint decision to the whole aggregated volume either overstates or understates the true cost. When a per-request tier BREAKDOWN is known (not just one typical size) — e.g. `ai_workload_profile.json`'s per-request token distribution, or a usage-baseline that buckets requests by tier — populate `cost_compare.py`'s `TIER_DISTRIBUTION_BY_SOURCE` entry for that source model instead of (not in addition to) `PER_REQUEST_TOKENS`/`BASELINE_TOKENS_BY_SOURCE`; the script partitions that pair's requests into their true tiers and prices each tier independently before summing, rather than blending all requests into one average and applying one all-or-nothing breakpoint decision to the blended total. **When only an aggregate total is known** (no `TIER_DISTRIBUTION_BY_SOURCE` entry) for a source model whose requests plausibly span the 272,000-token breakpoint (e.g. `ai_workload_profile.json` shows high variance in `typical_request_tokens`, or the workload type suggests mixed short/long usage), disclose this in the report as an unresolved context-tier distribution rather than presenting the single-breakpoint-decision total as exact — render a note in the Cost Comparison section: "Context-tier distribution unknown for `<model>` — this estimate applies a single breakpoint decision to the full aggregate volume and may overstate or understate cost versus the workload's actual mix of short/long requests."
 
@@ -297,8 +297,8 @@ SOURCE_CACHE_WRITE_RATES = {
 # per-request usage-profile stats) to exceed 272,000 input tokens. Key = source_model_id
 # (matching MODEL_PAIRS[i][0]); value = {"input": N, "output": N} for ONE typical request.
 # A source model absent here is treated as short-context (or unknown) and keeps the flat
-# rate — this is the deliberate "unknown request-size distribution" fallback estimate-ai.md
-# calls out; never guess a tier silently.
+# rate — this is the deliberate "unknown request-size distribution" fallback that
+# skills/bedrock-migration-assessment/references/phases/estimate/estimate-ai.md Step 1 calls out; never guess a tier silently.
 PER_REQUEST_TOKENS = {
     # "openai.gpt-6-sol": {"input": 300_000, "output": 10_000},
 }
@@ -321,8 +321,9 @@ TIER_DISTRIBUTION_BY_SOURCE = {
 
 # Parallel to BASELINE_TOKENS_BY_SOURCE in structure, but keyed by BEDROCK model id and
 # carrying that model's long-context {"input": $/1M, "output": $/1M} rate. Populate only
-# for a Bedrock model that actually has a long-context tier (see pricing-cache.md's
-# "GPT-6 family -- long context" / GPT-5.6/5.5/5.4 long-context tables).
+# for a Bedrock model that actually has a long-context tier (see the "GPT-6 family — long
+# context" and GPT-5.6/5.5/5.4 long-context tables in
+# skills/bedrock-migration-assessment/references/vendored/ai/bedrock-pricing-cache.md).
 # Use the selected inference option; Terra US Geo is 2.20/8.25, Global 2.00/7.50.
 BEDROCK_LONG_CONTEXT = {
     # "openai.gpt-6-sol": {"input": 4.40, "output": 16.50},
@@ -414,8 +415,8 @@ for pair in MODEL_PAIRS:
 
         # Breakpoint check: a pair's source side is priced at the long-context rate only
         # when its source model has a known typical per-request size (PER_REQUEST_TOKENS)
-        # that exceeds 272,000 input tokens — matching estimate-ai.md's
-        # long-context-parity rule. The ENTIRE volume (whichever basis won above)
+        # that exceeds 272,000 input tokens — matching the long-context rule in Step 1 of
+        # skills/bedrock-migration-assessment/references/phases/estimate/estimate-ai.md (both sides on the same context tier). The ENTIRE volume (whichever basis won above)
         # reprices, not just the excess, per OpenAI's own breakpoint contract. A pair
         # absent from PER_REQUEST_TOKENS, or whose typical request is <=272,000 input
         # tokens, is UNCHANGED by this check and keeps the flat short-context rate.
@@ -589,7 +590,9 @@ row — the right-hand side is the FINAL validated id with every override applie
 analysis["target_models"], primary_model_id, primary_api)` in `<scriptsDir>`; use it when a row's API has to
 be filled in, and run `python -c` against it rather than hand-joining. Control: the set of ids you emit MUST
 equal the set on your context's `Target Bedrock model(s)` line; a row whose source model has no validated
-entry makes the helper raise — stop and report it, never fall back to the row's original `aws_model_id`.
+entry makes the helper raise — stop and report it, never fall back to the row's original `aws_model_id`. When the design has two chat rows for one source model (for example a Mantle Responses row and a
+runtime Chat Completions row for the same GPT model), the orchestrator chose one for this rewrite: use only the
+row whose `required_client_api` equals your context's `Target API surface`, and skip the other.
 
 **One `--target` pair per row, each with ITS OWN API** (`responses` | `chat_completions` | `converse` |
 `messages`; `invoke` for an embedding row). The primary chat row's API is the `Target API surface` from

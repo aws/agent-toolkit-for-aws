@@ -1,34 +1,32 @@
 ---
 name: llm-to-bedrock
-description: "Use to migrate code that calls OpenAI, Gemini/Google AI, or the Anthropic API to Amazon Bedrock — a pure model/SDK rewrite. End-to-end: assesses the codebase, optionally captures OpenAI, OpenRouter, or Anthropic cost and token usage through consent-gated provider APIs, rewrites SDK calls, evaluates output quality against Bedrock, and delivers a ready-to-merge branch. Also has an access-only mode for checking or enabling Bedrock model access for specific models (e.g. 'request access to Claude on Bedrock', 'which models do I turn on') with no code migration — it checks each model and walks the access step, then stops. Not for agent runtime selection or agent migration planning (use agent-advisor), self-hosted LLM batch inference (use self-hosted-llm-batch-inference), nor standalone cost estimates or infra-only migration. The full migration REQUIRES gcp-to-aws OR azure-to-aws installed alongside this skill (gcp-to-aws preferred when both are present); access-only mode needs neither."
+description: "Use to migrate code that calls OpenAI, Gemini/Google AI, or the Anthropic API to Amazon Bedrock — a pure model/SDK rewrite. End-to-end: assesses the codebase, optionally captures OpenAI, OpenRouter, or Anthropic cost and token usage through consent-gated provider APIs, rewrites SDK calls, evaluates output quality against Bedrock, and delivers a ready-to-merge branch. Also has an access-only mode for checking or enabling Bedrock model access for specific models (e.g. 'request access to Claude on Bedrock', 'which models do I turn on') with no code migration — it checks each model and walks the access step, then stops. Not for agent runtime selection or agent migration planning (use agent-advisor), self-hosted LLM batch inference (use self-hosted-llm-batch-inference), nor standalone cost estimates or infra-only migration. The full migration REQUIRES bedrock-migration-assessment installed alongside this skill; access-only mode does not need it."
 ---
 
 # Migrate to Bedrock (Assess + Execute)
 
 Single-command AI migration: OpenAI / Gemini / Anthropic → Amazon Bedrock.
 
-**Requires the `gcp-to-aws` OR the `azure-to-aws` skill installed alongside this one.** This
-skill has no standalone Assess implementation — Phase A below runs Assess by directly reading
-and executing whichever of those two skills is present's own phase instruction files in this
-same session (the same inline-execution pattern `agent-advisor` uses for its `migration-plan`
-phase: no cross-skill tool call, no turn boundary, and no dependency on your agent supporting a
-Skill/subagent dispatch mechanism — reading a file works on any agent). There is no fallback
-path that performs Assess itself if neither sibling is present. If you installed this skill on
-its own (e.g. a single-skill `npx skills add`), install `gcp-to-aws` or `azure-to-aws` too
-before using it.
+**Requires the `bedrock-migration-assessment` skill installed alongside this one.** This
+skill has no Assess implementation of its own. Phase A below runs Assess by reading and
+executing bedrock-migration-assessment's own instruction files in this same session
+(Discover, Clarify, Design and Estimate for an AI-only migration), then confirms the result
+with that skill's readiness script. There is no cross-skill tool call and no turn boundary,
+so your agent does not need a Skill or subagent dispatch mechanism: reading a file works on
+any agent. There is no fallback that performs Assess itself. If you installed this skill on
+its own (for example with a single-skill `npx skills add`), install
+`bedrock-migration-assessment` too before using it.
 
 The skill base directory is given in the "Base directory for this skill: X" line the harness
 emits at load time. Call it `<SKILL_BASE>`. Derived paths:
 
 - `$SCRIPTS` = `<SKILL_BASE>/scripts`
 - `$HELPERS` = `<SKILL_BASE>/references/helpers` (the former helper skills, now references)
-- `$ASSESS_SKILL` / `$ASSESS_BASE` — resolved once, in Step 0b: `$ASSESS_SKILL` is whichever of
-  `gcp-to-aws` / `azure-to-aws` is installed alongside this skill (`gcp-to-aws` preferred when
-  both are present), and `$ASSESS_BASE` = `<SKILL_BASE>/../$ASSESS_SKILL` — that sibling skill's
-  own directory. Phase A reads its instruction files directly off this path; every relative
-  reference inside an `$ASSESS_SKILL` file (`references/shared/...`, `references/phases/...`,
-  etc.) resolves under `$ASSESS_BASE`, exactly as it would if `$ASSESS_SKILL` were running
-  standalone.
+- `$BMA_BASE` = `<SKILL_BASE>/../bedrock-migration-assessment`, the assessment skill's own
+  directory, checked in Step 0b. Phase A reads its instruction files from this path. Inside a
+  bedrock-migration-assessment file, `<SKILL_BASE>` and every relative reference
+  (`references/...`, `scripts/...`) mean `$BMA_BASE`, exactly as they would if that skill
+  were running on its own.
 
 ---
 
@@ -51,9 +49,9 @@ If missing: "Install uv first — see the official install guide: https://docs.a
 
 ### 0a-bis. Route: full migration vs. access-only
 
-This skill has two modes. Decide which the user wants **before** the Assess-sibling check (0b)
-— the access-only mode does not use `gcp-to-aws`/`azure-to-aws` at all, so requiring one of them
-there would block a user who only wants access enablement.
+This skill has two modes. Decide which the user wants **before** the Assess-skill check (0b).
+The access-only mode does not use `bedrock-migration-assessment` at all, so requiring it there
+would block a user who only wants access enablement.
 
 Route to **Access-only mode** (jump to the "## Access-only mode" section below, skip 0b and
 Steps 1+) when either is true:
@@ -77,57 +75,51 @@ If it is ambiguous (the user mentions both a codebase and access), **AskUserQues
 
 Otherwise (a code path / clear rewrite intent) → continue to 0b for the full migration.
 
-### 0b. Check that a gcp-to-aws or azure-to-aws sibling skill is installed
+### 0b. Check that bedrock-migration-assessment is installed
 
-Phase A below runs Assess by directly reading and executing `$ASSESS_SKILL`'s own phase
-instruction files (Discover → Clarify → Design → Estimate, AI-only path) in this same
-session — there is no Assess logic in this skill to fall back to. `gcp-to-aws` and
-`azure-to-aws` are **separate skills**, not bundled inside this one — a single-skill install
-(e.g. `npx skills add ... --skill llm-to-bedrock`) does not bring either along automatically.
-Check for them now, before promising the user an Assess phase this deployment cannot run:
+Phase A below runs Assess by reading and executing bedrock-migration-assessment's own phase
+instruction files (Discover, Clarify, Design, Estimate) in this same session, and then runs
+its `$BMA_BASE/scripts/readiness.py`. There is no Assess logic in this skill to fall back to.
+`bedrock-migration-assessment` is a **separate skill**, not bundled inside this one: a
+single-skill install (for example `npx skills add ... --skill llm-to-bedrock`) does not bring
+it along. Check for it now, before promising the user an Assess phase this deployment cannot
+run:
 
 ```bash
-if [ -f "<SKILL_BASE>/../gcp-to-aws/SKILL.md" ]; then
-  ASSESS_SKILL=gcp-to-aws
-elif [ -f "<SKILL_BASE>/../azure-to-aws/SKILL.md" ]; then
-  ASSESS_SKILL=azure-to-aws
+if [ -f "<SKILL_BASE>/../bedrock-migration-assessment/SKILL.md" ] && [ -f "<SKILL_BASE>/../bedrock-migration-assessment/scripts/readiness.py" ]; then
+  echo BMA_PRESENT
 else
-  echo ASSESS_SIBLING_MISSING
+  echo BMA_MISSING
 fi
 ```
 
-`$ASSESS_BASE` = `<SKILL_BASE>/../$ASSESS_SKILL`. This checks the sibling directories relative
-to `<SKILL_BASE>` (defined above), which works under any install path — native plugin install
-and `npx skills add --skill '*'` both place `gcp-to-aws`/`azure-to-aws` as siblings of this
-skill's own directory. It does **not** depend on `${CLAUDE_PLUGIN_ROOT}`. **When both are
-installed, `gcp-to-aws` wins** — it is this skill's original, more deeply tested integration,
-so this preserves today's default behavior for every existing user with both skills installed.
+This checks the sibling directory relative to `<SKILL_BASE>`, which works under any install
+path: a native plugin install and `npx skills add --skill '*'` both place
+`bedrock-migration-assessment` beside this skill's own directory. It does **not** depend on
+`${CLAUDE_PLUGIN_ROOT}`.
 
-- `$ASSESS_SKILL` resolved (either value) → proceed to Step 1.
-- `ASSESS_SIBLING_MISSING` → **stop here — do not proceed.** Tell the user:
+- `BMA_PRESENT` → `$BMA_BASE` is set (see the derived paths above); proceed to Step 1.
+- `BMA_MISSING` → **stop here. Do not proceed.** Tell the user:
 
-  > "This migration needs either the `gcp-to-aws` or the `azure-to-aws` skill installed
-  > alongside this one — it handles code scanning, AI-workload detection, and Bedrock model
-  > design; I can't do that part myself without it. Both ship in the same `aws-startup-advisor`
-  > plugin as this skill, so if you installed the whole plugin one of them should already be
-  > next to me — it looks like only some of the plugin's skills were installed. Install the pair
-  > together with:
-  > `npx skills add aws/agent-toolkit-for-aws/plugins/aws-startup-advisor/skills --skill llm-to-bedrock --skill gcp-to-aws`
-  > (or substitute `azure-to-aws` if your source infra runs on Azure; use the same `--agent` and
-  > `--global`/project scope you used for this skill), or run that same `npx skills add` command
-  > with `--skill '*'` instead of naming individual skills to get every skill at once. Then
+  > "This migration needs the `bedrock-migration-assessment` skill installed alongside this
+  > one. It handles code scanning, AI-workload detection, and the Bedrock model design; I
+  > can't do that part myself without it. It ships in the same `aws-startup-advisor` plugin
+  > as this skill, so if you installed the whole plugin it should already be next to me. It
+  > looks like only some of the plugin's skills were installed. Install the pair together
+  > with:
+  > `npx skills add aws/agent-toolkit-for-aws/plugins/aws-startup-advisor/skills --skill llm-to-bedrock --skill bedrock-migration-assessment`
+  > (use the same `--agent` and `--global`/project scope you used for this skill), or run
+  > that same `npx skills add` command with `--skill '*'` to get every skill at once. Then
   > restart your agent and ask me to migrate again."
 
-  **Do not** perform the Assess phase yourself as a workaround — Phase A below is explicit that
-  Assess logic lives only in `$ASSESS_SKILL`; re-implementing it here would drift out of sync
-  with that skill's Discover/Clarify/Design logic over time. There is no standalone Assess for
-  this skill — this check exists to fail fast and clearly, not to unlock alternate behavior.
+  **Do not** perform the Assess phase yourself as a workaround. Assess logic lives only in
+  bedrock-migration-assessment; re-implementing it here would drift from that skill's
+  Discover, Clarify and Design logic over time. This check exists to fail fast and clearly,
+  not to unlock alternate behavior.
 
-Phase A reads `$ASSESS_SKILL`'s files directly off disk rather than invoking it as a skill, so
-there is no separate agent-capability requirement here — any agent that can read a file and
-run Bash can execute this. (An earlier version of this skill invoked `gcp-to-aws` via a
-cross-skill Skill-tool call; that mechanism is Claude-Code-specific and unverified elsewhere,
-which is exactly why Phase A no longer uses it.)
+Phase A reads bedrock-migration-assessment's files directly off disk rather than invoking it
+as a skill, so there is no separate agent-capability requirement here: any agent that can
+read a file and run Bash can execute this.
 
 ---
 
@@ -172,67 +164,82 @@ If a GitHub URL, `git clone` it to a temp dir; use that path as `$REPO`.
 
    If uncommitted changes exist, show them and AskUserQuestion: "Continue anyway" or "Let me clean up first".
 
-Record `$REPO` for all subsequent steps.
+Record `$REPO` for all subsequent steps as an absolute, resolved path:
+
+```bash
+REPO="$(cd "$REPO" && pwd -P)"
+```
+
+`readiness.py` prints each artifact path relative to the run directory it was given, so a
+relative `$REPO` would give Phase B paths that break as soon as the working directory
+changes.
 
 ---
 
 ## Step 1.5 — Check for an existing usage profile
 
-Before Phase A begins, check whether a prior Discover run (from either `gcp-to-aws` or
-`azure-to-aws`) already captured real OpenAI/OpenRouter/Anthropic usage-API spend for this
-repo — if so, reuse it as the cost baseline instead of later falling back to golden-dataset
-extrapolation. Phase A's own `$MIGRATION_DIR` resolution and resume logic start fresh each
-time Phase A is entered, so this step must run strictly before that to have a chance to
-short-circuit it.
+Before Phase A begins, check whether a prior bedrock-migration-assessment run already
+captured real OpenAI/OpenRouter/Anthropic usage-API spend for this repo. If so, reuse it as
+the cost baseline instead of later falling back to golden-dataset extrapolation. This step
+runs strictly before Phase A, because A1 decides which assessment run to start or resume
+and the baseline figures must already be in hand when it does.
 
-1. **Glob** every `.migration/<run-dir>/<provider>-usage-profile.json` under `$REPO`,
-   excluding this skill's own output directory:
+1. **Glob** every `.migration/bma-*/<provider>-usage-profile.json` under `$REPO`. Only a
+   bedrock-migration-assessment run has a `bma-` directory name (its `discover.md` Step 4
+   names the run `bma-MMDD-HHMM`):
 
    ```bash
    for p in anthropic openai openrouter; do
-     find "$REPO/.migration" -mindepth 2 -maxdepth 2 -name "${p}-usage-profile.json" \
+     find "$REPO/.migration" -mindepth 2 -maxdepth 2 -path "*/.migration/bma-*/${p}-usage-profile.json" \
        -not -path "*/.bedrock-*/*" 2>/dev/null
    done
    ```
 
    `-mindepth 2 -maxdepth 2` matches exactly `.migration/<run-dir>/<provider>-usage-profile.json`.
    `-not -path "*/.bedrock-*/*"` excludes llm-to-bedrock's own `$BEDROCK_RUN_DIR`
-   (`.migration/.bedrock-<id>/`) — that directory is this skill's OWN output, never a
-   gcp/azure Discover output. This glob is provider-named, not skill-named — it finds a
-   profile regardless of whether `gcp-to-aws`'s or `azure-to-aws`'s Discover wrote it, since
-   both write to the same filename convention under the same `$REPO/.migration/` tree.
+   (`.migration/.bedrock-bma-<MMDD-HHMM>/`): that directory is this skill's OWN output, never
+   an assessment run.
 2. **Zero matches across all three** → no change to current behavior; proceed to Phase A
    exactly as today.
-3. **Determine which run's artifact to use (deterministic tiebreak, source-run status
-   surfaced):** for each distinct run directory with at least one match, read that
-   directory's `.phase-status.json` → `last_updated` (a full ISO-8601 timestamp, which DOES
-   carry the year) and use it as the **primary** sort key — the greatest `last_updated` wins.
-   **Do not treat the directory's own `<MMDD-HHMM>` name as chronological on its own:** a
-   plain lexicographic comparison of `<MMDD-HHMM>` is only chronological WITHIN a single
-   calendar year — `1231-1200` (Dec 31) lexicographically sorts after `0102-1200` (Jan 2) of
-   the FOLLOWING, objectively later year, so using the name alone can pick a stale run. Fall
-   back to the `<MMDD-HHMM>` directory name ONLY when a candidate's `last_updated` is
-   missing or unparseable, and when you do, say so explicitly — that fallback is a same-year
-   assumption, not a general chronological guarantee, and must never be presented to the user
-   as equivalent to a real timestamp comparison. Use `.phase-status.json` → `current_phase`
-   as a secondary piece of information to SURFACE to the user (not to break ties) — e.g. a
-   run whose `current_phase` shows Discover never advanced past Clarify tells the user this
-   was likely an abandoned/declined session, even though its usage-profile file is still the
-   most recent one. **State both pieces to the user explicitly before adopting the
-   figures:** *"Found an existing [provider] usage profile from your `<MMDD-HHMM>` run
-   (status: `<current_phase>`) — using that one."* If a run directory's `.phase-status.json`
-   is missing/unparseable entirely, still allow it as a candidate via the `<MMDD-HHMM>`
-   fallback, but surface `status: unknown` instead of a phase name. **Genuine tie or
-   ambiguity** (two or more candidates all lack a usable `last_updated`, so only the
-   same-year-limited `<MMDD-HHMM>` fallback is available for them, or their `last_updated`
-   values are otherwise ambiguous): do NOT silently guess — surface every ambiguous candidate
-   to the user (directory name + whatever status is known for each) and ask which one is
-   actually the one to use, reusing the "state both pieces to the user explicitly" pattern
-   above rather than picking one automatically.
+3. **Check each candidate run with readiness, then pick one (deterministic tiebreak,
+   source-run status surfaced).** Never read a candidate's `.phase-status.json` yourself.
+   For each distinct run directory with at least one match, run bedrock-migration-assessment's
+   readiness script (the absolute `$BMA_BASE` path makes it work from any directory):
+
+   ```bash
+   python3 "$BMA_BASE/scripts/readiness.py" "<candidate run dir>" --through design
+   ```
+
+   Exit 0 (`ready: true`) means the run is complete through Design. On exit 1, a `reason` of
+   `not_this_skill`, `status_not_found`, `status_unreadable` or `status_invalid` means the
+   directory is not a usable bedrock-migration-assessment run: drop it. Any other non-ready
+   `reason` (for example `phase_incomplete`) keeps it as a candidate: its usage profiles are
+   still real captured data, but surface the `reason` and `detail` as its status, since it
+   tells the user the session was likely abandoned or declined partway. Any other exit code,
+   or output that is not one JSON object, is an error: stop and show the user the output.
+
+   The **primary** sort key is the greatest `metadata.captured_at` (a full ISO-8601 UTC
+   timestamp, which DOES carry the year) across the candidate's usage profiles. All three
+   bedrock-migration-assessment usage readers (`$BMA_BASE/scripts/openai-usage.py`,
+   `$BMA_BASE/scripts/anthropic-usage.py`, `$BMA_BASE/scripts/openrouter-usage.py`) write it. **Do not treat the
+   directory's own `bma-<MMDD-HHMM>` name as chronological on its own:** a plain
+   lexicographic comparison of `<MMDD-HHMM>` is only chronological WITHIN a single calendar
+   year. `bma-1231-1200` (Dec 31) sorts after `bma-0102-1200` (Jan 2) of the FOLLOWING,
+   objectively later year, so using the name alone can pick a stale run. Fall back to the
+   `<MMDD-HHMM>` directory name ONLY when a candidate's `captured_at` is missing or
+   unparseable, and when you do, say so explicitly: that fallback is a same-year assumption,
+   not a general chronological guarantee, and must never be presented to the user as
+   equivalent to a real timestamp comparison. **State both pieces to the user explicitly
+   before adopting the figures:** *"Found an existing [provider] usage profile from your
+   `bma-<MMDD-HHMM>` run (status: `<ready through design | readiness reason>`), using that
+   one."* **Genuine tie or ambiguity** (two or more candidates all lack a usable
+   `captured_at`, so only the same-year-limited `<MMDD-HHMM>` fallback is available for them,
+   or their timestamps are otherwise ambiguous): do NOT silently guess. Surface every
+   ambiguous candidate to the user (directory name and status for each) and ask which one to
+   use, reusing the "state both pieces to the user explicitly" pattern above rather than
+   picking one automatically.
 4. For the winning run directory, read **every** usage-profile file present in it (a run can
-   have multiple providers' profiles simultaneously — including a mix of gcp-produced and
-   azure-produced profiles — B1 does not need to distinguish which skill wrote which file,
-   since the profile schema itself is identical regardless of producer).
+   have several providers' profiles at once).
 5. For each profile: check `metadata.capture_warnings` first. A warning that names
    `usage-completions-hourly.json`, `usage-completions-minute.json`,
    `usage-messages-hourly.json`, `usage-messages-minute.json`, or
@@ -240,8 +247,8 @@ short-circuit it.
    volume and cost. Any other non-empty warning means some endpoint failed and
    that category's volume is UNKNOWN, not zero; propagate the caveat forward.
 6. Compute `summary.monthly_cost_usd` SUMMED across every profile in the winning run (never
-   max/pick-one, reusing `estimate-ai.md`'s documented SUM discipline from both skills —
-   gcp's and azure's `estimate-ai.md` apply the identical rule), combining `usage_by_model[]`
+   max/pick-one; bedrock-migration-assessment's Estimate Step 0 likewise sums measured spend
+   across every usage profile into `source_measured_monthly`), combining `usage_by_model[]`
    with the same normalization rules (OpenRouter `prompt_tokens`/`completion_tokens` →
    `input_tokens`/`output_tokens`; Anthropic `cache_read_tokens` stay in the volume
    sum. `cache_creation_tokens` is NOT folded into `input_tokens`. When the row has
@@ -255,15 +262,18 @@ short-circuit it.
    `cache_write_unsplit`. Do not leave those tokens in `input_tokens`, and do not
    add them on top. The usage response does not name a 5-minute or 1-hour write
    duration, so this stays the unpriced component rather than an ordinary-input
-   price. `input_cached_tokens` stay inside `input_tokens`. See
-   `estimate-ai.md`'s Prerequisites section in either sibling skill for the
-   `uncached_input_tokens + cache_read_input_tokens + cache_creation_input_tokens`
-   contract). Apply the
+   price. `input_cached_tokens` stay inside `input_tokens`. See Step 3 of
+   `skills/bedrock-migration-assessment/references/phases/discover/discover-anthropic-api.md`
+   for the Anthropic row fields: `input_tokens` is uncached input, and
+   `cache_creation_tokens` is the sum of `cache_creation_5m_tokens` and
+   `cache_creation_1h_tokens`). Apply the
    `metadata.partial_window` exception: a
    partial-window profile's figures are a reference figure labeled with `active_days`, never
    blended into the monthly baseline (schema consequence specified below). **Second, parallel
-   exception — `metadata.cost_status` (written by the Anthropic usage profile and by
-   bedrock-migration-assessment's OpenAI usage profile):** a profile whose `cost_status` is `"cost_unavailable"` has `null` for
+   exception — `metadata.cost_status` (written by every bedrock-migration-assessment usage
+   profile; only the Anthropic usage profile and bedrock-migration-assessment's OpenAI usage
+   profile can be `"cost_unavailable"`, since the OpenRouter profile writes only
+   `"partial_window"` or `"complete"`):** a profile whose `cost_status` is `"cost_unavailable"` has `null` for
    `summary.monthly_cost_usd` — EXCLUDE it from this dollar SUM entirely (never add `null`,
    never substitute `0`), but STILL include its `usage_by_model[]` token totals in
    `usage_by_model[]` below — usage succeeded for that profile, only its cost side failed. This
@@ -384,8 +394,8 @@ short-circuit it.
    `$BEDROCK_RUN_DIR` is set — see the cross-reference there.
 8. **This step never prompts for consent** — it only reads a file a prior, already-consented
    run already wrote. No new attack surface; no new consent gate needed.
-9. **Idempotency:** this step is safe to re-run on every Phase-B start, including a resumed
-   session (A2's resume path). It performs read-only file operations only — the actual write
+9. **Idempotency:** this step is safe to re-run on every invocation of this skill, including
+   a session that A1 step 2 resumes. It performs read-only file operations only — the actual write
    of `usage-baseline.json` happens later, in A3 (see step 7 above), and that write is itself
    idempotent — overwriting `usage-baseline.json` on a rerun with the same inputs produces the
    same output, and a rerun with DIFFERENT inputs (e.g. a newer profile appeared since the
@@ -408,7 +418,7 @@ representable):**
 
 ```json
 {
-  "source_run_dir": ".migration/0315-1030",
+  "source_run_dir": ".migration/bma-0315-1030",
   "source_profiles": ["anthropic-usage-profile.json", "openai-usage-profile.json"],
   "captured_at": "<ISO 8601, max across source profiles>",
   "capture_warnings": [],
@@ -457,12 +467,13 @@ representable):**
   `summary` into two separate top-level figures — the one `monthly_cost_usd` number remains
   the SUM step 6 computes, and the boolean tells the consumer how to present it.
 - **`windows.<provider>.cost_status`**: `"complete" | "partial_window" | "cost_unavailable"`,
-  copied straight from that provider's source usage-profile `metadata.cost_status` (the
-  Anthropic usage profile writes this field — see `discover-anthropic-api.md` Step 3 in either
-  sibling skill — and so does bedrock-migration-assessment's OpenAI usage profile; profiles
-  that don't write it, such as the sibling skills' OpenAI and OpenRouter profiles, default to
-  `"complete"` when `partial_window` is `false` and `"partial_window"` when it is `true`, since
-  for those providers window-completeness and cost-completeness haven't been split apart yet).
+  copied straight from that provider's source usage-profile `metadata.cost_status`. Every
+  bedrock-migration-assessment usage profile writes this field, the OpenRouter one included
+  (see Step 3 of each reader under
+  `skills/bedrock-migration-assessment/references/phases/discover/`; the OpenRouter profile
+  writes only `"partial_window"` or `"complete"`). A profile that lacks the field (an older
+  file) defaults to `"complete"` when `partial_window` is `false` and `"partial_window"` when
+  it is `true`.
   When ANY `windows.<provider>.cost_status` is `"cost_unavailable"`, that provider's dollars
   were already excluded from `summary.monthly_cost_usd` in step 6 above — a consumer reading
   `windows` to explain a dollar total that is lower than the token volume would suggest finds
@@ -479,25 +490,20 @@ representable):**
 
 ### Standalone invocation with no existing profile
 
-When this step finds zero matches, **rely entirely on Phase A's existing inline execution of
-`$ASSESS_BASE`'s own `discover.md`** (gcp-to-aws's or azure-to-aws's, whichever Step 0b
-resolved `$ASSESS_SKILL` to for this run), which already offers OpenAI/OpenRouter/Anthropic
-usage discovery via its own consent/trigger logic — gcp-to-aws has this today in its Step
-1e–1g; azure-to-aws has the identical capability. No new "offer live discovery" entry point
-is designed here — re-implementing it in this step would duplicate the ~400-line
-security-contract capture logic AND the offer/consent flow a third/fourth/fifth time (once
-per cloud), and risk drift between call sites. Instead, Phase A's prose already names
-`$ASSESS_BASE/references/phases/discover/discover.md` by path and tells the reader to
-execute it in full — that is the "reference by path, don't reimplement" mechanism, already
-in place, covering both clouds.
+When this step finds zero matches, **rely entirely on Phase A's inline execution of
+`$BMA_BASE/references/phases/discover/discover.md`**. Its Step 2c already offers OpenAI,
+OpenRouter and Anthropic usage discovery through each usage reader's own consent gate. No new
+"offer live discovery" entry point is designed here: re-implementing it in this step would
+duplicate the security-contract capture logic and the offer/consent flow, and risk drift
+between call sites. Phase A names that file by path and tells the reader to execute it in
+full, which is the "reference by path, don't reimplement" mechanism.
 
 One adjustment: when Phase A's inline Discover captures a FRESH profile in a NEW
 `$MIGRATION_DIR`, re-run steps 4–7 above against that run's own directory (no cross-run
-search needed) at the end of Phase A's Discover sub-step, and hold the resulting figures the
-same way (step 7's deferred-write discipline applies here too — `$BEDROCK_RUN_DIR` still does
-not exist at this point, since A3 has not run yet) — so Phase C always reads from one
-consistent place regardless of whether the profile came from this step (reuse) or Phase A's
-fresh capture, and regardless of which cloud's Assess skill produced it.
+search needed) after A2's readiness check passes, and hold the resulting figures the same
+way (step 7's deferred-write discipline applies here too, since `$BEDROCK_RUN_DIR` does not
+exist until A3) so Phase C always reads from one consistent place, whether the profile came
+from this step (reuse) or from Phase A's fresh capture.
 
 **Additive, optional — existing flow unaffected:** `usage-baseline.json` absent means no
 behavior change — the existing behavior-delta comparison and golden-dataset-sample
@@ -515,11 +521,11 @@ Search), customer-created Projects or Workspaces, a model or API that exists onl
 or strict in-Region processing where Runtime offers only a cross-region profile. API
 continuity alone never selects Mantle — keeping the OpenAI or Anthropic SDK is a Runtime
 lane. See `skills/shared/ai/bedrock-endpoint-policy.md` (vendored at
-`$ASSESS_BASE/references/vendored/ai/bedrock-endpoint-policy.md`) for the public sources.
+`$BMA_BASE/references/vendored/ai/bedrock-endpoint-policy.md`) for the public sources.
 
-**How this skill learns a Mantle requirement.** Phase A's delegated Discover records
-code-visible selectors as `mantle_signals`; Clarify's Mantle-only requirements block (full flow
-Q22b, AI-only Q10.5) confirms them or asks outright and writes
+**How this skill learns a Mantle requirement.** bedrock-migration-assessment's Discover (run
+inline in Phase A) records code-visible selectors as `mantle_signals`; its Clarify Mantle-only
+requirements question (Q10.5 in `clarify-ai-only.md`) confirms them or asks outright and writes
 `preferences.json → ai_constraints.mantle_requirements`; Design derives
 `bedrock_models[].mantle_selector` only from that field (plus the catalog for
 `mantle_only_model_or_api`) and records `mantle_requirement` on Mantle rows and the
@@ -528,164 +534,142 @@ runtime lane by design, not an inference.
 
 ---
 
-## Phase A — Assess (runs $ASSESS_SKILL's own AI-path files, inline)
+## Phase A — Assess (runs bedrock-migration-assessment's files, inline)
 
 **Do NOT read source code, detect AI SDKs, or ask Clarify questions yourself from scratch.**
-This phase reads `$ASSESS_SKILL`'s own phase instruction files off disk and follows them
-exactly as if `$ASSESS_SKILL` were running standalone — the same content, the same state file,
-the same artifacts. The only difference from invoking `$ASSESS_SKILL` as a separate skill is
-that there is no tool call and no turn boundary: everything below runs inline, in this session.
-Step 1.5 above already checked for and, when found, computed the figures for an existing
-usage-API profile (from either `gcp-to-aws`'s or `azure-to-aws`'s Discover) as the Bedrock
-cost baseline — held in memory until "### A3 — Locate Assess output, then establish this
-skill's own run state" below writes them to `$BEDROCK_RUN_DIR/usage-baseline.json` once
-`$BEDROCK_RUN_DIR` exists; Phase A
-below still runs fully regardless — it only falls back to Discover's own fresh usage-API
-capture or golden-dataset extrapolation when no existing profile was found.
+This phase reads bedrock-migration-assessment's own instruction files off disk and follows
+them exactly as if that skill were running on its own: the same content, the same state file,
+the same artifacts. The only difference from invoking it as a separate skill is that there is
+no tool call and no turn boundary. Step 1.5 above already checked for an existing usage-API
+profile and, when found, computed the figures for the Bedrock cost baseline, held in memory
+until "### A3 — Locate Assess output, then establish this skill's own run state" below writes
+them to `$BEDROCK_RUN_DIR/usage-baseline.json` once `$BEDROCK_RUN_DIR` exists. Phase A below
+still runs fully regardless.
 
-**Path resolution.** `$ASSESS_SKILL` instruction files use relative references
-(`references/phases/...`, `references/shared/...`, `references/vendored/...`,
-`references/design-refs/...`, `shared/...`, `design-refs/...`, `phases/...`,
-`data/...` — including the short forms). Resolve every one of them under `$ASSESS_BASE`
-(defined above), exactly the prefix it's written with, e.g. `shared/pricing-cache.md` →
-`$ASSESS_BASE/references/shared/pricing-cache.md`. `$MIGRATION_DIR` is the one path that does
-**not** resolve under `$ASSESS_BASE` — it stays under `$REPO` per `$ASSESS_SKILL`'s own
-convention (A1 below). `$ASSESS_SKILL`'s files are **read-only** here — this phase never edits
-them.
+**Path resolution.** bedrock-migration-assessment's files name paths as `<SKILL_BASE>/...`
+or as relative references (`references/phases/...`, `references/shared/...`,
+`references/vendored/...`, `references/contracts/...`, `scripts/...`). Resolve every one of
+them under `$BMA_BASE`: their design checker, for example, is
+`$BMA_BASE/scripts/design-ai.py`. `$MIGRATION_DIR` is the one path that does **not** resolve
+under `$BMA_BASE`: it is `$REPO/.migration/bma-MMDD-HHMM/`, per that skill's own Definitions.
+bedrock-migration-assessment's files are **read-only** here; this phase never edits them.
+
+**The assessment run belongs to bedrock-migration-assessment.** Its rule is "Never write into
+a run directory another skill created", and its readiness check returns `not_this_skill` for
+any run whose `.phase-status.json` carries `owning_skill`. So this skill never writes
+anything into `$MIGRATION_DIR` itself: no `owning_skill`, no `initiated_by`, no other field
+and no other file. The only writes there are the ones bedrock-migration-assessment's own
+phase files make while you follow them. This skill also never reads that run's
+`.phase-status.json` to make its own decisions: whether the run is usable is decided only by
+`readiness.py` (A2). This skill's own state lives in `$BEDROCK_RUN_DIR` (A3).
 
 ### A1 — Run Discover, Clarify, Design, and Estimate
 
 Tell the user, before starting:
 
 > "I'm now running the Discover → Clarify → Design → Estimate assessment (the same logic
-> `$ASSESS_SKILL` uses standalone) to detect your AI workloads and design the Bedrock
-> migration. It'll ask you some questions — please answer them."
+> `bedrock-migration-assessment` uses on its own) to detect your AI workloads and design the
+> Bedrock migration. It'll ask you some questions; please answer them."
 
 Then, in order:
 
-1. **Resolve `$MIGRATION_DIR`.** Check for an existing `.migration/` directory at `$REPO`
-   exactly as `$ASSESS_BASE/references/phases/discover/discover.md` Step 0 describes (list
-   existing runs and offer Resume/Fresh/Cancel if any exist; otherwise create
-   `$REPO/.migration/<MMDD-HHMM>/` with the current timestamp and set `$MIGRATION_DIR` to it).
-   **A directory that exists but has no `.phase-status.json` yet is NOT an existing run** —
-   treat it as fresh and skip discover.md's Resume/Fresh/Cancel prompt for it (same exception
-   `agent-advisor`'s `migration-plan.md` Phase A documents for its own inline gcp-to-aws
-   delegation). This matters here because llm-to-bedrock does not pre-create `$MIGRATION_DIR`
-   before this step — but a run interrupted after this step creates the directory and before
-   discover.md's Step 0 writes `.phase-status.json` would otherwise leave exactly this
-   directory (present, but state-less) for a later resume, and discover.md's Resume branch
-   would then try to read a `.phase-status.json` that doesn't exist.
-2. **Read and execute** `$ASSESS_BASE/references/phases/discover/discover.md` in full, exactly
-   as written, including its own Step 0 state-file initialization (skip Step 0 if resuming —
-   `$MIGRATION_DIR` already has a `.phase-status.json`) and its Step 1 sub-discovery gates
-   (1a–1e). Those gates already key off what's actually present in `$REPO` — IaC discovery
-   only runs if Terraform files exist there, billing discovery only if billing exports exist,
-   and so on; you do not need to steer it. `discover.md`'s own usage-API consent/capture
-   actions (OpenAI, OpenRouter, and — for azure-to-aws — Anthropic) will offer the matching
-   Admin-API usage discovery when applicable; accepting any of them gives Estimate real spend
-   and token volumes without manual exports. (Anthropic's Admin key has NO selectable scopes —
-   it is all-or-nothing; the old sentence's "Usage set to Read" phrasing was already wrong for
-   OpenAI's own key in a narrower way worth not perpetuating into this generalized sentence —
-   note this as an adjacent, pre-existing inaccuracy fixed at its source rather than carried
-   forward.)
+1. **Load `$BMA_BASE/SKILL.md`** and follow its Definitions, Input security, and "Step 0:
+   Resume or start" sections, with `<SKILL_BASE>` = `$BMA_BASE`. **The project root and the
+   code directory for that skill are both `$REPO`** (Step 1's absolute path, including a temp
+   clone of a GitHub URL): its Discover takes the scan route against `$REPO`, and its run
+   directory lands at `$REPO/.migration/bma-MMDD-HHMM/`, never under the agent's working
+   directory.
+2. **Pick the run.** When `$REPO/.migration/` already has `bma-*` run directories, list them
+   and ask the user whether to resume one or start fresh. On a resumed llm-to-bedrock
+   migration (a `$REPO/.migration/.bedrock-bma-<id>/` already exists), offer `bma-<id>` first,
+   since that is the assessment this migration already consumed. A resumed run is the one the
+   user names, and that skill's Step 0 rules decide where it resumes. Otherwise its Discover
+   creates a new `$REPO/.migration/bma-MMDD-HHMM/`. Set `$MIGRATION_DIR` to that directory. A
+   run directory made by another skill (a gcp-to-aws or azure-to-aws assessment, for example)
+   is not reused: say so, and run Assess again here.
+3. **Skip a finished assessment.** When the chosen run already exists, run A2's readiness
+   command on it first. On `ready: true`, do not load that skill's phases: go straight to A2.
+   Any other answer continues with step 4.
+4. **Read and execute** that skill's Steps 1 to 4 exactly as written: Discover
+   (`$BMA_BASE/references/phases/discover/discover.md`), Clarify
+   (`$BMA_BASE/references/phases/clarify/clarify-ai-only.md`), Design
+   (`$BMA_BASE/references/phases/design/design-ai.md`), and Estimate
+   (`$BMA_BASE/references/phases/estimate/estimate-ai.md`), including each step's own
+   `.phase-status.json` updates. Discover's Step 2c offers the OpenAI, Anthropic and
+   OpenRouter usage readers when they apply; accepting any of them gives Estimate real spend
+   and token volumes without manual exports.
+5. **Stop after Estimate.** bedrock-migration-assessment stops after Estimate on its own:
+   show its summary, then continue to A2. Do not load phase files from any other skill.
 
-   When Discover's Step 0 writes the run's `.phase-status.json`, it must record
-   `"initiated_by": "LLM_TO_BEDROCK"` beside `owning_skill` (which is set to whichever of
-   `GCP_TO_AWS` / `AZURE_TO_AWS` actually ran — i.e. `$ASSESS_SKILL`'s own identifier — per
-   `discover.md`'s own instruction for a run started by another skill): this run was started
-   by llm-to-bedrock, and that is how telemetry attributes it.
+If a phase file's own check fails (for example `$BMA_BASE/scripts/design-ai.py check` or
+`$BMA_BASE/scripts/estimate-ai.py check`), stop and show the user exactly what it reported. Do not
+patch an artifact to force a check to pass.
 
-   On `HANDOFF_OK`: at least one of `ai-workload-profile.json`, `gcp-resource-inventory.json`
-   / `azure-resource-inventory.json`, or `billing-profile.json` is present in
-   `$MIGRATION_DIR`.
-3. **Read and execute** `$ASSESS_BASE/references/phases/clarify/clarify.md` in full. It routes
-   itself — when `ai-workload-profile.json` is the only discovery artifact, it reads
-   `clarify-ai-only.md` and runs that standalone flow; if infra artifacts also exist, it runs
-   the fragment/assembler split instead. Either way, follow what it loads exactly.
-   On `HANDOFF_OK`: `preferences.json` is present in `$MIGRATION_DIR`.
-4. **Read and execute** `$ASSESS_BASE/references/phases/design/design.md` in full. It routes
-   to `design-ai.md` when `ai-workload-profile.json` exists — that is the file this skill's
-   Execute phase depends on. On `HANDOFF_OK`: `aws-design-ai.json` is present in
-   `$MIGRATION_DIR` (plus `aws-design.json`/`aws-design-billing.json` too, if an infra or
-   billing route also ran).
-5. **Read and execute** `$ASSESS_BASE/references/phases/estimate/estimate.md` in full. You do
-   **not** need to continue past Estimate — this skill only needs the Assess artifacts
-   (`aws-design-ai.json`, `ai-workload-profile.json`, `preferences.json`), so once
-   `estimate.md` reaches its post-Estimate decision gate, choosing **not to generate infra**
-   (or simply stopping at the decision pack) is enough; you never read anything `generate.md`
-   would produce (Terraform, `MIGRATION_GUIDE.md`, `migration-report.html`).
+### A2 — Confirm Assess is complete (readiness handshake)
 
-Each file above manages `$MIGRATION_DIR/.phase-status.json` itself, per its own protocol —
-do not write to that file yourself, other than the `initiated_by` field named in step 2 above.
-If any file's own `_postconditions`/handoff checks fail (`GATE_FAIL`), stop and show the user
-exactly what that file reported; do not patch an artifact to force a gate to pass.
+Run bedrock-migration-assessment's readiness script as its SKILL.md section "Readiness for
+other skills" requires. The absolute `$BMA_BASE` path makes the command work from any
+directory (the script loads its siblings relative to its own file):
 
-### A2 — Confirm Assess is complete
+```bash
+python3 "$BMA_BASE/scripts/readiness.py" "$MIGRATION_DIR" --through estimate
+```
 
-Since Phase A above ran every step through Estimate inline (not across separate
-invocations), Assess is complete once step 5 of A1 finishes without a `GATE_FAIL`. This
-check exists as a backstop in case the session was interrupted partway through A1 (e.g. the
-user stopped mid-Clarify and is resuming later) — re-read `$MIGRATION_DIR/.phase-status.json`
-and resume A1 at whichever step in `phases` is not yet `"completed"`, rather than restarting
-from Discover.
+- **Exit 0, `"ready": true`** → continue to A3. Keep the printed `migration_id`, `run_id`,
+  and every `artifacts.<file>.path` and `artifacts.<file>.sha256` (for
+  `ai-workload-profile.json`, `preferences.json`, `aws-design-ai.json`, and
+  `estimation-ai.json`). Phase B reads only those printed paths.
+- **Exit 1, `"ready": false`** (any `reason`: `run_not_found`, `status_not_found`,
+  `status_unreadable`, `status_invalid`, `not_this_skill`, `phase_incomplete`,
+  `artifact_missing`, `artifact_unreadable`, `profile_invalid`, `preferences_invalid`,
+  `design_invalid`, or `estimate_invalid`) → **stop.** Show the user the `reason` and
+  `detail`, and tell them to resume the run with bedrock-migration-assessment (name
+  `$MIGRATION_DIR`), then ask me to migrate again. Do not repair the run or its state file
+  yourself, and do not continue to Phase B.
+- **Any other exit code, or output that is not one JSON object** → **stop** and show the
+  user the command's output. Do not treat it as ready.
 
-**Before trusting that re-read, apply `$ASSESS_BASE/SKILL.md` § State Validation** (the same
-contract A1's own phase files rely on when THEY read this state, so this wrapper-level
-backstop re-read must not be held to a looser standard). In particular: if
-`.phase-status.json` fails to parse (an interrupted write left it invalid — e.g. the session
-was interrupted mid-write, not just mid-phase), § State Validation check 2's reconstruction
-procedure is the one and only sanctioned way to recover it — infer completed phases from the
-artifacts actually present in `$MIGRATION_DIR`, present the inferred status to the user for
-confirmation, and rewrite `.phase-status.json` only on that confirmation. This is a narrow,
-explicit exception to A1's "do not write to that file yourself" rule: `.phase-status.json`
-recovery per this contract is not the same act as a phase file's own state management, and
-proceeding here without it would mean this wrapper resumes on state it never validated,
-unlike every phase file it delegates to.
-
-**Workshop guard:** if `phases.workshop == "in_progress"`, `design.md`'s inner-workshop path
-is actively repricing (`workshop-refresh.md` is rewriting `aws-design-ai.json` between an old
-and a new mapping) — finish that loop (it resolves `phases.workshop` back to `"completed"` on
-exit or decline) before treating Design as done.
+**Re-check before every later re-read.** Whenever this skill reads one of those artifacts
+again after A2 (B1, B4's `--design` argument, C0's `assess_design_sha256`, **before each
+C1 to C6 dispatch**, since every agent reads `Migration plan dir:`, or any step of a resumed
+session), run the same readiness command first and compare each printed `sha256`
+with the one recorded in `$BEDROCK_RUN_DIR/assessment-readiness.json` (A3). A non-ready
+answer stops as above. A changed hash means the assessment changed since this skill recorded
+it: tell the user which file changed, overwrite `assessment-readiness.json` with the new
+answer, and let C0's run-context check invalidate the dependent phase results.
 
 ### A3 — Locate Assess output, then establish this skill's own run state
 
-**Use the SAME `$MIGRATION_DIR` A1/A2 already resolved and confirmed — do NOT re-select a
-directory here.** `$MIGRATION_DIR` is already set from A1 step 1 (and re-confirmed, not
-replaced, by A2's re-read on a resumed session); re-running a "newest directory" lookup
-(`ls -td "$REPO/.migration"/*/ | head -1`) at this point can select a DIFFERENT, newer run
-than the one A2 just verified was complete — e.g. a sibling run whose own Design is still
-in progress. B1 would then read that sibling's unfinished model map instead of the run this
-phase actually assessed, with no error raised (the newer directory can genuinely contain all
-three files below, just from a different, incomplete assessment). If `$MIGRATION_DIR` is
-somehow unset here (it should never be, given A1/A2 above), that is a bug in this phase's own
-state tracking — stop and report it rather than guessing a directory from `ls -td`.
+**Use the SAME `$MIGRATION_DIR` that A1 resolved and A2 confirmed. Do NOT re-select a
+directory here.** Re-running a "newest directory" lookup (`ls -td "$REPO/.migration"/*/ |
+head -1`) at this point can select a DIFFERENT, newer run than the one A2 just verified, for
+example a sibling run whose Design is still in progress. B1 would then read that sibling's
+unfinished model map, with no error raised. If `$MIGRATION_DIR` is somehow unset here, that
+is a bug in this phase's own state tracking: stop and report it rather than guessing a
+directory.
 
-Verify **all three** of these files exist in `$MIGRATION_DIR` (Phase B reads every one):
+A2's readiness answer already proved that all of these exist and pass their checks (Phase B
+reads the first three):
 
-- `aws-design-ai.json` (model mapping + architecture)
+- `aws-design-ai.json` (model mapping and architecture)
 - `ai-workload-profile.json` (detected workloads)
 - `preferences.json` (user preferences from Clarify)
-
-If **any** of the three is missing, Assess did not complete the AI path correctly — name the
-missing file(s), show the error, and stop. A1 running to completion without a `GATE_FAIL`
-should already guarantee this; this step is the backstop that confirms it before Execute
-reads them.
+- `estimation-ai.json` (the Bedrock cost estimate)
 
 **Establish this skill's own run state** (read-merge-write). This skill keeps a thin
-run-state file of its own, separate from the delegated run's, so the AI migration appears in
+run-state file of its own, separate from the assessment run, so the AI migration appears in
 the usage funnel under its own name. It declares its own state shape (phases `assess`,
-`execute`); the shared DSL's read-merge-write rule applies. Leave the delegated run's
-`.phase-status.json` untouched here: a run created by this invocation already carries
-`initiated_by` (A1), and rewriting an older run's file would make its history look like new
-work to the telemetry hooks.
+`execute`); the shared DSL's read-merge-write rule applies. Never touch the assessment run's
+files here (see Phase A).
 
 1. Set `$BEDROCK_RUN_DIR` = `$REPO/.migration/.bedrock-<id>/`, where `<id>` is the basename
-   of `$MIGRATION_DIR` (e.g. `.migration/.bedrock-0910-1100/`). The leading dot keeps it out
-   of the `ls -td "$REPO/.migration"/*/` lookup above, so it can never be mistaken for the
-   Assess run directory; keying it to the delegated run means a resumed migration reuses it.
-   `$BEDROCK_RUN_DIR` also holds `usage-baseline.json` when Step 1.5 (or Phase A's own fresh
-   Discover capture) found an existing usage-API profile — written in step 2 below, once
-   this directory exists (see Step 1.5's "New artifact" section above for the schema).
+   of `$MIGRATION_DIR` (e.g. `.migration/.bedrock-bma-0910-1100/`). The leading dot keeps it
+   out of the `ls -td "$REPO/.migration"/*/` lookup above and out of Step 1.5's `bma-*` glob,
+   so it can never be mistaken for the assessment run directory; keying it to the assessment
+   run means a resumed migration reuses it. `$BEDROCK_RUN_DIR` also holds
+   `usage-baseline.json` when Step 1.5 (or Phase A's own fresh Discover capture) found an
+   existing usage-API profile, written in step 3 below once this directory exists (see
+   Step 1.5's "New artifact" section above for the schema).
    - If `$BEDROCK_RUN_DIR/.phase-status.json` already exists, this migration is being
      resumed: keep the file (including its `run_id`) and continue.
    - Otherwise create the directory and write `.phase-status.json`:
@@ -702,11 +686,17 @@ work to the telemetry hooks.
      ```
 
    The `assess`/`execute` phase names are not in the telemetry API model yet, so only the
-   run-level events (`RUN_STARTED`, `RUN_COMPLETED`) leave the machine for this run; the AI
-   journey's entry point is already visible through the delegated run's events, which carry
-   `initiatingSkill`.
+   run-level events (`RUN_STARTED`, `RUN_COMPLETED`) leave the machine for this run. This run
+   is the only telemetry attribution for the migration: bedrock-migration-assessment sends no
+   telemetry and its run carries no `owning_skill`.
 
-2. **Write `usage-baseline.json`, now that `$BEDROCK_RUN_DIR` exists.** If Step 1.5 (or
+2. **Record the assessment this migration consumed.** Write A2's readiness JSON, exactly as
+   printed, to `$BEDROCK_RUN_DIR/assessment-readiness.json`. It carries the assessment's
+   `migration_id`, `run_id`, and each artifact's `path` and `sha256`. When the file already
+   exists (a resumed migration) and a `migration_id`, `run_id` or `sha256` differs, tell the
+   user what changed before overwriting it.
+
+3. **Write `usage-baseline.json`, now that `$BEDROCK_RUN_DIR` exists.** If Step 1.5 (or
    Phase A's own fresh Discover capture, per Step 1.5's "Standalone invocation" note) held
    computed figures in step 7, write them to `$BEDROCK_RUN_DIR/usage-baseline.json` now,
    using the schema in Step 1.5's "New artifact" section above. If no figures were held
@@ -714,7 +704,7 @@ work to the telemetry hooks.
    write entirely — `usage-baseline.json`'s absence is itself the "no baseline" signal
    `llm2bedrock-report-generator.md` §6.3 checks for.
 
-3. After creating or validating the resumed Bedrock run, reconcile with the
+4. After creating or validating the resumed Bedrock run, reconcile with the
    explicit project root per `references/vendored/telemetry/PROTOCOL.md` in both
    reporting modes.
 
@@ -724,20 +714,57 @@ work to the telemetry hooks.
 
 ### B1 — Read Assess outputs
 
+Run A2's readiness re-check first (same command, hashes compared with
+`$BEDROCK_RUN_DIR/assessment-readiness.json`). Then read the three artifacts at the paths
+readiness printed. These are bedrock-migration-assessment's shapes
+(`$BMA_BASE/references/contracts/aws-design-ai.schema.json`,
+`$BMA_BASE/references/contracts/ai-workload-profile.schema.json`,
+`$BMA_BASE/references/shared/schema-preferences.md`, and `ROW_KEYS` in
+`$BMA_BASE/scripts/design-ai.py`).
+
 Read `$MIGRATION_DIR/aws-design-ai.json` and extract:
 
-- `ai_architecture.bedrock_models[]` → array of `{source_model, aws_model_id, use_case,
-  migration_path, required_client_api, mantle_selector, mantle_requirement, endpoint_assumption}`
-  (the last five may be absent on older plans; `mantle_requirement` sits on Mantle rows,
-  `endpoint_assumption` on runtime rows — keep both for the C6 `Endpoint basis:` line, and keep
-  `migration_path` / `mantle_selector` so a Mantle row from a plan that predates
-  `mantle_requirement` is still reported as Mantle)
-- Collect all `aws_model_id` values into `$TARGET_MODELS` (array). Keep the `use_case` AND the
+- `ai_architecture.bedrock_models[]` → array of `{source_model_id, aws_model_id,
+  migration_path, required_client_api, mantle_selector, mantle_requirement,
+  endpoint_assumption}`. Every row carries `source_model_id`, `aws_model_id`,
+  `migration_path` and `required_client_api` (`design-ai.py` checks each pair against
+  `PATH_CLIENT_APIS`); `mantle_selector` and `mantle_requirement` sit on Mantle rows and
+  `endpoint_assumption` on runtime rows. Keep all three for the C6 `Endpoint basis:` line,
+  and keep `migration_path` / `mantle_selector` so a Mantle row is reported as Mantle. An
+  older plan may name the source `source_model` instead of `source_model_id`: read
+  `source_model_id`, else `source_model`. Below, "the row's source model" means that value.
+- **Row role.** bedrock-migration-assessment rows have no `use_case`. A row is an embedding
+  or image row only when `migration_path` is `direct` AND `required_client_api` is `invoke`
+  (Design gives embedding and image targets exactly that pair; `gpt-oss` rows may also use
+  `invoke`, so the API alone does not decide). Cross-check `capabilities_matched[]`: an
+  embedding or image row lists `embedding` or `image_generation`. When the two signals
+  disagree (a `direct`/`invoke` row without either capability, or either capability on
+  another path), stop and AskUserQuestion which role the row has. Every other row is a chat
+  row. An older plan's `use_case`, when present, still names the role.
+- **Choosing the chat row for this rewrite.** Design can emit several chat rows for one
+  source model, for example `openai.gpt-5.5` on `mantle_openai_responses` for a Web Search
+  workload and `us.openai.gpt-5.5` on `runtime_openai_cris` / `chat_completions` for the
+  rest. Never take "the first chat row".
+  - If every chat row has the same `migration_path` and `required_client_api`, use them all;
+    the first one is the primary chat row.
+  - Otherwise **stop and AskUserQuestion** before B2. List every chat row with its
+    `source_model_id`, `aws_model_id`, `migration_path`, `required_client_api`,
+    `endpoint_assumption`, and `mantle_requirement.workload_id` when present, and ask which
+    row this rewrite uses. The chosen row is the primary chat row. Drop the other chat rows
+    for the same source model from everything below; chat rows for other source models stay
+    as secondaries on their own API. Record the choice in
+    `$BEDROCK_RUN_DIR/chat-row-choice.json` as `{"assess_design_sha256": ...,
+    "source_model_id": ..., "aws_model_id": ..., "migration_path": ...,
+    "required_client_api": ...}`. On a resume, reuse it only when its `assess_design_sha256`
+    equals the current readiness hash of `aws-design-ai.json`; otherwise ask again.
+  - The rows kept here are "the plan's rows" for B4, the context block, C0 and C5: one row
+    per source model for chat, plus every embedding or image row.
+- Collect all `aws_model_id` values into `$TARGET_MODELS` (array). Keep the role AND the
   `required_client_api` of each row: B4 passes every row to preflight as its own
   `<aws_model_id>=<required_client_api>` pair, so a Claude Messages primary and a GPT Chat or Nova
   Converse secondary are each probed on their own API (embedding rows are always probed via
   InvokeModel; pass `invoke` for them). The evaluator's quality scoring only applies to chat
-  models — embedding targets get format/dimension validation only.
+  models; embedding targets get format/dimension validation only.
 - **Lane gate (before B2, B4 and every Phase C dispatch).** Run
 
   ```bash
@@ -757,11 +784,18 @@ Read `$MIGRATION_DIR/aws-design-ai.json` and extract:
 
 Read `$MIGRATION_DIR/ai-workload-profile.json` and extract:
 
-- `summary.ai_source` → source provider
+- `ai_sources[].provider` (with `ai_sources[].source_service`, e.g. `openai_api` or
+  `azure_openai`) → the source provider. When the profile lists more than one provider, the
+  source provider is the provider of the `ai_sources[]` entry whose `models[]` contains the
+  primary chat row's source model; when none does, ask the user which provider the app calls.
+  The profile has no `summary.ai_source`; an older profile that has one may still be read as
+  a fallback. A gateway such as OpenRouter is in `gateways[]`, not `ai_sources[]`.
 
 Read `$MIGRATION_DIR/preferences.json` and extract:
 
-- `design_constraints.target_region` → `$REGION` (default `us-east-1` if absent)
+- `design_constraints.target_region.value` → `$REGION` (default `us-east-1` if absent). Every
+  constraint is an object with `value`, `chosen_by`, `prompt` and `design_consequence`; an
+  older file that stores a bare string there is read as the value itself.
 
 **Validation:** If `aws-design-ai.json` has no `ai_architecture.bedrock_models[]` array, or the
 array is empty, STOP: "Assess output incomplete — model mapping missing."
@@ -808,6 +842,11 @@ skill's parser expects — a bare key without the `NAME=` prefix will NOT be par
 - `openai` → `OPENAI_API_KEY`
 - `anthropic` → `ANTHROPIC_API_KEY`
 - `google` / `gemini` → `GEMINI_API_KEY`
+
+These names hold only for the direct APIs (`source_service` `openai_api`, `anthropic_api`,
+`gemini_api`). When B1's `source_service` is `azure_openai` or `vertex_ai`, do not assume
+`OPENAI_API_KEY` or `GEMINI_API_KEY`: ask the user which credentials the source app uses, and
+offer **Skip** if none of the key forms below fits.
 
 **The key must never enter this conversation (HARD RULE).** Do not ask the user to paste the
 key in chat, and never echo, cat, or interpolate its VALUE into any command, question, or
@@ -1051,6 +1090,10 @@ The Eval phase makes one paid Bedrock call per golden case (and, with a source k
 source-provider call per case). Before any dispatch, tell the user evaluation will invoke
 Bedrock at their expense, capped at 200 cases.
 
+0. **Readiness re-check.** Run A2's readiness command and compare its hashes with
+   `$BEDROCK_RUN_DIR/assessment-readiness.json`, as A2's "Re-check before every later
+   re-read" rule says. A non-ready answer stops here. Repeat this check before every C1 to C6
+   dispatch, including a re-dispatch after a blocked or partial flow.
 1. `mkdir -p $PHASE_DIR`. Build `$PHASE_DIR/current-context.json` with exactly these fields
    (hashes via `shasum -a 256`; key hash is a fingerprint — never store the key value):
 
@@ -1064,7 +1107,7 @@ Bedrock at their expense, capped at 200 cases.
   "repo_head_sha": "<git -C $REPO rev-parse HEAD>",
   "repo_branch": "<git -C $REPO rev-parse --abbrev-ref HEAD>",
   "repo_dirty_sha256": "<sha256 of: git status --porcelain + git diff + git diff --cached, EACH with pathspecs -- . ':(exclude).saws-migrate' ':(exclude).migration' ':(exclude)MIGRATION_REPORT_*.md'; \"\" when all three are empty>",
-  "target_models": [{"source_model": "...", "aws_model_id": "...", "use_case": "..."}],
+  "target_models": [{"source_model": "<the row's source_model_id>", "aws_model_id": "...", "use_case": "<B1 row role: chat | embedding_or_image, or an older plan's use_case>"}],
   "resolved_model_overrides": {},
   "resolved_runtime_api": "<$RESOLVED_RUNTIME_API from B4: responses | chat_completions | converse | messages — ALWAYS present, so saved and current contexts compare field-for-field>",
   "source_provider": "<from B1>",
@@ -1073,7 +1116,7 @@ Bedrock at their expense, capped at 200 cases.
   "usage_baseline_sha256": "<sha256 of $BEDROCK_RUN_DIR/usage-baseline.json contents, \"\" when absent>",
   "log_files": [{"path": "...", "sha256": "..."}],
   "max_golden_cases": 200,
-  "assess_design_sha256": "<sha256 of $MIGRATION_DIR/aws-design-ai.json>",
+  "assess_design_sha256": "<sha256 of $MIGRATION_DIR/aws-design-ai.json: the readiness re-check's artifacts[\"aws-design-ai.json\"].sha256>",
   "report_date_suffix": "<date +%Y-%m-%d>",
   "schema_version": 1,
   "evaluation_contract_version": 3,
@@ -1173,7 +1216,8 @@ prior-phase file paths), then validate its output file:
   `aws-bedrock-token-generator`, so a mantle target could not be probed at all. User
   re-syncs (`uv sync --project $SCRIPTS`); re-dispatch the blocked phase only. Access was
   never verified, so do not treat a previous pass as still valid.
-- `assess_output_missing` → re-run Phase A, then restart Phase C at C0
+- `assess_output_missing` → run A2's readiness check; on a non-ready answer, tell the user to
+  resume the run with bedrock-migration-assessment (or re-run Phase A), then restart Phase C at C0
 
 After ANY resolution, re-run the C0 recipe (rebuild current-context, apply the invalidation
 table, overwrite run-context) and re-dispatch **from the earliest invalidated phase** — the
@@ -1238,8 +1282,10 @@ When `rewrite_strategy == "mantle"`, C5's context block ALSO includes:
 
 - `Rewrite strategy: mantle` (omit this line entirely for Converse — its absence is the
   signal for the default Converse path)
-- `Mantle model map: <source-model> -> <bedrock-model-id>` — sourced from the plan's
-  `ai_architecture.bedrock_models[]` entries (each `source_model` → `aws_model_id` pair).
+- `Mantle model map: <source-model> -> <bedrock-model-id>` — sourced from the rows B1 kept
+  (each row's `source_model_id`, older plans `source_model`, → `aws_model_id` pair). B1 keeps
+  one chat row per source model, so a source model appears exactly once; never list a second
+  target for it, even when the design has one on another path.
 - `Mantle base path: /openai/v1` for bare proprietary GPT targets (`openai.gpt-5*`
   excluding gpt-oss, or `openai.gpt-6*`). Do not use `/v1` for Astra.
 - `Mantle surface: chat_completions` when `resolved_api_path` is `mantle_openai_chat`;
@@ -1266,7 +1312,7 @@ Rebuild these context lines from the same normalized path on every dispatch/resu
 `assess_design_sha256` run-context check detects a changed model/API decision. If a bare
 Astra id is paired with a runtime path, or a CRIS id with Mantle, stop and correct the plan;
 do not switch endpoints or invent another profile. See the resolver's Case C and
-`gcp-to-aws/references/shared/openai-on-bedrock.md`.
+`$BMA_BASE/references/shared/openai-on-bedrock.md`.
 
 ### C7 — Render summary
 
@@ -1296,8 +1342,8 @@ After writing this state, reconcile with the explicit project root per
 
 Entered from Step 0a-bis when the user wants Bedrock **model access** checked/enabled for a
 named set of models, not a code migration. It reuses the identity check (B2) and the preflight
-(B4) but takes its model list from the user, and it never touches `gcp-to-aws`, Assess, the
-source key (B3), or Phase C. It answers "which models do I need to turn on, and how" — then
+(B4) but takes its model list from the user, and it never touches
+`bedrock-migration-assessment`, Assess, the source key (B3), or Phase C. It answers "which models do I need to turn on, and how" — then
 stops. No git branch, no rewrite.
 
 ### AC1 — Set expectations (accuracy — say this first)
@@ -1476,7 +1522,9 @@ this session.
 - User aborts at any gate → confirm no SOURCE CODE was modified (C5 never started if aborted
   before then). Note that `.migration/` and `.saws-migrate/` artifacts do exist; show the
   undo commands from C7 if the user wants them gone.
-- Assess skill fails → show the error and stop. User can re-run `/aws-startup-advisor:llm-to-bedrock`.
+- Assess fails, or `readiness.py` answers `ready: false` → show the `reason` and `detail` and
+  stop. The user resumes the run with `bedrock-migration-assessment`, then re-runs
+  `/aws-startup-advisor:llm-to-bedrock`.
 
 ## Contextual offers (final step)
 
@@ -1485,7 +1533,7 @@ this session.
 This is a mandatory closing step of every final recommendation — complete it before you consider your answer done. Run this offer check inline yourself; do not depend on loading another skill. The recommendation is decided on merit first; this step never changes, re-ranks, or re-opens it, and the offer is looked up only after the advice is final.
 
 1. Read [`../knowledge-base-for-startups/references/offers.md`](../knowledge-base-for-startups/references/offers.md) — the offer index (Offer · Summary · Keywords), one row per offer.
-2. Judge relevance against what the founder actually surfaced this session. Surface an offer only if **one** holds: a **named-product match** (you recommended a specific partner product by name and it has a row); a **direct intent/component match** (an offer's Keywords directly serve a concrete workload, a component in the final recommendation, or a need the founder raised). Keep a high bar — if the match is weak, or you would be inferring an unstated need, append nothing. In this migration, only surface an offer that is a credit on a product the migration already kept or selected (e.g. LangSmith credits when the rewrite keeps their LangChain code); otherwise append none — never an offer that competes with Amazon Bedrock or anything else the rewrite or the gcp-to-aws design selects (e.g. Fireworks AI or another model-inference provider vs Bedrock).
+2. Judge relevance against what the founder actually surfaced this session. Surface an offer only if **one** holds: a **named-product match** (you recommended a specific partner product by name and it has a row); a **direct intent/component match** (an offer's Keywords directly serve a concrete workload, a component in the final recommendation, or a need the founder raised). Keep a high bar — if the match is weak, or you would be inferring an unstated need, append nothing. In this migration, only surface an offer that is a credit on a product the migration already kept or selected (e.g. LangSmith credits when the rewrite keeps their LangChain code); otherwise append none — never an offer that competes with Amazon Bedrock or anything else the rewrite or the bedrock-migration-assessment design selects (e.g. Fireworks AI or another model-inference provider vs Bedrock).
 3. If (and only if) one offer clears the bar, open only its detail file `../knowledge-base-for-startups/references/offers/<slug>.md` and append exactly **one** quiet, dismissible italic line — stating the value and condensing eligibility faithfully from that file (drop no qualifying criterion; never fabricate), with the redeem link built from the canonical `source_url` plus a `source` attribution param — append `?source=ide-startupAdvisor-<host>` (or `&source=...` if the url already has a query string), filling `<host>` from your execution environment (Claude Code → `claude`; AWS Startup Advisor IDE extension / VS Code → `vscode`; Cursor → `cursor`; Kiro → `kiro`; Codex → `codex`), or the generic `ide-startupAdvisor` when you cannot tell. Only append the query param; never change the destination. Show one or none, never a list. If none clears the bar, append nothing and do not mention offers, partner alternatives, or why none appeared.
 
 Standard line:

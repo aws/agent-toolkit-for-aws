@@ -407,9 +407,11 @@ def test_api_handoff_paths_and_real_evaluator_classifier_are_consistent():
     reference = (PLUGIN / "skills/llm-to-bedrock/references/helpers/behavior-delta-detection/references/openai-to-bedrock.md").read_text()
     assert "Same-vendor GPT endpoint and API deltas" in helper
     assert "## Same-vendor GPT endpoint and API deltas" in reference
-    for rel in ["skills/llm-to-bedrock/SKILL.md", "skills/gcp-to-aws/references/phases/design/design-ai.md",
-                "skills/gcp-to-aws/references/phases/generate/generate-ai.md",
-                "skills/gcp-to-aws/references/vendored/ai/ai-openai-to-bedrock.md"]:
+    # llm-to-bedrock's Assess is bedrock-migration-assessment: its design checker and its
+    # vendored OpenAI guide must know the Mantle Chat path this skill executes.
+    for rel in ["skills/llm-to-bedrock/SKILL.md", "skills/bedrock-migration-assessment/scripts/design-ai.py",
+                "skills/bedrock-migration-assessment/references/vendored/ai/ai-openai-to-bedrock.md",
+                "skills/gcp-to-aws/references/phases/generate/generate-ai.md"]:
         assert "mantle_openai_chat" in (PLUGIN / rel).read_text(), rel
     assert preflight_bedrock.is_mantle_model("openai.gpt-6-astra")
     assert not preflight_bedrock.is_mantle_model("global.openai.gpt-6-astra")
@@ -454,11 +456,11 @@ def test_c3_and_c5_use_shared_normalization_instructions():
 def test_astra_shared_contract_survives_each_vendored_consumer(name):
     canonical = (PLUGIN / "skills/shared/ai" / name).read_bytes()
     assert b"Astra" in canonical
-    for skill in ["gcp-to-aws", "azure-to-aws"]:
+    for skill in ["bedrock-migration-assessment", "gcp-to-aws", "azure-to-aws"]:
         assert (PLUGIN / "skills" / skill / "references/vendored/ai" / name).read_bytes() == canonical
 
 
-@pytest.mark.parametrize("skill", ["gcp-to-aws", "azure-to-aws"])
+@pytest.mark.parametrize("skill", ["bedrock-migration-assessment", "gcp-to-aws", "azure-to-aws"])
 def test_astra_policy_has_consumer_local_facts_and_prices(skill):
     refs = PLUGIN / "skills" / skill / "references/shared"
     facts = (refs / "openai-on-bedrock.md").read_text()
