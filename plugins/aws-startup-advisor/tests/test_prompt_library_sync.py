@@ -150,20 +150,36 @@ def _routing_docs() -> dict[str, str]:
     return docs
 
 
+def _removed_mentions(text: str, whole_file: bool) -> list[str]:
+    found = [slug for slug in REMOVED if slug in text]
+    if "aws.amazon.com/startups/prompt-library" in text:
+        found.append("the old library URL")
+    handoffs = [line.lower() for line in text.splitlines() if "prompt-library-for-startups" in line]
+    # Some removed titles are also AWS service or industry names (Cost Anomaly Detection, MVSP),
+    # so outside the prompt library's own files a title counts only where a skill hands off to it.
+    for scope in [text.lower()] if whole_file else handoffs:
+        found += [title for title in REMOVED_TITLES if title.lower() in scope]
+    for line in handoffs:
+        found += [topic for topic in REMOVED_TOPICS if topic in line]
+    return found
+
+
 def test_removed_entries_are_not_mentioned_where_any_skill_routes():
+    own = {str((pls.SKILL / "SKILL.md").relative_to(PLUGIN)), str(pls.INDEX.relative_to(PLUGIN))}
     for name, text in _routing_docs().items():
-        for slug in REMOVED:
-            assert slug not in text, f"{name} mentions removed entry {slug}"
-        for title in REMOVED_TITLES:
-            assert title.lower() not in text.lower(), f"{name} mentions removed entry {title!r}"
-        assert "aws.amazon.com/startups/prompt-library" not in text, f"{name} uses the old library URL"
-        for line in text.splitlines():
-            if "prompt-library-for-startups" in line:
-                for topic in REMOVED_TOPICS:
-                    assert topic not in line.lower(), f"{name} hands off {topic!r} to the prompt library"
+        found = _removed_mentions(text, whole_file=name in own)
+        assert not found, f"{name} mentions removed prompt-library entries: {found}"
     skill = (pls.SKILL / "SKILL.md").read_text(encoding="utf-8")
     index = pls.INDEX.read_text(encoding="utf-8")
     assert pls.FULL_LIBRARY in skill and pls.FULL_LIBRARY in index
+
+
+def test_removed_titles_count_outside_the_prompt_library_only_on_handoff_lines():
+    service = "Use Budgets and Cost Anomaly Detection for spend after merge."
+    handoff = "For a Cost Anomaly Detection prompt, use `prompt-library-for-startups`."
+    assert _removed_mentions(service, whole_file=False) == []
+    assert _removed_mentions(handoff, whole_file=False) == ["Cost Anomaly Detection", "cost anomaly"]
+    assert _removed_mentions(service, whole_file=True) == ["Cost Anomaly Detection"]
 
 
 def test_split_audit_load_set_names_every_shared_part():
