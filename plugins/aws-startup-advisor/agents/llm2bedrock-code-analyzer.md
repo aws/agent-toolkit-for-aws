@@ -84,9 +84,14 @@ Extract `ai_architecture.bedrock_models[]`, an array of row objects. The fields 
 
 Each row gives a source→target pair. The source model is `source_model_id`; an older plan may
 name it `source_model`, so read `source_model_id`, else `source_model`. Use `aws_model_id` as
-the target Bedrock model ID for §10 validation. There is no `use_case` field: a row whose
-`required_client_api` is `invoke` is an embedding or image row, and every other row is a chat
-row (an older plan's `use_case`, when present, still names the role).
+the target Bedrock model ID for §10 validation. There is no `use_case` field (an older plan's
+`use_case`, when present, still names the role). A row is an embedding or image row only when
+`migration_path` is `direct` and `required_client_api` is `invoke`, and `capabilities_matched`
+lists `embedding` or `image_generation`. `gpt-oss` may also use `invoke`, so the API alone does
+not decide; when the two disagree, stop and ask. Every other row is a chat row. When the design
+has two chat rows for one source model, use only the row whose `required_client_api` equals the
+context's `Target API surface` (the row recorded in `$BEDROCK_RUN_DIR/chat-row-choice.json`), and
+skip the other.
 
 ## 6.2 `ai-workload-profile.json` — Source Provider & Framework
 
@@ -337,7 +342,7 @@ in-region route merely because its ID is absent from `ListInferenceProfiles`.
 
 **You MUST use the `resolve-bedrock-model-id` skill.** Do NOT roll your own validation with `aws bedrock list-foundation-models`, `aws bedrock get-foundation-model`, or `aws bedrock-runtime converse`. The skill is the single source of truth for what counts as a valid invokable ID, because many modern Bedrock models (e.g. Claude 4.x Haiku/Sonnet/Opus) are only invokable through cross-region _inference profiles_ (`us.…`, `global.…`, `eu.…`) — NOT via raw foundation-model IDs. A foundation-model ID that exists in `list-foundation-models` will still fail `converse` with `ValidationException: … on-demand throughput isn't supported` if you skip the inference-profile lookup.
 
-**Emit one `target_models` entry per plan mapping** — if the plan has 10 source→target mappings (e.g. chat=`gpt-4o`, embed=`text-embedding-3-small`, vision=`gpt-4o-vision`, …), `target_models` MUST have length 10. Do NOT collapse, dedupe, or drop entries.
+**Emit one `target_models` entry per plan mapping** — if the plan has 10 source→target mappings (e.g. chat=`gpt-4o`, embed=`text-embedding-3-small`, vision=`gpt-4o-vision`, …), `target_models` MUST have length 10. Do NOT collapse, dedupe, or drop entries, except the unchosen second chat row for one source model (§6.1).
 
 For each `target_model_id` in the plan's model mapping:
 

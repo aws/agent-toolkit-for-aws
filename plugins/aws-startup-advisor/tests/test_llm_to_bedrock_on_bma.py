@@ -393,6 +393,14 @@ def test_one_source_model_with_two_chat_rows_makes_b1_ask_not_pick_the_first(fix
     assert "`$BEDROCK_RUN_DIR/chat-row-choice.json`" in b1
     c5 = _flat(_section(TEXT, "### C5 — Rewriter", "### C7"))
     assert "a source model appears exactly once; never list a second target for it" in c5
+    # Review on #694: the code analyzer (C1) reads the whole design, so it must apply the same
+    # row-role and chosen-row rules, or iam_policy.py grants the unchosen target.
+    analyzer = _flat((PLUGIN_ROOT / "agents" / "llm2bedrock-code-analyzer.md").read_text(encoding="utf-8"))
+    assert ("A row is an embedding or image row only when `migration_path` is `direct` and "
+            "`required_client_api` is `invoke`") in analyzer
+    assert "use only the row whose `required_client_api` equals the context's `Target API surface`" in analyzer
+    assert "a row whose `required_client_api` is `invoke` is an embedding or image row" not in analyzer
+    assert "except the unchosen second chat row for one source model" in analyzer
 
 
 def test_a_row_is_embedding_or_image_only_on_direct_invoke_with_a_matching_capability() -> None:
