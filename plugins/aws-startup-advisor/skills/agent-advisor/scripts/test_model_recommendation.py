@@ -977,6 +977,7 @@ def test_openai_api_mantle_preference_without_selector_offers_mantle_messages(
     mantle = rec["decision_options"][1]
     assert mantle["mantle_selector"] is None
     assert mantle["reason"].startswith("Mantle Messages requires a mantle_selector")
+    _assert_mapped(rec, preferred, "mantle_messages")
     assert {"model_path_decision_required", "mantle_selector_required"} <= {
         block["code"] for block in rec["blocks"]
     }
@@ -1001,6 +1002,7 @@ def test_openai_api_mantle_preference_with_selector_recommends_mantle_messages(p
     assert rec["api_path"] == "mantle_messages" and rec["mantle_selector"] == "workspaces"
     assert any(f"preferred_api_path {preferred} is an OpenAI-compatible API" in line
                for line in rec["rationale"])
+    _assert_mapped(rec, preferred, "mantle_messages")
 
 
 @pytest.mark.parametrize("preferred", ["runtime_openai_responses", "runtime_openai_chat"])
@@ -1012,6 +1014,7 @@ def test_openai_api_runtime_preference_uses_the_claude_runtime_path(preferred, s
     assert rec["api_path"] == runtime_path and rec["mantle_selector"] is None
     assert any(f"{runtime_path} is the Claude API on the same endpoint" in line
                for line in rec["rationale"])
+    _assert_mapped(rec, preferred, runtime_path)
 
 
 @pytest.mark.parametrize("preferred", ["runtime_openai_responses", "runtime_openai_chat"])
@@ -1021,4 +1024,44 @@ def test_openai_api_runtime_preference_against_a_selector_is_a_decision(preferre
     rec = _rec_with(source, preferred_api_path=preferred, mantle_selector="workspaces")
     assert rec["decision_status"] == "decision_required"
     assert [o["api_path"] for o in rec["decision_options"]] == ["mantle_messages", runtime_path]
-    assert "model_path_decision_required" in [b["code"] for b in rec["blocks"]]
+    block = next(b for b in rec["blocks"] if b["code"] == "model_path_decision_required")
+    assert "preferred_path_vs_mantle_selector" in block["message"]
+    assert "preferred_path_vs_mantle_selector" in rec["rationale"][0]
+    _assert_mapped(rec, preferred, runtime_path)
+
+
+def _assert_mapped(rec, preferred, claude_path):
+    finding = next(t for t in rec["tuning"] if t["code"] == "preferred_api_path_mapped")
+    assert finding["tag"] == "[TUNE]"
+    assert finding["message"] == (
+        f"preferred_api_path {preferred} is an OpenAI-compatible API that Claude models do not "
+        f"serve; it was mapped to {claude_path}, the Claude API on the same endpoint."
+    )
+    assert f"The source keeps its SDK only if {claude_path} supports it" in finding["remediation"]
+    assert "no Claude model is served on the OpenAI APIs" in finding["remediation"]
+    assert "preferred_api_path_mapped" not in [b["code"] for b in rec["blocks"]]
+
+
+@pytest.mark.parametrize("preferred", ["runtime_openai_responses", "runtime_openai_chat"])
+@pytest.mark.parametrize("requirement, runtime_path", [
+    ({"requires_native_payload": True}, "runtime_invoke"),
+    ({"governance": ["guardrails"]}, "runtime_converse"),
+])
+def test_anthropic_source_openai_runtime_preference_follows_the_runtime_requirement(
+    preferred, requirement, runtime_path
+):
+    # Native payload needs InvokeModel and Guardrails need Converse: the mapped preference lands
+    # on that path, so there is no needless decision with runtime_messages.
+    rec = _rec_with({}, preferred_api_path=preferred, **requirement)
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == runtime_path
+    _assert_mapped(rec, preferred, runtime_path)
+
+
+@pytest.mark.parametrize("preferred", ["runtime_openai_responses", "runtime_openai_chat"])
+@pytest.mark.parametrize("source", [{}, _UNKNOWN_SOURCE])
+def test_preserve_messages_api_maps_an_openai_runtime_preference_to_runtime_messages(preferred, source):
+    rec = _rec_with(source, preferred_api_path=preferred, preserve_messages_api=True)
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "runtime_messages"
+    _assert_mapped(rec, preferred, "runtime_messages")

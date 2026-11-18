@@ -324,6 +324,23 @@ def _converse_required(requirements):
     )
 
 
+def _mapped_preference_finding(constraints):
+    """[TUNE] finding naming an OpenAI-API preferred_api_path and the Claude path it maps to."""
+    mapped = constraints.get("mapped_preference")
+    if not mapped:
+        return None
+    return _finding(
+        "preferred_api_path_mapped",
+        "[TUNE]",
+        f"preferred_api_path {mapped['from']} is an OpenAI-compatible API that Claude models do "
+        f"not serve; it was mapped to {mapped['to']}, the Claude API on the same endpoint.",
+        f"The source keeps its SDK only if {mapped['to']} supports it (the Anthropic SDK on "
+        "Messages, boto3 on Converse or InvokeModel). For OpenAI-SDK compatibility, note that "
+        "no Claude model is served on the OpenAI APIs: rewrite the integration for the Claude "
+        "path, or record a preferred_api_path this module serves and rerun Model Recommend.",
+    )
+
+
 def _path_constraints(workload):
     source = workload["source"]
     requirements = workload["requirements"]
@@ -355,12 +372,19 @@ def _path_constraints(workload):
     # An OpenAI-compatible API preference names an endpoint, not a Claude API: the Anthropic
     # catalog has no OpenAI-API path. Keep the endpoint and use the Claude API it serves:
     # mantle_messages on bedrock-mantle (every Mantle branch below offers it), and on
-    # bedrock-runtime the path this module defaults to for the source (bedrock-endpoint-policy.md:
-    # the endpoint is chosen by need; the SDK and API follow the model).
+    # bedrock-runtime the path the recorded requirements already need: InvokeModel for a native
+    # payload, Converse for a Converse-only requirement (Guardrails, multi-model), else the path
+    # this module defaults to for the source (bedrock-endpoint-policy.md: the endpoint is chosen
+    # by need; the SDK and API follow the model).
     mapped_from = None
     if preferred in _OPENAI_API_PATHS:
         mapped_from = preferred
-        preferred = "mantle_messages" if preferred.startswith("mantle_") else messages_option
+        if preferred.startswith("mantle_"):
+            preferred = "mantle_messages"
+        elif native_required or converse_required:
+            preferred = runtime_path
+        else:
+            preferred = messages_option
     conflicts = []
     option_paths = []
     # A selector is validated against the API this module can route to. Background
@@ -414,6 +438,7 @@ def _path_constraints(workload):
          f"serve; {preferred} is the Claude API on the same endpoint."]
         if mapped_from else []
     )
+    mapped_preference = {"from": mapped_from, "to": preferred} if mapped_from else None
     if conflicts:
         return {
             "paths": [],
@@ -425,6 +450,7 @@ def _path_constraints(workload):
                 + "."
             ] + mapped,
             "mantle_selector": selector,
+            "mapped_preference": mapped_preference,
         }
     if preferred:
         return {
@@ -433,6 +459,7 @@ def _path_constraints(workload):
             "option_paths": [],
             "rationale": [f"User selected the {preferred} API path."] + mapped,
             "mantle_selector": selector,
+            "mapped_preference": mapped_preference,
         }
     if native_required:
         return {
@@ -1100,7 +1127,7 @@ def _decision_required(workload, region, catalog, constraints):
         "alternatives": [],
         "rationale": constraints["rationale"],
         "blocks": blocks,
-        "tuning": [],
+        "tuning": [f for f in (_mapped_preference_finding(constraints),) if f],
         "compatibility": _compatibility(feature_status, workload["requirements"], ""),
         "architecture_impacts": _architecture_impacts(feature_status),
         "migration_deltas": [],
@@ -1254,6 +1281,9 @@ def recommend_anthropic_workload(workload, region, catalog):
                     "Use on-demand inference, or explicitly select "
                     f"{alternative} after verifying its Batch support and rates."
                 )
+    mapped_finding = _mapped_preference_finding(constraints)
+    if mapped_finding:
+        tuning.append(mapped_finding)
     if requirements.get("newest_anthropic_betas"):
         tuning.append(
             _finding(
