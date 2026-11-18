@@ -70,15 +70,16 @@ def test_contract_copy_matches_the_canonical_schema() -> None:
         (PLUGIN_ROOT / "scripts/contracts/aws-design-ai.schema.json").read_bytes()
 
 
-def test_openai_fact_base_copy_matches_gcp_to_aws() -> None:
-    assert (BMA / "references/shared/openai-on-bedrock.md").read_bytes() == \
-        (PLUGIN_ROOT / "skills/gcp-to-aws/references/shared/openai-on-bedrock.md").read_bytes()
+def test_openai_fact_base_is_the_vendored_shared_guide() -> None:
+    canonical = (PLUGIN_ROOT / "skills/shared/ai/openai-on-bedrock.md").read_bytes()
+    assert (BMA / "references/vendored/ai/openai-on-bedrock.md").read_bytes() == canonical
+    assert not (BMA / "references/shared/openai-on-bedrock.md").exists()
 
 
 def test_every_guide_the_plan_can_name_ships_with_the_skill() -> None:
     names = [f"{DESIGN.GUIDE_DIR}/{g}" for g in DESIGN.ALWAYS_GUIDES]
     names += [f"{DESIGN.GUIDE_DIR}/{g}" for guides in DESIGN.PROVIDER_GUIDES.values() for g in guides]
-    names += [f"{DESIGN.GUIDE_DIR}/ai-openrouter-to-bedrock.md", "references/shared/openai-on-bedrock.md"]
+    names += [f"{DESIGN.GUIDE_DIR}/ai-openrouter-to-bedrock.md", f"{DESIGN.GUIDE_DIR}/openai-on-bedrock.md"]
     for name in names:
         assert (BMA / name).is_file(), name
 
