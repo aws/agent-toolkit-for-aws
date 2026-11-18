@@ -40,13 +40,13 @@ INVENTORY = {
         {"resource_id": "addon:shop-prod-api:heroku-postgresql:standard-2", "resource_type": "addon",
          "heroku_app": "shop-prod-api",
          "config": {"addon_service": "heroku-postgresql", "plan": "standard-2", "provider": "heroku",
-                    "connection_pooling": True, "data_size_gb": 40.5, "pg_role": "leader", "pg_leader": None,
+                    "connection_pooling": True, "data_size_gb": 20.5, "pg_role": "leader", "pg_leader": None,
                     "pg_attachment_names": ["HEROKU_POSTGRESQL_TEAL", "DATABASE"],
                     "attached_apps": ["shop-prod-worker"], "monthly_price_usd": 200}},
         {"resource_id": "addon:shop-prod-api:heroku-postgresql:standard-2:follower", "resource_type": "addon",
          "heroku_app": "shop-prod-api",
          "config": {"addon_service": "heroku-postgresql", "plan": "standard-2", "provider": "heroku",
-                    "connection_pooling": False, "data_size_gb": 40.5, "pg_role": "follower",
+                    "connection_pooling": False, "data_size_gb": 20.5, "pg_role": "follower",
                     "pg_leader": "HEROKU_POSTGRESQL_TEAL", "attached_apps": [], "monthly_price_usd": 200}},
         {"resource_id": "addon:shop-dev-api:scheduler:standard", "resource_type": "addon", "heroku_app": "shop-dev-api",
          "config": {"addon_service": "scheduler", "plan": "standard", "provider": "scheduler"}},
@@ -88,7 +88,15 @@ ESTIMATE = {
                       "contract": {"term_start": "2026-01-01", "term_end": "2027-12-31", "monthly_run_rate": 1000,
                                    "discovered_monthly": 700, "gap_monthly": 300,
                                    "gap_explanation": "Support and credits are not visible to discovery.",
-                                   "lines": [{"category": "support", "monthly_usd": 100, "note": "24-month line"}]}},
+                                   "lines": [{"category": "support", "monthly_usd": 100, "note": "24-month line"}]},
+                      "rightsizing_monthly_saving_usd": 150,
+                      "rightsizing_candidates": [
+                          # 20.5 / 256 = 8.0%; 41 GB fits standard-0 (64 GB) -> saving 200 - 50 = 150
+                          {"resource_id": "addon:shop-prod-api:heroku-postgresql:standard-2", "heroku_app": "shop-prod-api",
+                           "role": "leader",
+                           "plan": "standard-2", "plan_storage_gb": 256, "data_size_gb": 20.5, "utilization_pct": 8.0,
+                           "plan_monthly_usd": 200, "fitting_plan": "standard-0", "fitting_plan_monthly_usd": 50,
+                           "monthly_saving_usd": 150}]},
     "projected_costs": {"aws_monthly_premium": 500, "aws_monthly_balanced": 400, "aws_monthly_optimized": 300},
     "cost_comparison": {"heroku_monthly_baseline": 700, "baseline_source": "live_prices_plus_cache",
                         "heroku_monthly_like_for_like": 140,
@@ -127,7 +135,8 @@ def test_writes_workbook_with_all_tabs_and_mapping_status():
         assert out.startswith("ESTATE_OK | path=") and "apps=3" in out and "resources=8" in out
         wb = sheets(tmp / "heroku-estate.xlsx")
         assert list(wb) == ["Read Me", "Summary", "Apps", "Formations", "Postgres", "Redis", "Kafka",
-                            "Other add-ons", "Shared data stores", "Cost estimate"]
+                            "Other add-ons", "Shared data stores", "Cost estimate", "Right-sizing"]
+        assert "standard-0" in wb["Right-sizing"] and "<v>150</v>" in wb["Right-sizing"]
         assert "db.m6g.large Multi-AZ" in wb["Postgres"]
         assert "Deferred - Not found in Fast_Path_Table" in wb["Other add-ons"]
         assert "t3.small 1-2 instances" in wb["Formations"]
@@ -138,9 +147,13 @@ def test_writes_workbook_with_all_tabs_and_mapping_status():
         assert "Scope-matched comparison" in wb["Cost estimate"] and "<v>140</v>" in wb["Cost estimate"]
         assert "<v>260</v>" in wb["Cost estimate"]
         assert "C1" in wb["Shared data stores"] and "shop-prod-worker" in wb["Shared data stores"]
-        # follower whose leader resolves is a proven copy: listed with its role, excluded from the total (40.5, not 81)
+        # follower whose leader resolves is a proven copy: listed with its role, excluded from the total (20.5, not 41)
         assert "follower" in wb["Postgres"] and "HEROKU_POSTGRESQL_TEAL" in wb["Postgres"]
-        assert "<v>40.5</v>" in wb["Summary"] and "<v>81" not in wb["Summary"]
+        assert "excluding proven follower copies" in wb["Summary"]
+        assert "<v>20.5</v>" in wb["Summary"] and "<v>41" not in wb["Summary"]
+        # right-sizing rows carry the add-on id, the role and the storage-only caveat
+        assert "addon:shop-prod-api:heroku-postgresql:standard-2" in wb["Right-sizing"]
+        assert "leader" in wb["Right-sizing"] and "chosen by storage only" in wb["Right-sizing"]
         # contract reconciliation block present
         assert "Contract reconciliation" in wb["Cost estimate"] and "<v>300</v>" in wb["Cost estimate"]
 
@@ -165,7 +178,7 @@ def test_design_and_estimate_are_optional():
         code, out = run(tmp)
         assert code == 0 and out.startswith("ESTATE_OK")
         wb = sheets(tmp / "heroku-estate.xlsx")
-        assert "Cost estimate" not in wb
+        assert "Cost estimate" not in wb and "Right-sizing" not in wb
         assert "Design not run" in wb["Formations"]
 
 
@@ -316,7 +329,7 @@ def test_non_finite_numbers_become_empty_cells():
         blob = "\n".join(sheets(tmp / "heroku-estate.xlsx").values())
         assert "<v>nan</v>" not in blob and "<v>inf</v>" not in blob
         # the leaders-only total still sums the finite leader value
-        assert "<v>40.5</v>" in sheets(tmp / "heroku-estate.xlsx")["Summary"]
+        assert "<v>20.5</v>" in sheets(tmp / "heroku-estate.xlsx")["Summary"]  # this stack's fixture leader is 20.5 GB
 
 
 def test_tmp_file_removed_when_write_fails():
@@ -332,6 +345,47 @@ def test_tmp_file_removed_when_write_fails():
         assert code == 0 and out.startswith("ESTATE_SKIP | reason=")
         assert not (tmp / "blocked.xlsx.tmp").exists()
         assert blocker.is_dir()
+
+
+def test_malformed_rightsizing_candidates_do_not_drop_the_workbook():
+    with tempfile.TemporaryDirectory() as t:
+        tmp = Path(t)
+        (tmp / "heroku-resource-inventory.json").write_text(json.dumps(INVENTORY))
+        # a string where a candidate dict belongs: the good row is kept, the bad one skipped
+        est = json.loads(json.dumps(ESTIMATE))
+        est["current_costs"]["rightsizing_candidates"].append("oops")
+        (tmp / "estimation-infra.json").write_text(json.dumps(est))
+        code, out = run(tmp)
+        assert code == 0 and out.startswith("ESTATE_OK"), out
+        wb = sheets(tmp / "heroku-estate.xlsx")
+        assert "Right-sizing" in wb and "standard-0" in wb["Right-sizing"]
+        # a dict instead of a list: no Right-sizing tab, everything else written
+        est["current_costs"]["rightsizing_candidates"] = {"plan": "standard-2"}
+        (tmp / "estimation-infra.json").write_text(json.dumps(est))
+        code, out = run(tmp)
+        assert code == 0 and out.startswith("ESTATE_OK"), out
+        wb = sheets(tmp / "heroku-estate.xlsx")
+        assert "Right-sizing" not in wb and "Cost estimate" in wb
+
+
+def test_discovery_without_pg_role_is_labelled_roles_unknown():
+    """Classic discovery writes no pg_role; the total must not claim to be leaders-only."""
+    with tempfile.TemporaryDirectory() as t:
+        tmp = Path(t)
+        inv = json.loads(json.dumps(INVENTORY))
+        for r in inv["resources"]:
+            r.get("config", {}).pop("pg_role", None)
+            r.get("config", {}).pop("pg_leader", None)
+        (tmp / "heroku-resource-inventory.json").write_text(json.dumps(inv))
+        est = json.loads(json.dumps(ESTIMATE))
+        del est["current_costs"]["rightsizing_candidates"][0]["role"]
+        (tmp / "estimation-infra.json").write_text(json.dumps(est))
+        code, out = run(tmp)
+        assert code == 0 and out.startswith("ESTATE_OK"), out
+        wb = sheets(tmp / "heroku-estate.xlsx")
+        assert "all databases (roles unknown)" in wb["Summary"] and "leaders only" not in wb["Summary"]
+        assert "<v>41" in wb["Summary"]  # both databases counted (41.0), nothing silently excluded
+        assert "unknown" in wb["Right-sizing"]
 
 
 def test_out_override():
@@ -424,3 +478,45 @@ def test_unmeasured_database_is_counted_not_summed_as_zero():
     assert "databases without a measured size" in summary
     assert re.search(r"databases without a measured size.*?<v>1</v>", summary, re.S)
     assert "<v>12.5</v>" in summary
+
+
+def test_mixed_roles_do_not_claim_the_unknown_database_was_checked():
+    # One database has a recorded role, one does not (a failed `pg:info` capture is the normal
+    # way to get this). The total counts the role-less database in full, so the label must not
+    # say followers were excluded from it, and the note must say how many were counted unchecked.
+    known = _pg("addon:a:heroku-postgresql:standard-2", "a", plan="standard-2", pg_role="leader", data_size_gb=10.5)
+    unknown = _pg("addon:b:heroku-postgresql:standard-2", "b", plan="standard-2", data_size_gb=20.25)
+    summary = _build(_inventory_with([known, unknown]))["Summary"]
+    assert "<v>30.75</v>" in summary
+    assert "roles unknown" not in summary  # not every database lacks a role
+    assert "1 database(s) have no recorded role and are counted in full" in summary
+
+
+def _follower_fixture():
+    leader = _pg("addon:a:heroku-postgresql:standard-2", "a", plan="standard-2", pg_role="leader",
+                 pg_attachment_names=["DATABASE"], data_size_gb=10)
+    follower = _pg("addon:a:heroku-postgresql:standard-2:f", "a", plan="standard-2", pg_role="follower",
+                   pg_leader="DATABASE", data_size_gb=10)
+    return leader, follower
+
+
+def test_follower_collapsed_into_read_replica_is_not_labelled_not_in_design():
+    leader, follower = _follower_fixture()
+    design = {"services": [{"service_id": "rds:a", "source_resource_id": leader["resource_id"], "heroku_app": "a",
+                            "aws_service": "RDS PostgreSQL",
+                            "aws_config": {"instance_class": "db.m6g.large", "read_replicas": 1}}],
+              "deferred": [],
+              "metadata": {"postgres_followers_collapsed": [
+                  {"resource_id": follower["resource_id"], "leader_resource_id": leader["resource_id"]}]}}
+    pg = _build(_inventory_with([leader, follower]), design)["Postgres"]
+    assert "Collapsed into read replica of a (standard-2)" in pg
+    assert "Not in design" not in pg
+
+
+def test_follower_design_does_not_map_still_not_in_design():
+    leader, follower = _follower_fixture()
+    design = {"services": [{"service_id": "rds:a", "source_resource_id": leader["resource_id"], "heroku_app": "a",
+                            "aws_service": "RDS PostgreSQL", "aws_config": {"instance_class": "db.m6g.large"}}],
+              "deferred": [], "metadata": {"postgres_followers_collapsed": []}}
+    pg = _build(_inventory_with([leader, follower]), design)["Postgres"]
+    assert "Not in design" in pg and "Collapsed into read replica" not in pg

@@ -250,6 +250,25 @@ def _proven_follower_copies(resources: list, design) -> set:
     return proven
 
 
+def _follower_leaders(resources: list, design) -> dict:
+    """follower resource_id -> the leader add-on it was collapsed into as a read replica.
+
+    Same resolution as _proven_follower_copies (Design's 2B-F list when present, else the
+    attachment-name rule on the same app). The leader is None when Design lists the follower
+    as collapsed but the leader cannot be found in the inventory."""
+    copies = _proven_follower_copies(resources, design)
+    pg = [r for r in resources if (r.get("config") or {}).get("addon_service") == "heroku-postgresql"]
+    out: dict = {}
+    for r in pg:
+        if r.get("resource_id") not in copies:
+            continue
+        c = r.get("config") or {}
+        matches = [x for x in pg if x.get("heroku_app") == r.get("heroku_app") and x is not r
+                   and c.get("pg_leader") in ((x.get("config") or {}).get("pg_attachment_names") or [])]
+        out[r.get("resource_id")] = matches[0] if len(matches) == 1 else None
+    return out
+
+
 def _design_index(design) -> tuple[dict, dict]:
     """source_resource_id -> (target aws_service, sizing, associated services); addon (name, plan) -> deferred reason.
 
@@ -301,6 +320,7 @@ def build_sheets(inv: dict, design, est) -> tuple[list[tuple[str, list[list]]], 
     live = inv.get("live_metadata") or {}
     by_source, deferred = _design_index(design)
     has_design = bool(by_source or deferred)
+    leaders = _follower_leaders(resources, design) if has_design else {}
 
     def status_for(res) -> tuple[str, str, str]:
         """(AWS status, proposed target, proposed sizing)"""
@@ -310,6 +330,12 @@ def build_sheets(inv: dict, design, est) -> tuple[list[tuple[str, list[list]]], 
         reason = _deferred_reason(deferred, res)
         if reason:
             return f"Deferred - {reason}", "", ""
+        if res.get("resource_id") in leaders:
+            lead = leaders[res.get("resource_id")]
+            if lead is None:
+                return "Collapsed into read replica of its leader", "", ""
+            name = f"{lead.get('heroku_app')} ({(lead.get('config') or {}).get('plan')})"
+            return f"Collapsed into read replica of {name}", "", ""
         return ("Not in design" if has_design else "Design not run"), "", ""
 
     def associated_for(res) -> str:
@@ -417,6 +443,23 @@ def build_sheets(inv: dict, design, est) -> tuple[list[tuple[str, list[list]]], 
         else:
             pg_measured.append(size)
     pg_total_gb = round(sum(pg_measured), 2)
+    # How many databases have no recorded role. Classic discovery and a failed `pg:info` capture
+    # write none, so a database without a role may be a follower; the total counts it in full and
+    # says so, instead of claiming the followers were excluded.
+    pg_no_role = sum(1 for r in resources
+                     if (r.get("config") or {}).get("addon_service") == "heroku-postgresql"
+                     and not (r.get("config") or {}).get("pg_role"))
+    n_pg_all = sum(1 for r in resources if (r.get("config") or {}).get("addon_service") == "heroku-postgresql")
+    if n_pg_all and pg_no_role == n_pg_all:
+        pg_total_label = "  measured data, all databases (roles unknown) (GB)"
+        pg_total_note = "Discovery recorded no database roles; followers, if any, are counted with their leaders"
+    else:
+        pg_total_label = "  measured data, excluding proven follower copies (GB)"
+        pg_total_note = ("A follower is excluded only when its leader resolved, so its bytes are a copy; an unresolved "
+                         "follower keeps its size. Forks are included.")
+        if pg_no_role:
+            pg_total_note += (f" {pg_no_role} database(s) have no recorded role and are counted in full; "
+                              "any of them may be a follower.")
     cohorts = (inv.get("shared_data_stores") or {}).get("cohorts") or []
     summary = [["Heroku estate summary", "", ""],
                ["Discovery timestamp", meta.get("discovery_timestamp", ""), ""],
@@ -427,9 +470,7 @@ def build_sheets(inv: dict, design, est) -> tuple[list[tuple[str, list[list]]], 
                ["Process types (formations)", n_form, ""],
                ["Running dynos", n_dyno, "Point-in-time; formations scaled to zero are not visible to live discovery"],
                ["Heroku Postgres databases", n_pg, ""],
-               ["  measured data, excluding proven follower copies (GB)", pg_total_gb,
-                "A follower is excluded only when its leader resolved, so its bytes are a copy; an unresolved "
-                "follower keeps its size. Forks are included."],
+               [pg_total_label, pg_total_gb, pg_total_note],
                ["  databases without a measured size", pg_unmeasured,
                 "Left out of the total above, not counted as 0 GB"],
                ["Heroku Redis instances", n_rd, ""],
@@ -502,6 +543,27 @@ def build_sheets(inv: dict, design, est) -> tuple[list[tuple[str, list[list]]], 
         for w in est.get("warnings") or []:
             cost_rows.append(["warning", str(w), ""])
 
+    # ---- Right-sizing candidates (optional; copied from the Estimate)
+    rs_rows: list[list] = []
+    if isinstance(est, dict):
+        cur = est.get("current_costs") if isinstance(est.get("current_costs"), dict) else {}
+        cands = cur.get("rightsizing_candidates")
+        cands = [c for c in cands if isinstance(c, dict)] if isinstance(cands, list) else []
+        if cands:
+            rs_rows = [["Heroku-side right-sizing candidates: Postgres databases holding 25% or less of their plan's storage "
+                        "with a smaller same-family plan that fits twice the data. "
+                        "Savings are on Heroku, available before migration, and are not counted in the AWS figure. "
+                        "Fitting plan is chosen by storage only; a plan sized for memory, connections or query load may be correct as it is.",
+                        "", "", "", "", "", "", "", "", "", ""],
+                       ["Owning Heroku app", "Add-on (resource id)", "Role", "Plan", "Plan storage (GB)", "Data size (GB, measured)",
+                        "Used %", "Plan $/mo", "Fitting plan", "Fitting plan $/mo", "Saving $/mo"]]
+            for c in cands:
+                rs_rows.append([c.get("heroku_app"), c.get("resource_id", ""), c.get("role") or "unknown", c.get("plan"),
+                                c.get("plan_storage_gb"), c.get("data_size_gb"), c.get("utilization_pct"),
+                                c.get("plan_monthly_usd"), c.get("fitting_plan"), c.get("fitting_plan_monthly_usd"),
+                                c.get("monthly_saving_usd")])
+            rs_rows.append(["Total", "", "", "", "", "", "", "", "", "", cur.get("rightsizing_monthly_saving_usd")])
+
     readme = [["Heroku estate data for AWS"],
               ["Generated by the heroku-to-aws migration skill from the run's discovery, design and estimate artifacts. Draft for review — every figure is copied from those artifacts, none is computed here."],
               [""],
@@ -509,9 +571,10 @@ def build_sheets(inv: dict, design, est) -> tuple[list[tuple[str, list[list]]], 
               ["Summary: headline counts."],
               ["Apps: one row per Heroku app with tier, dynos, add-ons, cohort and AWS mapping status."],
               ["Formations: process types and dyno sizes with the proposed AWS target."],
-              ["Postgres / Redis / Kafka / Other add-ons: every add-on, its plan, measured size where captured, and AWS mapping status."],
+              ["Postgres / Redis / Kafka / Other add-ons: every add-on, its plan, measured size where captured, and AWS mapping status. A Postgres follower that Design folded into its leader's read replicas shows as collapsed into that leader."],
               ["Shared data stores: apps linked by an add-on attached to more than one app (cohorts). Apps in a cohort cannot move strictly one at a time without cross-cloud access to the shared store."],
               ["Cost estimate: present only when the Estimate phase ran."],
+              ["Right-sizing: present only when the Estimate found Postgres databases holding 25% or less of their plan storage with a smaller plan that fits. Heroku-side savings, not AWS; chosen by storage only."],
               [""],
               ["Read this before relying on the numbers"],
               ["Dyno counts and database sizes are point-in-time values from the discovery timestamp. Formations scaled to zero are not visible to live discovery."],
@@ -527,6 +590,8 @@ def build_sheets(inv: dict, design, est) -> tuple[list[tuple[str, list[list]]], 
               ("Shared data stores", cohort_rows)]
     if cost_rows:
         sheets.append(("Cost estimate", cost_rows))
+    if rs_rows:
+        sheets.append(("Right-sizing", rs_rows))
     return sheets, len(apps), len(resources)
 
 

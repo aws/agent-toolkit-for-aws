@@ -64,6 +64,7 @@ def test_estimate_defines_share_threshold_and_null_rule():
     est = _flat(ESTIMATE_MD)
     assert "`model_spend_dominates` is evaluated on the rounded share: `true` when it is above 0.5" in est
     assert "`null` only when `total_model` is `null`" in est
+    assert "midpoint of `total_monthly_magnitude_usd` is 0" in est
     assert "`false` when the share is `null`" in est
 
 
@@ -164,7 +165,7 @@ def test_seed_rejects_bad_usage_volume(volume):
         jsonschema.validate({"units": {"agent": {"usage_volume": volume}}}, schema)
 
 
-# --- Logan's and Gen's reviews on #667 ---------------------------------------------------------
+# --- Driver order, shared session count, other classes, length mapping ------------------------
 
 def test_estimate_example_leads_with_the_token_driver_when_model_spend_dominates():
     example = _estimate_example()
@@ -232,3 +233,11 @@ def test_seed_session_length(length, valid):
     else:
         with pytest.raises(jsonschema.ValidationError):
             jsonschema.validate(seed, schema)
+
+
+def test_session_length_rule_stays_inside_its_bullet():
+    # Review nit on #667: the continuation lines lost their indent and read as a new rule.
+    lines = ESTIMATE_MD.read_text().splitlines()
+    start = next(k for k, line in enumerate(lines) if "When `usage_volume.session_length` is present" in line)
+    end = next(k for k in range(start, len(lines)) if lines[k].startswith("- **Model tokens for other classes**"))
+    assert all(line.startswith("  ") for line in lines[start + 1:end]), lines[start:end]

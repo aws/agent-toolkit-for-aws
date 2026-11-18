@@ -148,6 +148,44 @@ Use the best available source for Heroku monthly baseline (first match wins):
    - Set `current_costs.source: "unavailable"`
    - Note: "Heroku baseline unavailable — AWS costs shown without comparison."
 
+### Right-sizing candidates (whenever any Postgres add-on carries `data_size_gb`)
+
+Large estates usually carry databases on plans chosen years ago. Before comparing Heroku
+to AWS, show the customer what they could stop paying for on Heroku today:
+
+Apply the Clarify Q6d **Right-sizing rule** (`clarify-interview.md` § Q6d) — the one rule
+set shared with Clarify and Design 2B step 2a. That rule defines which add-ons are
+assessed, `utilization_pct`, `fitting_plan` and what makes a database a candidate; apply
+it exactly as written and do not restate or vary it here. This step adds only what the
+Estimate produces:
+
+1. Assess the add-ons the rule selects, and look up each plan's Storage and $/month in
+   `references/shared/heroku-pricing-cache.md`. The rule treats a missing `pg_role`
+   (Classic discovery does not write one, and a failed `pg:info` capture leaves it unset
+   for that database) as a leader. Record such a candidate with `role: "unknown"` so the
+   report can say so.
+2. `monthly_saving_usd = plan $/mo − fitting_plan $/mo` for each candidate.
+3. Write `current_costs.rightsizing_candidates[]`, largest saving first. Example: a
+   `standard-4` ($750, 768 GB) holding 1.5 GB — 0.1953% → `0.2`; 3 GB fits `standard-0`
+   ($50, 64 GB):
+
+   ```json
+   { "resource_id": "...", "heroku_app": "...", "role": "leader|unknown", "plan": "standard-4", "plan_storage_gb": 768,
+     "data_size_gb": 1.5, "utilization_pct": 0.2, "plan_monthly_usd": 750,
+     "fitting_plan": "standard-0", "fitting_plan_monthly_usd": 50, "monthly_saving_usd": 700 }
+   ```
+
+   and `current_costs.rightsizing_monthly_saving_usd` (sum). Leave the Heroku baseline
+   itself unchanged — it is what they pay today — and add to `baseline_note`: "Of the
+   Heroku baseline, ${sum}/mo is on Postgres plans holding 25% or less of their storage;
+   see right-sizing candidates." This saving is available on Heroku before any migration
+   and is independent of the AWS figure, except that `database_sizing_basis: "measured"`
+   (Clarify Q6d) also shrinks the AWS side for the databases in
+   `preferences.data.rightsizing_candidates_shown[]`. The fitting plan is chosen by
+   storage only; a plan sized for memory, connections or query load may be correct as it
+   is — carry that sentence wherever the candidates are shown.
+4. Redis add-ons are not assessed: live discovery captures plan memory, not used memory.
+
 ### Contract reconciliation (when `preferences.commercial.heroku_contract` exists)
 
 The baseline above is what discovery can see at list or live plan prices. An Enterprise
@@ -307,7 +345,7 @@ IF pricing data for a service is unavailable from both MCP and cache:
 
 ### Fargate Cost Calculation — ECS Express Mode ALB
 
-This step runs on the **common Fargate path**, for every design with at least one `aws_service: "Fargate"` entry whose `aws_config.ecs_mode == "express"` — with or without EKS or Elastic Beanstalk in the same design, and independent of `ALB` entries (Design emits no `alb:` entry for an Express web formation, so the per-entry ALB formula never sees it). A Fargate entry with no `ecs_mode` key is `standard` and is priced through its own `ALB` entry as before.
+This step runs on the **common Fargate path**, for every design with at least one `aws_service: "Fargate"` entry whose `aws_config.ecs_mode == "express"` — with or without EKS or Elastic Beanstalk in the same design, and independent of `ALB` entries (Design emits no `alb:` entry for an Express web formation, so the per-entry ALB formula never sees it). A Fargate entry with no `ecs_mode` key is `standard` and is priced through its own `ALB` entry as before. A CNB app's web formation (`ecs_mode_reason: "cnb_image"`) is also `standard`, because the Express template cannot take a CNB image, so it is priced through its own `ALB` entry.
 
 1. **Tasks**: the Fargate formula above — Express Mode has no service charge of its own.
 2. **Shared ALB fixed charge**: Express Mode shares one ALB among up to **25** Express services per compatible group, and provisions another ALB when a group exceeds 25 ([resource sharing](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html#express-service-resource-sharing)). Group the Express entries by **VPC and ALB scheme** (`internet-facing` for public-subnet placement, `internal` for private-subnet placement — never combine the two in one group; a Heroku design has one VPC, and its Express web formations are all internet-facing, so this is normally one group). For each group emit **`ceil(count / 25)`** `alb.monthly_fixed` lines (1–25 services → 1 ALB, 26–50 → 2, 51–75 → 3), as a single `alb_express_shared` line item per group with `quantity = ceil(count / 25)`. Do not emit one fixed charge per Express service, and do not emit a single flat charge regardless of count.
