@@ -93,7 +93,7 @@ If the container already sets `JAVA_TOOL_OPTIONS`, append the `-javaagent` flag 
 
 Check the existing container environment before writing this value.
 
-Set `OTEL_SERVICE_NAME` from the existing ECS service or container name. Optionally add `OTEL_RESOURCE_ATTRIBUTES` for attributes such as `deployment.environment=production`.
+Set `OTEL_SERVICE_NAME` from the existing ECS service or container name. Optionally add `OTEL_RESOURCE_ATTRIBUTES` for attributes such as `deployment.environment.name=production`.
 
 ## Step 4: Make the application wait for the init container
 
