@@ -82,7 +82,7 @@ def test_estimate_share_survives_unverified_components_and_counts_system_lines()
 def test_estimate_sizes_model_tokens_from_usage_volume_with_a_stated_default():
     est = _flat(ESTIMATE_MD)
     assert "answers.json.units[<unit_id>].usage_volume" in est
-    for default in ("1,000 sessions", "20,000 input", "2,000 output"):
+    for default in ("`prototype` 1,000", "`growing` 30,000", "`high` 300,000", "otherwise 1,000", "20,000 input", "2,000 output"):
         assert default in est, default
     assert "assumed (not answered)" in est
 
@@ -192,6 +192,7 @@ def test_driver_order_is_applied_in_step_5_after_the_flag():
 def test_compute_and_model_tokens_use_one_session_count():
     est = _flat(ESTIMATE_MD)
     assert "The session count for compute is the same `sessions_per_month` the model line uses" in est
+    assert "or the same stated session default, marked the same way" in est
 
 
 def test_other_classes_keep_their_own_volume():
@@ -199,7 +200,7 @@ def test_other_classes_keep_their_own_volume():
     rule = est[est.index("**Model tokens for other classes**"):]
     rule = rule[:rule.index("**batch units**")]
     assert "OWN volume" in rule
-    assert "Never apply the 1,000-session agent default" in rule
+    assert "Never apply the agent session default" in rule
     # The service bullet states no volume, so the rule must supply one.
     assert "service unit that calls a model, also state a requests-per-month assumption" in rule
     assert "assumed (not answered): tokens per call" in rule
@@ -241,3 +242,26 @@ def test_session_length_rule_stays_inside_its_bullet():
     start = next(k for k, line in enumerate(lines) if "When `usage_volume.session_length` is present" in line)
     end = next(k for k in range(start, len(lines)) if lines[k].startswith("- **Model tokens for other classes**"))
     assert all(line.startswith("  ") for line in lines[start + 1:end]), lines[start:end]
+
+
+def test_session_default_follows_expected_scale():
+    # Follow-up to #667/#623: an unanswered sessions_per_month takes its default from the
+    # unit's expected_scale, so a "high" workload is not priced as 1,000 sessions a month.
+    est = _flat(ESTIMATE_MD)
+    rule = est[est.index("Sessions a month follow the unit's `expected_scale`"):]
+    rule = rule[:rule.index("Tokens per session default")]
+    for tier, sessions in (("prototype", "1,000"), ("growing", "30,000"), ("high", "300,000")):
+        assert f"`{tier}` {sessions}" in rule, tier
+    assert "otherwise 1,000" in rule
+    assert scoring.LEGAL_VALUES["expected_scale"] == ["prototype", "growing", "high", "unknown"]
+
+
+@pytest.mark.parametrize(("value", "valid"), [("yes", True), ("unknown", True), ("maybe", False)])
+def test_seed_accepts_instance_type_requirement(value, valid):
+    schema = json.loads(SEED_SCHEMA.read_text())
+    seed = {"units": {"agent": {"instance_type_requirement": value}}}
+    if valid:
+        jsonschema.validate(seed, schema)
+    else:
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(seed, schema)
