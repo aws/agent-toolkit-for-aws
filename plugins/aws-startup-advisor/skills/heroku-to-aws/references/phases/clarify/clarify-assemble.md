@@ -58,7 +58,9 @@ Write `$MIGRATION_DIR/preferences.json`:
     "db_size_source": "live_capture|plan_derived|user_override",
     "redis_ha": "<Q7 value>",
     "kafka_retention_days": "<Q8 value>",
-    "dns_strategy": "<Q10 value>"
+    "dns_strategy": "<Q10 value>",
+    "database_sizing_basis": "measured|plan", // Q6d; omit when Q6d did not fire
+    "rightsizing_candidates_shown": ["<resource_id of each Postgres add-on listed in the Q6d table>"] // Q6d; omit when Q6d did not fire
   },
   "network": {
     "existing_vpc_id": "<Q9b value or null>",
@@ -68,6 +70,8 @@ Write `$MIGRATION_DIR/preferences.json`:
   "operational": {
     "container_registry": "<Q12 value>",
     "containerization_status": "<Q12b value>",
+    "dockerfile_apps": ["<Q12b follow-up, partial estates only: inventory app names that already have a Dockerfile>"],
+    "containerization_method": "<Q12f value: cnb_heroku_builder|dockerfile>",
     "log_retention_days": "<Q13 value>",
     "alerting": "<Q14 value>",
     "cost_optimization": "<Q15 value>"
@@ -93,14 +97,35 @@ Write `$MIGRATION_DIR/preferences.json`:
     },
     "eb_deploy_method": { "value": "<Q12d value; omit when resolved compute plan has no EB formations>", "chosen_by": "user|default" }
   },
+  "commercial": {
+    "heroku_contract": {
+      "term_start": "<Q16 ISO date>",
+      "term_end": "<Q16 ISO date>",
+      "lines": [
+        {
+          "category": "dynos|addon_credits|support|private_spaces|connect|other",
+          "label": "<as written on the order form>",
+          "total_usd": 0,
+          "months": 12
+        }
+      ],
+      "prior_term_annual_usd": null
+    }
+  },
   "defaults_applied": ["<list of defaulted question IDs>"],
   "sources": {
     "Q1": "user|extracted|default",
     "Q2": "user|extracted|default",
+    "Q16": "user|default",
     ...
   }
 }
 ```
+
+`commercial` is OPTIONAL: write it only when Q16 fired and the user supplied an
+order form (interview § Q16). Omit the whole object on "none" or when Q16 did not
+fire (an invoice was present); `sources.Q16` is then `"default"` when Q16 fired and
+was answered "none", and absent when it never fired.
 
 Do **not** write a `workshop` object from Clarify. The what-if workshop
 (`references/phases/workshop/`) creates/patches `preferences.workshop` later
@@ -117,9 +142,12 @@ Do **not** write a `workshop` object from Clarify. The what-if workshop
 5. `global.fir_intent` is `null` when no Fir apps detected (Q11 not fired).
 6. `network.existing_vpc_id` and `network.subnet_ids` are `null`/empty when no Private Space peering exists.
 7. `data.database_ha`, `data.redis_ha`, `data.kafka_retention_days` are omitted entirely when those services are not present in the inventory.
+7a. `data.database_sizing_basis` and `data.rightsizing_candidates_shown` are written together, and only when Q6d fired (interview § Q6d). `rightsizing_candidates_shown` lists the `resource_id` of every Postgres add-on shown in the Q6d table; Design 2B step 2a applies the measured basis to those add-ons only. `sources.Q6d` is `"user"` only when the user picked an option; a skipped or fast-pathed Q6d is `"default"` with `database_sizing_basis: "plan"`.
+7b. `commercial.heroku_contract` is written only when Q16 was answered with a contract (interview § Q16); "none" or an invoice-backed inventory omits `commercial` entirely.
 8. `design_constraints.compute_target` uses the structured Q12c shape (`default`, `overrides`, `chosen_by`, `recommendation`). Existing reused preferences with legacy `compute_target.value` may be read by Design for backward compatibility, but newly assembled preferences MUST write the structured shape. `recommendation.scale_note` is optional: Q12c step 4a writes it (`"{N} formations"`) when the non-release formation count is above 40, and it is preserved unchanged when the user takes option 2 (EB override), on reuse (interview Step 0), and in workshop snapshots (`scenarios/scenario-NNN.preferences.json` is a copy of this file). Preferences written before the field existed simply lack it; never synthesize it.
 9. `design_constraints.eb_deploy_method` is required when the resolved compute plan includes at least one Elastic Beanstalk formation; omit it for all-Fargate or all-EKS targets.
 10. Omit `workshop` on Clarify assemble — workshop mode owns that object.
+11. `operational.dockerfile_apps` is written only when `operational.containerization_status` is `"partial"` (Q12b follow-up): a non-empty array of inventory `apps[].app_name` values that already have a Dockerfile, including every `container`-stack app. Omit it for `containerized` and `buildpack_only`. Generate resolves each app's containerization method as `stack == "container"` or listed here → `dockerfile`, otherwise `operational.containerization_method`; an app's resolution is **never** inferred from its stack alone.
 
 ---
 
@@ -133,6 +161,8 @@ Before handing off to Design:
 - [ ] If Postgres in inventory → `data.database_ha` is populated
 - [ ] If Postgres in inventory → `global.migration_approach` is populated
 - [ ] If Postgres in inventory → `data.migration_method` is populated
+- [ ] If Q6d fired → `data.database_sizing_basis` is `"measured"` or `"plan"`, `data.rightsizing_candidates_shown` is a non-empty array of inventory `resource_id`s, and `sources.Q6d` is present; `"measured"` only with `sources.Q6d` = `"user"`. If Q6d did not fire → both keys absent
+- [ ] If Q16 was answered with a contract → `commercial.heroku_contract` has `term_start`, `term_end` and a non-empty `lines[]`; otherwise `commercial` is absent
 - [ ] If `migration_approach` is `interim_cutover_data_first` → `global.target_exit_date` is a valid future ISO date
 - [ ] If `migration_approach` is `interim_cutover_data_first` → `global.interim_cutover` is `true`
 - [ ] If Private Space peering detected → `network.subnet_ids` contains 1–6 valid IDs
@@ -151,6 +181,9 @@ Before handing off to Design:
 - [ ] `design_constraints.compute_target.recommendation.scale_note`, when present, is a string; when present and `chosen_by` is `"system_recommended"`, `compute_target.default` is `"ecs-fargate"` (the accepted recommendation is written, not just described)
 - [ ] If the resolved compute plan includes Elastic Beanstalk → `design_constraints.eb_deploy_method.value` is one of: `"github_actions"`, `"codepipeline"`, `"manual"`
 - [ ] If `design_constraints.eb_deploy_method` is present → `design_constraints.eb_deploy_method.chosen_by` is `"user"` or `"default"`
+- [ ] If `operational.containerization_method` is `"cnb_heroku_builder"` → `operational.container_registry` is `"ecr"` (Q12 validation; Generate halts on the combination)
+- [ ] If `operational.containerization_method` is `"cnb_heroku_builder"` and `design_constraints.eb_deploy_method.value` is `"codepipeline"` → no app with an Elastic Beanstalk formation in the resolved compute plan resolves to CNB per app (an EB app resolves to CNB when its inventory `stack` is not `"container"` and it is not listed in `operational.dockerfile_apps[]` — the Q12d / `pipeline.tf` rule). A container-stack or `dockerfile_apps` EB app on CodePipeline beside a buildpack app on Fargate is valid; an actual CNB EB app on CodePipeline is not (Generate halts on it)
+- [ ] If `operational.containerization_status` is `"partial"` → `operational.dockerfile_apps` is a non-empty array of inventory app names that includes every `container`-stack app (a reused file written before the field existed is first completed by the Interview Step 0 legacy-partial confirmation, so it reaches this item with the array present); otherwise the key is absent
 - [ ] All entries in `sources` have a value of `"user"`, `"extracted"`, or `"default"`
 - [ ] Every ID in `metadata.questions_skipped_extracted` has `sources.<QID>` = `"extracted"`, and its field holds a catalog enum value (`data.database_ha` ∈ `"single-az"` / `"multi-az"` / `"multi-az-ha"`; `operational.containerization_status` ∈ `"containerized"` / `"buildpack_only"` / `"partial"`; `data.redis_ha` Boolean) — never a raw inventory signal such as a Boolean `database_ha`
 - [ ] `metadata.clarify_mode` is set to `"fast_path"` or `"full"`

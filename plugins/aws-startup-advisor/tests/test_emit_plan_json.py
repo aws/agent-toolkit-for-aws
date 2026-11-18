@@ -201,17 +201,17 @@ def test_render_infra_run_emits_plan_from_capacity_preserving_lines(tmp_path: Pa
     assert data["sourcePlatform"] == "RENDER"
     assert data["scope"] == "INFRA_ONLY"
     assert data["runId"] == RENDER_RUN_ID
-    assert data["cost"]["awsMonthly"] == 352.0
+    assert data["cost"]["awsMonthly"] == 358.5
     assert data["cost"]["awsMonthlyBasis"] == "BALANCED"
     assert data["cost"]["sourceMonthly"] == 123.45
     assert "accuracy" not in data["cost"]
     items = data["cost"]["awsServiceItems"]
     names = [item["serviceName"] for item in items]
     assert len(names) == len(set(names))
-    assert "Amazon EFS" not in names
+    assert next(i for i in items if i["serviceName"] == "Amazon EFS")["monthlyCost"] == 1.5
     assert "AWS Certificate Manager + external DNS" not in names
     assert next(i for i in items if i["serviceName"] == "ECS on Fargate")["monthlyCost"] == 90.0
-    assert round(sum(item["monthlyCost"] for item in items), 2) == 352.0
+    assert round(sum(item["monthlyCost"] for item in items), 2) == 358.5
     assert {item["classification"] for item in items} == {"INFRASTRUCTURE"}
 def test_render_source_baseline_requires_explicit_usd(tmp_path: Path) -> None:
     def drop_currency(estimate: dict) -> None:
@@ -223,13 +223,13 @@ def test_render_source_baseline_requires_explicit_usd(tmp_path: Path) -> None:
     for index, mutate in enumerate((drop_currency, euro, unavailable)):
         data = _emit(_render_run(tmp_path, mutate, name=f"baseline-{index}"))
         assert "sourceMonthly" not in data["cost"]
-        assert data["cost"]["awsMonthly"] == 352.0
+        assert data["cost"]["awsMonthly"] == 358.5
 def test_render_service_items_omitted_when_lines_do_not_reconcile(tmp_path: Path) -> None:
     def drift(estimate: dict) -> None:
         estimate["scenarios"]["capacity_preserving"]["known_cost_monthly_usd"] = 999.0
     data = _emit(_render_run(tmp_path, drift))
     assert "awsServiceItems" not in data["cost"]
-    assert data["cost"]["awsMonthly"] == 352.0
+    assert data["cost"]["awsMonthly"] == 358.5
 def test_render_ai_estimate_fails_open_without_plan(tmp_path: Path) -> None:
     """Render defers AI, so a run that also carries an AI estimate would be FULL, which
     the import does not accept for RENDER; the writer must skip rather than emit it."""

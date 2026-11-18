@@ -1,6 +1,6 @@
 # Schema: preferences.json (AI-only)
 
-Clarify phase output (`references/phases/clarify/clarify-ai-only.md`). Design, Estimate, and Generate read it once those phases exist in this skill.
+Clarify phase output (`references/phases/clarify/clarify-ai-only.md`). Design (`references/phases/design/design-ai.md`) and Estimate (`references/phases/estimate/estimate-ai.md`) read it; Generate will once that phase exists in this skill.
 
 ---
 

@@ -29,6 +29,18 @@ Widget types, cross-account/region patterns, dynamic labels, and recommended def
 | **Logs table** | Log Insights query results inline |
 | **Alarm status** | Alarm state visualization |
 | **Markdown** | Free-form text, links, section headers |
+| **PromQL** (`"type": "chart"`) | OTel metrics — build the query in Query Studio, then **Add to dashboard**, or write the widget yourself (below); signals and query spelling per [promql.md](promql.md) |
+
+A PromQL widget in `PutDashboard` is `"type": "chart"` (not `metric`, whose `metrics` array cannot carry PromQL text):
+
+```json
+{"type": "chart",
+ "properties": {"view": "line", "title": "p99 Lambda Duration", "region": "us-east-1",
+  "data": {"queries": [{"id": "q1", "type": "cloudwatch-metrics", "language": "PromQL", "step": 300,
+   "query": "histogram_quantile(0.99, sum by (FunctionName) (sum_over_time({__name__=\"Duration\", \"@instrumentation.@name\"=\"cloudwatch.aws/lambda\"}[5m])))"}]}}}
+```
+
+`view` is one of `line`, `bar`, `column`, `pie`, `number`, `solidgauge`, `legend`, `histogram`, `heatmap`, `scatter`; each query may also set `label`, `region`, `accountId` and `visible` ("Dashboard Body Structure and Syntax", chart widget). `PutDashboard` ignores `x`, `y`, `width` and `height` on a chart widget (a validation message, not an error), so the console places it.
 
 ---
 
@@ -112,7 +124,7 @@ Shared dashboard viewers cannot change variable values — the dashboard renders
 | Setting | Default | Best practice |
 |---------|----------|------------|
 | `start` | `-PT3H` | **`-PT8H`** (covers a shift) |
-| `periodOverride` | AUTO | **`INHERIT`** (let widgets control) |
+| `periodOverride` | `auto` | **`inherit`** (lowercase in JSON; `INHERIT` is rejected) |
 | Layout width | varies | **24** for full-width, **12** for side-by-side |
 | Alarm widgets | none | **Always include** alarm status row at top |
 

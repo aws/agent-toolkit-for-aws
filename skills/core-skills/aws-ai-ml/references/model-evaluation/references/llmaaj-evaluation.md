@@ -38,9 +38,9 @@ If you fail to get a sample, move on and rely on the user's description.
 
 ### Step 4: Validate dataset format
 
-If the evaluation dataset was already validated via the **dataset-evaluation** reference — either earlier in this conversation, or in a previous session (as recorded in plan.md) — skip this step.
+If the evaluation dataset was already validated via the **dataset-quality** reference — either earlier in this conversation, or in a previous session (as recorded in plan.md) — skip this step.
 
-Otherwise, load the **dataset-evaluation** reference to validate it. If it fails, offer to load the **dataset-transformation** reference to convert it. Do not proceed until the dataset is valid.
+Otherwise, load the **dataset-quality** reference to validate it. If it fails, offer to load the **dataset-transformation** reference to convert it. Do not proceed until the dataset is valid.
 
 ### Step 5: Dataset size warning
 

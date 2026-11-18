@@ -4,6 +4,8 @@ Every command uses `uv run --project "$SKILL_BASE/scripts" --frozen python`. All
 
 All JSON is UTF-8, canonicalized with sorted object keys, compact separators, NFC strings, and one trailing newline. Success writes exactly one status line to stdout. Failure writes exactly one status line ending in a stable code to stderr, writes no result artifact, and uses exit 1. Argument errors use exit 2 through `argparse`. Status output never contains source text, credentials, response bodies, or remote error prose.
 
+Every ABI requires the locked runtime. A failed preflight blocks only the steps that call these scripts, and it never selects another interpreter.
+
 ## `parse-render-blueprint.py`
 
 - Caller: main window (Discover pre-dispatch); never the dispatched `rw` worker.
