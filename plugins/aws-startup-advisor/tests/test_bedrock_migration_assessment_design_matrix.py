@@ -189,6 +189,75 @@ def test_vision_rows_exclude_nova_micro() -> None:
     assert rows and not [r["id"] for r in rows if "amazon.nova-micro-v1:0" in r["allowed"]]
 
 
+def _size(cell: str) -> float:
+    found = re.match(r"≤?\s*(\d+(?:\.\d+)?)\s*([KM])", cell.strip())
+    return float(found.group(1)) * (1e6 if found.group(2) == "M" else 1e3) if found else 0.0
+
+
+def _pricing_tables() -> list[list[dict[str, str]]]:
+    return _tables((VENDORED / "bedrock-pricing-cache.md").read_text(encoding="utf-8"))
+
+
+def _context_windows() -> dict[str, float]:
+    windows = {model_id: _size(row["Context window"]) for model_id, row in _capability_table().items()}
+    for row in (r for t in _pricing_tables() for r in t if "Context" in r and r.get("Model ID", "—") not in ("—", "")):
+        tier = re.search(r"(\d+(?:\.\d+)?[KM])[ -]tier", row.get("Status", ""))
+        model_id = matrix.base_id(row["Model ID"])
+        windows[model_id] = max(windows.get(model_id, 0.0), _size(row["Context"]), _size(tier.group(1)) if tier else 0.0)
+    return windows
+
+
+def _cache_read_models() -> set[str]:
+    tables, ids, found = _pricing_tables(), {}, set()
+    for row in (r for t in tables for r in t if r.get("Model ID", "—") not in ("—", "") and "Model" in r):
+        ids.setdefault(row["Model"].removeprefix("Amazon "), set()).add(matrix.base_id(row["Model ID"]))
+    for row in (r for t in tables for r in t):
+        for header, cell in row.items():
+            if "cache read" in header.lower():
+                rate = cell
+            elif "cache-read" in header:
+                parts, values = re.search(r"\((.*)\)", header).group(1).split("·"), cell.split("·")
+                rate = values[[p.strip() for p in parts].index("cache-read")] if len(values) == len(parts) else ""
+            else:
+                continue
+            number = re.match(r"\s*(\d*\.?\d+)", rate)
+            if number and float(number.group(1)) > 0:
+                found |= ids.get(row.get("Model", "").removeprefix("Amazon "), set())
+    text = (VENDORED / "bedrock-pricing-cache.md").read_text(encoding="utf-8")
+    for section in re.split(r"^### ", text, flags=re.M):
+        discount = re.search(r"\*\*Cache read \([^)]+\):\*\*.*?(\d+)% below\*\* the on-demand input price", section)
+        if not discount or not 0 < int(discount.group(1)) < 100:
+            continue
+        priced = set()
+        for row in (r for t in _tables(section) for r in t):
+            price = next((c for h, c in row.items() if h in ("Input $/1M", "Text in", "On-demand in")), "")
+            if re.match(r"\s*\d*\.?\d+", price) and float(price) > 0:
+                priced |= ids.get(row.get("Model", "").removeprefix("Amazon "), set())
+        assert priced, f"no priced model id for {discount.group(0)}"
+        found |= priced
+    return found
+
+
+ULTRA_LONG_CONTEXT = 300_000  # Clarify Q10 "Ultra-long context (> 300K tokens)"
+FEATURE_SERVERS = {
+    "prompt_caching": _cache_read_models,
+    "ultra_long_context": lambda: {m for m, w in _context_windows().items() if w > ULTRA_LONG_CONTEXT},
+    "image_generation": lambda: {m for m, r in _capability_table().items() if r["Image input"] == "yes"},
+}
+FEATURE_ROWS = [r for r in ROWS if r["group"] == "critical_feature" and r["decided_by"] == "critical_feature"
+                and r["preferences"]["ai_critical_feature"] in FEATURE_SERVERS]
+
+
+@pytest.mark.parametrize("row", FEATURE_ROWS, ids=[r["id"] for r in FEATURE_ROWS])
+def test_a_feature_row_allows_every_candidate_of_its_source_and_priority_that_serves_the_feature(row) -> None:
+    priority = row["preferences"]["ai_priority"]
+    pool = {a for r in _pairwise_rows() if r["source"] == row["source"] and r["preferences"]["ai_priority"] == priority
+            for a in r["allowed"]}
+    serving = pool & FEATURE_SERVERS[row["preferences"]["ai_critical_feature"]]()
+    assert serving, row["id"]
+    assert not sorted(serving - set(row["allowed"])), (row["id"], sorted(serving - set(row["allowed"])))
+
+
 def test_capability_rows_follow_design_step_2_item_1() -> None:
     item = DESIGN_DOC[DESIGN_DOC.index("1. **By capability:**"):DESIGN_DOC.index("2. **Text models")]
     names = {"amazon.titan-embed-text-v2:0": "Amazon Titan Text Embeddings V2", "service:transcribe": "Amazon Transcribe",

@@ -175,6 +175,8 @@ Interpret → `design_constraints.compliance` array (same format as the full flo
 
 > 1\) Best quality/reasoning | 2\) Fastest speed | 3\) Lowest cost | 4\) Specialized capability (→ Q10\) | 5\) Balanced | 6\) I don't know
 
+These impacts apply to a source with no same model on Bedrock; a source with one keeps it (Q5 override hierarchy).
+
 | Answer   | Model Impact                                        |
 | -------- | --------------------------------------------------- |
 | Quality  | Claude Sonnet 5 primary; Opus 5.5 for hardest tasks |

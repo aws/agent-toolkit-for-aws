@@ -583,10 +583,13 @@
         "anthropic.claude-opus-4-6-v1",
         "anthropic.claude-opus-5-5",
         "anthropic.claude-sonnet-4-6",
-        "anthropic.claude-sonnet-5"
+        "anthropic.claude-sonnet-5",
+        "openai.gpt-5.6-luna",
+        "openai.gpt-5.6-terra",
+        "openai.gpt-6-luna"
       ],
       "decided_by": "critical_feature",
-      "basis": "Clarify Q10 ultra-long context names Opus 5.5, Sonnet/Opus 4.6 long-context SKUs, or Nova 2 Lite; the speed candidates Sonnet 5 and Haiku 5.5 have a 1M window (ai-model-lifecycle.md Capability Constraints)"
+      "basis": "Clarify Q10 ultra-long context names Opus 5.5, Sonnet/Opus 4.6 long-context SKUs, or Nova 2 Lite; the speed candidates Sonnet 5 and Haiku 5.5 have a 1M window and GPT-6 Luna a 1.05M window (ai-model-lifecycle.md Capability Constraints); GPT-5.6 Luna and GPT-5.6 Terra have a 1M tier (bedrock-pricing-cache.md)"
     },
     {
       "id": "feature-extended-thinking",
@@ -622,11 +625,15 @@
         "ai_critical_feature": "prompt_caching"
       },
       "allowed": [
+        "amazon.nova-lite-v1:0",
+        "amazon.nova-micro-v1:0",
         "anthropic.claude-haiku-5-5",
-        "anthropic.claude-sonnet-5"
+        "anthropic.claude-sonnet-5",
+        "openai.gpt-5.6-terra",
+        "openai.gpt-6-luna"
       ],
       "decided_by": "critical_feature",
-      "basis": "Clarify Q10 prompt caching names Claude Sonnet 5; the cost candidate Haiku 5.5 has cache-write and cache-read rates in bedrock-pricing-cache.md"
+      "basis": "Clarify Q10 prompt caching names Claude Sonnet 5; the cost candidates Haiku 5.5, GPT-5.6 Terra and GPT-6 Luna have cache-read rates in bedrock-pricing-cache.md, and ai-openai-to-bedrock.md lists caching for GPT-5.6 Terra on every bedrock-runtime API and for GPT-6 Luna on every API of both endpoints; the cost candidates Nova Lite and Nova Micro have a cache-read rate 75% below the on-demand input price (bedrock-pricing-cache.md Amazon Nova, Cache read (Nova))"
     },
     {
       "id": "feature-rag",
@@ -699,12 +706,14 @@
         "ai_critical_feature": "image_generation"
       },
       "allowed": [
+        "amazon.nova-2-lite-v1:0",
         "amazon.nova-lite-v1:0",
+        "amazon.nova-pro-v1:0",
         "anthropic.claude-haiku-5-5",
         "anthropic.claude-sonnet-5"
       ],
       "decided_by": "critical_feature",
-      "basis": "Clarify Q10 image generation names Claude Sonnet 5 (vision) for the text side and Stability AI for generation; the cost candidates Nova Lite and Haiku 5.5 take image input (ai-model-lifecycle.md Capability Constraints)"
+      "basis": "Clarify Q10 image generation names Claude Sonnet 5 (vision) for the text side and Stability AI for generation; the cost candidates Nova Lite, Nova Pro and Haiku 5.5 take image input (ai-model-lifecycle.md Capability Constraints), and bedrock-pricing-cache.md prices Nova 2 Lite text + image + video input"
     },
     {
       "id": "feature-speech",
