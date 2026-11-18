@@ -952,3 +952,73 @@ def test_older_target_forced_tool_guidance_on_runtime_converse():
     finding = next(item for item in rec["blocks"] if item["code"] == "structured_output_portable_pattern")
     assert "forced tool without strict" in finding["remediation"]
     assert "only after verifying" in finding["remediation"]
+
+
+# --- an OpenAI-API Mantle preference on the Anthropic side offers mantle_messages ----------------
+
+@pytest.mark.parametrize("preferred", ["mantle_openai_responses", "mantle_openai_chat"])
+@pytest.mark.parametrize("source, runtime_option", [
+    ({}, "runtime_messages"),
+    ({"provider": "none", "model_ids": ["unknown"], "sdk": "none", "api_surface": "none"},
+     "runtime_converse"),
+])
+def test_openai_api_mantle_preference_without_selector_offers_mantle_messages(
+    preferred, source, runtime_option
+):
+    workload = _workload(source=source, requirements={"preferred_api_path": preferred})
+    data = _input(workload)
+    result = model_recommendation.recommend(data)
+    jsonschema.validate(result, json.loads(
+        (pathlib.Path(model_recommendation.__file__).parent / "schemas"
+         / "model-recommendation.json").read_text()))
+    rec = result["workloads"]["support-agent"]
+    assert rec["decision_status"] == "decision_required"
+    assert [option["api_path"] for option in rec["decision_options"]] == [runtime_option, "mantle_messages"]
+    mantle = rec["decision_options"][1]
+    assert mantle["mantle_selector"] is None
+    assert mantle["reason"].startswith("Mantle Messages requires a mantle_selector")
+    assert {"model_path_decision_required", "mantle_selector_required"} <= {
+        block["code"] for block in rec["blocks"]
+    }
+
+
+_UNKNOWN_SOURCE = {"provider": "none", "model_ids": ["unknown"], "sdk": "none", "api_surface": "none"}
+
+
+def _rec_with(source, **requirements):
+    result = model_recommendation.recommend(_input(_workload(source=source, requirements=requirements)))
+    jsonschema.validate(result, json.loads(
+        (pathlib.Path(model_recommendation.__file__).parent / "schemas"
+         / "model-recommendation.json").read_text()))
+    return result["workloads"]["support-agent"]
+
+
+@pytest.mark.parametrize("preferred", ["mantle_openai_responses", "mantle_openai_chat"])
+@pytest.mark.parametrize("source", [{}, _UNKNOWN_SOURCE])
+def test_openai_api_mantle_preference_with_selector_recommends_mantle_messages(preferred, source):
+    rec = _rec_with(source, preferred_api_path=preferred, mantle_selector="workspaces")
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "mantle_messages" and rec["mantle_selector"] == "workspaces"
+    assert any(f"preferred_api_path {preferred} is an OpenAI-compatible API" in line
+               for line in rec["rationale"])
+
+
+@pytest.mark.parametrize("preferred", ["runtime_openai_responses", "runtime_openai_chat"])
+@pytest.mark.parametrize("source, runtime_path", [({}, "runtime_messages"),
+                                                  (_UNKNOWN_SOURCE, "runtime_converse")])
+def test_openai_api_runtime_preference_uses_the_claude_runtime_path(preferred, source, runtime_path):
+    rec = _rec_with(source, preferred_api_path=preferred)
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == runtime_path and rec["mantle_selector"] is None
+    assert any(f"{runtime_path} is the Claude API on the same endpoint" in line
+               for line in rec["rationale"])
+
+
+@pytest.mark.parametrize("preferred", ["runtime_openai_responses", "runtime_openai_chat"])
+@pytest.mark.parametrize("source, runtime_path", [({}, "runtime_messages"),
+                                                  (_UNKNOWN_SOURCE, "runtime_converse")])
+def test_openai_api_runtime_preference_against_a_selector_is_a_decision(preferred, source, runtime_path):
+    rec = _rec_with(source, preferred_api_path=preferred, mantle_selector="workspaces")
+    assert rec["decision_status"] == "decision_required"
+    assert [o["api_path"] for o in rec["decision_options"]] == ["mantle_messages", runtime_path]
+    assert "model_path_decision_required" in [b["code"] for b in rec["blocks"]]

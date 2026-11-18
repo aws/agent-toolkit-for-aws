@@ -42,6 +42,11 @@ def is_selectable(model):
     return status == "selectable"
 
 
+# OpenAI-compatible APIs: valid preferred_api_path values (shared SUPPORTED_PATHS) with no
+# Claude path in the Anthropic catalog.
+_OPENAI_API_PATHS = frozenset({
+    "mantle_openai_chat", "mantle_openai_responses", "runtime_openai_chat", "runtime_openai_responses",
+})
 ANTHROPIC_PATHS = (
     "mantle_messages",
     "runtime_converse",
@@ -347,6 +352,15 @@ def _path_constraints(workload):
 
     runtime_path = "runtime_invoke" if native_required else "runtime_converse"
     messages_option = "runtime_messages" if (source_messages or messages_required) else runtime_path
+    # An OpenAI-compatible API preference names an endpoint, not a Claude API: the Anthropic
+    # catalog has no OpenAI-API path. Keep the endpoint and use the Claude API it serves:
+    # mantle_messages on bedrock-mantle (every Mantle branch below offers it), and on
+    # bedrock-runtime the path this module defaults to for the source (bedrock-endpoint-policy.md:
+    # the endpoint is chosen by need; the SDK and API follow the model).
+    mapped_from = None
+    if preferred in _OPENAI_API_PATHS:
+        mapped_from = preferred
+        preferred = "mantle_messages" if preferred.startswith("mantle_") else messages_option
     conflicts = []
     option_paths = []
     # A selector is validated against the API this module can route to. Background
@@ -395,6 +409,11 @@ def _path_constraints(workload):
                 preferred,
             ]
 
+    mapped = (
+        [f"preferred_api_path {mapped_from} is an OpenAI-compatible API that Claude models do not "
+         f"serve; {preferred} is the Claude API on the same endpoint."]
+        if mapped_from else []
+    )
     if conflicts:
         return {
             "paths": [],
@@ -404,7 +423,7 @@ def _path_constraints(workload):
                 "The recorded requirements cannot be satisfied on one Bedrock path: "
                 + ", ".join(sorted(set(conflicts)))
                 + "."
-            ],
+            ] + mapped,
             "mantle_selector": selector,
         }
     if preferred:
@@ -412,7 +431,7 @@ def _path_constraints(workload):
             "paths": [preferred],
             "conflicts": [],
             "option_paths": [],
-            "rationale": [f"User selected the {preferred} API path."],
+            "rationale": [f"User selected the {preferred} API path."] + mapped,
             "mantle_selector": selector,
         }
     if native_required:
