@@ -202,7 +202,7 @@ The `azure-to-aws`, `gcp-to-aws`, `heroku-to-aws`, and `render-to-aws` skills ru
 - **Estimate** — Costs the target architecture from the plugin's bundled rate reference data and a documented cost algorithm, with an estimation schema and complexity tiers so two runs of the same workload agree. Estimates are planning figures; confirm them against the [AWS Pricing Calculator](https://calculator.aws/) before committing budget.
 - **Generate** — Emits migration artifacts, including Terraform, gated by the `tf-best-practices` policy check and a validated migration report. On the infrastructure route, `heroku-to-aws`, `gcp-to-aws`, and `azure-to-aws` also emit `baseline.tf` — an account-wide security baseline (GuardDuty, CloudTrail, IMDSv2, EBS encryption, budget alerts) — with AWS Config and Security Hub controls added when the declared compliance set includes SOC 2, PCI, HIPAA, or FedRAMP. `gcp-to-aws`'s AI-only and billing-only routes emit monitoring or skeleton Terraform instead and skip the baseline.
 - **Workshop mode** — After estimate, `azure-to-aws`, `gcp-to-aws`, `heroku-to-aws`, and `render-to-aws` can reprice region, high-availability, compute, and AWS Graviton scenarios without repeating discovery.
-- **Credits handoff** — When estimate finishes, `gcp-to-aws` and `heroku-to-aws` can write `plan.json` and offer a link to apply for up to $1,500 in AWS migration credits. Generate writes the same file again when it completes. `azure-to-aws` does not yet — the import contract's accepted `sourcePlatform` values are not confirmed to include Azure.
+- **Credits handoff** — When estimate finishes, `gcp-to-aws` and `heroku-to-aws` can write `plan.json` and link to AWS Startup Advisor's import page (https://startups.aws.com/migrate/plans/import). There the user signs in, uploads it, and sees the AWS migration credits they qualify for. Generate writes the same file again when it completes. `azure-to-aws` does not yet — the import contract's accepted `sourcePlatform` values are not confirmed to include Azure.
 
 ### Examples
 
@@ -245,7 +245,7 @@ Model mapping is compatibility-guided rather than one-to-one parity. Validate pr
 Two skills serve AWS-curated content rather than performing work on your account:
 
 - **`knowledge-base-for-startups`** — AWS Activate FAQ, credits guide, programs, partner offers, sample architectures, and learn articles spanning generative AI, cloud architecture, cost optimization, security, fundraising, and go-to-market. Answers come from the bundled `references/` tree.
-- **`prompt-library-for-startups`** — Copy-paste prompts for AI coding agents (MVP scaffolding, RAG chatbot on Amazon Bedrock, security baseline evaluation, cost anomaly detection, GPU quota requests, Amazon EKS deployment, Well-Architected review) plus downloadable installable agents.
+- **`prompt-library-for-startups`** — The approved subset of the AWS Startups prompt library: copy-paste prompts for AI coding agents (MVP scaffolding, RAG chatbot on Amazon Bedrock, security baseline evaluation, read-only cost optimization audit, GPU quota requests, Amazon EKS on Spot) plus downloadable installable agents. Anything not bundled is in the full library at [startups.aws.com/prompt-library](https://startups.aws.com/prompt-library).
 
 Neither skill can look up account-specific state such as your credits balance, Activate membership, or application status. Those questions belong at [AWS Startups](https://aws.amazon.com/startups/).
 

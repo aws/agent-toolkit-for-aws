@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:awslabs:startups:ai:bedrock-pricing",
+  "title": "Amazon Bedrock token pricing",
+  "description": "Contract for skills/shared/ai/bedrock-pricing.json, the single source of truth for Bedrock Standard on-demand token rates per model and inference-profile prefix. llm-to-bedrock's bedrock_pricing.py reads the vendored copy. tests/test_bedrock_pricing_data.py checks what the schema cannot: rows in bedrock-pricing-cache.md agree with these rates.",
+  "type": "object",
+  "required": ["description", "unit", "tier", "prefixes", "models"],
+  "additionalProperties": false,
+  "properties": {
+    "description": { "type": "string", "minLength": 1 },
+    "unit": { "const": "USD per 1M tokens" },
+    "tier": { "const": "Standard on-demand" },
+    "prefixes": { "type": "string", "minLength": 1 },
+    "models": {
+      "description": "One entry per priced model, keyed by its bare Bedrock model id (no inference-profile prefix).",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/definitions/model" }
+    }
+  },
+  "definitions": {
+    "model": {
+      "type": "object",
+      "required": ["display_name", "source", "verified_at", "rates"],
+      "additionalProperties": false,
+      "properties": {
+        "display_name": { "type": "string", "minLength": 1 },
+        "source": { "description": "Where the rates were read: a public AWS URL, or a repository file for rates copied from a verified table.", "type": "string", "minLength": 1 },
+        "verified_at": { "description": "Date the rates were last checked against the source.", "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "rates": { "$ref": "#/definitions/prefixRates" },
+        "long_context": {
+          "description": "Higher tier for a request whose prompt exceeds threshold_tokens. A caller that does not know the request-size distribution must show both tiers.",
+          "type": "object",
+          "required": ["threshold_tokens", "rates"],
+          "additionalProperties": false,
+          "properties": {
+            "threshold_tokens": { "type": "integer", "minimum": 1 },
+            "rates": { "$ref": "#/definitions/prefixRates" }
+          }
+        },
+        "region_rates": {
+          "description": "Rates that replace the commercial ones in a specific Region (for example GovCloud), keyed by Region code.",
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "$ref": "#/definitions/prefixRates" }
+        },
+        "note": { "type": "string", "minLength": 1 }
+      }
+    },
+    "prefixRates": {
+      "description": "Rates keyed by model-id form: `bare` (no prefix) or a cross-Region inference profile prefix. A prefix absent here is unverified.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "bare": { "$ref": "#/definitions/rate" },
+        "global": { "$ref": "#/definitions/rate" },
+        "us": { "$ref": "#/definitions/rate" },
+        "eu": { "$ref": "#/definitions/rate" },
+        "in": { "$ref": "#/definitions/rate" },
+        "au": { "$ref": "#/definitions/rate" },
+        "jp": { "$ref": "#/definitions/rate" },
+        "ca": { "$ref": "#/definitions/rate" }
+      }
+    },
+    "rate": {
+      "type": "object",
+      "required": ["input", "output"],
+      "additionalProperties": false,
+      "properties": {
+        "input": { "type": "number", "exclusiveMinimum": 0 },
+        "output": { "type": "number", "exclusiveMinimum": 0 },
+        "cache_read": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    }
+  }
+}

@@ -52,10 +52,13 @@ full-cache date at the top of this file.
 > "approximately 10%... compared to geographic cross-Region inference." The table below's bare-id
 > rows are the **Global/base** rate; for a **Geo** (`us.`-prefixed) deployment, multiply
 > input/output by 1.10 — Sonnet 5 and Sonnet 5.5 Geo are $2.20/$11.00 (Sonnet 5.5 Geo is listed directly on the pricing table, not derived), Opus 4.8 Geo is $5.50/$27.50, Sonnet 4.6
-> Geo is $3.30/$16.50, Haiku 4.5 Geo is $1.10/$5.50. `llm-to-bedrock/scripts/bedrock_pricing.py`'s
-> `STATIC_FALLBACK` table keys the `us.` id to the Geo rate and the bare id to the Global/base
-> rate — read from that table, not this one, when a migration plan pins a specific inference
-> profile.
+> Geo is $3.30/$16.50, Haiku 4.5 Geo is $1.10/$5.50. The per-profile source of truth is
+> `bedrock-pricing.json` (in this directory): it keys each model's verified rate by inference
+> profile prefix (`bare` = Global/base, `us`, `eu`, `global`, ...) and lists long-context tiers.
+> Read the rate from that file, not this table, when a migration plan pins a specific inference
+> profile. A prefix that file does not price is unverified; do not derive it with the 1.10
+> multiplier. Every model id this table lists must agree with that file
+> (`tests/test_bedrock_pricing_data.py`).
 >
 > Opus 5.5 rows already specify Global, Geo, Mantle, London or GovCloud pricing; do not apply another 1.10 multiplier.
 

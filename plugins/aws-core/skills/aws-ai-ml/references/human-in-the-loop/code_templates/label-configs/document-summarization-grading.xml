@@ -1,0 +1,18 @@
+<View style="display: flex; gap: 20px;">
+  <View style="flex: 2; background: #f9f9f9; padding: 15px; border-radius: 5px; overflow-y: auto; max-height: 500px;">
+    <Header value="Original Document"/>
+    <Text name="document" value="$document"/>
+  </View>
+  <View style="flex: 1;">
+    <Header value="Generated Summary"/>
+    <Text name="summary" value="$summary"/>
+    <Header value="Rate the summary quality"/>
+    <Rating name="rating" toName="summary" maxRating="5" required="true"/>
+    <Choices name="issues" toName="summary" choice="multiple">
+      <Choice value="missing key info"/>
+      <Choice value="hallucinated facts"/>
+      <Choice value="too verbose"/>
+      <Choice value="grammatically poor"/>
+    </Choices>
+  </View>
+</View>

@@ -72,12 +72,14 @@ Note that deploying **to Bedrock** (Nova or OSS LoRA via `BedrockModelBuilder`/C
 
 - They asked to **benchmark**, **optimize**, **compare** runs, **load-test**, or measure performance → go straight to the sub-workflow.
 - They stated a **performance / cost / latency / throughput goal** for a *new* deployment (e.g. "find the cheapest instance", "hit p99 under 200ms") → go to Step 0B (Recommendations).
+- They asked for an **AI Recommendation Job**, or a cheaper or faster configuration for a model **already on an endpoint** (right-sizing) → go to Step 0B (Recommendations).
 - Otherwise (plain "deploy my model" / "create an endpoint" / "make it available" with no perf or cost cues) → **skip Step 0 entirely, go to Step 1.** Do not "offer" optimization; the user can ask if they want it later.
 
 **Route to the sub-workflow that fits what they have:**
 
 - They have an **endpoint** (or just created one) and want to measure it, load-test it, run it on their own dataset/traffic, or compare runs → **Step 0A: Benchmark**.
 - They have a **base model to deploy** (or a performance goal to hit) and want the best config first → **Step 0B: Recommendations**. The job takes an OSS base model from either source: the user's own **HF-format weights in S3**, or a **JumpStart base model** (via `from_jumpstart_config` + `build()`; works for ungated models — a gated one fails with *Access denied*, so stage its weights to S3 instead). For a HuggingFace-Hub model that isn't on JumpStart, first stage it to S3 (see `references/optimization/huggingface-to-s3.md`), then run recommendations on the S3 copy.
+- They have an **endpoint** and want a better instance type or serving configuration for the model on it → **Step 0B: Recommendations**, with the model and workload taken from the endpoint (`references/optimization/workload-from-endpoint.md`).
 
 #### Step 0A: Benchmark an Existing Endpoint
 
@@ -96,6 +98,7 @@ The `references/optimization/` folder has several files — **read only the one(
 | Benchmark an endpoint / load test | `references/optimization/benchmark-workflow.md` (know-how in `benchmarking-guidance.md`) |
 | Present / compare benchmark results | `references/optimization/interpreting-results.md` |
 | Get deployment recommendations | `references/optimization/recommendation-workflow.md` (options in `recommendation-options.md`) |
+| Size recommendations from a model already on an endpoint | `references/optimization/workload-from-endpoint.md` |
 | Deploy a recommendation's ModelPackage | `references/optimization/recommendation-deploy.md` |
 | Deploy a HuggingFace-Hub (non-JumpStart) model | `references/optimization/huggingface-to-s3.md` |
 

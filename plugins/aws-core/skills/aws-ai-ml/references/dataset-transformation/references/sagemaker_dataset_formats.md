@@ -1,154 +1,51 @@
 # SageMaker Supported Dataset Formats (Offline Fallback)
 
-This is an offline copy of the supported dataset formats from:
-https://docs.aws.amazon.com/sagemaker/latest/dg/model-customize-evaluation-dataset-formats.html
-
-**Note:** Always attempt to fetch the live documentation first. Only use this file as a fallback when internet access is unavailable (e.g., VPC environments).
+This is an offline summary of the SageMaker model-evaluation dataset format
+documentation. Attempt to fetch the live AWS documentation first; use this
+file when network access is unavailable.
 
 ## Required Fields
 
-| Field         | Required               |
-| ------------- | ---------------------- |
-| User Prompt   | Yes                    |
-| System Prompt | No                     |
-| Ground truth  | Only for Custom Scorer |
-| Category      | No                     |
+| Field         | Required                 |
+| ------------- | ------------------------ |
+| User prompt   | Yes                      |
+| System prompt | No                       |
+| Ground truth  | Only for a custom scorer |
+| Category      | No                       |
 
-## 1. OpenAI Format
+## OpenAI Format
 
-```json
-{
-  "messages": [
-    {
-      "role": "system",
-      "content": "You are a helpful assistant."
-    },
-    {
-      "role": "user",
-      "content": "Hello!"
-    },
-    {
-      "role": "assistant",
-      "content": "Hello to you!"
-    }
-  ]
-}
+One JSON record contains a `messages` array with optional `system`, required
+`user`, and ground-truth `assistant` entries. Compact example:
+`{"messages":[{"role":"system","content":"You are helpful."},{"role":"user","content":"Hello!"},{"role":"assistant","content":"Hello to you!"}]}`.
 
-```
+## SageMaker Evaluation Format
 
-- `system` role is optional (system prompt)
-- `user` role is the query
-- `assistant` role is the ground truth
+Use `query` for the user prompt and `response` for ground truth. `system` and
+`category` are optional. Example:
+`{"system":"Answer briefly.","query":"What ends a question?","response":"?","category":"Grammar"}`.
 
-## 2. SageMaker Evaluation Format
+## HuggingFace Prompt Completion Format
 
-```json
-{
-  "system": "You are an English major with top marks in class who likes to give minimal word responses: ",
-  "query": "What is the symbol that ends the sentence as a question",
-  "response": "?",
-  "category": "Grammar"
-}
+Standard records use string `prompt` and `completion` fields:
+`{"prompt":"What ends a question?","completion":"?"}`.
 
-```
+Conversational records use message arrays for both fields:
+`{"prompt":[{"role":"user","content":"What ends a question?"}],"completion":[{"role":"assistant","content":"?"}]}`.
 
-- `system` and `category` are optional
-- `response` is the ground truth
+## HuggingFace Preference Format
 
-## 3. HuggingFace Prompt Completion Format
+Standard records use `prompt`, `chosen`, and `rejected` strings:
+`{"prompt":"The sky is","chosen":"blue","rejected":"green"}`.
 
-### Standard
+Conversational records use message arrays in all three fields. `chosen` is the
+ground truth.
 
-```json
-{
-  "prompt": "What is the symbol that ends the sentence as a question",
-  "completion": "?"
-}
+## Verl Format
 
-```
+The preferred shape uses `data_source`, a message-array `prompt`, optional
+`ability`, `extra_info.answer` (preferred ground-truth field), and optionally
+`reward_model.ground_truth`. Legacy records may use a string `prompt`.
 
-### Conversational
-
-```json
-{
-  "prompt": [
-    { "role": "user", "content": "What is the symbol that ends the sentence as a question" }
-  ],
-  "completion": [
-    { "role": "assistant", "content": "?" }
-  ]
-}
-
-```
-
-- `completion` is the ground truth
-
-## 4. HuggingFace Preference Format
-
-### Standard
-
-```json
-{
-  "prompt": "The sky is",
-  "chosen": "blue",
-  "rejected": "green"
-}
-
-```
-
-### Conversational
-
-```json
-{
-  "prompt": [
-    { "role": "user", "content": "What color is the sky?" }
-  ],
-  "chosen": [
-    { "role": "assistant", "content": "It is blue." }
-  ],
-  "rejected": [
-    { "role": "assistant", "content": "It is green." }
-  ]
-}
-
-```
-
-- `chosen` is the ground truth
-
-## 5. Verl Format
-
-### Current (prompt as messages array)
-
-```json
-{
-  "data_source": "openai/gsm8k",
-  "prompt": [
-    { "content": "You are a helpful math tutor.", "role": "system" },
-    { "content": "What is 2+2?", "role": "user" }
-  ],
-  "ability": "math",
-  "extra_info": {
-    "answer": "4"
-  },
-  "reward_model": {
-    "ground_truth": "4"
-  }
-}
-
-```
-
-### Legacy (prompt as string)
-
-```json
-{
-  "data_source": "openai/gsm8k",
-  "prompt": "What is 2+2?",
-  "extra_info": {
-    "answer": "4"
-  }
-}
-
-```
-
-- Ground truth via `extra_info.answer` (preferred) or `reward_model.ground_truth`
-- Preserves metadata fields: `id`, `data_source`, `ability`, `reward_model`, `extra_info`, `attributes`, `difficulty`
+Preserve metadata such as `id`, `data_source`, `ability`, `reward_model`,
+`extra_info`, `attributes`, and `difficulty`.
