@@ -63,7 +63,7 @@ Then read `references/custom-lambda-scorer.md` and follow its instructions. Retu
 
 IMPORTANT: you MUST validate that dataset, to ensure that it is the correct format. Note that there are precise requirements based on model and evaluation type, so you cannot skip this step.
 
-Reference the **dataset-evaluation** reference to perform this validation.
+Reference the **dataset-quality** reference to perform this validation.
 
 ### Step 6: Determine evaluation scope
 

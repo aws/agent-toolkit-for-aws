@@ -44,7 +44,8 @@
     "idle_resume": { "process_level": 0, "filesystem": 1, "none": 3, "unknown": 2 },
     "compute_tier": { "light": 3, "heavy_non_gpu": 1, "gpu": 0, "unknown": 2 },
     "launch_concurrency": { "high": 4, "moderate": 3, "low": 2, "unknown": 2 },
-    "instance_type_requirement": { "yes": 0, "no": 3, "unknown": 2 }
+    "instance_type_requirement": { "yes": 0, "no": 3, "unknown": 2 },
+    "expected_scale": { "prototype": 4, "growing": 3, "high": 2, "unknown": 2 }
   },
   "deployment_models": [],
   "volatile_facts": [{ "key": "timeout", "verification_key": "lambda.timeout", "value": "15m", "verify_via_mcp": true }]

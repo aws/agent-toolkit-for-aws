@@ -97,8 +97,33 @@ def test_clarify_asks_release_strategy_only_for_fargate_bound_workloads() -> Non
     assert "compute_shape" in gcp and "cannot be derived" in gcp, "gcp Q10c must be asked only when the inventory cannot derive the shape"
     heroku = CLARIFY_FILES["heroku"].read_text(encoding="utf-8")
     assert "| Q12e — Release strategy" in heroku, "Q12e must be in the question catalog"
+    assert "| Q12f — Containerization method" in heroku, "the containerization question is Q12f, never a second Q12e"
+    assert heroku.count("#### Q12e") == 1 and "#### Q12f — Containerization Method" in heroku
+    assert "Q12e — Containerization" not in heroku
 
 
+def test_cnb_web_formation_on_fargate_is_not_routed_to_express_mode() -> None:
+    """A CNB app's image comes from its ECR repository and var.image_tag_<app>, and a CNB app declares no
+    container_image_* variable, which the Express template needs. A CNB web formation with otherwise
+    Express-eligible settings must therefore fail the ecs_mode condition and use the standard ECS service."""
+    mapping = DESIGN_FILES["heroku"].read_text(encoding="utf-8")
+    rule = next(line for line in mapping.splitlines() if line.startswith("   **`ecs_mode`:**"))
+    eligible = rule[: rule.index("Otherwise `\"standard\"`")]
+    assert 'app_containerization_method != "cnb_heroku_builder"' in eligible, "CNB must be one of the ALL-of Express conditions"
+    reasons = rule[rule.index("Otherwise `\"standard\"`") :]
+    assert "`cnb_image`" in reasons and "container_image_*" in eligible
+    design = (SKILLS / "heroku-to-aws" / "references" / "phases" / "design" / "design.md").read_text(encoding="utf-8")
+    assert "cnb_image" in design and 'ecs_mode: "express"' in design
+    terraform = GENERATE_FILES["heroku"].read_text(encoding="utf-8")
+    block = _express_block(terraform)
+    assert "image = var.<container_image_variable>" in block
+    assert "Express Mode never receives a CNB app" in block and "cnb_image" in block
+    assert "image_tag_" not in block.replace("var.image_tag_<app>", ""), "the Express template must not carry a CNB image path"
+    assert "Do not declare a `container_image_*` variable for a CNB app" in terraform
+    docs = HEROKU_GENERATE_DOCS.read_text(encoding="utf-8")
+    assert "never a CNB app" in docs
+    estimate = ESTIMATE_FILES["heroku"].read_text(encoding="utf-8")
+    assert "cnb_image" in estimate and "priced through its own `ALB` entry" in estimate
 def test_preference_schemas_record_the_new_keys() -> None:
     for skill, path in PREFERENCE_SCHEMAS.items():
         text = path.read_text(encoding="utf-8")

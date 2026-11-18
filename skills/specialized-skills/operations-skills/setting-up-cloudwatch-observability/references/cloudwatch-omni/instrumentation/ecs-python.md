@@ -90,7 +90,7 @@ If the container **already sets** `PYTHONPATH`, keep its existing value in the m
 
 If the container does not set `PYTHONPATH` today, use the two-segment form shown above. Check the existing container environment before writing this value — silently dropping an existing `PYTHONPATH` will break the application's imports.
 
-Set `OTEL_SERVICE_NAME` from the existing ECS service or container name. Optionally add `OTEL_RESOURCE_ATTRIBUTES` for attributes such as `deployment.environment=production`.
+Set `OTEL_SERVICE_NAME` from the existing ECS service or container name. Optionally add `OTEL_RESOURCE_ATTRIBUTES` for attributes such as `deployment.environment.name=production`.
 
 ## Step 4: Make the application wait for the init container
 

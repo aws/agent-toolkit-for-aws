@@ -20,4 +20,4 @@ Map project/environment boundaries to an explicit VPC/account/environment strate
 
 ## Domains and TLS
 
-ACM is selected for supported custom domains. Route 53 is selected only when AWS will own DNS; otherwise retain the current DNS provider and emit required records/cutover steps. Every domain maps to its serving CloudFront/ALB endpoint and preserves validation, TTL lowering, overlap, rollback, and source-domain retention.
+ACM is selected for supported custom domains. Route 53 is selected only when AWS will own DNS; otherwise retain the current DNS provider and emit required records/cutover steps. Every domain maps to its serving CloudFront/ALB endpoint and preserves validation, TTL lowering, overlap, rollback, and source-domain retention. `domain.ttl_control` decides whether a staged weighted shift is available; `cannot_lower` records a hard switch with the current TTL as the exposure window.

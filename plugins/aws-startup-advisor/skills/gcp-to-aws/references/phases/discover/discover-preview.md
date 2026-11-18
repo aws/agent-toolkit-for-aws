@@ -87,7 +87,7 @@ from `references/shared/pricing-cache.md` (Source Provider Pricing) and `referen
 **Same-model rows first.** Match GPT-6 Astra and the GPT-5.x sources below before cross-family rows.
 For each same-model row, derive the price direction from verified source rates and the selected Bedrock
 inference option and context tier. Do not assume a fixed premium or parity.
-See `references/shared/openai-on-bedrock.md` for the model-specific pricing rules.
+See `references/vendored/ai/openai-on-bedrock.md` for the model-specific pricing rules.
 
 | Source model pattern                   | Bedrock equivalent | Bedrock model ID       |
 | -------------------------------------- | ------------------ | ---------------------- |
@@ -112,7 +112,7 @@ GPT-6 models additionally reach a broad set of commercial regions via `bedrock-r
 prefixes).
 
 At Discover time the target region may not be known — record the same-model mapping and let Design apply
-the region gate. See `references/shared/openai-on-bedrock.md`.
+the region gate. See `references/vendored/ai/openai-on-bedrock.md`.
 
 **Pro sources need a choice.** For `gpt-*-pro`, `o1-pro`, and `o3-pro`, offer GPT-6 Astra as the
 capability-first same-vendor upgrade and GPT-5.6 Sol as the lower-cost GPT alternative, alongside Claude Opus 5.5

@@ -52,19 +52,28 @@ aws iam attach-role-policy --role-name {name}-web-role \
 #     "Resource":"arn:aws:dynamodb:{region}:{account}:table/{name}-items"}]}'
 ```
 
+**The identity you deploy with needs its own permissions**, separate from the execution role above.
+At minimum: `lambda:CreateWebFunction`, `lambda:CreateWebFunctionRevision`, `s3:PutObject`,
+`s3:GetObject`, `s3:GetObjectVersion`, and `iam:PassRole` for the execution role you just created.
+Without `iam:PassRole` the first `create-web-function` fails even though every other piece is in
+place. Full policy:
+[iam-and-security.md](references/iam-and-security.md#deployer-iam-policy).
+
 ## 2. Create Project
 
 ```bash
 mkdir my-app && cd my-app
 npm init -y && npm pkg set type=module
-npm install express
+npm install express helmet
 ```
 
 ## 3. Write App (index.js)
 
 ```javascript
 import express from 'express';
+import helmet from 'helmet';
 const app = express();
+app.use(helmet());
 app.get('/', (req, res) => res.send('Hello from Web Functions'));
 const [HOST, PORT] = (process.env.AWS_LAMBDA_HTTP_ENDPOINT || '0.0.0.0:3000').split(':');
 app.listen(PORT, HOST);

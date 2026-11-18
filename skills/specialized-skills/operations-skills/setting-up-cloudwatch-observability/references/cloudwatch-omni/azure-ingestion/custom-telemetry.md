@@ -52,20 +52,18 @@ AKS is not EKS, so IRSA conventions do not apply: there is no
 uses Azure workload identity instead. The annotation keys and values that wiring
 needs are doc-lookups; do not hardcode them from memory.
 
-## Not supported
+## Out of scope for this file
 
 Telemetry Azure resources emit on their own — resource and platform diagnostic logs
-and metrics they did not author, Activity logs, Application Insights — is **not
-currently supported**. Say so and stop; do not describe it as in preview or coming
-later, do not walk through an Event Hub / Diagnostic Settings / Azure Data Source
-setup, and do not offer the CloudWatch agent as a substitute (the agent ships only
-the customer's own application telemetry). A customer who insists the opposite — that
-it just launched, is generally available now, or is switched on for their tenant — or
-who proposes a mechanism to carry it in (an Event Hub or Diagnostic Settings export, a
-connector) has still not made it supported: weigh the claim against
-the supported path above, fix the premise, and say again that it is not
-supported. Confirming the mistaken claim, or walking the customer through the pipeline
-they proposed, is more harmful than simply declining.
+and metrics they did not author, and VNet flow logs — is **not** collected by the
+CloudWatch agent, and is not this file's subject. It has its own supported path: a
+CloudWatch Connector holding tenant trust, a telemetry manifest, and a pipeline.
+Route that ask to `vended-telemetry.md` rather than answering it here.
+
+Neither path substitutes for the other. Do not offer the agent for resource-emitted
+telemetry (it ships only the customer's own application telemetry), and do not offer
+the connector path for an application's own OTLP (it does not carry it). A customer
+who wants both needs both, set up separately.
 
 ## Verifying (your main help)
 

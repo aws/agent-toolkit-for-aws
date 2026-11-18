@@ -1,0 +1,131 @@
+{
+  "phase": "estimate",
+  "timestamp": "2026-11-16T19:00:00Z",
+  "pricing_source": "cached",
+  "accuracy_confidence": "±15-25%",
+  "current_costs": {
+    "source": "measured_usage",
+    "monthly_ai_spend": 17.5,
+    "services": [
+      "openai_api"
+    ]
+  },
+  "token_volume": {
+    "basis": "measured",
+    "monthly_input_tokens": 3000000,
+    "monthly_output_tokens": 1000000,
+    "input_share": 0.75
+  },
+  "model_comparison": [
+    {
+      "model": "us.openai.gpt-5.6-terra",
+      "monthly_cost": 19.8,
+      "vs_current": "13.14% vs measured spend",
+      "quality": "newer GPT generation; needs evals",
+      "capabilities_match": true,
+      "missing_capabilities": []
+    }
+  ],
+  "recommended_model": {
+    "model": "us.openai.gpt-5.6-terra",
+    "monthly_cost": 19.8,
+    "breakdown": {
+      "input": 6.6,
+      "output": 13.2,
+      "embeddings": 0
+    },
+    "rationale": "Nearest GPT tier the user chose; measured 3M input and 1M output tokens."
+  },
+  "backup_model": {
+    "model": null,
+    "rationale": "The design has one target."
+  },
+  "cost_comparison": {
+    "current_source_monthly": 17.5,
+    "projected_bedrock_monthly": 19.8,
+    "monthly_difference": 2.3,
+    "annual_difference": 27.6,
+    "percent_change": 13.14
+  },
+  "migration_cost_considerations": {
+    "categories": [],
+    "complexity_factors": [
+      "direct_sdk integration",
+      "1 model"
+    ],
+    "note": "Human and professional-services one-time migration costs are intentionally excluded from this advisor."
+  },
+  "roi_analysis": {
+    "projected_bedrock_monthly_range": {
+      "low": 19.8,
+      "high": 19.8
+    },
+    "source_list_monthly_range": {
+      "low": 17.5,
+      "high": 17.5
+    },
+    "source_measured_monthly": 17.5,
+    "monthly_cost_delta": 2.3,
+    "annual_cost_delta": 27.6,
+    "justification": "Bedrock costs more at the measured volume; the move is justified by the retirement and AWS governance.",
+    "non_cost_benefits": [
+      "Usage counts toward existing AWS commitments",
+      "IAM, CloudTrail and VPC endpoint governance"
+    ]
+  },
+  "optimization_opportunities": [
+    {
+      "opportunity": "Prompt caching",
+      "type": "prompt_caching",
+      "target_services": [
+        "Bedrock"
+      ],
+      "commitment": "none",
+      "potential_savings_monthly": null,
+      "potential_savings_percent": "up to 90% on cached input tokens",
+      "available": "day_1",
+      "implementation_effort": "low",
+      "description": "prompt_caching applies to this workload."
+    },
+    {
+      "opportunity": "Input token reduction",
+      "type": "input_token_reduction",
+      "target_services": [
+        "Bedrock"
+      ],
+      "commitment": "none",
+      "potential_savings_monthly": null,
+      "potential_savings_percent": "10-30%",
+      "available": "day_1",
+      "implementation_effort": "low",
+      "description": "input_token_reduction applies to this workload."
+    }
+  ],
+  "optimized_projection": {
+    "monthly_with_optimizations": null,
+    "vs_current": null,
+    "note": "Caching savings depend on the cache-hit rate."
+  },
+  "recommendation": {
+    "path": "migrate_optimized",
+    "path_label": "Migrate to Bedrock",
+    "migrate_if": "AWS commitments and governance outweigh the measured increase.",
+    "stay_if": "Cost is the only priority.",
+    "confidence": "medium",
+    "rationale": "Measured spend is $17.5 a month and the projected Bedrock cost is $19.8, 13.14% more; GPT-4o is retired by OpenAI on 2027-01-14 either way."
+  },
+  "cost_by_source": [
+    {
+      "provider": "openai",
+      "source_service": "openai_api",
+      "models": [
+        {
+          "model": "gpt-4o",
+          "monthly_cost": 19.8,
+          "vs_source_percent": 13.14
+        }
+      ]
+    }
+  ],
+  "services_not_estimated": []
+}

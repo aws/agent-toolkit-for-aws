@@ -363,7 +363,7 @@ proprietary GPT-5.x models. A missing or empty price-list result is **not** evid
 unavailable or free. Use `references/vendored/ai/bedrock-pricing-cache.md` for Bedrock rates and
 statuses, and treat rows marked `unverified` there as blocking for any quoted figure — resolve
 them from the Bedrock pricing page first. Use `shared/pricing-cache.md` only for OpenAI / Azure
-OpenAI source-provider comparison rates. See `shared/openai-on-bedrock.md`.
+OpenAI source-provider comparison rates. See `references/vendored/ai/openai-on-bedrock.md`.
 
 **Note:** Human / professional-services one-time migration costs are intentionally out of scope
 for this advisor and excluded from ROI calculations.

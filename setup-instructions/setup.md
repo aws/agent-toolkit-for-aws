@@ -8,7 +8,7 @@ The workflow includes:
 
 - Detecting the user's operating system (macOS, Linux, or Windows)
 - Installing the AWS CLI v2 via the appropriate platform installer
-- Authenticating the user via `aws login` with browser-based sign-in
+- Authenticating the user via `aws login`, or `aws signup` when the user says they have no AWS account. Both open a browser flow that also lets a new customer create an account
 - Verifying credentials with `aws sts get-caller-identity`
 - Installing the Agent Toolkit which bundles AWS MCP server configuration and agent skills
 - Verifying the Agent Toolkit installation
@@ -30,7 +30,7 @@ Gather the following inputs and confirm prerequisites **before** running any ste
 
 ### Input constraints
 
-- You MUST NOT ask the user for AWS credentials, access keys, or secret keys — authentication is handled entirely through the `aws login` browser flow.
+- You MUST NOT ask the user for AWS credentials, access keys, or secret keys — authentication is handled entirely through the `aws login` or `aws signup` browser flow.
 - You MUST inform the user that credentials are valid for 12 hours and can be renewed for 90 days without re-authenticating in the browser.
 - IF the AWS experience parameter is "our new AWS experience" THEN the user's account is part of a "project". Always use the term "project" when talking to the user.
 
@@ -48,7 +48,7 @@ Gather the following inputs and confirm prerequisites **before** running any ste
 
 - After you gather the required inputs above, complete the steps yourself by running the commands directly. You MUST explain to the customer what step is being executed, why, and which tool is being called.
 - Two steps require the human user to act; pause and let them complete these:
-  - **Step 3 (`aws login`)** opens a browser for sign-in.
+  - **Step 3 (`aws login` or `aws signup`)** opens a browser for sign-in or sign-up.
   - **Step 5 (`aws configure agent-toolkit`)** is an interactive wizard.
 - If a step fails, consult [setup-troubleshooting.md](setup-troubleshooting.md) for that step, apply the resolution, and resume. For errors not covered there, report the full error output and do not proceed.
 
@@ -120,7 +120,9 @@ If this step fails, see [Troubleshooting: Step 2 (Windows)](setup-troubleshootin
 
 ### Step 3: Log in to AWS
 
-Configure the Region (gathered in "Before you start"), then sign in:
+If the user arrived here from the AWS sign-up page, an earlier `aws login` or `aws signup` is still running. Skip the commands below, wait for it to exit, then continue at Step 4.
+
+Otherwise, configure the Region (gathered in "Before you start"), then sign in:
 
 ```bash
 aws configure set region <region from prompt> --profile <profile_name>
@@ -130,9 +132,23 @@ aws configure set region <region from prompt> --profile <profile_name>
 aws login --region <region from prompt> --profile <profile_name>
 ```
 
-A browser window will open for authentication. The human user will authenticate. If the human user wants to cancel this command at any time, let them. Wait for the command to exit before proceeding to Step 4.
+If the user has said they have no AWS account, run `aws signup` instead of both commands above. Do not set the Region first: `aws signup` writes the new account's home Region to the profile, and a Region already in the profile makes it stop and ask before overwriting. First check that the installed AWS CLI has the `signup` command:
 
-**Success:** `aws login` exits with code 0.
+```bash
+aws signup help
+```
+
+If it does, run:
+
+```bash
+aws signup --profile <profile_name>
+```
+
+If the CLI reports an invalid choice, run the two commands above instead: set the Region, then `aws login`. Its sign-in page also offers sign-up.
+
+A browser window opens. The human user signs in, or creates an AWS account if they have none. Either command routes them to the right place. Tell the user to complete the browser flow. The command waits for the whole flow, including account creation. Leave it running unless the user asks you to stop it or to run it again, for example with a different Region. Wait for the command to exit before proceeding to Step 4.
+
+**Success:** `aws login` or `aws signup` exits with code 0.
 
 If this step fails, see [Troubleshooting: Step 3](setup-troubleshooting.md#step-3-log-in-to-aws).
 

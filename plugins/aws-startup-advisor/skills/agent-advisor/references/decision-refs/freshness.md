@@ -15,6 +15,8 @@ or the run directory in an outbound request — the answer never depends on it.
 - AWS Agent Registry region availability when Registry is selected, independently of runtime
   (`registry_regions` in `references/runtimes/agentcore.json`; see the procedure below)
 - Lambda MicroVMs launch TPS (5, not adjustable)
+- Only when EKS wins a unit with `isolation: required`: the Nitro Sandboxes Kubernetes
+  version floor, supported instance types, and GPU support (see the EKS service card)
 - FedRAMP certification status for AgentCore and Lambda MicroVMs
 - Any Bedrock model price (defer to `references/vendored/ai/bedrock-pricing-cache.md`; never hardcode here)
 

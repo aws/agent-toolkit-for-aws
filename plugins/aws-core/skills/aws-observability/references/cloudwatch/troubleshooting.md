@@ -8,7 +8,7 @@ Error → cause → fix for CloudWatch, X-Ray, and CloudTrail issues. Start with
 2. **Alarm not triggering** → Check Evaluation Range (wider than configured), verify M-of-N settings, check metric delay
 3. **Missing logs** → Check log group exists, verify IAM permissions, check log retention hasn't expired (takes up to 72 hours after expiry)
 4. **X-Ray traces missing** → Check sampling rules (default: 1/sec + 5%), verify tracing is enabled on all services in the path, check IAM permissions
-5. **High CloudWatch bill** → Check log retention (default: never expire), audit GetMetricData callers, check custom metric dimension cardinality
+5. **High CloudWatch bill** → Check log retention (default: never expire), audit GetMetricData callers, check custom metric dimension cardinality, check Logs Insights scan volume (`bytesScanned`) and size broad long-range queries with `estimate` before running them
 
 ---
 
@@ -62,7 +62,7 @@ Error → cause → fix for CloudWatch, X-Ray, and CloudTrail issues. Start with
 | `pattern` command fails | Using Infrequent Access log class | `pattern`, `diff`, `unmask`, `anomaly`, `filterIndex` not supported on IA |
 | Field not found | JSON field not auto-discovered | Use `parse` to extract, or check field name spelling |
 | `event-name` returns wrong results | Interpreted as subtraction | Use backticks: `` `event-name` `` |
-| Query times out | Too much data | Narrow time range or parallelize across time chunks |
+| Query times out | Too much data | For a long or open-ended range, size it with `estimate` first, then narrow the time range, log groups, or filters, or parallelize across time chunks; use `limit any N` if only a sample is needed |
 | `bin(300s)` gives unexpected results | bin() numeric value caps: s→60, ms→1000, m→60, h→24 | Use `bin(5m)` instead of `bin(300s)` |
 
 ---
@@ -77,6 +77,16 @@ Error → cause → fix for CloudWatch, X-Ray, and CloudTrail issues. Start with
 | EMF metrics not extracted | Invalid EMF JSON | Validate `_aws.CloudWatchMetrics` structure, check `Timestamp` is in milliseconds |
 | Wrong metric values | Dimension mismatch | Each unique dimension combination is a separate metric — verify exact combo |
 | Metric shows in wrong namespace | Namespace typo | Namespace is case-sensitive and cannot be changed after creation |
+
+### OTel metric missing from PromQL
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| OTLP metric never arrives | gRPC exporter, wrong host, or unsigned request | HTTP only, `monitoring.<region>.amazonaws.com/v1/metrics`, SigV4 service `monitoring` — [otel-metrics.md](otel-metrics.md) |
+| Some data points missing, HTTP 200 | Partial rejection (label limit, timestamp window) | Read the response body; trim labels at the collector |
+| Metric visible as a namespace metric but not in PromQL | Published with `PutMetricData`, EMF, or the `awsemf` exporter — classic metrics | Publish over OTLP |
+| Vended metric empty in PromQL | OTel enrichment off for the account/Region, or its prerequisite missing | [otel-metrics.md](otel-metrics.md) |
+| Query empty, or a parse error, on a metric that exists | `max()`/`min()` on a histogram, a wrong scope literal (empty), an unquoted dotted label (parse error) | [promql.md](promql.md), section 6 |
 
 ### High metric costs
 
