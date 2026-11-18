@@ -2,19 +2,18 @@
 name: aws-observability
 description: >-
   Investigates root causes on the Omni context graph (service dependencies);
-  builds, configures, debugs, tunes AWS observability - operator-symptom questions, detecting Omni vs
-  classic CloudWatch. CloudWatch on a reporting service: fleet health views, Log Insights,
-  metric/composite/anomaly alarms, custom metrics/EMF, dashboards, X-Ray/ADOT tracing, canaries,
-  CloudTrail, Dynamic Instrumentation (live breakpoints), and Application Signals service map. CloudWatch
-  Omni on an existing Space: SQL over logs/traces, PromQL, Omni dashboards, alerts and Slack
-  notifications, programmatic/IaC access (API/SDK/CLI/CFN), driving Omni from a coding agent or skills, AI
-  agent quality from traces - on-demand and online evaluation of live traffic, incl. setting it up,
-  readback, evaluators. For first-time setup - creating an Omni Space, granting access, ingestion, or ADOT
-  instrumentation for Application Signals or Omni - use setting-up-cloudwatch-observability. Not for app
-  logging or threat detection.
-
+  builds/configures/debugs AWS observability - operator-symptom questions, detecting Omni vs classic.
+  CloudWatch on a reporting service: fleet health, Log Insights (cost), metric/composite/anomaly alarms,
+  custom metrics/EMF, dashboards, X-Ray/ADOT tracing, canaries, CloudTrail (incl. OTLP/PromQL),
+  CloudWatch Profiles (CPU/memory hotspots, flame graphs), Dynamic Instrumentation
+  (live breakpoints), Application Signals service map. CloudWatch Omni on an existing Space: SQL over
+  logs/traces, PromQL, LLM inference (vLLM) diagnosis, Omni dashboards, alerts, Slack notifications,
+  programmatic/IaC access, driving Omni from coding agents/skills, AI agent quality from traces -
+  on-demand/online evals incl. setup, readback, evaluators. First-time setup (Omni Space, access
+  grants, ingestion, ADOT instrumentation for Application Signals/Omni): use
+  setting-up-cloudwatch-observability. Not for app logging or threat detection.
 metadata:
-  version: "12"
+  version: "16"
 ---
 
 # AWS Observability
@@ -27,10 +26,10 @@ control planes, data models, and APIs:
 
 | | CloudWatch | CloudWatch Omni |
 |---|---|---|
-| **What it is** | Log groups, metric namespaces, alarms, Log Insights, X-Ray, Application Signals | Application Observability / Agent Observability. A **Space** per account per Region is the access boundary over the account's CloudWatch **Dataset** (OpenTelemetry logs, traces, and metrics); the Dataset is a CloudWatch resource the Space reads, not something the Space contains |
+| **What it is** | Log groups, classic metric namespaces and OpenTelemetry metrics, alarms, Log Insights, X-Ray, Application Signals | Application Observability / Agent Observability. A **Space** per account per Region is the access boundary over the account's CloudWatch **Dataset** (OpenTelemetry logs, traces, and metrics); the Dataset is a CloudWatch resource the Space reads, not something the Space contains |
 | **Control plane** | `aws cloudwatch`, `aws logs`, `aws xray`, `aws application-signals` | `aws cloudwatchomni` (endpoint prefix `cloudwatch-omni`, signing name `cloudwatch`) |
-| **Query** | Log Insights query language; GetMetricData | SQL over `logs.default` / `traces.default`; PromQL over metrics; named views |
-| **Notify** | Alarms (metric, composite, anomaly) | **Alerts** (SQL/PromQL rule, contributors, OK/WARNING/CRITICAL/NODATA) |
+| **Query** | Log Insights query language; `GetMetricData` (classic metrics); **PromQL** over OTel metrics (Prometheus-compatible API, Query Studio) | SQL over `logs.default` / `traces.default`; PromQL over OTLP, span-derived and OTel-enriched vended metrics only (classic, custom and usage metrics such as `AWS/Logs` `IncomingBytes` are not reachable through any PromQL); named views |
+| **Notify** | Alarms (metric, PromQL, composite, anomaly) | **Alerts** (SQL/PromQL rule, contributors, OK/WARNING/CRITICAL/NODATA) |
 | **Topology** | Application Signals service map | **Context graph** (GetContextGraph) |
 | **Access** | IAM only | Domain → Space → **access grants** and **access profiles** (set up in `setting-up-cloudwatch-observability`) |
 | **Only here** | Dynamic Instrumentation, Synthetics canaries, CloudTrail auditing, EMF | Agent-quality evaluation, views, context graph |
@@ -76,19 +75,28 @@ Decide this before routing. The natural wording ("set up an alert for high laten
 
 1. **The customer names the product** — "Omni", "Application Observability", "Agent
    Observability", a Space, Domain, Dataset, access grant, `spaceId`, `cloudwatch-omni`,
-   Omni SQL, PromQL, views, context graph, evaluators, agent evaluation / scoring traces /
-   online or continuous evaluation / `gen_ai.evaluation`, and OTel span vocabulary
-   (`traces.default`, `logs.default`, spans, `durationNano`, `status.code`, resource
-   attributes, `service.name`) → **Omni**. "Log Insights", "log group", "metric
-   namespace", "CloudWatch alarm", "metric alarm", "composite alarm", "anomaly alarm",
-   "X-Ray", "Application Signals", "canary", "CloudTrail", "Dynamic Instrumentation" →
-   **CloudWatch**. A "log group" named inside an agent-evaluation request is the
+   Omni SQL, views, context graph, evaluators, agent evaluation / scoring traces /
+   online or continuous evaluation / `gen_ai.evaluation`, and span vocabulary in SQL
+   (`traces.default`, `logs.default`, `durationNano`, `status.code`, resource
+   attributes in a SQL query) → **Omni**. "Log Insights", "log group", "metric
+   namespace", "CloudWatch alarm", "metric alarm", "PromQL alarm", "composite alarm",
+   "anomaly alarm", "X-Ray", "Application Signals", "canary", "CloudTrail", "Dynamic
+   Instrumentation", "Query Studio", OTLP metrics → **CloudWatch**. "CloudWatch Profiles",
+   "continuous profiling", "flame graph", "profile", "hotspot", "where does `<service>` spend CPU",
+   "memory leak in `<service>`", "lock contention", "which services are profiled / send
+   profiles" → **CloudWatch** (Profiles;
+   [cloudwatch/profiles.md](references/cloudwatch/profiles.md)). **PromQL** is in both
+   products — CloudWatch runs PromQL queries, alarms, and dashboard widgets, and Omni runs
+   PromQL queries, alerts, and panels — so PromQL alone does not pick a product; the rest of
+   the ask does. Either way, write and run the PromQL per
+   [cloudwatch/promql.md](references/cloudwatch/promql.md). A "log group" named inside an agent-evaluation request is the
    online-evaluation data source to verify, not a CloudWatch signal. A bare "alarm" (or "alert") with no other product
    signal is ambiguous — fall through to rule 3 and probe: a Space → Omni alert
    ([alerts.md](references/cloudwatch-omni/alerts.md)); no Space → CloudWatch alarm
-   ([cloudwatch/alarms.md](references/cloudwatch/alarms.md)). Exception: a "PromQL
-   **alarm**" is a CloudWatch alarm on OTel metrics
-   ([cloudwatch/alarms.md](references/cloudwatch/alarms.md)) — "alarm" wins over "PromQL".
+   ([cloudwatch/alarms.md](references/cloudwatch/alarms.md)). Say in the answer what the
+   probe found and which product that picks, and let the user switch before anything is
+   built. A "PromQL **alarm**" is a
+   CloudWatch alarm on OTel metrics ([cloudwatch/alarms.md](references/cloudwatch/alarms.md)).
 2. **Knowledge or how-to question** ("what is an Omni alert", "does Omni have an API",
    "how do alerts differ from alarms") → answer from the reference files directly. Do
    **not** probe the account, and do not divert to the other product. Whether a
@@ -116,7 +124,10 @@ Decide this before routing. The natural wording ("set up an alert for high laten
    rows, a wrong-Region Space, or an unreachable endpoint is reported as a finding
    alongside the query, never as the whole answer.
 3. **Request that must act on live data, and the wording is ambiguous** (not a Step 0.5
-   content question, which is answered from the catalog) → probe the target Region first:
+   content question, which is answered from the catalog) → probe the target Region first.
+   **Exception — a PromQL metric read needs no probe:** run it per
+   [cloudwatch/promql.md](references/cloudwatch/promql.md); the data is the same with or
+   without a Space. For metrics, only creating an Omni alert or dashboard needs the probe:
 
    ```
    aws cloudwatchomni list-domains
@@ -125,10 +136,16 @@ Decide this before routing. The natural wording ("set up an alert for high laten
 
    - `list-spaces` is **account-global** (the `--region` flag only selects the endpoint), so filter its result to the target Region as shown rather than reading a non-empty list as proof; a Space is one per account per Region. See `references/cloudwatch-omni/concepts.md` for the full Region-probe rationale.
    - A Domain and a Space in that Region (a non-empty filtered list) → **Omni**.
+   - Whichever product the probe picks, state in the answer what it found, which product
+     that picks, and that the other product is available, before building anything. If the
+     target Region is not known, ask for it, say the request fits either product, and give
+     both outcomes: a Space there → Omni, no Space → CloudWatch. Do not name either
+     product as the default.
    - No Space in that Region (an empty filtered list) → **CloudWatch**: alarms → [cloudwatch/alarms.md](references/cloudwatch/alarms.md),
      dashboards → [cloudwatch/dashboards.md](references/cloudwatch/dashboards.md), queries →
      [cloudwatch/log-insights.md](references/cloudwatch/log-insights.md), metrics →
-     [cloudwatch/metrics.md](references/cloudwatch/metrics.md). If the customer explicitly asked
+     [cloudwatch/metrics.md](references/cloudwatch/metrics.md) (classic) or
+     [cloudwatch/promql.md](references/cloudwatch/promql.md) (OTel / PromQL). If the customer explicitly asked
      for Omni and has no Space, that is a first-time setup — see step 4.
    - The probe itself errors ("not yet supported", unknown service, endpoint does not
      resolve) → the CLI/SDK model in use lacks `cloudwatchomni`. That is **not** evidence
@@ -197,7 +214,7 @@ in the reference file, not here:
 
 - A **metric symptom about one AWS service** (throttling, latency, error rate, restarts,
   saturation, "what signals should it get", which signals or panels a named resource type
-  needs on a dashboard or view) → [query/promql-metrics.md](references/cloudwatch-omni/query/promql-metrics.md).
+  needs on a dashboard or view) → [cloudwatch/promql.md](references/cloudwatch/promql.md).
   Open its **"Service-health question — facts you MUST surface"** section and surface every
   applicable item. Dashboard or view wording does not send this to either dashboards file
   (neither carries the signal facts) nor to rule 3's probe — it is a content question.
@@ -215,7 +232,7 @@ in the reference file, not here:
   surface every applicable item — it owns the combined verdict and the role-labelled
   dependency map, and defers the per-resource signal catalog and blast radius elsewhere. A
   bare single-service metric symptom, or a "what signals / panels does `<resource type>`
-  need" or fleet-health-**view** ask, routes to the promql-metrics bullet above; a pure
+  need" or fleet-health-**view** ask, routes to the PromQL bullet above; a pure
   blast-radius / direction / edge-semantics question routes to the context-graph bullet.
 - **System status, a root-cause / triage symptom, or a past incident** — "is anything
   wrong right now?", "what's wrong with `<service>`", "why is `<service>` slow or erroring",
@@ -230,6 +247,12 @@ in the reference file, not here:
   **"Span Duration"** and **"Finding failed spans"** sections and state every item in their
   must-state callouts — a request about a service's latency or error *rate* (an aggregate
   signal) is the PromQL bullet above instead.
+- **A symptom of an AI agent's Amazon Bedrock AgentCore resource** ("is my agent's memory
+  slow", "which Gateway tool is failing or throttled", "why did the Gateway deny this tool
+  call", "why is the browser call timing out") →
+  [query/agentcore-resources.md](references/cloudwatch-omni/query/agentcore-resources.md).
+  That file starts from the agent's traces, which hold both the agent's call and the
+  resource's own span, and says when the vended `AWS/Bedrock-AgentCore` metrics come in.
 - **A failure being investigated from logs** ("is this only failing for X?", "how many
   errors?", "what is the root cause?") → load the `aws-investigation` skill and read its
   `references/completeness-and-root-cause.md`. Read every page and every scope before
@@ -237,15 +260,17 @@ in the reference file, not here:
 
 ### Must-state checklists — the output contract
 
-Four Omni tasks carry a checklist the **answer text** must carry, not just the plan. Open the
-reference and surface every item relevant to the request; the reference holds the per-item
-detail and is the source of truth, so do not restate it here.
+Six Omni tasks carry a checklist the **answer text** must carry, not just the plan. Open the
+reference, read the named section in full (not a keyword search over the file), and surface
+every item relevant to the request; the reference holds the per-item detail and is the source
+of truth, so do not restate it here.
 
 | Task | Open | Section to surface |
 |---|---|---|
 | Authoring or advising on an Omni **alert** | [alerts.md](references/cloudwatch-omni/alerts.md) | "Facts you MUST surface when authoring an alert" |
 | Scoring traces, choosing an evaluator, reading stored scores, online/continuous evaluation, evaluation datasets, turning scores into agent changes | [agent-evaluation.md](references/cloudwatch-omni/agent-evaluation.md) | every **"tell the user ALL of this"** callout |
 | Exploring **traces** — one trace by id, comparing runs, finding traces by their spans, slowest traces, trace fields, agent sessions, token cost, what changed between two windows | [query/trace-exploration.md](references/cloudwatch-omni/query/trace-exploration.md) | every **"state … in the answer"** callout |
+| The **AgentCore resources** an agent calls — which ones it uses, which agents use one, a slow, failing or throttled resource, a Gateway policy decision, a Memory retrieval | [query/agentcore-resources.md](references/cloudwatch-omni/query/agentcore-resources.md) | every **"state ALL of this in the answer"** callout |
 | Authoring, saving, reading back, or debugging an Omni **dashboard** | [dashboards.md](references/cloudwatch-omni/dashboards.md) | "Facts you MUST surface when building or saving an Omni dashboard" |
 
 ## Routing — CloudWatch (`references/cloudwatch/`)
@@ -253,15 +278,18 @@ detail and is the source of truth, so do not restate it here.
 | User need | Action |
 |-----------|--------|
 | Enabling/onboarding a service to Application Signals (auto-instrumentation, the `amazon-cloudwatch-observability` add-on, monitored service), propagating ServiceEvents git/deployment metadata through CI/CD, or the per-platform × per-language enablement steps | **STOP** — this is first-time CloudWatch setup and no reference here covers it. Route to the **`setting-up-cloudwatch-observability`** skill |
-| Writing Log Insights queries (pipe-delimited syntax: fields, filter, stats, sort, parse, display) | Read [log-insights.md](references/cloudwatch/log-insights.md). If StartQuery rejects the window as before the log group's creation time, read the same window with FilterLogEvents. See Known issues 11 there |
-| Configuring alarms (metric, composite, anomaly) | Read [alarms.md](references/cloudwatch/alarms.md). For an Omni **alert**, see the Omni table |
-| Publishing custom metrics or using EMF | Read [metrics.md](references/cloudwatch/metrics.md) |
+| Writing or running Log Insights queries (pipe-delimited syntax: fields, filter, stats, sort, parse, display) | Read [log-insights.md](references/cloudwatch/log-insights.md), starting with "Before you run a query". If StartQuery rejects the window as before the log group's creation time, read the same window with FilterLogEvents. See Known issues 11 there |
+| Configuring alarms (metric, PromQL, composite, anomaly) | Read [alarms.md](references/cloudwatch/alarms.md); for a PromQL alarm, write the query per [promql.md](references/cloudwatch/promql.md). For an Omni **alert**, see the Omni table |
+| Publishing **classic** custom metrics (`PutMetricData`, EMF), metric filters, metric math | Read [metrics.md](references/cloudwatch/metrics.md) |
+| Code-level performance from **CloudWatch Profiles** — which services are profiled, where a service spends CPU, wall time, memory or lock time, which function regressed after a deploy, a spike or memory growth, the CPU of one slow trace, how hot the code of a change is, profiling access errors (403/404) or setting a service up to send profiles | Read [profiles.md](references/cloudwatch/profiles.md) and state every item in its "Facts you MUST surface" section. Use the Profiles functions of the AWS MCP Server's `aws_cloudwatch` capability (`list_profiled_services`, `analyze_profile`, `profile_timeline`, and `query_profiles_api` as a last resort), not the CloudWatch MCP server; never hand-sign `querier.v1` requests when the functions are available |
+| **OpenTelemetry metrics** — classic vs OTel, sending metrics over OTLP, why a metric is not PromQL-queryable, enabling OTel enrichment of vended metrics, migrating from `PutMetricData`/EMF | Read [otel-metrics.md](references/cloudwatch/otel-metrics.md). Deploying a collector or instrumenting an app from scratch is the setup skill's job |
+| **Query metrics with PromQL** — the Prometheus-compatible API and CloudWatch MCP PromQL tools, which metric answers which symptom per AWS service, why a metric is missing, gauge vs counter vs delta vs histogram | Read [promql.md](references/cloudwatch/promql.md). OTel metrics are PromQL, never SQL, and a read needs no probe (Step 0, rule 3). There is no SDK operation or CLI subcommand for it; requests are SigV4-signed with service `monitoring`, or go through the CloudWatch MCP server's `execute_promql_query` (instant) and `execute_promql_range_query` (range) tools |
 | X-Ray / ADOT tracing **behaviour** — X-Ray-SDK-vs-ADOT choice, trace and segment structure, annotations vs metadata, sampling rules, collector pipeline config, X-Ray→OTel migration traps | Read [tracing.md](references/cloudwatch/tracing.md). Onboarding an un-instrumented service is the setup skill's job (see the first row) |
 | Building CloudWatch dashboards (widget mechanics; which signals a given AWS service needs is Step 0.5) | Read [dashboards.md](references/cloudwatch/dashboards.md) |
 | Debugging observability issues | Read [troubleshooting.md](references/cloudwatch/troubleshooting.md) — starts with the 5 most common fixes |
 | Investigating a failure from logs: whether it affects one entity or the whole fleet, counts/totals/"no evidence of X", or deciding and reporting the root cause | Load the `aws-investigation` skill — completeness and scope first (`references/completeness-and-root-cause.md`), then root-cause analysis and the closing checklist |
 | Debugging canary failures | Read [synthetics.md](references/cloudwatch/synthetics.md) — see Common failures table |
-| CloudTrail operational auditing | Read [cloudtrail.md](references/cloudwatch/cloudtrail.md) |
+| CloudTrail operational auditing, including auditing metric publishing, OTLP ingestion, and PromQL queries | Read [cloudtrail.md](references/cloudwatch/cloudtrail.md) |
 | Setting up Lambda monitoring with CDK | Use [alarm-template.ts](assets/cloudwatch/alarm-template.ts) as a starting point |
 | Creating synthetic canaries | Read [synthetics.md](references/cloudwatch/synthetics.md) |
 | Configuring ADOT collector | Use [otel-config.yaml](assets/cloudwatch/otel-config.yaml) as a starting point |
@@ -275,15 +303,17 @@ answered from the file directly.
 | User need | Action |
 |-----------|--------|
 | **Concepts.** What Omni is, what a Domain / Space / Dataset / grant / profile / view / alert / context graph is, whether a feature is Omni or CloudWatch, where setup starts | Read [concepts.md](references/cloudwatch-omni/concepts.md) |
-| **Query logs or traces** — SQL (`SELECT … FROM logs.default / traces.default / default`), field access, schema discovery, slowest / failed spans (`durationNano`, `status.code`), TABLESAMPLE | Read [query/sql-logs-traces.md](references/cloudwatch-omni/query/sql-logs-traces.md). For slowest or failed spans, state every item in its "Span Duration" / "Finding failed spans" must-state callouts, even when the live result is empty |
+| **Query logs or traces** — SQL (`SELECT … FROM logs.default / traces.default / default`), field access, schema discovery, slowest / failed spans (`durationNano`, `status.code`), TABLESAMPLE, how much a query will scan or cost before running it (`EXPLAIN (ESTIMATE)`, dry run, is this query expensive, turning an estimate into a price), translating a CloudWatch Logs Insights `parse` query to SQL or extracting fields from unstructured `@message` text (glob, regex, `multi`, logfmt, CSV, JSON keys inside a parsed field), comparing log patterns between two time windows (CloudWatch Logs Insights `diff`, what changed since a deploy, is this error new, previous day / week) | Read [query/sql-logs-traces.md](references/cloudwatch-omni/query/sql-logs-traces.md). For slowest or failed spans, state every item in its "Span Duration" / "Finding failed spans" must-state callouts, even when the live result is empty. For a scan-size or cost question, open its "Estimating Scan Volume" section before answering. For a parse-translation question, open its "Translating CWL Insights `parse` to SQL" section. For a `diff` or window-comparison question, open its "Comparing two time windows (CWL Insights `diff`)" section. |
 | **Explore traces** — open one trace by id (where the time went, why it failed, span tree, inputs/outputs, tokens), compare two runs, why a trace scored badly, find traces by their spans (tool calls per trace, a repeated tool, failed tool calls), the slowest traces today, what fields a trace carries, list or walk an agent's sessions (a looping session), token cost, guardrail or deploy questions, what changed (agent, model or downstream) | Read [query/trace-exploration.md](references/cloudwatch-omni/query/trace-exploration.md) for the trace recipes and agent-span attributes, with [query/sql-logs-traces.md](references/cloudwatch-omni/query/sql-logs-traces.md) for the SQL itself |
+| **AgentCore resources an agent calls** — which Amazon Bedrock AgentCore resources (Memory, Gateway, Browser, Code Interpreter, Runtime) an agent uses, or which agents use one; a slow, failing or throttled resource; a Gateway policy allow or deny on a tool call; what a Memory retrieval returned; a Runtime invoke error; a resource's name from the id in a span | Read [query/agentcore-resources.md](references/cloudwatch-omni/query/agentcore-resources.md) and state every applicable item in its "state ALL of this in the answer" callouts, with [query/sql-logs-traces.md](references/cloudwatch-omni/query/sql-logs-traces.md) for the SQL itself. Creating or configuring an AgentCore resource is not covered by this skill; turning on a resource's tracing is setup |
 | **A span, trace, or log record supplied in the prompt** — "I have this span open, what errors are in it", a pasted telemetry object | Read the **"Reading a span or trace you already have"** section of [query/sql-logs-traces.md](references/cloudwatch-omni/query/sql-logs-traces.md). Answer from the object's own fields; do not probe, query, or ask the user to fetch it |
-| **Query metrics** — PromQL, which metric answers which symptom per AWS service, why a metric is missing, gauge vs counter | Read [query/promql-metrics.md](references/cloudwatch-omni/query/promql-metrics.md). Metrics are PromQL, never SQL; run them directly through the CloudWatch Prometheus-compatible API (`monitoring` endpoint) or the CloudWatch MCP server's PromQL tools, not through `StartTelemetryQuery` |
+| **Query metrics** — PromQL, which metric answers which symptom per AWS service, why a metric is missing, gauge vs counter, a metric query rejected by `StartTelemetryQuery` | Read [cloudwatch/promql.md](references/cloudwatch/promql.md), and [query/promql-metrics.md](references/cloudwatch-omni/query/promql-metrics.md) for PromQL in Omni panels and alerts. Metrics are PromQL, never SQL; run them directly through the CloudWatch Prometheus-compatible API (`monitoring` endpoint) or the CloudWatch MCP server's PromQL tools, not through `StartTelemetryQuery` |
 | **Views** — create, manage, or query named reusable SQL (`FROM view.<name>`) | Read [query/views.md](references/cloudwatch-omni/query/views.md) |
 | **Dashboards in Omni** — compose, ground panel queries, author `panels[]`, lay out the grid, the API save semantics (an unknown root- or panel-level key, a missing `type`/`layout`, or a bad variant is REJECTED at save with a 400 ValidationException; a bad enum VALUE, `x+w>60`, or an unknown key inside `config` saves 200 and fails or is ignored at render; validate before save), fix an empty or blank panel, the `*OmniDashboard` APIs | Read [dashboards.md](references/cloudwatch-omni/dashboards.md) |
 | **Alerts in Omni** — any mention of an Omni **alert**, `CreateAlert` / `GetAlert` / `ListAlerts` / `UpdateAlert` / `DeleteAlert`, a `profileId`, an alert ARN, or how alerts differ from alarms; create, tune, tag, list, delete; notifications | Read [alerts.md](references/cloudwatch-omni/alerts.md). The alert API is real and first-class — do NOT redirect to CloudWatch alarms. For CloudWatch alarms when Omni is not enabled, read [cloudwatch/alarms.md](references/cloudwatch/alarms.md) |
-| **Context graph** — why is service X slow or failing, what caused an incident between two times, root cause, what depends on it, upstream/downstream, which direction to walk, edge types `CALLS` / `ACCESSES` / `RUNS_ON`, blast radius, walking from a symptom to a root cause, `GetContextGraph` | Read [context-graph.md](references/cloudwatch-omni/context-graph.md) and state every applicable item in its "facts you MUST surface" section |
-| **Service health & dependency analysis** — is `<service>` healthy, health summary, what does `<service>` depend on and what ROLE does each play (caller / callee / datastore / runs-on), which services call it | Read [service-health.md](references/cloudwatch-omni/service-health.md) and state every applicable item in its "facts you MUST surface" section. It grounds the verdict in the context graph + RED/USE metrics + alarm state; for the resource-specific signal catalog and query mechanics it defers to [query/promql-metrics.md](references/cloudwatch-omni/query/promql-metrics.md) (§5 per-service catalog), [query/sql-logs-traces.md](references/cloudwatch-omni/query/sql-logs-traces.md), and [alerts.md](references/cloudwatch-omni/alerts.md), for traversal and blast radius to [context-graph.md](references/cloudwatch-omni/context-graph.md). A "what signals / panels does `<resource type>` need" or fleet-health-view ask goes to promql-metrics.md, not here |
+| **Self-hosted LLM inference** — a vLLM, SGLang, KServe, or Ray Serve model server on GPUs: high time to first token or inter-token latency, low tokens/s, requests queueing or rejected, KV-cache pressure or preemptions, GPU efficiency, which inference workloads have problems, restart or OOM-kill cycles, blocked rollouts | Read [ai-inference-diagnosis.md](references/cloudwatch-omni/ai-inference-diagnosis.md). If the workload has no engine or GPU metrics yet (confirm they are absent, not renamed or stale), that is first-time setup: for vLLM on ECS or EKS route to **`setting-up-cloudwatch-observability`**; for other engines the file says what to do |
+| **Context graph** — why is service X slow or failing, what depends on it, upstream/downstream, which direction to walk, edge types `CALLS` / `ACCESSES` / `RUNS_ON`, blast radius, walking from a symptom to a root cause, `GetContextGraph` | Read [context-graph.md](references/cloudwatch-omni/context-graph.md) and state every applicable item in its "facts you MUST surface" section |
+| **Service health & dependency analysis** — is `<service>` healthy, health summary, what does `<service>` depend on and what ROLE does each play (caller / callee / datastore / runs-on), which services call it | Read [service-health.md](references/cloudwatch-omni/service-health.md) and state every applicable item in its "facts you MUST surface" section. It grounds the verdict in the context graph + RED/USE metrics + alarm state; for the resource-specific signal catalog and query mechanics it defers to [cloudwatch/promql.md](references/cloudwatch/promql.md) (§5 per-service catalog), [query/sql-logs-traces.md](references/cloudwatch-omni/query/sql-logs-traces.md), and [alerts.md](references/cloudwatch-omni/alerts.md), for traversal and blast radius to [context-graph.md](references/cloudwatch-omni/context-graph.md). A "what signals / panels does `<resource type>` need" or fleet-health-view ask goes to cloudwatch/promql.md, not here |
 | **Agent evaluation** — score traces on demand, choose an evaluator, read back stored `gen_ai.evaluation.*` scores ("which evaluators are doing worst", "which online evaluators are unhealthy / underperforming"), build datasets from traces, set up online evaluation, author a custom evaluator, audit whether an agent's traces are flowing, monitor quality, root-cause a quality regression, recommend prompt or tool-description changes from scores, verify a change against a baseline | Read [agent-evaluation.md](references/cloudwatch-omni/agent-evaluation.md) and state every applicable item in its "tell the user ALL of this" callouts |
 | **Programmatic access** — "is there an API or SDK for Omni", calling Omni from code, CI, IaC, or an AI coding agent | Read [programmatic-access.md](references/cloudwatch-omni/programmatic-access.md). Omni has a real public SigV4 API; never answer that it has none, never substitute the CloudWatch or X-Ray CLI/SDK, and answer without probing for a Space. Endpoint `cloudwatch-omni.<region>.api.aws`, never `.amazonaws.com`; client `cloudwatchomni`, no hyphen. Give both authorization classes: a grant-mediated caller needs a matching grant or is denied; a direct IAM caller with none is not denied by the Space — its own IAM policy decides |
 | **AWS DevOps Agent** — Investigations reports it is not connected, connecting it to a Space, or running, following, or chatting with an investigation | Connecting is first-time setup: route to the **`setting-up-cloudwatch-observability`** skill. In the Omni web app an investigation starts from a thread, `/investigation new <description>`, or a firing alert's **Investigate** action. Driving the DevOps Agent itself (starting, following, or chatting with investigations from a coding agent) belongs to its dedicated **`aws-agents-for-devsecops`** plugin; point there and do not reconstruct that workflow or invent `aidevops` calls |
@@ -296,17 +326,20 @@ answered from the file directly.
 
 | File | Content |
 |------|---------|
-| [alarms.md](references/cloudwatch/alarms.md) | Metric, composite, anomaly detection alarms — configuration, constraints, recommended defaults |
+| [alarms.md](references/cloudwatch/alarms.md) | Metric, PromQL, composite, anomaly detection alarms — configuration, constraints, recommended defaults |
 | [log-insights.md](references/cloudwatch/log-insights.md) | Complete query syntax, commands, functions, known issues, reusable query library |
-| [metrics.md](references/cloudwatch/metrics.md) | Custom metrics, EMF spec, metric filters, high-resolution, retention |
+| [metrics.md](references/cloudwatch/metrics.md) | Classic custom metrics, EMF spec, metric filters, metric math, high-resolution, retention |
+| [otel-metrics.md](references/cloudwatch/otel-metrics.md) | OpenTelemetry metrics — classic vs OTel, OTLP ingestion traps (endpoint and signing, HTTP only, `awsemf` produces classic metrics, partial rejection), histograms, OTel enrichment of vended metrics |
+| [promql.md](references/cloudwatch/promql.md) | PromQL over CloudWatch OTel metrics — where it runs, what is queryable, discovery endpoints, `@`-label conventions, `__name__` matcher, gauge/counter/delta/histogram reads, running queries through the Prometheus-compatible API and MCP tools, per-AWS-service metric catalog and service-health checklist, empty results |
 | [tracing.md](references/cloudwatch/tracing.md) | X-Ray → ADOT migration, sampling rules, annotations vs metadata, collector config |
 | [dashboards.md](references/cloudwatch/dashboards.md) | Widget types, cross-account/region, dynamic labels, sharing |
 | [troubleshooting.md](references/cloudwatch/troubleshooting.md) | Error → cause → fix for all observability services |
-| [cloudtrail.md](references/cloudwatch/cloudtrail.md) | Operational auditing, event types, S3+Athena queries |
+| [cloudtrail.md](references/cloudwatch/cloudtrail.md) | Operational auditing, event types, CloudWatch's own data events (`AWS::CloudWatch::Metric` vs `AWS::CloudWatch::Dataset`), S3+Athena queries |
 | [synthetics.md](references/cloudwatch/synthetics.md) | Canary runtime/blueprint constraints, VPC networking, common failures |
 | [dynamic-instrumentation.md](references/cloudwatch/dynamic-instrumentation.md) | Dynamic Instrumentation debugging loop — breakpoints/probes on live code, snapshot capture + correlation analysis, create/delete gating, snapshot PII handling. Runs via `scripts/cloudwatch/di_instrumentation.py` + `scripts/cloudwatch/di_snapshots.py`; details in `dynamic-instrumentation/` |
+| [profiles.md](references/cloudwatch/profiles.md) | CloudWatch Profiles — the AWS MCP `aws_cloudwatch` Profiles functions (`list_profiled_services`, `analyze_profile`, `profile_timeline`, and `query_profiles_api` as a last resort), nine guided workflows (setup, hotspots, all services, regression, spike or outlier pod, memory, slow trace, health check, cost of a code change), reading self/total/attributed values, profile types and units, limits, access and IAM |
 | [alarm-template.ts](assets/cloudwatch/alarm-template.ts) | Best-practice CDK Lambda monitoring (alarms + dashboard) |
-| [otel-config.yaml](assets/cloudwatch/otel-config.yaml) | ADOT collector config for X-Ray traces + CloudWatch EMF metrics |
+| [otel-config.yaml](assets/cloudwatch/otel-config.yaml) | ADOT collector config for X-Ray traces + CloudWatch EMF (classic) metrics |
 
 **Not here, by design:** Application Signals onboarding (the enablement procedure, the
 ServiceEvents CI/CD chain, the 16 per-platform guides) is first-time setup and lives in
@@ -318,11 +351,13 @@ ServiceEvents CI/CD chain, the 16 per-platform guides) is first-time setup and l
 |------|---------|
 | [concepts.md](references/cloudwatch-omni/concepts.md) | What Omni is and is not; glossary (Domain, Space, Dataset, grant, profile, view, alert, dashboard, context graph, evaluator); Omni-vs-CloudWatch feature-equivalence matrix; how to tell which product the customer means; the setup sequence and where it lives |
 | [context-graph.md](references/cloudwatch-omni/context-graph.md) | The service/resource topology Omni builds from traces and metrics; `GetContextGraph` request/response and CLI; reading upstream vs downstream and blast radius; walking from a symptom hop-by-hop to a root cause, then pivoting to queries |
-| [service-health.md](references/cloudwatch-omni/service-health.md) | Service health verdict and dependency analysis — dependency map with roles (caller/callee/datastore/runs-on), the multi-signal HEALTHY/DEGRADED/DOWN verdict (RED for services, USE for resources, alarm state), and how to build the checks from a node's `includeMetadata` selectors. Ties together context-graph, promql-metrics, sql-logs-traces, and alerts rather than duplicating them — defers traversal and blast radius to context-graph and the resource-specific signal catalog to promql-metrics §5 |
+| [service-health.md](references/cloudwatch-omni/service-health.md) | Service health verdict and dependency analysis — dependency map with roles (caller/callee/datastore/runs-on), the multi-signal HEALTHY/DEGRADED/DOWN verdict (RED for services, USE for resources, alarm state), and how to build the checks from a node's `includeMetadata` selectors. Ties together context-graph, cloudwatch/promql, sql-logs-traces, and alerts rather than duplicating them — defers traversal and blast radius to context-graph and the resource-specific signal catalog to cloudwatch/promql §5 |
+| [ai-inference-diagnosis.md](references/cloudwatch-omni/ai-inference-diagnosis.md) | Diagnosing self-hosted LLM inference (vLLM, SGLang, KServe, Ray Serve) on GPUs — scope and load model, telemetry validation, fleet triage, request-path and roofline reasoning, disaggregated prefill/decode, diagnostic patterns as hypotheses, refuting the diagnosis, and the verdict format |
 | [programmatic-access.md](references/cloudwatch-omni/programmatic-access.md) | The public SigV4 API (`cloudwatch-omni` endpoint prefix, `cloudwatch` signing name), how access grants authorize a programmatic caller, CLI/SDK access (and why an unsupported-service error is a client-version issue), CloudFormation/CDK, AI coding agents, and the wrong answers to avoid |
-| [query/sql-logs-traces.md](references/cloudwatch-omni/query/sql-logs-traces.md) | SQL over logs and traces — table addressing, required time range, system fields, field access and quoting, schema discovery, supported operations, functions, common patterns (including `durationNano` span duration), constraints, TABLESAMPLE |
-| [query/promql-metrics.md](references/cloudwatch-omni/query/promql-metrics.md) | Metrics in Omni are PromQL — what is queryable (OTLP, span RED, OTel-enriched vended metrics) and what is not, label conventions, `__name__` matcher, rate() on counters, per-AWS-service metric catalog with derived formulas and dimension traps, and running queries and discovering names through the Prometheus-compatible HTTP API and MCP tools |
+| [query/sql-logs-traces.md](references/cloudwatch-omni/query/sql-logs-traces.md) | SQL over logs and traces — table addressing, required time range, system fields, field access and quoting, schema discovery, supported operations, functions, common patterns (including `durationNano` span duration), constraints, TABLESAMPLE, scan-volume estimates (`EXPLAIN (ESTIMATE)`), translating CWL Insights `parse` (glob, regex, logfmt, CSV, `json field=`) to SQL, comparing log patterns across two time windows (CWL Insights `diff`) |
+| [query/promql-metrics.md](references/cloudwatch-omni/query/promql-metrics.md) | PromQL in Omni — metrics are PromQL, not SQL (no `metrics.default` table, and `StartTelemetryQuery` serves no metric reads; a latency or error signal asked for in SQL also gets the span SQL over `traces.default`), panel and alert syntax (`queryLanguage`, `language: PROMQL`, threshold outside the expression), metric discovery, Omni-specific errors; the PromQL itself is in cloudwatch/promql.md |
 | [query/trace-exploration.md](references/cloudwatch-omni/query/trace-exploration.md) | Working with whole traces on `traces.default` — span fields and AI-agent span attributes (span role, tool name, input/output, token usage), fetching one trace in the right window, time breakdown and self-time, failure analysis with exception events, comparing runs, tying a bad evaluation score to spans, tool-call and repeated-tool patterns, trace-level latency and "today", field discovery for traces, reporting, agent sessions, walking a session, token cost, signals the spans may not record, before/after comparison by layer |
+| [query/agentcore-resources.md](references/cloudwatch-omni/query/agentcore-resources.md) | The Amazon Bedrock AgentCore resources (Memory, Gateway, Browser, Code Interpreter, Runtime) in an agent's traces — the agent's call vs the resource's own span and which latency each is, one query for the resources an agent uses per side and operation, which agents use a resource, diagnosing slow, failing, throttled, policy-refused, Memory and Runtime symptoms, names from ids with the read-only `get-*` calls, vended metrics, and when a resource's own spans are missing |
 | [query/views.md](references/cloudwatch-omni/query/views.md) | Named SQL views: CreateView / UpdateView / DeleteView / ListViews, `FROM view.<name>`, naming and definition rules, composition patterns |
 | [dashboards.md](references/cloudwatch-omni/dashboards.md) | Omni dashboards — composition recipes, grounding panel queries, the `panels[]` body and panel types, visualizations, the 60-column grid, the API save semantics (unknown root/panel keys are rejected 400; unknown keys inside `config` save 200 and are ignored at render; validate before save), troubleshooting empty/blank panels, the Create/Get/List/Update/DeleteOmniDashboard APIs, archetype templates |
 | [alerts.md](references/cloudwatch-omni/alerts.md) | Omni alerts — alert vs alarm, evaluation (FIELD_VALUE / COUNT_OF_RESULTS, contributors), states and no-data treatment, notification rules, step-by-step create / update / delete / tag / fetch, and the alert APIs |

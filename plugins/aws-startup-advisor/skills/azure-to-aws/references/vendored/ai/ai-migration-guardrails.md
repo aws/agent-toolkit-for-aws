@@ -56,7 +56,7 @@ Inference on `bedrock-mantle` for these models is governed by **two per-model, p
 4. A Service Quotas increase for that model's input/output TPM in that region
 5. Only if the above are insufficient: change models, accepting the eval cost
 
-See `references/shared/openai-on-bedrock.md` for the endpoint, region matrix, and caching parameters.
+See `references/vendored/ai/openai-on-bedrock.md` for the endpoint, region matrix, and caching parameters.
 
 **Source:** [Get started with GPT-5.6 on Amazon Bedrock — Quotas and scaling](https://aws.amazon.com/blogs/machine-learning/get-started-with-openai-gpt-5-6-sol-terra-and-luna-on-amazon-bedrock/)
 

@@ -78,6 +78,7 @@ CAPACITY_COSTS = {
     "render.environment_group": 2.0,
     "render.build_source": 10.0,
     "render.build_artifact": 0.0,
+    "render.persistent_disk": 1.5,
     "render.custom_domain": 0.0,
     "render.project": 0.0,
     "render.environment": 0.0,
@@ -174,8 +175,6 @@ def estimate_from_design(design: dict[str, Any]) -> dict[str, Any]:
         for index, mapping in enumerate(design["mappings"], 1):
             kind = mapping["render_kind"]
             amount = CAPACITY_COSTS.get(kind)
-            if kind == "render.persistent_disk":
-                amount = None
             evidence_sufficient = scenario_name == "right_sized" and kind in RIGHT_SIZED_FACTORS
             if amount is not None and evidence_sufficient:
                 amount = round(amount * RIGHT_SIZED_FACTORS[kind], 2)
@@ -187,7 +186,7 @@ def estimate_from_design(design: dict[str, Any]) -> dict[str, Any]:
                     "monthly_amount": amount,
                     "pricing_source": "unavailable" if amount is None else ("no_direct_charge" if amount == 0 else "cached"),
                     "confidence": "measured" if evidence_sufficient else mapping["confidence"],
-                    "exclusion_reason": "No reviewed EFS rate row" if amount is None else None,
+                    "exclusion_reason": "No reviewed rate row" if amount is None else None,
                     "evidence_sufficient": evidence_sufficient,
                 }
             )
@@ -208,11 +207,11 @@ def estimate_from_design(design: dict[str, Any]) -> dict[str, Any]:
         "timestamp": "2026-10-21T12:00:00Z",
         "pricing_source": {
             "status": "cached",
-            "message": "Deterministic mixed-estate rates use the reviewed cache; EFS remains unavailable.",
+            "message": "Deterministic mixed-estate rates use the reviewed cache, including the EFS row.",
             "services_by_source": {"cached": sorted({row["aws_service"] for row in design["mappings"]}), "fallback": [], "estimated": []},
-            "services_with_missing_fallback": ["efs"],
+            "services_with_missing_fallback": [],
         },
-        "accuracy_confidence": "known-cost floors; EFS is unpriced",
+        "accuracy_confidence": "all lines priced from the reviewed cache",
         "current_costs": {"source": "user_stated", "render_monthly": 123.45, "baseline_note": "Fixture user-stated monthly amount", "breakdown": {}},
         "projected_costs": {
             "aws_monthly_premium": capacity,
@@ -223,7 +222,7 @@ def estimate_from_design(design: dict[str, Any]) -> dict[str, Any]:
         },
         "scenarios": scenarios,
         "delta_monthly_usd": delta,
-        "delta_explanation": f"Evidence-based right-sizing changes the known-cost floor by ${delta:.2f}; EFS remains unpriced.",
+        "delta_explanation": f"Evidence-based right-sizing changes the known-cost floor by ${delta:.2f}.",
         "cost_comparison": {},
         "migration_cost_considerations": {"human_labor_monthly_usd": None},
         "roi_analysis": {},
@@ -231,7 +230,7 @@ def estimate_from_design(design: dict[str, Any]) -> dict[str, Any]:
         "complexity_tier": "large",
         "complexity_inputs": {"service_count": len(design["mappings"])},
         "financial_summary": {},
-        "recommendation": {"path": "migrate_phased", "migrate_if": ["Validate EFS pricing"], "stay_if": []},
+        "recommendation": {"path": "migrate_phased", "migrate_if": ["Confirm EFS provisioned capacity"], "stay_if": []},
         "ai_track": {"status": "deferred_shared_ai_engine", "estimated_cost": None},
     }
 
@@ -311,7 +310,6 @@ def ledger_from_design(design: dict[str, Any], preferences: dict[str, Any] | Non
     warnings = [
         {"code": "deferred_shared_ai_engine", "subject": "AI execution", "detail": "AI execution remains deferred to the provider-neutral shared engine.", "blocking": False},
         {"code": "conditional_workflow_generation_unsupported", "subject": "Workflow artifacts", "detail": "Workflow execution semantics require manual validation before artifact generation.", "blocking": False},
-        {"code": "unpriced_cost_floor", "subject": "Estimate floor", "detail": "EFS has no reviewed rate and both totals are known-cost floors.", "blocking": False},
         *express_not_selected_warnings(design, preferences),
     ]
     return {
@@ -448,7 +446,7 @@ resource "aws_ecs_service" "__NAME__" {
     return network, compute
 
 
-def _service_blocks(name: str, source_id: str, kind: str) -> str:
+def _service_blocks(name: str, source_id: str, kind: str) -> tuple[str, str]:
     port = 10000 if kind == "private" else None
     security_group = "private" if kind == "private" else "worker"
     port_mapping = '    portMappings = [{ containerPort = 10000, hostPort = 10000, protocol = "tcp" }]\n' if port else ""
@@ -465,7 +463,7 @@ def _service_blocks(name: str, source_id: str, kind: str) -> str:
   }
 }
 ''' if kind == "private" else ""
-    block = discovery + '''resource "aws_ecs_task_definition" "__NAME__" {
+    block = '''resource "aws_ecs_task_definition" "__NAME__" {
   family                   = "render-__NAME_HYPHEN__"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
@@ -503,7 +501,8 @@ __REGISTRY__  tags = { SourceResourceId = "__SOURCE_ID__" }
     }
     for old, new in substitutions.items():
         block = block.replace(old, new)
-    return block
+        discovery = discovery.replace(old, new)
+    return discovery, block
 
 
 def _cron_blocks(name: str, source_id: str) -> str:
@@ -859,21 +858,6 @@ resource "aws_ecs_service" "web" {
   depends_on = [aws_lb_listener.https]
   tags       = { SourceResourceId = "__WEB_SOURCE_ID__" }
 }
-resource "aws_service_discovery_private_dns_namespace" "application" {
-  name = "production.render-migration.internal"
-  vpc  = aws_vpc.main.id
-}
-resource "aws_service_discovery_service" "private" {
-  name = "private"
-  dns_config {
-    namespace_id = aws_service_discovery_private_dns_namespace.application.id
-    dns_records {
-      ttl  = 10
-      type = "A"
-    }
-    routing_policy = "MULTIVALUE"
-  }
-}
 resource "aws_ecs_task_definition" "private" {
   family                   = "render-migration-private"
   network_mode             = "awsvpc"
@@ -1136,6 +1120,22 @@ resource "aws_s3_bucket_policy" "static_cloudfront" {
   })
 }
 '''
+    network += '''resource "aws_service_discovery_private_dns_namespace" "application" {
+  name = "production.render-migration.internal"
+  vpc  = aws_vpc.main.id
+}
+resource "aws_service_discovery_service" "private" {
+  name = "private"
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.application.id
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+    routing_policy = "MULTIVALUE"
+  }
+}
+'''
     first_by_kind = {kind: rows[0] for kind, rows in mappings_by_kind.items()}
     compute = (
         compute.replace("__WEB_SOURCE_ID__", first_by_kind["render.web_service"]["source_resource_id"])
@@ -1150,7 +1150,9 @@ resource "aws_s3_bucket_policy" "static_cloudfront" {
         compute += extra_compute
     for kind, service_kind in (("render.private_service", "private"), ("render.background_worker", "worker")):
         for index, mapping in enumerate(mappings_by_kind[kind][1:], 2):
-            compute += _service_blocks(_mapping_name(kind, index), mapping["source_resource_id"], service_kind)
+            extra_network, extra_compute = _service_blocks(_mapping_name(kind, index), mapping["source_resource_id"], service_kind)
+            network += extra_network
+            compute += extra_compute
     for index, mapping in enumerate(mappings_by_kind["render.cron_job"][1:], 2):
         compute += _cron_blocks(_mapping_name("render.cron_job", index), mapping["source_resource_id"])
     cron_task_arns = ", ".join(
@@ -1240,7 +1242,7 @@ def assert_generated_infrastructure_graph(terraform: Path) -> None:
     assert 'resource "aws_iam_role_policy" "scheduler"' in compute
     assert re.search(r'Action\s*=\s*\["ecs:RunTask"\]', compute)
     assert re.search(r'Action\s*=\s*\["iam:PassRole"\]', compute)
-    assert re.search(r'Resource\s*=\s*\[aws_iam_role\.ecs_execution\.arn\]', compute)
+    assert re.search(r'Resource\s*=\s*\[aws_iam_role\.ecs_execution\.arn(,\s*aws_iam_role\.ecs_task\.arn)?\]', compute)
     assert '"iam:PassedToService" = "ecs-tasks.amazonaws.com"' in compute
     assert 'role_arn = aws_iam_role.scheduler.arn' in compute
     assert "arn:aws:iam::000000000000:role/render-migration-scheduler" not in compute
@@ -1259,7 +1261,7 @@ def assert_generated_infrastructure_graph(terraform: Path) -> None:
     assert re.search(r'from_port\s*=\s*6379', network)
     for security_group in ("web", "private", "worker"):
         assert f"aws_security_group.{security_group}.id" in network
-    assert 'vpc_security_group_ids      = [aws_security_group.data.id]' in data
+    assert re.search(r'vpc_security_group_ids\s*=\s*\[aws_security_group\.data\.id\]', data)
     assert 'security_group_ids         = [aws_security_group.data.id]' in data
 
     for name in ("web", "private", "worker", "cron"):
@@ -1395,6 +1397,41 @@ def _validate_generated_pack(root: Path, generated: Path, ledger: dict[str, Any]
             "report": {"status": "passed", "command": "validate-render-migration-report.py", "evidence": evidence},
         },
         "timestamp": "2026-10-21T12:00:00Z",
+    }
+
+
+def validate_terraform_directory(source: Path, workdir: Path) -> dict[str, str]:
+    """Run fmt, init, validate, and the policy check on a copy of one Terraform directory."""
+    terraform_binary = shutil.which("terraform")
+    if terraform_binary is None:
+        raise AssertionError("terraform is required to validate a golden Terraform directory")
+    shutil.copytree(source, workdir, ignore=shutil.ignore_patterns(".terraform", ".terraform.lock.hcl"))
+    fmt = _run([terraform_binary, "fmt", "-check", "-recursive"], workdir)
+    if fmt.returncode != 0:
+        raise AssertionError(fmt.stdout + fmt.stderr)
+    init = _run([terraform_binary, "init", "-backend=false", "-input=false"], workdir)
+    registry_failure = (
+        init.returncode != 0
+        and classify_terraform_init_failure(init.stdout + init.stderr) == "provider_registry_unavailable"
+    )
+    if init.returncode != 0 and not registry_failure:
+        raise AssertionError(init.stdout + init.stderr)
+    if registry_failure:
+        validate_status = "provider_registry_unavailable"
+    else:
+        validate = _run([terraform_binary, "validate"], workdir)
+        if validate.returncode != 0:
+            raise AssertionError(validate.stdout + validate.stderr)
+        validate_status = "passed"
+    policy = REPO_ROOT / "plugins/aws-startup-advisor/skills/tf-best-practices/scripts/validate-terraform-policy.py"
+    policy_result = _run([sys.executable, str(policy), str(workdir)], workdir)
+    if policy_result.returncode != 0 or not policy_result.stdout.startswith("POLICY_OK"):
+        raise AssertionError(policy_result.stdout + policy_result.stderr)
+    return {
+        "fmt": "passed",
+        "init": "provider_registry_unavailable" if registry_failure else "passed",
+        "validate": validate_status,
+        "policy": "POLICY_OK",
     }
 
 
@@ -1556,7 +1593,7 @@ Fence target writers, restore Render writers and DNS, preserve copied data, and 
 
 ## Known limitations
 
-EFS remains an unpriced floor. AI is `deferred_shared_ai_engine`; Workflow automation is `conditional_workflow_generation_unsupported`.
+EFS is priced from the reviewed rate row. AI is `deferred_shared_ai_engine`; Workflow automation is `conditional_workflow_generation_unsupported`.
 
 ## Complete source accounting
 

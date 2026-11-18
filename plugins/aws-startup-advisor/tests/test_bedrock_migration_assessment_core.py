@@ -221,12 +221,30 @@ def _skill_text_files() -> list[Path]:
     return [p for p in BMA.rglob("*") if p.is_file() and p.suffix in {".md", ".py", ".json"}]
 
 
+def _instruction_lines(path: Path) -> list[str]:
+    text = path.read_text(encoding="utf-8")
+    if path.parent == BMA / "references/vendored/ai" and path.name in ("schema-design-aws-ai.md", "schema-estimate-ai.md"):
+        # A shared contract's intro note and Status section name the gcp/azure producers; they are not instructions to load them.
+        head, _, tail = text.partition("## Status")
+        lines = [("" if line.startswith(">") and i < head.find("## Shape") else line) for i, line in _offsets(head)]
+        text = "\n".join(lines) + "\n" * (tail.count("\n") + 1)
+    return text.splitlines()
+
+
+def _offsets(text: str) -> list[tuple[int, str]]:
+    out, pos = [], 0
+    for line in text.split("\n"):
+        out.append((pos, line))
+        pos += len(line) + 1
+    return out
+
+
 def test_skill_never_reaches_into_another_skill() -> None:
     forbidden = re.compile(r"gcp-to-aws/|azure-to-aws/|heroku-to-aws/|render-to-aws/|\$GCP_BASE|\$ASSESS_BASE|\.\./")
     offenders = [
         f"{p.relative_to(BMA)}:{n}"
         for p in _skill_text_files()
-        for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+        for n, line in enumerate(_instruction_lines(p), 1)
         if forbidden.search(line)
     ]
     assert offenders == []

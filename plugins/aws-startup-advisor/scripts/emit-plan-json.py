@@ -2,7 +2,8 @@
 """Emit plan.json from a finished migration run.
 
 Copies already-validated values from a run's artifacts into a `plan.json`
-summary the AWS Startups Migrate web import page ingests. It GENERATES nothing:
+summary AWS Startup Advisor's web import page ingests
+(https://startups.aws.com/migrate/plans/import). It GENERATES nothing:
 every field is copied from a validated artifact or omitted, because every extra
 field is a mistake surface.
 

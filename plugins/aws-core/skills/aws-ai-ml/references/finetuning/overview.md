@@ -20,9 +20,18 @@ Before starting this workflow, verify:
    - If not done: Load the `sdk-getting-started` reference first, then resume
 
 5. The region supports serverless model customization
-   - Check the environment's region against `../planning/references/region-availability.md`. If it is NOT supported, STOP and give the user the blocking message from that file — do not proceed with fine-tuning. (This is normally enforced by the planning skill, but is repeated here in case fine-tuning is reached without it.)
+   - Check the environment's region against `../planning/references/region-availability.md`. If it is NOT supported, STOP and give the user the fine-tuning blocking message from that file — do not proceed with fine-tuning. (This is normally enforced by the planning skill, but is repeated here in case fine-tuning is reached without it.)
 
-6. A training dataset uploaded to a bucket in the environment's default region.
+6. A training dataset that already matches the selected model and technique's
+   required serialization and schema.
+   - If the same request asks to convert or reshape the data, load
+     `dataset-transformation` and complete that workflow first. Fine-tuning
+     consumes its output dataset: normally use the transformed S3 location and
+     let the fine-tuning workflow register it, or use the output DataSet ARN
+     when the transformation explicitly created one. Never hand-write a
+     conversion function or JSONL loop inside the fine-tuning artifact.
+
+7. A training dataset uploaded to a bucket in the environment's default region.
    - If not met: Help the user upload the dataset to the correct S3
 
 ---

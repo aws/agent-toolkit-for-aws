@@ -25,6 +25,9 @@ Use direct technical terms. Map each answer onto the keys in clarify.md Step 3.
 - **idle_resume**: "On idle-then-resume, do running processes need to continue exactly
   (process_level), is filesystem persistence enough (filesystem), or not needed (none)?"
 - **launch_concurrency**: "Peak new-session launch rate? high (>5/sec) / moderate / low."
+- **expected_scale**: "Expected volume over the next few months? <100 sessions/day (prototype) /
+  100-10K (growing) / >10K (high)." Volume only; shape is `traffic_pattern`, peak rate is
+  `launch_concurrency`.
 - **multi_agent / framework / existing_cluster / multi_cloud / platform_fit**: ask directly.
 - **deployment_preference**: "Do you want a no-code managed agent runtime (AgentCore Harness),
   bring your own framework code (Strands/LangGraph/CrewAI/custom), or either?" Ask early. Only
@@ -39,3 +42,6 @@ Use direct technical terms. Map each answer onto the keys in clarify.md Step 3.
 - **region**: "Where are your users / where must this run — single region, multi-region, or
   global? Any specific region (e.g. EU)?" Gates runtime availability (AgentCore/Harness aren't
   everywhere) and, for EU/GDPR, the geo-CRIS vs global-CRIS data-residency choice. Not scored.
+- **usage_volume** (per agent unit): "Rough monthly sessions, and input / output tokens per
+  session (including tool results and retrieved context)?" Numbers or unknown. Not scored;
+  sizes the model-token estimate.

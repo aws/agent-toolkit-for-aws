@@ -1,0 +1,9 @@
+<View>
+  <Labels name="entities" toName="text">
+    <Label value="Person" background="#ff0000"/>
+    <Label value="Organization" background="#0000ff"/>
+    <Label value="Location" background="#00ff00"/>
+    <Label value="Date" background="#ffa500"/>
+  </Labels>
+  <Text name="text" value="$text"/>
+</View>

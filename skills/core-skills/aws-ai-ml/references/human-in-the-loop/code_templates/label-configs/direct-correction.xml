@@ -1,0 +1,18 @@
+<View>
+  <Text name="instruction" value="$instruction"/>
+  <Text name="completion"  value="$completion"/>
+
+  <Header value="Correct the response below if needed"/>
+  <TextArea name="corrected_completion"
+            toName="completion"
+            rows="4"
+            editable="true"
+            maxSubmissions="1"/>
+  <Choices name="issues" toName="completion" choice="multiple" showInLine="true">
+    <Choice value="factual_error"/>
+    <Choice value="off_topic"/>
+    <Choice value="harmful"/>
+    <Choice value="incomplete"/>
+    <Choice value="unfixable"/>
+  </Choices>
+</View>

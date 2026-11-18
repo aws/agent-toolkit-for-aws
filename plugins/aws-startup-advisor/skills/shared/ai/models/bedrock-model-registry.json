@@ -484,25 +484,6 @@
         "govcloud": [],
         "evidence": "bedrock-mantle in-region rows of the GPT-5.5 model card, read 2026-11-06: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html"
       },
-      "pricing": {
-        "source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html (read 2026-11-06); USD per 1M tokens, Standard tier; the card lists the In-Region inference option only",
-        "commercial_short_context_le_272k": {
-          "input": 5.5,
-          "cache_read": 0.55,
-          "output": 33.0
-        },
-        "commercial_long_context_gt_272k": {
-          "input": 11.0,
-          "cache_read": 1.1,
-          "output": 49.5
-        },
-        "service_tiers": {
-          "standard": true,
-          "priority": false,
-          "flex": false,
-          "reserved": false
-        }
-      },
       "paths": {
         "mantle_openai_responses": {
           "available": true,
@@ -557,78 +538,6 @@
             "image_input",
             "streaming"
           ]
-        }
-      },
-      "inference_profiles": {
-        "us": [
-          "us-east-1",
-          "us-east-2",
-          "us-west-1",
-          "us-west-2",
-          "ca-central-1",
-          "ca-west-1"
-        ],
-        "global": [
-          "us-east-1",
-          "us-east-2",
-          "us-west-1",
-          "us-west-2",
-          "ca-central-1",
-          "ca-west-1",
-          "mx-central-1",
-          "eu-central-1",
-          "eu-central-2",
-          "eu-north-1",
-          "eu-south-1",
-          "eu-south-2",
-          "eu-west-1",
-          "eu-west-2",
-          "eu-west-3",
-          "ap-east-2",
-          "ap-northeast-1",
-          "ap-northeast-2",
-          "ap-northeast-3",
-          "ap-south-1",
-          "ap-south-2",
-          "ap-southeast-1",
-          "ap-southeast-2",
-          "ap-southeast-3",
-          "ap-southeast-4",
-          "ap-southeast-5",
-          "ap-southeast-6",
-          "ap-southeast-7",
-          "il-central-1",
-          "me-central-1",
-          "me-south-1",
-          "af-south-1",
-          "sa-east-1"
-        ]
-      },
-      "region_availability": {
-        "commercial": [
-          "us-east-1",
-          "us-east-2"
-        ],
-        "govcloud": [],
-        "evidence": "bedrock-mantle in-region rows of the GPT-5.5 model card, read 2026-11-06: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html"
-      },
-      "pricing": {
-        "source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html (read 2026-11-06); USD per 1M tokens, Standard tier; the card lists the In-Region inference option only",
-        "commercial_short_context_le_272k": {
-          "input": 5.5,
-          "cache_read": 0.55,
-          "output": 33.0
-        },
-        "commercial_long_context_gt_272k": {
-          "input": 11.0,
-          "cache_read": 1.1,
-          "output": 49.5
-        },
-        "service_tiers": {
-          "standard": true,
-          "priority": false,
-          "flex": false,
-          "reserved": false
         }
       }
     },
@@ -924,30 +833,6 @@
         ],
         "evidence": "bedrock-mantle in-region rows of the GPT-5.4 model card, read 2026-11-06: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html"
       },
-      "pricing": {
-        "source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html (read 2026-11-06); USD per 1M tokens, Standard tier; the card lists the In-Region inference option only",
-        "commercial_short_context_le_272k": {
-          "input": 2.75,
-          "cache_read": 0.275,
-          "output": 16.5
-        },
-        "commercial_long_context_gt_272k": {
-          "input": 5.5,
-          "cache_read": 0.55,
-          "output": 24.75
-        },
-        "govcloud_us_west_short_context_le_272k": {
-          "input": 3.375,
-          "cache_read": 0.3375,
-          "output": 20.25
-        },
-        "service_tiers": {
-          "standard": true,
-          "priority": false,
-          "flex": false,
-          "reserved": false
-        }
-      },
       "paths": {
         "mantle_openai_responses": {
           "available": true,
@@ -1008,86 +893,6 @@
             "streaming",
             "image_input"
           ]
-        }
-      },
-      "inference_profiles": {
-        "us": [
-          "us-east-1",
-          "us-east-2",
-          "us-west-1",
-          "us-west-2",
-          "ca-central-1",
-          "ca-west-1"
-        ],
-        "global": [
-          "us-east-1",
-          "us-east-2",
-          "us-west-1",
-          "us-west-2",
-          "ca-central-1",
-          "ca-west-1",
-          "mx-central-1",
-          "eu-central-1",
-          "eu-central-2",
-          "eu-north-1",
-          "eu-south-1",
-          "eu-south-2",
-          "eu-west-1",
-          "eu-west-2",
-          "eu-west-3",
-          "ap-east-2",
-          "ap-northeast-1",
-          "ap-northeast-2",
-          "ap-northeast-3",
-          "ap-south-1",
-          "ap-south-2",
-          "ap-southeast-1",
-          "ap-southeast-2",
-          "ap-southeast-3",
-          "ap-southeast-4",
-          "ap-southeast-5",
-          "ap-southeast-6",
-          "ap-southeast-7",
-          "il-central-1",
-          "me-central-1",
-          "me-south-1",
-          "af-south-1",
-          "sa-east-1"
-        ]
-      },
-      "region_availability": {
-        "commercial": [
-          "us-east-1",
-          "us-east-2",
-          "us-west-2"
-        ],
-        "govcloud": [
-          "us-gov-west-1"
-        ],
-        "evidence": "bedrock-mantle in-region rows of the GPT-5.4 model card, read 2026-11-06: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html"
-      },
-      "pricing": {
-        "source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html (read 2026-11-06); USD per 1M tokens, Standard tier; the card lists the In-Region inference option only",
-        "commercial_short_context_le_272k": {
-          "input": 2.75,
-          "cache_read": 0.275,
-          "output": 16.5
-        },
-        "commercial_long_context_gt_272k": {
-          "input": 5.5,
-          "cache_read": 0.55,
-          "output": 24.75
-        },
-        "govcloud_us_west_short_context_le_272k": {
-          "input": 3.375,
-          "cache_read": 0.3375,
-          "output": 20.25
-        },
-        "service_tiers": {
-          "standard": true,
-          "priority": false,
-          "flex": false,
-          "reserved": false
         }
       }
     },

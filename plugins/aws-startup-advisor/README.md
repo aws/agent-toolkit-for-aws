@@ -11,7 +11,7 @@ Ask it things like:
 - "Which runtime should this agent use?"
 - "Our API started returning 502s after the last deploy."
 
-The fourteen skills below are the catalog. Install them together.
+The sixteen skills below are the catalog. Install them together.
 
 ## Agent Skills
 
@@ -30,7 +30,9 @@ The fourteen skills below are the catalog. Install them together.
 | 11 | `knowledge-base-for-startups` | AWS Activate FAQ, credits guide, programs, partner offers, sample architectures, and AWS-curated learn articles | [SKILL.md](skills/knowledge-base-for-startups/SKILL.md) |
 | 12 | `prompt-library-for-startups` | AWS-curated copy-paste prompts for AI coding agents, plus downloadable installable agents | [SKILL.md](skills/prompt-library-for-startups/SKILL.md) |
 | 13 | `contextual-offers-for-startups` | Appends at most one relevant AWS Activate partner offer as optional context after another skill's output is final | [SKILL.md](skills/contextual-offers-for-startups/SKILL.md) |
-| 14 | `bedrock-migration-assessment` | Scans your code for OpenAI, Anthropic, Gemini, and OpenRouter calls (or validates a provider-neutral `ai-workload-profile.json`), can measure OpenAI, Anthropic, and OpenRouter usage read-only with your consent, and runs the AI-only migration questions. Needs no infrastructure skill. This release stops after Clarify; Design, Estimate, and Generate land in later releases | [SKILL.md](skills/bedrock-migration-assessment/SKILL.md) |
+| 14 | `bedrock-migration-assessment` | Scans your code for OpenAI, Anthropic, Gemini, and OpenRouter calls (or validates a provider-neutral `ai-workload-profile.json`), can measure OpenAI, Anthropic, and OpenRouter usage read-only with your consent, runs the AI-only migration questions, designs a Bedrock target, endpoint, and client API per workload, and estimates the monthly Bedrock cost. Needs no infrastructure skill. This release stops after Estimate; Generate lands in a later release | [SKILL.md](skills/bedrock-migration-assessment/SKILL.md) |
+| 15 | `cost-regression-check` | Prices an infrastructure-as-code change on every pull request before apply: the fixed monthly floor it adds and the change in cost per unit of usage, at list price before credits, against thresholds derived from your monthly ceiling | [SKILL.md](skills/cost-regression-check/SKILL.md) |
+| 16 | `self-hosted-llm-batch-inference` | Recurring offline inference for a self-hosted 1B to 8B model on one GPU with AWS Batch on Spot, vLLM, deterministic shards, and verified completion and capacity release | [SKILL.md](skills/self-hosted-llm-batch-inference/SKILL.md) |
 
 `contextual-offers-for-startups` is consulted by the other skills rather than invoked directly: it runs only after a recommendation, plan, or build is already final, and it never influences the technical advice.
 
@@ -70,7 +72,7 @@ For standalone skill installs — Kiro, fx, and other hosts that consume skills 
 npx skills add aws/agent-toolkit-for-aws/plugins/aws-startup-advisor/skills --skill '*'
 ```
 
-Install all 14 skills together rather than a subset: `agent-advisor` delegates to `gcp-to-aws`, and the migration skills share vendored fragments. A standalone install covers the skills only — it does not configure the `aws-mcp` server declared in `.mcp.json`, which the host needs separately.
+Install all 16 skills together rather than a subset: `agent-advisor` delegates to `gcp-to-aws`, and the migration skills share vendored fragments. A standalone install covers the skills only — it does not configure the `aws-mcp` server declared in `.mcp.json`, which the host needs separately.
 
 ## Development checks
 
@@ -146,6 +148,7 @@ The `architect-for-startups` skill answers "what should we build on AWS?" for a 
 - **Stage-aware defaults** — Recommendations differ for a pre-revenue prototype and a Series B workload with paying customers; the skill asks before it assumes.
 - **Cost and credit awareness** — Options are framed in terms of run-rate and credit burn, so the architecture stretches AWS Activate credits rather than consuming them in a month.
 - **Reviews and diligence** — Existing architectures can be reviewed for a fundraise or technical diligence conversation, with gaps ranked by what an investor or acquirer will ask about.
+- **Multi-tenant isolation** — For a multi-tenant SaaS, picks a silo, pool, or bridge model per layer and pushes isolation into IAM and the database, so a missing tenant filter fails closed rather than leaking another tenant's data.
 - **Advice, not edits** — This skill recommends and reviews. When you want the architecture written into the repository, it hands off to `start-building-for-startups`. When the workload is an AI agent — deploying one, picking its runtime, or moving agents to AWS — it hands off to `agent-advisor`.
 
 ### Examples
@@ -154,6 +157,7 @@ The `architect-for-startups` skill answers "what should we build on AWS?" for a 
 - "Review our architecture before our Series A technical diligence"
 - "How do we make our Activate credits last another six months?"
 - "Is Aurora Serverless the right call at our stage?"
+- "How should we isolate tenants in our pooled SaaS before our first enterprise customer?"
 
 ## Guided Building
 
@@ -198,7 +202,7 @@ The `azure-to-aws`, `gcp-to-aws`, `heroku-to-aws`, and `render-to-aws` skills ru
 - **Estimate** — Costs the target architecture from the plugin's bundled rate reference data and a documented cost algorithm, with an estimation schema and complexity tiers so two runs of the same workload agree. Estimates are planning figures; confirm them against the [AWS Pricing Calculator](https://calculator.aws/) before committing budget.
 - **Generate** — Emits migration artifacts, including Terraform, gated by the `tf-best-practices` policy check and a validated migration report. On the infrastructure route, `heroku-to-aws`, `gcp-to-aws`, and `azure-to-aws` also emit `baseline.tf` — an account-wide security baseline (GuardDuty, CloudTrail, IMDSv2, EBS encryption, budget alerts) — with AWS Config and Security Hub controls added when the declared compliance set includes SOC 2, PCI, HIPAA, or FedRAMP. `gcp-to-aws`'s AI-only and billing-only routes emit monitoring or skeleton Terraform instead and skip the baseline.
 - **Workshop mode** — After estimate, `azure-to-aws`, `gcp-to-aws`, `heroku-to-aws`, and `render-to-aws` can reprice region, high-availability, compute, and AWS Graviton scenarios without repeating discovery.
-- **Credits handoff** — When estimate finishes, `gcp-to-aws` and `heroku-to-aws` can write `plan.json` and offer a link to apply for up to $1,500 in AWS migration credits. Generate writes the same file again when it completes. `azure-to-aws` does not yet — the import contract's accepted `sourcePlatform` values are not confirmed to include Azure.
+- **Credits handoff** — When estimate finishes, `gcp-to-aws` and `heroku-to-aws` can write `plan.json` and link to AWS Startup Advisor's import page (https://startups.aws.com/migrate/plans/import). There the user signs in, uploads it, and sees the AWS migration credits they qualify for. Generate writes the same file again when it completes. `azure-to-aws` does not yet — the import contract's accepted `sourcePlatform` values are not confirmed to include Azure.
 
 ### Examples
 
@@ -225,7 +229,7 @@ npx skills add aws/agent-toolkit-for-aws/plugins/aws-startup-advisor/skills --sk
 
 When the sibling's Discover captured real spend from the OpenAI Admin API, the OpenRouter API, or the Anthropic Admin API (consent-gated, read-only), `llm-to-bedrock` reuses that usage profile as the cost baseline instead of extrapolating from the golden prompt set.
 
-`bedrock-migration-assessment` is the provider-neutral AI engine that will take over this work from `gcp-to-aws` ([#389](https://github.com/aws/agent-toolkit-for-aws/issues/389)). Today it scans application code for AI providers, models, gateways, workloads, and agents and their tools, or accepts a provider-neutral `ai-workload-profile.json` (rejecting the older GCP-shaped profile by name), can measure OpenAI, Anthropic, and OpenRouter usage through their read-only admin APIs with consent, and stops after Clarify. It does not depend on any infrastructure skill.
+`bedrock-migration-assessment` is the provider-neutral AI engine that will take over this work from `gcp-to-aws` ([#389](https://github.com/aws/agent-toolkit-for-aws/issues/389)). Today it scans application code for AI providers, models, gateways, workloads, and agents and their tools, or accepts a provider-neutral `ai-workload-profile.json` (rejecting the older GCP-shaped profile by name), can measure OpenAI, Anthropic, and OpenRouter usage through their read-only admin APIs with consent, asks the AI-only Clarify questions, writes `aws-design-ai.json` in the provider-neutral design contract, and prices it in `estimation-ai.json`. It stops after Estimate. It does not depend on any infrastructure skill.
 
 Model mapping is compatibility-guided rather than one-to-one parity. Validate prompts, tool-calling behavior, and evaluation metrics before cutover.
 
@@ -241,7 +245,7 @@ Model mapping is compatibility-guided rather than one-to-one parity. Validate pr
 Two skills serve AWS-curated content rather than performing work on your account:
 
 - **`knowledge-base-for-startups`** — AWS Activate FAQ, credits guide, programs, partner offers, sample architectures, and learn articles spanning generative AI, cloud architecture, cost optimization, security, fundraising, and go-to-market. Answers come from the bundled `references/` tree.
-- **`prompt-library-for-startups`** — Copy-paste prompts for AI coding agents (MVP scaffolding, RAG chatbot on Amazon Bedrock, security baseline evaluation, cost anomaly detection, GPU quota requests, Amazon EKS deployment, Well-Architected review) plus downloadable installable agents.
+- **`prompt-library-for-startups`** — The approved subset of the AWS Startups prompt library: copy-paste prompts for AI coding agents (MVP scaffolding, RAG chatbot on Amazon Bedrock, security baseline evaluation, read-only cost optimization audit, GPU quota requests, Amazon EKS on Spot) plus downloadable installable agents. Anything not bundled is in the full library at [startups.aws.com/prompt-library](https://startups.aws.com/prompt-library).
 
 Neither skill can look up account-specific state such as your credits balance, Activate membership, or application status. Those questions belong at [AWS Startups](https://aws.amazon.com/startups/).
 
@@ -271,6 +275,44 @@ The DevOps Agent MCP server is region-specific and per-user, so the skill regist
 - "Is this PR safe to merge?"
 - "Set up AWS DevOps Agent for us — what will it cost?"
 - "Pause DevOps Agent, we're burning credits"
+
+## Cost Regression Checks
+
+The `cost-regression-check` skill reports what an infrastructure change adds to the AWS bill on the pull request that adds it, before apply. It is for a company that pays from a fixed monthly ceiling, often funded by credits, where a new NAT gateway or database minimum can take a visible share of the budget before the product has users.
+
+### How It Works
+
+- **Two numbers, not one** — Each pull request gets the fixed monthly floor the change adds at zero traffic and the change in cost per unit of your own usage, so a blended estimate cannot hide which one moved.
+- **Thresholds from your ceiling** — Absolute thresholds derived from the monthly ceiling live in a reviewed file in the repository, with an owner, rather than a percentage of last month's bill.
+- **List price before credits** — Every number is the public on-demand price, so the comment describes the bill that arrives when credits run out.
+- **Set up once, no model per pull request** — The skill adds a CI job and a repository-owned cost script that runs after plan, synth, or change set. It starts advisory and blocks only after estimates are checked against the bill.
+
+It works with Terraform, AWS CDK, and AWS CloudFormation, and defers to the `aws-core` plugin's skills for pricing data, IaC mechanics, and billing comparisons, so install `aws-core` alongside it.
+
+### Examples
+
+- "What will this Terraform PR add to our monthly AWS bill before we apply it?"
+- "Add a cost check to every pull request that flags new fixed costs against our $3,000 monthly ceiling"
+- "Set up Infracost in CI so the bill owner sees the cost of each infrastructure change"
+
+## Self-Hosted LLM Batch Inference
+
+The `self-hosted-llm-batch-inference` skill builds a repeatable offline inference path for a self-hosted 1B to 8B generative model, for a startup that wants GPU economics without running an ML platform.
+
+### How It Works
+
+- **One Batch job per corpus run** — AWS Batch on Amazon ECS Managed Instances Spot runs vLLM on one GPU, with model weights staged in Amazon S3 and the corpus split into deterministic shards.
+- **Spot without babysitting** — Bounded retries and resumable shards recover from Spot interruption automatically.
+- **Nothing idle** — Sizing comes from the measured prompt and model footprint, networking avoids an idle cost floor, and GPU capacity scales in to zero when the job ends.
+- **Verified, not assumed** — A run succeeds only after output records reconcile with input, and verification confirms the GPU capacity is gone.
+
+It is not for online endpoints, training, embeddings, or multi-GPU inference. For moving managed-API model calls to Amazon Bedrock, use `llm-to-bedrock`. It defers to the `aws-core` plugin's skills for container, IAM, storage, and cost mechanics, so install `aws-core` alongside it.
+
+### Examples
+
+- "Run nightly batch inference with Llama 3.1 8B over our document corpus on Spot GPUs"
+- "Set up AWS Batch to classify a million support tickets with a self-hosted model"
+- "Our offline LLM jobs keep losing work to Spot interruptions. How should we structure them?"
 
 ## Supported Environments
 

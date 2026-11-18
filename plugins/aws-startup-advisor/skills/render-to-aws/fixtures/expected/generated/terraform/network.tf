@@ -235,3 +235,29 @@ resource "aws_lb_listener" "http" {
     }
   }
 }
+
+# Private services resolve each other through Cloud Map. Compute only sets service_registries
+# from the service_discovery_service_arn output.
+resource "aws_service_discovery_private_dns_namespace" "application" {
+  name = "${var.environment}.render-migration.internal"
+  vpc  = aws_vpc.main.id
+}
+
+resource "aws_service_discovery_service" "private" {
+  name = "private"
+
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.application.id
+
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+
+    routing_policy = "MULTIVALUE"
+  }
+
+  health_check_custom_config {
+    failure_threshold = 1
+  }
+}
