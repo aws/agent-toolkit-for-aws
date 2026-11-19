@@ -1,6 +1,6 @@
 ---
 name: claude-to-bedrock
-description: "Use when a person or team wants to move the Claude apps they use, Claude Desktop (Chat, Cowork) and Claude Code, from Anthropic direct to Claude on Amazon Bedrock without losing claude.ai history, for example to pay with Activate credits. Asks first whether this is an individual, an IT admin rolling out with Jamf or Intune, or a user on an IT-managed computer, checks the machine read-only, then walks only that person's steps with copy-paste prompts. Imports claude.ai chats and projects with Claude Desktop's Import from Claude wizard and carries history into Claude Code. Triggers on: switch Claude to Bedrock, Claude Code on Bedrock, CLAUDE_CODE_USE_BEDROCK, keep my claude.ai history, Claude Desktop via Jamf or Intune. Also handles Bedrock model access when the goal is running Claude Desktop or Claude Code. Do not use for: app code that calls the Anthropic SDK, Agent SDK, OpenAI, or Gemini APIs, or model access for app code (llm-to-bedrock), or general Activate questions (knowledge-base-for-startups)."
+description: "Use when a person or team wants to move the Claude apps they use, Claude Desktop (Chat, Cowork) and Claude Code, from Anthropic direct to Claude on Amazon Bedrock without losing claude.ai history, for example to pay with Activate credits. Asks whether this is an individual, an IT admin rolling out with Jamf or Intune, or a user on an IT-managed computer, checks the machine read-only, then walks only that person's steps. Imports claude.ai chats and projects with Claude Desktop's Import from Claude wizard and carries history into Claude Code. Triggers on: switch Claude Code or Claude Desktop to Bedrock, CLAUDE_CODE_USE_BEDROCK, keep my claude.ai history, Claude Desktop via Jamf or Intune. Also handles Bedrock model access for those apps. Not for code that calls the Claude API (Anthropic SDK, Messages API, Agent SDK), OpenAI, or Gemini: rewriting it, or model access for it, is llm-to-bedrock; scanning and pricing it is bedrock-migration-assessment. Activate questions: knowledge-base-for-startups."
 ---
 
 # Claude to Bedrock: move Claude Desktop and Claude Code to Amazon Bedrock without losing history
@@ -17,6 +17,26 @@ doesn't match what the user sees, trust the current Anthropic docs
 https://code.claude.com/docs/en/amazon-bedrock) over this skill and tell the
 user. Tell admins once, at the start, that the MDM scripts are templates to
 review and pilot on a few devices before a broad rollout.
+
+## First: is this the apps, or code that calls the Claude API?
+
+This skill moves the Claude **apps** a person uses (Claude Desktop and Claude
+Code). It never touches application code. Before Phase 0, check which one the
+user means:
+
+- **Code that calls the Claude API** (the `anthropic` or
+  `@anthropic-ai/sdk` package, the Messages API, the Claude Agent SDK, an
+  `ANTHROPIC_API_KEY` read by their app or service): stop and hand off.
+  Rewriting those calls to Bedrock, or enabling model access for them, is
+  `llm-to-bedrock`. Finding and pricing them is `bedrock-migration-assessment`.
+  Don't start this skill's walkthrough.
+- **Ambiguous** ("move Claude to Bedrock", "switch off Anthropic direct", "use
+  Bedrock instead of my Anthropic key"): ask one question: "Do you mean the
+  Claude apps you use (Claude Desktop, Claude Code), or code you've written
+  that calls the Claude API?" Continue here only for the apps. If they want
+  both, do the apps here and point them to `llm-to-bedrock` for the code.
+- The repo that's open isn't a signal on its own: "run Claude Code on
+  Bedrock" is this skill, even inside a repo full of `anthropic` imports.
 
 ## Definitions
 
@@ -35,7 +55,7 @@ review and pilot on a few devices before a broad rollout.
   this one. Skills can be installed one at a time, so check
   `<SKILL_BASE>/../<skill>/SKILL.md` exists before using one, and use this
   skill's own fallback when it doesn't. This skill uses `llm-to-bedrock`
-  (model access) and `prompt-library-for-startups` (quota requests).
+  for model access.
 
 ## Before you start: what changes for the user
 
@@ -450,11 +470,8 @@ setup problem. Size it before rollout.
    This lists the tokens and requests per minute rows. With a `us.` or
    `global.` profile, read the cross-region rows.
 3. **Request more, only with its own yes.** Submitting a request goes to AWS,
-   so the CONFIRM Yes doesn't cover it. If `prompt-library-for-startups` is
-   installed, Load
-   `<SKILL_BASE>/../prompt-library-for-startups/references/prompt-library/bedrock-quota-manager.md`
-   and follow its steps; it finds the right quota code and says when a Support
-   case is needed instead. Otherwise, show the person:
+   so the CONFIRM Yes doesn't cover it. Use the `QuotaCode` from step 2 and
+   show the person:
 
    ```bash
    aws service-quotas request-service-quota-increase --service-code bedrock \
