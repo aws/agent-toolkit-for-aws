@@ -478,7 +478,7 @@
       "why_not_a_default": "Mapping the workspace to 'SageMaker' names a service without describing any of the work."
     },
     "Microsoft.StreamAnalytics/streamingjobs": {
-      "reason": "A Stream Analytics job is a SQL-dialect query over a stream. Managed Flink and Kinesis Data Analytics are the targets, and the query has to be rewritten.",
+      "reason": "A Stream Analytics job is a SQL-dialect query over a stream. Amazon Managed Service for Apache Flink (or Flink Studio) is the target (Kinesis Data Analytics for SQL applications was discontinued 2026-01-27), and the query has to be rewritten.",
       "why_not_a_default": "The rewrite is the entire cost, and it is not estimable from the resource."
     },
     "Microsoft.DevTestLab/labs": {

@@ -2722,7 +2722,7 @@ resource "aws_iam_role_policy" "codepipeline_policy_<app_name>" {
 
 - CodePipeline is an explicit override, not the EB default.
 - Emit one Deploy action per generated EB environment for the app; do not update only the web environment.
-- The CodeStar/CodeConnections GitHub connection still requires one-time authorization in the AWS console.
+- The CodeConnections GitHub connection still requires one-time authorization in the AWS console.
 
 ---
 
