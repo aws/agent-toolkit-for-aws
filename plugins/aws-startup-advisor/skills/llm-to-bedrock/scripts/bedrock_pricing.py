@@ -312,6 +312,15 @@ def lookup(region: str, model_id: str) -> dict:
                 "Source-provider prices require separate verification."
             )
         return fb
+    if "claude-opus-5" in model_id:
+        # Opus 5.5 ids were handled above. What is left is Opus 5 (or a later 5.x) with no
+        # static row. Fail closed here, like the GPT case below, instead of calling the live
+        # lookup: it needs boto3 and the network, and it must never fall back to Opus 5.5's rate.
+        return unavailable(
+            f"no verified rate for {model_id}. It is not Claude Opus 5.5, and "
+            f"bedrock-pricing.json has no row for it. Read the rate from "
+            f"aws.amazon.com/bedrock/pricing and add it to skills/shared/ai/bedrock-pricing.json. "
+            f"Do not price it from Opus 5.5.")
     if is_mantle_gpt(model_id) or re.match(r"^[^.]+\.openai\.gpt-[56]", model_id):
         # Short-circuit: the PriceList API carries no rows for the proprietary GPT
         # models, so a live lookup would burn a round trip and still return nothing —
