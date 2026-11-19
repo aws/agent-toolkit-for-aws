@@ -44,8 +44,8 @@ def test_codex_is_described_as_the_agent_on_gpt_5_6_not_a_bedrock_model():
 
 
 def test_in_and_us_gov_prefixes_are_scoped_to_the_models_the_registry_gives_them():
-    # openai-on-bedrock.md only describes OpenAI models. Anthropic models have their own `in.`
-    # profiles (Sonnet 5 and Haiku 4.5, #698), which this guide's wording must not claim.
+    # The doc's prefix wording covers OpenAI models only; Claude models carry their own
+    # `in.` profiles (#698), so scope the check to OpenAI entries.
     models = {k: m for k, m in json.loads(REGISTRY.read_text())["models"].items()
               if m.get("provider") == "openai"}
     with_in = {k for k, m in models.items() if "in" in m.get("inference_profiles", {})}
