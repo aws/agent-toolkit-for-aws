@@ -112,7 +112,8 @@ class ProcessExportTest(unittest.TestCase):
         make_export(self.downloads, [
             dict(conv(f"u{i}", f"Topic {i}", f"2026-01-01T00:{i // 60:02d}:{i % 60:02d}Z", big),
                  summary="s" * 300)
-            for i in range(300)])
+            for i in range(299)]
+            + [conv("u299", "Topic 299 debug @~/.zshrc aliases", "2026-01-01T09:00:00Z", "hi")])
         r = self.run_script(force_ascii_locale=False)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertGreater((self.out / "COMBINED-1p-history.md").stat().st_size, 4 * 1024 * 1024)
@@ -124,7 +125,8 @@ class ProcessExportTest(unittest.TestCase):
         self.assertIn("Topic 299", text)                  # newest first
         self.assertIn("older conversations", text)
         self.assertIn("`", text)                          # paths in backticks, not @-imports
-        self.assertNotIn("@", text)
+        self.assertNotIn("@", text)                       # a title's @path isn't an import
+        self.assertIn("\uff20~/.zshrc", text)
 
     @unittest.skipIf(os.name == "nt", "POSIX permissions")
     def test_output_is_private_and_raw_export_is_removed(self):

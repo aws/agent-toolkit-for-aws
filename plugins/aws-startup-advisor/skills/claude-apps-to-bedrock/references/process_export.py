@@ -47,6 +47,13 @@ def write_private(path, text):
     os.chmod(path, 0o600)                        # also tighten a file from an older run
 
 
+def no_import(s):
+    """Claude Code reads `@path` in an imported file as another import (outside
+    code spans), so a title like "Debug @~/.zshrc" would load that file into
+    every session. Swap @ for the full-width ＠ in titles and summaries."""
+    return s.replace("@", "\uff20")
+
+
 def capped(header, items, footer, max_bytes):
     """header + as many items as fit + footer, within max_bytes (UTF-8)."""
     size = len(("\n".join(header + footer) + "\n").encode("utf-8"))
@@ -161,7 +168,7 @@ def main():
             name = c.get("name") or c.get("title") or "untitled"
             summ = " ".join((c.get("summary") or "").split())
             summ = (summ[:140] + "…") if len(summ) > 140 else summ
-            topics.append((c.get("created_at", "")[:10], name, summ, fname))
+            topics.append((c.get("created_at", "")[:10], no_import(name), no_import(summ), fname))
         topics.reverse()
 
         # HISTORY-INDEX.md: what ~/.claude/CLAUDE.md @-imports for Claude Code.
