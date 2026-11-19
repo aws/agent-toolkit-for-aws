@@ -12,7 +12,7 @@ ElastiCache-specific errors that require non-obvious remediation. Generic errors
 
 - Security group does not allow inbound TCP on port 6379 (or 6380 for serverless read port) from the client's security group or IP.
 - The cache endpoint is incorrect or the cache is not in `available` state.
-- The client is outside the VPC (ElastiCache has no public endpoints).
+- The client is outside the VPC and the cache has no public endpoint (only Serverless Valkey 9.0+ caches can have one).
 - Subnet routing issue: the client's subnet cannot reach the cache's subnet.
 
 **Next steps:**

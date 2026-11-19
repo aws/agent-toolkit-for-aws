@@ -90,7 +90,7 @@ The genai sub-skill also owns a `genai` section:
 }
 ```
 
-`mode` is `"1"`, `"2"`, or `"3"` (plain cache, semantic response cache, full vector search). **Important:** Modes 2 (server-side path) and 3 require Valkey 8.2+ on node-based clusters for vector search (FT.CREATE/FT.SEARCH). Serverless does not support vector search. If the user selects mode 2 or 3, verify the engine version supports it before provisioning. `mode_2_path` is `"app-side"` or `"server-side"` (only set when mode is `"2"`). `framework` is the user's chosen framework (`"strands"`, `"mem0"`, `"langchain"`, or `null` for raw client). These are `null` until the user works with genai patterns. Once set, the genai sub-skill skips routing questions on return visits.
+`mode` is `"1"`, `"2"`, or `"3"` (plain cache, semantic response cache, full vector search). **Important:** Modes 2 (server-side path) and 3 require Valkey 8.2+ on node-based clusters for vector search (FT.CREATE/FT.SEARCH). Serverless needs Valkey 9.0+. If the user selects mode 2 or 3, verify the engine version supports it before provisioning. `mode_2_path` is `"app-side"` or `"server-side"` (only set when mode is `"2"`). `framework` is the user's chosen framework (`"strands"`, `"mem0"`, `"langchain"`, or `null` for raw client). These are `null` until the user works with genai patterns. Once set, the genai sub-skill skips routing questions on return visits.
 
 ## Scaffold Missing Files
 
@@ -108,13 +108,14 @@ These files are not part of the main workflow but load on demand when the situat
 - `references/shared-ux/production-readiness.md` -- when the user asks "is my cache ready for production?" or wants a pre-production gate checklist
 - `references/setup/connectivity-diagnostics.md` -- when connection validation fails
 - `references/setup/iac-best-practices.md` -- when the user asks about CloudFormation, Terraform, CDK, IaC deployment issues, stack failures, or deploying multiple caches
-- `references/setup/cluster-topology.md` -- when configuring node-based cluster mode, shard count, replica count, or subnet IP planning
+- `references/setup/cluster-topology.md` -- when configuring node-based cluster mode, shard count, replica count, subnet IP planning, or data tiering node types (r6gd/r7gd/r8gd)
 - `references/setup/service-quotas.md` -- when the user asks about quotas, limits, capacity errors ("maximum number of nodes"), or how to request a limit increase
 - `references/shared-foundation/attribution.md` -- when generating CLI commands, SDK code, or IaC
 - `references/shared-runtime/lambda.md` -- when connecting from Lambda (cold start, IAM auth, lazy init)
 - `references/shared-runtime/ecs.md` -- when connecting from ECS (SIGTERM, task definition, pool drain)
 - `references/shared-runtime/eks.md` -- when connecting from EKS (IRSA, service mesh, SecurityGroupPolicy)
 - `references/shared-runtime/rds-acceleration.md` -- when caching RDS/Aurora queries (thundering herd, invalidation)
+- `references/shared-runtime/dynamodb-caching.md` -- when caching DynamoDB reads/writes via the AWS ElastiCache Integration Client
 - `references/shared-security/encryption-defaults.md` -- when adding encryption to an existing unencrypted cluster
 
 ## Freshness disclaimer

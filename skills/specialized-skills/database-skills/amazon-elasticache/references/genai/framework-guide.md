@@ -22,7 +22,7 @@ Strands does not include a built-in semantic cache. Wrap the agent call with cac
 
 **Package:** `mem0`
 
-Native Valkey vector store provider (`provider: "valkey"`). Handles index creation, embedding storage, and similarity search internally. Requires node-based Valkey 8.2 or later (recommend 9.0).
+Native Valkey vector store provider (`provider: "valkey"`). Handles index creation, embedding storage, and similarity search internally. Requires node-based Valkey 8.2 or above (recommend 9.1) or Serverless Valkey 9.0+.
 
 Key wiring points:
 
@@ -84,7 +84,7 @@ Use `valkeys://` URL scheme for TLS.
 
 ### Semantic Caching (ValkeyStore)
 
-Vector-based semantic caching of LLM responses (requires node-based Valkey 8.2 or later; recommend 9.0).
+Vector-based semantic caching of LLM responses (requires node-based Valkey 8.2 or above (recommend 9.1) or Serverless Valkey 9.0+).
 
 ```python
 from langgraph_checkpoint_aws import ValkeyStore, ValkeyIndexConfig

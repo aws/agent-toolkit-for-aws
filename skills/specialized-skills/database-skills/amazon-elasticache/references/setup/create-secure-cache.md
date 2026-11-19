@@ -21,10 +21,11 @@ Before provisioning, verify:
 
 ## Product Rules (check before proceeding)
 
-- Vector search needed? Force node-based Valkey 8.2 or above (recommend 9.0; not available on data-tiering nodes; t2/t3/t4g instances require increased memory reserve). Note: T2 is transitioning to previous-generation. While still available, prefer T3 or T4g for new clusters.
+- Vector search needed? Use node-based Valkey 8.2 or above (recommend 9.1) or Serverless Valkey 9.0+ (not available on data-tiering nodes; t3/t4g need a larger memory reserve). See [Search features and limits](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/search-features-limits.html).
 - Global Datastore needed? Force node-based
 - Serverless? AUTH tokens not supported. RBAC required. Clients must support cluster mode enabled.
 - Node-based? Must explicitly enable: TLS, at-rest encryption, Multi-AZ, automatic failover, daily backups. At-rest encryption is immutable after creation. TLS can be enabled post-creation via a two-step process (set transit-encryption-mode to `preferred`, then `required`).
+- Durable primary database needed? Force node-based Valkey 9.0+ with durability: `sync` gives zero data loss with single-digit-ms writes; `async` gives microsecond writes with up to 10 seconds of loss on failure. Check the Durability requirements below.
 
 ## Create the Cache
 
@@ -39,6 +40,25 @@ Key differences from node-based:
 - Must set `--cache-usage-limits` for cost controls (DataStorage in GB + ECPUPerSecond)
 - Primary: `aws elasticache create-serverless-cache ...` (or boto3 `create_serverless_cache`, or CloudFormation `AWS::ElastiCache::ServerlessCache`)
 
+#### Public Endpoint (Serverless Valkey 9.0+ only)
+
+A Serverless Valkey 9.0+ cache can use a public endpoint instead of a VPC endpoint, so clients connect over the internet with no tunnel. Every connection uses IAM auth and TLS 1.3. The connection type can't change after creation. Set it with `--connection-type public` (CLI), CloudFormation `ConnectionType: public`, or Terraform `connection_type = "public"` on `aws_elasticache_serverless_cache` (AWS provider 6.73.0 or later).
+
+**MUST confirm first.** Before running `--connection-type public`, confirm the user wants the cache reachable from the internet, and offer a VPC-only cache reached through VPC peering, a VPN, or an SSM tunnel first. A request that already asks for public access and rules out the VPC options counts as confirmed.
+
+The cache needs a user group in which every user uses IAM auth: the system-managed `default.iam-user-group`, or a custom group created before the cache.
+
+```bash
+aws elasticache create-serverless-cache \
+  --serverless-cache-name <name> --engine valkey --major-engine-version 9 \
+  --connection-type public --user-group-id default.iam-user-group \
+  --cache-usage-limits 'DataStorage={Maximum=10,Unit=GB},ECPUPerSecond={Maximum=5000}' \
+  --tags <Global rule 9 tags> \
+  --region <region>
+```
+
+After creating, give the Public Access Notice below. `--network-type` (`ipv4`, `ipv6`, `dual_stack`) applies to both connection types.
+
 ### Node-Based
 
 Key differences from serverless:
@@ -49,11 +69,39 @@ Key differences from serverless:
 - For property names per IaC tool, see `iac-reference.md`
 - Primary: `aws elasticache create-replication-group ...` (Valkey/Redis with replication; or boto3 `create_replication_group`, or CloudFormation `AWS::ElastiCache::ReplicationGroup`). Use `create-cache-cluster` only for Memcached.
 
-### VPC-Only Access Notice (mandatory after every creation)
+#### Durability (Valkey 9.0+, node-based)
+
+Add `--durability sync` or `--durability async` to `create-replication-group`:
+
+```bash
+aws elasticache create-replication-group \
+  --replication-group-id <name> --engine valkey --engine-version 9.1 \
+  --num-node-groups <n> --replicas-per-node-group <n> --cache-node-type <type> \
+  --multi-az-enabled --automatic-failover-enabled --transit-encryption-enabled \
+  --at-rest-encryption-enabled --durability sync \
+  --tags <Global rule 9 tags> \
+  --region <region>
+```
+
+Requirements and limits (check all before recommending durability):
+
+- Cluster Mode Enabled only; Multi-AZ with at least one replica per shard.
+- Node families R6g/R7g/R8g, M6g/M7g/M8g, C7gn/C8gn only (confirm against [Durability limitations](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/Durability.Limitations.html) if a newer family may have launched).
+- Not supported on Serverless, Global Datastore, data tiering, Outposts, or Local Zones.
+- Up to 100 MiBps of write throughput per primary node.
+- Encryption at rest is turned on automatically, and stays on if durability is later disabled.
+- No online migration from self-managed Valkey or Redis OSS into a durable cluster. Migrate first, turn TLS on (`preferred`, then `required`), then turn durability on.
+- With search indexes, writes to indexed keys can be throttled.
+
+Durability can change on an existing cluster without recreating it: `aws elasticache modify-replication-group --replication-group-id <name> --durability {sync|async|disabled}`. The cluster needs in-transit encryption in mode `required` (`preferred` is refused), and the durability change must be the only change in that request. Nodes are replaced, so expect a brief failover per shard; run it in a maintenance window. Confirm with `EffectiveDurability` in `describe-replication-groups` once the status is `available` (a failed change rolls back). See [Changing durability on an existing cluster](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/Durability.ChangingDurability.html). In Terraform, set `durability` on `aws_elasticache_replication_group`.
+
+Monitor `DurabilityLag` (age of the oldest acknowledged write not yet in the Multi-AZ transaction log, milliseconds) and, for `async`, `DurabilityBufferExceededErrorCount` (writes rejected for exceeding the 10-second window).
+
+### VPC-Only Access Notice (mandatory after creating a VPC-only cache)
 
 Always tell the user after creating:
 
-> Your cache is VPC-only. ElastiCache has no public endpoints. If you are on a local machine, you need a tunnel to connect.
+> Your cache is VPC-only. If you are on a local machine, you need a tunnel to connect.
 >
 > 1. **Reuse an existing EC2 instance ($0):**
 >    - Primary: `python3 scripts/find_tunnel_host.py --vpc-id <vpc-id> --region <region>` (locates an SSM-managed instance via boto3)
@@ -69,6 +117,12 @@ Tunnel startup:
 python3 scripts/start_tunnel.py --instance-id <id> --cache-host <endpoint> --region <region>
 python3 scripts/test_connection.py 127.0.0.1 --port 6379 --tunnel-mode --server-name <endpoint>
 ```
+
+### Public Access Notice (mandatory after creating a public cache)
+
+Always tell the user after creating:
+
+> Your cache is reachable from the whole internet. To restrict who can create public caches, use the `elasticache:ConnectionType` condition key on `elasticache:CreateServerlessCache`. Grant `elasticache:Connect` only to the roles that need it, enable CloudTrail API logging, and alarm on failed logins and spikes in new connections.
 
 ## Set Up Authentication
 
@@ -100,7 +154,7 @@ Always disable the default user: `modify-user --user-id default --access-string 
 
 Restore creates a new cache (cannot restore to an existing one). Constraints:
 
-- Backups are cross-compatible between deployment models for Valkey and Redis OSS: node-based snapshots can be restored into serverless caches, and serverless snapshots can be restored into node-based clusters. Memcached serverless snapshots can only be restored into Memcached serverless caches. Serverless restore requires RDB files compatible with Valkey 7.2+ or Redis OSS 5.0+. Data-tiering (r6gd) backups can only restore to r6gd node types.
+- Backups are cross-compatible between deployment models for Valkey and Redis OSS: node-based snapshots can be restored into serverless caches, and serverless snapshots can be restored into node-based clusters. Memcached serverless snapshots can only be restored into Memcached serverless caches. Serverless restore requires RDB files compatible with Valkey 7.2+ or Redis OSS 5.0+. Data-tiering backups (r6gd/r7gd/r8gd) can restore to any r6gd/r7gd/r8gd node type, never into a non-tiered cluster.
 <!-- Source: https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/backups-restoring.html -->
 - CLI commands differ: `create-serverless-cache --snapshot-arns-to-restore` vs `create-replication-group --snapshot-name`
 - Final snapshot on delete: `--final-snapshot-name` (serverless) vs `--final-snapshot-identifier` (node-based). Memcached has no snapshot support; `--final-snapshot-identifier` does not apply to Memcached.

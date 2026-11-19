@@ -2,7 +2,7 @@
 
 Load this reference when the user needs to choose or configure an embedding provider for vector search with ElastiCache (Valkey).
 
-> **Important:** Vector search (FT.CREATE / FT.SEARCH) requires node-based ElastiCache Valkey 8.2 or later (recommend 9.0). It is not available on ElastiCache Serverless. If using serverless, see the application-side comparison approach in `semantic-cache.md`.
+> **Important:** Vector search (FT.CREATE / FT.SEARCH) requires node-based ElastiCache Valkey 8.2 or later (recommend 9.1). On Serverless it needs Valkey 9.0+. Below that, see the application-side comparison approach in `references/genai/semantic-cache.md`.
 
 ## Provider Chain (Decision Order)
 

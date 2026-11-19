@@ -19,12 +19,13 @@ Only proceed to the steps below if you have all required information.
 
 ### 1. Verify Dependencies
 
-Check for required tools and warn the user if any are missing.
+Check for required tools and warn the user if any are missing. Every step runs plain AWS CLI commands. Run them with the AWS CLI, or pass the same command to the `call_aws` tool if the AWS MCP server is available.
 
 **Constraints:**
 
-- You MUST verify the following tools are available in your context:
-  - call_aws
+- You MUST verify that one of the following is available:
+  - the AWS CLI (`aws`) with credentials for the target account
+  - the `call_aws` tool
 - You MUST ONLY check for tool existence and MUST NOT attempt to run the tools because running tools during verification could cause unintended side effects, consume resources unnecessarily, or trigger actions before the user is ready
 - You MUST inform the user about any missing tools with a clear message
 - You MUST ask if the user wants to proceed anyway despite missing tools
@@ -36,7 +37,7 @@ Retrieve the Lambda function configuration to understand current timeout and mem
 
 **Constraints:**
 
-- You MUST only use the `call_aws` tool with the command: `aws lambda get-function-configuration --function-name ${function_name} --region ${region}`
+- You MUST run: `aws lambda get-function-configuration --function-name ${function_name} --region ${region}`
 - You MUST extract and save the following key information:
   - Timeout setting (in seconds)
   - Memory allocation (in MB)
@@ -44,7 +45,7 @@ Retrieve the Lambda function configuration to understand current timeout and mem
   - Last modified date
   - Environment variables
   - VPC configuration (if applicable)
-- You MUST identify if the timeout setting is at the maximum limit (900 seconds for most functions)
+- You MUST identify if the timeout setting is at the maximum limit for the function's capacity provider and invocation type; check the current limits in the [Lambda timeout docs](https://docs.aws.amazon.com/lambda/latest/dg/configuration-timeout.html)
 
 ### 3. Analyze CloudWatch Metrics
 
@@ -53,7 +54,7 @@ Examine Lambda metrics to understand timeout patterns and performance trends.
 **Constraints:**
 
 - You MUST calculate the start time for metrics analysis using the time_window_hours parameter
-- You MUST only use the `call_aws` tool with the command: `aws cloudwatch get-metric-statistics --namespace AWS/Lambda --metric-name Duration --dimensions Name=FunctionName,Value=${function_name} --start-time ${start_time} --end-time ${end_time} --period 3600 --statistics Average Maximum --region ${region}`
+- You MUST run: `aws cloudwatch get-metric-statistics --namespace AWS/Lambda --metric-name Duration --dimensions Name=FunctionName,Value=${function_name} --start-time ${start_time} --end-time ${end_time} --period 3600 --statistics Average Maximum --region ${region}`
 - You MUST retrieve timeout error metrics using: `aws cloudwatch get-metric-statistics --namespace AWS/Lambda --metric-name Errors --dimensions Name=FunctionName,Value=${function_name} --start-time ${start_time} --end-time ${end_time} --period 3600 --statistics Sum --region ${region}`
 - You MUST analyze the relationship between duration trends and timeout occurrences
 - You MUST remember all metric data for correlation analysis
@@ -64,7 +65,7 @@ Verify the log group exists and determine the available time range for analysis.
 
 **Constraints:**
 
-- You MUST use the `call_aws` tool with the command: `aws logs describe-log-groups --log-group-name-prefix /aws/lambda/${function_name} --region ${region}`
+- You MUST run: `aws logs describe-log-groups --log-group-name-prefix /aws/lambda/${function_name} --region ${region}`
 - You MUST check if the log group exists and extract its creation time and retention settings
 - You MUST list available log streams using: `aws logs describe-log-streams --log-group-name /aws/lambda/${function_name} --order-by LastEventTime --descending --max-items 10 --region ${region}`
 - You MUST verify that log streams exist before attempting any log queries
@@ -92,7 +93,7 @@ Search CloudWatch logs for timeout-related errors and performance patterns.
      - For 24 hours: subtract 86400000 milliseconds
      - For 7 days: subtract 604800000 milliseconds
   4. Use these derived timestamps for all CloudWatch Logs Insights queries
-- You MUST use the `call_aws` tool with the command: `aws logs start-query --log-group-name /aws/lambda/${function_name} --start-time ${start_timestamp} --end-time ${end_timestamp} --query-string 'fields @timestamp, @message | filter @message like /(?i)(timeout|task timed out|duration)/ | sort @timestamp desc | limit 50' --region ${region}`
+- You MUST run: `aws logs start-query --log-group-name /aws/lambda/${function_name} --start-time ${start_timestamp} --end-time ${end_timestamp} --query-string 'fields @timestamp, @message | filter @message like /(?i)(timeout|task timed out|duration)/ | sort @timestamp desc | limit 50' --region ${region}`
 - You MUST start a separate query for error patterns: `aws logs start-query --log-group-name /aws/lambda/${function_name} --start-time ${start_timestamp} --end-time ${end_timestamp} --query-string 'fields @timestamp, @message | filter @message like /(?i)(error|exception|fail)/ | sort @timestamp desc | limit 50' --region ${region}`
 - You MUST start a query for performance indicators: `aws logs start-query --log-group-name /aws/lambda/${function_name} --start-time ${start_timestamp} --end-time ${end_timestamp} --query-string 'fields @timestamp, @message | filter @message like /(?i)(start|end|duration|memory)/ | sort @timestamp desc | limit 50' --region ${region}`
 - You MUST start a query for memory usage from REPORT lines: `aws logs start-query --log-group-name /aws/lambda/${function_name} --start-time ${start_timestamp} --end-time ${end_timestamp} --query-string 'filter @type = "REPORT" | stats avg(@maxMemoryUsed) as avgMemory, max(@maxMemoryUsed) as peakMemory by bin(1h)' --region ${region}`
@@ -138,7 +139,7 @@ Identify external dependencies that could cause timeouts.
 
 **Constraints:**
 
-- You MUST use the `call_aws` tool with the command: `aws lambda get-function-configuration --function-name ${function_name} --region ${region}`
+- You MUST run: `aws lambda get-function-configuration --function-name ${function_name} --region ${region}`
 - You MUST check for VPC configuration that might affect network latency
 - You MUST identify any environment variables that point to external services
 - You MUST examine the function's role and permissions to understand what external services it can access
@@ -162,7 +163,7 @@ Examine cold start behavior and its impact on timeouts.
 
 **Constraints:**
 
-- You MUST use the `call_aws` tool with the command: `aws cloudwatch get-metric-statistics --namespace AWS/Lambda --metric-name InitDuration --dimensions Name=FunctionName,Value=${function_name} --start-time ${start_time} --end-time ${end_time} --period 3600 --statistics Average Maximum --region ${region}`
+- You MUST run: `aws cloudwatch get-metric-statistics --namespace AWS/Lambda --metric-name InitDuration --dimensions Name=FunctionName,Value=${function_name} --start-time ${start_time} --end-time ${end_time} --period 3600 --statistics Average Maximum --region ${region}`
 - You MUST correlate cold start patterns with timeout occurrences
 - You MUST check if the function has provisioned concurrency configured
 - You MUST analyze the relationship between function invocations and cold starts

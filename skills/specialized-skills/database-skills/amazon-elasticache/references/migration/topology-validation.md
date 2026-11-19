@@ -40,22 +40,9 @@ aws elasticache describe-cache-subnet-groups \
 * For cross-region moves, use snapshot-based migration: export a snapshot to S3 in the source region, copy the RDB file to an S3 bucket in the target region, then restore from the S3 object in the target region.
 * Global Datastore is available for ongoing cross-region replication but requires node-based clusters (not serverless).
 
-**Online migration (`start-migration`/`test-migration`) prerequisites for the source:**
+The prerequisites below apply to a **node-based** target. For a Serverless target, see "Online Migration to ElastiCache Serverless" in `references/migration/self-managed-migration.md`; the source may keep AUTH and TLS enabled there.
 
-* The source Redis must NOT have AUTH enabled.
-* The source must have `protected-mode` set to `no`.
-* The source must update `bind` to allow inbound connections from ElastiCache nodes.
-* The source must not have any renamed commands (e.g., via `rename-command` in redis.conf). ElastiCache uses standard commands during replication.
-* The source must be listening on the same port as the target ElastiCache cluster (default 6379).
-* The number of logical databases must match between source and target.
-
-**Online migration (`start-migration`/`test-migration`) prerequisites for the target:**
-
-* The target ElastiCache deployment must NOT have encryption in-transit enabled.
-* The target must have Multi-AZ enabled.
-* The target must be running Valkey 7.2+, or Redis OSS 5.0.6 or higher.
-* The target must NOT be part of a Global Datastore.
-* The target must have data tiering disabled.
+**Online migration (`start-migration`/`test-migration`) prerequisites:** see the Approach 2 requirements in `references/migration/self-managed-migration.md`.
 
 **Cross-region snapshot migration** (three-step process):
 

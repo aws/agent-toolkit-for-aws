@@ -55,4 +55,4 @@ Ensure each subnet in the subnet group has enough available IPs for the planned 
 
 ## Data Tiering
 
-Data tiering (SSD-backed memory extension) requires the r6gd instance family and Valkey 7.2+ or Redis OSS 6.2+. Node-based only, not available on serverless.
+Data tiering (SSD-backed memory extension) requires the r6gd, r7gd, or r8gd instance family. r6gd needs Valkey 7.2+ or Redis OSS 6.2+; r7gd and r8gd need Valkey 7.2+ only (no Redis OSS path). Node-based only, not available on serverless. Confirm against [Choosing your node size](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/CacheNodes.SelectSize.html) if a newer family may have launched.

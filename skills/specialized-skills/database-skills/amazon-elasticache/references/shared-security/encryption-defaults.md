@@ -12,7 +12,7 @@ Node-based encryption gotchas and migration paths. Serverless encryption is alwa
 ## Node-Based At-Rest Encryption (KMS)
 
 - Enable via `AtRestEncryptionEnabled: true` at creation time.
-- Cannot be changed after creation. A cluster created without at-rest encryption cannot have it added later.
+- Cannot be changed after creation. A cluster created without at-rest encryption cannot have it added later. The one exception: turning durability on (Valkey 9.0+, node-based) also turns on at-rest encryption.
 - Uses default service-managed encryption at rest. To use a customer-managed KMS key, specify `KmsKeyId` at creation.
 - **Warning**: If you delete or disable the KMS key (or revoke its grants) used to encrypt a cache, the cache becomes **irrecoverable**. AWS KMS deletes root keys only after a waiting period of at least seven days.
 - **Recommendation**: Enable at creation time. Use a customer-managed KMS key if your compliance requirements mandate key control or key rotation policies beyond the service-managed defaults.
@@ -65,7 +65,7 @@ For older engine versions that do not support `modify-replication-group` with tr
 
 ### Adding At-Rest Encryption to an Existing Cluster
 
-At-rest encryption cannot be enabled on an existing cluster. The migration path is:
+At-rest encryption cannot be enabled on an existing cluster directly. If the cluster meets the durability requirements (`references/setup/create-secure-cache.md`), turning durability on also enables it. Otherwise, the migration path is:
 
 1. Create a snapshot of the existing cluster.
 2. Create a new cluster from the snapshot with `AtRestEncryptionEnabled: true`.
