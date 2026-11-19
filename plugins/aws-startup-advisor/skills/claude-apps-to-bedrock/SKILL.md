@@ -64,12 +64,17 @@ user means:
   including Claude (see `knowledge-base-for-startups` for eligibility and
   balances). Mention this once if the person is a startup; don't promise a
   credit amount.
-- **Some claude.ai features aren't available on Bedrock.** Features that need
-  Anthropic-hosted inference don't come across; examples include Claude Design,
-  Computer Use, and the Skills Marketplace in Claude Desktop, and Claude Code's
-  WebSearch tool. This isn't a complete list: check Anthropic's third-party
-  overview (linked above) for the current one, and say so before the switch so
-  nobody is surprised.
+- **A few claude.ai features aren't available, or need setup.** Anthropic's
+  feature page for Claude Desktop on third-party inference
+  (https://claude.com/docs/third-party/claude-desktop/feature-matrix) lists
+  them. Examples: no mobile or claude.ai web access, no sharing between users,
+  and no voice mode. In Chat, memory lives on the device, and chat-history
+  search and nightly memory summaries aren't available. On Bedrock, web search
+  in Claude Desktop needs a search provider configured first (the built-in web
+  search server, under Connectors in the in-app configuration window).
+  Separately, Claude Code's WebSearch tool isn't available on Bedrock. Check
+  that page for the current list, and say so before the switch so nobody is
+  surprised.
 - **History is a one-time copy.** Project knowledge files and chat attachments
   don't come across (see Phase 3A).
 

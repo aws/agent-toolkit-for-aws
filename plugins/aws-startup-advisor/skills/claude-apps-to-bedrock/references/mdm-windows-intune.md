@@ -143,16 +143,22 @@ $awsDir = Join-Path $env:USERPROFILE ".aws"
 New-Item -ItemType Directory -Force -Path $awsDir | Out-Null
 $cfg = Join-Path $awsDir "config"
 if (-not (Test-Path $cfg)) { New-Item -ItemType File -Path $cfg | Out-Null }
+# Each section is added only if its header is missing: a second section with
+# the same name makes the AWS CLI reject the whole file.
 if (-not (Select-String -Path $cfg -Pattern '^\[profile claude-bedrock\]' -Quiet)) {
 @'
 
 [profile claude-bedrock]
-sso_session = corp
+sso_session = claude-bedrock
 sso_account_id = 123456789012
 sso_role_name = BedrockInference
 region = us-east-1
+'@ | Add-Content -Path $cfg
+}
+if (-not (Select-String -Path $cfg -Pattern '^\[sso-session claude-bedrock\]' -Quiet)) {
+@'
 
-[sso-session corp]
+[sso-session claude-bedrock]
 sso_start_url = https://d-xxxxxxxxxx.awsapps.com/start
 sso_region = us-east-1
 sso_registration_scopes = sso:account:access

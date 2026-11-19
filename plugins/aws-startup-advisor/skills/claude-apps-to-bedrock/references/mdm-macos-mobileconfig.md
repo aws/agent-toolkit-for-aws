@@ -167,16 +167,22 @@ the logged-in username as `$3`):
 set -euo pipefail
 U="$3"; H=$(dscl . -read "/Users/$U" NFSHomeDirectory | awk '{print $2}')
 mkdir -p "$H/.aws"; C="$H/.aws/config"; touch "$C"
+# Each section is added only if its header is missing: a second section with
+# the same name makes the AWS CLI reject the whole file.
 if ! grep -q "^\[profile claude-bedrock\]" "$C"; then
   cat >> "$C" <<'CFG'
 
 [profile claude-bedrock]
-sso_session = corp
+sso_session = claude-bedrock
 sso_account_id = 123456789012
 sso_role_name = BedrockInference
 region = us-east-1
+CFG
+fi
+if ! grep -q "^\[sso-session claude-bedrock\]" "$C"; then
+  cat >> "$C" <<'CFG'
 
-[sso-session corp]
+[sso-session claude-bedrock]
 sso_start_url = https://d-xxxxxxxxxx.awsapps.com/start
 sso_region = us-east-1
 sso_registration_scopes = sso:account:access
