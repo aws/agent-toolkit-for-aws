@@ -55,7 +55,7 @@ ROUTING_FIXTURES: list[tuple[str, str]] = [
     ("the agent sits idle waiting on model calls most of the time - stop paying for an always-on fleet", "Runtime"),
     ("this agent's loop is custom code nobody wants to own anymore - move it onto a managed loop and keep our tools and prompts", "Harness"),
     ("we need thirty internal agents for different teams this quarter - pick an approach where each one is a declaration, not a codebase", "Harness"),
-    ("run Claude Code as a hosted service for the team with its own filesystem and shell", "Harness"),
+    ("run Claude Code as a hosted service for the team - it brings its own loop, package it in a container", "Runtime"),
     ("the agent forgets everything between sessions - add memory so it remembers user preferences and facts", "Memory"),
     ("migrate our homegrown memory tables for conversations and preferences to a managed store", "Memory"),
     ("expose our existing REST APIs and Lambda functions as tools the agent can call without rewriting the services", "Gateway"),
