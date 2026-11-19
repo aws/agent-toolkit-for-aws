@@ -105,7 +105,7 @@ def get_connection() -> oracledb.Connection:
                 retry_count=1,
                 retry_delay=1,
             )
-            logger.info(f"Connected to {dsn} (attempt {attempt + 1})")
+            logger.info("Connected to Oracle Database (attempt %d)", attempt + 1)
             return _conn
         except oracledb.DatabaseError as e:
             error = e.args[0]
