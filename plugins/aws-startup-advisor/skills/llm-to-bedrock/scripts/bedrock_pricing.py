@@ -127,6 +127,12 @@ def unavailable(note: str) -> dict:
 # servicename: Claude Opus 5.5 (Amazon Bedrock Edition). Prices are per 1K.
 # Runtime uses Geo/Global profiles, or the bare ID in eu-west-2 (verified 2026-10-03).
 _OPUS55_ID = model_catalog.OPUS_55_ID
+# The version component that marks an Opus 5.5 id in any form (`anthropic.claude-opus-5-5`,
+# `us.anthropic.claude-opus-5-5`, ...). It is deliberately NOT the shorter `claude-opus-5`:
+# Opus 5 (`anthropic.claude-opus-5`) is a different, Active model with its own rates, so it
+# must not be routed to the Opus 5.5 table. A malformed 5.5-like id (`...-opus-5-55`) still
+# contains this marker and therefore still fails closed in `_opus55_pricing`.
+_OPUS55_MARKER = _OPUS55_ID.partition(".")[2]
 # Opus 5.5's inference-profile, Mantle and runtime in-region Regions come from the shared model
 # catalog (references/vendored/ai/models/); only its rates are restated in _opus55_pricing.
 _OPUS55_PROFILE_REGIONS = model_catalog.opus_55_profile_regions()
@@ -187,7 +193,7 @@ def _priced(entry: dict, note: str) -> dict:
 
 def _match_key(model_id: str) -> str | None:
     """The STATIC_FALLBACK key that prices `model_id`, or None."""
-    if "claude-opus-5" in model_id:
+    if _OPUS55_MARKER in model_id:
         return None  # Opus 5.5 requires exact, region-aware pricing.
     if model_id in STATIC_FALLBACK:
         return model_id
@@ -269,7 +275,7 @@ def lookup(region: str, model_id: str) -> dict:
     )
     if profile_arn:
         model_id = profile_arn.group(1)
-    if "claude-opus-5" in model_id:
+    if _OPUS55_MARKER in model_id:
         return _opus55_pricing(region, model_id)
     # Curated static table is the primary source: the Pricing API keys models
     # by display name and frequently lacks entries for new inference profiles.
