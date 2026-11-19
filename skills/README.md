@@ -44,7 +44,7 @@ Core skills cover:
 - Observability (CloudWatch, X-Ray, CloudTrail)
 - Application integration (messaging, streaming)
 - Cost management (Billing and Cost Management)
-- Full-stack applictaion development (AWS Blocks)
+- Full-stack application development (AWS CDK Blocks)
 - Local development and testing against AWS service APIs (AWS Emulator)
 - Generative AI (Bedrock)
 - Databases (service selection and routing)
