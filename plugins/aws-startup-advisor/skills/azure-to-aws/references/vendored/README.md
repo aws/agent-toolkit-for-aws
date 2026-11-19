@@ -28,6 +28,7 @@ if this skill needs one, add the copy **and** a row in the table below.
 | `estimate/estimation-infra.schema.json` | `skills/shared/estimate/estimation-infra.schema.json` |
 | `estimate/pricing-mode.md`              | `skills/shared/estimate/pricing-mode.md`              |
 | `estimate/ri-sp-eligibility.md`         | `skills/shared/estimate/ri-sp-eligibility.md`         |
+| `migration/upfront-credits.md`          | `skills/shared/migration/upfront-credits.md`          |
 | `pricing/aws-infra-pricing.json`        | `skills/shared/pricing/aws-infra-pricing.json`        |
 | `workshop/workshop-invariants.md`       | `skills/shared/workshop/workshop-invariants.md`       |
 | `ai/ai-anthropic-to-bedrock.md`         | `skills/shared/ai/ai-anthropic-to-bedrock.md`         |
