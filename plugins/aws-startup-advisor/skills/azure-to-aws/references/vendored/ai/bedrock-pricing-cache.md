@@ -248,7 +248,7 @@ from the Bedrock pricing page first.
 | Jamba 1.5 Large  | 2.00       | 8.00        |
 | Jamba 1.5 Mini   | 0.20       | 0.40        |
 
-_Jurassic-2 Mid/Ultra and Jamba-Instruct are not offered on Amazon Bedrock and are not priced here; AWS's [AI21 Labs model cards](https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards-ai21-labs.html) list only Jamba 1.5 Large and Mini (verified 2026-11-18). A source workload on either retired model has no Bedrock price: map it to an Active model from the main table._
+_Jurassic-2 Mid/Ultra and Jamba-Instruct are not offered on Amazon Bedrock and are not priced here; AWS's [AI21 Labs model cards](https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards-ai21-labs.html) list only Jamba 1.5 Large and Mini (verified 2026-11-18). A source workload on any of those three models has no Bedrock price: map it to an Active model from the main table._
 
 ### Mistral AI
 
