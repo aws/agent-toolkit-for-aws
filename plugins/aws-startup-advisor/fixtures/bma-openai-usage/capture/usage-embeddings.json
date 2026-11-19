@@ -1,0 +1,15 @@
+[
+ {
+  "object": "bucket",
+  "start_time": 1792540800,
+  "end_time": 1792627200,
+  "results": [
+   {
+    "object": "organization.usage.embeddings.result",
+    "model": "text-embedding-3-small",
+    "input_tokens": 900,
+    "num_model_requests": 3
+   }
+  ]
+ }
+]

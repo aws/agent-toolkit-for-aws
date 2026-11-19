@@ -103,6 +103,10 @@ For each SECONDARY resource:
 2. Apply fast-path (most secondaries have deterministic mappings)
 3. If rubric needed: apply the **BigQuery specialist gate** (Pass 2 step 0) first when `gcp_type` starts with `google_bigquery_`; otherwise apply the same 6-criteria approach as Pass 2
 
+### Finalize `ecs_mode` (every Fargate mapping — fast-path and rubric alike)
+
+After Pass 1, Pass 2, and Step 3 have run for a cluster, and after sizing (`aws_config.cpu` / `memory_mb`) and the Graviton block are set, walk **every** mapping in the cluster with `aws_service: "Fargate"` — `google_cloud_run_service` and `google_cloud_run_v2_service` from the `Always` direct path, Cloud Functions or App Engine routed to Fargate by the rubric, GKE workloads under `kubernetes: "ecs-fargate"` — and apply `design-refs/compute.md` § ECS Fargate Mode to set `aws_config.ecs_mode` (`"express"` | `"standard"`) and `aws_config.ecs_mode_reason`. This step runs regardless of whether `compute.md` was loaded for a rubric decision: a v2-only Cloud Run inventory never enters Pass 2, so this is the only place its mode is decided. No Fargate mapping leaves Design without `ecs_mode`; Estimate and Generate read it, and both treat a design saved without the key (pre-dating this step) as `"standard"`. Deterministic service selection is unchanged — this step sets a field on the mapping, it never changes `aws_service` or `confidence`.
+
 ## Step 3.5: Validate AWS Architecture (using AWS MCP Server)
 
 If `aws_service` is **`Deferred — specialist engagement`**, **do not** validate against concrete AWS analytics SKUs; add a `warnings[]` entry that specialist engagement is required.
@@ -137,6 +141,20 @@ For each mapped AWS service, verify:
 
 ## Step 4: Write Design Output
 
+**Capacity and availability:** You MUST preserve explicit application replica
+requirements separately from database availability. For Fargate, write the
+per-task `cpu` and `memory` and an integer `aws_config.desired_count`. An explicit
+application requirement to run across two AZs needs at least two running tasks,
+not merely two subnets. Do not divide the requested per-task CPU across replicas.
+When count is unknown, label the chosen count as an assumption in `rationale`.
+Estimate and Generate consume this same count.
+
+On a workshop refresh, you MUST update every explanation affected by the edited
+knob, including `rationale`, `rubric_applied`, warnings and recommendation notes.
+For example, changing RDS to `multi_az: false` must remove claims that the selected
+database is Multi-AZ. A database-only edit must not change an explicitly retained
+application replica requirement.
+
 **File 1: `aws-design.json`**
 
 ```json
@@ -159,11 +177,12 @@ For each mapped AWS service, verify:
           "aws_config": {
             "cpu": "0.5",
             "memory": "1024",
+            "desired_count": 1,
             "region": "us-east-1"
           },
           "confidence": "inferred",
           "human_expertise_required": false,
-          "rationale": "Rubric: Compute Engine → Fargate (example — not a Direct Mapping row; Cloud Run/Compute Engine use Pass 2)",
+          "rationale": "Rubric: Compute Engine → Fargate (this Compute Engine example uses Pass 2; Cloud Run follows its Direct Mappings row)",
           "rubric_applied": [
             "Eliminators: PASS",
             "Operational Model: Managed Fargate",
@@ -193,6 +212,7 @@ For each mapped AWS service, verify:
 - Every `google_sql_database_instance` resource has `aws_service` ∈ {`RDS PostgreSQL`, `RDS MySQL`, `Aurora PostgreSQL`, `Aurora MySQL`} with non-empty `rationale` citing Q6 availability value. If `availability` is `single-az` or `multi-az`, `aws_service` MUST be RDS (not Aurora). If `multi-az-ha` or `multi-region`, MUST be Aurora.
 - All `confidence` values are either `"deterministic"` or `"inferred"`
 - All `rationale` fields are non-empty
+- Every `aws_service: "Fargate"` resource has `aws_config.ecs_mode` ∈ {`"express"`, `"standard"`} and a non-empty `aws_config.ecs_mode_reason` (Finalize `ecs_mode` step — both Cloud Run API versions included)
 - Every resource from every evaluated cluster appears in the output
 - No duplicate `gcp_address` values across clusters
 - Output is valid JSON

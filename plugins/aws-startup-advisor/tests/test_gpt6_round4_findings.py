@@ -2,8 +2,9 @@
 GPT-6 recognition, report pricing bugs).
 
 Finding 0 — runtime_openai_cris carve-out gaps:
-  (a) Azure design.md / generate.md _assert blocks must scope the GPT-ban to
-      GPT-5.5/GPT-5.4 and explicitly carve out GPT-5.6/GPT-6 on runtime_openai_cris.
+  (a) Azure design.md / generate.md _assert blocks must scope the GPT-ban to BARE
+      proprietary ids and explicitly carve out GPT-5.6/GPT-6 — and, since the
+      2026-11-06 model-card re-read, GPT-5.5/GPT-5.4 — on runtime_openai_cris.
   (b) GCP generate-ai.md Part 1 must route runtime_openai_cris through
       bedrock-runtime, not the mantle URL/IAM.
   (c) Canonical model-selection guide + vendored guardrails must name the full
@@ -79,22 +80,37 @@ def _norm(text: str) -> str:
 # --- Finding 0.1: Azure design.md / generate.md assert carve-out ---
 
 
-def test_azure_design_assert_scopes_gpt_ban_to_55_54_and_carves_out_cris() -> None:
+def test_azure_design_assert_scopes_gpt_ban_to_bare_ids_and_carves_out_cris() -> None:
+    # GPT-5.5 / GPT-5.4 model cards (read 2026-11-06) list us./global. CRIS ids on
+    # bedrock-runtime, so the ban is on BARE proprietary ids paired with
+    # converse/bedrock-runtime — not on the GPT-5.5/GPT-5.4 models themselves.
     text = _norm(AZURE_DESIGN_MD.read_text(encoding="utf-8"))
-    assert "no proprietary GPT-5.5 or GPT-5.4 model ID is paired" in text, (
-        "design.md _assert must scope the ban to GPT-5.5/GPT-5.4, not blanket 'openai.gpt-*'"
+    assert "no bare proprietary openai.gpt-* model ID (including bare openai.gpt-5.5 or openai.gpt-5.4) is paired" in text, (
+        "design.md _assert must ban bare proprietary ids on converse/bedrock-runtime, "
+        "naming bare openai.gpt-5.5/openai.gpt-5.4 explicitly"
     )
-    assert "runtime_openai_cris on bedrock-runtime — this is not a violation" in text
+    assert "GPT-5.6, GPT-6, GPT-5.5 and GPT-5.4 models MAY use migration_path: runtime_openai_cris on bedrock-runtime — this is not a violation" in text
+    assert "GPT-5.5/GPT-5.4 us./global. profiles" in text
+    assert "no proprietary GPT-5.5 or GPT-5.4 model ID is paired" not in text
     assert "no proprietary openai.gpt-* model ID is paired" not in text
+    assert "records migration_path runtime_openai_cris by default" in text, (
+        "design.md _assert must state the bedrock-runtime default for same-model GPT rows"
+    )
 
 
-def test_azure_generate_assert_scopes_gpt_ban_to_55_54_and_carves_out_cris() -> None:
+def test_azure_generate_assert_scopes_gpt_ban_to_bare_ids_and_carves_out_cris() -> None:
     text = _norm(AZURE_GENERATE_MD.read_text(encoding="utf-8"))
-    assert "no proprietary GPT-5.5 or GPT-5.4 model ID is paired" in text, (
-        "generate.md _assert must scope the ban to GPT-5.5/GPT-5.4, not blanket 'openai.gpt-*'"
+    assert "no bare proprietary openai.gpt-* model ID (including bare openai.gpt-5.5 or openai.gpt-5.4) is paired" in text, (
+        "generate.md _assert must ban bare proprietary ids on converse/bedrock-runtime, "
+        "naming bare openai.gpt-5.5/openai.gpt-5.4 explicitly"
     )
-    assert "runtime_openai_cris on bedrock-runtime — this is not a violation" in text
+    assert "GPT-5.6, GPT-6, GPT-5.5 and GPT-5.4 models MAY use migration_path: runtime_openai_cris on bedrock-runtime — this is not a violation" in text
+    assert "GPT-5.5/GPT-5.4 us./global. profiles" in text
+    assert "no proprietary GPT-5.5 or GPT-5.4 model ID is paired" not in text
     assert "no proprietary openai.gpt-* model ID is paired" not in text
+    assert "records migration_path runtime_openai_cris by default" in text, (
+        "generate.md _assert must state the bedrock-runtime default for same-model GPT rows"
+    )
 
 
 # --- Finding 0.2: GCP generate-ai.md Part 1 routing ---
@@ -111,14 +127,16 @@ def test_gcp_generate_ai_routes_cris_through_bedrock_runtime_not_mantle() -> Non
     assert "not** `bedrock-mantle:*`" in normalized or "not `bedrock-mantle:*`" in normalized.lower()
 
 
-def test_gcp_generate_artifacts_ai_step1m_emits_provider_adapter_stub() -> None:
+def test_gcp_step1m_and_harness_agree_on_adapter_free_paths() -> None:
     text = GCP_GENERATE_ARTIFACTS_AI_MD.read_text(encoding="utf-8")
-    assert "provider_adapter.py" in text and "stub" in text.lower(), (
-        "generate-artifacts-ai.md Step 1M must emit a provider_adapter stub for mantle/CRIS "
-        "paths so Step 2's unconditional `from provider_adapter import get_provider` import "
-        "keeps working"
-    )
-    assert "get_provider" in text
+    step1m = text.split("## Step 1M:", 1)[1].split("## Step 1:", 1)[0]
+    harness = text.split("## Step 2:", 1)[1].split("## Step 3:", 1)[0]
+    assert "do not emit or import a provider-adapter stub" in step1m
+    assert "Mantle / runtime CRIS" in harness
+    assert "do not import `provider_adapter`" in harness
+    assert "from provider_adapter import get_provider" in harness
+    assert "client.responses.create" in harness
+    assert "client.chat.completions.create" in harness
 
 
 # --- Finding 0.3: canonical guide + vendored guardrails name full GPT-6 set ---
@@ -138,7 +156,7 @@ def test_guardrails_canonical_and_vendored_name_gpt6_family() -> None:
 
 def test_openai_guide_canonical_and_vendored_region_gate_names_gpt6() -> None:
     text = OPENAI_GUIDE_CANONICAL.read_text(encoding="utf-8")
-    assert "GPT-6 Astra / Sol / Luna / 6.1 Sol:" in text, (
+    assert "GPT-6 Astra / Sol / Luna / 6.1 Sol / 6.1 Terra:" in text, (
         "ai-openai-to-bedrock.md Region gate section must have a GPT-6 bullet"
     )
     for vendored in OPENAI_GUIDE_VENDORED:
@@ -157,7 +175,8 @@ def test_both_estimators_carve_out_global_cris_parity() -> None:
         assert "model_change: false" in text
         assert "Global CRIS" in text, f"{f}: no Global CRIS carve-out near model_change:false rule"
         assert "parity" in normalized.lower()
-        assert "UNLESS" in text, f"{f}: 10% premium must not be stated as unconditional"
+        assert "computed Part 5 result, not a fixed premium" in text
+        assert "source comparison is unavailable" in text
 
 
 # --- Finding 1 (prose): bare GPT-6 recognized by resolver / agents ---

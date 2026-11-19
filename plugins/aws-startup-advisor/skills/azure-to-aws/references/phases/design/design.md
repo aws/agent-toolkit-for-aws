@@ -20,7 +20,7 @@ _knowledge:
   - { file: references/shared/schema-design-aws-ai.md, _when: "ai-workload-profile.json exists in $MIGRATION_DIR" }
   - { file: references/design-refs/ai.md, _when: "ai-workload-profile.json exists AND (summary.ai_source is 'other' or absent, OR any workloads[] capability is document_extraction, image_analysis, or speech_transcription)" }
   - { file: references/vendored/ai/ai-openai-to-bedrock.md, _when: "ai-workload-profile.json exists AND summary.ai_source is azure_openai, openai, or both" }
-  - { file: references/vendored/ai/ai-anthropic-to-bedrock.md, _when: "ai-workload-profile.json exists AND summary.ai_source is anthropic or both" }
+  - { file: references/vendored/ai/ai-anthropic-to-bedrock.md, _when: "ai-workload-profile.json exists AND (summary.ai_source is anthropic or both OR Claude Haiku 5.5 is a candidate or selected target)" }
   - { file: references/vendored/ai/ai-migration-guardrails.md, _when: "ai-workload-profile.json exists AND agentic_profile.is_agentic is true" }
   - { file: references/vendored/ai/design-ref-agentic-to-agentcore.md, _when: "agentic_profile.is_agentic is true AND ai_constraints.agentic.migration_approach is strands" }
   - { file: references/vendored/ai/design-ref-harness.md, _when: "agentic_profile.is_agentic is true AND ai_constraints.agentic.migration_approach is harness" }
@@ -82,7 +82,7 @@ _postconditions:
     _on_failure: _halt_and_inform
   - _assert: "WHEN aws-design-ai.json exists: every design_blocks[] row has exactly one of target_bedrock_model / target_aws_service non-null (XOR), and every document_extraction/image_analysis/speech_transcription row has target_bedrock_model null, a non-null target_aws_service, and honest_assessment 'not_applicable' — per references/shared/schema-design-aws-ai.md"
     _on_failure: _halt_and_inform
-  - _assert: "WHEN aws-design-ai.json exists AND summary.ai_source is azure_openai or openai: every source model that is available on Bedrock and carried by the target region maps to itself with model_change false — not to a Claude/Nova substitute; and no proprietary GPT-5.5 or GPT-5.4 model ID is paired with a converse/bedrock-runtime migration path (GPT-5.6 and GPT-6 models MAY use migration_path: runtime_openai_cris on bedrock-runtime — this is not a violation)"
+  - _assert: "WHEN aws-design-ai.json exists AND summary.ai_source is azure_openai or openai: every source model that is available on Bedrock and carried by the target region maps to itself with model_change false — not to a Claude/Nova substitute; and no bare proprietary openai.gpt-* model ID (including bare openai.gpt-5.5 or openai.gpt-5.4) is paired with a converse/bedrock-runtime migration path (bare proprietary openai.gpt-* IDs use Mantle only; runtime_openai_cris accepts documented Astra us./global., GPT-5.6/GPT-6 and GPT-5.5/GPT-5.4 us./global. profiles with caller-region checks and the selected API; GPT-5.6, GPT-6, GPT-5.5 and GPT-5.4 models MAY use migration_path: runtime_openai_cris on bedrock-runtime — this is not a violation; a same-model proprietary GPT row records migration_path runtime_openai_cris by default and a mantle_* path only with a recorded mantle_selector)"
     _on_failure: _halt_and_inform
   - _assert: "WHEN aws-design-ai.json exists: regional_warnings[] and multi_model_warnings[] are present (empty is fine); agentic_design is present only when agentic_profile.is_agentic is true; and App Runner appears nowhere"
     _on_failure: _halt_and_inform

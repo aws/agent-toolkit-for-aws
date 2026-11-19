@@ -1,0 +1,59 @@
+{
+  "captured_at": "2026-11-01T00:00:00Z",
+  "window_days": 30,
+  "window_start": 1790899200,
+  "project_filter": [
+    "proj_app"
+  ],
+  "result": "complete",
+  "captures": [
+    {
+      "endpoint": "/v1/organization/costs",
+      "file": "costs.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "endpoint": "/v1/organization/usage/completions",
+      "file": "usage-completions.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "endpoint": "/v1/organization/usage/embeddings",
+      "file": "usage-embeddings.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "endpoint": "/v1/organization/usage/images",
+      "file": "usage-images.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "endpoint": "/v1/organization/usage/audio_speeches",
+      "file": "usage-audio-speeches.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "endpoint": "/v1/organization/usage/audio_transcriptions",
+      "file": "usage-audio-transcriptions.json",
+      "status": "failed",
+      "note": "HTTP 403 Missing scope"
+    },
+    {
+      "endpoint": "/v1/organization/usage/completions",
+      "file": "usage-completions-hourly.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "endpoint": "/v1/organization/usage/completions",
+      "file": "usage-completions-minute.json",
+      "status": "ok",
+      "note": null
+    }
+  ]
+}

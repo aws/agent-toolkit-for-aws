@@ -17,8 +17,10 @@ SDK access, and what to do when the CLI reports the service as unsupported.
 ## Contents
 
 - [Dependency / blast-radius question — facts you MUST surface](#dependency--blast-radius-question--facts-you-must-surface)
+- [Check permissions to access the Context Graph](#check-permissions-to-access-the-context-graph)
 - [What the context graph is](#what-the-context-graph-is)
 - [GetContextGraph API](#getcontextgraph-api)
+- [Choosing the time window](#choosing-the-time-window)
 - [Reading the graph](#reading-the-graph)
 - [Using the graph in an investigation](#using-the-graph-in-an-investigation)
 - [Gotchas](#gotchas)
@@ -37,6 +39,9 @@ even if no matching node exists yet. For a direction or edge-semantics question 
 deliverable IS the explanation below, stated in the answer text, whether or not
 `GetContextGraph` is run:
 
+- **"Not found" is never the whole answer.** If no node matches the named service, say so
+  in one line, then still give the method: the `GetContextGraph` call, its filters, the
+  direction to traverse, and how to read the result.
 - **Edges are directed `from` → `to`, and `from` depends on `to`.** Downstream of X = the
   edges whose `from` is X (X's own `edges[]`); upstream of X = the edges whose `to` is X
   (`edgeFilters.to = <X's nodeId>`, because `node.edges[]` is outbound only).
@@ -44,32 +49,86 @@ deliverable IS the explanation below, stated in the answer text, whether or not
   errors lies among X's dependencies, so walk downstream, one hop at a time. Upstream tells
   you blast radius — who is affected — not cause.
 - **A blast-radius / who-is-affected question is the REVERSE — traverse UPSTREAM**
-  (everything that transitively depends on `<service>`).
+  (everything that transitively depends on `<service>`). Collect every page, then list the
+  callers with their edge evidence. An outage in the question does not call for SQL or
+  metric queries: offer to measure a caller's impact as a next step.
 - **Say what each edge type means and when to follow it:** `CALLS` — `from` invokes `to`,
   a service dependency; follow it when tracing request-path latency or errors downstream.
   `ACCESSES` — `from` reads or writes datastore `to` (database, queue, cache); follow it
   when a service is slow or erroring on I/O. `RUNS_ON` — `from` executes on host or compute
   `to`; follow it when suspecting an infrastructure cause shared by co-located services.
-- **Raise `depth` one hop at a time** rather than asking for `depth: 3` up front, and
-  **query telemetry at each hop before expanding** — the graph localizes, queries confirm.
+- **Fetch the graph over at least the 24 hours ending at the end of the incident** (or
+  ending now). A short window can omit edges that were live the whole time, so never
+  conclude from one that a dependency does not exist. Use the incident window for
+  telemetry queries and for reading one edge's errors — see
+  [Choosing the time window](#choosing-the-time-window).
+- **Answer topology questions from the graph**, without rebuilding it with SQL. Query
+  telemetry only to confirm a dependency you name as the cause, or an edge whose
+  `lastObservedAt` looks stale.
+- **Check an edge's `operations[]` before calling it a dependency.** Fault-injection,
+  chaos, health-check, or load-test calls (for example `POST /<resource>/_fault`) are test
+  tooling, not user traffic.
+- **Raise `depth` one hop at a time** rather than asking for `depth: 3` up front. For a
+  root-cause question, query telemetry at the suspected hop before expanding.
 - **Compare each edge's `lastObservedAt` with the incident window.** An edge is returned if
-  it was observed anywhere in the query window; one last seen well before the incident is
-  history, not a live call path.
+  it was observed anywhere in the query window; one last seen well before the incident may
+  be history. `lastObservedAt` can lag real calls by tens of minutes, so confirm with the
+  caller's spans before calling an edge stale.
+- **Build `startTime` / `endTime` in UTC**, taking the date from the UTC instant. If the
+  user gave no date, state the one you assumed.
 - **A `to` nodeId that is not on the current page is not a missing node.** Pagination is by
   node and edges are nested under their `from` node, so collect every page (and check
   `depth`) before treating a dangling `to` as absent.
 - **An edge with no error fields is unreported, not proven healthy.** Only conclude
   "healthy" from telemetry, never from a missing `errorCode` / `httpStatusCode`.
-- **Confirm the candidate path with traces** — parent-to-child spans mirror `CALLS` edges,
-  so query for slow or erroring spans along exactly that path to establish which hop
-  originates the latency or error.
+- **Confirm the candidate path with metrics and traces** — read the suspected hop's RED
+  metrics (error rate, p99 latency, throughput) in PromQL, and, because parent-to-child
+  spans mirror `CALLS` edges, query for slow or erroring spans along exactly that path to
+  establish which hop originates the latency or error. A root-cause answer ends by naming
+  one service, with the chain and that evidence.
 - **Use `GetContextGraph`, never X-Ray `GetServiceGraph`.** The Omni topology operation is
-  `GetContextGraph`; if the CLI/SDK errors with an unknown `cloudwatch-omni` service, that
-  is a client-version issue (upgrade botocore/AWS CLI), not a reason to switch products.
+  `GetContextGraph`; if a too-old **AWS CLI** rejects the `cloudwatchomni` command (invalid
+  choice), or **boto3/botocore** raises `UnknownServiceError` for the `cloudwatch-omni`
+  service, that is a client-version issue (upgrade botocore/AWS CLI), not a reason to
+  switch products.
 
 The detailed traversal procedure, direction definitions, and symptom-vs-cause ranking are
 in [Reading the graph](#reading-the-graph) and
 [Using the graph in an investigation](#using-the-graph-in-an-investigation) below.
+
+---
+
+## Check permissions to access the Context Graph
+
+Before you can read the graph, the caller must be able to reach `GetContextGraph` and be
+authorized for it. Three distinct failures refuse the call, they look alike, and each has a
+different fix — read the error, not the symptom. This is the one place these are stated; the
+[GetContextGraph API](#getcontextgraph-api) Errors list and the [Gotchas](#gotchas) point
+back here.
+
+- **403 `AccessDeniedException` — an authorization result.** The operation is reachable,
+  but the caller is not allowed: the access grant or IAM policy is missing
+  `cloudwatch:GetContextGraph`, or — when the Space has a customer-managed KMS key
+  configured — the caller was denied `kms:Decrypt` / `kms:GenerateDataKey` on that key, or
+  the key policy does not allow the encryption context. A key that is merely *disabled* is
+  **not** this cause. Fix the grant, the IAM action, or the key policy; changing the request
+  does not help.
+- **404 `UnknownOperationException` — a reachability gate.** The operation is not available
+  to this account, so the server rejects it as if it did not exist. `GetContextGraph` is a
+  public operation, so a server-side 404 is about this account's access to the service, not a
+  malformed request. Do **not** retry or reshape the call; verify the account's current access
+  to CloudWatch Omni instead of assuming a fixed launch state.
+- **A local "unknown service" / invalid-choice error — neither of the above.** The client
+  does not carry the operation: a too-old **AWS CLI** rejects the `cloudwatchomni` command
+  (invalid choice), or **boto3/botocore** raises `UnknownServiceError` for the
+  `cloudwatch-omni` service. This happens **locally**, before any request is sent, so it is
+  neither an authorization result nor a reachability gate. Upgrade the AWS CLI / botocore,
+  and never substitute X-Ray `GetServiceGraph`.
+
+The one-line reading: a **404 is a reachability gate** (the operation is not available to
+this account), a **403 is an authorization result** (it is available, you are not allowed),
+and a local error never reached the service at all. Do not report a 404 as a permissions
+problem.
 
 ---
 
@@ -280,9 +339,13 @@ graph element to the exact telemetry behind it:
 ### Errors
 
 `ValidationException` (bad range, `endTime` before `startTime`, out-of-range
-`depth`/`maxResults`), `AccessDeniedException` (missing `cloudwatch:GetContextGraph`,
-or the account is not enabled for Omni Intelligence), `ThrottlingException`
-(retryable), `InternalServerException`.
+`depth`/`maxResults`), `ThrottlingException` (retryable), `InternalServerException`.
+
+The three ways the call is *refused* — a 403 `AccessDeniedException` (an authorization
+result, including the customer-KMS case), a 404 `UnknownOperationException` (the service is
+not allowlisted for the account), and a local too-old-client error — are covered once, with
+their fixes, in [Check permissions to access the Context Graph](#check-permissions-to-access-the-context-graph);
+see that section rather than restating them here.
 
 ### CLI form
 
@@ -291,31 +354,31 @@ operation is modeled as paginated, the CLI **auto-paginates** by default — pas
 `--no-paginate` to get exactly one page, and `--max-items` to cap the total.
 
 ```bash
-# A service and its direct dependencies over the incident hour
+# A service and its direct dependencies over the 24 hours ending at the incident
 aws___call_aws → aws cloudwatchomni get-context-graph \
   --region us-east-1 \
-  --start-time 2026-09-16T00:00:00Z --end-time 2026-09-16T01:00:00Z \
+  --start-time 2026-09-15T00:45:00Z --end-time 2026-09-16T00:45:00Z \
   --node-filters '{"nodeType":"SERVICE","name":"checkout-service"}' \
   --depth 1 --max-results 200 --max-edges-per-node 50
 
 # Everything in one logical grouping, two hops out, with metadata for pivoting
 aws___call_aws → aws cloudwatchomni get-context-graph \
   --region us-east-1 \
-  --start-time 2026-09-16T00:00:00Z --end-time 2026-09-16T01:00:00Z \
+  --start-time 2026-09-15T00:45:00Z --end-time 2026-09-16T00:45:00Z \
   --node-filters '{"namespace":["ecommerce"]}' \
   --depth 2 --include-metadata
 
 # Who calls payments-service? (edges pointing INTO a node)
 aws___call_aws → aws cloudwatchomni get-context-graph \
   --region us-east-1 \
-  --start-time 2026-09-16T00:00:00Z --end-time 2026-09-16T01:00:00Z \
+  --start-time 2026-09-15T00:45:00Z --end-time 2026-09-16T00:45:00Z \
   --edge-filters '{"to":"svc:payments-service","edgeType":"CALLS"}' \
   --max-results 1000
 
 # Only nodes that talk to a datastore, failing or not
 aws___call_aws → aws cloudwatchomni get-context-graph \
   --region us-east-1 \
-  --start-time 2026-09-16T00:00:00Z --end-time 2026-09-16T01:00:00Z \
+  --start-time 2026-09-15T00:45:00Z --end-time 2026-09-16T00:45:00Z \
   --node-filters '{"nodeType":"SERVICE"}' \
   --edge-filters '{"edgeType":"ACCESSES"}' --depth 1
 ```
@@ -333,7 +396,7 @@ example):
       "nodeProperties": { "region": "us-east-1", "cloudProvider": "aws",
                           "sourceAccountId": "123456789012", "namespace": "ecommerce" },
       "signalTypes": ["TRACES"], "sources": ["TELEMETRY"],
-      "firstObservedAt": "2026-09-16T00:03:00Z", "lastObservedAt": "2026-09-16T00:58:00Z",
+      "firstObservedAt": "2026-09-15T01:03:00Z", "lastObservedAt": "2026-09-16T00:41:00Z",
       "edges": [
         { "edgeId": "edge:checkout-service->payments-service",
           "from": "svc:checkout-service", "to": "svc:payments-service",
@@ -345,9 +408,22 @@ example):
       "nodeProperties": { "region": "us-east-1", "cloudProvider": "aws",
                           "sourceAccountId": "123456789012", "namespace": "ecommerce" } }
   ],
-  "nextToken": "<pagination-token>"
+  "nextToken": "<token-from-previous-page>"
 }
 ```
+
+---
+
+## Choosing the time window
+
+| Call | Window |
+|---|---|
+| `GetContextGraph` for dependencies, callers, blast radius | At least the 24 hours ending at the end of the incident (7 days for rarely used paths). A short window can omit edges that were live the whole time |
+| `GetContextGraph` to read one edge's errors during the incident | The incident window. An edge absent from it is not evidence the call stopped |
+| SQL / PromQL telemetry at a suspected hop | The incident window, plus modest slack |
+
+For an incident at `2026-09-16T00:30:00Z`: graph `--start-time 2026-09-15T00:45:00Z
+--end-time 2026-09-16T00:45:00Z`, spans 00:15–00:45.
 
 ---
 
@@ -397,14 +473,15 @@ hypothesis — not the first degraded node you saw — and state the traversal p
 
 ### Hop-by-hop traversal
 
-1. **Locate the alarming node** — the service named by the alert, the Omni
-   Intelligence insight shown in the console, or the user's symptom. Fetch it with
-   `nodeFilters.name` (or `nodeId`), `depth: 1`, and a **narrow** window around the
-   incident.
+1. **Locate the alarming node** — the service named by the alert, or the user's
+   symptom. Fetch it with
+   `nodeFilters.name` (or `nodeId`), `depth: 1`, and a 24-hour window (see
+   [Choosing the time window](#choosing-the-time-window)).
 2. **Read the edges.** Any `edgeProperties.errorCode` or a non-2xx
-   `httpStatusCode` on a `CALLS`/`ACCESSES` edge is a live failing dependency —
-   follow it first. Edges with no error fields are not proven healthy; they are
-   unreported.
+   `httpStatusCode` on a `CALLS`/`ACCESSES` edge is a failure observed within the
+   window — compare its `lastObservedAt` with the incident before treating it as
+   live, then follow it first. Edges with no error fields are not proven healthy;
+   they are unreported.
 3. **Walk outward along `CALLS` / `ACCESSES`** — not just immediate neighbors. At
    each hop, query telemetry for correlated errors or latency at that node **before**
    expanding further (see the next section for how).
@@ -419,19 +496,17 @@ hypothesis — not the first degraded node you saw — and state the traversal p
 
 ## Using the graph in an investigation
 
-The graph localizes; queries confirm. Alternate between them, spending the cheap
-call (graph) before the expensive one (telemetry scan).
+The graph maps the candidates; queries confirm the cause. A pure topology question is
+answered from the graph alone. For a root-cause question, alternate between them,
+spending the cheap call (graph) before the expensive one (telemetry scan).
 
 1. **Start from the symptom.** An alert firing ([alerts.md](alerts.md)) names a
-   query and a Space; a CloudWatch Omni Intelligence insight or anomaly in the console
-   names the affected service(s), severity, and time; a user names a service. Any of
-   these gives you a service name, a Region, and a time window. Listing insights and
-   anomalies is not part of the public API today — read them in the console, then
-   carry the affected service names into the graph call.
+   query and a Space; a user names a service. Either gives you a service name, a Region, and
+   a time window. Then carry the affected nodes into the graph call.
 
 2. **Fetch the neighborhood.** `get-context-graph` with `nodeFilters.name`,
-   `depth: 1`, `includeMetadata: true`, and a window of roughly the incident ± 15
-   minutes. Take `nodeProperties.region` and `nodeProperties.sourceAccountId` from
+   `depth: 1`, `includeMetadata: true`, and a 24-hour window ending at the end of the
+   incident. Take `nodeProperties.region` and `nodeProperties.sourceAccountId` from
    the returned node for every subsequent call — **do not guess them** from the
    credentials you hold.
 
@@ -465,7 +540,17 @@ call (graph) before the expensive one (telemetry scan).
    - **Metrics (PromQL)** — `metadata.metrics[]` gives the metric `name`, its
      `preferredStat`, and the raw `attributes` (`service.name`, `service.namespace`,
      `cloud.region`, ...) to use as label matchers. Write the query per
-     [query/promql-metrics.md](query/promql-metrics.md).
+     [../cloudwatch/promql.md](../cloudwatch/promql.md). For example, the suspected
+     node's RED signals from the span-derived metrics, calls by status and p99 latency. The
+     queries below read CloudWatch's span metrics (delta); for a collector's
+     `spanmetricsconnector` series swap the scope and use `rate()` (they are cumulative, and
+     their `"status.code"` values are `STATUS_CODE_ERROR` / `STATUS_CODE_UNSET`):
+
+     ```promql
+     sum by ("status.code") (sum_over_time({__name__="traces.span.metrics.calls", "@instrumentation.@name"="cloudwatch.aws/xray/span-metrics", "@resource.service.name"="<service-name>"}[5m]))
+     histogram_quantile(0.99, sum(sum_over_time({__name__="traces.span.metrics.duration", "@instrumentation.@name"="cloudwatch.aws/xray/span-metrics", "@resource.service.name"="<service-name>"}[5m])))
+     ```
+
    - An edge's `operations[]` (e.g. `"POST /charges"`) is the operation name to
      filter spans or metrics on when you want just that call path.
 
@@ -494,9 +579,14 @@ call (graph) before the expensive one (telemetry scan).
   nothing is instrumented, or telemetry is not reaching this Space yet (see the
   setup order in [concepts.md](concepts.md) — instrumentation started before a
   Space exists delivers nowhere you can see).
-- **`AccessDeniedException` on an otherwise-correct call** means either the
-  principal lacks `cloudwatch:GetContextGraph` or the account is not enabled for
-  Omni Intelligence. Neither is fixed by changing the request.
+- **Access refused? Read the error, not the symptom.** A 403 `AccessDeniedException` (an
+  authorization result, including the customer-KMS case), a 404 `UnknownOperationException`
+  (the operation is not available to this account), and a local "unknown
+  service" / invalid-choice error (a too-old client, failing locally before any request is
+  sent — see also [programmatic-access.md](programmatic-access.md)) are three distinct
+  failures with three distinct fixes, covered in
+  [Check permissions to access the Context Graph](#check-permissions-to-access-the-context-graph).
+  Never fall back to X-Ray `GetServiceGraph`.
 - **Edges can point at nodes that are not on this page.** Edges are nested under
   their `from` node and pagination is by node, so a `to` may reference a `nodeId`
   you have not received yet — or one past your `depth`. Collect every page (or let
@@ -507,9 +597,8 @@ call (graph) before the expensive one (telemetry scan).
   `edgeFilters.from`/`to`.
 - **Stale edges.** An edge is returned if it was observed anywhere in your window.
   Compare its `lastObservedAt` with the incident: an edge last seen well before the
-  incident is history, not a live call path — and a `CALLS` edge that stops
-  appearing mid-window can itself be the signal (the caller stopped reaching the
-  dependency).
+  incident may be history. Neither an old `lastObservedAt` nor an edge missing from a short
+  window proves the calls stopped: confirm with the caller's spans first.
 - **Absent is not negative.** `errorCode` absent means the source did not report
   one, not that the call succeeded. `blocked` absent means the edge did not come
   from network-flow data, not that traffic was allowed. `category` is absent on most

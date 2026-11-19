@@ -37,6 +37,7 @@ Check `$MIGRATION_DIR/` for existing state:
     - A field holding a value with **no** `sources` entry and no `chosen_by` has no provenance. Do not guess — stop, report which field, and offer option 2 (start fresh). This is the state the Validation Checklist would have rejected anyway; failing here names the field.
   - **Present and empty**: the Decision gate's "Confirm execution choices" already ran and rewrote those `sources` entries to `"user"`. Accept as-is — do not re-list the IDs.
   - **Present and non-empty**: accept as-is.
+  - **Legacy partial Dockerfile status.** When `operational.containerization_status` is `"partial"` and `operational.dockerfile_apps` is absent (written before the field existed), ask only the Q12b follow-up (the "Which apps already have a Dockerfile?" prompt below), offering the inventory `container`-stack apps as the pre-filled answer. Store the confirmed list as `operational.dockerfile_apps` with the follow-up's validation, and leave every other answer untouched. If the user declines to answer, write the `container`-stack apps only (the Generate fallback) and say so.
   This normalization rebuilds a missing index over existing answers; it writes nothing to `questions_asked` or `questions_defaulted`, and the only values it writes are the documented default and `"default"` provenance for a question that never fired.
 - If 2: Delete `preferences.json`, continue to Step 1.
 
@@ -109,13 +110,16 @@ Compute `fast_path_question_count` from this table against the inventory and use
 
 - `migration_approach`: `full_cutover`
 - `migration_method`: `pg_dump_restore`
+- `database_sizing_basis`: `plan` (only when Q6d would have fired; write `rightsizing_candidates_shown[]` too and record `Q6d` in `metadata.questions_defaulted` — the measured basis is never applied without the user seeing the list)
 - `containerization_status`: `buildpack_only`
+- `containerization_method`: `cnb_heroku_builder`
 - `database_ha`: matches Q3 availability
 - `redis_ha`: `true` (unless § Extraction Rules read a `mini`/hobby Redis tier — then the proposed `false` is the applied default, still recorded under `Q7` in `metadata.questions_defaulted`)
 - `dns_strategy`: `route53`
 - `log_retention_days`: `30`
 - `cost_optimization`: `balanced`
 - `container_registry`: `ecr`
+- `dx_priority`: `important`
 
 Users are told in one sentence, **without** the list — the defaults are shown next to the estimate, where a correction can be judged against the dollars it moves:
 
@@ -140,22 +144,27 @@ Before generating questions, scan the inventory to determine which questions app
 | Q3 — Availability posture            | Always                                                           | Never                                     |
 | Q4 — Maintenance window              | **Deferred to Generate** — defaulted here, asked at [C] Generate | Never asked in Clarify                    |
 | Q5 — Environment naming              | Always                                                           | Never                                     |
+| Q5c — Developer workflow priority    | Always                                                           | Never                                     |
 | Q6 — Database HA                     | Postgres add-on present                                          | No Postgres in inventory                  |
 | Q6b — Migration approach             | Postgres add-on present                                          | No Postgres in inventory                  |
 | Q6c — DB migration method            | **Deferred to Generate** — defaulted here when Postgres present, asked at [C] Generate | No Postgres, or never asked in Clarify |
 | Q7 — Redis HA                        | Redis add-on present                                             | No Redis in inventory                     |
+| Q6d — Database sizing basis          | Any Postgres add-on is a right-sizing candidate (§ Q6d Right-sizing rule: `data_size_gb > 0`, at or below 25% of the plan's Storage in the pricing cache, AND a smaller same-family plan fits 2× the data) | No measured sizes (`data_size_gb` absent or `≤ 0`), or no database has a smaller fitting plan |
 | Q8 — Kafka retention                 | Kafka add-on present                                             | No Kafka in inventory                     |
 | Q9 — VPC subnet IDs                  | Private Space with peering detected BUT subnet IDs not available | No Private Space or subnets already known |
 | Q9b — VPC ID                         | Peering detected but VPC ID not found in Terraform               | VPC ID already available or no peering    |
 | Q10 — DNS strategy                   | Always                                                           | Never                                     |
 | Q11 — Fir intent                     | At least one app has `heroku_generation == "fir"`                | No Fir-generation apps                    |
 | Q12b — Containerization status       | Always                                                           | Never                                     |
+| Q12f — Containerization method       | Q12b answer is `buildpack_only` or `partial`                     | Every app already has a Dockerfile        |
 | Q12c — Compute target recommendation | Always                                                           | Never                                     |
 | Q12d — EB deploy method              | **Deferred to Generate** — defaulted here when the Q12c plan includes EB, asked at [C] Generate | All-Fargate/EKS plan, or never asked in Clarify |
+| Q12e — Release strategy              | Q12c plan routes a `web` formation to Fargate AND `dns_strategy` is `external` AND no Private Space | No Fargate web formation, or `dns_strategy` is `route53`, or a Private Space is detected (standard ECS forced) |
 | Q12 — Container registry             | Always                                                           | Never                                     |
 | Q13 — Log retention                  | Always                                                           | Never                                     |
 | Q14 — Alerting preference            | Always                                                           | Never                                     |
 | Q15 — Cost optimization              | Always                                                           | Never                                     |
+| Q16 — Heroku contract                | `billing_profile` absent, `null`, or `available != true` (no invoice) | `billing_profile.available == true`, or user says "none" |
 
 ### Extraction Rules (answer from the inventory before asking)
 
@@ -222,15 +231,15 @@ After determining active questions, organize them into **three progressive batch
 
 | Batch | Name                      | Questions              | Content                                                                                                                                               |
 | ----- | ------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1** | Global / Strategic        | Q1–Q3, Q5, Q12c        | Region, compliance, availability, environment naming, compute target recommendation                                                                   |
-| **2** | Data / Network            | Q6, Q6b, Q7–Q10        | Database HA, migration approach, Redis HA, Kafka retention, VPC subnets, DNS strategy                                                                 |
+| **1** | Global / Strategic        | Q1–Q3, Q5, Q5c, Q12c   | Region, compliance, availability, environment naming, developer workflow priority, compute target recommendation (Q5c before Q12c — Q12c reads it)   |
+| **2** | Data / Network            | Q6, Q6b, Q6d, Q7–Q10   | Database HA, migration approach, database sizing basis (only when a right-sizing candidate exists), Redis HA, Kafka retention, VPC subnets, DNS strategy |
 
 **Not in any batch — Generate-time questions:** Q4 (maintenance window), Q6c (DB migration method), Q12d (EB deploy method). Nothing before Generate reads their fields; asking them in Clarify makes a user who stops at the decision answer questions they will never use. Clarify writes their documented defaults and lists them in `metadata.questions_deferred_to_generate`; `estimate-assemble.md` § Confirm execution choices asks them when the user chooses **[C] Generate**.
-| **3** | Operational / Conditional | Q11, Q12b, Q12–Q15     | Fir intent, containerization status, container registry, log retention, alerting, cost optimization                                                   |
+| **3** | Operational / Conditional | Q11, Q12b, Q12f, Q12–Q16 | Fir intent, containerization status, container registry, log retention, alerting, cost optimization                                                   |
 
 **Batch 2 is active** if ANY of: Postgres present, Redis present, Kafka present, Private Space detected, or DNS question is needed (always true → Batch 2 always fires with at least Q10).
 
-**Batch 3 is always active** (Q12–Q15 always fire; Q11 fires only if Fir detected).
+**Batch 3 is always active** (Q12–Q15 always fire; Q11 fires only if Fir detected; Q16 fires whenever `billing_profile` is absent, `null`, or has `available != true` — Discover omits the section entirely when no billing file was supplied, and that is the common no-invoice case; see Conditional Question Rules).
 
 Record the ordered list of active batches and count questions per batch after filtering. **Exclude questions resolved on the Assumption Sheet** (extracted, defaulted-and-confirmed, or corrected) — batches contain only the questions the user must actually answer.
 
@@ -257,7 +266,7 @@ Let's start with your strategic requirements.
 
 --- Global / Strategic ---
 
-[Present active questions Q1–Q3, Q5, Q12c — never Q4]
+[Present active questions Q1–Q3, Q5, Q5c, Q12c in that order — never Q4. Six when nothing was resolved on the sheet; Q5c precedes Q12c because Q12c's presentation reads its answer]
 ```
 
 **Batch 2 — Data / Network (if active):**
@@ -270,7 +279,7 @@ You can answer each, skip individual ones, or say "use defaults for the rest."
 
 --- Data / Network ---
 
-[Present active questions Q6, Q6b, Q7–Q10 — never Q6c]
+[Present active questions Q6, Q6b, Q6d, Q7–Q10 — Q6d only when it fired, with its candidate table; never Q6c]
 ```
 
 **Batch 3 — Operational / Conditional:**
@@ -283,7 +292,7 @@ You can answer each, skip individual ones, or say "use defaults for the rest."
 
 --- Operational / Conditional ---
 
-[Present active questions Q11–Q15]
+[Present active questions Q11–Q16 — Q16 only when it is active; it may be answered "none"]
 ```
 
 #### 3b. Wait for Response
@@ -449,6 +458,35 @@ Re-prompt Q9b until valid input is provided.
 
 ---
 
+#### Q5c — Developer Workflow Priority
+
+> Heroku gives your developers a particular workflow: push to deploy, pipelines with a
+> promote button, review apps per pull request, `heroku run`, `heroku logs --tail`,
+> config vars in one place. AWS does not ship that workflow out of the box; parts of it
+> are generated by this migration, parts have a different command, and parts have to be
+> built or bought. How important is keeping that workflow?
+>
+> 1. Critical — developers expect push-to-deploy, promote and review apps to keep working from day one
+> 2. Important — new commands are fine as long as build, deploy and logs stay simple (recommended default)
+> 3. Not a factor — the platform team will own whatever the deploy path becomes
+
+**Interpret:**
+
+- 1 → `dx_priority: "critical"`
+- 2 → `dx_priority: "important"`
+- 3 → `dx_priority: "not_a_factor"`
+
+**Default:** 2 → `dx_priority: "important"`
+
+**Design and report impact:** Q12c reads this answer when it recommends a compute
+target for a large estate, and the report's `developer-workflow` section states the
+answer, lists each Heroku workflow primitive with its AWS status, and — for `critical`
+— presents the build-vs-buy choice for the remaining layer. The answer never changes
+what the generated Terraform contains; it changes what the report says must still be
+built.
+
+---
+
 #### Q12c — Compute Target Recommendation
 
 > _Fires always. This question recommends a compute target per dyno formation, then asks whether to accept or override that recommendation._
@@ -463,7 +501,36 @@ Re-prompt Q9b until valid input is provided.
    - non-web `quantity == 1` → "SingleInstance WebServer environment preserves the persistent worker process model"
    - lower dyno tiers (`eco`, `basic`, `standard-*`) → "lower operational burden than direct container orchestration"
    - `operational.containerization_status == "containerized"` when already known → "Fargate activation cost is lower if direct container control is preferred"
+4a. **Scale check.** Count the non-release formation rows. If the count is **more than
+   40**, replace the EB default from step 4 with `ecs-fargate` for every row that is not
+   already `system_forced`, with `chosen_by: "system_recommended"` and the reason:
+   "{N} process types: one Elastic Beanstalk environment per process type would mean
+   {N} environments to deploy, patch and monitor separately; shared ECS clusters keep
+   that to a handful of clusters with one service per process type." Set
+   `recommendation.value: "ecs-fargate"`, `confidence: "high"`, and add
+   `recommendation.scale_note: "{N} formations"`. The user can still pick option 2 to
+   force EB. At or below the threshold, step 4 stands: EB's managed-environment model is
+   the better fit for a small estate. The boundary is exact: 40 non-release formations
+   keep the EB default; 41 flip it to Fargate.
+
+   The flipped plan is the **computed plan** that option 1 and the default path write
+   (see **Interpret** below): `compute_target.default` becomes `"ecs-fargate"`, not
+   `"elastic_beanstalk"` with a `recommendation.value` that Design never reads
+   (`design-mapping.md` resolves each formation from `default` + `overrides[]` only).
+   Rows that step 3 already marked `system_forced` (scaled non-web workers) need no
+   `overrides[]` entry when the default is Fargate — they resolve to Fargate through the
+   default; keep their reason text in `recommendation.reasons`. Only when the user picks
+   option 2 (EB override) are they written back as `system_forced` Fargate overrides,
+   because the default is EB again and they must not downgrade.
+
+   The threshold is about operability, not cost: the Estimate prices either shape, but a
+   large EB-per-formation estate is a worse day-to-day experience than Heroku, which is
+   exactly the objection a DX-sensitive customer raises. When `global.dx_priority` is
+   `critical`, append one sentence to the presentation regardless of the compute
+   target: "Keeping the Heroku workflow depends on the deploy pipeline layer (the
+   report's Developer workflow section), not on Beanstalk versus ECS."
 5. Derive the recommendation summary:
+   - If step 4a set the Fargate default → `recommendation.value: "ecs-fargate"`, `confidence: "high"` (reasons include the scale reason; `system_forced` rows do not make this `"mixed"` — every row is Fargate). This rule wins over the two below.
    - If all non-release rows recommend EB → `recommendation.value: "elastic_beanstalk"`, `confidence: "high"`
    - If any row is system-forced to Fargate while others remain EB → `recommendation.value: "mixed"`, `confidence: "high"`
    - If the user explicitly chooses all-Fargate or EKS below → record that user choice as the default with no system recommendation override, except scaled non-web EB downgrades remain forbidden.
@@ -479,23 +546,25 @@ Re-prompt Q9b until valid input is provided.
 >
 > Which compute target plan should we use?
 >
-> 1. Use this recommendation — EB default with per-formation Fargate overrides where needed (default)
+> 1. Use this recommendation (default)
 > 2. Use Elastic Beanstalk for all EB-compatible formations; keep system-forced Fargate overrides for scaled non-web workers
-> 3. Use ECS Fargate for all dyno formations
+> 3. Use ECS Fargate for all dyno formations (web dynos land on ECS Express Mode — ALB, HTTPS, auto scaling and logs provisioned for you — unless the release strategy (Q12e) or Q10 rules it out; workers get standard ECS services)
 > 4. Use EKS — team has Kubernetes expertise and wants full K8s control
 > 5. EKS acceptable — team can operate K8s, prefers managed node groups to reduce burden
 > 6. Set per-formation targets manually
 
 **Interpret:**
 
-- 1 → `design_constraints.compute_target: { "default": "elastic_beanstalk", "overrides": [<system_forced Fargate overrides>], "chosen_by": "system_recommended", "recommendation": { "value": "elastic_beanstalk|mixed", "confidence": "high|medium|low", "reasons": [<summary reasons>] } }`
-- 2 → same as 1, but `chosen_by: "user"` and `recommendation.reasons` MUST include "user selected EB for all EB-compatible formations". Scaled non-web `quantity > 1` formations remain `system_forced` Fargate overrides.
+- 1 → write the **computed plan** from steps 3–5, whichever shape it took:
+  - step 4a did **not** fire (40 or fewer non-release formations) → `design_constraints.compute_target: { "default": "elastic_beanstalk", "overrides": [<system_forced Fargate overrides>], "chosen_by": "system_recommended", "recommendation": { "value": "elastic_beanstalk|mixed", "confidence": "high|medium|low", "reasons": [<summary reasons>] } }`
+  - step 4a **fired** (41 or more) → `design_constraints.compute_target: { "default": "ecs-fargate", "overrides": [], "chosen_by": "system_recommended", "recommendation": { "value": "ecs-fargate", "confidence": "high", "reasons": [<scale reason from step 4a>, <system_forced worker reasons, if any>], "scale_note": "{N} formations" } }`. Never write `"default": "elastic_beanstalk"` for an accepted Fargate recommendation — Design resolves the target from `default`/`overrides[]`, so that would silently rebuild the per-formation EB estate the recommendation exists to avoid.
+- 2 → `design_constraints.compute_target: { "default": "elastic_beanstalk", "overrides": [<system_forced Fargate overrides for every non-web quantity > 1 formation>], "chosen_by": "user", "recommendation": <the computed recommendation from steps 3–5, unchanged — including "value": "ecs-fargate" and "scale_note" when step 4a fired> }`, and `recommendation.reasons` MUST include "user selected EB for all EB-compatible formations". This is the explicit EB override: it is the only path that keeps an EB default above the threshold, and the preserved `scale_note` lets the report say the recommendation was declined.
 - 3 → `design_constraints.compute_target: { "default": "ecs-fargate", "overrides": [], "chosen_by": "user", "recommendation": { "value": "ecs-fargate", "confidence": "high", "reasons": ["user selected direct managed containers for all dyno formations"] } }`
 - 4 → `design_constraints.compute_target: { "default": "eks-managed", "overrides": [], "chosen_by": "user", "recommendation": { "value": "eks-managed", "confidence": "high", "reasons": ["user selected Kubernetes control"] } }`
 - 5 → `design_constraints.compute_target: { "default": "eks-or-ecs", "overrides": [], "chosen_by": "user", "recommendation": { "value": "eks-or-ecs", "confidence": "medium", "reasons": ["user can operate Kubernetes but prefers managed node groups"] } }`
 - 6 → ask a short follow-up listing each formation and write `overrides[]` for user-selected deviations from the default. Do not allow EB for scaled non-web formations unless the user first changes the Heroku quantity to 1 or accepts a manual non-generated exception; generated artifacts must keep those formations on Fargate.
 
-**Default:** 1 — use the computed recommendation. "I don't know" maps to 1, not to a blind EB-only default.
+**Default:** 1 — use the computed recommendation. "I don't know", a skipped question, "use defaults for the rest" and the fast path all map to 1 — the computed plan, including the Fargate default when step 4a fired — never to a blind EB-only default.
 
 **Design impact:** Design resolves each formation from `compute_target.default` plus matching `overrides[]`. EB-compatible web dynos map to LoadBalanced EB environments. EB-compatible persistent non-web dynos with `quantity == 1` map to SingleInstance WebServer environments. Persistent non-web dynos with `quantity > 1` map to Fargate to preserve horizontal worker count. `"ecs-fargate"` maps formations to Fargate services. `"eks-managed"` or `"eks-or-ecs"` maps formations to EKS Deployments. Non-formation resources (Postgres, Redis, Kafka, add-ons) are unaffected.
 
@@ -519,7 +588,8 @@ Re-prompt Q9b until valid input is provided.
 
 **Default:** 1 → `design_constraints.eb_deploy_method: { "value": "github_actions", "chosen_by": "default" }`
 
-**Generate impact:** `"github_actions"` emits `.github/workflows/deploy-eb.yml`; `"codepipeline"` emits `terraform/pipeline.tf`; `"manual"` emits neither automation artifact and keeps the CLI path in `MIGRATION_GUIDE.md`.
+**Validate (CNB):** when `operational.containerization_method` is `"cnb_heroku_builder"` and any app with an EB formation in the resolved compute plan resolves to CNB per app (inventory `stack` other than `"container"` **and** not listed in `operational.dockerfile_apps[]` — the same per-app rule as `generate-terraform.md` Step 5.5 § "Containerization method per app"), option 2 is **not offered**. An estate whose only CNB apps run on Fargate while every EB app has a Dockerfile keeps option 2: CodePipeline deploys those Dockerfile apps and `pipeline.tf` is emitted for them. Present only options 1 and 3 and add: "CodePipeline is unavailable for buildpack apps: its deploy stage hands the source tree straight to Elastic Beanstalk with no build step, so there is no image and no `Dockerrun.aws.json` to deploy. GitHub Actions builds the image with `pack`; the manual path documents the same steps." An answer of 2 in that case is invalid — re-ask with that sentence; never store `codepipeline` alongside CNB. Generate halts on the combination if a stale preferences file carries it.
+**Generate impact:** `"github_actions"` emits `.github/workflows/deploy-eb.yml` (the `pack`/Dockerrun variant for CNB apps; one `deploy-eb-<eb_app_slug>.yml` per app when two or more apps run on Elastic Beanstalk) and the approval-gated `promote.yml` (the `pipelines:promote` equivalent); `"codepipeline"` emits `terraform/pipeline.tf` (Dockerfile apps only); `"manual"` emits neither automation artifact and keeps the CLI path in `MIGRATION_GUIDE.md` (with a `pack build` + Dockerrun bundle variant for CNB apps).
 
 ---
 
@@ -549,6 +619,75 @@ Re-prompt Q9b until valid input is provided.
 
 - `single-az` or `multi-az` → RDS PostgreSQL
 - `multi-az-ha` → Aurora PostgreSQL
+
+---
+
+#### Q6d — Database Sizing Basis
+
+> _Fires only when at least one Heroku Postgres database is a right-sizing candidate under
+> the rule below. Show the list first:_
+>
+> These databases are on plans far larger than the data they hold:
+>
+> | Database | Plan | Plan storage | Data | Used | Fitting plan |
+> | --- | --- | --- | --- | --- | --- |
+> | `<heroku_app>` | `<plan>` | `<storage>` | `<data_size_gb> GB` | `<pct>%` | `<fitting_plan>` |
+>
+> The fitting plan is chosen by storage only; a plan sized for memory, connections or
+> query load may be correct as it is. How should we size their AWS targets?
+>
+> 1. From measured data, with 2× headroom — the AWS instance and storage match what the database actually holds. Pick this if the plan was chosen for storage, or you intend to right-size before moving.
+> 2. From the current Heroku plan (default) — match plan RAM and storage one-for-one. Pick this if the plan was chosen for query load or cache size, not data volume, or if you are not sure.
+
+**Right-sizing rule** (the one rule set shared by this question, Design 2B step 2a and the
+Estimate's right-sizing candidates — change it here and nowhere else):
+
+- `plan_storage_gb` is the plan's **Storage** column in
+  `references/shared/heroku-pricing-cache.md` (never `storage_gb` from
+  `knowledge/design/postgres-rds-sizing.json`, which exists for AWS row lookup and may
+  differ for some plans). A Storage cell in TB is converted at **1 TB = 1024 GB**
+  (so `1 TB` = 1024, `1.5 TB` = 1536, `2 TB` = 2048), which matches the cache's `768 GB`
+  rows as 0.75 TB; a cell in GB is used as written.
+- Assess only `heroku-postgresql` add-ons with `data_size_gb > 0` and `pg_role` other than
+  `"follower"` (a missing `pg_role` is treated as a leader). Skip Advanced-tier add-ons
+  (`tier: "advanced"`, usage-billed) and treat `data_size_gb` absent or `≤ 0` as "no
+  measurement" — such a database is never a candidate.
+- `utilization_pct = data_size_gb / plan_storage_gb × 100`, compared against 25 **before**
+  rounding; record it rounded to 2 decimal places.
+- `fitting_plan` = within the same plan family (`essential-*`, `standard-*`, `premium-*`,
+  `private-*`, `shield-*`; legacy `hobby-*` is assessed as its `essential-*` successor),
+  the row with the smallest Storage that is `≥ data_size_gb × 2`. When two rows in the
+  family have the same Storage, pick the one with the lower `$/month` (the pricing cache has
+  such ties, for example `premium-l-6` and `premium-7`, both 2 TB; the lower price wins). Never pick
+  a row with more Storage than the current plan: if no smaller or equal row fits,
+  `fitting_plan` is the current plan.
+- A database is a **candidate** when `utilization_pct ≤ 25` AND `fitting_plan != plan`.
+  A database whose fitting plan is its own plan (for example a `*-0` plan, or a `*-2`
+  plan holding 32–64 GB) is not a candidate and is not listed.
+- No RDS storage minimum applies here; the 20 GB floor applies only to the allocated AWS
+  storage in Design 2B step 6.
+
+**Interpret:**
+
+- 1 → `preferences.data.database_sizing_basis: "measured"`, `sources.Q6d: "user"`
+- 2 → `preferences.data.database_sizing_basis: "plan"`, `sources.Q6d: "user"`
+- Either way write `preferences.data.rightsizing_candidates_shown[]` = the `resource_id` of
+  every database in the table above. Design applies the measured basis to these add-ons
+  only, so the user never has a database re-sized that they did not see.
+
+**Default:** 2 → `database_sizing_basis: "plan"`. The measured basis re-selects the sizing
+row, which changes the instance class as well as the storage, and one point-in-time
+`data_size_gb` is no evidence about CPU, memory, connections or query load (the shared
+cost-appetite rule: right-size only where utilization data supports it). So `measured` is
+written only when `sources.Q6d` is `"user"`: a skipped question, "use defaults for the
+rest", or the fast path all write `plan` (fast path: record `Q6d` in
+`metadata.questions_defaulted` when it would have fired). The candidates are still listed
+by the Estimate either way.
+
+**Design impact:** `measured` makes Design step 2B look the sizing row up by required storage
+instead of by plan name (2B step 2a), for the add-ons in `rightsizing_candidates_shown`
+only. `plan` keeps the plan-name lookup. Either way the Estimate lists the candidates as
+Heroku-side right-sizing candidates.
 
 ---
 
@@ -743,6 +882,26 @@ Validate: must be valid ISO 8601 date, must be in the future.
 
 ---
 
+#### Q12e — Release Strategy for Fargate Web Formations
+
+> _Fires when the resolved Q12c plan routes at least one `web` formation to `ecs-fargate` AND `dns_strategy` is `"external"`. Skipped (defaulted to `canary`) when no web formation lands on Fargate; skipped as N/A when `dns_strategy` is `"route53"`, because the generated Route 53 cutover needs a Terraform-owned ALB and that already forces standard ECS services, and when a Private Space is detected, because its restricted inbound rules keep tasks in private subnets behind a Terraform-owned ALB (`design-mapping.md` 2A `private_space`)._
+
+Ask:
+
+> How do you release new versions of your web dynos?
+>
+> 1. Progressive / canary rollouts are fine (default — web dynos use ECS Express Mode)
+> 2. Rolling updates — replace tasks in place, no traffic shifting
+> 3. Blue/green — separate environment and an explicit cutover (Heroku pipelines + preview apps map here)
+
+**Interpret:**
+
+- 1 → `design_constraints.release_strategy: "canary"` — Fargate web formations get `aws_config.ecs_mode: "express"`
+- 2 → `design_constraints.release_strategy: "rolling"` — standard ECS service, rolling deployment controller
+- 3 → `design_constraints.release_strategy: "blue_green"` — standard ECS service with CodeDeploy blue/green
+
+**Default:** 1 (`canary`). Heroku's `web` process type is the shape signal (`http_service`); non-web process types are `worker` and never use Express Mode, so no shape question is asked.
+
 #### Q12b — Containerization Status
 
 > Is your application already containerized (has a Dockerfile)?
@@ -759,7 +918,76 @@ Validate: must be valid ISO 8601 date, must be in the future.
 
 **Default:** 2 → `containerization_status: "buildpack_only"`
 
-**Design impact:** Options 2 and 3 trigger a "Containerization Prerequisites" section in the MIGRATION_GUIDE.md with Procfile→Dockerfile guidance for common buildpacks (Ruby, Node.js, Python, Go, Java). Does not change design mappings. EB and Fargate Docker paths both require a Dockerfile/source bundle; EKS also requires containerization.
+**Follow-up when the answer is 3 (`partial`) — which apps have a Dockerfile:** list the
+inventory `apps[].app_name` values and ask which of them already have a Dockerfile in their
+repository. Pre-select every app whose inventory `stack` is `"container"` (Heroku only
+runs those from a Dockerfile) and let the user add any app that still runs a buildpack
+stack (`heroku-22`/`-24`/`-26`) but has a Dockerfile prepared for the migration:
+
+> Which apps already have a Dockerfile? (Container-stack apps are included automatically;
+> add any app whose repository has a Dockerfile even though it still runs a Heroku
+> buildpack stack today.)
+>
+> `<app-a>`, `<app-b>`, …
+
+Store the confirmed names as `operational.dockerfile_apps: ["<app>", …]`. Validate: every
+name is an inventory `apps[].app_name`, every `container`-stack app is included, and the list is
+neither empty nor every app (otherwise the answer is really 1 or 2 — re-ask Q12b with that
+hint). Write the array only when `containerization_status` is `"partial"`. The inventory
+`stack` is a source fact about what Heroku runs today; this array is the user's confirmed
+per-app Dockerfile status, and Generate resolves the method per app from
+`stack == "container"` **or** membership here (`generate-terraform.md` Step 5.5
+§ "Containerization method per app"). It is not asked on the fast path (which defaults
+Q12b to `buildpack_only`).
+
+**Design impact:** Options 2 and 3 trigger the containerization-method question (Q12f) and a "Containerization Prerequisites" section in the MIGRATION_GUIDE.md — Procfile→Dockerfile guidance for common buildpacks (Ruby, Node.js, Python, Go, Java) when Q12f is `dockerfile`, `pack`/Heroku-builder guidance when it is `cnb_heroku_builder`. Does not change design mappings. EB and Fargate Docker paths both require a Dockerfile/source bundle; EKS also requires containerization.
+
+---
+
+#### Q12f — Containerization Method
+
+> _Fires only when Q12b is `buildpack_only` or `partial`._
+>
+> Your apps are built by Heroku buildpacks today. AWS compute runs container images, so
+> each app needs one. Two ways to get there:
+>
+> 1. Cloud Native Buildpacks with the Heroku builder (recommended) — `pack build` with
+>    the Heroku builder image that matches the app's stack (`heroku/builder:22`, `:24` or `:26`) produces a container image using the same buildpacks Heroku
+>    uses, from the same source, with no Dockerfile. The Procfile process types become
+>    the image's processes. The generated deploy workflow does this for every app.
+> 2. Write a Dockerfile per app — full control over the base image and build; one file
+>    to author and maintain for each app.
+
+**Interpret:**
+
+- 1 → `containerization_method: "cnb_heroku_builder"`
+- 2 → `containerization_method: "dockerfile"`
+
+**Default:** 1 → `containerization_method: "cnb_heroku_builder"`. When Q12b is
+`containerized`, write `containerization_method: "dockerfile"` without asking.
+
+**Scope in a `partial` estate:** the answer covers the **apps without a Dockerfile only**.
+The apps the Q12b follow-up stored in `operational.dockerfile_apps[]` (every
+`container`-stack app plus any buildpack-stack app whose repository already has a
+Dockerfile) keep their Dockerfile; Generate resolves them to `"dockerfile"` per app
+regardless of this value (`generate-terraform.md` Step 5.5 § "Containerization method per
+app": `stack == "container"` or listed in `dockerfile_apps`) and never runs `pack build`
+for them. Say so when Q12b is `partial`, naming them: "`<dockerfile_apps>` keep their
+Dockerfiles; this choice is for the remaining buildpack apps."
+
+**Registry constraint:** the CNB deploy path publishes to and pulls from Amazon ECR
+(`pack build --publish`, EB instance role with ECR read access). Option 1 therefore
+requires Q12 → `ecr`; Q12 enforces this.
+
+**Design impact:** `cnb_heroku_builder` makes Generate emit `pack build` instead of
+`docker build` in each buildpack app's deploy workflow and Fargate build steps, an
+`ecr.tf` with one repository per buildpack app, and Elastic Beanstalk `Dockerrun.aws.json`
+bundles that reference the image in ECR with `Entrypoint: /cnb/process/<process_type>`
+selecting the process. The Containerization Prerequisites section of `MIGRATION_GUIDE.md`
+then explains `pack` instead of Procfile-to-Dockerfile patterns. Q12d loses its
+CodePipeline option for CNB apps (the pipeline has no build stage). This is unrelated to
+Fir-generation detection: Fir apps stay detect-only; this option concerns how Cedar apps
+are containerized for AWS.
 
 ---
 
@@ -776,6 +1004,8 @@ Validate: must be valid ISO 8601 date, must be in the future.
 - 2 → `container_registry: "external"`
 
 **Default:** 1 → `container_registry: "ecr"`
+
+**Validate (CNB):** when Q12f (containerization method) stored `containerization_method: "cnb_heroku_builder"`, option 2 is **not offered**. Present option 1 with: "Your buildpack apps are built by `pack` and published to ECR; Elastic Beanstalk and Fargate pull them with their ECR permissions. An existing registry is not supported for that path — choose a Dockerfile in Q12e if you need one." An answer of 2 in that case is invalid — re-ask with that sentence and never store `external` alongside `cnb_heroku_builder`. Generate halts on the combination if a stale preferences file carries it (`generate-terraform.md` Step 5.5), so the contradiction is resolved here, before it is written.
 
 ---
 
@@ -800,6 +1030,12 @@ Validate: must be valid ISO 8601 date, must be in the future.
 - 6 → `log_retention_days: <user value>` (validate: integer 1–3653)
 
 **Default:** 3 → `log_retention_days: 30`
+
+Any value 1–3653 is stored as given. Elastic Beanstalk's `aws:elasticbeanstalk:cloudwatch:logs`
+`RetentionInDays` accepts only 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731,
+1827, 3653, so for a custom value Generate writes the smallest accepted value that is >= the
+preference (2 → 3, 45 → 60); choices 1–5 are accepted as-is. Tell the user when their custom
+value will be rounded up this way.
 
 ---
 
@@ -841,6 +1077,51 @@ Validate: must be valid ISO 8601 date, must be in the future.
 
 ---
 
+#### Q16 — Heroku Contract (Enterprise order form)
+
+> _Fires when the inventory has no invoice: `billing_profile` absent or `null`, or `billing_profile.available` is anything but `true`._
+>
+> Do you have a Heroku Enterprise contract or order form? If so, share the committed
+> lines (totals only — no unit prices needed): term start and end, and the total for
+> each of: dyno units, add-on credits, support plan, Private Spaces, Connect rows,
+> anything else. Say "none" if you pay list price month to month.
+
+**Why:** discovery prices what the CLI can see at list rates. An Enterprise contract
+commits spend that discovery cannot see (support, credits, headroom, apps outside the
+CLI's view). Without the contract the Heroku baseline looks too low and the AWS
+saving looks too high; with it the Estimate can reconcile the two and say which
+part of the gap is scope and which is price.
+
+**Interpret:** write `preferences.commercial.heroku_contract`:
+
+```json
+{
+  "term_start": "YYYY-MM-DD",
+  "term_end": "YYYY-MM-DD",
+  "lines": [
+    {
+      "category": "dynos|addon_credits|support|private_spaces|connect|other",
+      "label": "<as written on the order form>",
+      "total_usd": 0,
+      "months": 12
+    }
+  ],
+  "prior_term_annual_usd": null
+}
+```
+
+- A line that spans the whole term (e.g. support, Private Spaces) gets `months` equal
+  to the term length; a per-year line gets `12`. Monthly run-rate is
+  `total_usd / months`, computed in the Estimate, not here.
+- Record totals exactly as given. Do NOT ask for or record unit prices, quantities,
+  discounts, or the counterparty's name.
+- "none" / no contract → omit `preferences.commercial` entirely.
+
+**Default:** omitted (no contract) — the Estimate then shows the discovered baseline
+only.
+
+---
+
 ## Defaults Table
 
 | Question                  | Default                                 | Constraint                                                                                                  |
@@ -850,22 +1131,28 @@ Validate: must be valid ISO 8601 date, must be in the future.
 | Q3 — Availability         | 2 (multi-az)                            | `availability: "multi-az"`                                                                                  |
 | Q4 — Maintenance          | 4 (flexible)                            | `maintenance_window: "flexible"`                                                                            |
 | Q5 — Env naming           | 1 (production)                          | `environment_naming: "production"`                                                                          |
+| Q5c — DX priority         | 2 (important)                           | `dx_priority: "important"`                                                                                  |
 | Q6 — Database HA          | 4 (match Q3)                            | `database_ha: <Q3 value>`                                                                                   |
 | Q6b — Migration approach  | 1 (full cutover)                        | `migration_approach: "full_cutover"`                                                                        |
 | Q6c — DB migration method | 1 (pg_dump)                             | `migration_method: "pg_dump_restore"`                                                                       |
+| Q6d — DB sizing basis     | 2 (plan)                                | `database_sizing_basis: "plan"` + `rightsizing_candidates_shown[]` (only when the question fired; `measured` needs `sources.Q6d: "user"`) |
 | Q7 — Redis HA             | 1 (yes) if source plan has HA, else 2 (no) | `redis_ha: true` for a `premium-*` source tier; `false` for `mini`/hobby (Q7 § Default)                     |
 | Q8 — Kafka retention      | 3 (7 days)                              | `kafka_retention_days: 7`                                                                                   |
 | Q9 — Subnet IDs           | _(no default — must ask if applicable)_ | —                                                                                                           |
 | Q9b — VPC ID              | _(no default — must ask if applicable)_ | —                                                                                                           |
 | Q10 — DNS                 | 1 (Route 53)                            | `dns_strategy: "route53"`                                                                                   |
 | Q11 — Fir intent          | 1 (exit Heroku)                         | `fir_intent: "exit_heroku"`                                                                                 |
-| Q12b — Containerization   | 2 (buildpack_only)                      | `containerization_status: "buildpack_only"`                                                                 |
-| Q12c — Compute target     | 1 (use computed recommendation)         | `design_constraints.compute_target.default: "elastic_beanstalk"` plus any `system_forced` Fargate overrides |
+| Q12b — Containerization   | 2 (buildpack_only)                      | `containerization_status: "buildpack_only"` (no `dockerfile_apps`; the follow-up fires only on an explicit `partial` answer) |
+| Q12f — Containerization method | 1 (CNB, Heroku builder)            | `containerization_method: "cnb_heroku_builder"` (`"dockerfile"` without asking when Q12b is `containerized`) |
+
+| Q12c — Compute target     | 1 (use computed recommendation)         | `design_constraints.compute_target` follows the computed plan: `default: "elastic_beanstalk"` plus any `system_forced` Fargate overrides at 40 or fewer non-release formations; `default: "ecs-fargate"` with `recommendation.scale_note` at 41 or more |
 | Q12d — EB deploy method   | 1 (GitHub Actions)                      | `eb_deploy_method: "github_actions"` when resolved compute plan includes EB                                 |
+| Q12e — Release strategy   | 1 (canary)                              | `release_strategy: "canary"` when a web formation lands on Fargate with `dns_strategy: "external"`; N/A otherwise |
 | Q12 — Registry            | 1 (ECR)                                 | `container_registry: "ecr"`                                                                                 |
 | Q13 — Log retention       | 3 (30 days)                             | `log_retention_days: 30`                                                                                    |
 | Q14 — Alerting            | 1 (CloudWatch)                          | `alerting: "cloudwatch"`                                                                                    |
 | Q15 — Cost optimization   | 2 (balanced)                            | `cost_optimization: "balanced"`                                                                             |
+| Q16 — Heroku contract     | none                                    | `preferences.commercial` omitted                                                                            |
 
 **Important:** Q9 and Q9b have no default — they are only asked when Private Space peering exists and required data is missing. If they fire, they must be answered (the system cannot proceed without subnet/VPC information for existing VPC references).
 

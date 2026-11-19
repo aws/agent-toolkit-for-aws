@@ -79,30 +79,60 @@ Validation: when all three tiers are present, `scenario_deltas.premium` and `sce
     "aws_monthly_premium": 1003,
     "aws_monthly_balanced": 265,
     "aws_monthly_optimized": 194,
+    "aws_annual_premium": 12036,
+    "aws_annual_balanced": 3180,
     "aws_annual_optimized": 2328,
     "breakdown": {
       "compute": {
         "service": "Fargate",
         "monthly": 71,
+        "calculation": "desired_count × (vCPU per task × hourly rate + GiB per task × hourly rate) × hours",
+        "pricing_source": "cached|cached_fallback|estimated|unavailable",
         "alternative": { "service": "Lambda", "monthly": 9, "savings": 62 }
       },
       "database": {
         "service": "Aurora PostgreSQL",
         "monthly": 269,
+        "calculation": "instance hours × rate + allocated storage GB × rate",
+        "pricing_source": "cached|cached_fallback|estimated|unavailable",
         "alternative": { "service": "RDS PostgreSQL", "monthly": 75, "savings": 194 }
       },
       "storage": {
         "service": "S3 Standard + Intelligent-Tiering",
         "monthly": 86,
+        "calculation": "storage GB × rate + request quantities × rates",
+        "pricing_source": "cached|cached_fallback|estimated|unavailable",
         "alternative": { "service": "S3-IA", "monthly": 65, "savings": 21 }
       },
-      "networking": { "service": "ALB + NAT Gateway", "monthly": 53 },
-      "supporting": { "secrets_manager": 1.20, "cloudwatch": 35.30 }
+      "messaging": {
+        "service": "SQS",
+        "monthly": 0,
+        "calculation": "billable requests × request rate",
+        "pricing_source": "cached|cached_fallback|estimated|unavailable"
+      },
+      "networking": {
+        "service": "ALB + NAT Gateway",
+        "monthly": 53.01,
+        "calculation": "sum of networking components",
+        "pricing_source": "cached|cached_fallback|estimated|unavailable",
+        "components": {
+          "alb": { "monthly": 17.01, "calculation": "hours × rate + LCU hours × rate" },
+          "nat_gateway": { "monthly": 35.10, "calculation": "hours × rate + processed GB × rate" },
+          "route_53": { "monthly": 0.90, "calculation": "zones × rate + queries × rate" }
+        }
+      },
+      "supporting": {
+        "secrets_manager": 1.20,
+        "cloudwatch": 35.30,
+        "ecr": { "monthly": 0.05, "calculation": "image storage GB × rate" }
+      }
     }
   },
 
   "cost_comparison": {
     "gcp_monthly_baseline": 300,
+    "gcp_baseline_quality": "Copied baseline source and accuracy from current_costs",
+    "not_comparable_warning": "Standing-charge inventory estimates do not measure the full bill",
     "option_a_premium": {
       "aws_monthly": 1003,
       "monthly_difference": 703,
@@ -137,6 +167,7 @@ Validation: when all three tiers are present, `scenario_deltas.premium` and `sce
 
   "migration_cost_considerations": {
     "billing_data_available": true,
+    "baseline_available": true,
     "categories": [
       "Data transfer (GCP egress fees based on migration volume)"
     ],
@@ -228,8 +259,10 @@ Validation: when all three tiers are present, `scenario_deltas.premium` and `sce
 
   "financial_summary": {
     "current_gcp_monthly": 300,
+    "current_gcp_note": "Copied baseline caveat from current_costs",
     "projected_aws_balanced_monthly": 265,
     "projected_aws_optimized_monthly": 194,
+    "monthly_comparison_note": "Copied noncomparability warning when the baseline is incomplete",
     "monthly_savings_balanced": 35,
     "monthly_savings_optimized": 106,
     "annual_savings_optimized": 1272,
@@ -296,6 +329,56 @@ Validation: when all three tiers are present, `scenario_deltas.premium` and `sce
 }
 ```
 
+### Unavailable source baseline
+
+When no billing, confirmed spend, or usable inventory estimate supplies a source
+baseline, use these exact null values. Unknown spend is not zero, and a missing
+baseline cannot support computed savings or ROI. Reports display "Unavailable"
+for these values while retaining the independently calculated AWS totals.
+
+```json
+{
+  "current_costs": {
+    "source": "unavailable",
+    "gcp_monthly": null,
+    "gcp_annual": null,
+    "baseline_note": "GCP baseline unavailable — AWS costs shown without comparison"
+  },
+  "cost_comparison": {
+    "gcp_monthly_baseline": null,
+    "option_a_premium": {
+      "monthly_difference": null,
+      "annual_difference": null,
+      "percent_change": null
+    },
+    "option_b_balanced": {
+      "monthly_difference": null,
+      "annual_difference": null,
+      "percent_change": null
+    },
+    "option_c_optimized": {
+      "monthly_difference": null,
+      "annual_difference": null,
+      "percent_change": null
+    }
+  },
+  "roi_analysis": {
+    "recurring_savings": {
+      "monthly_difference_balanced": null,
+      "monthly_difference_optimized": null,
+      "annual_difference_balanced": null,
+      "annual_difference_optimized": null
+    }
+  },
+  "financial_summary": {
+    "current_gcp_monthly": null,
+    "monthly_savings_balanced": null,
+    "monthly_savings_optimized": null,
+    "annual_savings_optimized": null
+  }
+}
+```
+
 ### recommendation block in estimation-infra.json
 
 The `recommendation` block is the single source of truth for migrate/stay guidance. Consumed by Estimate chat output AND HTML migration report (Section 0). Do not duplicate this logic in the report template.
@@ -332,7 +415,7 @@ Validation:
 
 ## Observability Entry in `projected_costs.breakdown`
 
-When Part 2B of `estimate-infra.md` produces an observability cost, it is included as an entry in `projected_costs.breakdown[]` with this shape:
+When Part 2B of `estimate-infra.md` produces an observability cost, write this shape at `projected_costs.breakdown.observability`. `projected_costs.breakdown` is a keyed object, never an array:
 
 ```json
 {
@@ -350,6 +433,16 @@ When Part 2B of `estimate-infra.md` produces an observability cost, it is includ
     "tracing": 0.00
   },
   "volume_source": "heuristic",
+  "volume_detail": {
+    "total_log_gb": 6,
+    "sources": "Fargate 3 GB + RDS 1 GB + ALB 2 GB",
+    "billable_log_gb": 1,
+    "custom_metrics_count": 20,
+    "billable_metrics": 10,
+    "alarm_count": 5,
+    "alarm_count_source": "inventory|default",
+    "tracing_detected": false
+  },
   "note": "GCP Cloud Operations includes 50 GB/month free logging, free alerting, and free profiling. CloudWatch always-free tier includes 5 GB logs, 10 custom metrics, and 10 alarms per month. Estimate assumes usage above free-tier limits."
 }
 ```
@@ -370,11 +463,13 @@ account controls in `baseline.tf`), and — when `preferences.json` →
 `security_baseline_compliance` entry. Both are flat additives to each tier total
 (Premium/Balanced/Optimized), not tier-dependent.
 
+### Security Baseline entry
+
 ```json
 {
   "service": "AWS Security Baseline (Tier 1)",
   "low": 3.00,
-  "mid": 15.00,
+  "mid": 14.50,
   "high": 30.00,
   "accuracy": "±25%",
   "pricing_source": "cached",
@@ -387,11 +482,13 @@ account controls in `baseline.tf`), and — when `preferences.json` →
 }
 ```
 
+### Compliance Baseline entry
+
 ```json
 {
   "service": "AWS Security Baseline — Compliance (Config + Security Hub)",
   "low": 3.00,
-  "mid": 14.00,
+  "mid": 13.50,
   "high": 25.00,
   "accuracy": "±25%",
   "pricing_source": "cached",
@@ -412,6 +509,8 @@ account controls in `baseline.tf`), and — when `preferences.json` →
   contains a gating framework (`soc2`/`pci`/`hipaa`/`fedramp`); absent / `none` / `unknown`
   ⇒ omit it. When present it carries an `emission_reason` naming the declared frameworks.
 - `mid` equals the sum of each entry's `components` values.
+- The same `mid` is included in all three tier totals. `low` and `high` describe
+  uncertainty only and never appear as tier-changing scenario deltas.
 - Per-unit rates are grounded in `references/shared/pricing-cache.md § Security Baseline`.
 
 ## `architecture_comparison` (optional — Graviton/ARM64)
@@ -446,8 +545,12 @@ Present in `estimation-infra.json` only when `preferences.json` → `design_cons
 - `current_costs.gcp_monthly` matches billing-profile.json total (if used) or is a reasonable estimate
 - `projected_costs` has all three tiers (premium, balanced, optimized)
 - **Tier semantics:** Three totals are **scenario $** only (same design); **Balanced** matches generated Terraform baseline — see **Cost tiers** section above; user-facing labels must use the subtitles there (also `estimate-infra.md` Present Summary / `generate-artifacts-report.md`)
-- `projected_costs.breakdown` covers compute, database, storage, networking, supporting services, observability, and the security baseline (always a `security_baseline` entry, plus `security_baseline_compliance` when a gating compliance framework is declared)
+- `projected_costs.breakdown` is a keyed object covering compute, database, storage, networking, supporting services, observability, and the security baseline (always a `security_baseline` entry, plus `security_baseline_compliance` when a gating compliance framework is declared); never emit an array
 - Every service in `aws-design.json` is represented in the cost breakdown
+- Compute cost includes `aws_config.desired_count` and the unchanged per-task
+  CPU/memory; require an explicit count when application HA was requested.
+- Per-service `calculation` reconciles with `monthly`; derived rates are marked
+  `estimated`, not `cached`, consistently with the top-level provenance list.
 - `projected_costs.breakdown` observability entry (when present) REPLACES any CloudWatch/log/metric costs in the "Supporting" row — never double-count
 - `cost_comparison` shows all three options with monthly and annual differences
 - `cost_comparison.commitment_context` is present if `billing-profile.json` has `commitments.has_active_cuds == true`; omitted otherwise

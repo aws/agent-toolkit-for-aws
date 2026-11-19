@@ -4,7 +4,7 @@ End-to-end: prerequisites → package → create image → run MicroVM → authe
 
 ## Prerequisites
 
-0. **Check regional availability.** Confirm Lambda MicroVMs is available in your target region — check the Lambda MicroVMs documentation for supported regions. The S3 artifact bucket and any network connectors must be in the same region as the image.
+0. **Check regional availability.** Confirm Lambda MicroVMs is available in your target region — check the Lambda MicroVMs documentation for supported regions. The S3 artifact bucket and any network connectors must be in the same region as the image. Replace `<partition>` in every ARN below with the partition you are working in. See [ARN partitions](../SKILL.md#arn-partitions).
 1. **S3 bucket** in the region you'll create the image in. Cross-region access is rejected (`S3_CROSS_REGION_ACCESS_DENIED`).
 2. **Build IAM role** that Lambda assumes during image build. Trust policy:
 
@@ -99,7 +99,7 @@ A custom image must be built *on top of* a Lambda-managed base image (Amazon Lin
 aws lambda-microvms list-managed-microvm-images
 ```
 
-Pick an `imageArn` from the output (e.g. `arn:aws:lambda:<region>:aws:microvm-image:al2023-1`).
+Pick an `imageArn` from the output (e.g. `arn:<partition>:lambda:<region>:aws:microvm-image:al2023-1`).
 
 ## Step 3 — Create the MicroVM image
 
@@ -107,8 +107,8 @@ Pick an `imageArn` from the output (e.g. `arn:aws:lambda:<region>:aws:microvm-im
 aws lambda-microvms create-microvm-image \
   --name my-first-image \
   --description "Hello world Flask app" \
-  --base-image-arn arn:aws:lambda:<region>:aws:microvm-image:al2023-1 \
-  --build-role-arn arn:aws:iam::123456789012:role/MicroVMBuildRole \
+  --base-image-arn arn:<partition>:lambda:<region>:aws:microvm-image:al2023-1 \
+  --build-role-arn arn:<partition>:iam::123456789012:role/MicroVMBuildRole \
   --code-artifact '{"uri":"s3://my-bucket/microvm-images/my-first-image/code-artifact.zip"}' \
   --hooks '{
     "port": 9000,
@@ -139,7 +139,7 @@ Pass the `imageArn` returned by `create-microvm-image` to `--image-identifier`. 
 
 ```bash
 aws lambda-microvms get-microvm-image \
-  --image-identifier arn:aws:lambda:<region>:123456789012:microvm-image:my-first-image \
+  --image-identifier arn:<partition>:lambda:<region>:123456789012:microvm-image:my-first-image \
   --query 'state'
 ```
 
@@ -147,7 +147,7 @@ Image state: `CREATING` → `CREATED`. Version state: `PENDING` → `IN_PROGRESS
 
 ```bash
 aws lambda-microvms list-microvm-image-builds \
-  --image-identifier arn:aws:lambda:<region>:123456789012:microvm-image:my-first-image \
+  --image-identifier arn:<partition>:lambda:<region>:123456789012:microvm-image:my-first-image \
   --image-version 1.0
 ```
 
@@ -159,9 +159,9 @@ If a build fails, `stateReason` carries an error code from [`troubleshooting.md`
 
 ```bash
 aws lambda-microvms run-microvm \
-  --image-identifier arn:aws:lambda:<region>:123456789012:microvm-image:my-first-image \
+  --image-identifier arn:<partition>:lambda:<region>:123456789012:microvm-image:my-first-image \
   --image-version 1.0 \
-  --execution-role-arn arn:aws:iam::123456789012:role/MicroVMExecutionRole \
+  --execution-role-arn arn:<partition>:iam::123456789012:role/MicroVMExecutionRole \
   --idle-policy '{
     "maxIdleDurationSeconds": 900,
     "suspendedDurationSeconds": 300,
@@ -178,12 +178,14 @@ Response:
   "microvmId": "microvm-...",
   "state": "PENDING",
   "endpoint": "<microvm-id>.lambda-microvm.<region>.on.aws",
-  "imageArn": "arn:aws:lambda:<region>:<account>:microvm-image:my-first-image",
+  "imageArn": "arn:<partition>:lambda:<region>:<account>:microvm-image:my-first-image",
   "imageVersion": "1.0",
   "maximumDurationInSeconds": 28800,
   "startedAt": "2026-01-01T00:00:00Z"
 }
 ```
+
+In China regions the endpoint ends in `.on.amazonwebservices.com.cn` instead of `.on.aws`.
 
 The MicroVM is ready when you can successfully ingress into it. Note that `get-microvm` state is eventually consistent and may lag behind reality — determine readiness by attempting to connect rather than polling the API.
 
@@ -224,9 +226,9 @@ To ship new code, **create a new version** of the image. Use:
 
 ```bash
 aws lambda-microvms update-microvm-image \
-  --image-identifier arn:aws:lambda:<region>:123456789012:microvm-image:my-first-image \
-  --base-image-arn arn:aws:lambda:<region>:aws:microvm-image:al2023-1 \
-  --build-role-arn arn:aws:iam::<acct>:role/MicroVMBuildRole \
+  --image-identifier arn:<partition>:lambda:<region>:123456789012:microvm-image:my-first-image \
+  --base-image-arn arn:<partition>:lambda:<region>:aws:microvm-image:al2023-1 \
+  --build-role-arn arn:<partition>:iam::<acct>:role/MicroVMBuildRole \
   --code-artifact '{"uri":"s3://.../v2.zip"}'
 ```
 

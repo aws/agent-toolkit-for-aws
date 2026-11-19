@@ -33,35 +33,43 @@
 | HTTP 417 on a large upload | Client sent `Expect: 100-continue`, which curl adds automatically for bodies over ~1 MB | Suppress it (`curl -H 'Expect:' ...`), or stop the client sending 100-continue |
 | Large upload hangs until timeout, logs show 0 bytes received | Handler writes the response while the request body is still arriving; the request path is half-duplex | Read the request fully, then respond. Bodies under ~1 MB fit socket buffers and mask this |
 | HTTP 403 | Auth type mismatch | Use `ApplicationManaged` for public |
+| HTTP 429 `Platform.EndpointMaxEnvThrottle` on a new endpoint under a burst or load test, gone a few minutes later | Per-environment concurrency starts low on a new endpoint and learns; a low `maxEnvironments` caps scale-out meanwhile | Raise or remove `maxEnvironments`; repeat the test and use later runs → [scaling-and-concurrency.md](references/scaling-and-concurrency.md) |
+| CloudFront `IllegalOriginAccessConfiguration`: "Lambda-Web origins require always-amz-auth signing behavior" | OAC signing behavior is `always`, `no-override` or `never` | Use an OAC with signing behavior `always-amz-auth` → [domains-and-routing.md](references/domains-and-routing.md) |
+| HTTP 403 through CloudFront with OAC | Endpoint is not `IamAuth`, OAC is not origin type `lambda` with `always-amz-auth`, or the resource policy lacks a `cloudfront.amazonaws.com` statement matching the distribution's `aws:SourceArn` | Fix each → [domains-and-routing.md](references/domains-and-routing.md) |
+| `Unsupported property [FunctionResourceArn]` on `AWS::Lambda::ResourcePolicy` | Wrong property name | Use `ResourceArn` with the web-function ARN → [infrastructure-as-code.md](references/infrastructure-as-code.md) |
 | Static files 404 | Wrong path or not in ZIP | Use `__dirname` relative paths; check `unzip -l` |
 | Module not found | node_modules missing from ZIP | `npm ci --omit=dev` then include in zip |
+| Crash on start + `Cannot find package '@aws-sdk/...'`, every request 502 | The runtime does not include the AWS SDK; the client is not packaged, is marked external, or sits in `devDependencies` | Package the imported `@aws-sdk/*` clients like any other dependency → [deployment.md](references/deployment.md) |
 | HTTP 507, or `EMFILE` / `too many open files` in logs | File-descriptor ceiling reached — often unclosed sockets, file handles or DB connections leaking across concurrent requests | Close handles per request and pool connections; a leak surfaces faster here because one execution environment serves many concurrent requests |
-| Connection reset with no HTTP status and nothing in the logs | Request header block too large in bytes — rejected before the app, so no status code and no log line | Measure total header size; shrink cookies, tokens and proxy headers → [Request header limits](#request-header-limits) |
-| HTTP 431 | Too many request header lines, including the ones the platform adds | Leave headroom below the documented ceiling → [Request header limits](#request-header-limits) |
+| HTTP 431 with `lambda-web-error-type: Platform.HeaderTooLarge`, no invocation and no application log entry | Request head over 128 KiB — rejected before the app | Measure total header size; shrink cookies, tokens and proxy headers → [Request header limits](#request-header-limits) |
+| HTTP 431 with `lambda-web-request-id` and `lambda-web-logstream` but no `lambda-web-error-type` | More than 1,000 request header lines, including the ones the platform adds — the Node.js server rejects it while parsing | Raise `server.maxHeadersCount`, or send fewer header lines → [Request header limits](#request-header-limits) |
 | ESM errors | Missing type:module | Add `"type": "module"` to package.json |
 
 ## Request header limits
 
-A request's headers are bounded two ways, by **how many** header lines it carries and by **how
-many bytes** they total. Both are enforced before your app sees the request, and they fail very
-differently. Check Service Quotas or the current documentation for the numbers; what follows is how
-to recognise and fix each one.
+A request's headers are bounded two ways, by **how many bytes** they total and by **how many**
+header lines it carries. Both return HTTP **431 Request Header Fields Too Large**, so the status
+code alone does not tell you which one you hit — the response headers do.
 
-| Exceeded | Result | What the caller sees |
-|----------|--------|----------------------|
-| Too many header lines | HTTP **431 Request Header Fields Too Large** | A normal HTTP error response |
-| Header block too large in bytes | **Connection dropped. No HTTP response at all** | A transport error (`ECONNRESET`, `curl` exit 55, "connection reset by peer") |
+| Exceeded | Enforced by | How to tell them apart |
+|----------|-------------|------------------------|
+| Request head over **128 KiB** (131,072 bytes) | The platform, before your app runs | `lambda-web-error-type: Platform.HeaderTooLarge`. No invocation and no application log entry |
+| More than **1,000 header lines** | The Node.js server in your function, while parsing | `lambda-web-request-id` and `lambda-web-logstream` are present, `lambda-web-error-type` is **not**. Your handler does not run |
 
-The byte case is the harder of the two to diagnose. There is no status code to look up and nothing in
-the application logs, so it reads as a network fault or a broken service rather than a client error
-that will never succeed. Retrying does not help. If a caller reports intermittent connection resets
-and the requests carry large cookies, a long `Authorization` bearer token, or a wide chain of
-`x-forwarded-*` and tracing headers, measure the total header block first.
+The byte limit cannot be raised and is measured on the request head as the client sends it —
+request line, every header line, and the line terminators. Headers the platform adds do not count
+toward it.
 
-Two things make both ceilings bite sooner than a bare quota reading suggests:
+The line count is the opposite: it *includes* the headers the platform adds, so a client sending
+slightly under 1,000 lines can still trip it. It is also raisable from your own code, because it is
+a Node.js default rather than a platform quota:
 
-- **The platform's own headers count against the same budget.** A request does not get the whole
-  documented allowance to itself, so leave headroom rather than sizing right at the limit.
+```javascript
+const server = http.createServer(handler);
+server.maxHeadersCount = 2000;  // or 0 to disable the count check entirely
+server.listen(port, host);
+```
+
 - **The count is of header lines, not distinct names.** Repeated headers each count, so a request
   accumulating `set-cookie` or `x-forwarded-for` through several proxies can reach the ceiling
   without any single header looking unusual.
@@ -69,10 +77,11 @@ Two things make both ceilings bite sooner than a bare quota reading suggests:
 If a client is anywhere near either bound, measure against the endpoint you are deploying to rather
 than assuming the maximum is available.
 
-**Neither limit can be raised from application code.** `server.maxHeadersCount` and
-`--max-http-header-size` do not help, because the request is rejected before it reaches your
-process: an over-limit request produces no application log line and no invocation. Confirm that
-with the log check below rather than assuming a runtime flag took effect.
+**The size limit cannot be raised from application code.** `--max-http-header-size` does not help,
+because an over-128-KiB request is rejected before it reaches your process: no invocation and no
+application log line. The managed runtimes already set the Node.js header *size* limit to match the
+platform's, so there is nothing to tune there. Confirm with the log check below rather than assuming
+a runtime flag took effect.
 
 ```bash
 # Confirm an over-limit request never reaches the app.

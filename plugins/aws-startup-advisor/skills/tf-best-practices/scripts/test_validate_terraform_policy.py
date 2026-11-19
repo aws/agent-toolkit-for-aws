@@ -138,6 +138,129 @@ resource "aws_iam_role_policy" "mixed" {
     assert "no_wildcard_iam" in out
 
 
+def _heroku_ecs_exec_policy_block() -> str:
+    """The ECS Exec task-role statement exactly as generate-terraform.md emits it."""
+    fragment = (
+        PLUGIN_SKILL_ROOT.parent
+        / "heroku-to-aws"
+        / "references"
+        / "phases"
+        / "generate"
+        / "generate-terraform.md"
+    ).read_text()
+    start = fragment.index('resource "aws_iam_role_policy" "ecs_task_exec"')
+    end = fragment.index("\n}\n", start) + 3
+    return fragment[start:end]
+
+
+def test_heroku_ecs_exec_emitted_statement_passes() -> None:
+    # AWS defines no resource-level permissions for ssmmessages:*; the emitted
+    # statement lists only the four channel actions, so it is a required grant.
+    block = _heroku_ecs_exec_policy_block()
+    for action in (
+        "ssmmessages:CreateControlChannel",
+        "ssmmessages:CreateDataChannel",
+        "ssmmessages:OpenControlChannel",
+        "ssmmessages:OpenDataChannel",
+    ):
+        assert action in block
+    with tempfile.TemporaryDirectory() as tmp:
+        terraform_dir = Path(tmp)
+        (terraform_dir / "ecs-exec.tf").write_text(block)
+        code, out = run_policy_validator(terraform_dir)
+    assert code == 0, out
+    assert "POLICY_OK" in out
+
+
+def test_ssmmessages_exception_cannot_hide_other_actions() -> None:
+    # The exception is statement-shaped: adding any non-channel action (here the
+    # service wildcard and an unrelated service) to the list must still fail.
+    for extra in ('"ssmmessages:*"', '"ssm:StartSession"', '"s3:*"'):
+        with tempfile.TemporaryDirectory() as tmp:
+            terraform_dir = Path(tmp)
+            (terraform_dir / "policy.tf").write_text(
+                f'''
+resource "aws_iam_role_policy" "mixed" {{
+  role = "example-role"
+  policy = jsonencode({{
+    Statement = [{{
+      Effect   = "Allow"
+      Action   = [
+        "ssmmessages:CreateControlChannel",
+        "ssmmessages:CreateDataChannel",
+        "ssmmessages:OpenControlChannel",
+        "ssmmessages:OpenDataChannel",
+        {extra}
+      ]
+      Resource = "*"
+    }}]
+  }})
+}}
+'''
+            )
+            code, out = run_policy_validator(terraform_dir)
+        assert code == 1, (extra, out)
+        assert "no_wildcard_iam" in out, (extra, out)
+
+
+def test_ssmmessages_exception_requires_every_member_to_be_a_literal() -> None:
+    # A non-literal list member (local/var/function) may resolve to anything —
+    # here `local.extra_action = "s3:*"` — so the statement must keep failing
+    # no_wildcard_iam even though every quoted literal in the list is allowlisted.
+    for extra in ("local.extra_action", "var.extra_action", 'format("%s", "s3:*")'):
+        with tempfile.TemporaryDirectory() as tmp:
+            terraform_dir = Path(tmp)
+            (terraform_dir / "policy.tf").write_text(
+                f'''
+locals {{ extra_action = "s3:*" }}
+resource "aws_iam_role_policy" "mixed_expression" {{
+  role = "example-role"
+  policy = jsonencode({{
+    Statement = [{{
+      Effect   = "Allow"
+      Action   = ["ssmmessages:CreateControlChannel", {extra}]
+      Resource = "*"
+    }}]
+  }})
+}}
+'''
+            )
+            code, out = run_policy_validator(terraform_dir)
+        assert code == 1, (extra, out)
+        assert "no_wildcard_iam" in out, (extra, out)
+
+
+def test_unrelated_wildcard_list_still_fails_alongside_ecs_exec() -> None:
+    # A second, over-broad statement in the same policy is still flagged even
+    # when the approved ECS Exec statement sits next to it.
+    with tempfile.TemporaryDirectory() as tmp:
+        terraform_dir = Path(tmp)
+        (terraform_dir / "policy.tf").write_text(
+            '''
+resource "aws_iam_role_policy" "two_statements" {
+  role = "example-role"
+  policy = jsonencode({
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["ssmmessages:CreateControlChannel", "ssmmessages:OpenControlChannel"]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["sqs:SendMessage"]
+        Resource = "*"
+      }
+    ]
+  })
+}
+'''
+        )
+        code, out = run_policy_validator(terraform_dir)
+    assert code == 1, out
+    assert "no_wildcard_iam" in out
+
+
 def test_heroku_policy_check_runs_after_eks_fragment() -> None:
     phase_dir = (
         PLUGIN_SKILL_ROOT.parent
@@ -833,7 +956,7 @@ def test_every_fixture_matches_its_good_bad_prefix() -> None:
     # Exact, not `>=`: a floor cannot detect fixtures being deleted down to it,
     # which is the removal this assertion exists to catch. Update deliberately
     # when adding or removing a fixture.
-    assert len(fixture_dirs) == 31, f"fixture count changed: {[d.name for d in fixture_dirs]}"
+    assert len(fixture_dirs) == 32, f"fixture count changed: {[d.name for d in fixture_dirs]}"
     for fixture in fixture_dirs:
         code, out = run_policy_validator(fixture)
         if fixture.name.startswith("bad-"):

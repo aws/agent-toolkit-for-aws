@@ -333,9 +333,28 @@ includes EB). Ask them now, in one batch, using each question's catalog text fro
 Q6c). Write each answer to its field, set `sources.<field>` to `"user"`
 (`chosen_by: "user"` on `eb_deploy_method`), move the IDs to
 `metadata.questions_asked`, empty `metadata.questions_deferred_to_generate`, and
-only then set `run_mode`. Skip this step when the array is empty or absent.
+only then set `run_mode`. Skip the question batch when the array is empty or
+absent, but still perform the database preparation below.
 `generate.md` must not load while it is non-empty — that is the one way a
 runbook gets written against an answer the user never gave.
+
+**Prepare database windows in the main window, before Generate dispatch.**
+When the selected design contains RDS PostgreSQL or Aurora PostgreSQL, run:
+
+```bash
+python3 "$PLUGIN_ROOT/skills/tf-best-practices/scripts/rds_windows.py" \
+  --preferences "$MIGRATION_DIR/preferences.json" \
+  > "$MIGRATION_DIR/rds-windows.json"
+```
+
+Require exit `0` and re-read the JSON result. The helper validates independent
+daily backup and weekly maintenance ranges, fills only unspecified windows,
+and rejects explicit conflicts. On failure, stop and ask the customer to
+resolve the preference; do not set Generate in progress. Recompute this file
+after any execution-choice change, including a decide-complete resume.
+Pass its path with the other input artifacts when dispatching Generate.
+This preparation runs in the main window because the worker's shell remains
+restricted to the Terraform policy checker.
 
 **Choice handling:**
 
@@ -363,6 +382,11 @@ runbook gets written against an answer the user never gave.
      enhancement, never a gate: on any skip or error the decision is still
      complete — continue without it and do not surface the script output to the
      user.
+     Then refresh the estate workbook the same way (fail-open):
+     `python3 "<SKILL_BASE>/scripts/emit-estate-workbook.py" --migration-dir "$MIGRATION_DIR"`
+     — it rewrites `$MIGRATION_DIR/heroku-estate.xlsx` with the AWS mapping status per
+     row and a Cost estimate tab. Add `heroku-estate.xlsx` to the saved-files list
+     only when it printed `ESTATE_OK`.
   4. Continue with the Feedback sidebar per `SKILL.md`. Step 3 has already run,
      so you know its `PLAN_OK`/`PLAN_SKIP` status — author the close **once** with
      that knowledge, never as a two-pass edit of an already-shown message:
@@ -372,10 +396,9 @@ runbook gets written against an answer the user never gave.
        the Terraform and migration scripts' — everything is saved and I'll pick
        up from here."
      - If step 3 printed `PLAN_OK`, close with that same sentence and also name
-       `plan.json` in it as plain text, with no link (the What's next block
-       below carries the only link) — e.g. "Your decision report is saved at
+       `plan.json` in it as plain text, with the import page's address written out (the What's next block carries the clickable link) — e.g. "Your decision report is saved at
        `decision-report.html` (plus a Slack-friendly `DECISION.md`), and your
-       uploadable plan at `plan.json` — upload it to AWS Startups Migrate
+       uploadable plan at `plan.json` — upload it at AWS Startup Advisor (https://startups.aws.com/migrate/plans/import?source=plugin)
        to see if you qualify for AWS credits. If you decide to migrate, say 'generate the
        Terraform and migration scripts' — everything is saved and I'll pick up
        from here."
@@ -430,11 +453,11 @@ runbook gets written against an answer the user never gave.
      drop that sentence when the user declined or the command failed for another
      reason.
 
-     Then append the What's next block below, verbatim, replacing `<run_id>` in the link with the
+     Then append the What's next block below, verbatim, replacing `<run_id>` in both links with the
      run's `run_id` (from `.phase-status.json`), lowercased if it is a UUID so the
      `run=` value matches the plan's `runId`. It MUST begin with the "💬 What's
      next" heading. The call-to-action must be a Markdown link so it renders as
-     clickable text with no bare URL. Do not reword it — this copy is owned by the
+     clickable text with no bare URL. Never name AWS Startup Advisor's import page without its address: if you shorten or restate any of this, keep the address. (The plain-text mentions use `?source=plugin` without `run=` on purpose, to stay short; the two links in this block carry the run.) Do not reword it — this copy is owned by the
      web experience:
 
      > **💬 What's next**
@@ -442,9 +465,9 @@ runbook gets written against an answer the user never gave.
      > - **Refine your plan**
      >   Tell me what to change. For example: "use Fargate instead," "make it multi-region," or "reduce the cost."
      > - **See your AWS credits**
-     >   Sign in or create an account on AWS Startups Migrate, then upload plan.json to see the AWS migration credits you qualify for.
+     >   Sign in with your AWS Builder ID (or create one) on [AWS Startup Advisor](https://startups.aws.com/migrate/plans/import?source=plugin&run=<run_id>), the AWS Startups site where you import your migration plan, then upload plan.json to see the AWS migration credits you qualify for.
      >
-     > [Go to AWS Startups Migrate →](https://startups.aws.com/startups/en-US/migrate/credits?source=plugin&run=<run_id>)
+     > [Go to AWS Startup Advisor →](https://startups.aws.com/migrate/plans/import?source=plugin&run=<run_id>)
      >
      > After you upload, you also get:
      >
@@ -452,8 +475,7 @@ runbook gets written against an answer the user never gave.
      > - Monthly cost estimate
      > - Migration paths: AI agent, AWS expert, or AWS Partner
 
-     Ship note: this reaches customers only after the import page and the
-     ImportPlan API are both live in production. This `plan.json` import handoff
+     Note: this `plan.json` import handoff
      is separate from the base64url plan-share link gated off in
      `SKILL.md`/`feedback-collect.md`.
 - **B** → Load `references/phases/workshop/workshop.md`. Keep
@@ -479,7 +501,7 @@ DECISION.md). Want to generate the Terraform and migration scripts now?
 ```
 
 - **A** → **Run "Confirm execution choices" (§ Post-Estimate: Decision Gate)
-  first** if `metadata.questions_deferred_to_generate` is non-empty. Then set
+  first**, including database-window preparation even if no questions remain. Then set
   `run_mode: "decide_and_execute"` and `current_phase` → `"generate"` **before**
   loading `generate.md`. Continue to Generate.
 - **B** → Leave state unchanged; end the turn.

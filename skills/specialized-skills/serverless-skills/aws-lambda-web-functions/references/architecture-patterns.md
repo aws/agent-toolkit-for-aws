@@ -25,6 +25,10 @@ const [HOST, PORT] = (process.env.AWS_LAMBDA_HTTP_ENDPOINT || '0.0.0.0:3000').sp
 app.listen(PORT, HOST);
 ```
 
+The runtime does not include the AWS SDK, so install the clients as dependencies
+(`npm install @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb`) and package them →
+[deployment.md](references/deployment.md).
+
 ## SSR (Server-Side Rendering)
 
 Render HTML on the server per request — a plain `index.js` HTTP server, no build step and
@@ -43,7 +47,7 @@ function renderPage(req) {
   <head><title>SSR on Lambda Web Functions</title></head>
   <body>
     <h1>Hello from server-side rendering</h1>
-    <p>Rendered at ${new Date().toISOString()} for path ${req.path}</p>
+    <p>Rendered at ${new Date().toISOString()}</p>
   </body>
 </html>`;
 }

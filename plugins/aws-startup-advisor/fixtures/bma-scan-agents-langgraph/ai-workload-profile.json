@@ -1,0 +1,154 @@
+{
+  "schema_version": "1.1",
+  "ai_sources": [
+    {
+      "provider": "anthropic",
+      "source_service": "anthropic_api",
+      "model_families": [
+        "claude"
+      ],
+      "model_evidence": "observed",
+      "models": [
+        "claude-sonnet-4-5"
+      ],
+      "model_observations": [
+        {
+          "normalized_model": "claude-sonnet-4-5",
+          "raw_model": "claude-sonnet-4-5",
+          "model_family": "claude",
+          "evidence": [
+            {
+              "provenance": "code",
+              "confidence": "high",
+              "detail": "research/agent.py:9 ChatAnthropic"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "provider": "google",
+      "source_service": "vertex_ai",
+      "model_families": [
+        "gemini"
+      ],
+      "model_evidence": "observed",
+      "models": [
+        "gemini-2.5-flash"
+      ],
+      "model_observations": [
+        {
+          "normalized_model": "gemini-2.5-flash",
+          "raw_model": "gemini-2.5-flash",
+          "model_family": "gemini",
+          "evidence": [
+            {
+              "provenance": "code",
+              "confidence": "high",
+              "detail": "research/agent.py:11 ChatGoogleGenerativeAI; Vertex AI via project="
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "gateways": [],
+  "workloads": [
+    {
+      "workload_id": "anthropic_api.claude-sonnet-4-5.langgraph.create_react_agent.invoke.plain",
+      "provider": "anthropic",
+      "source_service": "anthropic_api",
+      "model": "claude-sonnet-4-5",
+      "sdk_method": "langgraph.create_react_agent.invoke",
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "structured_output": false,
+      "call_sites": [
+        {
+          "file": "research/agent.py",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "workload_id": "vertex_ai.gemini-2.5-flash.langchain_google_genai.chatgooglegenerativeai.invoke.plain",
+      "provider": "google",
+      "source_service": "vertex_ai",
+      "model": "gemini-2.5-flash",
+      "sdk_method": "langchain_google_genai.ChatGoogleGenerativeAI.invoke",
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "structured_output": false,
+      "call_sites": [
+        {
+          "file": "research/agent.py",
+          "line": 21
+        }
+      ]
+    }
+  ],
+  "integration": {
+    "pattern": "framework",
+    "languages": [
+      "python"
+    ],
+    "frameworks": [
+      "langchain",
+      "langgraph"
+    ],
+    "capabilities_summary": {
+      "text_generation": true,
+      "streaming": false,
+      "function_calling": true,
+      "vision": false,
+      "embeddings": false,
+      "batch_processing": false,
+      "speech_to_text": false,
+      "text_to_speech": false,
+      "image_generation": false
+    }
+  },
+  "agentic_profile": {
+    "framework": "langgraph",
+    "agents": [
+      {
+        "agent_id": "research_agent",
+        "file": "research/agent.py",
+        "line": 10,
+        "model": "claude-sonnet-4-5",
+        "tools": [
+          "web_search",
+          "read_notes"
+        ],
+        "memory_type": "conversation_buffer",
+        "role": "Researches a topic with web search and local notes."
+      }
+    ],
+    "orchestration_pattern": "single",
+    "has_memory": true,
+    "memory_backend": "in_memory",
+    "has_human_in_loop": false
+  },
+  "tool_manifest": [
+    {
+      "name": "web_search",
+      "file": "research/tools.py",
+      "line": 8,
+      "transport": "api",
+      "auth_hint": "api_key",
+      "used_by_agents": [
+        "research_agent"
+      ]
+    },
+    {
+      "name": "read_notes",
+      "file": "research/tools.py",
+      "line": 15,
+      "transport": "function",
+      "auth_hint": "none",
+      "used_by_agents": [
+        "research_agent"
+      ]
+    }
+  ]
+}

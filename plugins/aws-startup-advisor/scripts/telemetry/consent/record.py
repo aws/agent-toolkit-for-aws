@@ -2,9 +2,10 @@
 """The consent record: one reader, one writer, one source of truth.
 
     ~/.aws-startup-advisor/plugin-telemetry.json
-    {"installId": "<uuid>", "consentStatus": "ACCEPTED" | "OPT_OUT"}
+    {"installId": "<uuid>", "consentStatus": "ACCEPTED" | "OPT_OUT", "noticeVersion": <int>}
 
-That file is the only thing that decides whether telemetry may be emitted. There
+`noticeVersion` is the notice the answer was given to; a record without one
+answered version 1. That file is the only thing that decides whether telemetry may be emitted. There
 is no environment variable, so a user cannot end up opted out according to their
 shell and opted in according to their disk.
 
@@ -145,6 +146,15 @@ def is_accepted():
     return consent_status() == ACCEPTED
 
 
+def accepted_notice_version():
+    """The notice version an ACCEPTED answer covers, or 0 when nothing is accepted."""
+    state = read_state()
+    if not state or state["consentStatus"] != ACCEPTED:
+        return 0
+    version = state.get("noticeVersion", 1)
+    return version if isinstance(version, int) and not isinstance(version, bool) and version >= 1 else 1
+
+
 def write_state(status):
     """Record `status`, return the record written, raise on failure.
 
@@ -163,7 +173,7 @@ def write_state(status):
     install_id = existing.get("installId")
     if not _valid_install_id(install_id):
         install_id = str(uuid.uuid4())
-    record = {"installId": install_id, "consentStatus": status}
+    record = {"installId": install_id, "consentStatus": status, "noticeVersion": notice.NOTICE_VERSION}
 
     directory = state_dir()
     directory.mkdir(parents=True, exist_ok=True)

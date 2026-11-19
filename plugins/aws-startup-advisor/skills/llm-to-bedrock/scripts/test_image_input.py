@@ -76,10 +76,28 @@ def test_converse_message_text_only():
         "role": "user", "content": [{"text": "describe"}]}
 
 
-@pytest.mark.parametrize("fn", [ii.converse_message, ii.responses_message])
+@pytest.mark.parametrize("fn", [ii.converse_message, ii.responses_message, ii.chat_message,
+                                ii.messages_message])
 def test_image_path_without_bytes_is_an_error(fn):
     with pytest.raises(ValueError, match="raw image bytes"):
         fn("describe", "cat.jpg", None)
+
+
+def test_messages_message_uses_a_base64_source_block_before_the_text():
+    # Anthropic Messages takes a base64 `source` block with a normalized media_type
+    # (`.jpg` -> `image/jpeg`), not an OpenAI-style data URL.
+    msg = ii.messages_message("describe", "cat.jpg", RAW)
+    assert msg["role"] == "user"
+    assert [b["type"] for b in msg["content"]] == ["image", "text"]
+    source = msg["content"][0]["source"]
+    assert source == {"type": "base64", "media_type": "image/jpeg",
+                      "data": base64.b64encode(RAW).decode()}
+    assert msg["content"][1] == {"type": "text", "text": "describe"}
+
+
+def test_messages_message_text_only():
+    assert ii.messages_message("describe") == {
+        "role": "user", "content": [{"type": "text", "text": "describe"}]}
 
 
 def test_responses_image_block_sets_detail():

@@ -16,9 +16,9 @@ import openai_model_recommendation
 
 
 SKILL_DIR = pathlib.Path(__file__).parent.parent
-MODELS_DIR = SKILL_DIR / "references" / "models"
-DEFAULT_CATALOG = MODELS_DIR / "anthropic-bedrock-2026-09-24.json"
-OPENAI_CATALOG = MODELS_DIR / "openai-bedrock-2026-09-24.json"
+MODELS_DIR = SKILL_DIR / "references" / "vendored" / "ai" / "models"
+DEFAULT_CATALOG = MODELS_DIR / "anthropic-bedrock.json"
+OPENAI_CATALOG = MODELS_DIR / "openai-bedrock.json"
 
 # Which provider module owns a source. This is a TWO-way decision, not a per-provider table: OpenAI
 # has its own module, and everything else goes to the Anthropic one — including `none`/`unknown` (no
@@ -31,6 +31,13 @@ OPENAI_CATALOG = MODELS_DIR / "openai-bedrock-2026-09-24.json"
 def _provider_module(provider):
     return "openai" if provider == "openai" else "anthropic"
 
+
+
+def _check_selection_status(catalog_path, model_key, model):
+    try:
+        anthropic_model_recommendation.is_selectable(model)
+    except ValueError as exc:
+        raise ValueError(f"{catalog_path}: {model_key} {exc}") from exc
 
 
 def load_catalog(path=DEFAULT_CATALOG):
@@ -53,6 +60,7 @@ def load_catalog(path=DEFAULT_CATALOG):
     for model_key, model in catalog["models"].items():
         for field in (
             "display_name",
+            "selection_status",
             "family",
             "version",
             "context_window",
@@ -62,6 +70,14 @@ def load_catalog(path=DEFAULT_CATALOG):
         ):
             if field not in model:
                 raise ValueError(f"{catalog_path}: {model_key} missing {field}")
+        _check_selection_status(catalog_path, model_key, model)
+        # The Anthropic selector compares these limits numerically (no "unknown", unlike OpenAI).
+        for limit in ("context_window", "output_token_ceiling"):
+            value = model[limit]
+            if not (isinstance(value, int) and not isinstance(value, bool) and value > 0):
+                raise ValueError(
+                    f"{catalog_path}: {model_key} {limit} must be a positive int, got {value!r}"
+                )
     return catalog
 
 
@@ -91,6 +107,7 @@ def load_openai_catalog(path=OPENAI_CATALOG):
     for model_key, model in catalog["models"].items():
         for field in (
             "display_name",
+            "selection_status",
             "family",
             "generation",
             "version",
@@ -101,9 +118,13 @@ def load_openai_catalog(path=OPENAI_CATALOG):
         ):
             if field not in model:
                 raise ValueError(f"{catalog_path}: {model_key} missing {field}")
+        _check_selection_status(catalog_path, model_key, model)
         for limit in ("context_window", "output_token_ceiling"):
             value = model[limit]
-            if value != "unknown" and not (isinstance(value, int) and value > 0):
+            # bool is an int subclass in Python; reject it like the schema does.
+            if value != "unknown" and not (
+                isinstance(value, int) and not isinstance(value, bool) and value > 0
+            ):
                 raise ValueError(
                     f"{catalog_path}: {model_key} {limit} must be a positive int or "
                     f'"unknown", got {value!r}'

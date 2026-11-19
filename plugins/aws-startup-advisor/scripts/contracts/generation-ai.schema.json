@@ -1,0 +1,145 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:awslabs:startups:migration:generation-ai",
+  "title": "generation-ai.json (canonical, target-only generate contract)",
+  "description": "Provider-neutral, target-only contract for the generation-ai.json AI migration-plan artifact. Structural validity does NOT imply an implemented adapter, rollout mechanism, or runtime-supported identity, and does NOT imply that either skill's current generate-ai.md/generate-artifacts-ai.md actually emits this shape — this is a generate-time target. artifacts_by_source[] carries the traceability chain one phase forward from estimation-ai.json's cost_by_source[] so a per-source/per-model generated-artifact reference traces back to the exact Estimate entry it was produced from.",
+  "type": "object",
+  "required": [
+    "phase",
+    "generation_source",
+    "timestamp",
+    "migration_plan",
+    "step_by_step_guide",
+    "rollback_plan",
+    "monitoring",
+    "production_readiness_checklist",
+    "success_criteria",
+    "recommendation",
+    "artifacts_by_source"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "phase": {"const": "generate"},
+    "generation_source": {"const": "ai"},
+    "timestamp": {"type": "string", "minLength": 1},
+    "migration_plan": {
+      "type": "object",
+      "required": ["duration_drivers", "approach", "phases", "models_to_migrate"],
+      "additionalProperties": false,
+      "properties": {
+        "duration_drivers": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "approach": {"type": "string", "minLength": 1},
+        "phases": {"type": "array"},
+        "models_to_migrate": {"type": "array", "items": {"$ref": "#/definitions/normalizedModel"}}
+      }
+    },
+    "step_by_step_guide": {
+      "type": "object",
+      "required": ["languages", "primary_pattern", "files_to_modify", "dependency_changes"],
+      "additionalProperties": false,
+      "properties": {
+        "languages": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "primary_pattern": {"type": "string", "minLength": 1},
+        "files_to_modify": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "dependency_changes": {"type": "string", "minLength": 1}
+      }
+    },
+    "rollback_plan": {
+      "type": "object",
+      "required": ["mechanism", "flag_name", "default_value", "rollback_time", "triggers"],
+      "additionalProperties": false,
+      "properties": {
+        "mechanism": {"const": "feature_flag"},
+        "flag_name": {"type": "string", "minLength": 1},
+        "default_value": {"type": "string", "minLength": 1},
+        "rollback_time": {"type": "string", "minLength": 1},
+        "triggers": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1}
+      }
+    },
+    "monitoring": {
+      "type": "object",
+      "required": ["dashboards", "alerting_rules"],
+      "additionalProperties": false,
+      "properties": {
+        "dashboards": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "alerting_rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["severity", "condition", "action"],
+            "additionalProperties": false,
+            "properties": {
+              "severity": {"enum": ["Critical", "High", "Medium", "Low"]},
+              "condition": {"type": "string", "minLength": 1},
+              "action": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    },
+    "production_readiness_checklist": {
+      "type": "array",
+      "minItems": 5,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "success_criteria": {
+      "type": "object",
+      "required": ["quality", "latency", "cost"],
+      "additionalProperties": false,
+      "properties": {
+        "quality": {"type": "object"},
+        "latency": {"type": "object"},
+        "cost": {"type": "object"}
+      }
+    },
+    "recommendation": {
+      "type": "object",
+      "required": ["approach", "confidence", "key_risks"],
+      "additionalProperties": false,
+      "properties": {
+        "approach": {"type": "string", "minLength": 1},
+        "confidence": {"enum": ["high", "medium", "low"]},
+        "key_risks": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "artifacts_by_source": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/definitions/sourceArtifactEntry"}
+    }
+  },
+  "definitions": {
+    "extensibleIdentity": {"type": "string", "pattern": "^(?!(?:both|openrouter|unknown)$)[a-z][a-z0-9_]*$"},
+    "normalizedModel": {"type": "string", "pattern": "^(?!(?:both|unknown)$)[a-z0-9][a-z0-9._:/-]*$"},
+    "sourceArtifactModel": {
+      "type": "object",
+      "required": ["model", "generated_files"],
+      "additionalProperties": false,
+      "properties": {
+        "model": {"$ref": "#/definitions/normalizedModel"},
+        "generated_files": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "sourceArtifactEntry": {
+      "description": "A per-source, per-model generated-artifact reference entry. (provider, source_service) MUST exist in the estimation-ai.json cost_by_source[] this plan was built from, and every models[].model MUST be one of that source's models[] — see schema-generate-ai.md's artifacts_by_source[] traceability rule.",
+      "type": "object",
+      "required": ["provider", "source_service", "models"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": {"$ref": "#/definitions/extensibleIdentity"},
+        "source_service": {"$ref": "#/definitions/extensibleIdentity"},
+        "models": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/sourceArtifactModel"}
+        }
+      }
+    }
+  }
+}

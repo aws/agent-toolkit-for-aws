@@ -61,6 +61,18 @@ _forbids_files:
 
 ## Orientation
 
+**Fresh runs only:** After `_init` and before scanning the workspace or requesting
+files, output this block once. Skip it when resuming:
+
+> **Before you send or upload files:** Terraform is optional. I can inventory your
+> Heroku account through your authenticated Heroku CLI using read-only commands,
+> scan Terraform plus `Procfile`/`app.json` already in your workspace, or use a
+> billing export. When live and workspace sources are combined, I can catch
+> resources outside Terraform and report drift.
+
+Do not block on this orientation. Continue directly into the existing source scan
+and consent gate in the same turn.
+
 Inventory what exists on Heroku into a single flat `heroku-resource-inventory.json`
 in `$MIGRATION_DIR/`. This phase is composed of FRAGMENTS (independent discoverers)
 plus one ASSEMBLER, declared in the frontmatter `_fragments`/`_assemble` — the
@@ -112,8 +124,22 @@ never silently resolved — see `discover-assemble.md` § Merge & Drift Rules.
 
 ## Handoff
 
-After the interpreter emits `HANDOFF_OK | phase=discover`, build the user-facing
-completion message from the inventory contents:
+After the interpreter emits `HANDOFF_OK | phase=discover`, first write the estate
+workbook — **in the main window**, not in the worker (the dispatched `rw` worker has no
+shell and would have to return `WORKER_BLOCKED`):
+
+```bash
+python3 "<SKILL_BASE>/scripts/emit-estate-workbook.py" --migration-dir "$MIGRATION_DIR"
+```
+
+Absolute paths; it prints `ESTATE_OK | path=… | apps=N | resources=M` or
+`ESTATE_SKIP | reason=…`. Fail-open: on skip or any error, continue — the inventory is the
+artifact, the workbook is a convenience for customer review. Add
+"Estate workbook: `heroku-estate.xlsx` (one tab per resource family; review before any
+design exists)." to the completion message only when it printed `ESTATE_OK`. Later phases
+re-run the same script to add the AWS mapping and cost tabs.
+
+Then build the user-facing completion message from the inventory contents:
 
 - "Discovered X total resources across Y apps."
 - If billing data available: "Parsed billing data ($Z/month)."

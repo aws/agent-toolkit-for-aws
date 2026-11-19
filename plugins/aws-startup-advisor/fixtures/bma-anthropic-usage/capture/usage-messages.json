@@ -1,0 +1,109 @@
+[
+ {
+  "starting_at": "2026-10-19T00:00:00Z",
+  "ending_at": "2026-10-20T00:00:00Z",
+  "results": []
+ },
+ {
+  "starting_at": "2026-10-20T00:00:00Z",
+  "ending_at": "2026-10-21T00:00:00Z",
+  "results": [
+   {
+    "model": "claude-sonnet-5",
+    "service_tier": "standard",
+    "context_window": "0-200k",
+    "inference_geo": "us",
+    "speed": "standard",
+    "workspace_id": "wrkspc_app",
+    "uncached_input_tokens": 1000,
+    "cache_read_input_tokens": 500,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 200,
+     "ephemeral_1h_input_tokens": 100
+    },
+    "output_tokens": 300,
+    "server_tool_use": {
+     "web_search_requests": 2
+    },
+    "account_id": null,
+    "api_key_id": null,
+    "service_account_id": null
+   }
+  ]
+ },
+ {
+  "starting_at": "2026-10-25T00:00:00Z",
+  "ending_at": "2026-10-26T00:00:00Z",
+  "results": [
+   {
+    "model": "claude-sonnet-5",
+    "service_tier": "standard",
+    "context_window": "0-200k",
+    "inference_geo": "us",
+    "speed": "standard",
+    "workspace_id": "wrkspc_app",
+    "uncached_input_tokens": 2000,
+    "cache_read_input_tokens": 0,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 0
+    },
+    "output_tokens": 700,
+    "server_tool_use": {
+     "web_search_requests": 0
+    },
+    "account_id": null,
+    "api_key_id": null,
+    "service_account_id": null
+   },
+   {
+    "model": "claude-haiku-5",
+    "service_tier": "batch",
+    "context_window": "0-200k",
+    "inference_geo": "not_available",
+    "speed": "standard",
+    "workspace_id": null,
+    "uncached_input_tokens": 4000,
+    "cache_read_input_tokens": 0,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 0
+    },
+    "output_tokens": 1000,
+    "server_tool_use": {
+     "web_search_requests": 0
+    },
+    "account_id": null,
+    "api_key_id": null,
+    "service_account_id": null
+   }
+  ]
+ },
+ {
+  "starting_at": "2026-10-26T00:00:00Z",
+  "ending_at": "2026-10-27T00:00:00Z",
+  "results": [
+   {
+    "model": "claude-opus-5-5",
+    "service_tier": "priority",
+    "context_window": "200k-1M",
+    "inference_geo": "global",
+    "speed": "standard",
+    "workspace_id": "wrkspc_app",
+    "uncached_input_tokens": 100,
+    "cache_read_input_tokens": 0,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 0
+    },
+    "output_tokens": 50,
+    "server_tool_use": {
+     "web_search_requests": 0
+    },
+    "account_id": null,
+    "api_key_id": null,
+    "service_account_id": null
+   }
+  ]
+ }
+]

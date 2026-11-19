@@ -2,6 +2,8 @@
 
 Lambda MicroVMs uses two IAM roles with a clean separation between **build time** and **runtime**, plus auth tokens for ingress traffic.
 
+In the policies below, replace `<partition>` with the partition you are working in. This includes `aws:SourceArn` conditions: a condition with the wrong partition never matches, so Lambda can't assume the role. See [ARN partitions](../SKILL.md#arn-partitions).
+
 ## Two roles, two phases
 
 | Role | Required? | Used by | Used during |
@@ -25,7 +27,7 @@ The two **must be separate** ARNs in production. The build role usually needs S3
         "aws:SourceAccount": "<account-id>"
       },
       "ArnLike": {
-        "aws:SourceArn": "arn:aws:lambda:<region>:<account-id>:microvm-image:*"
+        "aws:SourceArn": "arn:<partition>:lambda:<region>:<account-id>:microvm-image:*"
       }
     }
   }]
@@ -44,7 +46,7 @@ The `Condition` block prevents the confused deputy problem by restricting which 
       "Sid": "ReadCodeArtifact",
       "Effect": "Allow",
       "Action": ["s3:GetObject"],
-      "Resource": "arn:aws:s3:::my-bucket/microvm-images/*"
+      "Resource": "arn:<partition>:s3:::my-bucket/microvm-images/*"
     },
     {
       "Sid": "WriteBuildLogs",
@@ -54,7 +56,7 @@ The `Condition` block prevents the confused deputy problem by restricting which 
         "logs:CreateLogStream",
         "logs:PutLogEvents"
       ],
-      "Resource": "arn:aws:logs:<region>:<account-id>:log-group:/aws/lambda-microvms/*"
+      "Resource": "arn:<partition>:logs:<region>:<account-id>:log-group:/aws/lambda-microvms/*"
     }
   ]
 }
@@ -78,7 +80,7 @@ The execution role is **optional**, but without it, application stdout is *not* 
       "logs:CreateLogStream",
       "logs:PutLogEvents"
     ],
-    "Resource": "arn:aws:logs:<region>:<account-id>:log-group:/aws/lambda-microvms/*"
+    "Resource": "arn:<partition>:logs:<region>:<account-id>:log-group:/aws/lambda-microvms/*"
   }]
 }
 ```
@@ -118,9 +120,9 @@ Attach the `SHELL_INGRESS` network connector at run time:
 
 ```bash
 aws lambda-microvms run-microvm \
-  --image-identifier arn:aws:lambda:<region>:<account>:microvm-image:my-image \
+  --image-identifier arn:<partition>:lambda:<region>:<account>:microvm-image:my-image \
   --execution-role-arn ... \
-  --ingress-network-connectors '["arn:aws:lambda:<region>:aws:network-connector:aws-network-connector:SHELL_INGRESS"]'
+  --ingress-network-connectors '["arn:<partition>:lambda:<region>:aws:network-connector:aws-network-connector:SHELL_INGRESS"]'
 ```
 
 Then `create-microvm-shell-auth-token` and connect via the AWS console (Connect button on the MicroVM detail page) or a WebSocket client. The shell drops you into the container where your application runs.
@@ -138,8 +140,8 @@ Every `RunMicrovm` caller needs `lambda:PassNetworkConnector` — not just when 
     "Effect": "Allow",
     "Action": "lambda:PassNetworkConnector",
     "Resource": [
-      "arn:aws:lambda:<region>:aws:network-connector:aws-network-connector:*",
-      "arn:aws:lambda:<region>:<account>:network-connector:<connector-id>"
+      "arn:<partition>:lambda:<region>:aws:network-connector:aws-network-connector:*",
+      "arn:<partition>:lambda:<region>:<account>:network-connector:<connector-id>"
     ]
   }]
 }
@@ -149,7 +151,7 @@ The first ARN covers the AWS-managed default connectors; the second scopes to yo
 
 ## PrivateLink
 
-VPC endpoints are supported for the `*.lambda-microvm.on.aws` domain (endpoint service: `com.amazonaws.<region>.lambda-microvm`) — clients in your VPC can reach MicroVM endpoints without traversing the public internet. Standard VPCE policy condition keys apply (`aws:SourceVpce`, `aws:SourceVpc`, `aws:ResourceAccount`, `aws:ResourceOrgID`). See the [AWS PrivateLink security best practices](https://docs.aws.amazon.com/vpc/latest/privatelink/vpc-endpoints-access.html) for guidance on scoping VPCE policies.
+VPC endpoints are supported for the `*.lambda-microvm.on.aws` domain (`*.lambda-microvm.<region>.on.amazonwebservices.com.cn` in China regions). The endpoint service is `com.amazonaws.<region>.lambda-microvm` in every partition, including China. Clients in your VPC can reach MicroVM endpoints without traversing the public internet. Standard VPCE policy condition keys apply (`aws:SourceVpce`, `aws:SourceVpc`, `aws:ResourceAccount`, `aws:ResourceOrgID`). See the [AWS PrivateLink security best practices](https://docs.aws.amazon.com/vpc/latest/privatelink/vpc-endpoints-access.html) for guidance on scoping VPCE policies.
 
 ## CloudTrail
 

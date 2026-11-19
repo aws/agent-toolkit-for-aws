@@ -145,7 +145,7 @@ Use this approach if in-place rollback is not possible (e.g., user group engine 
 
 **Rollback advantage:** The self-managed Redis source is still running during migration. Rollback is straightforward because the source was never modified.
 
-**Prerequisite note:** Online migration requires the target ElastiCache cluster to have transit encryption (TLS) disabled. If transit encryption was enabled on the target, online migration cannot be used; use backup/restore instead. See `topology-validation.md` for the full prerequisites checklist.
+**Prerequisite note:** Online migration requires the target ElastiCache cluster to have transit encryption (TLS) disabled. If transit encryption was enabled on the target, online migration cannot be used; use backup/restore instead. For the full checklist, see the Approach 2 requirements in `references/migration/self-managed-migration.md`.
 
 ### Pre-Cutover Preparation
 

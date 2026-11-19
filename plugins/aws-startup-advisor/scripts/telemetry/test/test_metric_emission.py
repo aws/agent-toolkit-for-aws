@@ -27,12 +27,14 @@ MODELLED_SKILL_IDS = {
     "ARCHITECT_FOR_STARTUPS",
     "AZURE_TO_AWS",
     "CONTEXTUAL_OFFERS_FOR_STARTUPS",
+    "COST_REGRESSION_CHECK",
     "GCP_TO_AWS",
     "HEROKU_TO_AWS",
     "KNOWLEDGE_BASE_FOR_STARTUPS",
     "LLM_TO_BEDROCK",
     "OPERATE_ON_AWS",
     "PROMPT_LIBRARY_FOR_STARTUPS",
+    "SELF_HOSTED_LLM_BATCH_INFERENCE",
     "START_BUILDING_FOR_STARTUPS",
     "TF_BEST_PRACTICES",
 }
@@ -45,6 +47,9 @@ SKILLS_DIR = PLUGIN_ROOT / "skills"
 
 # Imported by skills, not a skill: it has no SKILL.md and cannot be invoked.
 NOT_A_SKILL = {"shared"}
+
+# Skills PluginSkillId has no member for yet; reporting one would 400 the whole request.
+NOT_YET_MODELLED = {"bedrock-migration-assessment", "render-to-aws"}
 
 
 def accept(home):
@@ -73,11 +78,16 @@ class TestSkillIdMap:
         on_disk = {
             path.name
             for path in SKILLS_DIR.iterdir()
-            if path.is_dir() and path.name not in NOT_A_SKILL
+            if path.is_dir() and path.name not in NOT_A_SKILL | NOT_YET_MODELLED
         }
-        # The map is an allowlist, so a new skill is invisible until added here,
-        # and a renamed directory stops being counted silently.
+        # The map remains exact after explicitly excluding skills the service model
+        # cannot represent yet.
         assert set(skill_invoked.SKILL_IDS) == on_disk
+
+    def test_unmodelled_skills_exist_and_are_not_reported(self):
+        for name in NOT_YET_MODELLED:
+            assert (SKILLS_DIR / name / "SKILL.md").is_file()
+            assert name not in skill_invoked.SKILL_IDS
 
     def test_the_client_agrees_with_the_model(self):
         assert set(client.PLUGIN_SKILL_IDS) == MODELLED_SKILL_IDS
@@ -93,15 +103,18 @@ class TestSkillId:
             "aws-startup-advisor:gcp-to-aws",
             "GCP-TO-AWS",
             "  gcp-to-aws  ",
-            "some-other-qualifier:gcp-to-aws",
+            "AWS-STARTUP-ADVISOR:GCP-TO-AWS",
         ],
     )
     def test_tolerates_qualifiers_and_casing(self, name):
-        # Hosts qualify skill names differently and undocumentedly, so an
-        # unrecognized qualifier is not a reason to lose the event.
         assert skill_invoked.skill_id(name) == "GCP_TO_AWS"
 
-    @pytest.mark.parametrize("name", ["shared", "some-other-plugin-skill", "", None, 7])
+    @pytest.mark.parametrize(
+        "name",
+        ["shared", "some-other-plugin-skill", "", None, 7,
+         "other-plugin:gcp-to-aws", "migration-to-aws:gcp-to-aws",
+         "aws-startup-advisor:other:gcp-to-aws", ":gcp-to-aws"],
+    )
     def test_anything_not_ours_is_none(self, name):
         # Upper-casing whatever the host passed would put another plugin's skill
         # names in our request body.
@@ -494,7 +507,8 @@ class TestSkillInvokedHookEndToEnd:
         assert collector.received == []
 
     @pytest.mark.parametrize(
-        "skill", ["shared", "some-other-plugins-skill", "Bash", ""]
+        "skill", ["shared", "some-other-plugins-skill", "Bash", "",
+                  "other-plugin:gcp-to-aws", "migration-to-aws:gcp-to-aws"]
     )
     def test_a_skill_that_is_not_ours_sends_nothing(self, home, collector, skill):
         accept(home)

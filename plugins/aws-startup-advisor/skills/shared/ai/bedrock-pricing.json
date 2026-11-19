@@ -1,0 +1,432 @@
+{
+  "description": "Single source of truth for Amazon Bedrock Standard on-demand token rates by model and inference profile. llm-to-bedrock's bedrock_pricing.py reads the vendored copy; bedrock-pricing-cache.md's table rows must agree with it (tests/test_bedrock_pricing_data.py). Edit this file, then run tools/sync-vendored.py.",
+  "unit": "USD per 1M tokens",
+  "tier": "Standard on-demand",
+  "prefixes": "Rate keys name the model-id form: `bare` is the id with no prefix (the Global/base rate unless the model's note says otherwise); `global`, `us`, `eu`, `in`, `au`, `jp`, `ca` are the cross-Region inference profile prefixes. A prefix with no rate here is unverified and prices as unavailable.",
+  "models": {
+    "anthropic.claude-haiku-4-5-20251001-v1:0": {
+      "display_name": "Claude Haiku 4.5",
+      "source": "https://aws.amazon.com/bedrock/pricing/",
+      "verified_at": "2026-10-05",
+      "rates": {
+        "bare": {
+          "input": 1.0,
+          "output": 5.0
+        },
+        "global": {
+          "input": 1.0,
+          "output": 5.0
+        },
+        "us": {
+          "input": 1.1,
+          "output": 5.5
+        },
+        "eu": {
+          "input": 1.1,
+          "output": 5.5
+        }
+      }
+    },
+    "anthropic.claude-haiku-5-5": {
+      "display_name": "Claude Haiku 5.5",
+      "source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-5-5.html",
+      "verified_at": "2026-10-25",
+      "rates": {
+        "bare": {
+          "input": 0.1,
+          "output": 0.5,
+          "cache_read": 0.01
+        },
+        "global": {
+          "input": 0.1,
+          "output": 0.5,
+          "cache_read": 0.01
+        },
+        "us": {
+          "input": 0.11,
+          "output": 0.55,
+          "cache_read": 0.011
+        }
+      },
+      "long_context": {
+        "threshold_tokens": 100000,
+        "rates": {
+          "bare": {
+            "input": 0.5,
+            "output": 2.5,
+            "cache_read": 0.05
+          },
+          "global": {
+            "input": 0.5,
+            "output": 2.5,
+            "cache_read": 0.05
+          },
+          "us": {
+            "input": 0.55,
+            "output": 2.75,
+            "cache_read": 0.055
+          }
+        }
+      },
+      "note": "Above a 100,000-token prompt (cache reads and writes count) the long-context rates apply to the whole request. Only the Global and US Geo rows are published; other Geo prefixes are unverified."
+    },
+    "anthropic.claude-sonnet-5": {
+      "display_name": "Claude Sonnet 5",
+      "source": "https://aws.amazon.com/bedrock/pricing/",
+      "verified_at": "2026-10-05",
+      "rates": {
+        "bare": {
+          "input": 2.0,
+          "output": 10.0
+        },
+        "global": {
+          "input": 2.0,
+          "output": 10.0
+        },
+        "us": {
+          "input": 2.2,
+          "output": 11.0
+        },
+        "eu": {
+          "input": 2.2,
+          "output": 11.0
+        }
+      }
+    },
+    "anthropic.claude-sonnet-5-5": {
+      "display_name": "Claude Sonnet 5.5",
+      "source": "https://aws.amazon.com/bedrock/pricing/",
+      "verified_at": "2026-10-25",
+      "rates": {
+        "bare": {
+          "input": 2.0,
+          "output": 10.0,
+          "cache_read": 0.1
+        },
+        "global": {
+          "input": 2.0,
+          "output": 10.0,
+          "cache_read": 0.1
+        },
+        "us": {
+          "input": 2.2,
+          "output": 11.0,
+          "cache_read": 0.11
+        }
+      },
+      "note": "Priced independently of Sonnet 5 (cache read differs). Only the Global and US Geo rows are published; other Geo prefixes are unverified."
+    },
+    "anthropic.claude-sonnet-4-6": {
+      "display_name": "Claude Sonnet 4.6",
+      "source": "https://aws.amazon.com/bedrock/pricing/",
+      "verified_at": "2026-10-05",
+      "rates": {
+        "bare": {
+          "input": 3.0,
+          "output": 15.0
+        },
+        "global": {
+          "input": 3.0,
+          "output": 15.0
+        },
+        "us": {
+          "input": 3.3,
+          "output": 16.5
+        },
+        "eu": {
+          "input": 3.3,
+          "output": 16.5
+        }
+      }
+    },
+    "anthropic.claude-opus-4-8": {
+      "display_name": "Claude Opus 4.8",
+      "source": "https://aws.amazon.com/bedrock/pricing/",
+      "verified_at": "2026-10-05",
+      "rates": {
+        "bare": {
+          "input": 5.0,
+          "output": 25.0
+        },
+        "global": {
+          "input": 5.0,
+          "output": 25.0
+        },
+        "us": {
+          "input": 5.5,
+          "output": 27.5
+        },
+        "eu": {
+          "input": 5.5,
+          "output": 27.5
+        }
+      }
+    },
+    "amazon.nova-micro-v1:0": {
+      "display_name": "Amazon Nova Micro",
+      "source": "https://aws.amazon.com/bedrock/pricing/",
+      "verified_at": "2026-10-05",
+      "rates": {
+        "bare": {
+          "input": 0.035,
+          "output": 0.14
+        }
+      }
+    },
+    "amazon.nova-lite-v1:0": {
+      "display_name": "Amazon Nova Lite",
+      "source": "https://aws.amazon.com/bedrock/pricing/",
+      "verified_at": "2026-10-05",
+      "rates": {
+        "bare": {
+          "input": 0.06,
+          "output": 0.24
+        }
+      }
+    },
+    "amazon.nova-pro-v1:0": {
+      "display_name": "Amazon Nova Pro",
+      "source": "https://aws.amazon.com/bedrock/pricing/",
+      "verified_at": "2026-10-05",
+      "rates": {
+        "bare": {
+          "input": 0.8,
+          "output": 3.2
+        }
+      }
+    },
+    "openai.gpt-5.6-sol": {
+      "display_name": "GPT-5.6 Sol",
+      "source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-sol.html",
+      "verified_at": "2026-08-21",
+      "rates": {
+        "bare": {
+          "input": 4.4,
+          "output": 22.0
+        },
+        "global": {
+          "input": 4.0,
+          "output": 20.0
+        },
+        "us": {
+          "input": 4.4,
+          "output": 22.0
+        }
+      }
+    },
+    "openai.gpt-5.6-terra": {
+      "display_name": "GPT-5.6 Terra",
+      "source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-terra.html",
+      "verified_at": "2026-08-21",
+      "rates": {
+        "bare": {
+          "input": 2.2,
+          "output": 13.2
+        },
+        "global": {
+          "input": 2.0,
+          "output": 12.0
+        },
+        "us": {
+          "input": 2.2,
+          "output": 13.2
+        },
+        "in": {
+          "input": 2.2,
+          "output": 13.2
+        }
+      }
+    },
+    "openai.gpt-5.6-luna": {
+      "display_name": "GPT-5.6 Luna",
+      "source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-luna.html",
+      "verified_at": "2026-08-21",
+      "rates": {
+        "bare": {
+          "input": 0.22,
+          "output": 1.32
+        },
+        "global": {
+          "input": 0.2,
+          "output": 1.2
+        },
+        "us": {
+          "input": 0.22,
+          "output": 1.32
+        },
+        "in": {
+          "input": 0.22,
+          "output": 1.32
+        }
+      }
+    },
+    "openai.gpt-5.5": {
+      "display_name": "GPT-5.5",
+      "source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html",
+      "verified_at": "2026-11-06",
+      "rates": {
+        "bare": {
+          "input": 5.5,
+          "output": 33.0,
+          "cache_read": 0.55
+        }
+      },
+      "long_context": {
+        "threshold_tokens": 272000,
+        "rates": {
+          "bare": {
+            "input": 11.0,
+            "output": 49.5,
+            "cache_read": 1.1
+          }
+        }
+      },
+      "note": "The card lists the In-Region inference option only; its us./global. CRIS ids carry no separate price row."
+    },
+    "openai.gpt-5.4": {
+      "display_name": "GPT-5.4",
+      "source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html",
+      "verified_at": "2026-11-06",
+      "rates": {
+        "bare": {
+          "input": 2.75,
+          "output": 16.5,
+          "cache_read": 0.275
+        }
+      },
+      "long_context": {
+        "threshold_tokens": 272000,
+        "rates": {
+          "bare": {
+            "input": 5.5,
+            "output": 24.75,
+            "cache_read": 0.55
+          }
+        }
+      },
+      "region_rates": {
+        "us-gov-west-1": {
+          "bare": {
+            "input": 3.375,
+            "output": 20.25,
+            "cache_read": 0.3375
+          }
+        }
+      },
+      "note": "The card lists the In-Region inference option only; its us./global. CRIS ids carry no separate price row. GovCloud (us-gov-west-1) short-context rate only."
+    },
+    "openai.gpt-6-astra": {
+      "display_name": "GPT-6 Astra",
+      "source": "OpenAI-on-Bedrock guide (openai-on-bedrock.md), GPT-6 short-context table",
+      "verified_at": "2026-10-10",
+      "rates": {
+        "bare": {
+          "input": 11.0,
+          "output": 55.0
+        },
+        "global": {
+          "input": 10.0,
+          "output": 50.0
+        },
+        "us": {
+          "input": 11.0,
+          "output": 55.0
+        }
+      }
+    },
+    "openai.gpt-6-sol": {
+      "display_name": "GPT-6 Sol",
+      "source": "OpenAI-on-Bedrock guide (openai-on-bedrock.md), GPT-6 short-context table",
+      "verified_at": "2026-10-10",
+      "rates": {
+        "bare": {
+          "input": 2.2,
+          "output": 11.0
+        },
+        "global": {
+          "input": 2.0,
+          "output": 10.0
+        },
+        "us": {
+          "input": 2.2,
+          "output": 11.0
+        }
+      }
+    },
+    "openai.gpt-6-luna": {
+      "display_name": "GPT-6 Luna",
+      "source": "OpenAI-on-Bedrock guide (openai-on-bedrock.md), GPT-6 short-context table",
+      "verified_at": "2026-10-10",
+      "rates": {
+        "bare": {
+          "input": 0.11,
+          "output": 0.55
+        },
+        "global": {
+          "input": 0.1,
+          "output": 0.5
+        },
+        "us": {
+          "input": 0.11,
+          "output": 0.55
+        }
+      }
+    },
+    "openai.gpt-6.1-sol": {
+      "display_name": "GPT-6.1 Sol",
+      "source": "OpenAI-on-Bedrock guide (openai-on-bedrock.md), GPT-6 short-context table",
+      "verified_at": "2026-10-10",
+      "rates": {
+        "bare": {
+          "input": 2.2,
+          "output": 11.0
+        },
+        "global": {
+          "input": 2.0,
+          "output": 10.0
+        },
+        "us": {
+          "input": 2.2,
+          "output": 11.0
+        }
+      }
+    },
+    "openai.gpt-6.1-terra": {
+      "display_name": "GPT-6.1 Terra",
+      "source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-terra.html",
+      "verified_at": "2026-11-03",
+      "rates": {
+        "bare": {
+          "input": 1.1,
+          "output": 5.5
+        },
+        "global": {
+          "input": 1.0,
+          "output": 5.0
+        },
+        "us": {
+          "input": 1.1,
+          "output": 5.5
+        }
+      },
+      "long_context": {
+        "threshold_tokens": 272000,
+        "rates": {
+          "bare": {
+            "input": 2.2,
+            "output": 8.25
+          },
+          "global": {
+            "input": 2.0,
+            "output": 7.5
+          },
+          "us": {
+            "input": 2.2,
+            "output": 8.25
+          }
+        }
+      },
+      "note": "Above 272,000 input tokens the full request is repriced at the long-context rates. Context window 1,050,000 tokens."
+    }
+  }
+}

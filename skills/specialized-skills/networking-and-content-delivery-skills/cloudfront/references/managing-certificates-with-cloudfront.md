@@ -15,7 +15,7 @@ Issued. For many domains, a multi-tenant distribution is a template that cannot 
 directly; each domain is a distribution tenant that inherits the template, and a connection group
 provides the CloudFront routing endpoint DNS points at.
 
-Does not cover the Route 53 DNS cutover (owned by the route53-cloudfront skill), creating the
+Does not cover the Route 53 DNS cutover (a Route 53 step; see the route53 skill), creating the
 distribution itself (see when-to-use-cloudfront), or origin and content security (see
 protecting-your-origins and securing-your-content).
 
@@ -208,7 +208,7 @@ and surfacing the console link.
 
 **Constraints:**
 
-- You MUST hand the DNS cutover to the route53-cloudfront workflow (alias or CNAME at the routing
+- You MUST hand the DNS cutover to Route 53 (alias or CNAME at the routing
   endpoint), not perform it here
 - You MUST present the distribution detail console link, filling `{distributionId}` from the input
   `distribution_id` parameter:
@@ -235,7 +235,7 @@ and surfacing the console link.
 ```
 Requested an ACM certificate in us-east-1 covering www.example.com, validated by DNS.
 Added www.example.com as an alternate domain name on E1ABCDEF2GHIJK and attached the certificate.
-DNS cutover is a Route 53 step (route53-cloudfront skill).
+DNS cutover is a Route 53 step (see the route53 skill).
 Verify in the console:
 https://us-east-1.console.aws.amazon.com/cloudfront/v4/home?region=us-east-1#/distributions/E1ABCDEF2GHIJK
 ```

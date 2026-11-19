@@ -2,9 +2,9 @@
 
 ## Lifecycle
 
-1. **Starts** on the first MCP `initialize` with a streaming URL (or auto-provisioned via an AgentCore Gateway). The request is authorized by the `agentaccess-mcp:InvokeMcp` IAM action (see connection-setup.md → IAM permissions).
+1. **Starts** on the first MCP `initialize`, from the stack and user ID headers (the server creates the streaming session), a streaming URL, a domain-joined stack ARN (with federated credentials) or SAML assertion, or an image builder name (image-builders.md). An AgentCore Gateway can also provision the session for you. The request is authorized by the `agentaccess-mcp:InvokeMcp` IAM action (see connection-setup.md → IAM permissions).
 2. **Active** while the MCP connection is open — tools can be called repeatedly and desktop state persists (apps stay open, files remain on disk).
-3. **Ends** when the connection closes, the session hits the fleet's timeouts, or the streaming URL's validity window lapses before it is used to connect.
+3. **Ends** when the connection closes, the session hits the fleet's timeouts, the streaming URL's validity window lapses before it is used to connect, or, on a domain-joined fleet, the federated credentials the session started from expire.
 
 Two separate limits are often confused:
 
@@ -28,4 +28,8 @@ Only one agent can be connected to a given session at a time. A named user (`Use
 
 ## Idle behavior
 
-Sessions have an idle/disconnect timeout at the fleet level. For long-lived automations, keep the MCP connection active or plan for reconnection (a fresh streaming URL) if the session times out. If a later tool call returns `client_disconnected`, the session was stopped or the auth expired — reconnect with fresh auth (a new streaming URL for non-domain-joined, or a new SAML assertion for domain-joined) rather than retrying the same connection (see troubleshooting.md).
+Sessions have an idle/disconnect timeout at the fleet level. For long-lived automations, keep the MCP connection active or plan for reconnection if the session times out: with the stack and user ID headers, reconnecting creates a new session; with a streaming URL, create a fresh one. If a later tool call returns `client_disconnected`, the session was stopped or the auth expired — reconnect with fresh auth (a new connection with the stack and user ID headers or a new streaming URL for non-domain-joined, or new federated role credentials or a new SAML assertion for domain-joined) rather than retrying the same connection (see troubleshooting.md).
+
+## Image builder sessions
+
+An image builder keeps running, and billing, after the agent disconnects. `create-image` ends the session itself, because the builder starts snapshotting (image-builders.md). Stop the builder when no more work is planned on it. On reconnect, the desktop signs back in as the Windows account the session last used; call `get_current_user` to confirm it (image-builders.md).

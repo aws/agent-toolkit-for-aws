@@ -10,6 +10,8 @@ _contributes:
   - terraform/beanstalk.tf
   - terraform/pipeline.tf
   - .github/workflows/deploy-eb.yml
+  - .github/workflows/deploy-eb-*.yml
+  - .github/workflows/promote.yml
   - terraform/.gitignore
   - terraform/terraform.tfvars.example
 ---
@@ -35,6 +37,7 @@ Generate `$MIGRATION_DIR/terraform/` with the following file organization. Only 
 | `vpc.tf`       | networking | VPC, subnets, route tables, internet gateway, NAT, peering                                                                             |
 | `compute.tf`   | compute    | ECS cluster, Fargate task definitions, services, ALBs                                                                                  |
 | `beanstalk.tf` | compute    | Elastic Beanstalk applications and environments                                                                                        |
+| `ecr.tf`       | compute    | One ECR repository per app built with Cloud Native Buildpacks (Fargate or Elastic Beanstalk)                                          |
 | `pipeline.tf`  | deploy     | Optional CodePipeline source-to-EB deploy path                                                                                         |
 | `database.tf`  | database   | RDS/Aurora instances, parameter groups, RDS Proxy                                                                                      |
 | `cache.tf`     | cache      | ElastiCache replication groups, subnet groups                                                                                          |
@@ -48,7 +51,9 @@ Generate `$MIGRATION_DIR/terraform/` with the following file organization. Only 
 - `vpc.tf` — Emitted when `vpc_design` is present in `aws-design.json` (either existing or new VPC)
 - `compute.tf` — Emitted when `aws_service` contains "Fargate" or "ALB" entries
 - `beanstalk.tf` — Emitted when `aws_service` contains "Elastic Beanstalk" entries
-- `.github/workflows/deploy-eb.yml` — Emitted when `aws_service` contains "Elastic Beanstalk" entries and `preferences.design_constraints.eb_deploy_method.value` is `"github_actions"` or absent (default)
+- `ecr.tf` — Emitted when at least one app resolves to the CNB containerization method (Step 5.5 § "Containerization method per app") AND `preferences.operational.container_registry` is `"ecr"` or absent (one repository per CNB app; see Step 5.5 § `ecr.tf`). Independent of the compute target: an all-Fargate plan with CNB apps gets it too. Never emitted for `container_registry: "external"`.
+- `.github/workflows/deploy-eb.yml` (one EB app) or `.github/workflows/deploy-eb-<eb_app_slug>.yml`, one per EB app (two or more; § EB name resolution) — Emitted when `aws_service` contains "Elastic Beanstalk" entries and `preferences.design_constraints.eb_deploy_method.value` is `"github_actions"` or absent (default)
+- `.github/workflows/promote.yml` — Emitted alongside the deploy workflow (same condition; both are required for `github_actions`). The Heroku `pipelines:promote` equivalent: redeploys an existing application version to the production environments behind a GitHub environment approval (see § `promote.yml`)
 - `pipeline.tf` — Emitted only when `aws_service` contains "Elastic Beanstalk" entries and `preferences.design_constraints.eb_deploy_method.value` is `"codepipeline"`
 - `database.tf` — Emitted when `aws_service` contains "RDS" or "Aurora" entries
 - `cache.tf` — Emitted when `aws_service` contains "ElastiCache" entries
@@ -61,9 +66,9 @@ Generate `$MIGRATION_DIR/terraform/` with the following file organization. Only 
 | AWS Service in `aws-design.json`   | Target File                                                                                                     |
 | ---------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | Fargate, ALB                       | `compute.tf`                                                                                                    |
-| Elastic Beanstalk                  | `beanstalk.tf`; plus `.github/workflows/deploy-eb.yml` for `github_actions` or `pipeline.tf` for `codepipeline` |
+| Elastic Beanstalk                  | `beanstalk.tf`; plus `.github/workflows/deploy-eb.yml` (or one `deploy-eb-<eb_app_slug>.yml` per app with two or more EB apps) and `promote.yml` for `github_actions`, or `pipeline.tf` for `codepipeline` |
 | RDS PostgreSQL, Aurora PostgreSQL  | `database.tf`                                                                                                   |
-| ElastiCache Redis                  | `cache.tf`                                                                                                      |
+| ElastiCache Valkey (or ElastiCache Redis when `aws_config.engine` is `redis`) | `cache.tf` |
 | Amazon MSK                         | `messaging.tf`                                                                                                  |
 | VPC, Subnet, Route Table, IGW, NAT | `vpc.tf`                                                                                                        |
 | Security Group, IAM Role/Policy    | `security.tf`                                                                                                   |
@@ -108,7 +113,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.80"
+      version = "~> 5.80"   # "~> 6.71" when any Fargate entry has aws_config.ecs_mode == "express" (aws_ecs_express_gateway_service needs 6.23.0+, cpu_architecture 6.71.0+)
     }
   }
 }
@@ -400,7 +405,7 @@ variable "security_email" {
 
 **Per-service variables** — Extract from `aws-design.json` `aws_config` for each designed service. Include:
 
-- Compute: `container_image_*` (one per Fargate service), `desired_count_*`, EB `instance_type_*`, `min_instances_*`, `max_instances_*`
+- Compute: `container_image_*` (one per Fargate service of a Dockerfile app), `image_tag_*` (one per Fargate app whose `app_containerization_method` is `"cnb_heroku_builder"`, Step 5.5 — see below), `desired_count_*`, EB `instance_type_*`, `min_instances_*`, `max_instances_*`
 - Database: `db_instance_class`, `db_storage_gb`, `db_engine_version`, `db_multi_az`
 - Cache: `cache_node_type`, `cache_engine_version`, `cache_multi_az`
 - Messaging: `msk_broker_instance_type`, `msk_broker_count`, `msk_storage_gb`
@@ -446,6 +451,37 @@ Preserve both customer values exactly. Reference each variable directly from the
 corresponding app's Elastic Beanstalk setting. Validate but do not trim, normalize,
 convert, or replace either value, and do not derive a fallback from the source
 repository.
+
+**CNB image tag (Fargate apps built with buildpacks)** — For each app with a Fargate
+service whose `app_containerization_method` is `"cnb_heroku_builder"` (Step 5.5), emit one
+`image_tag_<app_sanitized>` variable instead of `container_image_*` variables. The
+repository URL comes from `aws_ecr_repository.<app_name>` in `compute.tf`; a `variable`
+block cannot reference a resource, so only the tag is an input. The tag is the commit SHA
+the build published (`pack build … --publish`, `MIGRATION_GUIDE.md` Phase 3).
+
+**First deployment (two-phase variable).** The same root creates the repository the image
+is published to, so no image can exist before the first `terraform apply`. The variable
+therefore defaults to `""` ("not published yet") instead of having no default: with the
+empty value, `compute.tf` (Step 6) registers the task definition against the documented
+bootstrap tag `bootstrap` (never pulled) and the ECS service runs with `desired_count = 0`.
+The order `MIGRATION_GUIDE.md` documents is (a) Phase 1 `terraform apply` with the tag
+unset — creates `aws_ecr_repository.<app_name>` and the service at zero tasks; (b) Phase 3
+`pack build --publish` to that repository; (c) set `image_tag_<app_sanitized>` to the
+published SHA in `terraform.tfvars` and `terraform apply` again — the service scales to
+its designed count. Never set the tag before the image exists.
+
+```hcl
+variable "image_tag_<app_sanitized>" {
+  description = "Tag of the <heroku_app> image in aws_ecr_repository.<app_name> (the commit SHA pack published). Leave empty for the first apply: the repository is created and the service starts with desired_count 0; set it after MIGRATION_GUIDE.md Phase 3 publishes the image, then apply again."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.image_tag_<app_sanitized> == "" || can(regex("^[A-Za-z0-9_.-]{1,128}$", var.image_tag_<app_sanitized>))
+    error_message = "image_tag must be empty (image not published yet) or a valid ECR image tag (1-128 characters: letters, digits, _ . -)."
+  }
+}
+```
 
 **Naming convention:** `<resource_type>_<heroku_app>_<attribute>` (sanitize app names: replace `-` with `_`).
 
@@ -507,7 +543,7 @@ output "rds_proxy_endpoint" {
 
 # Cache outputs
 output "elasticache_endpoint" {
-  description = "ElastiCache Redis primary endpoint"
+  description = "ElastiCache primary endpoint (Valkey by default)"
   value       = aws_elasticache_replication_group.redis.primary_endpoint_address
   sensitive   = true
 }
@@ -699,7 +735,7 @@ resource "aws_route_table_association" "private" {
 **VPC rules:**
 
 - Always use at least 2 subnets across separate AZs (per Requirement 9.4)
-- Public subnets host ALBs; private subnets host Fargate, databases, caches, and messaging
+- Public subnets host ALBs; private subnets host Fargate, databases, caches, and messaging. The one exception is an ECS Express Mode web formation (`ecs_mode == "express"`), whose tasks sit in the public subnets because Express Mode derives the internet-facing ALB scheme from them (Step 6 Express Mode rules)
 - Single NAT gateway for cost optimization (user can expand for HA post-apply)
 
 ---
@@ -795,6 +831,18 @@ resource "aws_security_group" "alb" {
     description = "HTTP from internet (redirects to HTTPS)"
   }
 
+  # {{IF has_blue_green}}  (any standard-mode Fargate web entry with release_strategy == "blue_green")
+  # Inline on purpose: this group owns its rules inline, and the provider documents that mixing
+  # inline rules with standalone aws_security_group_rule on one group produces conflicting plans.
+  ingress {
+    from_port   = 8443
+    to_port     = 8443
+    protocol    = "tcp"
+    cidr_blocks = var.codedeploy_test_cidrs
+    description = "CodeDeploy blue/green test listener"
+  }
+  # {{ENDIF}}
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -825,6 +873,15 @@ resource "aws_security_group" "app" {
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
     description     = "Traffic from Terraform-managed ALB (Fargate path only)"
+  }
+  # {{ENDIF}}
+  # {{IF has_express}}  (any Fargate entry with aws_config.ecs_mode == "express")
+  ingress {
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = [aws_vpc.main.cidr_block]
+    description = "Container port from the Express Mode-managed ALB (lives in this VPC)"
   }
   # {{ENDIF}}
   # For EB-only designs, omit ingress here. EB manages load balancer-to-instance ingress;
@@ -1056,13 +1113,120 @@ resource "aws_iam_role" "ecs_task" {
     Name = "${var.project_name}-${var.environment}-ecs-task"
   }
 }
+
+# ECS Exec (the `heroku run bash` equivalent) opens an SSM channel from the task.
+resource "aws_iam_role_policy" "ecs_task_exec" {
+  name = "${var.project_name}-${var.environment}-ecs-exec"
+  role = aws_iam_role.ecs_task.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "ssmmessages:CreateControlChannel",
+        "ssmmessages:CreateDataChannel",
+        "ssmmessages:OpenControlChannel",
+        "ssmmessages:OpenDataChannel"
+      ]
+      Resource = "*"
+    }]
+  })
+}
 ```
+
+---
+
+## Step 5.5: Resolve the containerization method per app and generate `ecr.tf`
+
+Run this step for every compute target (Fargate, Elastic Beanstalk, or both). It does not
+depend on Step 6.5, so an all-Fargate plan with CNB apps still gets its `ecr.tf`. Step 6
+(`compute.tf`) and Step 6.5 (`beanstalk.tf`, deploy workflow) both consume
+`app_containerization_method`.
+
+### Containerization method per app
+
+Read `preferences.operational.containerization_method` (default `"dockerfile"` when absent — preferences written before this field existed carry no value). Resolve the method **per app**, never once for the estate:
+
+- `apps[].stack == "container"` **or** the app's `app_name` is listed in `preferences.operational.dockerfile_apps[]` (Clarify Q12b follow-up for a `partial` estate: the apps whose repository already has a Dockerfile, including apps that still run a Heroku buildpack stack today) → `app_containerization_method = "dockerfile"`. The app already ships a Dockerfile; keep it. Its workflow runs `docker build`, its Fargate build steps use `docker build`/`docker push`, and nothing from the CNB path is emitted for it.
+- `containerization_status == "containerized"` → every app resolves to `"dockerfile"` (even if a stale preference file carries `cnb_heroku_builder`).
+- Any other app (buildpack stack `heroku-22`, `heroku-24`, `heroku-26`, unknown, and not in `dockerfile_apps`) → `app_containerization_method = containerization_method`.
+
+`dockerfile_apps` is the user's confirmed per-app Dockerfile status; `apps[].stack` is a source fact about what Heroku runs today. An app can run on `heroku-24` while its team has already prepared a Dockerfile for the migration — only `dockerfile_apps` captures that, so never infer Dockerfile status from the stack alone. Treat a `partial` estate whose preferences carry no `dockerfile_apps` (written before the field existed) as "container-stack apps only" and tell the user so in the generation summary so they can re-run Clarify if other apps already have Dockerfiles.
+
+In a `partial` estate this is what makes the choice honest: `cnb_heroku_builder` applies to the buildpack apps only, and the apps that already have a Dockerfile are left alone. Set `has_cnb_app = true` when any app resolves to `"cnb_heroku_builder"` (the same flag `generate-docs.md` Step 0 derives), and for each EB app record whether it resolves to CNB — Q12d, the Clarify checklist and `pipeline.tf` all apply the CodePipeline restriction only to EB apps that actually resolve to `"cnb_heroku_builder"`, never to the estate-level method.
+
+The CNB path publishes to and pulls from ECR only; when `preferences.operational.container_registry` is `"external"` and any app resolves to CNB, **halt and inform**: Clarify Q12 rejects that combination, so this is a stale or hand-edited preferences file — ask the user to re-run Clarify or set `container_registry` to `"ecr"`. Do not emit `ecr.tf`, an ECR login step or an ECR pull policy for an external registry.
+
+**Architecture.** Design keeps CNB apps on `x86_64` (`design-mapping.md` § "CPU
+architecture resolution", warning `cnb_architecture_x86`), so `aws-design.json` carries
+x86 instance types and `cpu_architecture: "X86_64"` for their formations, and every image
+published for them must be `linux/amd64`. `heroku/builder:22` is published for
+`linux/amd64` only, but `heroku/builder:24` and `:26` are multi-architecture (amd64 and
+arm64): without `--platform`, `pack` builds for the Docker host's own architecture, so a
+developer on an ARM machine (Apple silicon, Graviton) would publish an `arm64` image to
+the x86 target — and the immutable-tag reuse check would then keep that image forever.
+Therefore every `pack build` that publishes (the workflow and the manual/Fargate guide
+snippets) passes `--platform linux/amd64`, and before an existing tag is reused its
+architecture is verified (`aws ecr batch-get-image` → manifest → `architecture`
+`amd64`; a mismatch stops with a clear error naming the tag so the image can be deleted
+and rebuilt). Cross-architecture builds are not supported by the Cloud Native Buildpacks
+project: on a host that cannot run `linux/amd64` containers the flagged build fails
+instead of publishing the wrong architecture — the guide says to stop and build from an
+x86 host or CI (`ubuntu-latest` is amd64) rather than drop the flag. Never emit
+`runtime_platform { cpu_architecture = "ARM64" }` or a Graviton instance type for a CNB
+app, whatever `preferences.workshop.cpu_architecture` says.
+
+### `ecr.tf` — Image repositories (only for apps whose `app_containerization_method == "cnb_heroku_builder"`, `container_registry` `"ecr"`)
+
+One repository per CNB Heroku app (not per process type: every process type runs the same
+image with a different entrypoint). Emit alongside `compute.tf` and/or `beanstalk.tf`,
+whichever the app's formations land on. Apps that resolve to `"dockerfile"` get no
+repository here (they keep whatever registry they use today). Skip the file when no app
+resolves to CNB.
+
+```hcl
+resource "aws_ecr_repository" "<app_name>" {
+  name                 = "${var.project_name}/<heroku_app>"
+  image_tag_mutability = "IMMUTABLE"
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
+resource "aws_ecr_lifecycle_policy" "<app_name>" {
+  repository = aws_ecr_repository.<app_name>.name
+  policy = jsonencode({
+    rules = [{
+      rulePriority = 1
+      description  = "keep the last 30 images"
+      selection    = { tagStatus = "any", countType = "imageCountMoreThan", countNumber = 30 }
+      action       = { type = "expire" }
+    }]
+  })
+}
+
+output "ecr_repository_url_<app_name>" {
+  value = aws_ecr_repository.<app_name>.repository_url
+}
+```
+
+**Selecting the process type.** A pack-built image's entrypoint is its default process
+(`/cnb/process/web`); anything passed as the container _command_ becomes an argument to
+that process, it does not pick another one. A process type is selected by overriding the
+entrypoint with `/cnb/process/<process_type>` (the [CNB process contract](https://buildpacks.io/docs/for-app-developers/how-to/build-outputs/specify-launch-process/)). Apply this everywhere the image runs:
+
+- Elastic Beanstalk: `Dockerrun.aws.json` `"Entrypoint": "/cnb/process/<process_type>"` and no `Command` (the CNB workflow in Step 6.5 writes this).
+- Fargate (Step 6): the task definition for a CNB app sets `image` to `"${aws_ecr_repository.<app_name>.repository_url}:${var.image_tag_<app_sanitized>}"` (a Terraform variable cannot reference a resource, so the repository URL is composed in `compute.tf` and only the tag is an input), adds `entryPoint = ["/cnb/process/<process_type>"]`, leaves `command` unset, and for the `web` container adds `environment = [{ name = "PORT", value = "8080" }]` so the process listens on the port the existing `portMappings` expose.
+- EKS (`generate-eks.md`): the Deployment `image` for a CNB app is the repository from `ecr.tf` with the placeholder tag `bootstrap`, and the EKS guide publishes the image and substitutes the commit tag before `kubectl apply`. When a Deployment runs the same CNB image, set the container's `command: ["/cnb/process/<process_type>"]` — Kubernetes `command` overrides the image entrypoint — and set `PORT` to the containerPort for web.
+- Local: `docker run --rm --entrypoint /cnb/process/worker <image>`.
 
 ---
 
 ## Step 6: Generate `compute.tf`
 
 For each service in `aws-design.json` where `aws_service` is "Fargate" or "ALB":
+
+**Normalize `aws_config.ecs_mode` first.** A Fargate entry with no `ecs_mode` key (a design saved before Express Mode existed, reused by the decide-complete resume path) is treated as `"standard"`: its task definition, `aws_ecs_service`, `load_balancer` block, and ALB entry are emitted exactly as before. Never error on the missing key and never default it to `"express"`. Every `ecs_mode == "standard"` test below is satisfied by an absent key.
 
 ### ECS Cluster
 
@@ -1115,7 +1279,21 @@ resource "aws_ecs_task_definition" "<app_sanitized>_<process_type>" {
 
   container_definitions = jsonencode([{
     name  = "<process_type>"
+    # {{IF app_containerization_method == "cnb_heroku_builder"}}
+    # The pack-built image lives in the repository ecr.tf declares (Step 5.5). A variable
+    # cannot reference a resource, so the URL is composed here and only the tag is an input.
+    # Until the first image is published (var.image_tag_<app_sanitized> == "", first apply)
+    # the task definition points at the never-pulled bootstrap tag and the service below
+    # runs zero tasks; MIGRATION_GUIDE.md Phase 3 sets the tag and applies again.
+    image = "${aws_ecr_repository.<app_name>.repository_url}:${coalesce(var.image_tag_<app_sanitized>, "bootstrap")}"
+    # A pack-built image selects its process type through the entrypoint, never through
+    # the command (which only adds arguments to the default web process). PORT is not
+    # injected by Fargate; set it to the port the mapping below exposes (web only).
+    entryPoint  = ["/cnb/process/<process_type>"]
+    environment = [{ name = "PORT", value = "8080" }] # web only; omit for workers
+    # {{ELSE}}
     image = var.<container_image_variable>
+    # {{ENDIF}}
     portMappings = [
       {
         containerPort = <port: 8080 for web, omit for workers>
@@ -1147,7 +1325,9 @@ resource "aws_ecs_task_definition" "<app_sanitized>_<process_type>" {
 - `cpu` and `memory` come from `aws_config.task_cpu` and `aws_config.task_memory` (mapped from Dyno Type Table)
 - `portMappings` included only for `web` process types (port 8080 default)
 - Workers, clock, and custom process types: no `portMappings`. Release process types are run-once hooks and should not be generated as persistent services.
-- Container image: use variable reference (placeholder image at generation time)
+- Container image, Dockerfile apps: `image = var.container_image_<app_sanitized>_<process_type>` (placeholder image at generation time)
+- Container image, CNB apps (`app_containerization_method == "cnb_heroku_builder"`, Step 5.5 § "Containerization method per app"): `image = "${aws_ecr_repository.<app_name>.repository_url}:${coalesce(var.image_tag_<app_sanitized>, "bootstrap")}"` — the repository from `ecr.tf`, the tag from the per-app `image_tag_<app_sanitized>` variable (Step 2; the commit SHA the build published, `""` until then). `bootstrap` is the documented first-apply placeholder: ECS registers the task definition without pulling, and the service's `desired_count` is 0 while the variable is empty, so the placeholder is never run. Do not declare a `container_image_*` variable for a CNB app: a `variable` default cannot reference `aws_ecr_repository`.
+- CNB apps also get `entryPoint = ["/cnb/process/<process_type>"]` on every container and `environment = [{ name = "PORT", value = "8080" }]` on the `web` container only; never set `command` to the process type. Dockerfile apps get neither.
 
 ### Fargate Services
 
@@ -1157,10 +1337,19 @@ resource "aws_ecs_service" "<app_sanitized>_<process_type>" {
   name            = "${var.project_name}-${var.environment}-<process_type>"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.<app_sanitized>_<process_type>.arn
+  # ECS Exec is the `heroku run bash` equivalent (MIGRATION_GUIDE.md § Day-to-day commands).
+  # It needs the ssmmessages permissions that aws_iam_role_policy.ecs_task_exec grants
+  # the task role in security.tf (Step 5).
+  enable_execute_command = true
   # 0 while var.writers_quiesced is true, so a later apply (DNS rollback, a repair)
   # cannot restart tasks that Phase 6 scaled to zero. Set the variable back to false
   # only at the next intentional handoff.
   desired_count   = var.writers_quiesced ? 0 : <aws_config.desired_count>
+  # {{IF app_containerization_method == "cnb_heroku_builder"}} — replace the line above:
+  # also 0 until the first image is published and image_tag_<app_sanitized> is set
+  # (MIGRATION_GUIDE.md Phase 1 creates the repository, Phase 3 publishes and sets the tag).
+  desired_count   = (var.writers_quiesced || var.image_tag_<app_sanitized> == "") ? 0 : <aws_config.desired_count>
+  # {{ENDIF}}
   launch_type     = "FARGATE"
 
   network_configuration {
@@ -1176,6 +1365,19 @@ resource "aws_ecs_service" "<app_sanitized>_<process_type>" {
     container_port   = 8080
   }
 
+  # {{IF release_strategy == "blue_green"}}  (web process types only)
+  deployment_controller {
+    type = "CODE_DEPLOY"
+  }
+  deployment_maximum_percent         = 200
+  deployment_minimum_healthy_percent = 100
+
+  lifecycle {
+    # CodeDeploy owns the task definition revision and the active target group after the first apply.
+    ignore_changes = [task_definition, load_balancer]
+  }
+  # {{ENDIF}}
+
   depends_on = [aws_lb_listener.https]
 
   tags = {
@@ -1189,11 +1391,251 @@ resource "aws_ecs_service" "<app_sanitized>_<process_type>" {
 **Service rules:**
 
 - `desired_count` from `aws_config.desired_count` (maps directly from Heroku formation quantity, 0–100)
-- `load_balancer` block included ONLY when `aws_config.load_balancer == true` (web process types)
+- CNB apps (`app_containerization_method == "cnb_heroku_builder"`): `desired_count` is also 0 while `var.image_tag_<app_sanitized>` is `""` — the first apply creates the repository and the service with no running tasks; the designed count takes effect on the apply that sets the tag (Step 2 § "First deployment"). Emit exactly one `desired_count` line per service.
+- `load_balancer` block included ONLY when `aws_config.load_balancer == true` (web process types) AND `aws_config.ecs_mode == "standard"` (an absent `ecs_mode` is `standard`); an `express` web formation is emitted by the Express Mode section below instead of this service
 - Workers, clock, and custom processes: omit `load_balancer` block and `depends_on`. Release process types are skipped because they are run-once hooks.
 - `assign_public_ip = false` — tasks run in private subnets behind NAT
+- **Deployment strategy follows `preferences.design_constraints.release_strategy`** (absent → `canary`). The provider defaults are controller `ECS` with a rolling update, so a non-rolling choice must be emitted, not assumed:
+  - `rolling` → no `deployment_controller` block (controller `ECS`, rolling update). Nothing else to add.
+  - `blue_green` (web process types) → `deployment_controller { type = "CODE_DEPLOY" }` plus the `lifecycle.ignore_changes` above, and the **CodeDeploy blue/green set** below (second target group, test listener, CodeDeploy application, deployment group, and role). The ECS rolling controller is never emitted for a `blue_green` web formation. Workers have no load balancer, so CodeDeploy blue/green does not apply to them: they stay on the rolling controller and `generation-warnings.json` records `"release_strategy blue_green applies to web formations; <app>:<process_type> deploys with a rolling update"`.
+  - `canary` on a **standard** web formation (Express Mode was ruled out by `ecs_mode_reason`, e.g. `route53_cutover`, `task_size`, `private_space`) → the service deploys with the rolling controller, and `generation-warnings.json` records `"<app>:web requested canary releases; Express Mode was not selected (<ecs_mode_reason>), so the standard ECS service deploys with a rolling update"`. The README's compute section repeats that line. A canary request is never silently downgraded.
 
-### Application Load Balancer (web process types only)
+**CodeDeploy blue/green set (`release_strategy == "blue_green"`, standard web formations only):**
+
+```hcl
+# Blue/green — <heroku_app>:web (release_strategy == "blue_green")
+resource "aws_lb_target_group" "<app_sanitized>_web_green" {
+  name        = "${var.project_name}-${var.environment}-<app_sanitized>-tg-green"
+  port        = 8080
+  protocol    = "HTTP"
+  vpc_id      = <vpc_id_reference>
+  target_type = "ip"
+
+  health_check {
+    enabled             = true
+    healthy_threshold   = 3
+    unhealthy_threshold = 3
+    timeout             = 5
+    interval            = 30
+    path                = "/"
+    matcher             = "200-399"
+  }
+}
+
+resource "aws_lb_listener" "<app_sanitized>_web_test" {
+  load_balancer_arn = aws_lb.<app_sanitized>_web.arn
+  port              = 8443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = <same certificate reference as aws_lb_listener.https below>
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.<app_sanitized>_web_green.arn
+  }
+}
+
+# Admit CodeDeploy test traffic on the ALB. Emitted once per design alongside the
+# first blue/green block; a second blue/green web app reuses this variable. The 8443
+# ingress itself lives INLINE in aws_security_group.alb (Step 5, `{{IF has_blue_green}}`):
+# that group already owns inline 80/443 rules, and the provider forbids mixing inline
+# rules with standalone aws_security_group_rule on the same group.
+variable "codedeploy_test_cidrs" {
+  description = "CIDRs allowed to reach the CodeDeploy test listener (port 8443) during blue/green validation. Operator / CI egress addresses only; 0.0.0.0/0 is rejected."
+  type        = list(string)
+  validation {
+    condition     = length(var.codedeploy_test_cidrs) > 0 && !contains(var.codedeploy_test_cidrs, "0.0.0.0/0")
+    error_message = "codedeploy_test_cidrs must list at least one specific CIDR; 0.0.0.0/0 is not permitted for the test listener."
+  }
+}
+
+# Shared CodeDeploy service role. Emitted ONCE per design (with the first blue/green
+# block); every later blue/green deployment group references the same address.
+resource "aws_iam_role" "codedeploy_ecs" {
+  name = "${var.project_name}-${var.environment}-codedeploy-ecs"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "codedeploy.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "codedeploy_ecs" {
+  role       = aws_iam_role.codedeploy_ecs.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSCodeDeployRoleForECS"
+}
+
+resource "aws_codedeploy_app" "<app_sanitized>_web" {
+  compute_platform = "ECS"
+  name             = "${var.project_name}-${var.environment}-<app_sanitized>-web"
+}
+
+resource "aws_codedeploy_deployment_group" "<app_sanitized>_web" {
+  app_name               = aws_codedeploy_app.<app_sanitized>_web.name
+  deployment_group_name  = "${var.project_name}-${var.environment}-<app_sanitized>-web"
+  service_role_arn       = aws_iam_role.codedeploy_ecs.arn
+  deployment_config_name = "CodeDeployDefault.ECSAllAtOnce"
+
+  deployment_style {
+    deployment_option = "WITH_TRAFFIC_CONTROL"
+    deployment_type   = "BLUE_GREEN"
+  }
+
+  blue_green_deployment_config {
+    deployment_ready_option {
+      action_on_timeout = "CONTINUE_DEPLOYMENT"
+    }
+    terminate_blue_instances_on_deployment_success {
+      action                           = "TERMINATE"
+      termination_wait_time_in_minutes = 5
+    }
+  }
+
+  auto_rollback_configuration {
+    enabled = true
+    events  = ["DEPLOYMENT_FAILURE"]
+  }
+
+  ecs_service {
+    cluster_name = aws_ecs_cluster.main.name
+    service_name = aws_ecs_service.<app_sanitized>_web.name
+  }
+
+  load_balancer_info {
+    target_group_pair_info {
+      prod_traffic_route {
+        listener_arns = [aws_lb_listener.https.arn]
+      }
+      test_traffic_route {
+        listener_arns = [aws_lb_listener.<app_sanitized>_web_test.arn]
+      }
+      target_group {
+        name = aws_lb_target_group.<app_sanitized>_web.name
+      }
+      target_group {
+        name = aws_lb_target_group.<app_sanitized>_web_green.name
+      }
+    }
+  }
+
+  depends_on = [aws_iam_role_policy_attachment.codedeploy_ecs]
+}
+```
+
+`aws_iam_role.codedeploy_ecs`, its policy attachment, and `variable "codedeploy_test_cidrs"` are design-wide: emit them exactly once (with the first `blue_green` web app) and let any further `blue_green` web app's block reference them, so a two-app design never declares the same address twice. The 8443 test-listener ingress is the `{{IF has_blue_green}}` inline block inside `aws_security_group.alb` (Step 5), never a standalone `aws_security_group_rule` on that group. The per-app resources (`_web_green` target group, `_web_test` listener, CodeDeploy app and deployment group) carry `<app_sanitized>` in BOTH the Terraform address and the AWS name (`-<app_sanitized>-tg-green`, `-<app_sanitized>-web`): two web apps sharing `project_name`/`environment` must not request the same AWS name. The README's "Deploying with CodeDeploy" note tells the user that image updates go through `aws deploy create-deployment` with an `appspec.yaml`, not `terraform apply`.
+
+### Express Mode web services (`aws_config.ecs_mode == "express"`)
+
+**Express Mode never receives a CNB app.** Its `image = var.<container_image_variable>` line needs a `container_image_*` variable, which a CNB app (`app_containerization_method == "cnb_heroku_builder"`) never declares: its image comes from `aws_ecr_repository.<app>.repository_url` and `var.image_tag_<app>`, with `desired_count` 0 until the tag is set. Design therefore records `ecs_mode: "standard"` with `ecs_mode_reason: "cnb_image"` for CNB web formations, and they take the standard ECS service path above. If a saved design carries `ecs_mode: "express"` for a CNB app, do not emit this block for it: emit the standard task definition, service and ALB instead and tell the user to re-run Design.
+For a Fargate entry with `aws_config.ecs_mode == "express"`, emit the following **instead of** the task definition, `aws_ecs_service`, and ALB resources above (the log group and the `ecs_execution` / `ecs_task` IAM roles from Step 5 are still emitted). Every reference below resolves to a resource this skill emits: the infrastructure role carries its own inline `jsonencode` trust policy like the other ECS roles in Step 5 (there is no `data.aws_iam_policy_document.ecs_assume` in this skill), the task security group is `aws_security_group.app` from Step 5 (there is no `aws_security_group.ecs_tasks`), and the infrastructure role's managed policy is the documented `service-role/` ARN.
+
+```hcl
+# ECS Express Mode — shared infrastructure role. Emitted ONCE per design (with the first
+# Express entry); every Express service references the same address.
+resource "aws_iam_role" "ecs_infrastructure_express" {
+  name = "${var.project_name}-${var.environment}-ecs-express-infra"
+
+  # Express Mode's infrastructure role is assumed by the ECS service principal, not ecs-tasks.
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "ecs.amazonaws.com"
+      }
+    }]
+  })
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-ecs-express-infra"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_infrastructure_express" {
+  role       = aws_iam_role.ecs_infrastructure_express.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSInfrastructureRoleforExpressGatewayServices"
+}
+
+# ECS Express Mode — <heroku_app>:web (one block per Express entry)
+# Heroku source: <dyno_type> dyno, quantity <desired_count>
+resource "aws_ecs_express_gateway_service" "<app_sanitized>_web" {
+  service_name            = "${var.project_name}-${var.environment}-<app_sanitized>-web"
+  cluster                 = aws_ecs_cluster.main.name
+  # Make apply block until the service is steady, so an apply with writers_quiesced=true
+  # returns only once running+pending tasks are 0 (not merely once the service is ACTIVE).
+  wait_for_steady_state   = true
+  execution_role_arn      = aws_iam_role.ecs_execution.arn
+  task_role_arn           = aws_iam_role.ecs_task.arn
+  infrastructure_role_arn = aws_iam_role.ecs_infrastructure_express.arn
+  cpu                     = "<aws_config.task_cpu>"
+  memory                  = "<aws_config.task_memory>"
+  cpu_architecture        = "<aws_config.cpu_architecture>"
+  health_check_path       = "/"
+
+  primary_container {
+    image          = var.<container_image_variable>
+    container_port = 8080
+    aws_logs_configuration {
+      log_group = aws_cloudwatch_log_group.app.name
+    }
+  }
+
+  network_configuration {
+    # Express Mode derives the ALB scheme from the subnets: public subnets -> internet-facing ALB
+    # and public task IPs; private subnets -> internal ALB. A Heroku web dyno is internet-facing,
+    # so an Express web formation uses the PUBLIC subnets (the one documented exception to the
+    # private-subnet rule — see Express Mode rules). Private Space designs never reach this block.
+    subnets         = <public_subnet_references>
+    security_groups = [aws_security_group.app.id]
+  }
+
+  scaling_target {
+    # 0 while var.writers_quiesced is true, the same freeze the standard aws_ecs_service applies
+    # through desired_count (Express maps desired count onto min_task_count). A later apply keeps
+    # it at 0 until the variable is set back to false.
+    min_task_count            = var.writers_quiesced ? 0 : <aws_config.desired_count>
+    max_task_count            = <max(aws_config.desired_count * 2, 2)>
+    auto_scaling_metric       = "AVERAGE_CPU"
+    auto_scaling_target_value = 60
+  }
+
+  depends_on = [aws_iam_role_policy_attachment.ecs_infrastructure_express]
+
+  tags = {
+    Name      = "${var.project_name}-${var.environment}-<app_sanitized>-web"
+    HerokuApp = "<heroku_app>"
+  }
+}
+
+output "<app_sanitized>_web_endpoint" {
+  description = "AWS-provided HTTPS endpoint URL for the Express Mode service (already includes the https:// scheme)"
+  value       = aws_ecs_express_gateway_service.<app_sanitized>_web.ingress_paths[0].endpoint
+}
+
+output "<app_sanitized>_web_service_arn" {
+  description = "ECS service ARN of the Express Mode service (for describe-services during the Phase 6 writer freeze)"
+  value       = aws_ecs_express_gateway_service.<app_sanitized>_web.service_arn
+}
+```
+
+**Express Mode rules:**
+
+- Requires `hashicorp/aws ~> 6.71` in `main.tf` (`aws_ecs_express_gateway_service` from 6.23.0, `cpu_architecture` from 6.71.0; a `~> 5.80` pin cannot select it, so Step 1 must switch the pin when this section emits). `cpu` must be 256–4096 and `memory` 512–8192; Design already routes larger tasks to `standard`.
+- No `aws_lb`, target group, or listener is emitted for this service — Express Mode provisions and manages them (one ALB shared by up to 25 Express services per VPC). Deployments are canary; `release_strategy` other than `canary` means Design chose `standard`.
+- A custom domain is not wired by Terraform here. `dns_strategy == "route53"` forces `standard` at Design time so `dns.tf` keeps a Terraform-owned ALB to alias. For `external` DNS the guide's manual branch (`generate-docs.md` Phase 5, `target_kind == "express"`) adds the hostname and certificate to the Express listener and CNAMEs the hostname to the `<app_sanitized>_web_endpoint` host.
+- **Writer freeze:** `scaling_target.min_task_count` is `var.writers_quiesced ? 0 : …`, so the Express service honors the same `writers_quiesced` variable as the standard `aws_ecs_service` (Express maps the service's desired count onto `min_task_count`) and stays at 0 across later applies until the variable is set back to `false`. `wait_for_steady_state = true` makes that apply block until the service is steady, so it returns only when running and pending tasks are 0 rather than when the service is merely `ACTIVE`. `max_task_count` keeps its normal value: target tracking has no metric data from zero running tasks, so it cannot scale out from 0, and neither the ECS API reference nor the provider documents 0 as an accepted `maxTaskCount`. The guide's Phase 6 failback (`generate-docs.md`) still verifies the stop explicitly — `aws ecs describe-services` on each `<app_sanitized>_web_service_arn` must report `runningCount` and `pendingCount` of 0 — and suspends the service's Application Auto Scaling scalable target (`aws application-autoscaling register-scalable-target --suspended-state`) for the duration of the handoff, so neither a draining task nor a scaling action can write to the database after the check.
+- **Names:** `service_name` and the `Name` tag carry `<app_sanitized>`; two Express web apps in one cluster must not request the same ECS service name. `aws_iam_role.ecs_infrastructure_express` and its attachment are emitted once per design, not once per Express entry.
+- **Subnets and scheme ([Express Mode network defaults](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html#express-service-network-defaults)):** public subnets give an internet-facing ALB with `assignPublicIp` on the tasks; private subnets give an internal ALB. Heroku web dynos are internet-facing, so the Express block places tasks in the **public** subnets. This is the single accepted deviation from the `tf-best-practices` "Fargate tasks run in private subnets" rule: ingress to the task is still only the Express-created ALB security group on port 8080, and the deviation is recorded in `generation-warnings.json` (`"<app>:web — ECS Express Mode places tasks in public subnets to provision an internet-facing ALB"`) and the README. A design whose web tasks must stay in private subnets (Private Space, § 3D restricted inbound rules) is `standard` at Design time (`ecs_mode_reason: "private_space"`), never Express.
+- The ALB security group is created by Express Mode. `aws_security_group.app` is passed as the task security group so the database, cache, and messaging SGs that already admit `aws_security_group.app` keep working; when any Express entry exists, Step 5 adds one ingress rule to `aws_security_group.app` for port 8080 from the VPC CIDR (`aws_vpc.main.cidr_block`) so the Express-managed ALB can reach the tasks.
+
+### Application Load Balancer (standard-mode web process types only)
 
 Generate ALB resources only when `aws-design.json` contains ALB service entries:
 
@@ -1291,13 +1733,77 @@ variable "acm_certificate_arn" {
 
 Skip this step if no services in `aws-design.json` have `aws_service: "Elastic Beanstalk"`.
 
+### CNB apps on Elastic Beanstalk
+
+`app_containerization_method` is resolved per app in Step 5.5 § "Containerization method per app", and `ecr.tf` is emitted there (it does not depend on this step). For every EB app whose `app_containerization_method` is `"cnb_heroku_builder"`: add the repository-scoped inline ECR pull policy (`eb_ecr_pull_<app_name>`, no account-wide managed policy) to that app's EB instance role (`beanstalk.tf` below) and emit the CNB variant of the deploy workflow for that app — it has no Dockerfile, so its EB source bundle is a `Dockerrun.aws.json` that points at the image in ECR.
+
 Read `preferences.design_constraints.eb_deploy_method.value`; default to `"github_actions"` when the field is absent. Always generate `beanstalk.tf` for EB services, then generate exactly one deploy path:
 
-- `"github_actions"` → generate `$MIGRATION_DIR/.github/workflows/deploy-eb.yml`
-- `"codepipeline"` → generate `$MIGRATION_DIR/terraform/pipeline.tf`
-- `"manual"` → generate neither deploy automation artifact; document CLI deployment in `MIGRATION_GUIDE.md`
+- `"github_actions"` → generate `$MIGRATION_DIR/.github/workflows/deploy-eb.yml` with one EB app, or one `$MIGRATION_DIR/.github/workflows/deploy-eb-<eb_app_slug>.yml` per EB app with two or more (§ `.github/workflows/deploy-eb.yml`), **and** `$MIGRATION_DIR/.github/workflows/promote.yml` (§ `promote.yml`)
+- `"codepipeline"` → generate `$MIGRATION_DIR/terraform/pipeline.tf`. **Not supported for CNB apps**: the pipeline hands the GitHub source artifact straight to Elastic Beanstalk and has no build stage, so a buildpack app would arrive with neither a Dockerfile nor a `Dockerrun.aws.json`. When any EB app resolves to `"cnb_heroku_builder"` and this value is `"codepipeline"`, halt and inform (Clarify Q12d withholds this option for CNB; a stored value means stale preferences) — ask the user to choose `github_actions` or `manual` and rewrite `eb_deploy_method` with `chosen_by: "user"` before continuing.
+- `"manual"` → generate neither deploy automation artifact; document CLI deployment in `MIGRATION_GUIDE.md` (`generate-docs.md` Phase 3 has a CNB variant: `pack build --publish` plus one `Dockerrun.aws.json` bundle per process type)
+
+### EB name resolution (run once, before `beanstalk.tf`, the deploy artifacts and `pipeline.tf`)
+
+Every Elastic Beanstalk name comes from this one section; nothing else in this file or in
+`generate-docs.md` derives one. Names are fixed at generation time and written as literals.
+
+Collect `eb_apps` = the distinct `heroku_app` values of `aws-design.json` `services[]` entries with
+`aws_service: "Elastic Beanstalk"`, sorted. Two modes:
+
+- **Shared names (exactly one EB app).** `<eb_app_suffix>` is empty. The EB application is
+  `var.project_name`, each environment is `${var.project_name}-<process_type>`, and the instance
+  role and profile are `${var.project_name}-eb-instance` and `${var.project_name}-eb-profile`.
+  This is the naming this skill has always produced for one app; nothing changes for it.
+- **Per-app names (two or more EB apps).** `<eb_app_suffix>` is `-<eb_app_slug>`. The EB
+  application is `${var.project_name}<eb_app_suffix>`, each environment is
+  `${var.project_name}<eb_app_suffix>-<process_type>`, and the instance role and profile are
+  `${var.project_name}<eb_app_suffix>-eb-instance` and `${var.project_name}<eb_app_suffix>-eb-profile`.
+  With the shared form a second app would create a second application, environments and role with
+  the same names as the first (Terraform cannot apply them, and a staging and a production app
+  would resolve to the same environments), so each app needs its own.
+
+In both modes an environment's name is its application's name, a dash, and the process type.
+Deploy artifacts rely on that.
+
+**`<eb_app_slug>`** (per-app mode only). Start from the Heroku app name: lowercase it, replace each
+run of characters outside `a-z0-9` with `-`, and trim leading and trailing `-` (use `app` if
+nothing is left). Then fit it:
+
+1. An Elastic Beanstalk environment name is at most 40 characters. `room` = 40 − `len(project_name)`
+   − 1 − 1 − `len(longest process_type among the EB services of all EB apps)`, where `project_name`
+   is the `terraform.tfvars` value. The two `1`s are the dashes before the slug and before the
+   process type. If `room` is below 3, halt and tell the user the project name or a process type is
+   too long for per-app names and ask for a shorter `project_name`.
+2. Truncate the slug to `room` characters and trim a trailing `-`.
+3. Compute every app's _natural_ slug (steps above). An app's _environment names_ are
+   `<slug>-<process_type>` for each of its own EB process types. Process types may contain dashes, so
+   two different slugs can give the same environment name: app `foo` with process `bar-worker` and app
+   `foo-bar` with process `worker` both reach `foo-bar-worker`. Walk `eb_apps` in sorted order and
+   give each app the natural slug when that slug is not assigned to an earlier app and none of the
+   app's environment names equals an environment name of an earlier app. Otherwise rebuild it for
+   n = 2, 3, … as the original slug truncated to `room − len(n) − 1` characters (trailing `-`
+   trimmed), then `-`, then `n`, and take the first n whose result meets the same two conditions and
+   is also not the natural slug of any other app. A rebuilt slug can itself collide (with `room` 6,
+   `hell-2` and `hello-2` both rebuild `hello-2` to `hell-2`), so keep incrementing n; if
+   `room − len(n) − 1` drops below 1, halt with the message from step 1. The resolved map of app to
+   slug is the only source for the application and environment names in `beanstalk.tf`, the deploy
+   workflows, `pipeline.tf` and the guide; none of them recomputes a name.
+
+The longest environment name is then at most 40 characters, so the instance role
+(`<project_name><eb_app_suffix>-eb-instance`, 12 more characters than the environment's prefix)
+stays well inside IAM's 64-character limit. Examples, for `project_name = "shop"` unless noted:
+
+| Heroku apps (process types) | `room` | Application | Environment |
+| --- | --- | --- | --- |
+| `shop-staging` (web, worker) | 28 | `shop-shop-staging` | `shop-shop-staging-web` |
+| `shop-production` (web, worker) | 28 | `shop-shop-production` | `shop-shop-production-worker` |
+| `acme-platform-production-api-service` (web, scheduler), `project_name = "acme-platform-prod"` | 11 | `acme-platform-prod-acme-platfo` | `acme-platform-prod-acme-platfo-scheduler` (40) |
+| `billing-service-eu`, `billing-service-us` (web, scheduler), `project_name = "acme-platform-prod"` | 11 | `…-billing-ser`, `…-billing-s-2` | `…-billing-ser-scheduler`, `…-billing-s-2-scheduler` |
 
 ### `beanstalk.tf` — EB Application and Environments
+
+`<eb_app_suffix>` is the value from EB name resolution above: empty with one EB app, `-<eb_app_slug>` with two or more.
 
 ```hcl
 # Select the latest Elastic Beanstalk Docker platform for Amazon Linux 2023.
@@ -1309,12 +1815,12 @@ data "aws_elastic_beanstalk_solution_stack" "docker" {
 }
 
 resource "aws_elastic_beanstalk_application" "<app_name>" {
-  name        = var.project_name
+  name        = "${var.project_name}<eb_app_suffix>"
   description = "Migrated from Heroku app: <heroku_app>"
 }
 
 resource "aws_elastic_beanstalk_environment" "<app_name>_<process_type>" {
-  name                = "${var.project_name}-<process_type>"
+  name                = "${var.project_name}<eb_app_suffix>-<process_type>"
   application         = aws_elastic_beanstalk_application.<app_name>.name
   solution_stack_name = data.aws_elastic_beanstalk_solution_stack.docker.name
   tier                = "WebServer"
@@ -1422,7 +1928,31 @@ resource "aws_elastic_beanstalk_environment" "<app_name>_<process_type>" {
     value     = var.eb_deployment_policy
   }
 
+  # Stream instance logs to CloudWatch Logs so `aws logs tail` works (the
+  # `heroku logs --tail` equivalent in MIGRATION_GUIDE.md § Day-to-day commands).
+  # The Docker application log lands in
+  # /aws/elasticbeanstalk/<environment>/var/log/eb-docker/containers/eb-current-app/stdouterr.log
+  setting {
+    namespace = "aws:elasticbeanstalk:cloudwatch:logs"
+    name      = "StreamLogs"
+    value     = "true"
+  }
+
+  # RetentionInDays accepts only 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400,
+  # 545, 731, 1827, 3653. Clarify Q13 allows any integer 1–3653 (including a reused
+  # preferences.json), so the generator emits the smallest accepted value that is
+  # >= operational.log_retention_days (2 → 3, 45 → 60, 30 → 30; default 30). Never copy
+  # the raw preference: an unlisted value fails environment creation/update.
+  setting {
+    namespace = "aws:elasticbeanstalk:cloudwatch:logs"
+    name      = "RetentionInDays"
+    value     = "<smallest EB-accepted RetentionInDays >= preferences.json.operational.log_retention_days || 30>"
+  }
+
   # {{IF process_type == "web"}}
+  # The one listen port for this web app. Heroku injected PORT; a pack-built (CNB)
+  # image does not, so this property is how the process learns it. The CNB deploy
+  # workflow's EB_CONTAINER_PORT and Dockerrun ContainerPort carry the same tfvars value.
   setting {
     namespace = "aws:elasticbeanstalk:application:environment"
     name      = "PORT"
@@ -1445,12 +1975,12 @@ resource "aws_elastic_beanstalk_environment" "<app_name>_<process_type>" {
 }
 
 resource "aws_iam_instance_profile" "eb_<app_name>" {
-  name = "${var.project_name}-eb-profile"
+  name = "${var.project_name}<eb_app_suffix>-eb-profile"
   role = aws_iam_role.eb_instance_<app_name>.name
 }
 
 resource "aws_iam_role" "eb_instance_<app_name>" {
-  name = "${var.project_name}-eb-instance"
+  name = "${var.project_name}<eb_app_suffix>-eb-instance"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -1465,6 +1995,64 @@ resource "aws_iam_role" "eb_instance_<app_name>" {
 resource "aws_iam_role_policy_attachment" "eb_web_tier_<app_name>" {
   role       = aws_iam_role.eb_instance_<app_name>.name
   policy_arn = "arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier"
+}
+
+# Only when this app's app_containerization_method == "cnb_heroku_builder": the EB
+# Docker platform pulls the pack-built image from ECR, so the instance role needs read access
+# to this app's repository.
+# Do NOT attach the AmazonEC2ContainerRegistryReadOnly managed policy here: it allows image
+# reads on Resource "*", so every app's instance role could pull every repository in the
+# account. This inline policy scopes the pull actions to this app's repository;
+# ecr:GetAuthorizationToken is not resource-scoped and must stay on "*".
+resource "aws_iam_role_policy" "eb_ecr_pull_<app_name>" {
+  name = "${var.project_name}-eb-ecr-pull"
+  role = aws_iam_role.eb_instance_<app_name>.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["ecr:GetAuthorizationToken"]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ecr:BatchGetImage",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchCheckLayerAvailability"
+        ]
+        Resource = aws_ecr_repository.<app_name>.arn
+      }
+    ]
+  })
+}
+# Session Manager access for `aws ssm start-session` (the `heroku run bash` equivalent in
+# MIGRATION_GUIDE.md § Day-to-day commands). The environment has no EC2 key pair and no
+# :22 ingress, so `eb ssh` cannot reach an instance; AWSElasticBeanstalkWebTier grants no
+# ssm:*/ssmmessages:* either. The SSM agent is preinstalled on the AL2023 Docker platform.
+# Do NOT attach the AmazonSSMManagedInstanceCore managed policy here: it also allows
+# ssm:GetParameter(s) on Resource "*", which would widen the parameter-read boundary that
+# eb_read_secrets_<app_name> keeps under parameter/<project>/*. This inline policy carries
+# only the actions the agent needs to register and open a session channel.
+resource "aws_iam_role_policy" "eb_ssm_<app_name>" {
+  name = "${var.project_name}-eb-session-manager"
+  role = aws_iam_role.eb_instance_<app_name>.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "ssm:UpdateInstanceInformation",
+        "ssmmessages:CreateControlChannel",
+        "ssmmessages:CreateDataChannel",
+        "ssmmessages:OpenControlChannel",
+        "ssmmessages:OpenDataChannel"
+      ]
+      Resource = "*"
+    }]
+  })
 }
 
 resource "aws_iam_role_policy" "eb_read_secrets_<app_name>" {
@@ -1499,14 +2087,23 @@ resource "aws_iam_role_policy" "eb_read_secrets_<app_name>" {
 
 ### `.github/workflows/deploy-eb.yml` — GitHub Actions EB Deploy (Default)
 
-Emit this file when `eb_deploy_method.value` is `"github_actions"` or absent. The workflow uses GitHub OIDC role assumption, packages the source bundle, creates one EB application version, and updates every generated EB environment for the app (web, worker, clock, custom).
+Emit this file when `eb_deploy_method.value` is `"github_actions"` or absent.
+**Two variants, chosen per app.** The workflow lives in the app's repository, so each
+app gets the variant its `app_containerization_method` (§ "Containerization method per
+app") resolves to. `"dockerfile"` → emit the source-bundle workflow below as-is (the app's
+own Dockerfile is built by Elastic Beanstalk). `"cnb_heroku_builder"` → emit the CNB
+variant in § "CNB variant" instead — same triggers, same OIDC role, but the build step is
+`pack build --publish` to ECR and each environment receives a `Dockerrun.aws.json` bundle.
+In a `partial` estate the two variants coexist across repositories; never run `pack build`
+for an app that has a Dockerfile. The workflow uses GitHub OIDC role assumption, packages the source bundle, creates one EB application version, and updates every generated EB environment of **its own app** (web, worker, clock, custom). In a promote pair (§ `promote.yml`) the staging app's workflow deploys it on every push to `main`, and the production app's workflow runs only when a person starts it, so production receives versions through the approval-gated `promote.yml`. A CNB app is promoted by the explicit-label CNB promote variant (§ "CNB promote variant"), which never reads a label from a staging environment, and the `<eb_deploy_trigger>` rule of § GitHub Actions rules applies to the CNB workflow as well.
+
+**One file per EB app in per-app mode.** With one EB app the file is `.github/workflows/deploy-eb.yml` and `<eb_app_label>` below is empty. With two or more it is `.github/workflows/deploy-eb-<eb_app_slug>.yml` for each EB app, `<eb_app_label>` is a space followed by `(<heroku_app>)`, and every file carries that app's own application and environment names from EB name resolution. A single shared file cannot name two applications, and the second app would otherwise have no workflow at all.
 
 ```yaml
-name: Deploy Elastic Beanstalk
+name: Deploy Elastic Beanstalk<eb_app_label>
 
 on:
-  push:
-    branches: [main]
+  <eb_deploy_trigger>
 
 permissions:
   id-token: write
@@ -1514,8 +2111,9 @@ permissions:
 
 env:
   AWS_REGION: <target_region>
-  EB_APPLICATION_NAME: <app_name>
-  EB_ENVIRONMENTS: "<space-separated EB environment names from aws-design.json>"
+  # The EB application's name from EB name resolution (aws_elastic_beanstalk_application.name), not the Heroku app name.
+  EB_APPLICATION_NAME: <eb_application_name>
+  EB_ENVIRONMENTS: "<space-separated EB environment names of this app from EB name resolution>"
 
 jobs:
   deploy:
@@ -1534,7 +2132,7 @@ jobs:
 
       - name: Create application version
         run: |
-          VERSION_LABEL="${GITHUB_SHA}-${GITHUB_RUN_NUMBER}"
+          VERSION_LABEL="${GITHUB_SHA}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
           BUCKET="$(aws elasticbeanstalk create-storage-location --query S3Bucket --output text)"
           aws s3 cp app.zip "s3://${BUCKET}/${EB_APPLICATION_NAME}/${VERSION_LABEL}.zip"
           aws elasticbeanstalk create-application-version \
@@ -1550,18 +2148,450 @@ jobs:
 
 **GitHub Actions rules:**
 
-- Emit one workflow per repository/migration, not one per EB environment.
-- `EB_ENVIRONMENTS` MUST include every generated EB environment for the app, not only `<app_name>-web`.
+- Emit one workflow per EB app, never one per EB environment: one file with one EB app, one `deploy-eb-<eb_app_slug>.yml` per app with two or more.
+- `<eb_deploy_trigger>` is `push:` with `branches: [main]`, except for an app that sits at `stage: "production"` in a `pipeline` resource's `config.stages[]`: its trigger is `workflow_dispatch:` only. Without that, a push to `main` would deploy straight to the production application of a staging and production pair, and in per-app mode every app has its own workflow. Production then receives a release when a person runs this workflow, or through the approval-gated `promote.yml` (§ `promote.yml`) when a promote pair resolves.
+- `EB_APPLICATION_NAME` and `EB_ENVIRONMENTS` are the names from EB name resolution, written as literals. In per-app mode they are this app's own names, so one app's workflow never touches another app's environments.
+- `EB_ENVIRONMENTS` MUST include every generated EB environment for the app, not only the `web` one.
+- In a promote pair (§ `promote.yml`) the staging app's own workflow deploys it on every push and the production app's workflow is manual-only; the production app's environments never appear in the staging file. Without a promote pair, `promote.yml` is an approval-gated redeploy of a chosen version to the app's own environments.
 - The workflow assumes a GitHub OIDC role through `secrets.AWS_ROLE_ARN`; document the required role setup in `MIGRATION_GUIDE.md`.
+- The version label is `${GITHUB_SHA}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}`. GitHub keeps `GITHUB_RUN_NUMBER` on a rerun and increments only `GITHUB_RUN_ATTEMPT`; without the attempt a rerun after a failed `update-environment` would stop at `create-application-version` because the label already exists.
 - Do not emit `pipeline.tf` when this method is selected.
+
+#### CNB variant (`containerization_method == "cnb_heroku_builder"`)
+
+```yaml
+name: Build with buildpacks and deploy to Elastic Beanstalk<eb_app_label>
+on:
+  <eb_deploy_trigger>
+permissions:
+  id-token: write
+  contents: read
+env:
+  AWS_REGION: <target_region>
+  # The EB application's name from EB name resolution (aws_elastic_beanstalk_application.name), not the Heroku app name;
+  # environment names are "<EB_APPLICATION_NAME>-<process_type>" in both modes.
+  EB_APPLICATION_NAME: <eb_application_name>
+  ECR_REPOSITORY: <project_name>/<heroku_app>
+  # Follows the app's Heroku stack: heroku-22 -> heroku/builder:22 (deprecated upstream), heroku-24 -> heroku/builder:24,
+  # heroku-26 or unknown -> heroku/builder:26 (Heroku's recommended builder).
+  CNB_BUILDER: heroku/builder:<22|24|26>
+  # Every process type with a generated EB environment, from aws-design.json (never release).
+  EB_PROCESS_TYPES: "web worker"
+  # ContainerPort of every Dockerrun bundle of this app. App with an EB web environment: the exact
+  # value of eb_application_port_<app_sanitized>_web in terraform.tfvars (the same port the EB PORT
+  # property carries). App with no EB web environment (worker/clock only): the literal 8080 -- that
+  # variable is not emitted for it; EB's Docker platform still requires a ContainerPort and nothing listens on it.
+  EB_CONTAINER_PORT: "<eb_application_port_<app_sanitized>_web | 8080 when the app has no EB web environment>"
+  # Config vars the buildpacks read while building (Containerization Prerequisites in MIGRATION_GUIDE.md),
+  # as space-separated NAMES only, e.g. "NPM_TOKEN RAILS_MASTER_KEY". Empty when the app needs none.
+  # Heroku shows every config var to the buildpacks at compile time; pack passes only the names listed here.
+  BUILD_ENV_NAMES: ""
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+      - uses: buildpacks/github-actions/setup-pack@v6.2.2
+      - name: Build image with Heroku buildpacks (no Dockerfile)
+        # One line per name in BUILD_ENV_NAMES, each sourced from a GitHub secret. The value reaches
+        # pack through this environment only; it is never written into the script or the command line.
+        # Add a block-style `env:` key here only when BUILD_ENV_NAMES is not empty, one line per name
+        # (never flow style `env: {}`: the artifact checker rejects it):
+        #   env:
+        #     NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          IMAGE="${{ steps.ecr.outputs.registry }}/${ECR_REPOSITORY}:${GITHUB_SHA}"
+          BUILD_ENV_FLAGS=()
+          for NAME in ${BUILD_ENV_NAMES}; do BUILD_ENV_FLAGS+=(--env "${NAME}"); done
+          # The repository has immutable tags. A rerun of this commit (for example after a
+          # failed deployment) reuses the image it already published instead of failing on
+          # ImageTagAlreadyExistsException -- but only when that image is linux/amd64, the
+          # architecture Design pinned for CNB apps (builders 24/26 also publish arm64).
+          if aws ecr describe-images --repository-name "${ECR_REPOSITORY}" --image-ids "imageTag=${GITHUB_SHA}" > /dev/null 2>&1; then
+            ARCHES="$(docker manifest inspect --verbose "${IMAGE}" | jq -r 'if type == "array" then map(.Descriptor.platform.architecture) | join(" ") else .Descriptor.platform.architecture end')"
+            case " ${ARCHES} " in
+              *" amd64 "*) echo "Reusing existing linux/amd64 image ${IMAGE}" ;;
+              *) echo "::error::${IMAGE} exists but is '${ARCHES}', not amd64; delete that tag (aws ecr batch-delete-image) and rerun" ; exit 1 ;;
+            esac
+          else
+            pack build "${IMAGE}" --builder "${CNB_BUILDER}" --platform linux/amd64 --publish "${BUILD_ENV_FLAGS[@]}"
+          fi
+          echo "IMAGE=${IMAGE}" >> "$GITHUB_ENV"
+      - name: Write one Dockerrun bundle per process type
+        run: |
+          for PROCESS in ${EB_PROCESS_TYPES}; do
+            mkdir -p "dockerrun/${PROCESS}"
+            cat > "dockerrun/${PROCESS}/Dockerrun.aws.json" <<JSON
+          {
+            "AWSEBDockerrunVersion": "1",
+            "Image": { "Name": "${IMAGE}", "Update": "true" },
+            "Ports": [{ "ContainerPort": "${EB_CONTAINER_PORT}" }],
+            "Entrypoint": "/cnb/process/${PROCESS}"
+          }
+          JSON
+            zip -q -j "dockerrun/${PROCESS}.zip" "dockerrun/${PROCESS}/Dockerrun.aws.json"
+          done
+      - name: Create one application version per process type and deploy it
+        run: |
+          VERSION_BASE="${GITHUB_SHA}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+          BUCKET="$(aws elasticbeanstalk create-storage-location --query S3Bucket --output text)"
+          for PROCESS in ${EB_PROCESS_TYPES}; do
+            aws s3 cp "dockerrun/${PROCESS}.zip" "s3://${BUCKET}/${EB_APPLICATION_NAME}/${VERSION_BASE}-${PROCESS}.zip"
+            aws elasticbeanstalk create-application-version \
+              --application-name "${EB_APPLICATION_NAME}" \
+              --version-label "${VERSION_BASE}-${PROCESS}" \
+              --source-bundle "S3Bucket=${BUCKET},S3Key=${EB_APPLICATION_NAME}/${VERSION_BASE}-${PROCESS}.zip"
+            aws elasticbeanstalk update-environment \
+              --environment-name "${EB_APPLICATION_NAME}-${PROCESS}" \
+              --version-label "${VERSION_BASE}-${PROCESS}"
+          done
+```
+
+**CNB variant rules:**
+
+- Keep the three steps separate and keep the deploy step in exactly this shape. The
+  mandatory artifact checker (`validate-migration-artifacts.py --require-eb-workflow`,
+  `generate.md`) verifies the step that calls `elasticbeanstalk`: it accepts plain
+  `${VAR}` interpolation, the `create-storage-location` lookup, `aws`/`zip`/`echo`
+  commands and one `for` loop over a literal list from `env:`, and it rejects heredocs,
+  `$(...)`, `${VAR%%=*}`, `cd`, `mkdir`, redirects and assignments inside the loop. The
+  Dockerrun heredoc and the `mkdir`/redirect therefore live in their own step that
+  never mentions `elasticbeanstalk`. Do not merge the bundle step into the deploy step.
+- `EB_APPLICATION_NAME` is this app's EB application name from EB name resolution (`var.project_name`
+  with one EB app, `${var.project_name}-<eb_app_slug>` with two or more), so `${EB_APPLICATION_NAME}-${PROCESS}`
+  is exactly the environment name `beanstalk.tf` creates. The file name, `<eb_app_label>` and
+  `<eb_deploy_trigger>` follow the same one-file-per-EB-app rule as the source-bundle workflow
+  (§ GitHub Actions rules), including the manual-only trigger for a production-stage app.
+  `EB_PROCESS_TYPES` MUST list every process type with a generated EB environment and
+  never `release`.
+- The image is built once per push and shared by every process type; only the
+  `Entrypoint` differs per environment. Never build per environment. The tag is the
+  commit SHA in an `IMMUTABLE` repository, so the build step first checks
+  `aws ecr describe-images` and reuses an existing image for that commit; a rerun of a
+  failed deployment never republishes. The same `${IMAGE}` string is written into every
+  bundle of the run.
+- Version labels are `${GITHUB_SHA}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${PROCESS}`.
+  GitHub keeps `GITHUB_RUN_NUMBER` unchanged on a rerun and increments only
+  `GITHUB_RUN_ATTEMPT`; Elastic Beanstalk rejects `create-application-version` for an
+  existing label, so without the attempt a rerun after a failed `update-environment`
+  would stop before retrying the environment update. Keep the attempt in the label (the
+  Dockerfile variant does the same).
+- Every publishing `pack build` passes `--platform linux/amd64`. Design pins CNB apps to
+  x86_64 (Step 5.5 § "Architecture"); `heroku/builder:24` and `:26` are multi-arch, so
+  without the flag `pack` would build for the host's architecture. Reusing an existing tag
+  is gated on its architecture: `docker manifest inspect --verbose` (after
+  `amazon-ecr-login`) must report `amd64`, otherwise the step fails with an error naming
+  the tag to delete; never reuse an image of another architecture. `ubuntu-latest` is
+  amd64, so the flagged build succeeds there; a host that cannot run amd64 containers fails
+  the build instead of publishing an arm64 image.
+- `BUILD_ENV_NAMES` lists the config vars the buildpacks need **while building**. Heroku
+  shows every config var to the buildpacks at compile time; `pack` passes none unless
+  `--env NAME` names it. The generator cannot know which ones matter (the inventory holds
+  config var **keys**, never values), so it writes `""` and the guide's Containerization
+  Prerequisites tell the user which to add: private registry tokens (`NPM_TOKEN`,
+  `BUNDLE_GEMS__*`, `PIP_EXTRA_INDEX_URL`) and the keys an asset-compilation step reads
+  (`RAILS_MASTER_KEY`, `SECRET_KEY_BASE`). For each name, add one line to the build step's
+  `env:` (`NAME: ${{ secrets.NAME }}`) and the name to `BUILD_ENV_NAMES`. The value is
+  never interpolated into the `run:` script, a `pack` argument or a log line: `--env NAME`
+  (no `=value`) reads it from the step's environment. Anything a buildpack bakes into the
+  image is readable from the image, so a build-time secret must never be one the running
+  app should not hold.
+- `EB_CONTAINER_PORT` is the Dockerrun `ContainerPort` of every bundle of the app. For
+  an app with an EB web environment it is the value of
+  `eb_application_port_<app_sanitized>_web` in `terraform.tfvars` — the only port the
+  web app has: the EB `PORT` property (`beanstalk.tf`), the Dockerrun `ContainerPort` and
+  the host proxy all use it; never write a different literal for such an app. For an app
+  with **no** EB web environment (worker/clock/custom only) that variable is not emitted
+  (Step 2), so write the literal `8080`: EB's Docker platform requires a `ContainerPort`
+  and no process listens on it. Worker/clock/custom environments of a web app receive the
+  web port for the same reason. Never emit the unresolved
+  `eb_application_port_*` placeholder.
+- `setup-pack` is pinned to a full release tag (`v6.2.2`, verified to contain
+  `setup-pack/action.yml`). The repository does not publish moving major tags such as
+  `@v5` or `@v6`; a workflow referencing one fails at checkout. When bumping, check
+  `gh api repos/buildpacks/github-actions/tags` and that the file exists at the new tag.
+- `CNB_BUILDER` follows the app's Heroku stack (`apps[].stack`): `heroku-22` →
+  `heroku/builder:22` (deprecated upstream — note it in `MIGRATION_GUIDE.md`), `heroku-24` →
+  `heroku/builder:24`, `heroku-26` or unknown/EOL stacks → `heroku/builder:26` (Heroku's
+  recommended builder; source github.com/heroku/cnb-builder-images). All three ship
+  .NET, Go, Java, Node.js, PHP, Python, Ruby and Scala buildpacks. Do not emit Fir builders.
+- The OIDC role needs two ECR statements in addition to the Elastic Beanstalk
+  permissions, and `MIGRATION_GUIDE.md` Phase 3 documents them with the role setup:
+  - `ecr:GetAuthorizationToken` on `"Resource": "*"` — the action is not
+    resource-scoped; a repository ARN in that statement makes `amazon-ecr-login` fail
+    with AccessDenied.
+  - On the app's repository ARN (`aws_ecr_repository.<app_name>.arn`):
+    `ecr:DescribeImages`, `ecr:BatchGetImage`, `ecr:BatchCheckLayerAvailability`,
+    `ecr:InitiateLayerUpload`, `ecr:UploadLayerPart`, `ecr:CompleteLayerUpload`,
+    `ecr:PutImage`. `pack build --publish` reads the existing manifest
+    (`BatchGetImage`) before it writes layers; `describe-images` is the rerun check.
+- Private Heroku buildpacks (custom `BUILDPACK_URL`s) are not resolved by the Heroku
+  builder; list them in `MIGRATION_GUIDE.md` as needing `--buildpack` flags or a
+  Dockerfile for that app.
+
+### `.github/workflows/promote.yml` — Promote an existing version to production
+
+Heroku's `pipelines:promote` moves the slug that is already running on staging to
+production. Elastic Beanstalk's unit is the application version with its S3 source
+bundle, so promote is: take the version label running on the staging environment,
+register that same version (same bundle) in the production EB application, update the
+production environments. With the default `deploy-eb.yml` the bundle is application
+source with a Dockerfile, which Elastic Beanstalk builds on the production instances:
+promote redeploys the exact source version that was tested on staging, not a prebuilt
+image. Only the image-based variant (a `Dockerrun.aws.json` bundle pointing at an
+immutable image reference, see the CNB rule below) gives a no-rebuild guarantee. The
+approval click lives in a GitHub **environment** named `production` with required
+reviewers, which the customer creates once in the repository settings.
+
+**Resolve the two sides against the generated EB services before emitting:**
+
+- `PRODUCTION_APP` = this app's generated EB application name;
+  `PRODUCTION_ENVIRONMENTS` = every generated EB environment of this app (the services
+  in `aws-design.json` with `aws_service: "Elastic Beanstalk"` and this `heroku_app`),
+  same rule as `EB_ENVIRONMENTS` in `deploy-eb.yml`.
+- A **promote pair** exists when this app sits at `stage: "production"` in a `pipeline`
+  resource's `stages[]`, the app at `stage: "staging"` in that pipeline (or
+  `"development"` when there is no staging stage) is itself in `aws-design.json` with
+  Elastic Beanstalk services, the two apps share the repository, **and the two sides
+  resolve to different generated names** (see "Distinct names" below). Then
+  `STAGING_APP` = that app's generated EB application name and `STAGING_ENVIRONMENT` =
+  any one of its generated EB environments: prefer its `web` environment, otherwise the
+  first one (a worker-only app has no web environment; every environment of an app
+  receives the same version label from `deploy-eb.yml`, so any of them identifies the
+  running version). In a promote pair the staging app's own deploy workflow
+  (§ GitHub Actions rules) deploys it on push, and production receives versions only through this file.
+- **Distinct names.** A pair needs `STAGING_APP != PRODUCTION_APP` and no staging
+  environment name equal to a production environment name. With one EB app there is no
+  second app, so no pair exists. With two or more, EB name resolution (above) gives every
+  app its own application, environments and roles and halts rather than emit two
+  environments with one name, so the two sides of a pipeline always resolve to
+  different generated names and `STAGING_APP`, `STAGING_ENVIRONMENT`, `PRODUCTION_APP` and
+  `PRODUCTION_ENVIRONMENTS` all come from that one map. Before that resolution existed, two
+  apps in a design shared `var.project_name` as their application name and the same
+  environments, so a push to staging would have deployed to production and `promote.yml`
+  would have promoted production onto itself; the per-app names are what rule that out.
+- Otherwise there is **no generated staging source**: the app is in no pipeline, its
+  pipeline partner was not migrated (pipeline membership alone does not supply an EB
+  source), the two apps do not share the repository, or the app is itself at the
+  staging/development stage. Emit the fallback
+  variant: `version_label` is `required: true`, the two `{{IF promote_pair}}` steps are
+  omitted, and promote is an approval-gated redeploy of the chosen version label to the
+  app's own environments. Pushes to `main` still deploy to those environments through
+  `deploy-eb.yml`. Say both things in the generated file's comment and in
+  `MIGRATION_GUIDE.md`.
+
+```yaml
+name: Promote to production
+on:
+  workflow_dispatch:
+    inputs:
+      version_label:
+        # {{IF promote_pair}} required: false, default "" — empty takes the version
+        # running on staging. {{ELSE}} required: true — there is no generated staging
+        # source, so the label is always explicit. {{ENDIF}}
+        description: "Application version label to promote (empty: the version running on staging)"
+        required: false
+        default: ""
+permissions:
+  id-token: write
+  contents: read
+env:
+  AWS_REGION: <target_region>
+  STAGING_APP: <staging app's generated EB application name>
+  STAGING_ENVIRONMENT: <one generated EB environment of the staging app, web if present>
+  PRODUCTION_APP: <this app's generated EB application name>
+  PRODUCTION_ENVIRONMENTS: "<space-separated generated EB environment names for this app>"
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    # Approval gate: create a GitHub environment named `production` with required
+    # reviewers (Settings -> Environments). The job waits here until someone approves.
+    environment: production
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      # {{IF promote_pair}}
+      - name: Read the version running on staging
+        id: staging
+        if: inputs.version_label == ''
+        run: |
+          STAGING_LABEL="$(aws elasticbeanstalk describe-environments --environment-names "${STAGING_ENVIRONMENT}" --query 'Environments[0].VersionLabel' --output text)"
+          echo "label=${STAGING_LABEL}" >> "$GITHUB_OUTPUT"
+      # {{ENDIF}}
+      - name: Check the version label
+        # The dispatch input is bound as data through `env`, never interpolated into
+        # the script, so a label such as release-$BUILD is kept as typed.
+        env:
+          REQUESTED_LABEL: ${{ inputs.version_label }}
+          # {{IF promote_pair}}
+          STAGING_LABEL: ${{ steps.staging.outputs.label }}
+          # {{ENDIF}}
+        run: |
+          LABEL="${REQUESTED_LABEL:-${STAGING_LABEL}}"
+          if [ "${LABEL}" = "None" ] || ! [[ "${LABEL}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]]; then
+            echo "::error::No promotable version label: pass version_label (1-100 characters: letters, digits, . _ -)."
+            exit 1
+          fi
+          echo "Promoting ${LABEL} to ${PRODUCTION_APP}"
+          echo "LABEL=${LABEL}" >> "$GITHUB_ENV"
+      # {{IF promote_pair}}
+      - name: Check whether production already has this version
+        id: production_version
+        run: |
+          EXISTING="$(aws elasticbeanstalk describe-application-versions --application-name "${PRODUCTION_APP}" --version-labels "${LABEL}" --query 'ApplicationVersions[].VersionLabel' --output text)"
+          echo "existing=${EXISTING}" >> "$GITHUB_OUTPUT"
+      - name: Register the staging version in the production application
+        # Same S3 source bundle; skipped on rollback and re-runs, when the version
+        # already exists in the production application.
+        if: steps.production_version.outputs.existing == ''
+        env:
+          PROMOTED_BY: ${{ github.actor }}
+        run: |
+          BUNDLE="$(aws elasticbeanstalk describe-application-versions --application-name "${STAGING_APP}" --version-labels "${LABEL}" --query 'ApplicationVersions[0].SourceBundle' --output json)"
+          aws elasticbeanstalk create-application-version --application-name "${PRODUCTION_APP}" --version-label "${LABEL}" --source-bundle "${BUNDLE}" --description "Promoted from ${STAGING_APP} by ${PROMOTED_BY}"
+      # {{ENDIF}}
+      - name: Update production environments
+        run: |
+          for ENVIRONMENT in ${PRODUCTION_ENVIRONMENTS}; do
+            aws elasticbeanstalk update-environment --environment-name "${ENVIRONMENT}" --version-label "${LABEL}"
+          done
+          echo "Rollback: re-run this workflow with the previous version label."
+```
+
+**promote.yml rules:**
+
+- Resolve the `{{IF promote_pair}}` blocks, the `version_label` `required`/`default`
+  pair and the `STAGING_LABEL` binding at emit time; in the fallback variant drop the
+  `STAGING_APP` and `STAGING_ENVIRONMENT` entries as well. Emitted YAML contains no
+  `{{...}}` markers.
+- The generated-artifact checker (`validate-migration-artifacts.py
+  --require-eb-workflow`, run by Finish Generate) verifies every workflow under
+  `.github/workflows/`. Keep the emitted shell in the shapes above: one direct command
+  per line, plain `${VAR}` interpolation, a `NAME="$(aws elasticbeanstalk describe-...)"`
+  lookup per assignment, `echo "name=${VAR}" >> "$GITHUB_OUTPUT"`/`"$GITHUB_ENV"` to
+  publish, and GitHub `if:` expressions instead of shell conditionals in any step that
+  calls `aws elasticbeanstalk`. The label check is the only step with shell control flow
+  and it does not call Elastic Beanstalk.
+- Dispatch inputs and other GitHub expressions enter scripts only through step `env:`
+  bindings (`REQUESTED_LABEL`, `PROMOTED_BY`), never as `${{ ... }}` inside `run:`.
+  The label check rejects empty, `None` and any label outside
+  `^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$` before writing `GITHUB_ENV`.
+- Same OIDC role as `deploy-eb.yml`; it additionally needs
+  `elasticbeanstalk:DescribeEnvironments` and `elasticbeanstalk:DescribeApplicationVersions`
+  (both read-only). In a promote pair the source bundle stays in the staging
+  application's S3 location and the production application version points at it; this
+  works when both applications share the account's EB storage bucket, which is the
+  default.
+- The default source-bundle `promote.yml` above is for Dockerfile apps: every environment
+  of the app receives the same version label, so one label identifies the release. A
+  buildpack (CNB) app does not work that way. Its `deploy-eb.yml` registers one version
+  label per process type, `<base>-<process_type>`, and each bundle's `Dockerrun.aws.json`
+  has `Entrypoint: /cnb/process/<process_type>`. Reading one label from a staging
+  environment and applying it to every production environment would start the `web`
+  process in the worker and clock environments (or the reverse). A CNB app therefore uses
+  the **CNB promote variant** below, which promotes the shared `<base>` and gives each
+  production environment its own `<base>-<process_type>` label. The bundles point at an
+  immutable image reference, so production runs the image that was built, with no rebuild.
+- Fargate services are not promoted by this file; the guide's Phase 3 gives the CLI
+  equivalent (read the `imageDigest` of a running staging task with
+  `aws ecs describe-tasks`, register a production task definition pinned to that digest,
+  update the service; the registry tag is never resolved). A generated
+  workflow for Fargate is not emitted yet.
+- `"codepipeline"` and `"manual"` deploy methods do not emit this file. The generated
+  `pipeline.tf` has `Source` and `Deploy` stages only; a CodePipeline promotion approval
+  action is not generated yet, so document the CLI promote path in `MIGRATION_GUIDE.md`
+  for those methods.
+
+#### CNB promote variant (`containerization_method == "cnb_heroku_builder"`)
+
+Use this instead of the file above for a buildpack app, whether or not a promote pair
+resolves. It never reads a label from a staging environment automatically: a staging
+environment carries one `<base>-<process_type>` label and the base cannot be recovered
+from it with the plain-interpolation shell the artifact checker accepts. The release is
+named explicitly by its **base label** (the `VERSION_BASE` that `deploy-eb.yml` builds as
+`${GITHUB_SHA}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}`). Promote then updates every
+production environment with its own `<base>-<process_type>` label. Each of those versions
+must already exist in `PRODUCTION_APP`: a deploy to the app registers them, and the staging
+registration step of the default file is not part of this variant.
+
+```yaml
+name: Promote to production
+on:
+  workflow_dispatch:
+    inputs:
+      version_label:
+        description: "Release to promote: the base label deploy-eb.yml registered, without the per-process suffix"
+        required: true
+permissions:
+  id-token: write
+  contents: read
+env:
+  AWS_REGION: <target_region>
+  PRODUCTION_APP: <this app's generated EB application name>
+  # Every process type with a generated EB environment, from aws-design.json (never release).
+  # Each environment is named PRODUCTION_APP-PROCESS and runs the version named BASE-PROCESS.
+  EB_PROCESS_TYPES: "web worker"
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    # Approval gate: create a GitHub environment named `production` with required
+    # reviewers (Settings -> Environments). The job waits here until someone approves.
+    environment: production
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Check the release label
+        env:
+          REQUESTED_LABEL: ${{ inputs.version_label }}
+        run: |
+          LABEL="${REQUESTED_LABEL}"
+          if ! [[ "${LABEL}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ ]]; then
+            echo "::error::Pass the release base label (1-80 characters: letters, digits, . _ -)."
+            exit 1
+          fi
+          echo "Promoting ${LABEL} to ${PRODUCTION_APP}"
+          echo "LABEL=${LABEL}" >> "$GITHUB_ENV"
+      - name: Update production environments
+        run: |
+          for PROCESS in ${EB_PROCESS_TYPES}; do
+            aws elasticbeanstalk update-environment --environment-name "${PRODUCTION_APP}-${PROCESS}" --version-label "${LABEL}-${PROCESS}"
+          done
+          echo "Rollback: re-run this workflow with the previous base label."
+```
+
+**CNB promote rules:**
+
+- `EB_PROCESS_TYPES` MUST list every process type with a generated EB environment for the
+  app, the same list `deploy-eb.yml` uses, so no environment keeps the old release.
+- The label is capped at 80 characters because Elastic Beanstalk limits a version label to
+  100 and `-<process_type>` is appended.
+- `{{IF promote_pair}}` is false for these apps even where a pair would resolve: say in
+  the generated file's comment and in `MIGRATION_GUIDE.md` that promote takes the base
+  label from the deploy run and does not read staging. Automatic pairing needs a per-process
+  reader of the staging labels, which this variant does not have.
+- The environment name `${PRODUCTION_APP}-${PROCESS}` is the name `beanstalk.tf` creates
+  (`"${var.project_name}<eb_app_suffix>-<process_type>"` in an application named `"${var.project_name}<eb_app_suffix>"`, § EB name resolution).
 
 ### `pipeline.tf` — CodePipeline GitHub Source to EB Deploy (Optional)
 
-Emit this file only when `eb_deploy_method.value` is `"codepipeline"`.
+Emit this file only when `eb_deploy_method.value` is `"codepipeline"` and every EB app's
+`app_containerization_method` is `"dockerfile"`. The pipeline deploys `source_output`
+unchanged, so it cannot serve a CNB app (no Dockerfile, no `Dockerrun.aws.json` in the
+source tree); § "Containerization method per app" halts on that combination.
 
 ```hcl
 resource "aws_codepipeline" "<app_name>_deploy" {
-  name     = "${var.project_name}-deploy"
+  name     = "${var.project_name}<eb_app_suffix>-deploy"
   role_arn = aws_iam_role.codepipeline_<app_name>.arn
 
   artifact_store {
@@ -1621,7 +2651,7 @@ resource "aws_s3_bucket_versioning" "pipeline_artifacts_<app_name>" {
 }
 
 resource "aws_iam_role" "codepipeline_<app_name>" {
-  name = "${var.project_name}-codepipeline"
+  name = "${var.project_name}<eb_app_suffix>-codepipeline"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -1634,7 +2664,7 @@ resource "aws_iam_role" "codepipeline_<app_name>" {
 }
 
 resource "aws_iam_role_policy" "codepipeline_policy_<app_name>" {
-  name = "${var.project_name}-codepipeline-policy"
+  name = "${var.project_name}<eb_app_suffix>-codepipeline-policy"
   role = aws_iam_role.codepipeline_<app_name>.id
 
   policy = jsonencode({
@@ -1672,9 +2702,9 @@ resource "aws_iam_role_policy" "codepipeline_policy_<app_name>" {
           "elasticbeanstalk:UpdateEnvironment"
         ]
         Resource = [
-          "arn:aws:elasticbeanstalk:${var.aws_region}:${data.aws_caller_identity.current.account_id}:application/<app_name>",
-          "arn:aws:elasticbeanstalk:${var.aws_region}:${data.aws_caller_identity.current.account_id}:applicationversion/<app_name>/*",
-          "arn:aws:elasticbeanstalk:${var.aws_region}:${data.aws_caller_identity.current.account_id}:environment/<app_name>/*"
+          "arn:aws:elasticbeanstalk:${var.aws_region}:${data.aws_caller_identity.current.account_id}:application/${aws_elastic_beanstalk_application.<app_name>.name}",
+          "arn:aws:elasticbeanstalk:${var.aws_region}:${data.aws_caller_identity.current.account_id}:applicationversion/${aws_elastic_beanstalk_application.<app_name>.name}/*",
+          "arn:aws:elasticbeanstalk:${var.aws_region}:${data.aws_caller_identity.current.account_id}:environment/${aws_elastic_beanstalk_application.<app_name>.name}/*"
         ]
       },
       {
@@ -1699,6 +2729,32 @@ resource "aws_iam_role_policy" "codepipeline_policy_<app_name>" {
 ## Step 7: Generate `database.tf`
 
 For each service in `aws-design.json` where `aws_service` is "RDS PostgreSQL" or "Aurora PostgreSQL":
+
+### Resolve RDS windows before writing resources
+
+The main-window Decision gate runs `rds_windows.py` from the installed
+`tf-best-practices` skill against the confirmed preferences before dispatch.
+This worker MUST read its saved `$MIGRATION_DIR/rds-windows.json` and use
+those values for both RDS and Aurora. Do not execute the helper here: the
+worker shell remains scoped to the Terraform policy checker.
+
+A daily backup range and a weekly maintenance range have different formats
+and MUST NOT both be populated from the same maintenance preference.
+
+The helper preserves explicit UTC ranges, rejects invalid or overlapping
+windows, and fills absent windows with deterministic non-overlapping
+30-minute windows. `global.backup_window`, when supplied, must use
+`hh:mm-hh:mm`; an explicit `global.maintenance_window` must use
+`ddd:hh:mm-ddd:hh:mm`. Existing maintenance choices with `day` and `hour_utc`
+select the first permitted day (Tuesday for Tuesday-Thursday, Saturday for
+Saturday-Sunday). `"flexible"` or an absent maintenance preference defaults
+to Sunday 04:00-04:30 UTC; an absent backup preference prefers 03:00-03:30 UTC
+and moves only when needed to avoid maintenance. These defaults are not a
+customer-specific off-peak recommendation.
+
+If the saved result is missing or invalid, you MUST stop database generation
+and return to the main-window Decision gate to resolve it. You MUST NOT
+silently change an explicit window or continue with unvalidated placeholders.
 
 ### DB Subnet Group (always needed for database services)
 
@@ -1746,8 +2802,8 @@ resource "aws_db_instance" "<app_sanitized>_postgres" {
   # {{ENDIF}}
 
   backup_retention_period = 7
-  backup_window           = "<preferences.json.global.maintenance_window formatted>"
-  maintenance_window      = "<preferences.json.global.maintenance_window formatted>"
+  backup_window           = "<rds-windows.json.backup_window>"
+  maintenance_window      = "<rds-windows.json.maintenance_window>"
 
   skip_final_snapshot       = false
   final_snapshot_identifier = "${var.project_name}-${var.environment}-postgres-final"
@@ -1759,6 +2815,30 @@ resource "aws_db_instance" "<app_sanitized>_postgres" {
     HerokuApp = "<heroku_app>"
   }
 }
+
+# {{IF aws_config.read_replicas > 0}}
+# Read replicas — one per Heroku follower collapsed onto this database (Design 2B-F).
+# A Multi-AZ standby cannot serve reads; these can. Same class as the primary.
+resource "aws_db_instance" "<app_sanitized>_postgres_replica" {
+  count               = <aws_config.read_replicas>
+  identifier          = "${var.project_name}-${var.environment}-postgres-replica-${count.index + 1}"
+  replicate_source_db = aws_db_instance.<app_sanitized>_postgres.identifier
+  instance_class      = "<aws_config.instance_class>"
+  storage_encrypted   = true
+  publicly_accessible = false
+  vpc_security_group_ids = [aws_security_group.database.id]
+  skip_final_snapshot    = true
+  tags = {
+    Name      = "${var.project_name}-${var.environment}-postgres-replica-${count.index + 1}"
+    HerokuApp = "<heroku_app>"
+    Role      = "read-replica"
+  }
+}
+
+output "postgres_replica_endpoints_<app_sanitized>" {
+  value = aws_db_instance.<app_sanitized>_postgres_replica[*].endpoint
+}
+# {{ENDIF}}
 
 resource "aws_db_parameter_group" "<app_sanitized>_postgres" {
   name   = "${var.project_name}-${var.environment}-postgres-params"
@@ -1833,9 +2913,10 @@ resource "aws_rds_cluster" "<app_sanitized>_aurora" {
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.database.id]
 
-  backup_retention_period = 7
-  preferred_backup_window = "<preferences.json.global.maintenance_window formatted>"
-  storage_encrypted       = true
+  backup_retention_period      = 7
+  preferred_backup_window      = "<rds-windows.json.backup_window>"
+  preferred_maintenance_window = "<rds-windows.json.maintenance_window>"
+  storage_encrypted            = true
 
   skip_final_snapshot       = false
   final_snapshot_identifier = "${var.project_name}-${var.environment}-aurora-final"
@@ -1877,7 +2958,9 @@ resource "aws_rds_cluster_parameter_group" "<app_sanitized>_aurora" {
 # {{ENDIF}}
 
 resource "aws_rds_cluster_instance" "<app_sanitized>_aurora" {
-  count              = 2
+  # writer + readers. One reader always; each additional Heroku follower collapsed onto this
+  # database (aws_config.read_replicas, Design 2B-F) adds a reader.
+  count              = <1 + max(1, aws_config.read_replicas)>
   identifier         = "${var.project_name}-${var.environment}-aurora-${count.index + 1}"
   cluster_identifier = aws_rds_cluster.<app_sanitized>_aurora.id
   instance_class     = "<aws_config.instance_class>"
@@ -2008,10 +3091,10 @@ resource "aws_iam_role_policy" "rds_proxy_secrets" {
 
 ## Step 8: Generate `cache.tf`
 
-For each service in `aws-design.json` where `aws_service` is "ElastiCache Redis":
+For each service in `aws-design.json` where `aws_service` is "ElastiCache Valkey" (default) or "ElastiCache Redis" (only when Design recorded `aws_config.engine: "redis"`); `ElastiCache Memcached` stays a no-Terraform warning:
 
 ```hcl
-# ElastiCache Redis — <heroku_app>
+# ElastiCache <Valkey|Redis> — <heroku_app>
 # Heroku source: heroku-redis:<plan>
 
 resource "aws_elasticache_subnet_group" "main" {
@@ -2025,9 +3108,9 @@ resource "aws_elasticache_subnet_group" "main" {
 
 resource "aws_elasticache_replication_group" "<app_sanitized>_redis" {
   replication_group_id = "${var.project_name}-${var.environment}-redis"
-  description          = "Redis cluster for ${var.project_name} (migrated from Heroku Redis)"
+  description          = "Cache for ${var.project_name} (migrated from Heroku Redis / Key-Value Store)"
 
-  engine               = "redis"
+  engine               = "<aws_config.engine>" # "valkey" by default
   engine_version       = "<aws_config.engine_version>"
   node_type            = "<aws_config.node_type>"
   num_cache_clusters   = <2 if multi_az else 1>
@@ -2061,7 +3144,7 @@ resource "aws_elasticache_replication_group" "<app_sanitized>_redis" {
 
 resource "aws_elasticache_parameter_group" "<app_sanitized>_redis" {
   name   = "${var.project_name}-${var.environment}-redis-params"
-  family = "redis<major_version>"
+  family = "<engine><major_version>" # valkey7, valkey8; redis7 only when engine is redis
 
   parameter {
     name  = "maxmemory-policy"
@@ -2080,7 +3163,9 @@ resource "aws_elasticache_parameter_group" "<app_sanitized>_redis" {
 - `transit_encryption_enabled`: Set to `true` if and only if source has encryption-in-transit (`aws_config.transit_encryption == true`)
 - `at_rest_encryption_enabled`: Always `true` (security best practice)
 - `num_cache_clusters`: 2 when Multi-AZ enabled, 1 when single-AZ
-- `engine_version`: Matches source Redis version from `aws_config.engine_version`
+- `engine`: From `aws_config.engine` — `valkey` by default (Redis OSS-compatible, 20% cheaper, Database-SP-eligible); `redis` only when Design recorded that exception. **Legacy resume:** a saved `aws-design.json` written before this field existed has no `engine`; derive it from the label before applying any rule — `"ElastiCache Redis"` → `engine = "redis"` and keep its `engine_version` (e.g. `7.0`) and `redis<major>` family unchanged; `"ElastiCache Valkey"` → `valkey`. Never drop the cache or switch engines on a design that already passed Estimate; note the derivation in `generation-infra.json`
+- `engine_version`: From `aws_config.engine_version` (a Valkey version such as `7.2` when the engine is Valkey)
+- `family`: `<engine><major>` — `valkey7` for Valkey 7.2, `valkey8` for 8.x, `redis7` for Redis OSS 7.x
 - `node_type`: From `aws_config.node_type` (mapped from Redis Plan Table)
 
 ---
@@ -2457,6 +3542,8 @@ If every service mapped successfully, still write the file with an empty
 - Amazon MQ (CloudAMQP mapping)
 - Amazon OpenSearch (Bonsai Elasticsearch mapping)
 - S3 + CloudFront composite (Cloudinary mapping)
+- ECS Express Mode web formation placed in public subnets for an internet-facing ALB (Step 6 Express Mode rules — `recommendation`: "Documented Express Mode topology; keep tasks private by selecting a standard ECS service if this is not acceptable")
+- Standard web formation whose `release_strategy` is `canary` (Express Mode ruled out by `ecs_mode_reason`) or a worker under `blue_green` — deploys with a rolling update (Step 6 Service rules)
 
 **Exception:** If `aws_service == "CloudWatch Logs"` and it maps from a logging add-on (Papertrail, Rollbar, Sentry), the log group is already emitted in `compute.tf` Step 6. Do NOT log a warning for this case.
 
@@ -2541,8 +3628,15 @@ cutover_weight = 0
 # acm_certificate_arn = "arn:aws:acm:<region>:<account_id>:certificate/<cert-id>"
 # {{ENDIF}}
 
-# Container images (one per Fargate service)
+# Container images (one per Fargate service of an app that ships a Dockerfile)
 # container_image_<app>_<process_type> = "<account_id>.dkr.ecr.<region>.amazonaws.com/<repo>:<tag>"
+# {{IF has_cnb_app}}
+# Image tag (one per Fargate app built with Cloud Native Buildpacks; the repository is
+# aws_ecr_repository.<app> from ecr.tf). Leave unset (default "") for the Phase 1 apply —
+# the repository does not exist yet and the service starts at desired_count 0. Set it to the
+# commit SHA that `pack build --publish` tagged in Phase 3, then apply again.
+# image_tag_<app_sanitized> = "<git sha>"
+# {{ENDIF}}
 
 # {{IF has_beanstalk_web}}
 # Elastic Beanstalk web runtime settings (one required pair per web app; no defaults).

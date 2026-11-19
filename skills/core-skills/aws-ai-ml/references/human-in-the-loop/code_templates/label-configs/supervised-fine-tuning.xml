@@ -1,0 +1,9 @@
+<View>
+  <Text name="prompt" value="$prompt"/>
+  <Header value="Write or edit the ideal response"/>
+  <TextArea name="response"
+            toName="prompt"
+            rows="6"
+            editable="true"
+            maxSubmissions="1"/>
+</View>

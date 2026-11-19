@@ -1,0 +1,178 @@
+{
+  "schema_version": "1.1",
+  "ai_sources": [
+    {
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model_families": [
+        "gpt"
+      ],
+      "model_evidence": "observed",
+      "models": [
+        "gpt-4.1",
+        "gpt-4.1-mini",
+        "gpt-4o"
+      ],
+      "model_observations": [
+        {
+          "normalized_model": "gpt-4.1",
+          "raw_model": "gpt-4.1",
+          "model_family": "gpt",
+          "evidence": [
+            {
+              "provenance": "code",
+              "confidence": "high",
+              "detail": "support/app.py:14 Agent"
+            }
+          ]
+        },
+        {
+          "normalized_model": "gpt-4.1-mini",
+          "raw_model": "gpt-4.1-mini",
+          "model_family": "gpt",
+          "evidence": [
+            {
+              "provenance": "code",
+              "confidence": "high",
+              "detail": "support/app.py:13 Agent"
+            }
+          ]
+        },
+        {
+          "normalized_model": "gpt-4o",
+          "raw_model": "gpt-4o",
+          "model_family": "gpt",
+          "evidence": [
+            {
+              "provenance": "code",
+              "confidence": "high",
+              "detail": "support/app.py:22 RunConfig"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "gateways": [],
+  "workloads": [
+    {
+      "workload_id": "openai_api.gpt-4.1.agents.runner.run_sync.plain",
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model": "gpt-4.1",
+      "sdk_method": "agents.Runner.run_sync",
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "structured_output": false,
+      "call_sites": [
+        {
+          "file": "support/app.py",
+          "line": 18
+        }
+      ]
+    },
+    {
+      "workload_id": "openai_api.gpt-4.1-mini.agents.runner.run_sync.plain",
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model": "gpt-4.1-mini",
+      "sdk_method": "agents.Runner.run_sync",
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "structured_output": false,
+      "call_sites": [
+        {
+          "file": "support/app.py",
+          "line": 18
+        }
+      ]
+    },
+    {
+      "workload_id": "openai_api.gpt-4o.agents.runner.run_sync.plain",
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model": "gpt-4o",
+      "sdk_method": "agents.Runner.run_sync",
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "structured_output": false,
+      "call_sites": [
+        {
+          "file": "support/app.py",
+          "line": 22
+        }
+      ]
+    }
+  ],
+  "integration": {
+    "pattern": "framework",
+    "languages": [
+      "python"
+    ],
+    "frameworks": [
+      "openai_agents"
+    ],
+    "capabilities_summary": {
+      "text_generation": true,
+      "streaming": false,
+      "function_calling": true,
+      "vision": false,
+      "embeddings": false,
+      "batch_processing": false,
+      "speech_to_text": false,
+      "text_to_speech": false,
+      "image_generation": false
+    }
+  },
+  "agentic_profile": {
+    "framework": "openai_agents",
+    "agents": [
+      {
+        "agent_id": "billing",
+        "file": "support/app.py",
+        "line": 13,
+        "model": "gpt-4.1-mini",
+        "tools": [
+          "lookup_invoice"
+        ],
+        "memory_type": "none",
+        "role": "Answers billing questions."
+      },
+      {
+        "agent_id": "triage",
+        "file": "support/app.py",
+        "line": 14,
+        "model": "gpt-4.1",
+        "tools": [
+          "docs"
+        ],
+        "memory_type": "none",
+        "role": "Routes the user to the right agent."
+      }
+    ],
+    "orchestration_pattern": "hierarchical",
+    "has_memory": false,
+    "has_human_in_loop": false
+  },
+  "tool_manifest": [
+    {
+      "name": "lookup_invoice",
+      "file": "support/app.py",
+      "line": 8,
+      "transport": "function",
+      "auth_hint": "none",
+      "used_by_agents": [
+        "billing"
+      ]
+    },
+    {
+      "name": "docs",
+      "file": "support/app.py",
+      "line": 4,
+      "transport": "mcp",
+      "used_by_agents": [
+        "triage"
+      ]
+    }
+  ]
+}

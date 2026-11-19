@@ -2,7 +2,7 @@
 
 Download the ADOT Java agent jar onto an EC2 instance and attach it with `JAVA_TOOL_OPTIONS`, by editing the instance's UserData (or the systemd unit that starts the app).
 
-Read [instrumentation.md](instrumentation.md) first — it defines what is out of scope (OTLP endpoints, Application Signals). Deploying a collector is a separate, optional step — [collector-ec2.md](collector-ec2.md).
+Read [instrumentation.md](instrumentation.md) first — it defines what is out of scope (OTLP endpoints, Application Signals). Whether to also deploy a collector is decided by the Scope table in [instrumentation.md](instrumentation.md) — [collector-ec2.md](collector-ec2.md).
 
 Java is the least invasive of the four languages here: the agent is a single jar and the JVM attaches it from an environment variable, so nothing is installed into the application's own dependencies and no image rebuild is needed on either the host or the Docker path.
 
@@ -12,7 +12,7 @@ Java is the least invasive of the four languages here: the agent is a single jar
 
 - Install or configure the CloudWatch Agent, or any collector, on the instance — **unless you are also deploying a collector** ([collector-ec2.md](collector-ec2.md)), where the CloudWatch Agent is the primary collector
 - Set `OTEL_TRACES_SAMPLER=xray`, or any `localhost:4316` / `localhost:2000` endpoint — these stay forbidden in all cases
-- Set `OTEL_EXPORTER_OTLP_*` — **unless you are also deploying a collector** ([collector-ec2.md](collector-ec2.md)), which sets `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_PROTOCOL` deliberately
+- Set `OTEL_EXPORTER_OTLP_*` — **unless you are also deploying a collector** ([collector-ec2.md](collector-ec2.md)), which sets `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_PROTOCOL` deliberately, or to reach an existing destination the files show elsewhere ([instrumentation.md](instrumentation.md), Scope)
 - Set `OTEL_AWS_APPLICATION_SIGNALS_*`, `OTEL_AWS_SERVICE_EVENTS_*`, or `OTEL_AWS_DYNAMIC_INSTRUMENTATION_*`
 - Add `CloudWatchAgentServerPolicy` or `AWSXRayDaemonWriteAccess` to the instance role — **unless you are also deploying a collector** ([collector-ec2.md](collector-ec2.md)), which requires `CloudWatchAgentServerPolicy` on the instance role
 - Run `cdk deploy` / `terraform apply`, or modify a running instance in place
@@ -139,6 +139,8 @@ After the user deploys and the instance boots, look for the JVM's `Picked up JAV
 Until a receiver exists at the default OTLP endpoint, exporter connection errors are expected — that is the next step, not a failure of instrumentation.
 
 ## Completion
+
+This summary is for an instrumentation-only change with no destination. When the Scope table in [instrumentation.md](instrumentation.md) calls for a collector, include the collector changes from [collector-ec2.md](collector-ec2.md) in the same answer; when the SDK was pointed at an existing destination, say which one. Either way, rewrite every destination part of the summary to match what was done: the **Not changed** clause about the CloudWatch Agent and IAM, and the next step about telemetry having nowhere to go.
 
 **Tell the user:**
 

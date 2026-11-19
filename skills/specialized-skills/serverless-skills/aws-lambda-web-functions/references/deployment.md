@@ -161,6 +161,12 @@ zip -r function.zip index.js package.json node_modules/ public/ \
 
 Include: `index.js`, package.json, node_modules/, public/. See Service Limits in [SKILL.md](SKILL.md) for the package size cap.
 
+**Package the AWS SDK.** The Web Functions runtime does not include the AWS SDK, so package the
+`@aws-sdk/*` clients your code imports like any other dependency: list them in `dependencies` (the
+`npm ci --omit=dev` step removes `devDependencies`), or bundle them. Do not mark them external
+(`externalModules: ['@aws-sdk/*']`, `--external:@aws-sdk/*`), which is common for Event Functions.
+A missing client fails the import at startup and every request returns 502.
+
 **If you have a build step** (esbuild for JSX or TypeScript), build *before* pruning. `npm ci --omit=dev` deletes the bundler along with the other devDependencies, so a later `npm run build` fails with `esbuild: command not found`:
 
 ```bash
@@ -206,13 +212,11 @@ Code always comes from S3 — `codeConfig.s3Object` is the only source, and it i
 | endpointName | Yes | Any string (typically "default") |
 | endpointType | Yes | `HomeRegion`, `MultiRegion`, `PerRegion` |
 | authType | Yes | `ApplicationManaged`, `IamAuth` |
-| autoDeploymentMode | No | `LatestRevision` (default), `Disabled` |
+| autoDeploymentMode | No | `Disabled` (API default) or `LatestRevision`. The console and `aws lambda-web deploy` use `LatestRevision` for new `HomeRegion` endpoints. `LatestRevision` is supported only for `HomeRegion` endpoints; `MultiRegion` and `PerRegion` endpoints should always use `Disabled`.|
 | revisionWeights | Conditional | Required when `autoDeploymentMode` is `Disabled`, and rejected when it is `LatestRevision`. Array of 1–2 `{"revisionId", "weight"}` entries — revision IDs must be unique, each weight is 1–100, and the weights must sum to exactly 100. |
 | regions | Conditional | The home region is always added automatically. For `HomeRegion`, omit it or list only the home region; any other region is rejected. For `MultiRegion` / `PerRegion`, at least 2 distinct regions are required — listing the home region alongside the others is fine, so it is enough to add 1 other region. |
-| scalingConfig | No | `{"maxEnvironments": N}` — max concurrent execution environments for the endpoint. |
-| throttleConfig | No | `{"rateLimit": N}` — max requests per second for the endpoint. |
-
-> **Constraint:** `MultiRegion` and `PerRegion` endpoints require `autoDeploymentMode: Disabled`. `LatestRevision` is only supported for `HomeRegion` endpoints.
+| scalingConfig | No | `{"maxEnvironments": N}` — max concurrent execution environments for the endpoint. 2–10000, no default; unset means it scales within the account quotas. |
+| throttleConfig | No | `{"rateLimit": N}` — max requests per second for the endpoint. `N` must be one of 0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, or 10000. No default; unset means the 10000 RPS per-endpoint quota and the account quota apply. |
 
 ## Timeout
 

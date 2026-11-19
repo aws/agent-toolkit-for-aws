@@ -214,7 +214,7 @@ grep -rnl "import openai\|from openai\|import anthropic\|from anthropic\|import 
 For EACH file found, `Read` it and extract:
 
 - Import statements (which SDK modules)
-- Model IDs used (`gpt-4o`, `claude-3-sonnet`, `gemini-1.5-pro`, etc.)
+- Model IDs used (`gpt-5.4`, `claude-sonnet-5`, `gemini-3.8-flash`, etc.)
 - API call patterns (chat completions, embeddings, tool use, streaming)
 - Prompt locations (hardcoded strings, template files, dynamic construction)
 - Response parsing patterns (how the code reads the LLM response)
@@ -248,7 +248,23 @@ grep -rn "embedding\|embed_query\|create_embedding" <REPO> --include="*.py" --in
 
 # Vision / image input
 grep -rn "image_url\|image_file\|vision\|ImageBlock" <REPO> --include="*.py" --include="*.js" --include="*.ts" | grep -v node_modules
+
+# Stored-response operations (OpenAI Responses API only): retrieve / cancel / delete by id
+grep -rn "responses\.retrieve(\|responses\.cancel(\|responses\.delete(\|/responses/[^\"']*\(/cancel\)\?[\"']" <REPO> --include="*.py" --include="*.js" --include="*.ts" | grep -v node_modules
 ```
+
+**`stored_response_ops`** (typed field, optional — emit it whenever the source is an OpenAI
+Responses app): the subset of `["retrieve", "cancel", "delete"]` whose `client.responses.<op>(id)`
+call sites (or raw `GET /responses/{id}`, `POST /responses/{id}/cancel`, `DELETE /responses/{id}`
+requests) the last grep found and a runtime rewrite keeps. Creation (`responses.create`) is NOT
+one of them. On `bedrock-runtime`, retrieving, canceling or deleting a stored response authorizes
+`bedrock:GetInvoke` / `bedrock:CancelInvoke` / `bedrock:DeleteInvoke` on the account's default
+project, separately from the `bedrock:InvokeModel` that creation needs
+(<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html>, "Permissions",
+read 2026-11-08) — the report generator's §6.4 IAM recipe reads this field so a retained
+`responses.retrieve(id)` is not denied after creation and the preflight ping both passed. Emit `[]`
+(or omit) when no such call exists; never emit it for a Chat Completions, Converse or Anthropic
+Messages source, which have no stored responses.
 
 # 9. Detect behavior deltas (user-visible parameter-surface differences)
 
@@ -256,7 +272,12 @@ If `source_provider ∈ {openai, google, anthropic}` AND `same_model_family == f
 
 For `cohere` or `custom`, set `behavior_deltas: []` and skip this section. Anthropic always loads `references/anthropic-to-bedrock.md`: a version hop needs the selected target's full parameter/thinking/prefill/tool/response checks, and an exact same-model move still needs API/path compatibility checks. Emit `[]` only after those checks find no deltas.
 
-**Exception — OpenAI same-model on mantle.** When `source_provider == openai` AND `same_model_family == true` (every target is a proprietary `openai.gpt-5*` / `openai.gpt-6*` model), do NOT emit `behavior_deltas: []` wholesale. The model is unchanged, so the parameter-surface deltas (temperature range, penalties, stop sequences) genuinely do not apply — but the **API surface** can still change. Read only the "Same-model (mantle) deltas" section of the reference's `openai-to-bedrock.md` and emit those: Chat Completions → Responses, reasoning items round-tripping, endpoint path and credential, and prompt-caching availability. Skipping these would leave a `chat.completions.create` call pointed at a model that does not verifiably accept it.
+**Exception — proprietary OpenAI targets.** For GPT-6 Astra / GPT-5.x, load the
+"Same-vendor GPT endpoint and API deltas" section of the OpenAI reference even when
+`same_model_family == true`. It covers both bare Mantle and supported runtime CRIS forms.
+Model identity does not prove API or parameter parity: preserve the selected Chat/Responses
+surface, verify Astra's unprobed parameters, and keep endpoint/credential deltas. Do not apply
+Claude-specific parameter changes to Astra. A same-vendor version upgrade still requires eval.
 
 1. Read the `behavior-delta-detection` reference at the absolute path given in your
    context block's `behavior-delta-detection reference:` line. Call that file's directory
@@ -360,7 +381,7 @@ Write your result to `<Phase results directory>/analysis.json` with the `Write` 
 
 Return ONE flat object: the typed fields and `summary` are all top-level siblings (no `data` wrapper — the strict schema rejects a nested `data` key).
 
-- **Typed fields** — the fields in the analysis schema (`AiAnalysisData`), at top level. Always populate every required field; use `""` / `0` / `[]` / `false` / `"none"` for absent values. The nested `special_patterns` object MUST include all four booleans.
+- **Typed fields** — the fields in the analysis schema (`AiAnalysisData`), at top level. Always populate every required field; use `""` / `0` / `[]` / `false` / `"none"` for absent values. The nested `special_patterns` object MUST include all four booleans. `stored_response_ops` (§8.3) is the one optional typed field: an array drawn from `["retrieve", "cancel", "delete"]`, `[]` or omitted when the source retains no stored-response operation.
 - **`summary`** — short prose for the user / sidebar, a top-level field alongside the typed fields. ~1–3 sentences. Mention framework, file count, key special patterns.
 - **`errors`** — string log of resolution decisions and warnings: rule-of-thumb / defaulted entries from §7.2 Tier 2/3, model-ID corrections from §10, the Vertex substring from §7.1.2, and any non-fatal scan failures. **Multiple entries: join with `"; "` (semicolon + space) on a single line.** Use `"none"` if nothing notable.
 
@@ -377,7 +398,7 @@ Return ONE flat object: the typed fields and `summary` are all top-level sibling
   "source_provider": "openai",
   "source_models": ["gpt-4o"],
   "target_models": ["gpt-4o -> us.anthropic.claude-sonnet-4-6"],
-  "_comment_target_models": "example only — the real mapping comes from the migration plan, never from this illustration. Plans may also map same-provider (e.g. gpt-4o -> openai.gpt-5.6-terra on Bedrock Mantle); note that GPT-5.6 targets are Responses-API-only (no Converse, no us./global. inference profiles), so echo them bare and expect the rewrite to keep the OpenAI SDK surface",
+  "_comment_target_models": "example only — the real mapping comes from the migration plan, never from this illustration. Plans may also map same-provider (e.g. gpt-4o -> openai.gpt-5.6-terra on Bedrock Mantle); preserve the validated endpoint and id form: bare proprietary GPT ids select Mantle; supported GPT-5.6/Astra CRIS ids select runtime; do not add or remove a prefix to change the chosen path",
   "same_model_family": false,
   "bedrock_provider_available": true,
   "prompt_locations": ["app.py:42 : SYSTEM_PROMPT constant"],

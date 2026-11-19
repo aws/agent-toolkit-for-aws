@@ -2,7 +2,7 @@
 
 These practices come from how computer-use models actually behave: they analyze screenshots pixel-by-pixel, and the screenshot round-trip is the dominant cost in tokens and latency. Following them produces dramatically more reliable, cheaper runs.
 
-> Tool names used below (`key`, `type_text`, `screenshot`, ...) are the desktop tools defined in [tools-reference.md](tools-reference.md). Anything described as a client-side pause or loop runs in your agent's own code, not on the desktop.
+> Tool names used below (`key`, `type_text`, `screenshot`, ...) are the desktop tools defined in [tools-reference.md](references/tools-reference.md). Anything described as a client-side pause or loop runs in your agent's own code, not on the desktop.
 
 ## Minimize screenshots (the #1 rule)
 
@@ -19,6 +19,8 @@ Group related actions into one sequence with no intermediate screenshots:
 
 - **Setup then act:** select tool → set options → act — no screenshot between setup steps.
 - **Repeat similar actions together:** e.g. fill five form fields or draw four shapes in sequence, then one screenshot at the end — not one per element.
+- **Send a batch as one call:** when `tools/list` offers `execute_sequence` ([tools-reference.md](references/tools-reference.md)), send the planned actions as one sequence instead of one call each. On success its final screenshot is your check at the end. If it stops, follow `sequence_summary.guidance`.
+- **Never batch a secret.** Confirm the focused field with a screenshot, then type the secret in its own call. If focus moves partway through a sequence, the secret lands in the wrong field.
 
 ## Plan coordinates up front
 
@@ -30,7 +32,7 @@ Group related actions into one sequence with no intermediate screenshots:
 
 - Prefer the **Run dialog**: `key("super+r")` → `type_text("notepad")` → `key("Return")`. It is more reliable than Start-menu search.
 - If the fleet exposes Application Catalog tools (`launch_application`), use those instead of navigating the shell.
-- After launching, pause 3–5 seconds client-side before interacting so the app is ready (e.g. `time.sleep(3)` / `await asyncio.sleep(3)` in your agent loop — the desktop toolset has no `wait` tool, unlike some computer-use APIs).
+- After launching, pause 3–5 seconds before interacting so the app is ready: with the `wait` tool where tool sequencing is on (tools-reference.md), otherwise client-side in your agent loop (e.g. `time.sleep(3)` / `await asyncio.sleep(3)`).
 
 ## Prefer forwarded tools for file/web work
 

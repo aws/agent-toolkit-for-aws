@@ -3,10 +3,9 @@
 ## Telemetry boundary
 
 Load `references/vendored/telemetry/PROTOCOL.md` from the GCP skill root, including
-when this phase is executed inline by another skill. In `cli` mode, reconcile
+when this phase is executed inline by another skill. In both reporting modes, reconcile with the explicit project root
 after each persisted `.phase-status.json` update and before waiting, returning,
 or advancing. This includes the post-Estimate decision and workshop state writes.
-In `hook` mode, leave reporting to the configured hooks.
 
 **Execute ALL steps in order. Do not skip or optimize.**
 
@@ -218,10 +217,9 @@ commit." Suggest at most one.
        the Terraform and migration scripts' — everything is saved and I'll pick
        up from here."
      - If step 3 printed `PLAN_OK`, close with that same sentence and also name
-       `plan.json` in it as plain text, with no link (the What's next block
-       below carries the only link) — e.g. "Your decision report is saved at
+       `plan.json` in it as plain text, with the import page's address written out (the What's next block carries the clickable link) — e.g. "Your decision report is saved at
        `decision-report.html` (plus a Slack-friendly `DECISION.md`), and your
-       uploadable plan at `plan.json` — upload it to AWS Startups Migrate
+       uploadable plan at `plan.json` — upload it at AWS Startup Advisor (https://startups.aws.com/migrate/plans/import?source=plugin)
        to see if you qualify for AWS credits. If you decide to migrate, say 'generate the
        Terraform and migration scripts' — everything is saved and I'll pick up
        from here."
@@ -276,11 +274,11 @@ commit." Suggest at most one.
      drop that sentence when the user declined or the command failed for another
      reason.
 
-     Then append the What's next block below, verbatim, replacing `<run_id>` in the link with the
+     Then append the What's next block below, verbatim, replacing `<run_id>` in both links with the
      run's `run_id` (from `.phase-status.json`), lowercased if it is a UUID so the
      `run=` value matches the plan's `runId`. It MUST begin with the "💬 What's
      next" heading. The call-to-action must be a Markdown link so it renders as
-     clickable text with no bare URL. Do not reword it — this copy is owned by the
+     clickable text with no bare URL. Never name AWS Startup Advisor's import page without its address: if you shorten or restate any of this, keep the address. (The plain-text mentions use `?source=plugin` without `run=` on purpose, to stay short; the two links in this block carry the run.) Do not reword it — this copy is owned by the
      web experience:
 
      > **💬 What's next**
@@ -288,9 +286,9 @@ commit." Suggest at most one.
      > - **Refine your plan**
      >   Tell me what to change. For example: "use Fargate instead," "make it multi-region," or "reduce the cost."
      > - **See your AWS credits**
-     >   Sign in or create an account on AWS Startups Migrate, then upload plan.json to see the AWS migration credits you qualify for.
+     >   Sign in with your AWS Builder ID (or create one) on [AWS Startup Advisor](https://startups.aws.com/migrate/plans/import?source=plugin&run=<run_id>), the AWS Startups site where you import your migration plan, then upload plan.json to see the AWS migration credits you qualify for.
      >
-     > [Go to AWS Startups Migrate →](https://startups.aws.com/startups/en-US/migrate/credits?source=plugin&run=<run_id>)
+     > [Go to AWS Startup Advisor →](https://startups.aws.com/migrate/plans/import?source=plugin&run=<run_id>)
      >
      > After you upload, you also get:
      >
@@ -298,8 +296,8 @@ commit." Suggest at most one.
      > - Monthly cost estimate
      > - Migration paths: AI agent, AWS expert, or AWS Partner
 
-     Ship note: this reaches customers only after the import page and the
-     ImportPlan API are both live in production.
+  6. **BigQuery follow-up:** apply `SKILL.md` Workflow Execution step 10 last. It does
+     nothing when BigQuery was not detected.
 - **B** → Load `references/phases/workshop/workshop.md`. Keep
   `current_phase: estimate`; set `phases.workshop` → `"in_progress"`. On
   workshop exit, **return to this gate** (options A and C; the workshop's
@@ -320,6 +318,8 @@ in this order — the OpenRouter subroute wins over `migration_path`, because
 1. **OpenRouter subroute**, when `aws-design-ai.json` →
    `code_migration.openrouter_path` is set, or `ai-workload-profile.json` has a
    `base_url` containing `openrouter.ai`:
+   - `"same_model_runtime"` → `[C] Generate the Bedrock runtime (CRIS) migration script and A/B test harness`
+     (Step 3B skips gateway config and runs Step 1M's CRIS variant; no provider adapter).
    - `"same_model_mantle"` → `[C] Generate the Mantle migration script and A/B test harness`
      (Step 3B skips gateway config and runs Step 1M; no provider adapter).
    - `"direct"` → `[C] Generate the Bedrock setup script, provider adapter, and A/B test harness`
@@ -327,11 +327,14 @@ in this order — the OpenRouter subroute wins over `migration_path`, because
    - `"litellm"`, `"keep_openrouter"`, or absent → `[C] Generate the gateway config, Bedrock setup script, and A/B test harness`
      (absent defaults to litellm). Do not promise a provider adapter on these three.
 2. **Otherwise** read `ai_architecture.code_migration.migration_path`. Design
-   records `"mantle_openai_responses"` (not `"mantle"`) and `"converse"`; accept
-   both Mantle spellings:
-   - `"mantle"` or `"mantle_openai_responses"` → the Mantle label above.
-   - `"converse"`, `"direct"`, or `"gpt-oss"` → the adapter label above.
-     `"converse"` is a Converse client swap, not a Mantle script and not gateway config.
+   records `"runtime_openai_cris"` by default, `"mantle_openai_responses"` /
+   `"mantle_openai_chat"` (not `"mantle"`) only with a `mantle_selector`, and
+   `"converse"`; accept every Mantle spelling:
+   - `"runtime_openai_cris"` → the Bedrock runtime (CRIS) label above.
+   - `"mantle"`, `"mantle_openai_responses"` or `"mantle_openai_chat"` → the Mantle label above.
+   - `"converse"`, `"direct"`, `"runtime_messages"`, `"mantle_messages"`, or `"gpt-oss"` → the adapter label above.
+     `"converse"` is an explicit Converse rewrite, not a Mantle script and not gateway config;
+     the two Messages paths keep the Anthropic SDK inside the adapter.
    - `"llm_router"`, `"api_gateway"`, `"voice_platform"`, or `"framework"` → the
      gateway label above. This bullet does not apply when step 1 already matched
      an OpenRouter subroute.

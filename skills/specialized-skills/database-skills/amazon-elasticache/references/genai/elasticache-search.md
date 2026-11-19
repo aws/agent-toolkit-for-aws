@@ -8,15 +8,16 @@ This file contains all ElastiCache-specific constraints for vector search. Loade
 
 | Requirement | Detail |
 |---|---|
-| Engine | ElastiCache engine version 8.2 or above for Valkey (node-based only). Note: server reports `valkey_version` as 8.1.x. ElastiCache engine version 8.2 (shown in AWS Console and API) maps to the underlying Valkey OSS version 8.1.x in `INFO server` output. Use `FT._LIST` to confirm vector search availability. |
-| Serverless | NOT supported. Vector search is unavailable on serverless. |
-| Data-tiering nodes | NOT supported (r6gd family) |
+| Engine | ElastiCache engine version 8.2 or above for Valkey on node-based clusters (Serverless: see next row). Note: server reports `valkey_version` as 8.1.x. ElastiCache engine version 8.2 (shown in AWS Console and API) maps to the underlying Valkey OSS version 8.1.x in `INFO server` output. Use `FT._LIST` to confirm vector search availability. |
+| Serverless | Valkey 9.0 or above only. |
+| Data-tiering nodes | NOT supported (r6gd/r7gd/r8gd families) |
+| Full-text, hybrid, exact-match, numeric search; FT.AGGREGATE | Valkey 9.0 or above (node-based or Serverless). NOT supported on data-tiering nodes. |
 
-This is the single most common mistake. Serverless ElastiCache cannot run vector search.
+This is the single most common mistake. Serverless ElastiCache below Valkey 9.0 cannot run vector search.
 
 ## Version Detection (MUST run before any FT.* command)
 
-Before emitting any FT.CREATE, FT.SEARCH, or other FT.* command, detect the server version and confirm vector search support. Vanilla Valkey 8.0.x does NOT have FT.CREATE. Only Valkey 8.2 or above on node-based ElastiCache supports it.
+Before emitting any FT.CREATE, FT.SEARCH, or other FT.* command, detect the server version and confirm vector search support. Vanilla Valkey 8.0.x does NOT have FT.CREATE. Only node-based Valkey 8.2 or above and Serverless Valkey 9.0 or above support it.
 
 ```python
 from valkey.exceptions import ResponseError
@@ -50,7 +51,7 @@ def supports_ft_search(client) -> bool:
 
 ## Python-Side Vector Search Fallback
 
-When the server does not support FT.* commands (Valkey < 8.2, serverless, or any environment without search), use application-side cosine similarity. This approach stores vectors as binary HASH fields and performs brute-force KNN in Python. Suitable for datasets under ~50K vectors.
+When the server does not support FT.* commands (Valkey < 8.2, Serverless below 9.0, or any environment without search), use application-side cosine similarity. This approach stores vectors as binary HASH fields and performs brute-force KNN in Python. Suitable for datasets under ~50K vectors.
 
 ```python
 import struct
@@ -123,8 +124,9 @@ else:
 | FT.INFO | Documented, supported |
 | FT._LIST | Documented, supported |
 | FT.DROPINDEX | Documented, supported |
+| FT.AGGREGATE | Documented, supported on Valkey 9.0 or above (not data-tiering nodes) |
 
-> **⚠️ FT.AGGREGATE is NOT available on ElastiCache.** FT.AGGREGATE is supported on Amazon MemoryDB but is not supported on ElastiCache. If you need server-side aggregation over vector search results, use MemoryDB or perform aggregation client-side after FT.SEARCH.
+> **Full-text, hybrid, exact-match, and numeric search and FT.AGGREGATE require Valkey 9.0 or above** (not data-tiering nodes). Declare a full-text field with the `TEXT` field type in the FT.CREATE schema.
 
 ---
 

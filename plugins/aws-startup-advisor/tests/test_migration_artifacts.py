@@ -1,0 +1,1441 @@
+"""Regression checks for the read-only generated migration artifact gate."""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+from unittest.mock import patch
+
+
+PLUGIN = Path(__file__).resolve().parents[1]
+VALIDATOR = PLUGIN / "skills/tf-best-practices/scripts/validate-migration-artifacts.py"
+SPEC = importlib.util.spec_from_file_location("migration_artifact_validator", VALIDATOR)
+assert SPEC and SPEC.loader
+validator = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = validator
+SPEC.loader.exec_module(validator)
+
+
+SAFE_SCRIPT = """#!/usr/bin/env bash
+set -euo pipefail
+if [ "${1:-}" = "--verify" ]; then
+  psql -X -d "$SOURCE_DATABASE_URL" -c "SELECT count(*) FROM public.orders;"
+  psql -X -d "$TARGET_DATABASE_URL" -c "SELECT count(*) FROM public.orders;"
+  exit $?
+fi
+pg_restore "$TARGET_DATABASE_URL"
+"""
+
+TERRAFORM = """resource "aws_security_group" "app" {
+  name = "application"
+}
+resource "aws_security_group" "database" {
+  name = "database"
+  ingress {
+    from_port = 5432
+    to_port = 5432
+    protocol = "tcp"
+    security_groups = [aws_security_group.app.id]
+  }
+}
+resource "aws_db_instance" "main" {
+  engine = "postgres"
+  vpc_security_group_ids = [aws_security_group.database.id]
+  backup_window = "03:00-03:30"
+  maintenance_window = "sun:04:00-sun:04:30"
+}
+resource "aws_elastic_beanstalk_environment" "main" {
+  setting {
+    namespace = "aws:autoscaling:launchconfiguration"
+    name = "SecurityGroups"
+    value = aws_security_group.app.id
+  }
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name = "DATABASE_URL"
+    value = "postgres://${aws_db_instance.main.endpoint}/app"
+  }
+}
+"""
+
+WORKFLOW = """name: Deploy
+on:
+  push:
+    branches: [main]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Build image
+        run: |
+          docker build -t ${{ steps.login-ecr.outputs.registry }}/app .
+      - name: Deploy
+        run: |
+          aws elasticbeanstalk update-environment \\
+            --environment-name app-production \\
+            --version-label "${GITHUB_SHA}"
+"""
+
+
+def canonical_script() -> str:
+    text = (
+        PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-docs.md"
+    ).read_text(encoding="utf-8")
+    return (
+        text.split("### 3A: PostgreSQL Migration Script", 1)[1]
+        .split("```bash\n", 1)[1].split("\n```", 1)[0] + "\n"
+    )
+
+
+class MigrationArtifactsTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        self.write("terraform/main.tf", TERRAFORM)
+        self.write("scripts/migrate-postgres.sh", SAFE_SCRIPT)
+        self.write(".github/workflows/deploy-eb.yml", WORKFLOW)
+
+    def tearDown(self) -> None:
+        self.temp.cleanup()
+
+    def write(self, path: str, text: str) -> Path:
+        destination = self.root / path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(text, encoding="utf-8")
+        return destination
+
+    def report(self) -> dict:
+        return validator.validate(self.root)
+
+    def rules(self) -> set[str]:
+        return {item["rule"] for item in self.report()["findings"]}
+
+    def cli(self, *args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, str(VALIDATOR), str(self.root), *args],
+            text=True, capture_output=True, check=False,
+        )
+
+    def test_complete_valid_fixture_passes(self) -> None:
+        report = self.report()
+        self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
+        self.assertIn("ecs_database_credentials", report["checks_run"])
+
+    def test_canonical_template_verification_is_accepted(self) -> None:
+        self.write("scripts/migrate-postgres.sh", canonical_script())
+        self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK")
+
+    def test_reviewed_template_allows_connection_values_and_migration_only_changes(self) -> None:
+        script = canonical_script().replace("{{SOURCE_DB_PASSWORD}}", "literal-secret")
+        script = script.replace("  log \"Exporting source database to $BACKUP_FILE...\"",
+                                "  log \"Different migration implementation\"")
+        script = script.replace('  log "=== PostgreSQL Migration Started ==="',
+                                '  log "A different full migration path"')
+        self.write("scripts/migrate-postgres.sh", script)
+        self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK")
+
+    def test_canonical_reachable_function_change_requires_review(self) -> None:
+        script = canonical_script().replace(
+            'log "Testing source database connection..."',
+            'pg_restore "$TARGET_DB_NAME"',
+        )
+        self.write("scripts/migrate-postgres.sh", script)
+        self.assertIn("postgres_verify_unverified", self.rules())
+
+    def test_canonical_control_flow_mutation_requires_review(self) -> None:
+        script = canonical_script().replace(
+            '  if [ "$MODE" = "verify" ]; then',
+            '  import_target\n  if [ "$MODE" = "verify" ]; then',
+        )
+        self.write("scripts/migrate-postgres.sh", script)
+        self.assertIn("postgres_verify_unverified", self.rules())
+
+    def test_canonical_quote_semantics_cannot_be_normalized_away(self) -> None:
+        for old, new in [
+            ('if [ "$MODE" = "verify" ]; then', """if [ '$MODE' = "verify" ]; then"""),
+            ('case "${1:-}" in', """case '${1:-}' in"""),
+            ('  MODE="migrate"', """  MODE='migrate'"""),
+            ('main "$@"', """main '$@'"""),
+            ('if [ "$MODE" = "verify" ]; then', r'if [ "\$MODE" = "verify" ]; then'),
+        ]:
+            with self.subTest(new=new):
+                self.write("scripts/migrate-postgres.sh", canonical_script().replace(old, new))
+                self.assertIn("postgres_verify_unverified", self.rules())
+
+    def test_canonical_top_level_effect_after_attached_hash_not_hidden(self) -> None:
+        script = canonical_script().replace('main "$@"', 'main "$@"# ; pg_restore "$TARGET_DB_NAME"')
+        self.write("scripts/migrate-postgres.sh", script)
+        self.assertIn("postgres_verify_unverified", self.rules())
+
+    def test_continued_comment_line_cannot_hide_a_top_level_command(self) -> None:
+        marker = self.root / "MUST_NOT_EXIST"
+        assignment = 'LOG_FILE="postgres_migration_$(date +%Y%m%d_%H%M%S).log"'
+        for continuation in ["\\\n", "\\\n  ", "\\\r\n"]:
+            with self.subTest(continuation=repr(continuation)):
+                script = canonical_script().replace(
+                    assignment, assignment + continuation + f"#; touch {marker}",
+                )
+                self.write("scripts/migrate-postgres.sh", script)
+                self.assertIn("postgres_verify_unverified", self.rules())
+                self.assertFalse(marker.exists())
+
+    def test_canonical_comments_and_whitespace_are_accepted(self) -> None:
+        script = canonical_script().replace(
+            '\n  MODE="migrate"\n', '\n  # ordinary harmless comment\n\n    MODE="migrate"\n',
+        )
+        self.write("scripts/migrate-postgres.sh", script)
+        self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK")
+
+    def test_connection_substitution_cannot_introduce_execution(self) -> None:
+        script = canonical_script().replace("{{SOURCE_DB_PASSWORD}}", "$(pg_restore evil)")
+        self.write("scripts/migrate-postgres.sh", script)
+        self.assertIn("postgres_verify_unverified", self.rules())
+
+    def test_comment_and_quoted_verify_text_do_not_prove_guard(self) -> None:
+        self.write("scripts/migrate-postgres.sh", """#!/usr/bin/env bash
+# --verify is safe!
+echo 'if [ "${1:-}" = "--verify" ]; then exit 0; fi'
+pg_restore "$TARGET_DATABASE_URL"
+""")
+        self.assertIn("postgres_verify_unverified", self.rules())
+
+    def test_unconditional_effect_before_guard_fails(self) -> None:
+        self.write("scripts/migrate-postgres.sh", SAFE_SCRIPT.replace(
+            "set -euo pipefail", 'set -euo pipefail\nheroku maintenance:on --app example',
+        ))
+        self.assertIn("postgres_verify_unverified", self.rules())
+
+    def test_redirection_or_execution_environment_before_guard_requires_review(self) -> None:
+        for prefix in ["X=1>/tmp/not-created", "PATH=/tmp/unknown", "PSQLRC=/tmp/unknown"]:
+            with self.subTest(prefix=prefix):
+                self.write("scripts/migrate-postgres.sh", SAFE_SCRIPT.replace(
+                    "set -euo pipefail", "set -euo pipefail\n" + prefix,
+                ))
+                self.assertIn("postgres_verify_unverified", self.rules())
+
+    def test_verify_branch_requires_exit(self) -> None:
+        self.write("scripts/migrate-postgres.sh", SAFE_SCRIPT.replace("  exit $?\n", ""))
+        self.assertIn("postgres_verify_unverified", self.rules())
+
+    def test_quoted_parameter_cannot_make_guard_permanently_false(self) -> None:
+        self.write("scripts/migrate-postgres.sh", SAFE_SCRIPT.replace('"${1:-}"', "'${1:-}'"))
+        self.assertIn("postgres_verify_unverified", self.rules())
+
+    def test_verify_branch_cannot_restore_or_write_sql(self) -> None:
+        for mutation in [
+            SAFE_SCRIPT.replace('  exit $?', '  pg_restore "$TARGET_DATABASE_URL"\n  exit $?'),
+            SAFE_SCRIPT.replace("SELECT count(*) FROM public.orders;", "DROP TABLE orders;"),
+            SAFE_SCRIPT.replace("SELECT count(*) FROM public.orders;", "SELECT pg_terminate_backend(1);"),
+            SAFE_SCRIPT.replace("SELECT count(*) FROM public.orders;", "SELECT 1; DROP TABLE orders;"),
+            SAFE_SCRIPT.replace('-c "SELECT count(*) FROM public.orders;"', "-f destructive.sql"),
+            SAFE_SCRIPT.replace('psql -X -d "$SOURCE_DATABASE_URL"', 'psql -X -d $SOURCE_DATABASE_URL'),
+            SAFE_SCRIPT.replace('psql -X -d "$SOURCE_DATABASE_URL"', 'psql -X -d "$SOURCE_DATABASE_URL" --command="DROP TABLE orders"'),
+            SAFE_SCRIPT.replace('psql -X -d "$SOURCE_DATABASE_URL"', 'psql -X -d "$SOURCE_DATABASE_URL" -fdestructive.sql'),
+        ]:
+            with self.subTest(script=mutation):
+                self.write("scripts/migrate-postgres.sh", mutation)
+                self.assertIn("postgres_verify_unverified", self.rules())
+
+    def test_verify_environment_prefix_and_redirects_cannot_hide_effects(self) -> None:
+        for prefix in [
+            "X=1>/tmp/unexpected-write ",
+            "X=1 2>/tmp/unexpected-write ",
+            "PGPASSWORD=ok>/tmp/unexpected-write ",
+            "PGPASSWORD=$(touch /tmp/unexpected-write) ",
+            'PGPASSWORD="$(touch /tmp/unexpected-write)" ',
+            'PGPASSWORD="`touch /tmp/unexpected-write`" ',
+            "PSQLRC=/tmp/startup ",
+            "PATH=/tmp/bin ",
+            "BASH_ENV=/tmp/startup ",
+        ]:
+            with self.subTest(prefix=prefix):
+                self.write("scripts/migrate-postgres.sh", SAFE_SCRIPT.replace(
+                    "  psql -X", "  " + prefix + "psql -X", 1,
+                ))
+                self.assertIn("postgres_verify_unverified", self.rules())
+
+    def test_verify_psql_must_disable_startup_files(self) -> None:
+        self.write("scripts/migrate-postgres.sh", SAFE_SCRIPT.replace("psql -X", "psql"))
+        self.assertIn("postgres_verify_unverified", self.rules())
+
+    def test_positional_connection_cannot_inject_psql_command_option(self) -> None:
+        script = SAFE_SCRIPT.replace(
+            "set -euo pipefail",
+            "set -euo pipefail\nSOURCE_DATABASE_URL='--command=DROP TABLE orders'",
+        ).replace('-d "$SOURCE_DATABASE_URL"', '"$SOURCE_DATABASE_URL"')
+        self.write("scripts/migrate-postgres.sh", script)
+        self.assertIn("postgres_verify_unverified", self.rules())
+
+    def test_parameter_transformations_cannot_synthesize_verification_commands(self) -> None:
+        for connection in [
+            "${EXPANDED:=${PAYLOAD@E}}${EXPANDED@P}",
+            "${PAYLOAD@P}",
+            "${VALUE:=unsafe}",
+            "${array[PATH=0]}",
+        ]:
+            with self.subTest(connection=connection):
+                script = SAFE_SCRIPT.replace(
+                    "set -euo pipefail",
+                    "set -euo pipefail\nPAYLOAD='\\044\\050pg_restore foo\\051'",
+                ).replace("$SOURCE_DATABASE_URL", connection)
+                self.write("scripts/migrate-postgres.sh", script)
+                self.assertIn("postgres_verify_unverified", self.rules())
+        self.write("scripts/migrate-postgres.sh", SAFE_SCRIPT.replace("psql -X", "psql --no-psqlrc"))
+        self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK")
+        self.write("scripts/migrate-postgres.sh", canonical_script().replace("psql -X", "psql", 1))
+        self.assertIn("postgres_verify_unverified", self.rules())
+
+    def test_shell_syntax_error_is_distinct(self) -> None:
+        self.write("scripts/migrate-postgres.sh", SAFE_SCRIPT.replace("\nfi\n", "\n"))
+        self.assertIn("postgres_script_syntax", self.rules())
+
+    def test_postgres_interpreter_cannot_disable_verification(self) -> None:
+        for script in [SAFE_SCRIPT, canonical_script()]:
+            for header in ["#!/bin/bash -n", "#!/usr/bin/env bash -n", "#!/bin/sh", ""]:
+                with self.subTest(header=header, canonical=script != SAFE_SCRIPT):
+                    self.write("scripts/migrate-postgres.sh", script.replace(
+                        "#!/usr/bin/env bash", header, 1,
+                    ))
+                    self.assertIn("postgres_interpreter_unverified", self.rules())
+        self.write("scripts/migrate-postgres.sh", SAFE_SCRIPT.replace(
+            "#!/usr/bin/env bash", "#!/bin/bash",
+        ))
+        self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK")
+
+    def test_simple_double_bracket_safe_variant(self) -> None:
+        self.write("scripts/migrate-postgres.sh", SAFE_SCRIPT.replace(
+            '[ "${1:-}" = "--verify" ]', '[[ "$1" == --verify ]]',
+        ))
+        self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK")
+
+    def test_postgres_script_is_required_when_applicable(self) -> None:
+        (self.root / "scripts/migrate-postgres.sh").unlink()
+        report = validator.validate(self.root, require_postgres_script=True)
+        self.assertIn("postgres_script_missing", {item["rule"] for item in report["findings"]})
+        self.assertNotIn("postgres_script_missing", self.rules())
+
+    def test_require_postgres_flag_is_authoritative_with_unknown_engine(self) -> None:
+        (self.root / "scripts/migrate-postgres.sh").unlink()
+        self.write("terraform/main.tf", TERRAFORM.replace('engine = "postgres"', 'engine = var.engine\n  port = 5432'))
+        report = validator.validate(self.root, require_postgres_script=True)
+        self.assertIn("postgres_script_missing", {item["rule"] for item in report["findings"]})
+
+    def test_gcp_does_not_require_heroku_script_name(self) -> None:
+        (self.root / "scripts/migrate-postgres.sh").unlink()
+        self.write("scripts/migrate-database.sh", "#!/bin/bash\nexit 0\n")
+        self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK")
+
+    def test_eb_manual_deploy_or_codepipeline_does_not_require_github(self) -> None:
+        (self.root / ".github/workflows/deploy-eb.yml").unlink()
+        self.assertNotIn("eb_deploy_missing", self.rules())
+        report = validator.validate(self.root, require_eb_workflow=True)
+        self.assertIn("eb_deploy_missing", {item["rule"] for item in report["findings"]})
+        self.write("terraform/pipeline.tf", 'resource "aws_codepipeline" "deploy" {\n name = "deploy"\n}\n')
+        self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK")
+        report = validator.validate(self.root, require_eb_workflow=True)
+        self.assertIn("eb_deploy_missing", {item["rule"] for item in report["findings"]})
+
+    def test_selected_github_workflow_cannot_be_satisfied_by_retained_pipeline(self) -> None:
+        text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
+        section = text.split("### `pipeline.tf`", 1)[1]
+        pipeline = section.split("```hcl\n", 1)[1].split("\n```", 1)[0]
+        self.write("terraform/pipeline.tf", pipeline.replace("<app_name>", "main").replace("<eb_app_suffix>", "").replace("<process_type>", "web"))
+        for workflow in (
+            None,
+            "jobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo deploy\n",
+            WORKFLOW.replace("      - name: Deploy\n", "      - name: Deploy\n        if: false\n"),
+            WORKFLOW,
+        ):
+            with self.subTest(workflow=workflow):
+                path = self.root / ".github/workflows/deploy-eb.yml"
+                if workflow is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    self.write(".github/workflows/deploy-eb.yml", workflow)
+                # The caller may explicitly choose CodePipeline, but a retained
+                # pipeline must never substitute for selected GitHub Actions.
+                self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK")
+                report = validator.validate(self.root, require_eb_workflow=True)
+                if workflow == WORKFLOW:
+                    self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
+                else:
+                    self.assertIn("eb_deploy_missing", {item["rule"] for item in report["findings"]})
+                    result = self.cli("--require-eb-workflow", "--json", "-")
+                    self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                    self.assertEqual(json.loads(result.stdout)["artifact_status"], "ARTIFACTS_FAIL")
+
+    def test_no_postgres_no_eb_skips_inapplicable_checks(self) -> None:
+        self.write("terraform/main.tf", 'resource "aws_s3_bucket" "test" {\n bucket = "example"\n}\n')
+        (self.root / "scripts/migrate-postgres.sh").unlink()
+        (self.root / ".github/workflows/deploy-eb.yml").unlink()
+        self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK")
+
+    def test_require_eb_flag_is_authoritative_when_environment_is_missing(self) -> None:
+        self.write("terraform/main.tf", 'resource "aws_codepipeline" "deploy" {\n name = "deploy"\n}\n')
+        (self.root / ".github/workflows/deploy-eb.yml").unlink()
+        self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK")
+        report = validator.validate(self.root, require_eb_workflow=True)
+        self.assertIn("eb_deploy_missing", {item["rule"] for item in report["findings"]})
+        self.write(".github/workflows/deploy-eb.yml", WORKFLOW)
+        report = validator.validate(self.root, require_eb_workflow=True)
+        self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
+
+    def test_security_group_must_be_attached(self) -> None:
+        self.write("terraform/main.tf", TERRAFORM.replace(
+            "    value = aws_security_group.app.id", '    value = "sg-other"',
+        ))
+        self.assertIn("eb_database_access_unverified", self.rules())
+
+    def test_commented_attachment_is_not_accepted(self) -> None:
+        self.write("terraform/main.tf", TERRAFORM.replace(
+            "    value = aws_security_group.app.id", "    # value = aws_security_group.app.id",
+        ))
+        self.assertIn("eb_database_security_group", self.rules())
+
+    def test_nested_setting_is_not_the_environment_setting(self) -> None:
+        section = """  setting {
+    namespace = "aws:autoscaling:launchconfiguration"
+    name = "SecurityGroups"
+    value = aws_security_group.app.id
+  }"""
+        self.write("terraform/main.tf", TERRAFORM.replace(section, "  lifecycle {\n" + section + "\n  }"))
+        self.assertIn("eb_database_security_group", self.rules())
+
+    def test_direct_list_join_and_interpolation_groups(self) -> None:
+        for expression in [
+            "[aws_security_group.app.id]",
+            'join(",", [aws_security_group.app.id])',
+            '"${aws_security_group.app.id}"',
+        ]:
+            with self.subTest(expression=expression):
+                self.write("terraform/main.tf", TERRAFORM.replace(
+                    "    value = aws_security_group.app.id", f"    value = {expression}",
+                ))
+                self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK")
+
+    def test_unknown_group_expression_is_explicitly_unverified(self) -> None:
+        self.write("terraform/main.tf", TERRAFORM.replace(
+            "    value = aws_security_group.app.id",
+            "    value = var.use_app ? aws_security_group.app.id : aws_security_group.other.id",
+        ))
+        self.assertIn("eb_database_security_group", self.rules())
+
+    def test_database_port_must_be_allowed(self) -> None:
+        self.write("terraform/main.tf", TERRAFORM.replace("from_port = 5432", "from_port = 3306")
+                   .replace("to_port = 5432", "to_port = 3306"))
+        self.assertIn("eb_database_access_unverified", self.rules())
+
+    def test_separate_ingress_resources(self) -> None:
+        inline = """  ingress {
+    from_port = 5432
+    to_port = 5432
+    protocol = "tcp"
+    security_groups = [aws_security_group.app.id]
+  }
+"""
+        for kind, source, protocol, extra in [
+            ("aws_security_group_rule", "source_security_group_id", "protocol", '  type = "ingress"\n'),
+            ("aws_vpc_security_group_ingress_rule", "referenced_security_group_id", "ip_protocol", ""),
+        ]:
+            with self.subTest(kind=kind):
+                rule = f"""
+resource "{kind}" "db_access" {{
+{extra}  security_group_id = aws_security_group.database.id
+  {source} = aws_security_group.app.id
+  {protocol} = "tcp"
+  from_port = 5432
+  to_port = 5432
+}}
+"""
+                self.write("terraform/main.tf", TERRAFORM.replace(inline, "") + rule)
+                self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK")
+
+    def test_disabled_or_dynamic_ingress_cannot_prove_connectivity(self) -> None:
+        inline = """  ingress {
+    from_port = 5432
+    to_port = 5432
+    protocol = "tcp"
+    security_groups = [aws_security_group.app.id]
+  }
+"""
+        for instancing in ["count = 0", "for_each = {}", "for_each = toset([])", "count = var.enabled ? 1 : 0", "for_each = var.rules"]:
+            with self.subTest(instancing=instancing):
+                rule = f"""
+resource "aws_security_group_rule" "db_access" {{
+  {instancing}
+  type = "ingress"
+  security_group_id = aws_security_group.database.id
+  source_security_group_id = aws_security_group.app.id
+  protocol = "tcp"
+  from_port = 5432
+  to_port = 5432
+}}
+"""
+                self.write("terraform/main.tf", TERRAFORM.replace(inline, "") + rule)
+                self.assertIn("eb_database_access_unverified", self.rules())
+
+    def test_unrelated_conditional_resource_does_not_block_connectivity(self) -> None:
+        self.write("terraform/main.tf", TERRAFORM + """
+resource "aws_s3_bucket" "conditional" {
+  count = var.enabled ? 1 : 0
+  bucket = "unrelated"
+}
+""")
+        self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK")
+
+    def test_terraform_subdirectory_cannot_supply_root_security_group(self) -> None:
+        inline = """  ingress {
+    from_port = 5432
+    to_port = 5432
+    protocol = "tcp"
+    security_groups = [aws_security_group.app.id]
+  }
+"""
+        self.write("terraform/main.tf", TERRAFORM.replace(inline, ""))
+        self.write("terraform/examples/security.tf", TERRAFORM)
+        self.assertIn("eb_database_access_unverified", self.rules())
+
+    def test_referenced_module_requires_review_without_flattening(self) -> None:
+        self.write("terraform/main.tf", TERRAFORM + """
+module "network" {
+  source = "./modules/network"
+}
+""")
+        self.write("terraform/modules/network/main.tf", TERRAFORM)
+        self.assertIn("terraform_module_unverified", self.rules())
+
+    def test_comment_cannot_supply_ingress(self) -> None:
+        self.write("terraform/main.tf", TERRAFORM.replace(
+            "    security_groups = [aws_security_group.app.id]",
+            "    # security_groups = [aws_security_group.app.id]",
+        ))
+        self.assertIn("eb_database_access_unverified", self.rules())
+
+    def test_windows_overlap_and_boundary(self) -> None:
+        self.write("terraform/main.tf", TERRAFORM.replace(
+            "sun:04:00-sun:04:30", "sun:03:15-sun:03:45",
+        ))
+        self.assertIn("rds_windows_overlap", self.rules())
+        self.write("terraform/main.tf", TERRAFORM.replace(
+            "sun:04:00-sun:04:30", "sun:03:30-sun:04:00",
+        ))
+        self.assertNotIn("rds_windows_overlap", self.rules())
+
+    def test_invalid_and_unknown_windows_are_not_passed(self) -> None:
+        self.write("terraform/main.tf", TERRAFORM.replace('"03:00-03:30"', '"26:00-26:30"'))
+        self.assertIn("rds_windows_invalid", self.rules())
+        self.write("terraform/main.tf", TERRAFORM.replace('"03:00-03:30"', "var.backup_window"))
+        self.assertIn("rds_windows_unverified", self.rules())
+
+    def test_each_explicit_rds_window_is_validated_independently(self) -> None:
+        for removed, old, new in [
+            ('  maintenance_window = "sun:04:00-sun:04:30"\n', "03:00-03:30", "29:00-29:30"),
+            ('  backup_window = "03:00-03:30"\n', "sun:04:00-sun:04:30", "sun:29:00-sun:29:30"),
+        ]:
+            with self.subTest(new=new):
+                self.write("terraform/main.tf", TERRAFORM.replace(removed, "").replace(old, new))
+                self.assertIn("rds_windows_invalid", self.rules())
+
+    def test_comment_window_does_not_override_actual_window(self) -> None:
+        self.write("terraform/main.tf", TERRAFORM.replace(
+            '  backup_window = "03:00-03:30"',
+            '  # backup_window = "10:00-10:30"\n  backup_window = "04:00-04:30"',
+        ))
+        self.assertIn("rds_windows_overlap", self.rules())
+
+    def test_missing_action_id_and_per_job_resolution(self) -> None:
+        self.write(".github/workflows/deploy-eb.yml", WORKFLOW.replace("      - id: login-ecr\n", "      - name: Login\n"))
+        self.assertIn("workflow_step_reference", self.rules())
+        self.write(".github/workflows/deploy-eb.yml", WORKFLOW.replace(
+            "      - id: login-ecr", "      - id: something-else",
+        ) + """
+  another:
+    runs-on: ubuntu-latest
+    steps:
+      - id: login-ecr
+        run: echo hello
+""")
+        self.assertIn("workflow_step_reference", self.rules())
+
+    def test_with_input_id_does_not_define_a_step_id(self) -> None:
+        self.write(".github/workflows/deploy-eb.yml", WORKFLOW.replace(
+            "      - id: login-ecr\n        uses: aws-actions/amazon-ecr-login@v2",
+            "      - uses: aws-actions/amazon-ecr-login@v2\n        with:\n          id: login-ecr",
+        ))
+        self.assertIn("workflow_step_reference", self.rules())
+
+    def test_duplicate_step_ids_fail(self) -> None:
+        self.write(".github/workflows/deploy-eb.yml", WORKFLOW.replace(
+            "      - name: Build image", "      - id: login-ecr\n        name: Build image",
+        ))
+        self.assertIn("workflow_duplicate_step_id", self.rules())
+
+    def test_echo_and_comment_deploy_are_not_deployment(self) -> None:
+        for body in [
+            'echo "aws elasticbeanstalk update-environment --version-label abc"',
+            "# aws elasticbeanstalk update-environment --version-label abc\necho hello",
+            "echo eb deploy",
+            'deploy() { aws elasticbeanstalk update-environment --version-label abc; }\necho hello',
+            'if false; then\n aws elasticbeanstalk update-environment --version-label abc\nfi',
+            'false && aws elasticbeanstalk update-environment --version-label abc',
+            'exit 0; aws elasticbeanstalk update-environment --version-label abc',
+            'echo hello; exit 0; aws elasticbeanstalk update-environment --version-label abc',
+            "aws echo elasticbeanstalk update-environment --version-label abc",
+            "eb deploy --help",
+        ]:
+            with self.subTest(body=body):
+                workflow = """jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+""" + "\n".join("          " + line for line in body.splitlines()) + "\n"
+                self.write(".github/workflows/deploy-eb.yml", workflow)
+                self.assertIn("eb_deploy_missing", self.rules())
+
+    def test_whole_run_structure_cannot_hide_nonexecuted_deployment(self) -> None:
+        command = "aws elasticbeanstalk update-environment --version-label abc"
+        for body in [
+            "cat <<'TEXT'\n" + command + "\nTEXT",
+            'echo "documentation only\n' + command + '\n"',
+            "false && {\n" + command + "\n}",
+            "set -n\n" + command,
+            "PATH=/tmp/unverified-tools\n" + command,
+            "for unused in; do\n" + command + "\ndone",
+            'for unused in ${EMPTY}; do\n' + command + "\ndone",
+        ]:
+            with self.subTest(body=body):
+                workflow = """jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+""" + "\n".join("          " + line for line in body.splitlines()) + "\n"
+                self.write(".github/workflows/deploy-eb.yml", workflow)
+                self.assertIn("workflow_run_unverified", self.rules())
+                self.assertIn("eb_deploy_missing", self.rules())
+
+    def test_nested_workflow_example_cannot_satisfy_deployment(self) -> None:
+        (self.root / ".github/workflows/deploy-eb.yml").unlink()
+        self.write(".github/workflows/examples/deploy-eb.yml", WORKFLOW)
+        report = validator.validate(self.root, require_eb_workflow=True)
+        self.assertIn("eb_deploy_missing", {item["rule"] for item in report["findings"]})
+
+    def test_per_app_deploy_workflow_file_is_checked_like_deploy_eb_yml(self) -> None:
+        # In per-app mode the workflow is deploy-eb-<slug>.yml. The checker must treat it as the deploy
+        # workflow: an EB root whose only workflow is a no-op one still reports a missing deployment.
+        eb = 'resource "aws_elastic_beanstalk_environment" "main" {\n name = "shop-shop-staging-web"\n}\n'
+        self.write("terraform/main.tf", eb)
+        noop = "jobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo deploy\n"
+        for name in ("deploy-eb.yml", "deploy-eb-shop-staging.yml"):
+            with self.subTest(name=name):
+                (self.root / ".github/workflows").mkdir(parents=True, exist_ok=True)
+                for old in (self.root / ".github/workflows").glob("*.yml"):
+                    old.unlink()
+                self.write(f".github/workflows/{name}", noop)
+                self.assertIn("eb_deploy_missing", self.rules())
+        # a real per-app deploy workflow passes
+        (self.root / ".github/workflows/deploy-eb-shop-staging.yml").unlink()
+        self.write(".github/workflows/deploy-eb-shop-staging.yml", WORKFLOW)
+        self.assertNotIn("eb_deploy_missing", self.rules())
+
+    # A step before the deploy loop that rewrites a deploy variable through $GITHUB_ENV in a form the
+    # checker does not follow must make the deploy step unverified. The first three reach
+    # `carried` only as an ignored parse failure or not at all; the fourth is an action.
+    UNREVIEWED_ENV_WRITES = {
+        "write inside an if": 'if [ -n "${X:-}" ]; then echo "EB_ENVIRONMENTS=" >> "$GITHUB_ENV"; fi',
+        "tee -a": 'echo "EB_ENVIRONMENTS=" | tee -a "$GITHUB_ENV"',
+        "printf": "printf 'EB_ENVIRONMENTS=\\n' >> \"$GITHUB_ENV\"",
+        "name built from an expansion": 'echo "${TARGET}=" >> "$GITHUB_ENV"',
+    }
+
+    def _deploy_workflow_with_step_before_deploy(self, step: str) -> str:
+        return (
+            "jobs:\n  deploy:\n    runs-on: ubuntu-latest\n    env:\n      EB_ENVIRONMENTS: app-web\n    steps:\n"
+            + step
+            + "      - run: |\n"
+            + "          for ENVIRONMENT in ${EB_ENVIRONMENTS}; do\n"
+            + '            aws elasticbeanstalk update-environment --environment-name "${ENVIRONMENT}" --version-label abc\n'
+            + "          done\n"
+        )
+
+    def test_unreviewed_github_env_write_before_the_deploy_loop_is_reported(self) -> None:
+        for label, line in self.UNREVIEWED_ENV_WRITES.items():
+            with self.subTest(label):
+                self.write(".github/workflows/deploy-eb.yml", self._deploy_workflow_with_step_before_deploy(
+                    "      - run: |\n          " + line + "\n"))
+                self.assertIn("workflow_run_unverified", self.rules())
+
+    def test_unreviewed_action_before_the_deploy_loop_is_reported(self) -> None:
+        self.write(".github/workflows/deploy-eb.yml", self._deploy_workflow_with_step_before_deploy(
+            "      - uses: some-org/some-action@v1\n"))
+        self.assertIn("workflow_run_unverified", self.rules())
+
+    def test_reviewed_steps_and_other_github_env_names_do_not_poison_the_deploy_loop(self) -> None:
+        # a reviewed action, a write of an unrelated name through control flow (the CNB build step writes
+        # IMAGE this way), and a fully parsed write of a deploy variable all leave the loop verifiable
+        for label, step in {
+            "reviewed action": "      - uses: aws-actions/configure-aws-credentials@v4\n        with:\n          aws-region: us-east-1\n",
+            "unrelated name": '      - run: |\n          if [ -n "${X:-}" ]; then echo "IMAGE=abc" >> "$GITHUB_ENV"; fi\n',
+            "parsed write": '      - run: |\n          echo "EB_ENVIRONMENTS=app-web" >> "$GITHUB_ENV"\n',
+        }.items():
+            with self.subTest(label):
+                self.write(".github/workflows/deploy-eb.yml", self._deploy_workflow_with_step_before_deploy(step))
+                self.assertNotIn("workflow_run_unverified", self.rules(), label)
+
+    def test_source_eb_workflow_with_literal_environment_list_passes(self) -> None:
+        text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
+        section = text.split("### `.github/workflows/deploy-eb.yml`", 1)[1]
+        workflow = section.split("```yaml\n", 1)[1].split("\n```", 1)[0]
+        workflow = workflow.replace("<eb_application_name>", "app").replace(
+            "<space-separated EB environment names of this app from EB name resolution>", "app-web app-worker",
+        ).replace("<eb_app_label>", "").replace("<eb_deploy_trigger>", "push:\n    branches: [main]")
+        self.assertNotIn("<eb_", workflow, "the template must be fully rendered before it is checked")
+        self.write(".github/workflows/deploy-eb.yml", workflow)
+        self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK", self.report())
+
+    CNB_PORT_PLACEHOLDER = "<eb_application_port_<app_sanitized>_web | 8080 when the app has no EB web environment>"
+
+    @classmethod
+    def source_cnb_workflow(
+        cls, *, container_port: str = "3000", process_types: str = "web worker",
+        application: str = "shop", app_label: str = "", trigger: str = "push:\n    branches: [main]",
+    ) -> str:
+        text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
+        section = text.split("#### CNB variant", 1)[1]
+        workflow = section.split("```yaml\n", 1)[1].split("\n```", 1)[0]
+        return (
+            workflow.replace("<target_region>", "us-east-1")
+            .replace("<project_name>/<heroku_app>", "shop/shop-api")
+            .replace("<eb_application_name>", application)
+            .replace("<eb_app_label>", app_label)
+            .replace("<eb_deploy_trigger>", trigger)
+            .replace("<project_name>", "shop")
+            .replace("heroku/builder:<22|24|26>", "heroku/builder:24")
+            .replace(cls.CNB_PORT_PLACEHOLDER, container_port)
+            .replace('EB_PROCESS_TYPES: "web worker"', f'EB_PROCESS_TYPES: "{process_types}"')
+        )
+
+    def test_source_cnb_workflow_passes_required_eb_workflow_check(self) -> None:
+        workflow = self.source_cnb_workflow()
+        for placeholder in ["<target_region>", "<project_name>", "<heroku_app>", "<22|24|26>", "<eb_application_port", "<eb_application_name>", "<eb_app_label>", "<eb_deploy_trigger>"]:
+            self.assertNotIn(placeholder, workflow, "unfilled placeholder")
+        self.assertIn("setup-pack@v6.2.2", workflow)
+        self.assertIn('"Entrypoint": "/cnb/process/${PROCESS}"', workflow)
+        self.assertNotIn('"Command"', workflow)
+        code = "\n".join(line for line in workflow.splitlines() if not line.lstrip().startswith("#"))
+        self.assertNotIn("8080", code, "a web app's bundles carry the customer port, never a literal")
+        self.assertIn('"ContainerPort": "${EB_CONTAINER_PORT}"', workflow)
+        self.assertIn('EB_CONTAINER_PORT: "3000"', workflow)
+        self.write(".github/workflows/deploy-eb.yml", workflow)
+        report = validator.validate(self.root, require_eb_workflow=True)
+        self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
+        self.assertEqual(self.cli("--require-eb-workflow", "--json", "-").returncode, 0)
+
+    def test_source_cnb_workflow_with_build_time_secrets_passes_the_required_check(self) -> None:
+        # The documented way to pass build-time config vars: names in BUILD_ENV_NAMES, values from
+        # GitHub secrets in a block-style `env:` on the build step. The mandatory checker must still pass.
+        workflow = self.source_cnb_workflow().replace('BUILD_ENV_NAMES: ""', 'BUILD_ENV_NAMES: "NPM_TOKEN RAILS_MASTER_KEY"')
+        marker = "      - name: Build image with Heroku buildpacks (no Dockerfile)\n"
+        self.assertEqual(workflow.count(marker), 1)
+        workflow = workflow.replace(
+            marker,
+            marker + "        env:\n          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}\n          RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}\n",
+        )
+        code = "\n".join(line for line in workflow.splitlines() if not line.lstrip().startswith("#"))
+        # names only: no value on any pack argument or in the script
+        self.assertIn('--env "${NAME}"', code)
+        self.assertNotRegex(code, r"--env\s+\S*=")
+        self.assertNotIn("NPM_TOKEN=", code)
+        self.write(".github/workflows/deploy-eb.yml", workflow)
+        report = validator.validate(self.root, require_eb_workflow=True)
+        self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
+
+    def test_source_cnb_workflow_worker_only_app_has_a_resolved_container_port(self) -> None:
+        # A worker-only EB app has no eb_application_port_<app>_web variable; its bundles
+        # carry the documented 8080 constant, never an unresolved placeholder.
+        workflow = self.source_cnb_workflow(container_port="8080", process_types="worker")
+        self.assertNotIn("<eb_application_port", workflow)
+        self.assertNotIn("EB_WEB_PORT", workflow)
+        self.assertIn('EB_CONTAINER_PORT: "8080"', workflow)
+        self.assertIn('EB_PROCESS_TYPES: "worker"', workflow)
+        self.write(".github/workflows/deploy-eb.yml", workflow)
+        report = validator.validate(self.root, require_eb_workflow=True)
+        self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
+        bundle = subprocess.run(
+            ["bash", "-c", 'for PROCESS in ${EB_PROCESS_TYPES}; do printf \'%s\' "${EB_CONTAINER_PORT}:${PROCESS}"; done'],
+            env={"PATH": os.environ["PATH"], "EB_PROCESS_TYPES": "worker", "EB_CONTAINER_PORT": "8080"},
+            capture_output=True, text=True, check=True,
+        )
+        self.assertEqual(bundle.stdout, "8080:worker")
+
+    def test_source_cnb_workflow_pins_amd64_and_unique_rerun_labels(self) -> None:
+        workflow = self.source_cnb_workflow()
+        build = workflow.split("- name: Build image with Heroku buildpacks", 1)[1].split("- name: Write one Dockerrun", 1)[0]
+        self.assertIn("--platform linux/amd64 --publish", build)
+        self.assertIn("docker manifest inspect --verbose", build)
+        self.assertIn("exit 1", build, "an existing tag of another architecture must stop the run")
+        deploy = workflow.split("- name: Create one application version per process type and deploy it", 1)[1]
+        self.assertIn('VERSION_BASE="${GITHUB_SHA}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"', deploy)
+        text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
+        dockerfile_variant = text.split("### `.github/workflows/deploy-eb.yml`", 1)[1].split("```yaml\n", 1)[1].split("\n```", 1)[0]
+        self.assertIn('VERSION_LABEL="${GITHUB_SHA}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"', dockerfile_variant)
+        self.assertNotIn("linux/amd64` only and the generated workflows run `pack build` without `--platform`", text)
+        docs = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-docs.md").read_text()
+        publishing = [line for line in docs.splitlines() if line.lstrip().startswith(("pack build", "|| pack build")) and "--publish" in line]
+        self.assertTrue(publishing)
+        for line in publishing:
+            with self.subTest(line=line):
+                self.assertIn("--platform linux/amd64", line)
+        self.assertNotIn("EB_WEB_PORT", docs)
+        self.assertNotIn("EB_WEB_PORT", text)
+
+    def test_partial_estate_dockerfile_apps_is_a_preferences_contract_field(self) -> None:
+        # Q12b's partial follow-up stores the confirmed per-app Dockerfile status; the
+        # preferences contract (clarify-assemble.md fenced template) must accept it as a
+        # string array and keep rejecting other shapes.
+        seed = json.loads((PLUGIN / "fixtures/heroku-workshop/seed/preferences.json").read_text())
+        seed["operational"]["containerization_status"] = "partial"
+        seed["operational"]["containerization_method"] = "cnb_heroku_builder"
+        for value, expected in [(["app-a", "app-b"], 0), ("app-a", 1)]:
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as root:
+                seed["operational"]["dockerfile_apps"] = value
+                (Path(root) / "preferences.json").write_text(json.dumps(seed))
+                result = subprocess.run(
+                    [sys.executable, str(PLUGIN / "scripts/validate-artifacts.py"), "--run-dir", root, "--skill", "heroku-to-aws"],
+                    capture_output=True, text=True,
+                )
+                self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+        interview = (PLUGIN / "skills/heroku-to-aws/references/phases/clarify/clarify-interview.md").read_text()
+        self.assertIn("operational.dockerfile_apps", interview)
+        for doc in ["generate/generate-terraform.md", "generate/generate-docs.md", "design/design-mapping.md", "clarify/clarify-assemble.md"]:
+            with self.subTest(doc=doc):
+                self.assertIn("dockerfile_apps", (PLUGIN / "skills/heroku-to-aws/references/phases" / doc).read_text())
+
+    def test_cnb_image_tag_bootstraps_before_the_image_exists(self) -> None:
+        # The same root creates the ECR repository, so the first apply must succeed with no
+        # published image: the tag defaults to "" and the service runs zero tasks until set.
+        text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
+        variables = text[: text.index("## Step 3")]
+        block = variables.split('variable "image_tag_<app_sanitized>"', 1)[1].split("\n}\n", 1)[0]
+        self.assertIn('default     = ""', block)
+        self.assertIn('var.image_tag_<app_sanitized> == "" ||', block)
+        compute = text[text.index("## Step 6: Generate `compute.tf`") : text.index("## Step 6.5: Generate `beanstalk.tf`")]
+        self.assertIn('coalesce(var.image_tag_<app_sanitized>, "bootstrap")', compute)
+        self.assertIn('var.image_tag_<app_sanitized> == "") ? 0 :', compute)
+        docs = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-docs.md").read_text()
+        phase_1 = docs[docs.index("## Phase 1:") : docs.index("## Phase 2:")]
+        self.assertIn("First deployment of buildpack (CNB) apps on Fargate", phase_1)
+        self.assertIn("`image_tag_<app_sanitized>` unset", phase_1)
+        hcl = block.replace("<app_sanitized>", "shop_api").replace("<heroku_app>", "shop-api").replace("<app_name>", "shop_api") + "\n}\n"
+        terraform = shutil.which("terraform")
+        if terraform is None:
+            self.skipTest("terraform not installed")
+        with tempfile.TemporaryDirectory() as root:
+            (Path(root) / "variables.tf").write_text('variable "image_tag_shop_api"' + hcl)
+            env = {**os.environ, "TF_IN_AUTOMATION": "1", "TF_INPUT": "0"}
+            subprocess.run([terraform, "init", "-backend=false", "-input=false"], cwd=root, env=env, capture_output=True, check=True)
+            unset = subprocess.run([terraform, "plan", "-input=false"], cwd=root, env=env, capture_output=True, text=True)
+            self.assertEqual(unset.returncode, 0, unset.stderr)
+            published = subprocess.run([terraform, "plan", "-input=false", "-var", "image_tag_shop_api=0123abcd"], cwd=root, env=env, capture_output=True, text=True)
+            self.assertEqual(published.returncode, 0, published.stderr)
+            invalid = subprocess.run([terraform, "plan", "-input=false", "-var", "image_tag_shop_api=not a tag"], cwd=root, env=env, capture_output=True, text=True)
+            self.assertNotEqual(invalid.returncode, 0)
+
+    def test_source_dockerfile_workflow_passes_required_eb_workflow_check(self) -> None:
+        text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
+        section = text.split("### `.github/workflows/deploy-eb.yml`", 1)[1]
+        workflow = section.split("```yaml\n", 1)[1].split("\n```", 1)[0]
+        workflow = workflow.replace("<eb_application_name>", "app").replace(
+            "<space-separated EB environment names of this app from EB name resolution>", "app-web app-worker",
+        ).replace("<eb_app_label>", "").replace("<eb_deploy_trigger>", "push:\n    branches: [main]")
+        self.assertNotIn("<eb_", workflow, "the template must be fully rendered before it is checked")
+        self.write(".github/workflows/deploy-eb.yml", workflow)
+        report = validator.validate(self.root, require_eb_workflow=True)
+        self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
+
+    def test_cnb_deploy_step_cannot_absorb_the_bundle_heredoc(self) -> None:
+        # The previous single-step shape (heredoc + ${PAIR%%=*} + cd inside the deploy
+        # loop) is exactly what the bounded checker must keep rejecting.
+        workflow = self.source_cnb_workflow()
+        deploy_marker = "      - name: Create one application version per process type and deploy it\n        run: |\n"
+        head, deploy = workflow.split(deploy_marker, 1)
+        bundle_marker = "      - name: Write one Dockerrun bundle per process type\n        run: |\n"
+        before_bundle, bundle = head.split(bundle_marker, 1)
+        merged = before_bundle + deploy_marker + bundle.rstrip("\n") + "\n" + deploy
+        self.write(".github/workflows/deploy-eb.yml", merged)
+        report = validator.validate(self.root, require_eb_workflow=True)
+        rules = {item["rule"] for item in report["findings"]}
+        self.assertIn("workflow_run_unverified", rules, report)
+        self.assertIn("eb_deploy_missing", rules, report)
+        for body in [
+            'for PAIR in "app-web=web"; do\n  ENVIRONMENT="${PAIR%%=*}"\n'
+            "  aws elasticbeanstalk update-environment --environment-name \"${ENVIRONMENT}\" --version-label abc\ndone",
+            'cat > Dockerrun.aws.json <<JSON\n{}\nJSON\n'
+            "aws elasticbeanstalk update-environment --environment-name app-web --version-label abc",
+        ]:
+            with self.subTest(body=body):
+                self.write(".github/workflows/deploy-eb.yml", """jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+""" + "\n".join("          " + line for line in body.splitlines()) + "\n")
+                self.assertIn("workflow_run_unverified", self.rules())
+
+    def test_cnb_ecr_and_fargate_image_do_not_depend_on_beanstalk_step(self) -> None:
+        # ecr.tf must be emitted for all-Fargate CNB plans, so it lives in its own step
+        # ahead of compute.tf rather than inside the EB-only Step 6.5; the Fargate task
+        # composes the image from the repository resource (a variable cannot).
+        text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
+        step_55 = text.index("## Step 5.5: Resolve the containerization method per app and generate `ecr.tf`")
+        step_6 = text.index("## Step 6: Generate `compute.tf`")
+        step_65 = text.index("## Step 6.5: Generate `beanstalk.tf`")
+        self.assertLess(step_55, step_6)
+        self.assertIn("### `ecr.tf`", text[step_55:step_6])
+        self.assertNotIn("### `ecr.tf`", text[step_65:])
+        self.assertNotIn("ecs.tf", text)
+        compute = text[step_6:step_65]
+        self.assertIn('image = "${aws_ecr_repository.<app_name>.repository_url}:${coalesce(var.image_tag_<app_sanitized>, "bootstrap")}"', compute)
+        self.assertIn('entryPoint  = ["/cnb/process/<process_type>"]', compute)
+        self.assertNotIn("command = [", compute)
+        self.assertIn('variable "image_tag_<app_sanitized>"', text[: text.index("## Step 3")])
+        cnb_rules = text[text.index("**CNB variant rules:**") : text.index("### `pipeline.tf`")]
+        self.assertIn('`ecr:GetAuthorizationToken` on `"Resource": "*"`', cnb_rules)
+        self.assertIn("`ecr:BatchGetImage`", cnb_rules)
+        self.assertNotIn("EB_TARGETS", text)
+        docs = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-docs.md").read_text()
+        self.assertIn('`ecr:GetAuthorizationToken` with `"Resource": "*"`', docs)
+        self.assertIn("`ecr:BatchGetImage`", docs)
+        design = (PLUGIN / "skills/heroku-to-aws/references/phases/design/design-mapping.md").read_text()
+        self.assertIn("cnb_architecture_x86", design)
+    def test_cnb_per_app_workflows_use_each_apps_own_eb_application_and_a_production_app_is_manual_only(self) -> None:
+        staging = self.source_cnb_workflow(
+            application="shop-shop-staging", app_label=" (shop-staging)", process_types="web worker")
+        production = self.source_cnb_workflow(
+            application="shop-shop-production", app_label=" (shop-production)", trigger="workflow_dispatch:")
+        for rendered in (staging, production):
+            for token in ("<eb_application_name>", "<eb_app_label>", "<eb_deploy_trigger>"):
+                self.assertNotIn(token, rendered)
+        self.assertIn("name: Build with buildpacks and deploy to Elastic Beanstalk (shop-staging)", staging)
+        self.assertIn("EB_APPLICATION_NAME: shop-shop-staging", staging)
+        self.assertIn("EB_APPLICATION_NAME: shop-shop-production", production)
+        self.assertNotIn("EB_APPLICATION_NAME: shop\n", staging, "a per-app workflow must not name the shared project application")
+        # the production-stage app's workflow does not run on a push
+        self.assertNotIn("push:", production)
+        self.assertIn("workflow_dispatch:", production)
+        # both workflows pass the mandatory artifact checker side by side
+        self.write(".github/workflows/deploy-eb-shop-staging.yml", staging)
+        self.write(".github/workflows/deploy-eb-shop-production.yml", production)
+        self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK", self.report())
+
+    def test_cnb_deploy_guidance_and_guide_use_eb_name_resolution_not_project_name(self) -> None:
+        terraform = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
+        cnb = terraform.split("#### CNB variant", 1)[1].split("#### CNB promote variant", 1)[0]
+        self.assertIn("EB_APPLICATION_NAME: <eb_application_name>", cnb)
+        self.assertNotIn("EB_APPLICATION_NAME: <project_name>", cnb)
+        self.assertNotIn("EB_APPLICATION_NAME` is `var.project_name`", cnb)
+        docs = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-docs.md").read_text()
+        manual = docs.split("for PROCESS in {{EB_PROCESS_TYPES}}; do", 1)[1].split("\ndone\n", 1)[0]
+        self.assertIn("create-application-version", manual)
+        self.assertIn("--application-name {{EB_APPLICATION}}", manual)
+        self.assertNotIn("--application-name {{project_name}}", manual)
+        self.assertNotIn('--environment-name "{{project_name}}-${PROCESS}"', manual)
+        self.assertIn("--environment-name {{EB_APPLICATION}}-$proc", docs)
+        self.assertNotIn("--environment-name {{project_name}}-$proc", docs)
+
+    def test_per_app_deploy_workflow_renders_and_a_production_app_is_manual_only(self) -> None:
+        text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
+        section = text.split("### `.github/workflows/deploy-eb.yml`", 1)[1]
+        template = section.split("```yaml\n", 1)[1].split("\n```", 1)[0]
+
+        def render(app: str, slug: str, trigger: str) -> str:
+            return (template.replace("<eb_application_name>", f"shop-{slug}")
+                    .replace("<space-separated EB environment names of this app from EB name resolution>",
+                             f"shop-{slug}-web shop-{slug}-worker")
+                    .replace("<eb_app_label>", f" ({app})").replace("<eb_deploy_trigger>", trigger))
+
+        push = "push:\n    branches: [main]"
+        manual = "workflow_dispatch:"
+        staging = render("shop-staging", "shop-staging", push)
+        production = render("shop-production", "shop-production", manual)
+        for rendered in (staging, production):
+            self.assertNotIn("<eb_", rendered)
+        self.assertIn("name: Deploy Elastic Beanstalk (shop-staging)", staging)
+        self.assertIn("EB_APPLICATION_NAME: shop-shop-staging", staging)
+        self.assertIn("EB_APPLICATION_NAME: shop-shop-production", production)
+        # a push-triggered staging workflow and a manual-only production workflow, side by side, pass
+        self.write(".github/workflows/deploy-eb-shop-staging.yml", staging)
+        self.write(".github/workflows/deploy-eb-shop-production.yml", production)
+        self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK", self.report())
+        # the production app's workflow does not run on a push
+        self.assertNotIn("push:", production)
+        self.assertIn("workflow_dispatch:", production)
+
+    def test_source_deploy_and_promote_pair_passes_as_emitted(self) -> None:
+        text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
+        deploy = text.split("### `.github/workflows/deploy-eb.yml`", 1)[1].split("```yaml\n", 1)[1].split("\n```", 1)[0]
+        deploy = deploy.replace("<target_region>", "us-east-1").replace(
+            "<eb_application_name>", "app-staging",
+        ).replace(
+            "<space-separated EB environment names of this app from EB name resolution>",
+            "app-staging-web app-staging-worker",
+        ).replace("<eb_app_label>", "").replace("<eb_deploy_trigger>", "push:\n    branches: [main]")
+        promote = text.split("### `.github/workflows/promote.yml`", 1)[1].split("```yaml\n", 1)[1].split("\n```", 1)[0]
+        promote = promote.replace("<target_region>", "us-east-1").replace(
+            "<staging app's generated EB application name>", "app-staging",
+        ).replace(
+            "<one generated EB environment of the staging app, web if present>", "app-staging-web",
+        ).replace(
+            "<this app's generated EB application name>", "app",
+        ).replace(
+            "<space-separated generated EB environment names for this app>", "app-web app-worker",
+        )
+        self.assertNotIn("<", deploy + promote.replace("Settings -> Environments", ""))
+        self.write(".github/workflows/deploy-eb.yml", deploy)
+        self.write(".github/workflows/promote.yml", promote)
+        report = validator.validate(self.root, require_eb_workflow=True)
+        self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
+        # The fallback variant (no generated staging source) drops the
+        # {{IF promote_pair}} blocks and the staging bindings and must verify too.
+        fallback: list[str] = []
+        skipping = False
+        for line in promote.splitlines():
+            if "{{IF promote_pair}}" in line:
+                skipping = True
+            if not skipping and not line.lstrip().startswith(("STAGING_APP:", "STAGING_ENVIRONMENT:", "STAGING_LABEL:")):
+                fallback.append(line.replace("required: false", "required: true"))
+            if "{{ENDIF}}" in line:
+                skipping = False
+        self.assertNotIn("{{IF", "\n".join(fallback))
+        self.assertNotIn("{{ENDIF", "\n".join(fallback))
+        self.assertNotIn("describe-environments", "\n".join(fallback))
+        self.assertIn("REQUESTED_LABEL: ${{ inputs.version_label }}", "\n".join(fallback))
+        self.write(".github/workflows/promote.yml", "\n".join(fallback) + "\n")
+        report = validator.validate(self.root, require_eb_workflow=True)
+        self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
+
+    GENERATE_TERRAFORM = PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md"
+
+    def _cnb_promote_workflow(self) -> str:
+        text = self.GENERATE_TERRAFORM.read_text()
+        section = text.split("#### CNB promote variant", 1)[1]
+        workflow = section.split("```yaml\n", 1)[1].split("\n```", 1)[0]
+        return workflow.replace("<target_region>", "us-east-1").replace(
+            "<this app's generated EB application name>", "app",
+        )
+
+    def test_cnb_promote_gives_each_environment_its_own_process_label(self) -> None:
+        # A CNB deploy registers `<base>-<process_type>` per environment and each bundle's Entrypoint selects
+        # that process. One label on every production environment would start the web process in the workers.
+        workflow = self._cnb_promote_workflow()
+        self.assertIn('--environment-name "${PRODUCTION_APP}-${PROCESS}" --version-label "${LABEL}-${PROCESS}"', workflow)
+        self.assertNotIn("describe-environments", workflow, "the base label cannot be read back from one staging environment")
+        self.assertNotIn("STAGING_", workflow)
+        self.assertIn("environment: production", workflow)
+        self.assertIn("required: true", workflow)
+        self.assertNotIn("<", workflow.replace("Settings -> Environments", ""))
+        self.write(".github/workflows/promote.yml", workflow)
+        self.write(".github/workflows/deploy-eb.yml", self._deploy_workflow_with_step_before_deploy(""))
+        report = validator.validate(self.root, require_eb_workflow=True)
+        self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
+        # the default file's single-label update is only for apps whose environments share one label
+        default = self.GENERATE_TERRAFORM.read_text().split("### `.github/workflows/promote.yml`", 1)[1].split("#### CNB promote variant", 1)[0]
+        self.assertIn("CNB promote variant", default)
+        self.assertNotIn("production runs the staging image without a rebuild. With the default", default)
+
+    def test_cnb_promote_matches_the_labels_the_cnb_deploy_registers(self) -> None:
+        # Guard the pairing this variant relies on: deploy-eb registers `${VERSION_BASE}-${PROCESS}` and the
+        # base is `${GITHUB_SHA}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}`. That variant lives with the
+        # buildpack build, so this only runs where it exists; the variant text itself is checked above.
+        text = self.GENERATE_TERRAFORM.read_text()
+        variant = text.split("#### CNB promote variant", 1)[1].split("### `pipeline.tf`", 1)[0]
+        self.assertIn("${GITHUB_SHA}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}", variant)
+        if "#### CNB variant (`containerization_method" in text:
+            cnb_deploy = text.split("#### CNB variant (`containerization_method", 1)[1]
+            self.assertIn('--version-label "${VERSION_BASE}-${PROCESS}"', cnb_deploy)
+
+    def test_a_promote_pair_needs_distinct_generated_names(self) -> None:
+        # With one project_name, two apps used to share an application and its environments, so every push
+        # would have deployed to production and skipped the approval. EB name resolution now names each app
+        # of a two-or-more design separately, and the pair rule is stated in terms of those names.
+        text = self.GENERATE_TERRAFORM.read_text()
+        beanstalk = text.split('resource "aws_elastic_beanstalk_application"', 1)[1].split("\n}\n", 1)[0]
+        self.assertIn('name        = "${var.project_name}<eb_app_suffix>"', beanstalk)
+        self.assertNotIn("name        = var.project_name", beanstalk)
+        promote = text.split("### `.github/workflows/promote.yml`", 1)[1]
+        self.assertIn("resolve to different generated names", promote)
+        self.assertIn("**Distinct names.**", promote)
+        self.assertIn("STAGING_APP != PRODUCTION_APP", promote)
+        self.assertIn("EB name resolution (above) gives every", promote)
+        self.assertNotIn("no pair resolves", promote)
+        docs = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-docs.md").read_text()
+        self.assertIn("resolve to different generated EB application and environment names", docs)
+        self.assertNotIn("so they do not, and `promote_pair` is false", docs)
+
+    def test_fargate_promote_guide_pins_the_running_staging_task_digest(self) -> None:
+        # A registry tag can move after staging started; the digest must come from
+        # the task ECS is actually running, never from `describe-images imageTag=`.
+        docs = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-docs.md").read_text()
+        section = docs.split("### Deploy to Fargate", 1)[1].split("\n### ", 1)[0]
+        recipe = section.split("```bash\n", 1)[1].split("\n```", 1)[0]
+        self.assertIn("aws ecs list-tasks", recipe)
+        self.assertIn("aws ecs describe-tasks", recipe)
+        self.assertIn(".imageDigest", recipe)
+        self.assertIn("@${STAGING_DIGEST}", section)
+        self.assertNotIn("describe-images", recipe)
+        self.assertNotIn("imageTag=", recipe)
+        self.assertNotIn("imageDetails", section)
+        terraform = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
+        promote_notes = terraform.split("### `.github/workflows/promote.yml`", 1)[1].split("\n### ", 1)[0]
+        self.assertIn("imageDigest", promote_notes)
+        self.assertNotIn("imageTag", promote_notes)
+
+    def test_fargate_promote_requires_running_task_and_keeps_production_config(self) -> None:
+        docs = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-docs.md").read_text()
+        section = docs.split("### Deploy to Fargate", 1)[1].split("\n### ", 1)[0]
+        blocks = [part.split("\n```", 1)[0] for part in section.split("```bash\n")[1:]]
+        select, build = blocks[0], blocks[1]
+        # The task must be RUNNING with a sha256 digest, and its definition comes
+        # from that same describe-tasks response.
+        self.assertIn("lastStatus", select)
+        self.assertIn("taskDefinitionArn", select)
+        self.assertIn("sha256:", select)
+        self.assertIn("exit 1", select)
+        self.assertEqual(select.count("aws ecs describe-tasks"), 1)
+        self.assertNotIn("describe-services", select)
+        # Production's own task definition is the base; only the image changes.
+        self.assertIn("describe-services --cluster <prod cluster>", build)
+        self.assertIn("describe-task-definition", build)
+        self.assertNotIn("<staging", build)
+        if shutil.which("jq") is None:
+            self.skipTest("jq is required to execute the recipe's task-definition filter")
+        expression = build.split("'", 3)[3].split("'", 1)[0]
+        digest = "sha256:" + "a" * 64
+        production = {
+            "family": "app-production", "taskDefinitionArn": "arn:aws:ecs:r:1:task-definition/app-production:7",
+            "revision": 7, "status": "ACTIVE", "cpu": "512", "taskRoleArn": "arn:aws:iam::1:role/prod-task",
+            "containerDefinitions": [
+                {"name": "web", "image": "repo/app:old", "environment": [{"name": "DATABASE_URL", "value": "prod-db"}],
+                 "secrets": [{"name": "API_KEY", "valueFrom": "arn:aws:secretsmanager:r:1:secret:prod-key"}],
+                 "logConfiguration": {"logDriver": "awslogs", "options": {"awslogs-group": "/prod/web"}}},
+                {"name": "sidecar", "image": "repo/sidecar:1"},
+            ],
+        }
+        result = subprocess.run(
+            ["jq", "--arg", "name", "web", "--arg", "image", f"repo/app@{digest}", expression],
+            input=json.dumps(production), capture_output=True, text=True, check=True,
+        )
+        registered = json.loads(result.stdout)
+        web, sidecar = registered["containerDefinitions"]
+        self.assertEqual(web["image"], f"repo/app@{digest}")
+        self.assertEqual(web["environment"], [{"name": "DATABASE_URL", "value": "prod-db"}])
+        self.assertEqual(web["secrets"], production["containerDefinitions"][0]["secrets"])
+        self.assertEqual(web["logConfiguration"]["options"]["awslogs-group"], "/prod/web")
+        self.assertEqual(sidecar, production["containerDefinitions"][1])
+        self.assertEqual((registered["cpu"], registered["taskRoleArn"]), ("512", "arn:aws:iam::1:role/prod-task"))
+        for read_only in ("taskDefinitionArn", "revision", "status"):
+            self.assertNotIn(read_only, registered)
+
+    def test_promote_guide_documents_oidc_subject_and_reviewer_prerequisite(self) -> None:
+        docs = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-docs.md").read_text()
+        section = docs.split("### Promote to Production", 1)[1].split("{{IF eb_deploy_method", 1)[0]
+        self.assertIn('"repo:<org>/<repo>:ref:refs/heads/main"', section)
+        self.assertIn('"repo:<org>/<repo>:environment:production"', section)
+        self.assertIn("sts.amazonaws.com", section)
+        self.assertNotIn(":*", section)
+        self.assertIn("only in public repositories", section)
+        self.assertIn("GitHub Enterprise", section)
+        self.assertIn("workflow_dispatch", section)
+        self.assertIn("CodePipeline", section)
+
+    def test_promote_lookup_and_publish_shapes_are_bounded(self) -> None:
+        deploy = "aws elasticbeanstalk update-environment --environment-name app-web --version-label \"${LABEL}\""
+        accepted = [
+            'LABEL="$(aws elasticbeanstalk describe-environments --environment-names "${STAGING}" --query \'Environments[0].VersionLabel\' --output text)"\n'
+            'echo "label=${LABEL}" >> "$GITHUB_OUTPUT"\n' + deploy,
+            'BUNDLE="$(aws elasticbeanstalk describe-application-versions --application-name app --version-labels "${LABEL}" --query \'ApplicationVersions[0].SourceBundle\' --output json)"\n'
+            'echo "BUNDLE=${BUNDLE}" >> "$GITHUB_ENV"\n' + deploy,
+        ]
+        rejected = [
+            # Not read-only, not Elastic Beanstalk, or more than one command.
+            'LABEL="$(aws elasticbeanstalk update-environment --environment-name app-web --version-label abc)"\n' + deploy,
+            'LABEL="$(aws s3 ls)"\n' + deploy,
+            'LABEL="$(aws elasticbeanstalk describe-environments; kill -TERM $$)"\n' + deploy,
+            'LABEL="$(aws elasticbeanstalk describe-environments && kill -TERM $$)"\n' + deploy,
+            'LABEL="$(aws elasticbeanstalk describe-environments "$(kill -TERM $$)")"\n' + deploy,
+            'LABEL="$(aws elasticbeanstalk describe-environments `kill -TERM $$`)"\n' + deploy,
+            'LABEL="$(aws elasticbeanstalk describe-environments)" ; kill -TERM $$\n' + deploy,
+            'LABEL="$(aws elasticbeanstalk describe-environments "${PATH:=/tmp}")"\n' + deploy,
+            'PATH="$(aws elasticbeanstalk describe-environments --query \'Environments[0].VersionLabel\' --output text)"\n' + deploy,
+            # Publishing may not reach reserved execution-environment names or
+            # arbitrary files, and may not carry substitutions.
+            'echo "PATH=/tmp/unverified" >> "$GITHUB_ENV"\n' + deploy,
+            'echo "LABEL=${LABEL}" >> "$GITHUB_PATH"\n' + deploy,
+            'echo "LABEL=${LABEL}" >> /etc/environment\n' + deploy,
+            'echo "LABEL=$(kill -TERM $$)" >> "$GITHUB_ENV"\n' + deploy,
+            'echo "LABEL=${LABEL}" > "$GITHUB_ENV"\n' + deploy,
+            'echo "LABEL=${LABEL}" >> "$GITHUB_ENV" ; kill -TERM $$\n' + deploy,
+        ]
+        for body, expected in [(b, True) for b in accepted] + [(b, False) for b in rejected]:
+            with self.subTest(body=body):
+                workflow = """env:
+  STAGING: app-staging-web
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+""" + "\n".join("          " + line for line in body.splitlines()) + "\n"
+                self.write(".github/workflows/deploy-eb.yml", workflow)
+                if expected:
+                    self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK", self.report())
+                else:
+                    self.assertIn("workflow_run_unverified", self.rules())
+
+    def test_github_env_writes_carry_into_later_deploy_steps(self) -> None:
+        lookup = 'BUCKET="$(aws elasticbeanstalk create-storage-location --query S3Bucket --output text)"'
+        loop = (
+            "for ENVIRONMENT in ${EB_ENVIRONMENTS}; do\n"
+            '  aws elasticbeanstalk update-environment --environment-name "${ENVIRONMENT}" --version-label "${GITHUB_SHA}"\n'
+            "done"
+        )
+
+        def workflow(first: str) -> str:
+            def block(body: str) -> str:
+                return "\n".join("          " + line for line in body.splitlines())
+            return (
+                "env:\n  EB_ENVIRONMENTS: app-web\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n"
+                "      - run: |\n" + block(first) + "\n"
+                "      - run: |\n" + block(loop) + "\n"
+            )
+
+        rejected = {
+            "empty": lookup + '\necho "EB_ENVIRONMENTS=" >> "$GITHUB_ENV"',
+            "unknown": 'echo "EB_ENVIRONMENTS=${MISSING}" >> "$GITHUB_ENV"',
+        }
+        for label, first in rejected.items():
+            with self.subTest(label=label):
+                self.write(".github/workflows/deploy-eb.yml", workflow(first))
+                self.assertIn("workflow_run_unverified", self.rules())
+        # A nonempty reassignment is carried and still verifies.
+        self.write(".github/workflows/deploy-eb.yml", workflow(
+            lookup + '\necho "EB_ENVIRONMENTS=app-web app-worker" >> "$GITHUB_ENV"',
+        ))
+        self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK", self.report())
+        # GITHUB_OUTPUT is a separate channel and does not touch the environment.
+        self.write(".github/workflows/deploy-eb.yml", workflow(
+            lookup + '\necho "EB_ENVIRONMENTS=" >> "$GITHUB_OUTPUT"',
+        ))
+        self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK", self.report())
+
+    def test_loop_environment_reassignment_must_remain_provably_nonempty(self) -> None:
+        for assignment in ['EB_ENVIRONMENTS=""', "EB_ENVIRONMENTS=$MISSING", 'export EB_ENVIRONMENTS=""', "read EB_ENVIRONMENTS", 'EB_ENVIRONMENTS+=""']:
+            with self.subTest(assignment=assignment):
+                body = assignment + """
+for ENVIRONMENT in ${EB_ENVIRONMENTS}; do
+  aws elasticbeanstalk update-environment --environment-name "$ENVIRONMENT" --version-label abc
+done
+"""
+                workflow = """env:
+  EB_ENVIRONMENTS: app-web
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+""" + "\n".join("          " + line for line in body.splitlines()) + "\n"
+                self.write(".github/workflows/deploy-eb.yml", workflow)
+                self.assertIn("workflow_run_unverified", self.rules())
+
+    def test_execution_context_wrappers_and_dynamic_command_words_require_review(self) -> None:
+        command = "aws elasticbeanstalk update-environment --version-label abc"
+        for prefix in [
+            'STOP=exit\n"$STOP" 0',
+            "command -p exit 0",
+            "time exit 0",
+            "! exit 0",
+            "hash -p /usr/bin/true aws",
+            "kill -TERM $$",
+            'echo "$(kill -TERM $$)"',
+            'printf -vEB_ENVIRONMENTS ""',
+            'printf "%n" PATH',
+            'echo "$((PATH=0))"',
+            'echo "${PATH:=/tmp/unknown}"',
+            'echo "${array[PATH=0]}"',
+            'echo "`kill -TERM $$`"',
+        ]:
+            with self.subTest(prefix=prefix):
+                body = prefix + "\n" + command
+                workflow = """jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+""" + "\n".join("          " + line for line in body.splitlines()) + "\n"
+                self.write(".github/workflows/deploy-eb.yml", workflow)
+                self.assertIn("workflow_run_unverified", self.rules())
+
+    def test_reserved_environment_overrides_are_rejected_in_every_scope(self) -> None:
+        examples = [
+            WORKFLOW.replace("          aws elasticbeanstalk", "          PATH=/no-such-path aws elasticbeanstalk"),
+            "env:\n  PATH: /no-such-path\n" + WORKFLOW,
+            WORKFLOW.replace("    runs-on: ubuntu-latest", "    runs-on: ubuntu-latest\n    env:\n      PATH: /no-such-path"),
+            WORKFLOW.replace("      - name: Deploy", "      - name: Deploy\n        env:\n          PATH: /no-such-path"),
+        ]
+        for workflow in examples:
+            with self.subTest(workflow=workflow):
+                self.write(".github/workflows/deploy-eb.yml", workflow)
+                self.assertNotEqual(self.report()["artifact_status"], "ARTIFACTS_OK")
+
+    def test_loops_cannot_mutate_execution_environment_or_hide_state_changes(self) -> None:
+        command = "aws elasticbeanstalk update-environment --version-label abc"
+        examples = [
+            "for PATH in app-web; do\n" + command + "\ndone",
+            'EB_ENVIRONMENTS=app-web\nfor ENVIRONMENT in ${EB_ENVIRONMENTS}; do\n EB_ENVIRONMENTS=""\ndone\n'
+            "for ENVIRONMENT in ${EB_ENVIRONMENTS}; do\n" + command + "\ndone",
+        ]
+        for body in examples:
+            with self.subTest(body=body):
+                workflow = """jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+""" + "\n".join("          " + line for line in body.splitlines()) + "\n"
+                self.write(".github/workflows/deploy-eb.yml", workflow)
+                self.assertIn("workflow_run_unverified", self.rules())
+
+    def test_non_shell_deployment_run_requires_review(self) -> None:
+        self.write(".github/workflows/deploy-eb.yml", WORKFLOW.replace(
+            "      - name: Deploy", "      - name: Deploy\n        shell: python",
+        ))
+        self.assertIn("workflow_shell_unverified", self.rules())
+
+    def test_workflow_and_job_defaults_cannot_hide_non_shell_execution(self) -> None:
+        for workflow in [
+            "defaults:\n  run:\n    shell: python\n" + WORKFLOW,
+            WORKFLOW.replace("    runs-on: ubuntu-latest", "    runs-on: ubuntu-latest\n    defaults:\n      run:\n        shell: python"),
+            WORKFLOW.replace("runs-on: ubuntu-latest", "runs-on: windows-latest"),
+        ]:
+            with self.subTest(workflow=workflow):
+                self.write(".github/workflows/deploy-eb.yml", workflow)
+                self.assertIn("workflow_shell_unverified", self.rules())
+
+    def test_unknown_deployment_conditions_require_review(self) -> None:
+        for condition in ["${{ github.event_name == 'push' }}", "always()"]:
+            with self.subTest(condition=condition):
+                self.write(".github/workflows/deploy-eb.yml", WORKFLOW.replace(
+                    "      - name: Deploy", f"      - name: Deploy\n        if: {condition}",
+                ))
+                self.assertIn("workflow_condition_unverified", self.rules())
+
+    def test_eb_cli_and_known_deploy_action(self) -> None:
+        for step in ["run: eb deploy app", "uses: einaregilsson/beanstalk-deploy@v22"]:
+            with self.subTest(step=step):
+                self.write(".github/workflows/deploy-eb.yml", f"""jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - {step}
+""")
+                self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK")
+
+    def test_disabled_deploy_does_not_count(self) -> None:
+        self.write(".github/workflows/deploy-eb.yml", WORKFLOW.replace(
+            "      - name: Deploy", "      - name: Deploy\n        if: false",
+        ))
+        self.assertIn("eb_deploy_missing", self.rules())
+        for workflow in [
+            WORKFLOW.replace("      - name: Deploy", "      - name: Deploy\n        if: ${{ false }}"),
+            WORKFLOW.replace("    runs-on: ubuntu-latest", "    runs-on: ubuntu-latest\n    if: ${{ false }}"),
+        ]:
+            with self.subTest(workflow=workflow):
+                self.write(".github/workflows/deploy-eb.yml", workflow)
+                self.assertIn("eb_deploy_missing", self.rules())
+
+    def test_flow_yaml_is_explicitly_unverified(self) -> None:
+        self.write(".github/workflows/deploy-eb.yml", "jobs: {deploy: {steps: []}}\n")
+        self.assertIn("workflow_unverified", self.rules())
+
+    def test_placeholder_docker_comment_is_not_a_failure(self) -> None:
+        self.write(".github/workflows/deploy-eb.yml", WORKFLOW.replace(
+            "          docker build", "          # TODO: customer source Dockerfile path\n          docker build",
+        ))
+        self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK")
+
+    def test_invalid_hcl_and_duplicate_attr_fail(self) -> None:
+        self.write("terraform/main.tf", TERRAFORM + 'resource "aws_s3_bucket" "bad" {\n')
+        self.assertIn("hcl_unverified", self.rules())
+        self.write("terraform/main.tf", TERRAFORM.replace(
+            '  backup_window = "03:00-03:30"',
+            '  backup_window = "03:00-03:30"\n  backup_window = "04:00-04:30"',
+        ))
+        self.assertIn("artifact_shape_unverified", self.rules())
+
+    def test_cli_deterministic_and_no_execution_or_artifact_writes(self) -> None:
+        sentinel = self.root / "MUST_NOT_EXIST"
+        self.write("scripts/migrate-postgres.sh", SAFE_SCRIPT + f'\ntouch "{sentinel}"\n')
+        before = {p.relative_to(self.root): p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
+        first = self.cli("--json", "-")
+        second = self.cli("--json", "-")
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+        self.assertEqual(first.stdout, second.stdout)
+        self.assertFalse(sentinel.exists())
+        after = {p.relative_to(self.root): p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
+        self.assertEqual(before, after)
+
+    def test_cli_report_file_is_only_requested_write(self) -> None:
+        output = self.root / "artifact-validation.json"
+        result = self.cli("--json", str(output))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "ARTIFACTS_OK")
+        self.assertEqual(json.loads(output.read_text())["artifact_status"], "ARTIFACTS_OK")
+        self.assertEqual(self.cli("--json", str(output)).returncode, 0)
+
+    def test_report_cannot_overwrite_existing_input_or_state(self) -> None:
+        for name in ["preferences.json", ".phase-status.json", "terraform/main.tf"]:
+            with self.subTest(name=name):
+                destination = self.root / name
+                if not destination.exists():
+                    destination.write_text('{"original":true}')
+                before = destination.read_bytes()
+                result = self.cli("--json", str(destination))
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(destination.read_bytes(), before)
+
+    def test_symlink_outside_root_and_missing_dependency_fail_as_input_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as other:
+            outside = Path(other) / "outside.tf"
+            outside.write_text(TERRAFORM)
+            target = self.root / "terraform/main.tf"
+            target.unlink()
+            target.symlink_to(outside)
+            result = self.cli("--json", "-")
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("escapes migration directory", result.stdout)
+        with patch.object(validator, "_dependencies", side_effect=validator.InputError("missing parser")):
+            self.assertRaises(validator.InputError, validator.validate, self.root)
+
+    def test_missing_directory_and_non_utf8_are_input_errors(self) -> None:
+        missing = subprocess.run(
+            [sys.executable, str(VALIDATOR), str(self.root / "absent"), "--json", "-"],
+            text=True, capture_output=True,
+        )
+        self.assertEqual(missing.returncode, 2)
+        (self.root / "terraform/main.tf").write_bytes(b"\xff")
+        self.assertEqual(self.cli("--json", "-").returncode, 2)
+
+
+if __name__ == "__main__":
+    unittest.main()

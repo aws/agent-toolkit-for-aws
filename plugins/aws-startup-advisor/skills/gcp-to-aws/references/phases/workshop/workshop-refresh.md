@@ -12,6 +12,13 @@ stay `"completed"`; `current_phase` stays `"estimate"` until
 
 ## Baseline capture
 
+You MUST read `references/shared/schema-workshop-scenarios.md` and use its exact
+index and manifest shapes. After each capture, apply, or restore, check the saved
+index and manifests against that canonical schema and correct mismatches before
+updating phase completion. Independent repository acceptance enforces this
+contract; do not assume repository-only validation tools are installed in the
+skill runtime.
+
 When `scenarios/` or `scenarios/index.json` is absent:
 
 1. `inventory_fingerprint` = SHA-256 hex of `gcp-resource-inventory.json` bytes.
@@ -22,8 +29,9 @@ When `scenarios/` or `scenarios/index.json` is absent:
    - `scenarios/scenario-001.estimation-infra.json`
 4. Write `scenarios/scenario-001.json` (`source: "baseline"`, summary from
    estimation-infra including three monthly tiers).
-5. Write `scenarios/index.json` (`baseline` / `active` = `scenario-001`,
-   `max_scenarios: 5`).
+5. Write `scenarios/index.json` (`baseline_scenario_id` /
+   `active_scenario_id` = `scenario-001`, `max_scenarios: 5`, plus the fingerprint
+   and a `scenarios[]` entry pointing to the baseline manifest).
 6. Ensure `preferences.workshop` exists:
    `{ "active": true, "last_sheet_at": "<now>", "active_scenario_id": "scenario-001" }`
 7. If baseline-only, return to `workshop.md` for the sheet.
@@ -57,7 +65,10 @@ caveat (any `graviton_profile` entry with `tier` in
 
 Per **Inner runs**. Design must follow `design.md` § Inner workshop reprice
 (skip handoff / phase-status). Estimate must follow `estimate.md` § Inner
-workshop reprice. Chat note after Estimate:
+workshop reprice. You MUST refresh all knob-dependent explanations, including
+each resource's `rubric_applied`, not just its numeric config. Verify that a
+Single-AZ database has no retained selected-topology Multi-AZ claim; preserve
+unaffected application replica requirements. Chat note after Estimate:
 "Workshop reprice Estimate complete; returning to workshop loop."
 
 ### 6. Snapshot
@@ -73,7 +84,18 @@ workshop reprice. Chat note after Estimate:
    fields), copy it into the manifest as
    `estimation_summary.recommendation_outcome`; omit/null otherwise — this
    feeds the compare view's Outcome column and flip callout.
-7. Update index + `workshop.active_scenario_id`.
+7. Update `index.active_scenario_id` and `preferences.workshop.active_scenario_id`;
+   preserve `index.baseline_scenario_id`, fingerprint, and `max_scenarios: 5`.
+
+### Restore a saved scenario
+
+When asked to restore or select an existing scenario, you MUST read its complete
+saved preferences, design, and estimate from the manifest paths. Verify the
+inventory fingerprint, then copy those bytes back to the active files without
+rerunning Design or Estimate. Update only `preferences.workshop` bookkeeping
+and `index.active_scenario_id` to record selection; preserve saved snapshot
+bytes and all scenarios. Do not claim byte-exact preferences when bookkeeping
+changed. Validate the resulting index and artifact contracts before continuing.
 
 ### 7. Hand back
 

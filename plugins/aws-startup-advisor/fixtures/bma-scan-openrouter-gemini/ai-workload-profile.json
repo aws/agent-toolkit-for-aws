@@ -1,0 +1,115 @@
+{
+  "schema_version": "1.1",
+  "ai_sources": [
+    {
+      "provider": "anthropic",
+      "source_service": "anthropic_api",
+      "model_families": [
+        "claude"
+      ],
+      "model_evidence": "observed",
+      "models": [
+        "claude-3.5-sonnet"
+      ],
+      "model_observations": [
+        {
+          "normalized_model": "claude-3.5-sonnet",
+          "raw_model": "anthropic/claude-3.5-sonnet",
+          "model_family": "claude",
+          "evidence": [
+            {
+              "provenance": "code",
+              "confidence": "high",
+              "detail": "src/router.py:11 router.chat.completions.create"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "provider": "google",
+      "source_service": "gemini_api",
+      "model_families": [
+        "gemini"
+      ],
+      "model_evidence": "observed",
+      "models": [
+        "gemini-2.5-flash"
+      ],
+      "model_observations": [
+        {
+          "normalized_model": "gemini-2.5-flash",
+          "raw_model": "gemini-2.5-flash",
+          "model_family": "gemini",
+          "evidence": [
+            {
+              "provenance": "code",
+              "confidence": "medium",
+              "detail": "src/drafts.py:5 DRAFT_MODEL default; Gemini API not confirmed: no runtime config runs src/drafts.py"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "gateways": [
+    {
+      "product": "openrouter",
+      "type": "llm_router",
+      "upstream_evidence": "unresolved",
+      "upstreams": []
+    }
+  ],
+  "workloads": [
+    {
+      "workload_id": "anthropic_api.claude-3.5-sonnet.openai.chat.completions.create.plain",
+      "provider": "anthropic",
+      "source_service": "anthropic_api",
+      "model": "claude-3.5-sonnet",
+      "sdk_method": "openai.chat.completions.create",
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "structured_output": false,
+      "call_sites": [
+        {
+          "file": "src/router.py",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "workload_id": "gemini_api.gemini-2.5-flash.genai.models.generate_content.plain",
+      "provider": "google",
+      "source_service": "gemini_api",
+      "model": "gemini-2.5-flash",
+      "sdk_method": "genai.models.generate_content",
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "structured_output": false,
+      "call_sites": [
+        {
+          "file": "src/drafts.py",
+          "line": 10
+        }
+      ]
+    }
+  ],
+  "integration": {
+    "pattern": "mixed",
+    "languages": [
+      "python"
+    ],
+    "frameworks": [],
+    "capabilities_summary": {
+      "text_generation": true,
+      "streaming": false,
+      "function_calling": false,
+      "vision": false,
+      "embeddings": false,
+      "batch_processing": false,
+      "speech_to_text": false,
+      "text_to_speech": false,
+      "image_generation": false
+    }
+  }
+}

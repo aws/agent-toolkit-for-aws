@@ -35,7 +35,7 @@ assembler adds the cross-artifact checks that span multiple fragment outputs:
 
 - Every service in `aws-design.json.services[]` is either generated in Terraform OR listed in `generation-warnings.json`
 - If any service has `aws_service: "EKS"` → `terraform/eks.tf` must exist AND `kubernetes/` directory must contain at least one Deployment manifest
-- If any service has `aws_service: "Elastic Beanstalk"` → `terraform/beanstalk.tf` must exist, plus the selected EB deploy artifact (`.github/workflows/deploy-eb.yml` for `github_actions`, `terraform/pipeline.tf` for `codepipeline`, none for `manual`)
+- If any service has `aws_service: "Elastic Beanstalk"` → `terraform/beanstalk.tf` must exist, plus the selected EB deploy artifacts (`.github/workflows/deploy-eb.yml` for `github_actions` — one `deploy-eb-<eb_app_slug>.yml` per EB app when the design has two or more — and `.github/workflows/promote.yml`; `terraform/pipeline.tf` for `codepipeline`; none for `manual`)
 - `README.md` references all files that actually exist
 - `MIGRATION_GUIDE.md` data migration sections match design content (no empty sections)
 
@@ -75,9 +75,9 @@ manifests, every service accounted for, no `{{VARIABLE}}` placeholders), then em
 `HANDOFF_OK | phase=generate | artifacts=terraform/,MIGRATION_GUIDE.md,README.md,migration-report.html,validation-report.json`.
 
 The report validator (**required, blocking**) runs in the **main window**, not here — this
-assembler is dispatched to the shell-less `rw` worker along with the fragments (`INTERPRETER.md`
-§ `_exec`), so it cannot run `python3`. `generate.md`'s "Finish Generate in the main window
-(report validation)" step runs
+assembler's `rwx` worker has a shell scoped to the Terraform policy checker
+(`INTERPRETER.md` § `_exec`). `generate.md`'s "Finish Generate in the main window"
+step first runs the shared generated-artifact checker, then runs
 `validate-heroku-migration-report.py` over `migration-report.html` **after this assembler
 returns and before** the read-only `_postconditions` gate; on `REPORT_OK` it stamps
 `report-validation-status.json` (the durable result the gate asserts), and on `REPORT_FAIL` it
@@ -85,6 +85,13 @@ emits `GATE_FAIL` and pastes the validator's `errors[]`. Per `INTERPRETER.md` §
 the gate does **not** edit the HTML, artifacts, or state — it halts. Recovery is a hand-edit of
 `migration-report.html` from the pasted errors + a direct re-run of the validator and re-stamp (or
 a maintainer re-running Generate for a clean rebuild), not this assembler repairing the report.
+
+The generated-artifact checker similarly records its actual verdict in
+`artifact-validation-status.json`. An absent checker, an unsupported output
+shape, or `ARTIFACTS_FAIL`/`ARTIFACTS_ERROR` blocks the main-window handoff.
+Do not fabricate this result or update phase state before the controller has
+finished both checks. Targeted repairs rerun the checker against the saved
+files and replace the verdict only with the actual rerun result.
 
 The Terraform **policy gate** is not optional, and it is enforced by `generate.md`
 `_postconditions` — a **read-only** gate the interpreter runs in the **main window**
@@ -113,6 +120,12 @@ redispatch Generate: it re-authors `terraform/` and would wipe manual fixes.
 
 Only after `HANDOFF_OK`, apply the phase-status update protocol (`INTERPRETER.md` § The interpreter loop) — mark `phases.generate` completed and advance per `_advances_to` (the `complete` terminal) — in the **same turn** as the output message below.
 
+**Refresh the estate workbook (fail-open):** run
+`python3 "<SKILL_BASE>/scripts/emit-estate-workbook.py" --migration-dir "$MIGRATION_DIR"`
+(absolute paths). It rewrites `$MIGRATION_DIR/heroku-estate.xlsx` from the final
+inventory, design and estimate, printing `ESTATE_OK | …` or `ESTATE_SKIP | reason=…`.
+On skip, continue and omit the workbook line from the artifact list.
+
 **Write the web-handoff summary (fail-open):** run
 `python3 "<SKILL_BASE>/scripts/emit-plan-json.py" --migration-dir "$MIGRATION_DIR" --plugin-json "$PLUGIN_ROOT/.claude-plugin/plugin.json"`
 (absolute paths — cwd must not be load-bearing). It reads the estimate artifacts and writes `$MIGRATION_DIR/plan.json`, the uploadable handoff file, printing `PLAN_OK | …` or `PLAN_SKIP | reason=…`. This is an optional enhancement, never a gate: on any skip or error the migration is still complete — continue without it and do not surface the script output to the user. When it printed `PLAN_OK`, present the web-handoff block described after the Output section below.
@@ -127,6 +140,7 @@ Artifacts produced:
 • MIGRATION_GUIDE.md — Step-by-step migration procedure
 • README.md — Artifact listing and quick start
 • migration-report.html — Stakeholder summary (costs + what-if scenarios when present)
+• heroku-estate.xlsx — Reviewable estate inventory with AWS mapping and costs   (show this line only when the workbook writer above printed ESTATE_OK)
 • scripts/ — Database migration scripts
 [• generation-warnings.json — N service(s) require manual setup]   (show this line only when warnings is non-empty; the file is always written)
 
@@ -136,7 +150,7 @@ Share migration-report.html with stakeholders; use MIGRATION_GUIDE.md for cutove
 
 **Web-handoff — only when the writer above printed `PLAN_OK`** (if it printed `PLAN_SKIP`, omit this whole block; there is no file to upload). Do three things, in order:
 
-- **(a)** In the "Artifacts produced" list in the output above, add exactly one entry as **plain text** — that list renders inside a code block, where Markdown links do not work, so do not link it here (the clickable link is the What's next call-to-action below): `plan.json — upload to AWS Startups Migrate to see if you qualify for AWS credits`. Keep every existing entry on its own line; do not merge, collapse, or re-wrap them.
+- **(a)** In the "Artifacts produced" list in the output above, add exactly one entry as **plain text** — that list renders inside a code block, where Markdown links do not work, so write the address out as text here (the clickable link is the What's next call-to-action below): `plan.json — upload at AWS Startup Advisor (https://startups.aws.com/migrate/plans/import?source=plugin) to see if you qualify for AWS credits`. Keep every existing entry on its own line; do not merge, collapse, or re-wrap them.
 - **(b)** Then show the user their `plan.json`. The `.migration` folder is hidden by default
   on macOS and Linux, so open the file's location for them instead of leaving them
   to find it. Run the command for the user's OS once, as an ordinary command — the
@@ -185,16 +199,16 @@ Share migration-report.html with stakeholders; use MIGRATION_GUIDE.md for cutove
   drop that sentence when the user declined or the command failed for another
   reason.
 
-- **(c)** Then append the What's next block below, verbatim, replacing `<run_id>` in the link with the run's `run_id` (from `.phase-status.json`), lowercased if it is a UUID so the `run=` value matches the plan's `runId`. It MUST begin with the "💬 What's next" heading. The call-to-action must be a Markdown link so it renders as clickable text with no bare URL. Do not reword it — this copy is owned by the web experience:
+- **(c)** Then append the What's next block below, verbatim, replacing `<run_id>` in both links with the run's `run_id` (from `.phase-status.json`), lowercased if it is a UUID so the `run=` value matches the plan's `runId`. It MUST begin with the "💬 What's next" heading. The call-to-action must be a Markdown link so it renders as clickable text with no bare URL. Never name AWS Startup Advisor's import page without its address: if you shorten or restate any of this, keep the address. (The plain-text mentions use `?source=plugin` without `run=` on purpose, to stay short; the two links in this block carry the run.) Do not reword it — this copy is owned by the web experience:
 
 > **💬 What's next**
 >
 > - **Refine your plan**
 >   Tell me what to change. For example: "use Fargate instead," "make it multi-region," or "reduce the cost."
 > - **See your AWS credits**
->   Sign in or create an account on AWS Startups Migrate, then upload plan.json to see the AWS migration credits you qualify for.
+>   Sign in with your AWS Builder ID (or create one) on [AWS Startup Advisor](https://startups.aws.com/migrate/plans/import?source=plugin&run=<run_id>), the AWS Startups site where you import your migration plan, then upload plan.json to see the AWS migration credits you qualify for.
 >
-> [Go to AWS Startups Migrate →](https://startups.aws.com/startups/en-US/migrate/credits?source=plugin&run=<run_id>)
+> [Go to AWS Startup Advisor →](https://startups.aws.com/migrate/plans/import?source=plugin&run=<run_id>)
 >
 > After you upload, you also get:
 >
@@ -202,7 +216,7 @@ Share migration-report.html with stakeholders; use MIGRATION_GUIDE.md for cutove
 > - Monthly cost estimate
 > - Migration paths: AI agent, AWS expert, or AWS Partner
 
-Ship note: this reaches customers only after the import page and the ImportPlan API are both live in production. This `plan.json` import handoff is separate from the base64url plan-share link gated off in `SKILL.md`/`feedback-collect.md`.
+Note: this `plan.json` import handoff is separate from the base64url plan-share link gated off in `SKILL.md`/`feedback-collect.md`.
 
 After this output, SKILL.md handles the post-Generate share prompt and feedback finalization.
 

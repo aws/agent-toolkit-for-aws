@@ -9,13 +9,32 @@ import json
 import re
 
 
+def _load_model_catalog():
+    """Import the sibling model_catalog.py, also when this file is loaded by path from
+    another skill's tests (its directory is then not on sys.path)."""
+    import importlib.util
+    import sys as _sys
+    from pathlib import Path as _Path
+    if "model_catalog" in _sys.modules:
+        return _sys.modules["model_catalog"]
+    path = _Path(__file__).resolve().with_name("model_catalog.py")
+    spec = importlib.util.spec_from_file_location("model_catalog", path)
+    module = importlib.util.module_from_spec(spec)
+    _sys.modules["model_catalog"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+model_catalog = _load_model_catalog()
+
+
 def _identity(model_id: str | None, provider: str, target: bool = False) -> str | None:
     if not isinstance(model_id, str):
         return None
     value = model_id.strip().lower()
     if not value or value.startswith("arn:") or "latest" in value or "*" in value:
         return None
-    value = re.sub(r"^(us|eu|au|jp|apac|in|global)\.", "", value)
+    value = model_catalog.profile_prefix_regex().sub("", value)
     prefix = provider + "."
     if target and not value.startswith(prefix):
         return None

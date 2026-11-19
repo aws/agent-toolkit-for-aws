@@ -107,13 +107,36 @@ Quotas to state up front:
 
 - An **IAM-only Domain** supports Spaces in Regions other than the Domain's.
 - An **Identity Center Domain** requires the Space in the **same Region** as the
-  Domain. This is not relaxable.
+  Domain. This is not relaxable, and replicating the Identity Center instance to
+  more Regions does not relax it: for an account-scoped Domain, `create-space`
+  compares the Space's Region with the Domain's and never consults replication.
 - If the customer needs Identity Center *and* Spaces in more than one Region, the
-  **org-scoped Domain** is the way to do it — see `references/cloudwatch-omni/org-domains.md`.
+  **org-scoped Domain** is the way to do it: it accepts a Space in any Region the
+  Identity Center instance is replicated to — see `references/cloudwatch-omni/org-domains.md`.
+- The two rejections read differently. An account-scoped Domain's names the Domain's
+  Region. One saying Identity Center **is not replicated** to the Region comes from an
+  org-scoped Domain, where replication is the rule: answer it from
+  `references/cloudwatch-omni/org-domains.md` (Region rules), not with the
+  account-scoped options below.
 
 Never answer "yes, Spaces can be in other Regions" without naming which provider
 that holds for. It is true for IAM-only and false for account-scoped Identity
 Center.
+
+When an account-scoped Identity Center customer asks for a Space outside the
+Domain's Region, say it cannot be done under that Domain and lay out all three
+options, each with its cost. Lead with the first, the only one that keeps the
+Domain they already have:
+
+1. A Space in the Domain's own Region, under the Domain they already have.
+2. An org-scoped Domain. The account-scoped Domain blocks creating one, so it has
+   to be deleted first, along with its Spaces and their telemetry. That is the
+   customer's decision: present it as a trade-off, not as a step to carry out.
+3. An IAM-only Domain, which allows Spaces in other Regions but gives up Identity
+   Center sign-in.
+
+Stop at the options. Do not write out the deletion or migration steps for option 2
+until the customer has chosen it: those steps destroy the existing Domain's Spaces.
 
 **Constraints:**
 
@@ -343,11 +366,15 @@ aws iam create-role --role-name <role-name> --assume-role-policy-document <trust
 
 ### Attach the managed policy
 
+> **If the customer supplied the role rather than you creating it, ask before
+> attaching anything to it** — this policy or the optional one below — and change
+> nothing else about it. They may be reusing it, and widening someone else's role
+> is not yours to do.
+
 Attach it with the IAM `attach-role-policy` operation. Do not write an inline
 policy instead, and do not substitute a `*FullAccess` policy — the Space's
-permissions are defined by this managed policy and nothing else. If the role
-was supplied by the customer rather than created here, ask before attaching anything
-to it.
+permissions are defined by this managed policy, plus the optional inference policy
+below when the customer needs it.
 
 ```
 aws iam attach-role-policy --role-name <role-name> --policy-arn arn:aws:iam::aws:policy/CloudWatchOmniSpaceAccessPolicy
@@ -357,9 +384,32 @@ aws iam attach-role-policy --role-name <role-name> --policy-arn arn:aws:iam::aws
 
 - You MUST NOT substitute a `*FullAccess` policy or hand-write a broad inline
   policy. The Space's permissions are defined by this managed policy.
-- You MUST NOT attach this policy to a role the customer supplied without
-  asking. They may be reusing it, and widening someone else's role is not yours
-  to do.
+- You MUST NOT attach either policy to a role the customer supplied without
+  asking (the note at the top of this step).
+
+### Optional: let Omni invoke Bedrock models
+
+`CloudWatchOmniSpaceAccessPolicy` deliberately grants no model inference, so a Space
+that only views telemetry cannot call Bedrock. Omni features that run a model through
+the space access role, such as **Agent Playground** and **evaluations run from Omni**,
+need the separate managed policy `CloudWatchOmniModelInferencePolicy`. It allows
+`bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream` on foundation models
+and inference profiles in the caller's own account, plus the matching Bedrock Mantle
+inference actions.
+
+Ask whether the customer will use those features. Attach it only if they will:
+
+```
+aws iam attach-role-policy --role-name <role-name> --policy-arn arn:aws:iam::aws:policy/CloudWatchOmniModelInferencePolicy
+```
+
+**Constraints:**
+
+- You MUST NOT attach it by default. Every model call it permits is billed to the
+  customer's account, so it is their choice, not part of the base setup.
+- A Bedrock `AccessDeniedException` from Agent Playground or an Omni-run evaluation on
+  a Space set up without it is this policy missing, not a broken role. Offer to attach
+  it rather than widening the base policy or adding an inline Bedrock grant.
 
 ### Also resolve the AgentCore evaluation role
 
@@ -508,7 +558,7 @@ Confirm the Domain reports the expected endpoint URL, and the Space reports
 `ACTIVE` in the expected Region with the role ARN you passed.
 
 Then report to the customer, in one line: the domain endpoint URL, the space ID,
-and the Region.
+the space ARN, and the Region.
 
 **Constraints:**
 
@@ -574,6 +624,7 @@ error that is not listed.
 | `ValidationException` naming the Region on `create-domain` | Identity Center Domain not being created in the instance's primary Region | Ask the customer for the instance's primary Region and create the Domain there. `list-instances` on `sso-admin` shows the instances they can reach |
 | `ValidationException` on `create-space` naming the Domain's Region | Space Region differs from the Domain's, and the Domain uses Identity Center | Create the Space in the Domain's Region. If the customer needs Identity Center across several Regions, the org-scoped Domain path supports that |
 | `ValidationException` that `dataAccessRoleArn` must be in the caller's account | Role ARN belongs to a different account | Ask the customer for a role in this account; do NOT attempt a cross-account role |
+| `AccessDeniedException` naming `bedrock:InvokeModel` (or a `bedrock-mantle` action) from Agent Playground or an Omni-run evaluation | The space access role has no model-inference permission; `CloudWatchOmniSpaceAccessPolicy` grants none | Ask whether the customer wants Omni to run models, and if so attach `CloudWatchOmniModelInferencePolicy` to the space access role (see Step 3). Do NOT add an inline Bedrock grant |
 | `ParamValidationError` naming a missing required parameter on `create-space` | `agentCoreEvaluationRoleArn` (or `dataAccessRoleArn`) was omitted — both are required and the client rejects the call before sending | Resolve the AgentCore evaluation role as described in Step 4 and pass both ARNs |
 | `ValidationException` on `encryptionConfiguration` | `encryptionStrategy` and `kmsKeyArn` inside `encryptionConfiguration` do not agree | Send the key ARN nested inside `encryptionConfiguration` only with `encryptionStrategy` `CUSTOMER_MANAGED`; omit the block entirely for `AWS_OWNED` |
 | `AccessDeniedException` naming `iam:PassRole` | Caller may create the Space but cannot pass the role | Ask the customer to add `iam:PassRole` on that specific role ARN to their calling identity |
@@ -587,7 +638,11 @@ and ask the customer how to proceed.
 ### If the Space was created but cannot be used
 
 An authorization error *after* a successful `create-space` almost always means the
-space access role's trust policy is wrong, not that access is missing.
+space access role's trust policy is wrong, not that access is missing. The exception
+is a denial naming `bedrock:InvokeModel` or a `bedrock-mantle` action from Agent
+Playground or an Omni-run evaluation, on a Space that otherwise works: that is the
+optional model-inference policy missing, not the trust policy. See
+[Step 3](#step-3--create-the-space-access-role) (Optional: let Omni invoke Bedrock models).
 
 `create-space` validates only that `dataAccessRoleArn` is non-blank and in the
 caller's account. It never attempts to assume the role, so a role missing
@@ -635,6 +690,9 @@ arriving the delete is destructive. Fix the trust policy on the existing role in
 - **`create-space` succeeded but using the Space fails with an authorization
   error.** The create does not verify the role is assumable. Check the trust
   policy's principal, all three `sts` actions, and both condition keys.
+- **Agent Playground or an Omni-run evaluation is denied `bedrock:InvokeModel` while
+  the rest of the Space works.** The base policy grants no model inference by design.
+  The optional `CloudWatchOmniModelInferencePolicy` is missing; the role is not broken.
 - **A Space encrypted with a customer managed key cannot write.** The key policy
   does not allow `cloudwatch.amazonaws.com` the required KMS actions. Nothing about
   the Space or the role is wrong.
@@ -648,7 +706,8 @@ arriving the delete is destructive. Fix the trust policy on the existing role in
 - The `aws:SourceArn` wildcard covers Region and space ID because neither is known
   when the role is created. Do not widen it further — the account ID and the
   `space/` resource type MUST stay pinned.
-- If the customer supplied the role, attach only this managed policy and change
+- If the customer supplied the role, attach only the managed policies named in Step 3
+  (the base policy, plus the optional inference policy if they asked for it) and change
   nothing else about its existing permissions.
 - Do not attach `*FullAccess` policies to the space access role. Its permissions
   come from the Omni managed policy and nothing else.

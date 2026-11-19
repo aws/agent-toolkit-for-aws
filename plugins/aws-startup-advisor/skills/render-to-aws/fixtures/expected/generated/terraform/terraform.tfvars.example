@@ -1,0 +1,17 @@
+aws_region                  = "us-east-1"
+project_name                = "render-migration"
+environment                 = "production"
+issued_certificate_arn      = "arn:aws:acm:us-east-1:000000000000:certificate/11111111-1111-4111-8111-111111111111"
+web_image                   = "000000000000.dkr.ecr.us-east-1.amazonaws.com/render-migration@sha256:1111111111111111111111111111111111111111111111111111111111111111"
+private_image               = "000000000000.dkr.ecr.us-east-1.amazonaws.com/render-migration@sha256:2222222222222222222222222222222222222222222222222222222222222222"
+worker_image                = "000000000000.dkr.ecr.us-east-1.amazonaws.com/render-migration@sha256:3333333333333333333333333333333333333333333333333333333333333333"
+cron_image                  = "000000000000.dkr.ecr.us-east-1.amazonaws.com/render-migration@sha256:4444444444444444444444444444444444444444444444444444444444444444"
+runtime_configuration_value = "supply-at-deployment"
+operations_email            = "operations@example.invalid"
+billing_email               = "billing@example.invalid"
+security_email              = "security@example.invalid"
+rr_workflow_task_package_path = "build/replace-with-reviewed-package.zip"
+rr_workflow_task_runtime      = "replace-with-runtime"
+rr_workflow_task_handler      = "replace-with-handler"
+rr_workflow_task_memory_mb    = 128
+workflow_log_retention_days = 30

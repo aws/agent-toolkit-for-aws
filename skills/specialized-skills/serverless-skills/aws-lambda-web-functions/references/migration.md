@@ -27,6 +27,7 @@ see the decision gates in [SKILL.md](SKILL.md).
 - [ ] The app is safe to run with several concurrent requests in one process — no module-level per-request state. This is the single most common source of post-migration bugs, because Event Functions gave every request its own environment and hid the problem.
 - [ ] Nothing depends on state surviving in the environment or `/tmp` between requests.
 - [ ] The package, including `node_modules`, fits in 512 MB.
+- [ ] Every `@aws-sdk/*` client the code imports is packaged, and none is marked external in the bundler config. Event Functions include the SDK in the runtime; Web Functions do not.
 - [ ] 2 vCPU / 2 GB per environment is enough (see Service Limits in [SKILL.md](SKILL.md)).
 - [ ] If the current function is VPC-attached, plan an egress network connector for the new revision; subnets and security groups move to the connector (see [networking.md](references/networking.md), and confirm the connector commands with `aws lambda-core help` or the AWS docs).
 

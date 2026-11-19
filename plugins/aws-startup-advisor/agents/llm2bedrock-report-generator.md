@@ -34,7 +34,7 @@ Read accumulated state from prompt context (forwarded from every prior Track 2 p
 - **`<REGION>`** — AWS region for Bedrock (the `AWS region:` line in your context).
 - **AWS profile** — the `AWS profile` line, when present: prepend `AWS_PROFILE=<profile>` inline to the §6.1 pricing-script invocation and any other aws/boto3 command; omit when absent.
 - **`<scriptsDir>`** — the pinned-toolchain scripts directory, the `Scripts directory (pinned uv toolchain):` line in your context. Used to run `bedrock_pricing.py`.
-- **From `llm2bedrock-code-analyzer` (`AiAnalysisData`)** — `source_provider`, `ai_framework`, `source_models`, `target_models` (`<source-model> -> <bedrock-model>` pairs), `coverage_level`, `use_case_type`, `errors`.
+- **From `llm2bedrock-code-analyzer` (`AiAnalysisData`)** — `source_provider`, `ai_framework`, `source_models`, `target_models` (`<source-model> -> <bedrock-model>` pairs — the FINAL validated ids §6.4's IAM recipe joins the plan rows to), `stored_response_ops` (optional: retained `responses.retrieve` / `cancel` / `delete` ops, §6.4), `coverage_level`, `use_case_type`, `errors`.
 - **From `llm2bedrock-log-ingestor` (`LogIngestionData`)** — `total_golden_cases`, `coverage_level`, `gaps`. Drives the Risk Assessment + Coverage sections.
 - **From `llm2bedrock-prompt-evaluator` (`EvalData` + `notes` prefixes)** — top-level fields:
   - `pass_rate` (fraction in [0,1]), `total_cases`, `failures`, `live_source_baseline` (bool), `judge_model`.
@@ -107,6 +107,14 @@ The script prints JSON keyed by model id with `{input_per_1k_usd, output_per_1k_
 
 If a model's `available` is false, render that model's cost line with a "(pricing unavailable)" banner using the `note` — do NOT fabricate numbers. Also flag this for the user in the Risk Assessment section and skip that model's cost calculation.
 
+**GPT-6.1 Terra:** carry the helper's Standard/≤272K qualification into the report.
+For requests above 272,000 input tokens, reprice the full request at 2x input and 1.5x output
+for the selected inference option. If per-request sizes are unknown, present short- and
+long-context scenarios instead of one unqualified estimate. The 1.05M window is not the
+short-context price boundary. Use measured source spend or verified source-provider rates
+for the comparison; otherwise mark source cost and savings unavailable. Do not use the
+closest-model fallback in §6.2 for Terra's unverified source prices.
+
 ## 6.2 Source provider pricing (static table)
 
 The pricing script only covers Bedrock models. For the source provider (OpenAI, Gemini, Azure, etc.), use this static table (update periodically):
@@ -133,7 +141,9 @@ The pricing script only covers Bedrock models. For the source provider (OpenAI, 
 | claude-3-5-sonnet (1P API) | 3.00           | 15.00           |
 | claude-3-haiku (1P API)    | 0.25           | 1.25            |
 
-**Same-model pair cost depends on the inference option — state it conditionally, never as a flat figure.** In-Region and Geo CRIS are priced at OpenAI's _data residency_ tier (1.10x standard), so those moves cost ~10% more — quote the increase plainly and carry the non-cost justification (commitments, governance, residency, prompt caching, no behaviour delta). **GPT-5.6 on Global CRIS is priced at the standard rate — cost parity** — applicable only when the workload has no data-residency constraint; when the plan's `migration_path` is `runtime_openai_cris` with a `global.` id, report parity, not a premium. GPT-5.5/5.4 have no CRIS, so the ~10% figure always applies to them. **If a pair's workload exceeds 272K context**, price the Bedrock side at the GPT-5.6 long-context tier — 2.0x input, 1.5x output per option — and show that line separately; GPT-5.5/5.4 have no long-context tier so their usable window is 272K.
+**Astra:** use its separately dated Bedrock rates and context/inference tier. Its source price is absent from the table below; verify that price or mark the source comparison unavailable. Do not estimate Astra from a lower GPT tier or assume GPT-5.x parity/premium.
+
+**GPT-5.x same-model pair cost depends on the inference option — state it conditionally, never as a flat figure.** In-Region and Geo CRIS are priced at OpenAI's _data residency_ tier (1.10x standard), so those moves cost ~10% more — quote the increase plainly and carry the non-cost justification (commitments, governance, residency, prompt caching, no behaviour delta). **GPT-5.6 on Global CRIS is priced at the standard rate — cost parity** — applicable only when the workload has no data-residency constraint; when the plan's `migration_path` is `runtime_openai_cris` with a `global.` id, report parity, not a premium. GPT-5.5/5.4 do have `us.`/`global.` CRIS ids on `bedrock-runtime`, but their model cards (read 2026-11-07) publish **commercial In-Region prices only** ("Commercial In-Region prices include a 10% fee over OpenAI rates") — the ~10% premium is verified for their In-Region (mantle) option alone; nothing establishes a Geo or Global CRIS price. For a `runtime_openai_cris` plan on GPT-5.5/5.4, `bedrock_pricing.lookup()` returns `available: false` for the CRIS id and that is correct: do not substitute the In-Region row as a verified rate. Either source the Geo/Global price separately (URL + read date) and add it to the shared `bedrock-pricing.json`, or take the §6.3 fallback (`Cost comparison unavailable`, `cost_savings_percent: 0`). If you still show an In-Region proxy, label it an **unverified planning assumption** and report no verified premium or savings percentage from it. Never report parity for them. **If a pair's workload exceeds 272K context**, price the Bedrock side at the long-context tier and show that line separately: GPT-5.6 is 2.0x input / 1.5x output per option; GPT-5.5 is 11.00 / 1.10 cache read / 49.50 and GPT-5.4 is 5.50 / 0.55 cache read / 24.75 per 1M tokens (In-Region, from their cards), applied to all tokens of the request, within a 1,050,000-token context window.
 
 If the source model is not in this table (likely for any model released after the table's last update — check the provider's public pricing page if you know current rates), note it as a gap in the Risk Assessment section, label the figure "(estimated from `<similar model>`)", and estimate using the closest listed model's pricing.
 
@@ -157,8 +167,22 @@ written, extrapolating from the golden-dataset sample.** If the line is present,
   populate its `BASELINE_TOKENS_BY_SOURCE` dict from `usage_by_model[]`, summing
   `input_tokens + output_tokens` per model id (normalizing OpenRouter's
   `prompt_tokens`/`completion_tokens`, and including Anthropic's
-  `cache_read_tokens`/`cache_creation_tokens` in the sum — same rule as `estimate-ai.md`'s
-  Prerequisites section). A model pair whose source model is absent from `usage_by_model[]`
+  `cache_read_tokens` in the input sum. Do **not** put cache-write tokens into
+  that input sum. `usage-baseline.json` already stores `cache_write_5m`,
+  `cache_write_1h`, and `cache_write_unsplit`. Copy those keys straight into
+  `BASELINE_TOKENS_BY_SOURCE`. Do not read `cache_creation_*` from the baseline.
+  Fill `CACHE_WRITE_RATES_BY_TARGET` from the Bedrock cache-write table for the
+  target (Sonnet 5 is 2.50 for 5-minute writes and 4.00 for 1-hour writes, per
+  1M tokens). Fill `SOURCE_CACHE_WRITE_RATES` only from a verified source price
+  for that same duration. One million 5-minute write tokens then cost $2.50 on
+  Bedrock, and one million 1-hour write tokens cost $4.00. Pricing either at
+  the ordinary input rate ($2 for that Sonnet 5 row) is the bug this avoids.
+  A missing Bedrock rate, an aggregate with no duration, or a source write
+  price that is not verified does not fall back to zero or to the input rate.
+  The script then prints the known input/output subtotal and
+  `Estimated savings: unavailable — a cache-write component is unpriced`.
+  A `source_cost_usd` value on the baseline row is a measured source bill that
+  already includes writes; use it as that pair's source cost. A model pair whose source model is absent from `usage_by_model[]`
   still falls back to the golden-dataset-sample aggregation (unchanged, current behavior) —
   §6.1 (Bedrock pricing lookup) is unchanged either way; only the TOKEN VOLUME each pair is
   priced over changes source, per pair.
@@ -190,7 +214,11 @@ written, extrapolating from the golden-dataset sample.** If the line is present,
   model whose cost_provenance resolved `"uncertain"`) — this can be true even when the window
   is full (`monthly_cost_usd_is_blended_estimate: false`) and every provider's `cost_status` is
   `"complete"`, since those two checks are about window length and dollar availability, not
-  about completeness of WHICH usage was included. When `capture_warnings` is non-empty:
+  about completeness of WHICH usage was included. A warning that only names
+  `usage-completions-hourly.json`, `usage-completions-minute.json`,
+  `usage-messages-hourly.json`, `usage-messages-minute.json`, or
+  `analytics-hourly.json` is peak uncertainty. Keep the daily dollar comparison
+  and say the peak is uncertain. Any other non-empty `capture_warnings`:
   surface every entry verbatim in the report's cost-comparison section (e.g. under a "Data
   completeness note:" heading), and do NOT print an unqualified savings/premium percentage —
   either omit the percentage line entirely and state why, or prefix it with "approximate,
@@ -206,7 +234,9 @@ If the golden dataset records which source model each prompt used (e.g., a `sour
 
 **Per-request tier distribution, when known, takes precedence over the single-breakpoint-decision above.** `PER_REQUEST_TOKENS` records only ONE "typical" request size per source model, so when the pair's actual traffic mixes short and long requests, applying that single breakpoint decision to the whole aggregated volume either overstates or understates the true cost. When a per-request tier BREAKDOWN is known (not just one typical size) — e.g. `ai_workload_profile.json`'s per-request token distribution, or a usage-baseline that buckets requests by tier — populate `cost_compare.py`'s `TIER_DISTRIBUTION_BY_SOURCE` entry for that source model instead of (not in addition to) `PER_REQUEST_TOKENS`/`BASELINE_TOKENS_BY_SOURCE`; the script partitions that pair's requests into their true tiers and prices each tier independently before summing, rather than blending all requests into one average and applying one all-or-nothing breakpoint decision to the blended total. **When only an aggregate total is known** (no `TIER_DISTRIBUTION_BY_SOURCE` entry) for a source model whose requests plausibly span the 272,000-token breakpoint (e.g. `ai_workload_profile.json` shows high variance in `typical_request_tokens`, or the workload type suggests mixed short/long usage), disclose this in the report as an unresolved context-tier distribution rather than presenting the single-breakpoint-decision total as exact — render a note in the Cost Comparison section: "Context-tier distribution unknown for `<model>` — this estimate applies a single breakpoint decision to the full aggregate volume and may overstate or understate cost versus the workload's actual mix of short/long requests."
 
-**Source-side and target-side long-context decisions are independent of each other.** A flat-priced Bedrock target with no long-context tier (absent from `BEDROCK_LONG_CONTEXT`) must stay flat on its own side regardless of the source-side decision — it must never suppress a known, independently-applicable source-side breakpoint. Likewise a target that DOES have a long-context tier only applies it when the SOURCE side's own breakpoint fired; the two sides are never coupled through a single combined condition.
+**Source-side and target-side long-context decisions are independent of each other.** A flat-priced Bedrock target with no long-context tier (absent from `BEDROCK_LONG_CONTEXT`) stays flat regardless of the source-side decision. A target with a documented 272K breakpoint applies its long rates when the per-request input exceeds 272,000 tokens, even when the source has no surcharge. Populate `PER_REQUEST_TOKENS` or `TIER_DISTRIBUTION_BY_SOURCE` for either side's breakpoint, and `BEDROCK_LONG_CONTEXT` from the selected target's model card.
+
+Use `None` for unverified source rates in `MODEL_PAIRS`. Copy measured `source_cost_usd` into the baseline row only when it covers the same traffic and period as the chosen token volume or distribution. That bill takes precedence over rate arithmetic, including service-tier multipliers. Without measured spend or verified source rates, the script retains the target cost and marks source cost and overall savings unavailable.
 
 **GPT-6 Ultrafast service tier.** When the plan/profile records `service_tier: "ultrafast"` for a same-model GPT-6 rewrite, populate `cost_compare.py`'s `SERVICE_TIER_BY_SOURCE[src] = "ultrafast"` for that source model id. The script applies the documented 6x-Standard multiplier for GPT-6 Astra and GPT-6.1 Sol — the only two model cards that support Ultrafast — and reports that pair's cost as **UNAVAILABLE** (excluded from `TOTAL`/savings, never silently priced at Standard) for GPT-6 Sol and GPT-6 Luna, which are Standard-only. An omitted entry, or a tier of `"standard"`, leaves pricing unchanged. See `openai-on-bedrock.md`'s "GPT-6 family: Ultrafast tier" section for the ground truth (Ultrafast = 6x Standard, Astra and 6.1 Sol only).
 
@@ -224,11 +254,11 @@ from collections import defaultdict
 
 # One tuple per source → bedrock mapping from the migration plan.
 # Fill in pricing from §6.1 (Bedrock, per-1M = per-1k * 1000) and §6.2 (source).
+# Use None for unverified source rates; never substitute zero or a sibling's rates.
 # The 7th/8th elements (source_input_long, source_output_long) are OPTIONAL and only
 # needed for a pair whose source model has a 272K-token breakpoint (GPT-6/5.6/5.5/5.4)
-# AND whose per-request size is known to exceed it (see PER_REQUEST_TOKENS below) —
-# omit them (5-tuple... err, 6-tuple) for every other pair; they are never consulted
-# unless the pair also has a PER_REQUEST_TOKENS entry.
+# AND whose per-request size is known to exceed it (see PER_REQUEST_TOKENS and
+# TIER_DISTRIBUTION_BY_SOURCE below). Omit them for every other pair.
 MODEL_PAIRS = [
     # (source_model_id, bedrock_model_id, source_input, source_output, bedrock_input, bedrock_output, source_input_long, source_output_long)
     # ("gpt-4o",      "anthropic.claude-sonnet-4-6", 2.50, 10.00, 3.00, 15.00),
@@ -241,15 +271,28 @@ MODEL_PAIRS = [
 # (matching MODEL_PAIRS[i][0]); value = that model's real monthly {"input": N, "output": N}
 # token totals (sum of usage_by_model[] rows for that model id across all contributing
 # providers — normalize OpenRouter's prompt_tokens/completion_tokens and include Anthropic's
-# cache_read_tokens/cache_creation_tokens, per estimate-ai.md's Prerequisites rule). A model
-# pair whose source model is NOT a key here falls back to the golden-dataset sample below —
+# cache_read_tokens in "input". Do NOT put cache-write tokens in "input". Optional keys
+# cache_write_5m, cache_write_1h, and cache_write_unsplit carry that volume instead.
+# A model pair whose source model is NOT a key here falls back to the golden-dataset sample below —
 # both sides of a pair always share the SAME volume source, never mixed.
 BASELINE_TOKENS_BY_SOURCE = {
-    # "gpt-4o": {"input": 42_000_000, "output": 9_000_000},
+    # "claude-sonnet-5": {"input": 0, "output": 0, "cache_write_5m": 1_000_000, "cache_write_1h": 0},
 }
 
-# Populate ONLY for a source model with a documented 272K-token breakpoint
-# (GPT-6/5.6/5.5/5.4) whose TYPICAL single-request token size is known (from
+# Bedrock cache-write rates per 1M tokens, from the committed cache table.
+# Absent target, or a baseline that only has cache_write_unsplit: do not price those
+# tokens at the ordinary input rate.
+CACHE_WRITE_RATES_BY_TARGET = {
+    # "anthropic.claude-sonnet-5": {"5m": 2.50, "1h": 4.00},
+}
+
+# Verified source cache-write rates per 1M tokens, keyed by source model id.
+# Leave empty when the source price is unknown. Do not copy the input rate here.
+SOURCE_CACHE_WRITE_RATES = {
+}
+
+# Populate when either side has a documented 272K-token breakpoint
+# and the TYPICAL single-request token size is known (from
 # ai_workload_profile.json -> workloads[].typical_request_tokens, or measured
 # per-request usage-profile stats) to exceed 272,000 input tokens. Key = source_model_id
 # (matching MODEL_PAIRS[i][0]); value = {"input": N, "output": N} for ONE typical request.
@@ -280,6 +323,7 @@ TIER_DISTRIBUTION_BY_SOURCE = {
 # carrying that model's long-context {"input": $/1M, "output": $/1M} rate. Populate only
 # for a Bedrock model that actually has a long-context tier (see pricing-cache.md's
 # "GPT-6 family -- long context" / GPT-5.6/5.5/5.4 long-context tables).
+# Use the selected inference option; Terra US Geo is 2.20/8.25, Global 2.00/7.50.
 BEDROCK_LONG_CONTEXT = {
     # "openai.gpt-6-sol": {"input": 4.40, "output": 16.50},
 }
@@ -321,11 +365,15 @@ if unattributed and MODEL_PAIRS and MODEL_PAIRS[0][0] not in BASELINE_TOKENS_BY_
 
 total_source_cost = 0.0
 total_bedrock_cost = 0.0
+any_cache_write_unpriced = False
+any_source_cost_unavailable = False
 rows = []
 for pair in MODEL_PAIRS:
     # The breakpoint elements are optional — a 6-tuple pair has no long-context rate.
     src, tgt, s_in, s_out, b_in, b_out = pair[:6]
     s_in_long, s_out_long = (pair[6], pair[7]) if len(pair) > 6 else (None, None)
+    measured_source = BASELINE_TOKENS_BY_SOURCE.get(src, {}).get("source_cost_usd")
+    source_rates_known = s_in is not None and s_out is not None
 
     if src in TIER_DISTRIBUTION_BY_SOURCE:
         # A known per-request tier BREAKDOWN takes precedence over both the baseline
@@ -336,25 +384,24 @@ for pair in MODEL_PAIRS:
         basis = "tier-distribution"
         in_tok = sum(b["count"] * b["input"] for b in buckets)
         out_tok = sum(b["count"] * b["output"] for b in buckets)
-        source_cost = 0.0
+        source_cost = 0.0 if source_rates_known and measured_source is None else None
         bedrock_cost = 0.0
         for b in buckets:
             count, b_in_tok, b_out_tok = b["count"], b["input"], b["output"]
             # Source-side breakpoint: independent per bucket.
-            if b_in_tok > 272_000 and s_in_long is not None:
-                bucket_source_cost = (b_in_tok * s_in_long + b_out_tok * s_out_long) / 1_000_000
-                bucket_source_is_long = True
-            else:
-                bucket_source_cost = (b_in_tok * s_in + b_out_tok * s_out) / 1_000_000
-                bucket_source_is_long = False
+            if source_cost is not None:
+                if b_in_tok > 272_000 and s_in_long is not None:
+                    bucket_source_cost = (b_in_tok * s_in_long + b_out_tok * s_out_long) / 1_000_000
+                else:
+                    bucket_source_cost = (b_in_tok * s_in + b_out_tok * s_out) / 1_000_000
+                source_cost += count * bucket_source_cost
             # Target-side breakpoint: independent decision. A flat-priced target with
             # no long-context tier ALWAYS stays flat, regardless of the source side.
-            if bucket_source_is_long and tgt in BEDROCK_LONG_CONTEXT:
+            if b_in_tok > 272_000 and tgt in BEDROCK_LONG_CONTEXT:
                 long_rates = BEDROCK_LONG_CONTEXT[tgt]
                 bucket_bedrock_cost = (b_in_tok * long_rates["input"] + b_out_tok * long_rates["output"]) / 1_000_000
             else:
                 bucket_bedrock_cost = (b_in_tok * b_in + b_out_tok * b_out) / 1_000_000
-            source_cost += count * bucket_source_cost
             bedrock_cost += count * bucket_bedrock_cost
     else:
         if src in BASELINE_TOKENS_BY_SOURCE:
@@ -374,7 +421,9 @@ for pair in MODEL_PAIRS:
         # tokens, is UNCHANGED by this check and keeps the flat short-context rate.
         per_request = PER_REQUEST_TOKENS.get(src)
         source_is_long = bool(per_request and per_request["input"] > 272_000 and s_in_long is not None)
-        if source_is_long:
+        if measured_source is not None or not source_rates_known:
+            source_cost = None
+        elif source_is_long:
             source_cost = (in_tok * s_in_long + out_tok * s_out_long) / 1_000_000
         else:
             source_cost = (in_tok * s_in + out_tok * s_out) / 1_000_000
@@ -383,13 +432,66 @@ for pair in MODEL_PAIRS:
         # long-context tier (tgt not in BEDROCK_LONG_CONTEXT) ALWAYS stays flat,
         # regardless of the source-side decision above -- it must never be suppressed
         # by, nor suppress, the source-side breakpoint.
-        if source_is_long and tgt in BEDROCK_LONG_CONTEXT:
+        target_is_long = bool(per_request and per_request["input"] > 272_000 and tgt in BEDROCK_LONG_CONTEXT)
+        if target_is_long:
             long_rates = BEDROCK_LONG_CONTEXT[tgt]
             bedrock_cost = (in_tok * long_rates["input"] + out_tok * long_rates["output"]) / 1_000_000
         else:
             bedrock_cost = (in_tok * b_in + out_tok * b_out) / 1_000_000
 
-        if source_is_long and tgt in BEDROCK_LONG_CONTEXT:
+        cache_5m = bucket.get("cache_write_5m", 0)
+        cache_1h = bucket.get("cache_write_1h", 0)
+        cache_unsplit = bucket.get("cache_write_unsplit", 0)
+        cache_rates = CACHE_WRITE_RATES_BY_TARGET.get(tgt)
+        source_cache_rates = SOURCE_CACHE_WRITE_RATES.get(src)
+        used_durations = (("5m", cache_5m), ("1h", cache_1h))
+
+        def _duration_charge(rate_map, durations):
+            # Price only durations that have tokens. A missing rate for an
+            # unused duration is not a price, and must not raise KeyError.
+            if not rate_map:
+                return None
+            total = 0.0
+            for duration, tokens in durations:
+                if not tokens:
+                    continue
+                rate = rate_map.get(duration)
+                if rate is None:
+                    return None
+                total += tokens * rate
+            return total
+
+        has_split = not cache_unsplit and (cache_5m or cache_1h)
+        bedrock_write_tokens = _duration_charge(cache_rates, used_durations) if has_split else None
+        source_write_tokens = _duration_charge(source_cache_rates, used_durations) if has_split else None
+        split_known = bedrock_write_tokens is not None
+        if cache_5m or cache_1h or cache_unsplit:
+            bedrock_write = (bedrock_write_tokens or 0.0) / 1_000_000
+            if measured_source is not None and split_known:
+                source_cost = measured_source
+                bedrock_cost += bedrock_write
+                basis = f"{basis}-cache-write-split"
+            elif source_cost is not None and source_write_tokens is not None and split_known:
+                source_cost += source_write_tokens / 1_000_000
+                bedrock_cost += bedrock_write
+                basis = f"{basis}-cache-write-split"
+            else:
+                any_cache_write_unpriced = True
+                if cache_unsplit:
+                    basis = f"{basis}-cache-write-duration-unknown"
+                elif not cache_rates:
+                    basis = f"{basis}-cache-write-rates-missing"
+                else:
+                    basis = f"{basis}-cache-write-source-unknown"
+                if split_known:
+                    print(
+                        f"cache-write {src}: bedrock=${bedrock_write:.4f} "
+                        "source unavailable — excluded from the comparison"
+                    )
+                else:
+                    print(f"cache-write {src}: unpriced — excluded from the comparison")
+
+        if target_is_long:
             basis = f"{basis}-long-context"
         elif source_is_long:
             # Source-side breakpoint fired but the target has no long-context tier
@@ -405,30 +507,45 @@ for pair in MODEL_PAIRS:
     cost_unavailable = False
     if SERVICE_TIER_BY_SOURCE.get(src) == "ultrafast":
         if any(name in src for name in ULTRAFAST_SUPPORTED):
-            source_cost *= 6
+            if source_cost is not None and measured_source is None:
+                source_cost *= 6
             bedrock_cost *= 6
             basis = f"{basis}-ultrafast"
         else:
             cost_unavailable = True
             basis = f"{basis}-ultrafast-unavailable"
 
+    if measured_source is not None:
+        source_cost = measured_source
     if cost_unavailable:
         rows.append((src, tgt, basis, in_tok, out_tok, None, None))
     else:
-        total_source_cost += source_cost
+        if source_cost is None:
+            any_source_cost_unavailable = True
+        else:
+            total_source_cost += source_cost
         total_bedrock_cost += bedrock_cost
         rows.append((src, tgt, basis, in_tok, out_tok, source_cost, bedrock_cost))
 
 for src, tgt, basis, in_tok, out_tok, sc, bc in rows:
-    if sc is None or bc is None:
+    if bc is None:
         print(
             f"{src} -> {tgt} ({basis}): input={in_tok} output={out_tok} "
             "ultrafast not supported for this model — cost unavailable"
         )
         continue
+    if sc is None:
+        print(f"{src} -> {tgt} ({basis}): input={in_tok} output={out_tok} source=unavailable bedrock=${bc:.4f}")
+        continue
     print(f"{src} -> {tgt} ({basis}): input={in_tok} output={out_tok} source=${sc:.4f} bedrock=${bc:.4f}")
-print(f"TOTAL source=${total_source_cost:.4f} bedrock=${total_bedrock_cost:.4f}")
-if total_source_cost > 0:
+if any_source_cost_unavailable:
+    print(f"TOTAL source=unavailable bedrock=${total_bedrock_cost:.4f}")
+    print("Estimated savings: unavailable — source pricing is unverified")
+else:
+    print(f"TOTAL source=${total_source_cost:.4f} bedrock=${total_bedrock_cost:.4f}")
+if any_cache_write_unpriced and not any_source_cost_unavailable:
+    print("Estimated savings: unavailable — a cache-write component is unpriced")
+elif total_source_cost > 0 and not any_source_cost_unavailable:
     savings_pct = (total_source_cost - total_bedrock_cost) / total_source_cost * 100
     print(f"Estimated savings: {savings_pct:+.1f}%")
 ```
@@ -448,15 +565,97 @@ Generate a least-privilege IAM policy scoped to the exact model ARNs selected du
 
 ```bash
 uv run --project <scriptsDir> python <scriptsDir>/iam_policy.py \
-  --models <comma-separated target model ids> \
+  --target <aws_model_id>=<that row's required_client_api> [--target ... one per bedrock_models[] row] \
+  [--stored-response-ops <comma-joined analysis.stored_response_ops — omit when absent or empty>] \
+  [--mantle-selector <bedrock_models[].mantle_selector of every mantle_* row — omit when no row has one>] \
+  [--external-web-access — ONLY when the user explicitly confirmed external web access for a web_search row] \
   --region <REGION> \
   --account-id <AWS account id from run-context> \
+  --migration-path <Target API path from your context> \
   --output <repo>/.saws-migrate/iam-policy.json
 ```
 
-The script handles the dual-ARN pattern: foundation-model ARNs for plain model IDs and inference-profile ARNs for geo-prefixed IDs (e.g. `us.anthropic.claude-sonnet-4-6`). The output is a ready-to-use IAM policy JSON file.
+**The ids come from the VALIDATED mapping, the APIs from the plan rows — join them.** `<aws_model_id>` in the
+command above is the VALIDATED target id for that row, not the design row's own `aws_model_id`.
+`aws-design-ai.json` keeps the ORIGINAL design id after the user changes a target in C4 (recorded in run-context
+`resolved_model_overrides`; the dispatch context's `Target Bedrock model(s)` line and the re-run
+analysis already carry the new target), so re-reading `bedrock_models[].aws_model_id` would emit the old
+model's permissions — a Sol → Terra change would grant `us.openai.gpt-5.6-sol` and omit the Terra profile
+the rewritten app calls. Instead, for every `ai_architecture.bedrock_models[]` row in
+`<Migration plan dir>/aws-design-ai.json`, take the row's `source_model_id` (older plans `source_model`),
+look it up in the analyzer's validated `target_models` (`"<source-model> -> <bedrock-model>"`, one entry per
+row — the right-hand side is the FINAL validated id with every override applied), and emit
+`<that validated id>=<the row's required_client_api>`. This is exactly `iam_policy.validated_target_pairs(rows,
+analysis["target_models"], primary_model_id, primary_api)` in `<scriptsDir>`; use it when a row's API has to
+be filled in, and run `python -c` against it rather than hand-joining. Control: the set of ids you emit MUST
+equal the set on your context's `Target Bedrock model(s)` line; a row whose source model has no validated
+entry makes the helper raise — stop and report it, never fall back to the row's original `aws_model_id`.
 
-**Mantle targets get different actions.** When any target is a proprietary OpenAI GPT model (`openai.gpt-5*`), the script also emits `bedrock-mantle:CreateInference` / `Get*` / `List*` scoped to `arn:aws:bedrock-mantle:<region>:<account>:project/*`, plus `bedrock-mantle:CallWithBearerToken` on `*` (AWS does not permit narrowing that one). `bedrock:InvokeModel` alone does **not** authorize these models. Two consequences to carry into the report:
+**One `--target` pair per row, each with ITS OWN API** (`responses` | `chat_completions` | `converse` |
+`messages`; `invoke` for an embedding row). The primary chat row's API is the `Target API surface` from
+your context (the value B4 resolved; use it when that row records no `required_client_api`). Do NOT apply
+the primary's surface to the other rows: the grant is decided per row, so a `runtime_messages` plan whose
+secondary is a GPT Chat / Responses CRIS id still gets `project/default` for that secondary, while a Nova
+Converse secondary does not. Do not deduplicate rows: when one id appears in two rows with different APIs (a
+`converse` row for a Guardrails / application-inference-profile call site and a `chat_completions` /
+`responses` row for another source model), pass both pairs in any order — the helper grants
+`project/default` once if ANY of that id's rows is on `responses` / `chat_completions`, and never if none
+is. If any row's API is missing or unknown the helper exits 1 with `reason: unknown_runtime_api` and writes
+no policy — report that verbatim, do not substitute an API and do not hand-write a policy. The legacy
+single-API form `--models <comma-separated ids> --runtime-api <Target API surface>` is still accepted but
+applies ONE API to every id; use it only for a single-row plan (and still with the validated id, not the
+design's). A `mantle_messages` path never reaches this agent (the orchestrator's lane gate stops it before
+Phase C); if it somehow does, the helper exits 1 with `reason: unsupported_lane` — report that verbatim and
+do not hand-write a policy.
+
+**Retained stored-response operations need their own grant.** Read `stored_response_ops` from
+`analysis.json` (the analyzer's §8.3 scan for `client.responses.retrieve(id)` / `.cancel(id)` /
+`.delete(id)` call sites the rewrite keeps). When it is non-empty, pass
+`--stored-response-ops <comma-joined values>` and the helper adds a `BedrockStoredResponseOps` statement
+on `arn:aws:bedrock:<region>:<account>:project/default` with ONLY the retained actions —
+`bedrock:GetInvoke` for `retrieve`, `bedrock:CancelInvoke` for `cancel`, `bedrock:DeleteInvoke` for
+`delete`: creating a response authorizes `bedrock:InvokeModel` on the inference target and the default
+project, while retrieving, canceling or deleting a stored response authorizes those three actions on the
+project (<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html>,
+"Permissions", read 2026-11-08). Without it, creation and the preflight ping pass while the app's
+existing `responses.retrieve(id)` is denied. Stored responses exist on the Responses API of either endpoint
+and the grant is dispatched by endpoint: the helper emits the `BedrockStoredResponseOps` statement only when
+a `--target` row is a runtime GPT CRIS id on `responses`; a `--target` row that is a bare Mantle id on
+`responses` (a `mantle_openai_responses` plan) satisfies retained ops through the `BedrockMantleInference`
+statement — stored responses are retrievable on Mantle at `GET /v1/responses/{id}` and Mantle inference
+authorizes `bedrock-mantle:CreateInference` (same page, "Permissions", read 2026-11-09) — so no
+`bedrock:GetInvoke` is added for it and the helper does not exit 1. The helper exits 1 with
+`reason: stored_response_ops_no_responses_row` for a Converse / Anthropic Messages / Chat Completions
+plan, which has no Responses row on either endpoint — report that verbatim (the analyzer should not have
+recorded ops for such a source) and do not add the actions by hand. When the field is absent or `[]`, omit
+the flag; the policy then carries no `GetInvoke` / `CancelInvoke` / `DeleteInvoke`.
+
+**Web Search needs its own grants.** Pass every confirmed selector, not only each row's primary
+`mantle_selector`. Union `preferences.json` → `ai_constraints.mantle_requirements.value[]` entries whose
+`source` is `detected` or `user` with every `bedrock_models[].mantle_selector`. When that set contains
+`web_search` — including when the row's primary selector is `background_inference` and Web Search is only
+named in `rationale` — pass `--mantle-selector web_search` joined with the other confirmed selectors (those
+other selectors add no Web Search actions) and the helper adds a `BedrockWebSearch` statement: `bedrock-websearch:InvokeSearch`
+and `bedrock-websearch:InvokeFetch` on resource `*` with an `aws:RequestedRegion` condition — the three
+`bedrock-websearch` actions all take `*` and that global key is the service's only condition key
+(<https://docs.aws.amazon.com/bedrock/latest/userguide/security-web-search.html>, read 2026-11-09). The
+generated client MUST set `"external_web_access": false` on the `web_search` tool unless the user
+explicitly confirmed external web access in Clarify: the parameter defaults to `true`, and without the
+`bedrock-websearch:ExternalWebAccess` action every Fetch then fails authorization before the cache is read
+while the Responses request still returns 200 and may still carry `url_citation` annotations
+(<https://docs.aws.amazon.com/bedrock/latest/userguide/web-search.html>, "Controlling external web access",
+read 2026-11-09). Only when the user confirmed external access, pass `--external-web-access` too and the
+statement also grants `bedrock-websearch:ExternalWebAccess`; say in the report that request data may then
+leave the AWS boundary. Web Search is served on the `bedrock-mantle` Responses API only, so the helper exits
+1 with `reason: web_search_without_mantle_row` when no `--target` row is a bare Mantle id, and with
+`reason: external_web_access_without_web_search` when the flag is passed without the selector — report
+either verbatim. A plan with no `web_search` row gets no `bedrock-websearch:*` action; do not add one by hand.
+
+The script handles the dual-ARN pattern: foundation-model ARNs for plain model IDs and inference-profile ARNs for geo-prefixed IDs (e.g. `us.anthropic.claude-sonnet-4-6`). For any cross-region (CRIS) target it also emits a `BedrockGetInferenceProfile` statement (`bedrock:GetInferenceProfile` on the profile ARNs) — the documented prerequisite for invoking through a profile (<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-prereq.html>, read 2026-11-07). For every runtime Responses / Chat Completions target — any proprietary GPT CRIS id by id form (GPT-5.6 Sol / Terra / Luna, the GPT-6 family, GPT-5.5 / GPT-5.4: `us.openai.gpt-5.5` / `global.openai.gpt-5.5`, `us.openai.gpt-5.4` / `global.openai.gpt-5.4`, or their `inference-profile/` ARNs) whose own `--target` API is `responses` or `chat_completions` (legacy form: `--runtime-api` set to one of those, or omitted) — it adds a third resource, `arn:aws:bedrock:<region>:<account>:project/default`, because a Responses request on `bedrock-runtime` authorizes the default project separately from the inference target (<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html>, read 2026-11-07) and each of those model cards (read 2026-11-07) repeats the requirement; do not strip it from the report's policy excerpt. A row on `converse` or `messages` and every Anthropic / Nova / gpt-oss / embedding id get no project resource. The output is a ready-to-use IAM policy JSON file.
+
+**Runtime OpenAI and Runtime Messages lanes need no Mantle statement.** A `Rewrite strategy: runtime_openai` or `Rewrite strategy: runtime_messages` run keeps the source SDK but authorizes through `bedrock:InvokeModel*` (+ `GetInferenceProfile`, and the default-project ARN for every runtime Responses / Chat Completions GPT CRIS id above) on the `bedrock-runtime` endpoint; report exactly the statements the script produced and do not add `bedrock-mantle:*` for them. Per-token model pricing is the same on both endpoints (<https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints.html>, read 2026-11-07), so the endpoint choice does not change the §6.3 cost table.
+
+**Mantle targets get different actions.** When any target is a bare proprietary OpenAI GPT model (GPT-5.x or `openai.gpt-6-astra`), the script also emits `bedrock-mantle:CreateInference` / `Get*` / `List*` scoped to `arn:aws:bedrock-mantle:<region>:<account>:project/*`, plus `bedrock-mantle:CallWithBearerToken` on `*` (AWS does not permit narrowing that one). `bedrock:InvokeModel` alone does **not** authorize these models. Two consequences to carry into the report:
 
 - For an all-mantle run there is no `BedrockInvokeModelScoped` statement, because those models have no foundation-model or inference-profile ARN to scope to. That absence is correct, not a generation failure.
 - Mantle authorizes at project granularity, so the policy cannot be scoped to specific model IDs. If the reader needs to restrict the model set, say so explicitly and point them at a service control policy.
@@ -581,12 +780,13 @@ banner. Do NOT use the plain ✅ banner just because
 - **Migration Track:** Track 2 (AI-Only — no infrastructure changes)
 - **Deliverable:** Git branch `<branch_name>` (the rewriter's returned `branch_name` — may be collision-suffixed, e.g. `bedrock-migration-2`)
 - **Side-by-side validation:** <one of: `Yes — live same-model baseline` / `Yes — live substitute-model baseline (<live_source_baseline_used_model> instead of <source_model_id>)` / `No — static baselines only` / `N/A — connectivity only (same-family)` / `N/A — no golden cases`> (matches the banner block chosen above)
+- **Endpoint:** <from the `Endpoint basis:` context line — `bedrock-runtime` or `bedrock-mantle (<selector>, <source>)` per target; when a target is on bedrock-runtime, quote its `endpoint_assumption` sentence verbatim on the next line; a Mantle target the line marks `source unknown — plan predates mantle_requirements` is still rendered as `bedrock-mantle (<selector or 'selector unrecorded'>; source unknown)`; the line is absent only when no row carries a Mantle marker or either field — then render `bedrock-runtime (plan predates mantle_requirements; re-run Clarify to record a Mantle-only requirement)`>
 
 ### Model Mapping
 
 | Source Model     | Bedrock Model     | Notes   |
 | ---------------- | ----------------- | ------- |
-| <source_model_1> | <bedrock_model_1> | <notes> |
+| <source_model_1> | <bedrock_model_1> | <notes — for a Mantle target: `mantle (<mantle_selector>; <mantle_requirement.source>; <mantle_requirement.evidence>)` from the `Endpoint basis:` line; for a runtime target: `bedrock-runtime`> |
 
 ### Overall Status: <READY TO MERGE / NEEDS REVIEW / BLOCKED>
 
@@ -745,6 +945,24 @@ line `*Monthly estimate unavailable — sample has no time-span information.*`
    - `.env.example` sets `AWS_REGION` and the model id. Access keys stay commented. A Mantle bearer token, when present, is commented, expires within 12 hours, and is for a short local run — not an ECS task or a Lambda environment.
    - Apply the generated least-privilege IAM policy: `.saws-migrate/iam-policy.json`
      (scoped to the exact model ARNs used in this migration — review before attaching to a role)
+   - <Render ONLY when `analysis.stored_response_ops` is non-empty; delete this bullet otherwise.>
+     **Create-plus-retrieve permission check** (the preflight ping only exercises creation): under
+     the attached role, run `r = client.responses.create(model="<primary validated id>", input="ping")`
+     and then `client.responses.retrieve(r.id)` (<and `.cancel(r.id)` / `.delete(r.id)` for each other
+     retained op>). A 403 on the second call means the policy's `BedrockStoredResponseOps`
+     statement (`bedrock:GetInvoke` <, `CancelInvoke`, `DeleteInvoke`> on
+     `arn:aws:bedrock:<region>:<account>:project/default`) is not attached — creation passing does not
+     prove retrieval is authorized. <For a `mantle_openai_responses` plan run the same
+     `responses.create` / `responses.retrieve(r.id)` pair against the Mantle base URL with the bare Mantle
+     id; a 403 there means the `BedrockMantleInference` statement is not attached.>
+   - <Render ONLY when `web_search` is a confirmed mantle requirement (a row's `mantle_selector`, or any other `detected`/`user` entry in `ai_constraints.mantle_requirements`), even if the row's primary selector is `background_inference`; delete this bullet otherwise.>
+     **Tool-level permission check** (a plain model ping passing does not prove the Web Search grant):
+     under the attached identity run `client.responses.create(model="<bare Mantle id>",
+     input="<a time-sensitive question>", tools=[{"type": "web_search", "external_web_access": False}])`
+     against the Mantle base URL, confirm the output contains a `web_search_call` item or a `url_citation`
+     annotation, and check CloudTrail Web Search data events for a denied `InvokeSearch` / `InvokeFetch` —
+     a denied call is not disclosed in the model response. <Only when the user confirmed external web
+     access: repeat with `"external_web_access": True` and confirm no denied `ExternalWebAccess`.>
 
 3. **Run tests:**
 
@@ -795,6 +1013,8 @@ This evaluation was based on **<coverage_level>**:
 ## Limitations
 
 <Honest list of what wasn't tested or verified>
+
+- **Endpoint choice:** the bedrock-runtime / bedrock-mantle decision above rests on the Mantle-only requirements Clarify recorded (a detected code signal the user confirmed, or the user's own answer) — not on an inspection of every request this app sends. bedrock-runtime rejects `background=true` with a 400 (https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html, read 2026-11-07); if a workload turns out to need background inference, server-side tools, Projects/Workspaces, or single-Region processing, re-run Clarify rather than editing the generated client.
 
 ### Evaluation methodology disclosure
 

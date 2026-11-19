@@ -1,0 +1,17 @@
+{
+  "cycle_number": 1,
+  "annotation_export_path": "<path>",
+  "coverage": {
+    "total": 100,
+    "submitted": 95,
+    "skipped": 3,
+    "pending": 2,
+    "coverage_pct": 95.0
+  },
+  "low_confidence_summary": {
+    "n_records": 100,
+    "filled": 85,
+    "empty": 15,
+    "fill_rate": 0.85
+  }
+}

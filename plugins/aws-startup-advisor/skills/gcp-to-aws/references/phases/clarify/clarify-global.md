@@ -124,10 +124,13 @@ Interpret:
 3 -> gcp_monthly_spend: "$5K-$20K" — funding review; reserved pricing recommendations
 4 -> gcp_monthly_spend: "$20K-$100K" — funding/support review; savings commitment analysis
 5 -> gcp_monthly_spend: ">$100K" — enterprise program/support review
-6 -> same as default (2)
+6 -> gcp_monthly_spend: "unknown" — no confirmed spend band
 ```
 
-**Default:** 2 — `gcp_monthly_spend: "$1K-$5K"`.
+**Default when skipped:** `gcp_monthly_spend: "unknown"`. An explicit "I don't
+know" is a user answer, not consent to a monetary estimate: retain
+`chosen_by: "user"` and do not substitute a spend band in the recap or saved
+preferences. Estimate may calculate a separately labelled inventory baseline.
 
 ### Q3.5 — Do you have active GCP Committed Use Discounts (CUDs)? — GCP-specific
 
@@ -150,8 +153,9 @@ compare against GCP list price or committed rate.
 > 2. Yes, and they expire in 6–12 months
 > 3. Yes, and they have more than 12 months remaining
 > 4. Yes, but I'm not sure when they expire
-> 5. No active CUDs / I don't know
+> 5. No active CUDs
 > 6. I plan to let them expire and not renew
+> 7. I don't know whether there are active CUDs
 
 | Answer                        | Recommendation Impact                                                                                                 |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------- |
@@ -171,9 +175,12 @@ Interpret:
 4 -> cud_status: "unknown_expiry" — Recommend checking GCP console
 5 -> cud_status: "none" — No constraint
 6 -> cud_status: "not_renewing" — Align migration completion with expiration
+7 -> cud_status: "unknown" — Commitment status is unconfirmed
 ```
 
-**Default:** 5 — `cud_status: "none"`.
+**Default when skipped:** `cud_status: "unknown"`. A user-supplied unknown status
+must remain unknown even when the billing-only question would otherwise be N/A;
+do not turn missing billing evidence into proof of no commitments.
 
 ### Q5 — Multi-cloud portability
 

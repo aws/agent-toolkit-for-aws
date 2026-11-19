@@ -64,11 +64,12 @@ detect whether a host enabled its hooks or whether they are healthy. Unknown
 sources remain `OTHER`; explicit `CODEX`/`KIRO` markers outrank an inherited
 `CURSOR_AGENT` marker.
 
-`cli.py reconcile` calls the existing migration emitter with `--reconcile --via
-cli`, from the project root, without reading hook stdin. The emitter rejects
-CLI reporting when the status check selects plugin hooks. Existing hook registrations,
-including the shared Codex registration, are unchanged; concurrent triggers use
-the same run lock and snapshot.
+`cli.py reconcile --project-root /absolute/project` reconciles only the explicit
+project containing `.migration/`, without reading hook stdin. Skills call it at
+state boundaries in both reporting modes: a Bash write into a child project can
+otherwise be invisible to a hook scanning the editor's parent cwd. It shares the
+hook's lock and snapshot to avoid duplicate events. Invalid targets do not fall
+back to a parent tree. Plain `cli.py reconcile` still skips hook hosts.
 
 `PROTOCOL.md` wires the existing notice, acknowledgement and opt-out scripts for
 CLI hosts. It adds no consent record, notice wording, environment opt-out, event

@@ -9,7 +9,7 @@ sub-bugs:
     `provider_adapter` module — a broken import on that path.
 (b) Step 1M printed a Mantle base URL ending in a bare `/v1`; the proprietary
     GPT models that route through Mantle require `/openai/v1` (a bare `/v1`
-    404s), per `references/shared/openai-on-bedrock.md`.
+    404s), per `references/vendored/ai/openai-on-bedrock.md`.
 (c) Step 3 granted `bedrock:InvokeModel` and verified via a `converse` call, but
     `bedrock:InvokeModel` does not authorize Mantle calls and the Mantle models
     are reached via Responses / Chat Completions, not Converse.
@@ -72,7 +72,7 @@ def test_step2_harness_import_conditional_on_mantle_path() -> None:
     )
     # The import must now be conditional, not unconditional: the Mantle path has
     # its own no-adapter client-setup branch.
-    assert "Mantle path" in harness and "do NOT import `provider_adapter`" in harness, (
+    assert "Mantle / runtime CRIS" in harness and "do not import `provider_adapter`" in harness, (
         "Step 2 does not scope the provider_adapter import away from the Mantle "
         "path (finding 2a) — the Mantle path emits no adapter module"
     )
@@ -96,32 +96,19 @@ def test_step3_mantle_iam_and_test_api_are_conditional() -> None:
         "Step 3's Mantle branch does not grant bedrock-mantle:CreateInference "
         "(finding 2c)"
     )
-    assert "AmazonBedrockMantleInferenceAccess" in step3, (
-        "Step 3's Mantle branch does not name the AmazonBedrockMantleInferenceAccess "
-        "managed policy (finding 2c)"
-    )
+    assert "bedrock-mantle:CallWithBearerToken" in step3
+    assert "project/*" in step3
     # Non-Mantle paths keep the runtime action.
     assert "bedrock:InvokeModel" in step3, (
         "Step 3 dropped bedrock:InvokeModel for the non-Mantle paths, which is "
         "wrong — those paths still need it (finding 2c)"
     )
-    # The IAM and verification choices must be path-conditional.
-    assert step3.count("conditional on the migration path") >= 2, (
-        "Step 3's IAM and verification are not both scoped as conditional on "
-        "the migration path (finding 2c)"
-    )
-    # Mantle verification uses Responses/Chat Completions, not converse.
-    assert "client.responses.create" in step3, (
-        "Step 3's Mantle verification does not use the Responses API (finding 2c)"
-    )
-    assert "Do NOT use a `converse` call on this path" in step3, (
-        "Step 3's Mantle verification does not forbid the converse call (finding 2c)"
-    )
-    # Non-Mantle verification keeps converse.
-    assert "converse" in step3, (
-        "Step 3 dropped the converse verification for the non-Mantle paths "
-        "(finding 2c)"
-    )
+    # Setup invokes the same selected client as the comparison harness.
+    assert "Match inference permissions to the selected endpoint" in step3
+    assert "test_comparison.py --target-only --quick" in step3
+    assert "same selected API, model ID and region" in step3
+    assert "A Mantle selection must never run a Converse probe" in step3
+    assert "runtime selection must preserve its validated profile ID" in step3
 
 
 def test_azure_generate_mantle_branch_still_correct() -> None:
@@ -135,3 +122,29 @@ def test_azure_generate_mantle_branch_still_correct() -> None:
         "Azure generate-artifacts-ai.md regressed off the bedrock-mantle:* IAM "
         "action for the Mantle path"
     )
+    # Runtime-default: Mantle is no longer presented as Azure's primary path.
+    assert "Mantle is the PRIMARY path" not in text, (
+        "Azure generate-artifacts-ai.md still calls Mantle the PRIMARY path; "
+        "bedrock-runtime CRIS is the default and Mantle is selector-gated"
+    )
+    assert "bedrock-runtime" in text
+
+
+def test_step0_runtime_cris_is_default_and_mantle_needs_selector() -> None:
+    # bedrock-runtime is the documented default endpoint (endpoints.html); Step 0
+    # must list runtime_openai_cris before the mantle bullet, label it the default,
+    # and tie the mantle bullet to a recorded mantle_selector. Step 3B's OpenRouter
+    # subroute must know the runtime same-model route.
+    text = GCP_GENERATE.read_text(encoding="utf-8")
+    step0 = text.split("## Step 0:", 1)[1].split("## Step 1M:", 1)[0]
+    runtime_idx = step0.index("`migration_path` = `\"runtime_openai_cris\"`")
+    mantle_idx = step0.index("`migration_path` starts with `\"mantle\"`")
+    assert runtime_idx < mantle_idx, (
+        "Step 0 must list the runtime_openai_cris bullet before the mantle bullet"
+    )
+    assert "default" in step0[runtime_idx:mantle_idx].lower()
+    assert "mantle_selector" in step0
+    assert "bedrock-endpoint-policy.md" in step0
+    step3b = text.split("## Step 3B: Generate Gateway Configuration", 1)[1]
+    assert "same_model_runtime" in step3b
+    assert "same_model_mantle" in step3b

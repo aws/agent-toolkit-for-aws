@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-10-10 (added the GPT-6 family — GPT-6 Astra, GPT-6 Sol, GPT-6 Luna, GPT-6.1 Sol — sourced
 from each model's own AWS Bedrock model card and OpenAI's own API pricing page, fetched 2026-10-10; see
-`shared/openai-on-bedrock.md` for full citations. Prior refresh, 2026-10-05: re-verified via the AWS Pricing MCP
+`references/vendored/ai/openai-on-bedrock.md` for full citations. Prior refresh, 2026-10-05: re-verified via the AWS Pricing MCP
 server, aws.amazon.com/bedrock/pricing, and the Bedrock model cards' Geo/Global inference ID tables — Claude
 Sonnet 5 $2/$10 (Global/base) / $2.20/$11 (Geo, `us.`-prefixed), Opus 4.8 $5/$25 (Global/base) / $5.50/$27.50
 (Geo), Sonnet 4.6 $3/$15 (Global/base) / $3.30/$16.50 (Geo), Haiku 4.5 $1/$5 (Global/base) / $1.10/$5.50 (Geo),
@@ -58,7 +58,7 @@ the resulting rates).
 >
 > **Tier note — these are OpenAI STANDARD-tier rates.** Bedrock in-region for the same models is
 > the OpenAI _data-residency_ tier, exactly 1.10x these figures (see
-> `references/shared/openai-on-bedrock.md`). So a same-model move for GPT-5.6 Sol/Terra/Luna,
+> `references/vendored/ai/openai-on-bedrock.md`). So a same-model move for GPT-5.6 Sol/Terra/Luna,
 > GPT-5.5, GPT-5.4 is a ~10% increase, not parity — compute the target from the vendored Bedrock
 > cache, not by carrying these over. These rows are the right source-side baseline, and the only
 > figures available for models with **no** Bedrock equivalent (GPT-5.x Pro, GPT-5.2/5.1, GPT-4.x,
@@ -68,6 +68,7 @@ the resulting rates).
 | ------------- | ------------ | ------------ | ------- | --------- |
 | GPT-6 Astra   | 10.00        | 50.00        | ≤272K*  | frontier  |
 | GPT-6.1 Sol   | 2.00         | 10.00        | ≤272K*  | flagship  |
+| GPT-6.1 Terra | _unverified_ | _unverified_ | 1.05M   | balanced  |
 | GPT-6 Sol     | 2.00         | 10.00        | ≤272K*  | flagship  |
 | GPT-6 Luna    | 0.10         | 0.50         | ≤272K*  | fast      |
 | GPT-5.6 Sol   | _unverified_ | _unverified_ | 1M      | frontier  |
@@ -80,18 +81,24 @@ the resulting rates).
 | GPT-5.4 Nano  | 0.20         | 1.25         | —       | budget    |
 | GPT-5.4 Pro   | 30.00        | 180.00       | 1.05M   | premium   |
 | GPT-5.2       | 1.75         | 14.00        | 200K    | flagship  |
-| GPT-5.1       | 1.25         | 10.00        | 200K    | flagship  |
-| GPT-5 Mini    | 0.25         | 2.00         | 200K    | fast      |
-| GPT-5 Nano    | 0.05         | 0.40         | 128K    | budget    |
-| GPT-4.1       | 2.00         | 8.00         | 1M      | flagship  |
-| GPT-4.1 Mini  | 0.40         | 1.60         | 1M      | fast      |
-| GPT-4.1 Nano  | 0.10         | 0.40         | 1M      | budget    |
-| GPT-4o        | 2.50         | 10.00        | 128K    | flagship  |
-| o3            | 2.00         | 8.00         | 200K    | reasoning |
-| o4-mini       | 1.10         | 4.40         | 200K    | reasoning |
+| GPT-5.1       | 1.25         | 10.00        | 200K    | flagship — OpenAI shutdown 2027-04-01 → `gpt-6-sol` |
+| GPT-5 Mini    | 0.25         | 2.00         | 200K    | fast — OpenAI shutdown 2026-12-11 → `gpt-5.6-terra` |
+| GPT-5 Nano    | 0.05         | 0.40         | 128K    | budget — OpenAI shutdown 2026-12-11 → `gpt-5.6-luna` |
+| GPT-4.1       | 2.00         | 8.00         | 1M      | flagship — OpenAI shutdown 2027-01-14 → `gpt-6-luna` |
+| GPT-4.1 Mini  | 0.40         | 1.60         | 1M      | fast — OpenAI shutdown 2027-01-14 → `gpt-6-luna` |
+| GPT-4.1 Nano  | 0.10         | 0.40         | 1M      | **shut down 2026-10-23** on OpenAI → `gpt-5.6-luna` (historical row; see the shutdown note below) |
+| GPT-4o        | 2.50         | 10.00        | 128K    | flagship — OpenAI shutdown 2027-01-14 → `gpt-6-luna` |
+| o3            | 2.00         | 8.00         | 200K    | reasoning — OpenAI shutdown 2026-12-11 → `gpt-5.6-sol` |
+| o4-mini       | 1.10         | 4.40         | 200K    | **shut down 2026-10-23** on OpenAI → `gpt-5.6-terra` (historical row; see the shutdown note below) |
+
+> **OpenAI shutdowns — which row is the source baseline depends on the serving provider and the date** ([OpenAI deprecations](https://developers.openai.com/api/docs/deprecations), read 2026-11-09). A measured bill always wins. For a **direct OpenAI** source (`ai_source: openai`) with token volume only: before the row's shutdown date, use the row; on or after it, use the **substitute's** source row (`gpt-4.1-nano` → GPT-5.6 Luna 0.20 / 1.20; `o4-mini` → GPT-5.6 Terra, which is `_unverified_` here, so the baseline is **unavailable** — fall to the multi-tier presentation, never the retired row). Already past shutdown (2026-10-23): `o1`, `o1-pro`, `o3-mini`, `o4-mini`, `gpt-4`, `gpt-4-turbo`, `gpt-4.1-nano`, `gpt-3.5-turbo`; `o1-mini` since 2025-10-27. These are OpenAI-hosted dates only — an **Azure OpenAI** deployment of the same model follows Microsoft's retirement schedule, so keep the row until that schedule is confirmed. Estimate Part 1 level 3 consumes this note.
 
 *GPT-6 rows: 1.05M is the model's max window, not this rate's valid range. Requests >272,000 input tokens reprice input/cache 2x and output 1.5x — see the breakpoint note above and pricing-cache.md's long-context tables.
 
+> **GPT-6.1 Terra:** confirm availability, token limits, and pricing with the source provider.
+> Use measured/stated source spend or `pricing-fallback.md` when verified source rates are unavailable.
+> See `references/vendored/ai/openai-on-bedrock.md` for Bedrock availability and prices.
+>
 > **Azure OpenAI note.** Azure lists the same models under Azure-specific deployment names
 > (e.g. `gpt-4o`, `gpt-4.1`) and bills per 1M tokens at rates that track the table above. Azure
 > adds Provisioned Throughput Units (PTU) as an alternative to pay-as-you-go; a customer on PTU

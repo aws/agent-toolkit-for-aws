@@ -26,7 +26,22 @@
         "mantle_openai_chat",
         "mantle_openai_responses",
         "runtime_converse",
-        "runtime_invoke"
+        "runtime_invoke",
+        "runtime_messages",
+        "runtime_openai_chat",
+        "runtime_openai_responses"
+      ]
+    },
+    "mantleSelector": {
+      "enum": [
+        "background_inference",
+        "server_side_tools",
+        "web_search",
+        "projects",
+        "workspaces",
+        "mantle_only_model_or_api",
+        "in_region_processing",
+        null
       ]
     },
     "source": {
@@ -128,6 +143,9 @@
         },
         "reason": {
           "type": "string"
+        },
+        "mantle_selector": {
+          "$ref": "#/$defs/mantleSelector"
         }
       },
       "additionalProperties": false
@@ -297,7 +315,8 @@
         "migration_deltas",
         "evaluation",
         "rollout",
-        "verification"
+        "verification",
+        "mantle_selector"
       ],
       "properties": {
         "workload_id": {
@@ -307,7 +326,7 @@
           "enum": ["anthropic", "openai", "generic"]
         },
         "decision_status": {
-          "enum": ["recommended", "decision_required"]
+          "enum": ["recommended", "decision_required", "blocked"]
         },
         "source": {
           "$ref": "#/$defs/source"
@@ -368,6 +387,9 @@
         },
         "invocation_model_id": {
           "type": ["string", "null"]
+        },
+        "mantle_selector": {
+          "$ref": "#/$defs/mantleSelector"
         },
         "decision_options": {
           "type": "array",
@@ -472,7 +494,7 @@
           "required": ["strategy", "gate"],
           "properties": {
             "strategy": {
-              "enum": ["canary", "decision_required"]
+              "enum": ["canary", "decision_required", "blocked"]
             },
             "gate": {
               "type": "string"
@@ -522,9 +544,60 @@
               },
               "invocation_model_id": {
                 "type": "null"
-              },
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "decision_status": {
+                "const": "decision_required"
+              }
+            }
+          },
+          "then": {
+            "properties": {
               "decision_options": {
                 "minItems": 2
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "api_path": {
+                "type": "string",
+                "pattern": "^mantle_"
+              }
+            },
+            "required": ["api_path"]
+          },
+          "then": {
+            "properties": {
+              "mantle_selector": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "$comment": "blocked: no automatic target and fewer than two real options (e.g. a reference_only pinned source); [BLOCKS] findings explain why. Options are never invented to reach two.",
+          "if": {
+            "properties": {
+              "decision_status": {
+                "const": "blocked"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "decision_options": {
+                "maxItems": 1
+              },
+              "blocks": {
+                "minItems": 1
               }
             }
           }

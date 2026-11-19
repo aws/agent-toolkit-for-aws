@@ -28,7 +28,7 @@
     "normalizedModel": {"type": "string", "pattern": "^(?!(?:both|unknown)$)[a-z0-9][a-z0-9._:/-]*$"},
     "gatewayIdentity": {"type": "string", "pattern": "^(?!(?:both|unknown)$)[a-z][a-z0-9_]*$"},
     "provenance": {"enum": ["code", "iac", "live_api", "usage_api", "user_confirmed"]},
-    "confidence": {"enum": ["confirmed", "high", "medium", "low"]},
+    "confidence": {"description": "User confirmation is provenance user_confirmed with confidence high; there is no confirmed confidence level.", "enum": ["high", "medium", "low"]},
     "evidenceEntry": {
       "type": "object",
       "required": ["provenance", "confidence"],

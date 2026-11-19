@@ -65,9 +65,9 @@ Look up `gcp_service_type` in the table below. These are default mappings for co
 | `google_pubsub_subscription`     | Pub/Sub              | SQS                                    | SNS Subscription                                                                                                                                                          |
 | `google_cloud_tasks_queue`       | Cloud Tasks          | SQS                                    | EventBridge                                                                                                                                                               |
 
-If found: assign the Default AWS Target. Set rationale to: "Billing heuristic: [GCP service] → [AWS service]. Provide Terraform files for configuration-aware mapping." **Exception:** For BigQuery, use: "Billing indicates BigQuery spend — **no automated AWS analytics target**; engage AWS account team / data analytics migration partner (`Deferred — specialist engagement`)."
+If found: assign the Default AWS Target. Set rationale to: "Billing heuristic: [GCP service] → [AWS service]. Use live `gcloud` discovery or provide Terraform files for configuration-aware mapping." **Exception:** For BigQuery, use: "Billing indicates BigQuery spend — **no automated AWS analytics target**; engage AWS account team / data analytics migration partner (`Deferred — specialist engagement`)."
 
-**App Engine multi-cloud override (applies even in billing mode):** If `gcp_service_type` is `google_app_engine_application` **and** `design_constraints.compute.value == "eks"` (Q5 = multi-cloud), assign **EKS** instead of the Elastic Beanstalk default — the portability override is a top-level design constraint, not a configuration detail, so it applies on the billing path too (same override that forces GKE → EKS). Set rationale to: "Billing heuristic: App Engine → EKS (multi-cloud portability required — overrides Elastic Beanstalk default). Provide Terraform files for configuration-aware mapping." `confidence: billing_inferred`.
+**App Engine multi-cloud override (applies even in billing mode):** If `gcp_service_type` is `google_app_engine_application` **and** `design_constraints.compute.value == "eks"` (Q5 = multi-cloud), assign **EKS** instead of the Elastic Beanstalk default — the portability override is a top-level design constraint, not a configuration detail, so it applies on the billing path too (same override that forces GKE → EKS). Set rationale to: "Billing heuristic: App Engine → EKS (multi-cloud portability required — overrides Elastic Beanstalk default). Use live `gcloud` discovery or provide Terraform files for configuration-aware mapping." `confidence: billing_inferred`.
 
 **Set `human_expertise_required`**: If `gcp_service_type` is `google_bigquery_dataset` (or billing rows clearly represent BigQuery analytics), set `human_expertise_required: true` and `aws_service` to **`Deferred — specialist engagement`** (same rules as `design-infra.md` BigQuery gate). For all other services, set `human_expertise_required: false`. This field is REQUIRED on every service in the output.
 
@@ -99,7 +99,7 @@ For each service not found in fast-path or billing heuristic table:
    - `gcp_service_type` — Resource type
    - `monthly_cost` — How much is spent on this service
    - `reason` — "No IaC configuration available; service does not match any fast-path or billing heuristic entry"
-   - `suggestion` — "Provide Terraform files for accurate mapping, or manually specify the AWS equivalent"
+   - `suggestion` — "Use live `gcloud` discovery, provide Terraform files, or manually specify the AWS equivalent"
 
 ---
 
@@ -156,7 +156,7 @@ Write to `$MIGRATION_DIR/aws-design-billing.json`:
       "gcp_service_type": "google_compute_security_policy",
       "monthly_cost": 50.00,
       "reason": "No IaC configuration available; billing name does not match any fast-path entry",
-      "suggestion": "Provide Terraform files for accurate mapping, or manually specify the AWS equivalent"
+      "suggestion": "Use live `gcloud` discovery, provide Terraform files, or manually specify the AWS equivalent"
     }
   ]
 }

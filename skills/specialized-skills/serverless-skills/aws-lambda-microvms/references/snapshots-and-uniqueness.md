@@ -64,12 +64,12 @@ Each successful build records snapshot sizes. Use these to track image bloat ove
 
 ```bash
 BUILD_ID=$(aws lambda-microvms list-microvm-image-builds \
-  --image-identifier arn:aws:lambda:<region>:<account>:microvm-image:my-image \
+  --image-identifier arn:<partition>:lambda:<region>:<account>:microvm-image:my-image \
   --image-version 1.0 \
   --query 'items[0].buildId' --output text)
 
 aws lambda-microvms get-microvm-image-build \
-  --image-identifier arn:aws:lambda:<region>:<account>:microvm-image:my-image \
+  --image-identifier arn:<partition>:lambda:<region>:<account>:microvm-image:my-image \
   --image-version 1.0 \
   --build-id "$BUILD_ID"
 ```

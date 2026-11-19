@@ -27,6 +27,19 @@ and full control of the scaling/networking stack.
 ## Tradeoffs
 
 Always-on baseline cost during idle; you build session isolation/memory yourself.
+
+## Isolation (Nitro Sandboxes)
+
+Fargate already runs each task in its own VM, so the profile's isolation score does not
+change. When a unit needs that per-task isolation together with EC2 control
+(instance-type choice, bin-packing several tasks per instance, Capacity Reservations),
+ECS Managed Instances can run each task in its own Nitro Sandbox: set
+`trustedExecutionConfiguration.isolationMode` to `ISOLATED_SANDBOX`, or to
+`CONFIDENTIAL_SANDBOX` to add attestation and keep task memory unreadable by the host.
+That is a different launch type from this card's Fargate default, with different pricing,
+and Nitro Sandboxes cannot use GPUs. Mention it as an alternative; do not design or price
+it as the ECS default.
+Source: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/isolated-confidential-tasks.html
 Hands off to the source-platform migration skill (`gcp-to-aws` or `heroku-to-aws`) for compute-layer config.
 
 ## Serving & security notes

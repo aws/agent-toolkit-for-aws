@@ -162,7 +162,7 @@ def test_complete_evaluator_script_handles_typed_output(tmp_path, monkeypatch, b
     data.mkdir(parents=True)
     (tmp_path / ".saws-migrate/eval-results").mkdir()
     (data / "prompts.jsonl").write_text(json.dumps({"id": "case", "user_prompt": "Prompt", "assistant_response": "Answer"}) + "\n")
-    exec(compile(code.replace("<repo>", str(tmp_path)), "<evaluator>", "exec"), {})  # nosec B102
+    exec(compile(code.replace("<repo>", str(tmp_path)).replace("<TARGET_API_SURFACE>", "converse").replace("<TARGET_MODEL_ID>", "us.anthropic.claude-opus-5-5"), "<evaluator>", "exec"), {})  # nosec B102
     result = json.loads((tmp_path / ".saws-migrate/eval-results/raw_results.jsonl").read_text())
     assert result["status"].startswith(expected)
     assert "Private reasoning" not in result["bedrock_response"]
@@ -313,7 +313,7 @@ def test_context_truncated_source_baseline_falls_back_and_retries_on_resume(tmp_
     monkeypatch.setitem(sys.modules, "botocore", fake_core)
     monkeypatch.setitem(sys.modules, "botocore.exceptions", fake_exceptions)
     code = block(EVALUATOR, 'gd_path = "<repo>/.saws-migrate/golden-dataset/prompts.jsonl"')
-    exec(compile(code.replace("<repo>", str(tmp_path)), "<evaluator>", "exec"), {})  # nosec B102
+    exec(compile(code.replace("<repo>", str(tmp_path)).replace("<TARGET_API_SURFACE>", "converse").replace("<TARGET_MODEL_ID>", "us.anthropic.claude-opus-5-5"), "<evaluator>", "exec"), {})  # nosec B102
     evaluated = json.loads((outputs / "raw_results.jsonl").read_text())
     assert evaluated["source_baseline_source"] == "static-unknown"
     assert evaluated["source_response"] == "Complete stored answer"
@@ -332,7 +332,7 @@ def test_same_gpt_pending_api_delta_keeps_the_mantle_connectivity_loop():
     assert "If `same_model_family: true`:" in section
     assert "no unresolved behavior changes" not in section
     assert "C4 later confirms user-visible deltas" in section
-    code = block(EVALUATOR, 'from image_input import converse_message, responses_message')
+    code = block(EVALUATOR, '# Golden-case fields are')
     nodes = ast.parse(code).body
     start = next(i for i, node in enumerate(nodes) if isinstance(node, ast.Assign)
                  and isinstance(node.targets[0], ast.Name) and node.targets[0].id == "items")
@@ -348,7 +348,9 @@ def test_same_gpt_pending_api_delta_keeps_the_mantle_connectivity_loop():
         },
     }
     # The literal model placeholder is replaced exactly as the evaluator does.
-    source = ast.unparse(ast.Module(body=nodes[start:], type_ignores=[]))
+    end = next(i for i, node in enumerate(nodes[start:], start) if isinstance(node, ast.Assign)
+               and isinstance(node.targets[0], ast.Name) and node.targets[0].id == "messages")
+    source = ast.unparse(ast.Module(body=nodes[start:end], type_ignores=[]))
     exec(compile(source.replace("<TARGET_MODEL_ID>", "openai.gpt-5.5"),
                  "<mantle-connectivity>", "exec"), namespace)  # nosec B102
     assert calls[0]["model"] == "openai.gpt-5.5"
@@ -381,7 +383,7 @@ def test_comparative_loop_preserves_each_golden_image(tmp_path, monkeypatch, ima
     monkeypatch.setitem(sys.modules, "boto3", fake_boto)
     monkeypatch.setitem(sys.modules, "botocore", fake_core)
     monkeypatch.setitem(sys.modules, "botocore.exceptions", fake_exceptions)
-    exec(compile(code.replace("<repo>", str(tmp_path)), "<comparative-evaluator>", "exec"), {})  # nosec B102
+    exec(compile(code.replace("<repo>", str(tmp_path)).replace("<TARGET_API_SURFACE>", "converse").replace("<TARGET_MODEL_ID>", "us.anthropic.claude-opus-5-5"), "<comparative-evaluator>", "exec"), {})  # nosec B102
     result = json.loads((tmp_path / ".saws-migrate/eval-results/raw_results.jsonl").read_text())
     if image_kind in {"missing", "unsupported"}:
         assert result["status"].startswith("error:") and not client.requests

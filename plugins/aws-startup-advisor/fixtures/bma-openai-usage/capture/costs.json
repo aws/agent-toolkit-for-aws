@@ -1,0 +1,46 @@
+[
+ {
+  "object": "bucket",
+  "start_time": 1792454400,
+  "end_time": 1792540800,
+  "results": [
+   {
+    "object": "organization.costs.result",
+    "line_item": "gpt-4o-2024-08-06, input",
+    "amount": {
+     "value": 10.0,
+     "currency": "usd"
+    }
+   },
+   {
+    "object": "organization.costs.result",
+    "line_item": "gpt-4o-2024-08-06, output",
+    "amount": {
+     "value": 20.5,
+     "currency": "usd"
+    }
+   }
+  ]
+ },
+ {
+  "object": "bucket",
+  "start_time": 1792540800,
+  "end_time": 1792627200,
+  "results": [
+   {
+    "object": "organization.costs.result",
+    "line_item": "text-embedding-3-small",
+    "amount": {
+     "value": 0.25,
+     "currency": "usd"
+    }
+   }
+  ]
+ },
+ {
+  "object": "bucket",
+  "start_time": 1792022400,
+  "end_time": 1792108800,
+  "results": []
+ }
+]

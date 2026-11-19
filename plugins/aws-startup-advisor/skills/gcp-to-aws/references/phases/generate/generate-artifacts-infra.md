@@ -16,6 +16,7 @@ Read from `$MIGRATION_DIR/`:
 - `generation-infra.json` (REQUIRED) — Migration plan with timeline and service assignments
 - `preferences.json` (REQUIRED) — User preferences including target region, sizing, compliance
 - `gcp-resource-clusters.json` (REQUIRED) — Cluster dependency graph for ordering
+- `estimation-infra.json` (REQUIRED) — Balanced baseline and its sizing assumptions
 
 Reference files (read as needed): `references/design-refs/index.md` and domain-specific files (compute.md, database.md, storage.md, networking.md, messaging.md, security.md, ai.md).
 
@@ -55,14 +56,14 @@ Build a generation manifest: read all resources from `aws-design.json` clusters,
 
 > `baseline.tf` is always emitted. It is NOT driven by `aws-design.json` clusters — the resources are workload-independent account controls. The compliance-conditional subset (Config + Security Hub) is emitted within the same file when `design_constraints.compliance.value` contains soc2/pci/hipaa/fedramp. The `aws_budgets_budget` resource reads `estimation-infra.json` to set its `limit_amount`. See Step 1.5 below. Users who want to skip the baseline can delete `terraform/baseline.tf` before `terraform apply`.
 
-**BigQuery / specialist-deferred:** If `aws_service` is **`Deferred — specialist engagement`**, **do not** generate Terraform for that resource (no Glue, Athena, Redshift, or EMR modules from the plugin). Optionally add **`terraform/README-BIGQUERY-DEFERRED.md`** with a short checklist: engage **AWS account team** and/or **data analytics migration partner** before implementing analytics infrastructure.
+**BigQuery / specialist-deferred:** If `aws_service` is **`Deferred — specialist engagement`**, **do not** generate Terraform for that resource (no Glue, Athena, Redshift, or EMR modules from the plugin). Optionally add **`terraform/README-BIGQUERY-DEFERRED.md`** with the checklist in `references/shared/bq-assess-next-step.md` → Terraform note: first assess BigQuery with `bq-assess`, then engage the **AWS account team** and/or a **data analytics migration partner** for what it does not cover, before implementing analytics infrastructure.
 
 ## Step 1: Generate main.tf
 
 **Requirements:**
 
 - **File header comment block (first lines in `main.tf`, before `terraform {`):** Explain that (1) this directory implements the **single** architecture in `aws-design.json`; (2) the migration report’s **Premium / Balanced / Optimized** figures are **three pricing scenarios** from `estimation-infra.json` for that same map — **not** three separate generated stacks; (3) **this Terraform is aligned with the Balanced cost scenario** (default sizing/HA posture used for the middle estimate); (4) **Premium** = higher HA / higher $ model; **Optimized** = cost-optimization assumptions — users must **edit IaC or add modules** to realize those postures. Point readers to `terraform/README.md` and the `migration_summary` output.
-- `terraform` block: `required_version >= 1.5.0`, `hashicorp/aws ~> 5.80`, active S3 backend (see Step 1a below — do NOT comment it out)
+- `terraform` block: `required_version >= 1.5.0`, `hashicorp/aws ~> 5.80` (**`~> 6.71` when any Fargate entry is `ecs_mode: "express"`** — see § Fargate services: Express Mode vs standard), active S3 backend (see Step 1a below — do NOT comment it out)
 - `provider "aws"` block: `region = var.aws_region`, `default_tags` with Project, Environment, ManagedBy, MigrationId
 - Data sources: `aws_caller_identity`, `aws_region`, `aws_availability_zones`
 
@@ -202,6 +203,9 @@ Always emitted. The baseline applies account-wide security controls that should 
    Do NOT emit an NIST 800-53 standards subscription, even if `compliance` contains `hipaa` or `fedramp`. Security Hub does not provide a HIPAA-specific standard; FedRAMP attestation is out-of-band.
 
 7. **Lifecycle rule adjustment.** Omit the `STANDARD_IA` transition block when the resolved retention is less than 90 days. Omit the `GLACIER` transition block when retention is less than 365 days. Both rules apply to both the CloudTrail log bucket and (when emitted) the Config log bucket.
+   Every lifecycle rule must explicitly select its objects: use `filter {}`
+   when the rule covers the whole log bucket. Do not omit both `filter` and
+   `prefix`, which the AWS provider reports as an invalid attribute combination.
 
 8. **Attach inline HCL comments**:
    - On each `aws_account_alternate_contact.*`: a comment pointing at the tfvars fill-once variable (`# set var.operations_email in terraform.tfvars — plan fails until you do`).
@@ -357,9 +361,63 @@ follow the posture the skill returned in Step 3.0):
 | Compute    | Emit Fargate/EKS/ECR per the skill's posture (private subnets, EKS private endpoint, ECR scan-on-push). Populate task CPU/memory and autoscaling from `aws_config`. Apply Graviton/ARM64 wiring from the CPU architecture rule above. **Elastic Beanstalk** (App Engine → EB): emit one `aws_elastic_beanstalk_application` for the app and one `aws_elastic_beanstalk_environment` per `source_service` (from `aws_config`). Resolve `solution_stack_name` with a **Terraform `data` source** (self-updating, needs no generate-time credentials, cannot go stale in the committed file) — do not paste `aws_config.platform` verbatim (it is a human-readable label like `"Python 3.12 running on 64bit Amazon Linux 2023"`): emit `data "aws_elastic_beanstalk_solution_stack" "<svc>" { most_recent = true, name_regex = "64bit Amazon Linux 2023 (.*) running Python 3.12" }` (build `name_regex` from the language + version in `platform`) and reference `.name`. Fallback only if a `data` source can't be used: `aws elasticbeanstalk list-available-solution-stacks` at generate time. Also emit the EB **instance profile** this environment references — `aws_iam_role` (EC2 trust) + `aws_iam_instance_profile` + the managed-policy attachment (`AWSElasticBeanstalkWebTier`, plus `AWSElasticBeanstalkWorkerTier`/`AWSElasticBeanstalkMulticontainerDocker` as the platform needs) — since EB does not auto-create it in Terraform; do not reference an instance profile that no resource emits. Emit `setting` blocks for: `aws:autoscaling:launchconfiguration/IamInstanceProfile` (the instance profile just emitted); `aws:autoscaling:launchconfiguration/SecurityGroups` (an SG for the instances, required when they sit in private subnets); `aws:autoscaling:launchconfiguration/InstanceType` (from `instance_type`); `aws:elasticbeanstalk:environment/EnvironmentType` (from `environment_type`); **when `environment_type == "LoadBalanced"`, also `aws:elasticbeanstalk:environment/LoadBalancerType = application`** (ALB, not the Classic default) plus `aws:autoscaling:asg/MinSize` (from `min_instances`) and `MaxSize` (from `max_instances`); `aws:ec2:vpc/VPCId`, `Subnets`, and `ELBSubnets` — for **LoadBalanced**, instances in private subnets + ALB in public (`ELBScheme` public); for **SingleInstance** (no ALB) put the instance in a **public** subnet with `AssociatePublicIpAddress=true` so it is reachable; and `aws:elasticbeanstalk:application:environment` for env vars. ARM64: pick the `t4g.*` instance type from `aws_config` per the Graviton rule. See `design-refs/elastic-beanstalk.md`. |
 | Monitoring | Emit CloudWatch log groups/dashboard/alarms per the skill's monitoring baseline; source alarm thresholds from `generation-infra.json` success_metrics.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
+For an application-to-database connection, use the application's actual configuration
+contract. Host, port, user and database name must refer to the same database resource;
+use its `db_name` expression, including any name normalization, instead of substituting
+the project label. Pass credentials through a supported secret reference or application
+secret lookup with the required scoped permissions. Do not emit `PLACEHOLDER` or
+`REDACTED` as a database password. Keep unknown inputs explicit in the fill-in checklist
+and required variables rather than describing an unconfigured connection as ready.
+
+Use `password` on `aws_db_instance`, and `master_password` only on
+`aws_rds_cluster`; the AWS provider rejects `master_password` on an instance.
+Prefer the RDS-managed secret when supported, or use one explicit credential
+source for both the database and the application. For a JSON secret containing
+`password`, ECS `DB_PASSWORD` must use its JSON-key selector, for example
+`valueFrom = "${aws_secretsmanager_secret.db_master.arn}:password::"`.
+The bare ARN injects the whole JSON object and breaks database authentication.
+Keep the task execution role's secret-read permission scoped to the same secret.
+### Fargate services: Express Mode vs standard
+
+Branch on each Fargate entry's `aws_config.ecs_mode` (set by Design per `design-refs/compute.md` § ECS Fargate Mode). **Normalize first:** a Fargate entry with no `ecs_mode` key (a design saved before the field existed) is `"standard"` — never an error, never `"express"` — so its task definition, service, and ALB are emitted exactly as before.
+
+- **`"express"`** — emit one `aws_ecs_express_gateway_service` (provider 6.23.0+, `cpu_architecture` 6.71.0+) instead of the `aws_ecs_task_definition` + `aws_ecs_service` + `aws_lb` / target group / listener set. Pass `cluster` (the skill's ECS cluster), `execution_role_arn`, `infrastructure_role_arn` (one IAM role per design, emitted once and shared by every Express service, trusting `ecs.amazonaws.com` with the managed policy `arn:aws:iam::aws:policy/service-role/AmazonECSInfrastructureRoleforExpressGatewayServices` — ALB, target groups, security groups, ACM, and Application Auto Scaling), a `service_name` that includes the sanitized service name (two Express services in one cluster must not request the same ECS service name), `wait_for_steady_state = true`, `cpu` / `memory` (256–4096 units / 512–8192 MiB), `cpu_architecture` from the Graviton block, `primary_container { image, container_port, aws_logs_configuration { log_group }, environment, secret }`, `network_configuration { subnets, security_groups }`, `scaling_target { min_task_count, max_task_count, auto_scaling_metric }` from `desired_count` and the Cloud Run `min_instances` / `max_instances`, and `health_check_path`. **Subnets follow `aws_config.placement`** ([Express Mode network defaults](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html#express-service-network-defaults)): `"public_subnets"` (a public Cloud Run service) → the public subnets, which make Express Mode provision an internet-facing ALB and assign task public IPs; `"private_subnets"` (internal-only ingress) → the private subnets, which give an internal ALB. A public Express service in private subnets would be unreachable, so the public-subnet placement is the one accepted deviation from the `tf-best-practices` private-subnet rule; record it in `generation-warnings.json` (`"<service> — ECS Express Mode places tasks in public subnets to provision an internet-facing ALB"`) and in `terraform/README.md`. Output `ingress_paths[0].endpoint` as the service URL. Do **not** also emit an ALB for this service; Express Mode provisions and shares one (up to 25 services per VPC and scheme). Add `depends_on` to the infrastructure role's policy attachment so deletion does not strand the service in `DRAINING`.
+- **`"standard"`** — emit the existing task definition + `aws_ecs_service` (+ ALB when `compute_shape == "http_service"`, NLB when `tcp_or_grpc_passthrough`, no load balancer for `worker`), with the deployment strategy emitted explicitly from `release_strategy` — the provider defaults to controller `ECS` with a rolling update, so a non-rolling choice must be written, not assumed: `rolling` → no `deployment_controller` block (ECS rolling update); `blue_green` on a load-balanced shape (`compute_shape == "http_service"` or `tcp_or_grpc_passthrough`; CodeDeploy's ECS blue/green needs a target-group pair behind a listener) → `deployment_controller { type = "CODE_DEPLOY" }`, `lifecycle { ignore_changes = [task_definition, load_balancer] }`, a second (green) target group, a test listener, an `aws_codedeploy_app` (`compute_platform = "ECS"`) and `aws_codedeploy_deployment_group` (`deployment_type = "BLUE_GREEN"`, `deployment_option = "WITH_TRAFFIC_CONTROL"`, `target_group_pair_info` with both target groups) with a role attached to `AWSCodeDeployRoleForECS` — never a silent rolling deployment; per-service AWS names (`-<service_sanitized>-tg-green`, CodeDeploy app/group) so two services in one `project_name`/`environment` never request the same name, with the CodeDeploy role emitted once per design; `blue_green` on a `worker` (no inbound load balancer, so no target-group pair or test listener can exist) → rolling update with **no** CodeDeploy resources **plus** a `generation-warnings.json` entry `"<service> is a worker with no load balancer; CodeDeploy blue/green needs a target-group pair, so this service deploys with an ECS rolling update"`, repeated in `terraform/README.md`; `canary` on a standard service (Express Mode ruled out by `ecs_mode_reason`) → rolling update **plus** a `generation-warnings.json` entry `"<service> requested canary releases; Express Mode was not selected (<ecs_mode_reason>), so the standard ECS service deploys with a rolling update"`, repeated in `terraform/README.md`.
+
+**Provider pin when any Fargate entry has `aws_config.ecs_mode: "express"`:** the `terraform` block must pin `hashicorp/aws ~> 6.71` (`aws_ecs_express_gateway_service` exists from provider 6.23.0, its `cpu_architecture` argument from 6.71.0; the current release is 6.72.0). A `~> 5.80` pin can never select a 6.x provider, so `terraform init` would not find the resource. Designs with no Express entry keep the skill's standard pin.
+
+Record the branch taken in `generation-infra.json` per service (`ecs_mode`) so the report and the migration guide can explain why a service got an AWS-provided HTTPS endpoint rather than a hand-built ALB.
+
+For Fargate Linux, select platform version `1.4.0` or later (or `LATEST`) because
+JSON-key injection is not supported on earlier platform versions.
+
+Before claiming Balanced cost alignment, reconcile generated task CPU, memory,
+architecture, desired count, autoscaling minimum, and billable hours against the
+Balanced compute calculation in `estimation-infra.json`. Reconcile database
+class, Multi-AZ, storage, and networking as well. Record the resolved quantities
+and the estimate calculation in `terraform/README.md`. If the chosen design
+requires two tasks and the estimate priced one, preserve the design requirement
+and return to Estimate to reprice it; do not silently lower availability or
+repeat the stale alignment claim. Unresolved sizing differences block a
+cost-aligned completion claim.
+
+For Fargate, consume the selected `aws_config.desired_count` in the ECS service
+and use that same count in the Balanced estimate's compute multiplication.
+Do not independently default the generated service or autoscaling minimum to
+two tasks. If `desired_count` is absent or contradicts the selected availability
+requirement, return to Design/Estimate to resolve and price it before generation.
+
 ## Step 4: Generate outputs.tf
 
 Output identifiers for key resources (VPC ID, database endpoint, ECS cluster name, etc.) plus a **`migration_summary` output** (object) including at minimum:
+
+For each database used by migration scripts, emit separate hostname and port
+outputs sourced from that database resource: `aws_db_instance.<name>.address`
+and `.port` (Aurora `.endpoint` and `.port`). An RDS instance `.endpoint`
+contains `host:port`; do not pass it unchanged to `psql -h` or another hostname
+argument. Emit database-name and username outputs from the same resource, and
+the credential secret ARN without exposing its value. Document these exact
+output names in the generated script input instructions.
 
 | Key                                   | Type / example | Purpose                                                                                                                                                        |
 | ------------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -407,10 +465,14 @@ Verify these quality rules before reporting completion:
 - [ ] `terraform/README.md` exists with cost-tier vs Terraform explanation
 - [ ] `main.tf` begins with the required cost-tier / Balanced alignment comment block
 - [ ] `migration_summary` output includes `aligned_with_estimate_tier` and `cost_scenarios_modeled_in_terraform`
+- [ ] Balanced task count/CPU/memory/architecture and autoscaling minimum agree with the estimate calculation; any mismatch has been repriced before claiming alignment.
+- [ ] RDS instances use `password` or `manage_master_user_password`, never `master_password`; application credentials select the same secret value as the target database.
+- [ ] Database hostname and port outputs are separate, and script input documentation uses their actual output names.
 
 - [ ] `baseline.tf` exists.
 - [ ] `baseline.tf` contains `aws_account_alternate_contact` for each of OPERATIONS, BILLING, SECURITY, plus `aws_iam_account_password_policy`, `aws_s3_account_public_access_block`, `aws_ebs_encryption_by_default`, `aws_cloudtrail`, `aws_guardduty_detector`, `aws_accessanalyzer_analyzer`, `aws_ec2_instance_metadata_defaults`, and `aws_budgets_budget`.
 - [ ] `baseline.tf` contains a `locals` block with `cloudtrail_retention_days` set to a positive integer, and the lifecycle `expiration.days` on `aws_s3_bucket_lifecycle_configuration.cloudtrail_logs` equals `local.cloudtrail_retention_days`.
+- [ ] Every generated log-bucket lifecycle rule contains an explicit `filter {}` (or a scoped filter), rather than omitting both filter and prefix.
 - [ ] `aws_budgets_budget.monthly_spend.limit_amount` equals `max(50, ceil(estimation-infra.json.projected_costs.breakdown.total.mid * 1.2))` as a string.
 - [ ] If `compute.tf` contains any `aws_launch_template`, every such launch template has `metadata_options { http_tokens = "required", http_put_response_hop_limit = 1 }` — this applies unconditionally (the security baseline is always emitted).
 - [ ] Every `aws_ecr_repository` in `compute.tf` has `image_scanning_configuration { scan_on_push = true }`.
@@ -450,6 +512,18 @@ Caller responsibilities specific to this phase (not owned by the skill):
   validate outcome, so a policy failure is never masked by `passed_degraded_offline`.
 - An unresolved `POLICY_FAIL` that the user does not `skip`/`abort` sets top-level
   `status: "policy_failed"` and blocks Phase Completion (see below).
+
+After writing the report, run its deterministic record validator:
+
+```bash
+python3 "$PLUGIN_ROOT/skills/tf-best-practices/scripts/validate-terraform-report.py" \
+  "$MIGRATION_DIR/validation-report.json"
+```
+
+A nonzero result blocks completion. Correct the report to reflect the actual
+commands and outcomes, and fix/recheck any failed Terraform stage; never invent
+a successful check to satisfy the report schema. A skipped or failed Terraform
+validation is not a successful infrastructure validation.
 
 ## Phase Completion
 

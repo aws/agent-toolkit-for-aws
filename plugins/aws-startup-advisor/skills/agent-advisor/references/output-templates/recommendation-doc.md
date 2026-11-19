@@ -42,6 +42,16 @@ blocks themselves, pasted in. Not "see diagram.md": this doc is read on its own.
 
 <eliminated/lower-scored runtimes and why.>
 
+### When to revisit AgentCore (only when design.json lists triggers)
+
+<Include this subsection only for a unit whose design.json `agentcore_revisit_triggers` is
+non-empty; omit it entirely otherwise, and never when the unit runs on AgentCore. One sentence
+saying the recommendation fits what is known about the workload today, then one bullet per
+trigger, quoting its `trigger` text; for a trigger whose `current` is `unknown`, say the question
+was not answered. Do not add triggers the list lacks or claim AgentCore would win: each trigger
+moves AgentCore closer to the recommended runtime and calls for re-running the advisor, nothing
+more.>
+
 ## 6. Comparison
 
 `<relevant rows from the runtime service cards.>`
@@ -63,6 +73,8 @@ State that runnable account access is established only when the live probe passe
 include "see the llm-to-bedrock skill for pricing".>
 
 ## 10. Cost magnitude
+
+<When estimate.json.model_spend_dominates is true, the first sentence of this section is "Model spend dominates: about N% of the estimated monthly cost" (N = 100 × model_share_of_total) and name the token levers from cost-levers.md (model tier routing, prompt caching, batch inference) before the table.>
 
 <Build paths (estimate.json exists): the band + assumptions + "order-of-magnitude" disclaimer; note that per-unit breakdown and cost drivers are detailed in estimate.json.
 Migrate (estimate.json exists): present the per-unit target-state bands + breakdown from estimate.json. ALSO note that precise TCO comparison and current-spend delta are produced by the migration plugins. Do NOT invent a dollar band for anything estimate.json lacks (e.g., if Estimate failed, or for add_capabilities which bypasses Estimate).>

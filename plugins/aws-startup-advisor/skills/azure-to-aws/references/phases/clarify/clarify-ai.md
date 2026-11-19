@@ -44,7 +44,12 @@ models detected, capabilities, integration pattern + SDK, gateway/router, framew
 - **Q17 — Most critical specialized feature.** PROPOSED, default none. → `ai_critical_feature`
   (e.g. `ultra_long_context`, `realtime`, `vision`, none).
 - **Q18 — Usage volume + cost tolerance.** PROPOSED, default `"low"`. → `ai_token_volume`
-  (`low|medium|high|very_high`). Drives the estimate token tiers.
+  (`low|medium|high|very_high`). Drives the estimate token tiers. Before Design,
+  add a full-window `azure-openai-metrics-profile.json` into the same volume sum
+  as the usage-API profiles (`input_tokens + output_tokens` only; do not add
+  `cache_write_tokens`). A `partial_window` metrics profile is not monthly
+  volume. Batch and spillover rows still count in the monthly sum. Name the
+  source `azure-openai-metrics-profile:usage_by_model`.
 - **Q19 — Which model do you use today.** DETECTED from `models[]` when confidence is high, else
   PROPOSED. → `ai_model_baseline`. **Azure catalog:** Azure OpenAI deployments — GPT-4o, GPT-4.1,
   GPT-4.1 mini/nano, o3, o4-mini, GPT-5.x. (No Gemini — azure has no `gemini` source.) If
@@ -61,6 +66,23 @@ models detected, capabilities, integration pattern + SDK, gateway/router, framew
   text-only. → `ai_vision`.
 - **Q21 — Response speed.** PROPOSED, default `"important"`. → `ai_latency`.
 - **Q22 — Task complexity.** PROPOSED, default `"moderate"`. → `ai_complexity`.
+- **Q22b — Mantle-only requirements.** DETECTED from `workloads[].mantle_signals` when present
+  (row `source: "workloads[].mantle_signals"`, user confirms on the sheet), otherwise
+  **ESSENTIAL** (asked in the Gate-2 batch; no default on purpose — the answer decides the
+  endpoint). Four sub-questions (a: asynchronous/background inference; b: provider-run
+  server-side or pre-configured tools incl. web search, hosted MCP servers, code execution,
+  file search — client-side function tools do not count; c: customer-created Projects (OpenAI)
+  / Workspaces (Anthropic); d: strict single-Region processing + which Region). →
+  `ai_constraints.mantle_requirements` (array of `{ workload_id, selector, source, evidence?,
+  region? }`; selector/source vocab as gcp Q22b: `selector` ∈ `background_inference |
+  server_side_tools | web_search | projects | workspaces | in_region_processing | none`, `source`
+  ∈ `detected | user | none`; `region` required for `in_region_processing`). "Use defaults for
+  the rest" writes `[{ "workload_id": "*", "selector": "none", "source": "none" }]` with
+  `chosen_by: "default"`, `source: "default:Q22b"` and the report caveat "Mantle-only
+  requirements were not confirmed by the user; bedrock-runtime assumed". For a workload whose
+  source has no Mantle path (one Design maps to a cross-family `direct` / `converse` / `gpt-oss`
+  target), say up front that a "yes" does not change the endpoint: Design keeps `bedrock-runtime`
+  and records the requirement as a capability gap (`rationale` + `capability_gaps[]`).
 
 ### Category G — Agentic (fires ONLY when `agentic_profile.is_agentic == true`)
 
@@ -168,7 +190,8 @@ and is REQUIRED on `DETECTED` applies here the same as the infra flow.
         "value": false,
         "default": false
       }
-    }
+    },
+    "mantle_requirements": { "disposition": "ESSENTIAL", "value": [], "default": [] } // DETECTED with source "workloads[].mantle_signals" when Discover found signals; value = [{ workload_id, selector, source, evidence?, region? }]
   },
   "workloads": [] // NOT a row — the confirmed array itself (persist rule above), same as clarify-ai-only.md's workloads[]
 }
@@ -199,6 +222,7 @@ and is REQUIRED on `DETECTED` applies here the same as the infra flow.
 | -------------------------------------------------------------------------------------- | --------------------------------------------------- |
 | `workloads[]`, `ai_priority`, `ai_critical_feature`, `ai_latency`, `ai_model_baseline` | `design-ai.md` model selection + override hierarchy |
 | `ai_constraints.agentic.migration_approach`                                            | `design-ai.md` Step 0.6 agentic routing             |
+| `ai_constraints.mantle_requirements`                                                   | `design-ai.md` Step 0.8 endpoint selection          |
 | `ai_token_volume`, `ai_monthly_spend`                                                  | `estimate-ai.md` token tiers + ROI                  |
 | `startup_program_status`, `ai_monthly_spend`                                           | `generate-artifacts-ai.md` STARTUP_PROGRAMS.md      |
 

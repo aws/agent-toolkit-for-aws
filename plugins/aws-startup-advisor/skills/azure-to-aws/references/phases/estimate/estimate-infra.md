@@ -254,7 +254,7 @@ Rates come from the named keys in
 | **Elastic Beanstalk**                                           | `ec2.instances[instance_type]` × 730 × running count + `alb.monthly_fixed` + an LCU estimate (web only) + `ebs.gp3_per_gb_month` × root volume × count. EB's own service fee is `$0`                                                                                                                                                                                                                             | `instance_type`, `instance_count`, `min_instances`, `cpu_architecture`                |
 | **EC2**                                                         | `ec2.instances[instance_type]` × 730 × count + root volume via `ebs.gp3_per_gb_month`. **Windows: see the `partial` rule below**                                                                                                                                                                                                                                                                                 | `instance_type`, `instance_count`, `operating_system`, `license_model`, `root_volume` |
 | **RDS PostgreSQL**                                              | `rds_postgresql.instances[instance_class]` × 730 + `allocated_storage_gib` × `rds_postgresql.storage_per_gb_month`. That rate is `baked_in` Multi-AZ — do **not** double it for `multi_az`                                                                                                                                                                                                                       | `instance_class`, `allocated_storage_gib`, `multi_az`                                 |
-| **ElastiCache Redis**                                           | `elasticache.nodes[node_type]` × 730 × `num_cache_nodes`, ×2 when `multi_az` (`multiplier_x2`)                                                                                                                                                                                                                                                                                                                   | `node_type`, `num_cache_nodes`                                                        |
+| **ElastiCache Valkey** (and ElastiCache Redis OSS: × `elasticache.redis_oss_multiplier`) | `elasticache.nodes[node_type]` × 730 × `num_cache_nodes`, ×2 when `multi_az` (`multiplier_x2`)                                                                                                                                                                                                                                                                                                                   | `node_type`, `num_cache_nodes`                                                        |
 | **MSK**                                                         | `msk.brokers[broker_instance_type]` × 730 × `number_of_broker_nodes` + storage × `msk.storage_per_gb_month`. `intrinsic` multi-AZ, no multiplier                                                                                                                                                                                                                                                                 | `broker_instance_type`, `number_of_broker_nodes`                                      |
 | **EKS**                                                         | `eks.control_plane_monthly` + `eks.node_rates_monthly[type]` × node count. Pods cost `$0` — compute is billed via the nodes. ALB and NAT are their own lines and are not re-added here                                                                                                                                                                                                                           | `node_groups[].instance_types`, `desired_size`                                        |
 | **ALB**                                                         | `alb.monthly_fixed` + `alb.per_lcu_hour` × 730 × an LCU estimate                                                                                                                                                                                                                                                                                                                                                 | one per web service with a load balancer                                              |
@@ -342,6 +342,22 @@ each:
    **floors**."
 4. Add the `service_id` to `pricing_source.services_with_missing_fallback[]`.
 
+**Azure Files (NFS) → Amazon EFS and Azure Container Registry → Amazon ECR stay excluded
+lines here, whatever the pricing file holds.** The shared pricing file carries `efs` and
+`ecr` rate rows that only `render-to-aws` reads. This skill has not adopted them: its
+goldens, its sizing and its Azure-specific quantities (capacity, transfer, image
+storage) are not defined for those rows. So a design line whose `aws_service` is
+`EFS` or `ECR` is treated like the absent services above: apply the four steps,
+with `pricing_source: "unavailable"` and `exclusion_reason: "no_rate"`, and
+never price it from those rows. Two differences from the absent services. In step 3, use
+this warning instead: "Pricing not adopted for `<service_id>` (`<aws_service>`) —
+the shared pricing file has a rate row, but this skill has not adopted it. This line
+is excluded from the totals, so both totals are **floors**." Step 4 still applies,
+because this skill has no usable rate for the line. Rung 1 of `pricing-mode.md` ("Service found in
+the pricing file") does not apply to them. Adopting the rows is a deliberate change
+to this file and to the Azure goldens, not a side effect of the shared file gaining
+a section.
+
 **Never substitute a neighbouring rate.** `db.t3.medium` on a DocumentDB line is
 not an `rds_postgresql` class: different service, and those rates are baked-in
 Multi-AZ, so the wrong table would be wrong twice over. A near-miss rate is
@@ -422,7 +438,7 @@ A line leaves the totals for exactly one recorded reason:
 
 | `exclusion_reason` | Meaning                                                                                 | Example on a real estate                                                              |
 | ------------------ | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `no_rate`          | The rate row does not exist, here or in the `gcp-to-aws` cache, and no formula constant carries it | DocumentDB, FSx for Windows                                                 |
+| `no_rate`          | The rate row does not exist, here or in the `gcp-to-aws` cache, and no formula constant carries it; or the row exists but this skill has not adopted it (EFS, ECR) | DocumentDB, FSx for Windows                                                 |
 | `partial_rate`     | The base rate resolved but a required rate COMPONENT did not                            | A Windows instance with no licence adder                                              |
 | `no_quantity`      | Every rate resolved, but the design and the IaC supply no quantity to multiply          | Lambda, whose cost is invocation-driven and whose invocation count IaC never declares |
 
@@ -801,7 +817,7 @@ classify from the largest tier down, first match wins. Inputs:
 | Service count | `aws-design.json` `services[]` length                                                                  |
 | Cluster count | `aws-design.json` `clusters[]` length                                                                  |
 | Monthly spend | the right-sized total                                                                                  |
-| Has databases | any `aws_service` in {RDS PostgreSQL, DocumentDB, ElastiCache Redis, MSK, FSx for Windows File Server} |
+| Has databases | any `aws_service` in {RDS PostgreSQL, DocumentDB, ElastiCache Valkey, ElastiCache Redis, MSK, FSx for Windows File Server} |
 | Availability  | `preferences.data.availability`                                                                        |
 | Compliance    | `preferences.design_constraints.compliance` (array; see below)                                         |
 | Multi-region  | more than one distinct `aws_config.region`                                                             |
@@ -937,7 +953,7 @@ terms: add a row here first, then use it.**
 
 | Code                                | Fires when                                                                                                                          |
 | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `pricing_unavailable`               | A line's rate row does not exist and no formula constant carries it — `exclusion_reason: no_rate`                                   |
+| `pricing_unavailable`               | A line's rate row does not exist and no formula constant carries it, or the row exists but this skill has not adopted it (EFS, ECR) — `exclusion_reason: no_rate`                                   |
 | `pricing_partial`                   | A base rate resolved but a required component did not — `exclusion_reason: partial_rate`                                            |
 | `quantity_unavailable`              | Every rate resolved but no quantity exists to multiply — `exclusion_reason: no_quantity`                                            |
 | `rate_configuration_mismatch`       | The rate describes a different configuration than the design (single-AZ priced from a Multi-AZ table)                               |
@@ -962,3 +978,7 @@ in this file before emitting it** — an improvised code is indistinguishable fr
 typo to whatever groups the report.
 
 When Parts 1–8 are complete, control passes to `estimate-assemble.md`.
+
+## ECS Express Mode pricing note
+
+A Fargate entry with `aws_config.ecs_mode: "express"` is priced like a standard Fargate service (task vCPU/GB-hours) plus its share of an ALB; Express Mode has no service charge. Its ALB is shared by up to 25 Express services per compatible group, and Express Mode provisions another ALB once a group exceeds 25 ([resource sharing](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html#express-service-resource-sharing)). Group Express entries by **VPC and ALB scheme** (public-subnet placement → `internet-facing`, private-subnet placement → `internal`; never combine the two in one group), then emit **`ceil(count / 25)`** `alb.monthly_fixed` lines per group (1–25 services → 1, 26–50 → 2, 51 → 3) as one `alb_express_shared` line item with `quantity = ceil(count / 25)`, and attribute LCU estimates per service. Do not emit one ALB fixed charge per Express service, and do not emit a single flat charge regardless of count. Standard-mode HTTP services (including any Fargate entry with no `ecs_mode` key, which is `standard`) keep one ALB line each and never join an Express group.

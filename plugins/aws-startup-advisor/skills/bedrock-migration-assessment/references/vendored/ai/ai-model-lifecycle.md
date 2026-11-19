@@ -1,0 +1,272 @@
+# Bedrock Model Lifecycle Awareness
+
+> Canonical Bedrock model Active/Legacy/EOL registry and the 90-day exclusion
+> rule. Source-cloud agnostic: it is a property of Bedrock's model catalog.
+> Vendored into each consuming skill as
+> `references/vendored/ai/ai-model-lifecycle.md`. Edit HERE, then copy over
+> every vendored copy in the same change. Drift between the copies (or a
+> missing / malformed freshness contract below) fails
+> `python3 plugins/aws-startup-advisor/tools/model-staleness.py` regardless of
+> flags. The same check runs in CI only on pull requests that touch
+> `plugins/aws-startup-advisor/`, with `--strict`, so a stale **Last updated**
+> date fails that pull request rather than a scheduled job.
+
+<!-- freshness-contract: enforced by plugins/aws-startup-advisor/tools/model-staleness.py -->
+
+**Last updated:** 2026-11-09
+
+2026-11-09 refresh: the Legacy/EOL table was re-verified against the legacy lifecycle page and model cards — Gemma 3 4B/12B/27B and MiniMax M2/M2.1 added as Legacy (EOL 2027-03-30), Nova 2 Pro removed as a named replacement (it is a gated preview with no model card, never a target), and the Gemini 3.x Developer-API routings (3.5 Flash → 3.6 Flash, 3.7 Flash → 3.8 Flash) added to the source-model section. The Gemini 2.0 and 2.5 source-model retirement section was added 2026-11-07 (Google pages read 2026-11-08 UTC); existing Bedrock model rows retain their verification dates.
+
+**Staleness window:** 45 days
+
+References:
+
+- [Models launched on or after 2026-09-07](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle.html)
+- [Models launched before 2026-09-07](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html)
+
+Models on Bedrock move through three states: **Active** → **Legacy** → **End-of-Life (EOL)**. After EOL, the model is unavailable and requests fail.
+
+The notice period a model gets depends on when it launched:
+
+- Models launched **before 2026-09-07** follow the original policy: at least **6 months** in Legacy before EOL. For EOL dates after February 1, 2026, a **public extended access** period begins at least 3 months into the Legacy state, and pricing may increase at the model provider's discretion.
+- Models launched **on or after 2026-09-07** are governed by their model card. Each card declares an `EOL no sooner than` date and a Legacy period that is either 6 months or **45 days**. The actual EOL date appears on the card once Legacy begins.
+
+**Do not apply the 6-month assumption to a model launched on or after 2026-09-07** — a 45-day Legacy period leaves less time than a typical migration takes to reach production.
+
+---
+
+## Lifecycle States (Not the Same Thing)
+
+| State      | What it means                                                                                                                                                                                                               | Usable?                |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| **Active** | Provider is actively maintaining the model. Full feature access.                                                                                                                                                            | Yes                    |
+| **Legacy** | Deprecated. Still works for existing users, but new Provisioned Throughput cannot be created, new customers cannot onboard, pricing may increase during public extended access, and the model is on a countdown to removal. | Yes, with restrictions |
+| **EOL**    | Model is removed. All inference requests fail.                                                                                                                                                                              | **No**                 |
+
+**Legacy does not mean unavailable** — it means the model still functions today but has a firm expiration date. EOL means unavailable.
+
+---
+
+## Selection Rules
+
+### Rule 0: Capability constraints first
+
+Before applying tier or priority selection, check the Capability Constraints table below: a candidate that lacks a capability the workload requires (forced tool choice, image or audio input, image output, structured outputs, or a sufficient context window) is not eligible regardless of price or tier.
+
+### Rule 1: Active models only for new migrations
+
+**New migrations must target Active models only.** Do not recommend a Legacy or EOL model as the primary selection for any new migration, even if it is cheaper.
+
+### Rule 2: 90-day exclusion zone
+
+**Models within 90 days of their EOL date must be excluded from all recommendation and comparison tables.** A migration takes weeks or months to plan, test, and deploy. Recommending a model that will be unavailable before the migration is production-ready is harmful.
+
+- **Excluded** = do not list in "Best Bedrock Match" columns, tiered strategy tables, or `recommended_model` / `backup_model` fields.
+- These models may still appear in the pricing cache (for reference by users already on them) but must be marked `excluded (EOL YYYY-MM-DD)` in the Status column.
+
+### Rule 3: Legacy models outside the 90-day zone
+
+Legacy models with >90 days until EOL may appear in comparison tables **with annotation** (`Legacy — EOL YYYY-MM-DD`), but never as `recommended_model` or "Best Bedrock Match" when an Active alternative exists.
+
+### Applying the rules
+
+On each run, compute `days_to_eol = EOL date − today` for every model in the Legacy/EOL table below. Then:
+
+1. `days_to_eol ≤ 0` → EOL. Remove from all tables.
+2. `0 < days_to_eol ≤ 90` → **Exclusion zone.** Remove from recommendation/comparison tables. Mark `excluded` in pricing cache.
+3. `days_to_eol > 90` and Legacy → Annotate, never recommend as primary.
+4. Active → No restrictions.
+
+---
+
+## GPT-6 Astra — Active (verified September 9, 2026)
+
+The [Astra model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html)
+lists launch **September 8, 2026**, lifecycle **Active**, and no scheduled EOL date. Its EOL is
+**no sooner than September 8, 2027**, with a Legacy period of at least six months. The earliest
+possible EOL is not an announced retirement date. Existing GPT-5.x entries are not superseded.
+See `openai-on-bedrock.md` for access paths, regions, and pricing.
+
+## Capability Constraints (verified October 26, 2026)
+
+Per-model facts read from each Bedrock model card on 2026-10-26 (Model Details, Input/Output Modalities, and the `bedrock-runtime` Features table). `yes` / `no` reflect what the card states; `_unverified_` means the card does not state it (same convention as the `_unverified_` batch cells in `bedrock-pricing-cache.md`). Values are facts only — they say nothing about which model a skill should pick; that is decided by the consuming skill's Clarify answers and design rules.
+
+| Model             | Model ID                                   | Lifecycle                                                                     | Context window | Max output | Forced `tool_choice` (`any` / named tool) | Image input | Image output | Audio input | Structured outputs | Source                                                                                                                                 |
+| ----------------- | ------------------------------------------ | ----------------------------------------------------------------------------- | -------------- | ---------- | ----------------------------------------- | ----------- | ------------ | ----------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude Sonnet 5.5 | `anthropic.claude-sonnet-5-5` ¹            | Active (launched 2026-09-28; EOL no sooner than 2027-09-28)                   | 1M             | 128K       | no (`auto` / `none` only)                 | yes         | no           | no          | yes                | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5-5.html), verified 2026-10-26   |
+| Claude Sonnet 5   | `anthropic.claude-sonnet-5` ²              | Active (launched 2026-06-30; EOL no sooner than 2027-06-30)                   | 1M             | 128K       | _unverified_ ⁵                            | yes         | no           | no          | yes                | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5.html), verified 2026-10-26     |
+| Claude Haiku 4.5  | `anthropic.claude-haiku-4-5-20251001-v1:0` ³ | Active (launched 2025-10-16; card: EOL no sooner than 2026-10-16, Model EOL date N/A) ⁷ | 200K           | 64K        | _unverified_ ⁶                            | yes         | no           | no          | yes                | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-4-5.html), verified 2026-10-26    |
+| Claude Haiku 5.5  | `anthropic.claude-haiku-5-5`               | Active (launched 2026-10-07; EOL no sooner than 2027-10-07)                   | 1M             | 128K       | _unverified_ ⁶                            | yes         | no           | no          | yes                | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-5-5.html), verified 2026-10-26    |
+| Claude Opus 5.5   | `anthropic.claude-opus-5-5`                | Active (launched 2026-09-22; EOL no sooner than 2027-09-22)                   | 1M             | 128K       | no (`auto` / `none` only)                 | yes         | no           | no          | yes                | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html), verified 2026-10-26     |
+| Nova Pro          | `amazon.nova-pro-v1:0`                     | Active (launched 2024-12-05) ⁷                                                | 300K           | 10K        | _unverified_ ⁵                            | yes         | no           | no          | no                 | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-pro.html), verified 2026-10-26               |
+| Nova Lite         | `amazon.nova-lite-v1:0`                    | Active (launched 2024-12-05) ⁷                                                | 300K           | 10K        | yes ⁸                                     | yes         | no           | no          | no                 | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-lite.html), verified 2026-10-26              |
+| Nova Micro        | `amazon.nova-micro-v1:0`                   | Active (launched 2024-12-05) ⁷                                                | 128K           | 10K        | yes ⁸                                     | no          | no           | no          | no                 | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-micro.html), verified 2026-10-26             |
+| GPT-6 Luna        | `openai.gpt-6-luna` ⁴                      | Active (launched 2026-09-22; EOL no sooner than 2027-09-22)                   | 1.05M ⁹        | 128K       | _unverified_ ⁵                            | yes         | no           | no          | yes                | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html), verified 2026-10-26             |
+| GPT-6.1 Terra     | `openai.gpt-6.1-terra` ¹⁰                  | Active (launched 2026-10-26; EOL no sooner than 2027-10-26)                   | 1.05M ⁹        | 128K       | _unverified_ ⁵                            | yes         | no           | no          | yes ¹⁰             | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-terra.html), verified 2026-11-02          |
+
+Table notes (all from the cited cards unless stated):
+
+1. Sonnet 5.5 inference profiles on `bedrock-runtime`: Geo `us.` / `eu.` / `au.`, Global `global.`; the bare ID is also the `bedrock-mantle` ID.
+2. Sonnet 5 inference profiles: Geo `us.` / `eu.` / `au.` / `in.`, Global `global.`.
+3. Haiku 4.5 on `bedrock-runtime` requires a Geo (`us.` / `eu.` / `au.` / `jp.` / `in.`) or Global (`global.`) inference-profile prefix on this dated ID — the card states the bare ID is not supported for on-demand throughput there; `bedrock-mantle` uses `anthropic.claude-haiku-4-5`.
+4. GPT-6 Luna on `bedrock-runtime` requires `us.openai.gpt-6-luna` or `global.openai.gpt-6-luna`; the bare ID is the `bedrock-mantle` ID. Converse accepts `text` and `image` user content blocks only (no `document`).
+5. The card's `bedrock-runtime` Features table has no client-side tool calling entry, so forced `tool_choice` is not stated either way.
+6. The card lists client-side tool calling without the `auto` / `none`-only restriction that the Sonnet 5.5 and Opus 5.5 cards carry, but does not state `any` / named-tool support explicitly.
+7. Launched before 2026-09-07, so the pre-policy-change [lifecycle page](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html) is authoritative; none of these models appears in its table as of 2026-10-26 (the Haiku 4.5 card's "EOL no sooner than" date has passed, but the card still reads Active with no EOL date set).
+8. Card lists client-side tool calling, and the Converse [`ToolChoice`](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ToolChoice.html) reference states the `tool` (named-tool) member is supported by Amazon Nova models.
+9. 1,050,000-token window; the card prices requests above 272K input tokens at long-context rates (see `bedrock-pricing-cache.md`).
+
+10. GPT-6.1 Terra uses the bare ID on Mantle (us-east-1 only), or `us.openai.gpt-6.1-terra` / `global.openai.gpt-6.1-terra` on runtime. Guardrails and application inference profiles are Converse-only. Converse accepts text/image user content, not documents or images in tool results; documents require Responses `input_file`. Runtime JSON Schema outputs require the model card's API-specific configuration; Converse also needs `additionalModelRequestFields.text.format.strict: true`. The card states a Legacy period of at least 6 months.
+
+## Legacy / EOL Models (as of November 9, 2026)
+
+For models launched before 2026-09-07, the [legacy lifecycle table](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html) is authoritative. For models launched on or after that date, the model card and the runtime `modelLifecycle.status` field are authoritative — they will not appear in the table below. The table captures pre-policy-change models referenced elsewhere in this plugin (plus Claude Sonnet 4.5, which the legacy page lists with a dated ID). **Recompute the Status column on each run** using `days_to_eol = EOL date − today`.
+
+| Model              | Model ID                                    | EOL Date   | Days to EOL | Status       | Active Replacement                                      |
+| ------------------ | ------------------------------------------- | ---------- | ----------- | ------------ | ------------------------------------------------------- |
+| Jamba 1.5 Large    | `ai21.jamba-1-5-large-v1:0`                 | 2026-11-26 | 17          | **excluded** | —                                                       |
+| Jamba 1.5 Mini     | `ai21.jamba-1-5-mini-v1:0`                  | 2026-11-26 | 17          | **excluded** | —                                                       |
+| Marengo Embed v2.7 | `twelvelabs.marengo-embed-2-7-v1:0`         | 2026-11-30 | 21          | **excluded** | Marengo Embed 3.0 (Active outside `ap-northeast-2`; verify target region) |
+| Claude Opus 4.1    | `anthropic.claude-opus-4-1-20250805-v1:0`   | 2027-01-08 | 60          | **excluded** | Claude Opus 5.5; Opus 4.6 for Batch                     |
+| Llama 4 Maverick   | `meta.llama4-maverick-17b-instruct-v1:0`    | 2027-03-30 | 141         | legacy       | Nova Lite / Nova Pro; Claude Haiku 4.5 / Sonnet 5       |
+| Llama 4 Scout      | `meta.llama4-scout-17b-instruct-v1:0`       | 2027-03-30 | 141         | legacy       | Nova Micro / Nova Lite; Claude Haiku 4.5                |
+| Llama 3.3 70B      | `meta.llama3-3-70b-instruct-v1:0`           | 2027-03-30 | 141         | legacy       | Nova Lite / Nova Pro; Claude Haiku 4.5 / Sonnet 5       |
+| DeepSeek-R1        | `deepseek.r1-v1:0`                          | 2027-03-30 | 141         | legacy       | Claude Opus 5.5 (reasoning); Nova 2 Lite for cost       |
+| Gemma 3 4B IT      | `google.gemma-3-4b-it`                      | 2027-03-30 | 141         | legacy       | Gemma 4 E2B (Mantle only); Nova Micro                   |
+| Gemma 3 12B IT     | `google.gemma-3-12b-it`                     | 2027-03-30 | 141         | legacy       | Gemma 4 26B-A4B (Mantle only); Nova Lite                |
+| Gemma 3 27B IT     | `google.gemma-3-27b-it`                     | 2027-03-30 | 141         | legacy       | Gemma 4 31B (Mantle only); Nova 2 Lite                  |
+| MiniMax M2         | `minimax.minimax-m2`                        | 2027-03-30 | 141         | legacy       | MiniMax M2.5 (`minimax.minimax-m2.5`)                   |
+| MiniMax M2.1       | `minimax.minimax-m2.1`                      | 2027-03-30 | 141         | legacy       | MiniMax M2.5 (`minimax.minimax-m2.5`)                   |
+| DeepSeek-V3.1      | `deepseek.v3-v1:0` / `deepseek.v3.1`        | 2027-03-30 | 141         | legacy       | DeepSeek V3.2 (`deepseek.v3.2`); else gpt-oss-120b / Sonnet 5 |
+| Claude Sonnet 4.5  | `anthropic.claude-sonnet-4-5-20250929-v1:0` | 2027-04-08 | 150         | legacy       | Claude Sonnet 5 / Sonnet 4.6                            |
+
+**Notes (as of Nov 9, 2026):** Verified against the [legacy lifecycle page](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html) and the Gemma 3 / MiniMax model cards (Legacy since 2026-09-30, EOL 2027-03-30). The AWS page also lists Legacy rows this registry does not price (Devstral 2, Mistral 7B, Mixtral 8x7B, Voxtral, Kimi K2 Thinking, Nemotron Nano, Qwen3 Coder, GLM 4.7, Palmyra X4/X5, Pegasus 1.2, and region-scoped Claude 3.x rows); if a candidate is not in this table, read its card before recommending it. **Exclusion zone:** Jamba 1.5 Large / Mini, Marengo Embed v2.7, and Claude Opus 4.1 — omit from recommendation and comparison tables. Jamba is in public extended access (pricing may rise). **New Legacy rows this refresh** (still >90 days — annotate, never primary when an Active alternative exists): Gemma 3 4B / 12B / 27B and MiniMax M2 / M2.1. **Legacy rows carried over from 2026-10-26**: Llama 4 Maverick / Scout, Llama 3.3 70B, DeepSeek-R1 / V3.1, Claude Sonnet 4.5. Mapping guides that still list Llama 4 or DeepSeek-R1 under "Best Bedrock Match" must prefer the Active Replacement column above for new migrations. Marengo Embed 3.0 remains the Active replacement for Marengo Embed v2.7 in supported non-Seoul Regions (including the skills' default `us-east-1`); its [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-twelvelabs-marengo-embed-3-0.html) states **“Legacy in ap-northeast-2; Active in other Regions,”** and the [legacy lifecycle page](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html) lists the March 22, 2027 EOL only for `ap-northeast-2`. Do not treat Marengo 3.0 as globally Legacy — limit the Legacy/EOL warning to Seoul and verify the migration's target region before recommending it. TwelveLabs Pegasus is also Legacy on the AWS page (EOL 2027-03-22) but is not a recommendation default in this plugin, so it stays out of the table. Claude Sonnet 4 reached EOL on 2026-10-14 and moved to Removed.
+
+**Removed (past EOL as of Oct 26, 2026):**
+
+- Claude Sonnet 4 (`anthropic.claude-sonnet-4-20250514-v1:0`) — EOL 2026-10-14 (replacement: Claude Sonnet 5 / 4.6)
+- Nova Canvas v1 (`amazon.nova-canvas-v1:0`) — EOL 2026-09-30 (replacement: Stability AI; see the image-generation note)
+- Nova Reel v1 (`amazon.nova-reel-v1:0` / `amazon.nova-reel-v1:1`) — EOL 2026-09-30 (no Active replacement in this registry)
+- Titan Image Generator v2 (`amazon.titan-image-generator-v2:0`) — EOL 2026-06-30
+- Llama 3.2 all sizes (`meta.llama3-2-*-instruct-v1:0`) — EOL 2026-07-07
+- Llama 3.1 405B Instruct (`meta.llama3-1-405b-instruct-v1:0`) — EOL 2026-07-07
+- Claude 3 Sonnet (`anthropic.claude-3-sonnet-20240229-v1:0`) — EOL 2026-07-30
+- Claude 3.5 Sonnet v1 (`anthropic.claude-3-5-sonnet-20240620-v1:0`) — EOL 2026-07-30
+- Claude 3.5 Sonnet v2 (`anthropic.claude-3-5-sonnet-20241022-v2:0`) — EOL 2026-07-30
+- Command R / R+ (`cohere.command-r-v1:0` / `cohere.command-r-plus-v1:0`) — EOL 2026-08-19
+- Claude 3 Haiku (`anthropic.claude-3-haiku-20240307-v1:0`) — EOL 2026-09-10 (replacement: Claude Haiku 4.5)
+- Nova Premier v1 (`amazon.nova-premier-v1:0`) — EOL 2026-09-14 (replacement: Claude Opus 5.5 for reasoning, Nova 2 Lite for cost; Nova 2 Pro is a gated preview and not a target)
+- Nova Sonic v1 (`amazon.nova-sonic-v1:0`) — EOL 2026-09-14 (replacement: Nova 2 Sonic)
+
+> **AWS page lag:** The legacy lifecycle page may still list region-specific rows whose published EOL date has already passed in other Regions, or retain past-EOL models in the live table briefly. This file treats the **EOL date as authoritative** for the Regions this plugin estimates against and keeps past-EOL models in Removed rather than the live table, so users already on them still see a warning. Never recommend or invoke a model listed in Removed.
+
+**Status key:** `excluded` = ≤90 days to EOL, must not appear in any recommendation. `legacy` = >90 days to EOL, annotate but do not recommend as primary.
+
+**⚠️ Image generation — Active successor is Stability AI:** Nova Canvas v1 is past EOL (2026-09-30) and listed under Removed. Inference requests fail, so it must not appear in recommendation or comparison tables. The Active image generation models on Bedrock are **Stability AI** models:
+
+| Model                      | Model ID                            | Pricing       | Tier     | Use case                              |
+| -------------------------- | ----------------------------------- | ------------- | -------- | ------------------------------------- |
+| Stable Image Ultra         | `stability.stable-image-ultra-v1:1` | ~$0.08/image  | premium  | Photorealistic, high-end visuals      |
+| Stable Diffusion 3.5 Large | `stability.sd3-5-large-v1:0`        | ~$0.065/image | flagship | High volume creative assets           |
+| Stable Image Core          | `stability.stable-image-core-v1:1`  | ~$0.04/image  | fast     | Rapid, affordable generation at scale |
+
+When `image_generation` capability is detected:
+
+1. Recommend **Stability AI** models as the primary Active target (not Nova Canvas).
+2. Note the pricing model difference: Stability AI charges **per image**, not per token. Direct cost comparison with source provider (DALL-E, Imagen) requires converting to per-image equivalents.
+3. If the user's source workload is DALL-E or Imagen, map to Stable Image Ultra (quality-first) or Stable Image Core (cost-first) based on `quality_vs_cost` preference in `preferences.json`.
+4. Nova Canvas is past EOL and must not appear at all — not as `recommended_model`, and not as a Legacy fallback annotation. Nova Reel v1 (video) is also past EOL and has no Active replacement in this registry; do not recommend it.
+
+---
+
+## Source-Model Retirements — Gemini 2.0 and 2.5, plus 3.x Flash routing (verified November 9, 2026)
+
+The Gemini 2.0 and 2.5 generations are retired on the source side. These are **source** models, not Bedrock targets: scanners, fixtures, and discovery docs must keep recognizing the ids because customer code still contains them. Two separate rules follow from a retirement, and this section keeps them apart:
+
+1. **Target eligibility and current-recommendation tables.** No 2.0 or 2.5 model appears as a current model in a recommendation, live-tier, or cost-comparison table. Mapping guides keep 2.0 and 2.5 rows only in their legacy-source tables so a customer still on one gets a Bedrock mapping.
+2. **Source baseline pricing** — what the customer actually pays today. This is decided by the serving API and the date, per the "Source baseline by serving API" list below, not by whether the model is retired somewhere. A retirement on Vertex AI does not change what a Gemini Developer API customer is billed.
+
+Status values use the pricing-cache enum below, computed with `days_to_eol` against the earliest hard cutoff.
+
+Sources, read 2026-11-08 and re-read 2026-11-09: the [Vertex AI / Gemini Enterprise Agent Platform model versions page](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions) and the [Gemini Developer API deprecations page](https://aistudio.google.com/docs/deprecations). Prices in the mapping guides for the replacement models come from the [Gemini Developer API pricing page](https://aistudio.google.com/docs/pricing), read the same day.
+
+| Source model                                   | Vertex AI retirement | Gemini Developer API shutdown                                                            | Status                      | Google's named replacement                                                             | Bedrock mapping (see `ai-gemini-to-bedrock.md`) |
+| ---------------------------------------------- | -------------------- | ---------------------------------------------------------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Gemini 3.7 Flash (`gemini-3.7-flash`)          | 2027-01-28           | Removed from AI Studio; the endpoint stays up and auto-routes to `gemini-3.8-flash`      | `excluded (EOL 2027-01-28)` on Vertex AI (80 days); routed on the Developer API | `gemini-3.8-flash`                                | Nova Lite; Nova Pro (use the 3.8 Flash rows)     |
+| Gemini 3.6 Flash (`gemini-3.6-flash`)          | 2026-11-19           | Still served ("previous generation Flash", $0.75 / $3.75 through 2026-12-31, $1.50 / $7.50 from 2027-01-01) | `excluded (EOL 2026-11-19)` on Vertex AI; `active` on the Developer API | `gemini-3.8-flash`                                | Nova Lite; Nova Pro (use the 3.8 Flash rows)     |
+| Gemini 3.5 Flash (`gemini-3.5-flash`)          | 2027-05-19 or later (GA) | Removed from AI Studio; the endpoint stays up and auto-routes to `gemini-3.6-flash`, billed at 3.6 Flash's rate | `active` on Vertex AI; routed on the Developer API | `gemini-3.8-flash` (Google's upgrade for 3.5 / 3.6 / 3.7 Flash) | Nova Lite; Claude Sonnet 5 when agentic reliability matters |
+| Gemini 2.5 Pro (`gemini-2.5-pro`)              | 2026-10-20 (passed)  | 2026-12-01 — hidden in AI Studio, API limited to existing users, then auto-routes to `gemini-3.8-flash` | `excluded (EOL 2026-12-01)` | `gemini-3.8-flash` or `gemini-3.5-flash` (Vertex); `gemini-3.8-flash` (Developer API) | Claude Sonnet 5; Nova Pro for cost               |
+| Gemini 2.5 Flash (`gemini-2.5-flash`)          | 2026-10-20 (passed)  | 2026-12-01 — hidden in AI Studio, API limited to existing users, then auto-routes to `gemini-3.5-flash-lite` | `excluded (EOL 2026-12-01)` | `gemini-3.8-flash` or `gemini-3.5-flash-lite`                                          | Nova Lite; Claude Sonnet 5 when thinking mode is required |
+| Gemini 2.5 Flash-Lite (`gemini-2.5-flash-lite`) | 2026-10-20 (passed)  | **Not deprecated** — no shutdown date announced; still served to Developer API users     | `excluded (EOL 2026-10-20)` on Vertex AI; `active` on the Developer API only | `gemini-3.8-flash`, `gemini-3.5-flash-lite`, or Gemma 4 (Vertex) | Nova Micro / Nova Lite                           |
+| Gemini 2.0 Flash (`gemini-2.0-flash`, `gemini-2.0-flash-001`) | 2026-06-01 (passed) | 2026-06-01 (passed) — listed under Deprecated models with a shutdown date, no auto-routing announced | `excluded (EOL 2026-06-01)` | `gemini-3.5-flash-lite` (Vertex); `gemini-3.6-flash` (Developer API — itself retired on Vertex AI 2026-11-19, upgrade `gemini-3.8-flash`) | Nova Micro; Claude Haiku 5.5 when quality matters more than cost |
+| Gemini 2.0 Flash-Lite (`gemini-2.0-flash-lite`, `gemini-2.0-flash-lite-001`) | 2026-06-01 (passed) | 2026-06-01 (passed) — listed under Deprecated models with a shutdown date, no auto-routing announced | `excluded (EOL 2026-06-01)` | `gemini-3.5-flash-lite` (Vertex); `gemini-3.1-flash-lite` (Developer API)               | Nova Micro / Nova Lite                           |
+
+Apply the same four rules as for Bedrock models to **target eligibility**: users on any 2.0 model are past the hard shutdown on both Vertex AI and the Developer API, so a workload that still names one is already failing or has been moved — treat the id as evidence of what the customer ran and map it from the legacy rows; Vertex AI users on any 2.5 model are already past EOL and must migrate the source model or move straight to Bedrock; Developer API users on 2.5 Pro or 2.5 Flash are inside the 90-day exclusion zone. A Developer API user on `gemini-2.5-flash-lite` has no forced cutoff. None of these models is a current model in a recommendation or comparison table.
+
+**Source baseline by serving API.** The baseline a cost comparison is priced against is what the customer pays today, so it depends on which API serves the model and on the date, not on the retirement status above. A measured bill (`current_costs.monthly_ai_spend`, a billing CSV, or a usage profile) is always authoritative over any list-price baseline below; use the list prices only when no measured spend exists. Prices read from the [Gemini Developer API pricing page](https://aistudio.google.com/docs/pricing) on 2026-11-08.
+
+- **Gemini Developer API, `gemini-2.5-flash-lite`:** not deprecated, no shutdown date. The baseline is its current list price, $0.10 / $0.40 per 1M tokens, with no forced cutoff. Do not substitute Gemini 3.5 Flash-Lite ($0.30 / $2.50) — at 150M input / 75M output per month that would turn a $45 baseline into $232.50 and overstate the Bedrock saving.
+- **Gemini Developer API, `gemini-2.5-pro` and `gemini-2.5-flash`, before 2026-12-01:** the baseline is the current list price — $1.25 / $10.00 for 2.5 Pro (prompts ≤200K tokens) and $0.30 / $2.50 for 2.5 Flash. At 150M / 75M, 2.5 Pro is $937.50 per month; Gemini 3.8 Flash at the 2026 rate would be $393.75, so substituting the successor understates what the customer pays today.
+- **Gemini Developer API, `gemini-2.5-pro` and `gemini-2.5-flash`, on or after 2026-12-01:** Google routes the request and bills the routed model, so the baseline is the routed model's rate — Gemini 3.8 Flash for 2.5 Pro ($0.75 / $3.75 through 2026-12-31; $1.50 / $7.50 from 2027-01-01) and Gemini 3.5 Flash-Lite for 2.5 Flash ($0.30 / $2.50, the same price). Keep the 2027-01-01 step explicit wherever a 3.8 Flash figure appears.
+- **Vertex AI, any 2.5 model:** retired 2026-10-20. The customer cannot be billed for the retired model, so price the comparison against Google's named replacement in the table above (3.8 Flash with its 2027 step, 3.5 Flash-Lite, or Gemma 4).
+- **Any 2.0 model, either API:** past the 2026-06-01 shutdown. Price the comparison against the replacement in the table above; the 2.0 list prices in the mapping guides and pricing caches are historical figures only.
+
+When the serving API is not known from Discover, Clarify asks for it (`gcp-to-aws` Q19b → `ai_constraints.ai_source_serving_api`) rather than the estimate guessing. `ai-workload-profile.json` records `models[].service: vertex_ai_generative` for every Gemini generative model regardless of SDK (it is the Gemini category, not a serving-API signal) and has no Developer API value; only that row's `detected_via` evidence (`terraform`, `monitoring`) establishes Vertex AI. A code-only row is unresolved until Q19b answers.
+
+The plugin's `lint:model-id` task bans retired **Bedrock** ids by reading the Model ID column of the Legacy/EOL table above and the Removed list; this source-model table keeps its ids in the first column on purpose so retired Gemini ids remain recognizable in scanners, fixtures, and detection docs.
+
+---
+
+## Integration Points
+
+### Design Phase (`design-ai.md`)
+
+After selecting a Bedrock model for each workload:
+
+1. Check the Legacy/EOL table above (or the lifecycle page).
+2. If the model is in the **exclusion zone** (≤90 days to EOL) or EOL: reject it. Use the Active replacement.
+3. If the model is Legacy but >90 days from EOL: replace with Active replacement if one exists. If no Active replacement exists, note the EOL date and recommend the user plan a follow-up migration.
+4. If Active: proceed normally.
+5. If `restricted` (Covered Model or gated preview — see the Status table below): do not select it as a default or as `recommended_model` / `backup_model`; name it only when the user explicitly asks for a frontier model, together with its access requirement.
+
+### Estimate Phase (`estimate-ai.md`)
+
+When building the model comparison table:
+
+- **Exclusion zone models**: omit entirely from `model_comparison`. Do not include in `recommended_model` or `backup_model`.
+- **Legacy (>90 days)**: include with `(Legacy — EOL YYYY-MM-DD)` annotation. Never use as `recommended_model` if an Active alternative exists.
+- **Active**: no restrictions.
+- **Restricted** (`restricted (…)` in the pricing-cache Status column): never `recommended_model` or `backup_model`, never a default in a mapping guide. Include in `model_comparison` only when the user explicitly asks about frontier / Covered Models, annotated with the access requirement.
+
+### Pricing Cache (`bedrock-pricing-cache.md`)
+
+The multi-provider quick reference table includes a `Status` column:
+
+| Status value                | Meaning                                                                                                                                                                                                                                                                                                                                     |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `active`                    | No restrictions                                                                                                                                                                                                                                                                                                                             |
+| `legacy (EOL YYYY-MM-DD)`   | Legacy, >90 days from EOL. Listed for reference, annotated.                                                                                                                                                                                                                                                                                 |
+| `excluded (EOL YYYY-MM-DD)` | ≤90 days from EOL. Kept for existing users but must not be selected for new migrations.                                                                                                                                                                                                                                                     |
+| `restricted (<reason>)`     | Access-restricted: a Covered Model that needs an account-level data-retention opt-in (`aws_review` or `provider_data_share`), or a gated preview. Never `recommended_model` / `backup_model`, never a default; offer only on explicit user request, with the requirement stated. Claude Fable 5 / 5.1 and the Mythos line carry this value. |
+
+When refreshing the cache, recompute `days_to_eol` and refresh the `active` / `legacy` / `excluded` values from the [model lifecycle page](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle.html). **Preserve an existing `restricted (…)` value** — that page publishes only active / legacy / EOL and does not track access gating, so it can never produce `restricted`; change or remove a `restricted` value only when the model card's access requirement itself changed (data-retention mode, gated preview status).
+
+### Mapping Guides (`ai-openai-to-bedrock.md`, `ai-anthropic-to-bedrock.md`, `ai-gemini-to-bedrock.md`, the gateway guide `ai-openrouter-to-bedrock.md`, and any source-cloud-specific guide the consuming skill ships)
+
+- "Best Bedrock Match" columns must only contain Active models.
+- Exclusion-zone models must not appear in any recommendation row.
+- `restricted` models never appear as a default match; they may be named only as an explicit opt-in alternative with the access requirement stated.
+- Legacy models (>90 days) may appear in notes or legacy-source mapping rows but never as the primary recommendation.
+- Retired **source** models (the Gemini 2.0 and 2.5 generations, see the section above) appear only in legacy-source rows marked Legacy/retired with the retirement date; current-recommendation and cost-comparison tables list current source models. The baseline a specific customer is priced against follows the "Source baseline by serving API" rule in that section (measured bill first; otherwise the price the serving API bills on the estimate date), not the table membership.
+
+---
+
+## Refresh Cadence
+
+**On every design run:** The agent MUST recompute `days_to_eol = EOL date − today` for every row in the table above and apply the four rules in "Applying the rules" before making any model recommendation. The static Days to EOL column in this file is a snapshot only — do not use it directly without recomputing.
+
+**Newer models are not covered by the table.** A model launched on or after 2026-09-07 will never appear in the Legacy/EOL table above, and its absence is not evidence that it is Active. When a candidate is not in the table, verify it by calling `GetFoundationModel` (or `ListFoundationModels`) and reading `modelLifecycle.status`: `LEGACY` and `EOL` are never valid targets for a new migration. If the model is Legacy, read its model card for the actual EOL date and whether the Legacy period is 6 months or 45 days. If neither the API nor the card is reachable, treat the model's lifecycle as **unverified** and say so in the output rather than inferring `active` from a `Status` column in a pricing cache.
+
+**Periodic table refresh:** When the table itself needs updating (new models added, EOL dates changed by AWS, or past-EOL rows to remove), update this file and `bedrock-pricing-cache.md` together. Edit the canonical files under `skills/shared/ai/`, then copy them over every vendored copy in the same change so they stay byte-identical. Bump the **Last updated** line at the top of this file. `plugins/aws-startup-advisor/tools/model-staleness.py` fails when a vendored copy has drifted or the freshness contract is missing/malformed. CI runs that check with `--strict` only for pull requests that touch `plugins/aws-startup-advisor/`, so a snapshot past the 45-day staleness window fails those pull requests.
+
+**Past-EOL rows:** Once `days_to_eol ≤ 0`, move the model out of the live table into **Removed**, and grep this plugin's skill trees for the model ID to catch any remaining reference to it as a target. Keep the Removed entry long enough that users already on the model still get a warning.

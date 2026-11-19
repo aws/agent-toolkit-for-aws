@@ -48,17 +48,46 @@ Inference on `bedrock-mantle` for these models is governed by **two per-model, p
 | Medium          | Medium     | Monitor 429s against **token** throughput, not request rate; enable prompt caching                 |
 | High            | High       | Enable prompt caching first (cached input is exempt from input TPM), then request a quota increase |
 
-**The `bedrock-runtime` fallback exists only for GPT-5.6 and GPT-6 (Astra, Sol, Luna, 6.1 Sol).** GPT-5.5 and GPT-5.4 are `bedrock-mantle` only and in-region only — for them, "switch to `bedrock-runtime`" requires moving to a different model (Bedrock-native or `gpt-oss`), a model change with its own eval cost. GPT-5.6 Sol/Terra/Luna and GPT-6 Astra/Sol/Luna/6.1 Sol DO have a `bedrock-runtime` path via CRIS inference profiles (`us.`/`in.`/`global.` prefixed ids; the model cards recommend runtime for new applications) — a legitimate endpoint option with its own quota family, and on Global CRIS it is also the cost-parity option. Scaling levers on the mantle path, in order:
+**Every proprietary GPT model on Bedrock has a `bedrock-runtime` path via CRIS inference profiles.** GPT-5.6 Terra and Luna (`us.`/`in.`/`global.`), and `us.`/`global.` only for GPT-5.6 Sol, GPT-6 Astra/Sol/Luna/6.1 Sol/6.1 Terra, and GPT-5.5 / GPT-5.4 (the GPT-5.6 Sol card lists no `in.` profile; per their model cards read 2026-11-06, [GPT-5.4](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html), [GPT-5.5](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html)) all list `bedrock-runtime` with Responses, Chat Completions and Converse; none has a runtime in-region form. The model cards recommend runtime for new applications. It is a legitimate endpoint option with its own quota family, and for GPT-5.6 / GPT-6 on Global CRIS it is also the cost-parity option (the GPT-5.5 / GPT-5.4 cards publish In-Region pricing only). A same-model endpoint switch is not a model change; only moving to a Bedrock-native model or `gpt-oss` carries the eval cost of a model change. Scaling levers on the mantle path, in order:
 
-1. Prompt caching (GPT-5.6 and GPT-6 only) — 90% off cached input and exempt from the input-TPM quota
+1. Prompt caching (GPT-5.6 and GPT-6 on mantle; GPT-5.5 / GPT-5.4 list implicit caching on `bedrock-runtime` Responses only) — 90% off cached input and exempt from the input-TPM quota
 2. Exponential backoff with a bounded retry count (`max_retries` on the OpenAI SDK)
 3. Spreading load across minutes and ramping request rate gradually rather than bursting
 4. A Service Quotas increase for that model's input/output TPM in that region
 5. Only if the above are insufficient: change models, accepting the eval cost
 
-See `references/shared/openai-on-bedrock.md` for the endpoint, region matrix, and caching parameters.
+See `references/vendored/ai/openai-on-bedrock.md` for the endpoint, region matrix, and caching parameters.
 
 **Source:** [Get started with GPT-5.6 on Amazon Bedrock — Quotas and scaling](https://aws.amazon.com/blogs/machine-learning/get-started-with-openai-gpt-5-6-sol-terra-and-luna-on-amazon-bedrock/)
+
+### GPT-6 Astra — verify the selected endpoint's quota
+
+Astra Standard mantle is available in `us-east-1` and `us-west-2` (region availability verified 2026-09-30). Its model card lists implicit/explicit caching on
+Responses and 30-minute cache-write prices, but does not establish GPT-5.6's cached-input quota
+exemption, minimum prefix, or breakpoint rules. Verify account quotas before promising throughput.
+
+Astra runtime uses **10× output-token burndown**:
+`required_TPM = peak_input_TPM + 10 × peak_output_TPM`. Use the selected US Geo or Global CRIS quota;
+do not multiply total source TPM by ten or carry this rule over to mantle. An endpoint change also
+requires residency consent and API/capability checks from the canonical catalog.
+
+**Source:** [Astra model card, verified 2026-09-16](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html)
+
+### GPT-6.1 Terra — model-specific caching and quotas
+
+For Terra, use this subsection instead of the GPT-5.6-derived scaling assumptions above.
+Its cache-read rate is 5% of uncached input (a 95% discount), with the exact price selected
+by context tier and inference option in `bedrock-pricing-cache.md`. Verify the selected
+endpoint's account quotas and cached-token accounting before promising capacity; the Terra
+card does not establish the GPT-5.6 cached-input exemption.
+
+On runtime, the card specifies 10x output-token burndown:
+`required_TPM = peak_input_TPM + 10 * peak_output_TPM`.
+Do not apply that multiplier to Mantle or to the whole input-plus-output total.
+Retain the selected region, inference profile, and API constraints when changing endpoints.
+Compare costs against measured source spend or verified source rates.
+
+**Source:** [GPT-6.1 Terra model card, verified 2026-11-02](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-terra.html)
 
 ### Other models on Mantle
 
@@ -78,7 +107,9 @@ Claude models on Mantle have an additional **output TPM cap** that differs by mo
 **Impact for migration decisions:**
 
 - For Claude migrations at medium/high volume: the 2M output TPM cap on Claude 4.7+ is the binding constraint
-- For OpenAI proprietary GPT targets: this Claude cap does not apply. Their mantle constraint is the per-model input/output TPM quota described above; for GPT-5.6 the `bedrock-runtime`/CRIS path is an available alternative (its own quota family), while GPT-5.5/5.4 have no runtime path
+- For OpenAI proprietary GPT targets: this Claude cap does not apply. Use the GPT-5.x mantle quotas or
+  Astra-specific verification above. Astra / GPT-5.6 / GPT-5.5 / GPT-5.4 all have runtime CRIS alternatives
+  with their own quotas (`us.`/`global.` prefixed ids; no runtime in-region form)
 - For `gpt-oss` targets: these do run on `bedrock-runtime`, so standard account TPM limits and the Converse-path mitigations apply
 - When output-heavy workloads (long JSON, tool outputs, multi-step reasoning) are detected, flag the relevant cap prominently; recommend `bedrock-runtime` for production **only** when the target model actually has a `bedrock-runtime` path
 

@@ -3,7 +3,7 @@
 > Self-contained application code discovery sub-file. Scans for source code, detects GCP SDK imports, infers resources, flags AI signals, and if AI confidence >= 70%, extracts detailed AI workload information and generates `ai-workload-profile.json`.
 > If no source code files are found, exits cleanly with no output.
 
-**Dead-end handling:** If this file exits without producing artifacts (no source code found, or AI confidence < 70%), report to the parent orchestrator: what signals were found (if any), the confidence level, and that the user should provide Terraform files or billing exports to proceed with migration planning.
+**Dead-end handling:** If this file exits without producing artifacts (no source code found, or AI confidence < 70%), report to the parent orchestrator: what signals were found (if any), the confidence level, and that the user can run read-only live `gcloud` discovery, provide Terraform files, or provide billing exports to proceed with migration planning.
 
 **Execute ALL steps in order. Do not skip or optimize.**
 
@@ -244,7 +244,7 @@ Before finalizing AI detection, verify signals are genuine:
 **Exit gate:** If overall AI confidence < 70%:
 
 - **If** `$MIGRATION_DIR/ai-workload-profile.json` **already exists** with `metadata.profile_source` = `"iac_vertex"` (from `discover-iac.md` Step 7d — strong Vertex Terraform): **exit cleanly** without deleting or modifying that file. Report to the parent orchestrator: signals found, confidence below 70%, and that the **IaC-inferred AI profile is retained** for Clarify.
-- **Otherwise:** Do **not** generate `ai-workload-profile.json`. Report signals found, confidence level, and reason for not generating the AI profile. The inferred resources from Steps 1-2 remain available for other sub-files (e.g., discover-iac.md may use them for evidence merge). If no other sub-discoverer produces artifacts, the parent orchestrator will inform the user to provide Terraform files or billing exports.
+- **Otherwise:** Do **not** generate `ai-workload-profile.json`. Report signals found, confidence level, and reason for not generating the AI profile. The inferred resources from Steps 1-2 remain available for other sub-files (e.g., discover-iac.md may use them for evidence merge). If no other sub-discoverer produces artifacts, the parent orchestrator will inform the user that they can run read-only live `gcloud` discovery, provide Terraform files, or provide billing exports.
 
 **If confidence >= 70%**, continue to Steps 5-8 below.
 
@@ -363,6 +363,20 @@ After extracting model details (Step 5), split the detected AI usage into distin
     "call_sites": [
       { "file": "lib/imagen.ts", "line": 60 }
     ]
+  },
+  {
+    "workload_id": "wl_9532e7",
+    "model_id": "gpt-4o",
+    "sdk_method": "openai.chat.completions.create",
+    "capability": "text_generation",
+    "capability_confidence": "medium",
+    "structured_output": false,
+    "call_sites": [
+      { "file": "src/ai/openai_client.py", "line": 22 }
+    ],
+    "mantle_signals": [
+      { "selector": "projects", "file": "src/ai/openai_client.py", "line": 9, "construct": "default_headers={\"OpenAI-Project\": os.environ[\"OPENAI_PROJECT_ID\"]}" }
+    ]
   }
 ]
 ```
@@ -373,6 +387,35 @@ After extracting model details (Step 5), split the detected AI usage into distin
 - `call_sites[].file` uses repo-relative POSIX paths
 - Every model_id in `workloads[]` MUST also appear in `models[]` (backward compatibility)
 - If a method is in the structured-output trio AND the model is multimodal (Gemini, GPT-4o, Claude) AND structured output is NOT detected → set `capability_confidence: "medium"` (ambiguous — Clarify will confirm)
+
+## Step 5C: Mantle-Only Selector Signals
+
+A few provider capabilities decide the target endpoint later (`references/vendored/ai/bedrock-endpoint-policy.md`, § How a selector is learned). Five of them are visible in code. For each call site grouped into a workload in Step 5B, scan the call arguments, the client construction that the call site uses, and any request headers for the constructs below. Record a signal only for active (non-commented) code.
+
+| Selector               | Positive constructs (any one)                                                                                                                                                                                                                                                                                           | Does NOT count                                                                                                                                      |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `background_inference` | `background=True` / `background: true` on `responses.create`, or a raw `"background": true` key in a Responses request body                                                                                                                                                                                             | `store=True`, `stream=True`, polling `responses.retrieve` without `background`                                                                      |
+| `web_search`           | `tools=[{"type": "web_search"}]`; `"type": "web_search_preview"` (any dated `web_search_preview_*` form); Anthropic `"type": "web_search_20250305"`; OpenRouter `plugins: [{"id": "web"}]` or a `:online` model suffix                                                                                                  | A client-side `"type": "function"` tool merely NAMED `web_search`                                                                                   |
+| `server_side_tools`    | A tools entry of `"type": "mcp"` (`server_url` / `server_label`), `code_interpreter`, `file_search`, `computer_use_preview`, or `image_generation` used as a tool type; Anthropic `code_execution_*` tool types — any provider-executed tool other than web search | `"type": "function"` tools, Gemini `function_declarations=`, `@tool` decorators, `tool_choice` — client-side function tools never count; Anthropic `computer_*` (incl. `computer_toolset_*`), `browser_toolset_*`, `text_editor_*`, `bash_*` and `memory_*` are CLIENT-executed tools listed on both `bedrock-runtime` and `bedrock-mantle` by the Sonnet 5 and Opus 5.5 cards (`model-card-anthropic-claude-sonnet-5.html`, `model-card-anthropic-claude-opus-5-5.html`, read 2026-11-09) — a client-tool-only Anthropic app stays `runtime_messages` |
+| `projects`             | `OpenAI-Project` header (`default_headers={"OpenAI-Project": ...}`), `project=` kwarg on the OpenAI client, or an `OPENAI_PROJECT_ID`-style env name read in code                                                                                                                                                      | `OpenAI-Organization` alone; no header means the default project                                                                                    |
+| `workspaces`           | `anthropic-workspace-id` header or an `ANTHROPIC_WORKSPACE_ID`-style env name                                                                                                                                                                                                                                           | OpenRouter's own `workspace_id` scoping (an OpenRouter account concept)                                                                              |
+
+Two selectors are NOT scanner outputs: `mantle_only_model_or_api` is derived by Design from the model id and API against the catalog, and `in_region_processing` is never code-detectable — Clarify always asks it. Never write either value into `mantle_signals`.
+
+**Output:** append a `mantle_signals` array to that workload's entry in `workloads[]`, one entry per `(selector, call site)`:
+
+```json
+"mantle_signals": [
+  { "selector": "web_search", "file": "src/ai/openai_client.py", "line": 14, "construct": "tools=[{\"type\": \"web_search\"}]" }
+]
+```
+
+- `selector` is one of the five values in the table above.
+- `file` is a repo-relative POSIX path; `line` is the line of the matched construct (the client construction line for `projects` / `workspaces`, the call line otherwise).
+- `construct` is the matched source text — the argument or header as written, never a secret value, prompt text, or comment text. An env var NAME is fine; its value is not.
+- Omit the key, or write `[]`, when nothing matched for that workload.
+
+These signals are evidence for Clarify, not a decision: Clarify asks the user to confirm each one, and Design chooses the endpoint. Do not name AWS endpoints here.
 
 ---
 
@@ -614,13 +657,13 @@ After generating the output file, the parent `discover.md` handles the phase sta
 
 ## Output Validation Checklist — ai-workload-profile.json
 
-- `metadata.profile_source` is one of: `"application_code"`, `"iac_vertex"`, `"merged"`
+- `metadata.profile_source` is one of: `"application_code"`, `"iac_vertex"`, `"live_monitoring"`, `"merged"`
 - `metadata.sources_analyzed` reflects which data sources were actually provided
 - `summary.overall_confidence` matches the detection confidence from Step 4
 - `summary.total_models_detected` matches the length of `models` array
 - `summary.ai_source` is set correctly: `"gemini"`, `"openai"`, `"anthropic"`, `"both"`, or `"other"` based on detected LLM SDKs
 - Every entry in `models` has `model_id`, `service`, `detected_via`, `evidence`, `capabilities_used`, and `usage_context`
-- `models[].detected_via` only contains sources that were actually analyzed (`"code"`, `"terraform"`, `"billing"`)
+- `models[].detected_via` only contains sources that were actually analyzed (`"code"`, `"terraform"`, `"billing"`, or `"monitoring"` when evidence `source` is `monitoring`)
 - `models[].evidence` array has at least one entry per source listed in `detected_via`
 - `models[].capabilities_used` only lists capabilities with evidence from code analysis
 - `integration.capabilities_summary` is consistent with the union of all `models[].capabilities_used`
@@ -633,6 +676,7 @@ After generating the output file, the parent `discover.md` handles the phase sta
 - Every `workloads[].model_id` also appears in `models[].model_id`
 - `workloads[].capability_confidence` is one of: `"high"`, `"medium"`, `"low"`
 - `workloads[].workload_id` matches pattern `wl_[0-9a-f]{6}`
+- `workloads[].mantle_signals` (optional, Step 5C): every entry has `selector` ∈ `background_inference | web_search | server_side_tools | projects | workspaces`, a repo-relative `file`, a real `line` that contains the quoted `construct` (the only exception is the `"<usage_api>"` / `line: 0` sentinel that the usage-API Step 4 merges append later), and no secret value; never `mantle_only_model_or_api` or `in_region_processing`
 - If `is_agentic: true`: `agentic_profile` section exists with all required fields
 - If `is_agentic: true`: `agentic_profile.agent_count` equals length of `agentic_profile.agents[]`
 - If `is_agentic: true`: `agentic_profile.tool_count` equals length of `tool_manifest[]` (deduplicated)

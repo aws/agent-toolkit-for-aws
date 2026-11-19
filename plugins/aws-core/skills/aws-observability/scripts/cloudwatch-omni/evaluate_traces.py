@@ -172,6 +172,8 @@ _TRACE_ID_RE = re.compile(r"^[0-9a-fA-F]{1,64}$")
 # Session ids are alphanumeric + a few separators; validate (reject) rather than mangle,
 # so a malformed id never silently rewrites to a DIFFERENT real session's id.
 _SESSION_ID_RE = re.compile(r"^[0-9A-Za-z._:\-]{1,128}$")
+# A service name is interpolated into the span query, so it is validated, never escaped.
+_SERVICE_NAME_RE = re.compile(r"^[0-9A-Za-z._:/\-]{1,255}$")
 
 # OTLP SpanKind enum → bare OTel name. `evaluate` requires `kind` to be a STRING; the
 # stored telemetry is polymorphic (some emitters use "SERVER", others the numeric enum,
@@ -634,8 +636,11 @@ def _write_back(logs, service, records, ts_ms, retention_days=None, kms_key_id=N
     return None, warning
 
 
-def _fetch_trace(omni, tid, window_days, session_id=None, span_cache=None):
+def _fetch_trace(omni, tid, window_days, session_id=None, span_cache=None, service_name=None):
     """Resolve one trace's session and fetch its spans via Omni SQL ONCE.
+
+    service_name keeps only that service's spans, so another agent sharing the trace is not
+    part of what is scored.
 
     Returns {traceId, sessionId, spans, truncated} on success, or {traceId, error} on failure.
     span_cache de-duplicates by resolved session id: two trace ids in the same session fetch
@@ -651,11 +656,17 @@ def _fetch_trace(omni, tid, window_days, session_id=None, span_cache=None):
         filter_clause = (
             ("attributes['session.id'] = '%s'" % sid) if sid else ("traceId = '%s'" % tid)
         )
+        if service_name:
+            filter_clause += " AND resource['attributes']['service.name'] = '%s'" % service_name
         spans, truncated, err = _fetch_spans(omni, filter_clause, window_days, soft=True)
         if spans is None:
             return {"traceId": tid, "error": err or "span fetch query did not complete"}
         if not spans:
-            return {"traceId": tid, "error": "no spans found in the last %d day(s)" % window_days}
+            where = " for service %s" % service_name if service_name else ""
+            return {
+                "traceId": tid,
+                "error": "no spans found%s in the last %d day(s)" % (where, window_days),
+            }
         if span_cache is not None:
             span_cache[cache_key] = (spans, truncated)
     if sid and truncated and not any(s.get("traceId") == tid for s in spans):
@@ -740,6 +751,8 @@ def _run(args):
             )
         if not _SESSION_ID_RE.match(args.session_id):
             _die({"error": "invalid session id: %r" % args.session_id})
+    if args.service_name and not _SERVICE_NAME_RE.match(args.service_name):
+        _die({"error": "invalid service name: %r" % args.service_name})
     if args.retention_days and args.retention_days not in _RETENTION_DAYS_ALLOWED:
         _die(
             {
@@ -816,6 +829,7 @@ def _run(args):
             args.window_days,
             session_id=args.session_id if len(trace_ids) == 1 else None,
             span_cache=span_cache,
+            service_name=args.service_name,
         )
         if f.get("error"):
             fetch_errors.append({"traceId": tid, "error": f["error"]})
@@ -941,6 +955,11 @@ def main():
         help="comma-separated evaluator ids; every one is run against every trace",
     )
     ap.add_argument("--level", choices=LEVELS, default="TRACE")
+    ap.add_argument(
+        "--service-name",
+        help="score only spans whose resource service.name matches, for a trace shared by "
+        "several agents",
+    )
     ap.add_argument("--region", default="us-east-1")
     ap.add_argument("--window-days", type=int, default=30, help="trace lookback window")
     ap.add_argument(

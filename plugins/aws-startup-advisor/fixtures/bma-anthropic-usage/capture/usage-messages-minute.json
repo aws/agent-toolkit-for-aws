@@ -1,0 +1,29 @@
+[
+ {
+  "starting_at": "2026-10-25T10:05:00Z",
+  "ending_at": "2026-10-25T10:06:00Z",
+  "results": [
+   {
+    "model": "claude-sonnet-5",
+    "service_tier": "standard",
+    "context_window": "0-200k",
+    "inference_geo": "us",
+    "speed": "standard",
+    "workspace_id": "wrkspc_app",
+    "uncached_input_tokens": 90,
+    "cache_read_input_tokens": 0,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 0
+    },
+    "output_tokens": 5,
+    "server_tool_use": {
+     "web_search_requests": 0
+    },
+    "account_id": null,
+    "api_key_id": null,
+    "service_account_id": null
+   }
+  ]
+ }
+]

@@ -71,11 +71,11 @@ await client.send(new PutCommand({
 }));
 ```
 
-Custom unmarshalling with BigInt:
+Custom unmarshalling with BigInt (`wrapNumbers` runs for every number, and `BigInt` throws on decimals, so keep non-integers as strings):
 
 ```js
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
-  unmarshallOptions: { wrapNumbers: (str) => BigInt(str) },
+  unmarshallOptions: { wrapNumbers: (str) => (/^-?\d+$/.test(str) ? BigInt(str) : str) },
 });
 ```
 

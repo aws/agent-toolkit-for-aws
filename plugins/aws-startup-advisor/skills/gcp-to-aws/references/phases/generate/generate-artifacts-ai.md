@@ -14,7 +14,11 @@ Generate migration artifacts from the AI migration plan and design. Artifacts va
 - `ai-migration/test_comparison.py` — A/B test harness (always Python)
 - `ai-migration/bedrock_monitoring.tf` — Bedrock cost budget, anomaly detection, inference profiles (always)
 
-**Outputs (direct SDK users — `ai_framework` = `"direct"`):**
+**Outputs (direct SDK users, selected Mantle path):**
+
+- `ai-migration/migrate_to_mantle.sh` — Selected Chat/Responses client setup; no provider adapter
+
+**Outputs (direct SDK users, selected runtime path):**
 
 - `ai-migration/provider_adapter.{py,js,go}` — Provider abstraction with feature flag
 
@@ -39,20 +43,37 @@ If any required file is missing: **STOP**. Output: "Missing required artifact: [
 
 **Sparse / IaC-only profile:** If `ai-workload-profile.json` has empty `models[]` or `metadata.profile_source` is `iac_vertex`, use `aws-design-ai.json` for Bedrock targets and example prompts; do **not** fail solely because discovery did not list model IDs.
 
+**AgentCore deployment scripts (Steps 3C and 3E):** Use the official [`@aws/agentcore` CLI](https://github.com/aws/agentcore-cli), which requires Node.js 20.12 or later and npm. The deprecated Python starter toolkit also provides an `agentcore` executable. Resolve the global npm package and call its entrypoint through Node; a binary name on PATH does not identify the package. Verify each generated command against the installed CLI's `--help` before deployment.
+
 ---
 
 ## Step 0: Determine Artifact Path
 
 Check `preferences.json` → `ai_constraints.ai_framework.value` and `aws-design-ai.json` → `ai_architecture.code_migration.migration_path`:
 
-- `migration_path` = `"mantle"` or `"mantle_openai_responses"` → Generate Mantle setup (Step 1M) + setup (Step 3) + test harness (Step 2). Skip provider adapter (Step 1). Design records `"mantle_openai_responses"`; treat that spelling as this same Mantle path.
-- `migration_path` = `"runtime_openai_cris"` → Generate the CRIS-aware Mantle-equivalent script
-  (Step 1M, using the `us.`/`global.`-prefixed inference-profile ID and the `bedrock-runtime`
-  base URL instead of `bedrock-mantle`) + setup (Step 3) + test harness (Step 2). Skip provider
-  adapter (Step 1) — same as `"mantle"`, just a different endpoint and model-id form.
+- `migration_path` = `"runtime_openai_cris"` (**the default same-model path**; Design records it
+  for every proprietary GPT target unless a `mantle_selector` is present) → Generate the CRIS
+  variant of the same-model script (Step 1M, using the `us.`/`global.`-prefixed inference-profile
+  ID, the `bedrock-runtime` base URL `https://bedrock-runtime.{region}.amazonaws.com/openai/v1`,
+  `bedrock:InvokeModel*` IAM and the row's `required_client_api`) + setup (Step 3) + test harness
+  (Step 2). Skip provider adapter (Step 1). Echo the row's `endpoint_assumption` sentence in the
+  generated script's header comment so the bedrock-runtime choice stays traceable to Clarify.
+- `migration_path` starts with `"mantle"` AND is one of the three OpenAI-SDK spellings — exactly `"mantle"`, `"mantle_openai_chat"` or `"mantle_openai_responses"` (`"mantle_messages"` is NOT this branch; it has its own entry below) → Generate Mantle setup (Step 1M) + setup (Step 3) + test harness (Step 2). Skip provider adapter (Step 1). Design records `"mantle_openai_responses"` or `"mantle_openai_chat"` only together with `bedrock_models[].mantle_selector` (see `references/vendored/ai/bedrock-endpoint-policy.md`); echo that selector and its `mantle_requirement` (workload, source, evidence) in the generated script's header so the Mantle choice stays traceable. Treat the `"mantle_openai_responses"` spelling as this same Mantle path.
 - `migration_path` = `"gpt-oss"` → Generate provider adapter (Step 1) targeting the gpt-oss model on Bedrock via the Converse API + setup (Step 3) + test harness (Step 2). Use the Bedrock model ID from `aws-design-ai.json` → `ai_architecture.bedrock_models[].aws_model_id` (the gpt-oss model ID). Do NOT generate a Mantle script — gpt-oss uses the Converse API directly.
-- `"converse"`, `"direct"`, or absent → Generate provider adapter (Step 1) + setup (Step 3) + test harness (Step 2). `"converse"` is a Converse client swap (Design records it when a proprietary model cannot stay on Mantle); do NOT generate a Mantle script for it.
-- `"llm_router"`, `"api_gateway"`, `"voice_platform"`, or `"framework"` → Skip Step 1, generate gateway config (Step 3B) instead. Step 3B's OpenRouter subroute can still replace that gateway config with Step 1M (`same_model_mantle`) or the provider adapter (`direct`); do not decide those two from `migration_path` alone.
+- `migration_path` = `"runtime_messages"` (Anthropic source; Design's default for an Anthropic SDK app) → Generate provider adapter (Step 1) whose Bedrock provider class keeps the Anthropic SDK at the runtime base URL `https://bedrock-runtime.{region}.amazonaws.com/anthropic` with a string Bedrock token (`provide_token(region=...)` minted per client) and the row's `global.`/Geo Claude profile ID + setup (Step 3, `bedrock:InvokeModel*` and `bedrock:GetInferenceProfile` IAM) + test harness (Step 2). `required_client_api` is `"messages"`; do NOT generate a Mantle script and do NOT rewrite to Converse. Echo the row's `endpoint_assumption` sentence in the generated adapter's header comment.
+- `migration_path` = `"mantle_messages"` (Anthropic source, only with `bedrock_models[].mantle_selector`, normally `workspaces`; matched by this entry ONLY, never by the OpenAI-SDK Mantle branch above) → Generate provider adapter (Step 1) with the same Anthropic-SDK adapter shape as `runtime_messages` but at the Mantle base URL `https://bedrock-mantle.{region}.api.aws/anthropic` with the bare `anthropic.claude-*` ID and `bedrock-mantle:*` IAM (Step 3); `required_client_api` stays `"messages"`; echo that selector and its `mantle_requirement` (workload, source, evidence) in the adapter header. Do NOT generate `migrate_to_mantle.sh` (Step 1M) for it.
+- `"converse"`, `"direct"`, or absent → Generate provider adapter (Step 1) + setup (Step 3) + test harness (Step 2). `"converse"` is an explicit boto3 Converse rewrite (Design records it on request or for a Converse-only feature); do NOT generate a Mantle script for it.
+- `"llm_router"`, `"api_gateway"`, `"voice_platform"`, or `"framework"` → Skip Step 1, generate gateway config (Step 3B) instead. Step 3B's OpenRouter subroute can still replace that gateway config with Step 1M (`same_model_runtime` → the CRIS variant, `same_model_mantle` → the Mantle variant) or the provider adapter (`direct`); do not decide those from `migration_path` alone.
+
+For `runtime_openai_cris`, read the matched `bedrock_models[].required_client_api` — the API the
+source app already calls (`responses` or `chat_completions`; `converse` only when Design recorded
+it for a Converse-only feature). A current Design plan always records it; a legacy plan without
+the field falls back to the row or `code_migration.runtime_api`, and if neither is present the
+source API must be resolved before generating — never assume Converse. Use the resolved
+API consistently for the generated client, comparison and setup calls.
+Preserve the exact `aws_model_id` string, whether a short profile ID or a system-profile ARN.
+When building the IAM policy, use a supplied profile ARN directly and resolve its backing
+foundation-model resources; do not interpolate the ARN into another ARN.
 
 **Step 3F runs for ALL paths** (direct, mantle, gpt-oss, gateway, harness, strands) — generate `bedrock_monitoring.tf` regardless of migration path.
 
@@ -67,13 +88,12 @@ Generate `ai-migration/migrate_to_mantle.sh` — a shell script that configures 
 **Requirements:**
 
 - Dry-run by default (`--execute` flag to apply)
-- Print the environment variables to set: `OPENAI_BASE_URL=https://bedrock-mantle.{region}.api.aws/openai/v1` (the `/openai/v1` segment is load-bearing — a bare `/v1` 404s for the proprietary GPT models that route through this path; see `references/shared/openai-on-bedrock.md` for the per-model base paths), `OPENAI_API_KEY=<bedrock-api-key>`
+- For proprietary GPT targets, print `OPENAI_BASE_URL=https://bedrock-mantle.{region}.api.aws/openai/v1`. Use the model-specific base path from `references/vendored/ai/openai-on-bedrock.md`; generic `/v1` returns 404 for proprietary GPT models. Credentials must be Bedrock credentials, not the source provider's API key; prefer the auto-refreshing `BedrockOpenAI` token provider shown in that reference.
 - Print the model string change: current model ID → Bedrock model ID from `aws-design-ai.json`
-- Include a quick verification call using the OpenAI SDK against the Mantle endpoint
-- **Add a warning comment** about `max_tokens`: OpenAI SDK users migrating via Mantle carry over their existing `max_tokens` value unchanged. If the existing value is 4096 (OpenAI default), this reduces Bedrock concurrency by 5–8x on TPM quota. Instruct users to audit `max_tokens` before production and include the workload-type lookup table (see Step 1M max_tokens guidance above).
-- Note: "No code changes required. Your existing OpenAI SDK calls work unchanged."
+- Include a quick verification call using the selected Mantle API: `chat.completions.create` for `mantle_openai_chat`, `responses.create` for `mantle_openai_responses`. Reuse the target-call shape in Step 2; never call Converse with a bare Astra ID.
+- Preserve request/response shapes only when the selected API matches the source. Otherwise include the planned API reshape. Do not claim all existing SDK calls work unchanged; parameters and tool/state behavior still need the selected model/API's verification.
 - Reference [Mantle documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-mantle.html) for API key generation
-- **Set `max_tokens` default to 1024** in the generated migration script with an explanatory comment. Do NOT inherit the caller's existing `max_tokens` value (often 4096 from OpenAI defaults) — this reduces concurrency by 5–8x on Bedrock's TPM quota. Include a workload-type lookup table as a comment so users tune before production:
+- Include the output-budget lookup table below as a starting heuristic. Send a budget parameter only after verifying its name and behavior for the selected API; `MAX_TOKENS` is a local tuning value, not permission to send a `max_tokens` kwarg to every model. Do not apply Claude/runtime quota multipliers or GPT-5.x cache exemptions to Astra Mantle.
 
   ```bash
   # max_tokens guidance — tune before production:
@@ -90,7 +110,8 @@ Generate `ai-migration/migrate_to_mantle.sh` — a shell script that configures 
 
 **CRIS variant client surface:** When `migration_path` is `"runtime_openai_cris"`, check `aws-design-ai.json` → `ai_architecture.bedrock_models[].required_client_api`. If it is non-Responses (`converse`, `chat_completions`, or `invoke`), the generated CRIS client/adapter MUST emit that surface — e.g. a `client.converse(...)` call against the `bedrock-runtime` CRIS id — rather than defaulting to `responses.create`. If absent or `"responses"`, keep the Responses surface (the region-only-move default).
 
-Skip Step 1 (provider adapter) when this step runs — the OpenAI SDK is the adapter. Step 2's test harness unconditionally imports `from provider_adapter import get_provider`, so when Step 1 is skipped (every `mantle`/`runtime_openai_cris` run), also emit a minimal `ai-migration/provider_adapter.py` stub here that exposes `get_provider()` returning a thin wrapper around the Mantle/CRIS OpenAI-SDK client configured by this script — this keeps Step 2 shared and path-agnostic without rewriting its import.
+Skip Step 1 when this step runs. Step 2 uses the selected client directly for both
+Mantle and runtime CRIS; do not emit or import a provider-adapter stub on these paths.
 
 ---
 
@@ -106,7 +127,7 @@ Generate `ai-migration/provider_adapter.{py,js,go}` — an abstraction layer tha
   - `streaming: true` → `generate_stream(prompt) → Iterator[str]`
   - `embeddings: true` → `embed(text) → list[float]`
 - **Source provider class**: Use SDK imports from `ai-workload-profile.json` → `integration.sdk_imports`. Use model IDs from `ai-workload-profile.json` → `models[].model_id`.
-- **Bedrock provider class**: Use `boto3` Converse API (`converse` for generate, `converse_stream` for streaming, `invoke_model` for embeddings with Titan). Use inference profile ARNs from `bedrock_monitoring.tf` output `bedrock_inference_profile_arns` as `modelId` — this enables cost attribution in Cost Explorer. Fall back to raw model IDs from `aws-design-ai.json` → `ai_architecture.bedrock_models[].aws_model_id` if profiles are not yet deployed. Use region from `preferences.json` → `design_constraints.target_region`.
+- **Bedrock provider class**: For a Converse plan, use `boto3` (`converse` for generate, `converse_stream` for streaming, `invoke_model` for separately selected Titan embeddings). For `runtime_messages`, keep `anthropic.Anthropic(base_url="https://bedrock-runtime.{region}.amazonaws.com/anthropic", api_key=provide_token(region=region))` — a string token minted per client, the client created and closed per request boundary — with `messages.create` / `messages.stream` unchanged and the `global.`/Geo profile ID from the design row (`mantle_messages`: same shape at `https://bedrock-mantle.{region}.api.aws/anthropic`). For `runtime_openai_cris`, preserve the runtime API selected in the design: Converse uses this adapter shape; an OpenAI-compatible Chat/Responses selection uses the OpenAI SDK at `https://bedrock-runtime.{region}.amazonaws.com/openai/v1` with Bedrock credentials and the exact CRIS ID. Never send a bare Astra ID to runtime or replace a validated `global.` profile with `us.`. Use an application inference profile only when the selected model/API supports it; otherwise retain `aws-design-ai.json` → `ai_architecture.bedrock_models[].aws_model_id`. Use region from `preferences.json` → `design_constraints.target_region`.
 
   ```python
   # Use inference profile ARN for cost attribution (preferred)
@@ -120,7 +141,7 @@ Generate `ai-migration/provider_adapter.{py,js,go}` — an abstraction layer tha
 - **Shadow mode**: Send requests to both providers, return source response, log Bedrock response for comparison.
 - Include error handling and logging for API calls.
 
-For JS: use `@aws-sdk/client-bedrock-runtime` + `@google-cloud/vertexai`. For Go: use `github.com/aws/aws-sdk-go-v2/service/bedrockruntime` + `cloud.google.com/go/aiplatform`.
+For JS/Go, choose the source SDK from the recorded imports rather than assuming Vertex. Use the AWS runtime SDK for a Converse target, or the matching OpenAI client for a selected OpenAI-compatible runtime API.
 
 ---
 
@@ -131,15 +152,59 @@ Generate `ai-migration/test_comparison.py` — always Python regardless of adapt
 **Requirements:**
 
 - Accept prompts from a JSON file (`--prompts`) or use built-in defaults (`--quick`)
+- Support `--target-only` for the setup smoke test; this mode needs no source credentials.
 - Run each prompt against both the source provider and Bedrock
 - Measure per-prompt: latency (ms), success/failure, response text (truncated to 500 chars)
 - Compute summary statistics: p50/p95/mean latency per provider, quality score (trait matching against expected traits), pass/fail criteria
 - Pass criteria: Bedrock latency ≤ 2x source latency, mean quality score ≥ 0.9
 - Output structured JSON to `--output` (default: `comparison_results.json`)
 - Built-in test prompts: include 3-5 prompts based on `ai-workload-profile.json` → `models[].usage_context` covering the primary use case
-- **Source/target client setup — conditional on the migration path (Step 0):**
-  - **Non-Mantle paths** (`direct`, `gpt-oss`, `converse`, and gateway paths that emit the adapter): import the provider adapter via `from provider_adapter import get_provider` — those paths generate `provider_adapter.{py,js,go}` in Step 1, so the import resolves.
-  - **Mantle path** (`migration_path` = `"mantle"` / `"mantle_openai_responses"`, or the Step 3B `same_model_mantle` OpenRouter subroute): do NOT import `provider_adapter` — the Mantle path skips Step 1 and emits no adapter module, so that import would break. Instead set up the OpenAI SDK pointed at the Mantle `/openai/v1` base URL with a Bedrock token provider and call `client.responses.create(...)` (the client-setup pattern in `references/shared/openai-on-bedrock.md` § Client setup) for the Bedrock side, and the source provider's existing OpenAI SDK client for the source side. The harness stays self-contained and does not depend on the omitted adapter.
+- **Adapter paths** (`direct`, `converse`, `gpt-oss`, or a gateway subroute that emits an adapter): use `from provider_adapter import get_provider` from the emitted provider adapter.
+- **Mantle / runtime CRIS / `same_model_runtime` / `same_model_mantle` paths:** do not import `provider_adapter` because Step 0 intentionally skips it. Call the source using its recorded SDK and call the target directly with the selected Mantle API. Use this target function for proprietary GPT plans, substituting the saved design values:
+
+  ```python
+  def call_bedrock(prompt):
+      from aws_bedrock_token_generator import provide_token
+      from openai import BedrockOpenAI
+
+      region = "{target_region}"
+      model_id = "{aws_model_id}"
+      api_path = "{migration_path}"
+      required_client_api = "{required_client_api}"
+      if api_path == "runtime_openai_cris":
+          if required_client_api == "converse":
+              import boto3
+              response = boto3.client("bedrock-runtime", region_name=region).converse(
+                  modelId=model_id, messages=[{"role": "user", "content": [{"text": prompt}]}]
+              )
+              return "".join(block["text"] for block in response["output"]["message"]["content"] if "text" in block)
+          if required_client_api not in {"responses", "chat_completions"}:
+              raise ValueError("Generate the model-specific selected runtime API before comparison")
+          from openai import OpenAI
+          client = OpenAI(
+              base_url=f"https://bedrock-runtime.{region}.amazonaws.com/openai/v1",
+              api_key=lambda: provide_token(region=region), max_retries=2,
+          )
+      else:
+          client = BedrockOpenAI(
+              aws_region=region,
+              bedrock_token_provider=lambda: provide_token(region=region),
+              max_retries=2,
+          )
+      if api_path == "mantle_openai_chat" or (api_path == "runtime_openai_cris" and required_client_api == "chat_completions"):
+          response = client.chat.completions.create(
+              model=model_id, messages=[{"role": "user", "content": prompt}]
+          )
+          return response.choices[0].message.content
+      response = client.responses.create(model=model_id, input=prompt)
+      return response.output_text
+  ```
+
+  Substitute the resolved `required_client_api` for runtime plans. A selected `invoke`
+  surface needs its model-specific Invoke harness before setup; never substitute Converse.
+  Mantle uses the recorded migration path.
+
+  Install `openai>=2.45.0,<3` and `aws-bedrock-token-generator>=1,<2` in the generated project's environment. The setup smoke test invokes this same harness with `--target-only --quick`, so setup and comparison cannot choose different APIs.
 
 ---
 
@@ -151,15 +216,12 @@ Generate `ai-migration/setup_bedrock.sh`.
 
 - Dry-run by default (`--execute` flag to run for real)
 - Step 1 — Request model access: List each model from `aws-design-ai.json` → `bedrock_models[].aws_model_id` and the embedding model
-- Step 2 — Create IAM role: Trust policy for the compute platform (Lambda, ECS, or EC2 based on `aws-design.json` if present). Bedrock policy — **conditional on the migration path (Step 0):**
-  - **Non-Mantle paths** (`direct`, `gpt-oss`, `converse`, gateway): grant `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream` scoped to `arn:aws:bedrock:*::foundation-model/*`. These are correct for Converse/`bedrock-runtime` traffic. For a `runtime_openai_cris` target whose CRIS id is a GPT-6 model (Astra, Sol, Luna, 6.1 Sol), the Bedrock policy must additionally grant `bedrock:InvokeModel` on `arn:aws:bedrock:{region}:{account}:project/default` alongside the CRIS inference-profile ARN — both are required per the GPT-6 model cards' "Call the model" section. This does not affect the separate `bedrock-mantle:*` policy for bare mantle GPT ids.
-  - **Mantle path** (`migration_path` = `"mantle"` / `"mantle_openai_responses"`, or the `same_model_mantle` OpenRouter subroute): `bedrock:InvokeModel` does NOT authorize Mantle calls. Grant the Mantle inference actions `bedrock-mantle:CreateInference` (plus `bedrock-mantle:CallWithBearerToken` for bearer-token auth), or attach the managed policy `AmazonBedrockMantleInferenceAccess`. See `references/shared/openai-on-bedrock.md` § Client setup (IAM) for the authoritative action/policy names.
+- Step 2 — Create IAM role: Trust policy for the compute platform (Lambda, ECS, or EC2 based on `aws-design.json` if present). Match inference permissions to the selected endpoint. Mantle needs `bedrock-mantle:CreateInference` scoped to `arn:aws:bedrock-mantle:{region}:{account_id}:project/*`, plus `bedrock-mantle:CallWithBearerToken` on `*` when using bearer credentials. Runtime needs `bedrock:InvokeModel` / `bedrock:InvokeModelWithResponseStream` against the selected foundation-model ARN and, for CRIS, the exact inference-profile ARN. For EVERY `runtime_openai_cris` row whose `required_client_api` is `responses` or `chat_completions` — classified by id form, not model family: any `us.`/`global.` (and, for GPT-5.6 Terra and Luna, `in.`) `openai.gpt-*` CRIS id, so GPT-5.6 Sol / Terra / Luna, the GPT-6 family, GPT-5.5 and GPT-5.4 (`us.openai.gpt-5.5` / `global.openai.gpt-5.5`, `us.openai.gpt-5.4` / `global.openai.gpt-5.4`), or their `inference-profile/` ARNs — also grant `bedrock:InvokeModel` on `arn:aws:bedrock:{region}:{account}:project/default`: a Responses request on `bedrock-runtime` authorizes the default project separately from the inference target (<https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html>, "Permissions", read 2026-11-07), and each of those model cards (read 2026-11-07) repeats the requirement for its runtime CRIS ids. `iam_policy.py --target <aws_model_id>=<required_client_api>` (one pair per `bedrock_models[]` row, each row's own API, so a GPT Chat / Responses secondary beside a Claude Messages primary still gets it) emits that third ARN for exactly those rows. A row with `required_client_api: "converse"` (the Converse-only application-inference-profile route) and every Anthropic / Nova / gpt-oss id get no such grant; a bare `openai.gpt-5.5` / `openai.gpt-5.4` / `openai.gpt-5.6-*` / `openai.gpt-6-*` id is a mantle target and gets no such grant. Runtime actions do not authorize Mantle. **Retained stored-response operations:** when the source code keeps `client.responses.retrieve(id)` (or `.cancel(id)` / `.delete(id)`; scan for `responses.retrieve(` / `responses.cancel(` / `responses.delete(`), a runtime `responses` row ALSO needs `bedrock:GetInvoke` (and `bedrock:CancelInvoke` / `bedrock:DeleteInvoke` only for the ops actually retained) on the same `arn:aws:bedrock:{region}:{account}:project/default` — creating a response authorizes `bedrock:InvokeModel` on the target and the project, while retrieving, canceling or deleting a stored response authorizes those actions on the project (same page, "Permissions", read 2026-11-08); without them creation and the ping pass and the app's existing retrieve is denied. `iam_policy.py --stored-response-ops retrieve[,cancel,delete]` emits that `BedrockStoredResponseOps` statement for a runtime `responses` row only and refuses (`reason: stored_response_ops_no_responses_row`) for a `converse`, `messages` or `chat_completions` plan, which has no stored responses on either endpoint. A bare Mantle id on `responses` (a `mantle_openai_responses` row) satisfies retained ops through the `BedrockMantleInference` statement: stored responses are retrievable on Mantle at `GET /v1/responses/{id}` under `bedrock-mantle:CreateInference` (same page, "Permissions", read 2026-11-09), so no `bedrock:GetInvoke` is added and the helper does not refuse. Step 5's verification must then also retrieve the response it just created. **Web Search grants:** when `web_search` is a confirmed mantle requirement (the row's `mantle_selector`, or any other `detected`/`user` entry in `ai_constraints.mantle_requirements`, including when the primary selector is `background_inference`), pass `iam_policy.py --mantle-selector web_search` and the policy gains a `BedrockWebSearch` statement — `bedrock-websearch:InvokeSearch` and `bedrock-websearch:InvokeFetch` on resource `*` with an `aws:RequestedRegion` condition (all three `bedrock-websearch` actions take `*`; that is the service's only condition key — <https://docs.aws.amazon.com/bedrock/latest/userguide/security-web-search.html>, read 2026-11-09). The generated client sets `"external_web_access": false` on the `web_search` tool by default: the parameter defaults to `true`, and without `bedrock-websearch:ExternalWebAccess` every Fetch then fails authorization before the cache is read while the request still returns 200 (<https://docs.aws.amazon.com/bedrock/latest/userguide/web-search.html>, "Controlling external web access", read 2026-11-09). Only when the user explicitly confirmed external web access in Clarify, pass `--external-web-access` as well (adds `bedrock-websearch:ExternalWebAccess`) and leave the parameter `true`. Web Search is served on `bedrock-mantle` Responses only, so the helper refuses (`reason: web_search_without_mantle_row`) when no row is a bare Mantle id; a plan without a `web_search` row gets no `bedrock-websearch:*` action.
+- If the runtime client uses `BEDROCK_INFERENCE_PROFILE_ARN` from the generated monitoring output, also authorize that exact `application-inference-profile/…` ARN, retaining the backing model/CRIS resources needed for the selected model and fallback. Resolve it from the same output used by the client; do not grant every application profile. Re-run setup after enabling or changing this override so the effective invocation target and IAM remain aligned. See [inference-profile IAM prerequisites](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-prereq.html).
 - Compliance carry-through: if `preferences.json` → `design_constraints.compliance` is set and not `none`/`unknown` (full-flow Q2 / AI-only Q1.5), the script and its printed notes MUST reflect the design's Step 0.7 constraints — `AWS_REGION` from the compliance-constrained region (GovCloud for fedramp, EU for gdpr), `eu.` inference-profile model IDs for gdpr, and for hipaa a printed warning that Bedrock invocation logs retain original content (KMS-encrypt + restrict IAM on the log group before enabling)
 - Step 3 — Print required environment variables: `AWS_REGION`, `AI_PROVIDER=bedrock`, model IDs
 - Step 4 — Check quota: Query current TPM quota for the primary model via `aws service-quotas get-service-quota`. If `aws-design-ai.json` → `ai_architecture.quota_risk` is `"high"` or `"medium"`, print warning: "⚠️ Your token volume may exceed default Bedrock quotas. Request a quota increase via Service Quotas console (allow 1–5 business days)." Include the `aws service-quotas request-service-quota-increase` command template.
-- Step 5 — Verification — **conditional on the migration path (Step 0):**
-  - **Non-Mantle paths** (`direct`, `gpt-oss`, `converse`, gateway): test Bedrock access with a simple `converse` call using the primary model. `converse` is a `bedrock-runtime` surface and is correct for these paths.
-  - **Mantle path** (`migration_path` = `"mantle"` / `"mantle_openai_responses"`, or the `same_model_mantle` OpenRouter subroute): the proprietary GPT models on Mantle are not reached via `converse`. Verify against the Mantle `/openai/v1` endpoint using an API the model supports — Responses (`client.responses.create(...)`) or Chat Completions — with the OpenAI SDK and a Bedrock token provider (the pattern in `references/shared/openai-on-bedrock.md` § Client setup). Do NOT use a `converse` call on this path.
+- Step 5 — Verification: Run `test_comparison.py --target-only --quick` using the same selected API, model ID and region as the generated client. A Mantle selection must never run a Converse probe; a runtime selection must preserve its validated profile ID. When Step 2 granted stored-response operations, add a create-plus-retrieve check on the runtime Responses API: `r = client.responses.create(model=<validated CRIS id>, input="ping")` then `client.responses.retrieve(r.id)` (and `.cancel` / `.delete` for each other retained op) — a 403 on the second call means the `BedrockStoredResponseOps` grant is missing even though creation passed. When Step 2 granted Web Search, add a tool-level check against the Mantle base URL: `client.responses.create(model=<bare Mantle id>, input=<time-sensitive question>, tools=[{"type": "web_search", "external_web_access": False}])`, confirm a `web_search_call` item or a `url_citation` annotation in the output, and check CloudTrail Web Search data events for a denied `InvokeSearch` / `InvokeFetch` — a plain model ping passing does not prove the grant.
 - If `$MIGRATION_DIR/terraform/` exists, print coordination note: "Ensure the IAM role is referenced in compute.tf task definitions"
 - Use region from `preferences.json` → `design_constraints.target_region`
 
@@ -179,7 +241,8 @@ Skip if `ai_framework` = `"direct"` or absent. Read `preferences.json` → `ai_c
 
 Check `aws-design-ai.json` → `code_migration.openrouter_path` (set in Design Part 5):
 
-- `"same_model_mantle"` → Skip gateway config. Run **Step 1M** (Mantle migration script) using the OpenRouter-sourced model ID as the "current model ID" input. Add a header note that Step 1M's usual "no code changes required" claim does NOT hold here: OpenRouter → Mantle changes the base URL, credential type (Bedrock API key/token provider, not an OpenRouter key), and the model-ID format (e.g. `openai/gpt-4o` → the Mantle model ID). Print this as an explicit line in the generated script rather than reusing Step 1M's unchanged-code language verbatim.
+- `"same_model_runtime"` (the default same-model subroute) → Skip gateway config. Run **Step 1M** in its CRIS variant (`bedrock-runtime` base URL `https://bedrock-runtime.{region}.amazonaws.com/openai/v1`, the CRIS inference-profile ID, `bedrock:InvokeModel*` IAM, the row's `required_client_api`) using the OpenRouter-sourced model ID as the "current model ID" input. Add a header note that Step 1M's usual "no code changes required" claim does NOT hold here: OpenRouter → `bedrock-runtime` changes the base URL, credential type (Bedrock token/API key, not an OpenRouter key), and the model-ID format (e.g. `openai/gpt-4o` → the CRIS-prefixed Bedrock model ID). Print this as an explicit line in the generated script rather than reusing Step 1M's unchanged-code language verbatim.
+- `"same_model_mantle"` (only when the row carries a `mantle_selector`) → Skip gateway config. Run **Step 1M** (Mantle migration script) using the OpenRouter-sourced model ID as the "current model ID" input. Add the same header note: OpenRouter → Mantle changes the base URL, credential type (Bedrock API key/token provider, not an OpenRouter key), and the model-ID format (e.g. `openai/gpt-4o` → the Mantle model ID). Print this as an explicit line in the generated script rather than reusing Step 1M's unchanged-code language verbatim.
 - `"direct"` → Skip gateway config. Generate provider adapter instead (same as Step 1 for direct SDK users). Note: "Migrating from OpenRouter to direct Bedrock API removes the routing middleman and OpenRouter's margin."
 - `"litellm"` → Generate `gateway_config.yaml` in LiteLLM format (standard `llm_router` logic above) + add header comment: "# Migration from OpenRouter to self-hosted LiteLLM with Bedrock backend\n# Install: pip install litellm\n# Run: litellm --config gateway_config.yaml"
 - `"keep_openrouter"` → Generate `gateway_config.json` with OpenRouter model ID mappings:
@@ -225,155 +288,122 @@ Read `aws-design-ai.json` → `agentic_design.harness_config` for all configurat
 
 **Artifact 1: `ai-migration/harness.json`**
 
-Generate the Harness configuration file:
+Generate strict JSON (no comments) as input to `agentcore add harness`. The CLI writes the deployed configuration to `app/<name>/harness.yaml`; this input file is not that native YAML schema.
 
 ```json
 {
   "name": "{harness_config.name}",
-  "model": "{harness_config.model_id}",
+  "model": {"provider": "bedrock", "modelId": "{harness_config.model_id}"},
   "systemPrompt": "{harness_config.system_prompt}",
-  "tools": [
-    // Each tool from harness_config.tools, mapped to Harness tool format:
-    // remote_mcp: {"type": "remote_mcp", "name": "...", "config": {"remoteMcp": {"url": "..."}}}
-    // agentcore_browser: {"type": "agentcore_browser", "name": "browser"}
-    // agentcore_code_interpreter: {"type": "agentcore_code_interpreter", "name": "code_interpreter"}
-    // agentcore_gateway: {"type": "agentcore_gateway", "name": "...", "config": {"agentCoreGateway": {"gatewayArn": "[TODO: Gateway ARN]"}}}
-    // inline_function: {"type": "inline_function", "name": "...", "config": {"inlineFunction": {"description": "...", "inputSchema": {...}}}}
-  ]
+  "tools": []
 }
 ```
 
-Use actual values from `harness_config` — no placeholders except where noted with `[TODO: ...]`. Include a comment header explaining the file's purpose.
+Populate `tools` from the design as full JSON objects, not comma-separated tool names. Preserve each tool's name, type, and configuration using the [Harness tool schema](https://github.com/aws/agentcore-cli/blob/e2f59dad4bbb124021c0cf59111c4add63a9dbcb/docs/harness-project-configuration.md#tools-and-tool-access): `remote_mcp`/`remoteMcp`, `agentcore_gateway`/`agentCoreGateway`, `agentcore_browser`/`agentCoreBrowser`, `agentcore_code_interpreter`/`agentCoreCodeInterpreter`, and `inline_function`/`inlineFunction`. Do not silently drop tools or deploy unresolved TODOs. Use CLI-valid logical names (letters, numbers, underscores, starting with a letter).
+
+**Project identity (both deployment scripts):** Before first deployment, require the user to choose and confirm a non-reserved `PROJECT_NAME` that is unused by other migrations in the target AWS account and region. Pass it explicitly, for example `PROJECT_NAME=<chosen-name> ./deploy_harness.sh --execute` or `PROJECT_NAME=<chosen-name> ./deploy_strands.sh --execute`; use the same value for dry-run. Do not fill in a shared default. The CLI derives cloud stack identity from project and target names, not the local directory or runtime name. These scripts validate name format, not cloud availability. Preserve the created project and its `agentcore/agentcore.json` for subsequent updates; run the printed update command from that directory without changing its project name. Reusing a different migration's project name can update or remove that migration's resources.
 
 **Artifact 2: `ai-migration/deploy_harness.sh`**
 
-Generate deployment script. Dry-run by default (`--execute` flag to run for real).
+Generate a first-deployment script alongside `harness.json`. Dry-run by default. These commands follow the [AgentCore CLI 1.0.1 command reference](https://github.com/aws/agentcore-cli/blob/e2f59dad4bbb124021c0cf59111c4add63a9dbcb/command.md). Keep arguments separate: prompts and JSON must never be evaluated as shell code. A pre-existing project must be updated from its project directory, not overwritten by this script.
 
 ```bash
 #!/bin/bash
-# AgentCore Harness Deployment Script
-# Generated by GCP-to-AWS migration plugin
-# Run with --execute to perform actual deployment (default: dry-run)
 set -euo pipefail
 
 EXECUTE=${1:-""}
-HARNESS_NAME="{harness_config.name}"
-MODEL_ID="{harness_config.model_id}"
+# Caller-selected cloud identity; never default to a shared project name.
+PROJECT_NAME=$(python3 -c '
+import os, re
+name = os.environ.get("PROJECT_NAME", "")
+if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]{0,22}", name):
+    raise SystemExit("Set PROJECT_NAME to a migration-specific name: start with a letter, use only letters/digits, maximum 23 characters")
+print(name)
+')
+RUN_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 REGION="{target_region from preferences.json}"
 
 run_cmd() {
     if [ "$EXECUTE" = "--execute" ]; then
-        echo ">>> $*"
-        eval "$@"
+        "$@"
     else
-        echo "[DRY-RUN] $*"
+        printf '[DRY-RUN] '
+        printf '%q ' "$@"
+        printf '\n'
     fi
 }
 
-echo "=== AgentCore Harness Deployment: $HARNESS_NAME ==="
-echo "Model: $MODEL_ID"
-echo "Region: $REGION"
-echo ""
-
-# Step 1: Verify AgentCore CLI is installed
-if ! command -v agentcore &> /dev/null; then
-    echo "AgentCore CLI not found. Install with:"
-    echo "  pip install bedrock-agentcore-cli"
-    if [ "$EXECUTE" != "--execute" ]; then
-        echo "[DRY-RUN] Continuing with remaining steps..."
-    else
-        exit 1
-    fi
+# Step 1: Verify prerequisites
+# Resolve the npm package entrypoint instead of trusting an agentcore on PATH.
+AGENTCORE_ENTRY=""
+if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 \
+  && NPM_ROOT=$(npm root -g) \
+  && npm ls -g --depth=0 @aws/agentcore >/dev/null 2>&1; then
+    AGENTCORE_ENTRY="$NPM_ROOT/@aws/agentcore/dist/index.js"
 fi
+if [ ! -f "$AGENTCORE_ENTRY" ]; then
+    echo "Official AgentCore CLI not found. Requires Node.js 20.12+ and npm."
+    echo "If the Python starter toolkit is installed: pip uninstall bedrock-agentcore-starter-toolkit"
+    echo "Then install: npm install -g @aws/agentcore"
+    if [ "$EXECUTE" = "--execute" ]; then exit 1; fi
+fi
+agentcore() {
+    node "$AGENTCORE_ENTRY" "$@"
+}
+CONFIG="$RUN_DIR/harness.json"
+HARNESS_NAME=$(python3 -c '
+import json, re, sys
+name = json.load(open(sys.argv[1]))["name"]
+if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", name):
+    raise SystemExit("Harness name must start with a letter and contain only letters, numbers or underscores")
+if len("_".join((sys.argv[2], "default", name))) > 40:
+    raise SystemExit("Combined project/default-target/harness name exceeds 40 characters; choose a shorter name")
+print(name)
+' "$CONFIG" "$PROJECT_NAME")
+MODEL_JSON=$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))["model"]))' "$CONFIG")
+TOOLS_JSON=$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))["tools"]))' "$CONFIG")
+# NUL termination preserves trailing newlines in the system prompt.
+IFS= read -r -d '' SYSTEM_PROMPT < <(python3 -c 'import json,sys; sys.stdout.write(json.load(open(sys.argv[1]))["systemPrompt"] + "\0")' "$CONFIG")
+# Step 2: Create and enter the child project
+cd -- "$RUN_DIR"
+run_cmd agentcore create --name "$PROJECT_NAME" --skip-git
+run_cmd cd -- "$PROJECT_NAME"
 
-# Step 2: Create project
-run_cmd "agentcore create --name $HARNESS_NAME"
+# Step 3: Register the complete harness configuration
+run_cmd agentcore add harness --name "$HARNESS_NAME" \
+  --model "$MODEL_JSON" --system-prompt "$SYSTEM_PROMPT" --tools "$TOOLS_JSON" \
+  --authorizer-type AWS_IAM
 
-# Step 3: Add harness with model and tools
-run_cmd "agentcore add harness --name $HARNESS_NAME \\
-  --model-id $MODEL_ID \\
-  --system-prompt '{harness_config.system_prompt}' \\
-  --tools {comma-separated tool types from harness_config.tools}"
+# Step 4: Deploy from the registered project
+run_cmd agentcore deploy --region "$REGION"
 
-# Step 4: Deploy
-run_cmd "agentcore deploy"
+# Step 5: Invoke the deployed harness
+run_cmd agentcore invoke --harness "$HARNESS_NAME" --region "$REGION" \
+  --prompt 'Hello, this is a test invocation to verify deployment.'
 
-# Step 5: Test invocation
-echo ""
-echo "=== Test Invocation ==="
-run_cmd "agentcore invoke --harness $HARNESS_NAME \\
-  'Hello, this is a test invocation to verify deployment.'"
-
-echo ""
-echo "=== Deployment Complete ==="
-echo "Next steps:"
-echo "  1. Test with representative prompts: agentcore invoke --harness $HARNESS_NAME 'your prompt'"
-echo "  2. Override model for A/B testing: agentcore invoke --harness $HARNESS_NAME --model-id <alt-model> 'prompt'"
-echo "  3. View logs: agentcore logs --harness $HARNESS_NAME"
+if [ "$EXECUTE" = "--execute" ]; then
+    echo "Deployment and test invocation completed."
+else
+    echo "Dry run only; no project was created or deployed."
+fi
+echo "For later updates, enter $RUN_DIR/$PROJECT_NAME."
+echo "Edit app/$HARNESS_NAME/harness.yaml before deploying updates."
+printf 'Deploy: '; printf '%q ' node "$AGENTCORE_ENTRY" deploy --region "$REGION"; printf '\n'
+printf 'View logs: '; printf '%q ' node "$AGENTCORE_ENTRY" logs harness --name "$HARNESS_NAME" --region "$REGION"; printf '\n'
 ```
 
 **Artifact 3: `ai-migration/incremental_migration.sh`** (only if `harness_config.incremental_migration == true`)
 
-Generate incremental migration script showing multi-model switching:
+Generate a **manual plan**, not commands claiming per-invocation model overrides. CLI 1.0.1 `invoke` has no `--model-id`, `--model-provider`, or `--api-key-arn` flags.
 
-```bash
-#!/bin/bash
-# Incremental Migration: Source Provider → Bedrock via AgentCore Harness
-# This script demonstrates the multi-model switching capability.
-# Run each phase manually and validate before proceeding to the next.
-set -euo pipefail
+1. Enter the project created by `deploy_harness.sh`.
+2. Configure the source provider's credential through AgentCore Identity using the current official CLI documentation. Do not embed API keys in the script or command output.
+3. Update `app/<harness_name>/harness.yaml` to the source provider's model configuration and credential reference; run `node "$(npm root -g)/@aws/agentcore/dist/index.js" deploy --region <region>`.
+4. Generate two distinct UUIDs, `SOURCE_SESSION_ID` and `TARGET_SESSION_ID`, and retain them with the comparison results. Test the source with `node "$(npm root -g)/@aws/agentcore/dist/index.js" invoke --harness <harness_name> --session-id "$SOURCE_SESSION_ID" --prompt "Your test prompt" --region <region>`. Keep using the npm entrypoint for manual commands; the deployment script's shell function does not persist in the caller's shell.
+5. Replace the model configuration with `bedrockModelConfig: {modelId: <target_model_id>}`, deploy again, and replay the identical ordered prompts using `node "$(npm root -g)/@aws/agentcore/dist/index.js" invoke --harness <harness_name> --session-id "$TARGET_SESSION_ID" --prompt "Your test prompt" --region <region>`. **Use separate source/target comparison sessions. Session history is not transferred.** Never reuse the source session ID after the model change; start new application sessions on the chosen target.
+6. Remove the source credential only after the user validates the Bedrock cutover and its rollback plan.
 
-HARNESS_NAME="{harness_config.name}"
-SOURCE_PROVIDER="{harness_config.source_model_provider}"
-SOURCE_MODEL="{harness_config.source_model_id}"
-BEDROCK_MODEL="{harness_config.model_id}"
-SESSION_ID=$(uuidgen)
-
-echo "=== Incremental Migration Plan ==="
-echo "Source: $SOURCE_PROVIDER / $SOURCE_MODEL"
-echo "Target: Bedrock / $BEDROCK_MODEL"
-echo "Session: $SESSION_ID"
-echo ""
-
-# Phase 0: Store source provider API key in AgentCore Identity
-echo "--- Phase 0: Configure source provider credentials ---"
-echo "Run once:"
-echo "  agentcore add credential --type api-key --name source-provider-key --api-key \$SOURCE_API_KEY"
-echo "  agentcore deploy"
-echo ""
-
-# Phase 1: Invoke with source provider model on AgentCore infrastructure
-echo "--- Phase 1: Source provider on AgentCore ---"
-echo "agentcore invoke --harness $HARNESS_NAME \\"
-echo "  --model-provider $SOURCE_PROVIDER \\"
-echo "  --model-id $SOURCE_MODEL \\"
-echo "  --api-key-arn arn:aws:bedrock-agentcore:{region}:{account}:token-vault/default/apikeycredentialprovider/source-provider-key \\"
-echo "  --session-id $SESSION_ID \\"
-echo "  'Your test prompt here'"
-echo ""
-
-# Phase 2: Same session, switch to Bedrock model
-echo "--- Phase 2: Bedrock model (same session, context preserved) ---"
-echo "agentcore invoke --harness $HARNESS_NAME \\"
-echo "  --model-id $BEDROCK_MODEL \\"
-echo "  --session-id $SESSION_ID \\"
-echo "  'Same test prompt for comparison'"
-echo ""
-
-# Phase 3: Update default model
-echo "--- Phase 3: Switch default to Bedrock ---"
-echo "Edit app/$HARNESS_NAME/harness.json: set \"model\" to \"$BEDROCK_MODEL\""
-echo "agentcore deploy"
-echo ""
-
-# Phase 4: Remove source provider
-echo "--- Phase 4: Clean up source provider credentials ---"
-echo "After 48h stable on Bedrock:"
-echo "  Remove API key from AgentCore Identity"
-echo "  agentcore deploy"
-echo ""
-echo "=== Migration Complete ==="
-```
+If retaining the filename `incremental_migration.sh`, it must only print these instructions; it must not perform credential operations, deployments, or invocations automatically.
 
 ---
 
@@ -409,12 +439,6 @@ Docs: https://strandsagents.com
 from strands import Agent, tool
 from strands.models import BedrockModel
 
-# Model configuration
-model = BedrockModel(
-    model_id="{agents[0].model_id}",
-    region_name="{target_region}"
-)
-
 # --- Tool definitions ---
 # Migrate your existing tool functions by adding the @tool decorator.
 # Your tool logic stays the same; Strands handles invocation and result parsing.
@@ -426,12 +450,17 @@ def {tool_name}({params}) -> str:
     pass
 
 # --- Agent definitions ---
-{agent_name} = Agent(
-    name="{agent_id}",
-    model=model,
-    system_prompt="""{system_prompt}""",
-    tools=[{tool_list}]
-)
+def create_{agent_name}():
+    model = BedrockModel(
+        model_id="{model_id}",
+        region_name="{target_region}"
+    )
+    return Agent(
+        name="{agent_id}",
+        model=model,
+        system_prompt="""{system_prompt}""",
+        tools=[{tool_list}]
+    )
 ```
 
 **For multi-agent systems**, generate the orchestration based on `orchestration_primitive`:
@@ -443,17 +472,17 @@ def {tool_name}({params}) -> str:
 @tool
 def {specialist_agent_id}(query: str) -> str:
     """[role description]"""
-    response = {specialist_var}(query)
+    response = create_{specialist_var}()(query)
     return str(response)
 
-# Orchestrator delegates to specialists
-orchestrator = Agent(
-    name="orchestrator",
-    model=model,
-    tools=[{specialist_tool_1}, {specialist_tool_2}, ...]
-)
-
-result = orchestrator("Your task here")
+def invoke(prompt: str) -> str:
+    orchestrator = Agent(
+        name="orchestrator",
+        model=BedrockModel(model_id="{orchestrator_model_id}", region_name="{target_region}"),
+        system_prompt="""{orchestrator_system_prompt}""",
+        tools=[{specialist_tool_1}, {specialist_tool_2}, ...]
+    )
+    return str(orchestrator(prompt))
 ```
 
 - **`swarm`** (collaborative):
@@ -461,8 +490,9 @@ result = orchestrator("Your task here")
 ```python
 from strands.multiagent import Swarm
 
-team = Swarm([{agent_1}, {agent_2}, {agent_3}])
-result = team("Your task here")
+def invoke(prompt: str) -> str:
+    team = Swarm([create_{agent_1}(), create_{agent_2}(), create_{agent_3}()])
+    return str(team(prompt))
 ```
 
 - **`graph`** (deterministic workflow):
@@ -470,77 +500,138 @@ result = team("Your task here")
 ```python
 from strands.multiagent import GraphBuilder
 
-builder = GraphBuilder()
-builder.add_node({agent_1}, "{node_1_name}")
-builder.add_node({agent_2}, "{node_2_name}")
-builder.add_edge("{node_1_name}", "{node_2_name}")  # Add conditions if detected
-builder.set_entry_point("{entry_node}")
-workflow = builder.build()
-
-result = workflow("Your task here")
+def invoke(prompt: str) -> str:
+    builder = GraphBuilder()
+    builder.add_node(create_{agent_1}(), "{node_1_name}")
+    builder.add_node(create_{agent_2}(), "{node_2_name}")
+    builder.add_edge("{node_1_name}", "{node_2_name}")  # Add conditions if detected
+    builder.set_entry_point("{entry_node}")
+    workflow = builder.build()
+    return str(workflow(prompt))
 ```
 
-- **`single_agent`**: Just the single Agent definition (no multi-agent orchestration).
+- **`single_agent`**: Export `def invoke(prompt: str) -> str: return str(create_<generated_agent_name>()(prompt))` alongside the Agent definition (no multi-agent orchestration).
 
-Use actual agent IDs, model IDs, tool names, and system prompts from the design config. Mark TODOs only where implementation details can't be extracted from discovery.
+Use each agent's own ID, model ID, tool names, and system prompt from the design config. For hierarchical orchestration, fill `orchestrator_model_id` and `orchestrator_system_prompt` from the agent whose `role_in_system` is `orchestrator`. Keep model construction inside each factory so later agent definitions cannot change an earlier factory's model. Mark TODOs only where implementation details can't be extracted from discovery.
+
+Export the selected orchestration through `invoke(prompt)` without invoking a model at import time. Construct fresh agents and orchestration state per invocation so unrelated runtime requests do not share conversation history; session persistence requires a separately designed session store. Preserve migrated local tool modules and their dependencies; unresolved tool implementations must be completed before deployment.
+
+**Runtime files: `ai-migration/main.py` and `ai-migration/pyproject.toml`**
+
+The runtime serves the generated code, not the CLI's sample agent. Generate this entrypoint alongside `strands_agents.py`:
+
+```python
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
+from strands_agents import invoke
+
+app = BedrockAgentCoreApp()
+
+@app.entrypoint
+def handle(payload):
+    return {"result": invoke(payload["prompt"])}
+
+if __name__ == "__main__":
+    app.run()
+```
+
+Generate a project manifest, adding any dependencies required by the migrated tool code:
+
+```toml
+[project]
+name = "migrated-strands-agent"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["bedrock-agentcore", "aws-opentelemetry-distro", "strands-agents", "strands-agents-tools", "boto3"]
+
+[tool.agentcore]
+entrypoint = "main.py"
+```
 
 **Artifact 2: `ai-migration/deploy_strands.sh`**
 
-Generate AgentCore Runtime deployment script. Dry-run by default.
+Generate a first-deployment script. `add runtime` registers a Python HTTP runtime but does not generate its implementation. Copy the generated entrypoint, agent code and manifest into that runtime's directory before deployment. Add explicit copy commands for any additional migrated local modules. Dry-run must not create directories, install packages or call AWS. The SDK serves inside AgentCore's managed runtime; retain AWS IAM invocation authentication and do not publish its container port directly.
+
+Project names allow only letters and digits, start with a letter, and have a 23-character limit; `strands` itself is reserved by the CLI. Require the caller-selected `PROJECT_NAME` described below; never derive cloud identity from a fixed template name or the local directory. Runtime names allow underscores and have a 48-character limit. Normalize hyphens in the source ID to underscores (for example, `research-agent` becomes `research_agent`), preserve the source ID in the generated agent code, and reject remaining invalid names rather than silently truncating them.
 
 ```bash
 #!/bin/bash
-# Strands Agents — AgentCore Runtime Deployment
-# Generated by GCP-to-AWS migration plugin
-# Run with --execute to perform actual deployment (default: dry-run)
 set -euo pipefail
 
 EXECUTE=${1:-""}
-PROJECT_NAME="{agent_id}-strands"
+# Caller-selected cloud identity; never default to a shared project name.
+PROJECT_NAME=$(python3 -c '
+import os, re
+name = os.environ.get("PROJECT_NAME", "")
+if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]{0,22}", name):
+    raise SystemExit("Set PROJECT_NAME to a migration-specific name: start with a letter, use only letters/digits, maximum 23 characters")
+print(name)
+')
+RUN_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+SOURCE_AGENT_ID="{agent_id}"
+RUNTIME_NAME=$(python3 -c '
+import re, sys
+name = sys.argv[1].replace("-", "_")
+if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,47}", name):
+    raise SystemExit("Runtime name must start with a letter, contain only letters, numbers or underscores, and be at most 48 characters")
+print(name)
+' "$SOURCE_AGENT_ID")
 REGION="{target_region}"
 
 run_cmd() {
     if [ "$EXECUTE" = "--execute" ]; then
-        echo ">>> $*"
-        eval "$@"
+        "$@"
     else
-        echo "[DRY-RUN] $*"
+        printf '[DRY-RUN] '
+        printf '%q ' "$@"
+        printf '\n'
     fi
 }
 
-echo "=== Strands Agents — AgentCore Runtime Deployment ==="
-echo "Project: $PROJECT_NAME"
-echo "Region: $REGION"
-echo "Agents: {agent_count}"
-echo ""
+# Step 1: Install the CLI; runtime dependencies come from pyproject.toml
+run_cmd npm install -g @aws/agentcore
 
-# Step 1: Verify dependencies
-echo "--- Prerequisites ---"
-run_cmd "pip install strands-agents strands-agents-tools boto3 bedrock-agentcore-cli"
+# Resolve the npm package entrypoint instead of trusting an agentcore on PATH.
+AGENTCORE_ENTRY=""
+if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 \
+  && NPM_ROOT=$(npm root -g) \
+  && npm ls -g --depth=0 @aws/agentcore >/dev/null 2>&1; then
+    AGENTCORE_ENTRY="$NPM_ROOT/@aws/agentcore/dist/index.js"
+fi
+if [ ! -f "$AGENTCORE_ENTRY" ]; then
+    echo "Official AgentCore CLI not found. Requires Node.js 20.12+ and npm."
+    echo "If the Python starter toolkit is installed: pip uninstall bedrock-agentcore-starter-toolkit"
+    echo "Then install: npm install -g @aws/agentcore"
+    if [ "$EXECUTE" = "--execute" ]; then exit 1; fi
+fi
+agentcore() {
+    node "$AGENTCORE_ENTRY" "$@"
+}
 
-# Step 2: Create AgentCore project
-run_cmd "agentcore create --name $PROJECT_NAME"
+# Step 2: Create and enter the child project
+cd -- "$RUN_DIR"
+run_cmd agentcore create --name "$PROJECT_NAME" --skip-git
+run_cmd cd -- "$PROJECT_NAME"
 
-# Step 3: Deploy to AgentCore Runtime
-echo ""
-echo "--- Deploying to AgentCore Runtime ---"
-run_cmd "agentcore deploy"
+# Step 3: Register and populate the runtime
+run_cmd agentcore add runtime --name "$RUNTIME_NAME" --language python --protocol HTTP --authorizer-type AWS_IAM
+run_cmd cp -- "$RUN_DIR/main.py" "$RUN_DIR/strands_agents.py" \
+  "$RUN_DIR/pyproject.toml" "app/$RUNTIME_NAME/"
 
-# Step 4: Test invocation
-echo ""
-echo "--- Test Invocation ---"
-run_cmd "agentcore invoke --name $PROJECT_NAME 'Hello, test invocation'"
+# Step 4: Build and deploy the registered runtime
+run_cmd agentcore deploy --region "$REGION"
 
-echo ""
-echo "=== Deployment Complete ==="
-echo "Next steps:"
-echo "  1. Run locally first: python strands_agents.py"
-echo "  2. Test with representative prompts"
-echo "  3. Deploy: ./deploy_strands.sh --execute"
-echo "  4. Monitor: agentcore logs --name $PROJECT_NAME"
-echo ""
-echo "Strands docs: https://strandsagents.com"
-echo "AgentCore docs: https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+# Step 5: Send the JSON payload handled by main.py
+run_cmd agentcore invoke --runtime "$RUNTIME_NAME" --region "$REGION" \
+  --payload '{"prompt":"Hello, test invocation"}'
+
+if [ "$EXECUTE" = "--execute" ]; then
+    echo "Deployment and test invocation completed."
+else
+    echo "Dry run only; no project was created or deployed."
+fi
+echo "For later updates, enter $RUN_DIR/$PROJECT_NAME and update app/$RUNTIME_NAME/."
+printf 'Deploy: '; printf '%q ' node "$AGENTCORE_ENTRY" deploy --region "$REGION"; printf '\n'
+printf 'Monitor: '; printf '%q ' node "$AGENTCORE_ENTRY" logs runtime --name "$RUNTIME_NAME" --region "$REGION"; printf '\n'
 ```
 
 **Artifact 3: `ai-migration/bridge_retarget.py`** (only if `strands_config.bridge_phase == true`)
@@ -594,6 +685,8 @@ print(f"Next step: Validate model quality, then migrate to Strands.")
 **Runs for ALL migration paths** (direct, mantle, gpt-oss, gateway, harness, strands).
 Creates `ai-migration/bedrock_monitoring.tf` — standalone Terraform for AI-only migrations
 that have no `baseline.tf` from the infra track.
+
+Budget and anomaly monitoring apply to every path. **Application inference profiles are conditional:** omit the profile resource and its output for Mantle targets, including Astra, and for any model/API without documented support. Astra supports application inference profiles only on runtime Converse, not on runtime Chat/Responses. An unsupported profile must not prevent the applicable budget/anomaly resources from being emitted.
 
 > **These are detective controls, not spend caps.** Bedrock has no native spend limit.
 > Anomaly Detection has ~24h data lag — you'll know within a day, not at month-end invoice.
@@ -713,22 +806,22 @@ resource "aws_ce_anomaly_subscription" "bedrock_alert" {
 }
 
 # Application inference profiles — cost attribution by environment/app
+# AGENT: omit this resource and its output for Mantle or any unsupported model/API.
 # Tags on these profiles appear in Cost Explorer; tags on API calls do not.
 # copy_from must be a full foundation-model ARN or cross-region inference profile ARN.
 # For Claude models, use the cross-region inference profile ARN format:
 #   arn:aws:bedrock:{region}:{account_id}:inference-profile/us.anthropic.claude-sonnet-5
 # For Amazon Nova models, use:
 #   arn:aws:bedrock:{region}:{account_id}:inference-profile/us.amazon.nova-pro-v1:0
-# [AGENT: generate one block per model in aws-design-ai.json → ai_architecture.bedrock_models[]]
+# [AGENT: generate one block per eligible runtime model/API in the saved design]
 resource "aws_bedrock_inference_profile" "primary" {
   name = "${var.project_name}-${var.environment}-primary"
 
   model_source {
-    # Use cross-region inference profile ARN, not bare model ID
-    copy_from = "arn:aws:bedrock:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:inference-profile/{cross_region_inference_profile_id}"
-    # AGENT: replace {cross_region_inference_profile_id} with the correct ID from
-    # aws-design-ai.json bedrock_models[].aws_model_id, prefixed with "us." for US regions
-    # e.g., us.anthropic.claude-sonnet-5 or us.amazon.nova-pro-v1:0
+    copy_from = "{verified_model_source_arn}"
+    # AGENT: use the exact foundation-model or CRIS ARN resolved for this model/API.
+    # Preserve the chosen profile's geography; never manufacture a "us." prefix
+    # or replace a validated global profile with a regional one.
   }
 
   tags = {

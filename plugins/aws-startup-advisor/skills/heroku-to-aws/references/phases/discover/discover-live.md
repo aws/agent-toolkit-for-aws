@@ -32,8 +32,9 @@ For each app in `apps.json` that is in the manifest's `apps_selected`:
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `name`        | `app_name`                                                                                                                      |
 | `id`          | `app_id` (real UUID — live discovery always has this)                                                                           |
+| `region.name` | `region` (preserve the source Heroku region name; use `null` if unavailable)                                                     |
 | `space.name`  | `space` (or `null`)                                                                                                             |
-| `stack.name`  | feeds `heroku_generation`: `heroku-20`/`heroku-22`/`heroku-24` → `"cedar"`; contains `fir` or `cnb` → `"fir"`; else `"unknown"` |
+| `stack.name`  | `stack` (preserve the source name, or `null`); also feeds `heroku_generation`: `heroku-20`/`heroku-22`/`heroku-24` → `"cedar"`; contains `fir` or `cnb` → `"fir"`; else `"unknown"` |
 
 Set `generation_action: "detect_only"`, `discovery_status: "success"`. An app whose
 per-app captures all failed (manifest `failed`) gets `discovery_status:
@@ -71,6 +72,7 @@ For each add-on attached to a selected app:
 | `addon_service.name`                              | `provider` — `"heroku"` when the service name starts with `heroku-` (first-party data add-ons), otherwise the service name itself (matches the Terraform fragment's convention) |
 | `name`                                             | `addon_name` — the add-on's actual Heroku-assigned name                                                                                                                         |
 | `plan.price` (`cents`, `unit`)                    | `monthly_price_usd` = `cents / 100` when `unit == "month"` (optional field)                                                                                                     |
+| `attachments[]` (`app.name`)                      | `attached_apps` — the OTHER apps this add-on is attached to (owning app excluded, de-duplicated, sorted). Always write the field: `[]` when the add-on has no cross-app attachments. If the capture carries no `attachments` key at all, write `[]` and add `"add-on attachments not present in capture; shared data stores cannot be detected"` once to `live_metadata.limitations` |
 
 Resource entry: `resource_id: "addon:{app_name}:{addon_service}:{plan}:{addon_name}"`,
 `resource_type: "addon"`, `source: "live"`. `addon_name` is that add-on's `name`
@@ -110,6 +112,16 @@ text, keep the plan-only entry and record a warning):
   describe more than one database for apps with several Postgres add-ons — match
   each block to its resource entry by the add-on name it names, not by app alone.
   The `data_size_gb` value feeds downstream database-migration tool selection.
+  Also set `pg_role`: `"follower"` when a `Following:` line is present, `"fork"`
+  when a `Forked From:` line is present, otherwise `"leader"`; copy the referenced
+  attachment name (e.g. `HEROKU_POSTGRESQL_TEAL`) into `pg_leader` (or `null` for a
+  leader). Also record `pg_attachment_names`: the attachment names in the block's
+  `=== ...` header with the `_URL` suffix removed (e.g. `=== DATABASE_URL, HEROKU_POSTGRESQL_TEAL_URL`
+  → `["DATABASE", "HEROKU_POSTGRESQL_TEAL"]`); Design matches a follower's `pg_leader`
+  against its siblings' `pg_attachment_names` to find the leader. One app commonly owns a
+  leader plus one or more followers — without `pg_role` the Design phase sizes every one
+  of them as a separate database and the data-volume total double-counts. (Advanced-tier add-ons carry the same information
+  in `advanced_pools[]`; `pg_role` there is `"leader"` for the add-on itself.)
 - `redis-<app>.out` → `redis_version`, `maxmemory_policy`; set `ha_enabled: true`
   when the plan tier starts with `premium` or `private`, and
   `encryption_in_transit: true` for those tiers.

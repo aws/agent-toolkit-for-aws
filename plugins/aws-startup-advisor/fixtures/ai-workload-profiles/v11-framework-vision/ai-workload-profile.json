@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.1",
+  "ai_sources": [
+    {
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model_families": ["gpt"],
+      "model_evidence": "observed",
+      "models": ["gpt-4o"],
+      "model_observations": [
+        {"normalized_model": "gpt-4o", "raw_model": "gpt-4o", "model_family": "gpt", "evidence": [{"provenance": "code", "confidence": "high", "detail": "ChatOpenAI(model=\"gpt-4o\") in app/chains.py:12"}]}
+      ]
+    }
+  ],
+  "gateways": [],
+  "integration": {
+    "pattern": "framework",
+    "primary_sdk": "langchain-openai",
+    "sdk_version": "0.2.1",
+    "languages": ["python"],
+    "frameworks": ["langchain"],
+    "capabilities_summary": {
+      "text_generation": true, "streaming": true, "function_calling": false, "vision": true, "embeddings": false,
+      "batch_processing": false, "speech_to_text": false, "text_to_speech": false, "image_generation": false
+    }
+  },
+  "workloads": [
+    {"workload_id": "summarize", "provider": "openai", "source_service": "openai_api", "model": "gpt-4o", "sdk_method": "ChatOpenAI.invoke", "capability": "text_generation", "capability_confidence": "high", "structured_output": false, "call_sites": [{"file": "app/chains.py", "line": 18}]},
+    {"workload_id": "describe-receipt", "provider": "openai", "source_service": "openai_api", "model": "gpt-4o", "sdk_method": "ChatOpenAI.invoke", "capability": "vision", "capability_confidence": "medium", "structured_output": true, "call_sites": [{"file": "app/receipts.py", "line": 41}]}
+  ]
+}

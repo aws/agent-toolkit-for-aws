@@ -68,7 +68,7 @@
       "must_not_be": []
     },
     "azurerm_redis_cache.session": {
-      "aws_service": "ElastiCache Redis",
+      "aws_service": "ElastiCache Valkey",
       "must_not_be": [
         "MemoryDB"
       ]
@@ -329,7 +329,7 @@
     "index_relpath": "../../skills/azure-to-aws/references/design-refs/index.md",
     "design_refs_relpath": "../../skills/azure-to-aws/references/design-refs",
     "known_pending": [],
-    "_known_pending_why": "Empty: ai.md landed in the AI build (plan §19.2, step 2), so no index.md Reference file is deliberately pending. The asserter fails a known_pending entry that now EXISTS, which is what pruned this list when ai.md was created."
+    "_known_pending_why": "Empty: ai.md landed in the AI build (plan \u00a719.2, step 2), so no index.md Reference file is deliberately pending. The asserter fails a known_pending entry that now EXISTS, which is what pruned this list when ai.md was created."
   },
   "sizing_provenance": {
     "_comment": "Every services[] entry whose aws_config carries a SIZE must declare where the number came from. Also pins the two sizes that a sizing table contradicted, because they were model priors before the tables existed.",

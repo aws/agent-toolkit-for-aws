@@ -47,7 +47,7 @@ await Promise.all(responses.map((r) => r.Body.transformToByteArray()));
 
 // OK: chain stream handling before awaiting
 const responses = [s3.getObject({ Bucket, Key: "1" }), s3.getObject({ Bucket, Key: "2" })];
-const objects = responses.map((get) => get.Body.transformToByteArray());
+const objects = responses.map((get) => get.then((r) => r.Body.transformToByteArray()));
 await Promise.all(objects);
 ```
 

@@ -59,7 +59,10 @@ rg -n 'tool_choice|toolChoice|prefill|json_schema|response_format|role.*assistan
 ## typed-response-and-history
 
 For every path, read visible text by block type, never by first-block position.
-Native Messages uses `type: text`; Converse uses text-key blocks. Preserve the
+Native Messages uses `type: text`; Converse uses text-key blocks. On the
+`runtime_messages` and `mantle_messages` lanes the native `type: text` block shape
+and the message history are preserved unchanged; only the explicit Converse
+alternative reshapes them. Preserve the
 complete assistant response, including reasoning/signatures and tool-use blocks,
 when continuing tool history. Streaming must preserve complete signed blocks
 using the SDK's accumulator while emitting only text deltas to text consumers.

@@ -22,7 +22,7 @@
 | Firestore (instance)   | `google_firestore_database`    | `database.md`  | DynamoDB                                                                          |
 | Firestore (document)   | `google_firestore_document`    | `database.md`  | DynamoDB                                                                          |
 | BigQuery               | `google_bigquery_*`            | `database.md`  | **`Deferred — specialist engagement`** only (see `design-infra.md` BigQuery gate) |
-| Memorystore (Redis)    | `google_redis_instance`        | `database.md`  | ElastiCache Redis                                                                 |
+| Memorystore (Redis) | `google_redis_instance` | `database.md` | ElastiCache Valkey (Redis OSS on exception) |
 | Cloud Spanner          | `google_spanner_instance`      | `database.md`  | Aurora DSQL                                                                       |
 
 ## Storage Services

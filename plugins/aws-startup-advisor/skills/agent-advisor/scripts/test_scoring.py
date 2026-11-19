@@ -721,6 +721,9 @@ _POOL_LIFECYCLE_KEYS = {
     "claude_opus_5_5": "claude-opus-5-5",
     "claude_sonnet_5": "claude-sonnet-5",
     "claude_haiku_4_5": "claude-haiku-4-5",
+    "claude_haiku_5_5": "claude-haiku-5-5",
+    "claude_sonnet_5_5": "claude-sonnet-5-5",
+    "openai_gpt_6_astra": "gpt-6-astra",
     "openai_gpt_5_6_sol": "gpt-5.6-sol",
     "openai_gpt_5_6_terra": "gpt-5.6-terra",
     "openai_gpt_5_6_luna": "gpt-5.6-luna",
@@ -730,9 +733,12 @@ _POOL_LIFECYCLE_KEYS = {
     "openai_gpt_6_sol": "gpt-6-sol",
     "openai_gpt_6_luna": "gpt-6-luna",
     "openai_gpt_6_1_sol": "gpt-6.1-sol",
+    "openai_gpt_6_1_terra": "gpt-6.1-terra",
     "anthropic_claude_sonnet_5": "claude-sonnet-5",
     "anthropic_claude_opus_5_5": "claude-opus-5-5",
     "anthropic_claude_haiku_4_5": "claude-haiku-4-5",
+    "anthropic_claude_haiku_5_5": "claude-haiku-5-5",
+    "anthropic_claude_sonnet_5_5": "claude-sonnet-5-5",
 }
 
 
@@ -781,17 +787,17 @@ def _legacy_or_excluded_rows():
 
 
 def test_drift_mechanism_actually_fires_on_a_known_legacy_model():
-    # Self-proof: the file lists Claude Opus 4.1 as legacy (still in the table).
-    # The matcher MUST see its id fragment — otherwise a 0-match "pass" below
-    # would be vacuous (Active models are simply absent from the legacy table,
-    # so the check only means something if it can actually match a legacy id
-    # when one appears).
+    # Self-proof: the file lists Claude Opus 4.1 as excluded (still in the table,
+    # inside the 90-day zone as of the 2026-10-26 refresh). The matcher MUST see
+    # its id fragment — otherwise a 0-match "pass" below would be vacuous (Active
+    # models are simply absent from the legacy table, so the check only means
+    # something if it can actually match a legacy/excluded id when one appears).
     if not _LIFECYCLE_FILE.exists():
         pytest.xfail("lifecycle file not reachable — drift check skipped")
     bad_rows = _legacy_or_excluded_rows()
     assert any("claude-opus-4-1" in r for r in bad_rows), (
-        "expected Claude Opus 4.1 in a legacy row — lifecycle file format changed; "
-        "the drift matcher may no longer work and needs updating")
+        "expected Claude Opus 4.1 in a legacy/excluded row — lifecycle file format "
+        "changed; the drift matcher may no longer work and needs updating")
 
 
 def test_drift_mechanism_actually_fires_on_a_known_removed_model():
@@ -828,3 +834,374 @@ def test_runtimes_dir_points_at_skill_references():
     parts = RUNTIMES_DIR.parts
     assert parts[-2:] == ("references", "runtimes"), RUNTIMES_DIR
     assert parts[-3] == "agent-advisor", RUNTIMES_DIR
+
+
+# --- B4 (#566 feedback F2): expected_scale -----------------------------------------------------
+
+def test_unknown_scale_scores_neutral_on_every_runtime():
+    # Existing runs and seeds carry no expected_scale; they must score exactly as before.
+    for profile in scoring.load_profiles():
+        assert profile["affinities"]["expected_scale"]["unknown"] == scoring.NEUTRAL_SCORE
+    answers = {"session_duration": "15min_to_8hr", "traffic_pattern": "steady"}
+    assert scoring.score({"answers": answers})["scores"] == scoring.score(
+        {"answers": {**answers, "expected_scale": "unknown"}})["scores"]
+
+
+def _scale_gain(scale):
+    answers = {"session_duration": "15min_to_8hr"}
+    before = scoring.score({"answers": answers})["scores"]
+    after = scoring.score({"answers": {**answers, "expected_scale": scale}})["scores"]
+    return {runtime: after[runtime] - before[runtime] for runtime in before}
+
+
+def test_prototype_scale_favors_scale_to_zero_runtimes():
+    gain = _scale_gain("prototype")
+    assert min(gain["agentcore"], gain["lambda"]) > gain["lambda_microvms"] > gain["ecs"] > gain["eks"]
+
+
+def test_high_scale_favors_container_runtimes():
+    gain = _scale_gain("high")
+    assert min(gain["ecs"], gain["eks"]) > gain["agentcore"] > max(gain["lambda"], gain["lambda_microvms"])
+
+
+def test_growing_scale_sits_between_prototype_and_high():
+    gain = _scale_gain("growing")
+    assert (gain["agentcore"] == gain["lambda"] == gain["lambda_microvms"]
+            > gain["ecs"] > gain["eks"])
+
+
+_STEADY_AGENT = {"session_duration": "15min_to_8hr", "traffic_pattern": "steady",
+                 "ops_preference": "moderate", "existing_cluster": "none"}
+
+
+def test_prototype_scale_brings_agentcore_into_the_recommendation():
+    # memory_needs: none keeps AgentCore out without a scale answer now that B3 (#622) scores
+    # multi_agent: no at 2 on AgentCore.
+    answers = {**_STEADY_AGENT, "framework": "strands", "multi_agent": "no", "platform_fit": "none",
+               "memory_needs": "none"}
+    assert scoring.score({"answers": answers})["verdict"] == "lambda_microvms"
+    result = scoring.score({"answers": {**answers, "expected_scale": "prototype"}})
+    assert result["co_recommend"] == ["agentcore", "lambda_microvms"]
+
+
+def test_high_scale_brings_ecs_into_the_recommendation():
+    answers = {**_STEADY_AGENT, "framework": "custom", "session_state": "stateful", "idle_resume": "none"}
+    assert scoring.score({"answers": answers})["verdict"] == "lambda_microvms"
+    result = scoring.score({"answers": {**answers, "expected_scale": "high"}})
+    assert result["co_recommend"] == ["ecs", "lambda_microvms"]
+
+
+def test_seed_schema_accepts_expected_scale_and_rejects_other_values():
+    import jsonschema
+    schema = json.loads(
+        (pathlib.Path(scoring.__file__).parent / "schemas" / "seed.json").read_text())
+    jsonschema.validate({"units": {"agent": {"expected_scale": "growing"}}}, schema)
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate({"units": {"agent": {"expected_scale": "huge"}}}, schema)
+
+
+def test_clarify_documents_every_expected_scale_value():
+    clarify = (pathlib.Path(scoring.__file__).parent.parent / "references" / "phases" / "clarify")
+    legal_line = next(line for line in (clarify / "clarify.md").read_text().splitlines()
+                      if line.startswith("- `expected_scale`:"))
+    assert legal_line.split(":", 1)[1].split(".")[0].strip().split(" | ") == scoring.LEGAL_VALUES["expected_scale"]
+    for audience in ("clarify-business.md", "clarify-technical.md"):
+        assert "**expected_scale**" in (clarify / audience).read_text()
+
+
+# --- Gen's review on #623: AgentCore Instances has no scale-to-zero ----------------------------
+
+@pytest.mark.parametrize("scale", ["prototype", "growing"])
+@pytest.mark.parametrize("instances_answer", [
+    pytest.param({"session_duration": "over_8hr"}, id="over_8hr"),
+    pytest.param({"compute_tier": "gpu"}, id="gpu"),
+    pytest.param({"compute_tier": "heavy_non_gpu"}, id="heavy_non_gpu"),
+    pytest.param({"instance_type_requirement": "yes"}, id="instance_type"),
+])
+def test_small_scale_bonus_skips_agentcore_instances(scale, instances_answer):
+    before = scoring.score({"answers": instances_answer})["scores"]["agentcore"]
+    after = scoring.score({"answers": {**instances_answer, "expected_scale": scale}})["scores"]["agentcore"]
+    # Instances bills EC2 plus a management fee: prototype scores below neutral, growing neutral.
+    assert after - before == {"prototype": -1, "growing": 0}[scale]
+
+
+def test_small_scale_bonus_still_applies_to_agentcore_microvms():
+    before = scoring.score({"answers": {"compute_tier": "light"}})["scores"]["agentcore"]
+    after = scoring.score({"answers": {"compute_tier": "light", "expected_scale": "prototype"}})["scores"]["agentcore"]
+    assert after - before == 2
+
+
+def test_instances_gpu_workload_stays_on_ecs_at_prototype_scale():
+    # Gen's repro: without the override, prototype scale tied AgentCore Instances with ECS.
+    answers = {"session_duration": "over_8hr", "traffic_pattern": "steady", "compute_tier": "gpu"}
+    for scale in ("unknown", "prototype", "growing"):
+        result = scoring.score({"answers": {**answers, "expected_scale": scale}})
+        assert (result["verdict"], result.get("co_recommend")) == ("ecs", None)
+
+
+def test_unknown_scale_scores_the_same_on_instances():
+    answers = {"session_duration": "over_8hr", "compute_tier": "gpu"}
+    assert scoring.score({"answers": answers})["scores"] == scoring.score(
+        {"answers": {**answers, "expected_scale": "unknown"}})["scores"]
+
+
+@pytest.mark.parametrize("profile", scoring.load_profiles(
+    statuses=frozenset({"ga", "preview", "coming_soon"})), ids=lambda p: p["id"])
+def test_compute_type_affinity_overrides_are_well_formed(profile):
+    for compute_type, dims in profile.get("compute_type_affinities", {}).items():
+        assert compute_type in profile.get("compute_types", []), compute_type
+        for dim, value_map in dims.items():
+            assert dim in profile["affinities"], f"{compute_type}.{dim} overrides no base affinity"
+            assert set(value_map) == set(scoring.LEGAL_VALUES[dim])
+            assert value_map["unknown"] == profile["affinities"][dim]["unknown"]
+
+
+# --- B3 (#566 feedback F2): AgentCore single-agent parity and revisit triggers -----------------
+
+def test_single_agent_answer_scores_the_same_on_every_runtime():
+    # `multi_agent: no` used to cost only AgentCore a point (1 vs 2 everywhere else).
+    profiles = scoring.load_profiles()
+    assert {p["id"]: p["affinities"]["multi_agent"]["no"] for p in profiles} == {
+        p["id"]: scoring.NEUTRAL_SCORE for p in profiles}
+
+
+@pytest.mark.parametrize(("answers", "verdict", "co_recommend"), [
+    pytest.param({"traffic_pattern": "idle", "ops_preference": "full_control",
+                  "memory_needs": "cross_session", "multi_agent": "no", "framework": "strands",
+                  "multi_cloud": "no", "idle_resume": "filesystem",
+                  "compute_tier": "heavy_non_gpu"},
+                 "co_recommend", ["agentcore", "lambda_microvms"], id="microvms_to_co_recommend"),
+    pytest.param({"platform_fit": "ecs", "ops_preference": "minimal", "isolation": "nice_to_have",
+                  "memory_needs": "session_only", "multi_agent": "no", "framework": "custom",
+                  "existing_cluster": "ecs", "multi_cloud": "yes",
+                  "instance_type_requirement": "yes"},
+                 "co_recommend", ["agentcore", "ecs"], id="ecs_to_co_recommend"),
+])
+def test_single_agent_parity_brings_agentcore_into_the_recommendation(answers, verdict, co_recommend):
+    result = scoring.score({"answers": answers})
+    assert (result["verdict"], result.get("co_recommend")) == (verdict, co_recommend)
+
+
+_PROTOTYPE = {"multi_agent": "no", "session_duration": "under_15min", "traffic_pattern": "bursty",
+              "ops_preference": "minimal", "session_state": "stateless", "memory_needs": "none",
+              "isolation": "not_needed", "framework": "strands", "existing_cluster": "none",
+              "compute_tier": "light"}
+
+
+def _fields(result, runtime):
+    return [t["field"] for t in result["agentcore_revisit_triggers_by_runtime"][runtime]]
+
+
+def test_revisit_triggers_list_each_growth_signal_against_the_verdict():
+    result = scoring.score({"answers": _PROTOTYPE})
+    assert result["verdict"] == "lambda"
+    triggers = result["agentcore_revisit_triggers_by_runtime"]["lambda"]
+    assert [(t["field"], t["current"]) for t in triggers] == [
+        ("multi_agent", "no"), ("memory_needs", "none"), ("isolation", "not_needed")]
+    assert all(t["trigger"] for t in triggers)
+
+
+def test_revisit_triggers_are_keyed_by_every_scored_runtime_except_agentcore():
+    result = scoring.score({"answers": _PROTOTYPE})
+    assert set(result["agentcore_revisit_triggers_by_runtime"]) == {"ecs", "eks", "lambda", "lambda_microvms"}
+
+
+def test_revisit_triggers_skip_a_signal_the_workload_already_has():
+    result = scoring.score({"answers": {**_PROTOTYPE, "multi_agent": "yes"}})
+    for triggers in result["agentcore_revisit_triggers_by_runtime"].values():
+        assert "multi_agent" not in {t["field"] for t in triggers}
+
+
+def test_revisit_triggers_omit_a_signal_the_runtime_rewards_just_as_much():
+    # isolation unknown -> required gains AgentCore 2, Lambda 1, MicroVMs 2.
+    result = scoring.score({"answers": {**_PROTOTYPE, "isolation": "unknown"}})
+    assert "isolation" in _fields(result, "lambda")
+    assert "isolation" not in _fields(result, "lambda_microvms")
+
+
+def test_revisit_triggers_skip_eliminated_runtimes():
+    profiles = scoring.load_profiles()
+    for profile in profiles:
+        if profile["id"] == "ecs":
+            profile["hard_constraints"] = [{"field": "multi_agent", "value": "no", "reason": "test"}]
+    result = scoring.score({"answers": _PROTOTYPE}, profiles=profiles)
+    assert "ecs" in result["eliminated"]
+    assert "ecs" not in result["agentcore_revisit_triggers_by_runtime"]
+
+
+def test_revisit_triggers_are_empty_when_agentcore_is_eliminated():
+    profiles = scoring.load_profiles()
+    for profile in profiles:
+        if profile["id"] == "agentcore":
+            profile["hard_constraints"] = [{"field": "multi_agent", "value": "no", "reason": "test"}]
+    result = scoring.score({"answers": _PROTOTYPE}, profiles=profiles)
+    assert "agentcore" in result["eliminated"]
+    assert result["agentcore_revisit_triggers_by_runtime"] == {}
+
+
+def test_revisit_triggers_match_the_schema():
+    import jsonschema
+    result = scoring.score({"answers": _PROTOTYPE})
+    schema = json.loads(
+        (pathlib.Path(scoring.__file__).parent / "schemas" / "scoring-result.json").read_text())
+    jsonschema.validate({**result, "units": {"primary-agent": result}}, schema)
+    for bad_map in ({"lambda": [{"field": "multi_agent"}]}, {"agentcore": []}):
+        bad = {**result, "agentcore_revisit_triggers_by_runtime": bad_map}
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate({**bad, "units": {"primary-agent": bad}}, schema)
+
+
+def test_revisit_triggers_list_a_signal_for_an_unanswered_question():
+    answers = {k: v for k, v in _PROTOTYPE.items() if k != "memory_needs"}
+    result = scoring.score({"answers": answers})
+    memory = next(t for t in result["agentcore_revisit_triggers_by_runtime"]["lambda"]
+                  if t["field"] == "memory_needs")
+    assert memory["current"] == "unknown"
+
+
+def test_consolidation_reads_the_effective_runtime_entry(tmp_path, capsys):
+    # Gen's review on #622: a Lambda unit consolidated with a MicroVMs unit onto MicroVMs must not
+    # keep its Lambda-relative isolation trigger, which MicroVMs rewards as much as AgentCore.
+    lambda_unit = {**_PROTOTYPE, "isolation": "unknown"}
+    microvms_unit = {"multi_agent": "no", "session_duration": "15min_to_8hr", "traffic_pattern": "idle",
+                     "idle_resume": "process_level", "compute_tier": "heavy_non_gpu"}
+    answers = {"entry_point": "build_scratch", "primary_unit": "a", "system": {},
+               "units": {"a": {"workload_class": "agent_session", **lambda_unit},
+                         "b": {"workload_class": "agent_session", **microvms_unit}}}
+    path = tmp_path / "answers.json"
+    path.write_text(json.dumps(answers))
+    assert score_units.main([str(path)]) == 0
+    out = json.loads(capsys.readouterr().out)
+    a, b = out["units"]["a"], out["units"]["b"]
+    assert (a["verdict"], b["verdict"]) == ("lambda", "lambda_microvms")
+    by_runtime = a["agentcore_revisit_triggers_by_runtime"]
+    # Split: unit a stays on Lambda and keeps the isolation signal.
+    assert "isolation" in [t["field"] for t in by_runtime["lambda"]]
+    # Consolidated onto MicroVMs: Design reads this entry instead, which omits it.
+    assert "isolation" not in [t["field"] for t in by_runtime["lambda_microvms"]]
+    # The top-level mirror is the primary unit's map.
+    assert out["agentcore_revisit_triggers_by_runtime"] == by_runtime
+
+
+def test_design_reads_the_entry_for_the_effective_runtime():
+    design = (pathlib.Path(scoring.__file__).parent.parent / "references" / "phases" / "design"
+              / "design.md").read_text()
+    assert "agentcore_revisit_triggers_by_runtime[<effective_runtime>]" in design
+    assert "Never use the entry for the scored verdict" in " ".join(design.split())
+
+
+# --- Nitro Sandboxes: EKS pods can run in their own Nitro-enforced VM ---
+
+NITRO_EKS_BASE = {
+    "session_duration": "15min_to_8hr", "traffic_pattern": "steady", "platform_fit": "eks",
+    "session_state": "stateless", "ops_preference": "full_control", "memory_needs": "none",
+    "multi_agent": "unknown", "framework": "custom", "existing_cluster": "eks",
+    "multi_cloud": "no", "idle_resume": "none", "compute_tier": "heavy_non_gpu",
+    "launch_concurrency": "moderate", "instance_type_requirement": "no",
+}
+
+
+def _verdict_members(result):
+    return set(result["co_recommend"]) if result["verdict"] == "co_recommend" else {result["verdict"]}
+
+
+def test_isolation_required_now_credits_eks():
+    """Nitro Sandboxes give EKS per-pod isolation, so `isolation: required` scores EKS
+    above its neutral value, still below AgentCore and Lambda MicroVMs (no managed
+    session routing). ECS stays put: Fargate already isolated tasks."""
+    profiles = scoring.load_profiles()
+    base = scoring.score({"answers": {**NITRO_EKS_BASE, "isolation": "not_needed"}}, profiles)
+    req = scoring.score({"answers": {**NITRO_EKS_BASE, "isolation": "required"}}, profiles)
+    assert req["scores"]["eks"] - base["scores"]["eks"] == 1
+    assert req["scores"]["ecs"] == base["scores"]["ecs"]
+    by_id = {p["id"]: p["affinities"]["isolation"] for p in profiles}
+    assert by_id["agentcore"]["required"] > by_id["eks"]["required"]
+    assert by_id["lambda_microvms"]["required"] > by_id["eks"]["required"]
+
+
+def test_isolation_required_flips_agentcore_to_co_recommend_with_eks():
+    # A sampled case whose verdict was AgentCore alone before the EKS isolation credit.
+    answers = {
+        "session_duration": "unknown", "traffic_pattern": "idle", "platform_fit": "unknown",
+        "session_state": "stateless", "ops_preference": "moderate", "isolation": "required",
+        "memory_needs": "session_only", "multi_agent": "yes", "framework": "custom",
+        "existing_cluster": "eks", "multi_cloud": "unknown", "idle_resume": "process_level",
+        "compute_tier": "unknown", "launch_concurrency": "low", "instance_type_requirement": "yes",
+    }
+    result = scoring.score({"answers": answers}, scoring.load_profiles())
+    assert _verdict_members(result) == {"agentcore", "eks"}
+
+
+def test_eks_isolation_warning_names_sandbox_prerequisites():
+    result = scoring.score(
+        {"answers": {**NITRO_EKS_BASE, "isolation": "required"}}, scoring.load_profiles())
+    assert "eks" in _verdict_members(result)
+    [warning] = [w for w in result["warnings"] if "Nitro Sandboxes" in w]
+    assert "runtimeClassName" in warning and "1.36" in warning
+    assert "GPU" not in warning
+
+
+def test_eks_isolation_warning_flags_gpu_conflict():
+    answers = {**NITRO_EKS_BASE, "isolation": "required", "compute_tier": "gpu"}
+    result = scoring.score({"answers": answers}, scoring.load_profiles())
+    assert "eks" in _verdict_members(result)
+    [warning] = [w for w in result["warnings"] if "Nitro Sandboxes" in w]
+    assert "GPU passthrough" in warning
+
+
+@pytest.mark.parametrize("isolation", ["nice_to_have", "not_needed", "unknown"])
+def test_no_nitro_warning_without_required_isolation(isolation):
+    result = scoring.score(
+        {"answers": {**NITRO_EKS_BASE, "isolation": isolation}}, scoring.load_profiles())
+    assert not [w for w in result["warnings"] if "Nitro Sandboxes" in w]
+
+
+# --- Gen's review on #665: no EKS isolation credit for GPU sessions ---------------------------
+
+@pytest.mark.parametrize("tier", ["light", "heavy_non_gpu", "unknown"])
+def test_isolation_required_adds_one_to_eks_off_gpu(tier):
+    answers = {**NITRO_EKS_BASE, "compute_tier": tier}
+    base = scoring.score({"answers": {**answers, "isolation": "not_needed"}})["scores"]["eks"]
+    req = scoring.score({"answers": {**answers, "isolation": "required"}})["scores"]["eks"]
+    assert req - base == 1
+
+
+def test_isolation_required_gives_eks_nothing_for_gpu_sessions():
+    answers = {**NITRO_EKS_BASE, "compute_tier": "gpu"}
+    base = scoring.score({"answers": {**answers, "isolation": "not_needed"}})["scores"]["eks"]
+    req = scoring.score({"answers": {**answers, "isolation": "required"}})["scores"]["eks"]
+    assert req == base
+
+
+@pytest.mark.parametrize(("tier", "listed"), [("gpu", True), ("heavy_non_gpu", False)])
+def test_isolation_revisit_trigger_against_eks_follows_the_gpu_rule(tier, listed):
+    # nice_to_have -> required gains AgentCore 1. EKS gains 1 off GPU (equal, not listed) and 0 on
+    # GPU (listed), so the trigger must read the same effective scores as the verdict.
+    triggers = scoring._agentcore_revisit_triggers_by_runtime(
+        {**NITRO_EKS_BASE, "compute_tier": tier, "isolation": "nice_to_have"},
+        scoring.load_profiles(), [])
+    assert ("isolation" in [t["field"] for t in triggers["eks"]]) is listed
+
+
+@pytest.mark.parametrize("profile", scoring.load_profiles(
+    statuses=frozenset({"ga", "preview", "coming_soon"})), ids=lambda p: p["id"])
+def test_conditional_affinities_are_well_formed(profile):
+    for rule in profile.get("conditional_affinities", []):
+        assert set(rule) == {"when", "dimension", "scores", "reason"}
+        assert rule["when"], "an empty `when` would match every answer set"
+        for field, value in rule["when"].items():
+            assert value in scoring.LEGAL_VALUES[field], (field, value)
+        assert rule["dimension"] in profile["affinities"]
+        assert set(rule["scores"]) <= set(scoring.LEGAL_VALUES[rule["dimension"]]) - {"unknown"}
+
+
+def test_compute_type_overrides_and_conditional_affinities_compose():
+    # #623 (AgentCore Instances overrides) and #665 (EKS GPU isolation rule) meet in
+    # _effective_affinities; both must apply, and the revisit-trigger gain reads the same values.
+    profiles = {p["id"]: p for p in scoring.load_profiles()}
+    gpu_high = {"compute_tier": "gpu", "isolation": "required", "expected_scale": "high"}
+    agentcore = scoring._effective_affinities(profiles["agentcore"], gpu_high)
+    assert agentcore["expected_scale"] == profiles["agentcore"]["compute_type_affinities"]["instances"]["expected_scale"]
+    eks = scoring._effective_affinities(profiles["eks"], gpu_high)
+    assert eks["isolation"]["required"] == 2
+    assert eks["expected_scale"] == profiles["eks"]["affinities"]["expected_scale"]

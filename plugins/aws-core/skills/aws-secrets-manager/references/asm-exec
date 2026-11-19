@@ -17,6 +17,7 @@ values are never re-scanned). SecretBinary is not supported.
 import datetime
 import hashlib
 import hmac
+import http.client
 import json
 import os
 import re
@@ -38,6 +39,13 @@ MCP_TIMEOUT = float(os.environ.get('ASM_EXEC_MCP_TIMEOUT', '30'))
 
 _sma_available = None
 
+# Per-process state. One asm-exec run resolves every reference with at most one
+# MCP session and one fetch per (secret, version stage, region).
+_creds_cache = None
+_mcp_session_id = None
+_mcp_next_id = 1  # id 1 is used by 'initialize'
+_secret_cache = {}
+
 
 def _check_sma():
     global _sma_available
@@ -57,7 +65,17 @@ def _get_aws_credentials():
     Order: environment variables, then `aws configure export-credentials`
     (AWS CLI v2), then `aws configure get` (AWS CLI v1, which lacks
     export-credentials). Returns a dict with access_key/secret_key/token or None.
+
+    Cached for the life of the process: without this, every signed request
+    spawned `aws configure export-credentials` again.
     """
+    global _creds_cache
+    if _creds_cache is None:
+        _creds_cache = _load_aws_credentials()
+    return _creds_cache
+
+
+def _load_aws_credentials():
     if os.environ.get('AWS_ACCESS_KEY_ID'):
         return {
             'access_key': os.environ['AWS_ACCESS_KEY_ID'],
@@ -167,9 +185,10 @@ def _sign_v4(method, path, body, creds, service, region, now):
     return headers
 
 
-def _mcp_post(payload, session_id=None):
-    """POST a SigV4-signed JSON-RPC request to the AWS MCP endpoint.
+def _mcp_post(payload, session_id=None, method='POST'):
+    """Send a SigV4-signed request to the AWS MCP endpoint.
 
+    POST carries a JSON-RPC payload; DELETE (payload None) ends a session.
     Returns (parsed_response, session_id_from_response). The caller passes the
     session id returned by 'initialize' back into subsequent calls.
     """
@@ -177,13 +196,13 @@ def _mcp_post(payload, session_id=None):
     if not creds or not creds.get('access_key'):
         raise RuntimeError('no AWS credentials available for MCP signing')
 
-    body = json.dumps(payload).encode()
+    body = json.dumps(payload).encode() if payload is not None else b''
     service, region = _signing_service_region(MCP_ENDPOINT)
     path = urllib.parse.urlparse(MCP_ENDPOINT).path or '/'
     now = datetime.datetime.utcnow()
 
-    sig_headers = _sign_v4('POST', path, body, creds, service, region, now)
-    req = urllib.request.Request(MCP_ENDPOINT, data=body, method='POST')
+    sig_headers = _sign_v4(method, path, body, creds, service, region, now)
+    req = urllib.request.Request(MCP_ENDPOINT, data=body or None, method=method)
     req.add_header('Content-Type', 'application/json')
     req.add_header('Accept', 'application/json, text/event-stream')
     req.add_header('User-Agent', 'ASMExecWrapper/1.0.0')
@@ -227,6 +246,50 @@ def _mcp_error(resp):
     return None
 
 
+def _mcp_session():
+    """Return this process's MCP session id, initializing it on first use.
+
+    Every reference resolved over MCP in one asm-exec run shares this session,
+    instead of opening a new session per reference.
+    """
+    global _mcp_session_id
+    if _mcp_session_id is None:
+        # 2025-03-26 is the first MCP version that defines the Streamable HTTP
+        # transport this client uses (Mcp-Session-Id, session DELETE). 2025-06-18
+        # and later also require an MCP-Protocol-Version header on every request.
+        init_resp, session_id = _mcp_post(
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+             "params": {"protocolVersion": "2025-03-26",
+                        "clientInfo": {"name": "asm-exec", "version": "1.0.0"},
+                        "capabilities": {}}})
+        err = _mcp_error(init_resp)
+        if err:
+            raise RuntimeError("MCP initialize rejected: %s" % err)
+        _mcp_post({"jsonrpc": "2.0", "method": "notifications/initialized"},
+                  session_id)
+        _mcp_session_id = session_id
+    return _mcp_session_id
+
+
+def _close_mcp_session():
+    """End the MCP session (if one was opened) once all references are resolved.
+
+    Best-effort: the server also expires idle sessions, so a failure here is
+    not fatal and is not reported.
+    """
+    global _mcp_session_id
+    if _mcp_session_id is None:
+        return
+    try:
+        _mcp_post(None, _mcp_session_id, method='DELETE')
+    except (urllib.error.URLError, http.client.HTTPException, OSError,
+            RuntimeError, ValueError):
+        # HTTPException covers a malformed or truncated response (e.g.
+        # IncompleteRead); ValueError covers a non-JSON body (JSONDecodeError).
+        pass
+    _mcp_session_id = None
+
+
 def _resolve_via_mcp(secret_name, label, region):
     """Resolve a secret via the SigV4-authenticated AWS MCP endpoint.
 
@@ -242,18 +305,8 @@ def _resolve_via_mcp(secret_name, label, region):
     collapsing into one message. Secret values are never included in diagnostics.
     """
     try:
-        # Initialize and capture the session id for subsequent calls.
-        init_resp, session_id = _mcp_post(
-            {"jsonrpc": "2.0", "id": 1, "method": "initialize",
-             "params": {"protocolVersion": "2024-11-05",
-                        "clientInfo": {"name": "asm-exec", "version": "1.0.0"},
-                        "capabilities": {}}})
-        err = _mcp_error(init_resp)
-        if err:
-            raise RuntimeError("MCP initialize rejected: %s" % err)
-        # Notify initialized
-        _mcp_post({"jsonrpc": "2.0", "method": "notifications/initialized"},
-                  session_id)
+        # Reuse this process's session (created on first use).
+        session_id = _mcp_session()
         # Build the Python script the sandbox will run. call_boto3 takes the
         # secret id and version stage as params; region_name covers cross-region
         # secrets regardless of the endpoint's home region. Values are embedded
@@ -267,9 +320,11 @@ def _resolve_via_mcp(secret_name, label, region):
         if region:
             call_args += ", region_name=%r" % (region,)
         code = "result = await call_boto3(%s)\nresult" % (call_args,)
-        # Call tool
+        # Call tool. JSON-RPC ids must be unique within the (now shared) session.
+        global _mcp_next_id
+        _mcp_next_id += 1
         resp, _ = _mcp_post(
-            {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+            {"jsonrpc": "2.0", "id": _mcp_next_id, "method": "tools/call",
              "params": {"name": "aws___run_script",
                         "arguments": {"code": code}}},
             session_id)
@@ -359,8 +414,14 @@ def resolve_one(ref):
     if not region:
         region = os.environ.get('AWS_REGION') or os.environ.get('AWS_DEFAULT_REGION')
 
+    # Fetch each (secret, version stage, region) once per run; json-key
+    # extraction below happens per reference on the cached value. The cache
+    # lives only in this process's memory.
+    cache_key = (secret_name, label, region)
+    value = _secret_cache.get(cache_key)
+
     # 1. Try SMA daemon
-    if _check_sma():
+    if not value and _check_sma():
         url = f'{SMA_ENDPOINT}/secretsmanager/get?secretId={urllib.parse.quote(secret_name, safe="")}&versionStage={label}'
         req = urllib.request.Request(url, method='GET')
         if SSRF_TOKEN:
@@ -379,6 +440,8 @@ def resolve_one(ref):
     if not value:
         print(f'asm-exec: ERROR: Failed to resolve: {ref}', file=sys.stderr)
         sys.exit(1)
+
+    _secret_cache[cache_key] = value
 
     if json_key:
         try:
@@ -411,16 +474,22 @@ def main():
         print('Usage: asm-exec <command> [args...]', file=sys.stderr)
         sys.exit(1)
 
-    # Resolve references in command-line arguments
-    args = [resolve_string(a) if PATTERN.search(a) else a for a in cmd_args]
+    try:
+        # Resolve references in command-line arguments
+        args = [resolve_string(a) if PATTERN.search(a) else a for a in cmd_args]
 
-    # Resolve references in exported environment variables (documented behavior).
-    # Uses the same single-pass re.sub as argv — resolved values are never re-scanned.
-    # Secret values flow only to the child process and never return to the calling agent.
-    child_env = {
-        k: (resolve_string(v) if PATTERN.search(v) else v)
-        for k, v in os.environ.items()
-    }
+        # Resolve references in exported environment variables (documented behavior).
+        # Uses the same single-pass re.sub as argv — resolved values are never re-scanned.
+        # Secret values flow only to the child process and never return to the calling agent.
+        child_env = {
+            k: (resolve_string(v) if PATTERN.search(v) else v)
+            for k, v in os.environ.items()
+        }
+    finally:
+        # End the shared MCP session before running the child (also on a
+        # resolution failure), so it is not held open for the child's lifetime.
+        _close_mcp_session()
+        _secret_cache.clear()
 
     result = subprocess.run(args, env=child_env)
     sys.exit(result.returncode)

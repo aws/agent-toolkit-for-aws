@@ -13,15 +13,26 @@
     "ops_preference": { "minimal": 4, "moderate": 3, "full_control": 1, "unknown": 3 },
     "isolation": { "required": 4, "nice_to_have": 3, "not_needed": 1, "unknown": 2 },
     "memory_needs": { "cross_session": 4, "session_only": 3, "none": 1, "unknown": 2 },
-    "multi_agent": { "yes": 3, "no": 1, "unknown": 2 },
+    "multi_agent": { "yes": 3, "no": 2, "unknown": 2 },
     "framework": { "strands": 3, "langgraph": 3, "crewai": 3, "custom": 2, "none": 3, "unknown": 2 },
     "existing_cluster": { "eks": 1, "ecs": 1, "none": 3, "unknown": 2 },
     "multi_cloud": { "yes": 1, "no": 3, "unknown": 2 },
     "idle_resume": { "process_level": 1, "filesystem": 4, "none": 2, "unknown": 2 },
     "compute_tier": { "light": 4, "heavy_non_gpu": 3, "gpu": 3, "unknown": 2 },
     "launch_concurrency": { "high": 5, "moderate": 3, "low": 2, "unknown": 2 },
-    "instance_type_requirement": { "yes": 3, "no": 3, "unknown": 2 }
+    "instance_type_requirement": { "yes": 3, "no": 3, "unknown": 2 },
+    "expected_scale": { "prototype": 4, "growing": 3, "high": 3, "unknown": 2 }
   },
+  "compute_type_affinities": {
+    "instances": {
+      "expected_scale": { "prototype": 1, "growing": 2, "high": 3, "unknown": 2 }
+    }
+  },
+  "revisit_triggers": [
+    { "field": "multi_agent", "value": "yes", "trigger": "You add more agents that hand work to each other or coordinate through a supervisor." },
+    { "field": "memory_needs", "value": "cross_session", "trigger": "Users need the agent to remember context across sessions (AgentCore Memory)." },
+    { "field": "isolation", "value": "required", "trigger": "You need each user's session isolated from the others, for example per tenant (AgentCore Runtime isolates each session)." }
+  ],
   "deployment_models": ["harness", "framework_on_runtime"],
   "compute_types": ["microvms", "instances"],
   "volatile_facts": [
@@ -58,9 +69,9 @@
     {
       "key": "registry_regions",
       "verification_key": "agent_registry.regions",
-      "value": ["us-east-1", "us-west-2", "ap-northeast-1", "ap-southeast-2", "eu-west-1"],
-      "as_of": "2026-08-31",
-      "source": "https://aws.amazon.com/about-aws/whats-new/2026/08/aws-agent-registry-generally-available",
+      "value": ["us-east-1", "us-west-2", "ap-northeast-1", "ap-southeast-2", "eu-west-1", "eu-west-2", "eu-central-1", "us-east-2", "ca-central-1"],
+      "as_of": "2026-10-28",
+      "source": "https://aws.amazon.com/about-aws/whats-new/2026/10/aws-agent-registry-four-regions/",
       "verify_via_mcp": true
     },
     {

@@ -334,6 +334,20 @@ def test_azure_scalar_ai_source_validates_under_the_restored_azure_shape_contrac
     assert design_findings == []
 
 
+def test_azure_shape_accepts_architecture_quota_fields() -> None:
+    """Design writes quota_risk on ai_architecture. The shape must admit it and the basis."""
+    manifest = VALIDATOR.load_manifest(MANIFEST_PATH)
+    findings: list = []
+    contracts = VALIDATOR.build_contracts(manifest, "azure-to-aws", findings)
+    matched = [c for c in contracts if c.artifact_glob == "aws-design-ai.json"]
+    design = _azure_scalar_design()
+    design["ai_architecture"]["quota_risk"] = "high"
+    design["ai_architecture"]["quota_risk_basis"] = "observed_on_demand_peak"
+    design_findings: list = []
+    VALIDATOR.validate_shape(matched[0].shape.root, design, "", "design", matched[0].shape.label, design_findings)
+    assert design_findings == []
+
+
 def test_azure_scalar_ai_source_fails_the_target_only_schema_with_no_skill() -> None:
     """The SAME scalar document, validated with no skill (shared contracts only), fails the
     target schema: additionalProperties:false on metadata plus missing

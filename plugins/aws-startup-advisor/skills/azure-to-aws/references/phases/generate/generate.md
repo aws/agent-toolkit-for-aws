@@ -73,7 +73,7 @@ _postconditions:
     _on_failure: _halt_and_inform
   - _assert: "no secret VALUE from the inventory appears in any generated artifact; secrets are emitted as Secrets Manager references"
     _on_failure: _halt_and_inform
-  - _assert: "WHEN aws-design-ai.json exists AND run_mode is decide_and_execute: generation-ai.json exists and validates, its rollback_plan.mechanism is 'feature_flag' with flag_name 'AI_PROVIDER' and default_value 'azure_openai'; an ai-migration/ directory was produced (setup_bedrock.sh, test_comparison.py, bedrock_monitoring.tf on every path; migrate_to_mantle.sh for the mantle path OR provider_adapter.* for the direct/gpt-oss path, not both); and no proprietary GPT-5.5 or GPT-5.4 model ID is paired with a converse/bedrock-runtime path (GPT-5.6 and GPT-6 models MAY use migration_path: runtime_openai_cris on bedrock-runtime — this is not a violation). When aws-design-ai.json is absent this is vacuously satisfied"
+  - _assert: "WHEN aws-design-ai.json exists AND run_mode is decide_and_execute: generation-ai.json exists and validates, its rollback_plan.mechanism is 'feature_flag' with flag_name 'AI_PROVIDER' and default_value 'azure_openai'; an ai-migration/ directory was produced (setup_bedrock.sh, test_comparison.py, bedrock_monitoring.tf on every path; migrate_to_mantle.sh for the mantle path OR provider_adapter.* for the direct/gpt-oss path, not both); and no bare proprietary openai.gpt-* model ID (including bare openai.gpt-5.5 or openai.gpt-5.4) is paired with a converse/bedrock-runtime path (bare proprietary openai.gpt-* IDs use Mantle only; runtime_openai_cris accepts documented Astra us./global., GPT-5.6/GPT-6 and GPT-5.5/GPT-5.4 us./global. profiles with caller-region checks and the selected API; GPT-5.6, GPT-6, GPT-5.5 and GPT-5.4 models MAY use migration_path: runtime_openai_cris on bedrock-runtime — this is not a violation; a same-model proprietary GPT row records migration_path runtime_openai_cris by default and a mantle_* path only with a recorded mantle_selector). When aws-design-ai.json is absent this is vacuously satisfied"
     _on_failure: _halt_and_inform
 _forbids_files:
   - azure-resource-inventory.json
@@ -178,7 +178,7 @@ script output to the user.
 
 **Web-handoff — only when the writer above printed `PLAN_OK`** (if it printed `PLAN_SKIP`, omit this whole block; there is no file to upload). Do three things, in order:
 
-- **(a)** In the completion summary, add exactly one plain-text entry (no link — the clickable link is the What's next call-to-action below): `plan.json — upload to AWS Startups Migrate to see if you qualify for AWS credits`.
+- **(a)** In the completion summary, add exactly one plain-text entry (the address written out as text; the clickable link is the What's next call-to-action below): `plan.json — upload at AWS Startup Advisor (https://startups.aws.com/migrate/plans/import?source=plugin) to see if you qualify for AWS credits`.
 - **(b)** Then show the user their `plan.json`. The `.migration` folder is hidden by default
   on macOS and Linux, so open the file's location for them instead of leaving them to
   find it. Run the command for the user's OS once, as an ordinary command — the agent's
@@ -221,16 +221,16 @@ script output to the user.
   permissions." only when a permission rule blocked it, and drop that sentence when the
   user declined or the command failed for another reason.
 
-- **(c)** Then append the What's next block below, verbatim, replacing `<run_id>` in the link with the run's `run_id` (from `.phase-status.json`), lowercased if it is a UUID so the `run=` value matches the plan's `runId`. It MUST begin with the "💬 What's next" heading. The call-to-action must be a Markdown link so it renders as clickable text with no bare URL. Do not reword it — this copy is owned by the web experience:
+- **(c)** Then append the What's next block below, verbatim, replacing `<run_id>` in both links with the run's `run_id` (from `.phase-status.json`), lowercased if it is a UUID so the `run=` value matches the plan's `runId`. It MUST begin with the "💬 What's next" heading. The call-to-action must be a Markdown link so it renders as clickable text with no bare URL. Never name AWS Startup Advisor's import page without its address: if you shorten or restate any of this, keep the address. (The plain-text mentions use `?source=plugin` without `run=` on purpose, to stay short; the two links in this block carry the run.) Do not reword it — this copy is owned by the web experience:
 
 > **💬 What's next**
 >
 > - **Refine your plan**
 >   Tell me what to change. For example: "use Fargate instead," "make it multi-region," or "reduce the cost."
 > - **See your AWS credits**
->   Sign in or create an account on AWS Startups Migrate, then upload plan.json to see the AWS migration credits you qualify for.
+>   Sign in with your AWS Builder ID (or create one) on [AWS Startup Advisor](https://startups.aws.com/migrate/plans/import?source=plugin&run=<run_id>), the AWS Startups site where you import your migration plan, then upload plan.json to see the AWS migration credits you qualify for.
 >
-> [Go to AWS Startups Migrate →](https://startups.aws.com/startups/en-US/migrate/credits?source=plugin&run=<run_id>)
+> [Go to AWS Startup Advisor →](https://startups.aws.com/migrate/plans/import?source=plugin&run=<run_id>)
 >
 > After you upload, you also get:
 >

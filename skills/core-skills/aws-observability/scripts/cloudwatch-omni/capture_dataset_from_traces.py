@@ -4,11 +4,28 @@
 Bundled skill helper (retrieved via the skill's supplementary-file mechanism and run
 with the agent's shell) for Section 5, Step B "build a dataset from traces". For each
 trace it queries spans from CloudWatch Omni (traces.default) via Omni SQL, reshapes
-them into one AGENTCORE_EVALUATION_PREDEFINED_V1 example (root-span COALESCE for
-input/output, ordered TOOL-name trajectory with adjacent dupes collapsed,
+them into one example (root-span COALESCE for the input, last-finishing AGENT span for the
+expected response, ordered TOOL-name trajectory with adjacent dupes collapsed,
 scenario_id/metadata provenance), validates it, and writes the batch into a NEW dataset
 (--mode create) or an EXISTING one (--mode add). Prints a compact JSON receipt only —
 raw spans never leave this process (kept out of the model's context).
+
+Dataset API behavior differs by Region, and the helper handles both forms with any boto3
+version:
+
+- Dataset type. Some datasets declare a `schemaType`; others have none. --mode add reads
+  the target with get-dataset. When it declares a type, the examples are rendered in that
+  type's shape: PREDEFINED (nested `turns`) or THIRD_PARTY_EVALUATION_V1 (flat
+  `input`/`expected_output`, what the console writes for a dataset created from traces). The two
+  shapes are not interchangeable and validation is all-or-nothing, so a dataset declaring any
+  other type is refused by name. When it declares none, every example is a fixed scenario in the
+  `turns` shape, which an untyped dataset accepts. --mode create always builds `turns` examples,
+  and sends `schemaType` (AGENTCORE_EVALUATION_PREDEFINED_V1) only when the installed boto3
+  still has that parameter.
+- ListDatasets. A Region serves it as GET or as POST, depending on whether the service change
+  has reached it. Whatever method the installed boto3 models, the helper sends POST first and
+  switches to GET only on the no-route 403, so the call works in either kind of Region. --mode add with a dataset id skips the list
+  call and reads the dataset directly.
 
 Requires boto3 + caller AWS credentials with cloudwatch-omni (Omni SQL query) +
 bedrock-agentcore-control (dataset write). The caller must have an access grant on the
@@ -33,6 +50,7 @@ import re
 import sys
 import time
 from typing import NoReturn
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from uuid import uuid4
 
 import boto3
@@ -44,7 +62,20 @@ from botocore.exceptions import BotoCoreError, ClientError
 # dead (non-str skipped) or inject a raw serialized-array blob as the turn text.
 INPUT_KEYS = ("input.value", "gen_ai.input_value")
 OUTPUT_KEYS = ("output.value", "gen_ai.output_value")
-SCHEMA_TYPE = "AGENTCORE_EVALUATION_PREDEFINED_V1"
+PREDEFINED_SCHEMA = "AGENTCORE_EVALUATION_PREDEFINED_V1"
+THIRD_PARTY_SCHEMA = "THIRD_PARTY_EVALUATION_V1"
+# --mode create sends PREDEFINED when the SDK still has `schemaType`; --mode add renders into
+# whichever of these two a typed target dataset declares (an untyped one gets `turns`). Any
+# other schemaType (e.g. the SIMULATED one, which needs an author-written actor_profile.goal)
+# cannot be derived from a trace at all.
+CREATE_SCHEMA_TYPE = PREDEFINED_SCHEMA
+ADD_SCHEMAS = (PREDEFINED_SCHEMA, THIRD_PARTY_SCHEMA)
+# The HTTP 403 a region returns for a list route it does not serve (GET after the switch, POST
+# before it). Only this exact message triggers the GET/POST fallback; an IAM deny has a different
+# message and is never retried.
+NO_ROUTE_CODE = "AccessDeniedException"
+NO_ROUTE_MESSAGE = "Unable to determine service/operation name to be authorized"
+LIST_DATASETS_EVENT = "before-sign.bedrock-agentcore-control.ListDatasets"
 MAX_TRACES = 25  # single write batch; excess is reported, never silently dropped
 SPAN_ROW_LIMIT = 1000  # fetch LIMIT+1 (1001) so an exactly-full result is detectable as truncated
 # Service limits (bedrock-agentcore-control datasets): each example must serialize to <= 1 MB
@@ -75,8 +106,8 @@ def _attr_text(span, keys):
     return None
 
 
-def _scan(spans, keys, reverse=False):
-    for s in reversed(spans) if reverse else spans:
+def _scan(spans, keys):
+    for s in spans:
         t = _attr_text(s, keys)
         if t:
             return t
@@ -85,6 +116,37 @@ def _scan(spans, keys, reverse=False):
 
 def _root(spans):
     return next((s for s in spans if not s.get("parentSpanId")), spans[0] if spans else None)
+
+
+def _nano_key(v):
+    """Sort key for a nanosecond timestamp string: compare by magnitude, not lexically."""
+    return (len(v), v) if isinstance(v, str) else (0, "")
+
+
+def _final_output(spans):
+    """The trace's final answer: output of the last-FINISHING AGENT span.
+
+    Ranking on *end* time, not start time, is the point: the span that produced the answer is
+    the outermost one, which starts early and finishes last. Ordering by start time instead
+    picks the innermost leaf the framework happened to invoke last — on a LangGraph trace that
+    is the conditional-edge node (`should_continue`), whose output is the routing token
+    `__end__`, and the helper would store that 7-character token as ground truth for every
+    example.
+
+    AGENT kind is preferred over the root span because the root is so often neither: on an
+    HTTP-served agent it is the `POST` span, which carries no output at all, and on a trace
+    whose spans are all parented the root fallback is the earliest graph span, whose output is
+    the whole accumulated graph state rather than the answer. When the root *is* the agent span
+    it also ends last among AGENT spans, so it is still selected. Falls back to the root, then
+    to the last-finishing span of any kind, for frameworks that emit no span kind.
+    """
+    by_end = sorted(spans, key=lambda s: _nano_key(s.get("end")))
+    agents = [s for s in by_end if _span_kind(s) == "AGENT"]
+    for s in reversed(agents):
+        t = _attr_text(s, OUTPUT_KEYS)
+        if t:
+            return t
+    return _attr_text(_root(spans), OUTPUT_KEYS) or _scan(list(reversed(by_end)), OUTPUT_KEYS)
 
 
 def _collapse_adjacent(items):
@@ -101,10 +163,10 @@ def _span_kind(s):
 
 
 def to_example(trace_id, spans, partial=False):
-    spans = sorted(spans, key=lambda s: s.get("ts") or "")  # start-time order
+    spans = sorted(spans, key=lambda s: _nano_key(s.get("ts")))  # start-time order
     root = _root(spans)
     turn = {"input": _attr_text(root, INPUT_KEYS) or _scan(spans, INPUT_KEYS) or ""}
-    out = _attr_text(root, OUTPUT_KEYS) or _scan(spans, OUTPUT_KEYS, reverse=True)
+    out = _final_output(spans)
     if out:
         turn["expected_response"] = out
     session_id = next(
@@ -132,14 +194,46 @@ def to_example(trace_id, spans, partial=False):
     return example
 
 
-def invalid(example):
-    """Return an error string if the example fails the PREDEFINED gate, else None."""
-    turns = example.get("turns")
-    if not turns:
-        return "no turns"
-    val = turns[0].get("input")
+def to_third_party(example):
+    """Re-render a PREDEFINED example in the THIRD_PARTY_EVALUATION_V1 shape.
+
+    That schema is flat: the turn's `input` sits at the top level (the service rejects the
+    whole batch with "Required field 'input' is missing from example content" when it is
+    nested in `turns`) and the ground-truth response is `expected_output`. `scenario_id`,
+    `metadata` and `expected_trajectory` carry over unchanged — the same shape the console
+    writes when it builds a dataset from traces. Trace-derived examples are always
+    single-turn, so the flattening is lossless.
+    """
+    turn = (example.get("turns") or [{}])[0]
+    flat = {"input": turn.get("input"), "scenario_id": example.get("scenario_id")}
+    if turn.get("expected_response"):
+        flat["expected_output"] = turn["expected_response"]
+    if example.get("metadata"):
+        flat["metadata"] = example["metadata"]
+    if example.get("expected_trajectory"):
+        flat["expected_trajectory"] = example["expected_trajectory"]
+    return flat
+
+
+def invalid(example, schema_type=PREDEFINED_SCHEMA):
+    """Return an error string if the example fails this schema's gate, else None.
+
+    Each schema keeps the input in a different place, so the gate has to know which one the
+    example was rendered for: PREDEFINED nests it under `turns[0].input`, THIRD_PARTY keeps it
+    top-level. The service only checks that the field is *present* on a third-party dataset —
+    an empty input is a useless example either way, so reject it here.
+    """
+    if schema_type == THIRD_PARTY_SCHEMA:
+        val = example.get("input")
+        missing_input = "missing a non-empty input"
+    else:
+        turns = example.get("turns")
+        if not turns:
+            return "no turns"
+        val = turns[0].get("input")
+        missing_input = "turn 1 missing a non-empty input"
     if not ((isinstance(val, str) and val.strip()) or (isinstance(val, dict) and val)):
-        return "turn 1 missing a non-empty input"
+        return missing_input
     # The service rejects the WHOLE batch if any single example exceeds 1 MB serialized.
     size = len(json.dumps(example, default=str).encode("utf-8"))
     if size > MAX_EXAMPLE_BYTES:
@@ -159,7 +253,7 @@ def fetch_spans_by_trace(omni, trace_ids, window_days):
     """
     quoted = ", ".join("'%s'" % t for t in trace_ids)  # ids are validated hex — safe to interpolate
     sql = (
-        "SELECT traceId, spanId, parentSpanId, startTimeUnixNano, "
+        "SELECT traceId, spanId, parentSpanId, startTimeUnixNano, endTimeUnixNano, "
         "attributes['openinference.span.kind'] AS oi_span_kind, "
         "attributes['aws.genai.span_kind'] AS aws_genai_span_kind, "
         "attributes['tool.name'] AS tool_name, "
@@ -270,6 +364,8 @@ def fetch_spans_by_trace(omni, trace_ids, window_days):
                 "spanId": row.get("spanId"),
                 "parentSpanId": row.get("parentSpanId") or None,
                 "ts": row.get("startTimeUnixNano"),
+                # end time ranks the final-answer span (_final_output); start time cannot
+                "end": row.get("endTimeUnixNano"),
                 "attributes": attrs,
             }
         )
@@ -277,13 +373,139 @@ def fetch_spans_by_trace(omni, trace_ids, window_days):
     return by_trace, truncated, boundary
 
 
-def _resolve_dataset_id(ctl, id_or_name):
-    token = None
+def _error(e):
+    """The service error dict ({'Code', 'Message'}) of a ClientError, or {} for anything else."""
+    return (getattr(e, "response", None) or {}).get("Error") or {}
+
+
+def _is_no_route(e):
+    err = _error(e)
+    return err.get("Code") == NO_ROUTE_CODE and (err.get("Message") or "").strip() == NO_ROUTE_MESSAGE
+
+
+def _sdk_operation(client, operation):
+    """The installed SDK's model for one operation, or None when it cannot be read."""
+    try:
+        return client.meta.service_model.operation_model(operation)
+    except Exception:  # noqa: BLE001 -- unknown operation, or not a real boto3 client
+        return None
+
+
+def _sdk_create_takes_schema_type(client):
+    """True unless the installed SDK's CreateDataset has dropped the `schemaType` parameter.
+
+    Older SDKs require it and newer ones remove it (sending it then fails client-side), so the
+    helper asks the SDK's own model. Assume the older model when the model cannot be read.
+    """
+    op = _sdk_operation(client, "CreateDataset")
+    return op is None or "schemaType" in (op.input_shape.members or {})
+
+
+def _rewrite_list_datasets_to_post(request):
+    """Turn the SDK's `GET /datasets?…` into the switched API's `POST /datasets/list`.
+
+    The query parameters move into a JSON body (`maxResults` as a number). Runs before signing,
+    so the signature covers the rewritten method, path and body.
+    """
+    if request.method != "GET":
+        return
+    parts = urlsplit(request.url)
+    path = parts.path.rstrip("/")
+    if not path.endswith("/datasets"):
+        return
+    body = {}
+    for key, value in parse_qsl(parts.query):
+        body[key] = int(value) if key == "maxResults" and value.isdigit() else value
+    request.method = "POST"
+    request.url = urlunsplit((parts.scheme, parts.netloc, path + "/list", "", ""))
+    request.data = json.dumps(body).encode("utf-8")
+    request.headers["Content-Type"] = "application/json"
+
+
+class _ListFormChanged(Exception):
+    """The call switched between POST and GET mid-walk; its page token belongs to the old form."""
+
+
+def _rewrite_list_datasets_to_get(request):
+    """Turn `POST /datasets/list` back into `GET /datasets?…`, for a Region that serves only GET.
+
+    The inverse of _rewrite_list_datasets_to_post, used when the installed SDK already sends POST
+    but the Region has not switched. The JSON body's scalar members become query parameters.
+    """
+    if request.method != "POST":
+        return
+    parts = urlsplit(request.url)
+    path = parts.path.rstrip("/")
+    if not path.endswith("/datasets/list"):
+        return
+    raw = request.data or b"{}"
+    body = json.loads(raw.decode("utf-8") if isinstance(raw, bytes) else raw)
+    query = urlencode([(k, str(v)) for k, v in body.items() if isinstance(v, (str, int))])
+    request.method = "GET"
+    request.url = urlunsplit((parts.scheme, parts.netloc, path[: -len("/list")], query, ""))
+    request.data = b""
+    if "Content-Type" in request.headers:
+        del request.headers["Content-Type"]
+
+
+class _DatasetLister:
+    """ListDatasets that works whether the Region serves it as GET or as POST, on any SDK.
+
+    A before-sign handler sends the call as POST first, whichever method the installed SDK
+    models. When the Region answers with the no-route 403, the call switches to the other method
+    (POST to GET, or back), and that method is kept for the rest of the run. A first page is
+    retried at once; a later page raises _ListFormChanged so the caller restarts the walk instead
+    of sending a page token across forms. Any other error, including an IAM deny, is raised
+    unchanged. A client whose model cannot be read (not a real boto3 client) is used as is.
+    """
+
+    def __init__(self, client):
+        self.client = client
+        op = _sdk_operation(client, "ListDatasets")
+        sdk_method = (op.http or {}).get("method") if op is not None else None
+        self.compat = sdk_method in ("GET", "POST")
+        self.post = True  # try POST first
+        self.flips = 0
+        if self.compat:
+            client.meta.events.register(LIST_DATASETS_EVENT, self._before_sign)
+
+    def _before_sign(self, request, **_):
+        if self.post:
+            _rewrite_list_datasets_to_post(request)
+        else:
+            _rewrite_list_datasets_to_get(request)
+
+    def list_datasets(self, **kwargs):
+        try:
+            return self.client.list_datasets(**kwargs)
+        except ClientError as e:
+            if not (self.compat and _is_no_route(e)):
+                raise
+            self.post = not self.post
+            self.flips += 1
+            if kwargs.get("nextToken"):
+                raise _ListFormChanged() from e
+            return self.client.list_datasets(**kwargs)
+
+
+def _resolve_dataset_id(lister, id_or_name):
+    token, restarted = None, False
     while True:
         try:
-            resp = ctl.list_datasets(**({"nextToken": token} if token else {}))
+            resp = lister.list_datasets(**({"nextToken": token} if token else {}))
+        except _ListFormChanged:
+            if restarted:
+                _die({"error": "list_datasets kept switching between POST and GET mid-listing; "
+                      "re-run, or pass the dataset id with --dataset-id to skip the list."})
+            token, restarted = None, True
+            continue
         except (BotoCoreError, ClientError) as e:
-            _die({"error": "list_datasets failed: %s" % e})
+            _die({
+                "error": "list_datasets failed: %s" % e,
+                "hint": "If this is AccessDeniedException with 'Unable to determine "
+                "service/operation name to be authorized', the region is mid-rollout of the "
+                "dataset API; re-run, or pass the dataset id with --dataset-id to skip the list.",
+            })
         for d in resp.get("datasets", []):
             if d.get("datasetId") == id_or_name or d.get("datasetName") == id_or_name:
                 return d.get("datasetId")
@@ -292,15 +514,60 @@ def _resolve_dataset_id(ctl, id_or_name):
             _die({"error": "dataset %r not found" % id_or_name})
 
 
-def _count_examples(ctl, dataset_id):
-    """Current example count of the dataset DRAFT (get_dataset.exampleCount), or None if unknown.
-    Best-effort: a failed lookup must not block the write -- the service enforces the cap anyway."""
+def _get_dataset(ctl, dataset_id, missing_ok=False):
+    """GetDataset. With missing_ok, return None when no dataset has this id (it may be a name)."""
     try:
-        resp = ctl.get_dataset(datasetId=dataset_id)
-    except (BotoCoreError, ClientError):
-        return None
+        return ctl.get_dataset(datasetId=dataset_id)
+    except (BotoCoreError, ClientError) as e:
+        if missing_ok and _error(e).get("Code") in ("ResourceNotFoundException", "ValidationException"):
+            return None
+        _die({
+            "error": "get_dataset failed for %s: %s. --mode add must read the dataset (its example "
+            "count, and the schemaType of a dataset that still declares one) before building "
+            "examples, so this lookup cannot be skipped -- grant bedrock-agentcore-control "
+            "GetDataset on this dataset and re-run." % (dataset_id, e)
+        })
+
+
+def _schema_and_count(dataset_id, resp):
+    """The schemaType a dataset declares (None when it declares none) and its DRAFT count.
+
+    A declared type decides where each example's input goes, and validation is all-or-nothing,
+    so a type this helper cannot render is refused by name rather than guessed at. A dataset with
+    no type takes the `turns` shape. The count stays tolerant of a missing or odd value -- the
+    service enforces the 1000-example cap anyway.
+    """
+    schema = resp.get("schemaType") or None
+    if schema is not None and schema not in ADD_SCHEMAS:
+        _die({
+            "error": "dataset %s declares schemaType %r; this helper can only build %s examples "
+            "from traces. Add to a dataset declaring one of those or no type at all, or create a "
+            "new one with --mode create."
+            % (dataset_id, schema, " or ".join(ADD_SCHEMAS)),
+            "schemaType": schema,
+        })
     count = resp.get("exampleCount")
-    return count if isinstance(count, int) else None
+    return schema, (count if isinstance(count, int) else None)
+
+
+def _dataset_schema_and_count(ctl, dataset_id):
+    """Read the target dataset's declared schemaType (or None) and its DRAFT example count."""
+    return _schema_and_count(dataset_id, _get_dataset(ctl, dataset_id))
+
+
+def _find_dataset(ctl, lister, dataset_id, dataset_name):
+    """Resolve the --mode add target to (datasetId, GetDataset response).
+
+    An id is read directly, with no list call, so it works whether or not the list route has
+    switched in this region. A name, or an id GetDataset does not know, is resolved through
+    ListDatasets first.
+    """
+    if dataset_id:
+        resp = _get_dataset(ctl, dataset_id, missing_ok=True)
+        if resp is not None:
+            return dataset_id, resp
+    dsid = _resolve_dataset_id(lister, dataset_id or dataset_name)
+    return dsid, _get_dataset(ctl, dsid)
 
 
 def main():
@@ -365,6 +632,15 @@ def main():
     omni = session.client("cloudwatchomni")
     ctl = session.client("bedrock-agentcore-control")
 
+    # Resolve the target dataset BEFORE the (minutes-long) span query: a declared schemaType
+    # decides the shape every example is built in, and a dataset declaring a type this helper
+    # cannot render should fail before any Omni work is paid for.
+    send_schema_type = _sdk_create_takes_schema_type(ctl)
+    schema_type, existing, dsid = None, None, None
+    if args.mode == "add":
+        dsid, ds = _find_dataset(ctl, _DatasetLister(ctl), args.dataset_id, args.dataset_name)
+        schema_type, existing = _schema_and_count(dsid, ds)
+
     by_trace, truncated, boundary = fetch_spans_by_trace(omni, uniq, args.window_days)
     if truncated:
         notes.append(
@@ -395,7 +671,9 @@ def main():
         # Only the boundary trace can be mid-cut; every lower-sorted trace is complete.
         partial = truncated and boundary is not None and tid == boundary
         example = to_example(tid, spans, partial=partial)
-        err = invalid(example)
+        if schema_type == THIRD_PARTY_SCHEMA:
+            example = to_third_party(example)
+        err = invalid(example, schema_type or PREDEFINED_SCHEMA)  # untyped: the `turns` gate
         if err:
             conversion_errors.append({"traceId": tid, "error": err})
             continue
@@ -408,10 +686,14 @@ def main():
     if args.mode == "create":
         kwargs = {
             "datasetName": args.dataset_name,
-            "schemaType": SCHEMA_TYPE,
             "source": source,
             "clientToken": str(uuid4()),
         }
+        if send_schema_type:
+            # Required by SDKs that still model it, ignored by the service once datasets are
+            # untyped, and rejected by SDKs that have dropped it -- hence the model check.
+            kwargs["schemaType"] = CREATE_SCHEMA_TYPE
+            schema_type = CREATE_SCHEMA_TYPE
         if args.description:
             kwargs["description"] = args.description
         try:
@@ -422,11 +704,10 @@ def main():
             "mode": "create",
             "datasetId": resp.get("datasetId"),
             "status": resp.get("status"),
+            "schemaType": schema_type,
             "examplesWritten": len(examples),
         }
     else:
-        dsid = _resolve_dataset_id(ctl, args.dataset_id or args.dataset_name)
-        existing = _count_examples(ctl, dsid)
         if existing is not None and existing + len(examples) > MAX_DATASET_EXAMPLES:
             _die({
                 "error": "dataset %s already holds %d examples; adding %d would exceed the service cap of %d "
@@ -440,6 +721,7 @@ def main():
             _die(
                 {
                     "error": "add_dataset_examples failed: %s" % e,
+                    "schemaType": schema_type,  # the declared type the shape followed; None = untyped
                     "conversionErrors": conversion_errors,
                 }
             )
@@ -447,6 +729,7 @@ def main():
         receipt = {
             "mode": "add",
             "datasetId": dsid,
+            "schemaType": schema_type,
             "examplesWritten": len(example_ids) or len(examples),
             "exampleIds": example_ids,
         }

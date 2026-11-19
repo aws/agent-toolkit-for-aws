@@ -41,12 +41,14 @@ SKILL_IDS = {
     "architect-for-startups": "ARCHITECT_FOR_STARTUPS",
     "azure-to-aws": "AZURE_TO_AWS",
     "contextual-offers-for-startups": "CONTEXTUAL_OFFERS_FOR_STARTUPS",
+    "cost-regression-check": "COST_REGRESSION_CHECK",
     "gcp-to-aws": "GCP_TO_AWS",
     "heroku-to-aws": "HEROKU_TO_AWS",
     "knowledge-base-for-startups": "KNOWLEDGE_BASE_FOR_STARTUPS",
     "llm-to-bedrock": "LLM_TO_BEDROCK",
     "operate-on-aws": "OPERATE_ON_AWS",
     "prompt-library-for-startups": "PROMPT_LIBRARY_FOR_STARTUPS",
+    "self-hosted-llm-batch-inference": "SELF_HOSTED_LLM_BATCH_INFERENCE",
     "start-building-for-startups": "START_BUILDING_FOR_STARTUPS",
     "tf-best-practices": "TF_BEST_PRACTICES",
 }
@@ -105,13 +107,17 @@ def skill_name(argv, payload):
 def skill_id(name):
     """Map a host's skill name onto a PluginSkillId, or None if it is not ours.
 
-    Handles the qualified form, `aws-startup-advisor:gcp-to-aws`. An unrecognized
-    qualifier is not a reason to drop the event — hosts qualify differently and
-    undocumentedly — but an unrecognized name is.
+    Accept bare names and this plugin's qualified names. A same-named skill
+    owned by another plugin must not count as Startup Advisor usage.
     """
     if not isinstance(name, str):
         return None
-    return SKILL_IDS.get(name.strip().rsplit(":", 1)[-1].strip().lower())
+    name = name.strip().lower()
+    if ":" in name:
+        qualifier, name = name.split(":", 1)
+        if qualifier.strip() != "aws-startup-advisor":
+            return None
+    return SKILL_IDS.get(name.strip())
 
 
 def main(argv, stdin=None):

@@ -47,12 +47,16 @@ aws bedrock list-foundation-models \
 
 **OpenAI proprietary GPT IDs.**
 
-**Check this before Step 1.** The proprietary GPT models split into two cases (verified 2026-08-21; see
-`$ASSESS_BASE/references/shared/openai-on-bedrock.md`):
+**Check this before Step 1.** Route by family and endpoint (GPT-5 verified 2026-08-21; Astra regions verified 2026-09-30; see
+`gcp-to-aws/references/vendored/ai/openai-on-bedrock.md`):
 
-**Case A — GPT-5.5 / GPT-5.4 (`openai.gpt-5.5`, `openai.gpt-5.4`): mantle-only, no inference profile.** The
-inference-profile path below cannot resolve them — `list-inference-profiles` never returns them, and Step 3's token
-ranking would end in a spurious `blocked` for a perfectly valid id. Validate against the model catalog instead:
+**Case A — bare GPT-5.5 / GPT-5.4 ids (`openai.gpt-5.5`, `openai.gpt-5.4`) when the plan targets the mantle
+endpoint: bare mantle id, not an inference profile.** The inference-profile path below cannot resolve the bare form —
+`list-inference-profiles` returns only the CRIS-prefixed ids (`us.openai.gpt-5.5`, `global.openai.gpt-5.5`,
+`us.openai.gpt-5.4`, `global.openai.gpt-5.4`, per the model cards read 2026-11-06), never the bare mantle id — and
+Step 3's token ranking would end in a spurious `blocked` for a perfectly valid id. (When the plan targets
+`bedrock-runtime` for GPT-5.5 / GPT-5.4, the CRIS id flows through Case B and Steps 1–5 like GPT-5.6.) Validate the
+bare id against the model catalog instead:
 
 ```bash
 aws bedrock list-foundation-models \
@@ -69,7 +73,7 @@ aws bedrock list-foundation-models \
   this catalog's `modelId` + `modelName` pairs instead of against inference profiles. **Do this check before
   falling through to Step 1** — a friendly name like `"OpenAI GPT-5.5"` (tokens `{openai, gpt, 5}`) has full token
   overlap with `openai.gpt-5.5`'s own id (`{openai, gpt, 5}`) and would otherwise fall through to Step 1's
-  `list-inference-profiles`, which never lists a mantle-only model — the free-text input would then reach Step 3's
+  `list-inference-profiles`, which never lists a bare mantle id — the free-text input would then reach Step 3's
   ranking with zero candidates and dead-end at `blocked` with no matches shown, even though the foundation catalog
   had the exact model the whole time. A single candidate with full token overlap on the model-identifying tokens
   (excluding generic tokens like a bare `gpt`) → surface it as the ONE candidate through Step 4 exactly as an
@@ -78,24 +82,28 @@ aws bedrock list-foundation-models \
   list alongside any inference-profile candidates Steps 1–3 separately produce; do not silently drop either source.
 - **No match at all (exact or token) and `plan_model_id` looked ID-shaped, not free-text** → not enabled or not
   available in this region. Return `blocked` with `reason: model_unresolvable`, putting the region and the
-  `openai.*` ids that _were_ returned in `detail`. These two models have no CRIS, so the remedy is a region change
-  or a different model — never an inference-profile prefix.
+  `openai.*` ids that _were_ returned in `detail`. Do not silently add an inference-profile prefix to rescue a
+  mantle plan: the remedy is a region change, a different model, or a plan change to the `bedrock-runtime` CRIS
+  path (`us.` / `global.` ids, Case B) — a decision for the plan, not for this resolver.
 - CLI failure / missing `bedrock:ListFoundationModels` → `blocked` with `reason: model_unresolvable` and the exact
   error in `detail`, rather than guessing.
 
-These two need `bedrock-mantle:*` IAM actions (e.g. `AmazonBedrockMantleInferenceAccess`), not
+The bare ids need `bedrock-mantle:*` IAM actions (e.g. `AmazonBedrockMantleInferenceAccess`), not
 `bedrock:InvokeModel`; resolution success does not imply invoke authorization.
 
 **A free-text name that does NOT token-match this catalog** (e.g. `"anthropic claude haiku"`, `"Nova Micro"`)
-continues to Step 1 as before — this catalog check only short-circuits the specific case a mantle-only model would
+continues to Step 1 as before — this catalog check only short-circuits the specific case a bare mantle id would
 otherwise be unreachable from free text; it is not a replacement for Step 1's inference-profile search for every
 other provider/model.
 
-**Case B — GPT-5.6 and GPT-6 (`openai.gpt-5.6-sol` / `-terra` / `-luna`, `openai.gpt-6-astra` / `-sol` / `-luna`,
-`openai.gpt-6.1-sol`, or already `us.` / `in.` / `global.` prefixed): BOTH paths exist.** The bare id is the mantle
-form; `bedrock-runtime` serves these models through CRIS inference profiles (`us.openai.gpt-5.6-*` /
-`us.openai.gpt-6-*`, `in.openai.gpt-5.6-*` in India Regions, `global.openai.gpt-5.6-*` / `global.openai.gpt-6-*`),
-which `list-inference-profiles` DOES return. Route on the plan's intent:
+**Case B — GPT-5.6, GPT-6, and GPT-5.5 / GPT-5.4 on `bedrock-runtime` (`openai.gpt-5.6-sol` / `-terra` / `-luna`,
+`openai.gpt-6-astra` / `-sol` / `-luna`, `openai.gpt-6.1-sol` / `-terra`, `openai.gpt-5.5` / `openai.gpt-5.4` with a
+runtime plan, or already `us.` / `in.` / `us-gov.` / `global.` prefixed): BOTH paths exist.** The bare id is the mantle form;
+`bedrock-runtime` serves these models through CRIS inference profiles (`us.openai.gpt-5.6-*` / `us.openai.gpt-6-*` /
+`us.openai.gpt-5.5` / `us.openai.gpt-5.4`; for GPT-5.6 Terra and Luna only, `in.` in India Regions and `us-gov.` in
+GovCloud; `global.openai.gpt-5.6-*` /
+`global.openai.gpt-6-*` / `global.openai.gpt-5.5` / `global.openai.gpt-5.4`), which `list-inference-profiles` DOES
+return. Route on the plan's intent:
 
 - Plan targets the mantle endpoint (`migration_path` starts with `mantle`, or the id is bare) → validate the bare id
   against the model catalog exactly as in Case A.
@@ -103,12 +111,32 @@ which `list-inference-profiles` DOES return. Route on the plan's intent:
   continue to Step 1; the normal inference-profile resolution below applies to these ids like any other CRIS
   profile. Note the runtime base URL for these models is `bedrock-runtime.{region}.amazonaws.com/openai/v1`.
 
-The four bare GPT-6 IDs (`openai.gpt-6-astra`, `openai.gpt-6-sol`, `openai.gpt-6-luna`, `openai.gpt-6.1-sol`)
+The five bare GPT-6 IDs (`openai.gpt-6-astra`, `openai.gpt-6-sol`, `openai.gpt-6-luna`, `openai.gpt-6.1-sol`,
+`openai.gpt-6.1-terra`)
 follow Case A's catalog-lookup procedure when the plan targets the bare/mantle endpoint; when the plan targets
 `bedrock-runtime` (`migration_path: runtime_openai_cris` or an already-CRIS-prefixed id), they follow this Case's
 inference-profile procedure instead — same routing rule as GPT-5.6, just a different id family.
 
-Non-`openai.gpt-5*` / non-`openai.gpt-6*` ids continue to Step 1 unchanged after checking the London exception above.
+**Case C — GPT-6 Astra: `openai.gpt-6-astra` on mantle, or `us.openai.gpt-6-astra` /
+`global.openai.gpt-6-astra` on runtime.** Preserve the plan's endpoint and residency choice:
+
+- A supplied system-profile ARN uses runtime. Validate its `arn:aws:bedrock:<caller-region>:<account>:inference-profile/<profile-id>`
+  form and apply the checks below to its profile ID. In Step 2 require the full ARN to match
+  `inferenceProfileArn` in the live listing, then return the original ARN unchanged.
+  Do not reduce it to a short ID, manufacture another ARN or accept an unverified application profile.
+- Bare id → Standard mantle in `us-east-1` or `us-west-2`. Validate the exact id with the Case A catalog query.
+  A different region returns `blocked` with `reason: model_unresolvable`; offer Virginia, Oregon, or a supported
+  runtime CRIS path through the orchestrator. Do not silently add a prefix or change endpoints.
+- `us.` / `global.` id → Step 1, then require an exact live profile match in the caller region.
+  Check the Astra runtime matrix in `gcp-to-aws/references/vendored/ai/openai-on-bedrock.md`;
+  a Global-only caller region does not satisfy US Geo residency.
+- An `in.` / `eu.` prefix, version suffix, partial id, or conflicting endpoint/id pair → `blocked`.
+  Do not substitute GPT-5.6 or manufacture an Astra profile.
+
+Astra's bare id needs mantle project permissions; its CRIS ids need runtime foundation-model and
+inference-profile permissions. Resolution does not verify account access or API behavior; run preflight.
+
+Other model ids continue to Step 1 unchanged.
 
 ### Step 1: List live inference profiles
 
@@ -116,15 +144,15 @@ Non-`openai.gpt-5*` / non-`openai.gpt-6*` ids continue to Step 1 unchanged after
 aws bedrock list-inference-profiles \
   --region <region> \
   <add --profile <profile> when your context has an `AWS profile` line> \
-  --query 'inferenceProfileSummaries[].[inferenceProfileId,inferenceProfileName]' \
+  --query 'inferenceProfileSummaries[].[inferenceProfileId,inferenceProfileName,inferenceProfileArn]' \
   --output json
 ```
 
-Parse the JSON. Each entry is a `[id, name]` pair.
+Parse the JSON. Each entry is an `[id, name, arn]` triple; ranking still uses the ID and name.
 
 ### Step 2: Try exact match
 
-If `plan_model_id` appears verbatim in the list, return it. No user prompt
+If `plan_model_id` exactly matches a listed ID or ARN, return that original value. No user prompt
 needed.
 
 ### Step 3: Token-based ranking when no exact match
@@ -198,11 +226,15 @@ stops on abort.
 - This skill is idempotent: calling it twice with the same already-validated
   ID will hit Step 0 (documented bare-ID route) or Step 2 (inference profile) and return immediately.
 - Steps 1–5 assume the target is a `bedrock-runtime` model reachable through an
-  inference profile. Mantle-only ids (GPT-5.5/5.4, and GPT-5.6 when the plan
-  targets the mantle endpoint), and London in-region Opus 5.5, are handled entirely in Step 0; GPT-5.6 CRIS ids
-  flow through Steps 1–5 like any other inference profile. See
-  `$ASSESS_BASE/references/shared/openai-on-bedrock.md` for the authoritative
+  inference profile. Bare mantle ids (any proprietary GPT model — GPT-5.5/5.4, GPT-5.6, GPT-6 — when the plan
+  targets the mantle endpoint), and London in-region Opus 5.5, are handled entirely in Step 0; GPT-5.6/GPT-6 and
+  GPT-5.5/5.4 CRIS ids flow through Steps 1–5 like any other inference profile. See
+  `$ASSESS_BASE/references/vendored/ai/openai-on-bedrock.md` for the authoritative
   family split.
+- A `runtime_messages` plan (Anthropic SDK on the `bedrock-runtime` `/anthropic` endpoint)
+  resolves exactly like Converse: a supported `us.`/`eu.`/`global.` inference profile through
+  Steps 1–5, with a bare id only for the documented eu-west-2 Opus 5.5 route (Step 0).
+  `mantle_messages` uses the bare `anthropic.claude-*` id (Step 0, mantle endpoint).
 - Output of this skill should replace the plan's `target_model_id` in the
   caller's context — downstream phases (evaluator, rewriter) receive the
   validated ID only.

@@ -68,6 +68,8 @@ For InvokeModel (Anthropic format): `cache_creation_input_tokens` and `cache_rea
 
 Content before a cache point must meet the model's minimum. Below threshold = silently ignored.
 
+> **Note:** This table goes stale as new models launch. Before relying on it, fetch the latest supported models from the [Amazon Bedrock model cards](https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards.html) and confirm the per-model threshold on that model's card.
+
 | Model | Minimum Tokens |
 |-------|---------------|
 | Claude Sonnet 4.6 | 2,048 |

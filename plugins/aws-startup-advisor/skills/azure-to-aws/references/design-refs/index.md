@@ -53,7 +53,7 @@ Design runs.
 | `Microsoft.ContainerService/managedClusters`                                        | fast-path: **direct** | EKS                                                                             |
 | `Microsoft.ContainerService/managedClusters/agentPools`                             | fast-path: skip       | EKS node-group sizing on the parent                                             |
 | `Microsoft.ContainerRegistry/registries`                                            | fast-path: **direct** | ECR                                                                             |
-| `Microsoft.App/containerApps`                                                       | `compute.md`          | {Fargate}                                                                       |
+| `Microsoft.App/containerApps`                                                       | `compute.md`          | {Fargate} — ECS Express Mode when `ingress` is HTTP, standard service otherwise (`compute.md` § 7)                                                                       |
 | `Microsoft.ContainerInstance/containerGroups`                                       | `compute.md`          | {Fargate task} — a one-shot container group is a task, not a service            |
 | `Microsoft.App/managedEnvironments`                                                 | `compute.md`          | {ECS cluster + VPC}; usually a config source for its container apps instead     |
 
@@ -89,8 +89,8 @@ GPU and HPC VM series (ND / NC / NV / HB / HX) branch inside `compute.md` to
 | `Microsoft.Sql/managedInstances`                                        | fast-path: **gate**   | `Deferred — specialist engagement`                                                                     |
 | `Microsoft.DocumentDB/databaseAccounts` (Mongo/Cassandra/Gremlin/Table) | fast-path: **direct** | DocumentDB / Keyspaces / Neptune / DynamoDB by API                                                     |
 | `Microsoft.DocumentDB/databaseAccounts` (Core / SQL API)                | `database.md`         | {DynamoDB} — RU/s → WCU/RCU conversion, full depth; the only Cosmos surface on the rubric path         |
-| `Microsoft.Cache/Redis`                                                 | fast-path: **direct** | ElastiCache Redis                                                                                      |
-| `Microsoft.Cache/redisEnterprise`                                       | `database.md`         | {ElastiCache Redis, MemoryDB}; RediSearch/RedisJSON modules have no equivalent either way              |
+| `Microsoft.Cache/Redis`                                                 | fast-path: **direct** | ElastiCache Valkey (Redis OSS-compatible; `aws_config.engine: "valkey"`)                                      |
+| `Microsoft.Cache/redisEnterprise`                                       | `database.md`         | {ElastiCache Valkey, ElastiCache Redis OSS, MemoryDB}; RediSearch/RedisJSON modules have no equivalent in any of them |
 
 The availability selector (single-az / multi-az / multi-az-ha / multi-region) is a
 **post-rubric override gate** in `database.md`, not a criterion — it forces RDS versus

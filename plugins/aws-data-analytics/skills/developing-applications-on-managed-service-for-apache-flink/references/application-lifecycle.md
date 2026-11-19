@@ -192,7 +192,7 @@ aws kinesisanalyticsv2 update-application --application-name "$APP" \
 |---|---|---|
 | Trigger | Automatic, periodic | Manual or stop-with-snapshot |
 | Purpose | Fault tolerance | Backup, rollback, restore-on-start |
-| Storage | Included in 50 GB / KPU running storage | Billed at $0.023/GB-month (durable backups) |
+| Storage | No separate charge (running storage is billed per application KPU whether or not it is used) | Billed at $0.023/GB-month (durable backups) |
 | Lifecycle | Managed by Flink | User must create and delete |
 | Deletion | Cleared on fresh start | Deleted with the application unless preserved |
 

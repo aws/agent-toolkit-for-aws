@@ -172,6 +172,27 @@ Produces: `migration-report.html`
 
 After writing `migration-report.html`, run `shared/validate-migration-report.md` (automated script). `REPORT_OK` means the decision-core content checks passed, not that the section IDs alone were present — the HTML must still have been rendered from `references/shared/report-decision-core.md`. Branch on the shell exit code per that doc's table — `0` (`REPORT_OK`), `1` (`REPORT_FAIL`: remove or rename incomplete HTML and warn the user — do not present a stub report as complete), or anything else (validator did not run, e.g. `python3` missing — tell the user validation was skipped, do not treat it as pass or fail).
 
+### Final infrastructure artifact checks
+
+When the infrastructure artifact route is active, run the shared read-only
+checker after all Terraform, script, and documentation producers finish:
+
+```bash
+python3 "$PLUGIN_ROOT/skills/tf-best-practices/scripts/validate-migration-artifacts.py" \
+  "$MIGRATION_DIR" --json "$MIGRATION_DIR/artifact-validation-status.json"
+```
+
+This checker adds bounded cross-file checks, including literal RDS backup and
+maintenance-window conflicts. It does not replace Terraform validation or the
+`POLICY_OK` requirement, and it does not execute migration scripts. The
+Heroku-specific `--require-postgres-script` flag does not apply to this route:
+GCP uses its own migration-script naming and execution contract.
+
+Only exit `0` with `artifact_status: "ARTIFACTS_OK"` permits the completion
+check. On exit `1` or `2`, surface the findings/error and stop with `GATE_FAIL`;
+a missing checker or unsupported shape is not a pass. The checker output is
+already the report; do not rewrite it as a success summary.
+
 ## Phase Completion
 
 Load `shared/handoff-gates.md`. **Re-read from disk** before checking.
@@ -183,7 +204,8 @@ Verify both stages are complete:
    - If `estimation-ai.json` exists -> require `generation-ai.json`
    - If `estimation-billing.json` exists -> require `generation-billing.json`
 2. **Stage 2 route gates (fail closed)**:
-   - If infra artifact route is active (`generation-infra.json` AND `aws-design.json`) -> require `terraform/`, `scripts/`, and `validation-report.json` (with `status` in `{passed, passed_degraded_offline, skipped_user_continue}` AND `policy_status` == `POLICY_OK`, unless the user chose skip/abort on a policy failure)
+   - If infra artifact route is active (`generation-infra.json` AND `aws-design.json`) -> require `terraform/`, `scripts/`, and `validation-report.json`. Run `python3 "$PLUGIN_ROOT/skills/tf-best-practices/scripts/validate-terraform-report.py" "$MIGRATION_DIR/validation-report.json"` and require exit 0. This verifies the complete v2 record, including its permitted completion status and `POLICY_OK`; a partial report with only those two fields is insufficient. A skipped or aborted policy failure does not authorize infrastructure completion.
+   - For that same infra route, require `artifact-validation-status.json` to be valid JSON with `artifact_status` exactly `ARTIFACTS_OK`. Missing, failed, or unexecuted checks block completion.
    - If AI artifact route is active (`generation-ai.json` AND `aws-design-ai.json`) -> require `ai-migration/`
    - If billing artifact route is active (`generation-billing.json` AND `aws-design-billing.json`) -> require `terraform/skeleton.tf`
 3. **Documentation gate (always)**:
@@ -228,7 +250,7 @@ After the structured block, include:
 
 1. **Plans generated** — List all `generation-*.json` files produced
 2. **Artifacts generated** — List all directories and files created (terraform/, scripts/, ai-migration/, MIGRATION_GUIDE.md, README.md). Include `migration-report.html` only if it exists.
-3. **Validation status** — If `$MIGRATION_DIR/validation-report.json` exists, report its `status` field (`passed`, `passed_degraded_offline`, or `skipped_user_continue`). If `status == "passed_degraded_offline"`, add: "Provider registry was unreachable; `terraform validate` was skipped. Re-run `terraform init && terraform validate` from a network-connected shell to complete validation." Also report `policy_status` (`POLICY_OK`/`POLICY_FAIL`) — the tf-best-practices policy gate runs regardless of the offline path and must report `POLICY_OK` before infra Generate completes (see `generate-artifacts-infra.md` Step 6).
+3. **Validation status** — If `$MIGRATION_DIR/validation-report.json` exists, report its actual `status` and `policy_status`. For `passed_degraded_offline`, describe the recorded `terraform init` network failure and the skipped validation. For `skipped_user_continue`, describe the actual failed or unavailable check and the user's choice. A broken CLI shim is not a registry outage. State that Terraform validation remains unverified until the skipped checks run successfully. The policy gate must report `POLICY_OK` before infrastructure Generate completes (see `generate-artifacts-infra.md` Step 6).
 4. **Key timelines** — Highlight migration timeline from the generation plans
 5. **Key risks** — Highlight top risks from the generation plans
 6. **TODO markers** — Note any TODO markers in generated artifacts that require manual attention
@@ -241,7 +263,7 @@ Output to user:
 
 **Web-handoff — only when the writer above printed `PLAN_OK`** (if it printed `PLAN_SKIP`, omit this whole block; there is no file to upload). Do three things, in order:
 
-- **(a)** In the `✓ Produced` list in the Summary above, add exactly one entry as **plain text** — that list renders inside a code block, where Markdown links do not work, so do not link it here (the clickable link is the What's next call-to-action below): `plan.json — upload to AWS Startups Migrate to see if you qualify for AWS credits`. Keep every existing entry on its own line; do not merge, collapse, or re-wrap them.
+- **(a)** In the `✓ Produced` list in the Summary above, add exactly one entry as **plain text** — that list renders inside a code block, where Markdown links do not work, so write the address out as text here (the clickable link is the What's next call-to-action below): `plan.json — upload at AWS Startup Advisor (https://startups.aws.com/migrate/plans/import?source=plugin) to see if you qualify for AWS credits`. Keep every existing entry on its own line; do not merge, collapse, or re-wrap them.
 - **(b)** Then show the user their `plan.json`. The `.migration` folder is hidden by default
   on macOS and Linux, so open the file's location for them instead of leaving them
   to find it. Run the command for the user's OS once, as an ordinary command — the
@@ -290,16 +312,16 @@ Output to user:
   drop that sentence when the user declined or the command failed for another
   reason.
 
-- **(c)** Then append the What's next block below, verbatim, replacing `<run_id>` in the link with the run's `run_id` (from `.phase-status.json`), lowercased if it is a UUID so the `run=` value matches the plan's `runId`. It MUST begin with the "💬 What's next" heading. The call-to-action must be a Markdown link so it renders as clickable text with no bare URL. Do not reword it — this copy is owned by the web experience:
+- **(c)** Then append the What's next block below, verbatim, replacing `<run_id>` in both links with the run's `run_id` (from `.phase-status.json`), lowercased if it is a UUID so the `run=` value matches the plan's `runId`. It MUST begin with the "💬 What's next" heading. The call-to-action must be a Markdown link so it renders as clickable text with no bare URL. Never name AWS Startup Advisor's import page without its address: if you shorten or restate any of this, keep the address. (The plain-text mentions use `?source=plugin` without `run=` on purpose, to stay short; the two links in this block carry the run.) Do not reword it — this copy is owned by the web experience:
 
 > **💬 What's next**
 >
 > - **Refine your plan**
 >   Tell me what to change. For example: "use Fargate instead," "make it multi-region," or "reduce the cost."
 > - **See your AWS credits**
->   Sign in or create an account on AWS Startups Migrate, then upload plan.json to see the AWS migration credits you qualify for.
+>   Sign in with your AWS Builder ID (or create one) on [AWS Startup Advisor](https://startups.aws.com/migrate/plans/import?source=plugin&run=<run_id>), the AWS Startups site where you import your migration plan, then upload plan.json to see the AWS migration credits you qualify for.
 >
-> [Go to AWS Startups Migrate →](https://startups.aws.com/startups/en-US/migrate/credits?source=plugin&run=<run_id>)
+> [Go to AWS Startup Advisor →](https://startups.aws.com/migrate/plans/import?source=plugin&run=<run_id>)
 >
 > After you upload, you also get:
 >
@@ -307,6 +329,6 @@ Output to user:
 > - Monthly cost estimate
 > - Migration paths: AI agent, AWS expert, or AWS Partner
 
-Ship note: this reaches customers only after the import page and the ImportPlan API are both live in production.
+**BigQuery follow-up:** after the summary and the web-handoff block (when shown), apply `SKILL.md` Workflow Execution step 10 last. It does nothing when BigQuery was not detected.
 
 _Breadcrumbs are emitted only after outer-run `HANDOFF_OK` — never on `GATE_FAIL`, never from inner workshop reprices._

@@ -15,10 +15,10 @@ AgentCore Runtime supports 4 protocols. You MUST select before building the cont
 
 | Protocol | Container Contract | Best For |
 |----------|-------------------|----------|
-| **HTTP** | Health: `/health`, Port: 8080, JSON req/res | Existing web frameworks (FastAPI, Express, Flask). Simple request-response agents. |
-| **MCP** | Endpoint: `/mcp`, Streamable HTTP transport | Tool-centric agents exposing capabilities as MCP tools. MCP ecosystem integration. |
-| **A2A** | Agent Card: `/.well-known/agent.json`, task endpoints | Multi-agent systems with direct agent-to-agent communication. |
-| **AG-UI** | Health: `/ping`, Event stream: `/invocations`, Port: 8080, SSE standard event types | Frontend-connected agents with real-time UI updates. Chat interfaces. |
+| **HTTP** | Health: `/ping` (GET), Invocation: `/invocations` (POST, JSON/SSE), optional `/ws` WebSocket, Port: 8080 | Existing web frameworks (FastAPI, Express, Flask). Simple request-response agents. |
+| **MCP** | Endpoint: `/mcp` (POST, JSON-RPC / streamable-http), Port: 8000 | Tool-centric agents exposing capabilities as MCP tools. MCP ecosystem integration. |
+| **A2A** | Agent Card: `/.well-known/agent-card.json`, root `/` POST endpoint (JSON-RPC 2.0), Health: `/ping`, Port: 9000 | Multi-agent systems with direct agent-to-agent communication. |
+| **AG-UI** | Health: `/ping`, Event stream: `/invocations` (SSE), optional `/ws` WebSocket, Port: 8080, SSE standard event types | Frontend-connected agents with real-time UI updates. Chat interfaces. |
 
 **Decision guide:**
 
@@ -39,8 +39,8 @@ Requirements that apply to ALL protocols:
 | Requirement | Detail |
 |-------------|--------|
 | **Architecture** | ARM64 (Graviton) — x86 images WILL NOT START |
-| **Health check** | Protocol-specific endpoint (see table above) |
-| **Port** | Default 8080, configurable |
+| **Health check** | Checked via the `/ping` GET endpoint for all protocols except MCP (returning `{"status":"Healthy"\|"HealthyBusy"}`) |
+| **Port** | Per-protocol default: HTTP 8080, MCP 8000, A2A 9000, AG-UI 8080 (configurable) |
 | **Startup** | Must signal readiness within timeout |
 | **Logging** | stdout/stderr → CloudWatch automatically |
 | **Shutdown** | Handle SIGTERM for graceful shutdown |

@@ -12,6 +12,11 @@ Long interactive sessions with idle periods (suspend preserves memory + processe
 heavy non-GPU compute (>2 vCPU), multi-port / gRPC / per-session URL workloads,
 sub-second cold starts.
 
+Against Nitro Sandboxes (ECS Managed Instances tasks, EKS pods, or EC2 with Firecracker):
+both give a VM boundary per workload. Lambda MicroVMs manages the instances and
+networking; Nitro Sandboxes run on instances you own, which buys instance-type choice,
+bin-packing, Capacity Reservations, and a confidential mode with attestation.
+
 ## Hard limits (verify via MCP — volatile)
 
 - Session cap: 8h (max 28,800s) — same as AgentCore microVMs; AgentCore's
