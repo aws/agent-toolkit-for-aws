@@ -83,7 +83,7 @@ GRANT CREATE SESSION TO oci_user;
 GRANT SELECT ON schema.table_name TO oci_user;
 ```
 
-3. Connect using the OCI IAM username + password:
+1. Connect using the OCI IAM username + password:
 
 ```python
 conn = oracledb.connect(

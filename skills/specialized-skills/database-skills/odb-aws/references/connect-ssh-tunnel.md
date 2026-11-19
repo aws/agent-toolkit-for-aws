@@ -7,6 +7,7 @@ Laptop ── SSM / SSH Port Forward ── EC2 Bastion (in peered VPC) ── O
 ```
 
 Two methods:
+
 1. **SSM Session Manager port forwarding** — preferred; no SSH keys, no open inbound ports, IAM-scoped, CloudTrail audit.
 2. **Traditional SSH local port forwarding** — when SSM is not available.
 
@@ -158,6 +159,7 @@ aws ec2 run-instances \
 IAM role `SSMBastion` should attach `AmazonSSMManagedInstanceCore`.
 
 Bastion SG:
+
 - No inbound rules.
 - Outbound TCP 1521/2484 to ODB client subnet CIDR.
 - Outbound HTTPS 443 to SSM endpoints (or use VPC endpoints for `ssm`, `ssmmessages`, `ec2messages`).
@@ -165,6 +167,7 @@ Bastion SG:
 ### Bastion for traditional SSH
 
 Same as above, but:
+
 - Public subnet with Elastic IP.
 - Inbound TCP 22 from your IP or corporate CIDR.
 - Launch with `--key-name <keypair>`.

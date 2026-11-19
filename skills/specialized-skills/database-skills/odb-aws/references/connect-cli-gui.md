@@ -49,10 +49,13 @@ Three access methods; the first is preferred.
 3. Test Connection.
 
 For TCPS with built-in tunnel, use **Custom JDBC URL**:
+
 ```
 jdbc:oracle:thin:@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCPS)(HOST=<scan-hostname>)(PORT=2484))(CONNECT_DATA=(SERVICE_NAME=orclpdb1.sub1.vcn1.oraclevcn.com))(SECURITY=(SSL_SERVER_DN_MATCH=TRUE)))
 ```
+
 Configure wallet JVM options in `sqldeveloper.conf`:
+
 ```
 AddVMOption -Doracle.net.tns_admin=/opt/oracle/wallet
 AddVMOption -Djavax.net.ssl.trustStore=/opt/oracle/wallet/truststore.jks
@@ -62,6 +65,7 @@ AddVMOption -Djavax.net.ssl.trustStorePassword=<password>
 ### 2. External SSM/SSH tunnel + `localhost`
 
 After starting an external tunnel (see **connect-ssh-tunnel.md** (loaded reference)):
+
 - Connection Type **Basic** → Hostname = `localhost`, Port = forwarded local port.
 - For TCPS over external tunnel: use Custom JDBC URL with `SSL_SERVER_DN_MATCH=FALSE` — the cert CN is the SCAN hostname, not `localhost`.
 
@@ -104,6 +108,7 @@ For TCPS over external tunnel: `jdbc:oracle:thin:@(DESCRIPTION=(ADDRESS=(PROTOCO
 Toad has no built-in SSH tunnel. Use an external SSM/SSH tunnel and connect to `localhost`, or install Toad on a Windows EC2 in the peered VPC and use RDP.
 
 For TCPS over external tunnel:
+
 - Set `TNS_ADMIN` to the wallet directory before launching Toad.
 - Add a custom `tnsnames.ora` entry pointing to `localhost:2484`.
 - Set `SSL_SERVER_DN_MATCH=FALSE` in `sqlnet.ora`.

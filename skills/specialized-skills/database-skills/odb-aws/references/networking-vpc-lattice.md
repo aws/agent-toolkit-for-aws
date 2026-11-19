@@ -26,6 +26,7 @@ ODB Network ── Lattice ── S3 (Data Pump / RMAN)
 ## ODB Network → S3 Access
 
 ODB networks can reach S3 through VPC Lattice for:
+
 - Oracle Data Pump export/import
 - RMAN backup to S3
 - External tables reading from S3

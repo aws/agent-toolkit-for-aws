@@ -95,6 +95,7 @@ If a request straddles rows (e.g., "connect Lambda with Kerberos"), load both re
 Check required tools before running any ODB@AWS workflow.
 
 **Constraints:**
+
 - You MUST verify `aws --version` returns AWS CLI v2 and `aws sts get-caller-identity` returns an identity, because every workflow needs `aws odb`, `aws ec2`, and `aws route53resolver` calls.
 - You MUST verify `aws odb help` succeeds because older AWS CLI versions may not include the `aws odb` subcommand.
 - You MUST inform the user about any missing tool and offer to proceed only on parts that do not need it.
@@ -141,6 +142,7 @@ Identify the workflow and gather every input upfront.
 - **error_text** (required for troubleshooting): exact ORA-/TNS- message or driver error
 
 **Constraints:**
+
 - You MUST ask for all required parameters in a single prompt rather than one at a time because ODB@AWS workflows cross AWS and OCI planes and back-and-forth wastes user time.
 - You MUST support multiple input methods: direct values in chat, a file path to YAML/JSON, or a URL to an AWS console page that you parse for identifiers.
 - You MUST validate formats: `odbnet-[a-z0-9-]+`, `vpc-[0-9a-f]{8,17}`, `odbpcx-[a-z0-9]+`, ARNs matching `arn:aws:[a-z0-9-]+:[a-z0-9-]+:\d{12}:.+`, CIDRs `\d+\.\d+\.\d+\.\d+/\d+`.
@@ -167,6 +169,7 @@ Proceed? (yes/no)
 Three mandatory pieces in order: ODB peering → VPC route to the ODB client CIDR → Route 53 Resolver forwarding for `oraclevcn.com`. Every connection depends on all three.
 
 **Constraints:**
+
 - You MUST follow the guidance in the loaded **networking-odb-peering.md** reference before emitting `aws odb create-odb-peering-connection` because ODB peering uses a distinct `aws odb` subcommand with different semantics than VPC peering.
 - You MUST add a route to the ODB client subnet CIDR in every route table attached to the app subnets, because without it connections hang with ORA-12170 and the root cause is invisible in VPC Flow Logs.
 - You MUST set up the Route 53 Resolver outbound endpoint + forwarding rule for `oraclevcn.com` immediately after peering because AmazonProvidedDNS cannot resolve the SCAN hostname; queries fail with ORA-12154.
@@ -231,6 +234,7 @@ bash scripts/check_odb_connectivity.sh cluster-abc-scan.sub1.vcn1.oraclevcn.com 
 Produce driver- and runtime-specific code after the network path is healthy.
 
 **Constraints:**
+
 - You MUST read the relevant client reference (**connect-python.md** (loaded reference), **connect-java.md** (loaded reference), **connect-nodejs.md** (loaded reference), **connect-cli-gui.md** (loaded reference)) and **compute-runtimes.md** (loaded reference) before emitting code because ODB@AWS patterns (service names, wallet layout, thin-mode defaults) differ from on-prem Oracle patterns the model defaults to.
 - You MUST use service names — never SIDs — with SCAN hostnames because SCAN load balancing is service-based.
 - You MUST set `tcp_connect_timeout` / `connectionTimeout` to ~10 seconds because RAC failover needs fast detection of dead addresses.
@@ -256,6 +260,7 @@ python3 scripts/test_connection_python.py \
 Diagnose before reconfiguring.
 
 **Constraints:**
+
 - You MUST classify the symptom (DNS / TCP / TLS / auth) using **troubleshooting-errors.md** (loaded reference) before proposing fixes because ODB@AWS failures are layered and fixing the wrong layer wastes time.
 - You MUST run [resolve_scan.py](scripts/resolve_scan.py) and [check_odb_connectivity.sh](scripts/check_odb_connectivity.sh) before suggesting infrastructure changes because those scripts deterministically report the failing layer.
 - You MUST present findings as: ✅ what's working / ❌ what's broken / root cause / fix / verification; SHOULD keep it under 20 lines.
@@ -348,7 +353,6 @@ These ODB@AWS-specific facts distinguish this service from RDS for Oracle and fr
 - [python-oracledb Documentation](https://python-oracledb.readthedocs.io/)
 - [Oracle JDBC (ojdbc11) Documentation](https://docs.oracle.com/en/database/oracle/oracle-database/23/jjdbc/)
 - Related skills: **rds-oracle** (Amazon RDS for Oracle), **rds-sqlserver** (Amazon RDS for SQL Server)
-
 
 ## Handoff from aws-database-selection
 

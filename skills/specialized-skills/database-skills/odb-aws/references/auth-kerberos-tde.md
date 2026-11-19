@@ -20,11 +20,13 @@ Supported on **Exadata Database Service only** (not Autonomous DB). Uses AWS Man
    - DNS forwarding for the AD domain.
 
 2. Register the Oracle SPN in AD:
+
    ```cmd
    setspn -A oracle/cluster-abc-scan.sub1.vcn1.oraclevcn.com <service-account>
    ```
 
 3. Generate a keytab:
+
    ```bash
    ktutil
    addent -password -p oracle/cluster-abc-scan.sub1.vcn1.oraclevcn.com@EXAMPLE.COM -k 1 -e aes256-cts-hmac-sha1-96
@@ -32,6 +34,7 @@ Supported on **Exadata Database Service only** (not Autonomous DB). Uses AWS Man
    ```
 
 4. Client `/etc/krb5.conf`:
+
    ```ini
    [libdefaults]
        default_realm = EXAMPLE.COM

@@ -81,13 +81,17 @@ aws route53resolver create-resolver-endpoint \
 Configure on-prem DNS to forward `oraclevcn.com` to the inbound endpoint IPs:
 
 - **Windows DNS Server:**
+
   ```powershell
   Add-DnsServerConditionalForwarderZone -Name "oraclevcn.com" -MasterServers 10.30.0.10,10.30.0.11
   ```
+
 - **BIND:**
+
   ```
   zone "oraclevcn.com" { type forward; forward only; forwarders { 10.30.0.10; 10.30.0.11; }; };
   ```
+
 - **Infoblox:** forward zone `oraclevcn.com` → inbound endpoint IPs.
 
 ## TGW + Direct Connect

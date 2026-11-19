@@ -56,6 +56,7 @@ Add this route for **every** route table associated with subnets where the appli
 ### 5. Update security groups
 
 App VPC security group — outbound:
+
 - TCP 1521 (Oracle TCP) to ODB client subnet CIDR
 - TCP 2484 (Oracle TCPS) to ODB client subnet CIDR
 - UDP/TCP 53 to ODB DNS listener IPs (if resolver outbound endpoint shares the SG)
