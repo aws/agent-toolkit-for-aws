@@ -94,6 +94,6 @@ The preview names no Bedrock models or prices: Design chooses those. Do not writ
    }
    ```
 
-   Do not write `owning_skill`: this skill sends no telemetry.
+   Do not write `owning_skill`: this skill sends no telemetry. When a host skill started this run with its identifier and a profile path (`SKILL.md` § Combined mode), also write `initiated_by` with that identifier.
 
-3. Once the profile in `$MIGRATION_DIR` passes validation and Step 2d wrote `migration-preview.json`, set `phases.discover` to `"completed"` and `current_phase` to `"clarify"`, and keep the validator's JSON summary for Clarify.
+3. Once the profile in `$MIGRATION_DIR` passes validation and Step 2d wrote `migration-preview.json`, set `phases.discover` to `"completed"` and `current_phase` to `"clarify"`, and keep the validator's JSON summary for Clarify. When `initiated_by` is set, stop here and return control to the host skill.

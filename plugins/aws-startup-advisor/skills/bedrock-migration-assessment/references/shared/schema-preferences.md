@@ -83,6 +83,8 @@ Use the **Impact** row for the selected answer from `clarify-ai-only.md` when th
 
 `metadata.report_caveats` is present only when a caveat was added (Q1.5 or Q10.5 default).
 
+In combined mode (`clarify-ai-only.md` § Combined mode), `metadata.questions_from_host` lists `"Q1.5"` when the host answered compliance, and each host answer in `design_constraints` carries `source: "host:<host_skill>"` with any `chosen_by` and no `question_id`.
+
 ---
 
 ## Constraint catalog (prompt + consequence templates)

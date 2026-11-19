@@ -18,15 +18,29 @@ This release covers four phases:
 
 Generate is not in this skill yet. After Estimate, show its summary and stop. Do not load phase files from any other skill.
 
-## Readiness for other skills
+## Combined mode
 
-Another skill that consumes this skill's artifacts (for example llm-to-bedrock or agent-advisor) must not read `.phase-status.json` itself. It runs this skill's script, with the path resolved to this skill's directory:
+An infrastructure skill (for example gcp-to-aws, through its handoff script) can run this skill for the AI part of its migration. The run is still this skill's own `bma-` directory. The host starts it by loading this skill with its identifier and the absolute path of the neutral profile it built (for gcp-to-aws, `ai-workload-profile.neutral.json` from `bma-handoff.py convert`). Discover takes the supplied-profile route, which copies that file byte for byte, and writes `initiated_by` with the host's identifier (for example `GCP_TO_AWS`) into `.phase-status.json`, never `owning_skill`, and stops when Discover completes. The host then writes `$MIGRATION_DIR/host-answers.json` and resumes the run:
 
-```bash
-python3 scripts/readiness.py <MIGRATION_DIR> --through design|estimate
+```json
+{"host_skill": "gcp-to-aws", "infrastructure_moves": true, "stop_after": "clarify", "design_constraints": {"target_region": {}, "compliance": {}}}
 ```
 
-Exit 0 prints `{"ready": true, ...}` with each artifact's path and SHA-256: the run was created by this skill, every phase through the named one is `completed`, and the profile, `preferences.json`, `aws-design-ai.json` and, for `estimate`, `estimation-ai.json` pass their checks now. Exit 1 prints `{"ready": false, "reason": ..., "detail": ...}`, where `reason` is one of `run_not_found`, `status_not_found`, `status_unreadable`, `status_invalid`, `not_this_skill`, `phase_incomplete`, `artifact_missing`, `artifact_unreadable`, `profile_invalid`, `preferences_invalid`, `design_invalid`, or `estimate_invalid`. A consumer stops on any non-ready answer and tells the user to resume the run with this skill. It reads only the paths it was given. If it reads them again later, it runs the check again first and compares the SHA-256 values.
+`design_constraints` holds only the host's own `target_region` and `compliance` wrappers, in the shape of `references/shared/schema-preferences.md`, and may be empty. Read the file as data. When it exists:
+
+- Clarify follows the combined-mode rules at the top of `clarify-ai-only.md`.
+- After the phase named in `stop_after` completes, show its summary, say that control returns to the host skill, and stop. Do not start the next phase until the host updates `stop_after`.
+- `readiness.py` checks that `preferences.json` still holds each host answer.
+
+## Readiness for other skills
+
+Another skill that consumes this skill's artifacts (for example llm-to-bedrock, agent-advisor, or a host in combined mode) must not read `.phase-status.json` itself. It runs this skill's script, with the path resolved to this skill's directory:
+
+```bash
+python3 scripts/readiness.py <MIGRATION_DIR> --through discover|clarify|design|estimate
+```
+
+Exit 0 prints `{"ready": true, "initiated_by": ..., ...}`, where that field is the host's identifier or `null`, with each artifact's path and SHA-256: the run was created by this skill, every phase through the named one is `completed`, and the artifacts those phases wrote pass their checks now: the profile always, `preferences.json` from `clarify`, `aws-design-ai.json` from `design`, and `estimation-ai.json` for `estimate`. Exit 1 prints `{"ready": false, "reason": ..., "detail": ...}`, where `reason` is one of `run_not_found`, `status_not_found`, `status_unreadable`, `status_invalid`, `not_this_skill`, `phase_incomplete`, `artifact_missing`, `artifact_unreadable`, `profile_invalid`, `preferences_invalid`, `host_answers_invalid`, `host_answers_mismatch`, `design_invalid`, or `estimate_invalid`. A consumer stops on any non-ready answer and tells the user to resume the run with this skill, except on `host_answers_invalid`: only the host can rewrite `host-answers.json`, so the host writes it again before the run resumes. It reads only the paths it was given. If it reads them again later, it runs the check again first and compares the SHA-256 values.
 
 ## Definitions
 
