@@ -32,7 +32,7 @@ Loaded conditionally when the task involves MediaLive. The cross-service rules i
 
 - Epoch locking REQUIRES source timecode. Without it, epoch locking cannot synchronize segments. When the source's timecode capability is uncertain (e.g., RTMP from OBS, consumer encoders), agents MUST ask the user to confirm whether their source embeds UTC timecode before ruling epoch locking in or out.
 - Epoch locking is incompatible with SCTE-35 segmentation. ID3 metadata via MediaLive schedule actions MUST be used for ad break signaling instead — ID3 carries the cue payload without requiring a segment break, so it coexists with epoch locking.
-- Epoch locking MUST NOT be used with MediaPackage JIT packaging. Passthrough origins are REQUIRED.
+- Epoch locking works with MediaPackage v2, via epoch-locked CMAF ingest (see the MediaPackage v2 User Guide, "Working with cross-Region failover", for current requirements). A passthrough origin is not required.
 
 ### Pipeline locking with file inputs
 

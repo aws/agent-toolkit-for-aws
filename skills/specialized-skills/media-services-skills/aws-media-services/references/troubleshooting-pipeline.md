@@ -132,9 +132,9 @@ IF cross-account:
 IF epoch-locked segments diverging between regions:
   → Source timecode drifting. Reboot encoders before events.
   → Verify segment names match across regions before event.
-IF using MediaPackage as origin for epoch locking:
-  → Incompatible. MediaPackage JIT generates its own segment names.
-  → MUST use passthrough origin (S3, MediaStore) for epoch-locked segments.
+IF using MediaPackage v2 as origin for epoch locking:
+  → Supported. Use epoch-locked CMAF ingest so all pipelines/regions produce aligned segments (see the MediaPackage v2 User Guide, "Working with cross-Region failover", for current requirements).
+  → A passthrough origin is not required.
 IF origin group failover not triggering:
   → Primary returning 200 with stale content instead of error
   → Passthrough origins with lifecycle policies delete stale manifests (404 triggers failover)

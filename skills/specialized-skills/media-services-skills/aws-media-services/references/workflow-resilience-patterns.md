@@ -10,14 +10,15 @@ Cross-service resilience and redundancy patterns for live streaming workflows.
 IF single-region production event:
   → Dual-pipeline (STANDARD channel class) + Origin Shield
 IF cross-region seamless failover required:
-  → Epoch locking + passthrough origin + multi-region encode
-  → CONSTRAINT: incompatible with MediaPackage v2 JIT packaging
+  → Epoch locking + multi-region encode (supported on MediaPackage v2 via epoch-locked CMAF ingest; see the MediaPackage v2 User Guide, "Working with cross-Region failover", for current requirements)
+  → REQUIRES: reliable source timecode on the contribution feed
   → CONSTRAINT: incompatible with SCTE-35 segmentation
 IF multi-CDN architecture:
-  → Origin Shield on EVERY CDN (MediaPackage v2 1000 RPS limit)
+  → Origin Shield on EVERY CDN (MediaPackage v2 per-endpoint egress limits)
   → LOAD references/workflow-contribution-distribution.md for DX redundancy
 IF migrating from MediaPackage v1 to v2:
-  → See Migration section below (SCTE-35 mode change risk)
+  → LOAD references/workflow-mediapackage-migration.md (full discover → plan → execute workflow)
+  → See Migration section below for the cutover readiness risks
 ```
 
 ---
@@ -26,25 +27,23 @@ IF migrating from MediaPackage v1 to v2:
 
 | | |
 |---|---|
-| **Preconditions** | Source timecode embedded in contribution feed; passthrough origin (S3/MediaStore) |
+| **Preconditions** | Source timecode embedded in contribution feed |
 | **Outputs** | Identical segments across all regions/channels |
-| **Incompatible with** | MediaPackage v2 JIT packaging; SCTE-35 splice_insert segmentation |
+| **Incompatible with** | SCTE-35 splice_insert segmentation |
 
 **How it works:**
 
 - MediaLive uses source timecode to align segment boundaries across all pipelines/regions
 - All channels produce segments with identical names, timestamps, boundaries
-- Passthrough origin stores segments as-is
-- Lifecycle policy deletes stale manifests (1.5× segment duration)
-- CDN receives 4xx on stale region → fails over to alternate region
+- MediaPackage v2 returns errors on stale or incomplete manifests at the primary endpoint (endpoint error configuration), so the CDN fails over to the alternate region
 
-### Decision: Use epoch locking?
+**Decision: Use epoch locking?**
 
 ```
 IF cross-region per-segment failover needed AND source has timecode:
   → Yes, use epoch locking
   → Use ID3 metadata (not SCTE-35) for ad signaling
-  → Use passthrough origin (not MediaPackage v2)
+  → MediaPackage v2 supports this via epoch-locked CMAF ingest (see the MediaPackage v2 User Guide, "Working with cross-Region failover", for current requirements)
 IF single-region OR no source timecode OR need SCTE-35 segmentation:
   → No, use standard dual-pipeline redundancy instead
 ```
@@ -58,7 +57,7 @@ IF single-region OR no source timecode OR need SCTE-35 segmentation:
 | | |
 |---|---|
 | **Preconditions** | Multiple CDNs configured, traffic steering service |
-| **Key constraint** | Every CDN MUST have Origin Shield enabled (MediaPackage v2 1000 RPS limit) |
+| **Key constraint** | Every CDN MUST have Origin Shield enabled (MediaPackage v2 per-endpoint egress limits) |
 
 **Origin shield layering:**
 
@@ -107,7 +106,11 @@ IF token validation at edge:
 
 | | |
 |---|---|
-| **Key risks** | SCTE-35 mode change, 1000 RPS limit, ingest format change |
+| **Key risks** | SCTE-35 mode change, per-endpoint egress limits, ingest format change |
+
+This section covers **cutover readiness** only. For the migration itself —
+inventorying v1, planning channel groups, translating endpoint configs,
+generating and executing the plan — LOAD `references/workflow-mediapackage-migration.md`.
 
 ### Decision: Migration readiness
 
@@ -119,10 +122,10 @@ IF event IDs don't match:
 IF all CDNs have Origin Shield enabled:
   → Safe from RPS perspective
 IF any CDN lacks Origin Shield:
-  → Add Origin Shield before migrating (1000 RPS hard limit)
+  → Add Origin Shield before migrating (per-endpoint egress limits: about 500 segment / 10,000 manifest RPS; check current values in Service Quotas)
 ```
 
-**Ingest format:** Update MediaLive from `HlsGroupSettings` to `CmafIngestGroupSettings`. MediaPackage v2 can still egress HLS TS (no player changes needed).
+**Ingest format:** Only if the v2 channel uses `CMAF` input. A v2 channel accepts HLS ingest too, so a like-for-like migration keeps `HlsGroupSettings` and changes nothing on the encoder — see the channel input type step in `references/mediapackage-migration-channel-groups.md`. Switch MediaLive to `CmafIngestGroupSettings` when the channel was deliberately created with `CMAF` input (required for epoch locking). Either way MediaPackage v2 can still egress HLS TS, so no player changes are needed.
 
 ---
 
@@ -132,7 +135,7 @@ IF any CDN lacks Origin Shield:
 
 1. Pre-create all resources well before event (no just-in-time creation)
 2. Start channels well before the event and verify each reaches `RUNNING` before content needs to flow (large channels — 4K HEVC, complex ABR stacks — take longer to provision than small ones)
-3. Request capacity increases: MediaPackage RPS, MediaLive channel limits, CloudFront Tbps, DynamoDB (MediaTailor), Lambda concurrency
+3. Request capacity increases where the quota is adjustable: MediaLive channel limits, CloudFront Tbps, DynamoDB (MediaTailor), Lambda concurrency. MediaPackage v2's per-endpoint egress rates are **hard** quotas (confirm with the `Adjustable` field from `aws service-quotas list-service-quotas --service-code mediapackagev2`) — design within them (Origin Shield on every CDN, cache-hit ratio) rather than asking for an increase
 4. Pin encoder software versions, code freeze 2-4 weeks before
 5. End-to-end load test at expected peak concurrency
 6. CDN failover test, SSAI load test with full DVR window
