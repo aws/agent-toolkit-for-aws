@@ -16,6 +16,8 @@ aws elasticache modify-replication-group \
   --region <region>
 ```
 
+Engine upgrades use parallel sync and health checkpoints: they complete up to 41% faster, with up to 29% lower P99 latency during the upgrade. You start an upgrade the same way.
+
 Process (single shard / cluster mode disabled):
 
 1. ElastiCache upgrades replicas first, one at a time
@@ -92,7 +94,7 @@ Benefits:
 - Immediate 20% cost savings on node-based pricing
 - Access to Valkey-specific features in future versions
 - No-downtime, zero-data-loss process (from Redis OSS 5.0.6+)
-- Can subsequently upgrade to Valkey 8.0 or 8.2 (8.2 required for vector search); Valkey 9.0 is the recommended target
+- Can subsequently upgrade to a newer Valkey version (vector search needs 8.2+); Valkey 9.1 is the recommended target. See [Engine versions](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/engine-versions.html)
 
 ### Cluster Mode Disabled to Cluster Mode Enabled (In-Place)
 

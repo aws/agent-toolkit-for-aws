@@ -98,7 +98,7 @@ flowchart TB
 
 ## 3. AI/GenAI Architecture (Semantic Cache + Vector Search)
 
-ElastiCache Valkey 8.2 or above (node-based) provides semantic caching and vector search for LLM applications, reducing Bedrock inference costs and latency.
+ElastiCache Valkey (node-based 8.2 or above, or Serverless 9.0+) provides semantic caching and vector search for LLM applications, reducing Bedrock inference costs and latency.
 
 ```mermaid
 flowchart TB
@@ -156,7 +156,7 @@ flowchart TB
 - **Semantic cache**: Stores prompt embeddings and LLM responses. On a new prompt, computes embedding similarity to find cached answers. Significantly reduces inference cost and latency (per AWS published benchmarks, results vary by workload).
 - **Vector search**: Stores document chunk embeddings for RAG. Retrieves semantically relevant context to ground LLM responses and reduce hallucinations.
 - **Agent memory**: Stores conversation turns as vectors. Retrieves only relevant past interactions per LLM invocation to avoid context window overflow.
-- **Deployment**: Requires node-based Valkey 8.2 or above (recommend 9.0; vector search is not available on serverless or on data tiering instances such as r6gd node types).
+- **Deployment**: Requires node-based Valkey 8.2 or above (recommend 9.1) or Serverless Valkey 9.0+ (vector search is not available on Serverless below Valkey 9.0 or on data tiering instances such as r6gd/r7gd/r8gd node types).
 - **Data flow**: Documents are embedded and stored during ingestion. At query time, the embedding model converts the prompt to a vector, which is used for both semantic cache lookup and RAG retrieval.
 
 ---
@@ -218,7 +218,7 @@ flowchart TB
 
 **Key characteristics:**
 
-- ElastiCache runs in private subnets only (no public internet access)
+- ElastiCache runs in private subnets only (no public internet access), unless it is a Serverless Valkey 9.0+ cache with a public endpoint
 - Security groups restrict inbound to port 6379 (and 6380 for serverless reader endpoint) from the app security group
 - Multi-AZ deployment with nodes/endpoints in at least 2 availability zones
 - Lambda requires VPC attachment and ENI capacity in the private subnets

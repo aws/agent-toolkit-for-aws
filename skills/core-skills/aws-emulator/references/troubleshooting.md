@@ -28,7 +28,48 @@ the rest.
 | Files left in `~/.aws/emulator/<port>/` | the process crashed or was killed | harmless; the next start on that port replaces them |
 | `ResourceNotFoundException ... state CREATING` right after `CreateTable` | the table is still being created, as on AWS | poll `DescribeTable` until `TableStatus` is `ACTIVE` |
 
-Report differences from AWS as an issue at https://github.com/aws/aws-emulator/issues with the
-request, the emulator's response and the AWS response. Before attaching them, remove or mask
-access keys, secret keys, session tokens, `Authorization` and `X-Amz-Security-Token` headers,
-signatures, real AWS account IDs and personal data, and show the user what will be shared.
+## Reporting issues
+
+Issues go to https://github.com/aws/aws-emulator/issues through the forms in the repository's
+`.github/ISSUE_TEMPLATE/`. List them and choose the form whose `name` and `description` fit the
+problem (`config.yml` is not a form):
+
+```sh
+gh api repos/aws/aws-emulator/contents/.github/ISSUE_TEMPLATE --jq '.[].name'
+gh api repos/aws/aws-emulator/contents/.github/ISSUE_TEMPLATE/<form>.yml --jq .content | base64 -d
+```
+
+Security problems are never filed as issues: point the user to
+https://aws.amazon.com/security/vulnerability-reporting/ and stop. If no form fits, tell the user
+so and don't file an issue.
+
+Before drafting:
+
+1. Search for an existing report: `gh issue list -R aws/aws-emulator --state all --search "<operation or error>"`,
+   and the known gaps in the repository's `issues/things-that-do-not-work/`:
+   `gh api 'repos/aws/aws-emulator/git/trees/main?recursive=1' --jq '.tree[].path' | grep -i '<operation>'`.
+   If an issue matches, give the user its link (suggest a 👍 reaction on an open issue) and don't
+   file. If only a file in `issues/things-that-do-not-work/` matches, give the user the link to the
+   file, say the gap is already known and tracked there (files can't be upvoted), and don't file.
+2. Check the latest release: for a difference from AWS, confirm it still happens there (if the
+   installed version is older, offer to upgrade first (SKILL.md) and reproduce again); for a
+   feature request, check its release notes don't already add it. Don't stop for this: draft the
+   issue and note what still needs checking.
+
+Then draft the body from the chosen form: each field's `label` becomes a `### <label>` heading,
+in the form's order, filled as its `description` asks; tick the checkboxes with `- [x]` and
+their labels. Fill every required field, and skip optional fields you have nothing for.
+
+Remove or mask access keys, secret keys, session tokens, `Authorization` and
+`X-Amz-Security-Token` headers, signatures, real AWS account IDs and personal data. Show the user
+the full title and body in your reply (not only a file path), and ask whether to file it. Only after they confirm, file it and give them
+the issue URL:
+
+```sh
+gh issue create -R aws/aws-emulator --title "<title>" --body-file "<draft>"
+```
+
+Don't pass `--label`: an issue filed this way gets no labels from the form, and the
+maintainers label it during triage. Without a working `gh`, give the user the form link
+instead, `https://github.com/aws/aws-emulator/issues/new?template=<form>.yml`, and the draft to
+paste.

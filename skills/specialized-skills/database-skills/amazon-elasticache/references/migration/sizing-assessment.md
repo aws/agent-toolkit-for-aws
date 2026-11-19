@@ -103,8 +103,8 @@ aws cloudwatch get-metric-statistics \
 
 **Migration method constraints:**
 
-* Online migration is **not supported** to ElastiCache serverless caches or clusters running on the r6gd (data tiering) node type. If you plan to use online migration, choose a non-r6gd node-based target. For serverless or r6gd targets, use backup/restore or another migration strategy.
-* Online migration additionally requires: the target must have transit encryption (TLS) disabled, Multi-AZ enabled, and not be part of a Global Datastore. The source must not have AUTH enabled and must have `protected-mode` set to `no`. Shard counts should match between source and target. See `topology-validation.md` for the full prerequisites checklist.
+* Online migration to a **node-based** target does not support data tiering (r6gd/r7gd/r8gd) targets; use backup/restore for those. For the other prerequisites, see the Approach 2 requirements in `references/migration/self-managed-migration.md`.
+* Online migration to an **ElastiCache Serverless** target is a separate, supported path with its own prerequisites. See `references/migration/self-managed-migration.md` "Online Migration to ElastiCache Serverless".
 
 Run cost estimation to compare current spend vs target:
 
