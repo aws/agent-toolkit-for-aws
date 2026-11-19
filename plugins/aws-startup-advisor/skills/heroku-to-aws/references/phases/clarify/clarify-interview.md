@@ -575,12 +575,18 @@ environment type (`--tier Name=Cluster,Type=EKS`, generally available) that runs
 containers on an Amazon EKS cluster Beanstalk creates and operates. This skill does not
 generate, price or deploy it, and it is not a `compute_target` value: every
 `elastic_beanstalk` formation is designed and priced as Beanstalk Standard (EC2). When the
-resolved plan puts three or more non-release formations on Elastic Beanstalk, add one
+resolved plan resolves three or more non-release formations to `elastic_beanstalk`, add one
 sentence after the recommendation: "Elastic Beanstalk Cluster, which shares one
 Kubernetes cluster across environments, can lower per-app cost for a larger portfolio,
 but this estimate prices Standard (EC2) environments only; ask your AWS team before
-choosing it." Do not add it for a single app or when the user already chose Fargate or
-EKS. Do not change any answer, field or option because of this note. If the user asks
+choosing it." The predicate is one count: take each non-release formation, resolve its
+target from `compute_target.default` plus matching `overrides[]` (whichever plan the user
+accepted or set, including manual per-formation targets), and count those that resolve to
+`elastic_beanstalk`. Show the sentence when the count is 3 or more, whatever the number
+of Heroku apps; formations resolved to Fargate or EKS do not count. Examples: one app with
+`web`, `worker` and `clock` all on EB counts 3 and shows it; three EB formations plus one
+user-selected Fargate formation counts 3 and shows it; two EB formations count 2 and do
+not; an all-Fargate or EKS plan counts 0 and does not. Do not change any answer, field or option because of this note. If the user asks
 about Cluster mode, tell them these points from the AWS documentation:
 
 - Fit: stateless container replicas only. Local disk is lost on restart, so persistent
@@ -591,8 +597,9 @@ about Cluster mode, tell them these points from the AWS documentation:
 - Cost: no Beanstalk charge, but the EKS control plane, EKS Auto Mode compute, ECR and
   CloudWatch are billed, and it is not Free Tier eligible. Environments in the same
   account with the same subnet set share one cluster; a different subnet set creates and
-  bills a separate cluster. AWS recommends separate subnets for production and
-  development, so prod plus staging means two clusters. Private subnets need a NAT
+  bills a separate cluster. AWS describes separating production from development as a
+  common reason to use different subnet sets, so a prod plus staging setup can mean two
+  clusters unless the user accepts one shared cluster. Private subnets need a NAT
   gateway or equivalent outbound route.
 - Isolation: a shared cluster is soft multi-tenancy (shared control plane, shared nodes
   unless `node-pool` is set, no outbound traffic restriction). Environments for
