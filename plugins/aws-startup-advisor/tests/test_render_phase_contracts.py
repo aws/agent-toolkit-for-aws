@@ -621,3 +621,18 @@ def test_budget_uses_stated_guardrail_else_documented_default() -> None:
     golden = (SKILL_ROOT / "fixtures/expected/generated/terraform/baseline.tf").read_text(encoding="utf-8")
     assert f'limit_amount = "{limit}"' in golden
     assert f"ceil({estimation['projected_costs']['aws_monthly_balanced']} * 1.2)" in golden
+
+
+def test_render_shows_the_plan_json_notice_only_while_the_writer_is_enabled() -> None:
+    writer = (PLUGIN_ROOT / "scripts/emit-plan-json.py").read_text(encoding="utf-8")
+    table = writer[writer.index("SKILL_TO_PLATFORM = {"):]
+    table = table[:table.index("}")]
+    enabled = '"RENDER_TO_AWS"' in table
+    step0 = (PHASE_ROOT / "discover/discover.md").read_text(encoding="utf-8")
+    step0 = step0[step0.index("### Step 0 "):step0.index("### Step 0b")]
+    gate = "do not render the migration-credit notice"
+    if enabled:
+        assert "render it verbatim once" in step0
+    else:
+        assert gate in step0, "Render must not promise a plan.json while its writer returns PLAN_SKIP"
+        assert "`RENDER_TO_AWS` is absent from `SKILL_TO_PLATFORM`" in step0
