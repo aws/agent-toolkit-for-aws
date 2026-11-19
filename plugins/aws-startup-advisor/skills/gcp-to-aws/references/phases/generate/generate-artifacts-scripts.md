@@ -401,7 +401,11 @@ this template performs an offline copy with writers frozen at most. No tested re
 workflow exists here, so do not emit DMS, logical replication or pgcopydb CDC commands, and do
 not describe one as working. The message MUST keep the reason code `zero-downtime-requested`.
 Emit only the prerequisite lines for the source engine (the PostgreSQL group or the MySQL
-group). The facts come from AWS DMS documentation; the Cloud SQL flag names must be confirmed in
+group). Emit the `Prerequisites` header, an engine group, the network-path line and the
+`Offline copy` line only for a PostgreSQL or MySQL source, the two engines AWS DMS reads from
+Cloud SQL. For Firestore, or any other source AWS DMS cannot read (Firestore is not Cloud SQL
+and is not a DMS source), emit only the first `HOLD [zero-downtime-requested]` line: no
+prerequisite lines, and no pointer to an online route that does not exist. The facts come from AWS DMS documentation; the Cloud SQL flag names must be confirmed in
 current Google Cloud documentation, and the notice says so. Only when `cutover_strategy` is
 `zero-downtime`, also add these two comment lines under the first line of the
 `# Cloud SQL → RDS data migration` variable block (omit them otherwise, so the generic output
@@ -411,6 +415,7 @@ and `# (<=500GB PostgreSQL) needs ACCEPT_OFFLINE_DOWNTIME=yes on --execute (no r
 ```bash
 # Zero-downtime requested: no tested replication workflow exists in this template.
 echo "HOLD [zero-downtime-requested]: zero-downtime cutover was requested, but no tested replication workflow exists; online replication is not generated." >&2
+# PostgreSQL or MySQL source only: omit the rest of this block for Firestore or any other source engine.
 echo "Prerequisites for a future online migration (from AWS DMS documentation; confirm Cloud SQL flag names in current Google Cloud documentation):" >&2
 # PostgreSQL source: emit these lines only for a PostgreSQL source.
 echo "  - Logical decoding on: set the cloudsql.logical_decoding flag to on (this is how Cloud SQL enables wal_level=logical; wal_level is not set directly)" >&2
@@ -424,7 +429,7 @@ echo "  - Binary log retention of at least 1 day (binlog_expire_logs_seconds 864
 echo "  - binlog_checksum NONE only for DMS 3.4.7 or earlier" >&2
 echo "  - A user with REPLICATION CLIENT, REPLICATION SLAVE and SELECT (the DMS MySQL source requirements)" >&2
 echo "  - Also listed for DMS homogeneous data migrations; confirm which your task type needs: RELOAD, LOCK TABLES, SHOW VIEW, EVENT, TRIGGER (and BACKUP_ADMIN on MySQL 8.0+)" >&2
-# Both engines:
+# Both PostgreSQL and MySQL (not Firestore or any other source):
 echo "  - A network path from the AWS DMS replication instance to Cloud SQL (authorized network or private connectivity)" >&2
 echo "Offline copy: where this plan generates one (PostgreSQL up to 500GB), --execute needs ACCEPT_OFFLINE_DOWNTIME=yes. Downtime grows with database size, and application writers stay frozen for the whole copy and verification window." >&2
 ```
@@ -500,7 +505,8 @@ Emit only the deferral comment block below, followed by the `echo` lines in
 and do not apply the PostgreSQL template to an incompatible source or target. No generic
 data adapter is implemented by this fragment; preserve a migration hold. When
 `cutover_strategy` is `zero-downtime`, the notice block above (with the MySQL lines for a MySQL
-source, and without its first `HOLD [zero-downtime-requested]` line) is also emitted and this message begins `HOLD [zero-downtime-requested]:` instead of `HOLD:`:
+source, and without its first `HOLD [zero-downtime-requested]` line; for a Firestore or other
+non-DMS source, the HOLD line alone and no prerequisite lines) is also emitted and this message begins `HOLD [zero-downtime-requested]:` instead of `HOLD:`:
 
 ```bash
 # Non-PostgreSQL data migration is not implemented by this template.

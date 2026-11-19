@@ -127,8 +127,10 @@ and `--execute` exits 1 unless the operator sets `ACCEPT_OFFLINE_DOWNTIME=yes`; 
 variable with the other execute inputs. Downtime grows with database size, with writers frozen
 for the whole copy and verification window. For a non-PostgreSQL engine, `>500GB` or unknown
 size, no copy script is generated and the script keeps its HOLD with the same reason code.
-List the prerequisites for a future online migration, as the script's notice does, for the
-source engine. They come from AWS DMS documentation; Cloud SQL flag names must be confirmed in
+List the prerequisites for a future online migration, as the script's notice does, only for a
+PostgreSQL or MySQL source. For Firestore, or any other source AWS DMS cannot read (Firestore
+is not Cloud SQL and is not a DMS source), list no prerequisites and do not point to an online
+route; state only the named HOLD, as the script does. The PostgreSQL and MySQL prerequisites come from AWS DMS documentation; Cloud SQL flag names must be confirmed in
 current Google Cloud documentation. PostgreSQL: logical decoding on (the Cloud SQL
 `cloudsql.logical_decoding` flag set to on; `wal_level` is not set directly), `max_replication_slots`
 at least the number of concurrent DMS tasks, `max_wal_senders` above 1 and enough for them, a
