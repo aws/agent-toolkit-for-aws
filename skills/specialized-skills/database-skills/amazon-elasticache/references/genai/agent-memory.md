@@ -1,6 +1,6 @@
 # Semantic Agent Memory Implementation Guide
 
-User preferences, learned facts, and cross-session recall via vector similarity search. Requires node-based Valkey 8.2 or above (recommend 9.0).
+User preferences, learned facts, and cross-session recall via vector similarity search. Requires node-based Valkey 8.2 or above (recommend 9.1) or Serverless Valkey 9.0+.
 
 For conversation persistence (session state, message history, resumable sessions), see `session-store.md` instead.
 
@@ -107,7 +107,7 @@ Key differences from the generic patterns there:
 * **Prefix:** `memory:{uuid}` to scope the index
 * **Schema fields:** `user_id` TAG (isolation), `memory_type` TAG (short/long), `created_at` NUMERIC, `memory` TAG.
 
-> **Note:** ElastiCache supports three field types for FT.CREATE: TAG, NUMERIC, and VECTOR. TAG fields support exact-match filtering. The TEXT field type (which supports full-text search) is only available on MemoryDB, not ElastiCache.
+> **Note:** ElastiCache supports four field types for FT.CREATE: TAG, NUMERIC, VECTOR, and (Valkey 9.0 or above) TEXT. TAG fields support exact-match filtering; TEXT fields support full-text search.
 
 * **Query pattern:** always pre-filter by `user_id` before KNN: `(@user_id:{user123})=>[KNN 5 @embedding $vec AS score]`
 * **TTL:** 90 days for long-term, 30 days for short-term, applied via EXPIRE after HSET
