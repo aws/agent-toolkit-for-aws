@@ -15,6 +15,7 @@ MAP = PLUGIN_ROOT / "skills" / "azure-to-aws" / "knowledge" / "design" / "azure-
 
 # Programmatic names in the public Azure cloud, from
 # https://learn.microsoft.com/en-us/azure/reliability/regions-list (read 2026-11-19).
+# The page's "All" tab has 60 rows, each with one programmatic name. The count is asserted below.
 # Sweden South and Taiwan Northwest are paired regions the page lists only as another region's
 # pair, with no row or programmatic name of their own, so they are not here.
 AZURE_REGIONS = {
@@ -24,10 +25,10 @@ AZURE_REGIONS = {
     "francesouth", "germanynorth", "germanywestcentral", "indiasouthcentral", "indonesiacentral",
     "israelcentral", "italynorth", "japaneast", "japanwest", "koreacentral", "koreasouth",
     "malaysiawest", "mexicocentral", "newzealandnorth", "northcentralus", "northeurope", "norwayeast",
-    "norwaywest", "polandcentral", "qatarcentral", "southafricanorth", "southafricawest",
-    "southcentralus", "southindia", "southeastasia", "southeastasia3", "spaincentral", "swedencentral",
-    "switzerlandnorth", "switzerlandwest", "taiwannorth", "uaecentral", "uaenorth", "uksouth", "ukwest",
-    "westcentralus", "westeurope", "westindia", "westus", "westus2", "westus3",
+    "norwaywest", "polandcentral", "qatarcentral", "saudiarabiaeast", "southafricanorth",
+    "southafricawest", "southcentralus", "southindia", "southeastasia", "southeastasia3", "spaincentral",
+    "swedencentral", "switzerlandnorth", "switzerlandwest", "taiwannorth", "uaecentral", "uaenorth",
+    "uksouth", "ukwest", "westcentralus", "westeurope", "westindia", "westus", "westus2", "westus3",
 }
 # Azure Government and China regions the map already covers on purpose.
 SOVEREIGN = {"usgovvirginia", "usgovarizona", "chinanorth3", "chinaeast3"}
@@ -106,6 +107,9 @@ def test_new_rows_use_the_nearest_enabled_by_default_region_when_no_same_country
     assert (rows["indiasouthcentral"]["aws"], rows["indiasouthcentral"]["same_country"]) == ("ap-south-2", True)
     # No AWS Region in Chile: the nearest is Sao Paulo and the row says it crosses a border.
     assert (rows["chilecentral"]["aws"], rows["chilecentral"]["same_country"]) == ("sa-east-1", False)
+    # No AWS Region in Saudi Arabia: Bahrain is 56 km from Dammam, and it is opt-in and preview.
+    assert (rows["saudiarabiaeast"]["aws"], rows["saudiarabiaeast"]["same_country"]) == ("me-south-1", False)
+    assert "preview" in rows["saudiarabiaeast"]["note"]
 
 
 def test_restricted_access_regions_say_who_can_see_them() -> None:
@@ -120,3 +124,12 @@ def test_the_file_is_still_valid_and_keeps_its_rules() -> None:
     for rule in ("_selection_rule", "_override", "_residency_warning", "_provenance", "_unlisted_region"):
         assert data[rule].strip(), rule
     assert "2026-11-19" in data["_provenance"]
+
+
+def test_the_azure_list_is_the_size_of_the_page_it_cites() -> None:
+    # The cited page has 60 programmatic names. A list that loses one (or never had it) would
+    # make `test_every_public_azure_region_is_mapped` pass while a region has no row.
+    assert len(AZURE_REGIONS) == 60
+    # Every public region in the map is one of them, and every one of them has a row.
+    public_rows = set(_regions()) - SOVEREIGN
+    assert public_rows == AZURE_REGIONS

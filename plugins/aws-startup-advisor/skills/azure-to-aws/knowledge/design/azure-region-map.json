@@ -118,6 +118,12 @@
       "geo": "Abu Dhabi -> UAE",
       "note": "Azure restricts access to this region to specific customer scenarios such as disaster recovery for UAE North, so it appears in an inventory only when the customer was granted access. AWS Region me-central-1 is an opt-in Region: the account must enable it before use."
     },
+    "saudiarabiaeast": {
+      "aws": "me-south-1",
+      "same_country": false,
+      "geo": "Dammam -> Bahrain",
+      "note": "No AWS region in Saudi Arabia. Bahrain is about 56 km from Dammam; the next nearest, me-central-1 (UAE), is about 540 km away. Azure lists this region as in preview. AWS Region me-south-1 is an opt-in Region: the account must enable it before use."
+    },
     "israelcentral": { "aws": "il-central-1", "same_country": true, "geo": "Tel Aviv, Israel", "note": "AWS Region il-central-1 is an opt-in Region: the account must enable it before use." },
     "southafricanorth": { "aws": "af-south-1", "same_country": true, "geo": "Johannesburg / Cape Town, South Africa", "note": "AWS Region af-south-1 is an opt-in Region: the account must enable it before use." },
     "southafricawest": {
