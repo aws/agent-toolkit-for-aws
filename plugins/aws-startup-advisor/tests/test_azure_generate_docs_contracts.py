@@ -82,15 +82,25 @@ def test_generate_skill_text_does_not_promise_migration_scripts() -> None:
     assert "Terraform, migration scripts, and docs are produced" not in skill
     assert "Terraform configurations, migration scripts, and documentation" not in skill
     assert "Terraform, docs, and the report are produced only after the user chooses Execute" in skill
-    assert "no migration scripts yet" in skill
+    assert "no database or VM migration scripts yet" in skill
+    assert "AI track also writes its Bedrock migration scripts" in skill
     assert "Emit the Terraform, the scripts, the docs, and the report" not in generate
-    assert "Emit the Terraform, the docs, and the report (no migration scripts yet)" in generate
+    assert "Emit the Terraform, the docs, and the report (no database or VM migration scripts yet" in generate
+    assert "(no migration scripts yet)" not in generate and "(no migration scripts yet)" not in skill
+    assert "`generate-artifacts-ai.md` still writes its Bedrock migration scripts" in generate
+    assert "explicitly asked for the Terraform and migration guide this turn" not in generate
     assert "asked for Terraform/migration scripts" not in generate
     # The decision gate and the decision report speak for the same Generate phase, so
     # they must not offer migration scripts either.
     gate = _read(ESTIMATE_ASSEMBLE)
     assert "[C] Generate the migration artifacts — Terraform, migration scripts, and docs" not in gate
     assert "[C] Generate the migration artifacts — Terraform, the migration guide, and the report" in gate
+    # A mixed run also runs generate-artifacts-ai.md, so the default label says so.
+    assert "append \" (plus the Bedrock migration script and A/B test harness for the AI route)\"" in gate
+    # An AI-only run never writes MIGRATION_GUIDE.md, so neither close may promise it.
+    estimate_text = _read(ESTIMATE)
+    assert "AI-only run" in estimate_text and "no `MIGRATION_GUIDE.md` is ever written" in estimate_text
+    assert "On an AI-only run (no `azure-resource-inventory.json`)" in _read(DECISION_CORE)
     for path in (ESTIMATE, DECISION_CORE):
         text = _read(path)
         assert "generate the Terraform and migration scripts" not in text
@@ -103,3 +113,32 @@ def test_generate_postconditions_still_require_a_verification_section() -> None:
     assert "MIGRATION_GUIDE.md has Prerequisites and Verification sections" in generate
     docs = _read(DOCS)
     assert "**Verification**" in docs and "Prerequisites" in docs
+
+
+def test_dms_task_sets_table_preparation_mode_and_checks_source_version_first() -> None:
+    text = _read(DOCS)
+    branch = text.split("### Branch: `dms`", 1)[1].split("### Not covered by this runbook", 1)[0]
+    # The task must not keep Drop-tables-on-target after the schema was precreated.
+    steps = branch.split("**AWS DMS steps", 1)[1]
+    assert "**Do nothing** (`DO_NOTHING`)" in steps
+    assert "`DROP_AND_CREATE`" in steps and "Do not keep **Drop tables on target**" in steps
+    assert "`TRUNCATE_BEFORE_LOAD`" in steps
+    assert "confirm the setting before starting the task" in steps
+    # Both source checklists start with a supported-version check, before any parameter change.
+    pg = branch.split("**Source prerequisites: Azure Database for PostgreSQL Flexible Server.**", 1)[1]
+    pg = pg.split("**Source prerequisites: Azure Database for MySQL Flexible Server.**", 1)[0]
+    assert pg.index("supported-source list") < pg.index("`wal_level`")
+    assert "11.2, 12.15, 13.11, 14.8 and 15.3" in pg
+    my = branch.split("**Source prerequisites: Azure Database for MySQL Flexible Server.**", 1)[1]
+    my = my.split("**AWS DMS steps", 1)[0]
+    assert my.index("supported-source list") < my.index("binary logging")
+    assert "5.7 and 8" in my
+
+
+def test_not_covered_note_is_reachable_without_a_relational_database() -> None:
+    text = _read(DOCS)
+    section = text.split("## Step 1a:", 1)[1].split("### Branch: `dump_restore`", 1)[0]
+    assert "whenever the Azure inventory or `aws-design.json` contains a data store of any engine" in section
+    assert "Write a `dump_restore` or `dms` branch only when a covered relational database is present" in section
+    assert "only data stores are other engines may have no `db_cutover` answer" in section
+    assert "Write this subsection only when `aws-design.json` contains a relational database" not in text

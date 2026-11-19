@@ -111,6 +111,8 @@ Say a row name to change it — I'll re-run Design and Estimate and show this pa
 [C] Generate the migration artifacts — Terraform, the migration guide, and the report
 ```
 
+When `aws-design-ai.json` also exists (a mixed run), append " (plus the Bedrock migration script and A/B test harness for the AI route)" to option [C]: Generate runs `generate-artifacts-ai.md` on that run, so the label must not imply the infra pack is everything.
+
 For an AI-only run (Step 1 item 0 — no `estimation-infra.json` because
 `azure-resource-inventory.json` is absent), present the gate without option B
 (there is no infra to reprice) and replace option C's label with the artifact
