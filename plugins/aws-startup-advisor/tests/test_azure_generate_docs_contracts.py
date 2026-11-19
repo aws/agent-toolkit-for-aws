@@ -154,9 +154,18 @@ def test_dms_load_bypasses_foreign_keys_and_triggers_and_cutover_checks_them() -
     assert "child rows can arrive before their parents" in step2
     step3 = steps.split("3. Create the target schema", 1)[1].split("4. Create a database migration task", 1)[0]
     assert "carries the foreign keys and triggers; keep them" in step3
+    # MySQL has no session setting that skips triggers: the schema is created without them and they are restored at cutover.
+    assert "mysqldump --no-data --skip-triggers" in step3
+    assert "`FOREIGN_KEY_CHECKS=0` does not stop triggers" in step3
+    assert "mysqldump --no-create-info --no-data --triggers" in step3
     # Step 8 must agree with step 3: nothing is dropped, so it checks them instead of "fixing triggers".
     step8 = steps.split("8. **Cut over.**", 1)[1].split("9. **Roll back.**", 1)[0]
     assert "stop the task so no DMS session remains" in step8
-    assert "`pg_constraint.convalidated`" in step8 and "`information_schema.REFERENTIAL_CONSTRAINTS`" in step8
+    assert "`pg_constraint`" in step8 and "`information_schema.REFERENTIAL_CONSTRAINTS`" in step8
+    # MySQL triggers are created after the task stops and before the switch; the catalog queries are an existence check only.
+    assert "On a MySQL target, create the triggers now from the DDL saved in step 3, before the switch" in step8
+    assert "`information_schema.TRIGGERS`" in step8
+    assert "That is an existence check only" in step8
+    assert "`convalidated = true` does not show that the loaded rows satisfy the constraints" in step8
     assert "orphaned child rows" in step8
     assert "sequence values, triggers, secondary indexes" not in step8

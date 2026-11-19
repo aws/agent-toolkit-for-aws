@@ -187,12 +187,18 @@ guide to Azure Database for PostgreSQL flexible server as a source:
    connection attribute that makes DMS's own sessions skip them: for a PostgreSQL target,
    `afterConnectScript=SET session_replication_role='replica'` (bypasses foreign keys and
    user triggers); for a MySQL target, `Initstmt=SET FOREIGN_KEY_CHECKS=0;` (the AWS DMS
-   MySQL target page requires foreign keys to be off during the full load). Run the endpoint
-   connection tests and fix them before continuing.
+   MySQL target page requires foreign keys to be off during the full load; MySQL has no
+   session setting that skips triggers, so step 3 leaves them out of the MySQL schema). Run
+   the endpoint connection tests and fix them before continuing.
 3. Create the target schema first (for PostgreSQL, `pg_dump --schema-only` /
-   `pg_restore`; for MySQL, `mysqldump --no-data`). The schema-only dump carries the foreign
-   keys and triggers; keep them, because step 2's setting bypasses them only for DMS's
-   sessions. DMS moves data, not secondary objects.
+   `pg_restore`; for MySQL, `mysqldump --no-data --skip-triggers`). A PostgreSQL schema-only
+   dump carries the foreign keys and triggers; keep them, because step 2's setting bypasses
+   them only for DMS's own sessions. On a MySQL target, keep the foreign keys but leave the
+   triggers out: `FOREIGN_KEY_CHECKS=0` does not stop triggers, so every trigger would fire
+   on each row DMS writes during the full load and CDC (audit or summary triggers would add
+   rows on top of the migrated copies, and a trigger that writes into a table DMS also loads
+   can hit duplicate keys). Save the trigger DDL for step 8 with
+   `mysqldump --no-create-info --no-data --triggers`. DMS moves data, not secondary objects.
 4. Create a database migration task of type full load plus CDC. Set the task's **target
    table preparation mode** to **Do nothing** (`DO_NOTHING`), because step 3 precreated
    the target schema. Do not keep **Drop tables on target** (`DROP_AND_CREATE`): it drops
@@ -209,13 +215,17 @@ guide to Azure Database for PostgreSQL flexible server as a source:
    Do not cut over until latency stays near zero for a period the team agrees on.
 8. **Cut over.** Freeze application writes on Azure, wait for CDC latency to reach zero
    and validation to pass, and stop the task so no DMS session remains. Fix the objects DMS
-   does not carry (sequence values, secondary indexes as needed). The foreign keys and
-   triggers from step 3 were never dropped, so nothing in the schema needs re-enabling;
-   application sessions enforce them and fire the triggers from this point on. Before
-   switching, confirm the foreign keys exist and are validated (PostgreSQL:
-   `pg_constraint.convalidated`; MySQL: `information_schema.REFERENTIAL_CONSTRAINTS`) and
-   that the triggers exist, and check for orphaned child rows, because the load did not
-   enforce them. Then switch the application to the AWS endpoint and run the smoke tests.
+   does not carry (sequence values, secondary indexes as needed). On a PostgreSQL target the
+   foreign keys and triggers from step 3 were never dropped, so nothing in the schema needs
+   re-enabling; application sessions enforce them and fire the triggers from this point on.
+   On a MySQL target, create the triggers now from the DDL saved in step 3, before the
+   switch, so they do not fire on migrated rows. Before switching, confirm the foreign keys
+   and triggers exist (PostgreSQL: `pg_constraint`; MySQL:
+   `information_schema.REFERENTIAL_CONSTRAINTS` and `information_schema.TRIGGERS`). That is
+   an existence check only: `convalidated = true` does not show that the loaded rows satisfy
+   the constraints, because the load did not enforce them. The real integrity check is
+   looking for orphaned child rows. Then switch the application to the AWS endpoint and run
+   the smoke tests.
 9. **Roll back.** Before the switch, rollback is stopping the task and lifting the freeze on
    Azure. After the switch, DMS does not replicate back to Azure by default; keep the Azure
    server until the rollback window closes, and treat reverse replication as a separate
