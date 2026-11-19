@@ -149,9 +149,6 @@ See `vendored/ai/ai-model-lifecycle.md` for lifecycle details. **Do not recommen
 | MiniMax M2.5                     | minimax.minimax-m2.5                     | MiniMax   | 0.30       | 1.20        | 196K    | mid       | active                                                       |
 | Jamba 1.5 Large                  | ai21.jamba-1-5-large-v1:0                | AI21 Labs | 2.00       | 8.00        | —       | mid       | excluded (EOL 2026-11-26)                                    |
 | Jamba 1.5 Mini                   | ai21.jamba-1-5-mini-v1:0                 | AI21 Labs | 0.20       | 0.40        | —       | efficient | excluded (EOL 2026-11-26)                                    |
-| Jurassic-2 Mid                   | —                                        | AI21 Labs | 12.50      | 12.50       | —       | legacy    | legacy                                                       |
-| Jurassic-2 Ultra                 | —                                        | AI21 Labs | 18.80      | 18.80       | —       | legacy    | legacy                                                       |
-| Jamba-Instruct                   | —                                        | AI21 Labs | 0.50       | 0.70        | —       | mid       | active                                                       |
 
 ### Embeddings — Bedrock (per 1M input tokens, US East)
 
@@ -163,7 +160,7 @@ the corpus must be re-embedded and any similarity threshold recalibrated).
 | Model                        | Model ID                     | Provider | Input $/1M | Dimensions        | Tier     | Status |
 | ---------------------------- | ----------------------------- | -------- | ---------- | ----------------- | -------- | ------ |
 | Titan Text Embeddings v2     | amazon.titan-embed-text-v2:0 | Amazon   | 0.02       | 1024/512/256      | default  | active (Active per [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-titan-text-embeddings-v2.html); not on the pre-2026-09-07 lifecycle page as of 2026-10-26) |
-| Titan Text Embeddings v1     | amazon.titan-embed-text-v1   | Amazon   | 0.10       | 1536              | legacy   | active |
+| Titan Text Embeddings v1     | amazon.titan-embed-text-v1   | Amazon   | 0.10       | 1536              | legacy   | active (Active per [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-titan-embeddings-g1---text.html), read 2026-11-18; EOL no sooner than 2024-11-29 with no EOL date announced; the Tier column means older generation, not the Legacy lifecycle state; not on the pre-2026-09-07 lifecycle page) |
 | Cohere Embed v4              | cohere.embed-v4:0            | Cohere   | 0.12       | 1536/1024/512/256 | flagship | active |
 | Cohere Embed English v3      | cohere.embed-english-v3      | Cohere   | 0.10       | 1024              | mid      | active |
 | Cohere Embed Multilingual v3 | cohere.embed-multilingual-v3 | Cohere   | 0.10       | 1024              | mid      | active |
@@ -250,11 +247,8 @@ from the Bedrock pricing page first.
 | ---------------- | ---------- | ----------- |
 | Jamba 1.5 Large  | 2.00       | 8.00        |
 | Jamba 1.5 Mini   | 0.20       | 0.40        |
-| Jurassic-2 Mid   | 12.50      | 12.50       |
-| Jurassic-2 Ultra | 18.80      | 18.80       |
-| Jamba-Instruct   | 0.50       | 0.70        |
 
-_Quick-reference rows use **—** for **model ID** and **context**; resolve in the Bedrock console or AWS model documentation._
+_Jurassic-2 Mid/Ultra and Jamba-Instruct are not offered on Amazon Bedrock and are not priced here; AWS's [AI21 Labs model cards](https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards-ai21-labs.html) list only Jamba 1.5 Large and Mini (verified 2026-11-18). A source workload on any of those three models has no Bedrock price: map it to an Active model from the main table._
 
 ### Mistral AI
 
