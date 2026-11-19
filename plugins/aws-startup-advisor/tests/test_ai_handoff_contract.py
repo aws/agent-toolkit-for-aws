@@ -142,7 +142,7 @@ def test_handoff_state_is_tied_to_the_current_profile():
         text = _text(path)
         assert "ai-handoff.json" in text
         assert "`profile_digest`" in text and "\"assessment_dir\"" in text
-        for status in ("in_progress", "design_completed", "skipped"):
+        for status in ("in_progress", "assessment_completed", "skipped"):
             assert f"`{status}`" in text, (path, status)
         assert "every later resume at Clarify" in text
         assert "Ask the user to resume it or skip it for now" in text
@@ -170,3 +170,22 @@ def test_neither_skill_vendors_the_openai_guide():
         for readme in readmes:
             assert "openai-on-bedrock.md" not in readme.read_text(encoding="utf-8")
         assert not (vendored / "ai/openai-on-bedrock.md").exists()
+
+
+def test_handoff_completes_on_the_estimate_summary_not_on_design():
+    # bedrock-migration-assessment runs Clarify, Design and Estimate and stops after Estimate
+    # (its SKILL.md: "After Estimate, show its summary and stop"). Marking the handoff done
+    # on the Design summary would let a session interrupted during Estimate skip the resume.
+    for path in (HEROKU_SKILL, RENDER_SKILL):
+        text = _text(path)
+        assert "runs Clarify, Design and Estimate and stops" in text, path
+        assert "Clarify and Design and stops" not in text, path
+        assert "When its Estimate summary has been shown, set `status` to `assessment_completed`" in text, path
+        assert "design_completed" not in text, path
+        assert "Design summary has been shown" not in text, path
+    for path in (RENDER_DOCS, RENDER_REPORT):
+        text = _text(path)
+        assert "estimates its cost, then stops before generate" in text, path
+        assert "stops before estimate and generate" not in text, path
+    skill = _text(SKILLS / ASSESSMENT / "SKILL.md")
+    assert "After Estimate, show its summary and stop" in skill
