@@ -1,13 +1,13 @@
 ---
 name: prompt-library-for-startups
-description: "AWS-curated copy-paste prompts for AI coding agents (MVP scaffolding, RAG chatbot with Claude on Bedrock, security baseline evaluation, cost anomaly detection, GPU quota requests, EKS deployment, Well-Architected review, etc.) plus downloadable installable agents (Multi-Account Transition Advisor, Bill Shock Preventer, Service Quota Agent, Bedrock Model Availability Agent, AWS DB Advisor). Use when the user asks for a prompt to do X on AWS, wants an installable agent for multi-account / cost monitoring / quota management / Bedrock model availability / database selection, or asks how to use AWS prompts. For migration intent (GCP to AWS, Azure to AWS, OpenAI/Gemini to Bedrock), route to the migration skills in this plugin (`gcp-to-aws`, `azure-to-aws`, `heroku-to-aws`, `llm-to-bedrock`). Do not use for: factual AWS Activate / programs / credits questions, learn articles, sample architectures, or for prompts that are not in the bundled `references/prompt-library/` tree."
+description: "AWS-curated copy-paste prompts for AI coding agents (MVP scaffolding, RAG chatbot with Claude on Bedrock, security baseline evaluation, read-only cost audit, GPU quota requests, EKS on Spot, OWASP ZAP scan, etc.) plus downloadable installable agents (Multi-Account Transition Advisor, Bill Shock Preventer, Service Quota Agent, Bedrock Model Availability Agent, Kiro Strands AgentCore Agent). Use when the user asks for a prompt to do X on AWS, wants an installable agent for multi-account / cost monitoring / quota management / Bedrock model availability / a Strands agent on AgentCore, or asks how to use AWS prompts. Bundles an approved subset; for any other prompt or agent, point to startups.aws.com/prompt-library. For migration intent (GCP to AWS, Azure to AWS, OpenAI/Gemini to Bedrock), route to the migration skills in this plugin (`gcp-to-aws`, `azure-to-aws`, `heroku-to-aws`, `llm-to-bedrock`). Do not use for: factual AWS Activate / programs / credits questions, learn articles, or sample architectures."
 ---
 
 # AWS Startups Prompt & Agent Library
 
-Searchable index of AWS-curated prompts for AI coding tools (Kiro, Claude Code, Cursor, etc.) plus downloadable installable agents. Content is verbatim from [aws.amazon.com/startups/prompt-library](https://aws.amazon.com/startups/prompt-library).
+Searchable index of AWS-curated prompts for AI coding tools (Kiro, Claude Code, Cursor, etc.) plus downloadable installable agents. This skill carries the subset approved for this plugin; the full library is at [startups.aws.com/prompt-library](https://startups.aws.com/prompt-library). Entries are generated from their published pages, with the security and plugin-fit changes recorded in `references/prompt-library/local-changes.json`.
 
-**Last updated:** 2026-09-24
+**Last updated:** 2026-11-14
 
 ---
 
@@ -48,9 +48,9 @@ The **Downloadable agents** section of `references/prompt-library.md` lists **in
 - **AWS Bill Shock Preventer** — proactive cost-spike detection and alerting.
 - **AWS Service Quota Agent** — auditing and requesting quota increases.
 - **Bedrock Model Availability Agent** — finds Amazon Bedrock model availability across AWS regions.
-- **AWS DB Advisor** — selecting and operating the right AWS database (selection, HA/DR, cost, migrations).
+- **Kiro Strands AgentCore Agent** — a Kiro CLI agent for building Strands agents and deploying them to Amazon Bedrock AgentCore.
 
-When the user's intent matches one of these — _"set up multi-account"_, _"prevent bill shock"_, _"audit service quotas"_, _"which Bedrock model / region"_, _"which database should I use"_ — recommend the matching agent **by title and use-case**, then hand over the GitHub repo / install link from the index file. Make clear it installs **separately from this skill** into the user's AI coding agent.
+When the user's intent matches one of these — _"set up multi-account"_, _"prevent bill shock"_, _"audit service quotas"_, _"which Bedrock model / region"_, _"build a Strands agent on AgentCore"_ — recommend the matching agent **by title and use-case**, then hand over the install source from its detail file under `references/prompt-library/`. Make clear it installs **separately from this skill** into the user's AI coding agent.
 
 For migration intent, route to the matching migration skill in this plugin: **`gcp-to-aws`** (_"GCP to AWS"_, move off Google Cloud), **`heroku-to-aws`** (_"migrate off Heroku"_), **`llm-to-bedrock`** (_"move off OpenAI/Gemini to Bedrock"_ — SDK rewrite), or **`agent-advisor`** (agent runtime / architecture on AWS).
 
@@ -61,25 +61,24 @@ For migration intent, route to the matching migration skill in this plugin: **`g
 | _"Give me a prompt for an MVP"_                      | `awsome-mvp-builder.md`                                                                |
 | _"Prompt for a RAG chatbot on Bedrock"_              | `rag-chatbot-with-claude.md`                                                           |
 | _"How do I set up AWS for the first time?"_          | `day-one-aws-foundation-setup.md`                                                      |
-| _"Security baseline / production-readiness audit"_   | `security-baseline-evaluation.md`, `aws-security-baseline-terraform-deployment-kit.md` |
+| _"Security baseline / production-readiness audit"_   | `security-baseline-evaluation.md`                                                      |
 | _"How do I get a GPU instance quota raised?"_        | `gpu-instance-quota-assistant.md`                                                      |
-| _"Bedrock model quota / TPM / RPM"_                  | `bedrock-quota-manager.md`                                                             |
-| _"Cost anomaly / spend monitoring"_                  | `cost-anomaly-detection.md`                                                            |
+| _"Audit my AWS spend / find waste (read-only)"_      | `read-only-aws-cost-optimization-audit.md` (split by phase; see below)                 |
 | _"EKS with cost-optimized Spot instances"_           | `cost-optimized-eks-with-spot-instances.md`                                            |
 | _"Open-source LLM inference"_                        | `open-source-llm-inference.md`                                                         |
-| _"Well-Architected Review"_                          | `well-architecture-review.md`                                                          |
 | _"Multi-region security assessment"_                 | `multi-region-assessment.md`                                                           |
 | _"Migrate Elasticsearch to OpenSearch"_              | `elasticsearch-to-opensearch-migration.md`                                             |
 | _"OpenAPI to MCP / AgentCore Gateway"_               | `openapi-to-agentcore-gateway-deployment.md`                                           |
-| _"Deploy a GitHub repo to AWS"_                      | `deploy-github-repo.md`                                                                |
+| _"Scan my web app with OWASP ZAP"_                   | `owasp-zap-vulnerability-scanner.md`                                                   |
 | _"Help me migrate workloads to AWS"_                 | `gcp-to-aws` / `heroku-to-aws` / `llm-to-bedrock` skills (siblings in this plugin)     |
 | _"Set up multi-account on AWS Organizations"_        | Downloadable: Multi-Account Transition Advisor                                         |
 | _"Stop bill shock / detect cost spikes proactively"_ | Downloadable: AWS Bill Shock Preventer                                                 |
 | _"Manage / request service quotas"_                  | Downloadable: Service Quota Agent                                                      |
 | _"Which Bedrock model is available in which region"_ | Downloadable: Bedrock Model Availability Agent                                         |
-| _"Which AWS database should I use"_                  | Downloadable: AWS DB Advisor                                                           |
+| _"Build a Strands agent and deploy it to AgentCore"_ | Downloadable: Kiro Strands AgentCore Agent                                             |
+| _"Which AWS database should I use"_                  | `architect-for-startups` skill (sibling in this plugin)                                |
 
-For anything else, filter `references/prompt-library.md` by keyword.
+For anything else, filter `references/prompt-library.md` by keyword. If nothing matches, the prompt may still exist in the full library: say this plugin carries a subset and point the user to <https://startups.aws.com/prompt-library>. Do not say no such prompt exists.
 
 ## Companion skills — when to defer
 
@@ -102,12 +101,14 @@ Boundary cases — invoke both. Example: _"how do I start with RAG on Bedrock?"_
 
 Open `references/prompt-library.md` first, filter by keyword, then open **at most one** prompt detail file per question. MUST NOT speculatively load multiple detail files. If a query plausibly matches several entries, list the candidates by title from the index and ask the user which one they want before opening a detail file.
 
+One exception: `read-only-aws-cost-optimization-audit` is split into parts under `references/prompt-library/read-only-aws-cost-optimization-audit/`. Open its detail file first, then load every shared part (`00-overview.md`, `01-system-prompt.md`, `02-operating-rules.md`, `03-prerequisites.md`, `04-tool-selection-map.md`, `05-conventions-for-the-cli-blocks.md`, `16-key-principles.md`), plus only the phase the user is working on. For the report phase, also load `14-appendix-a-proposed-remediation-human.md` and `15-appendix-b-audit-trail.md`. To hand over the whole prompt, read every part in order and quote them together.
+
 ## Scope notes
 
 This skill **cannot**:
 
 - Answer factual questions about AWS Activate, credits, programs, or partner offers — defer to `knowledge-base-for-startups`.
-- Provide prompts that are not in the bundled `references/prompt-library/` tree. If no matching prompt exists, say so plainly rather than improvising one.
+- Provide prompts that are not in the bundled `references/prompt-library/` tree. Do not improvise one; point the user to the full library at <https://startups.aws.com/prompt-library>, which carries prompts this plugin does not bundle.
 - Install the downloadable agents on the user's behalf. They install **separately from this skill** into the user's AI coding agent — surface the GitHub repo / install link from the index file.
 - Override the source-page disclaimer. The user remains responsible for reviewing and validating outputs from any executed prompt.
 

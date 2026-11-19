@@ -48,6 +48,8 @@ ASSESSMENTS = ("strong_migrate", "moderate_migrate", "weak_migrate", "recommend_
 QUOTA_RISKS = {"low", "medium", "high"}
 WARNING_TYPES = {"embeddings_reindex", "cascade_pair", "multi_model_tiered", "image_separate", "speech_separate"}
 AGENTIC_APPROACHES = {"retarget", "harness", "strands", "undecided"}
+# design-ai.md Step 4 price grammar; estimate-ai.py parses the numbers.
+PRICE_RE = re.compile(r"^(?:unverified\b.*|\$?\d+(?:\.\d+)?(?:/\$?\d+(?:\.\d+)?)? per (?:1M tokens|image)\b.*)$", re.S)
 ROW_STRING_KEYS = ("source_model_id", "aws_model_id", "honest_assessment", "source_provider_price", "bedrock_price",
                    "price_comparison", "migration_complexity", "migration_path", "quota_risk", "required_client_api",
                    "mantle_selector", "endpoint_assumption")
@@ -66,7 +68,7 @@ ASSUMPTION = ("No Mantle-only requirement was recorded for {ids}; bedrock-runtim
 GUIDE_DIR = "references/vendored/ai"
 # ai-anthropic-to-bedrock.md carries the Claude target contracts every cross-family choice needs.
 ALWAYS_GUIDES = ("bedrock-endpoint-policy.md", "ai-model-lifecycle.md", "bedrock-pricing-cache.md", "bedrock-quotas.md",
-                 "ai-migration-guardrails.md", "schema-design-aws-ai.md", "ai-anthropic-to-bedrock.md")
+                 "ai-migration-guardrails.md", "schema-design-aws-ai.md", "ai-anthropic-to-bedrock.md", "source-provider-pricing.md")
 PROVIDER_GUIDES = {"openai": ("ai-openai-to-bedrock.md",), "google": ("ai-gemini-to-bedrock.md",)}
 
 
@@ -222,7 +224,7 @@ def build_plan(profile: dict, prefs: dict) -> dict:
         if provider in providers:
             guides += [f"{GUIDE_DIR}/{g}" for g in PROVIDER_GUIDES[provider]]
     if "openai" in providers:
-        guides.append("references/shared/openai-on-bedrock.md")
+        guides.append(f"{GUIDE_DIR}/openai-on-bedrock.md")
     if any(g["product"] == "openrouter" for g in profile["gateways"]):
         guides.append(f"{GUIDE_DIR}/ai-openrouter-to-bedrock.md")
     constraints = {key: _constraint(prefs, "ai_constraints", key, default) for key, default in DEFAULTS.items()}
@@ -258,6 +260,10 @@ def _row_shape_errors(rows: list) -> list[dict]:
         for key in ROW_STRING_KEYS:
             if key in row and not isinstance(row[key], str):
                 _err(errors, "row_bad_type", f"{label}.{key} must be a string")
+        for key in ("bedrock_price", "source_provider_price"):
+            if isinstance(row.get(key), str) and not PRICE_RE.match(row[key]):
+                _err(errors, "row_bad_price", f"{label}.{key} {row[key]!r} must read '<input>/<output> per 1M tokens', "
+                     "'<rate> per 1M tokens', '<rate> per image', or 'unverified'")
         for key in ("capabilities_matched", "capability_gaps"):
             if key in row and not (isinstance(row[key], list) and all(isinstance(v, str) for v in row[key])):
                 _err(errors, "row_bad_list", f"{label}.{key} must be a list of strings")

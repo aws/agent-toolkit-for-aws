@@ -1266,7 +1266,7 @@ Rebuild these context lines from the same normalized path on every dispatch/resu
 `assess_design_sha256` run-context check detects a changed model/API decision. If a bare
 Astra id is paired with a runtime path, or a CRIS id with Mantle, stop and correct the plan;
 do not switch endpoints or invent another profile. See the resolver's Case C and
-`gcp-to-aws/references/shared/openai-on-bedrock.md`.
+`gcp-to-aws/references/vendored/ai/openai-on-bedrock.md`.
 
 ### C7 — Render summary
 

@@ -96,10 +96,20 @@ def test_scale_note_is_in_the_canonical_preference_shape_and_validates(tmp_path:
 def test_developer_workflow_statuses_derive_from_target_and_deploy_method() -> None:
     text = REPORT.read_text(encoding="utf-8")
     section = text[text.index("### `developer-workflow`") :]
-    assert "EB + `github_actions` or `codepipeline`" in section
+    assert "EB + `github_actions`, or EB + `codepipeline` for an app that does not resolve to CNB" in section
     assert "EB + `manual`" in section
     assert "Fargate or EKS" in section
     assert "Dockerfile per buildpack app" in section
+    assert 'buildpack app with `app_containerization_method == "dockerfile"`' in section
+    assert "needs no Dockerfile" in section and "never add the clause for it" in section
+    assert "CodePipeline is unsupported for CNB apps" in section
+    assert "EB + `codepipeline`, app resolves to CNB" in section
+    assert "pipelines are detected, not generated" not in section
+    promote = next(line for line in section.splitlines() if line.startswith("| Pipelines and promote"))
+    assert "Per target" in promote and "**Generated** for EB apps" in promote and "**Build** for Fargate/EKS" in promote
+    closing = section[section.index("**Closing paragraph (always):**") :]
+    assert "a deploy pipeline with promote and release steps" not in closing
+    assert "promote step for every" in closing
     assert "task definition carries no environment/secrets bindings" in section
 
 

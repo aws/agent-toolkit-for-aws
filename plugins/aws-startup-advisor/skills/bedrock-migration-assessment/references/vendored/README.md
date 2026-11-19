@@ -27,10 +27,14 @@ if this skill needs one, add the copy **and** a row in the table below.
 | `ai/ai-migration-guardrails.md`  | `skills/shared/ai/ai-migration-guardrails.md`  |
 | `ai/ai-model-lifecycle.md`       | `skills/shared/ai/ai-model-lifecycle.md`       |
 | `ai/ai-openai-to-bedrock.md`     | `skills/shared/ai/ai-openai-to-bedrock.md`     |
+| `ai/openai-on-bedrock.md`        | `skills/shared/ai/openai-on-bedrock.md`        |
 | `ai/ai-openrouter-to-bedrock.md` | `skills/shared/ai/ai-openrouter-to-bedrock.md` |
 | `ai/bedrock-endpoint-policy.md`  | `skills/shared/ai/bedrock-endpoint-policy.md`  |
+| `ai/bedrock-pricing.json`        | `skills/shared/ai/bedrock-pricing.json`        |
 | `ai/bedrock-pricing-cache.md`    | `skills/shared/ai/bedrock-pricing-cache.md`    |
 | `ai/bedrock-quotas.md`           | `skills/shared/ai/bedrock-quotas.md`           |
 | `ai/schema-design-aws-ai.md`     | `skills/shared/ai/schema-design-aws-ai.md`     |
+| `ai/schema-estimate-ai.md`       | `skills/shared/ai/schema-estimate-ai.md`       |
+| `ai/source-provider-pricing.md`  | `skills/shared/ai/source-provider-pricing.md`  |
 | `ai/token-volume-tiers.json`     | `skills/shared/ai/token-volume-tiers.json`     |
 | `state/phase-status.schema.json` | `skills/shared/state/phase-status.schema.json` |

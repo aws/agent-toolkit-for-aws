@@ -3,16 +3,18 @@
 **When to use:** The user wants to implement semantic caching, conversational memory, RAG, vector search, recommendation engines, or any GenAI/LLM pattern with ElastiCache. Also useful when the user asks about caching LLM responses (exact or semantic match).
 **When not needed:** The user is working on traditional caching patterns (session store, leaderboard, rate limiting), general setup, monitoring, or migration without a GenAI component.
 
+**KV caching for LLM inference:** ElastiCache supports distributed KV caching on `cache.i8ge.48xlarge`. For cost and time to first token (TTFT) figures, see the KV caching link under Freshness disclaimer below.
+
 ## Loading
 
 Read this file first. Load files listed below on demand based on the routing decision.
 
 | File | Load when |
 |------|-----------|
-| `elasticache-search.md` | Any pattern needing vector search (Mode 2 server-side or Mode 3). Contains platform gate, version detection, limits, encoding, backfill, AND a Python-side cosine fallback for when FT.* is unavailable. **ALWAYS load this file before generating vector code** so the version guard and fallback are included. |
+| `references/genai/elasticache-search.md` | Any pattern needing vector search (Mode 2 server-side or Mode 3), full-text search, or FT.AGGREGATE. Contains platform gate, version detection, limits, encoding, backfill, AND a Python-side cosine fallback for when FT.* is unavailable. **ALWAYS load this file before generating vector code** so the version guard and fallback are included. |
 | `semantic-cache.md` | User wants semantic caching for LLM/API responses. Step-by-step: FT.CREATE, embed, FT.SEARCH, threshold, store. |
 | `session-store.md` | User wants session state, message history, resumable conversations, or Strands session management. Plain data structures, serverless OK. |
-| `agent-memory.md` | User wants semantic agent memory, cross-session recall via similarity, or mem0 integration. Requires node-based Valkey 8.2 or above (recommend 9.0). |
+| `references/genai/agent-memory.md` | User wants semantic agent memory, cross-session recall via similarity, or mem0 integration. Requires node-based Valkey 8.2 or above (recommend 9.1) or Serverless Valkey 9.0+. |
 | `rag-retrieval.md` | User wants RAG, knowledge base retrieval, or document search. Step-by-step: schema, index, ingest, hybrid query. |
 | `framework-guide.md` | User mentions a specific framework (Strands, mem0, LangChain) or asks how to connect their AI app. |
 | `embedding-providers.md` | User needs to choose or configure an embedding provider. Bedrock Titan v2 preferred, open-source fallback (fastembed, sentence-transformers). |
@@ -42,11 +44,11 @@ When to use: the user wants fuzzy cache hits, where semantically close prompts s
 Two implementation paths:
 
 - **Application-side embedding comparison**: app computes embeddings, stores as plain keys, does similarity math client-side. Serverless OK. Works on ANY Valkey/Redis version.
-- **Server-side vector similarity**: Valkey performs the similarity search via FT.SEARCH. Requires node-based Valkey 8.2 or above (recommend 9.0).
+- **Server-side vector similarity**: Valkey performs the similarity search via FT.SEARCH. Requires node-based Valkey 8.2 or above (recommend 9.1) or Serverless Valkey 9.0+.
 
-Ask the user which approach they prefer. Default to application-side unless they have high query volume AND confirmed Valkey 8.2 or above node-based. If the user's Valkey version is < 8.2, application-side is the ONLY option. Always load `elasticache-search.md` and use the `supports_ft_search()` version check before generating any FT.* code.
+Ask the user which approach they prefer. Default to application-side unless they have high query volume AND confirmed node-based Valkey 8.2 or above or Serverless Valkey 9.0+. If the user's Valkey version is < 8.2, application-side is the ONLY option. Always load `references/genai/elasticache-search.md` and use the `supports_ft_search()` version check before generating any FT.* code.
 
-Deployment: **serverless Valkey** for application-side; **node-based Valkey 8.2 or above (recommend 9.0)** for server-side.
+Deployment: **serverless Valkey** for application-side; **node-based Valkey 8.2 or above (recommend 9.1) or Serverless Valkey 9.0+** for server-side.
 Load: `semantic-cache.md`, `elasticache-search.md` (if server-side), `embedding-providers.md`
 
 ### Mode 3: Full Vector Search
@@ -55,7 +57,7 @@ Vector indexing, KNN/ANN queries, RAG retrieval, recommendation via embeddings, 
 
 When to use: the user needs to store many embeddings and retrieve the top-K most similar. Typical for RAG knowledge bases, agent memory, recommendation engines, semantic search, catalog search.
 
-Deployment: **node-based Valkey 8.2 or above** (mandatory; recommend 9.0). No serverless.
+Deployment: **node-based Valkey 8.2 or above** (recommend 9.1), or Serverless Valkey 9.0+.
 Load: `elasticache-search.md` plus the relevant pattern file (`rag-retrieval.md`, `agent-memory.md`, or `semantic-cache.md`), `embedding-providers.md`, `framework-guide.md` (if framework mentioned)
 
 ### How to classify
@@ -66,11 +68,11 @@ Load: `elasticache-search.md` plus the relevant pattern file (`rag-retrieval.md`
 
 ## Hard Routing Rules (non-negotiable)
 
-1. **Vector search MUST use node-based Valkey 8.2 or above (recommend 9.0).** Serverless does NOT support vector search. Never recommend serverless for vector search workloads, not even as a temporary or future option.
+1. **Vector search MUST use node-based Valkey 8.2 or above (recommend 9.1) or Serverless Valkey 9.0+.** Never recommend Serverless below Valkey 9.0 for vector search workloads.
 
 2. **Global Datastore MUST use node-based clusters.** If the GenAI workload requires multi-Region replication, it must be node-based.
 
-3. **Vector search is NOT available on data tiering node types (r6gd family).** Do not recommend r6gd instances for any workload requiring vector search.
+3. **Vector search is NOT available on data tiering node types (r6gd/r7gd/r8gd families).** Do not recommend r6gd/r7gd/r8gd instances for any workload requiring vector search.
 
 4. **Changing embedding providers requires full re-indexing.** If the user wants to switch embedding models, warn that ALL existing vectors must be deleted and re-embedded. This is destructive. Confirm before proceeding.
 
@@ -79,7 +81,7 @@ Load: `elasticache-search.md` plus the relevant pattern file (`rag-retrieval.md`
 1. Do NOT generate FT.CREATE or FT.SEARCH code without first loading `elasticache-search.md` and including the `supports_ft_search()` guard.
 2. Do NOT use numpy for vector byte packing. Use `struct.pack` only.
 3. When using raw valkey-py/redis-py client directly, do NOT use the high-level `redis.commands.search` or `valkey.commands.search` Python wrappers for FT.* commands. Use `execute_command()` instead. When using supported frameworks like `langgraph-checkpoint-aws` (ValkeyStore) or Mem0, their built-in abstractions (e.g., `store.search()`, `store.put()`, `m.add()`, `m.search()`) are acceptable.
-4. Do NOT recommend serverless for any Mode 3 workload or Mode 2 server-side.
+4. Do NOT recommend Serverless below Valkey 9.0 for Mode 3 or Mode 2 server-side.
 5. Do NOT generate inline embedding code. Always import from the shared utility file (`infrastructure.embedding_module`).
 6. Do NOT assume the user's Valkey version supports vector search. Always check with `supports_ft_search()`.
 7. Do NOT skip the embedding provider selection step. The FT.CREATE DIM must match the embedding model's output dimensions exactly.
@@ -91,11 +93,11 @@ Mode 2 (server-side) and Mode 3 workloads need data-plane access to run FT.CREAT
 
 ## Engine Requirement
 
-All GenAI patterns require **Valkey**. Vector search patterns specifically require **Valkey 8.2 or above on node-based clusters (recommend 9.0)**.
+All GenAI patterns require **Valkey**. Vector search patterns specifically require **node-based Valkey 8.2 or above (recommend 9.1) or Serverless Valkey 9.0+**.
 
-> Vector search is available with Valkey 8.2 or above on node-based clusters in all AWS Regions at no additional cost. Not supported on data-tiering instances (r6gd) or serverless caches.
+> Vector search is available with Valkey 8.2 or above on node-based clusters in all AWS Regions at no additional cost. Also on Serverless Valkey 9.0+. Not supported on data-tiering instances (r6gd/r7gd/r8gd).
 
-If the user doesn't have a cache yet, hand off to `setup` and ensure node-based Valkey 8.2 or above is selected (recommend 9.0) when vector search is needed.
+If the user doesn't have a cache yet, hand off to `setup` and ensure node-based Valkey 8.2 or above (recommend 9.1) or Serverless Valkey 9.0+ is selected when vector search is needed.
 
 ## Workflow
 
@@ -103,7 +105,7 @@ If the user doesn't have a cache yet, hand off to `setup` and ensure node-based 
 2. Persist the mode to `requirements.json` under `genai.mode`. If Mode 2, also persist `genai.mode_2_path` (`"app-side"` or `"server-side"`).
 3. If Mode 2 (server-side) or Mode 3: check `requirements.json` for `infrastructure.embedding_module`. If set and the file exists, import from it. If not set, load `embedding-providers.md`, ask the user for their preferred model, generate the reusable utility file in their project, and persist the choice.
 4. Load the relevant reference files per the table above
-5. If vector search is needed, verify node-based Valkey 8.2 or above (recommend 9.0; load `elasticache-search.md` for constraints)
+5. If vector search is needed, verify node-based Valkey 8.2 or above (recommend 9.1) or Serverless Valkey 9.0+ (load `references/genai/elasticache-search.md` for constraints)
 6. Walk through the pattern-specific implementation guide. All generated code imports from the embedding utility created in step 3 rather than generating inline embedding code.
 7. If the user mentions a framework, load `framework-guide.md` and persist the choice to `genai.framework` in `requirements.json`.
 
@@ -116,3 +118,5 @@ After the pattern is implemented, update `.elasticache/requirements.json`. GenAI
 ## Freshness disclaimer
 
 When your response includes pricing, version constraints, or feature availability, include the freshness disclaimer per SKILL.md Global Rule #5: "For current pricing see https://aws.amazon.com/elasticache/pricing/. For current feature availability see https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/."
+
+For KV caching cost and TTFT figures, see [KV caching for LLM inference](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/kv-caching.html). If that page doesn't load, give no figures.

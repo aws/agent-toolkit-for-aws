@@ -68,6 +68,8 @@ Detect from the IaC and application code, and confirm with the user if ambiguous
 
 If the workload is an **AI agent** built on a framework (LangChain, LangGraph, Strands, CrewAI, OpenAI Agents, Vercel AI), stop — use `../omni-agents-instrumentation/omni-agents-instrumentation.md` instead. That path instruments at the framework layer.
 
+If the workload is a **vLLM model server** on ECS or EKS, and the goal is its engine and GPU metrics on Omni's AI Inference page, stop — use [ai-inference.md](ai-inference.md) instead. vLLM exposes its own metrics and traces, so that path adds a collector and a GPU exporter rather than the ADOT SDK.
+
 ## Step 2: Read the matching guide
 
 |  | Python | Node.js | Java | .NET |
@@ -122,7 +124,7 @@ Every guide sets these two, and nothing else about export:
 | Variable | Value |
 |---|---|
 | `OTEL_SERVICE_NAME` | The service's name as it should appear in Omni |
-| `OTEL_RESOURCE_ATTRIBUTES` | Optional additional resource attributes, e.g. `deployment.environment=production` |
+| `OTEL_RESOURCE_ATTRIBUTES` | Optional additional resource attributes, e.g. `deployment.environment.name=production` |
 
 Derive `OTEL_SERVICE_NAME` from the existing workload name in the IaC (deployment name, ECS service name, or the application name) rather than inventing one. If it cannot be determined, ask.
 

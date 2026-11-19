@@ -40,7 +40,7 @@ def test_handoff_exits_invoke_plan_writer() -> None:
 def test_handoff_exits_present_import_cta() -> None:
     for f in HANDOFF_FILES:
         text = f.read_text(encoding="utf-8")
-        assert "migrate/credits" in text, (
+        assert "migrate/plans/import" in text, (
             f"{f.name}: handoff exit no longer presents the web-import CTA"
         )
 
@@ -91,3 +91,62 @@ def test_handoff_exits_are_fail_open_gated() -> None:
         assert re.search(r"PLAN_SKIP[^\n]{0,40}omit", text), (
             f"{f.name}: web-handoff block is no longer omitted on PLAN_SKIP"
         )
+
+
+IMPORT_PAGE = "https://startups.aws.com/migrate/plans/import"
+TRACKED_LINK = IMPORT_PAGE + "?source=plugin&run=<run_id>"
+RULE_TEXT = "Never name AWS Startup Advisor's import page without its address"
+
+
+def _flat(text: str) -> str:
+    """Join wrapped lines (and drop blockquote markers) so a name and its address split
+    across a line break still count as adjacent."""
+    return " ".join(line.lstrip().lstrip(">").strip() for line in text.splitlines())
+
+
+def test_every_user_facing_mention_carries_the_import_page_address() -> None:
+    # A user run on 2026-11-16: the agent condensed the What's next block and the user got
+    # "upload plan.json to AWS Startups Migrate" with no URL and no idea what the site is.
+    # Every place the product name reaches the user now carries the import page's address
+    # within a few characters, so a paraphrase keeps it.
+    for f in HANDOFF_FILES:
+        text = _flat(f.read_text(encoding="utf-8"))
+        assert "Startups Migrate" not in text, f"{f.name}: the product is AWS Startup Advisor"
+        rule_spans = [(m.start(), m.end()) for m in re.finditer(re.escape(RULE_TEXT), text)]
+        user_facing = [m.start() for m in re.finditer(r"AWS Startup Advisor", text)
+                       if not any(a <= m.start() < b for a, b in rule_spans)]
+        assert user_facing, f"{f.name}: no user-facing AWS Startup Advisor mention found"
+        for start in user_facing:
+            window = text[start:start + 80]
+            assert IMPORT_PAGE in window, f"{f.name}: names the product without its address: {window}"
+        assert RULE_TEXT in text, f.name
+
+
+def test_both_links_carry_the_run_for_attribution() -> None:
+    for f in HANDOFF_FILES:
+        text = f.read_text(encoding="utf-8")
+        assert text.count(TRACKED_LINK) == 2, f"{f.name}: expected the bullet link and the CTA link"
+        bullet = next(line for line in text.splitlines()
+                      if "upload plan.json to see the AWS migration credits" in line)
+        assert f"[AWS Startup Advisor]({TRACKED_LINK})" in bullet, f.name
+        assert "AWS Builder ID" in bullet and "where you import your migration plan" in bullet, f.name
+        assert f"[Go to AWS Startup Advisor →]({TRACKED_LINK})" in text, f.name
+
+
+def test_no_stale_not_live_ship_note() -> None:
+    # The import page is live (checked 2026-11-16). A note saying it is not could lead an
+    # agent to drop the What's next block.
+    for f in HANDOFF_FILES:
+        assert "reaches customers only after the import page" not in f.read_text(encoding="utf-8"), f.name
+
+
+def test_the_address_rule_comes_before_the_verbatim_instruction() -> None:
+    # Review on #676: the last instruction before the What's next block must stay the
+    # verbatim one, so "if you shorten or restate" cannot read as permission to paraphrase.
+    for f in HANDOFF_FILES:
+        text = _flat(f.read_text(encoding="utf-8"))
+        rule = text.index(RULE_TEXT)
+        verbatim = text.index("Do not reword it", rule)
+        block = text.index("**💬 What's next**", verbatim)
+        assert rule < verbatim < block, f.name
+        assert RULE_TEXT not in text[verbatim:block], f.name

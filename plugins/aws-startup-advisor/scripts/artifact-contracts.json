@@ -400,6 +400,9 @@
       "preferences.json": {
         "shape": "skills/bedrock-migration-assessment/references/shared/schema-preferences.md",
         "root_heading": "Top-level shape"
+      },
+      "estimation-ai.json": {
+        "json_schema": "scripts/contracts/estimation-ai.schema.json"
       }
     }
   }

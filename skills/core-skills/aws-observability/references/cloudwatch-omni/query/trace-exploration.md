@@ -51,6 +51,10 @@ instrumentation question: load `setting-up-cloudwatch-observability` →
 `references/cloudwatch-omni/omni-agents-instrumentation/` before concluding the content is
 lost.
 
+For a call to an Amazon Bedrock AgentCore resource (Memory, Gateway, Browser, Code
+Interpreter, Runtime), the attributes that identify it are in
+[agentcore-resources.md](agentcore-resources.md).
+
 ---
 
 ## 2. Fetching one trace

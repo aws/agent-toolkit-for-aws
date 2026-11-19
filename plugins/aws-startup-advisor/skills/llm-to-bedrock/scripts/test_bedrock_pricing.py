@@ -457,3 +457,145 @@ def test_unpriced_mantle_gpt_says_unavailable_not_nonexistent(monkeypatch):
     assert v["available"] is False
     assert "does NOT mean the model is unavailable" in v["note"]
     assert "aws.amazon.com/bedrock/pricing" in v["note"]
+
+
+# --- A3 (#566): rates come from the shared bedrock-pricing.json ------------------------------
+
+import json
+from pathlib import Path
+
+
+def _deny_boto3(monkeypatch):
+    import builtins
+    real_import = builtins.__import__
+
+    def deny(name, *a, **k):
+        if name.startswith("boto3") or name.startswith("botocore"):
+            raise AssertionError("must not reach the live PriceList API")
+        return real_import(name, *a, **k)
+    monkeypatch.setattr(builtins, "__import__", deny)
+
+
+def test_table_is_built_from_the_vendored_shared_json():
+    assert bp.PRICING_PATH == (Path(bp.__file__).resolve().parent.parent
+                               / "references" / "vendored" / "ai" / "bedrock-pricing.json")
+    models = json.loads(bp.PRICING_PATH.read_text())["models"]
+    expected = {}
+    for bare, model in models.items():
+        for prefix, rate in model["rates"].items():
+            mid = bare if prefix == "bare" else f"{prefix}.{bare}"
+            expected[mid] = (round(rate["input"] / 1000, 12), round(rate["output"] / 1000, 12))
+    assert {k: (v["input_per_1k_usd"], v["output_per_1k_usd"])
+            for k, v in bp.STATIC_FALLBACK.items()} == expected
+
+
+@pytest.mark.parametrize("model_id,inp,out", [
+    ("anthropic.claude-sonnet-5-5", 0.002, 0.010),
+    ("global.anthropic.claude-sonnet-5-5", 0.002, 0.010),
+    ("us.anthropic.claude-sonnet-5-5", 0.0022, 0.011),
+])
+def test_sonnet_5_5_uses_its_own_published_rate(model_id, inp, out, monkeypatch):
+    _deny_boto3(monkeypatch)
+    v = bp.lookup("us-east-1", model_id)
+    assert (v["available"], v["input_per_1k_usd"], v["output_per_1k_usd"]) == (True, inp, out)
+    assert "verified 2026-10-25" in v["note"]
+    assert bp._match_key(model_id) == model_id
+
+
+def test_a_version_component_is_not_a_snapshot_suffix():
+    # Logan's review: `...sonnet-5-5` used to match the `...sonnet-5` row by prefix. A
+    # further version component is a different model; only a date or -vN suffix matches.
+    assert bp._match_key("anthropic.claude-sonnet-5-7") is None
+    assert bp._match_key("us.anthropic.claude-opus-4-85") is None
+    assert bp._match_key("us.anthropic.claude-opus-4-8" + "-20250610-v1:0") == "us.anthropic.claude-opus-4-8"
+
+
+@pytest.mark.parametrize("model_id,short,long", [
+    ("global.anthropic.claude-haiku-5-5", (0.0001, 0.0005), (0.0005, 0.0025)),
+    ("us.anthropic.claude-haiku-5-5", (0.00011, 0.00055), (0.00055, 0.00275)),
+])
+def test_haiku_5_5_returns_both_tiers_and_flags_the_tier(model_id, short, long, monkeypatch):
+    _deny_boto3(monkeypatch)
+    v = bp.lookup("us-east-1", model_id)
+    assert (v["input_per_1k_usd"], v["output_per_1k_usd"]) == short
+    assert (v["long_context_input_per_1k_usd"], v["long_context_output_per_1k_usd"]) == long
+    assert v["long_context_threshold_tokens"] == 100000
+    assert v["pricing_tier"] == bp._APPROXIMATE_TIER
+
+
+@pytest.mark.parametrize("model_id", [
+    "eu.anthropic.claude-sonnet-5-5", "au.anthropic.claude-sonnet-5-5",
+    "au.anthropic.claude-haiku-5-5", "jp.anthropic.claude-haiku-5-5", "ca.anthropic.claude-haiku-5-5",
+    "au.anthropic.claude-sonnet-5",
+])
+def test_unverified_inference_profiles_are_unavailable(model_id, monkeypatch):
+    _deny_boto3(monkeypatch)
+    v = bp.lookup("us-east-1", model_id)
+    assert v["available"] is False and v["input_per_1k_usd"] is None
+    assert f"no verified rate for {model_id}" in v["note"]
+    assert "Do not substitute another inference profile's rate" in v["note"]
+
+
+def test_govcloud_gpt_5_4_uses_its_own_rate_without_the_commercial_long_context_tier(monkeypatch):
+    _deny_boto3(monkeypatch)
+    v = bp.lookup("us-gov-west-1", "openai.gpt-5.4")
+    assert (v["input_per_1k_usd"], v["output_per_1k_usd"]) == (0.003375, 0.02025)
+    assert "long_context_input_per_1k_usd" not in v
+    assert v["pricing_tier"] == bp._APPROXIMATE_TIER
+    assert "no published long-context rate for this Region" in v["note"]
+    commercial = bp.lookup("us-east-1", "openai.gpt-5.4")
+    assert (commercial["input_per_1k_usd"], commercial["long_context_input_per_1k_usd"]) == (0.00275, 0.0055)
+
+
+def test_bare_only_models_keep_their_profile_forms_on_the_live_lookup(monkeypatch):
+    # Review finding: Nova is priced by its bare id only, so its us./eu. profile ids are not
+    # "unverified prefixes" of a profile-priced model; they still try the PriceList API.
+    import boto3
+    calls = []
+
+    class FakeClient:
+        def get_products(self, **kw):
+            calls.append(kw)
+            return {"PriceList": []}
+
+    monkeypatch.setattr(boto3, "client", lambda *a, **k: FakeClient())
+    v = bp.lookup("us-east-1", "us.amazon.nova-pro-v1:0")
+    assert calls, "a Nova profile id must reach the live lookup"
+    assert v["available"] is False and "no verified rate" not in v["note"]
+
+
+def test_govcloud_without_a_region_rate_says_the_rate_is_commercial(monkeypatch):
+    _deny_boto3(monkeypatch)
+    v = bp.lookup("us-gov-west-1", "openai.gpt-5.5")
+    assert v["available"] is True
+    assert "verify the GovCloud price before quoting it" in v["note"]
+# --- Opus 5 is a different model from Opus 5.5 ----------------------------------------------
+# Opus 5 (`anthropic.claude-opus-5`, Active since 2026-07-24) has no static row. It must fail
+# closed without the network (agent-advisor's environment has no boto3), but with its own
+# message: the Opus 5.5 branch must not claim it and report "no verified Opus 5.5 rate".
+@pytest.mark.parametrize("model_id", ["anthropic.claude-opus-5", "us.anthropic.claude-opus-5",
+                                      "global.anthropic.claude-opus-5"])
+def test_opus_5_fails_closed_with_its_own_message_and_no_network(model_id, monkeypatch):
+    _deny_boto3(monkeypatch)  # must not reach the live PriceList lookup
+    v = bp.lookup("us-east-1", model_id)
+    assert v["available"] is False
+    assert v["input_per_1k_usd"] is None
+    assert "Opus 5.5 rate" not in v["note"]
+    assert "It is not Claude Opus 5.5" in v["note"]
+    assert "Do not price it from Opus 5.5" in v["note"]
+    assert bp._match_key(model_id) is None  # never borrow 5.5's rates
+@pytest.mark.parametrize("model_id", ["global.anthropic.claude-opus-5-5", "us.anthropic.claude-opus-5-5",
+                                      "anthropic.claude-opus-5-5"])
+def test_opus_55_ids_still_use_the_exact_region_aware_branch(model_id, monkeypatch):
+    _deny_boto3(monkeypatch)
+    v = bp.lookup("us-east-1", model_id)
+    assert v["available"] is True
+    assert (v["input_per_1k_usd"], v["output_per_1k_usd"]) in {(0.004, 0.020), (0.0044, 0.022)}
+    assert bp._match_key(model_id) is None
+@pytest.mark.parametrize("model_id", ["anthropic.claude-opus-5-55", "us.anthropic.claude-opus-5-5-pro",
+                                      "global.anthropic.claude-opus-5-50"])
+def test_malformed_opus_55_like_ids_still_fail_closed(model_id, monkeypatch):
+    _deny_boto3(monkeypatch)  # must not reach the live lookup
+    v = bp.lookup("us-east-1", model_id)
+    assert v["available"] is False
+    assert "Opus 5.5" in v["note"]

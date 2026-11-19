@@ -5,7 +5,7 @@ Gate checklist before promoting an ElastiCache cache to production. Run through 
 ## Security
 
 - [ ] **REQUIRED** In-transit encryption (TLS) enabled. Serverless: automatic. Node-based: set at creation (`TransitEncryptionEnabled: true`), or enabled on existing clusters using the `preferred`->`required` transit encryption mode migration via `modify-replication-group`.
-- [ ] **REQUIRED** At-rest encryption enabled. Serverless: automatic. Node-based: must be set at creation (`AtRestEncryptionEnabled: true`). Cannot be added later.
+- [ ] **REQUIRED** At-rest encryption enabled. Serverless: automatic. Node-based: set at creation (`AtRestEncryptionEnabled: true`). On Valkey 9.0+, turning durability on for an existing cluster also turns on at-rest encryption; otherwise it cannot be added later.
 - [ ] **REQUIRED** RBAC or IAM auth configured. No default user active (`modify-user --user-id default --access-string "off ~* -@all"`).
 - [ ] **REQUIRED** Security group allows only necessary ports (6379, and 6380 for serverless reader) from application security groups only. No `0.0.0.0/0`.
 - [ ] **RECOMMENDED** Security audit passed: `python3 scripts/security_audit.py --serverless <name>` or `--replication-group <name>`.
@@ -17,6 +17,7 @@ Gate checklist before promoting an ElastiCache cache to production. Run through 
 - [ ] **REQUIRED** Automatic failover enabled (node-based). Serverless: automatic.
 - [ ] **REQUIRED** At least 1 replica per shard (node-based). Serverless: automatic.
 - [ ] **RECOMMENDED** Subnets span 3 AZs for maximum fault tolerance.
+- [ ] **RECOMMENDED** If acknowledged writes must survive a failover, durability is enabled (node-based Valkey 9.0+). Multi-AZ failover alone can lose recent writes. See Durability in `references/setup/create-secure-cache.md`.
 
 ## Backup and Recovery
 

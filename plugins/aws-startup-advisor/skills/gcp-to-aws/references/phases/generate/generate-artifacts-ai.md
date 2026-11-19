@@ -88,7 +88,7 @@ Generate `ai-migration/migrate_to_mantle.sh` — a shell script that configures 
 **Requirements:**
 
 - Dry-run by default (`--execute` flag to apply)
-- For proprietary GPT targets, print `OPENAI_BASE_URL=https://bedrock-mantle.{region}.api.aws/openai/v1`. Use the model-specific base path from `shared/openai-on-bedrock.md`; generic `/v1` returns 404 for proprietary GPT models. Credentials must be Bedrock credentials, not the source provider's API key; prefer the auto-refreshing `BedrockOpenAI` token provider shown in that reference.
+- For proprietary GPT targets, print `OPENAI_BASE_URL=https://bedrock-mantle.{region}.api.aws/openai/v1`. Use the model-specific base path from `references/vendored/ai/openai-on-bedrock.md`; generic `/v1` returns 404 for proprietary GPT models. Credentials must be Bedrock credentials, not the source provider's API key; prefer the auto-refreshing `BedrockOpenAI` token provider shown in that reference.
 - Print the model string change: current model ID → Bedrock model ID from `aws-design-ai.json`
 - Include a quick verification call using the selected Mantle API: `chat.completions.create` for `mantle_openai_chat`, `responses.create` for `mantle_openai_responses`. Reuse the target-call shape in Step 2; never call Converse with a bare Astra ID.
 - Preserve request/response shapes only when the selected API matches the source. Otherwise include the planned API reshape. Do not claim all existing SDK calls work unchanged; parameters and tool/state behavior still need the selected model/API's verification.

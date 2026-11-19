@@ -68,7 +68,7 @@ These costs are easy to overlook during initial planning:
 
 - **Right-size instances**: if `EngineCPUUtilization` is consistently below 20% and `DatabaseMemoryUsagePercentage` is below 30%, the instance is over-provisioned. Scale down to a smaller node type.
 - **Use reserved nodes for steady-state workloads**: Reserved nodes save approximately 30-55% depending on term length and payment option (run `python3 scripts/price_calculator.py --mode node --node-type <type> --nodes <N> --show-ri-options` for current estimates).
-- **Enable data tiering for large datasets**: for r6gd instance types, data tiering moves less-frequently-accessed data to SSD, allowing larger datasets on fewer nodes.
+- **Enable data tiering for large datasets**: for r6gd/r7gd/r8gd instance types, data tiering moves less-frequently-accessed data to SSD, allowing larger datasets on fewer nodes.
 - **Cluster mode enabled for horizontal scaling**: instead of scaling up to larger (more expensive) node types, scale out with more shards on smaller nodes.
 
 ### General

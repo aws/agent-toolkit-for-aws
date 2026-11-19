@@ -5,7 +5,7 @@ The Plan phase turns the discovered source into a clear, **numbered migration pl
 schema checks are allowed to ground the plan. The phase branches on the target type set at
 Identify — a **KB path** (a live knowledge base) or an **IaC path** (existing infrastructure-as-code).
 The default is to **stop once the plan exists**; the Implement phase is opt-in and begins only if
-the user explicitly asks the agent to build.
+the customer explicitly asks the agent to build.
 
 ## Contents
 
@@ -19,7 +19,7 @@ the user explicitly asks the agent to build.
 ## Preconditions
 
 - **The target type is never inferred here.** It was set at Phase 0. If it is unset, the phase
-  ends `NEEDS_INPUT` and asks the user which path applies; it does not guess. Switching the target
+  ends `NEEDS_INPUT` and asks the customer which path applies; it does not guess. Switching the target
   type restarts at Phase 1 (Identify) for the new type.
 - The discovered source configuration is on record (vector store, embedding model, chunking, data
   sources, connectors, and any no-managed-path flags).
@@ -28,13 +28,13 @@ the user explicitly asks the agent to build.
   never `web_fetch` — read the doc per
   [safety-and-iam](references/bedrock-kb-migration/safety-and-iam.md).
 - Terminology: **self-managed KB (`VECTOR`; the host skill calls this a Customer-managed KB)** is
-  the source; **Managed KB (`MANAGED`)** is the target. **source** / **original** is the user's KB
+  the source; **Managed KB (`MANAGED`)** is the target. **source** / **original** is the customer's KB
   and is never mutated.
 
 ## KB path
 
 Plans a create-new-then-cut-over migration of a live self-managed KB, where the mutating steps are
-written for the **user** to run.
+written for the **customer** to run.
 
 ### Core principle — create-new-then-cut-over
 
@@ -67,7 +67,7 @@ approved create) — rather than a vague "needs verification."
 of [kb-managed-connect-ds](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-managed-connect-ds.html)
 and the connector's own `kb-managed-ds-*` page. Do not use that page's "Supported type values" sentence: it
 lags the Topics list. If a page documents the connector, it is not blocked. If the fetch fails, do not
-record it as blocked: mark its shape unverified, give the link, and hand the shape check to the user. This
+record it as blocked: mark its shape unverified, give the link, and hand the shape check to the customer. This
 is a documentation read; never call `create-data-source` to test whether a type exists.
 
 The blocker list is **closed** — exactly a `customTransformationConfiguration` Lambda hook,
@@ -75,11 +75,11 @@ context enrichment / GraphRAG, or a connector confirmed absent. Everything
 else, including every `adjusted` row, is `READY` and migrates. (Salesforce, Zendesk and Confluence
 Data Center are native managed connectors now, so they are not blockers.) **Exclude, never
 approximate** a true blocker; and never exclude a KB that an `adjusted` row covers. A plan reporting
-`0 READY` for a setting that has an `adjusted` row is wrong and costs the user a support case for nothing.
+`0 READY` for a setting that has an `adjusted` row is wrong and costs the customer a support case for nothing.
 
-### The numbered plan (user-executed)
+### The numbered plan (customer-executed)
 
-Present mutating commands as steps for the user, each labeled "(user runs)" and paired with a
+Present mutating commands as steps for the customer, each labeled "(customer runs)" and paired with a
 public doc link. Confirm a **naming convention** first (default `<original-name>-managed` for the
 KB, `<original-ds-name>-managed` per data source); record it so every step names resources
 consistently.
@@ -87,21 +87,21 @@ consistently.
 ```
 MIGRATION PLAN — <source> -> <target>
 
-Prerequisites (user runs):
+Prerequisites (customer runs):
   1. Provision the target vector store and its index/table per the public prerequisites doc.
   2. Confirm an IAM role for the KB with the documented permissions for the new store.
 
-Build the new knowledge base (user runs):
-  3. aws bedrock-agent create-knowledge-base ...    (user runs; do not run here)
-  4. aws bedrock-agent create-data-source ...       (user runs; do not run here)
+Build the new knowledge base (customer runs):
+  3. Create the new knowledge base                  (customer runs; do not run here)
+  4. Create each data source on the new KB          (customer runs; do not run here)
 
-Populate and validate (user runs):
-  5. aws bedrock-agent start-ingestion-job ...      (user runs; do not run here)
+Populate and validate (customer runs):
+  5. Start ingestion on each new data source        (customer runs; do not run here)
   6. Validate retrieval on the new KB and compare results to the original KB.
 
-Cut over and clean up (user runs):
+Cut over and clean up (customer runs):
   7. Point the application/retrieve calls at the new knowledge base id.
-  8. aws bedrock-agent delete-knowledge-base ...    (user runs; only after validation)
+  8. Delete the original knowledge base             (customer runs; only after validation)
 ```
 
 **On a bulk migration, one plan covers every discovered KB.** State the shared decisions (target,
@@ -114,8 +114,8 @@ whole set to a single Implement run — never a separate plan-and-build cycle pe
   **like for like — `Retrieve` against `Retrieve`.** The source `VECTOR` KB has no agentic surface,
   so validating the new KB with `AgenticRetrieveStream` measures a different API and proves nothing
   about the migration. Compare **ranking and content, not score magnitude** (scores move scale).
-- **Rollback = keep the original.** Because the original KB is untouched until step 7, rollback is
-  simply "keep using the original KB / point the app back." Nothing is deleted until the user is
+- **Rollback = keep the original.** Because the original KB is untouched until step 8, rollback is
+  simply "keep using the original KB / point the app back." Nothing is deleted until the customer is
   confident. If the original has a Confluence, SharePoint, Salesforce or Web Crawler data source, deleting it cannot be
   undone: new connectors of these types cannot be created on self-managed (customer-managed) KBs; existing
   ones keep working ([Confluence connector page](https://docs.aws.amazon.com/bedrock/latest/userguide/confluence-data-source-connector.html),
@@ -124,8 +124,23 @@ whole set to a single Implement run — never a separate plan-and-build cycle pe
 
 ### Caveats
 
-- Cost and time scale with data volume (all documents are re-embedded).
-- Create-new-then-cut-over allows near-zero downtime, since both KBs coexist during validation.
+- **Put this in the plan, at the ingestion step:** the first ingestion re-embeds every document, and
+  ingestion time grows with corpus size. Per the Managed Knowledge Bases section of
+  [Bedrock pricing](https://aws.amazon.com/bedrock/pricing/), the re-embed adds an embedding charge only
+  with a `CUSTOM` embedding model. State that charge only if you read that section in this conversation
+  ([cost analysis](references/bedrock-kb-migration/cost-analysis.md) Step 5); otherwise give the link.
+- Create-new-then-cut-over allows near-zero downtime, since both KBs coexist during validation. Both are
+  charged while they coexist: the new KB at the rates the Managed Knowledge Bases section of Bedrock pricing
+  lists, and the original through its vector store and any models it calls. Deleting the original KB does
+  not delete its vector store
+  ([Delete a knowledge base](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-delete.html)): the store
+  keeps billing until it is removed itself, in the Decommission step
+  ([handoff](references/bedrock-kb-migration/handoff.md) §2). Keep the overlap short. When the original's
+  collection is shared with other KBs, the self-managed bill may fall little until the last KB on it moves
+  ([cost analysis](references/bedrock-kb-migration/cost-analysis.md) Step 3.1); OpenSearch Serverless
+  scales capacity down to what the remaining data needs, not below the configured minimum
+  ([capacity limits](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-scaling.html)),
+  so how much it falls depends on what stays.
 - All resources stay in the source Region unless docs state otherwise.
 - Re-confirm every command name and parameter against the public AWS CLI reference.
 
@@ -140,9 +155,10 @@ several managed behaviors are non-obvious and belong in the plan itself:
   a configurable dimension.
 - **Retrieval surface.** A Managed KB has two: `Retrieve` (one similarity search) and
   `AgenticRetrieveStream` (an FM planning loop that decomposes the query, iterates, and routes
-  across several KBs, up to a quota read live). The agentic surface **does not exist on the source `VECTOR` KB at all** —
+  across several KBs, up to the count stated in the `retrievers` row of the request-field table in the
+  [agentic retrieval guide](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-test-agentic-retrieve.html)). The agentic surface **does not exist on the source `VECTOR` KB at all** —
   plan `Retrieve` as the like-for-like replacement, and present `AgenticRetrieveStream` as a **later
-  optional capability** the migration unlocks, never a required step and never something the user
+  optional capability** the migration unlocks, never a required step and never something the customer
   already had.
 - **What callers will see (report every applicable row, every time).** Repointing to the new KB id is
   not sufficient. Take the full list from
@@ -152,7 +168,7 @@ several managed behaviors are non-obvious and belong in the plan itself:
   nothing without a user, and duplicates from overlapping data sources — and put each as an explicit
   caller-side step in the plan.
 - **Connector auth prerequisites** (Confluence/SharePoint/OneDrive/Google Drive) are the top cause
-  of failed data sources, and the managed shape differs. Plan them as user steps: a Secrets Manager
+  of failed data sources, and the managed shape differs. Plan them as customer steps: a Secrets Manager
   secret in the KB's Region with keys matching the managed `authType`, and the KB role granted
   `secretsmanager:GetSecretValue` (plus `kms:Decrypt` / S3 certificate read as needed).
 - **Sync schedule (`syncSchedule`) — carried over from the source, not asked.** Managed KBs can
@@ -196,7 +212,7 @@ section, under "Handled differently on managed") — read that section before de
   schema and managed connector/API docs first, state what was checked, and only then name a newly
   discovered blocker.
 
-Both error directions fail, and false exclusion is worse: it sends the user to a support queue for a
+Both error directions fail, and false exclusion is worse: it sends the customer to a support queue for a
 migration that is supported today. **Exclude never approximate.** If no KB is `READY`, the phase
 ends `COMPLETE` with `ready_kbs: 0` and Implement emits nothing.
 
@@ -204,7 +220,7 @@ ends `COMPLETE` with `ready_kbs: 0` and Implement emits nothing.
 
 Confirm the **target** (managed equivalent, same account/Region), the **naming convention**
 (default `<original-name>-managed`), and the **output format**, which **defaults to the source
-format** (Terraform in → Terraform out; CFN/CDK-synth in → CloudFormation out). The user may
+format** (Terraform in → Terraform out; CFN/CDK-synth in → CloudFormation out). The customer may
 override to exactly one of {CloudFormation, Terraform}. CDK is not an output format: a CDK source is
 read through its synthesized CloudFormation, and the output is CloudFormation the customer can deploy
 from their CDK app or directly.
@@ -236,7 +252,7 @@ Generate the migrated IaC (agent does — provisions nothing):
   2. Emit each data source as the managed connector shape; map chunking, deletion policy, filters.
   3. Validate the emitted template against the live schema; withhold on any violation.
 
-Deploy + cut over (USER runs later, outside this flow):
+Deploy + cut over (CUSTOMER runs later, outside this flow):
   4. Review the migrated file, then deploy it yourself as <deploy_placement> (a new stack / root module).
   5. Ingest/sync, validate retrieval, cut the app over.
   6. Decommission per the resource-level checklist below; keep any bucket a new data source reads.
@@ -244,7 +260,7 @@ Deploy + cut over (USER runs later, outside this flow):
 
 Report the caller-visible consequences in the plan (new knowledge base id, re-embedding,
 `HYBRID`-only retrieval, relevance scores moving scale, and any split lookup or lost direct index
-access). The plan is where the user first sees them, while they can still say no.
+access). The plan is where the customer first sees them, while they can still say no.
 
 **Decommission is a resource-level checklist**, never "delete the source stack". List each source resource
 with what happens to it: removed after cutover (KBs, data sources, vector index or collection, vector
@@ -255,10 +271,10 @@ bucket, run `cdk diff`, and confirm only the KB, data source, index, vector buck
 
 ### Verification and rollback
 
-- **Verification:** the emitted file is schema-validated before the user sees it; after they deploy
+- **Verification:** the emitted file is schema-validated before the customer sees it; after they deploy
   it, they run representative queries against the new and original KBs and compare.
 - **Rollback:** the source IaC and original KB are untouched — rollback is "keep using them." The
-  migrated file provisions nothing until the user chooses to deploy it.
+  migrated file provisions nothing until the customer chooses to deploy it.
 
 ## Persist the plan
 
@@ -271,7 +287,7 @@ values.
 
 The Plan phase ends in one of `COMPLETE | NEEDS_INPUT | BLOCKED | FAILED`:
 
-- `NEEDS_INPUT` — the target (KB) or target/format (IaC) is unspecified; relayed to the user.
+- `NEEDS_INPUT` — the target (KB) or target/format (IaC) is unspecified; relayed to the customer.
 - `BLOCKED` — the target store/model is unsupported in-Region (KB), or the chosen format can't be
   produced with no acceptable fallback (IaC); stops.
 - `FAILED` — a call the phase needed returned an error other than a denied permission; name the call and
@@ -280,10 +296,13 @@ The Plan phase ends in one of `COMPLETE | NEEDS_INPUT | BLOCKED | FAILED`:
   the target, the naming convention, `plan_generated`, and the plan file path; on the IaC path also
   `output_format`, `ready_kbs`, and `blocked_kbs`.
 
-On `COMPLETE`, **the default is to stop with the plan** when the user has not chosen. If the request
+On `COMPLETE`, **the default is to stop with the plan** when the customer has not chosen. If the request
 already states the choice ("emit the migrated file", "stop at the plan"), that is the answer: on the
 IaC path proceed to emit `managed-target.<ext>` without re-asking (nothing is provisioned). Otherwise
-ask the user: stop with the plan (default), or build it (opt in to the Implement phase).
+ask the customer: stop with the plan (default), or build it (opt in to the Implement phase). When the customer
+stops at the plan (chosen in the request, or as the answer to that question), read
+[handoff](references/bedrock-kb-migration/handoff.md) and give its six blocks in that same reply (the
+guide's Phase 5). A reply that still asks gives no handoff yet.
 
 ## Common mistakes
 
@@ -301,4 +320,4 @@ ask the user: stop with the plan (default), or build it (opt in to the Implement
 - **Promising Terraform MANAGED support without checking the provider** — plan the provider check
   and the CFN fallback.
 - **Planning the template but not the consequences** — name what changes for callers before the
-  user commits.
+  customer commits.

@@ -13,7 +13,7 @@
 This file is loaded by `design-ai.md` when `ai-workload-profile.json` has `summary.ai_source` = `"openai"` or
 `"both"`. It provides the selection policy and mapping tables for OpenAI → Bedrock migration decisions.
 
-**Facts live in `references/shared/openai-on-bedrock.md`** — model IDs, endpoint paths, region matrix, quotas, prompt
+**Facts live in `references/vendored/ai/openai-on-bedrock.md`** — model IDs, endpoint paths, region matrix, quotas, prompt
 caching rules, and pricing provenance. Read it before applying this file. Do not restate those facts here.
 
 **Model lifecycle:** before recommending any Bedrock model, check `references/vendored/ai/ai-model-lifecycle.md`. Do not
@@ -32,7 +32,7 @@ For an explicitly requested 5.5 assessment, read its [Bedrock model card](https:
 **The old premise of this guide — "OpenAI models are unavailable on AWS, so migrating means switching model families"
 — is obsolete.** GPT-6 Astra, GPT-5.6 Sol / Terra / Luna, GPT-5.5, and GPT-5.4 are generally available on Bedrock,
 counting toward existing AWS commitments. Pricing depends on the model and inference option;
-see `shared/openai-on-bedrock.md`.
+see `references/vendored/ai/openai-on-bedrock.md`.
 
 Two consequences that invert the previous decision logic:
 
@@ -50,7 +50,7 @@ Two consequences that invert the previous decision logic:
    (the card's inference-option table or [aws.amazon.com/bedrock/pricing](https://aws.amazon.com/bedrock/pricing/),
    with URL and read date) or report the comparison unavailable; an In-Region rate used as a proxy is an
    **unverified planning assumption**, labelled as such, and yields no verified premium or savings percentage.
-   Never report parity for them. See `shared/openai-on-bedrock.md`. The non-cost case — AWS commitments, IAM/VPC/CloudTrail governance, residency,
+   Never report parity for them. See `references/vendored/ai/openai-on-bedrock.md`. The non-cost case — AWS commitments, IAM/VPC/CloudTrail governance, residency,
    prompt caching, one vendor relationship — carries the in-region path; never present that path as free or neutral.
    For Astra, use its separately dated Bedrock rates and verify the source provider's rate before comparing.
 
@@ -71,7 +71,7 @@ GPT-5.4, the target is **the same model on Bedrock**.
 
 | Source model  | Bedrock target | Model ID (mantle / runtime CRIS)                        | Assessment                                                      |
 | ------------- | -------------- | ------------------------------------------------------- | --------------------------------------------------------------- |
-| GPT-6 Astra   | GPT-6 Astra    | `openai.gpt-6-astra` / `us.` `global.` prefixed         | `strong_migrate` after the Astra region/API gate in `shared/openai-on-bedrock.md`; price the chosen inference option |
+| GPT-6 Astra   | GPT-6 Astra    | `openai.gpt-6-astra` / `us.` `global.` prefixed         | `strong_migrate` after the Astra region/API gate in `references/vendored/ai/openai-on-bedrock.md`; price the chosen inference option |
 | GPT-6 Sol     | GPT-6 Sol      | `openai.gpt-6-sol` / `us.` `global.` prefixed           | `strong_migrate` — same model; parity on Global CRIS, else +10% |
 | GPT-6 Luna    | GPT-6 Luna     | `openai.gpt-6-luna` / `us.` `global.` prefixed          | `strong_migrate` — same model; parity on Global CRIS, else +10% |
 | GPT-6.1 Sol   | GPT-6.1 Sol    | `openai.gpt-6.1-sol` / `us.` `global.` prefixed         | `strong_migrate` — same model; parity on Global CRIS, else +10% |
@@ -100,7 +100,7 @@ Report the assessment honestly: `strong_migrate` here means "low-risk, well-supp
 
 ### Region gate (applies to every Tier 0 selection — endpoint-aware)
 
-The gate differs by family (see `shared/openai-on-bedrock.md` § Regional Availability):
+The gate differs by family (see `references/vendored/ai/openai-on-bedrock.md` § Regional Availability):
 
 **GPT-6 Astra:** apply its own mantle and runtime matrices from the canonical catalog. For strict
 in-region residency, the mantle region must match. Otherwise offer a supported runtime CRIS path
@@ -184,7 +184,7 @@ All figures per 1M tokens. Percentages are blended savings at a 2:1 input-to-out
 comparisons are now Bedrock prices** where the OpenAI model is on Bedrock — this is a Bedrock-vs-Bedrock model
 choice, not a provider comparison. Verify rates via `references/vendored/ai/bedrock-pricing-cache.md` — pricing is cache-only, so a
 GPT-5.x rate that is absent or `_unverified_` in the cache has no live lookup to fall back to and must be
-reported as unavailable rather than priced (see `shared/openai-on-bedrock.md`).
+reported as unavailable rather than priced (see `references/vendored/ai/openai-on-bedrock.md`).
 
 ### Against Tier 0 models (same-model baseline vs cross-family)
 
@@ -272,7 +272,7 @@ This is the common case and needs no cost justification.
 
 **Migrate to Bedrock, model change (Tier 1/2), if:**
 
-- The source model is not on Bedrock (see the region and catalog lists in `shared/openai-on-bedrock.md`)
+- The source model is not on Bedrock (see the region and catalog lists in `references/vendored/ai/openai-on-bedrock.md`)
 - The user's priority is cost and they accept a model change — note that the cheapest option is often Nova, and that
   Haiku 5.5 can be cheaper below its 100K prompt boundary while Luna can be cheaper above it; compare the selected profiles and each model's billed token counts
 - Required features cannot be served by a supported same-model path. Astra / GPT-5.6 have runtime CRIS
@@ -302,7 +302,7 @@ rather than dismissing it. For a long-context (>272K) workload the gap is much w
 
 | OpenAI Feature                             | Bedrock Equivalent                                          | Notes                                                                                                |
 | ------------------------------------------ | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| OpenAI SDK (direct)                        | Same model on `bedrock-runtime` `/openai/v1` (CRIS id)      | Base URL + credential + model ID change; see `shared/openai-on-bedrock.md` for the `/openai/v1` path; Mantle only with a `mantle_selector` |
+| OpenAI SDK (direct)                        | Same model on `bedrock-runtime` `/openai/v1` (CRIS id)      | Base URL + credential + model ID change; see `references/vendored/ai/openai-on-bedrock.md` for the `/openai/v1` path; Mantle only with a `mantle_selector` |
 | Responses API                              | Runtime Responses API (`/openai/v1/responses`)              | Closest to a drop-in; always synchronous on runtime (`background=true` needs a Mantle selector)     |
 | Chat Completions                           | Preserve supported Chat when selected                       | Reshape only for a selected API change; verify the model and endpoint                                                     |
 | Function calling                           | Supported on GPT-5.x via runtime or mantle; Claude tools via Converse | Same-model keeps tool semantics identical; server-side tools are Mantle-only                |
@@ -317,7 +317,7 @@ rather than dismissing it. For a long-context (>272K) workload the gap is much w
 | TTS                                        | Amazon Polly / Nova 2 Sonic                                 | Different pricing model                                                                              |
 | Assistants API                             | See decision tree below                                     | Path depends on which features are used                                                              |
 | Realtime API                               | No equivalent                                               | Stay on OpenAI for this                                                                              |
-| Codex                                      | Not verified on Bedrock — see `shared/openai-on-bedrock.md` | Do not price; re-check the OpenAI model card index first                                             |
+| Codex                                      | The coding agent on GPT-5.6 (Sol, Terra, Luna), not a Bedrock model. See `references/vendored/ai/openai-on-bedrock.md` | Price the GPT-5.6 model it calls. A Codex-specific API model has no same-model target. Do not attach a Codex rate. |
 | Guardrails / KB / invocation logging       | `bedrock-runtime` CRIS path (Guardrails via Converse; logging on every runtime API); KB needs a Bedrock-native model or gpt-oss | None of these are available through the mantle GPT path                                  |
 
 ---
@@ -373,7 +373,7 @@ the auto-refreshing `BedrockOpenAI` token provider or a Bedrock API key, the bar
 `bedrock-mantle:*` IAM (e.g. `AmazonBedrockMantleInferenceAccess`). Record `migration_path: "mantle_openai_responses"`
 or `"mantle_openai_chat"` with the selector.
 
-Full snippets and prerequisites in `shared/openai-on-bedrock.md`. No prompt changes, no eval regression expected —
+Full snippets and prerequisites in `references/vendored/ai/openai-on-bedrock.md`. No prompt changes, no eval regression expected —
 but still run the eval harness to confirm, because infrastructure and tokenizer-adjacent behavior can differ.
 
 ### Assistants API → migration decision tree

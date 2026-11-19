@@ -90,7 +90,7 @@ CPU scales linearly with memory — doubling memory doubles CPU. **Over-provisio
 
 ### Timeout
 
-- Range 1s – 900s (15 min); **default is 3s** — always set it explicitly
+- Range 1s – 1800s (30 min); **default is 3s** — always set it explicitly. Some event source mappings allow less; check the [event source mapping docs](https://docs.aws.amazon.com/lambda/latest/dg/invocation-eventsourcemapping.html). On Managed Instances, async and ESM invocations allow up to 5400s (90 min); synchronous invocations stop at 30 min.
 
 **Critical integration limits:**
 

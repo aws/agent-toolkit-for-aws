@@ -37,7 +37,7 @@ GCP_ESTIMATE_AI = PLUGIN / "skills/gcp-to-aws/references/phases/estimate/estimat
 AZURE_CACHE = PLUGIN / "skills/azure-to-aws/references/shared/pricing-cache.md"
 AZURE_ESTIMATE = PLUGIN / "skills/azure-to-aws/references/phases/estimate/estimate.md"
 AZURE_ESTIMATE_AI = PLUGIN / "skills/azure-to-aws/references/phases/estimate/estimate-ai.md"
-AZURE_OPENAI = PLUGIN / "skills/azure-to-aws/references/shared/openai-on-bedrock.md"
+AZURE_OPENAI = PLUGIN / "skills/shared/ai/openai-on-bedrock.md"
 VENDORED = (
     PLUGIN / "skills/gcp-to-aws/references/vendored/ai/bedrock-pricing-cache.md",
     PLUGIN / "skills/azure-to-aws/references/vendored/ai/bedrock-pricing-cache.md",

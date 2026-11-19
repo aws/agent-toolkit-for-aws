@@ -70,27 +70,28 @@ def test_contract_copy_matches_the_canonical_schema() -> None:
         (PLUGIN_ROOT / "scripts/contracts/aws-design-ai.schema.json").read_bytes()
 
 
-def test_openai_fact_base_copy_matches_gcp_to_aws() -> None:
-    assert (BMA / "references/shared/openai-on-bedrock.md").read_bytes() == \
-        (PLUGIN_ROOT / "skills/gcp-to-aws/references/shared/openai-on-bedrock.md").read_bytes()
+def test_openai_fact_base_is_the_vendored_shared_guide() -> None:
+    canonical = (PLUGIN_ROOT / "skills/shared/ai/openai-on-bedrock.md").read_bytes()
+    assert (BMA / "references/vendored/ai/openai-on-bedrock.md").read_bytes() == canonical
+    assert not (BMA / "references/shared/openai-on-bedrock.md").exists()
 
 
 def test_every_guide_the_plan_can_name_ships_with_the_skill() -> None:
     names = [f"{DESIGN.GUIDE_DIR}/{g}" for g in DESIGN.ALWAYS_GUIDES]
     names += [f"{DESIGN.GUIDE_DIR}/{g}" for guides in DESIGN.PROVIDER_GUIDES.values() for g in guides]
-    names += [f"{DESIGN.GUIDE_DIR}/ai-openrouter-to-bedrock.md", "references/shared/openai-on-bedrock.md"]
+    names += [f"{DESIGN.GUIDE_DIR}/ai-openrouter-to-bedrock.md", f"{DESIGN.GUIDE_DIR}/openai-on-bedrock.md"]
     for name in names:
         assert (BMA / name).is_file(), name
 
 
-def test_skill_runs_design_after_clarify_and_stops_after_design() -> None:
+def test_skill_runs_design_after_clarify_then_estimate() -> None:
     assert "## Step 3: Design" in SKILL and "references/phases/design/design-ai.md" in SKILL
-    assert "This release stops after Design" in SKILL and "stops after Clarify" not in SKILL
-    assert 'current_phase` to `"design"`' in SKILL
+    assert "## Step 4: Estimate" in SKILL and "This release stops after Estimate" in SKILL and "stops after Clarify" not in SKILL
+    assert 'current_phase` to `"design"`' in SKILL and 'current_phase` to `"estimate"`' in SKILL
     clarify = (BMA / "references/phases/clarify/clarify-ai-only.md").read_text(encoding="utf-8")
     assert 'Set `current_phase` to `"design"`' in clarify and "continue to Design" in clarify
     discover = (BMA / "references/phases/discover/discover.md").read_text(encoding="utf-8")
-    assert '"design": "pending"' in discover
+    assert '"design": "pending", "estimate": "pending"' in discover
 
 
 def _rule_for(status: dict) -> int:
@@ -100,45 +101,62 @@ def _rule_for(status: dict) -> int:
         return 1
     if p.get("design") == "in_progress" or (p.get("clarify") == "completed" and p.get("design", "pending") == "pending"):
         return 2
-    if p.get("design") == "completed":
+    if p.get("estimate") == "in_progress" or (p.get("design") == "completed" and p.get("estimate", "pending") == "pending"):
         return 3
-    if p.get("discover") == "completed" and p.get("clarify") == "pending":
+    if p.get("estimate") == "completed":
         return 4
-    return 5 if p.get("discover") == "in_progress" else 6
+    if p.get("discover") == "completed" and p.get("clarify") == "pending":
+        return 5
+    return 6 if p.get("discover") == "in_progress" else 7
 
 
-def test_resume_rules_put_an_active_clarify_before_a_completed_design() -> None:
+def test_resume_rules_put_an_active_earlier_phase_first() -> None:
     step0 = SKILL[SKILL.index("## Step 0"):SKILL.index("## Step 1:")]
-    rules = [line for line in step0.splitlines() if line[:3] in {f"{n}. " for n in range(1, 7)}]
-    assert [r[:2] for r in rules] == ["1.", "2.", "3.", "4.", "5.", "6."]
-    assert '`phases.clarify` set to `"in_progress"`, resume at Clarify, whatever `phases.design` says' in rules[0]
-    assert 'resume at Design' in rules[1] and 'If that file has `phases.design` set to `"completed"`' in rules[2]
-    assert '`phases.clarify` to `"in_progress"`, `phases.design` to `"pending"`, and `current_phase` to `"clarify"` in one write' in rules[2]
+    rules = [line for line in step0.splitlines() if line[:3] in {f"{n}. " for n in range(1, 8)}]
+    assert [r[:2] for r in rules] == ["1.", "2.", "3.", "4.", "5.", "6.", "7."]
+    assert '`phases.clarify` set to `"in_progress"`, resume at Clarify, whatever the later phases say' in rules[0]
+    assert "resume at Design" in rules[1] and "resume at Estimate" in rules[2]
+    assert 'If that file has `phases.estimate` set to `"completed"`' in rules[3]
+    assert ('set `phases.clarify` to `"in_progress"`, `phases.design` and `phases.estimate` to `"pending"`, and `current_phase` to '
+            '`"clarify"` in one write') in rules[3]
+    assert 'set `phases.design` and `phases.estimate` to `"pending"` and `current_phase` to `"design"` in one write' in rules[3]
     assert "Use the first rule that matches, and never change `run_id`" in step0
     step2 = SKILL[SKILL.index("## Step 2: Clarify"):SKILL.index("## Step 3: Design")]
-    assert 'If `phases.design` is `"in_progress"` or `"completed"`, set it to `"pending"` in the same write' in step2
+    assert 'Set `phases.design` and `phases.estimate` to `"pending"` in the same write when either is `"in_progress"` or `"completed"`' in step2
+    step3 = SKILL[SKILL.index("## Step 3: Design"):SKILL.index("## Step 4: Estimate")]
+    assert 'and `phases.estimate` to `"pending"` when it is `"in_progress"` or `"completed"`, in one write' in step3
 
 
 @pytest.mark.parametrize(("phases", "rule"), [
-    ({"discover": "completed", "clarify": "in_progress", "design": "completed"}, 1),
+    ({"discover": "completed", "clarify": "in_progress", "design": "completed", "estimate": "completed"}, 1),
     ({"discover": "completed", "clarify": "in_progress", "design": "pending"}, 1),
-    ({"discover": "completed", "clarify": "completed", "design": "pending"}, 2),
+    ({"discover": "completed", "clarify": "completed", "design": "pending", "estimate": "completed"}, 2),
     ({"discover": "completed", "clarify": "completed"}, 2),
     ({"discover": "completed", "clarify": "completed", "design": "in_progress"}, 2),
     ({"discover": "completed", "clarify": "completed", "design": "completed"}, 3),
-    ({"discover": "completed", "clarify": "pending"}, 4),
-    ({"discover": "in_progress", "clarify": "pending"}, 5),
+    ({"discover": "completed", "clarify": "completed", "design": "completed", "estimate": "pending"}, 3),
+    ({"discover": "completed", "clarify": "completed", "design": "completed", "estimate": "in_progress"}, 3),
+    ({"discover": "completed", "clarify": "completed", "design": "completed", "estimate": "completed"}, 4),
+    ({"discover": "completed", "clarify": "pending"}, 5),
+    ({"discover": "in_progress", "clarify": "pending"}, 6),
 ])
 def test_interrupted_reentry_resumes_the_active_phase(phases, rule) -> None:
     assert _rule_for({"phases": phases}) == rule
 
 
-def test_reentry_state_after_changing_answers_resumes_clarify_then_design() -> None:
-    status = {"phases": {"discover": "completed", "clarify": "completed", "design": "completed"}}
-    assert _rule_for(status) == 3
-    status["phases"].update(clarify="in_progress", design="pending")
+def test_reentry_after_changing_answers_runs_clarify_design_then_estimate() -> None:
+    status = {"phases": {"discover": "completed", "clarify": "completed", "design": "completed", "estimate": "completed"}}
+    assert _rule_for(status) == 4
+    status["phases"].update(clarify="in_progress", design="pending", estimate="pending")
     assert _rule_for(status) == 1
     status["phases"]["clarify"] = "completed"
+    assert _rule_for(status) == 2
+    status["phases"]["design"] = "completed"
+    assert _rule_for(status) == 3
+
+
+def test_design_runs_again_without_changing_answers() -> None:
+    status = {"phases": {"discover": "completed", "clarify": "completed", "design": "pending", "estimate": "pending"}}
     assert _rule_for(status) == 2
 
 
@@ -419,6 +437,17 @@ def _set(d: dict, key: str, value) -> None:
 ], ids=lambda v: v if isinstance(v, str) else "")
 def test_check_rejects(mutate, code) -> None:
     assert code in _mutated(MANTLE_FIXTURE, mutate)
+
+
+@pytest.mark.parametrize(("price", "ok"), [
+    ("2.20/13.20 per 1M tokens", True), ("$5.50/$33.00 per 1M tokens (In-Region)", True), ("0.02 per 1M tokens", True),
+    ("0.04 per image", True), ("unverified (the model card publishes no Geo price)", True),
+    ("$2.20 input, $13.20 output", False), ("about 10% more", False), ("2.20 / 13.20 per million", False),
+])
+def test_check_requires_the_price_grammar_estimate_reads(price, ok) -> None:
+    for key in ("bedrock_price", "source_provider_price"):
+        codes = _mutated(MANTLE_FIXTURE, lambda d, p, f: _set(_row(d, EMB_ID), key, price))
+        assert ("row_bad_price" not in codes) is ok, (key, price, codes)
 
 
 def test_check_rejects_a_bare_gpt_id_on_a_runtime_path() -> None:
