@@ -10,7 +10,7 @@ RAG retrieval from ElastiCache Valkey. Best for:
 
 ## Deployment Requirement
 
-Node-based Valkey 8.2 or above clusters only (recommend 9.0). Vector search is NOT available on serverless.
+Node-based Valkey 8.2 or above (recommend 9.1) or Serverless Valkey 9.0+.
 See `elasticache-search.md` for full platform constraints and limits.
 
 **Cluster mode:** If running on a multi-shard cluster, use hash tags to ensure all document chunks for a single index land on the same shard:

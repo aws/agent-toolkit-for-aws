@@ -90,7 +90,7 @@ this rule governs it, NOT the class default below.
 - **agent_session units** (effective_runtime = agentcore | lambda_microvms | ecs | eks | lambda):
   estimate as today — runtime + model + stated usage assumption (sessions/mo, duration, I/O wait
   %). The session count for compute is the same `sessions_per_month` the model line uses below
-  (or the same 1,000-session default, marked the same way), so the two lines compare like with
+  (or the same stated session default, marked the same way), so the two lines compare like with
   like. Apply the cached anchors from Step 2 (AgentCore vCPU/GB, Lambda MicroVMs, Fargate) plus
   Bedrock model token rates. For a `lambda` runtime use Lambda request pricing (invocations ×
   duration × memory). For `eks`, apply the EKS pricing rule above. Any runtime missing a cached
@@ -101,8 +101,10 @@ this rule governs it, NOT the class default below.
   `answers.json.units[<unit_id>].usage_volume`. `model_tokens` = sessions/month × (input tokens
   per session × input rate + output tokens per session × output rate), using the rate of the
   unit's `model_recommendation` in design.json from the pricing cache, rounded out to a band.
-  Any field that is missing or `unknown` takes this stated default: 1,000 sessions a month,
-  20,000 input and 2,000 output tokens per session. Name every defaulted field in the unit's
+  Any field that is missing or `unknown` takes a stated default. Sessions a month follow the
+  unit's `expected_scale` when it is answered: `prototype` 1,000 (about 33 a day), `growing`
+  30,000 (about 1,000 a day), `high` 300,000 (about 10,000 a day, the tier's floor); otherwise
+  1,000. Tokens per session default to 20,000 input and 2,000 output. Name every defaulted field in the unit's
   `assumptions` as "assumed (not answered): ..." so the reader can see which part of the model
   line is a placeholder. When `usage_volume.session_length` is present, the token counts came
   from the business wording's length mapping, not from the user: add "tokens per session from
@@ -114,7 +116,7 @@ this rule governs it, NOT the class default below.
   `model_tokens` from that unit's OWN volume, the run count or request count its class bullet
   below states, times tokens per call. A service unit's bullet states no volume, so for a
   service unit that calls a model, also state a requests-per-month assumption for its model
-  calls. Never apply the 1,000-session agent default to
+  calls. Never apply the agent session default to
   them. When tokens per call are not known, assume 20,000 input and 2,000 output per call and
   record "assumed (not answered): tokens per call" in the unit's `assumptions`.
 

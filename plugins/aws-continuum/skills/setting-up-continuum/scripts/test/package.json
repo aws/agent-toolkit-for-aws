@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "module",
+  "main": "new-external-id.test.mjs"
+}

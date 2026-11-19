@@ -307,7 +307,7 @@ unavailable region/stack rather than inventing a provider default.
 **Optional live-enrichment fields** (present only when live discovery ran):
 
 - Any addon: `monthly_price_usd` (number — from the add-on's plan price)
-- **heroku-postgresql**: `pg_version` (string), `data_size_gb` (number — feeds database migration tool selection), `table_count` (integer), `pg_role` (`"leader"` \| `"follower"` \| `"fork"` — from the `Following:` / `Forked From:` lines of `pg:info`), `pg_leader` (string \| null — attachment name of the followed/forked database), `pg_attachment_names` (string[] — this database's attachment names without `_URL`, e.g. `["DATABASE", "HEROKU_POSTGRESQL_TEAL"]`; how Design resolves a follower's `pg_leader` to its leader)
+- **heroku-postgresql**: `pg_version` (string, as `pg:info` prints it, e.g. `"16.4"`; Design uses its integer part as the RDS/Aurora `engine_version`), `data_size_gb` (number — feeds database migration tool selection), `table_count` (integer), `pg_role` (`"leader"` \| `"follower"` \| `"fork"` — from the `Following:` / `Forked From:` lines of `pg:info`), `pg_leader` (string \| null — attachment name of the followed/forked database), `pg_attachment_names` (string[] — this database's attachment names without `_URL`, e.g. `["DATABASE", "HEROKU_POSTGRESQL_TEAL"]`; how Design resolves a follower's `pg_leader` to its leader)
 - **heroku-redis**: `maxmemory_policy` (string)
 - **heroku-postgresql, Advanced tier only**: `tier` (string, optional, only ever
   `"advanced"` — present only when live discovery captured `data:pg:info` output

@@ -6,13 +6,13 @@
 
 For pricing see [pricing.md](pricing.md) — rates differ per device, so a device choice is also a cost choice; for submitting work as a program set (many programs in one task) see [program-sets.md](program-sets.md); for cost guardrails see [spending-limit.md](spending-limit.md).
 
-## Device status
+## Device status and availability
 
-The ONLINE, OFFLINE, and RETIRED statuses have different semantics:
+Device status codes and their reasons are defined at [QPU availability windows and status](https://docs.aws.amazon.com/braket/latest/developerguide/braket-task-when.html).
 
-- **ONLINE** — usable now, subject to its availability window.
-- **OFFLINE** — temporarily unusable; task creation is rejected.
-- **RETIRED** — permanently unusable. RETIRED devices will still be returned successfully by `GetDevice` and `SearchDevices`.
+[Braket device reservations](https://docs.aws.amazon.com/braket/latest/developerguide/braket-reservations.html) may also affect when tasks are able to run against QPUs.
+
+When a target device is not `ONLINE`, suggest an `ONLINE` alternative.
 
 ## How to query devices
 
@@ -70,17 +70,6 @@ actions = AwsDevice(arn).properties.action        # keyed by DeviceActionType
 ```
 
 `deviceCapabilities.paradigm` carries the physical detail behind that choice — gate-model devices have `nativeGateSet`/`connectivity`, AHS devices have `rydberg`/`lattice`. Submitting a program type absent from the action map causes the program to be rejected.
-
-## Availability windows and maintenance
-
-All information regarding interpreting device availability can be found in the [device availability documentation](https://docs.aws.amazon.com/braket/latest/developerguide/braket-task-when.html).
-When a QPU is online but outside its `executionWindows` (availability window), it shows `deviceStatus=ONLINE` and queues tasks until the next window.
-Unplanned maintenance or other device events shows `deviceStatus=OFFLINE` and attempts to create the quantum task will be rejected.
-
-[Braket device reservations](https://docs.aws.amazon.com/braket/latest/developerguide/braket-reservations.html) may also affect when tasks are able to run against QPUs.
-
-When a target is OFFLINE or RETIRED, suggest an ONLINE alternative that is also within its availability window.
-When a target is outside its availability window, suggest an alternative that is.
 
 ## Shot and gate limits
 

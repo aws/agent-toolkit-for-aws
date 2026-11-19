@@ -39,8 +39,8 @@ VENDORED_GUIDES = [
     SKILLS / "azure-to-aws" / "references" / "vendored" / "ai" / "ai-openai-to-bedrock.md",
 ]
 FACT_BASES = [
-    SKILLS / "gcp-to-aws" / "references" / "shared" / "openai-on-bedrock.md",
-    SKILLS / "azure-to-aws" / "references" / "shared" / "openai-on-bedrock.md",
+    SKILLS / "gcp-to-aws" / "references" / "vendored" / "ai" / "openai-on-bedrock.md",
+    SKILLS / "azure-to-aws" / "references" / "vendored" / "ai" / "openai-on-bedrock.md",
 ]
 
 _GPT_54_55 = re.compile(r"GPT-5\.[45]|gpt-5\.[45]", re.IGNORECASE)

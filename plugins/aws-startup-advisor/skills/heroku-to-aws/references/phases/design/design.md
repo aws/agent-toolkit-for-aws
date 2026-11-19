@@ -52,6 +52,8 @@ _postconditions:
     _on_failure: _halt_and_inform
   - _assert: "metadata.total_services matches services[].length"
     _on_failure: _halt_and_inform
+  - _assert: "every services[] entry whose aws_service is 'RDS PostgreSQL' or 'Aurora PostgreSQL' has aws_config.engine_version equal to the integer part of the source add-on's config.pg_version ('16.4' -> '16'); when pg_version is absent it is '18' and warnings[] names the app. No such entry has an engine_version lower than its source major"
+    _on_failure: _halt_and_inform
   - _assert: "no Fir-specific Terraform (ARM/Graviton instance targeting, Fir builder project.toml) appears anywhere in output; Cedar containerization via pack build (containerization_method cnb_heroku_builder) is not Fir-specific"
     _on_failure: _halt_and_inform
 _forbids_files:

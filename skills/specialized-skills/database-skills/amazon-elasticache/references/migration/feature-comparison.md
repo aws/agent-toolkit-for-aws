@@ -17,7 +17,7 @@ Side-by-side comparison of features, capabilities, and constraints across migrat
 | Bitmaps | Yes | Yes | No |
 | Geospatial | Yes | Yes | No |
 | JSON (native) | Yes | Yes | No |
-| Vector Search | Yes (8.2+, node-based only) | No | No |
+| Vector Search | Yes (8.2+ node-based, 9.0+ Serverless) | No | No |
 | **Persistence and Replication** | | | |
 | Snapshots (RDB) | Yes | Yes | Serverless only (automatic backups) (verify against latest Memcached serverless documentation for current backup behavior) |
 | AOF persistence | Deprecated (legacy only) | Deprecated (legacy only) | No |
@@ -147,7 +147,7 @@ Side-by-side comparison of features, capabilities, and constraints across migrat
 **What you lose:**
 
 * Sub-millisecond latency (serverless is single-digit ms)
-* Vector search support (Valkey 8.2 or above, node-based only)
+* Vector search, only if the Serverless target is below Valkey 9.0
 * Global Datastore (node-based only)
 * Custom parameter group tuning
 * AUTH token authentication (must use RBAC or IAM)
@@ -160,8 +160,8 @@ Side-by-side comparison of features, capabilities, and constraints across migrat
 * Auth must be RBAC or IAM (AUTH tokens not supported)
 * TLS is mandatory (update clients if not already using TLS)
 * Billing model changes from node-hours to ECPU + storage
-* Some Lua script restrictions may apply (scripts must have at least one KEY parameter; max script size 4 MiB; max 3,999 arguments per request)
-* `SELECT` command (multiple databases) is not supported (serverless is always cluster-mode enabled, so only database 0 is available)
+* Some Lua script restrictions may apply (scripts must have at least one KEY parameter; max script size 4 MiB; max 39,999 arguments per request)
+* `SELECT` (multiple databases) needs Valkey 9.0+ (up to 1,024 databases); below 9.0 only database 0 is available
 * Keyspace notifications are not supported on serverless caches
 
 ### Migration Notes: Serverless to Node-Based

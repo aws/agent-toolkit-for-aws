@@ -460,9 +460,9 @@ def test_astra_shared_contract_survives_each_vendored_consumer(name):
 
 @pytest.mark.parametrize("skill", ["gcp-to-aws", "azure-to-aws"])
 def test_astra_policy_has_consumer_local_facts_and_prices(skill):
-    refs = PLUGIN / "skills" / skill / "references/shared"
+    refs = PLUGIN / "skills" / skill / "references/vendored/ai"
     facts = (refs / "openai-on-bedrock.md").read_text()
-    prices = (refs.parent / "vendored/ai/bedrock-pricing-cache.md").read_text()
+    prices = (refs / "bedrock-pricing-cache.md").read_text()
     assert "openai.gpt-6-astra" in facts and "us-west-2" in facts
     assert "30-minute cache-write" in facts and "GPT-6 Astra" in prices
     assert "Global CRIS" in prices and "82.50" in prices

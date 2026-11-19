@@ -85,7 +85,7 @@ resulting rates).
 >
 > **GPT-6.1 Terra:** confirm availability, token limits, and pricing with the source provider.
 > Use measured/stated source spend or `pricing-fallback.md` when verified source rates are unavailable.
-> See `shared/openai-on-bedrock.md` for Bedrock availability and prices.
+> See `references/vendored/ai/openai-on-bedrock.md` for Bedrock availability and prices.
 
 ### Anthropic (Standard Tier, 1P API)
 

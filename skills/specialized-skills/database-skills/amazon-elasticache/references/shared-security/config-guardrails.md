@@ -31,7 +31,7 @@ Note: Automatic failover requires at least one replica per shard. If the cluster
 
 **Why it matters**: Without at-rest encryption, data on disk (snapshots, swap files) is stored in plaintext. This is a compliance finding for most security frameworks (SOC 2, HIPAA, PCI DSS).
 
-**Remediation**: At-rest encryption cannot be enabled on an existing cluster. The remediation path is:
+**Remediation**: At-rest encryption cannot be enabled on an existing cluster directly. If the cluster meets the durability requirements (`references/setup/create-secure-cache.md`), turning durability on also enables it. Otherwise, the remediation path is:
 
 1. Create a new replication group with `AtRestEncryptionEnabled: true`
 2. Migrate data from the old cluster to the new one (snapshot-restore or dual-write)
