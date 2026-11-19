@@ -1,9 +1,9 @@
 ---
-name: claude-to-bedrock
+name: claude-apps-to-bedrock
 description: "Use when a person or team wants to move the Claude apps they use, Claude Desktop (Chat, Cowork) and Claude Code, from Anthropic direct to Claude on Amazon Bedrock without losing claude.ai history, for example to pay with Activate credits. Asks whether this is an individual, an IT admin rolling out with Jamf or Intune, or a user on an IT-managed computer, checks the machine read-only, then walks only that person's steps. Imports claude.ai chats and projects with Claude Desktop's Import from Claude wizard and carries history into Claude Code. Triggers on: switch Claude Code or Claude Desktop to Bedrock, CLAUDE_CODE_USE_BEDROCK, keep my claude.ai history, Claude Desktop via Jamf or Intune. Also handles Bedrock model access for those apps. Not for code that calls the Claude API (Anthropic SDK, Messages API, Agent SDK), OpenAI, or Gemini: rewriting it, or model access for it, is llm-to-bedrock; scanning and pricing it is bedrock-migration-assessment. Activate questions: knowledge-base-for-startups."
 ---
 
-# Claude to Bedrock: move Claude Desktop and Claude Code to Amazon Bedrock without losing history
+# Claude apps to Bedrock: move Claude Desktop and Claude Code to Amazon Bedrock without losing history
 
 Move **both** Claude surfaces to third-party inference on Amazon Bedrock while
 keeping conversation history, for a single user or a whole fleet.

@@ -56,7 +56,7 @@ This skill has two modes. Decide which the user wants **before** the Assess-sibl
 there would block a user who only wants access enablement.
 
 If the user wants the Claude apps themselves (Claude Desktop or Claude Code) running on Bedrock,
-with no application code to migrate, stop and use `claude-to-bedrock` instead. It calls this
+with no application code to migrate, stop and use `claude-apps-to-bedrock` instead. It calls this
 skill's Access-only mode for the model-access step when both are installed.
 
 Route to **Access-only mode** (jump to the "## Access-only mode" section below, skip 0b and

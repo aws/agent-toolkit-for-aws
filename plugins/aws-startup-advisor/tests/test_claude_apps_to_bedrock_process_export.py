@@ -1,4 +1,4 @@
-"""Tests for skills/claude-to-bedrock/references/process_export.py.
+"""Tests for skills/claude-apps-to-bedrock/references/process_export.py.
 
 The script runs in a subprocess with HOME and USERPROFILE pointed at a temp dir
 (it writes a scratch folder under ~, which is USERPROFILE on Windows). The
@@ -16,7 +16,7 @@ import unittest
 import zipfile
 
 SCRIPT = (pathlib.Path(__file__).resolve().parent.parent
-          / "skills" / "claude-to-bedrock" / "references" / "process_export.py")
+          / "skills" / "claude-apps-to-bedrock" / "references" / "process_export.py")
 
 
 def make_export(downloads, conversations, part="000"):
