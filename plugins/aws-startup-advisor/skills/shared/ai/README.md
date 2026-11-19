@@ -34,11 +34,8 @@ before opening a pull request.
 
 The Gemini and OpenRouter guides are source-cloud agnostic (the Bedrock target
 depends on the upstream model, not the source cloud), so they are canonical here
-and vendored like the OpenAI and Anthropic guides. A consuming skill's own
-runtime routing may still point at an adapter-local copy (gcp-to-aws keeps
-`references/design-refs/ai-gemini-to-bedrock.md` for its Gemini adapter)
-until the extraction stages repoint it; that is a separate decision from this
-shared guide existing.
+and vendored like the OpenAI and Anthropic guides. gcp-to-aws loads its vendored
+copy at `references/vendored/ai/ai-gemini-to-bedrock.md`.
 
 Deliberately NOT here: a source-cloud's `schema-discover-ai.md`, which is written
 against one provider's SDK surface.

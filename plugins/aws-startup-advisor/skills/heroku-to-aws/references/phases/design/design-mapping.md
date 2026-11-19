@@ -334,6 +334,17 @@ Continue with the next resource after the Fargate entry is appended. This guard 
 
 6. **Storage**: Read the Storage column from the matched row. Configure storage allocation ≥ this value and ≥ 20 GB (the RDS minimum for gp3; this floor applies to allocated storage only, never to the row selection in step 2a).
 
+   6a. **Engine version** (after the storage step). Use the PostgreSQL major the source database already
+   runs, never a lower one: a dump restores into the same or a newer major, not an older one, so a lower
+   target cannot receive the data. Read `config.pg_version` (Discover captures it as `pg:info` prints it,
+   e.g. `"16.4"`) and take the integer before the first `.` as a string: `"16.4"` -> `"16"`,
+   `"18"` -> `"18"`. Use the same value for RDS PostgreSQL and Aurora PostgreSQL; both offer 15 through
+   18. When `pg_version` is absent or has no leading integer (an add-on found only in Terraform, or a
+   failed `pg:info` capture), use `"18"`, the newest major RDS and Aurora both offer and Heroku's default,
+   and add the warning: "Source PostgreSQL version for `{heroku_app}` was not captured. Defaulted the
+   target to PostgreSQL 18. Confirm the source version before migrating: a target older than the source
+   cannot be restored into." Do not choose a version from the plan, the instance class or the
+   availability preference.
 7. **Multi-AZ deployment**: If availability is `multi-az`, `multi-az-ha`, or `multi-region`, set `multi_az: true`.
 
 8. **Connection pooling → RDS Proxy**: If `config.connection_pooling == true`, set `rds_proxy: true`.
@@ -352,7 +363,7 @@ Continue with the next resource after the Fargate entry is appended. This guard 
        "instance_class": "<from table>",
        "multi_az": <true|false>,
        "storage_gb": <from table, numeric>,
-       "engine_version": "15",
+       "engine_version": "<major from step 6a, e.g. \"16\">",
        "rds_proxy": <true|false>,
        "read_replicas": 0
      }

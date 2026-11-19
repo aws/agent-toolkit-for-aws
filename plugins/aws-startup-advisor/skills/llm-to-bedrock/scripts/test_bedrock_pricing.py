@@ -569,3 +569,33 @@ def test_govcloud_without_a_region_rate_says_the_rate_is_commercial(monkeypatch)
     v = bp.lookup("us-gov-west-1", "openai.gpt-5.5")
     assert v["available"] is True
     assert "verify the GovCloud price before quoting it" in v["note"]
+# --- Opus 5 is a different model from Opus 5.5 ----------------------------------------------
+# Opus 5 (`anthropic.claude-opus-5`, Active since 2026-07-24) has no static row. It must fail
+# closed without the network (agent-advisor's environment has no boto3), but with its own
+# message: the Opus 5.5 branch must not claim it and report "no verified Opus 5.5 rate".
+@pytest.mark.parametrize("model_id", ["anthropic.claude-opus-5", "us.anthropic.claude-opus-5",
+                                      "global.anthropic.claude-opus-5"])
+def test_opus_5_fails_closed_with_its_own_message_and_no_network(model_id, monkeypatch):
+    _deny_boto3(monkeypatch)  # must not reach the live PriceList lookup
+    v = bp.lookup("us-east-1", model_id)
+    assert v["available"] is False
+    assert v["input_per_1k_usd"] is None
+    assert "Opus 5.5 rate" not in v["note"]
+    assert "It is not Claude Opus 5.5" in v["note"]
+    assert "Do not price it from Opus 5.5" in v["note"]
+    assert bp._match_key(model_id) is None  # never borrow 5.5's rates
+@pytest.mark.parametrize("model_id", ["global.anthropic.claude-opus-5-5", "us.anthropic.claude-opus-5-5",
+                                      "anthropic.claude-opus-5-5"])
+def test_opus_55_ids_still_use_the_exact_region_aware_branch(model_id, monkeypatch):
+    _deny_boto3(monkeypatch)
+    v = bp.lookup("us-east-1", model_id)
+    assert v["available"] is True
+    assert (v["input_per_1k_usd"], v["output_per_1k_usd"]) in {(0.004, 0.020), (0.0044, 0.022)}
+    assert bp._match_key(model_id) is None
+@pytest.mark.parametrize("model_id", ["anthropic.claude-opus-5-55", "us.anthropic.claude-opus-5-5-pro",
+                                      "global.anthropic.claude-opus-5-50"])
+def test_malformed_opus_55_like_ids_still_fail_closed(model_id, monkeypatch):
+    _deny_boto3(monkeypatch)  # must not reach the live lookup
+    v = bp.lookup("us-east-1", model_id)
+    assert v["available"] is False
+    assert "Opus 5.5" in v["note"]
