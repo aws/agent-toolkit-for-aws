@@ -16,20 +16,27 @@ to one hive. Every value is a string: booleans `"true"`, arrays/objects as JSON
 strings. Avoid `REG_EXPAND_SZ` (counts as policy present but is unreadable).
 
 ```
+deploymentMode               = 3p
+disableDeploymentModeChooser = true
 inferenceProvider            = bedrock
 inferenceBedrockRegion       = us-east-1
 inferenceCredentialKind      = interactive
 inferenceBedrockSsoStartUrl  = https://d-xxxxxxxxxx.awsapps.com/start
 inferenceBedrockSsoRegion    = us-east-1
 inferenceBedrockSsoAccountId = 123456789012
-inferenceBedrockSsoRoleName  = BedrockInference
+inferenceBedrockSsoRoleName  = ClaudeBedrockInference
 inferenceModels              = ["us.anthropic.claude-sonnet-5-5"]
 claudeAiImport               = {"enabled":true,"bannerBehavior":"detect"}
 ```
 
 (Cloud vendor profile variant: `inferenceCredentialKind = vendor-profile` plus
 `inferenceBedrockProfile`; bearer token: `static` plus
-`inferenceBedrockBearerToken`. See `inference-bedrock-keys.md`.) Optional:
+`inferenceBedrockBearerToken`, a long-lived key anyone on the device can read,
+so prefer IAM Identity Center for fleets. See `inference-bedrock-keys.md`.)
+`deploymentMode = 3p` keeps devices on Bedrock: the login screen no longer
+offers Claude.ai sign-in (4.16336.0+; older clients read
+`disableDeploymentModeChooser`). `ClaudeBedrockInference` is the permission
+set name from `aws-setup.md` 2b; use yours if it differs. Optional:
 `organizationInstructions` (≤ 3,000 chars; the Intune/ADMX text box holds a
 single line — use a `.reg` or script for multi-line text).
 
@@ -45,13 +52,15 @@ run as SYSTEM, 64-bit) that writes the values:
 $base = "HKLM:\SOFTWARE\Policies\Claude"
 New-Item -Path $base -Force | Out-Null
 $values = [ordered]@{
+  deploymentMode               = "3p"
+  disableDeploymentModeChooser = "true"
   inferenceProvider            = "bedrock"
   inferenceBedrockRegion       = "us-east-1"
   inferenceCredentialKind      = "interactive"
   inferenceBedrockSsoStartUrl  = "https://d-xxxxxxxxxx.awsapps.com/start"
   inferenceBedrockSsoRegion    = "us-east-1"
   inferenceBedrockSsoAccountId = "123456789012"
-  inferenceBedrockSsoRoleName  = "BedrockInference"
+  inferenceBedrockSsoRoleName  = "ClaudeBedrockInference"
   inferenceModels              = '["us.anthropic.claude-sonnet-5-5"]'
   claudeAiImport               = '{"enabled":true,"bannerBehavior":"detect"}'
 }
@@ -106,7 +115,9 @@ $envKeys = [ordered]@{
 }
 $settings = [pscustomobject]@{}
 if (Test-Path $f) {
-  Copy-Item $f "$f.bak" -Force   # one rolling backup; safe to run as a Remediation
+  # $f.orig keeps the org's file from before the first run; $f.bak is the last run's.
+  if (-not (Test-Path "$f.orig")) { Copy-Item $f "$f.orig" }
+  Copy-Item $f "$f.bak" -Force   # safe to run as a Remediation
   $text = Get-Content -Path $f -Raw -Encoding UTF8
   if ($text -and $text.Trim()) {
     try { $settings = $text | ConvertFrom-Json }
@@ -151,7 +162,7 @@ if (-not (Select-String -Path $cfg -Pattern '^\[profile claude-bedrock\]' -Quiet
 [profile claude-bedrock]
 sso_session = claude-bedrock
 sso_account_id = 123456789012
-sso_role_name = BedrockInference
+sso_role_name = ClaudeBedrockInference
 region = us-east-1
 '@ | Add-Content -Path $cfg
 }

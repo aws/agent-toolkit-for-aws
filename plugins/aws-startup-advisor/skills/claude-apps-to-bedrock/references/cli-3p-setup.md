@@ -79,11 +79,14 @@ Create `~/.claude/CLAUDE.md` (global user memory, auto-loaded every session):
 ```markdown
 # Global user memory
 ## Past Claude conversation history (1P export)
-Treat the imported file as background reference about my past work and topics.
-@/absolute/path/to/claude_export_md/COMBINED-1p-history.md
+@/absolute/path/to/claude_export_md/HISTORY-INDEX.md
 ```
 
-The `@<path>` import pulls the consolidated history into every CLI session.
+The `@<path>` import loads only `HISTORY-INDEX.md` (capped at 16 KB) into each
+session. It lists past conversations and names the history files, which Claude
+reads only when a request needs them. Don't `@`-import
+`COMBINED-1p-history.md`: imported files load in full into every session, so a
+long history would add to every session's input tokens.
 
 ## Credential expiry (human step)
 If the profile uses temporary credentials (IAM Identity Center/SSO, or a

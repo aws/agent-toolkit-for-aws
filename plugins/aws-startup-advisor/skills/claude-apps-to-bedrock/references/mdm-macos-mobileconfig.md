@@ -33,13 +33,18 @@ Replace the SSO values with those from `aws-setup.md`.
       <key>PayloadVersion</key>     <integer>1</integer>
       <key>PayloadIdentifier</key>  <string>com.yourorg.claude.bedrock.inner</string>
       <key>PayloadUUID</key>        <string>REPLACE-WITH-UUID-2</string>
+      <!-- Keep devices on Bedrock: no "sign in with Claude.ai" at the login
+           screen. deploymentMode needs 4.16336.0+; older clients read
+           disableDeploymentModeChooser. -->
+      <key>deploymentMode</key>             <string>3p</string>
+      <key>disableDeploymentModeChooser</key><true/>
       <key>inferenceProvider</key>          <string>bedrock</string>
       <key>inferenceBedrockRegion</key>     <string>us-east-1</string>
       <key>inferenceCredentialKind</key>    <string>interactive</string>
       <key>inferenceBedrockSsoStartUrl</key><string>https://d-xxxxxxxxxx.awsapps.com/start</string>
       <key>inferenceBedrockSsoRegion</key>  <string>us-east-1</string>
       <key>inferenceBedrockSsoAccountId</key><string>123456789012</string>
-      <key>inferenceBedrockSsoRoleName</key><string>BedrockInference</string>
+      <key>inferenceBedrockSsoRoleName</key><string>ClaudeBedrockInference</string>
       <key>inferenceModels</key>
       <string>["us.anthropic.claude-sonnet-5-5"]</string>
       <!-- Lets users run Settings → Import & export → Import… (claude.ai history) -->
@@ -55,8 +60,11 @@ Replace the SSO values with those from `aws-setup.md`.
 
 Cloud vendor profile variant: `inferenceCredentialKind` = `vendor-profile` plus
 `inferenceBedrockProfile`. Bearer-token variant: `static` plus
-`inferenceBedrockBearerToken`. See `inference-bedrock-keys.md`. Generate UUIDs
-with `uuidgen`.
+`inferenceBedrockBearerToken`. A bearer token in a profile is a long-lived key
+that anyone on the device can read, so prefer IAM Identity Center for fleets.
+See `inference-bedrock-keys.md`. Generate UUIDs with `uuidgen`.
+`ClaudeBedrockInference` is the permission set name from `aws-setup.md` 2b; use
+yours if it differs.
 
 To restrict history import to your claude.ai workspace, use
 `{"enabled":true,"allowedOrganizationUuids":["<org-uuid>"]}` (sign-in import
@@ -108,7 +116,9 @@ set -euo pipefail
 DIR="/Library/Application Support/ClaudeCode"
 F="$DIR"/managed-settings.json
 mkdir -p "$DIR"
-[ -f "$F" ] && cp "$F" "$F.bak"   # one rolling backup; safe to run on every check-in
+# $F.orig keeps the org's file from before the first run; $F.bak is the last run's.
+[ -f "$F" ] && [ ! -f "$F.orig" ] && cp "$F" "$F.orig"
+[ -f "$F" ] && cp "$F" "$F.bak"   # safe to run on every check-in
 /usr/bin/osascript -l JavaScript - "$F" <<'JS'   # prints the result line
 ObjC.import('Foundation');
 function run(argv) {
@@ -175,7 +185,7 @@ if ! grep -q "^\[profile claude-bedrock\]" "$C"; then
 [profile claude-bedrock]
 sso_session = claude-bedrock
 sso_account_id = 123456789012
-sso_role_name = BedrockInference
+sso_role_name = ClaudeBedrockInference
 region = us-east-1
 CFG
 fi

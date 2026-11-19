@@ -88,7 +88,7 @@ class ProcessExportTest(unittest.TestCase):
         ])
         r = self.run_script(force_ascii_locale=False)
         self.assertEqual(r.returncode, 0, r.stderr)
-        per_conv = sorted(p for p in self.out.glob("*.md") if p.name != "COMBINED-1p-history.md")
+        per_conv = sorted(p for p in self.out.glob("*.md") if p.name not in ("COMBINED-1p-history.md", "HISTORY-INDEX.md"))
         self.assertEqual(len(per_conv), 2, [p.name for p in per_conv])
         bodies = "".join(p.read_text(encoding="utf-8") for p in per_conv)
         self.assertIn("first", bodies)
@@ -103,6 +103,39 @@ class ProcessExportTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("found 1 conversations", r.stdout)
         self.assertIn("conversations-002.zip is not a valid zip", r.stdout)
+
+
+    def test_session_loaded_files_stay_small_for_a_long_history(self):
+        # ~/.claude/CLAUDE.md @-imports HISTORY-INDEX.md and Desktop adds
+        # GLOBAL-INSTRUCTIONS.txt to every chat, so both must stay bounded.
+        big = "x" * 10_000
+        make_export(self.downloads, [
+            dict(conv(f"u{i}", f"Topic {i}", f"2026-01-01T00:{i // 60:02d}:{i % 60:02d}Z", big),
+                 summary="s" * 300)
+            for i in range(300)])
+        r = self.run_script(force_ascii_locale=False)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertGreater((self.out / "COMBINED-1p-history.md").stat().st_size, 4 * 1024 * 1024)
+        index = (self.out / "HISTORY-INDEX.md").read_bytes()
+        brief = (self.out / "GLOBAL-INSTRUCTIONS.txt").read_bytes()
+        self.assertLessEqual(len(index), 16_000)
+        self.assertLessEqual(len(brief), 4_000)
+        text = index.decode("utf-8")
+        self.assertIn("Topic 299", text)                  # newest first
+        self.assertIn("older conversations", text)
+        self.assertIn("`", text)                          # paths in backticks, not @-imports
+        self.assertNotIn("@", text)
+
+    @unittest.skipIf(os.name == "nt", "POSIX permissions")
+    def test_output_is_private_and_raw_export_is_removed(self):
+        make_export(self.downloads, [conv("u1", "Secret", "2026-10-01T09:00:00Z", "hi")])
+        r = self.run_script(force_ascii_locale=False)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.out.stat().st_mode & 0o777, 0o700)
+        for f in self.out.iterdir():
+            self.assertEqual(f.stat().st_mode & 0o777, 0o600, f.name)
+        self.assertFalse((self.home / ".claude_export_tmp").exists())
+        self.assertIn("delete the export zips", r.stdout)
 
 
 if __name__ == "__main__":

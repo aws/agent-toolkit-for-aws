@@ -5,7 +5,10 @@ Oct 2026). This is the supported, reliable way to switch the desktop app to 3P
 Bedrock for a single machine (and to Export an MDM profile for fleets).
 
 ## Open the window
-Top menu bar → **Developer → Configure Third-Party Inference…**
+From the macOS menu bar (on Windows and Linux, the ☰ application menu at the
+top left), choose **Help → Troubleshooting → Enable Developer Mode**, then
+**Developer → Configure Third-Party Inference…**. Don't sign in with
+Claude.ai to get there.
 The window title is **"Configure third-party inference"**. Top-right has:
 
 - a **config-profile dropdown** (shows **"Default"**) — the active config set.
@@ -92,22 +95,29 @@ In the left sidebar, open **Capabilities** and find **Claude.ai data import**
 - **Banner** (optional) — prompt to import when starting a new chat or task
   (`detect` = only if earlier sessions are found).
 
-Save/apply and relaunch if prompted. Also under Capabilities:
+These save with the rest of the window (**Apply Changes**, see Finish). Also under Capabilities:
 **Organization instructions** (`organizationInstructions`, ≤ 3,000 characters)
 adds standing instructions to every Chat, Cowork, and Code session.
 
 ## Finish
 
-1. Click **Test connection** — confirm success.
-2. The config saves to the selected config-profile (top-right dropdown).
-3. For a single machine you're done — new chats route through Bedrock; the model
-   picker shows your Model list entries. No 1P email sign-in appears.
-4. For a fleet: click **Export ▾** → save the `.mobileconfig` (macOS) / `.reg`
+1. Click **Test connection** and confirm success. This only checks the
+   connection; it doesn't save.
+2. Click **Apply Changes**, then **Save & Restart**. This writes the
+   configuration to this device and relaunches the app.
+3. On the sign-in screen after the relaunch, choose the option to start with
+   the third-party configuration. Don't sign in with Claude.ai: that opens
+   standard Claude Desktop instead.
+4. For a single machine you're done: new chats route through Bedrock, and the
+   model picker shows your Model list entries.
+5. For a fleet: click **Export ▾** → save the `.mobileconfig` (macOS) / `.reg`
    (Windows) and deploy via Jamf/Intune (see the MDM reference files). Export is
    the fastest way to author a correct managed profile.
 
 ## If the Developer menu is missing
-Enable developer settings (the profile's `developer_settings.json` has
-`allowDevTools: true`), restart the app, and re-open the menu. If still absent,
-install the exported `.mobileconfig` locally (double-click → approve in System
-Settings → Profiles) — the app reads it as a managed config at launch.
+Choose **Help → Troubleshooting → Enable Developer Mode**. If you turned it on
+before **Apply Changes**, the menu is gone after the relaunch; turn it on again
+and it stays on from then on. If a managed configuration sets
+`developerModeEnabled` to `false`, the menu never appears; install the exported
+`.mobileconfig` locally instead (double-click, then approve in System Settings →
+Profiles), and the app reads it as a managed config at launch.

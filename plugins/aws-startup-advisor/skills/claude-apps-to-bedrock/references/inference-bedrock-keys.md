@@ -43,6 +43,16 @@ When `inferenceCredentialKind` is unset and several sources are present, the
 app uses the first of: identity-provider sign-in → in-app AWS sign-in → named
 profile → credential helper → bearer token.
 
+## Capabilities — keep devices on Bedrock
+
+| Key | Type | Purpose |
+|---|---|---|
+| `deploymentMode` | enum | `3p` keeps the device on the managed connection: the login screen doesn't offer **Or sign in with Claude.ai**, and users can't move the device to another organization. `1p` forces standard Claude Desktop; `any` (or unset) lets users switch. Needs Claude Desktop 4.16336.0 or later and a connection set in the same managed source. Ignored in a bootstrap response. |
+| `disableDeploymentModeChooser` | boolean | Older key with the same effect as `3p` on devices without a bootstrap server. Set it too while some devices run versions before 4.16336.0. |
+
+Without either key, users can choose Claude.ai sign-in at the login screen
+and leave the Bedrock configuration (and AWS billing).
+
 ## Capabilities — history and standing context
 
 | Key | Type | Purpose |

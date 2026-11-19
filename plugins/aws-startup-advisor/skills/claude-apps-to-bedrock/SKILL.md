@@ -8,8 +8,8 @@ description: "Use when a person or team wants to move the Claude apps they use, 
 Move **both** Claude surfaces to third-party inference on Amazon Bedrock while
 keeping conversation history, for a single user or a whole fleet.
 
-**Last updated:** 2026-11-16 (Claude Desktop 4.4212 and later; Anthropic and AWS
-documentation as of November 2026).
+**Last updated:** 2026-11-19 (Claude Desktop 4.23118.0 or later; first verified
+on 4.4212. Anthropic and AWS documentation as of November 2026).
 
 Claude Desktop and Claude Code change often. When a screen, setting name, or key
 doesn't match what the user sees, trust the current Anthropic docs
@@ -200,7 +200,8 @@ learned in Phase 0; keep every part:
 > **Move Claude to Amazon Bedrock?**
 >
 > **What I'll change on this computer:** back up, then edit
-> `~/.claude/settings.json` (Claude Code's Bedrock settings), and later, only
+> `~/.claude/settings.json` (Claude Code's Bedrock settings, which also set its
+> default model to `<default model, e.g. Claude Sonnet 5.5>`), and later, only
 > if you ask, `~/.claude/CLAUDE.md` (a pointer to your old chat history). To
 > save you steps I'll also open pages in your browser, quit and reopen Claude
 > Desktop when a step needs it, and start AWS sign-ins that you approve in the
@@ -282,19 +283,24 @@ Your prep: run **Model access** above if you haven't; make AWS creds work (named
 via `aws-bedrock-token-generator` / set up IAM Identity Center). Then walk the
 user through the in-app window; the field-by-field UI is in
 `references/desktop-inapp-config.md`. Prescriptive prompt:
-> "In Claude Desktop, top menu bar → **Developer → Configure Third-Party
-> Inference…** (window titled 'Configure third-party inference'). Under
+> "In Claude Desktop, from the menu bar (on Windows, the ☰ menu at the top
+> left), choose **Help → Troubleshooting → Enable Developer Mode**, then
+> **Developer → Configure Third-Party Inference…** (window titled 'Configure
+> third-party inference'). Under
 > **Connection**, set the provider dropdown to **aws Bedrock**. In the **BEDROCK
 > CREDENTIALS** card: set **Credential kind** = **Cloud vendor profile**,
 > **AWS region** = `<region>`, **AWS profile name** = `<profile>` (leave AWS
 > config directory `~/.aws` and AWS CLI path blank unless custom). Under
 > **MODELS → Model list**, click **+ Add** and enter
 > `us.anthropic.claude-sonnet-5-5` (first entry = default). Click
-> **Test connection**; on success the config saves. While you're in this window,
-> also turn on history import — see the next step."
+> **Test connection** to check it. While you're in this window, also turn on
+> history import (see the next step). Then click **Apply Changes**, then
+> **Save & Restart**. When the app relaunches, choose the option to start with
+> the third-party configuration; don't sign in with Claude.ai."
 Auth variants: bearer token → that Credential kind + paste the key; in-app AWS
-sign-in → fill the four SSO fields. If the Developer menu is missing, enable
-developer settings, or install a local `.mobileconfig` (Phase 4).
+sign-in → fill the four SSO fields. If the **Developer** menu disappears after
+the relaunch, choose **Help → Troubleshooting → Enable Developer Mode** again.
+If it never appears, install a local `.mobileconfig` (Phase 4).
 
 ### Phase 3 — Bring 1P history into 3P
 
@@ -345,8 +351,10 @@ limits.
 The wizard does not feed the CLI. If the user wants their history as CLI
 context, do the manual export (3M), run `<SKILL_BASE>/references/process_export.py`, then
 write `~/.claude/CLAUDE.md` (back up/append, never overwrite) containing
-`@/absolute/path/to/claude_export_md/COMBINED-1p-history.md`. Claude Code loads
-it in every session.
+`@/absolute/path/to/claude_export_md/HISTORY-INDEX.md`. Claude Code loads that
+small index (capped at 16 KB) in every session and reads the full history files
+only when a request needs them. Never `@`-import `COMBINED-1p-history.md`: it
+can be several MB, and imported files load in full into every session.
 
 #### 3C — Desktop fallback, only if import can't be enabled (Route A; Route C only with admin agreement)
 If the admin won't enable `claudeAiImport`, give reference context instead: do
@@ -360,7 +368,8 @@ Confirm the text actually saved: it is stored on device in
 (under `__account_profile.conversation_preferences`); if that file has no text,
 the paste didn't save (common causes: pasted into claude.ai in the browser, or
 into a Project's instructions). Keep it short — the text is added to every
-session's system prompt. Optionally also create a **Project → From an existing
+session's system prompt; the script caps it at 4 KB and lists only the most
+recent topics. Optionally also create a **Project → From an existing
 folder → `~/claude_export_md`** for deep history. If Chat can't read the files,
 the user must grant folder access.
 
@@ -394,7 +403,11 @@ one at a time, with the commands in `references/terminal-helpers.md`. Never
 fetch with curl/wget. Verify each zip starts with `PK` (a 403 page starts with
 `<!DOCTYPE html>`), then run `<SKILL_BASE>/references/process_export.py` — it reads every
 part, de-duplicates, and writes per-conversation `.md`,
-`COMBINED-1p-history.md`, and `GLOBAL-INSTRUCTIONS.txt` to `~/claude_export_md/`.
+`COMBINED-1p-history.md`, `HISTORY-INDEX.md`, and `GLOBAL-INSTRUCTIONS.txt` to
+`~/claude_export_md/` (readable only by the person; the extracted export is
+deleted when it finishes). Afterwards, tell the person to delete the export
+zips from Downloads, and `~/claude_export_md` when they no longer need it:
+both hold their full chat history.
 
 ### Phase 4 — Fleet rollout via MDM (Route B — admin; both surfaces)
 **Desktop:** push a managed configuration so every device enters 3P at launch.
@@ -458,12 +471,29 @@ Bedrock limits tokens per minute (TPM) per model. A team on Claude Code can hit
 the default on the first day, and the error looks like throttling, not a
 setup problem. Size it before rollout.
 
-1. **Estimate.** Ask how many people will use Claude Code at the same time. With
-   no usage data, AWS's planning starting point is about 20,000 TPM per active
-   developer. Then Load `references/vendored/ai/bedrock-quotas.md` and apply
-   its output-token burndown for the model you picked: on `bedrock-runtime`,
-   each Claude output token counts several times against TPM. If the model
-   isn't listed there, check its Bedrock model card; don't guess a multiplier.
+1. **Estimate.** Ask how many people will use Claude Code. With no usage data,
+   start from Anthropic's per-user rate-limit recommendations for Claude Code
+   teams (https://code.claude.com/docs/en/costs, "Rate limit
+   recommendations"):
+
+   | Team size | TPM per user |
+   |---|---|
+   | 1–5 | 200k–300k |
+   | 5–20 | 100k–150k |
+   | 20–50 | 50k–75k |
+   | 50–100 | 25k–35k |
+   | 100–500 | 15k–20k |
+   | 500+ | 10k–15k |
+
+   Multiply by the number of users for the team total. Then Load
+   `references/vendored/ai/bedrock-quotas.md` and apply its output-token
+   burndown for the model you picked: on `bedrock-runtime`, each Claude output
+   token counts several times against TPM. If the model isn't listed there or
+   on its Bedrock model card (Sonnet 5.5 and Haiku 5.5 weren't, as of
+   2026-11-19), plan with 10×, the rate AWS lists for the other current Claude
+   models, and tell the person it's an unverified assumption. Once the team is
+   using it, the CloudWatch metric `EstimatedTPMQuotaUsage` shows the real
+   quota consumption, burndown included.
 2. **Check the current quota (read-only):**
 
    ```bash
@@ -484,12 +514,17 @@ setup problem. Size it before rollout.
    ```
 
    Run it only after they approve the code and value. Approval can take 1 to 5
-   business days, so request it before the rollout. Until then, a cross-region
-   (`global.`) profile spreads load across Regions.
+   business days, and it isn't guaranteed: AWS gives priority to accounts that
+   already consume their current quota and may deny others. So request it
+   early, with recent usage from CloudWatch, and grow the rollout in steps.
+   `us.` and `global.` profiles have their own quota rows, so request the one
+   that matches the profile in the config.
 
 ### Phase 5 — Verify end to end (all routes; both surfaces)
 
-- Desktop: a new chat uses a Bedrock model ID; no 1P email prompt.
+- Desktop: the app opened in the third-party configuration (Help →
+  Troubleshooting → Generate Diagnostic Report: `deployment-mode.txt`), and a
+  new chat uses a Bedrock model ID.
 - Desktop history: imported chats appear in the sidebar and imported projects on
   the Projects page; sending a message in one (after **Trust and resume**) gets a
   Bedrock reply. **Settings → Import & export → Import history** lists the run.
@@ -543,7 +578,7 @@ click, or approve.
 - `references/desktop-import-wizard.md` — Import from Claude wizard: enable,
   steps, limits, troubleshooting.
 - `references/process_export.py` — manual export → Markdown + combined doc +
-  GLOBAL-INSTRUCTIONS.txt.
+  HISTORY-INDEX.md + GLOBAL-INSTRUCTIONS.txt.
 - `references/cli-3p-setup.md` — exact CLI changes + verify + revert.
 - `references/desktop-inapp-config.md` — the in-app "Configure third-party
   inference" window, field by field.

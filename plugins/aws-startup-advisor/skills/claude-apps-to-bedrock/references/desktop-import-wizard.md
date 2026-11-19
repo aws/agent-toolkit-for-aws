@@ -7,7 +7,8 @@ be continued against the organization's own inference provider (e.g. Bedrock).
 
 Source: Anthropic, "Import history from claude.ai"
 (https://claude.com/docs/third-party/claude-desktop/import). Verified end to end
-on Claude Desktop 4.4212 in Bedrock 3P mode.
+on Claude Desktop 4.4212 in Bedrock 3P mode; use 4.23118.0 or later (see
+Prerequisites).
 
 ## Prerequisites
 

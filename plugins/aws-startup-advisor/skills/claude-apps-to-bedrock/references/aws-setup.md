@@ -111,11 +111,16 @@ case "$GROUP" in *'"'*) echo "Group names with double quotes aren't supported he
 GROUP_ID=$(aws identitystore get-group-id --region "$REGION" --identity-store-id "$STORE_ID" \
   --alternate-identifier "{\"UniqueAttribute\":{\"AttributePath\":\"displayName\",\"AttributeValue\":\"$GROUP\"}}" \
   --query GroupId --output text)
-for ps in $(aws sso-admin list-permission-sets --region "$REGION" --instance-arn "$INSTANCE_ARN" \
+# Collect the names first: piping the loop into `grep -q` under pipefail skips
+# this check when the match isn't the last permission set listed.
+PS_NAMES=$(for ps in $(aws sso-admin list-permission-sets --region "$REGION" --instance-arn "$INSTANCE_ARN" \
   --query 'PermissionSets[]' --output text); do
   aws sso-admin describe-permission-set --region "$REGION" --instance-arn "$INSTANCE_ARN" \
     --permission-set-arn "$ps" --query 'PermissionSet.Name' --output text
-done | grep -qx ClaudeBedrockInference && { echo "ClaudeBedrockInference already exists; stop and ask"; exit 1; }
+done)
+if grep -qx ClaudeBedrockInference <<<"$PS_NAMES"; then
+  echo "ClaudeBedrockInference already exists; stop and ask"; exit 1
+fi
 echo "Instance: $INSTANCE_ARN  Group: $GROUP ($GROUP_ID)  Target account: $ACCOUNT"
 ```
 
