@@ -7,26 +7,74 @@
         "source": "claude-sonnet-5",
         "ai_vision": "audio"
       },
-      "reason": "No Bedrock text model in ai-model-lifecycle.md Capability Constraints takes audio input, and the guides name no cross-family target for it; only a same-model source (GPT-5.5) has an answer"
+      "reason": "No Bedrock text model in ai-model-lifecycle.md Capability Constraints takes audio input, and the guides name no cross-family target for it; only a same-model source (GPT-5.5) has an answer, and ai-openai-to-bedrock.md Migration Decision Framework says to probe its audio input first"
     },
     {
       "when": {
         "source": "gpt-4o",
         "ai_vision": "audio"
       },
-      "reason": "No Bedrock text model in ai-model-lifecycle.md Capability Constraints takes audio input, and the guides name no cross-family target for it; only a same-model source (GPT-5.5) has an answer"
+      "reason": "No Bedrock text model in ai-model-lifecycle.md Capability Constraints takes audio input, and the guides name no cross-family target for it; only a same-model source (GPT-5.5) has an answer, and ai-openai-to-bedrock.md Migration Decision Framework says to probe its audio input first"
     },
     {
       "when": {
         "source": "gemini-2.5-flash",
         "ai_vision": "audio"
       },
-      "reason": "No Bedrock text model in ai-model-lifecycle.md Capability Constraints takes audio input, and the guides name no cross-family target for it; only a same-model source (GPT-5.5) has an answer"
+      "reason": "No Bedrock text model in ai-model-lifecycle.md Capability Constraints takes audio input, and the guides name no cross-family target for it; only a same-model source (GPT-5.5) has an answer, and ai-openai-to-bedrock.md Migration Decision Framework says to probe its audio input first"
     }
   ],
   "wildcard_targets": {
     "amazon.nova-2-sonic*": "Amazon Nova 2 Sonic"
   },
+  "input_evidence_note": "A vision or audio row may allow a model that ai-model-lifecycle.md Capability Constraints does not list as taking that input only when input_evidence has an entry for it: the vendored guide, its section and a quote naming the model and the input. An entry with probe true means the guide says to probe that input on Bedrock before committing, and each row allowing the model lists it in probes; Design must then name the probe in that row's capability_gaps.",
+  "input_evidence": [
+    {
+      "model": "openai.gpt-5.5",
+      "modality": "vision",
+      "file": "ai-openai-to-bedrock.md",
+      "section": "Feature Migration",
+      "names": "GPT-5.x",
+      "quote": "GPT-5.x (image input) or Claude / Nova",
+      "probe": false
+    },
+    {
+      "model": "openai.gpt-5.6-luna",
+      "modality": "vision",
+      "file": "ai-openai-to-bedrock.md",
+      "section": "Feature Migration",
+      "names": "GPT-5.x",
+      "quote": "GPT-5.x (image input) or Claude / Nova",
+      "probe": false
+    },
+    {
+      "model": "openai.gpt-5.6-terra",
+      "modality": "vision",
+      "file": "ai-openai-to-bedrock.md",
+      "section": "Feature Migration",
+      "names": "GPT-5.x",
+      "quote": "GPT-5.x (image input) or Claude / Nova",
+      "probe": false
+    },
+    {
+      "model": "amazon.nova-2-lite-v1:0",
+      "modality": "vision",
+      "file": "bedrock-pricing-cache.md",
+      "section": "Amazon Nova",
+      "names": "Nova 2 Lite",
+      "quote": "Nova 2 Lite by tier (text + image + video)",
+      "probe": false
+    },
+    {
+      "model": "openai.gpt-5.5",
+      "modality": "audio",
+      "file": "ai-openai-to-bedrock.md",
+      "section": "Migration Decision Framework",
+      "names": "GPT-5.5",
+      "quote": "GPT-5.5's native audio/video (omnimodal) input** in ways the Bedrock deployment cannot serve \u2014 Claude on Bedrock is text+image only, and the mantle GPT path should be probed for the specific modality before committing",
+      "probe": true
+    }
+  ],
   "sources": {
     "gpt-5.5": {
       "fixture": "bma-design-openai-mantle-and-runtime",
@@ -160,7 +208,13 @@
         "openai.gpt-5.5"
       ],
       "decided_by": "same_model",
-      "basis": "design-ai.md Step 2 item 2.2; ai-openai-to-bedrock.md Tier 0"
+      "basis": "design-ai.md Step 2 item 2.2; ai-openai-to-bedrock.md Tier 0; ai-openai-to-bedrock.md Migration Decision Framework: probe GPT-5.5 audio input on Bedrock before committing",
+      "probes": [
+        {
+          "model": "openai.gpt-5.5",
+          "modality": "audio"
+        }
+      ]
     },
     {
       "id": "pair-04",
@@ -283,7 +337,13 @@
         "openai.gpt-5.5"
       ],
       "decided_by": "same_model",
-      "basis": "design-ai.md Step 2 item 2.2; ai-openai-to-bedrock.md Tier 0"
+      "basis": "design-ai.md Step 2 item 2.2; ai-openai-to-bedrock.md Tier 0; ai-openai-to-bedrock.md Migration Decision Framework: probe GPT-5.5 audio input on Bedrock before committing",
+      "probes": [
+        {
+          "model": "openai.gpt-5.5",
+          "modality": "audio"
+        }
+      ]
     },
     {
       "id": "pair-10",
@@ -319,7 +379,13 @@
         "openai.gpt-5.5"
       ],
       "decided_by": "same_model",
-      "basis": "design-ai.md Step 2 item 2.2; ai-openai-to-bedrock.md Tier 0"
+      "basis": "design-ai.md Step 2 item 2.2; ai-openai-to-bedrock.md Tier 0; ai-openai-to-bedrock.md Migration Decision Framework: probe GPT-5.5 audio input on Bedrock before committing",
+      "probes": [
+        {
+          "model": "openai.gpt-5.5",
+          "modality": "audio"
+        }
+      ]
     },
     {
       "id": "pair-12",
@@ -502,7 +568,13 @@
         "openai.gpt-5.5"
       ],
       "decided_by": "same_model",
-      "basis": "design-ai.md Step 2 item 2.2; ai-openai-to-bedrock.md Tier 0"
+      "basis": "design-ai.md Step 2 item 2.2; ai-openai-to-bedrock.md Tier 0; ai-openai-to-bedrock.md Migration Decision Framework: probe GPT-5.5 audio input on Bedrock before committing",
+      "probes": [
+        {
+          "model": "openai.gpt-5.5",
+          "modality": "audio"
+        }
+      ]
     },
     {
       "id": "pair-21",
@@ -648,12 +720,13 @@
         "ai_critical_feature": "rag"
       },
       "allowed": [
+        "amazon.nova-micro-v1:0",
+        "anthropic.claude-haiku-5-5",
         "anthropic.claude-opus-5-5",
-        "anthropic.claude-sonnet-5",
-        "openai.gpt-5.6-terra"
+        "anthropic.claude-sonnet-5"
       ],
-      "decided_by": "priority",
-      "basis": "Clarify Q10 RAG adds Knowledge Bases alongside the model, so the Q2 quality choice stands: ai-openai-to-bedrock.md Tier 1 plus Opus 5.5"
+      "decided_by": "critical_feature",
+      "basis": "Clarify Q10 RAG recommends Bedrock Knowledge Bases, and ai-openai-to-bedrock.md When to prefer a Bedrock-native model (line 405) says to choose Claude / Nova via Converse when the workload needs Knowledge Bases; schema-design-aws-ai.md sets converse with model_change true for it. The quality candidates that are Claude or Nova stay; GPT-5.6 Terra does not"
     },
     {
       "id": "feature-agentic",

@@ -19,7 +19,7 @@ Check `$MIGRATION_DIR/` for existing state:
 > 1. Re-use these preferences and skip questions
 > 2. Start fresh and re-answer all questions
 
-- If 1: delete `preferences-draft.json` if it exists, then skip to Step 4 with the existing `preferences.json`.
+- If 1: delete `preferences-draft.json` if it exists, then skip to Step 4, which checks the existing `preferences.json` before Clarify completes.
 - If 2: delete `preferences.json` and `preferences-draft.json` (if present), continue to Step 1.
 
 **Case 2 — Draft preferences exist** (`preferences-draft.json` present, no `preferences.json`):
@@ -465,10 +465,23 @@ After writing `preferences.json`, delete `$MIGRATION_DIR/preferences-draft.json`
 
 Before phase completion, enforce output gate:
 
-- `preferences.json` must exist.
-- `preferences.json.metadata.migration_type` must equal `"ai-only"`.
+```bash
+python3 <SKILL_BASE>/scripts/design-ai.py preferences $MIGRATION_DIR
+```
 
-If either check fails: STOP and output: "AI-only clarify output validation failed. Fix `preferences.json` before completing Clarify."
+It checks that `preferences.json` exists, that `metadata.migration_type` is `"ai-only"`, and that every field has the type and, for Q2 and Q6–Q10, a value this file's Interpret lines write: the same check Design and Estimate run. Do not complete Clarify until it prints `"ok": true`. On a non-zero exit, quote `detail` and use the first line that matches:
+
+1. `error` is `preferences_invalid` and `detail` names `ai_constraints.<key>` for a key in the table below: ask that question again, write its interpreted answer into `preferences.json` with the full field shape and `chosen_by: "user"`, move its Q id into `metadata.questions_asked` and out of the other two lists, and run the check again. When the new Q2 answer is 4 (Specialized capability), ask Q10 the same way.
+2. Otherwise: output "AI-only clarify output validation failed." and start fresh as in Step 0 Case 1 option 2: delete `preferences.json` and `preferences-draft.json`, then continue to Step 1.
+
+| Key in `detail`        | Question |
+| ---------------------- | -------- |
+| `ai_priority`          | Q2       |
+| `ai_vision`            | Q6       |
+| `ai_token_volume`      | Q7       |
+| `ai_latency`           | Q8       |
+| `ai_complexity`        | Q9       |
+| `ai_critical_feature`  | Q10      |
 
 Use read-merge-write (as described in `SKILL.md`) to update `.phase-status.json` in the same turn as the output message:
 

@@ -839,6 +839,74 @@ def test_cli_rejects_malformed_preferences_with_json(mutate, tmp_path: Path, cap
         assert json.loads(capsys.readouterr().out)["error"] == "preferences_invalid"
 
 
+def _old_run(tmp_path: Path, mutate) -> Path:
+    prefs = copy.deepcopy(_load(MANTLE_FIXTURE)[2])
+    mutate(prefs)
+    (tmp_path / "preferences.json").write_text(json.dumps(prefs))
+    return tmp_path
+
+
+@pytest.mark.parametrize(("mutate", "error", "named"), [
+    (lambda f: f["ai_constraints"]["ai_priority"].update(value="fastest"), "preferences_invalid", "ai_constraints.ai_priority"),
+    (lambda f: f["ai_constraints"]["ai_token_volume"].update(value="huge"), "preferences_invalid", "ai_constraints.ai_token_volume"),
+    (lambda f: f["ai_constraints"].update(ai_vision="image"), "preferences_invalid", "ai_constraints.ai_vision"),
+    (lambda f: f["metadata"].update(migration_type="full"), "preferences_not_ai_only", "migration_type"),
+    (lambda f: f.update(metadata=[]), "preferences_invalid", "metadata"),
+], ids=["old-priority", "old-volume", "bare-entry", "not-ai-only", "metadata"])
+def test_clarify_preferences_check_rejects_what_plan_rejects_without_a_profile(mutate, error, named, tmp_path: Path, capsys) -> None:
+    run = _old_run(tmp_path, mutate)
+    assert not (run / "ai-workload-profile.json").exists()
+    assert DESIGN.main(["preferences", str(run)]) == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["error"] == error and named in out["detail"]
+    shutil.copy(MANTLE_FIXTURE / "ai-workload-profile.json", run / "ai-workload-profile.json")
+    assert DESIGN.main(["plan", str(run)]) == 1 and json.loads(capsys.readouterr().out)["error"] == error
+
+
+def test_clarify_preferences_check_passes_a_file_once_the_named_question_is_answered_again(tmp_path: Path, capsys) -> None:
+    run = _old_run(tmp_path, lambda f: f["ai_constraints"].update(
+        ai_priority={"value": "fastest", "chosen_by": "default"}, ai_latency={"value": "low", "chosen_by": "user"}))
+    assert DESIGN.main(["preferences", str(run)]) == 1
+    assert "ai_constraints.ai_priority" in json.loads(capsys.readouterr().out)["detail"]
+    prefs = json.loads((run / "preferences.json").read_text())
+    prefs["ai_constraints"]["ai_priority"] = {"value": "speed", "chosen_by": "user"}
+    (run / "preferences.json").write_text(json.dumps(prefs))
+    assert DESIGN.main(["preferences", str(run)]) == 1
+    assert "ai_constraints.ai_latency" in json.loads(capsys.readouterr().out)["detail"]
+    prefs["ai_constraints"]["ai_latency"] = {"value": "critical", "chosen_by": "user"}
+    (run / "preferences.json").write_text(json.dumps(prefs))
+    assert DESIGN.main(["preferences", str(run)]) == 0 and json.loads(capsys.readouterr().out) == {"ok": True}
+
+
+def test_clarify_preferences_check_reports_a_missing_file(tmp_path: Path, capsys) -> None:
+    assert DESIGN.main(["preferences", str(tmp_path)]) == 1
+    assert json.loads(capsys.readouterr().out)["error"] == "preferences_not_found"
+
+
+def test_clarify_step_4_runs_the_preferences_check_before_completing_and_names_each_question() -> None:
+    step0 = CLARIFY[CLARIFY.index("## Step 0"):CLARIFY.index("## Step 1:")]
+    step4 = CLARIFY[CLARIFY.index("## Step 4"):]
+    assert "skip to Step 4, which checks the existing `preferences.json`" in step0
+    command = "python3 <SKILL_BASE>/scripts/design-ai.py preferences $MIGRATION_DIR"
+    assert step4.index(command) < step4.index('Set `phases.clarify` to `"completed"`')
+    assert 'Do not complete Clarify until it prints `"ok": true`' in step4
+    table = dict(re.findall(r"^\| `([a-z_]+)` +\| (Q[0-9.]+) +\|$", step4, re.M))
+    assert table == PINNED_QUESTIONS
+    for key, qid in table.items():
+        section = re.split(r"^## Q[0-9.]+ — ", CLARIFY[CLARIFY.index(f"## {qid} — "):], flags=re.M)[1]
+        assert f"Interpret → `{key}`" in section, (key, qid)
+    lines = re.findall(r"^\d\. (.+)$", step4, re.M)
+    assert len(lines) == 2 and lines[1].startswith("Otherwise") and "continue to Step 1" in lines[1]
+    assert '4 → `"balanced"` (Q10 decides)' in CLARIFY and "When the new Q2 answer is 4 (Specialized capability), ask Q10" in lines[0]
+
+
+def test_design_and_estimate_send_an_invalid_value_back_to_a_clarify_path_that_can_finish() -> None:
+    estimate = (BMA / "references/phases/estimate/estimate-ai.md").read_text(encoding="utf-8")
+    for doc in (DESIGN_DOC, estimate):
+        row = next(l for l in doc.splitlines() if l.startswith("| `preferences_invalid`"))
+        assert "choose Start fresh, or re-use the answers and re-answer the question Clarify Step 4 names" in row
+
+
 @pytest.mark.parametrize(("service", "ok"), [("transcribe", True), ("polly", False), (None, True)])
 def test_speech_rows_may_target_transcribe(service, ok) -> None:
     def mutate(d, p, f):
@@ -861,3 +929,10 @@ def test_speech_rows_may_target_transcribe(service, ok) -> None:
                 ids=", ".join(b["workload_id"] for b in d["design_blocks"][:2]))
     codes = _mutated(MANTLE_FIXTURE, mutate)
     assert (codes == set()) is ok, codes
+
+
+def test_design_drops_two_option_choices_that_cannot_serve_the_critical_feature() -> None:
+    text = (BMA / "references" / "phases" / "design" / "design-ai.md").read_text(encoding="utf-8")
+    step2 = text[text.index("   1. A Q10 `ai_critical_feature`"):]
+    assert "For `rag`, Bedrock Knowledge Bases needs a Claude or Nova target via Converse" in step2.splitlines()[0]
+    assert "Present only options that serve the item 2.1 feature" in step2

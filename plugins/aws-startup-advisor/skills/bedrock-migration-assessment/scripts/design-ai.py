@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plan and check aws-design-ai.json for bedrock-migration-assessment from a validated profile and preferences."""
+"""Plan and check aws-design-ai.json for bedrock-migration-assessment, and check preferences.json before Clarify completes."""
 from __future__ import annotations
 
 import argparse
@@ -221,10 +221,15 @@ def _rows(profile: dict) -> list[dict]:
     return rows
 
 
-def build_plan(profile: dict, prefs: dict) -> dict:
+def check_preferences(prefs: dict) -> dict:
     _check_preferences(prefs)
     if prefs["metadata"].get("migration_type") != "ai-only":
         raise DesignInputError("preferences_not_ai_only", "preferences.json metadata.migration_type must be \"ai-only\"")
+    return {"ok": True}
+
+
+def build_plan(profile: dict, prefs: dict) -> dict:
+    check_preferences(prefs)
     rows = _rows(profile)
     for row in rows:
         requests = _requests_for(row, prefs, profile)
@@ -553,16 +558,19 @@ def _read_json(path: Path, code: str) -> Any:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("plan", "check"))
+    parser.add_argument("command", choices=("plan", "check", "preferences"))
     parser.add_argument("run_dir", type=Path, help="the $MIGRATION_DIR holding ai-workload-profile.json and preferences.json")
     args = parser.parse_args(argv)
     try:
-        profile = _read_json(args.run_dir / "ai-workload-profile.json", "profile")
-        validator.validate_profile(profile)
+        if args.command != "preferences":
+            profile = _read_json(args.run_dir / "ai-workload-profile.json", "profile")
+            validator.validate_profile(profile)
         prefs = _read_json(args.run_dir / "preferences.json", "preferences")
         if not isinstance(prefs, dict):
             raise DesignInputError("preferences_unreadable", "preferences.json must be a JSON object")
-        if args.command == "plan":
+        if args.command == "preferences":
+            result = check_preferences(prefs)
+        elif args.command == "plan":
             result = build_plan(profile, prefs)
         else:
             result = check_design(_read_json(args.run_dir / "aws-design-ai.json", "design"), profile, prefs)

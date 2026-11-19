@@ -1,6 +1,7 @@
 """The Design model-choice matrix: coverage of every Clarify value, targets that still exist, and inputs plan accepts."""
 from __future__ import annotations
 
+import copy
 import importlib.util
 import itertools
 import re
@@ -176,12 +177,80 @@ def test_service_targets_are_the_ones_design_names() -> None:
     assert services == {f"service:{s}" for s in DESIGN.SPEECH_SERVICES.values()}
 
 
-@pytest.mark.parametrize(("pref", "column"), [("vision", "Image input"), ("audio", "Audio input")])
-def test_no_row_allows_a_model_that_cannot_take_its_input(pref, column) -> None:
-    caps = _capability_table()
-    bad = [(r["id"], a) for r in ROWS if r["preferences"]["ai_vision"] == pref for a in r["allowed"]
-           if caps.get(a, {}).get(column) == "no"]
-    assert not bad
+INPUT_COLUMNS = {"vision": "Image input", "audio": "Audio input"}
+INPUT_WORDS = {"vision": "image", "audio": "audio"}
+
+
+def _sections(text: str) -> dict[str, str]:
+    heads = [(m.start(), len(m.group(1)), m.group(2).strip()) for m in re.finditer(r"^(#+) (.+)$", text, re.M)]
+    found = {}
+    for i, (start, level, title) in enumerate(heads):
+        end = next((s for s, lv, _ in heads[i + 1:] if lv <= level), len(text))
+        found[title] = " ".join(text[start:end].split())
+    return found
+
+
+def _input_violations(rows: list[dict]) -> list[tuple]:
+    caps, evidence = _capability_table(), {(e["model"], e["modality"]): e for e in MATRIX["input_evidence"]}
+    bad = []
+    for row in rows:
+        modality = row["preferences"]["ai_vision"]
+        if modality not in INPUT_COLUMNS:
+            continue
+        for target in row["allowed"]:
+            entry = evidence.get((target, modality))
+            if caps.get(target, {}).get(INPUT_COLUMNS[modality]) == "yes":
+                continue
+            if caps.get(target, {}).get(INPUT_COLUMNS[modality]) == "no" or not entry:
+                bad.append((row["id"], target, "no Capability Constraints yes and no input_evidence entry"))
+            elif entry["probe"] and {"model": target, "modality": modality} not in row.get("probes", []):
+                bad.append((row["id"], target, f"input_evidence says to probe {modality}; list it in probes"))
+    return bad
+
+
+def test_no_row_allows_a_model_that_cannot_take_its_input() -> None:
+    assert not _input_violations(ROWS)
+
+
+@pytest.mark.parametrize(("row_id", "target"), [("pair-04", "amazon.titan-embed-text-v2:0"), ("pair-04", "amazon.nova-micro-v1:0"),
+                                                ("pair-03", "anthropic.claude-sonnet-5"), ("pair-15", "openai.gpt-5.4"),
+                                                ("pair-03", "openai.gpt-5.6-terra")])
+def test_the_input_check_rejects_a_target_with_no_input_evidence(row_id, target) -> None:
+    row = copy.deepcopy(next(r for r in ROWS if r["id"] == row_id))
+    row["allowed"].append(target)
+    assert [v[:2] for v in _input_violations([row])] == [(row_id, target)]
+
+
+def test_the_input_check_accepts_a_capability_constraints_yes() -> None:
+    row = copy.deepcopy(next(r for r in ROWS if r["id"] == "pair-15"))
+    row["allowed"].append("openai.gpt-6.1-terra")
+    assert not _input_violations([row])
+
+
+def test_the_input_check_requires_the_probe_on_a_probe_only_target() -> None:
+    row = copy.deepcopy(next(r for r in ROWS if r["id"] == "pair-03"))
+    assert row["probes"] and not _input_violations([row])
+    row.pop("probes")
+    assert _input_violations([row]) == [("pair-03", "openai.gpt-5.5", "input_evidence says to probe audio; list it in probes")]
+
+
+@pytest.mark.parametrize("entry", MATRIX["input_evidence"], ids=[f"{e['model']}-{e['modality']}" for e in MATRIX["input_evidence"]])
+def test_each_input_evidence_entry_quotes_its_guide(entry) -> None:
+    section = _sections((VENDORED / entry["file"]).read_text(encoding="utf-8")).get(entry["section"], "")
+    assert " ".join(entry["quote"].split()) in section, entry
+    assert entry["names"] in entry["quote"] and INPUT_WORDS[entry["modality"]] in entry["quote"].lower()
+    assert ("probe" in entry["quote"]) is entry["probe"]
+    family = re.escape(entry["names"].lower().replace(" ", "-")).replace(r"\.x", r"\.\d+")
+    assert re.search(rf"\.{family}(\b|-|:)", entry["model"]), entry
+    assert entry["model"] not in _capability_table() or _capability_table()[entry["model"]][INPUT_COLUMNS[entry["modality"]]] != "no"
+
+
+def test_every_probe_a_row_lists_has_probe_evidence() -> None:
+    probes = {(e["model"], e["modality"]) for e in MATRIX["input_evidence"] if e["probe"]}
+    for row in ROWS:
+        for probe in row.get("probes", []):
+            assert (probe["model"], probe["modality"]) in probes and probe["modality"] == row["preferences"]["ai_vision"], row["id"]
+            assert probe["model"] in row["allowed"], row["id"]
 
 
 def test_vision_rows_exclude_nova_micro() -> None:
@@ -239,10 +308,31 @@ def _cache_read_models() -> set[str]:
 
 
 ULTRA_LONG_CONTEXT = 300_000  # Clarify Q10 "Ultra-long context (> 300K tokens)"
+KB_SENTENCE = re.compile(r"Choose (.+?) via Converse when the workload needs Knowledge Bases")
+FAMILY_PREFIXES = {"Claude": "anthropic.claude-", "Nova": "amazon.nova-"}
+
+
+def _knowledge_base_line() -> tuple[int, list[str]]:
+    lines = (VENDORED / "ai-openai-to-bedrock.md").read_text(encoding="utf-8").splitlines()
+    number, found = next((i + 1, KB_SENTENCE.search(line)) for i, line in enumerate(lines) if KB_SENTENCE.search(line))
+    return number, [name.strip() for name in found.group(1).split("/")]
+
+
+def _knowledge_base_models() -> set[str]:
+    prefixes = tuple(FAMILY_PREFIXES[name] for name in _knowledge_base_line()[1])
+    return {m for m in _cache_statuses()[0] if m.startswith(prefixes)}
+
+
+def _rag_violations(rows: list[dict]) -> list[tuple]:
+    served = _knowledge_base_models()
+    return [(r["id"], a) for r in rows if r["preferences"]["ai_critical_feature"] == "rag" for a in r["allowed"] if a not in served]
+
+
 FEATURE_SERVERS = {
     "prompt_caching": _cache_read_models,
     "ultra_long_context": lambda: {m for m, w in _context_windows().items() if w > ULTRA_LONG_CONTEXT},
     "image_generation": lambda: {m for m, r in _capability_table().items() if r["Image input"] == "yes"},
+    "rag": _knowledge_base_models,
 }
 FEATURE_ROWS = [r for r in ROWS if r["group"] == "critical_feature" and r["decided_by"] == "critical_feature"
                 and r["preferences"]["ai_critical_feature"] in FEATURE_SERVERS]
@@ -256,6 +346,23 @@ def test_a_feature_row_allows_every_candidate_of_its_source_and_priority_that_se
     serving = pool & FEATURE_SERVERS[row["preferences"]["ai_critical_feature"]]()
     assert serving, row["id"]
     assert not sorted(serving - set(row["allowed"])), (row["id"], sorted(serving - set(row["allowed"])))
+
+
+def test_rag_rows_allow_only_the_families_the_openai_guide_names_for_knowledge_bases() -> None:
+    number, families = _knowledge_base_line()
+    assert set(families) == {"Claude", "Nova"} and not [m for m in _knowledge_base_models() if m.startswith("openai.")]
+    rows = [r for r in ROWS if r["preferences"]["ai_critical_feature"] == "rag"]
+    assert rows and not _rag_violations(rows)
+    for row in rows:
+        assert row["decided_by"] == "critical_feature" and f"(line {number})" in row["basis"], row["id"]
+        assert "schema-design-aws-ai.md" in row["basis"] and "model_change true" in row["basis"], row["id"]
+
+
+@pytest.mark.parametrize("target", ["openai.gpt-5.6-terra", "openai.gpt-5.5", "deepseek.v3-v1:0"])
+def test_a_rag_row_allowing_a_model_outside_claude_and_nova_fails(target) -> None:
+    row = copy.deepcopy(next(r for r in ROWS if r["id"] == "feature-rag"))
+    row["allowed"].append(target)
+    assert _rag_violations([row]) == [("feature-rag", target)]
 
 
 def test_capability_rows_follow_design_step_2_item_1() -> None:
