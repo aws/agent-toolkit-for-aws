@@ -1478,6 +1478,75 @@
         "image_input_vision"
       ],
       "capability_source": "AWS model card model-card-anthropic-claude-sonnet-5 (2026-07-21): Converse checked, 1M context / 128K output, adaptive thinking always on, image input checked (tool_use/thinking/vision mapped to this provider's feature vocabulary). Balanced Claude tier — the Converse target for GPT-5.6 Terra, GPT-5.5, GPT-5.4, and unmatched/legacy sources.",
+      "runtime_in_region_regions": [
+        "eu-west-2",
+        "ap-northeast-2",
+        "ap-southeast-1"
+      ],
+      "runtime_in_region_verified_at": "2026-11-17",
+      "inference_profiles": {
+        "us": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2",
+          "ca-central-1",
+          "ca-west-1"
+        ],
+        "eu": [
+          "eu-central-1",
+          "eu-central-2",
+          "eu-north-1",
+          "eu-south-1",
+          "eu-south-2",
+          "eu-west-1",
+          "eu-west-2",
+          "eu-west-3"
+        ],
+        "au": [
+          "ap-southeast-2",
+          "ap-southeast-4"
+        ],
+        "in": [
+          "ap-south-1",
+          "ap-south-2"
+        ],
+        "global": [
+          "af-south-1",
+          "ap-east-2",
+          "ap-northeast-1",
+          "ap-northeast-2",
+          "ap-northeast-3",
+          "ap-south-1",
+          "ap-south-2",
+          "ap-southeast-1",
+          "ap-southeast-2",
+          "ap-southeast-3",
+          "ap-southeast-4",
+          "ap-southeast-5",
+          "ap-southeast-6",
+          "ap-southeast-7",
+          "ca-central-1",
+          "ca-west-1",
+          "eu-central-1",
+          "eu-central-2",
+          "eu-north-1",
+          "eu-south-1",
+          "eu-south-2",
+          "eu-west-1",
+          "eu-west-2",
+          "eu-west-3",
+          "il-central-1",
+          "me-central-1",
+          "me-south-1",
+          "mx-central-1",
+          "sa-east-1",
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2"
+        ]
+      },
       "paths": {
         "runtime_converse": {
           "available": true,
@@ -1485,7 +1554,7 @@
           "requires_cris": true,
           "guardrails_supported": true,
           "prompt_caching_supported": true,
-          "evidence": "AWS model card (2026-07-21): Converse on bedrock-runtime checked; Geo (us/eu/au) and Global CRIS supported; prompt_caching_supported true: Claude explicit cache checkpoints (cachePoint) are supported on Converse (https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html, read 2026-11-09)"
+          "evidence": "AWS model card (2026-07-21): Converse on bedrock-runtime checked; Geo (us/eu/au) and Global CRIS supported. https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5.html (re-read 2026-11-17): Geo us./eu./au./in. and Global CRIS, plus the In-Region bare id in eu-west-2, ap-northeast-2 and ap-southeast-1; GovCloud is left out of the profile matrix because the card lists no GovCloud source Region or us-gov. id; prompt_caching_supported true: Claude explicit cache checkpoints (cachePoint) are supported on Converse (https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html, read 2026-11-09)"
         }
       }
     },
@@ -1503,6 +1572,73 @@
         "image_input_vision"
       ],
       "capability_source": "anthropic-bedrock.json catalog (verified 2026-09-24) (runtime_converse available; tool_use/vision mapped to this provider's feature vocabulary; no extended-thinking evidence, so reasoning-requiring workloads fall back to a higher Claude tier). Superseded as the fast/low-cost Converse tier by Claude Haiku 5.5 (2026-11-09); kept as an explicit alternative, never the automatic Luna fallback.",
+      "inference_profiles": {
+        "us": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2",
+          "ca-central-1"
+        ],
+        "eu": [
+          "eu-central-1",
+          "eu-central-2",
+          "eu-north-1",
+          "eu-south-1",
+          "eu-south-2",
+          "eu-west-1",
+          "eu-west-2",
+          "eu-west-3"
+        ],
+        "au": [
+          "ap-southeast-2",
+          "ap-southeast-4",
+          "ap-southeast-6"
+        ],
+        "jp": [
+          "ap-northeast-1",
+          "ap-northeast-3"
+        ],
+        "in": [
+          "ap-south-1",
+          "ap-south-2"
+        ],
+        "global": [
+          "af-south-1",
+          "ap-east-2",
+          "ap-northeast-1",
+          "ap-northeast-2",
+          "ap-northeast-3",
+          "ap-south-1",
+          "ap-south-2",
+          "ap-southeast-1",
+          "ap-southeast-2",
+          "ap-southeast-3",
+          "ap-southeast-4",
+          "ap-southeast-5",
+          "ap-southeast-6",
+          "ap-southeast-7",
+          "ca-central-1",
+          "ca-west-1",
+          "eu-central-1",
+          "eu-central-2",
+          "eu-north-1",
+          "eu-south-1",
+          "eu-south-2",
+          "eu-west-1",
+          "eu-west-2",
+          "eu-west-3",
+          "il-central-1",
+          "me-central-1",
+          "me-south-1",
+          "mx-central-1",
+          "sa-east-1",
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2"
+        ]
+      },
       "paths": {
         "runtime_converse": {
           "available": true,
@@ -1510,7 +1646,7 @@
           "requires_cris": true,
           "guardrails_supported": true,
           "prompt_caching_supported": true,
-          "evidence": "anthropic-bedrock.json catalog (verified 2026-09-24) runtime_converse entry (requires CRIS profile); prompt_caching_supported true: Claude explicit cache checkpoints (cachePoint) are supported on Converse (https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html, read 2026-11-09)"
+          "evidence": "anthropic-bedrock.json catalog (verified 2026-09-24) runtime_converse entry (requires CRIS profile). https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-4-5.html (re-read 2026-11-17): Converse via Geo us./eu./au./jp./in. or Global CRIS only (no In-Region); GovCloud is left out of the profile matrix because the card lists no GovCloud source Region or us-gov. id; prompt_caching_supported true: Claude explicit cache checkpoints (cachePoint) are supported on Converse (https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html, read 2026-11-09)"
         }
       }
     },

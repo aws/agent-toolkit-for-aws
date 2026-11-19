@@ -14,7 +14,7 @@ Before starting, check if `.elasticache/requirements.json` exists from a previou
 
 If the user already knows what they want, don't interview them. Run the workspace scan silently, then route:
 
-- User names a specific product or engine ("create a Valkey serverless cache") -> skip to **Summarize and hand off**. Ask only for missing critical values (region, VPC). Serverless supports Valkey 7.2, 8.0, and 8.1. If user requests Redis OSS, note that Valkey is the recommended forward path. Redis OSS remains available (highest version on ElastiCache: 7.1), but Valkey receives new feature investments (vector search, Bloom filters, memory-efficient hash table, COMMANDLOG, and more). If the user needs vector search (semantic caching, agentic memory, RAG), note that Valkey 8.2+ is required and is available on node-based clusters only (not available on Serverless or data-tiering r6gd instances).
+- User names a specific product or engine ("create a Valkey serverless cache") -> skip to **Summarize and hand off**. Ask only for missing critical values (region, VPC). Check the Valkey versions Serverless supports today in [Engine versions](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/engine-versions.html). If user requests Redis OSS, note that Valkey is the recommended forward path. Redis OSS remains available (highest version on ElastiCache: 7.1), but Valkey receives new feature investments (vector search, Bloom filters, memory-efficient hash table, COMMANDLOG, and more). If the user needs vector search (semantic caching, agentic memory, RAG), note that Valkey 8.2+ is required and is available on node-based clusters, or on Serverless Valkey 9.0+ (not on data-tiering r6gd/r7gd/r8gd instances).
 - User names a specific pattern ("session store", "rate limit my API", "semantic cache for Bedrock") -> confirm inferences from scan, skip to **Summarize and hand off**.
 - User names a specific task ("migrate from Redis to Valkey", "check my cache costs") -> route directly to matching sub-skill. Do not run this flow.
 
@@ -57,18 +57,18 @@ If the user is unsure, evaluate:
 | Symptom | Better alternative | Can ElastiCache complement it? |
 |---------|-------------------|-------------------------------|
 | Need complex queries, joins, ACID transactions | RDS, Aurora | Yes, as a read cache in front of it |
-| Need a DynamoDB-specific transparent cache | DAX | Yes, as a general cross-service cache alongside DAX |
+| Need a DynamoDB-specific transparent cache | DAX | Yes, the AWS ElastiCache Integration Client adds read-through and write-through caching on ElastiCache Serverless to the existing DynamoDB SDK client (see `references/shared-runtime/dynamodb-caching.md`) |
 | Need CDN / static content delivery | CloudFront | Yes, as an app-layer cache behind CloudFront |
 | Need a durable message queue with exactly-once delivery | SQS | Yes, for rate limiting in front of SQS |
 | Need an event bus with routing rules | EventBridge | No |
 | Need search over massive archival datasets | OpenSearch | Yes, as a fast real-time layer alongside OpenSearch |
 | Slow DB reads but every query is unique | DB indexing, read replicas, query optimization | No |
-| Need a durable primary database with Redis/Valkey API compatibility | MemoryDB | No, use MemoryDB instead of ElastiCache when the workload requires a durable primary database with microsecond reads and single-digit ms writes |
+| Need a durable primary database with Redis/Valkey API compatibility | MemoryDB | Yes, node-based ElastiCache Valkey 9.0+ with `sync` durability gives zero data loss, single-digit-millisecond writes, and microsecond reads, the same profile as MemoryDB (see `references/setup/create-secure-cache.md`). Choose MemoryDB when the workload must run below Valkey 9.0 |
 
 **Common "use both" patterns:**
 
 - ElastiCache + RDS/Aurora: Cache-aside for read acceleration
-- ElastiCache + DynamoDB: General cross-service cache layer
+- ElastiCache + DynamoDB: General cross-service cache layer, or read-through/write-through caching with the AWS ElastiCache Integration Client (`references/shared-runtime/dynamodb-caching.md`)
 - ElastiCache + Bedrock: Semantic cache to reduce LLM cost and latency
 - ElastiCache + OpenSearch: Fast real-time search layer with OpenSearch for archival analytics
 - ElastiCache + SQS: Rate limiting and deduplication in front of a queue
@@ -115,7 +115,7 @@ If the scan + user's message reveal the job, route immediately. Otherwise ask re
 | API protection or throttling | `setup` + `data-modeling` (rate limiter) |
 | Reducing LLM costs or latency | `setup` + `genai` (semantic cache); server-side path requires Valkey 8.2 or above, app-side works on any version |
 | AI agent memory across sessions | `setup` + `genai` (conversational memory), requires Valkey 8.2+ |
-| Search or recommendations | `setup` + `genai` (vector search / RAG), requires Valkey 8.2+ (node-based clusters only) |
+| Search or recommendations | `setup` + `genai` (vector search / RAG), requires node-based Valkey 8.2+ or Serverless Valkey 9.0+ |
 | Real-time event distribution | `setup` + `data-modeling` (pub/sub or streams) |
 
 **Compliance-to-configuration mapping:**
@@ -129,18 +129,18 @@ If the user mentions a compliance framework, these ElastiCache settings are non-
 | SOC 2 | In-transit encryption (TLS), at-rest encryption, RBAC or IAM auth, CloudTrail enabled, security-relevant metric alarms (e.g., AuthenticationFailures, NewConnections) + CloudTrail |
 | FedRAMP | All HIPAA requirements plus: GovCloud region, FIPS endpoints, Config rules for drift detection |
 
-When compliance is flagged, pass the requirement to `setup` so it enforces encryption and auth from the start. At-rest encryption cannot be added after cluster creation; getting this wrong requires a full cluster recreation.
+When compliance is flagged, pass the requirement to `setup` so it enforces encryption and auth from the start. At-rest encryption cannot be added after cluster creation; getting this wrong requires a full cluster recreation, unless the cluster qualifies for durability (Valkey 9.0+, node-based), which turns at-rest encryption on.
 
 **AWS-stack translation table:**
 
 | AWS context | Default ElastiCache choice |
 |---|---|
 | RDS or Aurora read-heavy app | Query caching / cache-aside |
-| DynamoDB read-heavy app | ElastiCache cache-aside. Mention DAX only if user wants DynamoDB-specific transparent cache. |
+| DynamoDB read-heavy app | AWS ElastiCache Integration Client when the user wants caching without changing data-access code (`references/shared-runtime/dynamodb-caching.md`); otherwise ElastiCache cache-aside. DAX is the other DynamoDB-specific cache. |
 | Lambda | VPC connectivity required. Default serverless unless node-based requirement applies. |
 | ECS, EKS, or EC2 | Pick pattern per signal above. |
 | Bedrock or AgentCore | Route to `genai`, classify Mode 1/2/3. |
-| Global app footprint (multi-region) | Node-based with Global Datastore. Limited to specific instance families (M5, M6g, M7g, R5, R6g, R6gd, R7g, C7gn in size large+), max 2 secondary regions, no autofailover across regions (manual promotion only), no IPv6, no Local Zones. |
+| Global app footprint (multi-region) | Node-based with Global Datastore. Instance family list and other prerequisites: load `references/migration/global-datastore-operations.md`. Max 2 secondary regions, no autofailover across regions (manual promotion only), no IPv6, no Local Zones. |
 
 ## Summarize and hand off
 

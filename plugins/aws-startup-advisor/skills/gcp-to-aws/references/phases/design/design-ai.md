@@ -22,7 +22,7 @@ Read `$MIGRATION_DIR/preferences.json` → `ai_constraints` (if present). If abs
 
 **Load source-specific design reference based on `ai_source`:**
 
-- `"gemini"` → load `references/design-refs/ai-gemini-to-bedrock.md`
+- `"gemini"` → load `references/vendored/ai/ai-gemini-to-bedrock.md`
 - `"openai"` → load `references/vendored/ai/ai-openai-to-bedrock.md` **and**
   `references/vendored/ai/openai-on-bedrock.md` (the fact base: model IDs, endpoint paths, region matrix, quotas,
   caching). OpenAI's proprietary GPT models run on Bedrock, so the source model is often itself the target — the

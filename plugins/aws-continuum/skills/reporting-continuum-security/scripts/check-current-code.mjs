@@ -10,7 +10,10 @@ const compact = text => text.replace(/\s+/g, '');
 // A delimiterless padded gutter is indistinguishable from code indentation.
 // Keep the extra whitespace: ambiguity needs agent review, not guessed Open.
 const stripNumber = line => line.replace(/^\s*\d+(?:[ \t]*[:|][ \t]?|[ \t])/, '');
-const significant = line => /[\p{L}\p{N}_]/u.test(line) && !/^\s*(?:\.{3}|…)(?:\s|$)/.test(line);
+const gap = line => /^\s*(?:\.{3}|…)(?:\s|$)/.test(line);
+const cited = line => line.trim().length > 0 && !gap(line);
+const significant = line => /[\p{L}\p{N}_]/u.test(line) && !gap(line);
+const normalizeLine = line => line.replace(/\s+$/u, '');
 const safePath = path => path && !isAbsolute(path) && !/^[A-Za-z]:/.test(path) && !path.split(/[\\/]/).includes('..');
 const inside = (root, path) => { const rel = relative(root, path); return !isAbsolute(rel) && rel !== '..' && !rel.startsWith('../'); };
 
@@ -18,9 +21,11 @@ export function parseLocations(snippet, filePath, lineNumber = 1) {
   const locations = [];
   let block = { path: filePath, start: Number(lineNumber) || 1, end: Number(lineNumber) || 1, lines: [] };
   function finish() {
-    const clean = block.lines.map(stripNumber);
-    const lines = clean.filter(significant).map(compact);
-    if (lines.length) locations.push({ path: block.path?.replace(/\\/g, '/').replace(/^\.\//, ''), start: block.start, end: Math.max(block.end, block.start + clean.length - 1), lines, firstSignificantLine: block.start + clean.findIndex(significant), exactLines: clean.filter(significant), identityLines: clean.map(compact).filter(Boolean) });
+    const clean = block.lines.map(line => normalizeLine(stripNumber(line)));
+    const significantLines = clean.filter(significant);
+    const lines = (significantLines.length ? significantLines : clean.filter(cited)).map(compact);
+    const first = clean.findIndex(significantLines.length ? significant : cited);
+    if (lines.length) locations.push({ path: block.path?.replace(/\\/g, '/').replace(/^\.\//, ''), start: block.start, end: Math.max(block.end, block.start + clean.length - 1), lines, firstSignificantLine: block.start + first, exactLines: clean, identityLines: clean });
   }
   for (const raw of String(snippet || '').split(/\r?\n/)) {
     if (/^\s*```/.test(raw)) continue;
@@ -33,7 +38,8 @@ export function parseLocations(snippet, filePath, lineNumber = 1) {
 }
 
 // Identity ignores presentation line numbers, but includes every location's path
-// and significant code in order. Empty or unsafe evidence can never merge flaws.
+// and code in order, including indentation and whitespace inside strings.
+// Empty or unsafe evidence can never merge flaws.
 export function snippetIdentity(finding) {
   const locations = parseLocations(finding.vulnerableCode, finding.filePath, finding.lineNumber);
   if (!locations.length || locations.some(loc => !safePath(loc.path))) return null;
@@ -41,10 +47,10 @@ export function snippetIdentity(finding) {
 }
 
 // Fuzzy windows only locate evidence for the agent. They never decide a fix.
-// Automatic Open requires every significant line unchanged at its cited position,
-// with no intervening significant lines inserted or reordered.
+// Automatic Open requires every non-blank, non-gap line, including punctuation,
+// unchanged at its cited position. Fuzzy normalization is never identity.
 export function matchLocation(location, source, tolerance = 40) {
-  const raw = source.split(/\r?\n/), lines = raw.map(compact);
+  const raw = source.split(/\r?\n/).map(normalizeLine), lines = raw.map(compact);
   const span = Math.max(location.end - location.start + 1, location.lines.length) + 2 * tolerance;
   function match(start, end) {
     let cursor = start;
@@ -64,13 +70,9 @@ export function matchLocation(location, source, tolerance = 40) {
     const candidate = match(i, Math.min(lines.length, i + span));
     if (candidate.ratio > best.ratio) best = candidate;
   }
-  // Presentation blanks and broad range labels must not pull following code
-  // into the comparison. Compare exactly the excerpt's significant-line count.
-  const exact = [];
-  for (let i = location.firstSignificantLine - 1; i < raw.length && exact.length < location.exactLines.length; i++) {
-    if (significant(raw[i])) exact.push(raw[i]);
-  }
-  const unchanged = raw[location.firstSignificantLine - 1] === location.exactLines[0] && exact.length === location.exactLines.length && exact.every((line, i) => line === location.exactLines[i]);
+  // Broad range labels never pull following code into the comparison. Blanks
+  // and ellipsis gaps are not code, but retain their offsets in the excerpt.
+  const unchanged = location.exactLines.every((line, i) => !cited(line) || raw[location.start - 1 + i] === line);
   return { ...best, unchanged, status: unchanged ? 'unchanged' : best.ratio === 1 && best.range?.start !== location.firstSignificantLine ? 'moved' : 'partly matched' };
 }
 

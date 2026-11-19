@@ -217,3 +217,69 @@ def test_duplicate_catalog_filename_fails_check_and_write_without_writing(tmp_pa
     before = {n: (tmp_path / n).read_text() for n in ("anthropic-bedrock.json", "openai-bedrock.json")}
     assert BUILD.main([*mode, "--models-dir", str(tmp_path)]) == 1
     assert {n: (tmp_path / n).read_text() for n in before} == before
+
+
+# ------------------------------------------------------------------ card facts (read 2026-11-17)
+
+_EU_GEO = ["eu-central-1", "eu-central-2", "eu-north-1", "eu-south-1", "eu-south-2", "eu-west-1",
+           "eu-west-2", "eu-west-3"]
+_GLOBAL_COMMERCIAL = sorted([
+    "us-east-1", "us-east-2", "us-west-1", "us-west-2", "ca-central-1", "ca-west-1", "mx-central-1",
+    "sa-east-1", *_EU_GEO, "il-central-1", "me-central-1", "me-south-1", "af-south-1", "ap-east-2",
+    "ap-northeast-1", "ap-northeast-2", "ap-northeast-3", "ap-south-1", "ap-south-2", "ap-southeast-1",
+    "ap-southeast-2", "ap-southeast-3", "ap-southeast-4", "ap-southeast-5", "ap-southeast-6",
+    "ap-southeast-7",
+])
+CARD_FACTS = {
+    # model-card-anthropic-claude-sonnet-5.html, read 2026-11-17
+    "claude_sonnet_5": {
+        "profiles": {
+            "us": ["us-east-1", "us-east-2", "us-west-1", "us-west-2", "ca-central-1", "ca-west-1"],
+            "eu": _EU_GEO,
+            "au": ["ap-southeast-2", "ap-southeast-4"],
+            "in": ["ap-south-1", "ap-south-2"],
+            "global": _GLOBAL_COMMERCIAL,
+        },
+        "mantle": ["us-east-1", "us-gov-west-1", "eu-north-1", "eu-west-1", "ap-southeast-4"],
+        "mantle_id": "anthropic.claude-sonnet-5",
+        "in_region": ["eu-west-2", "ap-northeast-2", "ap-southeast-1"],
+    },
+    # model-card-anthropic-claude-haiku-4-5.html, read 2026-11-17
+    "claude_haiku_4_5": {
+        "profiles": {
+            "us": ["us-east-1", "us-east-2", "us-west-1", "us-west-2", "ca-central-1"],
+            "eu": _EU_GEO,
+            "au": ["ap-southeast-2", "ap-southeast-4", "ap-southeast-6"],
+            "jp": ["ap-northeast-1", "ap-northeast-3"],
+            "in": ["ap-south-1", "ap-south-2"],
+            "global": _GLOBAL_COMMERCIAL,
+        },
+        "mantle": ["us-east-1", "us-east-2", "us-west-2", "us-gov-west-1", "eu-north-1", "eu-west-1",
+                   "ap-northeast-1", "ap-southeast-4"],
+        "mantle_id": "anthropic.claude-haiku-4-5",
+        "in_region": None,  # the card lists no bedrock-runtime In-Region support
+    },
+}
+
+
+@pytest.mark.parametrize("key", sorted(CARD_FACTS))
+def test_sonnet_5_and_haiku_4_5_carry_their_card_region_facts(key):
+    record = _registry()["models"][key]
+    facts = CARD_FACTS[key]
+    profiles = record["inference_profiles"]
+    assert {k: sorted(v) for k, v in profiles.items()} == {k: sorted(v) for k, v in facts["profiles"].items()}
+    # The card marks GovCloud Geo but names no GovCloud source Region or us-gov. id: fail closed.
+    assert not [r for regions in profiles.values() for r in regions if r.startswith("us-gov-")]
+    assert "us-gov" not in profiles
+    mantle = record["paths"]["mantle_messages"]
+    assert mantle["available"] is True and mantle["requires_cris"] is False
+    assert mantle["model_id"] == facts["mantle_id"]
+    assert sorted(mantle["regions"]) == sorted(facts["mantle"])
+    if facts["in_region"] is None:
+        assert "runtime_in_region_regions" not in record
+    else:
+        assert record["runtime_in_region_regions"] == facts["in_region"]
+        assert record["runtime_in_region_verified_at"] == "2026-11-17"
+    for path_id, path in record["paths"].items():
+        if path_id.startswith("runtime_"):
+            assert path["requires_cris"] is True, path_id

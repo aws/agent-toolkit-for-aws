@@ -33,6 +33,19 @@ def with_all_selectable(catalog):
                                   for k, m in catalog["models"].items()}}
 
 
+def without_mantle_regions(catalog):
+    """The same catalog with every Mantle Messages Region list removed: used to ask whether the
+    target Region, and not some other filter, is what left the Mantle side empty."""
+    models = {}
+    for key, model in catalog["models"].items():
+        mantle = model.get("paths", {}).get("mantle_messages")
+        if mantle is not None and "regions" in mantle:
+            mantle = {k: v for k, v in mantle.items() if k != "regions"}
+            model = {**model, "paths": {**model["paths"], "mantle_messages": mantle}}
+        models[key] = model
+    return {**catalog, "models": models}
+
+
 def is_selectable(model):
     status = model.get("selection_status", "selectable")
     if status not in SELECTION_STATUSES:
@@ -656,6 +669,69 @@ def _explicit_profile_matches(profile_id, model_id, requirements):
     return True
 
 
+def _mantle_regions_for(catalog, model_keys):
+    """Regions where these catalog models list Mantle Messages, sorted."""
+    return sorted({
+        r for key in model_keys
+        for r in catalog["models"][key]["paths"].get("mantle_messages", {}).get("regions", [])
+    })
+
+
+def _mantle_unavailable_finding(catalog, requirements, region):
+    """A [BLOCKS] finding when no Claude model meeting the requirements is served on
+    bedrock-mantle in `region` but one is in another Region; None when the Region is not the
+    cause. The probe uses selectable models only: when just a reference_only model would serve
+    Mantle elsewhere, the existing raise or reference_only finding applies, not a Region message."""
+    elsewhere = _build_candidates(without_mantle_regions(catalog), ["mantle_messages"], requirements, region)
+    if not elsewhere:
+        return None
+    regions = _mantle_regions_for(catalog, dict.fromkeys(c["model_key"] for c in elsewhere))
+    return _finding(
+        "mantle_unavailable_in_region",
+        "[BLOCKS]",
+        f"No Claude model meeting the recorded requirements is served on bedrock-mantle "
+        f"(Messages API) in {region}.",
+        "Use a bedrock-runtime option (Messages, Converse or InvokeModel) in this Region, or "
+        "choose a Region where a Claude model is on bedrock-mantle ("
+        + ", ".join(regions) + "), then rerun Model Recommend.",
+    )
+
+
+def _mantle_tier_tradeoff(catalog, candidate, requirements, region):
+    """A [TUNE] finding when the Mantle Messages model chosen in `region` is a lower class than
+    the model the stated priority would pick with only the Region limit removed (the best
+    requirement-filtered candidate). Lower means later in the quality order; the class is the
+    catalog `class`. No stated priority, no finding."""
+    if candidate["path"] != "mantle_messages":
+        return None
+    _, driver = _candidate_order(requirements)
+    if driver in (None, "unknown"):
+        return None
+    elsewhere = _build_candidates(without_mantle_regions(catalog), ["mantle_messages"], requirements, region)
+    if not elsewhere or elsewhere[0]["model_key"] == candidate["model_key"]:
+        return None
+    best = elsewhere[0]
+    best_class = best["model"].get("class")
+    chosen_class = candidate["model"].get("class")
+    tier_order = _PRIORITY_ORDER["quality"]
+    if (not best_class or chosen_class == best_class
+            or best["model_key"] not in tier_order or candidate["model_key"] not in tier_order
+            or tier_order.index(candidate["model_key"]) < tier_order.index(best["model_key"])):
+        return None
+    regions = _mantle_regions_for(catalog, [best["model_key"]])
+    return _finding(
+        "mantle_lower_tier_in_region",
+        "[TUNE]",
+        f"In {region} the highest-ranked Claude model on bedrock-mantle meeting the requirements "
+        f"is {_short_name(candidate['model'])} ({chosen_class} class); the {driver} priority would "
+        f"pick {_short_name(best['model'])} ({best_class} class), which is not on bedrock-mantle "
+        "in this Region.",
+        f"Accept {_short_name(candidate['model'])} on Mantle, use bedrock-runtime for "
+        f"{_short_name(best['model'])}, or choose a Region where {_short_name(best['model'])} is on "
+        "bedrock-mantle (" + (", ".join(regions) or "none cataloged") + ").",
+    )
+
+
 def _decision_options(catalog, workload, option_paths, region=None, selector=None):
     requirements = workload["requirements"]
     if selector is None:
@@ -992,7 +1068,19 @@ def _decision_required(workload, region, catalog, constraints):
             + ", ".join(constraints["conflicts"]),
             f"Choose {option_names}, update requirements, and rerun Model Recommend.",
         )
-    ]
+    ] if constraints["conflicts"] else []
+    tuning = []
+    for path in dict.fromkeys(constraints["option_paths"]):
+        if path != "mantle_messages":
+            continue
+        candidates = _build_candidates(catalog, [path], workload["requirements"], region)
+        if candidates:
+            chosen = _honor_explicit_profile(
+                _yield_to_capable_alternative(candidates, workload), workload["requirements"], region
+            )
+            finding = _mantle_tier_tradeoff(catalog, chosen, workload["requirements"], region)
+            if finding:
+                tuning.append(finding)
     if "mantle_selector_required" in constraints["conflicts"]:
         blocks.append(
             _finding(
@@ -1041,26 +1129,38 @@ def _decision_required(workload, region, catalog, constraints):
         missing = sorted(set(constraints["option_paths"]) - offered)
         counterfactual = with_all_selectable(catalog)
         blamed = set()
+        reference_only_paths = []
         for path in missing:
             candidates = _build_candidates(counterfactual, [path], workload["requirements"], region)
             if not candidates:
-                raise ValueError(
-                    "catalog has no candidate for every conflicting model/path option "
-                    f"for workload {workload['workload_id']}"
-                )
+                # The Region alone can empty the Mantle side (no Claude model on bedrock-mantle
+                # there): that is a fail-closed result, not a catalog error. Any other empty side
+                # means the requirement is unsatisfiable, and the raise stands.
+                finding = (_mantle_unavailable_finding(catalog, workload["requirements"], region)
+                           if path == "mantle_messages" else None)
+                if finding is None:
+                    raise ValueError(
+                        "catalog has no candidate for every conflicting model/path option "
+                        f"for workload {workload['workload_id']}"
+                    )
+                blocks.append(finding)
+                continue
+            reference_only_paths.append(path)
             blamed |= {c["model_key"] for c in candidates
                        if not is_selectable(catalog["models"][c["model_key"]])}
         status = "blocked"
-        blocks.append(
-            _finding(
-                "decision_option_unavailable",
-                "[BLOCKS]",
-                f"No selectable catalog model satisfies the {', '.join(missing)} option; it is "
-                f"available only from reference_only entries: {', '.join(sorted(blamed))}.",
-                "Mark a verified model selectable for that path, or update the conflicting "
-                "requirement, then rerun Model Recommend.",
+        if reference_only_paths:
+            blocks.append(
+                _finding(
+                    "decision_option_unavailable",
+                    "[BLOCKS]",
+                    f"No selectable catalog model satisfies the {', '.join(reference_only_paths)} "
+                    f"option; it is available only from reference_only entries: "
+                    f"{', '.join(sorted(blamed))}.",
+                    "Mark a verified model selectable for that path, or update the conflicting "
+                    "requirement, then rerun Model Recommend.",
+                )
             )
-        )
     return {
         "workload_id": workload["workload_id"],
         "provider_module": "anthropic",
@@ -1081,7 +1181,7 @@ def _decision_required(workload, region, catalog, constraints):
         "alternatives": [],
         "rationale": constraints["rationale"],
         "blocks": blocks,
-        "tuning": [],
+        "tuning": tuning,
         "compatibility": _compatibility(feature_status, workload["requirements"], ""),
         "architecture_impacts": _architecture_impacts(feature_status),
         "migration_deltas": [],
@@ -1116,6 +1216,11 @@ def recommend_anthropic_workload(workload, region, catalog):
     candidates = _build_candidates(
         catalog, constraints["paths"], workload["requirements"], region
     )
+    if (not candidates and constraints["paths"] == ["mantle_messages"]
+            and _mantle_unavailable_finding(catalog, workload["requirements"], region)):
+        # A mantle_selector routes to Mantle, but no Claude model meeting the requirements is
+        # served on bedrock-mantle in this Region: fail closed with a finding, do not raise.
+        return _decision_required(workload, region, catalog, {**constraints, "option_paths": ["mantle_messages"]})
     if not candidates:
         skipped = sorted(k for k, m in catalog["models"].items() if not is_selectable(m))
         raise ValueError(
@@ -1235,6 +1340,9 @@ def recommend_anthropic_workload(workload, region, catalog):
                     "Use on-demand inference, or explicitly select "
                     f"{alternative} after verifying its Batch support and rates."
                 )
+    tier_tradeoff = _mantle_tier_tradeoff(catalog, chosen, requirements, region)
+    if tier_tradeoff:
+        tuning.append(tier_tradeoff)
     if requirements.get("newest_anthropic_betas"):
         tuning.append(
             _finding(
