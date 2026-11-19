@@ -142,3 +142,21 @@ def test_not_covered_note_is_reachable_without_a_relational_database() -> None:
     assert "Write a `dump_restore` or `dms` branch only when a covered relational database is present" in section
     assert "only data stores are other engines may have no `db_cutover` answer" in section
     assert "Write this subsection only when `aws-design.json` contains a relational database" not in text
+
+
+def test_dms_load_bypasses_foreign_keys_and_triggers_and_cutover_checks_them() -> None:
+    text = _read(DOCS)
+    steps = text.split("**AWS DMS steps", 1)[1].split("### Not covered by this runbook", 1)[0]
+    step2 = steps.split("2. Create the source endpoint", 1)[1].split("3. Create the target schema", 1)[0]
+    # Step 3 precreates foreign keys and triggers, so the target endpoint must bypass them for the load.
+    assert "afterConnectScript=SET session_replication_role='replica'" in step2
+    assert "Initstmt=SET FOREIGN_KEY_CHECKS=0;" in step2
+    assert "child rows can arrive before their parents" in step2
+    step3 = steps.split("3. Create the target schema", 1)[1].split("4. Create a database migration task", 1)[0]
+    assert "carries the foreign keys and triggers; keep them" in step3
+    # Step 8 must agree with step 3: nothing is dropped, so it checks them instead of "fixing triggers".
+    step8 = steps.split("8. **Cut over.**", 1)[1].split("9. **Roll back.**", 1)[0]
+    assert "stop the task so no DMS session remains" in step8
+    assert "`pg_constraint.convalidated`" in step8 and "`information_schema.REFERENTIAL_CONSTRAINTS`" in step8
+    assert "orphaned child rows" in step8
+    assert "sequence values, triggers, secondary indexes" not in step8
