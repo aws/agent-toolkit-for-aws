@@ -102,8 +102,8 @@ Cron jobs, periodic sync, report generation, cleanup.
 | Decision | Default | Alternative |
 |---|---|---|
 | Scheduler | EventBridge Scheduler (flexible, one-time + recurring) | EventBridge rules schedule expression (simpler) |
-| Short task (< 15 min) | Lambda directly | — |
-| Long task (> 15 min) | Step Functions (≤ 1 year) | Lambda durable functions |
+| Short task (< 30 min) | Lambda directly | — |
+| Long task (> 30 min) | Step Functions (≤ 1 year) | Lambda durable functions |
 | High frequency (< 1 min) | Not supported natively | SQS delay queue + Lambda |
 
 Constraints: minimum interval 1 minute; always make scheduled Lambdas idempotent (at-least-once); prefer EventBridge Scheduler over rules for new projects (flexible time windows).

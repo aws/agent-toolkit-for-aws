@@ -25,6 +25,7 @@ Read this file first. Other references in this folder load on demand when the cu
 | `event-routing.md` | User wants event notifications, EventBridge rules, or CloudTrail integration |
 | `log-delivery.md` | User wants to enable slow log, engine log, or command log delivery |
 | `cost-reporting.md` | User wants cost analysis, optimization advice, or spend reporting |
+| `references/monitoring/opentelemetry-metrics.md` | User wants OpenTelemetry metrics, 15-second detailed monitoring, PromQL, or ElastiCache Insights (node-based Valkey only) |
 
 ## Symptom-to-File Routing
 
@@ -42,6 +43,7 @@ Read this file first. Other references in this folder load on demand when the cu
 | Keys without TTL, orphan key cleanup | `key-space-distribution-by-prefix.md` (TTL Audit) |
 | Bill too high, cost spike | `cost-reporting.md` |
 | Want dashboards or alarms | `cloudwatch-dashboards.md` or `alarm-packs.md` |
+| Want OTel metrics, PromQL, or ElastiCache Insights | `references/monitoring/opentelemetry-metrics.md` |
 | Want event notifications | `event-routing.md` (note: serverless caches do not support SNS topic notifications; instead, ElastiCache sends service events (Cache Created, Cache Updated, Cache Deleted, Snapshot Created, etc.) directly to EventBridge, and API calls are also available via CloudTrail + EventBridge. Node-based clusters use SNS for cluster events. EventBridge receives CloudTrail-derived API events for both deployment models; native ElastiCache service events via EventBridge are serverless-only) |
 | Want to enable logging | `log-delivery.md` |
 | Metrics not appearing, empty CloudWatch graphs | `client-tuning-and-diagnostics.md` (Missing CloudWatch Metrics) |

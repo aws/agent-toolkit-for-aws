@@ -1,7 +1,7 @@
 ---
 name: aws-lambda-durable-functions
 description: Builds resilient, long-running, multi-step applications with AWS Lambda durable functions with automatic state persistence, retry logic, and orchestration for long-running executions. Covers the critical replay model, step operations, wait/callback patterns, error handling with saga pattern, testing with LocalDurableTestRunner. Triggers on phrases like lambda durable functions, durable execution, workflow orchestration, state machines, retry/checkpoint patterns, long-running stateful Lambda functions, saga pattern, human-in-the-loop callbacks, reliable serverless applications, context.step, context.wait, context.invoke, context.runInChildContext, withDurableExecution, DurableContext, durable-execution-sdk, qualified ARN invocation, and durable handler replay.
-version: 2
+version: 3
 ---
 
 # AWS Lambda durable functions
@@ -55,6 +55,7 @@ Do not write SDK method signatures, configuration objects, or IaC properties fro
 2. **The handler must be wrapped with the SDK** (`withDurableExecution` in TypeScript, `@durable_execution` in Python). A plain handler deployed to a durable function fails every execution, so when moving existing code, wrap it rather than copying it unchanged.
 3. **Invoke with a qualified ARN**: a version, an alias, or `$LATEST` (for example `my-function:live`). An unqualified function name fails.
 4. **The execution role needs `lambda:CheckpointDurableExecution`, `lambda:GetDurableExecutionState`, and CloudWatch Logs permissions.** The managed policy `AWSLambdaBasicDurableExecutionRolePolicy` grants these on all resources and is fine for getting started; for production, use a policy scoped to the function's ARN. Durable invokes also need `lambda:InvokeFunction` on the target. External systems that complete callbacks need `lambda:SendDurableExecutionCallbackSuccess` and `lambda:SendDurableExecutionCallbackFailure`, plus `lambda:SendDurableExecutionCallbackHeartbeat` if they send heartbeats.
+5. **To invoke a durable function synchronously, through an event source mapping, or through a function URL, set the durable execution timeout (`DurableConfig` `ExecutionTimeout`, separate from the function `Timeout`) to 1,800 seconds (30 minutes) or less.**
 
 ## Critical rules: the replay model
 

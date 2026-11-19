@@ -33,6 +33,7 @@ Dimension alarms on `CacheClusterId` and `CacheNodeId` (the dimensions under whi
 | ReplicationLag | ReplicationLag | Maximum | 60s | 1 (seconds) | 5 / 3 | > 1 second sustained. For apps reading from replicas needing consistency, set tighter (e.g., 0.1s). Valkey 7.2+/Redis OSS 5.0.6+ measure sub-second precision. The CloudWatch metric unit is seconds, not milliseconds. |
 | Evictions | Evictions | Sum | 300s | 100 | 3 / 2 | > 100 evictions per 5-minute period sustained. Some eviction is normal with volatile-* policies, but sustained eviction means the dataset outgrew the cache. For clusters using `volatile-lru` or `volatile-ttl` policies, eviction of TTL'd keys is expected behavior. Raise or disable this alarm for those policies. Not user-tunable on serverless (serverless manages eviction automatically). |
 | NewConnections | NewConnections | Sum | 60s | 1000 | 3 / 2 | > 1000 new connections per minute sustained. Indicates connection storm or missing pooling. Tune based on your steady-state new connection rate. |
+| RejectedConnections | RejectedConnections | Sum | 60s | 0 | 3 / 2 | > 0 sustained means the node hit `maxclients`; raise `maxclients` or fix client-side connection pool leaks. |
 | ReadLatency | SuccessfulReadRequestLatency | Average | 60s | 5000 (microseconds) | 5 / 3 | > 5ms sustained. Adjust based on application SLA. Node-based latency is typically 0.5-2ms at p50. |
 | WriteLatency | SuccessfulWriteRequestLatency | Average | 60s | 5000 (microseconds) | 5 / 3 | > 5ms sustained. Critical for write-heavy workloads (session stores, counters, rate limiters). Adjust based on application SLA. Node-based write latency is typically 0.5-2ms at p50. |
 | LowHitRate | CacheHitRate | Average | 300s | 80 (LessThan) | 6 / 4 | < 80% sustained over 20 minutes. Investigate key design, TTL strategy, working set size. |
@@ -41,7 +42,9 @@ Dimension alarms on `CacheClusterId` and `CacheNodeId` (the dimensions under whi
 
 **Note on CPUUtilization vs. EngineCPUUtilization:** AWS recommends using `EngineCPUUtilization` rather than `CPUUtilization` for capacity planning. `CPUUtilization` may vary across engine versions and node types due to changes in how enhanced I/O features utilize available cores, making it an unreliable metric for capacity planning.
 
-**Network saturation alarms (recommended for large instances):** Add alarms for `TrafficManagementActive`, `NetworkBandwidthInAllowanceExceeded`, `NetworkBandwidthOutAllowanceExceeded`, `NetworkConntrackAllowanceExceeded`, and `NetworkPacketsPerSecondAllowanceExceeded`. These fire before general performance degradation becomes visible and are the first signal of host-level saturation. `DatabaseCapacityUsagePercentage` is available on all node-based clusters (on data-tiering instances (r6gd), the formula includes SSD storage; on all other instances, it is calculated as `used_memory/maxmemory`); add it alongside `DatabaseMemoryUsagePercentage`.
+**Network saturation alarms (recommended for large instances):** Add alarms for `TrafficManagementActive`, `NetworkBandwidthInAllowanceExceeded`, `NetworkBandwidthOutAllowanceExceeded`, `NetworkConntrackAllowanceExceeded`, and `NetworkPacketsPerSecondAllowanceExceeded`. These fire before general performance degradation becomes visible and are the first signal of host-level saturation. `NetworkBaselineUsageInPercentage`/`NetworkBaselineUsageOutPercentage` (and the `NetworkBaselineMaxUsage*Percentage` burst variants) report the same signal as a percentage of the instance's baseline bandwidth, so an alarm threshold stays valid across node-type changes; values above 100% mean burst credits are being drawn. `DatabaseCapacityUsagePercentage` is available on all node-based clusters (on data-tiering instances (r6gd/r7gd/r8gd), the formula includes SSD storage; on all other instances, it is calculated as `used_memory/maxmemory`); add it alongside `DatabaseMemoryUsagePercentage`.
+
+**Diagnostic metrics (no default alarm):** `UsedMemoryDataset`, `AllocatorFragmentationBytes`/`AllocatorFragmentationRatio`, `MajorPageFaults`, `BlockedConnections`, `ProcessedCommands`, `PubSubChannels`, and `PubSubShardChannels` explain why a memory, CPU, or connection alarm fired. Graph them on the dashboard; alarm on them only against your own baseline. See `references/monitoring/troubleshooting.md` for units.
 
 ## Alarm-to-Runbook Mapping
 
@@ -56,6 +59,7 @@ Dimension alarms on `CacheClusterId` and `CacheNodeId` (the dimensions under whi
 | WriteLatency | High Latency |
 | ThrottledCmds | Throttling (Serverless) |
 | ECPUSpike | Throttling (if ThrottledCmds also firing) or cost-reporting.md (if no throttling, indicates approaching limits) |
+| RejectedConnections | Cannot Connect (maxclients reached) |
 | StorageApproachingLimit | Memory Pressure |
 
 ## Deploying Alarm Packs
