@@ -67,11 +67,16 @@ _UUID_RE = re.compile(
 # sourcePlatform. Not generated data: each skill records its own id at _init and
 # never changes it. LLM_TO_BEDROCK (OpenAI) is intentionally absent — it has no
 # persisted cost artifact to copy, so it is a follow-up.
+# RENDER_TO_AWS is intentionally absent: the import contract's accepted sourcePlatform
+# values are not confirmed to include RENDER. Re-add it once the web consumer confirms
+# RENDER support; the RENDER mapping stays elsewhere in this file (PLATFORM_SOURCE_FIELD,
+# VALID_SCOPES_BY_PLATFORM, _render_service_items) so turning it back on is a one-line
+# change, not a rewrite. Until then a Render run prints PLAN_SKIP and the fail-open
+# handoff adds nothing.
 SKILL_TO_PLATFORM = {
     "AZURE_TO_AWS": "AZURE",
     "GCP_TO_AWS": "GCP",
     "HEROKU_TO_AWS": "HEROKU",
-    "RENDER_TO_AWS": "RENDER",
 }
 
 # Bounds the strict web import contract enforces. Mirrored here so an out-of-bounds
@@ -373,6 +378,8 @@ def _render_service_items(data: dict) -> list[dict]:
         {"serviceName": name, "monthlyCost": round(amount, 2), "classification": "INFRASTRUCTURE"}
         for name, amount in totals.items()
     ]
+
+
 def _billing_service_items(aws_projection: object) -> list[dict]:
     """Per-service line items from a billing estimate's `aws_projection.services[]` (a
     list, unlike the infra breakdown). Each service carries `aws_target` (name) and

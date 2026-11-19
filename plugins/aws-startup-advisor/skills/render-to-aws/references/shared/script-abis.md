@@ -56,6 +56,7 @@ Every ABI requires the locked runtime. A failed preflight blocks only the steps 
 - Retry: deterministic report correction only. Content failure prints one or more `REPORT_FAIL | code=STABLE_CODE` lines and exits 1. Path/argument errors never read the report and use the same fail-closed content status after successful argument parsing.
 
 The two capture commands additionally use error-envelope schema version `1.0` in their attempt manifest. A failure envelope contains only schema version, category, stable code, retryable boolean, attempt ID, timestamp, and bounded numeric counters. Parser, scanner, billing, and normalizer failures are status-only and persist no error body, because their caller already owns phase diagnostics.
+
 ## `emit-plan-json.py`
 
 - Invoked by the main window, after the Estimate Done-for-now choice and after Generate `HANDOFF_OK`; never the dispatched worker. Standard library only; the locked-runtime prefix is still used.

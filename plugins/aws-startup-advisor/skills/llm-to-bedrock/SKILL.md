@@ -144,12 +144,7 @@ Before using a path from `$ARGUMENTS` or asking for one, tell the user once:
 Then continue immediately. This notice advertises the optional capability; it is not
 consent and does not replace any provider-specific consent gate.
 
-First inspect any `handoff-summary.md` path in `$ARGUMENTS`. If the file's first line is exactly
-`initiated_by: AGENT_ADVISOR`, set `$INVOCATION_ORIGIN=AGENT_ADVISOR`; this durable marker is
-how the Fresh-only offer in A1 distinguishes an agent-advisor delegation. Do not treat the
-handoff-summary file itself as `$REPO`.
-
-If `$ARGUMENTS` contains another path, use it as `$REPO`. Otherwise use **AskUserQuestion**:
+If `$ARGUMENTS` contains a path, use it as `$REPO`. Otherwise use **AskUserQuestion**:
 "Where is your source code? Enter a local path or GitHub URL."
 
 If a GitHub URL, `git clone` it to a temp dir; use that path as `$REPO`.
@@ -569,46 +564,19 @@ Tell the user, before starting:
 Then, in order:
 
 1. **Resolve `$MIGRATION_DIR`.** Check `$REPO/.migration/` exactly as
-   `$ASSESS_BASE/references/phases/discover/discover.md` Step 0 describes. Treat either of
-   these as an existing interrupted run and include it in the Resume/Fresh/Cancel choices:
-   a directory with `.phase-status.json`, or a stateless directory carrying
-   `.llm-upfront-credits-offered`. The latter means an earlier attempt reserved its offer and
-   was interrupted before delegated Discover initialized provider state.
+   `$ASSESS_BASE/references/phases/discover/discover.md` Step 0 describes. A directory with
+   `.phase-status.json` is an existing run: include it in the Resume/Fresh/Cancel choices.
+   A directory that exists but has no `.phase-status.json` is NOT an existing run; treat it as
+   fresh and skip the Resume/Fresh/Cancel prompt for it (the same exception `agent-advisor`'s
+   `migration-plan.md` Phase A documents for its own inline gcp-to-aws delegation).
 
    A **Resume** choice must set `$MIGRATION_DIR` to the selected existing directory unchanged.
-   If it is stateless but marked, continue into delegated Discover's provider initialization
-   in that same directory; do not allocate a current-minute replacement. An explicit
-   **Fresh** choice must allocate a genuinely unused `$REPO/.migration/<MMDD-HHMM>/`
-   directory, adding a collision suffix when needed. With no existing runs, allocate the same
-   unused fresh path. Never classify a marked stateless directory as Fresh merely because
-   `.phase-status.json` is absent.
+   An explicit **Fresh** choice must allocate a genuinely unused
+   `$REPO/.migration/<MMDD-HHMM>/` directory, adding a collision suffix when needed. With no
+   existing runs, allocate the same unused fresh path.
 
-   **Fresh-only upfront migration-credit offer (standalone full migrations only):** after
-   step 1 selects or allocates **Fresh**, atomically reserve this run's one-time offer before
-   rendering it:
-
-   ```bash
-   if (set -o noclobber; : > "$MIGRATION_DIR/.llm-upfront-credits-offered") 2>/dev/null; then
-     echo OFFER_FIRST_ATTEMPT
-   else
-     echo OFFER_ALREADY_RECORDED
-   fi
-   ```
-
-   Exclusive `noclobber` creation is the durable interruption marker. Only when it prints
-   `OFFER_FIRST_ATTEMPT` **and** `$INVOCATION_ORIGIN` is not `AGENT_ADVISOR`, read
-   `references/vendored/migration/upfront-credits-llm.md` and render it verbatim once before
-   delegated Discover scans anything. `OFFER_ALREADY_RECORDED` means a prior attempt reached
-   this boundary, including a state-less directory left by interruption before provider state
-   initialization, so do not render again. Do not render when step 1 selects **Resume**, during
-   A2 re-entry, in access-only mode, or when the durable handoff marker identified
-   agent-advisor delegation. The delegated provider's `initiated_by: LLM_TO_BEDROCK`
-   suppression remains in force, so it does not render the separate infrastructure/mixed
-   notice.
-
-   After this offer decision, initialize provider state in the already selected
-   `$MIGRATION_DIR` if `.phase-status.json` is absent. This applies both to a marked-stateless
-   **Resume** and to a newly allocated **Fresh** run, and to either `$ASSESS_SKILL` choice
+   Then initialize provider state in the selected `$MIGRATION_DIR` if `.phase-status.json` is
+   absent. This applies to a newly allocated **Fresh** run and to either `$ASSESS_SKILL` choice
    (`gcp-to-aws` or `azure-to-aws`):
 
    - Do not run the provider's resume/Fresh selection or timestamp-directory allocation again.
@@ -641,15 +609,11 @@ Then, in order:
    not perpetuating into this generalized sentence — note this as an adjacent, pre-existing
    inaccuracy fixed at its source rather than carried forward.)
 
-   When Discover initializes the run's `.phase-status.json`, it must record
-   `"initiated_by": "LLM_TO_BEDROCK"` beside `owning_skill` (which is set to whichever of
-   `GCP_TO_AWS` / `AZURE_TO_AWS` actually ran — i.e. `$ASSESS_SKILL`'s own identifier — per
-   `discover.md`'s own instruction for a run started by another skill) **before** the provider
-   evaluates its infrastructure/mixed migration-credit notice suppression. GCP writes this
-   field in Discover Step 0 and then evaluates the notice; Azure's special early `_init`
-   explicitly writes it before evaluating the notice. This run was started by llm-to-bedrock,
-   and that is how telemetry attributes it.
-
+   The preinitialized `.phase-status.json` already records `"initiated_by": "LLM_TO_BEDROCK"`
+   beside `owning_skill` (`GCP_TO_AWS` or `AZURE_TO_AWS`, per `$ASSESS_SKILL`), so telemetry
+   attributes the run to llm-to-bedrock. Discover reuses that envelope and does not rewrite
+   it. Because the field is already present, the provider's infrastructure/mixed
+   migration-credit notice is suppressed.
    On `HANDOFF_OK`: at least one of `ai-workload-profile.json`, `gcp-resource-inventory.json`
    / `azure-resource-inventory.json`, or `billing-profile.json` is present in
    `$MIGRATION_DIR`.

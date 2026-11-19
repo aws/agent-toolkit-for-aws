@@ -55,4 +55,4 @@ Do these in order.
    > - Monthly cost estimate
    > - Migration paths: AI agent, AWS expert, or AWS Partner
 
-Ship note: this reaches customers only after the import page and the ImportPlan API both accept the `RENDER` source platform in production. This handoff is separate from any base64url plan-share link.
+Ship note: the writer is gated off in code (`RENDER_TO_AWS` is absent from `SKILL_TO_PLATFORM`), so it prints `PLAN_SKIP` and writes no file. Re-enable it by restoring that one entry only after the import page and the ImportPlan API both accept the `RENDER` source platform in production. This handoff is separate from any base64url plan-share link.

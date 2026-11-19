@@ -160,7 +160,7 @@ state envelope (this write belongs only to the no-state branch):
 
 ```json
 {
-  "migration_id": "[MMDD-HHMM]",
+  "migration_id": "[selected $MIGRATION_DIR directory name, including any collision suffix]",
   "run_id": "[fresh random UUID from uuidgen]",
   "owning_skill": "GCP_TO_AWS",
   "last_updated": "[ISO 8601 timestamp]",
