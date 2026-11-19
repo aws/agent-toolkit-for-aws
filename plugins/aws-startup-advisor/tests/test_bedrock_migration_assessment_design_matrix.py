@@ -253,6 +253,23 @@ def test_every_probe_a_row_lists_has_probe_evidence() -> None:
             assert probe["model"] in row["allowed"], row["id"]
 
 
+def _design_step2_item(number: int) -> str:
+    step2 = DESIGN_DOC[DESIGN_DOC.index("## Step 2:"):DESIGN_DOC.index("## Step 3:")]
+    found = re.search(rf"^{number}\. (.*)$", step2, re.MULTILINE)
+    assert found, f"design-ai.md Step 2 has no item {number}"
+    return found.group(1)
+
+
+def test_design_tells_design_to_record_every_probe_the_matrix_requires() -> None:
+    # The matrix accepts a probe-only target on condition that Design names the probe, so the rule must be in the doc Design reads.
+    assert "design-ai.md Step 2 item 6" in MATRIX["input_evidence_note"]
+    item = _design_step2_item(6)
+    assert "probe" in item and "`capability_gaps[]`" in item and "before cutover" in item
+    for entry in (e for e in MATRIX["input_evidence"] if e["probe"]):
+        assert entry["names"] in item and INPUT_WORDS[entry["modality"]] in item.lower(), entry
+        assert f"`{entry['file']}` {entry['section']}" in item, entry
+
+
 def test_vision_rows_exclude_nova_micro() -> None:
     rows = [r for r in ROWS if r["preferences"]["ai_vision"] == "vision"]
     assert rows and not [r["id"] for r in rows if "amazon.nova-micro-v1:0" in r["allowed"]]

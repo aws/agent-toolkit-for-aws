@@ -27,7 +27,7 @@
   "wildcard_targets": {
     "amazon.nova-2-sonic*": "Amazon Nova 2 Sonic"
   },
-  "input_evidence_note": "A vision or audio row may allow a model that ai-model-lifecycle.md Capability Constraints does not list as taking that input only when input_evidence has an entry for it: the vendored guide, its section and a quote naming the model and the input. An entry with probe true means the guide says to probe that input on Bedrock before committing, and each row allowing the model lists it in probes; Design must then name the probe in that row's capability_gaps.",
+  "input_evidence_note": "A vision or audio row may allow a model that ai-model-lifecycle.md Capability Constraints does not list as taking that input only when input_evidence has an entry for it: the vendored guide, its section and a quote naming the model and the input. An entry with probe true means the guide says to probe that input on Bedrock before committing, and each row allowing the model lists it in probes; Design must then name the probe in that row's capability_gaps (design-ai.md Step 2 item 6).",
   "input_evidence": [
     {
       "model": "openai.gpt-5.5",
@@ -705,7 +705,7 @@
         "openai.gpt-6-luna"
       ],
       "decided_by": "critical_feature",
-      "basis": "Clarify Q10 prompt caching names Claude Sonnet 5; the cost candidates Haiku 5.5, GPT-5.6 Terra and GPT-6 Luna have cache-read rates in bedrock-pricing-cache.md, and ai-openai-to-bedrock.md lists caching for GPT-5.6 Terra on every bedrock-runtime API and for GPT-6 Luna on every API of both endpoints; the cost candidates Nova Lite and Nova Micro have a cache-read rate 75% below the on-demand input price (bedrock-pricing-cache.md Amazon Nova, Cache read (Nova))"
+      "basis": "Clarify Q10 prompt caching names Claude Sonnet 5; the cost candidates Haiku 5.5, GPT-5.6 Terra and GPT-6 Luna have cache-read rates in bedrock-pricing-cache.md, and ai-openai-to-bedrock.md lists caching for GPT-5.6 Terra on every bedrock-runtime API and for GPT-6 Luna on every API of both endpoints; the cost candidates Nova Lite and Nova Micro have a cache-read rate 75% below the on-demand input price (bedrock-pricing-cache.md Amazon Nova, Cache read (Nova)); AWS limits Nova prompt caching to 20K tokens and to text prompts, so they serve caching only for a cached prefix under 20K tokens"
     },
     {
       "id": "feature-rag",
