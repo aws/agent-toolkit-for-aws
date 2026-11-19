@@ -29,7 +29,7 @@ Memcached is the right choice when **all** of the following are true:
 
 ### Node-Based Memcached
 
-- Manual scaling: you choose instance types and number of nodes
+- You choose instance types and number of nodes. Scale vertically with `modify-cache-cluster --cache-node-type` (Memcached 1.5+, Auto Discovery enabled), or horizontally with Application Auto Scaling on `elasticache:cache-cluster:Nodes` ([What's New, 2025-04](https://aws.amazon.com/about-aws/whats-new/2025/04/horizontal-autoscaling-amazon-elasticache-memcached/))
 - No replication: each node holds a unique slice of data
 - Node failure means partial data loss (client detects and routes to other nodes, but data is gone)
 - Lower per-unit cost at steady-state if you can accurately predict load
@@ -78,7 +78,7 @@ Switch to Valkey (or Redis OSS) if you need any of the following:
 | Sorted sets, lists, streams, hashes | Memcached supports only string key-value pairs |
 | Pub/sub messaging | Not supported |
 | RBAC or IAM authentication | Not supported for Memcached |
-| Vector search | Requires Valkey 8.2 or above node-based |
+| Vector search | Requires node-based Valkey 8.2 or above or Serverless Valkey 9.0+ |
 | Lua scripting or server-side logic | Not supported |
 | Atomic data structure operations (INCR on hash fields, ZADD, etc.) | Limited to basic INCR/DECR on string counters |
 

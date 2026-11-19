@@ -148,6 +148,8 @@ Migration tools in sequence:
 2. **Start migration**: `start-migration` -- begins data replication from source to ElastiCache
 3. **Complete migration**: `complete-migration` -- finalizes and cuts over
 
+For a Serverless target the sequence is `prepare-migration`, `start-migration`, `complete-migration` with `--serverless-cache-name` (no `test-migration`). See "Online Migration to ElastiCache Serverless" in `references/migration/self-managed-migration.md`.
+
 ```bash
 aws elasticache test-migration \
   --replication-group-id <target> \
@@ -155,24 +157,9 @@ aws elasticache test-migration \
   --region <region>
 ```
 
-**Online migration prerequisites (test-migration / start-migration / complete-migration):**
+**Online migration prerequisites (node-based target only -- test-migration / start-migration / complete-migration):** for the Serverless target path and its own eligibility constraints, see "Online Migration to ElastiCache Serverless" in `references/migration/self-managed-migration.md` instead.
 
-*Target requirements:*
-
-- Target must NOT have encryption in-transit enabled (you can enable TLS after migration completes)
-- Target must have Multi-AZ enabled with automatic failover
-- Target must be using Valkey, or Redis OSS 5.0.6 or higher
-- Target must NOT be part of a global datastore
-- Target must have data tiering disabled
-- Number of shards in source and target must match
-- Number of logical databases must be the same on source and target
-
-*Source requirements:*
-
-- Source must NOT have AUTH enabled
-- Source `protected-mode` must be set to `no`
-- Data-modification commands must not be renamed (e.g., `sync`, `psync`, `info`, `config`, `command`, `cluster`)
-- If source has a `bind` configuration, it must allow requests from ElastiCache nodes
+In short: source without AUTH; target with TLS off, Multi-AZ on, and no Global Datastore, data tiering or durability. For the full checklist, see the Approach 2 requirements in `references/migration/self-managed-migration.md`.
 
 ### Redis OSS to Valkey (In-Place Engine Upgrade)
 
@@ -220,7 +207,7 @@ Alternative: snapshot-restore if brief downtime is acceptable. Note: ElastiCache
 
 ### Serverless to Node-Based
 
-Rare, but needed when workload outgrows serverless cost-efficiency or requires vector search (Valkey 8.2 or above, node-based only).
+Rare, but needed when workload outgrows serverless cost-efficiency or requires vector search on a Serverless cache below Valkey 9.0 (node-based needs Valkey 8.2 or above; Serverless Valkey 9.0+ also supports it).
 
 Steps:
 

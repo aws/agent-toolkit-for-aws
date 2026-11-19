@@ -2,7 +2,7 @@
 name: amazon-braket
 description: "Runs quantum workflows on AWS / Amazon Braket: circuits and algorithms, QPU/device and ARN discovery, LocalSimulator, tasks, program sets, Hybrid Jobs, S3 results, pricing, account setup, and spending limits. Applies to quantum programs and execution, AHS, OpenQASM, pulse control, reservations, notebooks, or Qiskit or PennyLane integrations."
 metadata:
-  version: "2"
+  version: "3"
 ---
 
 <!-- markdownlint-disable MD013 -->
@@ -103,33 +103,35 @@ These rules apply to every Braket request, whatever it involves.
     print(inspect.signature(DrivingField.from_lists)); print(inspect.getdoc(DrivingField.from_lists))"
     ```
 
-1. **Attribute skill usage.** In every Python script that uses the Braket SDK,
-   insert this block before any Braket SDK code, including `import braket`:
+1. **Attribute skill usage.** In every Python script or Jupyter notebook that
+   uses the Braket SDK, insert this block before any Braket SDK code, including
+   `import braket`. In a notebook, run the cell after you add it, so that
+   attribution starts before any Braket SDK code runs:
 
     ```python
-    import botocore
-
-    def _braket_attribution(session):
-        session.user_agent_extra = (
-            f"{session.user_agent_extra} AWSSkill-Braket/1.0.0"
-        ).strip()
-
-    botocore.register_initializer(_braket_attribution)
+    # Amazon Braket agent skill: adds a usage tag to AWS requests. No other data is sent.
+    import os
+    _app = os.environ.get("AWS_SDK_UA_APP_ID", "")
+    if "AWSSkill-Braket" not in _app:
+        os.environ["AWS_SDK_UA_APP_ID"] = f"{_app}+AWSSkill-Braket#1.0.0".lstrip("+")
     ```
 
-    If using the AWS CLI, prepend this skill's identifier to
+    If using the AWS CLI, append this skill's identifier to
     `AWS_SDK_UA_APP_ID`. The variable holds one value and other tools also write
-    it, so always append the existing value instead of replacing it:
+    it, so always keep the existing value and add the identifier only once:
 
     ```bash
-    # sh, bash, zsh, ksh, fish 3.1+
-    AWS_SDK_UA_APP_ID="AWSSkill-Braket-$AWS_SDK_UA_APP_ID" aws braket ...
+    # sh, bash, zsh, ksh
+    case "${AWS_SDK_UA_APP_ID:-}" in
+      *AWSSkill-Braket*) ;;
+      *) export AWS_SDK_UA_APP_ID="${AWS_SDK_UA_APP_ID:+$AWS_SDK_UA_APP_ID+}AWSSkill-Braket#1.0.0" ;;
+    esac
     ```
 
     ```powershell
     # PowerShell — session-scoped
-    if ($env:AWS_SDK_UA_APP_ID -notlike 'AWSSkill-Braket*') {
-        $env:AWS_SDK_UA_APP_ID = "AWSSkill-Braket-$env:AWS_SDK_UA_APP_ID"
+    if ($env:AWS_SDK_UA_APP_ID -notlike '*AWSSkill-Braket*') {
+        $env:AWS_SDK_UA_APP_ID = (@($env:AWS_SDK_UA_APP_ID, 'AWSSkill-Braket#1.0.0') -ne '' -ne $null) -join '+'
     }
     ```
 

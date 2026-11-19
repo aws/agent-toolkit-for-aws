@@ -11,7 +11,7 @@ description: >-
   emulator or mock, including what it supports or whether an app works on it, and not for
   deploying to real AWS or production use.
 metadata:
-  version: "1"
+  version: "2"
 ---
 
 # AWS Emulator
@@ -56,6 +56,7 @@ regardless of how the skill was loaded. Never fetch or write customer data throu
 | upgrade it, choose or pin a version (also in CI), or find the latest release | [references/linux-package.md](references/linux-package.md) ("Upgrade"), [references/container.md](references/container.md) in Docker, or [references/rust-embedded.md](references/rust-embedded.md) in embedded mode |
 | point the AWS CLI or an SDK (JS, Python, Java, Go, Rust, .NET, …) at it | [references/connect.md](references/connect.md) |
 | fix an error: TLS/certificate, `AccessDenied` / `SignatureDoesNotMatch`, profile, connection refused, port in use, Docker file ownership, `UnknownService`, `NotImplemented`, lost state | [references/troubleshooting.md](references/troubleshooting.md) |
+| report a problem, a difference from AWS or a missing operation, or ask for a change to the emulator | [references/troubleshooting.md](references/troubleshooting.md), section "Reporting issues" |
 | know whether their app, repo or tests will work on it | [references/compatibility-check.md](references/compatibility-check.md), with [references/compatibility-find-usage.md](references/compatibility-find-usage.md) (step 2) and [references/compatibility-classify-traces.md](references/compatibility-classify-traces.md) (step 4) |
 | know whether one or more operations or behaviors work ("does it support X?"), or what it cannot do | [references/compatibility-check.md](references/compatibility-check.md), section "Single operation (no app)" |
 
