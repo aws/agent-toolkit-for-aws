@@ -92,7 +92,6 @@ def test_skill_wires_generate_as_an_opt_in_fifth_phase() -> None:
     assert 'set `phases.generate` to `"completed"` and `current_phase` to `"complete"`' in step5
     step4 = SKILL.split("## Step 4: Estimate", 1)[1].split("## Step 5", 1)[0]
     assert 'set `phases.estimate` to `"completed"` and `current_phase` to `"generate"`' in step4
-    assert 'On no, set `run_mode` to `"decide"`, leave `phases.generate` `"pending"`, and stop' in step4
     assert "--through design|estimate|generate" in SKILL and "`generate_invalid`" in SKILL
     discover = (BMA / "references/phases/discover/discover.md").read_text()
     assert '"estimate": "pending", "generate": "pending" }' in discover
@@ -150,7 +149,7 @@ def test_same_model_plan_matches_hand_values(tmp_path: Path) -> None:
     assert route["route_id"] == "gpt-4o__runtime-openai-cris__chat-completions" and route["kind"] == "client_config"
     assert route["base_url"] == "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1" and route["credential"] == "bedrock_token"
     assert route["source_call"] is None, "a 1.0 profile records no sdk_method, so there is no source caller"
-    assert plan["budget"] == {"monthly_usd": 30, "basis": "point", "projected": 19.8}  # ceil(19.8 * 1.5)
+    assert plan["budget"] == {"monthly_usd": 30, "basis": "point", "projected": 19.8, "services": ["Amazon Bedrock"]}  # ceil(19.8 * 1.5)
     assert plan["fixed"]["step_by_step_guide"] == {"languages": [], "primary_pattern": "direct_sdk", "files_to_modify": []}
     (entry,) = plan["fixed"]["artifacts_by_source"]
     assert entry["models"][0]["generated_files"] == sorted([f"ai-migration/routes/{route['route_id']}.py", "ai-migration/test_comparison.py",
@@ -178,7 +177,7 @@ def test_tier_range_plan_budgets_the_high_bound_and_grants_no_project(tmp_path: 
     plan = GEN.build_plan(_run(tmp_path, "bma-generate-tier-range"))
     kinds = {r["migration_path"]: r["kind"] for r in plan["routes"]}
     assert kinds == {"runtime_messages": "client_config", "converse": "provider_adapter"}
-    assert plan["budget"] == {"monthly_usd": 858, "basis": "range_high", "projected": 572.0}  # ceil(572 * 1.5)
+    assert plan["budget"] == {"monthly_usd": 858, "basis": "range_high", "projected": 572.0, "services": None}  # ceil(572 * 1.5)
     assert {q["quota_risk"] for q in plan["quota_flags"]} == {"high"} and len(plan["quota_flags"]) == 2
     policy = json.dumps(plan["iam_policy"])
     assert "project/default" not in policy and "bedrock-mantle" not in policy
@@ -199,8 +198,9 @@ def test_tier_range_plan_budgets_the_high_bound_and_grants_no_project(tmp_path: 
     ({"cost_comparison": {"projected_bedrock_monthly": 20.0}, "projected_bedrock_monthly_range": {"low": 20.0, "high": 20.0}}, (30, "point")),
 ])
 def test_budget_rule(figures, want) -> None:
-    got = GEN.budget(figures)
-    assert (got["monthly_usd"], got["basis"]) == want
+    got = GEN.budget(figures, [{"billing": "amazon_bedrock"}, {"billing": "unconfirmed"}])
+    assert (got["monthly_usd"], got["basis"], got["services"]) == (*want, ["Amazon Bedrock"])
+    assert GEN.budget(figures, [{"billing": "amazon_bedrock"}, {"billing": "marketplace"}])["services"] is None
 
 
 def _expected_kind(api: str, gateways: tuple[str, ...], path: str | None) -> str:
@@ -424,9 +424,10 @@ def test_untrusted_strings_stay_inside_literals_in_python(tmp_path: Path) -> Non
 
 
 def test_untrusted_strings_stay_quoted_in_the_shell_script(tmp_path: Path) -> None:
-    plan = {"region": "us-east-1", "migration_id": "bma-1116-1900", "budget": {"monthly_usd": None}, "compliance": ["hipaa"],
+    plan = {"region": "us-east-1", "migration_id": "bma-1116-1900", "budget": {"monthly_usd": 10, "services": ["Amazon Bedrock"]}, "compliance": ["hipaa"],
             "quota_flags": [{"aws_model_id": "q$(touch pwned)"}],
-            "routes": [{"aws_model_id": "m$(touch pwned)`touch pwned2`", "endpoint": "bedrock-runtime"}]}
+            "routes": [{"aws_model_id": "m$(touch pwned)`touch pwned2`", "endpoint": "bedrock-runtime", "billing": "unconfirmed"},
+                       {"aws_model_id": "anthropic.$(touch pwned)", "endpoint": "bedrock-runtime", "billing": "marketplace"}]}
     script = tmp_path / "setup_bedrock.sh"
     script.write_text(GEN.render_setup(plan))
     (tmp_path / "iam-policy.json").write_text("{}")
@@ -434,7 +435,7 @@ def test_untrusted_strings_stay_quoted_in_the_shell_script(tmp_path: Path) -> No
     result = subprocess.run(["bash", str(script)], cwd=tmp_path, capture_output=True, text=True, env={"PATH": "/usr/bin:/bin"})
     assert result.returncode == 0, result.stderr
     assert not (tmp_path / "pwned").exists() and not (tmp_path / "pwned2").exists()
-    assert "Dry run only" in result.stdout and "HIPAA" in result.stdout
+    assert "Dry run only" in result.stdout and "HIPAA" in result.stdout and "m$(touch pwned)`touch pwned2` is not confirmed" in result.stdout
 
 
 @pytest.mark.parametrize("fixture", GENERATE_FIXTURES)
@@ -451,18 +452,20 @@ def test_setup_dry_run_calls_no_aws_command(fixture, tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert not log.exists(), log.read_text() if log.exists() else ""
     assert "[dry run] aws iam create-policy" in result.stdout and "[dry run] python3" in result.stdout
-    budget = GEN.build_plan(run)["budget"]["monthly_usd"]
-    assert ("aws budgets create-budget" in result.stdout) == (budget is not None)
+    money = GEN.build_plan(run)["budget"]
+    assert ("aws budgets create-budget" in result.stdout) == (money["monthly_usd"] is not None and money["services"] is not None)
     rejected = subprocess.run(["bash", str(run / "ai-migration/setup_bedrock.sh"), "--alert-email", 'x"@y'], capture_output=True, text=True,
                               env={"PATH": f"{bin_dir}:/usr/bin:/bin"})
     assert rejected.returncode == 2
 
 
 FAKE_AWS = """#!/usr/bin/env python3
-import json, sys
+import json, os, sys
 args = sys.argv[1:]
 with open(sys.argv[0] + ".log", "a") as f:
     f.write(json.dumps(args) + "\\n")
+if args[:2] in (["iam", "get-policy"], ["budgets", "describe-budget"]):
+    sys.exit(0 if os.environ.get("FAKE_EXISTS") else 254)
 if args[:2] == ["sts", "get-caller-identity"]:
     print("123456789012")
 elif args[:2] == ["ce", "get-anomaly-monitors"]:
@@ -481,7 +484,7 @@ def test_setup_execute_sends_valid_json_and_the_real_account(tmp_path: Path) -> 
     for tool in ("aws", "python3"):
         (bin_dir / tool).chmod(0o755)
     result = subprocess.run(["bash", str(run / "ai-migration/setup_bedrock.sh"), "--execute", "--alert-email", "ops@example.com"],
-                            capture_output=True, text=True, env={"PATH": f"{bin_dir}:/usr/bin:/bin"})
+                            capture_output=True, text=True, env={"PATH": f"{bin_dir}:/usr/bin:/bin", "BUDGET_SERVICES": "Amazon Bedrock"})
     assert result.returncode == 0, result.stderr
     calls = [json.loads(line) for line in (bin_dir / "aws.log").read_text().splitlines()]
     by = {tuple(c[:2]): c for c in calls}
@@ -496,8 +499,9 @@ def test_setup_execute_sends_valid_json_and_the_real_account(tmp_path: Path) -> 
     sub_doc = json.loads(sub[sub.index("--anomaly-subscription") + 1])
     assert sub_doc["MonitorArnList"] == ["arn:aws:ce::123456789012:anomalymonitor/abc"]
     assert sub_doc["Subscribers"] == [{"Type": "EMAIL", "Address": "ops@example.com"}]
-    assert {tuple(c[:2]) for c in calls} == {("sts", "get-caller-identity"), ("bedrock", "get-inference-profile"), ("iam", "create-policy"),
-                                             ("service-quotas", "list-service-quotas"), ("budgets", "create-budget"),
+    assert {tuple(c[:2]) for c in calls} == {("sts", "get-caller-identity"), ("bedrock", "get-inference-profile"), ("iam", "get-policy"),
+                                             ("iam", "create-policy"), ("service-quotas", "list-service-quotas"),
+                                             ("budgets", "describe-budget"), ("budgets", "create-budget"),
                                              ("ce", "get-anomaly-monitors"), ("ce", "create-anomaly-monitor"), ("ce", "create-anomaly-subscription")}
 
 
@@ -695,3 +699,201 @@ def test_readiness_through_estimate_ignores_generate(tmp_path: Path, capsys) -> 
     run = _run(tmp_path, "bma-generate-mixed", generate="pending")
     _modified(run)
     assert READY.main([str(run), "--through", "estimate"]) == 0
+
+
+# --------------------------------------------------------------------------- setup script: budget coverage, overrides, re-runs
+
+def _setup(run: Path, tmp_path: Path, *args: str, env: dict | None = None, exists: bool = False):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    (bin_dir / "aws").write_text(FAKE_AWS.replace("#!/usr/bin/env python3", f"#!{sys.executable}"))
+    (bin_dir / "python3").write_text("#!/bin/sh\nexit 0\n")
+    for tool in ("aws", "python3"):
+        (bin_dir / tool).chmod(0o755)
+    log = bin_dir / "aws.log"
+    if log.exists():
+        log.unlink()
+    result = subprocess.run(["bash", str(run / "ai-migration/setup_bedrock.sh"), *args], capture_output=True, text=True,
+                            env={"PATH": f"{bin_dir}:/usr/bin:/bin", **({"FAKE_EXISTS": "1"} if exists else {}), **(env or {})})
+    calls = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+    return result, calls
+
+
+def _budget_doc(calls: list) -> dict | None:
+    budget = next((c for c in calls if c[:2] == ["budgets", "create-budget"]), None)
+    return json.loads(budget[budget.index("--budget") + 1]) if budget else None
+
+
+def test_claude_routes_get_no_budget_described_as_covering_them(tmp_path: Path) -> None:
+    run = _run(tmp_path, "bma-generate-tier-range")
+    plan = GEN.build_plan(run)
+    assert {r["billing"] for r in plan["routes"]} == {"marketplace"}
+    assert plan["budget"]["services"] is None
+    assert any("AWS Marketplace" in d and "BUDGET_SERVICES" in d for d in plan["disclosures"])
+    result, calls = _setup(run, tmp_path, "--execute")
+    assert result.returncode == 0, result.stderr
+    assert _budget_doc(calls) is None
+    assert "us.anthropic.claude-sonnet-5" in result.stdout and "AWS Marketplace" in result.stdout and "BUDGET_SERVICES" in result.stdout
+    assert ["ce", "create-anomaly-monitor"] == next(c[:2] for c in calls if c[:2] == ["ce", "create-anomaly-monitor"])
+
+
+def test_budget_services_from_the_environment_cover_a_claude_route(tmp_path: Path) -> None:
+    run = _run(tmp_path, "bma-generate-tier-range")
+    services = "Amazon Bedrock, Claude Sonnet 5 (Amazon Bedrock Edition)"
+    result, calls = _setup(run, tmp_path, "--execute", env={"BUDGET_SERVICES": services})
+    assert result.returncode == 0, result.stderr
+    doc = _budget_doc(calls)
+    assert doc["CostFilters"] == {"Service": ["Amazon Bedrock", "Claude Sonnet 5 (Amazon Bedrock Edition)"]}
+    assert doc["BudgetLimit"] == {"Amount": "858", "Unit": "USD"}
+    bad, _ = _setup(run, tmp_path, env={"BUDGET_SERVICES": 'Amazon Bedrock"]}'})
+    assert bad.returncode == 2 and "BUDGET_SERVICES" in bad.stderr
+    assert GEN.check(run)["ok"], "the override changes no generated file"
+
+
+@pytest.mark.parametrize(("fixture", "unconfirmed"), [("bma-generate-same-model", {"us.openai.gpt-5.6-terra"}),
+                                                       ("bma-generate-mixed", {"openai.gpt-5.5", "us.openai.gpt-5.5"})])
+def test_non_amazon_models_without_billing_evidence_are_named_as_unconfirmed(fixture, unconfirmed, tmp_path: Path) -> None:
+    run = _run(tmp_path, fixture)
+    plan = GEN.build_plan(run)
+    assert {r["aws_model_id"] for r in plan["routes"] if r["billing"] == "unconfirmed"} == unconfirmed
+    assert "marketplace" not in {r["billing"] for r in plan["routes"]}
+    assert plan["budget"]["services"] == ["Amazon Bedrock"]
+    result, calls = _setup(run, tmp_path, "--execute", env={"BUDGET_USD": "100"})
+    assert result.returncode == 0, result.stderr
+    assert _budget_doc(calls)["CostFilters"] == {"Service": ["Amazon Bedrock"]}
+    assert all(m in result.stdout for m in unconfirmed) and "Cost Explorer" in result.stdout
+
+
+@pytest.mark.parametrize(("mid", "billing"), [("amazon.titan-embed-text-v2:0", "amazon_bedrock"), ("us.amazon.nova-pro-v1:0", "amazon_bedrock"),
+                                              ("us.anthropic.claude-sonnet-5", "marketplace"), ("anthropic.claude-haiku-5-5", "marketplace"),
+                                              ("global.anthropic.claude-opus-5-5", "marketplace"), ("openai.gpt-5.5", "unconfirmed"),
+                                              ("cohere.embed-english-v3", "unconfirmed"), ("amazonish.model", "unconfirmed")])
+def test_billing_rule(mid, billing) -> None:
+    assert GEN.billing(mid) == billing
+
+
+def test_budget_amount_comes_from_the_environment_without_editing_the_script(tmp_path: Path) -> None:
+    run = _run(tmp_path, "bma-generate-mixed")
+    result, calls = _setup(run, tmp_path, "--execute", env={"BUDGET_USD": "500"})
+    assert result.returncode == 0, result.stderr
+    assert _budget_doc(calls)["BudgetLimit"] == {"Amount": "500", "Unit": "USD"}
+    dry, _ = _setup(run, tmp_path, env={"BUDGET_USD": "500"})
+    assert dry.returncode == 0 and "500" in dry.stdout
+    bad, _ = _setup(run, tmp_path, env={"BUDGET_USD": '5"}'})
+    assert bad.returncode == 2 and "BUDGET_USD" in bad.stderr
+    assert "in this file" not in GEN.render_setup(GEN.build_plan(run))
+    assert GEN.check(run)["ok"]
+    assert READY.check(_complete(run), "generate")
+
+
+def _complete(run: Path) -> Path:
+    _edit(run / ".phase-status.json", lambda s: (s["phases"].update(generate="completed"), s.update(current_phase="complete")))
+    return run
+
+
+def test_setup_without_a_planned_budget_says_to_export_one(tmp_path: Path) -> None:
+    run = _run(tmp_path, "bma-generate-mixed")
+    plan = GEN.build_plan(run)
+    plan["budget"] = {**plan["budget"], "monthly_usd": None}
+    text = GEN.render_setup(plan)
+    assert "BUDGET_USD=\"${BUDGET_USD:-}\"" in text and "export BUDGET_USD=" in text and "in this file" not in text
+
+
+def test_setup_execute_can_run_again_over_an_existing_policy_and_budget(tmp_path: Path) -> None:
+    run = _run(tmp_path, "bma-generate-mixed")
+    result, calls = _setup(run, tmp_path, "--execute", env={"BUDGET_USD": "100"}, exists=True)
+    assert result.returncode == 0, result.stderr
+    kinds = {tuple(c[:2]) for c in calls}
+    assert ("iam", "get-policy") in kinds and ("iam", "create-policy") not in kinds
+    assert ("budgets", "describe-budget") in kinds and ("budgets", "create-budget") not in kinds
+    assert "already exists" in result.stdout
+
+
+def test_setup_uses_the_partition_of_its_region(tmp_path: Path) -> None:
+    plan = GEN.build_plan(_run(tmp_path, "bma-generate-mixed"))
+    assert 'PARTITION=aws\n' in GEN.render_setup(plan)
+    for region, partition in (("us-gov-west-1", "aws-us-gov"), ("cn-north-1", "aws-cn")):
+        text = GEN.render_setup({**plan, "region": region})
+        assert f"PARTITION={partition}\n" in text and "arn:aws:iam" not in text
+
+
+# --------------------------------------------------------------------------- invoke body owned by the user
+
+def _invoke_plan(run: Path) -> dict:
+    plan = GEN.build_plan(run)
+    route = next(r for r in plan["routes"] if r["titan_embedding"])
+    route.update(aws_model_id="cohere.embed-english-v3", titan_embedding=False, billing="unconfirmed")
+    plan["manifest"]["user"] = [f"ai-migration/invoke/{route['route_id']}.py"]
+    return plan, route
+
+
+def test_invoke_route_loads_the_users_body_file_and_check_accepts_it(monkeypatch, tmp_path: Path) -> None:
+    calls = _stubs(monkeypatch)
+    run = _run(tmp_path, "bma-generate-mixed")
+    plan, route = _invoke_plan(run)
+    assert GEN.user_files(plan["routes"]) == plan["manifest"]["user"]
+    gen = json.loads((run / "generation-ai.json").read_text())
+    agent = {name: (run / "ai-migration" / name).read_text() for name in GEN.AGENT_FILES}
+    GEN.scaffold(run, plan)
+    for name, text in agent.items():
+        (run / "ai-migration" / name).write_text(text)
+    readme = run / "ai-migration/README.md"
+    readme.write_text(readme.read_text() + "\ncohere.embed-english-v3\n")
+    module = _module(f"bma_invoke_route_{route['route_id']}", run / route["files"][0])
+    with pytest.raises(NotImplementedError, match=f"invoke/{route['route_id']}.py"):
+        module.call_bedrock("hi")
+    body = run / plan["manifest"]["user"][0]
+    body.parent.mkdir()
+    body.write_text("def invoke(client, model_id, prompt):\n    return f'{model_id}:{prompt}'\n")
+    assert module.call_bedrock("hi") == "cohere.embed-english-v3:hi"
+    assert calls.boto and calls.boto[-1][0] == "bedrock-runtime"
+    assert GEN.check_generation(gen, plan, run)["ok"]
+    (body.parent / "other.py").write_text("")
+    assert "artifact_unexpected" in {e["code"] for e in GEN.check_generation(gen, plan, run)["errors"]}
+
+
+def test_body_file_for_a_route_that_has_none_is_unexpected(tmp_path: Path) -> None:
+    run = _run(tmp_path, "bma-generate-mixed")
+    plan = GEN.build_plan(run)
+    assert plan["manifest"]["user"] == []
+    (run / "ai-migration/invoke").mkdir()
+    (run / f"ai-migration/invoke/{plan['routes'][0]['route_id']}.py").write_text("")
+    assert "artifact_unexpected" in _codes(run)
+
+
+def test_invoke_guidance_never_asks_for_an_edit_to_a_scaffolded_file() -> None:
+    assert "write it before comparing" not in GEN.CALL_BEDROCK["invoke"]
+    assert "ai-migration/invoke/<route_id>.py" in DOC
+
+
+# --------------------------------------------------------------------------- state and helpers
+
+def test_declining_generate_completes_the_run_in_decide_mode() -> None:
+    step4 = SKILL.split("## Step 4: Estimate", 1)[1].split("## Step 5", 1)[0]
+    assert 'On no, set `run_mode` to `"decide"` and `current_phase` to `"complete"`, leave `phases.generate` `"pending"`, and stop' in step4
+
+
+def test_every_rule_7_choice_says_what_a_new_generate_replaces() -> None:
+    rule7 = SKILL.split("## Step 0: Resume or start", 1)[1].split("\n7. ", 1)[1].split("\n8. ", 1)[0]
+    offer = rule7.split("Each choice is one write:", 1)[0]
+    assert "each choice replaces `ai-migration/`" in offer and "comparison_results.json" in offer
+
+
+def test_scaffold_keeps_the_users_invoke_body_only_for_routes_that_still_need_one(tmp_path: Path) -> None:
+    run = _run(tmp_path, "bma-generate-mixed")
+    plan, _ = _invoke_plan(run)
+    body = run / plan["manifest"]["user"][0]
+    body.parent.mkdir()
+    body.write_text("def invoke(client, model_id, prompt):\n    return 'mine'\n")
+    (body.parent / "old-route.py").write_text("")
+    GEN.scaffold(run, plan)
+    assert body.read_text().endswith("return 'mine'\n") and not (body.parent / "old-route.py").exists()
+    GEN.scaffold(run, GEN.build_plan(run))
+    assert not body.parent.exists(), "a route that no longer needs a body loses it"
+
+
+def test_shared_ai_helpers_postpone_annotations_like_the_scripts_that_load_them() -> None:
+    for name in ("iam_policy.py", "model_catalog.py"):
+        tree = ast.parse((PLUGIN_ROOT / "skills/shared/ai" / name).read_text())
+        assert any(isinstance(n, ast.ImportFrom) and n.module == "__future__" and any(a.name == "annotations" for a in n.names)
+                   for n in tree.body), name

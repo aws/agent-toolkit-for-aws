@@ -54,6 +54,9 @@ DASHBOARDS = ["Requests by provider", "Latency P50/P95/P99", "Error rate", "Toke
 # gcp-to-aws generate-artifacts-ai.md Step 3F: Bedrock budget is 1.5x the projected monthly figure, at least $10.
 BUDGET_MULTIPLIER = 1.5
 BUDGET_MINIMUM = 10
+BEDROCK_SERVICE = "Amazon Bedrock"
+# Claude model cards on Bedrock, "Pricing": billed through AWS Marketplace, shown under the model provider, not under Amazon Bedrock.
+MARKETPLACE_NOTE = "billed through AWS Marketplace and shown in Cost Explorer under the model provider, not under Amazon Bedrock"
 MAX_TOKENS = 1024
 # The only InvokeModel body the scaffold writes: Titan Text Embeddings, {"inputText": ...} -> {"embedding": [...]}.
 TITAN_TEXT_EMBEDDING = "amazon.titan-embed-text-"
@@ -146,13 +149,22 @@ def endpoint(path: str, client_api: str, region: str) -> tuple[str, str | None, 
     return service, f"https://{host}{base}", "bedrock_token"
 
 
-def budget(figures: dict) -> dict:
+def billing(model_id: str) -> str:
+    vendor = design_ai.CRIS_PREFIX.sub("", model_id).split(".", 1)[0]
+    if vendor == "amazon":
+        return "amazon_bedrock"
+    return "marketplace" if vendor == "anthropic" else "unconfirmed"
+
+
+def budget(figures: dict, routes: list[dict]) -> dict:
+    services = None if any(r["billing"] == "marketplace" for r in routes) else [BEDROCK_SERVICE]
     point = figures["cost_comparison"]["projected_bedrock_monthly"]
     span = figures["projected_bedrock_monthly_range"]
     for basis, value in (("point", point), ("range_high", span.get("high")), ("range_low_open_band", span.get("low"))):
         if isinstance(value, (int, float)) and not isinstance(value, bool):
-            return {"monthly_usd": max(BUDGET_MINIMUM, math.ceil(round(value * BUDGET_MULTIPLIER, 6))), "basis": basis, "projected": value}
-    return {"monthly_usd": None, "basis": "no_projection", "projected": None}
+            return {"monthly_usd": max(BUDGET_MINIMUM, math.ceil(round(value * BUDGET_MULTIPLIER, 6))), "basis": basis, "projected": value,
+                    "services": services}
+    return {"monthly_usd": None, "basis": "no_projection", "projected": None, "services": services}
 
 
 def _policy(routes: list[dict], region: str) -> dict:
@@ -172,6 +184,10 @@ def _policy(routes: list[dict], region: str) -> dict:
              "Resource": iam_policy.mantle_project_arn(region, ACCOUNT_PLACEHOLDER)},
             {"Sid": "BedrockMantleCallWithBearerToken", "Effect": "Allow", "Action": ["bedrock-mantle:CallWithBearerToken"], "Resource": "*"}]
     return policy
+
+
+def user_files(routes: list[dict]) -> list[str]:
+    return sorted(f"{OUT}/invoke/{r['route_id']}.py" for r in routes if r["required_client_api"] == "invoke" and not r["titan_embedding"])
 
 
 def _read(run_dir: Path, name: str) -> Any:
@@ -235,7 +251,8 @@ def build_plan(run_dir: Path) -> dict:
         sources = sorted({(w["source_service"], w["source_api"] or "") for w in workloads})
         titan_embedding = design_ai.CRIS_PREFIX.sub("", mid).startswith(TITAN_TEXT_EMBEDDING)
         if row["required_client_api"] == "invoke" and not titan_embedding:
-            disclosures.append(f"{rid}: {mid} uses a model-specific InvokeModel body; call_bedrock raises until you write it.")
+            disclosures.append(f"{rid}: {mid} uses a model-specific InvokeModel body; call_bedrock raises until you write "
+                               f"invoke(client, model_id, prompt) in {OUT}/invoke/{rid}.py.")
         if row.get("mantle_selector") == "web_search":
             disclosures.append(f"{rid}: send the web_search tool with \"external_web_access\": false unless you grant bedrock-websearch:ExternalWebAccess.")
         files = [f"{OUT}/routes/{rid}.py"]
@@ -250,7 +267,7 @@ def build_plan(run_dir: Path) -> dict:
             "endpoint_assumption": row.get("endpoint_assumption"), "fronted_by": gateways, "openrouter_path": openrouter_path,
             "call_sites": sorted({(c["file"], c["line"]) for w in workloads for c in w["call_sites"]}),
             "source_call": sources[0] if len(sources) == 1 and sources[0][1] and not gateways else None,
-            "titan_embedding": titan_embedding, "quota_risk": row["quota_risk"], "files": files})
+            "titan_embedding": titan_embedding, "billing": billing(mid), "quota_risk": row["quota_risk"], "files": files})
 
     shared = [f"{OUT}/{f}" for f in SHARED_FILES]
     agent = [f"{OUT}/{f}" for f in AGENT_FILES]
@@ -264,11 +281,19 @@ def build_plan(run_dir: Path) -> dict:
             models.append({"model": m["model"], "generated_files": sorted(set(own + shared + agent))})
         artifacts.append({"provider": pair[0], "source_service": pair[1], "models": models})
 
-    money = budget(figures)
+    money = budget(figures, routes)
+    marketplace = sorted({r["aws_model_id"] for r in routes if r["billing"] == "marketplace"})
+    unconfirmed = sorted({r["aws_model_id"] for r in routes if r["billing"] == "unconfirmed"})
+    if marketplace:
+        disclosures.append(f"{', '.join(marketplace)}: {MARKETPLACE_NOTE}, so a budget on the Amazon Bedrock service would not see this spend. "
+                           "setup_bedrock.sh creates no budget until you export BUDGET_SERVICES with the service names Cost Explorer shows.")
+    if unconfirmed:
+        disclosures.append(f"{', '.join(unconfirmed)}: not confirmed to bill under Amazon Bedrock. After the first day of traffic, check Cost Explorer "
+                           "grouped by Service; if the spend is elsewhere, export BUDGET_SERVICES with those names and run setup_bedrock.sh again.")
     if money["basis"] == "range_low_open_band":
         disclosures.append("The token band has no upper bound, so the Bedrock budget uses the band's low bound; raise it to your expected volume.")
     if money["basis"] == "no_projection":
-        disclosures.append("Estimate has no projected Bedrock figure, so setup_bedrock.sh creates no budget until you set one.")
+        disclosures.append("Estimate has no projected Bedrock figure, so setup_bedrock.sh creates no budget until you export BUDGET_USD.")
     disclosures.append("Generate does not scan code: if the app keeps client.responses.retrieve/cancel/delete on a runtime Responses route, "
                        "add bedrock:GetInvoke/CancelInvoke/DeleteInvoke on project/default (iam_policy.py --stored-response-ops).")
     integration = profile.get("integration") or {}
@@ -281,7 +306,7 @@ def build_plan(run_dir: Path) -> dict:
         "region": region,
         "routes": routes,
         "not_generated": not_generated,
-        "manifest": {"scaffold": sorted({f for r in routes for f in r["files"]} | set(shared)), "agent": agent},
+        "manifest": {"scaffold": sorted({f for r in routes for f in r["files"]} | set(shared)), "agent": agent, "user": user_files(routes)},
         "fixed": {
             "models_to_migrate": list(dict.fromkeys(r["source_model_id"] for r in rows)),
             "artifacts_by_source": artifacts,
@@ -341,7 +366,15 @@ CALL_BEDROCK = {
     return f"embedding:{len(json.loads(response['body'].read())['embedding'])}"
 ''',
     "invoke": '''def call_bedrock(prompt: str) -> str:
-    raise NotImplementedError("This route uses a model-specific InvokeModel body; write it before comparing (see README.md).")
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "invoke", ROUTE_ID + ".py")
+    if not os.path.isfile(path):
+        raise NotImplementedError(f"This route needs a model-specific InvokeModel body: write invoke(client, model_id, prompt) -> str in {path} (see README.md).")
+    import boto3
+    spec = importlib.util.spec_from_file_location(f"invoke_{ROUTE_ID}", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.invoke(boto3.client("bedrock-runtime", region_name=REGION), MODEL_ID, prompt)
 ''',
 }
 
@@ -541,6 +574,14 @@ run() {
 '''
 
 SETUP_BODY = '''
+USD_RE='^([0-9]+(\\.[0-9]{1,2})?)?$'
+SERVICES_RE='^[A-Za-z0-9 ()._,-]*$'
+if ! [[ "$BUDGET_USD" =~ $USD_RE ]]; then
+  echo "BUDGET_USD must be a USD amount such as 500 or 499.50" >&2; exit 2
+fi
+if ! [[ "$BUDGET_SERVICES" =~ $SERVICES_RE ]]; then
+  echo "BUDGET_SERVICES must be comma-separated Cost Explorer service names (letters, digits, spaces, ( ) . _ -)" >&2; exit 2
+fi
 echo "== 1. Account and Region: $REGION"
 ACCOUNT_ID="ACCOUNT_ID"
 if [ "$EXECUTE" = 1 ]; then ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"; fi
@@ -558,8 +599,13 @@ done
 echo "== 3. IAM policy (create it, then attach it to the role your application runs as)"
 POLICY="$(sed "s/ACCOUNT_ID/$ACCOUNT_ID/g" "$HERE/iam-policy.json")"
 printf '%s\\n' "$POLICY"
-run aws iam create-policy --policy-name "$POLICY_NAME" --policy-document "$POLICY"
-echo "   aws iam attach-role-policy --role-name <your-role> --policy-arn arn:aws:iam::$ACCOUNT_ID:policy/$POLICY_NAME"
+POLICY_ARN="arn:$PARTITION:iam::$ACCOUNT_ID:policy/$POLICY_NAME"
+if [ "$EXECUTE" = 1 ] && aws iam get-policy --policy-arn "$POLICY_ARN" >/dev/null 2>&1; then
+  echo "   $POLICY_ARN already exists, so it is not created again. If iam-policy.json changed, add it with aws iam create-policy-version --set-as-default."
+else
+  run aws iam create-policy --policy-name "$POLICY_NAME" --policy-document "$POLICY"
+fi
+echo "   aws iam attach-role-policy --role-name <your-role> --policy-arn $POLICY_ARN"
 
 echo "== 4. Environment for the application"
 echo "   AWS_REGION=$REGION"
@@ -575,8 +621,27 @@ else
 fi
 
 echo "== 6. Bedrock budget and cost anomaly monitor (detective controls, not spend caps; billing data lags up to 24 hours)"
-if [ -n "$BUDGET_USD" ]; then
-  BUDGET="{\\"BudgetName\\":\\"$POLICY_NAME\\",\\"BudgetLimit\\":{\\"Amount\\":\\"$BUDGET_USD\\",\\"Unit\\":\\"USD\\"},\\"TimeUnit\\":\\"MONTHLY\\",\\"BudgetType\\":\\"COST\\",\\"CostFilters\\":{\\"Service\\":[\\"Amazon Bedrock\\"]}}"
+if [ "${#MARKETPLACE_MODELS[@]}" -gt 0 ]; then
+  for model in "${MARKETPLACE_MODELS[@]}"; do echo "   $model is $MARKETPLACE_NOTE."; done
+fi
+if [ "${#UNCONFIRMED_MODELS[@]}" -gt 0 ]; then
+  for model in "${UNCONFIRMED_MODELS[@]}"; do
+    echo "   $model is not confirmed to bill under Amazon Bedrock: after the first day of traffic, check Cost Explorer grouped by Service."
+  done
+fi
+SERVICES_JSON="$(printf '%s' "$BUDGET_SERVICES" | sed 's/ *, */,/g; s/^ *//; s/ *$//; s/,,*/,/g; s/^,//; s/,$//')"
+if [ -z "$BUDGET_USD" ]; then
+  echo "   Estimate has no projected Bedrock cost, so no budget is created. Run again with: export BUDGET_USD=<monthly USD>"
+elif [ -z "$SERVICES_JSON" ]; then
+  echo "   No budget is created: a budget on the Amazon Bedrock service alone would not see the spend above."
+  echo "   In Cost Explorer, group by Service and note the names that carry these models' charges, then run again with:"
+  echo "   export BUDGET_SERVICES='Amazon Bedrock,<service name from Cost Explorer>'"
+elif [ "$EXECUTE" = 1 ] && aws budgets describe-budget --account-id "$ACCOUNT_ID" --budget-name "$POLICY_NAME" >/dev/null 2>&1; then
+  echo "   Budget $POLICY_NAME already exists; change it in the AWS Budgets console or with aws budgets update-budget."
+else
+  SERVICES_JSON="\\"${SERVICES_JSON//,/\\",\\"}\\""
+  echo "   Budget: $BUDGET_USD USD a month on the services [$SERVICES_JSON]"
+  BUDGET="{\\"BudgetName\\":\\"$POLICY_NAME\\",\\"BudgetLimit\\":{\\"Amount\\":\\"$BUDGET_USD\\",\\"Unit\\":\\"USD\\"},\\"TimeUnit\\":\\"MONTHLY\\",\\"BudgetType\\":\\"COST\\",\\"CostFilters\\":{\\"Service\\":[$SERVICES_JSON]}}"
   if [ -n "$ALERT_EMAIL" ]; then
     SUBSCRIBER="[{\\"SubscriptionType\\":\\"EMAIL\\",\\"Address\\":\\"$ALERT_EMAIL\\"}]"
     NOTIFY="[{\\"Notification\\":{\\"NotificationType\\":\\"ACTUAL\\",\\"ComparisonOperator\\":\\"GREATER_THAN\\",\\"Threshold\\":80,\\"ThresholdType\\":\\"PERCENTAGE\\"},\\"Subscribers\\":$SUBSCRIBER},{\\"Notification\\":{\\"NotificationType\\":\\"FORECASTED\\",\\"ComparisonOperator\\":\\"GREATER_THAN\\",\\"Threshold\\":100,\\"ThresholdType\\":\\"PERCENTAGE\\"},\\"Subscribers\\":$SUBSCRIBER}]"
@@ -585,8 +650,6 @@ if [ -n "$BUDGET_USD" ]; then
     echo "   No --alert-email given: the budget is created without notifications."
     run aws budgets create-budget --account-id "$ACCOUNT_ID" --budget "$BUDGET"
   fi
-else
-  echo "   Estimate has no projected Bedrock cost, so no budget is created. Set BUDGET_USD in this file to your own figure."
 fi
 MONITORS=0
 if [ "$EXECUTE" = 1 ]; then
@@ -635,10 +698,18 @@ def _model_kind(route: dict) -> str:
 def render_setup(plan: dict) -> str:
     routes = plan["routes"]
     money = plan["budget"]["monthly_usd"]
+    services = ",".join(plan["budget"]["services"] or [])
+    region = plan["region"]
+    partition = "aws-us-gov" if "-gov-" in region else "aws-cn" if region.startswith("cn-") else "aws"
     variables = [
-        f"REGION={_q(plan['region'])}",
+        f"REGION={_q(region)}",
+        f"PARTITION={_q(partition)}",
         f"POLICY_NAME={_q('bedrock-' + plan['migration_id'])}",
-        f"BUDGET_USD={_q(money if money is not None else '')}",
+        f'BUDGET_USD="${{BUDGET_USD:-{money if money is not None else ""}}}"',
+        f'BUDGET_SERVICES="${{BUDGET_SERVICES:-{services}}}"',
+        f"MARKETPLACE_NOTE={_q(MARKETPLACE_NOTE)}",
+        "MARKETPLACE_MODELS=(" + " ".join(_q(m) for m in sorted({r["aws_model_id"] for r in routes if r["billing"] == "marketplace"})) + ")",
+        "UNCONFIRMED_MODELS=(" + " ".join(_q(m) for m in sorted({r["aws_model_id"] for r in routes if r["billing"] == "unconfirmed"})) + ")",
         "MODEL_IDS=(" + " ".join(_q(r["aws_model_id"]) for r in routes) + ")",
         "MODEL_KINDS=(" + " ".join(_q(_model_kind(r)) for r in routes) + ")",
         "QUOTA_MODELS=(" + " ".join(_q(q["aws_model_id"]) for q in plan["quota_flags"]) + ")",
@@ -712,7 +783,12 @@ def scaffold(run_dir: Path, plan: dict) -> list[str]:
     if out.is_symlink() or (out.exists() and not out.is_dir()):
         raise GenerateInputError("ai_migration_not_a_directory", f"{out} is a symlink or a file; remove it and run scaffold again")
     if out.exists():
+        kept = {rel: (run_dir / rel).read_bytes() for rel in plan["manifest"]["user"]
+                if (run_dir / rel).is_file() and not (run_dir / rel).is_symlink() and not (out / "invoke").is_symlink()}
         shutil.rmtree(out)
+        for rel, data in kept.items():
+            (run_dir / rel).parent.mkdir(parents=True, exist_ok=True)
+            (run_dir / rel).write_bytes(data)
     (run_dir / "generation-ai.json").write_text(json.dumps(skeleton(plan), indent=2) + "\n", encoding="utf-8")
     written = []
     for rel, text in render_all(plan).items():
@@ -810,7 +886,7 @@ def check_generation(gen: Any, plan: dict, run_dir: Path, schema: dict | None = 
     present = _on_disk(run_dir)
     for rel in sorted(expected - present):
         _err(errors, "artifact_missing", f"{rel} is missing; run scaffold again, then write README.md and prompts.json")
-    for rel in sorted(present - expected):
+    for rel in sorted(present - expected - set(plan["manifest"]["user"])):
         _err(errors, "artifact_unexpected", f"{rel} is not in this plan's manifest (stale from an earlier run?)")
     rendered = render_all(plan)
     texts: dict[str, str] = {}

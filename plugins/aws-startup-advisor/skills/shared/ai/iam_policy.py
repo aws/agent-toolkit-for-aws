@@ -4,6 +4,8 @@ Pure module: takes model IDs, region, and account ID — returns a policy dict.
 Handles the dual-ARN pattern (foundation-model + inference-profile) required
 when cross-region inference profile IDs (including au. and jp.) are in use.
 """
+from __future__ import annotations
+
 import json
 import re
 import sys

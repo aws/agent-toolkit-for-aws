@@ -48,15 +48,17 @@ On success the JSON has:
 python3 <SKILL_BASE>/scripts/generate-ai.py scaffold $MIGRATION_DIR
 ```
 
-It deletes `$MIGRATION_DIR/ai-migration/`, then writes every file in `manifest.scaffold` from the plan, so a file from an earlier design cannot survive. Do not edit these files: Step 3's check compares them with a fresh render. It also writes `$MIGRATION_DIR/generation-ai.json` with every `fixed` value already in place and each field you write in Step 3 set to a string that starts with `WRITE:`.
+It deletes `$MIGRATION_DIR/ai-migration/`, keeping only the user's `invoke/<route_id>.py` files listed in `manifest.user`, then writes every file in `manifest.scaffold` from the plan, so a file from an earlier design cannot survive. Do not edit these files: Step 3's check compares them with a fresh render. It also writes `$MIGRATION_DIR/generation-ai.json` with every `fixed` value already in place and each field you write in Step 3 set to a string that starts with `WRITE:`.
 
 | File                                 | What it is                                                                                                                                                                                    |
 | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `routes/<route_id>.py`               | One per route. `call_bedrock(prompt)` uses the route's API, base URL, and model id; `call_source(prompt)` calls the current provider where the plan knows how; `generate(prompt, source_call)` switches on `AI_PROVIDER`. |
 | `gateway/<route_id>.yaml` or `.json` | `gateway_config` routes only: a LiteLLM `model_list` entry, or the OpenRouter provider-routing fields.                                                                                        |
 | `test_comparison.py`                 | Runs every route against Bedrock and, unless `--target-only`, the source; reports latency, errors, and expected-trait scores. `--quick` sends one built-in prompt per route.                  |
-| `setup_bedrock.sh`                   | Dry run unless `--execute`: model checks, the IAM policy, environment variables, quota warnings, a Bedrock-only AWS Budgets budget and a Cost Anomaly Detection monitor, compliance notes, and a `--target-only --quick` check. |
+| `setup_bedrock.sh`                   | Dry run unless `--execute`, and safe to run again: model checks, the IAM policy, environment variables, quota warnings, an AWS Budgets budget on the Amazon Bedrock service and a Cost Anomaly Detection monitor, compliance notes, and a `--target-only --quick` check. Claude models bill through AWS Marketplace, not under Amazon Bedrock, so with a Claude route it creates no budget until the user exports `BUDGET_SERVICES`; `BUDGET_USD` overrides the planned figure the same way. Both are environment variables, so the file stays as scaffolded. |
 | `iam-policy.json`                    | The least-privilege policy for exactly these routes, with `ACCOUNT_ID` filled in by `setup_bedrock.sh`. It is a policy document only: this skill does not know which role the application runs as. |
+
+An `invoke` route other than Titan Text Embeddings has no body the plan knows. Its `call_bedrock` loads `invoke(client, model_id, prompt)` from `ai-migration/invoke/<route_id>.py`, which the user writes and check accepts; do not write it yourself.
 
 The feature flag is `AI_PROVIDER`: `source` (the default, the current provider), `bedrock`, or `shadow` (both; the source answer is returned and the Bedrock call is logged).
 
@@ -100,6 +102,6 @@ In under 25 lines:
 1. That these are artifacts only: no code changed, nothing ran against AWS, and llm-to-bedrock rewrites the calls.
 2. A table per route: workloads, source model, Bedrock model, endpoint, kind, and the route file.
 3. The order to run things (README.md item 4), with `setup_bedrock.sh` dry run first.
-4. The budget figure and its basis, or that no budget is set and why.
+4. The budget figure and its basis and which services it covers, or that no budget is set and why.
 5. Every quota flag, compliance note, disclosure, and `not_generated[]` workload.
 6. `credits_line`, as one line with no dollar amounts.

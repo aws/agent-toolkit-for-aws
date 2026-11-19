@@ -95,6 +95,7 @@ Wire `generate(prompt, source_call=<your existing call>)` from the route file. S
 ## Notes
 
 - gpt-5.5__mantle-openai-responses__responses__web-search: send the web_search tool with "external_web_access": false unless you grant bedrock-websearch:ExternalWebAccess.
-- Estimate has no projected Bedrock figure, so setup_bedrock.sh creates no budget until you set one.
+- openai.gpt-5.5, us.openai.gpt-5.5: not confirmed to bill under Amazon Bedrock. After the first day of traffic, check Cost Explorer grouped by Service; if the spend is elsewhere, export BUDGET_SERVICES with those names and run setup_bedrock.sh again.
+- Estimate has no projected Bedrock figure, so setup_bedrock.sh creates no budget until you export BUDGET_USD.
 - Generate does not scan code: if the app keeps client.responses.retrieve/cancel/delete on a runtime Responses route, add bedrock:GetInvoke/CancelInvoke/DeleteInvoke on project/default (iam_policy.py --stored-response-ops).
 - AWS Activate credits can offset Bedrock usage for eligible startups: https://aws.amazon.com/startups/credits/

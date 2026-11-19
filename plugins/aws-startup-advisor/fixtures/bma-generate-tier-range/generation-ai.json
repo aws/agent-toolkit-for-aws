@@ -128,7 +128,7 @@
     "key_risks": [
       "Quota risk is high for both models: request increases before cutover",
       "gemini-2.5-flash -> Claude Haiku 5.5 changes behavior: compare summaries before moving traffic",
-      "The budget uses the high end of a tier range, not a measured figure"
+      "Claude bills through AWS Marketplace, so no budget is created until BUDGET_SERVICES names its Cost Explorer services; the planned figure is the high end of a tier range"
     ]
   },
   "artifacts_by_source": [

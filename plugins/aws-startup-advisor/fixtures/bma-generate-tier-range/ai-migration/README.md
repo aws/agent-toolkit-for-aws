@@ -69,5 +69,6 @@ Wire `generate(prompt, source_call=<your existing call>)` from the route file. S
 
 ## Notes
 
+- us.anthropic.claude-haiku-5-5, us.anthropic.claude-sonnet-5: billed through AWS Marketplace and shown in Cost Explorer under the model provider, not under Amazon Bedrock, so a budget on the Amazon Bedrock service would not see this spend. setup_bedrock.sh creates no budget until you export BUDGET_SERVICES with the service names Cost Explorer shows.
 - Generate does not scan code: if the app keeps client.responses.retrieve/cancel/delete on a runtime Responses route, add bedrock:GetInvoke/CancelInvoke/DeleteInvoke on project/default (iam_policy.py --stored-response-ops).
 - AWS Activate credits can offset Bedrock usage for eligible startups: https://aws.amazon.com/startups/credits/

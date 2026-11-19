@@ -51,7 +51,7 @@ Rules 1 to 9 apply only to a run this skill created: the user names an existing 
 4. If that file has `phases.generate` set to `"in_progress"`, resume at Generate. Its Step 1 rewrites `ai-migration/` from the start.
 5. If that file has `phases.estimate` set to `"completed"`, `phases.generate` `"pending"`, and `run_mode` `"decide_and_execute"`, resume at Generate.
 6. If that file has `phases.estimate` set to `"completed"` and `phases.generate` `"pending"`, show the summary of the saved `estimation-ai.json` and offer to generate the migration artifacts, to run Estimate again, to run Design again, or to change answers. To generate, set `run_mode` to `"decide_and_execute"` and go to Step 5. The other three are the resets in rule 7.
-7. If that file has `phases.generate` set to `"completed"`, show the summary of the saved `generation-ai.json` and offer to generate again, to run Estimate again, to run Design again, or to change answers. Each choice is one write:
+7. If that file has `phases.generate` set to `"completed"`, show the summary of the saved `generation-ai.json` and offer to generate again, to run Estimate again, to run Design again, or to change answers. Say that each choice replaces `ai-migration/` when Generate runs again, including `comparison_results.json`, so they can copy it first. Each choice is one write:
    - Generate again: set `phases.generate` to `"in_progress"` and `current_phase` to `"generate"`, then go to Step 5.
    - Estimate again: set `phases.estimate` and `phases.generate` to `"pending"` and `current_phase` to `"estimate"`, then go to Step 4.
    - Design again: set `phases.design`, `phases.estimate`, and `phases.generate` to `"pending"` and `current_phase` to `"design"`, then go to Step 3.
@@ -78,7 +78,7 @@ Set `phases.design` to `"in_progress"`, and `phases.estimate` and `phases.genera
 
 Set `phases.estimate` to `"in_progress"`, and `phases.generate` to `"pending"` when it is `"in_progress"` or `"completed"`, in one write. Then load `references/phases/estimate/estimate-ai.md` and follow it. It writes `estimation-ai.json` and passes `scripts/estimate-ai.py check` before it completes. When it does, set `phases.estimate` to `"completed"` and `current_phase` to `"generate"`.
 
-Then, unless `run_mode` is already `"decide_and_execute"`, ask once: "Generate the migration artifacts now? They are files for you to review and run: Bedrock client files, a comparison harness, an IAM policy, and a dry-run setup script. Your code is not changed." On yes, set `run_mode` to `"decide_and_execute"` and go to Step 5. On no, set `run_mode` to `"decide"`, leave `phases.generate` `"pending"`, and stop: Generate stays available when the user resumes this run. When another skill invoked this one only for Design or Estimate, it answers no.
+Then, unless `run_mode` is already `"decide_and_execute"`, ask once: "Generate the migration artifacts now? They are files for you to review and run: Bedrock client files, a comparison harness, an IAM policy, and a dry-run setup script. Your code is not changed." On yes, set `run_mode` to `"decide_and_execute"` and go to Step 5. On no, set `run_mode` to `"decide"` and `current_phase` to `"complete"`, leave `phases.generate` `"pending"`, and stop: Generate stays available when the user resumes this run. When another skill invoked this one only for Design or Estimate, it answers no.
 
 ## Step 5: Generate
 

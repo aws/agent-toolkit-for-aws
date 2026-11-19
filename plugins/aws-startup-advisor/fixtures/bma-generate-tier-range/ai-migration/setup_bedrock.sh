@@ -19,12 +19,25 @@ run() {
   if [ "$EXECUTE" = 1 ]; then "$@"; else printf '[dry run]'; printf ' %q' "$@"; printf '\n'; fi
 }
 REGION=us-east-1
+PARTITION=aws
 POLICY_NAME=bedrock-bma-1116-1900
-BUDGET_USD=858
+BUDGET_USD="${BUDGET_USD:-858}"
+BUDGET_SERVICES="${BUDGET_SERVICES:-}"
+MARKETPLACE_NOTE='billed through AWS Marketplace and shown in Cost Explorer under the model provider, not under Amazon Bedrock'
+MARKETPLACE_MODELS=(us.anthropic.claude-haiku-5-5 us.anthropic.claude-sonnet-5)
+UNCONFIRMED_MODELS=()
 MODEL_IDS=(us.anthropic.claude-sonnet-5 us.anthropic.claude-haiku-5-5)
 MODEL_KINDS=(inference-profile inference-profile)
 QUOTA_MODELS=(us.anthropic.claude-sonnet-5 us.anthropic.claude-haiku-5-5)
 
+USD_RE='^([0-9]+(\.[0-9]{1,2})?)?$'
+SERVICES_RE='^[A-Za-z0-9 ()._,-]*$'
+if ! [[ "$BUDGET_USD" =~ $USD_RE ]]; then
+  echo "BUDGET_USD must be a USD amount such as 500 or 499.50" >&2; exit 2
+fi
+if ! [[ "$BUDGET_SERVICES" =~ $SERVICES_RE ]]; then
+  echo "BUDGET_SERVICES must be comma-separated Cost Explorer service names (letters, digits, spaces, ( ) . _ -)" >&2; exit 2
+fi
 echo "== 1. Account and Region: $REGION"
 ACCOUNT_ID="ACCOUNT_ID"
 if [ "$EXECUTE" = 1 ]; then ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"; fi
@@ -42,8 +55,13 @@ done
 echo "== 3. IAM policy (create it, then attach it to the role your application runs as)"
 POLICY="$(sed "s/ACCOUNT_ID/$ACCOUNT_ID/g" "$HERE/iam-policy.json")"
 printf '%s\n' "$POLICY"
-run aws iam create-policy --policy-name "$POLICY_NAME" --policy-document "$POLICY"
-echo "   aws iam attach-role-policy --role-name <your-role> --policy-arn arn:aws:iam::$ACCOUNT_ID:policy/$POLICY_NAME"
+POLICY_ARN="arn:$PARTITION:iam::$ACCOUNT_ID:policy/$POLICY_NAME"
+if [ "$EXECUTE" = 1 ] && aws iam get-policy --policy-arn "$POLICY_ARN" >/dev/null 2>&1; then
+  echo "   $POLICY_ARN already exists, so it is not created again. If iam-policy.json changed, add it with aws iam create-policy-version --set-as-default."
+else
+  run aws iam create-policy --policy-name "$POLICY_NAME" --policy-document "$POLICY"
+fi
+echo "   aws iam attach-role-policy --role-name <your-role> --policy-arn $POLICY_ARN"
 
 echo "== 4. Environment for the application"
 echo "   AWS_REGION=$REGION"
@@ -59,8 +77,27 @@ else
 fi
 
 echo "== 6. Bedrock budget and cost anomaly monitor (detective controls, not spend caps; billing data lags up to 24 hours)"
-if [ -n "$BUDGET_USD" ]; then
-  BUDGET="{\"BudgetName\":\"$POLICY_NAME\",\"BudgetLimit\":{\"Amount\":\"$BUDGET_USD\",\"Unit\":\"USD\"},\"TimeUnit\":\"MONTHLY\",\"BudgetType\":\"COST\",\"CostFilters\":{\"Service\":[\"Amazon Bedrock\"]}}"
+if [ "${#MARKETPLACE_MODELS[@]}" -gt 0 ]; then
+  for model in "${MARKETPLACE_MODELS[@]}"; do echo "   $model is $MARKETPLACE_NOTE."; done
+fi
+if [ "${#UNCONFIRMED_MODELS[@]}" -gt 0 ]; then
+  for model in "${UNCONFIRMED_MODELS[@]}"; do
+    echo "   $model is not confirmed to bill under Amazon Bedrock: after the first day of traffic, check Cost Explorer grouped by Service."
+  done
+fi
+SERVICES_JSON="$(printf '%s' "$BUDGET_SERVICES" | sed 's/ *, */,/g; s/^ *//; s/ *$//; s/,,*/,/g; s/^,//; s/,$//')"
+if [ -z "$BUDGET_USD" ]; then
+  echo "   Estimate has no projected Bedrock cost, so no budget is created. Run again with: export BUDGET_USD=<monthly USD>"
+elif [ -z "$SERVICES_JSON" ]; then
+  echo "   No budget is created: a budget on the Amazon Bedrock service alone would not see the spend above."
+  echo "   In Cost Explorer, group by Service and note the names that carry these models' charges, then run again with:"
+  echo "   export BUDGET_SERVICES='Amazon Bedrock,<service name from Cost Explorer>'"
+elif [ "$EXECUTE" = 1 ] && aws budgets describe-budget --account-id "$ACCOUNT_ID" --budget-name "$POLICY_NAME" >/dev/null 2>&1; then
+  echo "   Budget $POLICY_NAME already exists; change it in the AWS Budgets console or with aws budgets update-budget."
+else
+  SERVICES_JSON="\"${SERVICES_JSON//,/\",\"}\""
+  echo "   Budget: $BUDGET_USD USD a month on the services [$SERVICES_JSON]"
+  BUDGET="{\"BudgetName\":\"$POLICY_NAME\",\"BudgetLimit\":{\"Amount\":\"$BUDGET_USD\",\"Unit\":\"USD\"},\"TimeUnit\":\"MONTHLY\",\"BudgetType\":\"COST\",\"CostFilters\":{\"Service\":[$SERVICES_JSON]}}"
   if [ -n "$ALERT_EMAIL" ]; then
     SUBSCRIBER="[{\"SubscriptionType\":\"EMAIL\",\"Address\":\"$ALERT_EMAIL\"}]"
     NOTIFY="[{\"Notification\":{\"NotificationType\":\"ACTUAL\",\"ComparisonOperator\":\"GREATER_THAN\",\"Threshold\":80,\"ThresholdType\":\"PERCENTAGE\"},\"Subscribers\":$SUBSCRIBER},{\"Notification\":{\"NotificationType\":\"FORECASTED\",\"ComparisonOperator\":\"GREATER_THAN\",\"Threshold\":100,\"ThresholdType\":\"PERCENTAGE\"},\"Subscribers\":$SUBSCRIBER}]"
@@ -69,8 +106,6 @@ if [ -n "$BUDGET_USD" ]; then
     echo "   No --alert-email given: the budget is created without notifications."
     run aws budgets create-budget --account-id "$ACCOUNT_ID" --budget "$BUDGET"
   fi
-else
-  echo "   Estimate has no projected Bedrock cost, so no budget is created. Set BUDGET_USD in this file to your own figure."
 fi
 MONITORS=0
 if [ "$EXECUTE" = 1 ]; then
