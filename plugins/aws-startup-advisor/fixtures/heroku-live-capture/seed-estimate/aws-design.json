@@ -75,7 +75,7 @@
         "instance_class": "db.m6g.large",
         "multi_az": true,
         "storage_gb": 256,
-        "engine_version": "15",
+        "engine_version": "16",
         "rds_proxy": true
       }
     },
@@ -90,7 +90,7 @@
         "instance_class": "db.t4g.micro",
         "multi_az": true,
         "storage_gb": 1,
-        "engine_version": "15",
+        "engine_version": "16",
         "rds_proxy": false
       }
     },
