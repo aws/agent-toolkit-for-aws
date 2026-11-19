@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """Offline checks for the AgentCore task-to-component routing table.
 
-The table lives in references/agentcore-runtime.md under the heading
-"Task-to-Component Routing". These checks keep it honest as rows, components
-and reference files change:
+The table lives in SKILL.md under the heading "Task-to-Component Routing",
+inside the "AgentCore Services" section. These checks keep it honest as rows,
+components and reference files change:
 
 1. Structure: the table exists, has the three expected columns, and no two
    rows share the same task text.
 2. Components: every component named in the table is listed in the
-   "AgentCore Services" table in SKILL.md, so a new component is added to
-   both places or neither.
+   "AgentCore Services" table, so a new component is added to both places or
+   neither.
 3. Links: every relative link in the table resolves to a file in this skill,
-   and every absolute link points at AWS documentation or aws.amazon.com.
+   every absolute link points at AWS documentation or aws.amazon.com, and the
+   Runtime reference still points back at this table.
 4. Routing: a fixture of user prompts (the words users actually type) each
    route to exactly one expected component. Routing is a plain word-overlap
    score between the prompt and each row's task text, so a row only wins when
@@ -32,11 +33,12 @@ import sys
 from pathlib import Path
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
-RUNTIME_REF = SKILL_DIR / "references" / "agentcore-runtime.md"
 SKILL_MD = SKILL_DIR / "SKILL.md"
+RUNTIME_REF = SKILL_DIR / "references" / "agentcore-runtime.md"
 
-ROUTING_HEADING = "## Task-to-Component Routing"
 SERVICES_HEADING = "## AgentCore Services"
+ROUTING_HEADING = "### Task-to-Component Routing"
+ROUTING_ANCHOR = "SKILL.md#task-to-component-routing"
 EXPECTED_COLUMNS = ["Task the user describes", "Component", "Read first"]
 ALLOWED_URL_PREFIXES = (
     "https://docs.aws.amazon.com/bedrock-agentcore/",
@@ -86,12 +88,20 @@ def error(msg: str) -> None:
 
 
 def section(text: str, heading: str) -> str:
-    """Return the text of one '## ' section, up to the next '## ' heading."""
+    """Return one heading's text, up to the next heading of the same or higher level."""
     start = text.find(heading)
     if start == -1:
         return ""
-    end = text.find("\n## ", start + len(heading))
-    return text[start:] if end == -1 else text[start:end]
+    level = len(heading) - len(heading.lstrip("#"))
+    pos = start + len(heading)
+    while True:
+        nxt = text.find("\n#", pos)
+        if nxt == -1:
+            return text[start:]
+        hashes = len(text[nxt + 1:]) - len(text[nxt + 1:].lstrip("#"))
+        if 0 < hashes <= level:
+            return text[start:nxt]
+        pos = nxt + 1
 
 
 def parse_table(block: str) -> tuple[list[str], list[list[str]]]:
@@ -148,21 +158,18 @@ def check_structure(header: list[str], rows: list[list[str]]) -> None:
             error(f"Row {i} has an empty 'Read first' cell")
 
 
-def skill_components() -> set[str]:
-    """Component names from the AgentCore Services table in SKILL.md."""
-    block = section(SKILL_MD.read_text(encoding="utf-8"), SERVICES_HEADING)
+def skill_components(skill_text: str) -> set[str]:
+    """Component names from the AgentCore Services table (the routing subsection excluded)."""
+    block = section(skill_text, SERVICES_HEADING)
+    cut = block.find(ROUTING_HEADING)
+    if cut != -1:
+        block = block[:cut]
     _, rows = parse_table(block)
-    names = set()
-    for row in rows:
-        name = strip_markup(row[0])
-        if name.lower().startswith("not sure"):
-            continue  # the pointer row back to this table
-        names.add(name)
-    return names
+    return {strip_markup(row[0]) for row in rows}
 
 
-def check_components(rows: list[list[str]]) -> None:
-    known = skill_components()
+def check_components(rows: list[list[str]], skill_text: str) -> None:
+    known = skill_components(skill_text)
     if not known:
         error(f"Could not read the '{SERVICES_HEADING}' table in SKILL.md")
         return
@@ -183,20 +190,22 @@ def check_links(rows: list[list[str]]) -> None:
                 if not target.startswith(ALLOWED_URL_PREFIXES):
                     error(f"Row {i} links outside AWS documentation: {target}")
                 continue
-            path = (RUNTIME_REF.parent / target.split("#", 1)[0]).resolve()
+            path = (SKILL_MD.parent / target.split("#", 1)[0]).resolve()
             if not path.is_file():
                 error(f"Row {i} links to a missing file: {target}")
 
 
-def check_pointer_row() -> None:
-    """SKILL.md must point at this table with a link that resolves."""
-    block = section(SKILL_MD.read_text(encoding="utf-8"), SERVICES_HEADING)
-    anchor = "references/agentcore-runtime.md#task-to-component-routing"
-    if anchor not in block:
-        error(f"SKILL.md AgentCore Services table has no pointer row linking to {anchor}")
-    heading_anchor = ROUTING_HEADING[3:].lower().replace(" ", "-")
-    if heading_anchor != anchor.split("#", 1)[1]:
-        error(f"Routing heading anchor '{heading_anchor}' does not match the SKILL.md link")
+def check_back_pointer() -> None:
+    """The Runtime reference must point back at this table with a link that resolves."""
+    if not RUNTIME_REF.is_file():
+        error(f"Missing {RUNTIME_REF}")
+        return
+    text = RUNTIME_REF.read_text(encoding="utf-8")
+    if "../" + ROUTING_ANCHOR not in text:
+        error(f"{RUNTIME_REF.name} has no link back to ../{ROUTING_ANCHOR}")
+    heading_anchor = ROUTING_HEADING.lstrip("# ").lower().replace(" ", "-")
+    if heading_anchor != ROUTING_ANCHOR.split("#", 1)[1]:
+        error(f"Routing heading anchor '{heading_anchor}' does not match {ROUTING_ANCHOR}")
 
 
 def route(prompt: str, rows: list[list[str]]) -> list[tuple[int, str]]:
@@ -230,23 +239,24 @@ def main() -> int:
     parser.add_argument("--verbose", action="store_true", help="print routing scores")
     args = parser.parse_args()
 
-    if not RUNTIME_REF.is_file():
-        error(f"Missing {RUNTIME_REF}")
+    if not SKILL_MD.is_file():
+        error(f"Missing {SKILL_MD}")
         return 1
-    block = section(RUNTIME_REF.read_text(encoding="utf-8"), ROUTING_HEADING)
+    skill_text = SKILL_MD.read_text(encoding="utf-8")
+    block = section(skill_text, ROUTING_HEADING)
     if not block:
-        error(f"'{ROUTING_HEADING}' section not found in {RUNTIME_REF.name}")
+        error(f"'{ROUTING_HEADING}' section not found in {SKILL_MD.name}")
         return 1
     header, rows = parse_table(block)
     if not rows:
         error("Routing table has no rows")
         return 1
 
-    print(f"Checking routing table in {RUNTIME_REF.relative_to(SKILL_DIR)} ({len(rows)} rows)")
+    print(f"Checking routing table in {SKILL_MD.relative_to(SKILL_DIR)} ({len(rows)} rows)")
     check_structure(header, rows)
-    check_components(rows)
+    check_components(rows, skill_text)
     check_links(rows)
-    check_pointer_row()
+    check_back_pointer()
     check_routing(rows, args.verbose)
 
     if errors:

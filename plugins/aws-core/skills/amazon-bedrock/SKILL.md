@@ -350,7 +350,6 @@ You MUST read the linked reference file for the relevant service before respondi
 
 | Service | Use For | Reference |
 |---------|---------|-----------|
-| *Not sure which service?* | Match the task the user describes (deploy, long-running jobs, remember users, run generated code, browse, trace, score) to one component | [task-to-component routing](references/agentcore-runtime.md#task-to-component-routing) |
 | **Harness** | Managed config-based agent loop — no orchestration code; fastest path from config to a running agent | [harness procedure](references/agentcore-harness.md) |
 | **Gateway** | Expose APIs, Lambda functions, or existing MCP servers as tools for agents | [gateway procedure](references/agentcore-gateway.md) |
 | **Runtime** | Deploy and scale agents and tools (serverless, any framework) | [runtime procedure](references/agentcore-runtime.md) |
@@ -364,6 +363,40 @@ You MUST read the linked reference file for the relevant service before respondi
 | **Evaluations** | Automated agent quality assessment (LLM-as-a-Judge) | [registry & evaluations](references/agentcore-registry-evaluations.md) |
 | Code Interpreter | Secure sandbox code execution for agents | Refer to the AWS documentation on AgentCore Code Interpreter |
 | Browser | Web automation (navigate, fill forms, extract data) | Refer to the AWS documentation on AgentCore Browser |
+
+### Task-to-Component Routing
+
+Users describe a job, not a service name. Match the job to ONE AgentCore component with this table, then read that component's reference. Rows are keyed on the words users actually use.
+
+| Task the user describes | Component | Read first |
+|-------------------------|-----------|------------|
+| Deploy or host an agent you already wrote, for real users, with the least infrastructure to own: no cluster, no fleet to patch, no queue. Any framework (LangGraph, Strands, OpenAI Agents SDK, Spring AI, custom loop) | Runtime | [runtime procedure](references/agentcore-runtime.md); [Runtime overview](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agents-tools-runtime.html) |
+| Agent tasks run for minutes or hours and the current host kills them at the request timeout; background or asynchronous work must outlive the request | Runtime | [Asynchronous and long-running agents](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-long-run.html) |
+| Move an agent off a hand-built VM or a laptop to a real deployment target with versioned releases; roll back by pointing an endpoint at an earlier version | Runtime | [runtime procedure](references/agentcore-runtime.md); [Runtime versioning and endpoints](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agent-runtime-versioning.html) |
+| Stream agent output to a chat UI or browser in real time (SSE or WebSocket) | Runtime | [runtime procedure](references/agentcore-runtime.md) (Protocol Selection Guide, HTTP or AG-UI); [Stream agent responses](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/response-streaming.html); [Bidirectional streaming](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-bidirectional-streaming.html) |
+| Isolate each user session so one session cannot read another's files, memory or credentials (process vs container vs microVM question) | Runtime | [Isolated sessions](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-sessions.html); for untrusted generated code, see the Code Interpreter row |
+| Cut compute cost for agents that mostly wait on model calls, tools or humans; consumption billing (CPU billed only while active) instead of an always-on fleet | Runtime | [How Runtime microVMs work](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-how-it-works.html); [AgentCore pricing](https://aws.amazon.com/bedrock/agentcore/pricing/) |
+| Define agents as configuration (model, prompt, tools) with no agent loop or orchestration code to own; many agents as declarations, not codebases | Harness | [harness procedure](references/agentcore-harness.md); [Harness vs. Runtime](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-vs-runtime.html) |
+| Run a prebuilt coding agent (Claude Code, Codex CLI, Pi or similar) as a hosted service: the agent brings its own loop, so package it in an ARM64 container behind the HTTP contract | Runtime | [container build procedure](references/agentcore-runtime-container-build.md); [Harness vs. Runtime](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-vs-runtime.html) (Harness runs its own loop and is not a host for another agent's loop) |
+| Remember users across sessions: preferences, facts, summaries; replace homegrown memory tables or a vector store you maintain | Memory | [memory & observability](references/agentcore-memory-observability.md); [AgentCore Memory](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/memory.html) |
+| Give agents your existing REST APIs, OpenAPI specs, Lambda functions or MCP servers as tools without rewriting the services | Gateway | [gateway procedure](references/agentcore-gateway.md) |
+| Let the agent act on behalf of a user in Google, Microsoft, Okta, Salesforce or another OAuth provider; store and refresh tokens per user | Identity | [credentials & security](references/agentcore-credentials-and-security.md); [Obtain OAuth 2.0 access tokens](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/identity-authentication.html) |
+| Run model-generated or untrusted code safely (data analysis, scripts, notebooks) in a sandbox | Code Interpreter | [Code Interpreter](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/code-interpreter-tool.html) |
+| Browse websites, fill forms, navigate web apps and extract data (a portal login or an invoice download is this job) | Browser | [Browser](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/browser-tool.html) |
+| Trace, debug and monitor agent runs in production (OpenTelemetry, CloudWatch), see every step and tool call | Observability | [memory & observability](references/agentcore-memory-observability.md) |
+| Score agent quality, catch regressions, block a release when checks fail (LLM-as-a-Judge, custom evaluators), then tune prompts and tool descriptions | Evaluations | [registry & evaluations](references/agentcore-registry-evaluations.md); [Optimization](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/optimization.html) |
+| Allow or deny which tools an agent may call and under what conditions, with rules enforced outside the model | Policy | [AgentCore Policy](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy.html) |
+| Catalog, publish, approve and discover agents, MCP servers, tools and skills across the organization | Registry | [registry & evaluations](references/agentcore-registry-evaluations.md) |
+| Let the agent pay for x402-protected APIs, MCP tools or content with spending limits | Payments | [payments procedure](references/agentcore-payments.md) |
+
+**Routing rules:**
+
+- Pick ONE primary component per task. Add a second only when the user's task names two jobs (for example, host the agent AND remember users: Runtime plus Memory).
+- When the user names an AgentCore component directly, use that component's row even if the task wording also matches another row.
+- Classic Bedrock Agents (`bedrock-agent`), model invocation and Knowledge Bases are not AgentCore components. Route those through the "Which Bedrock Capability Do You Need?" table above.
+- Components without a bundled reference (Code Interpreter, Browser, Policy) link to the AWS documentation. Read the linked page before responding.
+
+This table is checked by `scripts/check_agentcore_routing.py` (stdlib only): run it after editing the table, the AgentCore Services table, or any reference file it links to.
 
 ## Model Selection
 
