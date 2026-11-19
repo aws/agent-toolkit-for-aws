@@ -8,7 +8,7 @@ ElastiCache-specific gotchas, resource/construct names, and property mappings ac
 - **Subnet handling differs by deployment**: Serverless accepts subnet IDs directly. Node-based requires a separate subnet group resource.
 - **Dependency ordering**: The cache resource must depend on its user group. Without explicit dependency, the cache may be created before RBAC is ready.
 - **Serverless uses two ports**: Port 6379 (read/write) and port 6380 (reader). Security groups must allow both.
-- **Encryption defaults are hard to change**: At-rest encryption cannot be changed after creation. Transit encryption can be enabled on existing node-based clusters via a two-step migration (`preferred` → `required` mode), but cannot be disabled once required. For serverless, TLS is always on. Always set encryption at creation time when possible.
+- **Encryption defaults are hard to change**: At-rest encryption cannot be changed after creation, except that turning durability on (Valkey 9.0+) also turns it on. Transit encryption can be enabled on existing node-based clusters via a two-step migration (`preferred` → `required` mode), but cannot be disabled once required. For serverless, TLS is always on. Always set encryption at creation time when possible.
 - **CacheName restrictions**: Serverless cache names must be lowercase, start with a letter, letters/numbers/hyphens only, max 40 characters.
 - **CDK L2 constructs**: ElastiCache has only L1 constructs in CDK (`CfnServerlessCache`, `CfnReplicationGroup`, `CfnCacheCluster`). No stable L2 construct module is available.
 
@@ -51,7 +51,7 @@ ElastiCache-specific gotchas, resource/construct names, and property mappings ac
 | Property | CFN/CDK | Terraform | CLI flag |
 |----------|---------|-----------|----------|
 | Engine | `Engine: valkey` | `engine = "valkey"` | `--engine valkey` |
-| Version | `EngineVersion: '9.0'` | `engine_version = "9.0"` | `--engine-version 9.0` |
+| Version | `EngineVersion: '9.1'` | `engine_version = "9.1"` | `--engine-version 9.1` |
 | Node type | `CacheNodeType: cache.r7g.large` | `node_type = "cache.r7g.large"` | `--cache-node-type cache.r7g.large` |
 | Shards | `NumNodeGroups: 2` | `num_node_groups = 2` | `--num-node-groups 2` |
 | Replicas | `ReplicasPerNodeGroup: 1` | `replicas_per_node_group = 1` | `--replicas-per-node-group 1` |
@@ -60,6 +60,8 @@ ElastiCache-specific gotchas, resource/construct names, and property mappings ac
 | Failover | `AutomaticFailoverEnabled: true` | `automatic_failover_enabled = true` | `--automatic-failover-enabled` |
 | Multi-AZ | `MultiAZEnabled: true` | `multi_az_enabled = true` | `--multi-az-enabled` |
 | Snapshots | `SnapshotRetentionLimit: 7` | `snapshot_retention_limit = 7` | `--snapshot-retention-limit 7` |
+
+> **Note:** Graviton4 node types (M8g, R8g, C8gn) are available for node-based clusters ([What's New, 2026-08](https://aws.amazon.com/about-aws/whats-new/2026/08/amazon-elasticache-graviton4-m8g-r8g-c8gn/); confirm current families against [Supported node types](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/CacheNodes.SupportedTypes.html)).
 
 ## Secure Defaults Checklist
 
