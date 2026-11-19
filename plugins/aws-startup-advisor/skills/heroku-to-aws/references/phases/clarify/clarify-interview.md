@@ -570,6 +570,45 @@ built.
 
 **Fir intent precedence:** If Q11 (Fir intent = "self_managed_eks_ecs") and Q12c conflict, the compute target plan takes precedence for non-Fir formations. Fir workloads remain deferred in v1 regardless of this setting.
 
+**Beanstalk Cluster note (informational only):** Elastic Beanstalk also has a Cluster
+environment type (`--tier Name=Cluster,Type=EKS`, generally available) that runs
+containers on an Amazon EKS cluster Beanstalk creates and operates. This skill does not
+generate, price or deploy it, and it is not a `compute_target` value: every
+`elastic_beanstalk` formation is designed and priced as Beanstalk Standard (EC2). When the
+resolved plan puts three or more non-release formations on Elastic Beanstalk, add one
+sentence after the recommendation: "Elastic Beanstalk Cluster, which shares one
+Kubernetes cluster across environments, can lower per-app cost for a larger portfolio,
+but this estimate prices Standard (EC2) environments only; ask your AWS team before
+choosing it." Do not add it for a single app or when the user already chose Fargate or
+EKS. Do not change any answer, field or option because of this note. If the user asks
+about Cluster mode, tell them these points from the AWS documentation:
+
+- Fit: stateless container replicas only. Local disk is lost on restart, so persistent
+  non-web dynos need external storage first. Windows/.NET Framework on IIS and apps that
+  cannot be containerized stay on Standard. AWS also lists workloads under about
+  $500/month as a better fit for Standard, because a single app cannot offset the EKS
+  control plane fee and EKS Auto Mode premium.
+- Cost: no Beanstalk charge, but the EKS control plane, EKS Auto Mode compute, ECR and
+  CloudWatch are billed, and it is not Free Tier eligible. Environments in the same
+  account with the same subnet set share one cluster; a different subnet set creates and
+  bills a separate cluster. AWS recommends separate subnets for production and
+  development, so prod plus staging means two clusters. Private subnets need a NAT
+  gateway or equivalent outbound route.
+- Isolation: a shared cluster is soft multi-tenancy (shared control plane, shared nodes
+  unless `node-pool` is set, no outbound traffic restriction). Environments for
+  different end customers, or under a compliance regime that needs infrastructure
+  separation, belong on separate subnet sets.
+- Setup: one environment per Heroku process type, with `load-balancer-type=None` for
+  workers and internal services. The subnets and the cluster, node and observability
+  roles cannot be changed after creation. The first environment takes 15 to 20 minutes
+  because the cluster is created, and the cluster is deleted up to 3 hours after the
+  last environment is terminated.
+- Images: Beanstalk builds source into an image with CodeBuild (Docker or Cloud Native
+  Buildpacks, with the builder named explicitly) or runs a prebuilt ECR image. The image
+  architecture (default `amd64`) must match the environment's `arch` option.
+- Not covered here: Terraform generation. AWS says Terraform through the AWS provider
+  can define Cluster environments; this skill has not verified the resource arguments.
+
 #### Q12d — Elastic Beanstalk Deployment Mechanism
 
 > _**Generate-time question.** Fires only when the resolved compute target plan includes Elastic Beanstalk: `design_constraints.compute_target.default` is `"elastic_beanstalk"`, the field is absent, or any per-formation override resolves to `"elastic_beanstalk"`. When it fires it is **not asked in Clarify** — the default below is written with `chosen_by: "default"` and `Q12d` is listed in `metadata.questions_deferred_to_generate`; it is asked for real at the Decision gate's **[C] Generate** (`estimate-assemble.md` § Confirm execution choices). Only Generate reads `eb_deploy_method`._
