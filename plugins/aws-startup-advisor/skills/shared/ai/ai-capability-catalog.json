@@ -26,7 +26,7 @@
       "model_families": ["gemini"],
       "status": "supported",
       "implemented_adapter": null,
-      "note": "Gemini now has a shared, cross-skill Bedrock-mapping guide at skills/shared/ai/ai-gemini-to-bedrock.md (vendored into gcp-to-aws and azure-to-aws), the same bar anthropic's and openai's guides meet, so this provider clears status: supported. The source-cloud-scoped copy under skills/gcp-to-aws/references/design-refs/ai-gemini-to-bedrock.md is retained as that skill's adapter-local guide; moving its runtime routing onto the shared guide is deferred to the extraction stages (issue #389 stages 3a-3e). supported reflects documentation coverage only, not an implemented adapter: implemented_adapter stays null."
+      "note": "Gemini now has a shared, cross-skill Bedrock-mapping guide at skills/shared/ai/ai-gemini-to-bedrock.md (vendored into gcp-to-aws, azure-to-aws and bedrock-migration-assessment), the same bar anthropic's and openai's guides meet, so this provider clears status: supported. gcp-to-aws loads its vendored copy at references/vendored/ai/ai-gemini-to-bedrock.md. supported reflects documentation coverage only, not an implemented adapter: implemented_adapter stays null."
     }
   ],
   "gateways": [

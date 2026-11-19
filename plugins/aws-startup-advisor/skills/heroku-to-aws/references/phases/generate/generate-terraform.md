@@ -2722,7 +2722,7 @@ resource "aws_iam_role_policy" "codepipeline_policy_<app_name>" {
 
 - CodePipeline is an explicit override, not the EB default.
 - Emit one Deploy action per generated EB environment for the app; do not update only the web environment.
-- The CodeStar/CodeConnections GitHub connection still requires one-time authorization in the AWS console.
+- The CodeConnections GitHub connection still requires one-time authorization in the AWS console.
 
 ---
 
@@ -2769,6 +2769,7 @@ resource "aws_db_subnet_group" "main" {
 }
 ```
 
+**Normalize `aws_config.engine_version` first** (RDS and Aurora PostgreSQL). A design saved before Design took the version from the source database carries the literal `"15"` for every database, and the decide-complete resume path reuses it without re-running Design. For each entry, read the source add-on's `config.pg_version` from `heroku-resource-inventory.json` (the entry's `source_resource_id` is its `resource_id`) and take the integer before the first `.`. When the saved `engine_version` is lower than that major, use the source major instead, for `engine_version`, for `family = "postgres<major_version>"` below and for `family = "aurora-postgresql<major_version>"` in the Aurora block, and append an entry to `generation-warnings.json` (Step 10) with the entry's `service_id`, the reason "Saved design targeted PostgreSQL {saved}; the source database runs {major}. Generated {major}." and the recommendation "Confirm the target version before applying." Only ever raise the version: a saved version equal to or above the source major is used as saved, so a design that already passed Estimate keeps its other decisions, and an entry whose add-on has no captured `pg_version` is left exactly as saved. Never error on the older value.
 ### RDS PostgreSQL (when `aws_service == "RDS PostgreSQL"`)
 
 ```hcl
@@ -2842,7 +2843,7 @@ output "postgres_replica_endpoints_<app_sanitized>" {
 
 resource "aws_db_parameter_group" "<app_sanitized>_postgres" {
   name   = "${var.project_name}-${var.environment}-postgres-params"
-  family = "postgres<major_version>"
+  family = "postgres<major_version>" # <major_version> is the integer part of aws_config.engine_version
 
   parameter {
     name  = "log_connections"
@@ -2944,7 +2945,7 @@ resource "aws_rds_cluster" "<app_sanitized>_aurora" {
 # reboot are required, which is why this block has neither.
 resource "aws_rds_cluster_parameter_group" "<app_sanitized>_aurora" {
   name   = "${var.project_name}-${var.environment}-aurora-cluster-params"
-  family = "aurora-postgresql<major_version>"
+  family = "aurora-postgresql<major_version>" # <major_version> is the integer part of aws_config.engine_version
 
   parameter {
     name  = "rds.force_ssl"
@@ -3538,6 +3539,7 @@ If every service mapped successfully, still write the file with an empty
 - Amazon SES (SendGrid mapping)
 - Amazon SNS (Twilio mapping)
 - Amazon EventBridge Scheduler (Heroku Scheduler mapping)
+- A resumed design whose saved PostgreSQL `engine_version` was raised to the source major (see the normalize rule before the RDS block)
 - ElastiCache Memcached (Memcachier mapping)
 - Amazon MQ (CloudAMQP mapping)
 - Amazon OpenSearch (Bonsai Elasticsearch mapping)
