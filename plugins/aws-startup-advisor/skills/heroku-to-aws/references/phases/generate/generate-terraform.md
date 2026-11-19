@@ -2842,7 +2842,7 @@ output "postgres_replica_endpoints_<app_sanitized>" {
 
 resource "aws_db_parameter_group" "<app_sanitized>_postgres" {
   name   = "${var.project_name}-${var.environment}-postgres-params"
-  family = "postgres<major_version>"
+  family = "postgres<major_version>" # <major_version> is the integer part of aws_config.engine_version
 
   parameter {
     name  = "log_connections"
@@ -2944,7 +2944,7 @@ resource "aws_rds_cluster" "<app_sanitized>_aurora" {
 # reboot are required, which is why this block has neither.
 resource "aws_rds_cluster_parameter_group" "<app_sanitized>_aurora" {
   name   = "${var.project_name}-${var.environment}-aurora-cluster-params"
-  family = "aurora-postgresql<major_version>"
+  family = "aurora-postgresql<major_version>" # <major_version> is the integer part of aws_config.engine_version
 
   parameter {
     name  = "rds.force_ssl"
