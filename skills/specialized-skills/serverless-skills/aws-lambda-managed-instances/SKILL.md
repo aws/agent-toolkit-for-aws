@@ -1,7 +1,7 @@
 ---
 name: aws-lambda-managed-instances
-description: "Evaluates, configures, and migrates workloads to AWS Lambda Managed Instances (LMI). Runs Lambda Event Functions (standard Lambda) on EC2 instances in the user's account while AWS manages provisioning, patching, scaling, routing, and load balancing. Triggers when queries mention Lambda Managed Instances, LMI, capacity providers, multi-concurrent execution environments, EC2-backed Lambda, persistent Lambda instances, PerExecutionEnvironmentMaxConcurrency, CapacityProviderConfig, cold start elimination via dedicated instances, SOCI (Seekable OCI) image lazy loading, migrating Lambda Event Functions to managed instances, or cost comparison between Lambda Event Functions and LMI with Savings Plans or Reserved Instances. Also covers long-running and asynchronous workloads, the 90-minute (5400s) timeout for asynchronous and event-source-mapping (SQS, Kinesis, DynamoDB Streams / ESM) invocations and the 30-minute (1800s) synchronous limit, including how to raise the function timeout up to 90 minutes / 5400s."
-version: 5
+description: "Evaluates, configures, and migrates workloads to AWS Lambda Managed Instances (LMI). Runs Lambda Event Functions on EC2 instances in the user's account while AWS manages provisioning, patching, and scaling. Triggers when queries mention Lambda Managed Instances, LMI, capacity providers, multi-concurrent execution environments, EC2-backed Lambda, persistent Lambda instances, PerExecutionEnvironmentMaxConcurrency, CapacityProviderConfig, cold start elimination via dedicated instances, SOCI (Seekable OCI) image lazy loading, GPU functions (AcceleratorConfig, vLLM/SGLang), migrating Lambda Event Functions to managed instances, or LMI cost comparison with Savings Plans or Reserved Instances. Also covers long-running and asynchronous workloads, the 90-minute (5400s) timeout for asynchronous and event-source-mapping (SQS, Kinesis, DynamoDB Streams / ESM) invocations and the 30-minute (1800s) synchronous limit, including how to raise the function timeout up to 90 minutes / 5400s."
+version: 6
 ---
 
 # AWS Lambda Managed Instances (LMI)
@@ -20,7 +20,7 @@ Runs Lambda Event Functions on EC2 instances in the user's account while AWS man
 | Duration | Long-running asynchronous/ESM jobs that exceed 30 min (up to 90 min on LMI): ETL/data processing, media transcoding, ML inference, financial calc, web scraping | Short invocations; synchronous work needing >30 min (not supported on any Lambda) |
 | Cost | Duration-heavy spend at scale | Low or sporadic invocations |
 | Cold starts | Unacceptable (LMI eliminates for provisioned capacity) | Tolerable |
-| Compute | Latest CPUs, specific families, high network bandwidth, GPU requirements | Lambda Event Functions memory/CPU sufficient |
+| Compute | Latest CPUs, specific families, high network bandwidth, NVIDIA GPUs (inference, transcoding, rendering) | Lambda Event Functions memory/CPU sufficient |
 | Isolation | Dedicated EC2 instances in your account, full VPC control | Shared Firecracker micro-VMs acceptable |
 | Scale-to-zero | Does not scale to zero but can create custom schedules with AWS provided solutions | Required (pay nothing when idle) |
 | Code readiness | Thread-safe (Node.js/Java/.NET) or any Python code | Non-thread-safe code, expensive to change |
@@ -37,10 +37,12 @@ Read ONLY the single reference file that matches the user's task. Do not preload
 | Before/after code examples, runtime-specific migration, connection pooling | Read [migration-patterns.md](references/migration-patterns.md) |
 | IAM roles, VPC setup, CLI commands, SAM template, CDK example | Read [infrastructure-setup.md](references/infrastructure-setup.md) |
 | Errors, throttling, debugging, stuck deployments | Read [troubleshooting.md](references/troubleshooting.md) |
+| GPU-accelerated functions: accelerator memory, GPU instances, GPU base images (vLLM, SGLang, PyTorch), GPU concurrency, GPU errors | Read [gpu-acceleration.md](references/gpu-acceleration.md) |
 
 **Troubleshooting quick facts** (always mention when diagnosing issues):
 
-- Capacity provider stuck in CREATING → most common cause is **private subnets missing a NAT gateway route** (instances need outbound internet for image pull and Lambda service communication)
+- Function version stuck in Pending → instance launches are failing; **check the version's `StateReasonCode`**. Top causes: `INSUFFICIENT_CAPACITY` (EC2 capacity), `INSUFFICIENT_OPERATOR_ROLE_PERMISSIONS`, `CAPACITY_PROVIDER_SCALING_LIMIT_EXCEEDED` (raise `MaxVCpuCount`). A capacity provider has no long CREATING state: it is Active once `CreateCapacityProvider` succeeds, and bad subnets, security groups, operator role or quotas are rejected in that call with `InvalidParameterValueException`.
+- Instances **do not need NAT or VPC endpoints to come up** (image pulls, registration, health checks and vended metrics use a Lambda-owned ENI). NAT or VPC endpoints are needed only for CloudWatch Logs / X-Ray delivery and the function code's own outbound calls.
 - Function not scaling → check that a **version is published** (PublishToLatestPublished: true)
 - Memory errors → LMI minimum is **2048 MB**
 
@@ -57,10 +59,11 @@ Gather these signals before recommending:
 5. **Execution duration**: Average and P99?
 6. **Concurrency readiness**: Thread safety? Shared `/tmp` paths? Per-invocation DB connections?
 7. **VPC**: Already in a VPC? Private resource access needed?
+8. **GPU**: Does the workload need a GPU (CUDA, PyTorch, vLLM, NVENC, OpenGL)? If yes, read [gpu-acceleration.md](references/gpu-acceleration.md).
 
 **Long-running asynchronous/ESM jobs that exceed 30 min are a positive fit** — LMI supports a function timeout up to 90 min (5400s) for asynchronous and event-source-mapping invocations (ETL/data processing, media transcoding, ML inference, financial calc, web scraping). Duration is the key differentiator here, not just cost.
 
-When recommending LMI, ALWAYS mention: minimum 3 execution environments for AZ resiliency (cannot go below 3 in production).
+When recommending LMI, ALWAYS mention: minimum 3 execution environments for AZ resiliency (cannot go below 3 in production). GPU-accelerated functions default to a minimum of 1 instead (see [gpu-acceleration.md](references/gpu-acceleration.md)).
 
 ### Step 2: Build the Cost Comparison
 
@@ -72,7 +75,7 @@ Rule of thumb: LMI becomes cost-competitive at 50-100M+ req/month with steady tr
 
 - **Instance families** (400+ types, .large and up): C-series (compute), M-series (general), R-series (memory). ARM (Graviton) for best price-performance.
 - **When using Graviton instances, MUST set `Architectures: [arm64]`** in the function configuration to match.
-- **Memory-to-vCPU ratios**: 2:1 (compute), 4:1 (general, default), 8:1 (memory). Min 2 GB, max 32 GB.
+- **Memory-to-vCPU ratios** (`ExecutionEnvironmentMemoryGiBPerVCpu`): 2:1 (compute, default), 4:1 (general), 8:1 (memory). Min 2 GB, max 32 GB.
 - **Multi-concurrency per-vCPU maximums**: Node.js 64, Java 32, .NET 32, Python 16. These are system caps — the actual setting is PerExecutionEnvironmentMaxConcurrency (per execution environment, not per vCPU).
 - **For I/O-bound workloads**: use the runtime default or higher PerExecutionEnvironmentMaxConcurrency (e.g., 10 for Node.js) since each request uses minimal CPU while waiting on network.
 - **For CPU-bound workloads**: set PerExecutionEnvironmentMaxConcurrency to 1-2 per vCPU since each request saturates CPU.
@@ -110,6 +113,7 @@ Review code for concurrency safety. LMI runs multiple invocations concurrently p
 - **Three components**: EC2 instance hours + 15% management fee + $0.20/1M requests
 - **Savings Plans**: Compute Savings Plans apply to the EC2 portion (up to 60-72% discount)
 - **The 15% fee** is charged on top of EC2 cost for AWS managing provisioning, patching, scaling, lifecycle
+- **GPU-accelerated functions**: check [AWS Lambda pricing](https://aws.amazon.com/lambda/pricing/) for the GPU management fee and instance prices
 
 ### Scaling (always mention when discussing scaling or traffic)
 
@@ -117,7 +121,7 @@ Review code for concurrency safety. LMI runs multiple invocations concurrently p
 - Lambda Event Functions burst to 3000 instantly — LMI cannot match this
 - **Pre-warm** with MinExecutionEnvironments before known spikes
 - **MaxVCpuCount** (default 400) — set explicitly as a cost ceiling
-- **Shape**: Reduce MinExecutionEnvironments to lower capacity during off-hours (minimum 3 for AZ resiliency)
+- **Shape**: Reduce MinExecutionEnvironments to lower capacity during off-hours (minimum 3 for AZ resiliency on CPU functions; GPU functions default to 1)
 
 ### Large container images (SOCI lazy loading)
 
@@ -133,11 +137,11 @@ Review code for concurrency safety. LMI runs multiple invocations concurrently p
 
 ### Configuration
 
-- Start with 4:1 ratio and runtime default concurrency
+- The default ratio is 2:1 (compute-heavy work); set 4:1 for balanced web APIs and microservices (M-series), and 4:1 or 8:1 for memory-heavy or Python workloads. Start with the runtime default concurrency
 - Use ARM (Graviton) unless x86 dependencies exist
 - Let Lambda choose instance types unless specific hardware needed
 - Set MaxVCpuCount to control cost ceiling
-- Never set MinExecutionEnvironments below 3 (breaks AZ resiliency)
+- Never set MinExecutionEnvironments below 3 for CPU functions (breaks AZ resiliency); GPU-accelerated functions default to 1 (see [gpu-acceleration.md](references/gpu-acceleration.md))
 
 ### Migration
 
@@ -179,11 +183,11 @@ Review code for concurrency safety. LMI runs multiple invocations concurrently p
 | Synchronous invoke timeout | Up to 30 min (1800s); Lambda stops synchronous invocations at 30 min even if Timeout is higher |
 | Init phase | 15 min |
 | ESM sources capped at 14 min | Amazon MQ, Amazon DocumentDB (other ESM sources get 90 min); see the [event source mapping docs](https://docs.aws.amazon.com/lambda/latest/dg/invocation-eventsourcemapping.html) |
-| Execution environments | 3 minimum (MinExecutionEnvironments, AZ resiliency) |
+| Execution environments | 3 minimum (MinExecutionEnvironments, AZ resiliency); GPU-accelerated functions default to 1 |
 | Instance lifespan | 14 days (auto-replaced) |
 | Concurrency/vCPU | 64 (Node.js), 32 (Java/.NET), 16 (Python) |
 | Runtimes | Node.js 22+, Java 21+, .NET 8+, Python 3.13+, Rust (provided.al2023) |
-| Instance families | C, M, R (.large and up) |
+| Instance families | C, M, R (.large and up); NVIDIA GPU families for GPU-accelerated functions (see [gpu-acceleration.md](references/gpu-acceleration.md)) |
 | Scaling | Burst headroom equals unused capacity from TargetResourceUtilization; new instances launch within minutes |
 | SOCI lazy loading | Container image functions on LMI only (not Lambda Event Functions on-demand); SOCI Index Manifest v2 only; image index with exactly one OCI image manifest plus the SOCI index (no multi-architecture indexes) |
 
@@ -207,3 +211,4 @@ Review code for concurrency safety. LMI runs multiple invocations concurrently p
 | [migration-patterns.md](references/migration-patterns.md) | Before/after code by runtime, connection pooling, gradual cutover |
 | [infrastructure-setup.md](references/infrastructure-setup.md) | IAM roles, VPC setup, SAM templates, CLI commands |
 | [troubleshooting.md](references/troubleshooting.md) | Common errors, throttling, debugging, stuck deployments |
+| [gpu-acceleration.md](references/gpu-acceleration.md) | GPU setup rules, accelerator memory, GPU concurrency, startup, deployments, GPU errors |
