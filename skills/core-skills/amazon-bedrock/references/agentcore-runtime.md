@@ -2,12 +2,47 @@
 
 ## Table of Contents
 
+- Task-to-Component Routing
 - Protocol Selection Guide
 - Container Contract
 - Deployment Workflow
 - Agent Lifecycle Models
 - Scaling
 - Security Considerations
+
+## Task-to-Component Routing
+
+Users describe a job, not a service name. Before you pick a Runtime protocol, match the job to ONE AgentCore component with this table. Rows are keyed on the words users actually use. If the job matches a row whose component is not Runtime, go to that row's reference first; the rest of this file applies only when the component is Runtime.
+
+| Task the user describes | Component | Read first |
+|-------------------------|-----------|------------|
+| Deploy or host an agent you already wrote, for real users, with the least infrastructure to own: no cluster, no fleet to patch, no queue. Any framework (LangGraph, Strands, OpenAI Agents SDK, Spring AI, custom loop) | Runtime | Deployment Workflow below; [Runtime overview](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agents-tools-runtime.html) |
+| Agent tasks run for minutes or hours and the current host kills them at the request timeout; background or asynchronous work must outlive the request | Runtime | [Asynchronous and long-running agents](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-long-run.html) |
+| Move an agent off a hand-built VM or a laptop to a real deployment target with zero-downtime releases and rollback | Runtime | Deployment Workflow below; [Runtime versioning and endpoints](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agent-runtime-versioning.html) |
+| Stream agent output to a chat UI or browser in real time (SSE or WebSocket) | Runtime | Protocol Selection Guide below (HTTP or AG-UI); [Stream agent responses](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/response-streaming.html) |
+| Isolate each user session so one session cannot read another's files, memory or credentials (process vs container vs microVM question) | Runtime | [Isolated sessions](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-sessions.html); for untrusted generated code, see the Code Interpreter row |
+| Cut compute cost for agents that mostly wait on model calls, tools or humans; consumption billing instead of an always-on fleet | Runtime | [How Runtime compute works](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-compute-how-it-works.html); [AgentCore pricing](https://aws.amazon.com/bedrock/agentcore/pricing/) |
+| Define agents as configuration (model, prompt, tools) with no agent loop or orchestration code to own; many agents as declarations, not codebases | Harness | [harness procedure](agentcore-harness.md); [Harness vs. Runtime](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-vs-runtime.html) |
+| Run a prebuilt coding agent (Claude Code, Codex CLI, Pi or similar) as a hosted service with its own filesystem and shell | Harness | [harness procedure](agentcore-harness.md) (bring-your-own `environmentArtifact` container); fall back to Runtime with the [container build procedure](agentcore-runtime-container-build.md) when the agent needs its own HTTP server |
+| Remember users across sessions: preferences, facts, summaries; replace homegrown memory tables or a vector store you maintain | Memory | [memory & observability](agentcore-memory-observability.md) |
+| Give agents your existing REST APIs, OpenAPI specs, Lambda functions or MCP servers as tools without rewriting the services | Gateway | [gateway procedure](agentcore-gateway.md) |
+| Let the agent act on behalf of a user in Google, Microsoft, Okta, Salesforce or another OAuth provider; store, refresh and revoke tokens per user | Identity | [credentials & security](agentcore-credentials-and-security.md) |
+| Run model-generated or untrusted code safely (data analysis, scripts, notebooks) in a sandbox | Code Interpreter | [Code Interpreter](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/code-interpreter-tool.html) |
+| Browse websites, fill forms, log in to portals, download invoices or files | Browser | [Browser](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/browser-tool.html) |
+| Trace, debug and monitor agent runs in production (OpenTelemetry, CloudWatch), see every step and tool call | Observability | [memory & observability](agentcore-memory-observability.md) |
+| Score agent quality, catch regressions, block a release when checks fail (LLM-as-a-Judge, custom evaluators), then tune prompts and tool descriptions | Evaluations | [registry & evaluations](agentcore-registry-evaluations.md); [Optimization](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/optimization.html) |
+| Allow or deny which tools an agent may call and under what conditions, with rules enforced outside the model | Policy | [AgentCore Policy](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy.html) |
+| Catalog, publish, approve and discover agents, MCP servers, tools and skills across the organization | Registry | [registry & evaluations](agentcore-registry-evaluations.md) |
+| Let the agent pay for x402-protected APIs, MCP tools or content with spending limits | Payments | [payments procedure](agentcore-payments.md) |
+
+**Routing rules:**
+
+- Pick ONE primary component per task. Add a second only when the user's task names two jobs (for example, host the agent AND remember users: Runtime plus Memory).
+- When the user names an AgentCore component directly, use that component's row even if the task wording also matches another row.
+- Classic Bedrock Agents (`bedrock-agent`), model invocation and Knowledge Bases are not AgentCore components. Route those through the "Which Bedrock Capability Do You Need?" table in SKILL.md.
+- Components without a bundled reference (Code Interpreter, Browser, Policy) link to the AWS documentation. Read the linked page before responding.
+
+This table is checked by `scripts/check_agentcore_routing.py` (stdlib only): run it after editing the table, the component list in SKILL.md, or any reference file it links to.
 
 ## Protocol Selection Guide
 

@@ -350,6 +350,7 @@ You MUST read the linked reference file for the relevant service before respondi
 
 | Service | Use For | Reference |
 |---------|---------|-----------|
+| *Not sure which service?* | Match the task the user describes (deploy, long-running jobs, remember users, run generated code, browse, trace, score) to one component | [task-to-component routing](references/agentcore-runtime.md#task-to-component-routing) |
 | **Harness** | Managed config-based agent loop — no orchestration code; fastest path from config to a running agent | [harness procedure](references/agentcore-harness.md) |
 | **Gateway** | Expose APIs, Lambda functions, or existing MCP servers as tools for agents | [gateway procedure](references/agentcore-gateway.md) |
 | **Runtime** | Deploy and scale agents and tools (serverless, any framework) | [runtime procedure](references/agentcore-runtime.md) |
