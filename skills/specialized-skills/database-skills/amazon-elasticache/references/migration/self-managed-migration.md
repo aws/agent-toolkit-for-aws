@@ -94,7 +94,7 @@ aws elasticache create-replication-group \
   --replication-group-id my-new-cache \
   --replication-group-description "Migrated from self-managed Redis" \
   --engine valkey \
-  --engine-version 9.0 \
+  --engine-version 9.1 \
   --cache-node-type cache.r7g.large \
   --num-cache-clusters 2 \
   --snapshot-arns arn:aws:s3:::my-migration-bucket/dump.rdb \
@@ -113,7 +113,7 @@ aws elasticache create-replication-group \
 
 ### Approach 2: Replication-Based (Online)
 
-> **Eligibility:** Online migration is not supported to ElastiCache serverless caches or clusters running on the r6gd node type. This approach is designed for migrating from self-hosted Redis/Valkey on EC2 to ElastiCache, not for moving data between ElastiCache clusters.
+> **Eligibility:** This node-based path does not support data tiering (r6gd/r7gd/r8gd) targets, and the target must have durability disabled. This approach is designed for migrating from self-hosted Redis/Valkey on EC2 to ElastiCache, not for moving data between ElastiCache clusters. For a Serverless target, see "Online Migration to ElastiCache Serverless" below.
 
 **Best for:** Large datasets, minimal downtime requirement, source is network-reachable from VPC.
 
@@ -125,7 +125,7 @@ aws elasticache create-replication-group \
   --replication-group-id my-new-cache \
   --replication-group-description "Migration target" \
   --engine valkey \
-  --engine-version 9.0 \
+  --engine-version 9.1 \
   --cache-node-type cache.r7g.large \
   --num-cache-clusters 2 \
   --automatic-failover-enabled \
@@ -187,15 +187,16 @@ aws elasticache complete-migration \
 
 **Important:** During migration, the ElastiCache cluster is read-only. You can use ElastiCache nodes for reads, but you cannot write to the ElastiCache cluster. All writes must continue going to the source Redis until `complete-migration` is executed.
 
-**Requirements:**
+**Requirements** (the single checklist for this path; source of truth: [Preparing your source and target](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/Migration-Prepare.html)):
 
 *Target requirements:*
 
-- Target must NOT have encryption in-transit enabled (TLS must be disabled during migration; you can enable it after migration completes) (verify against current online migration prerequisites documentation)
+- Target must NOT have encryption in-transit enabled (enable TLS after migration completes)
 - Target must have Multi-AZ enabled (`--automatic-failover-enabled`)
-- Target must be using Valkey, or Redis OSS 5.0.6 or higher
+- Target must be using Valkey, or Redis OSS 5.0.5+ (cluster mode disabled) or 5.0.6+ (cluster mode enabled)
 - Target must NOT be part of a global datastore
 - Target must have data tiering disabled
+- Target must have durability disabled. To add durability after cutover, turn TLS on (`preferred`, then `required`), then run `modify-replication-group --durability` (see `references/setup/create-secure-cache.md`)
 - Number of shards in source and target must match (prerequisite).
 - Number of logical databases must be the same on source and target (set via `databases` in Redis config)
 - Target must have sufficient memory available to fit the data from the source cluster. See `sizing-assessment.md` for memory sizing guidance.
@@ -211,6 +212,51 @@ aws elasticache complete-migration \
 - All source Redis instances must be running on the same port
 - Source must have enough capacity to handle replication overhead
 - For cluster-mode disabled, source can be Redis 2.8.21 onward (via CLI). For cluster-mode enabled, source can be any cluster-mode enabled version.
+
+### Online Migration to ElastiCache Serverless
+
+A separate online path targets a Serverless Valkey cache. The application uses the cache's standard endpoint (the migration endpoint) throughout; until cutover, ElastiCache routes its requests to the source.
+
+**Source:** self-managed Valkey 7.2-8.1 or Redis OSS 4.0-7.2 on EC2, cluster mode enabled, version no higher than the target, up to 32 GB per node and 166 shards, full slot coverage, no resharding in progress, and `protected-mode no` unless the source requires a password.
+
+**Target:** an empty, available Serverless Valkey cache on a supported version (see the prerequisites linked below) with no public endpoint, IPv4 only, no active pub/sub subscriptions, and subnets in at least 3 Availability Zones (subnets can't change later).
+
+**Check the target is empty before `prepare-migration`;** prepare fails if it holds any keys. Run `DBSIZE` on the target from a host in its VPC. If it is not 0, stop and ask the user: flush it (`FLUSHALL` deletes every key; see `references/shared-ux/action-safety.md`) only after they confirm the data is disposable, or create a new empty cache. This check and the preflight gate in `references/migration/instructions.md` apply to running a migration, not to listing the steps below.
+
+```bash
+# 0. Confirm the target has no keys (must print 0)
+valkey-cli -h <serverless-endpoint> -p 6379 --tls -c DBSIZE
+
+# 1. Validate the source and provision migration infrastructure
+aws elasticache prepare-migration \
+  --serverless-cache-name my-serverless-cache \
+  --customer-node-endpoint-list Address=<source-host>,Port=6379 \
+  --region <region>
+
+# 2. Point the application at the cache endpoint, then start the data sync
+aws elasticache start-migration \
+  --serverless-cache-name my-serverless-cache \
+  --region <region>
+
+# 3. Check progress: Migration.Status goes preparing -> ready-to-sync -> initiating-sync -> syncing -> cutting-over
+aws elasticache describe-serverless-caches \
+  --serverless-cache-name my-serverless-cache \
+  --query 'ServerlessCaches[0].Migration' \
+  --region <region>
+
+# 4. Once Migration.Status is syncing, cut over (ElastiCache waits for a synced window)
+aws elasticache complete-migration \
+  --serverless-cache-name my-serverless-cache \
+  --region <region>
+```
+
+- `start-migration` reuses the source endpoint from `prepare-migration`. Cutover is manual unless you add `--auto-cutover`. This path has no `test-migration`.
+- `stop-migration --serverless-cache-name <name>` is the abort path: it stops the data sync and returns the migration to `ready-to-sync`. Restart with `start-migration --clear-target-cache-data`. Billing for the migration continues until `complete-migration`.
+- A migration error is permanent. End it with `complete-migration --force`, which skips the health and convergence checks and does not roll back. There is no rollback after cutover.
+- One migration per target cache. The reader endpoint is not served during migration, pipelined commands are serialized, and commands Serverless doesn't support are rejected.
+- The source can keep AUTH and TLS on. Store its credentials in a Secrets Manager secret (customer managed KMS key whose key policy grants `kms:Decrypt` to `elasticache.amazonaws.com`; resource policy granting `secretsmanager:GetSecretValue` to `elasticache.amazonaws.com`) and add `--source-authentication-configuration SecretManagerConfig={SecretArn=<secret-arn>}` to `prepare-migration`. **Do not add an `aws:SourceAccount` or `aws:SourceArn` condition to this resource policy or the key policy** -- either condition denies the read and `prepare-migration` fails with an access-denied error (this is documented ElastiCache behavior, not a gap to fix). Mitigate the resulting any-ElastiCache-caller exposure by using a secret dedicated to this migration (not a shared/long-lived credential) and deleting it once the migration completes. For a TLS source add `--source-tls-configuration SourceTlsMode=verify-ca,SourceTlsCertificate="$(cat ca.pem)"`. The target needs RBAC users matching the application's source users. See [source authentication for online migration to Serverless](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/migration-to-serverless-auth.html).
+
+See the [online migration to ElastiCache Serverless prerequisites](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/migration-to-serverless-prerequisites.html) for the full checklist.
 
 ### Approach 3: Dual-Write (Application-Level)
 
@@ -304,6 +350,8 @@ Complete each item before and during the cutover:
 | Data size limit | Practical limit ~100 GB | No practical limit | No practical limit |
 | Application changes | Endpoint update only | Endpoint update only | Dual-write logic required |
 | Best for | Small data, simple setup | Large data, minimal downtime | Complex scenarios, unreachable source |
+
+Replication-Based also works for a Serverless target; see "Online Migration to ElastiCache Serverless".
 
 ---
 

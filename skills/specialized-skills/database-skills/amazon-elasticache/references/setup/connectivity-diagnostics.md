@@ -4,13 +4,14 @@ Decision-tree diagnostic for "I can't connect to my cache." Work through steps i
 
 ## Step 0: Are You in the VPC?
 
-ElastiCache has no public endpoints. Determine where the client runs before diagnosing.
+A cache has no public endpoint unless it is Serverless Valkey 9.0+ created with one. Determine where the client runs before diagnosing.
 
 | Client location | Action |
 |----------------|--------|
 | EC2/Lambda/ECS/EKS in same VPC | Proceed to Step 1 |
 | EC2 in different VPC | Verify peering/transit gateway routes, then Step 1 |
-| Local laptop / CI runner | Set up SSM tunnel first, then diagnose against `127.0.0.1` with `--tunnel-mode` |
+| Local laptop / CI runner, VPC-only cache | Set up SSM tunnel first, then diagnose against `127.0.0.1` with `--tunnel-mode` |
+| Local laptop / CI runner, public endpoint | Connect directly over TLS 1.3 with IAM auth; no tunnel |
 
 Tunnel setup:
 
