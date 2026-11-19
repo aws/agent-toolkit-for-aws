@@ -139,11 +139,11 @@ The `ec2:ManagedResourceOperator` condition ensures RunInstances/CreateTags only
 
 ## VPC Requirements
 
-LMI runs functions on EC2 instances inside the VPC. These instances need VPC endpoints or NAT to reach AWS services.
+LMI runs functions on EC2 instances inside the VPC. Instances come up without NAT or VPC endpoints: image and zip pulls, registration with Lambda, health checks and vended metrics go over a Lambda-owned ENI, not the customer subnet. Add NAT or VPC endpoints only for CloudWatch Logs and X-Ray delivery and for the AWS services and endpoints the function code calls. Without them the instance stays healthy, but logs and traces are not delivered and outbound calls fail.
 
 - 3+ subnets across different AZs (for default 3-instance fleet)
 - Security groups: HTTPS egress (port 443) scoped to VPC endpoint security groups or AWS prefix lists (avoid 0.0.0.0/0); no ingress needed
-- Required VPC endpoints:
+- VPC endpoints for log/trace delivery and for the services the function calls, for example:
 
 | Endpoint | Type | Purpose |
 |----------|------|---------|
