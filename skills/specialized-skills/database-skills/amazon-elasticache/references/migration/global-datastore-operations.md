@@ -7,16 +7,32 @@ Operational guide for setting up, managing, and upgrading ElastiCache Global Dat
 Global Datastore has specific requirements that must be met before creation:
 
 * **Node-based only.** Serverless caches do not support Global Datastore.
-* **Supported instance families:** M5, M6g, M7g, R5, R6g, R6gd, R7g, C7gn in size **large and above** only. Prior-generation instances (M4, R4) and burstable instances (t2, t3, t4g) are not supported.
+* **Supported instance families:** M5, M6g, M7g, M8g, R5, R6g, R7g, R8g, C7gn, C8gn in size **large and above** only (confirm against the [Global Datastore prerequisites page](https://docs.aws.amazon.com/AmazonElastiCache/latest/red-ug/Redis-Global-Datastores-Getting-Started.html) if a newer family may have launched). Data-tiering node types (R6gd, R7gd, R8gd) are not supported. Prior-generation instances (M4, R4) and burstable instances (t2, t3, t4g) are not supported.
 * **Multi-AZ and automatic failover required** on the primary replication group.
 * **Same node type, engine version, and primary node count** across all regions. Each cluster in the global datastore can have a different number of read replicas to accommodate read traffic local to that cluster. When creating a secondary, the node type is inferred from the primary and should not be specified.
 * **Same engine and version** across all regions at the time of creation. Engine upgrades follow a specific ordering (see "Upgrading Engine Version" below).
 * **Both cluster mode disabled (CMD) and cluster mode enabled (CME) are supported.** If using cluster-mode enabled, the number of shards must match across all clusters. Pub/sub propagation behavior differs between the two modes.
 * **Transit encryption (TLS)** settings must match across all regions (all enabled or all disabled).
 * **At-rest encryption** settings must also match across all regions (all enabled or all disabled).
+* **Durability not supported.** Durability-enabled clusters can't join a Global Datastore.
 * **IPv6 not supported.** Global datastores do not support Internet Protocol version 6 (IPv6).
 * **Maximum of three regions**: one primary and up to two secondary regions. The exception is the China (Beijing) and China (Ningxia) regions, where replication can only occur between those two regions.
 * **China region restriction:** In China, Global Datastore replication can only occur between the Beijing (cn-north-1) and Ningxia (cn-northwest-1) regions. Cross-region replication to or from regions outside China is not supported.
+
+## Tagging
+
+Tag the Global Datastore once, on its own ARN, with `add-tags-to-resource` (also `remove-tags-from-resource` and `list-tags-for-resource`). Tags propagate to every member region; no per-region call is needed ([What's New, 2026-09](https://aws.amazon.com/about-aws/whats-new/2026/09/amazon-elasticache-global-datastore-tagging/)). Use them in IAM or SCP conditions for tag-based access control.
+
+Some older doc pages still say Global Datastores can't be tagged. If a source says that, confirm with this read-only check instead of choosing a source:
+
+```bash
+ARN=$(aws elasticache describe-global-replication-groups \
+  --global-replication-group-id <gds-id> \
+  --query 'GlobalReplicationGroups[0].ARN' --output text)
+aws elasticache list-tags-for-resource --resource-name "$ARN"
+```
+
+A returned `TagList` means the Global Datastore ARN accepts tags.
 
 ## Creating a Global Datastore
 

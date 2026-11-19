@@ -44,10 +44,20 @@ Common dimensions: `ReplicationGroupId` (cluster-wide), `CacheClusterId` (per no
 | ElastiCacheProcessingUnits | Serverless | Count (ECPUs) | Sum over period, not rate. |
 | ThrottledCmds | Serverless | Count | Sum over period. |
 | DatabaseMemoryUsagePercentage | Node-based | Percent | Not a ratio. 80 = 80%. |
-| DatabaseCapacityUsagePercentage | Node-based | Percent | Available on all node-based clusters. On data-tiering instances (r6gd), the formula includes SSD storage; on all other instances, it is calculated as `used_memory/maxmemory`. |
+| DatabaseCapacityUsagePercentage | Node-based | Percent | Available on all node-based clusters. On data-tiering instances (r6gd/r7gd/r8gd), the formula includes SSD storage; on all other instances, it is calculated as `used_memory/maxmemory`. |
 | EngineCPUUtilization | Node-based | Percent | Single-threaded engine; can hit 100% on one core while host CPU is low. |
 | CacheHitRate | Both | Percent | Empty until cache serves real traffic. |
 | Slow log duration | Both | Microseconds | Not milliseconds. 10000 = 10ms. |
+| NetworkBaselineUsageInPercentage / NetworkBaselineUsageOutPercentage | Node-based | Percent | % of instance baseline bandwidth, not raw bytes. Above 100% means burst credits are being drawn. |
+| AllocatorFragmentationRatio | Node-based | Number | Isolates allocator-level fragmentation `activedefrag` can address; distinct from `MemoryFragmentationRatio`, which also includes non-actionable OS-level RSS overhead. |
+| RejectedConnections | Node-based | Count | Sum over period. Non-zero means the `maxclients` limit was hit. |
+| BlockedConnections | Node-based | Count | Clients currently waiting on blocking commands (BLPOP, XREAD BLOCK). A gauge; use Maximum, not Sum. |
+| UsedMemoryDataset | Node-based | Bytes | User data only (keys and values). Compare with `BytesUsedForCache` to see overhead. |
+| AllocatorFragmentationBytes | Node-based | Bytes | Bytes lost to allocator fragmentation that `activedefrag` can reclaim. |
+| MajorPageFaults | Node-based | Count | Rising values mean the OS is paging engine memory to disk. |
+| ProcessedCommands | Node-based | Count | Commands executed; rejected commands are not counted. |
+| PubSubChannels / PubSubShardChannels | Node-based | Count | Active channels with a subscriber. `PubSubChannels` excludes sharded channels. |
+| DurabilityLag | Node-based (durability on) | Milliseconds | Age of the oldest acknowledged write not yet in the Multi-AZ transaction log. |
 
 ## Metrics Return Empty
 
@@ -124,7 +134,7 @@ Check: `Evictions` (Sum), `DatabaseMemoryUsagePercentage` (Maximum), `CacheHitRa
 | Aspect | Detail |
 |--------|--------|
 | Symptoms | `CurrConnections` spikes, `NewConnections` elevated, connection errors in app logs |
-| Key metrics | `CurrConnections`, `NewConnections`, `EngineCPUUtilization` |
+| Key metrics | `CurrConnections`, `NewConnections`, `RejectedConnections`, `BlockedConnections`, `EngineCPUUtilization` |
 
 ### Likely Causes
 
@@ -149,7 +159,7 @@ Check: `CurrConnections` (Maximum, period 60s), `NewConnections` (Sum, period 60
 | Aspect | Detail |
 |--------|--------|
 | Symptoms | `EngineCPUUtilization` above 90%, increased latency |
-| Key metrics | `EngineCPUUtilization`, `CPUUtilization`, `CurrConnections` |
+| Key metrics | `EngineCPUUtilization`, `CPUUtilization`, `CurrConnections`, `ProcessedCommands` (command rate), `PubSubChannels`. If `PubSubChannels` grows with CPU, move to sharded pub/sub (`PubSubShardChannels`, Valkey 7.2+/Redis OSS 7.0+) to spread load across shards. |
 
 ### Important: CPUUtilization vs EngineCPUUtilization
 `EngineCPUUtilization` measures only the main Redis/Valkey engine thread and is the recommended metric for monitoring engine capacity. `CPUUtilization` reflects aggregate CPU usage across all cores, including dedicated I/O threads from Enhanced I/O features, and is **not** a reliable indicator of engine capacity for nodes with 4+ vCPUs. For nodes with 2 or fewer vCPUs, use `CPUUtilization` with a threshold of 90 divided by the number of cores (e.g., 45% for 2-core nodes). For nodes with 4+ vCPUs, use `EngineCPUUtilization` with a 90% threshold.
@@ -184,7 +194,7 @@ Also check command-family metrics (`StringBasedCmds`, `HashBasedCmds`, etc.) on 
 | Aspect | Detail |
 |--------|--------|
 | Symptoms | `DatabaseMemoryUsagePercentage` above 80%, `Evictions` increasing, OOM errors |
-| Key metrics | `DatabaseMemoryUsagePercentage`, `BytesUsedForCache`, `Evictions`, `CurrItems`. For data-tiering instances (r6gd), also check `DatabaseCapacityUsagePercentage` which covers both memory and SSD tiers. |
+| Key metrics | `DatabaseMemoryUsagePercentage`, `BytesUsedForCache`, `UsedMemoryDataset` (a large gap to `BytesUsedForCache` means overhead such as client output or replication buffers, not data), `Evictions`, `CurrItems`. For data-tiering instances (r6gd/r7gd/r8gd), also check `DatabaseCapacityUsagePercentage` which covers both memory and SSD tiers. For allocator-level fragmentation that `activedefrag` can address, check `AllocatorFragmentationRatio`/`AllocatorFragmentationBytes`; `MajorPageFaults` signals OS-level memory pressure the engine can't surface on its own. |
 
 ### Likely Causes
 
@@ -329,7 +339,7 @@ Also check `ReplicationLag` (Maximum) before the event; high lag means potential
 3. **Auth credential rotation**: password or IAM token expired
 4. **TLS certificate mismatch**: client missing CA bundle or wrong ssl_cert_reqs setting
 5. **Network change**: VPC peering route removed, subnet NACL modified
-6. **maxclients reached**: some connections succeed but new ones are rejected. Check `CurrConnections` against node's `maxclients` (default 65,000 for most instance types; exceptions: t2.micro/small/medium and t3.micro = 20,000; t3.small/medium = 46,000; t4g.micro = 20,000)
+6. **maxclients reached**: some connections succeed but new ones are rejected. Check `CurrConnections` against node's `maxclients` (default 65,000 for most instance types; exceptions: t2.micro/small/medium and t3.micro = 20,000; t3.small/medium = 46,000; t4g.micro = 20,000), or check the `RejectedConnections` CloudWatch metric directly (non-zero means the limit was hit)
 
 ### Investigation Steps
 Check `describe-events` for recent failover. Verify security group allows inbound on port 6379 from the client's security group. Test with:

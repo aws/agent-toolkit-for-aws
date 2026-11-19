@@ -17,11 +17,11 @@ Tier 3 of the compute decision flow in `SKILL.md`: feature-level questions that 
 
 | Form factor / feature | Ceiling | Notes |
 |---|---|---|
-| Event Functions · On-Demand | 15 min per invocation | Every invocation type |
+| Event Functions · On-Demand | 30 min per invocation | Every invocation type; some event source mappings have a lower limit (see the [event source mapping docs](https://docs.aws.amazon.com/lambda/latest/dg/invocation-eventsourcemapping.html)) |
 | Web Functions | 15 min per request | Node.js only; On-Demand only |
-| Event Functions · Managed Instances | 90 min per invocation | Asynchronous and event source mapping invocations only; synchronous invocations keep the 15-minute ceiling |
+| Event Functions · Managed Instances | 90 min per invocation | Asynchronous and event source mapping invocations only; synchronous invocations keep the 30-minute ceiling |
 | MicroVMs | 8 h per session | Customer-managed lifecycle (launch/suspend/resume/terminate) within the session |
-| Durable Functions | 1 year per execution (async invocation) | Each step is bounded by the Lambda timeout of the capacity provider it runs on; waits cost nothing |
+| Durable Functions | 1 year per execution (async invocation) | Each step is bounded by the Lambda timeout of the capacity provider it runs on; waits cost nothing. Synchronous, ESM and function URL invocations need an execution timeout of 30 min or less |
 | Step Functions | Standard 1 year, Express 5 min | See [orchestration.md](orchestration.md) |
 
 Anything longer than these is outside Lambda: **aws-containers** (ECS/Fargate) or **aws-compute** (EC2).
@@ -34,7 +34,7 @@ Ask for the overall duration and, if the work splits into tasks, the per-task du
 
 - MicroVMs: session > 8 h → **aws-compute** (EC2); otherwise MicroVMs.
 - Functions with multiple coordinated tasks → **Durable Functions** on Event Functions (`SKILL.md` Step 3); the remaining choice is On-Demand vs Managed Instances per step duration.
-- Single **Event Function** invocation > 15 min → if asynchronous or invoked through an event source mapping and up to 90 min, use **Managed Instances**; if > 90 min, or synchronous and > 15 min, use **aws-containers** / **aws-compute**. This does not apply to MicroVM sessions, which use the 8 h session ceiling above.
+- Single **Event Function** invocation > 30 min → if asynchronous or invoked through an event source mapping and up to 90 min, use **Managed Instances**; if > 90 min, or synchronous and > 30 min, use **aws-containers** / **aws-compute**. This does not apply to MicroVM sessions, which use the 8 h session ceiling above.
 
 ---
 
