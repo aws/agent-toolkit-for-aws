@@ -86,7 +86,7 @@ def test_every_guide_the_plan_can_name_ships_with_the_skill() -> None:
 
 def test_skill_runs_design_after_clarify_then_estimate() -> None:
     assert "## Step 3: Design" in SKILL and "references/phases/design/design-ai.md" in SKILL
-    assert "## Step 4: Estimate" in SKILL and "This release stops after Estimate" in SKILL and "stops after Clarify" not in SKILL
+    assert "## Step 4: Estimate" in SKILL and "## Step 5: Generate" in SKILL and "stops after Clarify" not in SKILL
     assert 'current_phase` to `"design"`' in SKILL and 'current_phase` to `"estimate"`' in SKILL
     clarify = (BMA / "references/phases/clarify/clarify-ai-only.md").read_text(encoding="utf-8")
     assert 'Set `current_phase` to `"design"`' in clarify and "continue to Design" in clarify
@@ -96,35 +96,42 @@ def test_skill_runs_design_after_clarify_then_estimate() -> None:
 
 def _rule_for(status: dict) -> int:
     """The Step 0 rule a phase-status matches, read from SKILL.md's first-match list."""
-    p = status["phases"]
+    p = {"generate": "pending", **status["phases"]}
     if p.get("clarify") == "in_progress":
         return 1
     if p.get("design") == "in_progress" or (p.get("clarify") == "completed" and p.get("design", "pending") == "pending"):
         return 2
     if p.get("estimate") == "in_progress" or (p.get("design") == "completed" and p.get("estimate", "pending") == "pending"):
         return 3
-    if p.get("estimate") == "completed":
+    if p["generate"] == "in_progress":
         return 4
+    if p.get("estimate") == "completed" and p["generate"] == "pending":
+        return 5 if status.get("run_mode") == "decide_and_execute" else 6
+    if p["generate"] == "completed":
+        return 7
     if p.get("discover") == "completed" and p.get("clarify") == "pending":
-        return 5
-    return 6 if p.get("discover") == "in_progress" else 7
+        return 8
+    return 9 if p.get("discover") == "in_progress" else 10
 
 
 def test_resume_rules_put_an_active_earlier_phase_first() -> None:
     step0 = SKILL[SKILL.index("## Step 0"):SKILL.index("## Step 1:")]
-    rules = [line for line in step0.splitlines() if line[:3] in {f"{n}. " for n in range(1, 8)}]
-    assert [r[:2] for r in rules] == ["1.", "2.", "3.", "4.", "5.", "6.", "7."]
+    rules = [line for line in step0.splitlines() if line.split(". ", 1)[0] in {str(n) for n in range(1, 11)}]
+    assert [r.split(".", 1)[0] for r in rules] == [str(n) for n in range(1, 11)]
     assert '`phases.clarify` set to `"in_progress"`, resume at Clarify, whatever the later phases say' in rules[0]
-    assert "resume at Design" in rules[1] and "resume at Estimate" in rules[2]
-    assert 'If that file has `phases.estimate` set to `"completed"`' in rules[3]
-    assert ('set `phases.clarify` to `"in_progress"`, `phases.design` and `phases.estimate` to `"pending"`, and `current_phase` to '
-            '`"clarify"` in one write') in rules[3]
-    assert 'set `phases.design` and `phases.estimate` to `"pending"` and `current_phase` to `"design"` in one write' in rules[3]
+    assert "resume at Design" in rules[1] and "resume at Estimate" in rules[2] and "resume at Generate" in rules[3]
+    assert 'If that file has `phases.estimate` set to `"completed"` and `phases.generate` `"pending"`' in rules[5]
+    resets = step0.split("\n7. ", 1)[1].split("\n8. ", 1)[0]
+    assert ('- Change answers: set `phases.clarify` to `"in_progress"`, `phases.design`, `phases.estimate`, and `phases.generate` to `"pending"`, '
+            'and `current_phase` to `"clarify"`') in resets
+    assert '- Design again: set `phases.design`, `phases.estimate`, and `phases.generate` to `"pending"` and `current_phase` to `"design"`' in resets
+    assert '- Estimate again: set `phases.estimate` and `phases.generate` to `"pending"`' in resets
+    assert '- Generate again: set `phases.generate` to `"in_progress"`' in resets
     assert "Use the first rule that matches, and never change `run_id`" in step0
     step2 = SKILL[SKILL.index("## Step 2: Clarify"):SKILL.index("## Step 3: Design")]
-    assert 'Set `phases.design` and `phases.estimate` to `"pending"` in the same write when either is `"in_progress"` or `"completed"`' in step2
+    assert 'Set `phases.design`, `phases.estimate`, and `phases.generate` to `"pending"` in the same write when any is `"in_progress"` or `"completed"`' in step2
     step3 = SKILL[SKILL.index("## Step 3: Design"):SKILL.index("## Step 4: Estimate")]
-    assert 'and `phases.estimate` to `"pending"` when it is `"in_progress"` or `"completed"`, in one write' in step3
+    assert 'and `phases.estimate` and `phases.generate` to `"pending"` when either is `"in_progress"` or `"completed"`, in one write' in step3
 
 
 @pytest.mark.parametrize(("phases", "rule"), [
@@ -136,18 +143,39 @@ def test_resume_rules_put_an_active_earlier_phase_first() -> None:
     ({"discover": "completed", "clarify": "completed", "design": "completed"}, 3),
     ({"discover": "completed", "clarify": "completed", "design": "completed", "estimate": "pending"}, 3),
     ({"discover": "completed", "clarify": "completed", "design": "completed", "estimate": "in_progress"}, 3),
-    ({"discover": "completed", "clarify": "completed", "design": "completed", "estimate": "completed"}, 4),
-    ({"discover": "completed", "clarify": "pending"}, 5),
-    ({"discover": "in_progress", "clarify": "pending"}, 6),
+    ({"discover": "completed", "clarify": "completed", "design": "completed", "estimate": "completed"}, 6),
+    ({"discover": "completed", "clarify": "completed", "design": "completed", "estimate": "completed", "generate": "in_progress"}, 4),
+    ({"discover": "completed", "clarify": "completed", "design": "completed", "estimate": "completed", "generate": "completed"}, 7),
+    ({"discover": "completed", "clarify": "pending"}, 8),
+    ({"discover": "in_progress", "clarify": "pending"}, 9),
 ])
 def test_interrupted_reentry_resumes_the_active_phase(phases, rule) -> None:
     assert _rule_for({"phases": phases}) == rule
 
 
+@pytest.mark.parametrize("estimate", ["pending", "in_progress", "completed"])
+@pytest.mark.parametrize("generate", ["pending", "in_progress", "completed", None])
+@pytest.mark.parametrize("run_mode", [None, "decide", "decide_and_execute"])
+def test_resume_rules_give_one_answer_for_every_late_phase_state(estimate, generate, run_mode) -> None:
+    phases = {"discover": "completed", "clarify": "completed", "design": "completed", "estimate": estimate}
+    if generate is not None:
+        phases["generate"] = generate
+    status = {"phases": phases, **({"run_mode": run_mode} if run_mode else {})}
+    rule = _rule_for(status)
+    if estimate != "completed":
+        assert rule == 3
+    elif generate == "in_progress":
+        assert rule == 4
+    elif generate == "completed":
+        assert rule == 7
+    else:
+        assert rule == (5 if run_mode == "decide_and_execute" else 6)
+
+
 def test_reentry_after_changing_answers_runs_clarify_design_then_estimate() -> None:
-    status = {"phases": {"discover": "completed", "clarify": "completed", "design": "completed", "estimate": "completed"}}
-    assert _rule_for(status) == 4
-    status["phases"].update(clarify="in_progress", design="pending", estimate="pending")
+    status = {"phases": {"discover": "completed", "clarify": "completed", "design": "completed", "estimate": "completed", "generate": "completed"}}
+    assert _rule_for(status) == 7
+    status["phases"].update(clarify="in_progress", design="pending", estimate="pending", generate="pending")
     assert _rule_for(status) == 1
     status["phases"]["clarify"] = "completed"
     assert _rule_for(status) == 2

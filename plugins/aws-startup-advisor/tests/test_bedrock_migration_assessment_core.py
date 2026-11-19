@@ -223,7 +223,7 @@ def _skill_text_files() -> list[Path]:
 
 def _instruction_lines(path: Path) -> list[str]:
     text = path.read_text(encoding="utf-8")
-    if path.parent == BMA / "references/vendored/ai" and path.name in ("schema-design-aws-ai.md", "schema-estimate-ai.md"):
+    if path.parent == BMA / "references/vendored/ai" and path.name in ("schema-design-aws-ai.md", "schema-estimate-ai.md", "schema-generate-ai.md"):
         # A shared contract's intro note and Status section name the gcp/azure producers; they are not instructions to load them.
         head, _, tail = text.partition("## Status")
         lines = [("" if line.startswith(">") and i < head.find("## Shape") else line) for i, line in _offsets(head)]
