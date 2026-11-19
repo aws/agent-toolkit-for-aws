@@ -46,15 +46,18 @@ def p95(values):
     return sorted(values)[max(0, math.ceil(0.95 * len(values)) - 1)] if values else None
 
 
-def summarize(rows):
+def summarize(rows, target_only):
     target = [r["bedrock"]["ms"] for r in rows if r["bedrock"]["ok"]]
     source = [r["source"]["ms"] for r in rows if r["source"] and r["source"]["ok"]]
     scores = [r["quality"] for r in rows if r["quality"] is not None]
     out = {"prompts": len(rows), "bedrock_errors": sum(r["bedrock"]["ok"] is not True for r in rows),
            "bedrock_p50_ms": statistics.median(target) if target else None, "bedrock_p95_ms": p95(target),
-           "source_p95_ms": p95(source), "quality": round(statistics.mean(scores), 3) if scores else None}
-    out["passed"] = (out["bedrock_errors"] == 0 and (out["quality"] is None or out["quality"] >= MIN_QUALITY)
-                     and (out["source_p95_ms"] is None or out["bedrock_p95_ms"] <= MAX_LATENCY_RATIO * out["source_p95_ms"]))
+           "source_ok": len(source), "source_p95_ms": p95(source), "quality": round(statistics.mean(scores), 3) if scores else None}
+    baseline = target_only or bool(source)
+    out["passed"] = (baseline and out["bedrock_errors"] == 0 and (out["quality"] is None or out["quality"] >= MIN_QUALITY)
+                     and (target_only or out["bedrock_p95_ms"] <= MAX_LATENCY_RATIO * out["source_p95_ms"]))
+    if not baseline:
+        out["incomplete"] = "no source call succeeded, so there is no baseline; fix the source credentials or run with --target-only"
     return out
 
 
@@ -77,11 +80,12 @@ def main(argv=None):
             bedrock = timed(module.call_bedrock, item["prompt"])
             source = None if args.target_only else timed(module.call_source, item["prompt"])
             rows.append({"id": item["id"], "bedrock": bedrock, "source": source, "quality": quality(bedrock, item.get("expected_traits", []))})
-        report["routes"][route_id] = {"model_id": module.MODEL_ID, "client_api": module.CLIENT_API, "summary": summarize(rows), "results": rows}
+        report["routes"][route_id] = {"model_id": module.MODEL_ID, "client_api": module.CLIENT_API, "summary": summarize(rows, args.target_only), "results": rows}
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     passed = all(r["summary"]["passed"] for r in report["routes"].values())
     for route_id, entry in report["routes"].items():
-        print(f"{'PASS' if entry['summary']['passed'] else 'FAIL'} {route_id} {json.dumps(entry['summary'])}")
+        verdict = "PASS" if entry["summary"]["passed"] else "INCOMPLETE" if "incomplete" in entry["summary"] else "FAIL"
+        print(f"{verdict} {route_id} {json.dumps(entry['summary'])}")
     return 0 if passed else 1
 
 

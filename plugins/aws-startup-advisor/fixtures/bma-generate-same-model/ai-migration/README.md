@@ -45,6 +45,7 @@ Wire `generate(prompt, source_call=<your existing call>)` from the route file. S
 
 ## Notes
 
+- gpt-4o__runtime-openai-cris__chat-completions: no generated source caller, so the full test_comparison.py run reports these routes INCOMPLETE. --target-only checks Bedrock alone; AI_PROVIDER=shadow logs Bedrock latency to set beside your source metrics.
 - us.openai.gpt-5.6-terra: not confirmed to bill under Amazon Bedrock. After the first day of traffic, check Cost Explorer grouped by Service; if the spend is elsewhere, export BUDGET_SERVICES with those names and run setup_bedrock.sh again.
 - Generate does not scan code: if the app keeps client.responses.retrieve/cancel/delete on a runtime Responses route, add bedrock:GetInvoke/CancelInvoke/DeleteInvoke on project/default (iam_policy.py --stored-response-ops).
 - AWS Activate credits can offset Bedrock usage for eligible startups: https://aws.amazon.com/startups/credits/

@@ -61,6 +61,8 @@ MAX_TOKENS = 1024
 # The only InvokeModel body the scaffold writes: Titan Text Embeddings, {"inputText": ...} -> {"embedding": [...]}.
 TITAN_TEXT_EMBEDDING = "amazon.titan-embed-text-"
 OPENAI_COMPATIBLE = {"responses", "chat_completions"}
+# Mantle selectors whose request options (background=, hosted tools) the generated prompt-only call does not send.
+UNSENT_SELECTORS = {"background_inference", "server_side_tools"}
 CLIENT_APIS = OPENAI_COMPATIBLE | {"messages"}
 OPENAI_PATHS = {"runtime_openai_cris": "bedrock-runtime", "mantle_openai_responses": "bedrock-mantle",
                 "mantle_openai_chat": "bedrock-mantle", "gpt-oss": "bedrock-runtime"}
@@ -150,7 +152,7 @@ def endpoint(path: str, client_api: str, region: str) -> tuple[str, str | None, 
 
 
 def billing(model_id: str) -> str:
-    vendor = design_ai.CRIS_PREFIX.sub("", model_id).split(".", 1)[0]
+    vendor = design_ai.CRIS_PREFIX.sub("", model_id.rsplit("/", 1)[-1]).split(".", 1)[0]
     if vendor == "amazon":
         return "amazon_bedrock"
     return "marketplace" if vendor == "anthropic" else "unconfirmed"
@@ -254,7 +256,11 @@ def build_plan(run_dir: Path) -> dict:
             disclosures.append(f"{rid}: {mid} uses a model-specific InvokeModel body; call_bedrock raises until you write "
                                f"invoke(client, model_id, prompt) in {OUT}/invoke/{rid}.py.")
         if row.get("mantle_selector") == "web_search":
-            disclosures.append(f"{rid}: send the web_search tool with \"external_web_access\": false unless you grant bedrock-websearch:ExternalWebAccess.")
+            disclosures.append(f"{rid}: call_bedrock sends the web_search tool with \"external_web_access\": false; "
+                               "keep it false unless you grant bedrock-websearch:ExternalWebAccess.")
+        if row.get("mantle_selector") in UNSENT_SELECTORS:
+            disclosures.append(f"{rid}: call_bedrock does not send the {row['mantle_selector']} request options, so test_comparison.py "
+                               "does not exercise them; your own call keeps them when it moves to this endpoint.")
         files = [f"{OUT}/routes/{rid}.py"]
         if kind == "gateway_config":
             files.append(f"{OUT}/gateway/{rid}.{'yaml' if 'litellm' in gateways or openrouter_path == 'litellm' else 'json'}")
@@ -269,6 +275,10 @@ def build_plan(run_dir: Path) -> dict:
             "source_call": sources[0] if len(sources) == 1 and sources[0][1] and not gateways else None,
             "titan_embedding": titan_embedding, "billing": billing(mid), "quota_risk": row["quota_risk"], "files": files})
 
+    no_baseline = [r["route_id"] for r in routes if source_body(r) is NO_SOURCE]
+    if no_baseline:
+        disclosures.append(f"{', '.join(no_baseline)}: no generated source caller, so the full test_comparison.py run reports these routes "
+                           "INCOMPLETE. --target-only checks Bedrock alone; AI_PROVIDER=shadow logs Bedrock latency to set beside your source metrics.")
     shared = [f"{OUT}/{f}" for f in SHARED_FILES]
     agent = [f"{OUT}/{f}" for f in AGENT_FILES]
     pair_of = {w["workload_id"]: (w["provider"], w["source_service"]) for w in design_plan["rows"]}
@@ -342,6 +352,11 @@ import time
 CALL_BEDROCK = {
     "responses": '''def call_bedrock(prompt: str) -> str:
     return _openai_client().responses.create(model=MODEL_ID, input=prompt).output_text
+''',
+    "responses_web_search": '''def call_bedrock(prompt: str) -> str:
+    # No bedrock-websearch:ExternalWebAccess in iam-policy.json, so Fetch must stay on the cache.
+    tools = [{"type": "web_search", "external_web_access": False}]
+    return _openai_client().responses.create(model=MODEL_ID, input=prompt, tools=tools).output_text
 ''',
     "chat_completions": '''def call_bedrock(prompt: str) -> str:
     response = _openai_client().chat.completions.create(model=MODEL_ID, messages=[{"role": "user", "content": prompt}])
@@ -435,9 +450,18 @@ FLAG_SWITCH = '''def generate(prompt: str, source_call=None) -> str:
 '''
 
 
+def source_body(route: dict) -> str:
+    return CALL_SOURCE.get(tuple(route["source_call"]), NO_SOURCE) if route["source_call"] else NO_SOURCE
+
+
 def render_route(route: dict) -> str:
     api = route["required_client_api"]
-    body = CALL_BEDROCK["invoke_embedding" if api == "invoke" and route["titan_embedding"] else api]
+    if api == "invoke" and route["titan_embedding"]:
+        body = CALL_BEDROCK["invoke_embedding"]
+    elif api == "responses" and route["mantle_selector"] == "web_search":
+        body = CALL_BEDROCK["responses_web_search"]
+    else:
+        body = CALL_BEDROCK[api]
     constants = [
         ("ROUTE_ID", route["route_id"]), ("WORKLOAD_IDS", tuple(route["workload_ids"])), ("CALL_SITES", tuple(route["call_sites"])),
         ("SOURCE_MODEL", route["source_model_id"]), ("REGION", route["region"]), ("MODEL_ID", route["aws_model_id"]),
@@ -445,7 +469,7 @@ def render_route(route: dict) -> str:
         ("ENDPOINT_NOTE", route["endpoint_assumption"] or json.dumps(route["mantle_requirement"], sort_keys=True)),
         ("MAX_TOKENS", MAX_TOKENS), ("FLAG", "AI_PROVIDER")]
     lines = [f"{name} = {value!r}" for name, value in constants]
-    source = CALL_SOURCE.get(tuple(route["source_call"]), NO_SOURCE) if route["source_call"] else NO_SOURCE
+    source = source_body(route)
     helper = OPENAI_CLIENT if api in OPENAI_COMPATIBLE else ""
     return ROUTE_HEAD + "\n".join(lines) + "\nlog = logging.getLogger(__name__)\n\n\n" + helper + body + "\n\n" + source + "\n\n" + FLAG_SWITCH
 
@@ -498,15 +522,18 @@ def p95(values):
     return sorted(values)[max(0, math.ceil(0.95 * len(values)) - 1)] if values else None
 
 
-def summarize(rows):
+def summarize(rows, target_only):
     target = [r["bedrock"]["ms"] for r in rows if r["bedrock"]["ok"]]
     source = [r["source"]["ms"] for r in rows if r["source"] and r["source"]["ok"]]
     scores = [r["quality"] for r in rows if r["quality"] is not None]
     out = {"prompts": len(rows), "bedrock_errors": sum(r["bedrock"]["ok"] is not True for r in rows),
            "bedrock_p50_ms": statistics.median(target) if target else None, "bedrock_p95_ms": p95(target),
-           "source_p95_ms": p95(source), "quality": round(statistics.mean(scores), 3) if scores else None}
-    out["passed"] = (out["bedrock_errors"] == 0 and (out["quality"] is None or out["quality"] >= MIN_QUALITY)
-                     and (out["source_p95_ms"] is None or out["bedrock_p95_ms"] <= MAX_LATENCY_RATIO * out["source_p95_ms"]))
+           "source_ok": len(source), "source_p95_ms": p95(source), "quality": round(statistics.mean(scores), 3) if scores else None}
+    baseline = target_only or bool(source)
+    out["passed"] = (baseline and out["bedrock_errors"] == 0 and (out["quality"] is None or out["quality"] >= MIN_QUALITY)
+                     and (target_only or out["bedrock_p95_ms"] <= MAX_LATENCY_RATIO * out["source_p95_ms"]))
+    if not baseline:
+        out["incomplete"] = "no source call succeeded, so there is no baseline; fix the source credentials or run with --target-only"
     return out
 
 
@@ -529,11 +556,12 @@ def main(argv=None):
             bedrock = timed(module.call_bedrock, item["prompt"])
             source = None if args.target_only else timed(module.call_source, item["prompt"])
             rows.append({"id": item["id"], "bedrock": bedrock, "source": source, "quality": quality(bedrock, item.get("expected_traits", []))})
-        report["routes"][route_id] = {"model_id": module.MODEL_ID, "client_api": module.CLIENT_API, "summary": summarize(rows), "results": rows}
+        report["routes"][route_id] = {"model_id": module.MODEL_ID, "client_api": module.CLIENT_API, "summary": summarize(rows, args.target_only), "results": rows}
     args.output.write_text(json.dumps(report, indent=2) + "\\n", encoding="utf-8")
     passed = all(r["summary"]["passed"] for r in report["routes"].values())
     for route_id, entry in report["routes"].items():
-        print(f"{'PASS' if entry['summary']['passed'] else 'FAIL'} {route_id} {json.dumps(entry['summary'])}")
+        verdict = "PASS" if entry["summary"]["passed"] else "INCOMPLETE" if "incomplete" in entry["summary"] else "FAIL"
+        print(f"{verdict} {route_id} {json.dumps(entry['summary'])}")
     return 0 if passed else 1
 
 
@@ -778,7 +806,15 @@ def _strings(value: Any):
             yield from _strings(v)
 
 
+def _generation_path(run_dir: Path) -> Path:
+    path = run_dir / "generation-ai.json"
+    if path.is_symlink() or (path.exists() and not path.is_file()):
+        raise GenerateInputError("generation_not_a_file", f"{path} is a symlink or not a regular file; remove it and run scaffold again")
+    return path
+
+
 def scaffold(run_dir: Path, plan: dict) -> list[str]:
+    generation = _generation_path(run_dir)
     out = run_dir / OUT
     if out.is_symlink() or (out.exists() and not out.is_dir()):
         raise GenerateInputError("ai_migration_not_a_directory", f"{out} is a symlink or a file; remove it and run scaffold again")
@@ -789,7 +825,7 @@ def scaffold(run_dir: Path, plan: dict) -> list[str]:
         for rel, data in kept.items():
             (run_dir / rel).parent.mkdir(parents=True, exist_ok=True)
             (run_dir / rel).write_bytes(data)
-    (run_dir / "generation-ai.json").write_text(json.dumps(skeleton(plan), indent=2) + "\n", encoding="utf-8")
+    generation.write_text(json.dumps(skeleton(plan), indent=2) + "\n", encoding="utf-8")
     written = []
     for rel, text in render_all(plan).items():
         path = run_dir / rel
@@ -858,6 +894,8 @@ def check_generation(gen: Any, plan: dict, run_dir: Path, schema: dict | None = 
         _err(errors, "placeholder_left", f"replace every {PLACEHOLDER} string: {left[:3]}")
     if not gen["migration_plan"]["phases"]:
         _err(errors, "plan_phases_missing", "migration_plan.phases must list the rollout phases")
+    if gen["monitoring"]["dashboards"] != DASHBOARDS:
+        _err(errors, "dashboards", f"monitoring.dashboards must be {DASHBOARDS}")
     models = gen["migration_plan"]["models_to_migrate"]
     if sorted(models) != sorted(fixed["models_to_migrate"]) or len(set(models)) != len(models):
         _err(errors, "models_to_migrate", f"migration_plan.models_to_migrate must list {fixed['models_to_migrate']} once each")
@@ -922,7 +960,7 @@ def check_generation(gen: Any, plan: dict, run_dir: Path, schema: dict | None = 
 def check(run_dir: Path) -> dict:
     plan = build_plan(run_dir)
     try:
-        gen = json.loads((run_dir / "generation-ai.json").read_text(encoding="utf-8"))
+        gen = json.loads(_generation_path(run_dir).read_text(encoding="utf-8"))
     except FileNotFoundError:
         raise GenerateInputError("generation_not_found", "generation-ai.json is not in the run directory")
     except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:

@@ -298,7 +298,7 @@ def _route(**over) -> dict:
     base = {"route_id": "r", "workload_ids": ["w"], "call_sites": [("app/a.py", 1)], "source_model_id": "src", "region": "us-west-2",
             "aws_model_id": "us.openai.gpt-5.6-terra", "migration_path": "runtime_openai_cris", "required_client_api": "chat_completions",
             "base_url": "https://bedrock-runtime.us-west-2.amazonaws.com/openai/v1", "endpoint_assumption": "x", "mantle_requirement": None,
-            "titan_embedding": False, "source_call": None}
+            "titan_embedding": False, "source_call": None, "mantle_selector": None}
     return {**base, **over}
 
 
@@ -465,7 +465,7 @@ args = sys.argv[1:]
 with open(sys.argv[0] + ".log", "a") as f:
     f.write(json.dumps(args) + "\\n")
 if args[:2] in (["iam", "get-policy"], ["budgets", "describe-budget"]):
-    sys.exit(0 if os.environ.get("FAKE_EXISTS") else 254)
+    sys.exit(0 if args[0] in os.environ.get("FAKE_EXISTS", "").split(",") else 254)
 if args[:2] == ["sts", "get-caller-identity"]:
     print("123456789012")
 elif args[:2] == ["ce", "get-anomaly-monitors"]:
@@ -582,11 +582,29 @@ def _files(run):
     _edit(run / "generation-ai.json", lambda g: g["artifacts_by_source"][0]["models"][0]["generated_files"].pop())
 
 
+def _phase_not_an_object(run):
+    _edit(run / "generation-ai.json", lambda g: g["migration_plan"].update(phases=[42]))
+
+
+def _phase_without_activities(run):
+    _edit(run / "generation-ai.json", lambda g: g["migration_plan"]["phases"][0].pop("activities"))
+
+
+def _no_dashboards(run):
+    _edit(run / "generation-ai.json", lambda g: g["monitoring"].update(dashboards=[]))
+
+
+def _other_dashboards(run):
+    _edit(run / "generation-ai.json", lambda g: g["monitoring"].update(dashboards=g["monitoring"]["dashboards"][:-1] + ["Spend"]))
+
+
 @pytest.mark.parametrize(("mutate", "code"), [
     (_drop_model, "models_to_migrate"), (_swap_pair, "artifacts_by_source"), (_openrouter, "schema_violation"),
     (_source_default, "rollback_plan"), (_confidence, "confidence"), (_stale, "artifact_unexpected"), (_modified, "artifact_modified"),
     (_missing, "artifact_missing"), (_secret, "secret_literal"), (_dotenv, "readme_dotenv"), (_flag_value, "readme_flag_value"),
     (_readme_model, "readme_incomplete"), (_uncovered, "prompts_uncovered"), (_files, "artifacts_by_source"),
+    (_phase_not_an_object, "schema_violation"), (_phase_without_activities, "schema_violation"), (_no_dashboards, "dashboards"),
+    (_other_dashboards, "dashboards"),
 ], ids=lambda v: v if isinstance(v, str) else v.__name__)
 def test_check_rejects(mutate, code, tmp_path: Path) -> None:
     run = _run(tmp_path, "bma-generate-tier-range")
@@ -703,7 +721,7 @@ def test_readiness_through_estimate_ignores_generate(tmp_path: Path, capsys) -> 
 
 # --------------------------------------------------------------------------- setup script: budget coverage, overrides, re-runs
 
-def _setup(run: Path, tmp_path: Path, *args: str, env: dict | None = None, exists: bool = False):
+def _setup(run: Path, tmp_path: Path, *args: str, env: dict | None = None, exists: bool | str = False):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     (bin_dir / "aws").write_text(FAKE_AWS.replace("#!/usr/bin/env python3", f"#!{sys.executable}"))
@@ -714,7 +732,8 @@ def _setup(run: Path, tmp_path: Path, *args: str, env: dict | None = None, exist
     if log.exists():
         log.unlink()
     result = subprocess.run(["bash", str(run / "ai-migration/setup_bedrock.sh"), *args], capture_output=True, text=True,
-                            env={"PATH": f"{bin_dir}:/usr/bin:/bin", **({"FAKE_EXISTS": "1"} if exists else {}), **(env or {})})
+                            env={"PATH": f"{bin_dir}:/usr/bin:/bin", **({"FAKE_EXISTS": "iam,budgets" if exists is True else exists} if exists else {}),
+                                 **(env or {})})
     calls = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
     return result, calls
 
@@ -897,3 +916,172 @@ def test_shared_ai_helpers_postpone_annotations_like_the_scripts_that_load_them(
         tree = ast.parse((PLUGIN_ROOT / "skills/shared/ai" / name).read_text())
         assert any(isinstance(n, ast.ImportFrom) and n.module == "__future__" and any(a.name == "annotations" for a in n.names)
                    for n in tree.body), name
+
+
+# --------------------------------------------------------------------------- capability, baseline, write boundary, partitions
+
+MANTLE_RESPONSES = {"required_client_api": "responses", "migration_path": "mantle_openai_responses", "aws_model_id": "openai.gpt-5.5",
+                    "base_url": "https://bedrock-mantle.us-west-2.api.aws/openai/v1"}
+
+
+def test_web_search_route_sends_the_tool_without_external_web_access(monkeypatch, tmp_path: Path) -> None:
+    calls = _stubs(monkeypatch)
+    module = _load_route(GEN.render_route(_route(**MANTLE_RESPONSES, mantle_selector="web_search")), tmp_path, "web")
+    module.call_bedrock("news today")
+    assert calls.spies["responses"].call_args.kwargs == {"model": "openai.gpt-5.5", "input": "news today",
+                                                          "tools": [{"type": "web_search", "external_web_access": False}]}
+    plain = _load_route(GEN.render_route(_route(**MANTLE_RESPONSES, mantle_selector="projects")), tmp_path, "plain")
+    plain.call_bedrock("hi")
+    assert calls.spies["responses"].call_args.kwargs == {"model": "openai.gpt-5.5", "input": "hi"}
+
+
+def test_mixed_fixture_web_search_route_file_sends_the_tool(tmp_path: Path) -> None:
+    plan = GEN.build_plan(_run(tmp_path, "bma-generate-mixed"))
+    web = [r for r in plan["routes"] if r["mantle_selector"] == "web_search"]
+    assert len(web) == 1
+    files = GEN.render_all(plan)
+    for route in plan["routes"]:
+        assert ('"external_web_access": False' in files[route["files"][0]]) == (route in web), route["route_id"]
+
+
+@pytest.mark.parametrize("selector", ["background_inference", "server_side_tools"])
+def test_a_capability_the_route_does_not_send_is_disclosed(selector, tmp_path: Path, monkeypatch) -> None:
+    run = _run(tmp_path, "bma-generate-mixed", inputs_only=True)
+    real = GEN._read
+
+    def with_selector(run_dir: Path, name: str):
+        doc = real(run_dir, name)
+        if name == "aws-design-ai.json":
+            next(r for r in doc["ai_architecture"]["bedrock_models"] if r.get("mantle_selector") == "web_search")["mantle_selector"] = selector
+        return doc
+    monkeypatch.setattr(GEN, "_read", with_selector)
+    plan = GEN.build_plan(run)
+    assert any(selector in d and "does not send" in d for d in plan["disclosures"])
+
+
+def test_full_comparison_without_a_source_result_is_incomplete(monkeypatch, tmp_path: Path, capsys) -> None:
+    _stubs(monkeypatch)
+    monkeypatch.setattr(sys, "dont_write_bytecode", sys.dont_write_bytecode)
+    run = _run(tmp_path, "bma-generate-same-model")
+    harness = _module("bma_test_harness_no_source", run / "ai-migration/test_comparison.py")
+    out = tmp_path / "results.json"
+    assert harness.main(["--quick", "--output", str(out)]) == 1
+    summary = next(iter(json.loads(out.read_text())["routes"].values()))["summary"]
+    assert summary["passed"] is False and summary["source_ok"] == 0 and "--target-only" in summary["incomplete"]
+    assert "INCOMPLETE" in capsys.readouterr().out
+    assert harness.main(["--target-only", "--quick", "--output", str(out)]) == 0, "--target-only stays the Bedrock-only mode"
+
+
+def test_full_comparison_fails_only_the_route_whose_source_failed(monkeypatch, tmp_path: Path) -> None:
+    _stubs(monkeypatch)
+    anthropic = sys.modules["anthropic"]
+    real = anthropic.Anthropic
+
+    def no_source(**kwargs):
+        if not kwargs:
+            raise RuntimeError("401 from the source provider")
+        return real(**kwargs)
+    monkeypatch.setattr(anthropic, "Anthropic", no_source)
+    monkeypatch.setattr(sys, "dont_write_bytecode", sys.dont_write_bytecode)
+    run = _run(tmp_path, "bma-generate-tier-range")
+    harness = _module("bma_test_harness_one_source", run / "ai-migration/test_comparison.py")
+    out = tmp_path / "results.json"
+    assert harness.main(["--quick", "--output", str(out)]) == 1
+    summaries = {k: v["summary"] for k, v in json.loads(out.read_text())["routes"].items()}
+    claude, gemini = summaries["claude-sonnet-5__runtime-messages__messages"], summaries["gemini-2.5-flash__converse__converse"]
+    assert claude["passed"] is False and "incomplete" in claude
+    assert gemini["passed"] is True and gemini["source_ok"] == 1 and "incomplete" not in gemini
+
+
+@pytest.mark.parametrize("kind", ["symlink", "directory"])
+def test_scaffold_and_check_refuse_a_generation_file_that_is_not_a_regular_file(kind, tmp_path: Path) -> None:
+    run = _run(tmp_path, "bma-generate-mixed")
+    plan = GEN.build_plan(run)
+    target = tmp_path / "outside.json"
+    target.write_text("keep")
+    before = {p: p.read_bytes() for p in (run / "ai-migration").rglob("*") if p.is_file()}
+    (run / "generation-ai.json").unlink()
+    if kind == "symlink":
+        (run / "generation-ai.json").symlink_to(target)
+    else:
+        (run / "generation-ai.json").mkdir()
+    with pytest.raises(GEN.GenerateInputError) as err:
+        GEN.scaffold(run, plan)
+    assert err.value.code == "generation_not_a_file"
+    assert target.read_text() == "keep"
+    assert {p: p.read_bytes() for p in (run / "ai-migration").rglob("*") if p.is_file()} == before, "nothing is removed before the refusal"
+    with pytest.raises(GEN.GenerateInputError) as err:
+        GEN.check(run)
+    assert err.value.code == "generation_not_a_file"
+
+
+def test_setup_execute_resumes_after_a_run_that_stopped_after_the_policy(tmp_path: Path) -> None:
+    run = _run(tmp_path, "bma-generate-mixed")
+    result, calls = _setup(run, tmp_path, "--execute", env={"BUDGET_USD": "100"}, exists="iam")
+    assert result.returncode == 0, result.stderr
+    kinds = {tuple(c[:2]) for c in calls}
+    assert ("iam", "create-policy") not in kinds and ("budgets", "create-budget") in kinds
+
+
+SHARED_IAM = _module("bma_test_shared_iam_policy", PLUGIN_ROOT / "skills/shared/ai/iam_policy.py")
+ACCOUNT = "123456789012"
+
+
+@pytest.mark.parametrize(("partition", "region", "profile"), [
+    ("aws", "us-east-1", "us.anthropic.claude-sonnet-5"),
+    ("aws-us-gov", "us-gov-west-1", "us-gov.anthropic.claude-sonnet-5"),
+    ("aws-cn", "cn-north-1", "apac.amazon.nova-pro-v1:0"),
+])
+def test_inference_profile_arns_keep_their_partition(partition, region, profile) -> None:
+    arn = f"arn:{partition}:bedrock:{region}:{ACCOUNT}:inference-profile/{profile}"
+    assert SHARED_IAM.is_inference_profile(arn)
+    statements = {s["Sid"]: s for s in SHARED_IAM.generate_policy([arn], region, ACCOUNT)["Statement"]}
+    base = profile.split(".", 1)[1]
+    assert statements["BedrockInvokeModelScoped"]["Resource"] == sorted([arn, f"arn:{partition}:bedrock:*::foundation-model/{base}"])
+    assert statements["BedrockGetInferenceProfile"]["Resource"] == [arn]
+
+
+@pytest.mark.parametrize(("arn", "region", "account"), [
+    (f"arn:aws:bedrock:us-gov-west-1:{ACCOUNT}:inference-profile/us-gov.anthropic.claude-sonnet-5", "us-gov-west-1", ACCOUNT),
+    (f"arn:aws-us-gov:bedrock:us-gov-east-1:{ACCOUNT}:inference-profile/us-gov.anthropic.claude-sonnet-5", "us-gov-west-1", ACCOUNT),
+    ("arn:aws:bedrock:us-east-1:111122223333:inference-profile/us.anthropic.claude-sonnet-5", "us-east-1", ACCOUNT),
+    (f"arn:aws:bedrock:us-east-1:{ACCOUNT}:application-inference-profile/abc123", "us-east-1", ACCOUNT),
+    ("arn:aws-iso:bedrock:us-iso-east-1:123456789012:inference-profile/us.anthropic.claude-sonnet-5", "us-iso-east-1", ACCOUNT),
+    (f"ARN:aws:bedrock:us-east-1:{ACCOUNT}:inference-profile/us.anthropic.claude-sonnet-5", "us-east-1", ACCOUNT),
+])
+def test_a_profile_arn_that_does_not_match_the_policy_fails_closed(arn, region, account) -> None:
+    with pytest.raises(ValueError, match="inference-profile ARN"):
+        SHARED_IAM.generate_policy([arn], region, account)
+
+
+def test_an_account_placeholder_keeps_the_arns_own_account() -> None:
+    arn = f"arn:aws-us-gov:bedrock:us-gov-west-1:{ACCOUNT}:inference-profile/us-gov.anthropic.claude-sonnet-5"
+    resources = SHARED_IAM.generate_policy([arn], "us-gov-west-1", "ACCOUNT_ID")["Statement"][0]["Resource"]
+    assert arn in resources
+
+
+def test_iam_cli_names_the_arn_mismatch(tmp_path: Path) -> None:
+    arn = f"arn:aws:bedrock:us-west-2:{ACCOUNT}:inference-profile/us.anthropic.claude-sonnet-5"
+    result = subprocess.run([sys.executable, str(PLUGIN_ROOT / "skills/shared/ai/iam_policy.py"), "--models", arn, "--region", "us-east-1",
+                             "--account-id", ACCOUNT], capture_output=True, text=True)
+    assert result.returncode == 1 and json.loads(result.stdout)["reason"] == "inference_profile_arn_invalid"
+
+
+def test_billing_reads_the_model_inside_a_profile_arn() -> None:
+    assert GEN.billing(f"arn:aws-us-gov:bedrock:us-gov-west-1:{ACCOUNT}:inference-profile/us-gov.anthropic.claude-sonnet-5") == "marketplace"
+
+
+def test_pricing_reads_the_model_inside_a_profile_arn_in_every_partition() -> None:
+    pricing = _module("bma_test_l2b_pricing", PLUGIN_ROOT / "skills/llm-to-bedrock/scripts/bedrock_pricing.py")
+    plain = pricing.lookup("us-east-1", "us.anthropic.claude-sonnet-5")
+    for partition in ("aws", "aws-us-gov", "aws-cn"):
+        arn = f"arn:{partition}:bedrock:us-east-1:{ACCOUNT}:inference-profile/us.anthropic.claude-sonnet-5"
+        assert pricing.lookup("us-east-1", arn) == plain, partition
+
+
+def test_generate_contract_names_bedrock_migration_assessment_as_its_producer() -> None:
+    text = (PLUGIN_ROOT / "skills/shared/ai/schema-generate-ai.md").read_text()
+    assert "no producer" not in text.lower() and "No producer has been repointed" not in text
+    assert "`bedrock-migration-assessment`" in text and "scripts/generate-ai.py" in text
+    status = text.split("## Status", 1)[1]
+    assert "gcp-to-aws" in status and "azure-to-aws" in status and "deferred" in status

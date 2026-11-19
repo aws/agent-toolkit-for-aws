@@ -28,7 +28,9 @@ def _openai_client():
 
 
 def call_bedrock(prompt: str) -> str:
-    return _openai_client().responses.create(model=MODEL_ID, input=prompt).output_text
+    # No bedrock-websearch:ExternalWebAccess in iam-policy.json, so Fetch must stay on the cache.
+    tools = [{"type": "web_search", "external_web_access": False}]
+    return _openai_client().responses.create(model=MODEL_ID, input=prompt, tools=tools).output_text
 
 
 def call_source(prompt: str) -> str:
