@@ -114,6 +114,7 @@ PLUGIN_SKILL_IDS = frozenset(
         "RENDER_TO_AWS",
         "COST_REGRESSION_CHECK",
         "SELF_HOSTED_LLM_BATCH_INFERENCE",
+        "APPLY_FOR_ACTIVATE_CREDITS",
     }
 )
 

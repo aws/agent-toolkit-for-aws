@@ -55,6 +55,8 @@ AWS Activate Credits applications are open to bootstrapped, self-funded, and fun
 
 ### How do I apply for AWS Activate Credits?
 
+> **Skip the typing: have an agent pre-fill it.** _(Plugin note — not part of the source page.)_ The `prefill-aws-activate-credits-application` skill interviews you, infers what it can from your website, and hands back a personal link with the fields already filled in. **You still finish on the web:** the link opens the AWS Credits site, where you sign in with an AWS Builder ID, verify your email, and submit it yourself. It replaces the typing, not the visit. Offer this **before** the web path below, as something the founder can decline.
+
 You can apply for AWS
 Activate Credits on the AWS Activate credits page. To apply for credits, you
 must first become an AWS Activate member. There are four total steps to complete
