@@ -346,6 +346,20 @@ def test_render_missing_estimate_fails_open(tmp_path: Path) -> None:
     assert not (run / "plan.json").exists()
 
 
+def test_render_version_two_keeps_the_version_one_service_items(tmp_path: Path) -> None:
+    """Render's items come from scenario lines, not the breakdown the retained-input
+    pointers select, so an opt-in version-2 export must carry the same list, without
+    inputs, instead of an empty or different one."""
+    module = _writer_with_render_enabled()
+    run = _render_run(tmp_path)
+    plugin_json = PLUGIN_ROOT / ".claude-plugin" / "plugin.json"
+    legacy = module.build_plan(run, plugin_json)[0]
+    upgraded = module.build_plan(run, plugin_json, 2)[0]
+    assert upgraded["schemaVersion"] == 2
+    assert legacy["cost"]["awsServiceItems"]
+    assert upgraded["cost"]["awsServiceItems"] == legacy["cost"]["awsServiceItems"]
+
+
 def test_render_skill_writer_matches_plugin_copy() -> None:
     """render-to-aws runs the writer from its own scripts/ dir so a standalone skill
     install can emit the handoff; the copy must stay byte-identical to the plugin one."""

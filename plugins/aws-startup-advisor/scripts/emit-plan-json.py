@@ -721,8 +721,14 @@ def _version_two(plan: dict, migration_dir: Path, routes: list[tuple[str, dict]]
             if pointer in contexts:
                 item["estimateInput"] = contexts[pointer]
             rows.append(item)
+    # Attach retained inputs only when the pointer-selected rows are exactly the
+    # version-1 service items. A route that builds its items another way (Render sums
+    # scenario lines and leaves the breakdown empty) keeps its version-1 list unchanged
+    # rather than having it replaced by a different or empty selection.
     if "awsServiceItems" in result["cost"]:
-        result["cost"]["awsServiceItems"] = rows
+        bare = [{key: value for key, value in row.items() if key != "estimateInput"} for row in rows]
+        if bare == plan["cost"]["awsServiceItems"]:
+            result["cost"]["awsServiceItems"] = rows
     if len((json.dumps(result, indent=2) + "\n").encode("utf-8")) > MAX_IMPORT_FILE_BYTES:
         return plan
     return result
