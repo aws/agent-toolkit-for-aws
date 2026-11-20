@@ -59,7 +59,10 @@ def test_migration_credit_notice_is_vendored_and_qualified() -> None:
     assert APPROVED_CREDIT_COPY in text
     assert all(unsupported not in text for unsupported in SUPERSEDED_CREDIT_COPY)
     assert "plan.json" in text and "migrate/credits" in text
-    assert "Azure, GCP, or Heroku" in text
+    assert "from a supported platform" in text
+    assert "except that a mixed infrastructure and AI Azure assessment does not yet" in text
+    # Name no platform the writer does not import (Render is gated off).
+    assert "Render" not in text
     assert "upload below" not in text.lower()
     for provider in UPFRONT_DISCOVER_FILES:
         vendored = (
@@ -77,13 +80,20 @@ def test_readme_uses_qualification_based_migration_credit_copy() -> None:
     assert all(unsupported not in text for unsupported in SUPERSEDED_CREDIT_COPY)
     # Azure writes importable plans like GCP and Heroku: the importer accepts `AZURE`, and the writer maps
     # AZURE_TO_AWS to it for infrastructure or mixed runs. Only an AI-only run is skipped.
-    assert "mixed Azure, GCP, or Heroku assessment" in text
+    # Azure's estimate records no overall accuracy band, so only infrastructure Azure runs get a plan.
+    assert "mixed Azure, GCP, or Heroku assessment" not in text
+    assert "a mixed (infrastructure plus AI) assessment on GCP or Heroku" in text
     assert "Azure, GCP, and Heroku write importable plans" in text
-    assert "importer's `AZURE` platform for infrastructure or mixed runs" in text
+    assert "importer's `AZURE` platform for infrastructure-only runs" in text
+    assert "and for a mixed infrastructure plus AI run, because Azure's estimate records no overall accuracy band" in text
     assert "`PLAN_SKIP` (no file, migration unaffected) for an AI-only run" in text
     # the superseded claim that Azure is held back until the importer supports it must be gone
     assert "until the downstream importer accepts Azure plans" not in text
     assert "GCP and Heroku currently write importable plans" not in text
+    # Render is wired but gated: it must not be listed as a writer, and the README says why.
+    assert "Render has the same fail-open handoff wiring" in text
+    assert "returns `PLAN_SKIP` (no file, migration unaffected) until the importer is confirmed to accept the `RENDER` platform" in text
+    assert "GCP, Heroku, and Render currently write importable plans" not in text
 
 
 def test_llm_a1_preinitializes_provider_state_in_the_selected_directory() -> None:
