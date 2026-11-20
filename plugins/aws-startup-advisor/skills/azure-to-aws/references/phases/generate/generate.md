@@ -50,7 +50,7 @@ _preconditions:
     _on_failure: _halt_and_inform
   - _assert: "preferences.json exists and validates. WHEN the run has an infra track (azure-resource-inventory.json was produced at Discover): aws-design.json, estimation-infra.json, and azure-resource-inventory.json also exist and validate as JSON — an aws-design.json whose services[] is empty because every resource was deferred or skipped is still an infra track and takes the baseline-only path (core files + baseline.tf). WHEN the run is AI-only / app-code-only (no azure-resource-inventory.json — the app-code-only Discover/Clarify-ai-only/Design-ai/Estimate-ai track): those infra artifacts are ABSENT and instead ai-workload-profile.json, aws-design-ai.json, and estimation-ai.json exist and validate. A run with NEITHER an infra design nor an AI design is unrecoverable."
     _on_failure: _unrecoverable
-  - _assert: "run_mode in .phase-status.json is 'decide_and_execute' — the user chose Execute at the post-Estimate decision gate, accepted the decide-complete resume offer, or explicitly asked for Terraform/migration scripts this turn. An absent run_mode is NOT consent."
+  - _assert: "run_mode in .phase-status.json is 'decide_and_execute' — the user chose Execute at the post-Estimate decision gate, accepted the decide-complete resume offer, or explicitly asked this turn to generate the migration artifacts (the Terraform and migration guide on an infra track, or the AI-track artifacts named at the gate on an AI-only run). An absent run_mode is NOT consent."
     _on_failure: _halt_and_inform
   - _assert: "preferences.json metadata.deferred_to_generate is absent or an empty array, and no preferences.json row carries deferred_to_generate: true — every execution-only row Clarify defaulted (data.db_cutover) was confirmed at the Decision gate's Step 3b (estimate-assemble.md), which sets the row flag to false and removes the key from both metadata lists. A non-empty array or a row still flagged true means a runbook is about to be written against an answer the user never gave; return to Step 3b."
     _on_failure: _halt_and_inform
@@ -87,7 +87,7 @@ _forbids_files:
 
 ## Orientation
 
-Emit the Terraform, the scripts, the docs, and the report. This phase runs under
+Emit the Terraform, the docs, and the report (no database or VM migration scripts yet; the AI track's `generate-artifacts-ai.md` still writes its Bedrock migration scripts). This phase runs under
 `_exec: { _agent: rw }` with `_interactive: false` — the work is bulky, file-only,
 and self-contained, so it runs in an isolated sub-agent while the gates, the state
 transition, and the `HANDOFF_OK` stay in the main window.
