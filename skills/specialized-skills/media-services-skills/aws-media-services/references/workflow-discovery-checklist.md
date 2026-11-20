@@ -12,6 +12,9 @@ later questions depend on earlier answers.
     names) before making changes. Use describe/list API calls to understand
     current state.
   - If new: proceed through the full checklist below.
+  - If **migrating an existing MediaPackage v1 workflow to v2**: stop here and
+    follow `references/workflow-mediapackage-migration.md` — it has its own onboarding
+    and discovery steps, and v1 must stay read-only throughout.
 - What kind of workflow is this? (reference the workflow types from the routing table in SKILL.md).
 
 ## 2. Cost and scale constraints (ask second)

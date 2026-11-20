@@ -370,8 +370,8 @@ audio-only Outputs (one per language).
 | **Outputs** | `distribution_domain_name` (viewer-facing URL) |
 | **Needed by** | Viewers |
 
-A CDN is REQUIRED for any production live workflow. MediaPackage v2 has a
-1000 RPS hard limit and will not scale to viewer traffic without a CDN
+A CDN is REQUIRED for any production live workflow. MediaPackage v2 has per-endpoint egress rate limits (about 500 segment
+RPS, 10,000 manifest RPS; check current values in Service Quotas) and will not scale to viewer traffic without a CDN
 fronting it. Every CDN that pulls from MediaPackage v2 MUST have Origin
 Shield enabled.
 
@@ -432,7 +432,7 @@ IF no MediaTailor:
 8. Enable Origin Shield (region closest to origin)
 9. Forward all query strings and `User-Agent` header (required for MediaTailor ADS targeting)
 
-**Constraint:** OAC MUST be configured when CloudFront fronts MediaPackage v2. Without it, the origin endpoint remains publicly accessible, exposing it to DDoS and bypassing the CDN's 1000 RPS protection. Agents MUST NOT leave endpoints with `Principal: "*"` after adding CloudFront.
+**Constraint:** OAC MUST be configured when CloudFront fronts MediaPackage v2. Without it, the origin endpoint remains publicly accessible, exposing it to DDoS and bypassing the CDN's per-endpoint egress rate protection. Agents MUST NOT leave endpoints with `Principal: "*"` after adding CloudFront.
 
 **Constraint:** Cache policies are a prerequisite dependency. The `create-cache-policy` calls MUST complete and return policy IDs BEFORE calling `create-distribution`. Do NOT substitute managed policies to avoid this step.
 

@@ -87,7 +87,7 @@ IF Origin Shield not enabled:
 
 ```
 IF any CDN lacks Origin Shield:
-  → Add immediately. Single CDN without it can overwhelm MediaPackage v2 (1000 RPS limit).
+  → Add immediately. Single CDN without it can overwhelm MediaPackage v2 (per-endpoint egress limits: about 500 segment / 10,000 manifest RPS; check current values in Service Quotas).
 IF origin shield failover needed:
   → Typically manual (DNS change). Pre-configure backup, test before event.
   → Failover time: 30s to 5min depending on DNS TTL.
