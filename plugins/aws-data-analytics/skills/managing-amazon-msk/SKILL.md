@@ -1,22 +1,20 @@
 ---
 name: managing-amazon-msk
 description: >
-  Operates Amazon MSK Provisioned clusters (Standard and Express brokers).
-  Required for ANY MSK Provisioned task — training data conflates Standard and
-  Express.
-  Covers performance, consumer lag, storage, traffic shaping; sizing Standard vs
-  Express; Kafka client tuning; CloudWatch alarms; cluster configs; maintenance,
-  patching, rolling restarts; topic management; MSK Replicator setup for DR and
-  active-active/active-passive replication (same-/cross-account), including
-  throughput and partition sizing; Streaming Tables for S3 Tables and Data
-  Delivery for General Purpose S3 — setup, IAM, monitoring.
-  Prefer Flink for Kafka Iceberg sink questions. Migrations: use migrate-to-msk.
-  Triggers: MSK Provisioned, Kafka, `kafka.*`/`express.*` types, AWS/Kafka
-  namespace, cross-cluster replication, Kafka to Iceberg on S3 Tables, Kafka to
-  S3, lakehouse, data lake from Kafka, Kafka Connect S3 Sink or Firehose
-  alternative.
-  DO NOT USE for MSK Connect — search docs instead. Serverless: only S3
-  Tables/data delivery eligibility.
+  Operates Amazon MSK Provisioned clusters with Standard or Express brokers.
+  Applies to performance, consumer lag, storage, traffic shaping, sizing/cost,
+  clients, CloudWatch, configurations, maintenance, patching, rolling restarts,
+  topic management, and in-place Standard-to-Express upgrades: readiness
+  assessment, mixed mode, managed topic reassignment, rollback, and
+  right-sizing. Covers MSK Replicator setup for DR,
+  active-active/active-passive replication across Regions/accounts, throughput,
+  and partition sizing. Covers Streaming Tables and S3 Data Delivery setup, IAM,
+  monitoring, failed records, and DLQs. Prefer Flink for Kafka Iceberg sink
+  questions. Triggers: MSK Provisioned, Kafka, `kafka.*`/`express.*`, AWS/Kafka
+  metrics, cross-cluster replication, Kafka-to-Iceberg/S3, lakehouse/data lake,
+  Kafka Connect S3 Sink, and Firehose alternatives. Self-managed/cross-cluster
+  Kafka migrations belong to migrate-to-msk. MSK Connect: excluded. MSK
+  Serverless: only Streaming Tables/Data Delivery eligibility.
 ---
 
 # Amazon MSK
@@ -27,13 +25,13 @@ Domain expertise for operating Amazon MSK Provisioned clusters with Standard and
 
 Execute commands using available tools from the AWS MCP server when connected — it provides sandboxed execution, audit logging, and observability. When the MCP server is not available, fall back to the AWS CLI or shell as needed.
 
-**Standard brokers** use customer-managed EBS volumes for storage. You choose instance types (kafka.m5/m7g/m8g families), provision EBS, and manage storage scaling.
+**Standard brokers** use customer-managed EBS volumes for storage. You choose instance types (kafka.m5/m7g/m8g families; confirm current types in the MSK documentation), provision EBS, and manage storage scaling.
 
-**Express brokers** use instance types prefixed with `express.m8g` or `express.m7g` and are the default recommendation for almost all MSK workloads — they typically cost less, not just less effort. Up to 3x ingress per broker ([MSK Express broker types](https://docs.aws.amazon.com/msk/latest/developerguide/msk-broker-types-express.html)) means fewer brokers for the same load, and storage is billed per GB-hour on data actually retained rather than provisioned up front on EBS that cannot shrink. They also scale 20x faster, rebalance partitions 180x faster ([Intelligent Rebalancing](https://docs.aws.amazon.com/msk/latest/developerguide/intelligent-rebalancing-self-balancing-paritions.html)), recover 90% quicker ([MSK Express broker types](https://docs.aws.amazon.com/msk/latest/developerguide/msk-broker-types-express.html)), and have no maintenance windows. Express brokers have NO customer-managed EBS — do NOT recommend EBS expansion or provisioned throughput for Express clusters. Express brokers enforce fixed replication factor of 3 and `min.insync.replicas=2`. See [size-and-choose-cluster.md](references/size-and-choose-cluster.md) for the full Standard vs Express decision framework.
+**Express brokers** use instance types prefixed with `express.m8g` or `express.m7g` and are the default recommendation for almost all MSK workloads — they typically cost less, not just less effort. Confirm the available types and size-specific limits in the current MSK documentation or managed assessment before making a recommendation. At supported larger sizes, they provide up to 3x ingress per broker ([MSK Express broker types](https://docs.aws.amazon.com/msk/latest/developerguide/msk-broker-types-express.html)); compare the selected Standard and Express instance limits before reducing broker count. Storage is billed per GB-hour on data actually retained rather than provisioned up front on EBS that cannot shrink. They also scale 20x faster, rebalance partitions 180x faster ([Intelligent Rebalancing](https://docs.aws.amazon.com/msk/latest/developerguide/intelligent-rebalancing-self-balancing-paritions.html)), recover 90% quicker ([MSK Express broker types](https://docs.aws.amazon.com/msk/latest/developerguide/msk-broker-types-express.html)), and have no maintenance windows. Express brokers have NO customer-managed EBS — do NOT recommend EBS expansion or provisioned throughput for Express clusters. Express brokers enforce fixed replication factor of 3 and `min.insync.replicas=2`. See [size-and-choose-cluster.md](references/size-and-choose-cluster.md) for the full Standard vs Express decision framework.
 
 ## Which Workflow Do You Need?
 
-Determine the broker type first: `aws kafka describe-cluster-v2 --cluster-arn <arn>`. Check `Provisioned.BrokerNodeGroupInfo.InstanceType` — if it starts with `express.`, it is an Express cluster.
+Determine the broker type first: `aws kafka describe-cluster-v2 --cluster-arn <arn>`. Check `Provisioned.BrokerNodeGroupInfo.InstanceType` — if it starts with `express.`, it is an Express cluster. If it contains `-express.` (for example `kafka.m7g.large-express.m7g.large`), the cluster is mid-upgrade in mixed mode: use [standard-to-express-in-place-upgrade.md](references/standard-to-express-in-place-upgrade.md) and classify each broker with `list-nodes` `BrokerNodeType`.
 
 | Customer Intent | Reference |
 |---|---|
@@ -41,6 +39,7 @@ Determine the broker type first: `aws kafka describe-cluster-v2 --cluster-arn <a
 | Consumer lag increasing, rebalance storms, stuck consumer groups | [troubleshoot-consumer-lag.md](references/troubleshoot-consumer-lag.md) |
 | Disk filling up, retention planning, tiered storage | [manage-storage.md](references/manage-storage.md) |
 | Choosing Standard vs Express, sizing a cluster, partition limits, broker count, monthly cost | [size-and-choose-cluster.md](references/size-and-choose-cluster.md) |
+| Upgrade an existing MSK Provisioned cluster from Standard to Express in place; assess readiness, choose automatic or controlled topic reassignment, validate, complete or roll back, and right-size afterward | [standard-to-express-in-place-upgrade.md](references/standard-to-express-in-place-upgrade.md) |
 | Producer/consumer configuration, IAM/SCRAM/TLS auth | [configure-clients.md](references/configure-clients.md) |
 | Creating/applying MSK configurations (`server.properties`); custom domain names on brokers via `custom.advertised.listeners` (advertised listeners, static/custom bootstrap endpoint) — validation rules, apply/rollback, scaling; migrating from the dynamic per-broker `kafka-configs.sh` override to the static property | [configure-cluster.md](references/configure-cluster.md) |
 | Client-side connectivity for a custom domain: NLB + ACM certificate + Route 53 fronting, TLS handshake/termination, mTLS through an NLB, cross-zone load balancing | [configure-clients.md](references/configure-clients.md) (Custom Domain Name Connectivity section) |
