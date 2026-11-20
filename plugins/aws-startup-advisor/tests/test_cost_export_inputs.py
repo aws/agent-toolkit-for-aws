@@ -319,3 +319,57 @@ def test_oversized_context_returns_v1_instead_of_unimportable_file(tmp_path):
     } for i in range(100)}
     save(run, "estimation-infra.json", data)
     assert plan(run) == plan(run, 1)
+
+
+def cli(run, *options):
+    result = subprocess.run([sys.executable, str(WRITER), "--migration-dir", str(run), *options],
+                            capture_output=True, text=True, check=True)
+    return result.stdout.strip()
+
+
+def test_status_line_reports_written_version_and_rows_with_inputs(tmp_path):
+    run = seed(tmp_path / "run")
+    assert cli(run).endswith("| schema=1 | inputs=0/2")
+    assert cli(run, "--schema-version", "2").endswith("| schema=2 | inputs=2/2")
+    # One stale row keeps the export at version 2 but drops that row's inputs.
+    estimate = read(run, "estimation-infra.json")
+    first_entry(estimate)["monthlyCost"] = 999
+    save(run, "estimation-infra.json", estimate)
+    assert cli(run, "--schema-version", "2").endswith("| schema=2 | inputs=1/2")
+
+
+def test_status_line_names_a_fallback_to_version_one(tmp_path):
+    run = seed(tmp_path / "run")
+    estimate = read(run, "estimation-infra.json")
+    first_entry(estimate)["estimateInput"]["configurationSummary"] = "x" * 4096
+    estimate["projected_costs"]["breakdown"].update(
+        {f"filler-{index}": {"service": "S" * 128, "monthly": 0} for index in range(97)})
+    for index in range(97):
+        estimate["export_inputs"]["rows"][f"/projected_costs/breakdown/filler-{index}/monthly"] = {
+            "monthlyCost": 0, "estimateInput": {"configurationSummary": "y" * 4096, "pricingBasis": "z" * 1024,
+                                                "description": "d" * 1024}}
+    save(run, "estimation-infra.json", estimate)
+    status = cli(run, "--schema-version", "2")
+    assert read(run, "plan.json")["schemaVersion"] == 1
+    assert status.endswith("| schema=1 | inputs=0/99 | fallback=requested-2")
+
+
+def test_azure_run_retains_inputs_and_tracks_its_inventory(tmp_path):
+    run = tmp_path / "run"
+    run.mkdir()
+    save(run, "azure-resource-inventory.json", {"resources": [{"id": "run:web"}, {"id": "run:worker"}]})
+    seed(run)
+    save(run, ".phase-status.json", {"run_id": RUN_ID, "owning_skill": "AZURE_TO_AWS"})
+    estimate = read(run, "estimation-infra.json")
+    estimate["export_inputs"]["snapshot"] = writer().capture_inputs(run, "estimation-infra.json")
+    save(run, "estimation-infra.json", estimate)
+    assert estimate["export_inputs"]["snapshot"]["files"]["azure-resource-inventory.json"] is not None
+    exported = plan(run)
+    assert exported["sourcePlatform"] == "AZURE"
+    assert [("estimateInput" in row) for row in exported["cost"]["awsServiceItems"]] == [True, True]
+    # A changed inventory makes the retained inputs stale; the plan itself still exports.
+    save(run, "azure-resource-inventory.json", {"resources": [{"id": "run:web"}]})
+    stale = plan(run)
+    assert stale["schemaVersion"] == 2
+    assert all("estimateInput" not in row for row in stale["cost"]["awsServiceItems"])
+

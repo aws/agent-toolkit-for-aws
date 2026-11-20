@@ -25,6 +25,7 @@ if this skill needs one, add the copy **and** a row in the table below.
 | `dsl/INTERPRETER.md`                    | `skills/shared/dsl/INTERPRETER.md`                    |
 | `state/phase-status.schema.json`        | `skills/shared/state/phase-status.schema.json`        |
 | `estimate/complexity-tiers.json`        | `skills/shared/estimate/complexity-tiers.json`        |
+| `estimate/cost-export-inputs.md`        | `skills/shared/estimate/cost-export-inputs.md`        |
 | `estimate/estimation-infra.schema.json` | `skills/shared/estimate/estimation-infra.schema.json` |
 | `estimate/pricing-mode.md`              | `skills/shared/estimate/pricing-mode.md`              |
 | `estimate/ri-sp-eligibility.md`         | `skills/shared/estimate/ri-sp-eligibility.md`         |

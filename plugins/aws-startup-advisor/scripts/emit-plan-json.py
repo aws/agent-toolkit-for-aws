@@ -41,7 +41,10 @@ Writes:
   <dir>/plan.json
 
 Status line (stdout, machine-readable):
-  PLAN_OK   | path=<dir>/plan.json | platform=GCP | scope=INFRA_ONLY
+  PLAN_OK   | path=<dir>/plan.json | platform=GCP | scope=INFRA_ONLY | schema=1 | inputs=0/3
+            (schema = the version written; inputs = service rows carrying retained
+            inputs / all service rows; "| fallback=requested-2" follows when a
+            version-2 request was written as version 1)
   PLAN_SKIP | reason=<why>                 (fail-open; exit 0, no file written)
 Exit code is 0 for success AND for every fail-open skip; only a usage error is non-zero.
 Input capture prints a JSON snapshot or INPUT_SNAPSHOT_SKIP and does not write plan.json.
@@ -77,7 +80,10 @@ DESIGN_FILES = {
     "estimation-ai.json": "aws-design-ai.json",
 }
 USAGE_FILES = {
-    "estimation-infra.json": ("gcp-resource-inventory.json", "heroku-resource-inventory.json", "billing-profile.json"),
+    "estimation-infra.json": (
+        "gcp-resource-inventory.json", "heroku-resource-inventory.json",
+        "azure-resource-inventory.json", "billing-profile.json",
+    ),
     "estimation-billing.json": ("billing-profile.json",),
     "estimation-ai.json": (
         "ai-workload-profile.json", "openai-usage-profile.json",
@@ -989,7 +995,17 @@ def main() -> int:
         print(f"PLAN_SKIP | reason=could not write plan.json: {err}")
         return 0
 
-    print(f"PLAN_OK | path={out_path} | platform={platform} | scope={scope}")
+    # Report what was written, not what was asked for: a version-2 request falls back
+    # to version 1 when the extension cannot be emitted, and rows keep retained inputs
+    # only when their evidence still matches. Without these fields a missing CSV after
+    # import cannot be told apart from an export that never carried the inputs.
+    rows = plan["cost"].get("awsServiceItems", [])
+    with_inputs = sum(1 for row in rows if "estimateInput" in row)
+    status = (f"PLAN_OK | path={out_path} | platform={platform} | scope={scope}"
+              f" | schema={plan['schemaVersion']} | inputs={with_inputs}/{len(rows)}")
+    if plan["schemaVersion"] != args.schema_version:
+        status += f" | fallback=requested-{args.schema_version}"
+    print(status)
     return 0
 
 

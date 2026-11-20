@@ -8,6 +8,12 @@ _contributes:
 # Estimate — AI Workload Cost Engine
 
 > Loaded when ai-workload-profile.json exists. Contributes estimation-ai.json (the assembler is its creator; see estimate.md). Execute ALL steps in order.
+
+Before pricing, follow `references/vendored/estimate/cost-export-inputs.md` for
+`estimation-ai.json`. Retain the input snapshot and context for the complete
+selected Bedrock aggregate, including all contributing models and usage.
+Include `export_inputs` when evidence is available; do not infer missing usage
+or upfront values to complete it.
 >
 > **Fragment unit.** This fragment _contributes_ to `estimation-ai.json`; the artifact
 > itself is declared on the assembler's `_produces` and written there — the same
