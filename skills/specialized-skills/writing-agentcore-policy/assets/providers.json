@@ -1,0 +1,683 @@
+{
+  "availableProviders": {
+    "BedrockGuardrails::ContentFilter": {
+      "argumentTypes": [
+        {
+          "paramType": "set",
+          "items": {
+            "paramType": "string"
+          }
+        },
+        {
+          "paramType": "set",
+          "items": {
+            "paramType": "string"
+          }
+        }
+      ],
+      "availableMethods": {
+        "maxConfidenceScore": {"outputType": {"paramType": "decimal"}},
+        "minConfidenceScore": {"outputType": {"paramType": "decimal"}},
+        "count": {"outputType": {"paramType": "integer"}},
+        "categories": {"outputType": {"paramType": "set", "items": {"paramType": "string"}}}
+      },
+      "outputType": {
+        "paramType": "record",
+        "fields": {
+          "VIOLENCE": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              }
+            },
+            "required": [
+              "confidenceScore"
+            ]
+          },
+          "HATE": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              }
+            },
+            "required": [
+              "confidenceScore"
+            ]
+          },
+          "SEXUAL": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              }
+            },
+            "required": [
+              "confidenceScore"
+            ]
+          },
+          "MISCONDUCT": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              }
+            },
+            "required": [
+              "confidenceScore"
+            ]
+          },
+          "INSULTS": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              }
+            },
+            "required": [
+              "confidenceScore"
+            ]
+          }
+        },
+        "required": [
+          "VIOLENCE",
+          "HATE",
+          "SEXUAL",
+          "MISCONDUCT",
+          "INSULTS"
+        ]
+      }
+    },
+    "BedrockGuardrails::PromptAttack": {
+      "argumentTypes": [
+        {
+          "paramType": "set",
+          "items": {
+            "paramType": "string"
+          }
+        },
+        {
+          "paramType": "set",
+          "items": {
+            "paramType": "string"
+          }
+        }
+      ],
+      "availableMethods": {
+        "maxConfidenceScore": {"outputType": {"paramType": "decimal"}},
+        "minConfidenceScore": {"outputType": {"paramType": "decimal"}},
+        "count": {"outputType": {"paramType": "integer"}},
+        "categories": {"outputType": {"paramType": "set", "items": {"paramType": "string"}}}
+      },
+      "outputType": {
+        "paramType": "record",
+        "fields": {
+          "JAILBREAK": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              }
+            },
+            "required": [
+              "confidenceScore"
+            ]
+          },
+          "PROMPT_INJECTION": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              }
+            },
+            "required": [
+              "confidenceScore"
+            ]
+          },
+          "PROMPT_LEAKAGE": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              }
+            },
+            "required": [
+              "confidenceScore"
+            ]
+          }
+        },
+        "required": [
+          "JAILBREAK",
+          "PROMPT_INJECTION",
+          "PROMPT_LEAKAGE"
+        ]
+      }
+    },
+    "BedrockGuardrails::SensitiveInformation": {
+      "argumentTypes": [
+        {
+          "paramType": "set",
+          "items": {
+            "paramType": "string"
+          }
+        },
+        {
+          "paramType": "set",
+          "items": {
+            "paramType": "string"
+          }
+        }
+      ],
+      "availableMethods": {
+        "maxConfidenceScore": {"outputType": {"paramType": "decimal"}},
+        "minConfidenceScore": {"outputType": {"paramType": "decimal"}},
+        "count": {"outputType": {"paramType": "integer"}},
+        "categories": {"outputType": {"paramType": "set", "items": {"paramType": "string"}}}
+      },
+      "outputType": {
+        "paramType": "record",
+        "fields": {
+          "ADDRESS": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "AGE": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "CREDIT_DEBIT_CARD_NUMBER": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "EMAIL": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "NAME": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "PHONE": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "US_SOCIAL_SECURITY_NUMBER": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "IP_ADDRESS": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "URL": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "PASSWORD": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "USERNAME": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "DRIVER_ID": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "PIN": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "AWS_ACCESS_KEY": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "AWS_SECRET_KEY": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "LICENSE_PLATE": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "MAC_ADDRESS": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "SWIFT_CODE": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "CREDIT_DEBIT_CARD_CVV": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "CREDIT_DEBIT_CARD_EXPIRY": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "INTERNATIONAL_BANK_ACCOUNT_NUMBER": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "US_BANK_ACCOUNT_NUMBER": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "US_BANK_ROUTING_NUMBER": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "US_INDIVIDUAL_TAX_IDENTIFICATION_NUMBER": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "US_PASSPORT_NUMBER": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "VEHICLE_IDENTIFICATION_NUMBER": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "UK_NATIONAL_HEALTH_SERVICE_NUMBER": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "UK_NATIONAL_INSURANCE_NUMBER": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "UK_UNIQUE_TAXPAYER_REFERENCE_NUMBER": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "CA_HEALTH_NUMBER": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          },
+          "CA_SOCIAL_INSURANCE_NUMBER": {
+            "paramType": "record",
+            "fields": {
+              "confidenceScore": {
+                "paramType": "decimal"
+              },
+              "count": {
+                "paramType": "integer"
+              }
+            },
+            "required": [
+              "confidenceScore",
+              "count"
+            ]
+          }
+        },
+        "required": [
+          "ADDRESS",
+          "AGE",
+          "CREDIT_DEBIT_CARD_NUMBER",
+          "EMAIL",
+          "NAME",
+          "PHONE",
+          "US_SOCIAL_SECURITY_NUMBER",
+          "IP_ADDRESS",
+          "URL",
+          "PASSWORD",
+          "USERNAME",
+          "DRIVER_ID",
+          "PIN",
+          "AWS_ACCESS_KEY",
+          "AWS_SECRET_KEY",
+          "LICENSE_PLATE",
+          "MAC_ADDRESS",
+          "SWIFT_CODE",
+          "CREDIT_DEBIT_CARD_CVV",
+          "CREDIT_DEBIT_CARD_EXPIRY",
+          "INTERNATIONAL_BANK_ACCOUNT_NUMBER",
+          "US_BANK_ACCOUNT_NUMBER",
+          "US_BANK_ROUTING_NUMBER",
+          "US_INDIVIDUAL_TAX_IDENTIFICATION_NUMBER",
+          "US_PASSPORT_NUMBER",
+          "VEHICLE_IDENTIFICATION_NUMBER",
+          "UK_NATIONAL_HEALTH_SERVICE_NUMBER",
+          "UK_NATIONAL_INSURANCE_NUMBER",
+          "UK_UNIQUE_TAXPAYER_REFERENCE_NUMBER",
+          "CA_HEALTH_NUMBER",
+          "CA_SOCIAL_INSURANCE_NUMBER"
+        ]
+      }
+    }
+  }
+}
