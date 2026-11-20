@@ -66,7 +66,11 @@ Required sections, in order:
    passes; DNS/traffic cutover last.
 
 ## Step 1a: MIGRATION_GUIDE.md — Database migration subsection
-Write this subsection only when `aws-design.json` contains a relational database. Read
+Write this subsection only when `aws-design.json` contains a relational database. When the
+estate holds only other engines (Cosmos DB, Azure Cache for Redis, ...), write just the
+**Not covered by this runbook** note below, under a Database migration heading, and no
+branch: `scripts/02-migrate-data.sh` prints `ENGINE_NOT_SUPPORTED` for them and cites that
+note. For a relational database, read
 `data.db_cutover` from `preferences.json`. Step 3b of the Decision gate has already
 confirmed it (the Generate precondition refuses a row still flagged
 `deferred_to_generate`), so write exactly the branch the user chose and no other. Do not
@@ -99,9 +103,11 @@ Use when `data.db_cutover` is `dump_restore`. Number the steps:
    stays in force through verification.
 3. **Dump.** PostgreSQL: a custom-format `pg_dump` of each database, taken against the
    Flexible Server fully qualified host name over TLS. MySQL: `mysqldump` with
-   `--single-transaction`. The script dumps one database: it does not dump roles, grants or
-   extensions. Create the roles the application needs, and install the extensions in use, on
-   the target before the restore. Store dump files in an encrypted location and delete them after cutover.
+   `--single-transaction`. The script dumps one database: it does not dump roles or grants. A PostgreSQL dump
+   does include `CREATE EXTENSION` for each non-system extension, so an extension the target
+   engine version cannot create stops the restore. Create the roles the application needs on
+   the target before the restore, and confirm before the window that every extension in use
+   is available on the target engine version; remove or replace one that is not. Store dump files in an encrypted location and delete them after cutover.
 4. **Restore.** Create the target database on the generated Amazon RDS or Aurora
    instance, then restore with `pg_restore` (PostgreSQL) or the `mysql` client (MySQL).
    Confirm the target engine major version is compatible and every extension in use is
@@ -217,7 +223,9 @@ read-only checks.
   write credentials into the guide. Also list the optional `DUMP_DIR_BASE` (default
   `${TMPDIR:-/tmp}`) and tell the operator to check its free space against the database size
   before `--execute`. PostgreSQL: the script uses `pg_dump` and `pg_restore` with `--no-owner
-  --no-acl`, so the target roles and extensions must exist first; `PGSSLMODE` defaults to
+  --no-acl`, so the target roles must exist first; the dump carries `CREATE EXTENSION` for each
+  non-system extension and the restore stops on one the target engine version cannot create, so
+  confirm every extension in use is available there before the window; `PGSSLMODE` defaults to
   `require` (encrypts without verifying the server certificate), so use `verify-full` for
   production. MySQL: confirm in current MySQL and Azure documentation which `mysqldump`
   options a managed-server dump needs (view and routine `DEFINER` clauses, GTID settings), and

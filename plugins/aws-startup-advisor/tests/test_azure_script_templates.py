@@ -797,7 +797,7 @@ def test_cutover_and_region_are_read_from_value_never_default():
     assert "| `data.db_cutover.value` | Engine | Emit |" in text
     assert "`design_constraints.target_region.value`" in text
     assert "A `null` or absent `value` means the choice is unconfirmed (`CUTOVER_UNCONFIRMED`)" in text
-    assert "| `null`, absent, or any other value | any | HOLD `CUTOVER_UNCONFIRMED` |" in text
+    assert "| `null`, absent, or any other value | PostgreSQL or MySQL Flexible Server | HOLD `CUTOVER_UNCONFIRMED` |" in text
     assert "azure-resource-inventory.json" not in text
 
 
@@ -810,6 +810,35 @@ def test_unsupported_engine_reaches_the_assembler_as_a_warning_not_a_file():
     assert "The scripts fragment reports each database that `scripts/02-migrate-data.sh` does not handle" in assemble
     assert 'as a `warnings[]` entry `{ code: "ENGINE_NOT_SUPPORTED", subject, detail }`' in assemble
     assert "no password value or literal credential" in assemble
+
+
+def test_a_database_only_of_an_unsupported_engine_gets_engine_not_supported_whatever_the_value():
+    """A Cosmos DB-only or Redis-only design has data.db_cutover N/A (null): no Decision gate row can
+    clear CUTOVER_UNCONFIRMED, so the engine rule must win, warn the assembler and have a guide note."""
+    text = fragment_text()
+    unsupported = "| any value, `null` and absent included | any other engine (Azure SQL, Cosmos DB, Redis, ...) | HOLD `ENGINE_NOT_SUPPORTED` |"
+    assert unsupported in text
+    # The engine rule comes before every cutover-value row, so it cannot be shadowed by CUTOVER_UNCONFIRMED.
+    assert text.index(unsupported) < text.index("| `dump_restore` | PostgreSQL Flexible Server |")
+    assert text.index(unsupported) < text.index("| `null`, absent, or any other value | PostgreSQL or MySQL Flexible Server | HOLD `CUTOVER_UNCONFIRMED` |")
+    assert "| `dms` | any |" not in text
+    assert "`null` included" in text and "never `CUTOVER_UNCONFIRMED`" in text
+    assert "including the database a HOLD names and including an estate whose only databases are unsupported" in text
+    docs = " ".join((SOURCE.parent / "generate-artifacts-docs.md").read_text(encoding="utf-8").split())
+    assert "write just the **Not covered by this runbook** note below" in docs
+    assert "`scripts/02-migrate-data.sh` prints `ENGINE_NOT_SUPPORTED` for them and cites that note" in docs
+
+
+def test_postgres_copy_guidance_says_the_dump_includes_extensions_and_the_restore_stops_on_one_it_cannot_create():
+    text = fragment_text()
+    assert "pg_restore --no-password --exit-on-error" in text
+    assert "does include `CREATE EXTENSION` for each of the database's non-system" in text
+    assert "`pg_restore --exit-on-error` stops at one the target engine version cannot create" in text
+    assert "install the extensions" not in text and "dump roles, grants or extensions" not in text
+    docs = " ".join((SOURCE.parent / "generate-artifacts-docs.md").read_text(encoding="utf-8").split())
+    assert "A PostgreSQL dump does include `CREATE EXTENSION` for each non-system extension" in docs
+    assert "confirm every extension in use is available there before the window" in docs
+    assert "target roles and extensions must exist first" not in docs and "install the extensions in use" not in docs
 
 
 def test_both_engines_in_one_estate_emit_the_first_and_report_the_second():
@@ -845,7 +874,7 @@ def test_terraform_ordering_is_stated_for_secrets_images_and_the_guide():
     assert "writes a new version of that existing secret" in text
     assert "lifecycle { ignore_changes = [secret_string] }" in text
     assert "creates a repository only when Terraform did not already create it" in text
-    assert "It does not dump roles, grants or extensions" in text
+    assert "It does not dump roles or grants (`--no-owner --no-acl`)" in text
     infra = " ".join((SOURCE.parent / "generate-artifacts-infra.md").read_text(encoding="utf-8").split())
     assert "lifecycle { ignore_changes = [secret_string] }" in infra
     assert "**`secret_names`** output" in infra
@@ -856,7 +885,7 @@ def test_terraform_ordering_is_stated_for_secrets_images_and_the_guide():
     assert "`DUMP_DIR_BASE`" in step and "free space against the database size" in step
     assert "--no-owner --no-acl" in step and "verify-full" in step
     assert "confirm in current MySQL and Azure documentation" in step
-    assert "does not dump roles, grants or extensions" in docs
+    assert "does not dump roles or grants" in docs
     assert "Inputs: `AWS_REGION` and, for the sections the script contains, `ECS_CLUSTER_NAME`, `EKS_CLUSTER_NAME` and `S3_BUCKET`, all from `terraform output`. It takes no argument." in step
 
 

@@ -191,18 +191,22 @@ engine of the database being migrated:
 
 | `data.db_cutover.value` | Engine | Emit |
 | ----------------- | ------ | ---- |
+| any value, `null` and absent included | any other engine (Azure SQL, Cosmos DB, Redis, ...) | HOLD `ENGINE_NOT_SUPPORTED` |
 | `dump_restore` | PostgreSQL Flexible Server | Offline copy, PostgreSQL blocks |
 | `dump_restore` | MySQL Flexible Server | Offline copy, MySQL blocks |
-| `dms` | any | HOLD `DMS_NOT_IMPLEMENTED` |
-| `dump_restore` | any other engine (Azure SQL, Cosmos DB, Redis, ...) | HOLD `ENGINE_NOT_SUPPORTED` |
-| `null`, absent, or any other value | any | HOLD `CUTOVER_UNCONFIRMED` |
+| `dms` | PostgreSQL or MySQL Flexible Server | HOLD `DMS_NOT_IMPLEMENTED` |
+| `null`, absent, or any other value | PostgreSQL or MySQL Flexible Server | HOLD `CUTOVER_UNCONFIRMED` |
 
-An unsupported engine is a HOLD whatever `data.db_cutover.value` says, because the runbook's
-choice does not describe a tested path for it. The script handles one database per run:
-the operator sets the host, database and credentials per run. When the estate also holds
-databases this script does not handle, emit the supported branch and report each unsupported
+An unsupported engine is a HOLD whatever `data.db_cutover.value` says, `null` included,
+because the runbook's choice does not describe a tested path for it. Clarify marks
+`data.db_cutover` N/A when the estate holds no relational database, so a Cosmos DB-only or
+Redis-only design has a `null` value that no Decision gate row can clear: it gets
+`ENGINE_NOT_SUPPORTED`, never `CUTOVER_UNCONFIRMED`. The script handles one database per run:
+the operator sets the host, database and credentials per run. Report every unsupported
 database to the assembler as a `warnings[]` entry `{ "code": "ENGINE_NOT_SUPPORTED",
-"subject": "<azure_id>", "detail": "<engine> is not handled by scripts/02-migrate-data.sh" }`.
+"subject": "<azure_id>", "detail": "<engine> is not handled by scripts/02-migrate-data.sh" }`,
+including the database a HOLD names and including an estate whose only databases are
+unsupported. When the estate also holds a supported database, emit the supported branch.
 Do not write `generation-warnings.json`: only the assembler creates it. Never apply the
 PostgreSQL or MySQL blocks to another engine.
 
@@ -484,9 +488,12 @@ else
 fi
 ```
 
-The copy dumps one database. It does not dump roles, grants or extensions: the operator
-creates the roles the application needs and installs the extensions in use on the target
-before the restore (the guide says so).
+The copy dumps one database. It does not dump roles or grants (`--no-owner --no-acl`). The
+PostgreSQL dump does include `CREATE EXTENSION` for each of the database's non-system
+extensions (`pg_dump` without `-e` dumps them), and `pg_restore --exit-on-error` stops at one
+the target engine version cannot create. The operator creates the roles the application needs
+and confirms before the window that every extension in use is available on the target engine
+version, removing or replacing one that is not (the guide says so).
 
 A single full copy is not change data capture and not a delta sync. Never emit a
 `--final-sync`-style flag, a lag gate or a claim that a second copy applies only changes.
