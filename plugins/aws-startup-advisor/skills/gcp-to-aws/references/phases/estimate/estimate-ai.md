@@ -2,6 +2,12 @@
 
 > Loaded by estimate.md when aws-design-ai.json exists.
 
+Before pricing, follow `references/vendored/estimate/cost-export-inputs.md` for
+`estimation-ai.json`. Retain the input snapshot and context for the complete
+selected Bedrock aggregate, including all contributing models and usage.
+Include `export_inputs` when evidence is available; do not infer missing usage
+or upfront values to complete it.
+
 **Execute ALL steps in order. Do not skip or optimize.**
 
 ## Pricing Mode
@@ -329,6 +335,7 @@ Write `estimation-ai.json` to `$MIGRATION_DIR/`.
 | `optimization_opportunities`    | array  | `opportunity`, `type` (**required** — one of `model_tiering`, `prompt_caching`, `batch_api`, `intelligent_prompt_routing`, `provisioned_throughput`, `input_token_reduction`, `multi_model_routing`), `target_services` (always `["Bedrock"]`), `commitment` (`"none"` for all except `provisioned_throughput`, which uses the exact vocabulary from `references/shared/ri-sp-eligibility.md` — never "1-year" or "3-year"), `potential_savings_monthly`, `potential_savings_percent` (**required** — populate from Part 6's table even when `potential_savings_monthly` is null, so the merged report table is never blank), `available` (`"day_1"`, `"after_2_weeks_production_traffic"`, or `"after_sustained_traffic_baseline"` — see Part 6), `implementation_effort`, `description` |
 | `optimized_projection`          | object | `monthly_with_optimizations`, `vs_current`, `note`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `recommendation`                | object | `path`, `path_label`, `migrate_if`, `stay_if`, `confidence`, `rationale` (see Part 7)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `export_inputs`                 | object | Optional pre-pricing snapshot and selected aggregate context from `references/vendored/estimate/cost-export-inputs.md`; omit when unavailable                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 All cost values are numbers, not strings. Output must be valid JSON.
 
