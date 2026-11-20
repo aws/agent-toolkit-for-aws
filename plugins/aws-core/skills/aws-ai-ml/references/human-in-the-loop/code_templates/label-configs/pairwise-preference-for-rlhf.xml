@@ -1,0 +1,16 @@
+<View>
+  <Text name="prompt" value="$prompt"/>
+  <Header value="Which response is better?"/>
+  <View style="display: flex; gap: 20px;">
+    <View style="flex: 1; background: #f9f9f9; padding: 10px; border-radius: 5px;">
+      <Header value="Response A"/>
+      <Text name="answer1" value="$answer1"/>
+    </View>
+    <View style="flex: 1; background: #f9f9f9; padding: 10px; border-radius: 5px;">
+      <Header value="Response B"/>
+      <Text name="answer2" value="$answer2"/>
+    </View>
+  </View>
+  <Pairwise name="comparison" toName="answer1,answer2"/>
+  <TextArea name="rationale" toName="answer1" rows="2" placeholder="Why did you prefer this one?"/>
+</View>

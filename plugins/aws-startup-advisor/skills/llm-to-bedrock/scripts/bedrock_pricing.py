@@ -1,8 +1,9 @@
 # bedrock_pricing.py
 """Look up Amazon Bedrock on-demand token prices.
 
-Primary sources are the curated STATIC_FALLBACK table and the region/profile-aware
-Opus 5.5 rates (checked against AWS pricing). The live AWS Pricing API is a secondary source
+Primary sources are the shared token-rate table (skills/shared/ai/bedrock-pricing.json,
+vendored at references/vendored/ai/bedrock-pricing.json and exposed here as STATIC_FALLBACK)
+and the region/profile-aware Opus 5.5 rates (checked against AWS pricing). The live AWS Pricing API is a secondary source
 for models not in the table — note its 'model' attribute holds display names
 ("Claude 3 Haiku"), NOT model IDs, so we query with a display name derived
 from the model id; this is best-effort and may miss.
@@ -12,6 +13,26 @@ Prints JSON {model_id: {input_per_1k_usd, output_per_1k_usd, available, note}}.
 Never raises on lookup failure — emits an 'available: false' banner instead.
 """
 import argparse, json, re, sys
+from pathlib import Path
+
+
+def _load_model_catalog():
+    """Import the sibling model_catalog.py, also when this file is loaded by path from
+    another skill's tests (its directory is then not on sys.path)."""
+    import importlib.util
+    import sys as _sys
+    from pathlib import Path as _Path
+    if "model_catalog" in _sys.modules:
+        return _sys.modules["model_catalog"]
+    path = _Path(__file__).resolve().with_name("model_catalog.py")
+    spec = importlib.util.spec_from_file_location("model_catalog", path)
+    module = importlib.util.module_from_spec(spec)
+    _sys.modules["model_catalog"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+model_catalog = _load_model_catalog()
 
 
 def parse_price_dimensions(price_item: dict) -> dict:
@@ -33,109 +54,57 @@ def parse_price_dimensions(price_item: dict) -> dict:
     return {"input_per_1k_usd": inp, "output_per_1k_usd": out}
 
 
-# Static fallback table: per-1K-token USD rates from public pricing pages.
-# Used when the PriceList API doesn't return data (e.g. new cross-region inference profile IDs).
-# Source: https://aws.amazon.com/bedrock/pricing/, cross-checked row-by-row against
-# skills/shared/ai/bedrock-pricing-cache.md (its per-1M rates / 1000).
-# Every row below was re-verified against that cache, the Bedrock model cards
-# (Geo/Global inference ID tables), and the AWS Pricing MCP server on 2026-10-05.
-# IMPORTANT: for the common case where a cross-Region inference profile is used for on-demand
-# throughput (Haiku 4.5, Sonnet 5, Opus 4.8, Sonnet 4.6 — see
-# bedrock-inference-profile-model-id.md; note Sonnet 5/Sonnet 4.6 DO support true in-Region
-# invocation from eu-west-2/London specifically, unlike Haiku 4.5/Opus 4.8 which never do),
-# every Geo-prefixed ID (`us.`, `eu.`, etc.)
-# is ~10% MORE expensive than the Global-prefixed/bare rate — Geo cross-Region
-# inference carries a price premium over Global cross-Region inference (AWS docs:
-# global saves "approximately 10%... compared to geographic cross-Region inference").
-# This premium is uniform across Geo regions (verified via the AWS Pricing MCP server:
-# eu-west-1's Regional-CRIS Sonnet 4.6 input rate is $3.30/1M, identical to us-east-1's),
-# so every Geo prefix the design/GDPR flows can emit (us., eu., and any future apac./etc.
-# profile) must carry the SAME premium rate as `us.` — do not add a Geo prefix without
-# also pricing it here, and do not assume an unlisted Geo prefix falls back to Global.
-# The bare id and the explicit `global.<id>` entry both carry the Global/base rate (the
-# bare id for display-name lookups and legacy callers; `global.<id>` because it is also
-# a valid, separately-priced invocable form). The `us.<id>`/`eu.<id>` rows carry the
-# actual Geo premium a caller in that region pays.
-# Re-check this table against that cache (and the public pricing page) whenever either moves.
-STATIC_FALLBACK = {
-    "anthropic.claude-haiku-4-5-20251001-v1:0":        {"input_per_1k_usd": 0.001, "output_per_1k_usd": 0.005},
-    "us.anthropic.claude-haiku-4-5-20251001-v1:0":     {"input_per_1k_usd": 0.0011, "output_per_1k_usd": 0.0055},
-    "eu.anthropic.claude-haiku-4-5-20251001-v1:0":     {"input_per_1k_usd": 0.0011, "output_per_1k_usd": 0.0055},
-    "global.anthropic.claude-haiku-4-5-20251001-v1:0": {"input_per_1k_usd": 0.001, "output_per_1k_usd": 0.005},
-    # Recommend default
-    "anthropic.claude-sonnet-5":                       {"input_per_1k_usd": 0.002, "output_per_1k_usd": 0.010},
-    "us.anthropic.claude-sonnet-5":                    {"input_per_1k_usd": 0.0022, "output_per_1k_usd": 0.011},
-    "eu.anthropic.claude-sonnet-5":                    {"input_per_1k_usd": 0.0022, "output_per_1k_usd": 0.011},
-    "global.anthropic.claude-sonnet-5":                {"input_per_1k_usd": 0.002, "output_per_1k_usd": 0.010},
-    # Still Active — existing workloads / fallbacks
-    "anthropic.claude-sonnet-4-6":                     {"input_per_1k_usd": 0.003, "output_per_1k_usd": 0.015},
-    "us.anthropic.claude-sonnet-4-6":                  {"input_per_1k_usd": 0.0033, "output_per_1k_usd": 0.0165},
-    "eu.anthropic.claude-sonnet-4-6":                  {"input_per_1k_usd": 0.0033, "output_per_1k_usd": 0.0165},
-    "global.anthropic.claude-sonnet-4-6":               {"input_per_1k_usd": 0.003, "output_per_1k_usd": 0.015},
+# Token rates come from the shared pricing table, skills/shared/ai/bedrock-pricing.json,
+# vendored into this skill at references/vendored/ai/bedrock-pricing.json. Edit the shared
+# file and run tools/sync-vendored.py; never add rates here. The JSON is per 1M tokens, per
+# model and inference-profile prefix. STATIC_FALLBACK is the per-1K view this module has
+# always exposed, keyed by the exact invocable id (`<prefix>.<bare id>`, or the bare id for
+# the Global/base rate). A Geo prefix carries its own verified rate (about 10% above
+# Global); a prefix the JSON does not price is unverified, and lookup() returns unavailable
+# for it instead of borrowing another prefix's or another model's rate.
+PRICING_PATH = (Path(__file__).resolve().parent.parent
+                / "references" / "vendored" / "ai" / "bedrock-pricing.json")
+_PROFILE_PREFIXES = model_catalog.profile_prefixes()
 
-    # Opus 4.8 has no dated foundation-model ID on the model card — suffix-less only.
-    "anthropic.claude-opus-4-8":                       {"input_per_1k_usd": 0.005, "output_per_1k_usd": 0.025},
-    "us.anthropic.claude-opus-4-8":                    {"input_per_1k_usd": 0.0055, "output_per_1k_usd": 0.0275},
-    "eu.anthropic.claude-opus-4-8":                    {"input_per_1k_usd": 0.0055, "output_per_1k_usd": 0.0275},
-    "global.anthropic.claude-opus-4-8":                {"input_per_1k_usd": 0.005, "output_per_1k_usd": 0.025},
-    "amazon.nova-micro-v1:0":                       {"input_per_1k_usd": 0.000035, "output_per_1k_usd": 0.00014},
-    "amazon.nova-lite-v1:0":                        {"input_per_1k_usd": 0.00006, "output_per_1k_usd": 0.00024},
-    "amazon.nova-pro-v1:0":                         {"input_per_1k_usd": 0.0008, "output_per_1k_usd": 0.0032},
-    # OpenAI proprietary GPT models, SHORT-CONTEXT (272K) tier. Read off the model
-    # cards 2026-08-21. The PriceList API carries no GPT-5.x/GPT-6 rows, so this
-    # table is the ONLY source. Pricing has an inference-option dimension:
-    #   - bare mantle ids and Geo CRIS (us./in. prefixed): 1.10x OpenAI's standard
-    #     list price (parity with OpenAI's *data residency* tier)
-    #   - Global CRIS (global. prefixed, GPT-5.6 only): OpenAI's standard list
-    #     price — cost PARITY, for workloads with no residency constraint
-    # The GPT-5.6 family also has a LONG-CONTEXT (1M) tier at 2.0x input / 1.5x
-    # output per option, NOT represented here — a >272K workload priced from this
-    # table is understated. GPT-5.5 and GPT-5.4 (model cards read 2026-11-06) also
-    # have a long-context (>272K) tier (5.5: 11.00/49.50; 5.4: 5.50/24.75 per 1M),
-    # likewise NOT represented here. Their cards publish the In-Region option only;
-    # the us./global. CRIS ids they list on bedrock-runtime carry no separate price
-    # row, so no prefixed GPT-5.5/5.4 entries are added below until one is published.
-    "openai.gpt-5.6-sol":                           {"input_per_1k_usd": 0.0044, "output_per_1k_usd": 0.022},
-    "openai.gpt-5.6-terra":                         {"input_per_1k_usd": 0.0022, "output_per_1k_usd": 0.0132},
-    "openai.gpt-5.6-luna":                          {"input_per_1k_usd": 0.00022, "output_per_1k_usd": 0.00132},
-    "openai.gpt-5.5":                               {"input_per_1k_usd": 0.0055, "output_per_1k_usd": 0.033},
-    "openai.gpt-5.4":                               {"input_per_1k_usd": 0.00275, "output_per_1k_usd": 0.0165},
-    # GPT-5.6 CRIS profile ids (bedrock-runtime). Geo = data-residency tier
-    # (same as in-region); Global = standard-price parity.
-    "us.openai.gpt-5.6-sol":                        {"input_per_1k_usd": 0.0044, "output_per_1k_usd": 0.022},
-    "us.openai.gpt-5.6-terra":                      {"input_per_1k_usd": 0.0022, "output_per_1k_usd": 0.0132},
-    "us.openai.gpt-5.6-luna":                       {"input_per_1k_usd": 0.00022, "output_per_1k_usd": 0.00132},
-    "in.openai.gpt-5.6-terra":                      {"input_per_1k_usd": 0.0022, "output_per_1k_usd": 0.0132},
-    "in.openai.gpt-5.6-luna":                       {"input_per_1k_usd": 0.00022, "output_per_1k_usd": 0.00132},
-    "global.openai.gpt-5.6-sol":                    {"input_per_1k_usd": 0.004, "output_per_1k_usd": 0.020},
-    "global.openai.gpt-5.6-terra":                  {"input_per_1k_usd": 0.002, "output_per_1k_usd": 0.012},
-    "global.openai.gpt-5.6-luna":                   {"input_per_1k_usd": 0.0002, "output_per_1k_usd": 0.0012},
-    # GPT-6 family (Astra, Sol, Luna, 6.1 Sol), SHORT-CONTEXT (272K) tier. Read off
-    # skills/azure-to-aws/references/shared/openai-on-bedrock.md's GPT-6 short-context
-    # table (verified 2026-10-10). Same inference-option shape as GPT-5.6: bare mantle
-    # id and Geo CRIS (us. prefixed) carry the 1.10x data-residency premium; Global
-    # CRIS (global. prefixed) is OpenAI's standard list price — cost parity.
-    "openai.gpt-6-astra":                           {"input_per_1k_usd": 0.011, "output_per_1k_usd": 0.055},
-    "openai.gpt-6-sol":                             {"input_per_1k_usd": 0.0022, "output_per_1k_usd": 0.011},
-    "openai.gpt-6-luna":                             {"input_per_1k_usd": 0.00011, "output_per_1k_usd": 0.00055},
-    "openai.gpt-6.1-sol":                            {"input_per_1k_usd": 0.0022, "output_per_1k_usd": 0.011},
-    # GPT-6 CRIS profile ids (bedrock-runtime). Geo = data-residency tier (1.10x);
-    # Global = standard-price parity. No `in.`-prefixed form is published for any
-    # GPT-6 model (per openai-on-bedrock.md's regional-availability table) — do not
-    # add one without re-verifying.
-    "us.openai.gpt-6-astra":                        {"input_per_1k_usd": 0.011, "output_per_1k_usd": 0.055},
-    "us.openai.gpt-6-sol":                          {"input_per_1k_usd": 0.0022, "output_per_1k_usd": 0.011},
-    "us.openai.gpt-6-luna":                         {"input_per_1k_usd": 0.00011, "output_per_1k_usd": 0.00055},
-    "us.openai.gpt-6.1-sol":                        {"input_per_1k_usd": 0.0022, "output_per_1k_usd": 0.011},
-    "global.openai.gpt-6-astra":                    {"input_per_1k_usd": 0.010, "output_per_1k_usd": 0.050},
-    "global.openai.gpt-6-sol":                      {"input_per_1k_usd": 0.0020, "output_per_1k_usd": 0.010},
-    "global.openai.gpt-6-luna":                     {"input_per_1k_usd": 0.00010, "output_per_1k_usd": 0.00050},
-    "global.openai.gpt-6.1-sol":                    {"input_per_1k_usd": 0.0020, "output_per_1k_usd": 0.010},
-    # GPT-6.1 Terra Standard, <=272K input tokens; model card verified 2026-11-03.
-    "openai.gpt-6.1-terra":                         {"input_per_1k_usd": 0.0011, "output_per_1k_usd": 0.0055},
-    "us.openai.gpt-6.1-terra":                      {"input_per_1k_usd": 0.0011, "output_per_1k_usd": 0.0055},
-    "global.openai.gpt-6.1-terra":                  {"input_per_1k_usd": 0.0010, "output_per_1k_usd": 0.0050},
-}
+
+def _per_1k(rate_per_1m: float) -> float:
+    return round(rate_per_1m / 1000, 12)
+
+
+def _load_pricing(path=PRICING_PATH):
+    """Read the shared pricing JSON. Returns (static_table, region_table, model_of, models):
+    static_table maps an invocable id to its per-1K entry; region_table maps
+    (region, invocable id) to a Region-specific entry; model_of maps an invocable id back to
+    its bare model id; models is the JSON `models` object."""
+    doc = json.loads(Path(path).read_text())
+    table, regional, model_of = {}, {}, {}
+
+    def entry(rate, lc_rate=None, threshold=None):
+        out = {"input_per_1k_usd": _per_1k(rate["input"]),
+               "output_per_1k_usd": _per_1k(rate["output"])}
+        if lc_rate is not None:
+            out["long_context_input_per_1k_usd"] = _per_1k(lc_rate["input"])
+            out["long_context_output_per_1k_usd"] = _per_1k(lc_rate["output"])
+            out["long_context_threshold_tokens"] = threshold
+        return out
+
+    # `cache_read` rates in the JSON are reference data for the estimate docs; this module
+    # prices input and output tokens only, as it always has.
+    for bare, model in doc["models"].items():
+        lc = model.get("long_context")
+        for prefix, rate in model["rates"].items():
+            mid = bare if prefix == "bare" else f"{prefix}.{bare}"
+            lc_rate = lc["rates"].get(prefix) if lc else None
+            table[mid] = entry(rate, lc_rate, lc["threshold_tokens"] if lc_rate else None)
+            model_of[mid] = bare
+        for region, rates in model.get("region_rates", {}).items():
+            for prefix, rate in rates.items():
+                mid = bare if prefix == "bare" else f"{prefix}.{bare}"
+                regional[(region, mid)] = entry(rate)
+    return table, regional, model_of, doc["models"]
+
+
+STATIC_FALLBACK, REGION_RATES, _MODEL_OF, PRICED_MODELS = _load_pricing()
 
 
 def is_mantle_gpt(model_id: str) -> bool:
@@ -157,60 +126,18 @@ def unavailable(note: str) -> dict:
 # AWS Price List API, AmazonBedrockFoundationModels, verified 2026-09-24.
 # servicename: Claude Opus 5.5 (Amazon Bedrock Edition). Prices are per 1K.
 # Runtime uses Geo/Global profiles, or the bare ID in eu-west-2 (verified 2026-10-03).
-_OPUS55_ID = "anthropic.claude-opus-5-5"
-_OPUS55_PROFILE_REGIONS = {'us': ['us-east-1',
-        'us-east-2',
-        'us-west-1',
-        'us-west-2',
-        'ca-central-1',
-        'ca-west-1',
-        'us-gov-east-1',
-        'us-gov-west-1'],
- 'eu': ['eu-central-1',
-        'eu-central-2',
-        'eu-north-1',
-        'eu-south-1',
-        'eu-south-2',
-        'eu-west-1',
-        'eu-west-2',
-        'eu-west-3'],
- 'au': ['ap-southeast-2', 'ap-southeast-4'],
- 'jp': ['ap-northeast-1', 'ap-northeast-3'],
- 'global': ['af-south-1',
-            'ap-east-2',
-            'ap-northeast-1',
-            'ap-northeast-2',
-            'ap-northeast-3',
-            'ap-south-1',
-            'ap-south-2',
-            'ap-southeast-1',
-            'ap-southeast-2',
-            'ap-southeast-3',
-            'ap-southeast-4',
-            'ap-southeast-5',
-            'ap-southeast-6',
-            'ap-southeast-7',
-            'ca-central-1',
-            'ca-west-1',
-            'eu-central-1',
-            'eu-central-2',
-            'eu-north-1',
-            'eu-south-1',
-            'eu-south-2',
-            'eu-west-1',
-            'eu-west-2',
-            'eu-west-3',
-            'il-central-1',
-            'me-central-1',
-            'me-south-1',
-            'mx-central-1',
-            'sa-east-1',
-            'us-east-1',
-            'us-east-2',
-            'us-west-1',
-            'us-west-2']}
-_OPUS55_MANTLE_REGIONS = {"us-east-1", "ap-southeast-4", "us-gov-west-1"}
-_OPUS55_RUNTIME_IN_REGION_REGIONS = {"eu-west-2"}
+_OPUS55_ID = model_catalog.OPUS_55_ID
+# The version component that marks an Opus 5.5 id in any form (`anthropic.claude-opus-5-5`,
+# `us.anthropic.claude-opus-5-5`, ...). It is deliberately NOT the shorter `claude-opus-5`:
+# Opus 5 (`anthropic.claude-opus-5`) is a different, Active model with its own rates, so it
+# must not be routed to the Opus 5.5 table. A malformed 5.5-like id (`...-opus-5-55`) still
+# contains this marker and therefore still fails closed in `_opus55_pricing`.
+_OPUS55_MARKER = _OPUS55_ID.partition(".")[2]
+# Opus 5.5's inference-profile, Mantle and runtime in-region Regions come from the shared model
+# catalog (references/vendored/ai/models/); only its rates are restated in _opus55_pricing.
+_OPUS55_PROFILE_REGIONS = model_catalog.opus_55_profile_regions()
+_OPUS55_MANTLE_REGIONS = model_catalog.opus_55_mantle_regions()
+_OPUS55_RUNTIME_IN_REGION_REGIONS = model_catalog.opus_55_runtime_in_region_regions()
 
 
 def _opus55_pricing(region: str, model_id: str) -> dict:
@@ -235,37 +162,89 @@ def _opus55_pricing(region: str, model_id: str) -> dict:
                     f"Standard tier, {region}, {prefix} inference; no Batch"}
 
 
-def _static_fallback(model_id: str) -> dict | None:
-    """Try the static fallback table. Returns a result dict or None."""
-    if "claude-opus-5" in model_id:
+# A snapshot suffix is the part of a model id that does not change the priced model: a
+# date stamp and/or an API version suffix (`-20251001`, `-v1:0`). A further VERSION
+# component is not one: `anthropic.claude-sonnet-5-5` and `anthropic.claude-sonnet-5` are
+# different models with independently published rates.
+_SNAPSHOT_SUFFIX = re.compile(r"(-\d{8})?(-v\d+(:\d+)?)?")
+
+# The literal the Estimate phases already consume for an unresolved context tier
+# (gcp-to-aws and azure-to-aws references/phases/estimate/estimate-ai.md).
+_APPROXIMATE_TIER = "approximate — request-size distribution unknown"
+
+
+def _is_snapshot_of(model_id: str, key: str) -> bool:
+    """Pure: True when `model_id` is `key` plus only a snapshot suffix."""
+    if not model_id.startswith(key):
+        return False
+    rest = model_id[len(key):]
+    return bool(rest) and _SNAPSHOT_SUFFIX.fullmatch(rest) is not None
+
+
+def _priced(entry: dict, note: str) -> dict:
+    """An available result. An entry with a long-context tier also carries
+    `pricing_tier`, so a caller cannot quote the lower tier as the only rate when the
+    per-request prompt size is unknown (bedrock-pricing-cache.md requires both rows)."""
+    out = {**entry, "available": True, "note": note}
+    if "long_context_threshold_tokens" in entry:
+        out["pricing_tier"] = _APPROXIMATE_TIER
+    return out
+
+
+def _match_key(model_id: str) -> str | None:
+    """The STATIC_FALLBACK key that prices `model_id`, or None."""
+    if _OPUS55_MARKER in model_id:
         return None  # Opus 5.5 requires exact, region-aware pricing.
-    entry = STATIC_FALLBACK.get(model_id)
-    if entry:
-        return {**entry, "available": True, "note": "static fallback (PriceList API had no entry)"}
+    if model_id in STATIC_FALLBACK:
+        return model_id
     # Proprietary GPT ids require an EXACT match, in every form (bare mantle id or
     # us./in./global. CRIS profile). Tier names differ only by suffix at very
     # different price points, and the inference options differ by prefix at a 10%
-    # spread — a partial match on e.g. `openai.gpt-5.6` or `us.openai.gpt-5.6`
+    # spread; a partial match on e.g. `openai.gpt-5.6` or `us.openai.gpt-5.6`
     # would silently bill one tier or option at another's rate.
     if is_mantle_gpt(model_id) or re.match(r"^(us|in|global)\.openai\.gpt-[56]", model_id):
         return None
-    # Try stripping the version suffix for a partial match (e.g. us.anthropic.claude-sonnet-5)
+    # Strip the version suffix for a partial match (e.g. us.anthropic.claude-sonnet-5).
     base = model_id.rsplit("-v", 1)[0] if "-v" in model_id else model_id
-    for key, val in STATIC_FALLBACK.items():
-        # Bidirectional: a dateless query must match a dated table key
-        # (key startswith base) AND a date-pinned query must match a dateless
-        # family key (base startswith key + "-"; the separator guard keeps
-        # ...opus-4-85 from matching the ...opus-4-8 family).
-        if key.startswith(base) or base == key or base.startswith(key + "-"):
-            return {**val, "available": True, "note": f"static fallback (matched {key})"}
+    for key in STATIC_FALLBACK:
+        # Bidirectional: a dateless query matches a dated table key (key startswith
+        # base), and a date-pinned query matches its dateless family key only when the
+        # remainder is a snapshot suffix, so `...sonnet-5-5` never matches `...sonnet-5`.
+        if key.startswith(base) or base == key or _is_snapshot_of(base, key):
+            return key
     # Also strip a trailing date stamp (e.g. ...-sonnet-4-6-20250514 -> ...-sonnet-4-6) so a
     # dated ID form still matches the undated table keys.
     dateless = re.sub(r"-\d{8}$", "", base)
     if dateless != base:
-        for key, val in STATIC_FALLBACK.items():
+        for key in STATIC_FALLBACK:
             if key.startswith(dateless):
-                return {**val, "available": True, "note": f"static fallback (matched {key})"}
+                return key
     return None
+
+
+def _static_fallback(model_id: str) -> dict | None:
+    """Try the static table. Returns a result dict or None."""
+    key = _match_key(model_id)
+    if key is None:
+        return None
+    note = ("static fallback (PriceList API had no entry)" if key == model_id
+            else f"static fallback (matched {key})")
+    return _priced(STATIC_FALLBACK[key], note)
+
+
+def _unverified_profile(model_id: str) -> str | None:
+    """The bare model id when `model_id` is an inference-profile form of a priced model whose
+    prefix has no verified rate (for example `eu.anthropic.claude-sonnet-5-5`), else None.
+    Only models that publish at least one prefixed rate count: a model priced by its bare id
+    alone (the Nova models) keeps its profile forms on the live PriceList lookup."""
+    prefix, _, rest = model_id.partition(".")
+    if prefix not in _PROFILE_PREFIXES or not rest:
+        return None
+    key = _match_key(rest)
+    bare = _MODEL_OF.get(key) if key else None
+    if bare is None or set(PRICED_MODELS[bare]["rates"]) == {"bare"}:
+        return None
+    return bare
 
 
 def display_name_guess(model_id: str) -> str:
@@ -273,7 +252,7 @@ def display_name_guess(model_id: str) -> str:
     'us.anthropic.claude-haiku-4-5-20251001-v1:0' -> 'Claude Haiku 4.5'.
     The Pricing API's 'model' attribute holds display names, not model ids."""
     base = model_id.split(":", 1)[0]
-    base = re.sub(r"^(us|eu|apac|global)\.", "", base)
+    base = model_catalog.profile_prefix_regex().sub("", base)
     base = base.split(".", 1)[-1]                      # drop vendor prefix
     base = re.sub(r"-v\d+$", "", base)                 # drop -v1
     base = re.sub(r"-\d{8}$", "", base)                # drop date stamp
@@ -296,15 +275,32 @@ def lookup(region: str, model_id: str) -> dict:
     )
     if profile_arn:
         model_id = profile_arn.group(1)
-    if "claude-opus-5" in model_id:
+    if _OPUS55_MARKER in model_id:
         return _opus55_pricing(region, model_id)
-    # Curated static table is the primary source — the Pricing API keys models
+    # Curated static table is the primary source: the Pricing API keys models
     # by display name and frequently lacks entries for new inference profiles.
     fb = _static_fallback(model_id)
     if fb:
-        fb["note"] = ("static pricing table (verified 2026-10-05 against "
-                      "aws.amazon.com/bedrock/pricing, the Bedrock model cards' "
-                      "Geo/Global inference ID tables, and the vendored pricing cache)")
+        key = _match_key(model_id)
+        model = PRICED_MODELS[_MODEL_OF[key]]
+        fb["note"] = (f"static pricing table (bedrock-pricing.json; {model['source']}, "
+                      f"verified {model['verified_at']})")
+        regional = REGION_RATES.get((region, key))
+        if regional:
+            # A Region-specific rate replaces the commercial one. Its long-context tier is
+            # unpublished, so drop the commercial long-context rates rather than quote them
+            # for this Region; `pricing_tier` stays, because the tier still exists.
+            for field in ("long_context_input_per_1k_usd", "long_context_output_per_1k_usd",
+                          "long_context_threshold_tokens"):
+                fb.pop(field, None)
+            fb.update(regional)
+            fb["note"] += f"; {region} rate"
+            if "long_context" in model:
+                fb["pricing_tier"] = _APPROXIMATE_TIER
+                fb["note"] += "; no published long-context rate for this Region"
+        elif region.startswith("us-gov-"):
+            fb["note"] += (f"; commercial rate: bedrock-pricing.json has no {region} rate for "
+                           f"this model, so verify the GovCloud price before quoting it")
         if model_id.endswith("openai.gpt-6-astra"):
             fb["note"] += ("; Standard tier, <=272K input tokens. For >272K, "
                            "use 2x input / 1.5x output rates.")
@@ -316,6 +312,15 @@ def lookup(region: str, model_id: str) -> dict:
                 "Source-provider prices require separate verification."
             )
         return fb
+    if "claude-opus-5" in model_id:
+        # Opus 5.5 ids were handled above. What is left is Opus 5 (or a later 5.x) with no
+        # static row. Fail closed here, like the GPT case below, instead of calling the live
+        # lookup: it needs boto3 and the network, and it must never fall back to Opus 5.5's rate.
+        return unavailable(
+            f"no verified rate for {model_id}. It is not Claude Opus 5.5, and "
+            f"bedrock-pricing.json has no row for it. Read the rate from "
+            f"aws.amazon.com/bedrock/pricing and add it to skills/shared/ai/bedrock-pricing.json. "
+            f"Do not price it from Opus 5.5.")
     if is_mantle_gpt(model_id) or re.match(r"^[^.]+\.openai\.gpt-[56]", model_id):
         # Short-circuit: the PriceList API carries no rows for the proprietary GPT
         # models, so a live lookup would burn a round trip and still return nothing —
@@ -324,8 +329,15 @@ def lookup(region: str, model_id: str) -> dict:
             f"the AWS PriceList API does not carry OpenAI's proprietary GPT models, and "
             f"{model_id} is not in the static table. This does NOT mean the model is "
             f"unavailable. Read the rate from the OpenAI tab of "
-            f"aws.amazon.com/bedrock/pricing and add it to STATIC_FALLBACK. Do not derive "
+            f"aws.amazon.com/bedrock/pricing and add it to skills/shared/ai/bedrock-pricing.json. Do not derive "
             f"it from a percentage change to an older rate.")
+    bare = _unverified_profile(model_id)
+    if bare:
+        forms = ", ".join(sorted(k for k, v in _MODEL_OF.items() if v == bare))
+        return unavailable(
+            f"no verified rate for {model_id}. bedrock-pricing.json prices {bare} only as: "
+            f"{forms}. Do not substitute another inference profile's rate; verify this "
+            f"profile on aws.amazon.com/bedrock/pricing and add it to the shared table.")
     import boto3
     from botocore.exceptions import BotoCoreError, ClientError
     try:

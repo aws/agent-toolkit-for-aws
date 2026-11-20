@@ -18,6 +18,16 @@ This release covers four phases:
 
 Generate is not in this skill yet. After Estimate, show its summary and stop. Do not load phase files from any other skill.
 
+## Readiness for other skills
+
+Another skill that consumes this skill's artifacts (for example llm-to-bedrock or agent-advisor) must not read `.phase-status.json` itself. It runs this skill's script, with the path resolved to this skill's directory:
+
+```bash
+python3 scripts/readiness.py <MIGRATION_DIR> --through design|estimate
+```
+
+Exit 0 prints `{"ready": true, ...}` with each artifact's path and SHA-256: the run was created by this skill, every phase through the named one is `completed`, and the profile, `preferences.json`, `aws-design-ai.json` and, for `estimate`, `estimation-ai.json` pass their checks now. Exit 1 prints `{"ready": false, "reason": ..., "detail": ...}`, where `reason` is one of `run_not_found`, `status_not_found`, `status_unreadable`, `status_invalid`, `not_this_skill`, `phase_incomplete`, `artifact_missing`, `artifact_unreadable`, `profile_invalid`, `preferences_invalid`, `design_invalid`, or `estimate_invalid`. A consumer stops on any non-ready answer and tells the user to resume the run with this skill. It reads only the paths it was given. If it reads them again later, it runs the check again first and compares the SHA-256 values.
+
 ## Definitions
 
 - **"Load"** = Read the file and follow its instructions. Do not summarize or skip sections.

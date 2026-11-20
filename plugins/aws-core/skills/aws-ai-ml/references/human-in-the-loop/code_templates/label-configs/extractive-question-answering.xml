@@ -1,0 +1,8 @@
+<View>
+  <Header value="Question"/>
+  <Text name="question" value="$question"/>
+  <Header value="Passage"/>
+  <Text name="context" value="$context"/>
+  <Header value="Copy the answer from the passage; leave empty when it has none"/>
+  <TextArea name="answer" toName="context" rows="2" maxSubmissions="1"/>
+</View>

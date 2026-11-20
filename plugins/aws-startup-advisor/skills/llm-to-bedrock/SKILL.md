@@ -563,38 +563,57 @@ Tell the user, before starting:
 
 Then, in order:
 
-1. **Resolve `$MIGRATION_DIR`.** Check for an existing `.migration/` directory at `$REPO`
-   exactly as `$ASSESS_BASE/references/phases/discover/discover.md` Step 0 describes (list
-   existing runs and offer Resume/Fresh/Cancel if any exist; otherwise create
-   `$REPO/.migration/<MMDD-HHMM>/` with the current timestamp and set `$MIGRATION_DIR` to it).
-   **A directory that exists but has no `.phase-status.json` yet is NOT an existing run** —
-   treat it as fresh and skip discover.md's Resume/Fresh/Cancel prompt for it (same exception
-   `agent-advisor`'s `migration-plan.md` Phase A documents for its own inline gcp-to-aws
-   delegation). This matters here because llm-to-bedrock does not pre-create `$MIGRATION_DIR`
-   before this step — but a run interrupted after this step creates the directory and before
-   discover.md's Step 0 writes `.phase-status.json` would otherwise leave exactly this
-   directory (present, but state-less) for a later resume, and discover.md's Resume branch
-   would then try to read a `.phase-status.json` that doesn't exist.
+1. **Resolve `$MIGRATION_DIR`.** Check `$REPO/.migration/` exactly as
+   `$ASSESS_BASE/references/phases/discover/discover.md` Step 0 describes. A directory with
+   `.phase-status.json` is an existing run: include it in the Resume/Fresh/Cancel choices.
+   A directory that exists but has no `.phase-status.json` is NOT an existing run; treat it as
+   fresh and skip the Resume/Fresh/Cancel prompt for it (the same exception `agent-advisor`'s
+   `migration-plan.md` Phase A documents for its own inline gcp-to-aws delegation).
+
+   A **Resume** choice must set `$MIGRATION_DIR` to the selected existing directory unchanged.
+   An explicit **Fresh** choice must allocate a genuinely unused
+   `$REPO/.migration/<MMDD-HHMM>/` directory, adding a collision suffix when needed. With no
+   existing runs, allocate the same unused fresh path.
+
+   Then initialize provider state in the selected `$MIGRATION_DIR` if `.phase-status.json` is
+   absent. This applies to a newly allocated **Fresh** run and to either `$ASSESS_SKILL` choice
+   (`gcp-to-aws` or `azure-to-aws`):
+
+   - Do not run the provider's resume/Fresh selection or timestamp-directory allocation again.
+     Keep `$MIGRATION_DIR` unchanged and create `.migration/.gitignore` if needed using the
+     provider's normal exact content.
+   - Perform only the state-creation portion of that provider's initialization in this selected
+     directory: mint one fresh UUID, set `migration_id` to the selected directory name,
+     `owning_skill` to `GCP_TO_AWS` or `AZURE_TO_AWS` to match `$ASSESS_SKILL`,
+     `initiated_by` to `LLM_TO_BEDROCK`, `current_phase` to `discover`, and `discover` to
+     `in_progress`; seed every other phase declared by that provider as `pending`, and set the
+     current ISO 8601 `last_updated`.
+   - Validate the resulting `.phase-status.json` against the selected provider's vendored
+     `state/phase-status.schema.json` and confirm it exists in the selected directory before
+     continuing. Never create provider state in another path.
+
 2. **Read and execute** `$ASSESS_BASE/references/phases/discover/discover.md` in full, exactly
-   as written, including its own Step 0 state-file initialization (skip Step 0 if resuming —
-   `$MIGRATION_DIR` already has a `.phase-status.json`) and its Step 1 sub-discovery gates
-   (1a–1e). Those gates already key off what's actually present in `$REPO` — IaC discovery
-   only runs if Terraform files exist there, billing discovery only if billing exports exist,
-   and so on; you do not need to steer it. `discover.md`'s own usage-API consent/capture
-   actions (OpenAI, OpenRouter, and — for azure-to-aws — Anthropic) will offer the matching
-   Admin-API usage discovery when applicable; accepting any of them gives Estimate real spend
-   and token volumes without manual exports. (Anthropic's Admin key has NO selectable scopes —
-   it is all-or-nothing; the old sentence's "Usage set to Read" phrasing was already wrong for
-   OpenAI's own key in a narrower way worth not perpetuating into this generalized sentence —
-   note this as an adjacent, pre-existing inaccuracy fixed at its source rather than carried
-   forward.)
+   as written, including its own Step 0 state-file initialization except for path selection and
+   state creation already completed above. Treat the preinitialized state as the selected
+   delegated run: keep `$MIGRATION_DIR` unchanged, skip the provider's resume/Fresh prompt and
+   timestamp-directory allocation, and let its idempotent initialization reuse the existing
+   envelope. On an ordinary Resume that already had `.phase-status.json`, skip Step 0 as before.
+   Continue with its Step 1 sub-discovery gates (1a–1e). Those gates already key off what's
+   actually present in `$REPO` — IaC discovery only runs if Terraform files exist there,
+   billing discovery only if billing exports exist, and so on; you do not need to steer it.
+   `discover.md`'s own usage-API consent/capture actions (OpenAI, OpenRouter, and — for
+   azure-to-aws — Anthropic) will offer the matching Admin-API usage discovery when applicable;
+   accepting any of them gives Estimate real spend and token volumes without manual exports.
+   (Anthropic's Admin key has NO selectable scopes — it is all-or-nothing; the old sentence's
+   "Usage set to Read" phrasing was already wrong for OpenAI's own key in a narrower way worth
+   not perpetuating into this generalized sentence — note this as an adjacent, pre-existing
+   inaccuracy fixed at its source rather than carried forward.)
 
-   When Discover's Step 0 writes the run's `.phase-status.json`, it must record
-   `"initiated_by": "LLM_TO_BEDROCK"` beside `owning_skill` (which is set to whichever of
-   `GCP_TO_AWS` / `AZURE_TO_AWS` actually ran — i.e. `$ASSESS_SKILL`'s own identifier — per
-   `discover.md`'s own instruction for a run started by another skill): this run was started
-   by llm-to-bedrock, and that is how telemetry attributes it.
-
+   The preinitialized `.phase-status.json` already records `"initiated_by": "LLM_TO_BEDROCK"`
+   beside `owning_skill` (`GCP_TO_AWS` or `AZURE_TO_AWS`, per `$ASSESS_SKILL`), so telemetry
+   attributes the run to llm-to-bedrock. Discover reuses that envelope and does not rewrite
+   it. Because the field is already present, the provider's infrastructure/mixed
+   migration-credit notice is suppressed.
    On `HANDOFF_OK`: at least one of `ai-workload-profile.json`, `gcp-resource-inventory.json`
    / `azure-resource-inventory.json`, or `billing-profile.json` is present in
    `$MIGRATION_DIR`.
@@ -615,10 +634,12 @@ Then, in order:
    (or simply stopping at the decision pack) is enough; you never read anything `generate.md`
    would produce (Terraform, `MIGRATION_GUIDE.md`, `migration-report.html`).
 
-Each file above manages `$MIGRATION_DIR/.phase-status.json` itself, per its own protocol —
-do not write to that file yourself, other than the `initiated_by` field named in step 2 above.
-If any file's own `_postconditions`/handoff checks fail (`GATE_FAIL`), stop and show the user
-exactly what that file reported; do not patch an artifact to force a gate to pass.
+After A1's explicit preinitialization above, each provider file manages
+`$MIGRATION_DIR/.phase-status.json` itself per its own protocol. Outside that one state-creation
+exception, do not write the file yourself; the only wrapper-level field addition allowed on an
+already initialized envelope is the `initiated_by` field named in step 2 above. If any file's
+own `_postconditions`/handoff checks fail (`GATE_FAIL`), stop and show the user exactly what
+that file reported; do not patch an artifact to force a gate to pass.
 
 ### A2 — Confirm Assess is complete
 
@@ -1266,7 +1287,7 @@ Rebuild these context lines from the same normalized path on every dispatch/resu
 `assess_design_sha256` run-context check detects a changed model/API decision. If a bare
 Astra id is paired with a runtime path, or a CRIS id with Mantle, stop and correct the plan;
 do not switch endpoints or invent another profile. See the resolver's Case C and
-`gcp-to-aws/references/shared/openai-on-bedrock.md`.
+`gcp-to-aws/references/vendored/ai/openai-on-bedrock.md`.
 
 ### C7 — Render summary
 

@@ -2,13 +2,15 @@
 
 ElastiCache-specific connection constraints, tunnel patterns, and runtime gotchas.
 
-## VPC Access Only
+## VPC Access
 
-ElastiCache runs inside a VPC. You cannot connect from the public internet. Options:
+A cache runs inside a VPC and you cannot reach it from the public internet, unless it is Serverless Valkey 9.0+ created with a public endpoint. Options:
 
 1. Connect from compute in the same VPC (EC2, Lambda, ECS, EKS)
 2. SSM port forwarding (no SSH keys needed, use `scripts/start_tunnel.py` and `scripts/find_tunnel_host.py`)
 3. Jump host with SSH tunnel
+
+Public endpoints exist only on Serverless Valkey 9.0+, chosen at creation; clients connect over the internet with IAM auth and TLS 1.3, no tunnel. Node-based clusters can't have one.
 
 ## Jump Host / SSM Tunnel
 
@@ -17,9 +19,10 @@ Primary path (bundled scripts, boto3-based):
 ```bash
 python3 scripts/find_tunnel_host.py --vpc-id <vpc-id> --region <region>
 python3 scripts/start_tunnel.py --instance-id <id> --cache-host <endpoint> --region <region>
+python3 scripts/test_connection.py 127.0.0.1 --port 6379 --tunnel-mode --server-name <endpoint>
 ```
 
-`find_tunnel_host.py` locates an SSM-managed instance in the VPC. `start_tunnel.py` opens the SSM port-forwarding tunnel through it.
+`scripts/find_tunnel_host.py` locates an SSM-managed instance in the VPC. `scripts/start_tunnel.py` opens the SSM port-forwarding tunnel through it.  See `scripts/test_connection.py` for full usage instructions.
 
 After tunnel is established, clean up: stop or terminate the EC2 instance if the skill created one. If `find_tunnel_host.py` reused an existing SSM-managed instance, stopping the tunnel is enough.
 

@@ -47,7 +47,7 @@ function renderPage(req) {
   <head><title>SSR on Lambda Web Functions</title></head>
   <body>
     <h1>Hello from server-side rendering</h1>
-    <p>Rendered at ${new Date().toISOString()} for path ${req.path}</p>
+    <p>Rendered at ${new Date().toISOString()}</p>
   </body>
 </html>`;
 }

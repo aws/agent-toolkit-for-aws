@@ -280,8 +280,18 @@ class EbNameTemplateTests(unittest.TestCase):
 
 class EbManualGuideTests(unittest.TestCase):
     def manual_block(self) -> str:
-        section = DOCS.split("### Manual EB CLI Deploy", 1)[1].split("```bash\n", 1)[1].split("\n```", 1)[0]
-        return section
+        """The Dockerfile (source bundle) block: the one after the CNB variant's {{ELSE}}."""
+        section = DOCS.split("### Manual EB CLI Deploy", 1)[1]
+        return section.split("{{ELSE}}", 1)[1].split("```bash\n", 1)[1].split("\n```", 1)[0]
+    def cnb_manual_block(self) -> str:
+        """The buildpack (CNB) variant's Elastic Beanstalk loop: one version per process type.
+
+        The `pack build` lines above it name the ECR repository (`<project_name>/<heroku_app>`), which is correct
+        and is not an Elastic Beanstalk name, so only the loop that talks to Elastic Beanstalk is checked.
+        """
+        section = DOCS.split("### Manual EB CLI Deploy", 1)[1].split("{{ELSE}}", 1)[0]
+        loop = section.split("for PROCESS in {{EB_PROCESS_TYPES}}; do", 1)[1]
+        return "for PROCESS in {{EB_PROCESS_TYPES}}; do" + loop.split("\ndone\n", 1)[0] + "\ndone"
 
     def test_manual_deploy_uses_the_generated_application_not_the_heroku_name(self) -> None:
         # Terraform creates `${var.project_name}<eb_app_suffix>`; a guide that creates versions under the
@@ -291,6 +301,29 @@ class EbManualGuideTests(unittest.TestCase):
         self.assertNotIn("{{app_name}}", block)
         self.assertIn("{{EB_ENVIRONMENT_NAMES}}", block)
 
+    def test_cnb_manual_deploy_uses_the_generated_application_and_environments(self) -> None:
+        # The buildpack variant creates one version per process type. Terraform creates the application
+        # `${var.project_name}<eb_app_suffix>` and the environment `<application>-<process_type>`, so a guide that
+        # names `{{project_name}}` deploys to an application that does not exist once two or more EB apps exist.
+        block = self.cnb_manual_block()
+        self.assertEqual(block.count("{{EB_APPLICATION}}"), 4)
+        self.assertNotIn("{{project_name}}", block)
+        self.assertNotIn("{{app_name}}", block)
+        self.assertIn("{{EB_PROCESS_TYPES}}", block)
+    def test_rendered_cnb_manual_guide_matches_the_generated_names_of_each_app(self) -> None:
+        project = "a" * 29
+        apps = {"hell-2": ["web"], "hello": ["web", "worker"], "hello-2": ["web"]}
+        suffixes = eb_suffixes(project, apps)
+        for app, suffix in suffixes.items():
+            application = project + suffix
+            rendered = (self.cnb_manual_block().replace("{{EB_APPLICATION}}", application)
+                        .replace("{{EB_PROCESS_TYPES}}", " ".join(apps[app]))
+                        .replace("{{target_region}}", "us-east-1"))
+            unresolved = [token for token in ("{{EB_", "{{project_name}}") if token in rendered]
+            self.assertEqual(unresolved, [])
+            self.assertIn(f"--application-name {application} ", rendered)
+            self.assertIn(f"s3://${{BUCKET}}/{application}/", rendered)
+            self.assertIn(f'--environment-name "{application}-${{PROCESS}}"', rendered)
     def test_rendered_manual_guide_matches_the_generated_names_of_each_app(self) -> None:
         project = "a" * 29  # room 6, so the slugs are shortened and one is rebuilt
         apps = {"hell-2": ["web"], "hello": ["web", "worker"], "hello-2": ["web"]}

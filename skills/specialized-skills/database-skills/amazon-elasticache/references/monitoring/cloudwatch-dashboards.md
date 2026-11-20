@@ -82,7 +82,7 @@ Metrics focused on engine performance, memory pressure, replication health, and 
 | Engine CPU | EngineCPUUtilization | Maximum | 1 min | Single-threaded engine bottleneck (most critical for performance) |
 | Host CPU | CPUUtilization | Average | 1 min | Overall host CPU including background tasks |
 | Memory Usage | DatabaseMemoryUsagePercentage | Maximum | 1 min | Memory pressure; triggers evictions when high |
-| Capacity Usage | DatabaseCapacityUsagePercentage | Maximum | 1 min | DatabaseCapacityUsagePercentage is available on all node-based clusters. On data-tiering instances (r6gd), the formula includes SSD storage; on all other instances, it is calculated as `used_memory/maxmemory`. |
+| Capacity Usage | DatabaseCapacityUsagePercentage | Maximum | 1 min | DatabaseCapacityUsagePercentage is available on all node-based clusters. On data-tiering instances (r6gd/r7gd/r8gd), the formula includes SSD storage; on all other instances, it is calculated as `used_memory/maxmemory`. |
 | Cache Hit Rate | CacheHitRate | Average | 5 min | Data access efficiency. `CacheHitRate` is available for both serverless and node-based Valkey/Redis OSS clusters. |
 | Replication Lag | ReplicationLag | Maximum | 1 min | Replica staleness (seconds); critical for read consistency |
 | Current Connections | CurrConnections | Maximum | 1 min | Connection pool health |

@@ -2,11 +2,11 @@
 
 ## Hard Routing Rules (non-negotiable)
 
-These constraints override all other guidance. Never recommend serverless for these workloads.
+These constraints override all other guidance.
 
-1. **Vector search MUST use node-based Valkey 8.2 or above (recommend 9.0).** Serverless does not support vector search. Any workload requiring vector similarity (semantic cache, RAG, conversational memory with vector retrieval, recommendations via embeddings, semantic search) MUST be deployed on a node-based Valkey 8.2 or above cluster (recommend 9.0). Do NOT suggest serverless as a fallback or future option for vector search.
+1. **Vector search MUST use node-based Valkey 8.2 or above (recommend 9.1) or Serverless Valkey 9.0+.** Serverless below Valkey 9.0 does not support vector search. Any workload requiring vector similarity (semantic cache, RAG, conversational memory with vector retrieval, recommendations via embeddings, semantic search) MUST be deployed on a node-based Valkey 8.2 or above cluster (recommend 9.1) or Serverless Valkey 9.0+.
 
-2. **Global Datastore MUST use node-based clusters.** Multi-Region replication via Global Datastore is not available on serverless. Any workload requiring cross-Region reads or disaster recovery via Global Datastore MUST use a node-based deployment.
+2. **Global Datastore MUST use node-based clusters.** Never recommend serverless for Global Datastore. Multi-Region replication via Global Datastore is not available on serverless. Any workload requiring cross-Region reads or disaster recovery via Global Datastore MUST use a node-based deployment.
 
 > ElastiCache Serverless supports Valkey 7.2+, Redis OSS 7.1+, and Memcached 1.6.22+. Regional availability may vary; check the [ElastiCache pricing page](https://aws.amazon.com/elasticache/pricing/) or the AWS Region Table before selecting a deployment model.
 
@@ -36,8 +36,8 @@ These constraints override all other guidance. Never recommend serverless for th
 
 ## When node-based is required or preferred
 
-- **Vector search** -- requires Valkey 8.2 or above on node-based clusters (recommend 9.0). Available in all AWS Regions at no additional cost. Not supported on data-tiering instances (r6gd) or serverless.
-- **Data Tiering** -- the r6gd instance family (SSD-backed data tiering) is only available on node-based clusters.
+- **Vector search** -- requires Valkey 8.2 or above on node-based clusters (recommend 9.1). Available in all AWS Regions at no additional cost. Also on Serverless Valkey 9.0+. Not supported on data-tiering instances (r6gd/r7gd/r8gd).
+- **Data Tiering** -- the r6gd, r7gd, and r8gd instance families (SSD-backed data tiering) are only available on node-based clusters.
 - **Global Datastore** -- multi-Region replication requires node-based clusters. Global Datastore has specific engine version requirements and is available only in regions that support multi-Region replication. Check the [ElastiCache documentation](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/GlobalDatastore.html) for supported regions and engine versions.
 - **Reserved instances** -- reserved nodes save approximately 30-55% depending on term length and payment option (run `python3 scripts/price_calculator.py --mode node --node-type <type> --nodes <N> --show-ri-options` for current estimates)
 - **Fine-grained parameter tuning** -- custom parameter groups for advanced optimization
@@ -71,14 +71,14 @@ These constraints are inherent to the serverless deployment model and cannot be 
 
 ### Feature Restrictions
 
-- **No vector search.** Vector search requires Valkey 8.2 or above on node-based clusters (recommend 9.0).
+- **No vector search below Valkey 9.0.** Below 9.0, vector search requires Valkey 8.2 or above on node-based clusters (recommend 9.1).
 - **No Global Datastore.** Multi-region replication requires node-based clusters.
 - **Cluster-mode-enabled only.** All serverless caches operate in cluster mode. Clients must support cluster protocol (MOVED/ASK redirects). Non-cluster clients will fail to connect properly.
 - **No keyspace notifications.** Keyspace events are not supported on serverless caches. Workloads relying on keyspace notifications must use node-based.
 - **Eviction policy is volatile-lru (not configurable).** Only keys with a TTL set are candidates for eviction. Keys without TTL are never evicted. If storage reaches the maximum and no keys can be evicted, writes receive OOM errors. Always set a TTL on serverless.
 - **No custom parameter groups.** Parameter tuning is not available on serverless.
 - **Manual snapshots supported.** Use `CreateServerlessCacheSnapshot` for on-demand snapshots. Restore via `create-serverless-cache --snapshot-arns-to-restore`. Automatic daily snapshots are not enabled by default; set `SnapshotRetentionLimit` > 0 to enable them.
-- **SELECT command not supported.** Multiple logical databases (SELECT 0, SELECT 1, etc.) are not available. All data lives in a single logical namespace. Use key prefixes for logical separation.
+- **SELECT needs Valkey 9.0+.** Serverless Valkey 9.0+ supports up to 1,024 databases. Below 9.0, only database 0 exists; use key prefixes for logical separation. See [Serverless configuration and limits](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/RedisConfiguration.html).
 - **Lua scripting restrictions.** Scripts that access keys across multiple slots may fail. Keep scripts single-key or use hash tags to colocate keys.
 
 ### Operations
