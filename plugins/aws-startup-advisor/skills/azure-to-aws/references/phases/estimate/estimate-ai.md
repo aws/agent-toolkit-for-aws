@@ -474,6 +474,7 @@ fields.
 | `optimized_projection`          | object | `monthly_with_optimizations`, `vs_current`, `note`                                                                              |
 | `recommendation`                | object | `path`, `path_label`, `migrate_if`, `stay_if`, `confidence`, `rationale` (see Part 7)                                           |
 | `services_not_estimated`        | array  | Traditional-AI workloads excluded from token cost: `{workload_id, target_aws_service, reason: "not_token_priced"}`              |
+| `export_inputs`                 | object | Optional pre-pricing snapshot and selected aggregate context from `references/vendored/estimate/cost-export-inputs.md`; omit when unavailable |
 
 `current_costs.azure_monthly_ai_spend` (NOT `gcp_monthly_ai_spend`) and
 `cost_comparison.current_azure_monthly` (NOT `current_gcp_monthly`) are the Azure field names.

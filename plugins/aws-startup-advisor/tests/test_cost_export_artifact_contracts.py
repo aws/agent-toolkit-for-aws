@@ -6,6 +6,7 @@ import copy
 import json
 
 import pytest
+from jsonschema import Draft7Validator
 
 from test_cost_export_inputs import writer
 from test_validate_artifacts import PLUGIN_ROOT, _doc_example, _run, _write_run
@@ -134,3 +135,52 @@ def test_retention_does_not_open_unrelated_estimate_keys(tmp_path, retained_esti
     errors = {(e["code"], e["path"]) for e in report["errors"]}
     assert ("UNKNOWN_KEY", "unrelated_root") in errors
     assert ("UNKNOWN_KEY", "projected_costs.breakdown.compute.unrelated_row") in errors
+
+AI_POINTER = "/cost_comparison/projected_bedrock_monthly"
+
+
+def retained_ai_estimate():
+    estimate = json.loads(
+        (PLUGIN_ROOT / "fixtures/estimation-ai/multi-provider-direct/estimation-ai.json").read_text()
+    )
+    estimate["export_inputs"] = {
+        "snapshot": {
+            "version": 1,
+            "runId": "00000000-0000-4000-8000-000000000001",
+            "owningSkill": "GCP_TO_AWS",
+            "files": {"aws-design-ai.json": "a" * 64, "preferences.json": "b" * 64},
+        },
+        "rows": {
+            AI_POINTER: {
+                "monthlyCost": estimate["cost_comparison"]["projected_bedrock_monthly"],
+                "estimateInput": {
+                    "regionCode": "us-east-1",
+                    "configurationSummary": "Complete synthetic aggregate model and token usage.",
+                },
+            }
+        },
+    }
+    return estimate
+
+
+def ai_contract_errors(estimate):
+    schema = json.loads((PLUGIN_ROOT / "scripts/contracts/estimation-ai.schema.json").read_text())
+    return sorted(Draft7Validator(schema).iter_errors(estimate), key=lambda error: list(error.path))
+
+
+def test_ai_contract_accepts_optional_retained_inputs():
+    assert ai_contract_errors(retained_ai_estimate()) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda retained: retained.pop("snapshot"),
+        lambda retained: retained["rows"][AI_POINTER].__setitem__("monthlyCost", "1980"),
+        lambda retained: retained["rows"][AI_POINTER]["estimateInput"].__setitem__("invented", True),
+    ],
+)
+def test_ai_contract_rejects_invalid_retained_inputs(mutation):
+    estimate = retained_ai_estimate()
+    mutation(estimate["export_inputs"])
+    assert ai_contract_errors(estimate)

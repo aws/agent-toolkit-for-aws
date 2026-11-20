@@ -372,4 +372,3 @@ def test_azure_run_retains_inputs_and_tracks_its_inventory(tmp_path):
     stale = plan(run)
     assert stale["schemaVersion"] == 2
     assert all("estimateInput" not in row for row in stale["cost"]["awsServiceItems"])
-
