@@ -1,6 +1,6 @@
 ---
 name: amazon-neptune
-version: 2
+version: 3
 description: Provides authoritative guidance on Amazon Neptune Database and Neptune Analytics for graph, knowledge-graph, and relationship-heavy workloads — fraud detection / fraud rings, agentic memory / chatbot context across sessions, recommendations, identity resolution, Gremlin / openCypher / SPARQL queries, supernode / slow traversal, Neo4j to Neptune migration / APOC compatibility, Neptune Database vs Analytics engine selection, PageRank / community detection, GraphRAG, and connectivity from Lambda / EC2 / applications. Creates and modifies Neptune Database clusters/instances and Neptune Analytics graphs on explicit user confirmation; blocks destructive operations (delete, reset-graph, failover, major upgrade) and redirects to change-control.
 ---
 
@@ -9,6 +9,8 @@ description: Provides authoritative guidance on Amazon Neptune Database and Nept
 ## Safety guidance
 
 This skill covers creating and modifying Neptune resources when the user requests it. The agent MUST confirm the action with the user before executing. Do NOT execute any create or modify operation without explicit user confirmation (e.g., "yes", "proceed", "confirmed", "go ahead"). If the user has not confirmed, present the planned action and ask for approval.
+
+Confirmation gates only the execution of create or modify operations. For design, advice, or query-writing questions, answer completely, including data models and example queries; do not withhold guidance pending confirmation or refer the user to this skill's files instead of showing the content.
 
 ### Execute these operations (after user confirmation)
 
@@ -26,6 +28,7 @@ This skill covers creating and modifying Neptune resources when the user request
 - Create a graph: `create-graph`
 - Create a graph from S3 data: `create-graph-using-import-task`
 - Create a graph snapshot (point-in-time backup): `create-graph-snapshot`
+- Start a stopped graph: `start-graph` — tell the user full m-NCU billing resumes once it is `AVAILABLE` and the graph starts on the latest engine version.
 - Tag resources: `tag-resource`, `untag-resource`
 
 ### Resource tagging (always apply on resource creation)
@@ -43,7 +46,8 @@ The two engines use different `--tags` syntax:
 
 - Change instance class: `modify-db-instance --db-instance-class` — warn: "This causes a failover in multi-AZ configurations and brief unavailability."
 - Minor engine version upgrade: `modify-db-cluster --engine-version` within the same major — warn: "This triggers a rolling restart across instances."
-- Resize Analytics graph memory: `update-graph --provisioned-memory` — warn: "This may cause a brief disruption to in-flight queries."
+- Resize Analytics graph memory: `update-graph --provisioned-memory` — warn: "This may cause a brief disruption to in-flight queries." Per the CreateGraph and UpdateGraph API references (verify the current range there), the minimum `provisionedMemory` is 16 m-NCU, regardless of vector dimension; the console default of 128 is not the minimum.
+- Stop an Analytics graph: `stop-graph` (graph must be `AVAILABLE`) — warn: "The graph stops serving queries until `start-graph`; data and settings are preserved, and the reduced stopped-graph rate still applies."
 - Apply immediately: any modify with `--apply-immediately` — warn: "This applies outside the maintenance window and may cause downtime now."
 
 ### Do NOT execute (refuse, explain why, offer assessment instead)
@@ -154,13 +158,13 @@ Use the bundled `amazon-neptune-tools/neo4j-to-neptune` migration tool for graph
 
 ### Neptune Analytics vector API migration
 
-For the deprecated-to-supported API mapping and configuration-map syntax, see [vector-api-migration.md](references/vector-api-migration.md).
+For the deprecated-to-supported API mapping and configuration-map syntax, see [vector-api-migration.md](references/vector-api-migration.md). Vector `score` is a squared Euclidean distance — lower is nearer; never sort it `DESC`.
 
 ### 6. Run graph algorithms (Neptune Analytics)
 
 For nightly PageRank, community detection, and node similarity, **use Neptune Analytics**. Follow the snapshot/import → algorithm → export workflow and Neptune-specific algorithm parameters in [analytics-vs-database.md](references/analytics-vs-database.md).
 
-Neptune Analytics is billed by provisioned **m-NCUs**. See [analytics-vs-database.md](references/analytics-vs-database.md) for the stop/start/delete lifecycle, cost breakdown, and algorithm parameter mapping, and [security.md](references/security.md) for recurring-automation security requirements.
+Neptune Analytics is billed by provisioned **m-NCUs**. For a recurring job (e.g., nightly PageRank), between runs either run `aws neptune-graph stop-graph` — data and settings are preserved at a reduced, non-zero stopped-graph rate, and `aws neptune-graph start-graph` is required before the next run — or `delete-graph` after exporting results, which ends graph compute charges but requires recreating or re-importing the graph for the next run. See [analytics-vs-database.md](references/analytics-vs-database.md) for the stop/start/delete lifecycle, cost breakdown, and algorithm parameter mapping, and [security.md](references/security.md) for recurring-automation security requirements.
 
 ## Troubleshooting
 

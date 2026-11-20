@@ -69,7 +69,7 @@ analytics_client = boto3.client('neptune-graph')
 # CI / test graphs" below.
 response = analytics_client.create_graph(
     graphName='fraud-analysis',
-    provisionedMemory=16,  # m-NCU (1 m-NCU = 1 GB). Valid range per the CreateGraph API reference; console default 128.
+    provisionedMemory=16,  # m-NCU (1 m-NCU = 1 GB). Minimum 16 per the CreateGraph API reference (verify the current range there); the console default (128) is not the minimum.
     publicConnectivity=False,
     replicaCount=0,  # 0 for cost savings on batch jobs
     deletionProtection=True,
@@ -235,7 +235,7 @@ aws neptune-graph create-graph-using-import-task \
 |---|---|---|
 | Billing | Instance hours + storage GB | NCU hours (while running) |
 | Idle cost | Full instance cost | Reduced stopped-graph rate (data preserved) — see the Neptune Analytics pricing page for the exact rate |
-| Storage | Persistent, auto-grow | In-memory, ephemeral |
+| Storage | Persistent, auto-grow | Memory-optimized; data persists while running or stopped and is removed on `delete-graph` unless snapshotted (including a final snapshot via `--no-skip-snapshot`) or exported |
 | Best cost pattern | Always-on, steady workload | Spin up → analyze → tear down |
 
 **Cost tip**: For recurring batch jobs, run
@@ -244,9 +244,11 @@ then `start-graph` before the next run. A stopped graph preserves data and
 settings at the reduced stopped-graph rate, which is non-zero; stopping does
 not eliminate charges. Run
 `aws neptune-graph start-graph --graph-identifier <id>` before the next job.
-Use `aws neptune-graph delete-graph --graph-identifier <id>` instead when the
+Use `aws neptune-graph delete-graph --graph-identifier <id> --no-skip-snapshot`
+(or `--skip-snapshot` once results are exported) instead when the
 goal is to eliminate graph compute charges entirely; the next run must recreate
-or import the graph.
+or import the graph. A final or manual snapshot is billed as backup storage until
+you delete it. `start-graph` brings the graph up on the latest engine version.
 
 ### Ephemeral CI / test graphs
 
@@ -262,16 +264,16 @@ If a graph is already in CREATING with `deletionProtection=True`, `DeleteGraph` 
 
 1. Wait for status to become `AVAILABLE`.
 2. `aws neptune-graph update-graph --graph-identifier <id> --no-deletion-protection`
-3. `aws neptune-graph delete-graph --graph-identifier <id>` — the agent MUST NOT run this (see references/action-safety.md Never-Auto-Execute); hand it to the user.
+3. `aws neptune-graph delete-graph --graph-identifier <id> --no-skip-snapshot` (or `--skip-snapshot` if no final snapshot is wanted) — the agent MUST NOT run this (see references/action-safety.md Never-Auto-Execute); hand it to the user.
 
 CI automation that creates its own throwaway graphs should pass `deletionProtection=False` at create time rather than relying on the poll-update-delete sequence above.
 
 ## Common Mistakes
 
 1. **Using Database for batch algorithms** — Analytics is designed for this.
-2. **Forgetting Analytics is ephemeral** — always export results before deletion.
+2. **Forgetting that `delete-graph` removes the data** — stopping preserves it, but deletion does not; snapshot or export results before deleting.
 3. **Wrong SDK** — Analytics uses boto3 `neptune-graph`, not Gremlin WebSocket.
-4. **Over-sizing provisionedMemory** — check the CreateGraph API reference for the valid m-NCU range (1 m-NCU = 1 GB). Right-size to your graph instead of over-provisioning.
+4. **Over-sizing provisionedMemory** — per the CreateGraph API reference (verify the current range there), the minimum is 16 m-NCU (1 m-NCU = 1 GB), independent of vector dimension; the console default of 128 is not the minimum. Right-size to your graph instead of over-provisioning.
 5. **Not considering Analytics for GraphRAG/memory** — it has built-in vector search.
 6. **Sending Gremlin to Analytics** — `ExecuteQuery` with `language='GREMLIN'` returns `UnprocessableException`. Analytics is openCypher-only. Use Neptune Database for Gremlin.
 7. **Using Neo4j `gds.pageRank` parameter names** — `nodeLabels` / `relationshipTypes` / `maxIterations` fail with `ValidationException` on Neptune. Use `vertexLabel` / `edgeLabels` / `numOfIterations`.

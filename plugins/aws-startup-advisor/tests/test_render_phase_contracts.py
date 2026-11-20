@@ -210,6 +210,8 @@ def test_vendored_shared_contracts_are_byte_identical() -> None:
         (SHARED_ROOT / "state/phase-status.schema.json", SKILL_ROOT / "references/vendored/state/phase-status.schema.json"),
         (SHARED_ROOT / "pricing/aws-infra-pricing.json", SKILL_ROOT / "references/vendored/pricing/aws-infra-pricing.json"),
         (SHARED_ROOT / "workshop/workshop-invariants.md", SKILL_ROOT / "references/vendored/workshop/workshop-invariants.md"),
+        (SHARED_ROOT / "migration/upfront-credits.md", SKILL_ROOT / "references/vendored/migration/upfront-credits.md"),
+        (PLUGIN_ROOT / "scripts/emit-plan-json.py", SKILL_ROOT / "scripts/emit-plan-json.py"),
     ]
     pairs.extend((path, SKILL_ROOT / "references/vendored/clarify" / path.name) for path in (SHARED_ROOT / "clarify").iterdir())
     pairs.extend((path, SKILL_ROOT / "references/vendored/estimate" / path.name) for path in (SHARED_ROOT / "estimate").iterdir())
@@ -272,6 +274,29 @@ def test_all_seven_script_abis_and_locked_runtime_are_declared() -> None:
     assert re.search(r'name = "jsonschema"\nversion = "4\.23\.0"', lock)
 
 
+def test_credits_handoff_is_wired_into_discover_estimate_and_generate() -> None:
+    handoff = (SKILL_ROOT / "references/shared/web-handoff.md").read_text(encoding="utf-8")
+    link = "https://startups.aws.com/migrate/plans/import?source=plugin&run=<run_id>"
+    assert handoff.count(link) == 2
+    assert "Never name AWS Startup Advisor's import page without its address" in handoff
+    assert "Startups Migrate" not in handoff
+    assert "**See your AWS credits**" in handoff
+    assert 'uv run --project "$SKILL_BASE/scripts" --frozen python \\\n  "$SKILL_BASE/scripts/emit-plan-json.py"' in handoff
+    assert "PLAN_SKIP" in handoff and "never a gate" in handoff
+    discover = (PHASE_ROOT / "discover/discover.md").read_text(encoding="utf-8")
+    assert "references/vendored/migration/upfront-credits.md" in discover
+    estimate = (PHASE_ROOT / "estimate/estimate-assemble.md").read_text(encoding="utf-8")
+    generate = (PHASE_ROOT / "generate/generate-assemble.md").read_text(encoding="utf-8")
+    for text in (estimate, generate):
+        assert "references/shared/web-handoff.md" in text
+    assert "do not emit `plan.json`" not in estimate
+    abi = (SKILL_ROOT / "references/shared/script-abis.md").read_text(encoding="utf-8")
+    assert "`emit-plan-json.py`" in abi and "PLAN_OK" in abi
+    # The handoff writes run output under $MIGRATION_DIR; no Generate fragment may promise it.
+    assert "plan.json" not in " ".join(
+        (PHASE_ROOT / "generate" / name).read_text(encoding="utf-8")
+        for name in ("generate-artifacts-infra.md", "generate-artifacts-docs.md", "generate-artifacts-report.md")
+    )
 def test_render_is_registered_without_mcp_or_plan_handoff_drift() -> None:
     manifests = [
         PLUGIN_ROOT / "plugin.json",
@@ -299,13 +324,14 @@ def test_render_is_registered_without_mcp_or_plan_handoff_drift() -> None:
     codex = json.loads((PLUGIN_ROOT / ".codex-plugin/plugin.json").read_text())
     assert "Migrate my Render services to AWS" in codex["interface"]["defaultPrompt"]
     readme = (PLUGIN_ROOT / "README.md").read_text(encoding="utf-8")
-    assert "Install all 16 skills together" in readme
+    assert "Install all 18 skills together" in readme
     assert "| 7 | `render-to-aws` |" in readme
     assert "Render CLI 2.35.0" in readme
     assert "neither configures nor invokes a Render MCP server" in readme
 
     mcp = json.loads((PLUGIN_ROOT / ".mcp.json").read_text())
     assert set(mcp["mcpServers"]) == {"aws-mcp"}
+    # A plan.json is run output under $MIGRATION_DIR; none may be committed in the skill directory.
     assert not (SKILL_ROOT / "plan.json").exists()
 CLARIFY_ROOT = PHASE_ROOT / "clarify"
 NEW_CLARIFY_FRAGMENTS = ["identity", "database-migration", "cutover", "delivery", "governance"]
@@ -595,3 +621,18 @@ def test_budget_uses_stated_guardrail_else_documented_default() -> None:
     golden = (SKILL_ROOT / "fixtures/expected/generated/terraform/baseline.tf").read_text(encoding="utf-8")
     assert f'limit_amount = "{limit}"' in golden
     assert f"ceil({estimation['projected_costs']['aws_monthly_balanced']} * 1.2)" in golden
+
+
+def test_render_shows_the_plan_json_notice_only_while_the_writer_is_enabled() -> None:
+    writer = (PLUGIN_ROOT / "scripts/emit-plan-json.py").read_text(encoding="utf-8")
+    table = writer[writer.index("SKILL_TO_PLATFORM = {"):]
+    table = table[:table.index("}")]
+    enabled = '"RENDER_TO_AWS"' in table
+    step0 = (PHASE_ROOT / "discover/discover.md").read_text(encoding="utf-8")
+    step0 = step0[step0.index("### Step 0 "):step0.index("### Step 0b")]
+    gate = "do not render the migration-credit notice"
+    if enabled:
+        assert "render it verbatim once" in step0
+    else:
+        assert gate in step0, "Render must not promise a plan.json while its writer returns PLAN_SKIP"
+        assert "`RENDER_TO_AWS` is absent from `SKILL_TO_PLATFORM`" in step0

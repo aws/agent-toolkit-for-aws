@@ -46,6 +46,10 @@ Actions (exactly one):
 - **[C] Exit to Generate** — leave workshop with the active scenario
 - **[D] Exit to full Clarify** — danger path; confirm before Clarify re-entry
 
+The compute target row lists the four generated targets only. Elastic Beanstalk Cluster
+mode is not one of them and is not priced here; if the user asks, use the Beanstalk Cluster
+note in `phases/clarify/clarify-interview.md` (Q12c) and keep `elastic_beanstalk`.
+
 ## Step 3: Validate edits (Apply path only)
 
 Before refresh:

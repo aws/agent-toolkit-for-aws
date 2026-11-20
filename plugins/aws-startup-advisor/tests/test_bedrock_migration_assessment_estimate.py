@@ -75,8 +75,8 @@ def test_source_provider_pricing_matches_gcp_to_aws_pricing_cache() -> None:
 def test_skill_runs_estimate_after_design() -> None:
     step4 = SKILL[SKILL.index("## Step 4: Estimate"):]
     assert "references/phases/estimate/estimate-ai.md" in step4 and "scripts/estimate-ai.py check" in step4
-    assert 'set `phases.estimate` to `"completed"` and `current_phase` to `"complete"`' in step4
-    assert "Generate is not in this skill yet. After Estimate, show its summary and stop." in SKILL
+    assert 'set `phases.estimate` to `"completed"` and `current_phase` to `"generate"`' in step4
+    assert 'unless `run_mode` is already `"decide_and_execute"`, ask once' in step4
     contracts = _json(PLUGIN_ROOT / "scripts/artifact-contracts.json")["skills"]["bedrock-migration-assessment"]
     assert contracts["estimation-ai.json"] == {"json_schema": "scripts/contracts/estimation-ai.schema.json"}
 
@@ -287,6 +287,11 @@ def _run_dir(tmp_path: Path, source: Path) -> Path:
     return tmp_path
 
 
+def _off_list_volume(prefs: dict) -> dict:
+    prefs["ai_constraints"]["ai_token_volume"]["value"] = "huge"
+    return prefs
+
+
 @pytest.mark.parametrize(("edit", "error"), [
     (lambda d: (d / "aws-design-ai.json").unlink(), "design_not_found"),
     (lambda d: (d / "aws-design-ai.json").write_text(json.dumps({**_json(d / "aws-design-ai.json"), "design_blocks": []})), "design_invalid"),
@@ -297,7 +302,8 @@ def _run_dir(tmp_path: Path, source: Path) -> Path:
      "usage_unreadable"),
     (lambda d: (d / "openai-usage-profile.json").write_text(json.dumps({**_json(d / "openai-usage-profile.json"), "usage_by_model": [
         {"model": "gpt-4o", "input_tokens": "3000000", "output_tokens": 1}]})), "usage_unreadable"),
-], ids=["no-design", "bad-design", "bad-usage", "no-estimate", "bad-cost-status", "string-tokens"])
+    (lambda d: (d / "preferences.json").write_text(json.dumps(_off_list_volume(_json(d / "preferences.json")))), "preferences_invalid"),
+], ids=["no-design", "bad-design", "bad-usage", "no-estimate", "bad-cost-status", "string-tokens", "off-list-q7"])
 def test_cli_reports_input_errors_as_json(edit, error, tmp_path: Path, capsys) -> None:
     run = _run_dir(tmp_path, MEASURED)
     edit(run)

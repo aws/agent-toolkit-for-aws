@@ -24,6 +24,7 @@ strategies, and query porting patterns.
 | OPTIONAL MATCH | ✅ | ✅ | Fully compatible |
 | WITH clause | ✅ | ⚠️ | Some limitations with aggregation |
 | UNWIND | ✅ | ✅ | Fully compatible |
+| Built-in scalar functions: `timestamp()`, `epochmillis()`, `randomUUID()`, `id()`, `coalesce()`, `toInteger()` | ✅ | ✅ | Supported; don't flag them as migration issues. See the Neptune openCypher compliance page for the full function list |
 | CASE expressions | ✅ | ⚠️ | Supported, BUT a label predicate inside CASE (`CASE WHEN n:Label`) silently evaluates to null on Neptune Analytics — use `labels(n)[0]` instead |
 | Pattern comprehensions | ✅ | ⚠️ | Limited support |
 | CALL subqueries | ✅ | ✅ | Supported for read queries; Cypher updates unsupported |
@@ -161,27 +162,29 @@ For zero-downtime migration:
 class DualWriteClient:
     """Write to both Neo4j and Neptune during migration."""
 
-    def __init__(self, neo4j_driver, neptune_client):
+    def __init__(self, neo4j_driver, neptune_traversal):
         self.neo4j = neo4j_driver
-        self.neptune = neptune_client
+        self.neptune = neptune_traversal
 
     def create_node(self, label: str, properties: Dict):
-        # Write to Neo4j (primary)
+        # Neo4j 5.26+: dynamic labels keep the label out of query text.
         self.neo4j.session().run(
-            f"CREATE (n:{label} $props)", props=properties
+            "CREATE (n:$($label)) SET n = $props",
+            label=label,
+            props=properties,
         )
-        # Write to Neptune (secondary)
-        # Use Gremlin bindings (parameterized) — never f-string interpolate
-        # label/property values into the query string (injection risk).
-        query = "g.addV(label)"
-        bindings: Dict = {"label": label}
-        for i, (k, v) in enumerate(properties.items()):
-            key_b, val_b = f"k{i}", f"v{i}"
-            query += f".property({key_b}, {val_b})"
-            bindings[key_b] = k
-            bindings[val_b] = v
-        self.neptune.submit(query, bindings=bindings).all().result()
+
+        # Neptune Database: use Gremlin-Python bytecode. Neptune text-query
+        # bindings are unsupported, and query-string interpolation is unsafe.
+        traversal = self.neptune.addV(label)
+        for key, value in properties.items():
+            traversal = traversal.property(key, value)
+        traversal.iterate()
 ```
+
+For Neo4j versions before 5.26, map external labels through a fixed allowlist
+of application-owned identifiers before constructing the query. Do not escape
+and interpolate arbitrary labels.
 
 ## Query Porting Guide
 

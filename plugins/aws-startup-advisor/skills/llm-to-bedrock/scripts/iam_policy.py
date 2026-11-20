@@ -4,6 +4,8 @@ Pure module: takes model IDs, region, and account ID — returns a policy dict.
 Handles the dual-ARN pattern (foundation-model + inference-profile) required
 when cross-region inference profile IDs (including au. and jp.) are in use.
 """
+from __future__ import annotations
+
 import json
 import re
 import sys
@@ -92,11 +94,27 @@ WEB_SEARCH_EXTERNAL_ACTION = "bedrock-websearch:ExternalWebAccess"
 UNSUPPORTED_LANES = frozenset({"mantle_messages"})
 
 
+# Partitions in the Bedrock InferenceProfileSummary inferenceProfileArn pattern.
+PROFILE_ARN = re.compile(r"arn:(aws|aws-us-gov|aws-cn):bedrock:([a-z0-9-]+):([0-9]{12}):inference-profile/([^/]+)")
+
+
 def is_inference_profile(model_id: str) -> bool:
     """True when the model ID uses a geo-prefix (cross-region inference profile)."""
-    return bool(_GEO_PREFIX.match(model_id) or re.fullmatch(
-        r"arn:aws:bedrock:[^:]+:[0-9]{12}:inference-profile/[^/]+", model_id
-    ))
+    return bool(_GEO_PREFIX.match(model_id) or PROFILE_ARN.fullmatch(model_id))
+
+
+def check_profile_arn(model_id: str, region: str, account_id: str) -> None:
+    """Raise ValueError for an ARN that is not an inference profile in this policy's partition, Region and account."""
+    if not model_id.lower().startswith("arn:"):
+        return
+    match = PROFILE_ARN.fullmatch(model_id)
+    if not match:
+        raise ValueError(f"inference-profile ARN {model_id!r} is not arn:<aws|aws-us-gov|aws-cn>:bedrock:<region>:<account>:inference-profile/<id>")
+    partition, arn_region, arn_account, _ = match.groups()
+    if partition != _partition(region) or arn_region != region:
+        raise ValueError(f"inference-profile ARN {model_id!r} is not in {region} (partition {_partition(region)})")
+    if re.fullmatch(r"[0-9]{12}", account_id) and arn_account != account_id:
+        raise ValueError(f"inference-profile ARN {model_id!r} belongs to account {arn_account}, not {account_id}")
 
 
 def is_mantle_model(model_id: str, region: str = "") -> bool:
@@ -455,6 +473,8 @@ def generate_policy(model_ids: list[str], region: str, account_id: str,
         if selector not in MANTLE_SELECTORS:
             raise ValueError(f"Unknown mantle selector {selector!r}; expected one of "
                              f"{sorted(MANTLE_SELECTORS)}")
+    for mid in model_ids:
+        check_profile_arn(mid, region, account_id)
     runtime_ids = [m for m in model_ids if not is_mantle_model(m, region)]
     mantle_ids = [m for m in model_ids if is_mantle_model(m, region)]
     web_search = "web_search" in mantle_selectors
@@ -680,6 +700,8 @@ if __name__ == "__main__":
             reason = "web_search_without_mantle_row"
         elif message.startswith("external web access"):
             reason = "external_web_access_without_web_search"
+        elif message.startswith("inference-profile ARN"):
+            reason = "inference_profile_arn_invalid"
         else:
             reason = "unknown_runtime_api"
         _fail(reason, message)

@@ -11,13 +11,12 @@
 > instead of drifting independently. Each consuming skill carries a byte-identical vendored copy
 > at `references/vendored/ai/schema-generate-ai.md`.
 >
-> **This is a target-only contract, like `schema-estimate-ai.md` and the rest of this
-> contract family (#410, #415, #416).** Structural validity against this document or its
+> **For `gcp-to-aws` and `azure-to-aws` this is a target-only contract, like
+> `schema-estimate-ai.md` and the rest of this contract family (#410, #415, #416).** Structural validity against this document or its
 > companion JSON Schema (`scripts/contracts/generation-ai.schema.json`) does NOT imply an
-> implemented adapter, rollout mechanism, or runtime-supported identity, and does NOT imply that
-> either skill's current `generate-ai.md` / `generate-artifacts-ai.md` actually emits this shape
-> yet. No producer has been repointed to this canonical contract in this change — that is
-> deferred runtime-adoption work.
+> implemented adapter, rollout mechanism, or runtime-supported identity. One skill produces it
+> today: `bedrock-migration-assessment`, whose Generate phase checks it before completing. GCP's
+> `generate-ai.md` and Azure's `generate-artifacts-ai.md` do not emit this shape yet; see Status.
 
 ## Shape
 
@@ -29,7 +28,7 @@
   "migration_plan": {
     "duration_drivers": [],
     "approach": "<string>",
-    "phases": [],
+    "phases": [], // {name, sequence (integer >= 1), activities[] (at least one)}
     "models_to_migrate": [] // normalizedModel[] — covers every model from aws-design-ai.json
   },
   "step_by_step_guide": {
@@ -119,13 +118,18 @@ a free-form string, not an enum, and this contract does not special-case the val
 - [ ] `production_readiness_checklist` has at least 5 items.
 - [ ] `success_criteria` covers `quality`, `latency`, and `cost`.
 
-## Status — target-only, no producer yet
+## Status — one producer, GCP and Azure deferred
 
-This canonical contract has no producer in this change. GCP's
-`skills/gcp-to-aws/references/phases/generate/generate-ai.md` and the `generation-ai.json`
+`bedrock-migration-assessment` produces this contract: its Generate phase
+(`skills/bedrock-migration-assessment/references/phases/generate/generate-ai.md`) writes
+`generation-ai.json`, and `skills/bedrock-migration-assessment/scripts/generate-ai.py check`
+validates it against the companion JSON Schema (`scripts/contracts/generation-ai.schema.json`)
+before the phase completes.
+
+GCP's `skills/gcp-to-aws/references/phases/generate/generate-ai.md` and the `generation-ai.json`
 section of Azure's `skills/azure-to-aws/references/phases/generate/generate-artifacts-ai.md`
 still write against their own "Schema — top-level fields" tables, and neither emits
-`artifacts_by_source[]`. This document (and its companion JSON Schema,
-`scripts/contracts/generation-ai.schema.json`) is the TARGET contract. Repointing either skill's
-generate phase to emit this shape is deferred runtime-adoption work, named explicitly so a
-future PR does not silently assume today's runtime output already satisfies this contract.
+`artifacts_by_source[]`. For `gcp-to-aws` and `azure-to-aws` this document is the TARGET
+contract. Repointing either skill's generate phase to emit this shape is deferred
+runtime-adoption work, named explicitly so a future PR does not silently assume their runtime
+output already satisfies this contract.

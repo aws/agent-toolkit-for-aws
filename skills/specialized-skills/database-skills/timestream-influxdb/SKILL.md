@@ -1,7 +1,7 @@
 ---
 name: timestream-influxdb
-version: 3
-description: Retrieves authoritative guidance on Amazon Timestream for InfluxDB across its supported engine variants. Applicable to any InfluxDB-on-AWS request including engine variant and licensing selection, provisioning and IAM, encryption at rest (AWS-owned and customer-managed KMS keys, key policies, and key lifecycle), schema design (tags vs fields, cardinality, HTTP/sensor/metric data modeling), migration from LiveAnalytics, Processing Engine plugins, connectivity (database endpoints and private or public access), and write/query errors.
+version: 4
+description: Retrieves authoritative guidance on Amazon Timestream for InfluxDB across its supported engine variants. Applicable to any InfluxDB-on-AWS request including engine variant and licensing selection, provisioning and IAM, encryption at rest (AWS-owned and customer-managed KMS keys, key policies, and key lifecycle), schema design (tags vs fields, cardinality, HTTP/sensor/metric data modeling), migration from LiveAnalytics, Processing Engine plugins, backup and restore, maintenance windows, connectivity (database endpoints and private or public access), and write/query errors.
 ---
 
 # Amazon Timestream for InfluxDB
@@ -71,7 +71,8 @@ For V3 encryption choices, customer-managed KMS key policy, migration, or key li
 - **`reboot-db-cluster`** supports `--instance-ids` for targeting specific nodes. Before using it, verify the current maximum number of IDs and all request constraints in the `RebootDbCluster` API model and Timestream for InfluxDB documentation. Do NOT say no reboot command exists or assume a fixed node-count limit.
 - **Before asserting S3 log-delivery availability or configuration paths, verify the create and update API request parameters and the Timestream for InfluxDB log-delivery documentation.** Use only the operations, service principal, and bucket-policy requirements those sources document.
 - **Do NOT invent CloudWatch metric names.** Load [monitoring operations](references/monitoring-operations.md) and [metric discovery](references/monitoring-metrics.md), then verify availability for the selected engine variant and deployment type. If unsure whether a metric exists, say so explicitly.
-- **Before asserting backup or restore availability, verify the Timestream for InfluxDB CLI or SDK API model and the [customer-managed backup and restore documentation](https://docs.aws.amazon.com/timestream/latest/developerguide/influxdb3-customer-managed-backup-restore.html).** Confirm support by engine variant and Region for on-demand, scheduled, continuous, point-in-time, and self-service restore capabilities. Use `DbBackup` terminology for `DbBackup` resources, never "snapshot," and separately verify the accessibility and recovery path for service-managed snapshots.
+- **Backup and restore:** Follow the backup and restore contract in section 7.
+- **Maintenance windows:** Set with `--maintenance-schedule '{"timezone":"<iana-zone>","preferredMaintenanceWindow":"ddd:HH:MM-ddd:HH:MM"}'`. The API requires both fields. Use `update-db-instance --identifier` for an instance and `update-db-cluster --db-cluster-id` for a cluster, or pass the same value at create or restore time. The window must be 2–24 hours long and use an IANA time zone (not `EST` or `GMT+5`); propose a compliant window instead of submitting a shorter one. An empty `preferredMaintenanceWindow` returns scheduling to the service. Verify the result with `get-db-instance` or `get-db-cluster`; `nextMaintenanceTime` is always reported in UTC. Load [monitoring operations](references/monitoring-operations.md) for availability impact and deferral rules.
 - **`--publicly-accessible`** is a supported option at instance/cluster creation time. Do NOT say the service is exclusively VPC-only — public access is an opt-in feature.
 
 ### 3. Design the schema (tags vs fields)
@@ -105,7 +106,21 @@ Load the [processing-engine guide](references/processing-engine-guide.md) before
 
 ### 6. Monitor and operate
 
-Load [monitoring operations](references/monitoring-operations.md) and [metric discovery](references/monitoring-metrics.md) before giving metric, alarm, maintenance, backup, or restore guidance. Verify metric names and dimensions from the service documentation and the resource's CloudWatch telemetry before configuring alarms. Verify maintenance request shapes, backup and restore capabilities, and service quotas in their respective API models rather than relying on embedded examples or fixed availability claims.
+Load [monitoring operations](references/monitoring-operations.md) and [metric discovery](references/monitoring-metrics.md) before giving metric, alarm, or maintenance-window guidance. Verify metric names and dimensions from the service documentation and the resource's CloudWatch telemetry before configuring alarms. Verify maintenance request shapes and service quotas in their API models rather than relying on embedded examples.
+
+### 7. Back up and restore
+
+Load [backup and restore](references/backup-restore.md) before giving any backup, snapshot, or restore guidance, and retrieve the backup and restore documentation for the engine variant it links.
+
+**Constraints:**
+
+- You MUST call customer-managed backups `DbBackup`s, never "snapshots." Distinguish them from service-managed backups, which require an AWS Support case to recover.
+- You MUST use the operations `create-db-backup`, `get-db-backup`, `list-db-backups`, `delete-db-backup`, and `restore-from-db-backup`, plus `--db-backup-configurations` on the create, update, and restore operations. Take enum values from the API model: the custom-cron type is `CUSTOM_SCHEDULE`.
+- You MUST offer `CONTINUOUS` backups and `--restore-to-time` point-in-time restore only for engine variants whose backup and restore guide documents them, and keep continuous retention within the limit that guide states.
+- You MUST pass the resource ID, not its name, as `--db-resource-id`. Report a backup as restorable only after `get-db-backup` returns `COMPLETED`.
+- You MUST default to `--restore-mode NEW_RESOURCE`. Before `REPLACE_EXISTING`, take an on-demand backup and wait for `COMPLETED`, state that the resource becomes unavailable and its current data is replaced, and obtain explicit confirmation. Never use `REPLACE_EXISTING` for a cluster encrypted with a customer-managed KMS key.
+- You MUST obtain explicit confirmation before `delete-db-backup`. Before deleting an instance or cluster, state that its automated backups are deleted unless `--retain-automated-backups` is passed.
+- After a restore, poll the `restoredDbResourceId` until `AVAILABLE` or a terminal failure, and give the user the new resource's endpoint and secret ARN.
 
 ## Troubleshooting
 
