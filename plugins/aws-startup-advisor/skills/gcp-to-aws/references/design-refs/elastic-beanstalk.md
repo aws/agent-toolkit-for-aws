@@ -55,6 +55,8 @@ Detect the **platform name** (below), then resolve the exact platform version at
 
 All current platforms run on Amazon Linux 2023 (AL2 branches are being retired).
 
+**Retired language versions.** Elastic Beanstalk retires a platform branch soon after its runtime reaches end of life, and a retired branch is not listed for new environments (Node.js 20, Python 3.9 and Ruby 3.2 on AL2023 were retired on 2026-08-13). When the application's declared language version has no supported branch, name the lowest supported branch of the same family in the `name_regex` (the smallest version step for the application), never the newest, and add a `warnings[]` entry to `aws-design.json` naming the source version and the branch chosen. Say so in `MIGRATION_GUIDE.md` so the team tests on that runtime before cutover.
+
 ## Platform Detection Rules
 
 Detect from app source to select EB platform automatically:
