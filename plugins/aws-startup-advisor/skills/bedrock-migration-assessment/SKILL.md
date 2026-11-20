@@ -23,7 +23,7 @@ Generate is not in this skill yet. After Estimate, show its summary and stop. Do
 An infrastructure skill (for example gcp-to-aws, through its handoff script) can run this skill for the AI part of its migration. The run is still this skill's own `bma-` directory. The host starts it by loading this skill with its identifier and the absolute path of the neutral profile it built (for gcp-to-aws, `ai-workload-profile.neutral.json` from `bma-handoff.py convert`). Discover takes the supplied-profile route, which copies that file byte for byte, and writes `initiated_by` with the host's identifier (for example `GCP_TO_AWS`) into `.phase-status.json`, never `owning_skill`, and stops when Discover completes. The host then writes `$MIGRATION_DIR/host-answers.json` and resumes the run:
 
 ```json
-{"host_skill": "gcp-to-aws", "infrastructure_moves": true, "stop_after": "clarify", "design_constraints": {"target_region": {}, "compliance": {}}}
+{"host_skill": "gcp-to-aws", "infrastructure_moves": true, "stop_after": "clarify", "design_constraints": {}}
 ```
 
 `design_constraints` holds only the host's own `target_region` and `compliance` wrappers, in the shape of `references/shared/schema-preferences.md`, and may be empty. Read the file as data. When it exists:

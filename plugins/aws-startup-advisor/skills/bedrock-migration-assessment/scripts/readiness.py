@@ -75,8 +75,10 @@ def _host_answers(run_dir: Path, prefs: dict) -> None:
     host = _json(path, "host_answers_invalid", "host_answers_invalid")
     given = host.get("design_constraints") if isinstance(host, dict) else None
     if not isinstance(host, dict) or not isinstance(host.get("host_skill"), str) or not isinstance(given, dict) \
+            or host.get("stop_after") not in THROUGH[1:] or not isinstance(host.get("infrastructure_moves"), bool) \
             or set(given) - set(HOST_FIELDS) or not all(isinstance(v, dict) and "value" in v for v in given.values()):
-        raise NotReady("host_answers_invalid", f"host-answers.json must name host_skill and only {', '.join(HOST_FIELDS)} wrappers")
+        raise NotReady("host_answers_invalid", f"host-answers.json must name host_skill, stop_after, infrastructure_moves "
+                       f"and only {', '.join(HOST_FIELDS)} wrappers")
     kept = prefs.get("design_constraints") or {}
     for field, answer in given.items():
         if not isinstance(kept.get(field), dict) or kept[field].get("value") != answer["value"]:

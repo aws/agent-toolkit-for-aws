@@ -111,12 +111,21 @@ def test_a_host_answer_preferences_dropped_is_not_ready(tmp_path: Path, capsys) 
     json.dumps({"host_skill": "gcp-to-aws", "design_constraints": {"ai_priority": {"value": "cost"}}}),
     json.dumps({"host_skill": "gcp-to-aws", "design_constraints": {"compliance": ["none"]}}),
     json.dumps({"design_constraints": {}}),
-], ids=["not-json", "array", "unknown-key", "bare-value", "no-host-skill"])
+    json.dumps({"host_skill": "gcp-to-aws", "infrastructure_moves": True, "stop_after": "generate", "design_constraints": {}}),
+    json.dumps({"host_skill": "gcp-to-aws", "infrastructure_moves": True, "design_constraints": {}}),
+    json.dumps({"host_skill": "gcp-to-aws", "infrastructure_moves": "yes", "stop_after": "clarify", "design_constraints": {}}),
+], ids=["not-json", "array", "unknown-key", "bare-value", "no-host-skill", "unknown-stop", "no-stop", "non-bool-infra"])
 def test_a_broken_host_answers_file_is_not_ready(host, tmp_path: Path, capsys) -> None:
     run = _run(tmp_path, THROUGH_CLARIFY)
     (run / "host-answers.json").write_text(host)
     code, out = _cli(run, "clarify", capsys)
     assert code == 1 and out["reason"] == "host_answers_invalid"
+
+
+def test_the_documented_host_answers_example_is_accepted(tmp_path: Path, capsys) -> None:
+    example = json.loads(SKILL.split("The host then writes", 1)[1].split("```json", 1)[1].split("```", 1)[0])
+    run = _run(tmp_path, THROUGH_CLARIFY, example)
+    assert _cli(run, "clarify", capsys)[0] == 0
 
 
 def test_a_run_another_skill_initiated_is_still_this_skills_run(tmp_path: Path, capsys) -> None:

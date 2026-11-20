@@ -141,7 +141,7 @@ def _profile_digest(gcp_dir: Path) -> str:
 def _withdraw(gcp_dir: Path) -> None:
     record_path = gcp_dir / "ai-handoff.json"
     record = _read_json(record_path, "handoff_unreadable") if record_path.exists() else {}
-    copied = record.get("artifacts") or {} if isinstance(record, dict) else {}
+    copied = (record.get("artifacts") or {}) if isinstance(record, dict) else {}
     for name in (*THROUGH_FILES["estimate"][1:], NEUTRAL_PROFILE):
         path = gcp_dir / name
         if path.exists() and (name == NEUTRAL_PROFILE or copied.get(name) == _sha(path.read_bytes())):
@@ -175,6 +175,10 @@ def route(gcp_dir: Path, infra_only: bool) -> tuple[int, dict]:
         return 0, {"route": "defer", "reason": "user_chose_infra_only",
                    "message": "The AI workloads are deferred at your request; the infrastructure migration continues."}
     if status == "present":
+        held = _read_json(record, "handoff_unreadable") if record.exists() else None
+        if held is not None and (not isinstance(held, dict) or held.get("status") == "deferred"
+                                 or held.get("profile_digest") != _profile_digest(gcp_dir)):
+            _withdraw(gcp_dir)
         return 0, {"route": "delegate", "message": "AI Clarify, Design, and Estimate run in bedrock-migration-assessment."}
     reason = "bma_absent" if status == "absent" else "bma_tampered"
     if infra and (status == "absent" or infra_only):
@@ -287,8 +291,10 @@ def _merge_vertex(profile: dict, observations: list[dict]) -> None:
 
 def _host_constraints(gcp_dir: Path) -> dict:
     prefs_path = gcp_dir / "preferences.json"
-    if not _has_infrastructure(gcp_dir) or not prefs_path.exists():
+    if not _has_infrastructure(gcp_dir):
         return {}
+    if not prefs_path.exists():
+        raise HandoffError("preferences_missing", "this run moves infrastructure but has no preferences.json; run gcp-to-aws Clarify first")
     prefs = _read_json(prefs_path, "preferences_unreadable")
     given = (prefs.get("design_constraints") or {}) if isinstance(prefs, dict) else {}
     out = {}
@@ -347,7 +353,7 @@ def accept(gcp_dir: Path, bma_dir: Path, through: str) -> dict:
         raise HandoffError("accept_regressed", f"this handoff already accepted {record['through']}; accept {record['through']} or later")
     host = _read_json(bma_dir / "host-answers.json", "host_answers_unreadable")
     if not isinstance(host, dict) or host.get("design_constraints") != _host_constraints(gcp_dir):
-        raise HandoffError("host_answers_stale", "gcp-to-aws region or compliance changed after the handoff; re-run AI Clarify")
+        raise HandoffError("host_answers_stale", "gcp-to-aws region or compliance changed after the handoff; run host-answers again, then resume AI Clarify")
     data = _verified(bma_dir, _ready(bma_dir, through), through)
     if "sha256:" + _sha(data["ai-workload-profile.json"]) != record.get("assessment_profile_digest"):
         raise HandoffError("assessment_profile_mismatch", f"{bma_dir.name} no longer holds the profile this run handed over")
@@ -375,20 +381,20 @@ def _merge_preferences(gcp_dir: Path, bma_dir: Path, raw: bytes) -> None:
     assessment = json.loads(raw.decode("utf-8"))
     source = {"assessment_dir": bma_dir.name, "sha256": _sha(raw)}
     path = gcp_dir / "preferences.json"
-    if not _has_infrastructure(gcp_dir) or not path.exists():
+    if not _has_infrastructure(gcp_dir):
         assessment.setdefault("metadata", {})["ai_preferences_source"] = source
         _write_json(path, assessment)
         return
     prefs = _read_json(path, "preferences_unreadable")
     earlier = (prefs.get("metadata") or {}).get("ai_preferences_source") or {}
     current = prefs.setdefault("startup_constraints", {})
-    before = earlier.get("startup_before") if "startup_keys" in earlier else {k: current[k] for k in current}
-    keys = set(earlier.get("startup_keys", []))
+    owned = set(earlier.get("startup_keys", []))
+    host = {k: v for k, v in current.items() if k not in owned} | earlier.get("startup_before", {})
     startup = assessment.get("startup_constraints", {})
-    current.update(startup)
+    prefs["startup_constraints"] = host | startup
     prefs["ai_constraints"] = assessment.get("ai_constraints", {})
     prefs.setdefault("metadata", {})["ai_preferences_source"] = source | {
-        "startup_keys": sorted(keys | set(startup)), "startup_before": {k: v for k, v in before.items() if k in keys | set(startup)}}
+        "startup_keys": sorted(startup), "startup_before": {k: host[k] for k in startup if k in host}}
     _write_json(path, prefs)
 
 

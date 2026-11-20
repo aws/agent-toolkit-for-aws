@@ -595,7 +595,7 @@ GOOD_PROFILE_FOR_TEST = {"schema_version": "1.0", "gateways": [], "ai_sources": 
     "models": [], "model_observations": []}]}
 
 
-@pytest.mark.parametrize("reroute", ["no_ai", "defer"])
+@pytest.mark.parametrize("reroute", ["no_ai", "defer", "delegate"])
 def test_rerouting_removes_what_an_earlier_accept_copied(reroute, tree: Path, tmp_path: Path) -> None:
     gcp = _gcp_run(tmp_path, infra=True)
     prefs = _gcp_prefs(gcp)
@@ -604,13 +604,73 @@ def test_rerouting_removes_what_an_earlier_accept_copied(reroute, tree: Path, tm
     assert _cli(tree, "accept", str(gcp), str(bma), "--through", "estimate")[0] == 0
     if reroute == "no_ai":
         (gcp / "ai-workload-profile.json").unlink()
-    else:
+    elif reroute == "defer":
         shutil.rmtree(tree / "bedrock-migration-assessment")
+    else:
+        (gcp / "ai-workload-profile.json").write_text(json.dumps(_legacy([_model("gemini-2.5-pro", "vertex_ai_generative", "code")])))
     assert _cli(tree, "route", str(gcp))[1]["route"] == reroute
+    if reroute == "delegate":
+        assert _cli(tree, "convert", str(gcp))[1]["error"] == "no_ai_sources"
     for name in ("aws-design-ai.json", "estimation-ai.json", "ai-workload-profile.neutral.json"):
         assert not (gcp / name).exists(), name
     assert json.loads((gcp / "preferences.json").read_text()) == prefs
     assert (gcp / "ai-handoff.json").exists() is (reroute == "defer")
+
+
+def test_delegating_again_keeps_a_handoff_for_the_same_profile(tree: Path, tmp_path: Path) -> None:
+    gcp = _gcp_run(tmp_path, infra=True)
+    _gcp_prefs(gcp)
+    bma = _bma_run(tmp_path)
+    _open(tree, gcp, bma, "estimate")
+    assert _cli(tree, "accept", str(gcp), str(bma), "--through", "design")[0] == 0
+    assert _cli(tree, "route", str(gcp))[1]["route"] == "delegate"
+    assert (gcp / "aws-design-ai.json").exists()
+    assert json.loads((gcp / "ai-handoff.json").read_text())["through"] == "design"
+
+
+def test_delegating_after_a_deferral_clears_the_deferral(tree: Path, tmp_path: Path) -> None:
+    gcp = _gcp_run(tmp_path, infra=True)
+    assert _cli(tree, "route", str(gcp), "--infra-only")[1]["route"] == "defer"
+    assert _cli(tree, "route", str(gcp))[1]["route"] == "delegate"
+    assert not (gcp / "ai-handoff.json").exists()
+
+
+@pytest.mark.parametrize("record", ["[]", '"converted"'])
+def test_rerouting_replaces_a_handoff_record_that_is_not_an_object(record, tree: Path, tmp_path: Path) -> None:
+    gcp = _gcp_run(tmp_path, infra=True)
+    (gcp / "ai-handoff.json").write_text(record)
+    assert _cli(tree, "route", str(gcp))[1]["route"] == "delegate"
+    assert not (gcp / "ai-handoff.json").exists()
+
+
+def test_an_infrastructure_run_needs_gcp_preferences_before_the_handoff(tree: Path, tmp_path: Path) -> None:
+    gcp = _gcp_run(tmp_path, infra=True)
+    bma = _bma_run(tmp_path)
+    code, out = _open(tree, gcp, bma, "estimate")
+    assert code == 1 and out["error"] == "preferences_missing"
+    assert not (bma / "host-answers.json").exists()
+    assert json.loads((gcp / "ai-handoff.json").read_text())["status"] == "converted"
+
+
+def test_accept_stops_when_gcp_preferences_disappear_after_the_handoff(tree: Path, tmp_path: Path) -> None:
+    gcp = _gcp_run(tmp_path, infra=True)
+    _gcp_prefs(gcp)
+    bma = _bma_run(tmp_path)
+    assert _open(tree, gcp, bma, "estimate")[0] == 0
+    (gcp / "preferences.json").unlink()
+    code, out = _cli(tree, "accept", str(gcp), str(bma), "--through", "clarify")
+    assert code == 1 and out["error"] == "preferences_missing"
+    assert not (gcp / "preferences.json").exists()
+
+
+def test_accepting_phase_by_phase_never_reports_unchanged_answers_as_stale(tree: Path, tmp_path: Path) -> None:
+    gcp = _gcp_run(tmp_path, infra=True)
+    _gcp_prefs(gcp)
+    bma = _bma_run(tmp_path)
+    assert _open(tree, gcp, bma, "estimate")[0] == 0
+    for through in ("clarify", "design", "estimate"):
+        code, out = _cli(tree, "accept", str(gcp), str(bma), "--through", through)
+        assert code == 0, out
 
 
 def test_rerouting_keeps_an_ai_design_the_handoff_did_not_copy(tree: Path, tmp_path: Path) -> None:
@@ -664,3 +724,34 @@ def test_infra_only_is_honored_when_the_sibling_is_present(tree: Path, tmp_path:
     assert json.loads((run / "ai-handoff.json").read_text())["reason"] == "user_chose_infra_only"
     ai_only = _gcp_run(tmp_path / "other", infra=False)
     assert _cli(tree, "route", str(ai_only), "--infra-only")[1]["route"] == "delegate"
+
+
+def test_a_reassessment_that_changes_startup_keys_still_restores_the_host_answers(tree: Path, tmp_path: Path) -> None:
+    gcp = _gcp_run(tmp_path, infra=True)
+    prefs = _gcp_prefs(gcp)
+    host_value = {"value": "has_credits", "chosen_by": "user", "prompt": "p", "design_consequence": "c"}
+    prefs["startup_constraints"] = {"startup_program_status": host_value, "funding_stage": host_value}
+    (gcp / "preferences.json").write_text(json.dumps(prefs))
+    bma = _bma_run(tmp_path)
+    _open(tree, gcp, bma, "estimate")
+    assert _cli(tree, "accept", str(gcp), str(bma), "--through", "clarify")[0] == 0
+    bma_prefs = json.loads((bma / "preferences.json").read_text())
+    bma_prefs["startup_constraints"] = {"funding_stage": {**host_value, "value": "seed", "chosen_by": "default"}}
+    (bma / "preferences.json").write_text(json.dumps(bma_prefs))
+    assert _cli(tree, "accept", str(gcp), str(bma), "--through", "clarify")[0] == 0
+    merged = json.loads((gcp / "preferences.json").read_text())["startup_constraints"]
+    assert merged == {"startup_program_status": host_value, "funding_stage": bma_prefs["startup_constraints"]["funding_stage"]}
+    (gcp / "ai-workload-profile.json").unlink()
+    _cli(tree, "route", str(gcp))
+    assert json.loads((gcp / "preferences.json").read_text()) == prefs
+
+
+def test_stale_host_answers_name_the_command_that_clears_them(tree: Path, tmp_path: Path) -> None:
+    gcp = _gcp_run(tmp_path, infra=True)
+    prefs = _gcp_prefs(gcp)
+    bma = _bma_run(tmp_path)
+    _open(tree, gcp, bma, "estimate")
+    prefs["design_constraints"]["target_region"]["value"] = "eu-west-1"
+    (gcp / "preferences.json").write_text(json.dumps(prefs))
+    code, out = _cli(tree, "accept", str(gcp), str(bma), "--through", "clarify")
+    assert code == 1 and out["error"] == "host_answers_stale" and "host-answers" in out["detail"]
