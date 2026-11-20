@@ -51,17 +51,26 @@ and the `units[]` array from design.json. Each unit has `id`, `workload_class`, 
    plus the model default's token rates as order-of-magnitude). Carry a "last updated" date.
 2. Record `pricing_source`: `cached` | `cached_stale` (if >90 days old).
 
-Cached anchors (order-of-magnitude, us-east-1, verify; last updated 2025-07-14):
+Cached anchors (order-of-magnitude, us-east-1, verify; last updated 2026-11-13, from the AWS Price
+List; each figure is also a `volatile_facts` entry with `as_of` and `source` in the runtime
+profile named, so the two must agree):
 
-- AgentCore (microVMs compute type): ~$0.0895/vCPU-hour (active CPU only), ~$0.00945/GB-hour
+- AgentCore (microVMs compute type) — `agentcore.json` fact `microvms_pricing`: ~$0.0895/vCPU-hour
+  (active CPU only), ~$0.00945/GB-hour for the original `Runtime:Consumption-based` SKUs. The price
+  list also carries `-v2` runtime SKUs (consumption ~$0.1276/vCPU-hour, ~$0.0169/GB-hour;
+  committed baseline ~$0.0997/vCPU-hour, ~$0.0132/GB-hour); use them only when the design states
+  the unit runs on that runtime generation, and say which generation the band assumes.
 - AgentCore (Instances compute type, `agentcore_compute_type: "instances"` in design.json):
   EC2 On-Demand rate for the chosen instance type (user's Savings Plans / ODCRs apply) PLUS
   an AgentCore management fee — NOT consumption-based and NOT $0 during I/O wait. No cached
   anchor here: use the instance type from the user's `instance_type_requirement` answer (else
   assume a mid-size general-purpose type and say so), and set `pricing_source: cached_stale`
   for that component with a note to verify the EC2 rate before committing.
-- Lambda MicroVMs: ~$0.0997/vCPU-hour, ~$0.0132/GB-hour
-- Fargate: ~$0.04048/vCPU-hour, ~$0.004445/GB-hour
+- Lambda MicroVMs — `lambda_microvms.json` fact `pricing`: arm64 ~$0.0997/vCPU-hour,
+  ~$0.0132/GB-hour; x86_64 ~$0.1176/vCPU-hour, ~$0.0156/GB-hour (about 18% more). Name the
+  architecture the band assumes; default to arm64 only when the design says the unit runs on it.
+- Fargate — `ecs.json` fact `fargate_pricing`: x86_64 ~$0.04048/vCPU-hour, ~$0.004445/GB-hour;
+  arm64 ~$0.03238/vCPU-hour, ~$0.00356/GB-hour.
 - Bedrock model token rates: defer to `references/vendored/ai/bedrock-pricing-cache.md` for exact figures
 
 ## Step 3 — Produce a magnitude per unit, not a quote
