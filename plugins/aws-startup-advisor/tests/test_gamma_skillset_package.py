@@ -65,9 +65,13 @@ def test_package_closes_dependencies_and_preserves_source_bytes(packages, skill)
         ["git", "-C", str(PLUGIN_ROOT), "rev-parse", "HEAD"], text=True
     ).strip()
     assert manifest["workers_registered"] is False
-    assert manifest["skills"] == sorted([
+    expected = [
         skill, "tf-best-practices", "contextual-offers-for-startups", "knowledge-base-for-startups",
-    ])
+    ]
+    if skill == "heroku-to-aws":
+        # Heroku Discover hands the AI profile to this sibling skill.
+        expected.append("bedrock-migration-assessment")
+    assert manifest["skills"] == sorted(expected)
     with zipfile.ZipFile(archive) as handle:
         assert {name.split("/")[0] for name in handle.namelist()} == {"README.md", "skills"}
         assert all(member.date_time == builder.FIXED_ZIP_TIME for member in handle.infolist())
