@@ -33,7 +33,7 @@ Engine (PostgreSQL vs MySQL) comes from GCP `database_version`, not from Q12/Q13
 - **RDS path** (`single-az`, `multi-az`): Size from current Cloud SQL tier; `database_traffic` and `db_io_workload` select instance class, optional read replicas, and storage type (**gp3** default; **io2** / Provisioned IOPS when `db_io_workload = "high"`).
 - **Aurora path** (`multi-az-ha`, `multi-region`): Apply Q12 traffic and Q13 I/O for Aurora Standard vs I/O-Optimized, read replicas, Serverless v2, or DSQL review.
 - **Dev/low spend** → RDS `db.t4g.micro` or `db.t4g.small` single-AZ is appropriate when Q6 = Inconvenient — do not upsell to Aurora Serverless v2.
-- **Migration tooling** — Read `preferences.json` → `design_constraints.db_size.value` (set by Q13b in Clarify) to select the right tool: `"<10GB"` → pg_dump/pg_restore; `"10-100GB"` or `"100-500GB"` → pgcopydb; `">500GB"` → AWS DMS strongly recommended; `"unknown"` → default to pgcopydb
+- **Migration tooling** — Read `preferences.json` → `design_constraints.db_size.value` (set by Q13b in Clarify) to select the right tool: `"<10GB"` → pg_dump/pg_restore; `"10-100GB"` or `"100-500GB"` → pgcopydb; `">500GB"` → HOLD in Generate for a separately reviewed workflow (AWS DMS full-load + CDC may be appropriate); `"unknown"` → HOLD in Generate until actual size and the maintenance window are verified
 
 ### Firestore
 

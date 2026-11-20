@@ -243,7 +243,7 @@ file; the underlying decision shapes are different.
 **Rationale:** Determines cutover strategy and which database migration tooling is
 recommended. Zero-downtime migrations require significantly more complex infrastructure
 (blue/green, traffic shifting). With a maintenance window, databases can be taken offline
-briefly and migrated with native tools — without one, live replication via DMS is required.
+briefly and migrated with native tools — without one, Generate marks the online database migration HOLD (live replication via DMS is a separate validated workflow, not generated today).
 
 **Database migration tooling notes:**
 
@@ -257,9 +257,10 @@ briefly and migrated with native tools — without one, live replication via DMS
   table copying and index rebuilding, significantly reducing migration time within the same
   maintenance window.
 - For PostgreSQL databases `db_size: ">500GB"`: **AWS DMS strongly recommended** regardless of
-  maintenance window — single-pass export/import at this scale is high-risk.
-- pgcopydb's CDC mode requires `wal_level=logical` on Cloud SQL, which must be enabled
-  explicitly.
+  maintenance window — single-pass export/import at this scale is high-risk. Generate marks the data step HOLD (DMS is not generated today).
+- The generated pgcopydb template performs a single offline copy and does not configure CDC.
+  Any online (CDC) migration needs logical decoding enabled on Cloud SQL and is a separate
+  validated workflow.
 
 > The maintenance window determines your migration cutover strategy and which database
 > migration tooling we recommend. Zero-downtime migrations require significantly more complex
@@ -275,16 +276,16 @@ briefly and migrated with native tools — without one, live replication via DMS
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Weekly window  | Standard cutover with DNS switchover during window; **pg_dump/pg_restore** for PostgreSQL <10GB; **pgcopydb** for larger databases — parallel copying cuts migration time significantly; no DMS licensing, no replication lag risk                          |
 | Monthly window | Cutover timed to monthly window; pg_dump/pg_restore or **pgcopydb** depending on DB size; blue/green for application layer                                                                                                                                  |
-| Zero downtime  | **AWS DMS required** for live database replication; blue/green deployment for application layer; **RDS blue/green deployments** (RDS path per Q6) or **Aurora blue/green deployments** (Aurora path per Q6); Route 53 weighted routing for traffic shifting |
-| Flexible       | Recommend scheduling a weekly window to enable pg_dump/pgcopydb approach; falls back to DMS if window cannot be arranged                                                                                                                                    |
+| Zero downtime  | **Recorded; online database migration is HOLD** (Generate lists the DMS prerequisites for a PostgreSQL or MySQL source, and other sources get only the HOLD; AWS DMS/CDC is a separate validated workflow, not generated today); blue/green deployment for application layer; **RDS blue/green deployments** (RDS path per Q6) or **Aurora blue/green deployments** (Aurora path per Q6); Route 53 weighted routing for traffic shifting |
+| Flexible       | Recommend scheduling a weekly window to enable pg_dump/pgcopydb approach; falls back to an offline copy in the next available window; online migration remains HOLD                                                                                                                                    |
 
 Interpret:
 
 ```
 1 -> cutover_strategy: "maintenance-window-weekly" — pg_dump/pg_restore or pgcopydb recommended; standard cutover with DNS switchover
 2 -> cutover_strategy: "maintenance-window-monthly" — pg_dump/pg_restore or pgcopydb recommended; blue/green for app layer
-3 -> cutover_strategy: "zero-downtime" — AWS DMS required for live DB replication; blue/green deployment; Route 53 weighted routing
-4 -> cutover_strategy: "flexible" — Recommend scheduling weekly window for pg_dump approach; DMS fallback
+3 -> cutover_strategy: "zero-downtime" — recorded; Generate marks the online database migration HOLD [zero-downtime-requested] (with the DMS prerequisites for a PostgreSQL or MySQL source, and the HOLD alone for other sources; DMS/CDC is a separate validated workflow); blue/green deployment; Route 53 weighted routing
+4 -> cutover_strategy: "flexible" — Recommend scheduling weekly window for pg_dump approach; falls back to an offline copy in the next available window; online migration remains HOLD
 5 -> same as default (4) — assume flexible
 ```
 
@@ -327,7 +328,7 @@ Azure's fragment: whether it is a question at all depends on which compute is pr
 | `compliance`        | Design's service catalog, region gate, and security-baseline defaults                 |
 | `availability`      | `clarify-database.md`'s RDS-vs-Aurora family selection (post-rubric override)         |
 | `compute`           | `clarify-compute.md`'s Q7b/Q8 early-exit check                                        |
-| `cutover_strategy`  | Generate's migration runbook shape, and the DMS-versus-pg_dump tooling choice         |
+| `cutover_strategy`  | Generate's migration runbook shape, and the zero-downtime HOLD and the copy-tool choice         |
 | `gcp_monthly_spend` | Estimate's migrate-vs-stay comparison and Activate credits tier                       |
 | `cud_status`        | Estimate's commitment-overlap ROI framing                                             |
 

@@ -1,0 +1,26 @@
+[
+  {
+    "id": "support-answer",
+    "prompt": "A customer asks how to reset their password. Answer in two sentences.",
+    "expected_traits": [
+      "password",
+      "reset"
+    ]
+  },
+  {
+    "id": "summary",
+    "prompt": "Summarize in one sentence: The order shipped late because the warehouse was closed for a holiday.",
+    "expected_traits": [
+      "late",
+      "holiday"
+    ]
+  },
+  {
+    "id": "json",
+    "prompt": "Return a JSON object with keys name and city for: Ana lives in Lisbon.",
+    "expected_traits": [
+      "Ana",
+      "Lisbon"
+    ]
+  }
+]

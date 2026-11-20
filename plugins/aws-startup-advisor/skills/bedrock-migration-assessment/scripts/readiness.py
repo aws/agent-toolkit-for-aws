@@ -27,9 +27,10 @@ validator = design_ai.validator
 STATUS_SCHEMA = HERE.parent / "references" / "vendored" / "state" / "phase-status.schema.json"
 # Phases in run order, each with the artifacts that phase leaves behind.
 PHASES = (("discover", ("ai-workload-profile.json",)), ("clarify", ("preferences.json",)),
-          ("design", ("aws-design-ai.json",)), ("estimate", ("estimation-ai.json",)))
+          ("design", ("aws-design-ai.json",)), ("estimate", ("estimation-ai.json",)), ("generate", ("generation-ai.json",)))
 THROUGH = tuple(name for name, _ in PHASES)
 HOST_FIELDS = ("target_region", "compliance")
+HOST_STOPS = ("clarify", "design", "estimate")
 
 
 class NotReady(Exception):
@@ -75,7 +76,7 @@ def _host_answers(run_dir: Path, prefs: dict) -> None:
     host = _json(path, "host_answers_invalid", "host_answers_invalid")
     given = host.get("design_constraints") if isinstance(host, dict) else None
     if not isinstance(host, dict) or not isinstance(host.get("host_skill"), str) or not isinstance(given, dict) \
-            or host.get("stop_after") not in THROUGH[1:] or not isinstance(host.get("infrastructure_moves"), bool) \
+            or host.get("stop_after") not in HOST_STOPS or not isinstance(host.get("infrastructure_moves"), bool) \
             or set(given) - set(HOST_FIELDS) or not all(isinstance(v, dict) and "value" in v for v in given.values()):
         raise NotReady("host_answers_invalid", f"host-answers.json must name host_skill, stop_after, infrastructure_moves "
                        f"and only {', '.join(HOST_FIELDS)} wrappers")
@@ -114,7 +115,7 @@ def check(run_dir: Path, through: str) -> dict:
     result = design_ai.check_design(design, profile, prefs)
     if not result["ok"]:
         raise NotReady("design_invalid", "; ".join(e["code"] for e in result["errors"][:5]))
-    if through == "estimate":
+    if through in ("estimate", "generate"):
         estimate = _json(run_dir / "estimation-ai.json", "artifact_missing", "artifact_unreadable", read)
         try:
             result = estimate_ai.check_estimate(estimate, estimate_ai.figures_for(run_dir))
@@ -122,11 +123,24 @@ def check(run_dir: Path, through: str) -> dict:
             raise NotReady("estimate_invalid", f"{exc.code}: {exc.detail}")
         if not result["ok"]:
             raise NotReady("estimate_invalid", "; ".join(e["code"] for e in result["errors"][:5]))
+    if through == "generate":
+        # Loaded here, not at import: generate-ai.py loads this module.
+        generate_ai = _load("bma_readiness_generate", "generate-ai.py")
+        try:
+            result = generate_ai.check(run_dir)
+        except (generate_ai.GenerateInputError, estimate_ai.EstimateInputError, design_ai.DesignInputError) as exc:
+            reason = {"generation_not_found": "artifact_missing", "generation_unreadable": "artifact_unreadable"}.get(exc.code, "generate_invalid")
+            raise NotReady(reason, f"{exc.code}: {exc.detail}")
+        if not result["ok"]:
+            raise NotReady("generate_invalid", "; ".join(e["code"] for e in result["errors"][:5]))
+        for rel in ["generation-ai.json"] + result["files"]:
+            read[rel] = (run_dir / rel).read_bytes()
     return _ready(status, run_dir, needed, read, through)
 
 
 def _ready(status: dict, run_dir: Path, needed: tuple, read: dict[str, bytes], through: str) -> dict:
-    artifacts = {f: {"path": str(run_dir / f), "sha256": hashlib.sha256(read[f]).hexdigest()} for _, files in needed for f in files}
+    artifacts = {f: {"path": str(run_dir / f), "sha256": hashlib.sha256(read[f]).hexdigest()}
+                 for f in [f for _, files in needed for f in files] + sorted(k for k in read if "/" in k)}
     return {"ready": True, "through": through, "migration_id": status["migration_id"], "run_id": status.get("run_id"),
             "initiated_by": status.get("initiated_by"), "artifacts": artifacts}
 
