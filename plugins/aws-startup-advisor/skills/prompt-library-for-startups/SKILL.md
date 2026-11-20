@@ -52,7 +52,7 @@ The **Downloadable agents** section of `references/prompt-library.md` lists **in
 
 When the user's intent matches one of these — _"set up multi-account"_, _"prevent bill shock"_, _"audit service quotas"_, _"which Bedrock model / region"_, _"build a Strands agent on AgentCore"_ — recommend the matching agent **by title and use-case**, then hand over the install source from its detail file under `references/prompt-library/`. Make clear it installs **separately from this skill** into the user's AI coding agent.
 
-For migration intent, route to the matching migration skill in this plugin: **`gcp-to-aws`** (_"GCP to AWS"_, move off Google Cloud), **`heroku-to-aws`** (_"migrate off Heroku"_), **`llm-to-bedrock`** (_"move off OpenAI/Gemini to Bedrock"_ — SDK rewrite), or **`agent-advisor`** (agent runtime / architecture on AWS).
+For migration intent, route to the matching migration skill in this plugin: **`gcp-to-aws`** (_"GCP to AWS"_, move off Google Cloud), **`heroku-to-aws`** (_"migrate off Heroku"_), **`llm-to-bedrock`** (_"move off OpenAI/Gemini, or our Anthropic API calls, to Bedrock"_ — SDK rewrite), **`claude-apps-to-bedrock`** (_"move our Claude Desktop / Claude Code to Bedrock"_ — the apps, not code), or **`agent-advisor`** (agent runtime / architecture on AWS).
 
 ## Routing hints — common queries → which entry
 
