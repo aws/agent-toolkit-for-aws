@@ -28,7 +28,9 @@ STATUS_SCHEMA = HERE.parent / "references" / "vendored" / "state" / "phase-statu
 # Phases in run order, each with the artifacts that phase leaves behind.
 PHASES = (("discover", ("ai-workload-profile.json",)), ("clarify", ("preferences.json",)),
           ("design", ("aws-design-ai.json",)), ("estimate", ("estimation-ai.json",)), ("generate", ("generation-ai.json",)))
-THROUGH = tuple(name for name, _ in PHASES if name in ("design", "estimate", "generate"))
+THROUGH = tuple(name for name, _ in PHASES)
+HOST_FIELDS = ("target_region", "compliance")
+HOST_STOPS = ("clarify", "design", "estimate")
 
 
 class NotReady(Exception):
@@ -67,8 +69,34 @@ def _status(run_dir: Path) -> dict:
     return status
 
 
+def _host_answers(run_dir: Path, prefs: dict) -> None:
+    path = run_dir / "host-answers.json"
+    if not path.exists():
+        return
+    host = _json(path, "host_answers_invalid", "host_answers_invalid")
+    given = host.get("design_constraints") if isinstance(host, dict) else None
+    if not isinstance(host, dict) or not isinstance(host.get("host_skill"), str) or not isinstance(given, dict) \
+            or host.get("stop_after") not in HOST_STOPS or not isinstance(host.get("infrastructure_moves"), bool) \
+            or set(given) - set(HOST_FIELDS) or not all(isinstance(v, dict) and "value" in v for v in given.values()):
+        raise NotReady("host_answers_invalid", f"host-answers.json must name host_skill, stop_after, infrastructure_moves "
+                       f"and only {', '.join(HOST_FIELDS)} wrappers")
+    kept = prefs.get("design_constraints") or {}
+    for field, answer in given.items():
+        if not isinstance(kept.get(field), dict) or kept[field].get("value") != answer["value"]:
+            raise NotReady("host_answers_mismatch", f"preferences.json design_constraints.{field} differs from the host's answer")
+
+
+def refuse_combined(run_dir: Path, migration_id: str, initiated_by: str | None) -> None:
+    host = run_dir / "host-answers.json"
+    if initiated_by is not None or host.exists() or host.is_symlink():
+        raise NotReady("combined_run", f"run {migration_id!r} is a host skill's run (initiated_by {initiated_by!r} or host-answers.json); "
+                       "Generate runs only in a run this skill started on its own, so start a new run for it")
+
+
 def check(run_dir: Path, through: str) -> dict:
     status = _status(run_dir)
+    if through == "generate":
+        refuse_combined(run_dir, status["migration_id"], status.get("initiated_by"))
     read: dict[str, bytes] = {}
     needed = PHASES[: [name for name, _ in PHASES].index(through) + 1]
     for name, _ in needed:
@@ -80,6 +108,8 @@ def check(run_dir: Path, through: str) -> dict:
         validator.validate_profile(profile)
     except validator.ProfileRejected as exc:
         raise NotReady("profile_invalid", f"{exc.code}: {exc.detail}")
+    if through == "discover":
+        return _ready(status, run_dir, needed, read, through)
     prefs = _json(run_dir / "preferences.json", "artifact_missing", "artifact_unreadable", read)
     try:
         if not isinstance(prefs, dict):
@@ -87,6 +117,9 @@ def check(run_dir: Path, through: str) -> dict:
         design_ai.build_plan(profile, prefs)
     except design_ai.DesignInputError as exc:
         raise NotReady("preferences_invalid", f"{exc.code}: {exc.detail}")
+    _host_answers(run_dir, prefs)
+    if through == "clarify":
+        return _ready(status, run_dir, needed, read, through)
     design = _json(run_dir / "aws-design-ai.json", "artifact_missing", "artifact_unreadable", read)
     result = design_ai.check_design(design, profile, prefs)
     if not result["ok"]:
@@ -111,9 +144,14 @@ def check(run_dir: Path, through: str) -> dict:
             raise NotReady("generate_invalid", "; ".join(e["code"] for e in result["errors"][:5]))
         for rel in ["generation-ai.json"] + result["files"]:
             read[rel] = (run_dir / rel).read_bytes()
+    return _ready(status, run_dir, needed, read, through)
+
+
+def _ready(status: dict, run_dir: Path, needed: tuple, read: dict[str, bytes], through: str) -> dict:
     artifacts = {f: {"path": str(run_dir / f), "sha256": hashlib.sha256(read[f]).hexdigest()}
                  for f in [f for _, files in needed for f in files] + sorted(k for k in read if "/" in k)}
-    return {"ready": True, "through": through, "migration_id": status["migration_id"], "run_id": status.get("run_id"), "artifacts": artifacts}
+    return {"ready": True, "through": through, "migration_id": status["migration_id"], "run_id": status.get("run_id"),
+            "initiated_by": status.get("initiated_by"), "artifacts": artifacts}
 
 
 def main(argv: list[str] | None = None) -> int:

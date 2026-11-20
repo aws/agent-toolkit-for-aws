@@ -8,6 +8,18 @@ Produces the same `preferences.json` output but with `design_constraints` limite
 
 ---
 
+## Combined mode
+
+These rules apply only when `$MIGRATION_DIR/host-answers.json` exists (`SKILL.md` § Combined mode), on the Step 1.5 fast path as well as in Step 2. Everything else in this file is unchanged.
+
+- **Host answers.** For each wrapper in the file's `design_constraints`, copy it into `preferences.json` `design_constraints` as written. The host writes each one with `source: "host:<host_skill>"` and no `question_id`, because its question numbers are not this file's. A `compliance` wrapper replaces Q1.5: do not ask it, do not add the Q1.5 caveat, and record `"Q1.5"` in `metadata.questions_from_host` (create the array), not in the other three lists. A `target_region` wrapper replaces the derivation in Step 3. "Use defaults for the rest" never changes a host answer.
+- **Q4.** When `infrastructure_moves` is `true`, the infrastructure moves to AWS with the AI calls, so Q4 does not apply: do not ask it and do not write `cross_cloud`.
+- **Step 1.** When `infrastructure_moves` is `true`, replace the two lines under the heading with: "[host_skill] is moving your infrastructure. These questions cover the AI calls."
+- **Q11** is still asked: the host does not ask about credits.
+- **Step 4.** When `stop_after` is `clarify`, follow `SKILL.md` § Combined mode after the status update instead of continuing to Design.
+
+---
+
 ## Step 0: Prior Run Check
 
 Check `$MIGRATION_DIR/` for existing state:

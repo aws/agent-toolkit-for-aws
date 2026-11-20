@@ -22,6 +22,7 @@ Read the JSON it prints. Do not redirect it to a file, not even under `/tmp`: St
 | `estimate_invalid`                         | `estimation-ai.json` no longer passes `estimate-ai.py check`; re-run Estimate.              |
 | `region_invalid` or `model_id_invalid`     | A saved Region or model id is malformed; re-run Clarify or Design as `detail` says.         |
 | `iam_unsupported`                          | The IAM helper cannot authorize a row; quote `detail`, then re-run Clarify if it names a recorded requirement, else Design. |
+| `combined_run`                             | A host skill started this run; it never reaches Generate. Start a new run of this skill to generate artifacts. |
 | `no_bedrock_routes`                        | Every workload targets another AWS service; there is nothing for Generate to write.         |
 | any other value                            | Quote `detail`.                                                                             |
 
