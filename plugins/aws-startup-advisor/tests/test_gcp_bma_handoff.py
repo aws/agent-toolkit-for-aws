@@ -117,6 +117,14 @@ def _ready_on_anything(base: Path) -> None:
     (base / "scripts" / "readiness.py").write_text('import json; print(json.dumps({"ready": True}))\n')
 
 
+def _validator_prints_invalid_bytes(base: Path) -> None:
+    (base / "scripts" / "validate-ai-profile.py").write_text('import sys; sys.stdout.buffer.write(b"\\xff\\xfe{}")\n')
+
+
+def _skill_md_not_utf8(base: Path) -> None:
+    (base / "SKILL.md").write_bytes(b"---\nname: bedrock-migration-assessment\n---\n\xff\n")
+
+
 @pytest.mark.parametrize("tamper", [
     lambda b: (b / "scripts" / "readiness.py").unlink(),
     lambda b: (b / "references" / "phases" / "design" / "design-ai.md").unlink(),
@@ -124,7 +132,10 @@ def _ready_on_anything(base: Path) -> None:
     lambda b: (b / "SKILL.md").unlink(),
     _break_validator,
     _ready_on_anything,
-], ids=["no-readiness", "no-design-phase", "renamed-skill", "no-skill-md", "validator-accepts-legacy", "readiness-always-ready"])
+    _validator_prints_invalid_bytes,
+    _skill_md_not_utf8,
+], ids=["no-readiness", "no-design-phase", "renamed-skill", "no-skill-md", "validator-accepts-legacy", "readiness-always-ready",
+        "validator-prints-invalid-bytes", "skill-md-not-utf8"])
 def test_probe_reports_a_changed_sibling_as_tampered(tamper, tree: Path) -> None:
     tamper(tree / "bedrock-migration-assessment")
     code, out = _cli(tree, "probe")
@@ -184,6 +195,13 @@ def test_tampered_with_infrastructure_continues_only_when_the_user_chose_infra_o
     code, out = _cli(tree, "route", str(run), "--infra-only")
     assert code == 0 and out["route"] == "defer" and out["reason"] == "bma_tampered"
     assert json.loads((run / "ai-handoff.json").read_text())["reason"] == "bma_tampered"
+
+
+def test_infra_only_defers_when_the_sibling_prints_invalid_bytes(tree: Path, tmp_path: Path) -> None:
+    _validator_prints_invalid_bytes(tree / "bedrock-migration-assessment")
+    run = _gcp_run(tmp_path, infra=True)
+    code, out = _cli(tree, "route", str(run), "--infra-only")
+    assert code == 0 and out["route"] == "defer" and out["reason"] == "bma_tampered"
 
 
 def test_infra_only_does_not_rescue_an_ai_only_run(tree: Path, tmp_path: Path) -> None:
@@ -571,6 +589,18 @@ def test_a_project_billed_only_for_vertex_ai_has_no_infrastructure(tree: Path, t
     assert _cli(tree, "route", str(run))[1]["route"] == "defer"
 
 
+@pytest.mark.parametrize("row, route", [
+    ({"gcp_service": "Compute Engine", "gcp_service_type": "google_compute_instance", "ai_signals": ["gpu"]}, "defer"),
+    ({"gcp_service": "Generative Language API", "ai_signals": ["generative_ai"]}, "stop"),
+    ("Cloud Run", "defer"),
+], ids=["typed-service-with-ai-signals", "untyped-ai-service", "non-object-row"])
+def test_only_vertex_or_untyped_ai_billing_rows_are_ai(row, route, tree: Path, tmp_path: Path) -> None:
+    shutil.rmtree(tree / "bedrock-migration-assessment")
+    run = _gcp_run(tmp_path, infra=False)
+    (run / "billing-profile.json").write_text(json.dumps({"services": [row]}))
+    assert _cli(tree, "route", str(run))[1]["route"] == route
+
+
 def test_accept_refuses_a_run_another_skill_or_the_user_started(tree: Path, tmp_path: Path) -> None:
     gcp = _gcp_run(tmp_path, infra=True)
     _gcp_prefs(gcp)
@@ -690,11 +720,14 @@ def test_convert_reports_rows_without_a_model_id(tree: Path, tmp_path: Path) -> 
                                                   {"model": None, "reason": "invalid_model_id"}]
 
 
-def test_withdrawing_restores_a_startup_answer_the_accept_replaced(tree: Path, tmp_path: Path) -> None:
+@pytest.mark.parametrize("gcp_ai", [True, False], ids=["gcp-ai-constraints", "no-gcp-ai-constraints"])
+def test_withdrawing_restores_the_answers_the_accept_replaced(gcp_ai, tree: Path, tmp_path: Path) -> None:
     gcp = _gcp_run(tmp_path, infra=True)
     prefs = _gcp_prefs(gcp)
     prefs["startup_constraints"] = {"startup_program_status": {"value": "has_credits", "chosen_by": "user", "prompt": "p",
                                                                "design_consequence": "c"}}
+    if gcp_ai:
+        prefs["ai_constraints"] = {"ai_priority": {"value": "quality", "chosen_by": "user"}}
     (gcp / "preferences.json").write_text(json.dumps(prefs))
     bma = _bma_run(tmp_path)
     _open(tree, gcp, bma, "estimate")
@@ -755,3 +788,51 @@ def test_stale_host_answers_name_the_command_that_clears_them(tree: Path, tmp_pa
     (gcp / "preferences.json").write_text(json.dumps(prefs))
     code, out = _cli(tree, "accept", str(gcp), str(bma), "--through", "clarify")
     assert code == 1 and out["error"] == "host_answers_stale" and "host-answers" in out["detail"]
+
+
+def test_new_host_answers_after_an_estimate_accept_let_clarify_be_accepted_again(tree: Path, tmp_path: Path) -> None:
+    gcp = _gcp_run(tmp_path, infra=True)
+    prefs = _gcp_prefs(gcp)
+    bma = _bma_run(tmp_path)
+    _open(tree, gcp, bma, "estimate")
+    assert _cli(tree, "accept", str(gcp), str(bma), "--through", "estimate")[0] == 0
+    prefs["design_constraints"]["target_region"]["value"] = "eu-west-1"
+    (gcp / "preferences.json").write_text(json.dumps({**json.loads((gcp / "preferences.json").read_text()),
+                                                      "design_constraints": prefs["design_constraints"]}))
+    assert _cli(tree, "accept", str(gcp), str(bma), "--through", "estimate")[1]["error"] == "host_answers_stale"
+    assert _open(tree, gcp, bma, "clarify", convert=False)[0] == 0
+    assert not (gcp / "aws-design-ai.json").exists() and not (gcp / "estimation-ai.json").exists()
+    bma_prefs = json.loads((bma / "preferences.json").read_text())
+    bma_prefs["design_constraints"]["target_region"]["value"] = "eu-west-1"
+    (bma / "preferences.json").write_text(json.dumps(bma_prefs))
+    code, out = _cli(tree, "accept", str(gcp), str(bma), "--through", "clarify")
+    assert code == 0, out
+    assert json.loads((gcp / "ai-handoff.json").read_text())["through"] == "clarify"
+
+
+def test_repeating_unchanged_host_answers_keeps_the_accepted_design(tree: Path, tmp_path: Path) -> None:
+    gcp = _gcp_run(tmp_path, infra=True)
+    _gcp_prefs(gcp)
+    bma = _bma_run(tmp_path)
+    _open(tree, gcp, bma, "design")
+    assert _cli(tree, "accept", str(gcp), str(bma), "--through", "design")[0] == 0
+    assert _open(tree, gcp, bma, "estimate", convert=False)[0] == 0
+    assert (gcp / "aws-design-ai.json").exists()
+    assert json.loads((gcp / "ai-handoff.json").read_text())["through"] == "design"
+
+
+@pytest.mark.parametrize("field", [{"artifacts": ["aws-design-ai.json"]}, {"through": None}, {"through": "generate"}],
+                         ids=["artifacts-list", "through-null", "through-unknown"])
+def test_a_handoff_record_with_malformed_fields_is_a_named_error(field, tree: Path, tmp_path: Path) -> None:
+    gcp = _gcp_run(tmp_path, infra=True)
+    _gcp_prefs(gcp)
+    bma = _bma_run(tmp_path)
+    _converted(gcp, bma)
+    record = json.loads((gcp / "ai-handoff.json").read_text()) | {"status": "in_progress"} | field
+    (gcp / "ai-handoff.json").write_text(json.dumps(record))
+    for command in (("host-answers", str(gcp), str(bma), "--stop-after", "clarify"), ("accept", str(gcp), str(bma), "--through", "clarify")):
+        code, out = _cli(tree, *command)
+        assert code == 1 and out["error"] == "handoff_unreadable"
+    (gcp / "ai-workload-profile.json").write_text(json.dumps(_legacy([_model("gemini-2.5-pro", "vertex_ai_generative", "code")])))
+    assert _cli(tree, "route", str(gcp))[1]["route"] == "delegate"
+    assert not (gcp / "ai-handoff.json").exists()

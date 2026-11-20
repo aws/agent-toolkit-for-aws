@@ -65,21 +65,23 @@ def _read_json(path: Path, error: str) -> Any:
         raise HandoffError(error, f"{path.name}: {exc}")
 
 
-def _write_json(path: Path, doc: Any) -> None:
+def _write_bytes(path: Path, data: bytes) -> None:
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        json.dump(doc, fh, indent=2, ensure_ascii=False)
-        fh.write("\n")
+    with os.fdopen(fd, "wb") as fh:
+        fh.write(data)
     os.replace(tmp, path)
 
 
+def _write_json(path: Path, doc: Any) -> None:
+    _write_bytes(path, (json.dumps(doc, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
+
+
 def _run(script: str, *args: str) -> tuple[int, Any]:
-    proc = subprocess.run([sys.executable, str(BMA_BASE / "scripts" / script), *args],
-                          capture_output=True, text=True, timeout=120)
     try:
-        return proc.returncode, json.loads(proc.stdout)
-    except json.JSONDecodeError:
-        return proc.returncode, None
+        proc = subprocess.run([sys.executable, str(BMA_BASE / "scripts" / script), *args], capture_output=True, timeout=120)
+        return proc.returncode, json.loads(proc.stdout.decode("utf-8"))
+    except (OSError, subprocess.TimeoutExpired, UnicodeDecodeError, json.JSONDecodeError):
+        return 1, None
 
 
 def probe() -> dict:
@@ -96,7 +98,10 @@ def _check_sibling() -> None:
     missing = [f for f in REQUIRED_FILES if not (BMA_BASE / f).is_file()]
     if missing:
         raise HandoffError("bma_tampered", f"missing {', '.join(missing)}")
-    front = (BMA_BASE / "SKILL.md").read_text(encoding="utf-8").split("---", 2)
+    try:
+        front = (BMA_BASE / "SKILL.md").read_text(encoding="utf-8").split("---", 2)
+    except (OSError, UnicodeDecodeError) as exc:
+        raise HandoffError("bma_tampered", f"SKILL.md is unreadable: {exc}")
     if len(front) < 3 or not re.search(r"^name: bedrock-migration-assessment\s*$", front[1], re.M):
         raise HandoffError("bma_tampered", "SKILL.md does not name bedrock-migration-assessment")
     with tempfile.TemporaryDirectory() as tmp:
@@ -121,7 +126,10 @@ def _require_present() -> None:
 
 
 def _is_ai(item: Any, type_key: str) -> bool:
-    return not isinstance(item, dict) or bool(item.get("ai_signals")) or str(item.get(type_key, "")).startswith(AI_TYPE_PREFIX)
+    if not isinstance(item, dict):
+        return False
+    kind = item.get(type_key)
+    return str(kind).startswith(AI_TYPE_PREFIX) if kind else bool(item.get("ai_signals"))
 
 
 def _has_infrastructure(gcp_dir: Path) -> bool:
@@ -138,14 +146,19 @@ def _profile_digest(gcp_dir: Path) -> str:
     return "sha256:" + _sha((gcp_dir / "ai-workload-profile.json").read_bytes())
 
 
+def _remove_copies(gcp_dir: Path, copied: dict) -> None:
+    for name in THROUGH_FILES["estimate"][1:]:
+        path = gcp_dir / name
+        if path.exists() and copied.get(name) == _sha(path.read_bytes()):
+            path.unlink()
+
+
 def _withdraw(gcp_dir: Path) -> None:
     record_path = gcp_dir / "ai-handoff.json"
     record = _read_json(record_path, "handoff_unreadable") if record_path.exists() else {}
-    copied = (record.get("artifacts") or {}) if isinstance(record, dict) else {}
-    for name in (*THROUGH_FILES["estimate"][1:], NEUTRAL_PROFILE):
-        path = gcp_dir / name
-        if path.exists() and (name == NEUTRAL_PROFILE or copied.get(name) == _sha(path.read_bytes())):
-            path.unlink()
+    copied = record.get("artifacts") if isinstance(record, dict) else None
+    _remove_copies(gcp_dir, copied if isinstance(copied, dict) else {})
+    (gcp_dir / NEUTRAL_PROFILE).unlink(missing_ok=True)
     prefs_path = gcp_dir / "preferences.json"
     prefs = _read_json(prefs_path, "preferences_unreadable") if prefs_path.exists() else None
     if isinstance(prefs, dict) and "ai_preferences_source" in (prefs.get("metadata") or {}):
@@ -154,6 +167,8 @@ def _withdraw(gcp_dir: Path) -> None:
         else:
             source = prefs["metadata"].pop("ai_preferences_source")
             prefs.pop("ai_constraints", None)
+            if isinstance(source, dict) and "ai_constraints_before" in source:
+                prefs["ai_constraints"] = source["ai_constraints_before"]
             startup = prefs.get("startup_constraints") or {}
             for key in source.get("startup_keys", []) if isinstance(source, dict) else []:
                 startup.pop(key, None)
@@ -310,6 +325,8 @@ def _open_record(gcp_dir: Path, bma_dir: Path) -> dict:
     record = _read_json(record_path, "handoff_unreadable") if record_path.exists() else None
     if not isinstance(record, dict) or record.get("status") not in ("converted", "in_progress", "assessment_completed"):
         raise HandoffError("handoff_not_open", "no open AI handoff; run convert first")
+    if not isinstance(record.get("artifacts", {}), dict) or record.get("through", "clarify") not in PHASE_ORDER:
+        raise HandoffError("handoff_unreadable", "ai-handoff.json has a malformed artifacts or through field; run convert again")
     if record.get("profile_digest") != _profile_digest(gcp_dir):
         raise HandoffError("profile_changed", "ai-workload-profile.json changed after convert; run convert again and start a new assessment run")
     if record.get("assessment_dir") not in (None, bma_dir.name):
@@ -337,8 +354,15 @@ def host_answers(gcp_dir: Path, bma_dir: Path, stop_after: str) -> dict:
     record_path = gcp_dir / "ai-handoff.json"
     if record["status"] == "converted":
         record.update(assessment_dir=bma_dir.name, status="in_progress")
-    _write_json(bma_dir / "host-answers.json", {"host_skill": HOST_SKILL, "infrastructure_moves": _has_infrastructure(gcp_dir),
-                                                 "stop_after": stop_after, "design_constraints": _host_constraints(gcp_dir)})
+    constraints = _host_constraints(gcp_dir)
+    held_path = bma_dir / "host-answers.json"
+    held = _read_json(held_path, "host_answers_unreadable") if held_path.exists() else None
+    if "through" in record and (not isinstance(held, dict) or held.get("design_constraints") != constraints):
+        _remove_copies(gcp_dir, record.get("artifacts") or {})
+        record.pop("through")
+        record.update(status="in_progress", artifacts={})
+    _write_json(held_path, {"host_skill": HOST_SKILL, "infrastructure_moves": _has_infrastructure(gcp_dir),
+                            "stop_after": stop_after, "design_constraints": constraints})
     _write_json(record_path, record)
     return {"ok": True, "assessment_dir": bma_dir.name, "stop_after": stop_after}
 
@@ -359,7 +383,7 @@ def accept(gcp_dir: Path, bma_dir: Path, through: str) -> dict:
         raise HandoffError("assessment_profile_mismatch", f"{bma_dir.name} no longer holds the profile this run handed over")
     _merge_preferences(gcp_dir, bma_dir, data["preferences.json"])
     for name in THROUGH_FILES[through][1:]:
-        (gcp_dir / name).write_bytes(data[name])
+        _write_bytes(gcp_dir / name, data[name])
     record.update(status="assessment_completed" if through == "estimate" else "in_progress", through=through,
                   artifacts={name: _sha(data[name]) for name in THROUGH_FILES[through]})
     _write_json(record_path, record)
@@ -392,6 +416,11 @@ def _merge_preferences(gcp_dir: Path, bma_dir: Path, raw: bytes) -> None:
     host = {k: v for k, v in current.items() if k not in owned} | earlier.get("startup_before", {})
     startup = assessment.get("startup_constraints", {})
     prefs["startup_constraints"] = host | startup
+    if "ai_preferences_source" in (prefs.get("metadata") or {}):
+        if "ai_constraints_before" in earlier:
+            source["ai_constraints_before"] = earlier["ai_constraints_before"]
+    elif "ai_constraints" in prefs:
+        source["ai_constraints_before"] = prefs["ai_constraints"]
     prefs["ai_constraints"] = assessment.get("ai_constraints", {})
     prefs.setdefault("metadata", {})["ai_preferences_source"] = source | {
         "startup_keys": sorted(startup), "startup_before": {k: host[k] for k in startup if k in host}}
