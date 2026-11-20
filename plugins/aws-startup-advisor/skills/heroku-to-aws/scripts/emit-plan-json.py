@@ -18,6 +18,9 @@ decide scope and basis: infra/billing alone -> INFRA_ONLY; a base route + AI -> 
 (the two figures summed). A standalone AI-only run is deferred — the contract only
 accepts AI_ONLY with sourcePlatform OPENAI, and the LLM-to-Bedrock path persists no
 cost file, so a GCP or Azure AI-only run has no valid mapping yet.
+A mixed Azure run (infra + AI) is also skipped today: the FULL scope needs a usable overall
+accuracy band from both estimates, and Azure's infrastructure estimate records none in the
+shape the writer accepts, so it returns PLAN_SKIP. Azure plans are infrastructure-only.
 
 Usage:
   python3 scripts/emit-plan-json.py --migration-dir <dir>
@@ -67,6 +70,12 @@ _UUID_RE = re.compile(
 # sourcePlatform. Not generated data: each skill records its own id at _init and
 # never changes it. LLM_TO_BEDROCK (OpenAI) is intentionally absent — it has no
 # persisted cost artifact to copy, so it is a follow-up.
+# RENDER_TO_AWS is intentionally absent: the import contract's accepted sourcePlatform
+# values are not confirmed to include RENDER. Re-add it once the web consumer confirms
+# RENDER support; the RENDER mapping stays elsewhere in this file (PLATFORM_SOURCE_FIELD,
+# VALID_SCOPES_BY_PLATFORM, _render_service_items) so turning it back on is a one-line
+# change, not a rewrite. Until then a Render run prints PLAN_SKIP and the fail-open
+# handoff adds nothing.
 SKILL_TO_PLATFORM = {
     "AZURE_TO_AWS": "AZURE",
     "GCP_TO_AWS": "GCP",
@@ -98,6 +107,7 @@ PLATFORM_SOURCE_FIELD = {
     "GCP": ("current_costs", "gcp_monthly"),
     "HEROKU": ("cost_comparison", "heroku_monthly_baseline"),
     "AZURE": ("current_costs", "azure_monthly"),
+    "RENDER": ("current_costs", "render_monthly"),
 }
 
 # The plugin's pricing_source.status values -> the web contract's pricingSource enum.
@@ -119,6 +129,7 @@ VALID_SCOPES_BY_PLATFORM = {
     "GCP": {"INFRA_ONLY", "FULL"},
     "HEROKU": {"INFRA_ONLY"},
     "AZURE": {"INFRA_ONLY", "FULL"},
+    "RENDER": {"INFRA_ONLY"},
     "OPENAI": {"AI_ONLY"},
 }
 
@@ -259,6 +270,10 @@ def _source_monthly(data: dict, source_platform: str) -> float | None:
     currency = container.get("currency")
     if isinstance(currency, str) and currency.strip().upper() not in ("", "USD"):
         return None
+    # Render's estimate keeps the source's own currency and its baseline may come from an
+    # invoice export, so a Render baseline is copied only when it states USD explicitly.
+    if source_platform == "RENDER" and not (isinstance(currency, str) and currency.strip().upper() == "USD"):
+        return None
     value = container.get(location[1])
     return value if _is_usable_amount(value) else None
 
@@ -335,6 +350,39 @@ def _service_items(projected: object) -> list[dict]:
     return items
 
 
+def _render_service_items(data: dict) -> list[dict]:
+    """Per-service line items for a Render infra estimate. Render leaves
+    projected_costs.breakdown empty and records its priced lines under
+    scenarios.capacity_preserving.lines[] (the scenario aws_monthly_balanced equals).
+    Lines are summed per `aws_service` label; null, zero, and out-of-bounds amounts are
+    skipped, so unpriced lines (the known-cost floor) never appear as a cost. The list is
+    returned only when it reconciles to the scenario's known-cost figure, else omitted."""
+    scenarios = data.get("scenarios")
+    scenario = scenarios.get("capacity_preserving") if isinstance(scenarios, dict) else None
+    lines = scenario.get("lines") if isinstance(scenario, dict) else None
+    if not isinstance(lines, list):
+        return []
+    totals: dict[str, float] = {}
+    for line in lines:
+        if not isinstance(line, dict):
+            continue
+        amount = line.get("monthly_amount")
+        name = line.get("aws_service")
+        if not _is_usable_amount(amount) or amount == 0 or not isinstance(name, str):
+            continue
+        name = name.strip()
+        if not name or name.lower() == "total" or _import_str_len(name) > MAX_SERVICE_NAME_LEN:
+            continue
+        totals[name] = totals.get(name, 0) + amount
+    known = scenario.get("known_cost_monthly_usd")
+    if not _is_amount(known) or round(sum(totals.values()), 2) != round(known, 2):
+        return []
+    return [
+        {"serviceName": name, "monthlyCost": round(amount, 2), "classification": "INFRASTRUCTURE"}
+        for name, amount in totals.items()
+    ]
+
+
 def _billing_service_items(aws_projection: object) -> list[dict]:
     """Per-service line items from a billing estimate's `aws_projection.services[]` (a
     list, unlike the infra breakdown). Each service carries `aws_target` (name) and
@@ -379,7 +427,10 @@ def _infra_route(data: dict, source_platform: str) -> tuple[float, float | None,
     aws = projected.get("aws_monthly_balanced") if isinstance(projected, dict) else None
     if not _is_amount(aws):
         raise SkipEmit("no usable projected_costs.aws_monthly_balanced")
-    return aws, _source_monthly(data, source_platform), _service_items(projected)
+    items = _service_items(projected)
+    if not items and source_platform == "RENDER":
+        items = _render_service_items(data)
+    return aws, _source_monthly(data, source_platform), items
 
 
 def _billing_route(data: dict) -> tuple[float, float | None, list[dict]]:
