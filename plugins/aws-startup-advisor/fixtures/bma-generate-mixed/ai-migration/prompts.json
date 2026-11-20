@@ -1,0 +1,26 @@
+[
+  {
+    "id": "research",
+    "route": "gpt-5.5__mantle-openai-responses__responses__web-search",
+    "prompt": "In one paragraph, what is retrieval-augmented generation?",
+    "expected_traits": [
+      "retrieval"
+    ]
+  },
+  {
+    "id": "support",
+    "route": "gpt-5.5__runtime-openai-cris__chat-completions",
+    "prompt": "A customer cannot log in after changing their email. Suggest two next steps.",
+    "expected_traits": [
+      "email"
+    ]
+  },
+  {
+    "id": "index",
+    "route": "text-embedding-3-small__direct__invoke",
+    "prompt": "Shipping policy: orders ship within two business days.",
+    "expected_traits": [
+      "embedding:"
+    ]
+  }
+]

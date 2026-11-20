@@ -93,4 +93,4 @@ In under 25 lines, labeling every dollar figure as an estimated monthly cost:
 3. A model comparison table: model, estimated monthly cost, vs source, capabilities match.
 4. The recommended model, and the cost increase with its non-cost justification when Bedrock costs more.
 5. The top two or three optimizations, with Provisioned Throughput's terms when it is listed.
-6. The recommendation, and that Generate is not in this skill yet.
+6. The recommendation. SKILL.md Step 4 then asks whether to generate the migration artifacts.
