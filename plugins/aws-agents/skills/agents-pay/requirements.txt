@@ -3,7 +3,7 @@ anyio==4.14.2
 bedrock-agentcore==1.19.0
 boto3==1.43.63
 botocore==1.43.63
-certifi==2026.7.22
+certifi==2026.10.19
 click==8.4.2
 h11==0.16.0
 httpcore==1.0.9
