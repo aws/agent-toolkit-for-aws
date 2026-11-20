@@ -2,12 +2,24 @@
 
 ## Table of Contents
 
+- Not Sure Runtime Is the Right Component?
 - Protocol Selection Guide
 - Container Contract
 - Deployment Workflow
 - Agent Lifecycle Models
 - Scaling
 - Security Considerations
+
+## Not Sure Runtime Is the Right Component?
+
+See the [task-to-component routing table](../SKILL.md#task-to-component-routing) in SKILL.md. Runtime is most often confused with these two:
+
+| Task the user describes | Component | Read first |
+|-------------------------|-----------|------------|
+| Define agents as configuration (model, prompt, tools) with no agent loop or orchestration code to own | Harness | [harness procedure](agentcore-harness.md) |
+| Run model-generated or untrusted code safely in a sandbox | Code Interpreter | [Code Interpreter](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/code-interpreter-tool.html) |
+
+Use Runtime when the user already has agent code (any framework) and wants it hosted, scaled or kept alive for long tasks.
 
 ## Protocol Selection Guide
 
