@@ -606,6 +606,46 @@ No. AWS Activate Credits only cover AWS Developer, AWS Business Support Plans, o
 
 The AWS Activate team is unable to apply more AWS Activate Credits to your account for support. See AWS Activate Credits FAQ section for more information on AWS Activate Credits.
 
+### I received an email to verify my identity. Is this really from AWS?
+
+AWS will only ask you to verify your identity when you request access to certain products, features, or programs. AWS will never ask you to email or reply with your ID or selfie — verification always happens through a secure Trulioo-hosted link. If you are unsure whether a request is legitimate, contact [AWS Support](https://support.console.aws.amazon.com/support/home?region=us-east-1#/case/create?issueType=customer-service&serviceCode=account-management&categoryCode=account-verification) to confirm and reference the case ID in the email.
+
+### How does verifying my identity protect me?
+
+Verifying your identity reduces the risk that someone impersonating you can gain access, request resources, or make changes in your name.
+
+### How do I know if I need to verify my identity?
+
+After you make a request that requires identity verification, you'll be notified by email from startups.aws.
+
+### Am I required to verify my identity?
+
+You are not required to verify your identity. If you prefer not to verify, your application will be rejected and you will need to apply again. If you have questions, please contact [AWS Support](https://support.console.aws.amazon.com/support/home?region=us-east-1#/case/create?issueType=customer-service&serviceCode=account-management&categoryCode=account-verification).
+
+### What are you doing with the identity verification data?
+
+We use the data to verify your identity. AWS handles your personal information as described in the [AWS Privacy Notice](https://aws.amazon.com/privacy/).
+
+### How long does verification take?
+
+Once you upload the required materials, verification takes less than 1 minute.
+
+### What happens if my verification link expires?
+
+If your verification link expires, you won't be able to complete verification through that link. Submit a new application to receive a new link. If you have questions, contact [AWS Support](https://support.console.aws.amazon.com/support/home?region=us-east-1#/case/create?issueType=customer-service&serviceCode=account-management&categoryCode=account-verification) and reference the case ID.
+
+### What happens if my verification is successful?
+
+Once your identity is verified, your request will move forward for review by the respective program teams. You will receive a confirmation email, and will be notified when a final decision on your credit application has been made. No further action or support ticket is required from you. If you'd prefer not to verify your identity at this time, we won't be able to move your application forward, but you're welcome to apply again whenever you're ready.
+
+### What happens if my verification doesn't pass?
+
+Verification can fail to pass for a few reasons: image quality issues, an expired or unsupported ID, a mismatch between the information you provided and your ID, or a technical problem during submission. If the link has expired or the verification does not complete successfully, please resubmit a new application.
+
+### Is verification available in my country and language?
+
+Identity verification is currently supported across a broad set of countries and languages via our identity verification provider. If you encounter language or geographic coverage issues that prevent you from verifying, please contact [AWS Support](https://support.console.aws.amazon.com/support/home?region=us-east-1#/case/create?issueType=customer-service&serviceCode=account-management&categoryCode=account-verification).
+
 ## AWS Activate Offers
 
 ### What are Offers?

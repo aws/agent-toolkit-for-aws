@@ -952,3 +952,192 @@ def test_older_target_forced_tool_guidance_on_runtime_converse():
     finding = next(item for item in rec["blocks"] if item["code"] == "structured_output_portable_pattern")
     assert "forced tool without strict" in finding["remediation"]
     assert "only after verifying" in finding["remediation"]
+
+
+# --- Sonnet 5 / Haiku 4.5 Region facts from their model cards (read 2026-11-17) -------------------
+
+def _anthropic_catalog():
+    return model_recommendation.load_catalog()
+
+
+@pytest.mark.parametrize("region", ["eu-west-2", "ap-northeast-2", "ap-southeast-1"])
+def test_sonnet_5_resolves_its_runtime_in_region_bare_id(region):
+    model = _anthropic_catalog()["models"]["claude_sonnet_5"]
+    resolved = anthropic_model_recommendation._resolve_invocation_model_id(
+        "anthropic.claude-sonnet-5", True, {"data_residency": "global_allowed"}, model, region
+    )
+    assert resolved == "anthropic.claude-sonnet-5"
+
+
+def test_sonnet_5_outside_its_in_region_list_still_needs_a_profile():
+    model = _anthropic_catalog()["models"]["claude_sonnet_5"]
+    resolved = anthropic_model_recommendation._resolve_invocation_model_id(
+        "anthropic.claude-sonnet-5", True, {"data_residency": "global_allowed"}, model, "us-east-1"
+    )
+    assert resolved == "global.anthropic.claude-sonnet-5"
+
+
+@pytest.mark.parametrize("path", ["runtime_converse", "runtime_invoke", "runtime_messages"])
+def test_govcloud_has_no_sonnet_5_or_haiku_4_5_runtime_candidate(path):
+    # The cards mark GovCloud Geo but publish no GovCloud source Region or us-gov. id.
+    keys = {c["model_key"] for c in anthropic_model_recommendation._build_candidates(
+        _anthropic_catalog(), [path], {"priority": "balanced"}, "us-gov-west-1")}
+    assert not keys & {"claude_sonnet_5", "claude_haiku_4_5"}
+
+
+@pytest.mark.parametrize("region, expected", [
+    ("us-east-1", {"claude_sonnet_5", "claude_haiku_4_5"}),
+    ("us-west-2", {"claude_haiku_4_5"}),
+    ("ap-southeast-2", set()),
+])
+def test_mantle_messages_candidates_follow_the_card_regions(region, expected):
+    keys = {c["model_key"] for c in anthropic_model_recommendation._build_candidates(
+        _anthropic_catalog(), ["mantle_messages"], {"priority": "balanced"}, region)}
+    assert keys & {"claude_sonnet_5", "claude_haiku_4_5"} == expected
+
+
+# --- a Region with no Claude model on bedrock-mantle fails closed instead of raising -------------
+
+_RECOMMENDATION_SCHEMA = json.loads(
+    (pathlib.Path(model_recommendation.__file__).parent / "schemas" / "model-recommendation.json").read_text()
+)
+
+
+def _mantle_request(region, catalog=None, **requirements):
+    data = _input(_workload(requirements=requirements))
+    data["region"] = region
+    result = model_recommendation.recommend(data, catalog=catalog) if catalog else model_recommendation.recommend(data)
+    jsonschema.validate(result, _RECOMMENDATION_SCHEMA)
+    return result["workloads"]["support-agent"]
+
+
+def _codes(findings):
+    return [finding["code"] for finding in findings]
+
+
+def _only_sonnet_5_on_mantle(selection_status):
+    """A catalog where Sonnet 5 is the only model with a Mantle Messages path."""
+    catalog = copy.deepcopy(model_recommendation.load_catalog())
+    for key, model in catalog["models"].items():
+        if key != "claude_sonnet_5":
+            model["paths"]["mantle_messages"]["available"] = False
+    catalog["models"]["claude_sonnet_5"]["selection_status"] = selection_status
+    return catalog
+
+
+@pytest.mark.parametrize("region", ["ap-southeast-2", "ap-northeast-2"])
+def test_mantle_preferred_without_selector_in_a_region_without_claude_on_mantle_is_blocked(region):
+    rec = _mantle_request(region, preferred_api_path="mantle_messages")
+    assert rec["decision_status"] == "blocked"
+    assert [option["api_path"] for option in rec["decision_options"]] == ["runtime_messages"]
+    finding = next(b for b in rec["blocks"] if b["code"] == "mantle_unavailable_in_region")
+    assert finding["tag"] == "[BLOCKS]"
+    assert finding["message"] == (
+        "No Claude model meeting the recorded requirements is served on bedrock-mantle "
+        f"(Messages API) in {region}."
+    )
+    assert finding["remediation"].startswith(
+        "Use a bedrock-runtime option (Messages, Converse or InvokeModel) in this Region, or "
+        "choose a Region where a Claude model is on bedrock-mantle ("
+    )
+    assert "us-east-1" in finding["remediation"] and region not in finding["remediation"]
+
+
+@pytest.mark.parametrize("region", ["ap-southeast-2", "ap-northeast-2"])
+def test_mantle_selector_in_a_region_without_claude_on_mantle_is_blocked(region):
+    rec = _mantle_request(region, mantle_selector="mantle_only_model_or_api")
+    assert rec["decision_status"] == "blocked"
+    assert rec["decision_options"] == [] and rec["api_path"] is None
+    assert _codes(rec["blocks"]) == ["mantle_unavailable_in_region"]
+
+
+def test_mantle_selector_with_guardrails_offers_runtime_and_blocks_the_mantle_side():
+    # Mixed option list (mantle_messages first, then runtime_converse) through the
+    # mantle_selector_vs_runtime conflict, with the Mantle side emptied by the Region.
+    rec = _mantle_request("ap-southeast-2", mantle_selector="mantle_only_model_or_api",
+                          governance=["guardrails"])
+    assert rec["decision_status"] == "blocked"
+    assert [option["api_path"] for option in rec["decision_options"]] == ["runtime_converse"]
+    assert {"model_path_decision_required", "mantle_unavailable_in_region"} <= set(_codes(rec["blocks"]))
+
+
+def test_mantle_side_unsatisfiable_everywhere_still_raises():
+    # No Claude model has a 2M window on any path, so the Region is not the cause.
+    with pytest.raises(ValueError, match="no candidate for every conflicting"):
+        _mantle_request("ap-southeast-2", preferred_api_path="mantle_messages",
+                        min_context_tokens=2_000_000)
+
+
+def test_reference_only_mantle_model_elsewhere_is_not_reported_as_a_region_gap():
+    # Only a reference_only model is on Mantle elsewhere: the Region is not the only cause, so
+    # the existing fail-closed raise stands on both the conflict and the selector paths.
+    catalog = _only_sonnet_5_on_mantle("reference_only")
+    with pytest.raises(ValueError, match="no candidate for every conflicting"):
+        _mantle_request("ap-southeast-2", catalog=catalog, preferred_api_path="mantle_messages")
+    with pytest.raises(ValueError, match="no model/path candidate"):
+        _mantle_request("ap-southeast-2", catalog=catalog, mantle_selector="mantle_only_model_or_api")
+
+
+def test_selectable_mantle_model_elsewhere_is_reported_as_a_region_gap():
+    rec = _mantle_request("ap-southeast-2", catalog=_only_sonnet_5_on_mantle("selectable"),
+                          mantle_selector="mantle_only_model_or_api")
+    finding = next(b for b in rec["blocks"] if b["code"] == "mantle_unavailable_in_region")
+    assert "eu-west-1, us-east-1" in finding["remediation"]
+
+
+@pytest.mark.parametrize("priority, best, best_class", [
+    ("quality", "Opus 5.5", "premium"), ("balanced", "Sonnet 5.5", "balanced"),
+])
+def test_lower_tier_mantle_option_in_us_west_2_carries_a_tradeoff_finding(priority, best, best_class):
+    rec = _mantle_request("us-west-2", preferred_api_path="mantle_messages", priority=priority)
+    assert rec["decision_status"] == "decision_required"
+    mantle = next(o for o in rec["decision_options"] if o["api_path"] == "mantle_messages")
+    assert mantle["model_key"] == "claude_haiku_4_5"
+    finding = next(t for t in rec["tuning"] if t["code"] == "mantle_lower_tier_in_region")
+    assert finding["tag"] == "[TUNE]"
+    assert finding["message"].startswith(
+        "In us-west-2 the highest-ranked Claude model on bedrock-mantle meeting the requirements "
+        "is Haiku 4.5"
+    )
+    assert finding["message"].endswith(
+        f"(fast class); the {priority} priority would pick {best} ({best_class} class), "
+        "which is not on bedrock-mantle in this Region."
+    )
+
+
+def test_lower_tier_finding_names_the_best_model_after_requirements_filter():
+    # Opus 5.5 (the quality priority's first choice) is filtered out by the context floor, so
+    # the finding names Sonnet 5.5, the best candidate with only the Region limit removed.
+    catalog = copy.deepcopy(model_recommendation.load_catalog())
+    catalog["models"]["claude_opus_5_5"]["context_window"] = 100_000
+    rec = _mantle_request("us-west-2", catalog=catalog, mantle_selector="mantle_only_model_or_api",
+                          priority="quality", min_context_tokens=150_000)
+    finding = next(t for t in rec["tuning"] if t["code"] == "mantle_lower_tier_in_region")
+    assert "would pick Sonnet 5.5 (balanced class)" in finding["message"]
+    assert "Opus" not in finding["message"] + finding["remediation"]
+
+
+def test_lower_tier_finding_on_a_recommended_mantle_path():
+    rec = _mantle_request("us-west-2", mantle_selector="mantle_only_model_or_api", priority="balanced")
+    assert rec["decision_status"] == "recommended" and rec["api_path"] == "mantle_messages"
+    assert rec["primary_model"] == "anthropic.claude-haiku-4-5"
+    assert "mantle_lower_tier_in_region" in _codes(rec["tuning"])
+
+
+@pytest.mark.parametrize("region, priority", [
+    ("us-west-2", "speed"),     # Haiku 5.5 would be picked: same fast class
+    ("us-east-1", "balanced"),  # Sonnet 5.5 is not on Mantle here, but Sonnet 5 (same class) is
+    ("us-west-2", None),        # no stated priority
+])
+def test_no_lower_tier_finding_when_the_mantle_model_matches_the_priority(region, priority):
+    rec = _mantle_request(region, mantle_selector="mantle_only_model_or_api", priority=priority)
+    assert "mantle_lower_tier_in_region" not in _codes(rec["tuning"])
+
+
+def test_sonnet_5_geo_required_without_a_geo_profile_fails_closed():
+    # ap-northeast-1 is a Global source Region for Sonnet 5 but in no Sonnet 5 Geo profile.
+    rec = _mantle_request("ap-northeast-1", data_residency="geo_required", thinking_enabled=False)
+    assert rec["primary_model"] == "anthropic.claude-sonnet-5"
+    assert rec["invocation_model_id"] is None
+    finding = next(b for b in rec["blocks"] if b["code"] == "inference_profile_unresolved")
+    assert finding["tag"] == "[BLOCKS]"

@@ -10,7 +10,7 @@ _knowledge:
   - { file: knowledge/design/dyno-fargate-sizing.json, _when: "inventory has a formation AND (design_constraints.compute_target.default is ecs-fargate OR design_constraints.compute_target.value is ecs-fargate OR design_constraints.compute_target.default is elastic_beanstalk OR design_constraints.compute_target.value is elastic_beanstalk OR design_constraints.compute_target is absent OR any compute_target override is ecs-fargate)" }
   - { file: knowledge/design/eks-pod-sizing.json, _when: "inventory has a formation AND (design_constraints.compute_target.default is eks-managed or eks-or-ecs OR design_constraints.compute_target.value is eks-managed or eks-or-ecs)" }
   - { file: knowledge/design/postgres-rds-sizing.json, _when: "inventory has a heroku-postgresql addon" }
-  - { file: knowledge/design/redis-elasticache-sizing.json, _when: "inventory has a heroku-redis addon" }
+  - { file: knowledge/design/redis-elasticache-sizing.json, _when: "inventory has a heroku-redis addon OR a rediscloud addon" }
   - { file: knowledge/design/kafka-msk-sizing.json, _when: "inventory has a heroku-kafka addon" }
   - { file: knowledge/design/fast-path-addons.json, _when: "inventory has a non-core addon (not postgresql/redis/kafka)" }
 _fragments:
@@ -52,7 +52,9 @@ _postconditions:
     _on_failure: _halt_and_inform
   - _assert: "metadata.total_services matches services[].length"
     _on_failure: _halt_and_inform
-  - _assert: "no Fir-specific Terraform (ARM/Graviton, CNB) appears anywhere in output"
+  - _assert: "every services[] entry whose aws_service is 'RDS PostgreSQL' or 'Aurora PostgreSQL' has aws_config.engine_version equal to the integer part of the source add-on's config.pg_version ('16.4' -> '16'); when pg_version is absent it is '18' and warnings[] names the app. No such entry has an engine_version lower than its source major"
+    _on_failure: _halt_and_inform
+  - _assert: "no Fir-specific Terraform (ARM/Graviton instance targeting, Fir builder project.toml) appears anywhere in output; Cedar containerization via pack build (containerization_method cnb_heroku_builder) is not Fir-specific"
     _on_failure: _halt_and_inform
 _forbids_files:
   - README.md
@@ -84,6 +86,7 @@ it maps ALL formations to EKS pods + an `eks_cluster` aggregate instead of the
 EB/Fargate paths. On the EB default path, persistent non-web formations with
 `quantity > 1` route to Fargate to preserve Heroku worker capacity because EB
 SingleInstance cannot horizontally scale that process model.
+On the Fargate path, a web formation gets `ecs_mode: "express"` only when its app does not resolve to CNB (`app_containerization_method != "cnb_heroku_builder"`); CNB web formations use a standard ECS service (`ecs_mode_reason: "cnb_image"`) because their image comes from the app's ECR repository and an image-tag variable, which the Express template does not support.
 
 ---
 

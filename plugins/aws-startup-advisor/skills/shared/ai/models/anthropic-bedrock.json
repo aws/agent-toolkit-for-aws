@@ -70,7 +70,7 @@
       ],
       "constraints": [
         "Default project only — Workspaces are available only with the Messages API on bedrock-mantle (https://docs.aws.amazon.com/bedrock/latest/userguide/workspaces.html, read 2026-11-07)",
-        "The model ID is a Global or geography-scoped CRIS inference profile except where the card lists a runtime in-region form (Opus 5.5 in eu-west-2)",
+        "The model ID is a Global or geography-scoped CRIS inference profile except where the card lists a runtime in-region form (Opus 5.5 in eu-west-2; Sonnet 5 in eu-west-2, ap-northeast-2 and ap-southeast-1)",
         "Structured-output strategy is model-specific: Opus 5.5 rejects forced any/tool choice and disabled thinking; use auto tool choice or prompted JSON with application validation and bounded retries, without a native schema guarantee.",
         "Availability must be probed in the target account and region"
       ]
@@ -330,12 +330,89 @@
         "vision",
         "long_context"
       ],
-      "evidence": "AWS model card model-card-anthropic-claude-sonnet-5 (2026-07-21): launch 2026-06-30, Active; Messages/Converse/Invoke checked; bedrock-mantle + bedrock-runtime checked; 1M context, 128K max output; adaptive thinking always on; image input checked; Geo (us/eu/au) and Global CRIS supported",
+      "evidence": "AWS model card model-card-anthropic-claude-sonnet-5 (2026-07-21): launch 2026-06-30, Active; Messages/Converse/Invoke checked; bedrock-mantle + bedrock-runtime checked; 1M context, 128K max output; adaptive thinking always on; image input checked; Geo (us/eu/au) and Global CRIS supported. Re-read https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5.html on 2026-11-17: Geo source Regions us. (us-east-1, us-east-2, us-west-1, us-west-2, ca-central-1, ca-west-1), eu. (eight EU Regions), au. (ap-southeast-2, ap-southeast-4) and in. (ap-south-1, ap-south-2); Global from every commercial Region whose runtime row has Global checked (33 Regions, no GovCloud); bedrock-runtime In-Region bare id in eu-west-2, ap-northeast-2 and ap-southeast-1; bedrock-mantle Messages In-Region in us-east-1, us-gov-west-1, eu-north-1, eu-west-1 and ap-southeast-4. The runtime table marks us-gov-west-1 and us-gov-east-1 Geo as supported, but no Geo table lists a GovCloud source Region and the card names no us-gov. id, so GovCloud is left out of the profile matrix (fail closed).",
+      "runtime_in_region_regions": [
+        "eu-west-2",
+        "ap-northeast-2",
+        "ap-southeast-1"
+      ],
+      "runtime_in_region_verified_at": "2026-11-17",
+      "inference_profiles": {
+        "us": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2",
+          "ca-central-1",
+          "ca-west-1"
+        ],
+        "eu": [
+          "eu-central-1",
+          "eu-central-2",
+          "eu-north-1",
+          "eu-south-1",
+          "eu-south-2",
+          "eu-west-1",
+          "eu-west-2",
+          "eu-west-3"
+        ],
+        "au": [
+          "ap-southeast-2",
+          "ap-southeast-4"
+        ],
+        "in": [
+          "ap-south-1",
+          "ap-south-2"
+        ],
+        "global": [
+          "af-south-1",
+          "ap-east-2",
+          "ap-northeast-1",
+          "ap-northeast-2",
+          "ap-northeast-3",
+          "ap-south-1",
+          "ap-south-2",
+          "ap-southeast-1",
+          "ap-southeast-2",
+          "ap-southeast-3",
+          "ap-southeast-4",
+          "ap-southeast-5",
+          "ap-southeast-6",
+          "ap-southeast-7",
+          "ca-central-1",
+          "ca-west-1",
+          "eu-central-1",
+          "eu-central-2",
+          "eu-north-1",
+          "eu-south-1",
+          "eu-south-2",
+          "eu-west-1",
+          "eu-west-2",
+          "eu-west-3",
+          "il-central-1",
+          "me-central-1",
+          "me-south-1",
+          "mx-central-1",
+          "sa-east-1",
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2"
+        ]
+      },
       "paths": {
         "mantle_messages": {
           "available": true,
           "model_id": "anthropic.claude-sonnet-5",
-          "requires_cris": false
+          "requires_cris": false,
+          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5.html (read 2026-11-17): bedrock-mantle supports the Messages API only, In-Region with the bare id anthropic.claude-sonnet-5 in us-east-1, us-gov-west-1, eu-north-1, eu-west-1 and ap-southeast-4",
+          "regions": [
+            "us-east-1",
+            "us-gov-west-1",
+            "eu-north-1",
+            "eu-west-1",
+            "ap-southeast-4"
+          ]
         },
         "runtime_converse": {
           "available": true,
@@ -353,7 +430,7 @@
           "available": true,
           "model_id": "anthropic.claude-sonnet-5",
           "requires_cris": true,
-          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5.html (read 2026-11-07): bedrock-runtime Messages supported; Geo ids us./eu./au./in.anthropic.claude-sonnet-5, Global id global.anthropic.claude-sonnet-5; no in-region form"
+          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5.html (read 2026-11-07, re-read 2026-11-17): bedrock-runtime Messages supported; Geo ids us./eu./au./in.anthropic.claude-sonnet-5, Global id global.anthropic.claude-sonnet-5; In-Region bare id anthropic.claude-sonnet-5 in eu-west-2, ap-northeast-2 and ap-southeast-1. The runtime table marks us-gov-west-1 and us-gov-east-1 Geo as supported, but no Geo table lists a GovCloud source Region and the card names no us-gov. id, so GovCloud is left out of the profile matrix (fail closed)."
         }
       }
     },
@@ -369,11 +446,90 @@
         "tool_use",
         "vision"
       ],
+      "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-4-5.html (read 2026-11-17): bedrock-runtime has no In-Region support (the bare id is not supported on-demand); Geo source Regions us. (us-east-1, us-east-2, us-west-1, us-west-2, ca-central-1), eu. (eight EU Regions), au. (ap-southeast-2, ap-southeast-4, ap-southeast-6), jp. (ap-northeast-1, ap-northeast-3) and in. (ap-south-1, ap-south-2); Global from 33 commercial Regions (no GovCloud); bedrock-mantle Messages In-Region in us-east-1, us-east-2, us-west-2, us-gov-west-1, eu-north-1, eu-west-1, ap-northeast-1 and ap-southeast-4. The runtime table marks us-gov-west-1 and us-gov-east-1 Geo as supported, but no Geo table lists a GovCloud source Region and the card names no us-gov. id, so GovCloud is left out of the profile matrix (fail closed).",
+      "inference_profiles": {
+        "us": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2",
+          "ca-central-1"
+        ],
+        "eu": [
+          "eu-central-1",
+          "eu-central-2",
+          "eu-north-1",
+          "eu-south-1",
+          "eu-south-2",
+          "eu-west-1",
+          "eu-west-2",
+          "eu-west-3"
+        ],
+        "au": [
+          "ap-southeast-2",
+          "ap-southeast-4",
+          "ap-southeast-6"
+        ],
+        "jp": [
+          "ap-northeast-1",
+          "ap-northeast-3"
+        ],
+        "in": [
+          "ap-south-1",
+          "ap-south-2"
+        ],
+        "global": [
+          "af-south-1",
+          "ap-east-2",
+          "ap-northeast-1",
+          "ap-northeast-2",
+          "ap-northeast-3",
+          "ap-south-1",
+          "ap-south-2",
+          "ap-southeast-1",
+          "ap-southeast-2",
+          "ap-southeast-3",
+          "ap-southeast-4",
+          "ap-southeast-5",
+          "ap-southeast-6",
+          "ap-southeast-7",
+          "ca-central-1",
+          "ca-west-1",
+          "eu-central-1",
+          "eu-central-2",
+          "eu-north-1",
+          "eu-south-1",
+          "eu-south-2",
+          "eu-west-1",
+          "eu-west-2",
+          "eu-west-3",
+          "il-central-1",
+          "me-central-1",
+          "me-south-1",
+          "mx-central-1",
+          "sa-east-1",
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2"
+        ]
+      },
       "paths": {
         "mantle_messages": {
           "available": true,
           "model_id": "anthropic.claude-haiku-4-5",
-          "requires_cris": false
+          "requires_cris": false,
+          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-4-5.html (read 2026-11-17): bedrock-mantle supports the Messages API only, In-Region with the bare id anthropic.claude-haiku-4-5 (no -20251001-v1:0 suffix) in us-east-1, us-east-2, us-west-2, us-gov-west-1, eu-north-1, eu-west-1, ap-northeast-1 and ap-southeast-4",
+          "regions": [
+            "us-east-1",
+            "us-east-2",
+            "us-west-2",
+            "us-gov-west-1",
+            "eu-north-1",
+            "eu-west-1",
+            "ap-northeast-1",
+            "ap-southeast-4"
+          ]
         },
         "runtime_converse": {
           "available": true,
@@ -391,7 +547,7 @@
           "available": true,
           "model_id": "anthropic.claude-haiku-4-5-20251001-v1:0",
           "requires_cris": true,
-          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-4-5.html (read 2026-11-07): bedrock-runtime Messages supported; Geo ids us./eu./au./jp./in.anthropic.claude-haiku-4-5-20251001-v1:0, Global id global.anthropic.claude-haiku-4-5-20251001-v1:0; no in-region form"
+          "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-4-5.html (read 2026-11-07, re-read 2026-11-17): bedrock-runtime Messages supported; Geo ids us./eu./au./jp./in.anthropic.claude-haiku-4-5-20251001-v1:0, Global id global.anthropic.claude-haiku-4-5-20251001-v1:0; no in-region form. The runtime table marks us-gov-west-1 and us-gov-east-1 Geo as supported, but no Geo table lists a GovCloud source Region and the card names no us-gov. id, so GovCloud is left out of the profile matrix (fail closed)."
         }
       }
     },

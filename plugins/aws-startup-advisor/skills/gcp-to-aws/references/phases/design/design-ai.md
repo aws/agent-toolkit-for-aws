@@ -22,9 +22,9 @@ Read `$MIGRATION_DIR/preferences.json` → `ai_constraints` (if present). If abs
 
 **Load source-specific design reference based on `ai_source`:**
 
-- `"gemini"` → load `references/design-refs/ai-gemini-to-bedrock.md`
+- `"gemini"` → load `references/vendored/ai/ai-gemini-to-bedrock.md`
 - `"openai"` → load `references/vendored/ai/ai-openai-to-bedrock.md` **and**
-  `references/shared/openai-on-bedrock.md` (the fact base: model IDs, endpoint paths, region matrix, quotas,
+  `references/vendored/ai/openai-on-bedrock.md` (the fact base: model IDs, endpoint paths, region matrix, quotas,
   caching). OpenAI's proprietary GPT models run on Bedrock, so the source model is often itself the target — the
   mapping guide's Tier 0 path is the default, not a cross-family swap.
 - `"anthropic"` → load `references/vendored/ai/ai-anthropic-to-bedrock.md` (Anthropic SDK → Bedrock Runtime Messages (default) / Converse alternative; the Anthropic SDK stays and is repointed at `https://bedrock-runtime.{region}.amazonaws.com/anthropic` — record `migration_path: "runtime_messages"` with `required_client_api: "messages"` by default, `"converse"` only on explicit request or for a Converse-only feature, `"mantle_messages"` only with a `mantle_selector` **recorded by Step 0.8 (any matched `ai_constraints.mantle_requirements` entry on the Anthropic workload, typically `workspaces`)**; do NOT use ai-openai-to-bedrock.md for Anthropic SDK users)
@@ -116,7 +116,7 @@ Read `preferences.json` → `ai_constraints.mantle_requirements` (written by Cla
 2. **Any match that passes 1b → the Mantle path for the workload's source API:** `"mantle_openai_responses"` for a Responses source, `"mantle_openai_chat"` for a Chat Completions source, `"mantle_messages"` for an Anthropic SDK source. Set `bedrock_models[].mantle_selector` to the matched selector; when several entries match, take the first in the policy-table order `background_inference, server_side_tools, web_search, projects, workspaces, in_region_processing` and name the others in the row's `rationale`. Generate and the report pass every matched selector to `iam_policy.py --mantle-selector`; a grant such as Web Search is not implied by the primary selector. Copy the matched entry into `bedrock_models[].mantle_requirement` — `{ workload_id, selector, source, evidence?, region? }` where `evidence` is present when `source` is `detected` (the Clarify entry's `file:line construct`) and `region` is present iff `selector` is `in_region_processing`.
    - `in_region_processing` still obeys the existing CRIS-only gate in `references/vendored/ai/ai-openai-to-bedrock.md`: it selects Mantle only when `bedrock-runtime` serves the selected model in the entry's `region` through a CRIS profile alone; when a runtime in-Region form exists, the workload stays on `bedrock-runtime` in that Region and the row records the `endpoint_assumption` below with a `rationale` note that the Region need is met on runtime.
    - **A match on a workload whose source API has no Mantle path** (Gemini / Vertex AI via `google-genai`, or any workload whose target is a cross-family `"direct"` / `"converse"` / `"gpt-oss"` row) does not change the endpoint. The row keeps its `bedrock-runtime` path and records the `endpoint_assumption` sentence below verbatim (it is the fixed runtime-lane disclosure), and the recorded requirement is disclosed as a capability gap: name the unhonored selector with its `source` and `evidence` in the row's `rationale` and add a `capability_gaps[]` entry (`"<selector> requested in Clarify (<source>, <evidence>) — no bedrock-mantle path for this source API"`); for `in_region_processing` add a `regional_warnings[]` entry instead. Never invent a Mantle path for that source and never drop the answer silently; the Present Summary endpoint line names the gap.
-3. **`mantle_only_model_or_api` is never a Clarify value.** When the selected model or API exists only on `bedrock-mantle` per the catalog (`references/vendored/ai/ai-openai-to-bedrock.md` / `references/shared/openai-on-bedrock.md` access-path tables), record the Mantle path with `mantle_selector: "mantle_only_model_or_api"` and `mantle_requirement: { "workload_id": "<id>", "selector": "mantle_only_model_or_api", "source": "catalog", "evidence": "<catalog file § row>" }`.
+3. **`mantle_only_model_or_api` is never a Clarify value.** When the selected model or API exists only on `bedrock-mantle` per the catalog (`references/vendored/ai/ai-openai-to-bedrock.md` / `references/vendored/ai/openai-on-bedrock.md` access-path tables), record the Mantle path with `mantle_selector: "mantle_only_model_or_api"` and `mantle_requirement: { "workload_id": "<id>", "selector": "mantle_only_model_or_api", "source": "catalog", "evidence": "<catalog file § row>" }`.
 4. **No match → the `bedrock-runtime` default** (`"runtime_openai_cris"` / `"runtime_messages"` / `"converse"` / `"gpt-oss"` / `"direct"` per Parts 1 and 5) and the row records `bedrock_models[].endpoint_assumption`, exactly:
 
    > No Mantle-only requirement was recorded for <workload_id>; bedrock-runtime selected. If this workload needs background inference, server-side tools, Projects/Workspaces, or single-Region processing, re-run Clarify.
@@ -255,7 +255,7 @@ otherwise use the cost-comparison cases below with `model_change` reflecting the
 - Source > 25% cheaper AND priority = cost → `"weak_migrate"` or `"recommend_stay"`
 
 **Model-specific same-model pricing:** for OpenAI GPT targets, read
-`references/shared/openai-on-bedrock.md`: verified In-Region/Geo options use the
+`references/vendored/ai/openai-on-bedrock.md`: verified In-Region/Geo options use the
 data-residency-tier premium, while supported Global CRIS uses standard-rate parity.
 Report the actual option; do not downgrade solely for the modest verified premium.
 **GPT-5.6/GPT-6 only:** above 272K context, apply 2.0x input and 1.5x output rates only when
@@ -588,7 +588,7 @@ Write `aws-design-ai.json` to `$MIGRATION_DIR/`.
 - [ ] All model IDs use current Bedrock identifiers (Active status per `shared/ai-model-lifecycle.md`)
 - [ ] No Legacy model is used as `bedrock_models[].aws_model_id` unless no Active alternative exists (with EOL date noted)
 - [ ] `honest_assessment` logic is consistent (weakest model drives overall)
-- [ ] If `ai_source` includes `"openai"`: every model that `shared/openai-on-bedrock.md` lists as available on Bedrock, and whose target region carries it, is mapped to **itself** with `model_change: false` — not to a Claude/Nova substitute
+- [ ] If `ai_source` includes `"openai"`: every model that `references/vendored/ai/openai-on-bedrock.md` lists as available on Bedrock, and whose target region carries it, is mapped to **itself** with `model_change: false` — not to a Claude/Nova substitute
 - [ ] If `honest_assessment == "recommend_stay"`: `honest_assessment_reason` names a non-cost blocker (cost parity alone is never sufficient for an OpenAI source)
 - [ ] Every same-model proprietary GPT row records `migration_path: "runtime_openai_cris"` by default; every `bedrock_models[]` row whose `migration_path` starts with `mantle_` carries a `mantle_selector` from `references/vendored/ai/bedrock-endpoint-policy.md`, and no `runtime_*`/`converse` row carries one
 - [ ] Every `mantle_*` row's `mantle_selector` is derived from an `ai_constraints.mantle_requirements` entry (or the catalog for `mantle_only_model_or_api`) and the row carries `mantle_requirement` citing it; every non-`mantle_*` row carries the `endpoint_assumption` sentence naming its workload

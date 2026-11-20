@@ -4,6 +4,7 @@ Complete query syntax reference, performance tips, and reusable query library.
 
 ## Contents
 
+- [Before you run a query](#before-you-run-a-query)
 - [Commands](#commands)
 - [Filter syntax](#filter-syntax)
 - [Parse command](#parse-command)
@@ -15,6 +16,30 @@ Complete query syntax reference, performance tips, and reusable query library.
 
 ---
 
+## Before you run a query
+
+Logs Insights charges by bytes scanned. Decide how to size the query before you run it.
+
+1. **Broad query over a long range: consider `estimate` first.** Use your judgment; most queries do not need it. Estimate when the scan could be large and you cannot tell how large: the time range is days or longer **and** the query is open-ended (no filter, only `like`/regex filters, many log groups, or a `SOURCE` prefix). Skip it when the range is short (minutes to a few hours), when `filterIndex` or an equality filter on an indexed field already narrows the scan, or when an earlier query or estimate in the same task already showed the volume. `estimate` must be the last command. It returns the approximate bytes the query would scan, without running it, and incurs no Logs Insights query charge. It is still a StartQuery call, so estimate once per query shape, not before every refinement. There is no fixed size limit: the question sets it. Compare the estimate with the time range and log groups the question needs (for example, the minutes around an alarm, not the whole day), narrow anything it does not need, then run the query.
+
+   ```
+   fields @timestamp, @message
+   | filter @message like /ERROR/
+   | estimate
+   ```
+
+2. **Only a sample is needed: use `limit any N`.** For "show me some errors", "what do these lines look like", or "does this message occur at all", `limit any N` can stop scanning as soon as N events match. It is not a cap: when matches are rare it can still scan the whole range. A plain `limit N` scans the whole time range first.
+
+   ```
+   fields @timestamp, @logStream, @message
+   | filter @message like /ERROR/
+   | limit any 20
+   ```
+
+   Results can come from any part of the time range, in no particular order. When the order matters (newest or oldest N), use `sort @timestamp desc | limit N`. For counts, rates, or other aggregates, use `stats`.
+
+---
+
 ## Commands
 
 | Command | Description | Infrequent Access |
@@ -23,7 +48,7 @@ Complete query syntax reference, performance tips, and reusable query library.
 | `filter` | Match conditions with boolean/regex | Yes |
 | `stats` | Aggregate statistics | Yes |
 | `sort` | Order results `asc` or `desc` | Yes |
-| `limit` | Specify max returned events (default 10,000 if omitted) | Yes |
+| `limit` | Specify max returned events (default 10,000 if omitted). `limit any N` can stop scanning once N events match (not a cap); results are unordered | Yes |
 | `parse` | Extract fields via glob or regex | Yes |
 | `display` | Choose which fields to show | Yes |
 | `dedup` | Remove duplicates by field | Yes |
@@ -37,6 +62,7 @@ Complete query syntax reference, performance tips, and reusable query library.
 | `unmask` | Reveal data-protection masked content | No |
 | `filterIndex` | Force field-index scan optimization | No |
 | `SOURCE` | Programmatic log group selection (CLI/API only) | Yes |
+| `estimate` | Last command only. Returns the approximate bytes the query would scan, without running it; no query charge | Yes |
 
 Auto-discovered fields: `@timestamp`, `@message`, `@logStream`, `@log` (account-id:log-group-name), `@ingestionTime`, `@entity`. JSON fields are auto-flattened with dot notation when the log event is a JSON object. Lambda logs are the exception: Insights discovers the first JSON fragment embedded in each event. In other log groups, a line with a text prefix before the JSON is not parsed into fields.
 
@@ -214,6 +240,11 @@ fields @timestamp, @message, @logStream
 | filter @message like /ERROR/
 | sort @timestamp desc
 | limit 100
+
+# Sample of errors (can stop scanning early; any 20, unordered)
+fields @timestamp, @message, @logStream
+| filter @message like /ERROR/
+| limit any 20
 
 # Error rate by time bucket
 fields @timestamp, @message

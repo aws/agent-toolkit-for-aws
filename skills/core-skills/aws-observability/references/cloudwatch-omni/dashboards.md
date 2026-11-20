@@ -34,7 +34,7 @@ Two rules hold across every step:
   ground.
 - **Query text follows the CloudWatch Omni query dialect.** The SQL rules for logs
   and traces live in [sql-logs-traces.md](query/sql-logs-traces.md); metric
-  semantics and PromQL selectors live in [promql-metrics.md](query/promql-metrics.md).
+  semantics and PromQL selectors live in [../cloudwatch/promql.md](../cloudwatch/promql.md).
   This reference owns the dashboard body — the panel schema, chart choices, grid
   math — and the dashboard API. It does not restate the dialects.
 
@@ -192,12 +192,16 @@ When the request names a known resource TYPE — an EC2 fleet, a Lambda function
 Kubernetes/EKS workload, an RDS/database instance, an ECS/web service, or an API
 Gateway API — don't classify from scratch. Start from that archetype's ready panel
 set in the [Appendix](#8-appendix--archetype-templates), then ground and lay it out.
+Read the archetype's whole section (`### EC2 fleet`, `### Lambda`, `### Kubernetes/EKS`,
+`### RDS/database`, `### ECS/web service`, `### API Gateway` under section 8), not a
+keyword hit: its CORE table also carries the non-metric panels, such as a SQL log table,
+that the metric catalog below does not list.
 
 The panel *content* for a resource type — which signals, how each is read
 (gauge vs. counter, `max` for a 0/1 check, `min` for a credit balance), which exist
 only under a configuration (an installed agent, a burstable instance type, Container
 Insights), and the identity label to group by — is owned by the per-service catalog in
-[promql-metrics.md](query/promql-metrics.md) (its "Service-health question — facts you
+[../cloudwatch/promql.md](../cloudwatch/promql.md) (its "Service-health question — facts you
 MUST surface" section and section 5). When the ask is which signals or panels a named
 resource type needs, state those catalog facts as the proposed panel set; this file then
 supplies the body and the grid. Do not decide the content by enumerating resources
@@ -279,7 +283,7 @@ number, a single `number` panel is a complete answer — don't pad it.
 Ground each data panel's query against live telemetry **before** you write the
 body. The query languages themselves are deferred to
 [sql-logs-traces.md](query/sql-logs-traces.md) and
-[promql-metrics.md](query/promql-metrics.md); this section is the discipline.
+[../cloudwatch/promql.md](../cloudwatch/promql.md); this section is the discipline.
 
 **The grounding loop, per data panel:**
 
@@ -291,7 +295,7 @@ body. The query languages themselves are deferred to
      **need** a `` `@timestamp` `` bound — only the final panel query is windowless
      (below).
    - Metrics: enumerate the real metric names and their identity labels per
-     [promql-metrics.md](query/promql-metrics.md) — which metrics a service emits,
+     [../cloudwatch/promql.md](../cloudwatch/promql.md#3-discovering-metric-names-and-labels) — which metrics a service emits,
      each metric's instrument type (Sum / Gauge / Histogram) and temporality
      (delta / cumulative), and the labels that scope it.
    - Follow a service's dependencies (the services it calls, from span data) to
@@ -338,13 +342,17 @@ matcher for a name that starts with a digit or contains `%`, `.`, or spaces (e.g
 `4xxErrors`, `traces.span.metrics.*`); a plain non-dotted name may be used bare.
 A bare Prometheus `job=` / `service=` selector is an ungrounded reference — drop
 panels that use one. The per-service scope + datapoint-attribute matrix lives in
-[promql-metrics.md](query/promql-metrics.md).
+[../cloudwatch/promql.md](../cloudwatch/promql.md).
 
 **Pick the aggregation from the metric's type.** Read it off the grounded
 instrument type and temporality — `sum_over_time(<m>[w])` for a DELTA Sum,
 `rate()` / `increase()` for a CUMULATIVE Sum, `avg()` / `max()` for a Gauge, and
-`histogram_quantile(0.99, rate(<base>[5m]))` for a Histogram (use the BASE metric
-name — NO `_bucket`, NO `by (le)`). Never label an average as a percentile, and
+`histogram_quantile(0.99, sum_over_time(<base>[5m]))` for a DELTA Histogram
+(enriched vended latency always; span `traces.span.metrics.duration` varies by producer:
+CloudWatch's `cloudwatch.aws/xray/span-metrics` is delta, a collector's `spanmetricsconnector`
+is cumulative, so scope `"@instrumentation.@name"` and read `__temporality__`) and
+`histogram_quantile(0.99, rate(<base>[5m]))` for a CUMULATIVE one (use the BASE metric
+name — NO `_bucket`, NO `by (le)`; `rate()` on a delta histogram reads ~1000x low). Never label an average as a percentile, and
 never chart a counter as a raw value.
 
 **Two grounding cautions:**
@@ -888,7 +896,7 @@ Work down this list in order; the first match is usually the cause.
 6. **The metric selector's identity is wrong.** A vended metric without its
    `@instrumentation.@name` scope, or the wrong datapoint attribute
    (`FunctionName` vs. `ApiName`), matches nothing. Compare against the archetype
-   identity forms and [promql-metrics.md](query/promql-metrics.md).
+   identity forms and [../cloudwatch/promql.md](../cloudwatch/promql.md).
 7. **The series is genuinely empty — and that is correct.** Conditional signals
    (`IteratorAge` for a non-stream consumer, `RunningTaskCount` without Container
    Insights, burst-credit metrics on a non-burstable instance) return nothing when
@@ -1149,7 +1157,7 @@ then **ground** every query (section 3) and **lay it out** (section 5). Build th
 CORE subset by default and offer the optional-depth panels as a follow-up "add
 section." Look up each panel's real metric and reading (gauge vs. counter, derived
 formulas, whether a real percentile source exists) in
-[promql-metrics.md](query/promql-metrics.md); the query strings are TEMPLATES — the
+[../cloudwatch/promql.md](../cloudwatch/promql.md); the query strings are TEMPLATES — the
 identity form is canonical, but the metric name and statistic MUST be grounded. If
 a signal cannot be grounded, **drop that panel** and re-sequence `y` so no blank row
 is left.
@@ -1197,14 +1205,14 @@ and tagged with `label_replace`. `S` below stands for `"@instrumentation.@name"=
 **Optional depth (follow-up "infra / USE health"):** `CPUCreditBalance` by instance
 (`histogram_quantile(0, …)`, `line`); `disk_used_percent` by instance (`CWAgent`); the EBS
 volume side (`VolumeQueueLength`, `VolumeAvgReadLatency` / `VolumeAvgWriteLatency` on
-`cloudwatch.aws/ebs` by `VolumeId` — check their `__type__` first). Append two-up and
+`cloudwatch.aws/ec2` by `VolumeId` — check their `__type__` first). Append two-up and
 re-sequence `y`.
 
 ### Lambda
 
 Serverless function — RED-shaped; scope `cloudwatch.aws/lambda` by `FunctionName`. The vended
 Lambda counters (`Invocations`, `Errors`, `Throttles`) are **delta Sums**, so every count panel
-uses `sum_over_time(...[5m])`; `rate()` on them renders `NaN` (see promql-metrics.md section 4).
+uses `sum_over_time(...[5m])`; `rate()` misreads them (see [../cloudwatch/promql.md](../cloudwatch/promql.md) section 4).
 `Duration` arrives as a delta exponential histogram, so read it with `histogram_avg(…)` for the
 average or `histogram_quantile(0.99, …)` for a true p99; a bare selector folds the buckets
 instead of returning milliseconds. The error-rate tile is the derived `Errors / Invocations`.
@@ -1219,8 +1227,8 @@ instead of returning milliseconds. The error-rate tile is the derived `Errors / 
 | Concurrency | `number` | `max({__name__="ConcurrentExecutions", …, FunctionName="<fn>"})` | `{x:45,y:0,w:15,h:120}` |
 | Invocations over time | `line` | `sum by (FunctionName) (sum_over_time({__name__="Invocations", …, FunctionName="<fn>"}[5m]))` | `{x:0,y:120,w:30,h:320}` |
 | Errors over time | `line` | `sum by (FunctionName) (sum_over_time({__name__="Errors", …, FunctionName="<fn>"}[5m]))` | `{x:30,y:120,w:30,h:320}` |
-| Duration (ms) | `line` | `histogram_avg({__name__="Duration", …, FunctionName="<fn>"})`, plus `histogram_quantile(0.99, …)` for p99 | `{x:0,y:440,w:60,h:320}` |
-| Recent errors | `table` (SQL) | scope to `/aws/lambda/<fn>` with a grounded log-group filter; `queryLanguage:'sql'` | `{x:0,y:760,w:60,h:360}` |
+| Duration (ms) | `line` | `histogram_avg(sum_over_time({__name__="Duration", …, FunctionName="<fn>"}[5m]))`, plus `histogram_quantile(0.99, sum_over_time(…[5m]))` for p99 | `{x:0,y:440,w:60,h:320}` |
+| Recent errors | `table` (SQL) | `` SELECT `@timestamp`, `@logStream`, `@record` FROM logs.default WHERE `@logGroupName` = '/aws/lambda/<fn>' ORDER BY `@timestamp` DESC LIMIT 100 ``, `queryLanguage:'sql'`. `/aws/lambda/<fn>` is the default group; use the function's custom log group if it has one, and add an error filter once the log format is known | `{x:0,y:760,w:60,h:360}` |
 
 **Optional depth (follow-up):** Throttles `line`; Concurrent executions `line`;
 Stream-consumer lag `line` (`IteratorAge` — only for a stream/event-source
@@ -1238,14 +1246,14 @@ catalog (section 3).
 
 | Panel | Viz | Query template | Layout |
 |-------|-----|----------------|--------|
-| Request rate | `number` | `sum(sum_over_time({__name__="traces.span.metrics.calls", "@resource.service.name"="<svc>"}[5m])) / 300` (delta Sum — `rate()` under-reads it) | `{x:0,y:0,w:15,h:120}` |
+| Request rate | `number` | `sum(sum_over_time({__name__="traces.span.metrics.calls", "@instrumentation.@name"="cloudwatch.aws/xray/span-metrics", "@resource.service.name"="<svc>"}[5m])) / 300` (CloudWatch's delta series; for a collector's `spanmetricsconnector` series swap the scope and take `rate()`, they are cumulative. Every span panel below carries the same producer scope inside `…`) | `{x:0,y:0,w:15,h:120}` |
 | Error rate | `number` | ratio of `…calls, "status.code"="ERROR"` to all calls | `{x:15,y:0,w:15,h:120}` |
-| p99 latency | `number` | `histogram_quantile(0.99, rate({__name__="traces.span.metrics.duration", …}[5m]))` | `{x:30,y:0,w:15,h:120}` |
+| p99 latency | `number` | `histogram_quantile(0.99, sum(sum_over_time({__name__="traces.span.metrics.duration", "@instrumentation.@name"="cloudwatch.aws/xray/span-metrics", …}[5m])))` (the outer `sum` makes one number) | `{x:30,y:0,w:15,h:120}` |
 | Running pods | `number` | `count({"k8s.pod.phase", "@resource.k8s.namespace.name"="<ns>", "@resource.k8s.deployment.name"="<deploy>"})` | `{x:45,y:0,w:15,h:120}` |
 | Request rate | `line` | `sum by ("@resource.service.name") (sum_over_time({__name__="traces.span.metrics.calls", …}[5m])) / 300` | `{x:0,y:120,w:30,h:320}` |
 | Errors by status | `bar` | `sum by ("status.code") (sum_over_time({__name__="traces.span.metrics.calls", …}[5m]))` | `{x:30,y:120,w:30,h:320}` |
-| Latency p50/p90/p99 | `line` | `histogram_quantile(0.99, rate({__name__="traces.span.metrics.duration", …}[5m]))` — one series per quantile (0.50, 0.90, 0.99) | `{x:0,y:440,w:60,h:320}` |
-| Top services by errors | `table` | `topk(10, sum by ("@resource.service.name") (sum_over_time({__name__="traces.span.metrics.calls", "status.code"="ERROR"}[5m])))` | `{x:0,y:760,w:60,h:360}` |
+| Latency p50/p90/p99 | `line` | `histogram_quantile(0.99, sum(sum_over_time({__name__="traces.span.metrics.duration", …}[5m])))` — one series per quantile (0.50, 0.90, 0.99) | `{x:0,y:440,w:60,h:320}` |
+| Top services by errors | `table` | `topk(10, sum by ("@resource.service.name") (sum_over_time({__name__="traces.span.metrics.calls", "@instrumentation.@name"="cloudwatch.aws/xray/span-metrics", "status.code"="ERROR"}[5m])))` (the collector producer spells it `STATUS_CODE_ERROR`) | `{x:0,y:760,w:60,h:360}` |
 
 **Optional depth (follow-up "infra / USE health"):** Pod CPU usage, Pod memory
 usage, Container restarts — grouped by `@resource.k8s.*` (`k8s.pod.cpu.usage`,
@@ -1279,21 +1287,23 @@ read+write view. Append two-up and re-sequence `y`.
 
 Cross-signal — **USE** from the ECS service tier combined with **RED** from the
 load balancer in front (or from Application Signals). Identity + reading rules: ECS
-scopes by `ClusterName` + a non-empty `ServiceName`; ALB `TargetResponseTime` is a
-gauge in seconds with no percentile label; the target status-code metrics carry the
-`_Count` suffix.
+scopes by `ClusterName` + a non-empty `ServiceName`; the ALB scope is
+`cloudwatch.aws/elasticloadbalancing`; the ALB counts are delta Sums (`sum_over_time`,
+never `rate()`); `TargetResponseTime` (seconds) and ECS `CPUUtilization` arrive as delta
+exponential histograms; the target status-code metrics carry the `_Count` suffix, and
+`__name__` takes no regex, so name each code.
 
 **CORE (~7 panels — the default build; this archetype has no ranked table):**
 
 | Panel | Viz | Query template | Layout |
 |-------|-----|----------------|--------|
-| Request rate | `number` | `sum(rate({__name__="RequestCount", "@instrumentation.@name"="cloudwatch.aws/applicationelb", LoadBalancer="<lb>"}[5m]))` | `{x:0,y:0,w:15,h:120}` |
-| 5xx rate | `number` | `sum(rate({__name__="HTTPCode_Target_5XX_Count", …, LoadBalancer="<lb>"}[5m]))` | `{x:15,y:0,w:15,h:120}` |
-| Peak response (ms) | `number` | `max({__name__="TargetResponseTime", …, LoadBalancer="<lb>"}) * 1000` | `{x:30,y:0,w:15,h:120}` |
-| Service CPU % | `number` | `max({__name__="CPUUtilization", "@instrumentation.@name"="cloudwatch.aws/ecs", ClusterName="<cluster>", ServiceName="<svc>"})` | `{x:45,y:0,w:15,h:120}` |
-| Request rate | `line` | `sum(rate({__name__="RequestCount", …, LoadBalancer="<lb>"}[5m]))` | `{x:0,y:120,w:30,h:320}` |
-| Status codes | `bar` | `sum by (__name__) (rate({__name__=~"HTTPCode_Target_..._Count", …, LoadBalancer="<lb>"}[5m]))` | `{x:30,y:120,w:30,h:320}` |
-| Response time (ms) | `line` | `{__name__="TargetResponseTime", …, LoadBalancer="<lb>"} * 1000` | `{x:0,y:440,w:60,h:320}` |
+| Requests/s | `number` | `sum(sum_over_time({__name__=\"RequestCount\", \"@instrumentation.@name\"=\"cloudwatch.aws/elasticloadbalancing\", LoadBalancer=\"<lb>\"}[5m])) / 300` | `{x:0,y:0,w:15,h:120}` |
+| 5xx (5m) | `number` | `sum(sum_over_time({__name__=\"HTTPCode_Target_5XX_Count\", …, LoadBalancer=\"<lb>\"}[5m]))` | `{x:15,y:0,w:15,h:120}` |
+| Peak response (ms) | `number` | `histogram_quantile(1, sum(sum_over_time({__name__=\"TargetResponseTime\", …, LoadBalancer=\"<lb>\"}[5m]))) * 1000` | `{x:30,y:0,w:15,h:120}` |
+| Service CPU % | `number` | `histogram_avg(sum(sum_over_time({__name__=\"CPUUtilization\", \"@instrumentation.@name\"=\"cloudwatch.aws/ecs\", ClusterName=\"<cluster>\", ServiceName=\"<svc>\"}[5m])))` | `{x:45,y:0,w:15,h:120}` |
+| Requests/s | `line` | `sum(sum_over_time({__name__=\"RequestCount\", …, LoadBalancer=\"<lb>\"}[5m])) / 300` | `{x:0,y:120,w:30,h:320}` |
+| Status codes | `bar` | one `label_replace(sum(sum_over_time({__name__=\"HTTPCode_Target_<N>XX_Count\", …, LoadBalancer=\"<lb>\"}[5m])), \"code\", \"<N>XX\", \"\", \"\")` per code, joined with `or` | `{x:30,y:120,w:30,h:320}` |
+| Response time (ms) | `line` | `histogram_avg(sum(sum_over_time({__name__=\"TargetResponseTime\", …, LoadBalancer=\"<lb>\"}[5m]))) * 1000` | `{x:0,y:440,w:60,h:320}` |
 
 **Optional depth (follow-up "infra / USE health"):** Memory util % `line`; Running
 tasks `line` (`RunningTaskCount` — needs ECS Container Insights or OTel enrichment,
@@ -1305,20 +1315,21 @@ Append two-up and re-sequence `y`.
 
 Request-serving — RED. Identity split: REST v1 on `ApiName` with `4XXError` /
 `5XXError`, HTTP v2 on `ApiId` with `4xx` / `5xx`; gateway overhead is the formula
-`Latency − IntegrationLatency`.
+`Latency − IntegrationLatency`. The counts are delta Sums (`sum_over_time`, never `rate()`);
+`Latency` and `IntegrationLatency` (ms) arrive as delta exponential histograms.
 
 **CORE (~8 panels — the default build):**
 
 | Panel | Viz | Query template | Layout |
 |-------|-----|----------------|--------|
-| Request count/s | `number` | `sum(rate({__name__="Count", "@instrumentation.@name"="cloudwatch.aws/apigateway", ApiName="<api>"}[5m]))` | `{x:0,y:0,w:15,h:120}` |
-| 5xx rate | `number` | `sum(rate({__name__="5XXError", …, ApiName="<api>"}[5m]))` | `{x:15,y:0,w:15,h:120}` |
-| 4xx rate | `number` | `sum(rate({__name__="4XXError", …, ApiName="<api>"}[5m]))` | `{x:30,y:0,w:15,h:120}` |
-| Peak latency (ms) | `number` | `max({__name__="Latency", …, ApiName="<api>"})` | `{x:45,y:0,w:15,h:120}` |
-| Request count | `line` | `sum(rate({__name__="Count", …, ApiName="<api>"}[5m]))` | `{x:0,y:120,w:30,h:320}` |
-| Errors 4xx/5xx | `bar` | `sum by (__name__) (rate({__name__=~"[45]XXError", …, ApiName="<api>"}[5m]))` | `{x:30,y:120,w:30,h:320}` |
-| Latency (ms) | `line` | `{__name__="Latency", …, ApiName="<api>"}` | `{x:0,y:440,w:60,h:320}` |
-| Top resources by 5xx | `table` | `topk(10, sum by (Resource) (rate({__name__="5XXError", …, ApiName="<api>"}[5m])))` | `{x:0,y:760,w:60,h:360}` |
+| Requests/s | `number` | `sum(sum_over_time({__name__=\"Count\", \"@instrumentation.@name\"=\"cloudwatch.aws/apigateway\", ApiName=\"<api>\"}[5m])) / 300` | `{x:0,y:0,w:15,h:120}` |
+| 5xx (5m) | `number` | `sum(sum_over_time({__name__=\"5XXError\", …, ApiName=\"<api>\"}[5m]))` | `{x:15,y:0,w:15,h:120}` |
+| 4xx (5m) | `number` | `sum(sum_over_time({__name__=\"4XXError\", …, ApiName=\"<api>\"}[5m]))` | `{x:30,y:0,w:15,h:120}` |
+| Peak latency (ms) | `number` | `histogram_quantile(1, sum(sum_over_time({__name__=\"Latency\", …, ApiName=\"<api>\"}[5m])))` | `{x:45,y:0,w:15,h:120}` |
+| Requests/s | `line` | `sum(sum_over_time({__name__=\"Count\", …, ApiName=\"<api>\"}[5m])) / 300` | `{x:0,y:120,w:30,h:320}` |
+| Errors 4xx/5xx | `bar` | `label_replace(sum(sum_over_time({__name__=\"4XXError\", …}[5m])), \"code\", \"4XX\", \"\", \"\") or label_replace(sum(sum_over_time({__name__=\"5XXError\", …}[5m])), \"code\", \"5XX\", \"\", \"\")` | `{x:30,y:120,w:30,h:320}` |
+| Latency (ms) | `line` | `histogram_avg(sum(sum_over_time({__name__=\"Latency\", …, ApiName=\"<api>\"}[5m])))` | `{x:0,y:440,w:60,h:320}` |
+| Top resources by 5xx | `table` | `topk(10, sum by (Resource) (sum_over_time({__name__=\"5XXError\", …, ApiName=\"<api>\"}[5m])))` | `{x:0,y:760,w:60,h:360}` |
 
 **Optional depth (follow-up "per-service latency"):** Integration latency (ms)
 `line` (`IntegrationLatency`) — chart it beside `Latency` so the gap reads as

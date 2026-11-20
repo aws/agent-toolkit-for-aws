@@ -78,12 +78,75 @@ whose `resource_id` appears as a `source_resource_id` in `aws-design.json` `serv
 (no replacement selected). Both counts are inputs to the row's status — on this
 branch `advanced-scheduler` has no fast-path row or alias, so Design defers it.
 
+From the inventory: `shared_data_stores.cohorts` (for the conditional
+`shared-data-stores` section) and `metadata.apps_by_environment_tier` (one line in
+`decision-summary` **only when the field is present**: "N apps, of which M are
+production by name or pipeline stage", where `N` is the sum of all tier counts and `M`
+is the `prod` count. When the field is absent, omit the line and never derive the counts
+here).
+
+From `estimation-infra.json` `current_costs.rightsizing_candidates[]` (present when any
+Postgres database holds 25% or less of its plan's storage and a smaller same-family plan
+fits twice its data — the Clarify Q6d Right-sizing rule): render a **Right-size before
+you move** table inside `exec-costs`, below the Heroku-vs-AWS table — top ten by saving,
+columns Database (`heroku_app` plus the add-on `resource_id`, so two databases on one app
+stay distinct) / Role (`unknown` when discovery wrote no `pg_role`) / Plan / Plan storage /
+Data / Used % / Fitting plan / Saving per month, then one line with the total
+`rightsizing_monthly_saving_usd` and the sentences: "This is a Heroku-side saving available
+today, before any migration; it is not counted in the AWS figure. Fitting plan is chosen
+by storage only; a plan sized for memory, connections or query load may be correct as it
+is." When `database_sizing_basis` is `measured`, add: "AWS targets for the databases
+confirmed in Clarify Q6d are sized from measured data."
+
+From `estimation-infra.json` `current_costs.contract` (present only when the user
+supplied a Heroku order form in Clarify): render a **Contract reconciliation** table
+inside `exec-costs`, below the Heroku-vs-AWS table — rows per contract category
+(dynos, add-on credits, support, Private Spaces, Connect rows, other) with Contract
+$/mo, Discovered $/mo, Gap, and the `gap_explanation`. Follow it with this sentence,
+verbatim in substance: "The contract comparison overstates savings: the contract
+includes support, credits and committed headroom that discovery cannot see, while
+the AWS figure leaves out any add-ons marked Deferred, AWS Support and data
+transfer. Use the discovered like-for-like figure for a scope-matched comparison and
+treat both as floors on AWS cost." Never present "contract minus AWS" as the
+headline saving.
+
+From `estimation-infra.json` `cost_comparison.like_for_like_comparison` (present whenever
+any add-on was Deferred): render it as its own row block in `exec-costs`, directly under
+the full-baseline comparison — "Scope-matched: Heroku $X/mo (excludes $D/mo of add-ons
+with no AWS mapping yet) vs AWS Balanced $Y/mo → $Z/mo {more|less} on AWS ({P}%)". Keep
+the full-baseline row and its caveat above it. Wrap the like-for-like Heroku figure in
+`data-cost-key="heroku_monthly_like_for_like"` so the validator can cross-check it (the
+validator requires that anchor inside `exec-costs` whenever `like_for_like_comparison`
+exists, and fails the report when its rendered dollars differ from
+`cost_comparison.heroku_monthly_like_for_like`). Two variants of that line:
+
+- `like_for_like_comparison.difference_pct` absent/null (`heroku_monthly_like_for_like`
+  is $0; `pct_note` present): render "(percentage not applicable)" in place of "({P}%)".
+  Keep the dollar `$Z/mo`.
+- `like_for_like_comparison.attribution == "incomplete"`: the label is "Scope-matched
+  (provisional — N deferred add-on(s) could not be attributed and remain in the Heroku
+  figure: `<names from unattributed_deferred_services>`)" instead of "Scope-matched", and
+  the block must not say "decision-grade" or "both sides exclude" — the named add-ons are
+  still only on the Heroku side. Only `attribution == "complete"` may be labelled
+  decision-grade.
+
+These rules apply in both report modes (`report-decision-core.md` reuses this section).
 From `heroku-resource-inventory.json` (when present — older inventories omit
 these keys; treat absence as no finding):
 
 - `metadata.apps_by_stack_status` (`eol` / `deprecated` / `supported` /
   `container` / `unknown` counts)
 - `metadata.eol_stack_apps` (sorted app names on end-of-life stacks)
+
+From `heroku-resource-inventory.json` and `aws-design.json` metadata (both optional — tolerate absence):
+
+- `heroku-resource-inventory.json` `metadata.apps_by_environment_tier` (Discover assemble
+  rule 5a) — the per-tier app counts; when present, `decision-summary` quotes the
+  production share (see below) instead of recounting apps.
+- `aws-design.json` `metadata.postgres_followers_collapsed[]` (Design 2B-F) — Heroku
+  followers served by a read replica / Aurora reader of their leader rather than a
+  separate database; when non-empty, `exec-costs` lists them (see below) so the reader
+  can see why the AWS database count is lower than the Heroku add-on count.
 
 ---
 
@@ -95,9 +158,10 @@ Write a **self-contained** HTML file to `$MIGRATION_DIR/migration-report.html`
 | Section ID          | Content                                                                                                                                                                                                                                                                                      |
 | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `decision-summary`  | Typography-first verdict (see below), cost one-liner, next action                                                                                                                                                                                                                            |
-| `exec-costs`        | Heroku-vs-AWS side-by-side when a Heroku baseline exists (`current_costs.source != "unavailable"`); otherwise the AWS three-tier table with a one-line note that no Heroku baseline was available. Estimated monthly; Balanced primary. **When `current_costs.baseline_note` is present (any derived — not invoiced — source, including the Postgres Advanced per-pool formula), render it as a visible caveat line directly beside the Heroku current-monthly figure — never only in the accuracy band.** This is mandatory, not conditional on which derived source produced the note. **When `cost_comparison.comparison_status == "incomplete_unmatched_services"`, render the same mandatory caveat-beside-the-figure treatment, naming `cost_comparison.unmatched_deferred_services` and `unmatched_deferred_cost` directly beside the savings/difference figure — never present that dollar delta as decision-grade savings without it.** This file is the single source of truth for `exec-costs` content rules, so `report-decision-core.md`'s reuse of these rules picks this up automatically. |
+| `exec-costs`        | Heroku-vs-AWS side-by-side when a Heroku baseline exists (`current_costs.source != "unavailable"`); otherwise the AWS three-tier table with a one-line note that no Heroku baseline was available. Estimated monthly; Balanced primary. **When `current_costs.baseline_note` is present (any derived — not invoiced — source, including the Postgres Advanced per-pool formula), render it as a visible caveat line directly beside the Heroku current-monthly figure — never only in the accuracy band.** This is mandatory, not conditional on which derived source produced the note. **When `cost_comparison.comparison_status == "incomplete_unmatched_services"`, render the same mandatory caveat-beside-the-figure treatment, naming `cost_comparison.unmatched_deferred_services` and `unmatched_deferred_cost` directly beside the savings/difference figure — never present that dollar delta as decision-grade savings without it.** **When `aws-design.json` `metadata.postgres_followers_collapsed[]` is non-empty, add one line under the database rows listing each collapsed follower and what serves it (`served_by`: `rds_read_replica` → "RDS read replica of `{leader_resource_id}`", `aurora_reader` → "Aurora reader of `{leader_resource_id}`"), so the reader sees why the AWS database count is lower than the Heroku add-on count; skip silently when empty or absent.** This file is the single source of truth for `exec-costs` content rules, so `report-decision-core.md`'s reuse of these rules picks this up automatically. |
 | `cost-optimization` | Reserved Instance / Savings Plan opportunities table, or the explicit no-eligible-commitment statement — see below. Always present, never omitted                                                                                                                                            |
 | `developer-workflow` | Always render — in both report modes (`report-decision-core.md` renders it in `decision-report.html` / `DECISION.md` too, with its pre-execution wording override). Heading "Developer workflow: what stays, what changes, what you build". One line stating the Q5c answer. Then the table defined in § `developer-workflow` below. Then the closing paragraph(s) defined there. Reader vocabulary only — no file names or resource IDs |
+| `shared-data-stores` | **Conditional** — only when the inventory has `shared_data_stores.cohorts` with at least one entry. One table: Cohort / Apps (count) / Shared stores (count) / App names. One sentence above it: apps in a cohort read the same database, cache or Kafka cluster and cannot be cut over strictly one at a time without cross-cloud access to that store; sequence them as a group or plan the interim connectivity. No ordering, no recommendation of which cohort goes first |
 | `next-steps`        | Ordered list pointing to `MIGRATION_GUIDE.md` phases (not a procedure dump). Include one bullet noting the Terraform ships with `baseline.tf` (account security baseline — GuardDuty, CloudTrail, budget alerts) and that three contact emails must be set in tfvars before `terraform plan` |
 
 **Cost-figure anchor (machine-checkable).** In `exec-costs`, wrap the recommended AWS
@@ -133,6 +197,12 @@ Only untagged _illustrative_ numbers are skipped.
    <a href="#decision-basis">What This Assessment Rests On</a>.`
 3. **Cost one-liner** — Balanced AWS monthly vs Heroku baseline when available
    (estimated monthly), else AWS Balanced alone.
+   - **Estate line (when `metadata.apps_by_environment_tier` exists):** one line
+     directly under the cost one-liner — `N apps, of which M are production by name or
+     pipeline stage`, where `N` is the sum of all tier counts and `M` is the `prod`
+     count. This is the only rule for this line; the estate-workbook change reads the
+     same field and quotes the same sentence. Skip silently when the tier map is absent
+     (Terraform-only discovery).
 4. **What would flip this (v2):** from `recommendation.would_flip_if[]` when
    present — short unordered list. Skip silently when absent.
    - **End-of-life stacks (conditional):** when
@@ -185,10 +255,11 @@ when absent; mapped/deferred counts from `aws-design.json` as gathered in Step 1
 
 | Row                | Resolved target / design state                     | Status                                                                                                                                                                                                                 |
 | ------------------ | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Push to deploy     | EB + `github_actions` or `codepipeline`            | **Generated** — the generated workflow (or CodePipeline) builds and deploys per app                                                                                                                                    |
+| Push to deploy     | EB + `github_actions`, or EB + `codepipeline` for an app that does not resolve to CNB | **Generated** — the generated workflow (or CodePipeline) builds and deploys per app |
+| Push to deploy     | EB + `codepipeline`, app resolves to CNB (`app_containerization_method == "cnb_heroku_builder"`) | **Build** — CodePipeline is unsupported for CNB apps (it cannot run `pack build`), so no pipeline is generated for them; use the `github_actions` workflow, or write the pipeline yourself |
 | Push to deploy     | EB + `manual`                                      | **Build** — no CI is generated; the guide documents a CLI deploy                                                                                                                                                       |
 | Push to deploy     | Fargate or EKS (any method)                        | **Build** — no push-to-deploy workflow is generated for container services; the team writes the image build + deploy pipeline                                                                                           |
-| Push to deploy     | any target, buildpack apps                         | add "**Build** — a Dockerfile per buildpack app" as a separate clause; every target runs a container image (EB uses the Docker platform), so Dockerfile work is independent of whether CI is generated                   |
+| Push to deploy     | any target, buildpack app with `app_containerization_method == "dockerfile"` | add "**Build** — a Dockerfile per buildpack app" as a separate clause for those apps only; a CNB app (the default) needs no Dockerfile, because `pack build` with the Heroku builder produces the image, so never add the clause for it |
 | Config vars        | EB                                                 | **Covered** — one `environmentsecrets` binding per sensitive key is generated; you import the values                                                                                                                   |
 | Config vars        | Fargate                                            | **Build** — the generated task definition carries no environment/secrets bindings; you export the values, import them to Secrets Manager / Parameter Store, and wire each key into the task definition yourselves (the migration guide's Fargate config-var section is the procedure; in the rendered row say "the migration guide", not the file name) |
 | Config vars        | EKS                                                | **Build** — the generated Kubernetes Deployments carry `PORT` plus `DATABASE_URL` and `REDIS_URL` `secretKeyRef` bindings only (reading a per-app Kubernetes Secret that is not generated); you create that Secret from the exported values and add an env entry per remaining key to each Deployment (the migration guide's EKS section shows the `kubectl create secret` and `secretKeyRef` steps). There is no task definition for EKS apps and the Fargate config-var procedure does not apply to them — never point EKS apps at it |
@@ -201,8 +272,8 @@ when absent; mapped/deferred counts from `aws-design.json` as gathered in Step 1
 
 | Heroku today                              | On AWS                                                                                      | Status                                                                            | Your estate (from the inventory)                                     |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `git push heroku main` + buildpacks       | CI builds a container image and deploys it                                                  | Per the status rules above: **Generated** only for Beanstalk apps with a generated deploy method; **Build** for Fargate/EKS apps and manual Beanstalk; plus **Build** (a Dockerfile per app) for buildpack apps | "{N} buildpack apps, {M} already containerized; {n} on Beanstalk, {m} on Fargate/EKS" |
-| Pipelines and promote                     | Environments per stage with the same image promoted between them, approval-gated            | **Build** — pipelines are detected, not generated                                 | "{P} pipelines covering {A} apps"                                    |
+| `git push heroku main` + buildpacks       | CI builds a container image and deploys it                                                  | Per the status rules above: **Generated** only for Beanstalk apps with a generated deploy method; **Build** for Fargate/EKS apps and manual Beanstalk; plus **Build** (a Dockerfile per app) only for buildpack apps whose `app_containerization_method` is `dockerfile`; **Build** for EB apps on CodePipeline that resolve to CNB | "{N} buildpack apps, {M} already containerized; {n} on Beanstalk, {m} on Fargate/EKS" |
+| Pipelines and promote                     | Environments per stage with the same image promoted between them, approval-gated            | Per target: **Generated** for EB apps with a generated `github_actions` deploy (an approval-gated `promote.yml`, which promotes the staging version in a promote pair or redeploys a chosen version); **Build** for Fargate/EKS apps, manual or CodePipeline EB apps, and the pipelines themselves (stages, environments) | "{P} pipelines covering {A} apps" |
 | Review apps                               | An ephemeral environment per pull request, torn down on merge                               | **Build** (or buy — see below)                                                    | "enabled on {R} pipelines" or "not enabled"                          |
 | Config vars                               | Parameter Store / Secrets Manager, injected at deploy; `config:set` becomes one CLI call      | Per the status rules above: **Covered** for Beanstalk apps (bindings generated, values by you); **Build** for Fargate apps (values imported and task-definition bindings written by you); **Build** for EKS apps (database/cache bindings generated, Kubernetes Secret and the remaining keys' env entries written by you) | "{K} config var keys across {N} apps"                                |
 | `heroku run` / one-off dynos              | Per target: ECS Exec or `eb ssh`, run-task for one-off tasks (Beanstalk/Fargate); `kubectl exec`, `kubectl run` or a Kubernetes Job (EKS) | Per the status rules above: **Covered** — different command for the target | —                                                                    |
@@ -217,8 +288,8 @@ Fill the last column from the inventory and design counts gathered in Step 1; wr
 "Covered" because a how-to exists in `MIGRATION_GUIDE.md`.
 
 **Closing paragraph (always):** "The rows marked Build are a platform layer your team
-owns: a deploy pipeline with promote and release steps, review-app automation, and a
-thin command wrapper. It is weeks of platform work, not months, and it is the same for
+owns: a deploy pipeline for Fargate, EKS and manual-deploy apps, a promote step for every
+app that gets no generated `promote.yml`, release steps, review-app automation, and a thin command wrapper. It is weeks of platform work, not months, and it is the same for
 every app." When `compute_target.recommendation.scale_note` exists and
 `compute_target.default` is `"ecs-fargate"`, add: "Compute was recommended as shared
 ECS clusters rather than one Beanstalk environment per process type ({scale_note}) so

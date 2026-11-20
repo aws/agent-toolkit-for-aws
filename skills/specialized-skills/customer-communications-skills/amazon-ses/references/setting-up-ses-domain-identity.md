@@ -11,13 +11,13 @@ fully set up in this Region, and it is finished when SKILL.md's domain-setup-com
 
 **Rules this file owns:**
 
-- **MUST** ask which MAIL FROM subdomain to use; suggest one, never default it (Step 4).
+- **MUST** use `onboarding.md`'s `MAIL_FROM` (`bounce.{domain}` unless the user named one) when entered from there; on direct invocation, ask which subdomain to use, suggest one, never default it (Step 4).
 - **MUST** publish DMARC `p=none` or stronger, and preserve a stronger existing policy (Step 5).
 - **MUST** build each DKIM value as `{token}.{SIGNING_HOSTED_ZONE}` from the API response (Step 6).
 - **MUST** read `DkimAttributes.SigningAttributesOrigin` before any Easy DKIM handling (Step 2), and stop at the DKIM leg on any value other than `AWS_SES` — this file configures Easy DKIM only.
 - **MUST** present one batch containing only records absent or incorrect this run (Step 6).
 - **MUST NOT** use Route 53 `UPSERT` or `DELETE`. `CREATE` only.
-- **SHOULD** detect whether Route 53 hosts the domain and offer to create records there. **MUST** get permission before writing, after showing the zone, each record, TTL, conflicts, and no-overwrite or no-delete behavior.
+- **SHOULD** detect whether Route 53 hosts the domain and offer to create records there. **MUST** ask once, upfront: after the read-only discovery (identity state, the zone found, existing records and conflicts — Step 6's Route 53 steps 1-4) and before any write, ask in one question for permission to `CREATE` only the missing SES records in that named zone, replacing or deleting nothing, together with every other missing input. If the request already gave exactly that permission, do not ask again. Always show the zone and the record batch before writing, and do not ask for DNS permission again. Record collisions are separate and still need the user: an MX to remove (Step 4), more than one DMARC record (Step 5), and a TXT value to merge (Step 6). If discovery finds no Route 53 zone hosting the domain, there is no DNS question: create the identity and MAIL FROM and hand the user the exact records (Step 6's external DNS provider path), without stopping to ask.
 - **SHOULD NOT** present SES's documented 72-hour DNS search limit as the expected wait.
 
 ## Required IAM actions
@@ -45,7 +45,8 @@ them per SKILL.md, using the **bare** zone ID; `ListHostedZonesByName` and `Test
 
 ## Parameters
 
-**Entry from `onboarding.md`:** reuse its `DOMAIN`, `REGION`, `MAIL_FROM` and `PROFILE`. Do not ask again.
+**Entry from `onboarding.md`** (Default setup or Full journey): reuse its `DOMAIN`, `REGION`, `MAIL_FROM` and
+`PROFILE`. Do not ask again.
 
 **Direct invocation:** run `aws sts get-caller-identity` before collecting any inputs. If it fails, explain how
 to refresh credentials and ask which account and Region to use once they are back. Resolve the Region by
@@ -55,14 +56,14 @@ the CLI configuration files and not the environment, which is why the two enviro
 Only if none of them yields a value, ask for it in the same message as the other missing inputs. Ask once for
 the remaining scope, never for a profile or Region that resolved, and state the Region before any mutation.
 
-The user chooses `domain` and `mail_from_subdomain`; never derive either. Do not ask about `behavior_on_mx_failure` during normal setup. Validate and single-quote every substituted value per SKILL.md.
+The user chooses `domain` and `mail_from_subdomain`; never derive either, except `MAIL_FROM` from `onboarding.md`. Do not ask about `behavior_on_mx_failure` during normal setup. Validate and single-quote every substituted value per SKILL.md.
 
 | Parameter | Source and constraints |
 |---|---|
 | `domain` | User. DNS domain to authenticate. |
 | `region` | User if named, otherwise resolved by SKILL.md's precedence chain. SES state is Region-scoped. |
 | `profile` | User only if named. Append `--profile '{profile}'` to every command, including Route 53, so identity and DNS changes use the same account. |
-| `mail_from_subdomain` | User. Suggest `mail.{domain}` or `bounce.{domain}`. It must be a subdomain of `{domain}` — the domain being verified as this identity — and should not carry sent or received mail. |
+| `mail_from_subdomain` | `onboarding.md`'s `MAIL_FROM` when entered from there; otherwise user. Suggest `mail.{domain}` or `bounce.{domain}`. It must be a subdomain of `{domain}` — the domain being verified as this identity — and should not carry sent or received mail. |
 | `behavior_on_mx_failure` | The API defines no server default, so pass `USE_DEFAULT_VALUE` for a new identity or when `MailFromAttributes` is absent, and **preserve the existing value** on every re-setup of an identity that has it. While MAIL FROM is unresolved, `USE_DEFAULT_VALUE` sends from an `amazonses.com` subdomain and `REJECT_MESSAGE` returns `MailFromDomainNotVerified` without attempting delivery — so replacing `REJECT_MESSAGE` with the default changes sending behavior and needs Step 4's disclosure and consent. |
 
 Carry these values forward:
@@ -78,6 +79,9 @@ Carry these values forward:
 | `RECORDS_NEEDED` | The records that are absent or incorrect this run. Step 6 owns the omission rules and presents this set, never an unconditional six records. |
 
 ## Step 1: Verify Prerequisites
+
+If Route 53 may host the domain, run Step 6's Route 53 steps 1-4 (read-only) during this step, so the
+one upfront question can include the DNS permission before Step 3's first write.
 
 ```bash
 aws sts get-caller-identity
@@ -168,6 +172,7 @@ Run this only after Step 2 returns `NotFoundException`. Existing identities, inc
 ```bash
 aws sesv2 create-email-identity \
   --email-identity '{domain}' \
+  --dkim-signing-attributes 'NextSigningKeyLength=RSA_2048_BIT' \
   --region '{region}'
 ```
 
@@ -178,7 +183,7 @@ a re-check. If a published record does not resolve, use "Troubleshooting: DKIM S
 
 ## Step 4: Configure Custom MAIL FROM
 
-Use the collected `mail_from_subdomain`. If missing, ask:
+Use the collected `mail_from_subdomain` (`onboarding.md`'s `MAIL_FROM` when entered from there). If missing, ask:
 
 > What subdomain would you like for MAIL FROM? Common choices are `mail.{domain}` or `bounce.{domain}`. It appears in the Return-Path and enables SPF alignment.
 
@@ -387,22 +392,22 @@ external DNS provider path:**
    never be silently omitted, because omitting them leaves the SES record unpublished: **a TXT set on
    `{mail_from_subdomain}`** goes to the merge rule above, and **an MX set on `{mail_from_subdomain}`** goes to
    Step 4's MX rule.
-5. **MUST ask for explicit permission before creating DNS records — and show the whole change first.**
-   Route 53 mutations can affect live traffic. Present all of this before asking:
+5. **MUST have explicit permission before creating DNS records — and show the whole change first.**
+   Route 53 mutations can affect live traffic. Present all of this before writing:
 
    - the zone: `{zone_name}` and `{hosted_zone_id}`;
    - every record to be created, each with its **name, type, value and TTL** — the TTL is part of the change
-     batch, so disclosing it for **every** record is what makes the consent informed, and a user who wants a
-     different TTL has to say so before the write;
+     batch, so disclose it for **every** record;
    - any conflict the `list-resource-record-sets` read found, and what happens to it (left alone and taken to
      the show-user path, not overwritten);
    - the confirmation that nothing existing is overwritten or deleted.
 
-   Then ask in these terms, and proceed only on an explicit yes:
+   The permission comes from the one upfront question (Rules above), asked after this read-only
+   discovery and before any write, in these terms; if the request already gave exactly this
+   permission, do not ask again:
 
-   > I'll add these records to `{zone_name}` (`{hosted_zone_id}`) as new records only, each with the
-   > TTL shown above — this CREATEs them and replaces or deletes nothing already in the zone. Go
-   > ahead?
+   > I'll add the missing SES records to `{zone_name}` (`{hosted_zone_id}`) as new records only —
+   > this CREATEs them and replaces or deletes nothing already in the zone. Go ahead?
 
    If the user declines, use the external DNS provider path below.
 6. If permission is granted, write the absent records with an explicit `CREATE` action in one call.
@@ -520,12 +525,14 @@ current requirements rather than assuming a threshold.
 
 **This depends on what the user asked for — check the requested scope first.**
 
+- **Entered from `onboarding.md`** → return there with the identity result; it owns the account defaults,
+  configuration set, simulator check, and, when asked for, production access and a real send.
 - **Domain setup only** (the common direct-invocation case: "set up my domain", "fix my DKIM") → **report the
   gate result as it stands, naming all three gate fields, and stop.** Say "complete" only when all three are
   true in one response; otherwise say it is incomplete and name the outstanding field. Step 4's
   `USE_DEFAULT_VALUE` fallback ends here **incomplete**, and so does an identity whose DKIM is out of scope
   per Step 2's origin gate and not already `SUCCESS`. Do not raise production access, do not offer a test
-  send, and do not route into `onboarding.md`: neither was asked for, and one opens an AWS Support case while
+  send, and do not route into `onboarding.md`: neither was asked for, and one submits a production-access request for AWS review while
   the other sends real mail. Say in one line that both are available when they want them.
 - **The user asked for the full journey, production access, or a first/test send** → a verified domain is not
   yet a delivered email. Return to `onboarding.md` carrying `region` and `domain`; it re-reads identity state

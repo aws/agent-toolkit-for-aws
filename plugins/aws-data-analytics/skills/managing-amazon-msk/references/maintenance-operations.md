@@ -45,6 +45,8 @@ When a broker restarts during maintenance:
 
 **Typical timeline per broker**: 5-15 minutes depending on data volume and partition count. Log loading progress can be tracked via the JMX metrics `remainingLogsToRecover` and `remainingSegmentsToRecover` (available through Prometheus/JMX monitoring, not via CloudWatch).
 
+The cluster operation can stay `UPDATE_IN_PROGRESS` well after the last broker has restarted. Treat the operation's `UPDATE_COMPLETE` state, not broker health, as the end of the update.
+
 **Speeding up log recovery**: By default, Kafka uses a single thread per log directory for log recovery after an unclean shutdown. With thousands of partitions, recovery can take hours. Set `num.recovery.threads.per.data.dir` to the number of CPU cores to parallelize recovery. This is a broker-side configuration — update via `aws kafka update-cluster-configuration`.
 
 ## What NOT To Do During Maintenance

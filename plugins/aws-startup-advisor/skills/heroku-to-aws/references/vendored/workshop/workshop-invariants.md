@@ -10,8 +10,9 @@
 > skill file.
 >
 > Placeholders: `{INVENTORY}` = the skill's frozen discovery artifact
-> (`heroku-resource-inventory.json` /
-> `gcp-resource-inventory.json`); `{SKILL_LABEL}` = "Heroku" / "GCP".
+> (`azure-resource-inventory.json` / `gcp-resource-inventory.json` /
+> `heroku-resource-inventory.json` / `render-resource-inventory.json`);
+> `{SKILL_LABEL}` = "Azure" / "GCP" / "Heroku" / "Render".
 
 ## 1. Discovery is frozen
 

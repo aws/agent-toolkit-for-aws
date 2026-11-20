@@ -40,6 +40,25 @@ Probe output budgets and cost depend on the selected API.
 import argparse, json, sys
 
 
+def _load_model_catalog():
+    """Import the sibling model_catalog.py, also when this file is loaded by path from
+    another skill's tests (its directory is then not on sys.path)."""
+    import importlib.util
+    import sys as _sys
+    from pathlib import Path as _Path
+    if "model_catalog" in _sys.modules:
+        return _sys.modules["model_catalog"]
+    path = _Path(__file__).resolve().with_name("model_catalog.py")
+    spec = importlib.util.spec_from_file_location("model_catalog", path)
+    module = importlib.util.module_from_spec(spec)
+    _sys.modules["model_catalog"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+model_catalog = _load_model_catalog()
+
+
 def classify_invoke_error(code: str, message: str) -> dict:
     """Pure: map a botocore error code to a structured preflight verdict."""
     if code in ("AccessDeniedException",):
@@ -290,7 +309,7 @@ def probe_mantle_model(model_id: str, region: str) -> dict:
 def _embed_request_body(model_id: str) -> dict | None:
     """Pure: minimal valid request body per embedding-model family; None if unknown."""
     parts = model_id.split(".")
-    vendor = parts[1] if parts[0] in ("us", "eu", "apac", "global") and len(parts) > 1 else parts[0]
+    vendor = parts[1] if parts[0] in model_catalog.profile_prefixes() and len(parts) > 1 else parts[0]
     if vendor == "amazon":
         return {"inputText": "ping"}
     if vendor == "cohere":
@@ -301,11 +320,13 @@ def _embed_request_body(model_id: str) -> dict | None:
 def probe_model(client, model_id: str) -> dict:
     """Real minimal probe: Converse for chat models, InvokeModel for embeddings."""
     region = getattr(getattr(client, "meta", None), "region_name", None)
-    if model_id == "anthropic.claude-opus-5-5" and region != "eu-west-2":
+    in_region = model_catalog.opus_55_runtime_in_region_regions()
+    if model_id == model_catalog.OPUS_55_ID and region not in in_region:
         return {"ok": False, "reason": "inference_profile_required",
-                "detail": "Opus 5.5 runtime in-region access is documented only in eu-west-2 "
-                          "(verified 2026-10-03). Elsewhere, use a supported Geo/Global "
-                          "profile for Converse, or verify a supported Mantle Messages path separately."}
+                "detail": f"Opus 5.5 runtime in-region access is documented only in "
+                          f"{', '.join(sorted(in_region))} (shared model catalog). Elsewhere, use a "
+                          f"supported Geo/Global profile for Converse, or verify a supported Mantle "
+                          f"Messages path separately."}
     from botocore.exceptions import BotoCoreError, ClientError
     try:
         if is_embedding_model(model_id):

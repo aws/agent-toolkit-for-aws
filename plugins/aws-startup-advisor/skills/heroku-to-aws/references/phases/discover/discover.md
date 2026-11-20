@@ -108,6 +108,12 @@ because the dispatched `rw` worker has no shell and cannot converse with the use
 dispatch the phase's work. Capture writes into `$MIGRATION_DIR/live-capture/`, so
 it cannot run before `_init` has created the run directory.
 
+Immediately after `_init` resolves to a fresh run, before evaluating the source
+precondition or offering live capture, load
+`references/vendored/migration/upfront-credits.md` and render it verbatim once.
+Skip it when `_init` resumed an existing run or on a confirmed re-entry. Do not
+render it later in the run.
+
 **When to offer capture:** while evaluating the source `_precondition`, scan the
 workspace first (free). If NO `heroku_*` Terraform is found, offer live capture as
 the primary source — load `discover-live-capture.md` — instead of failing the check.
@@ -124,8 +130,22 @@ never silently resolved — see `discover-assemble.md` § Merge & Drift Rules.
 
 ## Handoff
 
-After the interpreter emits `HANDOFF_OK | phase=discover`, build the user-facing
-completion message from the inventory contents:
+After the interpreter emits `HANDOFF_OK | phase=discover`, first write the estate
+workbook — **in the main window**, not in the worker (the dispatched `rw` worker has no
+shell and would have to return `WORKER_BLOCKED`):
+
+```bash
+python3 "<SKILL_BASE>/scripts/emit-estate-workbook.py" --migration-dir "$MIGRATION_DIR"
+```
+
+Absolute paths; it prints `ESTATE_OK | path=… | apps=N | resources=M` or
+`ESTATE_SKIP | reason=…`. Fail-open: on skip or any error, continue — the inventory is the
+artifact, the workbook is a convenience for customer review. Add
+"Estate workbook: `heroku-estate.xlsx` (one tab per resource family; review before any
+design exists)." to the completion message only when it printed `ESTATE_OK`. Later phases
+re-run the same script to add the AWS mapping and cost tabs.
+
+Then build the user-facing completion message from the inventory contents:
 
 - "Discovered X total resources across Y apps."
 - If billing data available: "Parsed billing data ($Z/month)."

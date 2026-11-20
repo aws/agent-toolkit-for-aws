@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:awslabs:startups:render:render-ai-discovery:1.0",
+  "title": "Render AI discovery graph (Render-internal; not the shared ai-workload-profile contract)",
+  "type": "object",
+  "required": ["schema_version", "discovery_id", "fingerprint", "workloads", "providers", "models", "gateways", "evidence", "call_sites", "relationships"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "discovery_id": {"type": "string", "pattern": "^aidisc-[0-9a-f]{24}$"},
+    "fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "workloads": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/workload"}},
+    "providers": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/provider"}},
+    "models": {"type": "array", "items": {"$ref": "#/$defs/model"}},
+    "gateways": {"type": "array", "items": {"$ref": "#/$defs/gateway"}},
+    "evidence": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/evidence"}},
+    "call_sites": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/callSite"}},
+    "relationships": {"type": "array", "items": {"$ref": "#/$defs/relationship"}}
+  },
+  "$defs": {
+    "id24": {"type": "string", "pattern": "^ai[wpmegcr]-[0-9a-f]{24}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "safeText": {"type": "string", "minLength": 1, "maxLength": 256},
+    "idArray": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id24"}},
+    "workload": {
+      "type": "object",
+      "required": ["id", "component", "capabilities", "provider_ids", "model_ids", "gateway_ids", "evidence_ids", "call_site_ids", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^aiw-[0-9a-f]{24}$"},
+        "component": {"$ref": "#/$defs/safeText"},
+        "capabilities": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["text_generation", "embedding", "reranking", "document_ingestion", "retrieval", "image", "speech", "agent_tools", "agent_orchestration"]}},
+        "provider_ids": {"$ref": "#/$defs/idArray"},
+        "model_ids": {"$ref": "#/$defs/idArray"},
+        "gateway_ids": {"$ref": "#/$defs/idArray"},
+        "evidence_ids": {"$ref": "#/$defs/idArray"},
+        "call_site_ids": {"$ref": "#/$defs/idArray"},
+        "confidence": {"enum": ["deterministic", "inferred"]}
+      }
+    },
+    "provider": {
+      "type": "object",
+      "required": ["id", "family"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^aip-[0-9a-f]{24}$"},
+        "family": {"enum": ["openai", "azure_openai", "anthropic", "google_gemini", "google_vertex_ai", "amazon_bedrock", "openrouter", "other"]}
+      }
+    },
+    "model": {
+      "type": "object",
+      "required": ["id", "provider_id", "observed_identifier"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^aim-[0-9a-f]{24}$"},
+        "provider_id": {"type": "string", "pattern": "^aip-[0-9a-f]{24}$"},
+        "observed_identifier": {"$ref": "#/$defs/safeText"}
+      }
+    },
+    "gateway": {
+      "type": "object",
+      "required": ["id", "family"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^aig-[0-9a-f]{24}$"},
+        "family": {"$ref": "#/$defs/safeText"},
+        "hostname": {"type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[A-Za-z0-9.-]+$"}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["id", "path", "method", "symbol_or_env_name", "fingerprint"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^aie-[0-9a-f]{24}$"},
+        "path": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^(?!/)(?!.*(?:^|/)[.][.](?:/|$)).+$"},
+        "method": {"enum": ["dependency", "import", "sdk_construction", "method_call", "model_identifier", "endpoint_hostname", "environment_name", "framework", "configuration"]},
+        "symbol_or_env_name": {"$ref": "#/$defs/safeText"},
+        "fingerprint": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "callSite": {
+      "type": "object",
+      "required": ["id", "workload_id", "path", "symbol", "ordinal", "provider_id", "evidence_ids"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^aic-[0-9a-f]{24}$"},
+        "workload_id": {"type": "string", "pattern": "^aiw-[0-9a-f]{24}$"},
+        "path": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^(?!/)(?!.*(?:^|/)[.][.](?:/|$)).+$"},
+        "symbol": {"$ref": "#/$defs/safeText"},
+        "ordinal": {"type": "integer", "minimum": 0},
+        "provider_id": {"type": "string", "pattern": "^aip-[0-9a-f]{24}$"},
+        "model_id": {"type": ["string", "null"], "pattern": "^aim-[0-9a-f]{24}$"},
+        "gateway_id": {"type": ["string", "null"], "pattern": "^aig-[0-9a-f]{24}$"},
+        "evidence_ids": {"$ref": "#/$defs/idArray"}
+      }
+    },
+    "relationship": {
+      "type": "object",
+      "required": ["id", "type", "from_id", "to_id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^air-[0-9a-f]{24}$"},
+        "type": {"enum": ["workload_uses_provider", "workload_uses_model", "workload_uses_gateway", "call_site_evidences_workload"]},
+        "from_id": {"$ref": "#/$defs/id24"},
+        "to_id": {"$ref": "#/$defs/id24"}
+      }
+    }
+  }
+}

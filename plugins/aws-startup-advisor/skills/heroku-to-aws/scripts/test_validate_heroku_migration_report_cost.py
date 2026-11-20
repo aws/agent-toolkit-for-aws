@@ -92,6 +92,89 @@ def test_missing_required_balanced_anchor_fails() -> None:
     assert 'missing data-cost-key="aws_monthly_balanced"' in out
 
 
+# --- scope-matched Heroku anchor (heroku_monthly_like_for_like) -------------
+
+LFL_ANCHOR = '<span data-cost-key="heroku_monthly_like_for_like">$140/mo</span>'
+GOOD_LFL = GOOD.replace(
+    '<span data-cost-key="aws_monthly_balanced">$112/mo</span></p>',
+    '<span data-cost-key="aws_monthly_balanced">$112/mo</span></p>'
+    f"<p>Scope-matched: Heroku {LFL_ANCHOR} vs AWS Balanced $112/mo</p>",
+)
+
+
+def _est_dir_lfl(tmp: str, balanced: int, like_for_like: int | None) -> Path:
+    """Estimate with (like_for_like is not None) or without a like_for_like_comparison block."""
+    est: dict = {"projected_costs": {"aws_monthly_balanced": balanced}}
+    if like_for_like is not None:
+        est["cost_comparison"] = {
+            "heroku_monthly_baseline": 740,
+            "heroku_monthly_like_for_like": like_for_like,
+            "like_for_like_comparison": {
+                "aws_monthly_balanced": balanced,
+                "heroku_monthly_like_for_like": like_for_like,
+                "monthly_difference": balanced - like_for_like,
+            },
+        }
+    d = Path(tmp)
+    (d / "estimation-infra.json").write_text(json.dumps(est), encoding="utf-8")
+    return d
+
+
+def _mode_variants(html: str) -> list[tuple[str, str]]:
+    return [("full", html), ("decision", html.replace('id="next-steps"', 'id="decision-cta"'))]
+
+
+def test_like_for_like_anchor_match_passes_both_modes() -> None:
+    for mode, html in _mode_variants(GOOD_LFL):
+        with tempfile.TemporaryDirectory() as tmp:
+            code, out = run(html, _est_dir_lfl(tmp, 112, 140), mode=mode)
+        assert code == 0, (mode, out)
+        assert "heroku_monthly_like_for_like" not in out
+
+
+def test_like_for_like_anchor_mismatch_fails_both_modes() -> None:
+    # The reviewer's probe: JSON says $140, the anchored report figure says $740 (the
+    # FULL baseline) — the validator must reject it instead of skipping an unknown key.
+    for mode, html in _mode_variants(GOOD_LFL.replace("$140/mo", "$740/mo")):
+        with tempfile.TemporaryDirectory() as tmp:
+            code, out = run(html, _est_dir_lfl(tmp, 112, 140), mode=mode)
+        assert code == 1, (mode, out)
+        assert 'cost figure mismatch: data-cost-key="heroku_monthly_like_for_like"' in out
+        assert 'renders "$740"' in out and "= $140" in out
+
+
+def test_missing_like_for_like_anchor_fails_when_comparison_exists_both_modes() -> None:
+    # like_for_like_comparison exists in the estimate -> the scope-matched row block is
+    # mandatory in exec-costs, so an un-anchored (or missing) Heroku figure FAILs.
+    for mode, html in _mode_variants(GOOD):
+        with tempfile.TemporaryDirectory() as tmp:
+            code, out = run(html, _est_dir_lfl(tmp, 112, 140), mode=mode)
+        assert code == 1, (mode, out)
+        assert 'missing data-cost-key="heroku_monthly_like_for_like" anchor inside' in out
+        assert "cost_comparison.heroku_monthly_like_for_like" in out
+
+
+def test_like_for_like_anchor_optional_without_comparison_both_modes() -> None:
+    # No like_for_like_comparison in the estimate (no Deferred add-ons) -> the anchor is
+    # not required; the report without it passes and the balanced check still runs.
+    for mode, html in _mode_variants(GOOD):
+        with tempfile.TemporaryDirectory() as tmp:
+            code, out = run(html, _est_dir_lfl(tmp, 112, None), mode=mode)
+        assert code == 0, (mode, out)
+        assert "heroku_monthly_like_for_like" not in out
+
+
+def test_like_for_like_anchor_outside_exec_costs_does_not_satisfy_requirement() -> None:
+    html = GOOD_LFL.replace(f"<p>Scope-matched: Heroku {LFL_ANCHOR} vs AWS Balanced $112/mo</p>", "").replace(
+        '<p class="verdict-headline">Go</p>',
+        f'<p class="verdict-headline">Go</p><p>{LFL_ANCHOR}</p>',
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        code, out = run(html, _est_dir_lfl(tmp, 112, 140))
+    assert code == 1, out
+    assert 'missing data-cost-key="heroku_monthly_like_for_like" anchor inside' in out
+
+
 def test_nested_markup_reads() -> None:
     html = GOOD.replace(
         '<span data-cost-key="aws_monthly_balanced">$112/mo</span>',

@@ -317,7 +317,7 @@ def test_build_price_guard_rejects_a_missing_default_model_rate(tmp_path, cloud)
 
 
 def test_gemini_cost_comparison_uses_the_recommended_model_and_correct_denominator():
-    text = (SKILLS / "gcp-to-aws/references/design-refs/ai-gemini-to-bedrock.md").read_text()
+    text = (SKILLS / "gcp-to-aws/references/vendored/ai/ai-gemini-to-bedrock.md").read_text()
     assert "Claude Opus 5.5 Global ($4/$20)" in text
     assert "$2,100" in text and "+75%" in text
     assert "$2,310" in text and "+92.5%" in text

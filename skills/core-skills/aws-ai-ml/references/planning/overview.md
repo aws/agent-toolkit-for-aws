@@ -1,4 +1,3 @@
-
 ## Principles
 
 - **One question at a time.** Each question should resolve a branching decision in the plan. Avoid generic or out-of-domain questions.
@@ -12,7 +11,7 @@
 
 **Goal:** Understand what the user wants to accomplish and identify which references belong in the plan.
 
-Read `references/input-output-contracts.md`, `references/model-customization-plan.md`, `references/evaluate-first-plan.md`, and `references/deploy-base-model-plan.md` to:
+Read `references/input-output-contracts.md`, `references/model-customization-plan.md`, `references/evaluate-first-plan.md`, `references/deploy-base-model-plan.md`, `references/dataset-composition-plan.md`, and `references/auto-labeling-plan.md` to:
 
 - Determine whether the user's request aligns with an existing plan template. If exactly one matches, offer it. If multiple could apply, present the relevant options with brief pros/cons and ask the user to choose. If no template matches but the request involves multiple steps, propose a custom plan adapted to the user's needs. If the user declines a plan, proceed directly with their request using available references and general knowledge.
 - Identify which references could be relevant to the user's stated goal.
@@ -24,21 +23,29 @@ Read `references/input-output-contracts.md`, `references/model-customization-pla
 
 **During brainstorming:**
 
-- **Serverless customization region gate (check FIRST).** If the user's request involves fine-tuning or model customization, AND their region is already known (stated in their message, or stored in conversation context from a prior sdk-getting-started run), check it against the supported regions in `references/region-availability.md`. If the region is NOT supported, STOP immediately. Do NOT ask about evaluate-first vs direct fine-tuning. Do NOT generate any fine-tuning plan. Instead, tell the user the blocking message from `references/region-availability.md` (substituting their region).
+- **Region gate (check FIRST).** If the user's request involves fine-tuning, model customization, or any data preparation skill (synthetic-dataset-generation, dataset-quality, dataset-transformation, auto-labeling), AND their region is already known (stated in their message, or stored in conversation context from a prior sdk-getting-started run), check it against the supported regions in `references/region-availability.md`:
 
-  If the region is not yet known, continue to the workflow choice gate — the pre-execution region check below will enforce this constraint before any fine-tuning task runs.
+  - **If the request involves fine-tuning or model customization** and the region does NOT support serverless model customization, STOP immediately. Do NOT ask about evaluate-first vs direct fine-tuning. Do NOT generate any fine-tuning plan. Instead, tell the user the fine-tuning blocking message from `references/region-availability.md` (substituting their region).
+  - **If the request involves data preparation only** (maps to `dataset-composition-plan.md` or `auto-labeling-plan.md`) and the region does NOT support data preparation skills, STOP immediately. Do NOT generate any plan. Instead, tell the user the pure data preparation blocking message from `references/region-availability.md` (substituting their region).
+  - **If the request involves both fine-tuning and data preparation** (maps to `model-customization-plan.md` or `evaluate-first-plan.md`) and the region supports serverless model customization but NOT data preparation skills, tell the user the step-exclusion message from `references/region-availability.md` (substituting their region), and flag Phase 2 to exclude every data preparation step from the generated plan.
 
-- **Workflow choice gate:** Before generating any plan, determine which workflow the user needs. There are three paths:
+  If the region is not yet known, continue to the workflow choice gate — the pre-execution region check below will enforce these constraints before any task runs.
+
+- **Workflow choice gate:** Before generating any plan, determine which workflow the user needs. There are five paths:
 
   1. **Deploy a base model** — the user wants to select and deploy a model from the catalog without fine-tuning.
   2. **Evaluate-first** — the user wants to evaluate a base model before deciding whether to fine-tune. Always present this option alongside direct fine-tuning, even if the user says "I want to fine-tune" — the user may not know evaluate-first exists.
   3. **Direct fine-tuning** — the user is committed to fine-tuning a model.
+  4. **Dataset composition** — the user wants to generate, evaluate, and/or transform a dataset without training a model. Use `references/dataset-composition-plan.md`.
+  5. **Label a dataset with review or further passes**: the user wants a dataset labeled and more than the labels: people reviewing the uncertain rows or a spot-check of the accepted ones, a score reviewers give each label, a data-quality check or a transformation around the labeling, further passes that fold the corrections back in, or training on the labels afterwards. A labeling run configuration the user hands in ("here's my labeling plan, run it") takes this path too. Use `references/auto-labeling-plan.md`. It gathers the run configuration once, then plans the labeling, the human review of the uncertain and spot-checked rows, and any further passes. When the user also wants to train on the labels, this plan runs first and its last step hands the labeled dataset to the training path.
 
   **Disambiguation for "deploy":** If the user says "I want to deploy a model" (or similar), first determine whether they want to deploy a **fine-tuned model** they already have, or deploy a **base model** as-is:
 
   - If they already have a training job or fine-tuned model → this is NOT the deploy-base-model path. Proceed with the existing workflow and the `model-deployment` reference will handle it as a later step.
   - If they want to select and deploy a base model without fine-tuning → this IS the deploy-base-model path. Read `references/deploy-base-model-plan.md`.
   - If unclear and no prior context exists, ask: "Do you have a model you've already fine-tuned, or would you like to select and deploy a base model from the catalog?"
+
+  **Disambiguation for labeling:** A request that needs only the labels is not a plan, and neither is one operation on a spec or on labels the user already has. "Label my data", "I have no labels yet", labeling the rest with a spec the user calls final, refining a spec against a dev set and measuring the accuracy of existing labels go to the `auto-labeling` reference directly. If unclear, ask whether they want the labels alone, or the labels with review, further passes or training.
 
   If the user has explicitly chosen a path (e.g., "evaluate first", "skip evaluation", "deploy a base model", "I already fine-tuned"), proceed with their choice. Otherwise, present the relevant options with brief pros/cons and ask the user to choose. Saying "fine-tune" or naming a technique alone is NOT an explicit choice to skip evaluation — the user may not know evaluate-first is an option. Do NOT present a plan until the user has chosen a path. After they choose, read ONLY the corresponding reference plan.
 
@@ -71,7 +78,6 @@ Based on what you've described, here's what I propose:
 3. ⬜ **[Task Name]** — [What happens]. *(Reference: [reference-name])*
 
 Does this plan look right, or would you like to change anything?
-
 ```
 
 **Rules for plan generation:**
@@ -80,6 +86,7 @@ Does this plan look right, or would you like to change anything?
 - Prefer existing references when they cover the user's need. When no reference matches part of the request, proceed with general knowledge while respecting skill boundaries.
 - Tailor the plan to the user's actual intent. Not every plan needs every reference.
 - If the user already has input artifacts (e.g., a trained model), skip the steps that produce them.
+- **Exclude region-unsupported skills.** If the Phase 1 Region gate flagged data preparation as unavailable for the user's region, exclude every data preparation step from the generated plan. Only include steps that will actually run.
 
 When the user approves the plan, write it to `PLAN.md` and save it under the project directory structure defined by the directory-management reference.
 
@@ -89,7 +96,6 @@ When the user approves the plan, write it to `PLAN.md` and save it under the pro
 1. ⬜ **[Task Name]** — [Description]. _(Reference: [reference-name])_
 2. ⬜ **[Task Name]** — [Description]. _(Reference: [reference-name])_
 3. ⬜ **[Task Name]** — [Description]. _(Reference: [reference-name])_
-
 ```
 
 **Status indicators:**
@@ -115,14 +121,18 @@ Update `PLAN.md` whenever a task's status changes.
 
 Once the plan is approved:
 
-1. **Pre-execution region check (MANDATORY for fine-tuning plans).** If the plan includes any fine-tuning step, immediately check the user's region by running:
+1. **Pre-execution region check (MANDATORY for fine-tuning and data preparation plans).** If the plan includes any fine-tuning step or any data preparation step, immediately check the user's region by running:
 
    ```
    python -c "import boto3; print(boto3.session.Session().region_name)"
    ```
 
-   If the result is `None`, skip this check and continue — the sdk-getting-started skill will prompt the user to set a region later. Otherwise, check the region against the supported regions in `references/region-availability.md`. If it is NOT supported → STOP. Do NOT start executing the plan. Tell the user the blocking message from `references/region-availability.md` (substituting their region). If it IS supported → briefly confirm to the user that serverless model customization is available in their region (e.g., "Your region (`<region>`) supports serverless model customization ✅") and continue.
+   If the result is `None`, skip this check and continue — the sdk-getting-started skill will prompt the user to set a region later. Otherwise, check the region against the supported regions in `references/region-availability.md`:
 
+   - **If the plan includes a fine-tuning step** and the region does NOT support serverless model customization → STOP. Do NOT start executing the plan. Tell the user the fine-tuning blocking message from `references/region-availability.md` (substituting their region).
+   - **If the plan includes only data preparation steps** and the region does NOT support data preparation skills → STOP. Do NOT start executing the plan. Tell the user the pure data preparation blocking message from `references/region-availability.md` (substituting their region).
+   - **If the plan includes both fine-tuning and data preparation steps** and the region supports serverless model customization but NOT data preparation skills → tell the user the step-exclusion message from `references/region-availability.md` (substituting their region), remove every data preparation step from `PLAN.md`, and continue with the fine-tuning path.
+   - If the region is supported for everything the plan needs → briefly confirm to the user (e.g., "Your region (`<region>`) supports the plan ✅") and continue.
 2. Before starting a task, update its status in `PLAN.md` to 🔄 (In Progress).
 3. If the task maps to a reference, load that reference's overview.md before doing any work. Do not attempt the task from general knowledge — always defer to the reference's instructions.
 4. Execute the task by following the loaded reference's workflow.
@@ -133,7 +143,6 @@ Once the plan is approved:
      - [x] Fine-tune model
        - Output: `scripts/01_sft_finetuning.py`
        - Output: `manifests/sft-llama-20260515.json`
-
      ```
 
    - Briefly confirm completion and move to the next task.
@@ -162,6 +171,8 @@ Load the reference plan that matches the customer's intent, then adjust based on
 - `references/evaluate-first-plan.md` — The evaluate-first workflow: evaluate a base model before deciding whether to fine-tune.
 - `references/model-customization-plan.md` — The direct fine-tuning plan. Use when the user has explicitly committed to fine-tuning.
 - `references/deploy-base-model-plan.md` — The deploy-base-model workflow: select and deploy a base model without fine-tuning.
+- `references/dataset-composition-plan.md` — The dataset composition workflow: generate synthetic data, evaluate quality, and optionally transform — without training a model.
+- `references/auto-labeling-plan.md`: the labeling workflow for a request that needs more than the labels. It gathers the run configuration once, labels with an accuracy promise on the auto-accepted rows, sends the uncertain rows and a spot-check to people, and folds the corrections into further passes. It also validates a run configuration the user hands in.
 - `references/input-output-contracts.md` - A table showing all references, required inputs, produced outputs, prerequisites, and constraints.
 - `references/skill-routing-constraints.md` — Optional supplemental resource about Mandatory inclusion rules, ordering constraints, and skill boundary rules.
-- `references/region-availability.md` — Single source of truth for the regions where serverless model customization is available, plus the blocking message to use when a region is unsupported.
+- `references/region-availability.md` — Single source of truth for the regions where fine-tuning and the data preparation skills are available, plus the blocking and step-skip messages to use when a region is unsupported.

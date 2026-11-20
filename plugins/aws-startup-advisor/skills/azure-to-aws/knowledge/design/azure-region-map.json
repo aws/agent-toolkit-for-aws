@@ -3,7 +3,7 @@
   "_selection_rule": "Nearest AWS region by geography, preferring the same country where one exists and the same regulatory bloc otherwise. This is a DEFAULT, not a determination.",
   "_override": "global.target_region in preferences.json ALWAYS wins. A customer with a data-residency obligation, an existing AWS footprint, or a latency requirement has a reason this table cannot see.",
   "_residency_warning": "Several Azure regions have no AWS region in the same country. Where _same_country is false, the move crosses a border, and that can breach a residency commitment the customer has made to their own customers. Emit a warning; never resolve it silently.",
-  "_provenance": "Authored from published region geographies. Region availability changes; verify the target region offers the services in the design before committing.",
+  "_provenance": "Authored from published region geographies. Region availability changes; verify the target region offers the services in the design before committing. Azure region names were checked against Microsoft Learn's list of Azure regions, and AWS Region codes and opt-in status against AWS's Region list, on 2026-11-19.",
 
   "regions": {
     "eastus": { "aws": "us-east-1", "same_country": true, "geo": "Virginia, US" },
@@ -14,9 +14,28 @@
     "westus": { "aws": "us-west-1", "same_country": true, "geo": "California, US" },
     "westus2": { "aws": "us-west-2", "same_country": true, "geo": "Washington, US" },
     "westus3": { "aws": "us-west-2", "same_country": true, "geo": "Arizona / Oregon, US" },
+    "westcentralus": { "aws": "us-west-2", "same_country": true, "geo": "Wyoming -> Oregon, US" },
     "canadacentral": { "aws": "ca-central-1", "same_country": true, "geo": "Toronto, Canada" },
     "canadaeast": { "aws": "ca-central-1", "same_country": true, "geo": "Quebec, Canada" },
     "brazilsouth": { "aws": "sa-east-1", "same_country": true, "geo": "Sao Paulo, Brazil" },
+    "brazilsoutheast": {
+      "aws": "sa-east-1",
+      "same_country": true,
+      "geo": "Rio de Janeiro -> Sao Paulo, Brazil",
+      "note": "Azure restricts access to this region to specific customer scenarios such as disaster recovery for Brazil South, so it appears in an inventory only when the customer was granted access."
+    },
+    "chilecentral": {
+      "aws": "sa-east-1",
+      "same_country": false,
+      "geo": "Santiago -> Sao Paulo",
+      "note": "No AWS region in Chile. Sao Paulo is the nearest, about 2,600 km away, so expect more latency than for any other mapping in this file."
+    },
+    "mexicocentral": {
+      "aws": "mx-central-1",
+      "same_country": true,
+      "geo": "Queretaro, Mexico",
+      "note": "AWS Region mx-central-1 is an opt-in Region: the account must enable it before use."
+    },
     "northeurope": { "aws": "eu-west-1", "same_country": true, "geo": "Ireland" },
     "westeurope": {
       "aws": "eu-west-1",
@@ -27,13 +46,37 @@
     "uksouth": { "aws": "eu-west-2", "same_country": true, "geo": "London, UK" },
     "ukwest": { "aws": "eu-west-2", "same_country": true, "geo": "Cardiff -> London, UK" },
     "francecentral": { "aws": "eu-west-3", "same_country": true, "geo": "Paris, France" },
+    "francesouth": {
+      "aws": "eu-west-3",
+      "same_country": true,
+      "geo": "Marseille -> Paris, France",
+      "note": "Azure restricts access to this region to specific customer scenarios such as disaster recovery for France Central, so it appears in an inventory only when the customer was granted access."
+    },
     "germanywestcentral": { "aws": "eu-central-1", "same_country": true, "geo": "Frankfurt, Germany" },
-    "switzerlandnorth": { "aws": "eu-central-2", "same_country": true, "geo": "Zurich, Switzerland" },
+    "germanynorth": {
+      "aws": "eu-central-1",
+      "same_country": true,
+      "geo": "Berlin -> Frankfurt, Germany",
+      "note": "Azure restricts access to this region to specific customer scenarios such as disaster recovery for Germany West Central, so it appears in an inventory only when the customer was granted access."
+    },
+    "switzerlandnorth": { "aws": "eu-central-2", "same_country": true, "geo": "Zurich, Switzerland", "note": "AWS Region eu-central-2 is an opt-in Region: the account must enable it before use." },
+    "switzerlandwest": {
+      "aws": "eu-central-2",
+      "same_country": true,
+      "geo": "Geneva -> Zurich, Switzerland",
+      "note": "Azure restricts access to this region to specific customer scenarios such as disaster recovery for Switzerland North, so it appears in an inventory only when the customer was granted access. AWS Region eu-central-2 is an opt-in Region: the account must enable it before use."
+    },
     "norwayeast": {
       "aws": "eu-north-1",
       "same_country": false,
       "geo": "Oslo -> Stockholm",
       "note": "No AWS region in Norway."
+    },
+    "norwaywest": {
+      "aws": "eu-north-1",
+      "same_country": false,
+      "geo": "Stavanger -> Stockholm",
+      "note": "No AWS region in Norway. Azure restricts access to this region to specific customer scenarios such as disaster recovery for Norway East, so it appears in an inventory only when the customer was granted access."
     },
     "swedencentral": { "aws": "eu-north-1", "same_country": true, "geo": "Stockholm, Sweden" },
     "polandcentral": {
@@ -42,29 +85,96 @@
       "geo": "Warsaw -> Frankfurt",
       "note": "No AWS region in Poland."
     },
-    "italynorth": { "aws": "eu-south-1", "same_country": true, "geo": "Milan, Italy" },
-    "spaincentral": { "aws": "eu-south-2", "same_country": true, "geo": "Madrid, Spain" },
-    "uaenorth": { "aws": "me-central-1", "same_country": true, "geo": "Dubai -> UAE" },
+    "austriaeast": {
+      "aws": "eu-central-1",
+      "same_country": false,
+      "geo": "Vienna -> Frankfurt",
+      "note": "No AWS region in Austria. eu-central-2 (Zurich) is about as close but is an opt-in Region; Frankfurt is enabled by default."
+    },
+    "belgiumcentral": {
+      "aws": "eu-west-3",
+      "same_country": false,
+      "geo": "Brussels -> Paris",
+      "note": "No AWS region in Belgium. Paris is the nearest; London and Frankfurt are each about 320 km away."
+    },
+    "denmarkeast": {
+      "aws": "eu-north-1",
+      "same_country": false,
+      "geo": "Copenhagen -> Stockholm",
+      "note": "No AWS region in Denmark."
+    },
+    "italynorth": { "aws": "eu-south-1", "same_country": true, "geo": "Milan, Italy", "note": "AWS Region eu-south-1 is an opt-in Region: the account must enable it before use." },
+    "spaincentral": { "aws": "eu-south-2", "same_country": true, "geo": "Madrid, Spain", "note": "AWS Region eu-south-2 is an opt-in Region: the account must enable it before use." },
+    "uaenorth": { "aws": "me-central-1", "same_country": true, "geo": "Dubai -> UAE", "note": "AWS Region me-central-1 is an opt-in Region: the account must enable it before use." },
     "qatarcentral": {
       "aws": "me-central-1",
       "same_country": false,
       "geo": "Doha -> UAE",
-      "note": "No AWS region in Qatar."
+      "note": "No AWS region in Qatar. AWS Region me-central-1 is an opt-in Region: the account must enable it before use."
     },
-    "israelcentral": { "aws": "il-central-1", "same_country": true, "geo": "Tel Aviv, Israel" },
-    "southafricanorth": { "aws": "af-south-1", "same_country": true, "geo": "Johannesburg / Cape Town, South Africa" },
+    "uaecentral": {
+      "aws": "me-central-1",
+      "same_country": true,
+      "geo": "Abu Dhabi -> UAE",
+      "note": "Azure restricts access to this region to specific customer scenarios such as disaster recovery for UAE North, so it appears in an inventory only when the customer was granted access. AWS Region me-central-1 is an opt-in Region: the account must enable it before use."
+    },
+    "saudiarabiaeast": {
+      "aws": "me-south-1",
+      "same_country": false,
+      "geo": "Dammam -> Bahrain",
+      "note": "No AWS region in Saudi Arabia. Bahrain is about 56 km from Dammam; the next nearest, me-central-1 (UAE), is about 540 km away. Azure lists this region as in preview. AWS Region me-south-1 is an opt-in Region: the account must enable it before use."
+    },
+    "israelcentral": { "aws": "il-central-1", "same_country": true, "geo": "Tel Aviv, Israel", "note": "AWS Region il-central-1 is an opt-in Region: the account must enable it before use." },
+    "southafricanorth": { "aws": "af-south-1", "same_country": true, "geo": "Johannesburg / Cape Town, South Africa", "note": "AWS Region af-south-1 is an opt-in Region: the account must enable it before use." },
+    "southafricawest": {
+      "aws": "af-south-1",
+      "same_country": true,
+      "geo": "Cape Town, South Africa",
+      "note": "Azure restricts access to this region to specific customer scenarios such as disaster recovery for South Africa North, so it appears in an inventory only when the customer was granted access. AWS Region af-south-1 is an opt-in Region: the account must enable it before use."
+    },
     "centralindia": { "aws": "ap-south-1", "same_country": true, "geo": "Pune -> Mumbai, India" },
     "southindia": { "aws": "ap-south-1", "same_country": true, "geo": "Chennai -> Mumbai, India" },
     "westindia": { "aws": "ap-south-1", "same_country": true, "geo": "Mumbai, India" },
+    "indiasouthcentral": {
+      "aws": "ap-south-2",
+      "same_country": true,
+      "geo": "Hyderabad, India",
+      "note": "AWS Region ap-south-2 is an opt-in Region: the account must enable it before use."
+    },
     "southeastasia": { "aws": "ap-southeast-1", "same_country": true, "geo": "Singapore" },
-    "eastasia": { "aws": "ap-east-1", "same_country": true, "geo": "Hong Kong" },
+    "southeastasia3": {
+      "aws": "ap-southeast-5",
+      "same_country": true,
+      "geo": "Johor Bahru -> Kuala Lumpur, Malaysia",
+      "note": "Azure lists this region as in preview. Same-country default; Singapore (ap-southeast-1) is only about 20 km away if latency matters more than keeping data in Malaysia. AWS Region ap-southeast-5 is an opt-in Region: the account must enable it before use."
+    },
+    "malaysiawest": {
+      "aws": "ap-southeast-5",
+      "same_country": true,
+      "geo": "Kuala Lumpur, Malaysia",
+      "note": "AWS Region ap-southeast-5 is an opt-in Region: the account must enable it before use."
+    },
+    "eastasia": { "aws": "ap-east-1", "same_country": true, "geo": "Hong Kong", "note": "AWS Region ap-east-1 is an opt-in Region: the account must enable it before use." },
+    "taiwannorth": {
+      "aws": "ap-east-2",
+      "same_country": true,
+      "geo": "Taipei, Taiwan",
+      "note": "Azure lists this region as in preview. AWS Region ap-east-2 is an opt-in Region: the account must enable it before use."
+    },
     "japaneast": { "aws": "ap-northeast-1", "same_country": true, "geo": "Tokyo, Japan" },
     "japanwest": { "aws": "ap-northeast-3", "same_country": true, "geo": "Osaka, Japan" },
     "koreacentral": { "aws": "ap-northeast-2", "same_country": true, "geo": "Seoul, South Korea" },
+    "koreasouth": { "aws": "ap-northeast-2", "same_country": true, "geo": "Busan -> Seoul, South Korea" },
     "australiaeast": { "aws": "ap-southeast-2", "same_country": true, "geo": "Sydney, Australia" },
     "australiasoutheast": { "aws": "ap-southeast-2", "same_country": true, "geo": "Melbourne -> Sydney, Australia" },
     "australiacentral": { "aws": "ap-southeast-2", "same_country": true, "geo": "Canberra -> Sydney, Australia" },
-    "indonesiacentral": { "aws": "ap-southeast-3", "same_country": true, "geo": "Jakarta, Indonesia" },
+    "australiacentral2": {
+      "aws": "ap-southeast-2",
+      "same_country": true,
+      "geo": "Canberra -> Sydney, Australia",
+      "note": "Azure restricts access to this region to specific customer scenarios such as disaster recovery for Australia Central, so it appears in an inventory only when the customer was granted access."
+    },
+    "indonesiacentral": { "aws": "ap-southeast-3", "same_country": true, "geo": "Jakarta, Indonesia", "note": "AWS Region ap-southeast-3 is an opt-in Region: the account must enable it before use." },
     "newzealandnorth": {
       "aws": "ap-southeast-6",
       "same_country": true,

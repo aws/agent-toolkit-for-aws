@@ -84,7 +84,7 @@ Choose **RDF / SPARQL** when:
 | Data size | TB-scale persistent | GB-scale in-memory |
 | Algorithms | Traversal queries | PageRank, community detection, shortest path at scale |
 | Vector search | Not built-in | Built-in (embeddings stored on vertices) |
-| Persistence | Durable, multi-AZ | Ephemeral (load from S3 or Neptune DB) |
+| Persistence | Durable, multi-AZ | Preserved while running or stopped; removed on delete unless snapshotted (including a final snapshot on delete) or exported |
 | Cost model | Instance + storage | NCU hours while running |
 | Use for GenAI | Persistent knowledge graphs | GraphRAG, agentic memory (graph + vector) |
 
