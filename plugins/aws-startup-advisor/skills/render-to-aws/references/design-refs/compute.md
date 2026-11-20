@@ -9,7 +9,7 @@ Candidate set, in order for recording only: `Elastic Beanstalk`, `Elastic Beanst
 1. If Kubernetes APIs, `kubectl`, arbitrary resources, operators/CRDs, cluster policy, or Kubernetes version/upgrade control is required, select Amazon EKS.
 2. If the team wants Beanstalk application/environment lifecycle with service-managed Kubernetes compute and the workload is container-compatible, select Elastic Beanstalk Cluster Mode.
 3. If direct task/service control, independent worker topology, custom deployment topology, or rejection of Beanstalk lifecycle is explicit, select ECS on Fargate.
-4. If a source-based language or Docker application wants Beanstalk application/environment lifecycle on EC2, select traditional Elastic Beanstalk.
+4. If a source-based language or Docker application wants Beanstalk application/environment lifecycle on EC2, select traditional Elastic Beanstalk. The source-based Render runtimes with an Elastic Beanstalk platform are `node`, `python`, `ruby` and `go`; a `rust` or `elixir` service qualifies only as a Docker application.
 5. If management model is unanswered, return `compute.management_model` to Clarify. Source versus image packaging alone does not decide.
 
 Apply protocol, architecture, storage, privileged-container, host-access, GPU, and regional capability eliminators before management preference. A cluster may narrow candidates but cannot change a deterministic static/data/delivery mapping.
