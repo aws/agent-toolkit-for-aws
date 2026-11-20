@@ -6,8 +6,13 @@ Core functions for implementing AI agent memory with Neptune (Database and
 Analytics) plus DynamoDB for short-term memory. Used by references/agentic-memory.md.
 
 Usage:
-    pip install boto3 gremlinpython
+    pip install boto3==1.43.124 gremlinpython==3.7.3
+    # gremlinpython is pinned to 3.7.3, the newest TinkerPop version Neptune engine
+    # 1.3.2.0+ supports (AWS: "Accessing a Neptune graph with Gremlin").
     Set NEPTUNE_ENDPOINT (for Database) or GRAPH_ID (for Analytics).
+    Optional: NEPTUNE_PORT (Database port, default 8182) and SHORT_TERM_TABLE
+    (DynamoDB short-term memory table, default "agent-short-term-memory").
+    Gremlin connections are SigV4-signed (IAM auth); set AWS_REGION or NEPTUNE_REGION.
 """
 
 import json
@@ -61,72 +66,137 @@ NEPTUNE_ENDPOINT = os.environ.get("NEPTUNE_ENDPOINT", "localhost")
 NEPTUNE_PORT = int(os.environ.get("NEPTUNE_PORT", "8182"))
 
 
-def get_gremlin_client():
-    """Create a Gremlin client for Neptune Database."""
-    from gremlin_python.driver import client, serializer
+def _sigv4_headers(url: str) -> Dict[str, str]:
+    """SigV4-sign the Gremlin WebSocket handshake for IAM database auth.
 
-    return client.Client(
-        f"wss://{NEPTUNE_ENDPOINT}:{NEPTUNE_PORT}/gremlin",
+    The test cluster (cdk_test_env.py) enables IAM auth, so an unsigned
+    handshake is refused with 403. Sign the request; never disable IAM auth.
+    """
+    from botocore.auth import SigV4Auth
+    from botocore.awsrequest import AWSRequest
+
+    session = boto3.Session()
+    region = os.environ.get("NEPTUNE_REGION") or session.region_name
+    if not region:
+        raise RuntimeError("Set AWS_REGION or NEPTUNE_REGION to sign Neptune requests.")
+    credentials = session.get_credentials()
+    if credentials is None:
+        raise RuntimeError("No AWS credentials found to sign Neptune requests.")
+    request = AWSRequest(method="GET", url=url)
+    SigV4Auth(credentials.get_frozen_credentials(), "neptune-db", region).add_auth(request)
+    return dict(request.headers)
+
+
+def _anonymous_traversal():
+    """Load Gremlin's anonymous traversal builder without importing it globally."""
+    from gremlin_python.process.graph_traversal import __
+
+    return __
+
+
+def _single_cardinality():
+    """Load Gremlin's ``single`` cardinality without importing it globally.
+
+    Neptune defaults vertex properties to ``set`` cardinality, so updating a
+    property without ``single`` adds a value instead of replacing it.
+    """
+    from gremlin_python.process.traversal import Cardinality
+
+    return Cardinality.single
+
+
+def get_gremlin_traversal():
+    """Create a bytecode-based Gremlin traversal source for Neptune Database.
+
+    Returns ``(g, connection)``. The traversal source has no ``close()``;
+    close the returned connection when finished.
+    """
+    from gremlin_python.driver import serializer
+    from gremlin_python.driver.driver_remote_connection import DriverRemoteConnection
+    from gremlin_python.process.anonymous_traversal import traversal
+
+    url = f"wss://{NEPTUNE_ENDPOINT}:{NEPTUNE_PORT}/gremlin"
+    connection = DriverRemoteConnection(
+        url,
         "g",
         message_serializer=serializer.GraphSONSerializersV2d0(),
+        headers=_sigv4_headers(url),
     )
+    return traversal().with_remote(connection), connection
 
 
-def remember_entity_gremlin(gremlin_client, name: str, entity_type: str, **properties):
-    """Store or update an entity in Neptune Database."""
-    bindings = {"entity_name": name, "entity_type": entity_type}
-    query = """
-        g.V().has('Entity', 'name', entity_name).fold()
-        .coalesce(unfold(), addV('Entity').property('name', entity_name))
-        .property('type', entity_type)
-        .property('updated_at', new Date().getTime())
-    """
+def remember_entity_gremlin(g, name: str, entity_type: str, **properties):
+    """Store or update an entity using Gremlin bytecode."""
+    anonymous = _anonymous_traversal()
+    single = _single_cardinality()
+    traversal = (
+        g.V()
+        .has("Entity", "name", name)
+        .fold()
+        .coalesce(
+            anonymous.unfold(),
+            anonymous.addV("Entity").property("name", name),
+        )
+        .property(single, "type", entity_type)
+        .property(single, "updated_at", int(time.time() * 1000))
+    )
     for key, value in properties.items():
-        binding_key = f"prop_{key}"
-        query += f"        .property('{key}', {binding_key})\n"
-        bindings[binding_key] = value
-    gremlin_client.submit(query, bindings=bindings).all().result()
+        traversal = traversal.property(single, key, value)
+    traversal.iterate()
 
 
 def remember_relationship_gremlin(
-    gremlin_client, entity_a: str, entity_b: str, rel_type: str, confidence: float = 1.0
+    g, entity_a: str, entity_b: str, rel_type: str, confidence: float = 1.0
 ):
-    """Store a relationship between entities in Neptune Database."""
-    bindings = {
-        "name_a": entity_a,
-        "name_b": entity_b,
-        "rel_type": rel_type,
-        "confidence": confidence,
-    }
-    query = """
-        g.V().has('Entity', 'name', name_a).as('a')
-        .V().has('Entity', 'name', name_b).as('b')
+    """Store a relationship between entities using Gremlin bytecode."""
+    anonymous = _anonymous_traversal()
+    (
+        g.V()
+        .has("Entity", "name", entity_a)
+        .as_("a")
+        .V()
+        .has("Entity", "name", entity_b)
+        .as_("b")
         .coalesce(
-            select('a').outE('RELATED_TO').where(inV().as('b')),
-            select('a').addE('RELATED_TO').to(select('b'))
+            anonymous.select("a").outE("RELATED_TO").where(anonymous.inV().as_("b")),
+            anonymous.select("a").addE("RELATED_TO").to(anonymous.select("b")),
         )
-        .property('type', rel_type)
-        .property('confidence', confidence)
-        .property('updated_at', new Date().getTime())
-    """
-    gremlin_client.submit(query, bindings=bindings).all().result()
+        .property("type", rel_type)
+        .property("confidence", confidence)
+        .property("updated_at", int(time.time() * 1000))
+        .iterate()
+    )
 
 
-def recall_entity_gremlin(gremlin_client, entity_name: str) -> List:
-    """Recall everything about an entity from Neptune Database."""
-    bindings = {"entity_name": entity_name}
-    query = """
-        g.V().has('Entity', 'name', entity_name)
-        .project('entity', 'relationships', 'conversations')
-        .by(valueMap())
-        .by(bothE('RELATED_TO').project('type', 'target', 'confidence')
-            .by(values('type')).by(otherV().values('name')).by(values('confidence'))
-            .fold())
-        .by(in('ABOUT').hasLabel('Conversation')
-            .order().by('date', desc).limit(5)
-            .valueMap('summary', 'date').fold())
-    """
-    return gremlin_client.submit(query, bindings=bindings).all().result()
+def recall_entity_gremlin(g, entity_name: str) -> List:
+    """Recall everything about an entity using Gremlin bytecode."""
+    from gremlin_python.process.traversal import Order
+
+    anonymous = _anonymous_traversal()
+    return (
+        g.V()
+        .has("Entity", "name", entity_name)
+        .project("entity", "relationships", "conversations")
+        .by(anonymous.valueMap())
+        .by(
+            anonymous.bothE("RELATED_TO")
+            .project("type", "target", "confidence")
+            .by(anonymous.values("type"))
+            .by(anonymous.otherV().values("name"))
+            .by(anonymous.values("confidence"))
+            .fold()
+        )
+        .by(
+            anonymous.in_("ABOUT")
+            .hasLabel("Conversation")
+            .order()
+            .by("date", Order.desc)
+            .limit(5)
+            .valueMap("summary", "date")
+            .fold()
+        )
+        .toList()
+    )
 
 
 # =============================================================================
@@ -198,26 +268,22 @@ def remember_with_embedding(
 
 def semantic_recall(graph_id: str, query_embedding: List[float], top_k: int = 10) -> List[Dict]:
     """Recall memories by vector similarity."""
-    entity_filter = json.dumps(
-        {"equals": {"property": "~label", "value": "Entity"}}
-    )
     return run_query(
         graph_id,
         """
         CALL neptune.algo.vectors.topK.byEmbedding({
             embedding: $embedding,
             topK: $top_k,
-            vertexFilter: $entity_filter
+            vertexFilter: {equals: {property: '~label', value: 'Entity'}}
         })
         YIELD node, score
         RETURN node.name AS name, node.type AS type,
                node.description AS description, score
-        ORDER BY score DESC
+        ORDER BY score ASC
     """,
         parameters={
             "embedding": query_embedding,
             "top_k": top_k,
-            "entity_filter": entity_filter,
         },
     )
 
@@ -241,21 +307,18 @@ def hybrid_recall(graph_id: str, entity_name: str, query_embedding: List[float])
         CALL neptune.algo.vectors.topK.byEmbedding({
             embedding: $embedding,
             topK: 10,
-            vertexFilter: $entity_filter
+            vertexFilter: {andAll: [
+                {equals: {property: '~label', value: 'Entity'}},
+                {notEquals: {property: 'name', value: $name}}
+            ]}
         })
         YIELD node, score
         RETURN node.name AS name, node.type AS type, score
+        ORDER BY score ASC
     """,
         parameters={
             "embedding": query_embedding,
-            "entity_filter": json.dumps(
-                {
-                    "andAll": [
-                        {"equals": {"property": "~label", "value": "Entity"}},
-                        {"notEquals": {"property": "name", "value": entity_name}},
-                    ]
-                }
-            ),
+            "name": entity_name,
         },
     )
 

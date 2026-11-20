@@ -88,13 +88,23 @@ worker does not.
 
 ### Shared Step 0 — initialize the run before either source action
 
-Perform `_init` state setup per `INTERPRETER.md` § `_init: true` before RDfA detection or
-live-`az` consent/capture accesses `$MIGRATION_DIR`. Resolve resume-vs-fresh, set
-`$MIGRATION_DIR`, and, on a fresh run, create the directory, `.gitignore`, and
-`.phase-status.json` exactly as that section specifies. Resume, fresh-run selection, or
-cancellation therefore completes before either pre-dispatch action runs; cancellation
-terminates the phase without running either action.
-
+**LLM-preinitialized delegation:** If `$MIGRATION_DIR` is already selected and its
+schema-valid `.phase-status.json` records `owning_skill: AZURE_TO_AWS`,
+`initiated_by: LLM_TO_BEDROCK`, `current_phase: discover`, and `phases.discover:
+in_progress`, LLM A1 already wrote that state. Reuse the envelope unchanged (including
+`migration_id` and `run_id`), skip the resume/Fresh prompt and any state write, and do not
+render the migration-credit notice. Otherwise perform `_init` state setup per
+`INTERPRETER.md` § `_init: true` before RDfA detection or live-`az` consent/capture
+accesses `$MIGRATION_DIR`. Resolve resume-vs-fresh, set `$MIGRATION_DIR`, and,
+on a fresh run, create the directory, `.gitignore`, and `.phase-status.json` exactly as
+that section specifies. After this state write for a fresh run completes, load
+`references/vendored/migration/upfront-credits.md` and render it verbatim once before any
+scanning or file request. Skip the notice when resuming or re-entering an existing run, for
+the LLM-preinitialized run above, or when the user's request is explicitly a direct AI-only
+assessment with no infrastructure track. Do not render it later in the run. Resume,
+fresh-run selection, or cancellation therefore completes before either pre-dispatch action
+runs; cancellation terminates the phase
+without running either action.
 This phase's normal `_init` call in "Step: Run the phase" remains an idempotent
 confirmation. A resumed run reuses its selected `$MIGRATION_DIR` and existing
 `.phase-status.json`; initialization is not duplicated and resume-vs-fresh is not

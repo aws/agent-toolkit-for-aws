@@ -5,7 +5,7 @@ DECISION.md and, until this fix, also closed with "Your decision is
 saved...". estimate.md's own post-HANDOFF_OK step 4 (added for Finding 6,
 databaseId 4240400327) closes with the same sentence immediately
 afterward, so the message displayed twice on the normal Azure Option A /
-PLAN_SKIP path. This test counts the completion-message substring across
+PLAN_OK path. This test counts the completion-message substring across
 both files and asserts Step 3a contributes zero of them.
 """
 from __future__ import annotations

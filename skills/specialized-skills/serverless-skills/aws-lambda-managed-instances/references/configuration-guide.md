@@ -13,8 +13,8 @@ Architecture: ARM (Graviton, g-suffix) for price-performance. x86 (i=Intel, a=AM
 
 | Ratio | Profile | When to use | Memory examples |
 |-------|---------|-------------|-----------------|
-| 2:1 | Compute | CPU-bound work | 2GB/1vCPU, 4GB/2vCPU |
-| 4:1 | General | Most workloads (default) | 4GB/1vCPU, 8GB/2vCPU |
+| 2:1 | Compute | Default (`ExecutionEnvironmentMemoryGiBPerVCpu` 2); compute-heavy work | 2GB/1vCPU, 4GB/2vCPU |
+| 4:1 | General | Balanced workloads (web APIs, microservices), matching M-series instances | 4GB/1vCPU, 8GB/2vCPU |
 | 8:1 | Memory | Caching, data, Python apps | 8GB/1vCPU, 16GB/2vCPU |
 
 Min: 2 GB / 1 vCPU. Max: 32 GB. Memory must align with ratio multiples.
@@ -23,9 +23,9 @@ Min: 2 GB / 1 vCPU. Max: 32 GB. Memory must align with ratio multiples.
 
 | Current Lambda | LMI memory | Ratio | Rationale |
 |---------------|------------|-------|-----------|
-| 128-512 MB | 2048 MB | 4:1 | LMI minimum; multi-concurrency shares memory |
-| 512 MB-1 GB | 2048 MB | 4:1 | Room for concurrent requests |
-| 1-2 GB | 4096 MB | 4:1 | Standard upgrade path |
+| 128-512 MB | 2048 MB | 2:1 (default) | LMI minimum (1 vCPU); multi-concurrency shares memory |
+| 512 MB-1 GB | 2048 MB | 2:1 (default) | Room for concurrent requests |
+| 1-2 GB | 4096 MB | 2:1 (default) | Standard upgrade path |
 | 2-4 GB | 4096-8192 MB | 4:1 or 8:1 | Depends on memory vs CPU bottleneck |
 | 4-10 GB | 8192-16384 MB | 8:1 | Likely memory-heavy workload |
 
@@ -44,7 +44,7 @@ Total capacity = MinExecutionEnvironments × PerExecutionEnvironmentMaxConcurren
 
 | Control | Default | Guidance |
 |---------|---------|----------|
-| MinExecutionEnvironments | 3 | Increase for baseline capacity; never below 3 |
+| MinExecutionEnvironments | 3 (GPU functions: 1) | Increase for baseline capacity; never below 3 for CPU functions |
 | MaxExecutionEnvironments | — | Set based on cost budget |
 | MaxVCpuCount | 400 | Optional but recommended — set explicitly to control cost ceiling |
 | TargetResourceUtilization | ~50% headroom | Raise for cost savings (less burst tolerance) |

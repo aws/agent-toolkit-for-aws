@@ -42,7 +42,7 @@ In general, Lambda MicroVMs are suited for long-lived sessions, real port-listen
 
 ### Choose Lambda Event Functions when
 
-- The workload fits in 15 minutes.
+- The workload fits in 30 minutes.
 - Per-function isolation is sufficient; if ordinary event/request handlers need execution environments dedicated to one invoker or tenant, use Event Functions on On-Demand with tenant isolation mode. Do not assume Lambda creates a fresh Firecracker VM or execution environment for every invocation.
 - No session state needs to remain in memory, on disk, or in running processes between interactions.
 - Fully automatic scaling is preferred (no `RunMicrovm` to manage).
