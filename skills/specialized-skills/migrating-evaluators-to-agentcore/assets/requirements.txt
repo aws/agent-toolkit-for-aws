@@ -1,0 +1,22 @@
+# Dependency manifest — a list of the exact pins, NOT an install target.
+#
+# Do NOT `pip install -r` this file: it is the Lambda-bound set, and the operator's machine
+# needs a different one (SKILL.md Step 0). The deploy installs from the pyproject.toml that
+# package_ragas_lambda.py and deployer.py generate per evaluator.
+#
+# The real pins are Python constants in those scripts; this file lists them in one place so
+# they can be reviewed or checked by a dependency scanner. Union of both framework paths, so
+# a superset — no single evaluator installs all of it. Generated from
+# package_ragas_lambda.lambda_deps() and deployer.DEEPEVAL_PINS.
+aiobotocore==3.9.1
+bedrock-agentcore==1.23.0
+deepeval==4.2.3
+langchain-aws==1.7.8
+numpy==1.26.4
+ragas==0.4.4
+rapidfuzz==3.14.6
+requests==2.34.2
+sacrebleu==2.6.0
+setuptools==84.1.0
+strands-agents==1.50.1
+strands-agents-evals==1.2.0
