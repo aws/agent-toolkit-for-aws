@@ -230,3 +230,17 @@ def test_step_0_returns_a_combined_run_to_the_host_and_never_offers_generate() -
     assert "Never in a combined run" in SKILL[SKILL.index("## Step 5"):]
     readiness = SKILL[SKILL.index("## Readiness for other skills"):SKILL.index("## Definitions")]
     assert "`combined_run`" in readiness
+
+
+def test_preferences_schema_keeps_the_host_source_whatever_chosen_by() -> None:
+    schema = (BMA / "references" / "shared" / "schema-preferences.md").read_text(encoding="utf-8")
+    row = next(line for line in schema.splitlines() if line.startswith("| `source`"))
+    assert "host:<host_skill>" in row and "combined mode" in row
+
+
+def test_a_host_started_run_takes_the_profile_route_without_asking() -> None:
+    discover = (BMA / "references" / "phases" / "discover" / "discover.md").read_text(encoding="utf-8")
+    step1 = discover[discover.index("## Step 1"):discover.index("## Step 2a")]
+    assert re.search(r"host-started run takes the Profile route without asking", step1)
+    combined = SKILL[SKILL.index("## Combined mode"):SKILL.index("## Readiness for other skills")]
+    assert "Profile route" in combined and "supplied-profile route" not in combined

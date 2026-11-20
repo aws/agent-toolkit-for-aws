@@ -135,10 +135,10 @@ def _is_ai(item: Any, type_key: str) -> bool:
 
 
 def _has_infrastructure(gcp_dir: Path) -> bool:
-    for name, key, type_key in (("gcp-resource-inventory.json", "resources", "type"),
-                                ("billing-profile.json", "services", "gcp_service_type")):
+    for name, key, type_key, error in (("gcp-resource-inventory.json", "resources", "type", "inventory_unreadable"),
+                                       ("billing-profile.json", "services", "gcp_service_type", "billing_unreadable")):
         path = gcp_dir / name
-        doc = _read_json(path, f"{name}_unreadable") if path.exists() else None
+        doc = _read_json(path, error) if path.exists() else None
         if isinstance(doc, dict) and any(not _is_ai(item, type_key) for item in doc.get(key) or []):
             return True
     return False
@@ -420,7 +420,10 @@ def _verified(bma_dir: Path, ready: dict, through: str) -> dict[str, bytes]:
     reported = ready.get("artifacts") or {}
     data = {}
     for name in ("ai-workload-profile.json", *THROUGH_FILES.get(through, ())):
-        raw = (bma_dir / name).read_bytes()
+        try:
+            raw = (bma_dir / name).read_bytes()
+        except OSError as exc:
+            raise HandoffError("bma_tampered", f"{name} became unreadable after readiness.py checked it: {exc}")
         if not isinstance(reported.get(name), dict) or reported[name].get("sha256") != _sha(raw):
             raise HandoffError("bma_tampered", f"readiness.py reported a SHA-256 for {name} that does not match the file")
         data[name] = raw

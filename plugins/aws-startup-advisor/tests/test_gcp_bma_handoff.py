@@ -889,3 +889,28 @@ def test_a_change_in_whether_infrastructure_moves_reopens_the_handoff(infra_befo
         assert code == 1 and out["error"] == "infrastructure_changed", out
     assert _cli(tree, "route", str(gcp))[1]["route"] == "delegate"
     assert not (gcp / "ai-handoff.json").exists() and not (gcp / "aws-design-ai.json").exists()
+
+
+@pytest.mark.parametrize(("name", "error"), [("gcp-resource-inventory.json", "inventory_unreadable"),
+                                             ("billing-profile.json", "billing_unreadable")])
+def test_an_unreadable_discovery_file_gets_a_plain_error_code(name, error, tree: Path, tmp_path: Path) -> None:
+    gcp = _gcp_run(tmp_path, infra=False)
+    (gcp / name).write_text("{not json")
+    code, out = _cli(tree, "route", str(gcp))
+    assert code == 1 and out["error"] == error, out
+
+
+def test_accept_names_an_assessment_file_removed_after_readiness(tree: Path, tmp_path: Path) -> None:
+    gcp = _gcp_run(tmp_path, infra=True)
+    _gcp_prefs(gcp)
+    bma = _bma_run(tmp_path)
+    _open(tree, gcp, bma, "estimate")
+    readiness = tree / "bedrock-migration-assessment" / "scripts" / "readiness.py"
+    readiness.write_text(readiness.read_text().replace('if __name__ == "__main__":', (
+        "import atexit as _atexit\n"
+        "if 'estimate' in sys.argv:\n"
+        "    _atexit.register(lambda: (Path(sys.argv[1]) / 'estimation-ai.json').unlink(missing_ok=True))\n"
+        'if __name__ == "__main__":'), 1))
+    code, out = _cli(tree, "accept", str(gcp), str(bma), "--through", "estimate")
+    assert code == 1 and out["error"] == "bma_tampered", out
+    assert not (gcp / "aws-design-ai.json").exists()

@@ -8,7 +8,7 @@ The SKILL.md secret-file rule applies before Step 1: to see whether the project 
 
 - **Profile route:** the user names an existing `ai-workload-profile.json`. Only the provider-neutral contract is accepted: `schema_version` (`1.0` or `1.1`), `ai_sources[]`, and `gateways[]`, plus, in `1.1` only, the optional `integration`, `workloads[]`, `agentic_profile`, and `tool_manifest[]`.
 - **Scan route:** the user points at a codebase, or the project root contains source code and no profile was named.
-- If both apply, ask which one to use. If neither applies, ask for a profile path or a code directory.
+- If both apply, ask which one to use; a host-started run takes the Profile route without asking (`SKILL.md` § Combined mode). If neither applies, ask for a profile path or a code directory.
 
 ## Step 2a: Profile route
 
