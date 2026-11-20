@@ -19,20 +19,20 @@ collaboration, and workloads that must pick an instance type (Instances).
 |              | microVMs (default)              | Instances (capacity provider)                                                    |
 | ------------ | ------------------------------- | -------------------------------------------------------------------------------- |
 | Session cap  | 8h (`maxLifetime` ≤ 28,800s)    | 14 days (`maxLifetime` ≤ 1,209,600s)                                             |
-| Compute      | ≤ 2 vCPU / 8 GB, no GPU         | broad EC2 choice incl. GPU, ARM64/x86_64                                         |
+| Compute      | ≤ 8 vCPU / 32 GB (V2 default), no GPU; V1 ≤ 2 vCPU / 8 GB        | broad EC2 choice incl. GPU, ARM64/x86_64                                         |
 | Host model   | one agent per microVM           | multiple agents share host + filesystem (`/tmp/agentcore-session/<session-id>/`) |
 | Billing      | consumption; $0 during I/O wait | EC2 in YOUR account (Savings Plans / ODCRs apply) + AgentCore management fee     |
 | Idle         | scale to zero                   | session stop/restart (hibernate)                                                 |
 | Launch scope | all AgentCore regions           | Linux only; limited launch regions — verify via MCP                              |
 
-Routing (mirrors `scoring.py::_select_agentcore_compute_type`): >8h sessions, GPU or
+Routing (mirrors `scoring.py::_select_agentcore_compute_type`): >8h sessions, GPU, or compute needs exceeding 8 vCPU/32 GB (V2 default) route to Instances
 heavy compute, or an instance-type requirement → Instances; everything else → microVMs.
 An always-on service is still a better ECS/EKS fit — Instances sessions end at 14 days.
 
 ## Hard limits (verify via MCP — volatile)
 
 - microVMs session cap: 8h; Instances session cap: 14 days (not indefinite)
-- microVMs compute cap: 2 vCPU / 8 GB (Instances lifts this via EC2 instance choice)
+- microVMs compute cap: 8 vCPU / 32 GB (V2, default for new runtimes); V1 (prior gen) remains 2 vCPU / 8 GB (Instances lifts this further via EC2 instance choice)
 - Instances launch regions: limited set at launch (2026-08) — verify current list
 - AWS Agent Registry GA Regions (2026-10-28 snapshot, 9 Regions): `us-east-1`, `us-west-2`,
   `ap-northeast-1`, `ap-southeast-2`, `eu-west-1`, `eu-west-2`, `eu-central-1`, `us-east-2`, `ca-central-1`
@@ -71,7 +71,7 @@ An always-on service is still a better ECS/EKS fit — Instances sessions end at
 
 ## Tradeoffs
 
-microVMs: 2 vCPU / 8 GB ceiling; no process-level suspend (Session Storage persists
+microVMs: 8 vCPU / 32 GB ceiling on V2 (default for new runtimes; V1 remains 2 vCPU / 8 GB); no process-level suspend (Session Storage persists
 files only). Instances: pricing shifts from consumption to EC2 + management fee (idle
 instances cost money unless stopped); 14-day session ceiling; Linux only at launch;
 capacity provider is immutable after creation except its description.
