@@ -35,17 +35,27 @@ def test_render_compute_fragment_floors_a_retired_source_runtime_branch() -> Non
     text = _flat(COMPUTE_FRAGMENT)
     assert "retired on 2026-08-13" in text
     assert "name the lowest supported branch of the same family instead" in text
-    assert "add an `eb_platform_branch_retired` entry to `warnings[]`" in text
-    assert "Do not pick the newest branch for a retired source version, and do not drop the version from the regex" in text
+    assert "add an `eb_platform_branch_retired` warning" in text
+    # The version is a persisted design field, never a guess from source files at Generate time.
+    assert "`<version>` is `aws_config.runtime_version` from the design" in text
+    assert "Generate never reads source files or guesses" in text
+    # Both cases are stated: a declared retired version, and no declared version.
+    assert "`runtime_version` names a retired branch:" in text
+    assert "`runtime_version` is `null`: name the lowest supported branch of the family and add an `eb_platform_version_undeclared` warning" in text
+    assert "Do not pick the newest branch in either case, and do not drop the version from the regex" in text
     assert "platforms-supported.html" in text
 
 
 def test_the_warning_code_is_in_the_schema_and_the_report_emits_it() -> None:
     schema = json.loads(WARNINGS_SCHEMA.read_text(encoding="utf-8"))
-    assert "eb_platform_branch_retired" in schema["$defs"]["warning"]["properties"]["code"]["enum"]
-    assert "- `eb_platform_branch_retired` for each Elastic Beanstalk service" in _flat(REPORT_FRAGMENT)
+    codes = schema["$defs"]["warning"]["properties"]["code"]["enum"]
+    assert "eb_platform_branch_retired" in codes and "eb_platform_version_undeclared" in codes
+    report = _flat(REPORT_FRAGMENT)
+    assert "- `eb_platform_branch_retired` for each Elastic Beanstalk service" in report
+    assert "`eb_platform_version_undeclared` for each Elastic Beanstalk service whose `compute.runtime_version` is `null`" in report
     docs = _flat(RENDER / "references" / "phases" / "generate" / "generate-artifacts-docs.md")
-    assert "each `eb_platform_branch_retired` warning (name the source runtime version" in docs
+    assert "each `eb_platform_branch_retired` warning (name the declared runtime version" in docs
+    assert "each `eb_platform_version_undeclared` warning" in docs
 
 
 def test_golden_eb_variant_names_a_supported_branch() -> None:
@@ -57,6 +67,36 @@ def test_golden_eb_variant_names_a_supported_branch() -> None:
             assert not regex.endswith(f"running {branch}$"), f"{regex!r} names the retired branch {branch}"
         assert re.search(r"running [A-Za-z.]+ [0-9.]+\$$", regex), f"{regex!r} must pin one language major version"
     assert 'running Node.js 22$' in compute
+
+
+def test_render_persists_the_language_version_from_clarify_through_design() -> None:
+    """Render's Blueprint carries only the runtime family, so the version must come from a recorded
+    Clarify answer and travel through the design; Generate cannot read source files or guess."""
+    clarify = _flat(RENDER / "references" / "phases" / "clarify" / "clarify-compute.md")
+    assert "record `compute.runtime_version` (`resource_id` the service)" in clarify
+    assert '`default_rule: "runtime.declared_in_source"`' in clarify
+    assert "record `value: null` as `answered` with the consequence that Generate names the lowest supported branch" in clarify
+    assert "Never invent a version" in clarify
+    design = _flat(RENDER / "references" / "phases" / "design" / "design-infra.md")
+    assert "write `aws_config.platform_family` from the Blueprint `runtime`" in design
+    assert "`aws_config.runtime_version` from the service's `compute.runtime_version` answer" in design
+    assert "Generate builds the platform regex from these two fields and nothing else" in design
+
+
+def test_gcp_producers_apply_the_floor_where_the_regex_and_guide_are_written() -> None:
+    """The design reference alone is not reachable; the runtime-to-platform step, the Generate
+    Compute row, the guide and the report must each apply or surface the rule."""
+    design = _flat(GCP / "references" / "phases" / "design" / "design-infra.md")
+    assert "when the version's platform branch is retired" in design
+    assert "write the lowest supported branch of the family instead (Python 3.11 when this was written)" in design
+    assert "add a `warnings[]` entry naming the service, the source version and the branch chosen" in design
+    infra = _flat(GCP / "references" / "phases" / "generate" / "generate-artifacts-infra.md")
+    assert "if it has been retired since Design ran, name the lowest supported branch of the same family instead" in infra
+    assert "a retired branch is not listed, so its regex matches nothing and `terraform plan` fails" in infra
+    docs = _flat(GCP / "references" / "phases" / "generate" / "generate-artifacts-docs.md")
+    assert "For each `warnings[]` entry in `aws-design.json` about an Elastic Beanstalk platform branch" in docs
+    report = _flat(GCP / "references" / "phases" / "generate" / "generate-artifacts-report.md")
+    assert "A design warning about an Elastic Beanstalk platform branch" in report
 
 
 def test_gcp_mapping_example_does_not_hardcode_a_retired_python_version() -> None:
