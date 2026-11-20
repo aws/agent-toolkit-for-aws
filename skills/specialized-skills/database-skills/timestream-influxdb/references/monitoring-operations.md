@@ -2,7 +2,7 @@
 
 ## When to Activate
 
-User asks about CloudWatch metrics, alarms, instance health, maintenance windows, backups, snapshots, or operational best practices.
+User asks about CloudWatch metrics, alarms, instance health, maintenance windows, or operational best practices. For backups, snapshots, or restores, load [backup and restore](backup-restore.md).
 
 ## Discover CloudWatch Metrics
 
@@ -93,81 +93,57 @@ Apply the merged policy with `aws sns set-topic-attributes --topic-arn "$SNS_TOP
 
 ## Maintenance Windows
 
-Customer Managed Maintenance Windows:
+Before giving maintenance guidance, retrieve the maintenance-window documentation for the engine variant: [InfluxDB 3 clusters](https://docs.aws.amazon.com/timestream/latest/developerguide/influxdb3-maintenance-windows.html) or [InfluxDB 2 instances](https://docs.aws.amazon.com/timestream/latest/developerguide/timestream-for-influx-managing-maintaining-db.html). Then inspect the `--maintenance-schedule` shape in the installed API model. Where the guides and the API model disagree, follow the API model; for example, one guide example omits `timezone`, and another passes `--identifier` to `update-db-cluster`.
 
-- Set preferred day, time, and timezone via console, CLI, or SDK
-- Engine patches and minor updates applied during the window
-- Major version changes require explicit approval
+**What it controls:**
+
+- Every resource has a weekly window for mandatory hardware, operating-system, and engine updates. A window defines when maintenance *can* run, not that it will. Maintenance typically runs no more than once a week and at least once a month, starting within the first 30 minutes of the window.
+- Maintenance is service-managed by default. Setting `preferredMaintenanceWindow` makes the window customer-managed; passing an empty string returns scheduling to the service.
+- Maintenance missed in one window can run in a later one. Maintenance deferred for more than 25 days may run outside the preferred window.
+
+**Request shape:** `--maintenance-schedule '{"timezone":"<iana-zone>","preferredMaintenanceWindow":"ddd:HH:MM-ddd:HH:MM"}'`
+
+- The API requires both fields.
+- `ddd` is `Mon`–`Sun` and times use the 24-hour clock. The window must be at least 2 and at most 24 hours long. Cross-midnight windows such as `Sat:21:00-Sun:01:00` are supported.
+- `timezone` takes an IANA identifier such as `UTC`, `America/New_York`, or `Asia/Tokyo`. Abbreviations such as `EST`, `PST`, or `GMT+5` are rejected. In a zone that observes DST, avoid local times from 01:00 to 03:00, because a window inside the skipped spring-forward hour is skipped that week.
+- Window times are local to `timezone`, not UTC. The API model's field description says "(UTC)", but the maintenance-window documentation states that window times are interpreted in the specified time zone; with `UTC` the two agree.
+- When a requested window is shorter than 2 hours, do not submit it. Tell the user about the minimum and propose a compliant window, for example extending `Sun:03:00-Sun:04:00` to `Sun:03:00-Sun:05:00`.
 
 ```bash
 # V2 instance
 aws timestream-influxdb update-db-instance \
   --identifier <instance-id> \
-  --maintenance-schedule '{"timezone":"UTC","preferredMaintenanceWindow":"Sun:03:00-Sun:05:00"}'
+  --maintenance-schedule '{"timezone":"UTC","preferredMaintenanceWindow":"Sun:03:00-Sun:05:00"}' \
+  --region <region>
 
-# V3 cluster
+# V3 cluster or V2 Read Replica cluster
 aws timestream-influxdb update-db-cluster \
   --db-cluster-id <cluster-id> \
-  --maintenance-schedule '{"timezone":"UTC","preferredMaintenanceWindow":"Sun:03:00-Sun:05:00"}'
+  --maintenance-schedule '{"timezone":"America/New_York","preferredMaintenanceWindow":"Sat:21:00-Sun:01:00"}' \
+  --region <region>
+
+# Return scheduling to the service
+aws timestream-influxdb update-db-cluster \
+  --db-cluster-id <cluster-id> \
+  --maintenance-schedule '{"timezone":"UTC","preferredMaintenanceWindow":""}' \
+  --region <region>
 ```
 
-## Backup & Snapshots
+- `create-db-instance`, `create-db-cluster`, and `restore-from-db-backup` accept the same `--maintenance-schedule` value, so set the window at creation instead of with a follow-up update.
+- To verify, wait until the resource is `AVAILABLE`. Then read `maintenanceSchedule` from `get-db-instance` or `get-db-cluster` and confirm both fields match the request. Report `nextMaintenanceTime` and `lastMaintenanceTime`, which are always in UTC regardless of the configured time zone.
 
-- Before providing backup guidance, verify the [customer-managed backup and restore documentation](https://docs.aws.amazon.com/timestream/latest/developerguide/influxdb3-customer-managed-backup-restore.html) and Timestream for InfluxDB CLI or SDK API model. Confirm support by engine variant and Region for on-demand, scheduled, continuous, point-in-time, and self-service restore capabilities rather than treating any of them as universally available.
-- When the API exposes `CreateDbBackup`, `DbBackupConfiguration`, or `RestoreFromDbBackup`, describe the resulting `DbBackup` resources as backups, not snapshots.
-- Before selecting a restore mode, verify the restrictions in the [`RestoreFromDbBackup` Boto3 reference](https://docs.aws.amazon.com/boto3/latest/reference/services/timestream-influxdb/client/restore_from_db_backup.html) and the [customer-managed backup and restore documentation](https://docs.aws.amazon.com/timestream/latest/developerguide/influxdb3-customer-managed-backup-restore.html). When those sources prohibit `REPLACE_EXISTING` for a cluster encrypted with a customer-managed KMS key, use `NEW_RESOURCE`.
-- Verify the documentation for service-managed snapshot accessibility and recovery before describing an AWS Support path. Check the API model before asserting that a customer-managed snapshot operation is absent; regardless of API evolution, do not relabel a `DbBackup` resource as a snapshot.
-- For an independent, portable copy, use the InfluxDB data-plane API and store the export in an S3 bucket protected with SSE-KMS. Never put a token literal in the command or write an unencrypted export to local disk.
+**During maintenance:**
 
-Load `INFLUX_TOKEN` or `V3_TOKEN` from Secrets Manager using the patterns in [getting started](getting-started.md), keep shell tracing disabled, and then export:
+- Status changes to `MAINTENANCE` and the resource may be temporarily unavailable; afterward it returns to `AVAILABLE`.
+- Multi-AZ V2 instances patch the standby first and then fail over.
+- Multi-node clusters reached through the cluster endpoint shift traffic to available nodes.
+- Single-AZ instances and single-node clusters have no standby or peer node, so they may be briefly unavailable.
 
-```bash
-# V2: Stage only on an encrypted volume, then upload an encrypted archive.
-set -o pipefail
-umask 077
-BACKUP_DIR="<directory-on-encrypted-volume>"
-install -d -m 700 "$BACKUP_DIR"
+Applying a DB parameter group with `update-db-cluster` also runs a maintenance action; follow the confirmation rules in the [processing-engine guide](processing-engine-guide.md).
 
-influx backup "$BACKUP_DIR" --host https://<endpoint>:8086 &&
-  tar -C "$BACKUP_DIR" -czf - . |
-    aws s3 cp - s3://<backup-bucket>/<backup-key>.tar.gz \
-      --sse aws:kms --sse-kms-key-id <kms-key-arn>
-BACKUP_STATUS=$?
+## Backup and Restore
 
-unset INFLUX_TOKEN
-if test "$BACKUP_STATUS" -eq 0; then
-  rm -rf -- "$BACKUP_DIR"
-else
-  printf 'Backup or upload failed; staging preserved at %s\n' "$BACKUP_DIR" >&2
-  exit "$BACKUP_STATUS"
-fi
-
-# V3: Stage only on an encrypted volume, then upload the verified export.
-set -o pipefail
-umask 077
-EXPORT_FILE="<file-on-encrypted-volume>"
-
-printf 'Authorization: Bearer %s\n' "$V3_TOKEN" |
-  curl --fail-with-body -X POST "https://<endpoint>:8181/api/v3/query_sql" \
-    -H @- \
-    -H "Content-Type: application/json" \
-    -d '{"db":"<database>","q":"SELECT * FROM <table>","format":"csv"}' \
-    -o "$EXPORT_FILE" &&
-  test -s "$EXPORT_FILE" &&
-  aws s3 cp "$EXPORT_FILE" s3://<backup-bucket>/<backup-key>.csv \
-    --sse aws:kms --sse-kms-key-id <kms-key-arn>
-EXPORT_STATUS=$?
-
-unset V3_TOKEN
-if test "$EXPORT_STATUS" -eq 0; then
-  rm -f -- "$EXPORT_FILE"
-else
-  printf 'Export or upload failed; staging preserved at %s\n' "$EXPORT_FILE" >&2
-  exit "$EXPORT_STATUS"
-fi
-```
-
-Delete staging data only after a successful S3 upload, following the organization's secure-deletion policy; preserve it on failure so the upload can be retried. Keep shell tracing disabled, unset token variables immediately after use, and restrict the backup bucket and KMS key policies to authorized backup and restore roles.
+Load [backup and restore](backup-restore.md) for on-demand, scheduled, and continuous `DbBackup` operations, point-in-time and in-place restore, backup retention, and portable data-plane exports.
 
 ## AWS CloudTrail Integration
 
@@ -178,8 +154,8 @@ Do not infer data-plane coverage from management-event coverage. Verify native a
 ## Operational Checklist
 
 - [ ] CloudWatch alarms configured for each verified resource-health and capacity signal
-- [ ] Maintenance window set to low-traffic period
-- [ ] Backup and restore strategy defined after verifying `DbBackup`, restore, and data-plane export capabilities
+- [ ] Maintenance window (2–24 hours, IANA time zone) set to a low-traffic period and verified with `get-db-instance` or `get-db-cluster`
+- [ ] Automated `DbBackup` configurations enabled, with `CONTINUOUS` when point-in-time restore is required and the variant's backup and restore guide and API model confirm support, and a restore tested to a `NEW_RESOURCE`
 - [ ] SNS topic and its customer-managed KMS key permit only the intended CloudWatch alarms and authorized subscribers
 - [ ] CloudTrail event coverage verified and a trail configured for the documented management events
 - [ ] Instance right-sized for workload (check CPU/memory utilization trends)

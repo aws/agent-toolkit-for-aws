@@ -101,7 +101,8 @@ the origin request policy rather than forwarding everything.
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | Revision is `Active` but private resources are unreachable | The serving revision has no `egressNetworkConnectorArn`; `aws lambda-web deploy` carries an existing one forward but has no option to set one | Read the field with `get-web-function-revision`; create a revision that carries it with `create-web-function-revision` |
-| Public API calls time out after moving to a connector | No NAT route in the connector's subnets | Add a `0.0.0.0/0` route to a NAT gateway |
+| Public API calls time out after moving to a connector | No NAT route in the connector's subnets, or no internet gateway route when using service-managed Elastic IPs | Add a `0.0.0.0/0` route to a NAT gateway, or, with service-managed Elastic IPs, add a `0.0.0.0/0` route to the internet gateway (see [networking.md](references/networking.md)) |
+| Connector `FAILED` with `InternetGatewayNotAttached` | Service-managed Elastic IPs requested, but the VPC has no internet gateway | Attach an internet gateway and route the subnets to it, or create the connector without Elastic IPs |
 | HTTP 502 `Platform.InvalidNetworkConfiguration` | Serving revision references a deleted connector | Shift traffic to a working revision |
 | `ValidationException` ... "A version qualifier is required" | Unqualified connector ARN | Use `LatestVersionArn` from `aws lambda-core get-network-connector` |
 
