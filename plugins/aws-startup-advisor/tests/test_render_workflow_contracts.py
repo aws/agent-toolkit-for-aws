@@ -514,6 +514,23 @@ def test_generation_guidance_names_every_rubric_key() -> None:
     assert "_id: artifacts-infra-workflow" in generate and "phases/generate/generate-infra-workflow.md" in generate
 
 
+def test_workflow_fragment_loads_only_when_the_design_has_a_workflow() -> None:
+    """The fragment emits workflow.tf and ledger rows only for Workflow rows, so an estate with no Render
+    Workflow has nothing for it to do; loading it on every Generate run spent ~1,600 words of context for
+    nothing. The data and compute fragments are gated the same way."""
+    import yaml
+    text = (SKILL_ROOT / "references/phases/generate/generate.md").read_text(encoding="utf-8")
+    front = yaml.safe_load(text.split("---", 2)[1])
+    entry = next(item for item in front["_fragments"] if item["_id"] == "artifacts-infra-workflow")
+    assert "_always" not in entry["_trigger"]
+    when = entry["_trigger"]["_when"]
+    assert "render.workflow" in when and "render.workflow_task" in when
+    # Every contribution the fragment declares is itself conditional on a Workflow, so gating drops nothing.
+    fragment_front = yaml.safe_load(FRAGMENT.read_text(encoding="utf-8").split("---", 2)[1])
+    for contribution in fragment_front["_contributes"]:
+        assert "Workflow" in contribution["_when"], contribution
+
+
 def test_ecs_workflow_input_and_no_return_data_reach_the_owner_guide() -> None:
     # The fragment says an ECS task gets its input only as STEP_INPUT and returns no data. Without the same words in
     # the guide, an owner who moves a Render task image unchanged starts it without arguments and nothing fails.
