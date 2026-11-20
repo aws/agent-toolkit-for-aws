@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
@@ -22,6 +24,8 @@ WARNINGS_SCHEMA = RENDER / "references" / "shared" / "schema-generation-warnings
 EB_VARIANT = RENDER / "fixtures" / "expected" / "generated-variants" / "compute-elastic-beanstalk" / "terraform" / "compute.tf"
 GCP_COMPUTE = GCP / "references" / "design-refs" / "compute.md"
 GCP_EB = GCP / "references" / "design-refs" / "elastic-beanstalk.md"
+RENDER_COMPUTE = RENDER / "references" / "design-refs" / "compute.md"
+BLUEPRINT_PARSER = RENDER / "scripts" / "parse-render-blueprint.py"
 
 # AL2023 branches Elastic Beanstalk has retired (platform release notes, read 2026-11-20).
 RETIRED_BRANCHES = ("Node.js 18", "Node.js 20", "Python 3.8", "Python 3.9", "Ruby 3.1", "Ruby 3.2")
@@ -75,8 +79,11 @@ def test_render_design_family_labels_match_the_supported_platforms_page() -> Non
     assert "The source-based Render runtimes with an Elastic Beanstalk platform are `node`, `python`, `ruby` and `go`" in compute
 def test_render_generate_reads_a_design_saved_before_the_platform_fields_existed() -> None:
     text = _flat(COMPUTE_FRAGMENT)
-    assert "A design saved without `platform_family` is read with the family `design-infra.md` derives from the service's inventory `config.runtime`" in text
-    assert "one saved without `runtime_version` is read as `runtime_version: null`" in text
+    assert "A design saved without `platform_family` is read with the family `design-infra.md` derives from the service's effective runtime" in text
+    # The old-design fallback follows the Build Source edge too, and never guesses when nothing yields a family.
+    assert "otherwise the Git runtime or `image` form of the Build Source it links to through `service_uses_build_source`, otherwise the `compute.runtime_family` answer" in text
+    assert "when none of those yields a family, return to Design rather than guess" in text
+    assert "One saved without `runtime_version` is read as `runtime_version: null`" in text
 
 
 def test_the_warning_code_is_in_the_schema_and_the_report_emits_it() -> None:
@@ -114,7 +121,7 @@ def test_render_persists_the_language_version_from_clarify_through_design() -> N
     assert "record `value: null` as `answered` with the consequence that Generate names the lowest supported branch" in clarify
     assert "Never invent a version" in clarify
     design = _flat(RENDER / "references" / "phases" / "design" / "design-infra.md")
-    assert "write `aws_config.platform_family` from the service's inventory `config.runtime`" in design
+    assert "write `aws_config.platform_family` from the service's effective runtime (`design-refs/compute.md`" in design
     assert "Write `aws_config.runtime_version` from the service's `compute.runtime_version` answer" in design
     assert "Generate builds the platform regex from these two fields and nothing else" in design
 
@@ -143,3 +150,127 @@ def test_gcp_mapping_example_does_not_hardcode_a_retired_python_version() -> Non
     assert "**Retired language versions.**" in eb
     assert "name the lowest supported branch of the same family" in eb and "never the newest" in eb
     assert "add a `warnings[]` entry to `aws-design.json`" in eb
+
+
+def test_render_effective_runtime_is_defined_once_and_follows_the_build_source_edge() -> None:
+    """A schema-valid service that uses `buildSource` cannot carry `runtime`; the parser stores the
+    runtime on the linked Build Source. Clarify, Design and the old-design Generate fallback must all
+    read the same edge-aware lookup instead of the service's `config.runtime` alone."""
+    compute = _flat(RENDER_COMPUTE)
+    assert "**Effective runtime.**" in compute
+    assert "Rule 4, Clarify's `compute.runtime_version` row and Design's Elastic Beanstalk platform step read a service's runtime through this one lookup and nothing else" in compute
+    assert "`config.runtime` from a Blueprint, `config.serviceDetails.runtime` from a live capture" in compute
+    assert "follow its unique `service_uses_build_source` edge to the `render.build_source` resource and read `config.git.runtime`" in compute
+    assert "treat a Build Source with `config.image` as `docker`" in compute
+    # A live-captured Build Source has no runtime field; the family is asked, never inferred.
+    assert "A live-captured Build Source records repo and branch but no runtime" in compute
+    assert "return `compute.runtime_family` to Clarify (one of `node`, `python`, `ruby`, `go`, `docker`" in compute
+    assert "never inferred from the repository name, build command or start command" in compute
+    clarify = _flat(RENDER / "references" / "phases" / "clarify" / "clarify-compute.md")
+    assert "A service's runtime is its effective runtime from `design-refs/compute.md`" in clarify
+    assert "otherwise the runtime of the Build Source it links to through `service_uses_build_source` (`config.git.runtime`, or `docker` for an `image` Build Source)" in clarify
+    assert "ask `compute.runtime_family` (`resource_id` the service; one of `node`, `python`, `ruby`, `go`, `docker`)" in clarify
+    assert "whose effective runtime is `node`, `python` or `ruby` that can select traditional Elastic Beanstalk, ask `compute.runtime_version`" in clarify
+    assert "a service whose Build Source is an `image` is one of them" in clarify
+    assert "with inventory `config.runtime` `node`" not in clarify
+    design = _flat(RENDER / "references" / "phases" / "design" / "design-infra.md")
+    assert "otherwise its Build Source's `config.git.runtime` or `docker` for an `image` Build Source, otherwise the `compute.runtime_family` answer" in design
+    assert "from the service's inventory `config.runtime`" not in design
+
+
+def _effective_runtime(inventory: dict, service: dict) -> str | None:
+    """The lookup exactly as `design-refs/compute.md` states it, applied to real parser output."""
+    config = service["config"]
+    if config.get("runtime") is not None:
+        return config["runtime"]
+    details = config.get("serviceDetails")
+    if isinstance(details, dict) and details.get("runtime") is not None:
+        return details["runtime"]
+    edges = [edge for edge in inventory["edges"] if edge["type"] == "service_uses_build_source" and edge["from_id"] == service["id"]]
+    assert len(edges) == 1, "a buildSource service has exactly one Build Source edge"
+    build_source = next(resource for resource in inventory["resources"] if resource["id"] == edges[0]["to_id"])
+    assert build_source["kind"] == "render.build_source"
+    if isinstance(build_source["config"].get("git"), dict):
+        return build_source["config"]["git"].get("runtime")
+    if "image" in build_source["config"]:
+        return "docker"
+    return None
+
+
+def test_render_blueprint_parser_puts_the_runtime_of_a_build_source_service_on_the_build_source(tmp_path: Path) -> None:
+    """Run the real parser on a Blueprint with a Node Git Build Source and an image Build Source: the
+    services carry no `runtime`, and the documented lookup recovers `node` and `docker` from the edge."""
+    workspace = tmp_path / "workspace"
+    migration = tmp_path / "migration"
+    workspace.mkdir()
+    migration.mkdir()
+    blueprint = workspace / "render.yaml"
+    blueprint.write_text(
+        """version: "1"
+buildSources:
+  - name: api-build
+    git: {repo: https://github.com/example/api, branch: main, runtime: node}
+  - name: img-build
+    image: {url: docker.io/library/alpine:3.21}
+services:
+  - type: web
+    name: api
+    buildSource: api-build
+    startCommand: node server.js
+  - type: worker
+    name: img-worker
+    buildSource: img-build
+  - type: web
+    name: direct
+    runtime: python
+    startCommand: gunicorn app:app
+""",
+        encoding="utf-8",
+    )
+    output = migration / "inventory.json"
+    result = subprocess.run(
+        [sys.executable, str(BLUEPRINT_PARSER), "--source", str(blueprint), "--workspace-root", str(workspace), "--migration-dir", str(migration), "--output", str(output)],
+        text=True, capture_output=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    inventory = json.loads(output.read_text(encoding="utf-8"))
+    services = {resource["name"]: resource for resource in inventory["resources"] if resource["kind"] in {"render.web_service", "render.background_worker"}}
+    assert set(services) == {"api", "img-worker", "direct"}
+    for name in ("api", "img-worker"):
+        assert "runtime" not in services[name]["config"], f"{name} must not carry runtime; the Blueprint schema forbids it with buildSource"
+        assert services[name]["config"]["buildSource"]
+    assert _effective_runtime(inventory, services["api"]) == "node"
+    assert _effective_runtime(inventory, services["img-worker"]) == "docker"
+    assert _effective_runtime(inventory, services["direct"]) == "python"
+    # The parser rejects a service that carries both, so the lookup's "service runtime first" branch and
+    # its "follow the edge" branch are disjoint on schema-valid input.
+    blueprint.write_text(
+        """version: "1"
+buildSources:
+  - name: api-build
+    git: {repo: https://github.com/example/api, runtime: node}
+services:
+  - type: web
+    name: both
+    buildSource: api-build
+    runtime: node
+""",
+        encoding="utf-8",
+    )
+    conflicting = subprocess.run(
+        [sys.executable, str(BLUEPRINT_PARSER), "--source", str(blueprint), "--workspace-root", str(workspace), "--migration-dir", str(migration), "--output", str(migration / "conflict.json")],
+        text=True, capture_output=True, check=False,
+    )
+    assert conflicting.returncode == 1 and "code=schema_invalid" in conflicting.stderr
+
+
+def test_render_live_build_source_projection_has_no_runtime_so_the_family_is_asked() -> None:
+    """The REST Build Source projection keeps repo/branch/commit/artifact but no runtime, which is why
+    the lookup ends in a Clarify question instead of a guess."""
+    projections = json.loads((RENDER / "references" / "shared" / "schema-render-rest-projections.json").read_text(encoding="utf-8"))
+    build_source = projections["$defs"]["buildSource"]
+    assert build_source["additionalProperties"] is False
+    assert "runtime" not in build_source["properties"]
+    assert {"repo", "branch"} <= set(build_source["required"])
+    schema = json.loads((RENDER / "references" / "render" / "render-yaml.schema.json").read_text(encoding="utf-8"))
+    assert "runtime" in schema["definitions"]["buildSourceGit"]["required"], "a Blueprint Git Build Source always declares its runtime"
