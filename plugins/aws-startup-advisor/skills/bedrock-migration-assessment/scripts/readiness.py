@@ -86,8 +86,17 @@ def _host_answers(run_dir: Path, prefs: dict) -> None:
             raise NotReady("host_answers_mismatch", f"preferences.json design_constraints.{field} differs from the host's answer")
 
 
+def refuse_combined(run_dir: Path, migration_id: str, initiated_by: str | None) -> None:
+    host = run_dir / "host-answers.json"
+    if initiated_by is not None or host.exists() or host.is_symlink():
+        raise NotReady("combined_run", f"run {migration_id!r} is a host skill's run (initiated_by {initiated_by!r} or host-answers.json); "
+                       "Generate runs only in a run this skill started on its own, so start a new run for it")
+
+
 def check(run_dir: Path, through: str) -> dict:
     status = _status(run_dir)
+    if through == "generate":
+        refuse_combined(run_dir, status["migration_id"], status.get("initiated_by"))
     read: dict[str, bytes] = {}
     needed = PHASES[: [name for name, _ in PHASES].index(through) + 1]
     for name, _ in needed:

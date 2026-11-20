@@ -158,3 +158,75 @@ def test_discover_readiness_reports_the_profile_and_who_started_the_run(tmp_path
     code, out = _cli(run, "discover", capsys)
     assert code == 0 and set(out["artifacts"]) == {"ai-workload-profile.json"} and out["initiated_by"] == "GCP_TO_AWS"
     assert _cli(run, "clarify", capsys)[1]["reason"] == "phase_incomplete"
+
+
+def _generated_run(tmp_path: Path, initiated_by: bool, stop_after: str | None) -> Path:
+    run = tmp_path / "bma-1116-1900"
+    shutil.copytree(FIXTURES / "bma-generate-mixed", run)
+    status = {"migration_id": run.name, "run_id": RUN_ID, "last_updated": "2026-11-16T19:00:00Z", "current_phase": "complete",
+              "run_mode": "decide_and_execute", "phases": dict.fromkeys(("discover", "clarify", "design", "estimate", "generate"), "completed")}
+    if initiated_by:
+        status["initiated_by"] = "GCP_TO_AWS"
+    (run / ".phase-status.json").write_text(json.dumps(status))
+    if stop_after:
+        prefs = json.loads((run / "preferences.json").read_text())
+        (run / "host-answers.json").write_text(json.dumps({**_host(prefs), "stop_after": stop_after}))
+    return run
+
+
+def test_a_standalone_run_is_ready_through_generate(tmp_path: Path, capsys) -> None:
+    assert _cli(_generated_run(tmp_path, False, None), "generate", capsys)[0] == 0
+
+
+@pytest.mark.parametrize(("initiated_by", "stop_after"), [(True, "estimate"), (True, None), (False, "estimate"), (True, "clarify")])
+def test_a_combined_run_is_never_ready_through_generate(initiated_by, stop_after, tmp_path: Path, capsys) -> None:
+    run = _generated_run(tmp_path, initiated_by, stop_after)
+    code, out = _cli(run, "generate", capsys)
+    assert code == 1 and out["reason"] == "combined_run", out
+    if stop_after == "estimate":
+        assert _cli(run, "estimate", capsys)[0] == 0
+    gen = _module("bma_generate_combined", "generate-ai.py")
+    with pytest.raises(gen.GenerateInputError) as raised:
+        gen.build_plan(run)
+    assert raised.value.code == "combined_run"
+
+
+@pytest.mark.parametrize(("stop_after", "phases"), [("clarify", ("design", "estimate", "generate")), ("design", ("estimate", "generate"))])
+def test_generate_plan_names_a_combined_run_before_any_missing_phase(stop_after, phases, tmp_path: Path) -> None:
+    run = _generated_run(tmp_path, True, stop_after)
+    status = json.loads((run / ".phase-status.json").read_text())
+    status["phases"].update(dict.fromkeys(phases, "pending"))
+    (run / ".phase-status.json").write_text(json.dumps(status))
+    (run / "estimation-ai.json").unlink()
+    gen = _module("bma_generate_early", "generate-ai.py")
+    with pytest.raises(gen.GenerateInputError) as raised:
+        gen.build_plan(run)
+    assert raised.value.code == "combined_run"
+
+
+def test_a_dangling_host_answers_link_still_marks_a_combined_run(tmp_path: Path, capsys) -> None:
+    run = _generated_run(tmp_path, False, None)
+    (run / "host-answers.json").symlink_to(tmp_path / "gone.json")
+    assert _cli(run, "generate", capsys)[1]["reason"] == "combined_run"
+    assert _module("bma_generate_standalone", "generate-ai.py").build_plan(_generated_run(tmp_path / "s", False, None))["routes"]
+
+
+def test_step_0_returns_a_combined_run_to_the_host_and_never_offers_generate() -> None:
+    step0 = SKILL[SKILL.index("## Step 0"):SKILL.index("## Step 1")]
+    rule = step0[step0.index("Combined run:"):step0.index("1. ")]
+    for phrase in ("`initiated_by`", "`host-answers.json`", "`stop_after`", "control returns to the host", "Rules 4 to 7 never apply"):
+        assert phrase in rule, phrase
+    lines = [line for line in rule.splitlines() if line.startswith("- (")]
+    mismatch = next(i for i, line in enumerate(lines) if "`host_answers_mismatch`" in line)
+    stop = next(i for i, line in enumerate(lines) if "named in `stop_after` is" in line)
+    assert mismatch < stop and "--through clarify" in lines[mismatch] and "Change answers" in lines[mismatch]
+    invalid = next(line for line in lines if "unreadable or not the shape" in line)
+    for phrase in ("`host_skill`", "`infrastructure_moves`", "`stop_after`", "`design_constraints`", "`target_region`", "`compliance`", "`value`"):
+        assert phrase in invalid, phrase
+    for phrase in ("`host_answers_invalid`", "`preferences_invalid`", "`design_invalid`", "`estimate_invalid`", "Design again", "Estimate again", "any other reason"):
+        assert phrase in lines[stop], phrase
+    step4 = SKILL[SKILL.index("## Step 4"):SKILL.index("## Step 5")]
+    assert "In a combined run, do not ask" in step4
+    assert "Never in a combined run" in SKILL[SKILL.index("## Step 5"):]
+    readiness = SKILL[SKILL.index("## Readiness for other skills"):SKILL.index("## Definitions")]
+    assert "`combined_run`" in readiness

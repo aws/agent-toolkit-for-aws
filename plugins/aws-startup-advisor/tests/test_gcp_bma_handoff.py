@@ -80,7 +80,8 @@ def _converted(gcp: Path, bma: Path) -> None:
     shutil.copy(bma / "ai-workload-profile.json", gcp / "ai-workload-profile.neutral.json")
     (gcp / "ai-handoff.json").write_text(json.dumps({
         "profile_digest": "sha256:" + _sha(gcp / "ai-workload-profile.json"), "status": "converted",
-        "assessment_profile_digest": "sha256:" + _sha(bma / "ai-workload-profile.json"), "artifacts": {}}))
+        "assessment_profile_digest": "sha256:" + _sha(bma / "ai-workload-profile.json"), "artifacts": {},
+        "infrastructure_moves": (gcp / "gcp-resource-inventory.json").exists()}))
 
 
 def _open(tree: Path, gcp: Path, bma: Path, stop_after: str, convert: bool = True) -> tuple[int, dict]:
@@ -121,6 +122,11 @@ def _validator_prints_invalid_bytes(base: Path) -> None:
     (base / "scripts" / "validate-ai-profile.py").write_text('import sys; sys.stdout.buffer.write(b"\\xff\\xfe{}")\n')
 
 
+def _readiness_without_discover(base: Path) -> None:
+    path = base / "scripts" / "readiness.py"
+    path.write_text(path.read_text().replace("choices=THROUGH,", "choices=THROUGH[1:],", 1))
+
+
 def _skill_md_not_utf8(base: Path) -> None:
     (base / "SKILL.md").write_bytes(b"---\nname: bedrock-migration-assessment\n---\n\xff\n")
 
@@ -134,8 +140,10 @@ def _skill_md_not_utf8(base: Path) -> None:
     _ready_on_anything,
     _validator_prints_invalid_bytes,
     _skill_md_not_utf8,
+    _readiness_without_discover,
 ], ids=["no-readiness", "no-design-phase", "renamed-skill", "no-skill-md", "validator-accepts-legacy", "readiness-always-ready",
-        "validator-prints-invalid-bytes", "skill-md-not-utf8"])
+        "validator-prints-invalid-bytes", "skill-md-not-utf8",
+        "readiness-without-discover"])
 def test_probe_reports_a_changed_sibling_as_tampered(tamper, tree: Path) -> None:
     tamper(tree / "bedrock-migration-assessment")
     code, out = _cli(tree, "probe")
@@ -314,6 +322,7 @@ def test_convert_merges_rows_that_name_the_same_model(tree: Path, tmp_path: Path
         _model("gemini-2.5-flash", "vertex_ai_generative", "terraform"),
         _model("gemini-2.5-flash-lite", "vertex_ai_generative", "terraform"),
         _model("gemini-3", "vertex_ai_generative", "terraform"),
+        _model("projects/acme-prod/locations/us-central1/publishers/google/models/gemini-3", "vertex_ai_generative", "monitoring"),
     ])))
     out_path = legacy.parent / "ai-workload-profile.neutral.json"
     assert _cli(tree, "convert", str(legacy.parent))[0] == 0
@@ -322,6 +331,7 @@ def test_convert_merges_rows_that_name_the_same_model(tree: Path, tmp_path: Path
     flash = source["model_observations"][0]
     assert flash["raw_model"] == "publishers/google/models/gemini-2.5-flash-preview-05-20"
     assert [e["provenance"] for e in flash["evidence"]] == ["live_api", "iac"]
+    assert [e["provenance"] for e in source["model_observations"][2]["evidence"]] == ["iac", "live_api"]
     _validate(tree, out_path)
 
 
@@ -388,7 +398,7 @@ def test_host_answers_pass_only_region_and_compliance_and_open_the_handoff(tree:
     record = json.loads((gcp / "ai-handoff.json").read_text())
     assert record == {"profile_digest": "sha256:" + _sha(gcp / "ai-workload-profile.json"), "assessment_dir": bma.name,
                       "assessment_profile_digest": "sha256:" + _sha(bma / "ai-workload-profile.json"),
-                      "status": "in_progress", "artifacts": {}}
+                      "status": "in_progress", "artifacts": {}, "infrastructure_moves": True}
 
 
 def test_host_answers_for_an_ai_only_run_answer_nothing(tree: Path, tmp_path: Path) -> None:
@@ -560,7 +570,7 @@ def test_convert_opens_the_handoff_with_both_profile_digests(tree: Path, tmp_pat
     legacy.write_text(json.dumps(_legacy([_model("gemini-2.5-flash", "vertex_ai_generative", "terraform")])))
     assert _cli(tree, "convert", str(legacy.parent))[0] == 0
     record = json.loads((legacy.parent / "ai-handoff.json").read_text())
-    assert record == {"profile_digest": "sha256:" + _sha(legacy), "status": "converted", "artifacts": {},
+    assert record == {"profile_digest": "sha256:" + _sha(legacy), "status": "converted", "artifacts": {}, "infrastructure_moves": False,
                       "assessment_profile_digest": "sha256:" + _sha(legacy.parent / "ai-workload-profile.neutral.json")}
 
 
@@ -665,12 +675,14 @@ def test_delegating_after_a_deferral_clears_the_deferral(tree: Path, tmp_path: P
     assert not (gcp / "ai-handoff.json").exists()
 
 
-@pytest.mark.parametrize("record", ["[]", '"converted"'])
-def test_rerouting_replaces_a_handoff_record_that_is_not_an_object(record, tree: Path, tmp_path: Path) -> None:
+@pytest.mark.parametrize("record", [b"[]", b'"converted"', b"{not json", b"\xff\xfe{}"])
+@pytest.mark.parametrize(("args", "want"), [((), "delegate"), (("--infra-only",), "defer")])
+def test_rerouting_replaces_a_handoff_record_that_is_not_an_object(record, args, want, tree: Path, tmp_path: Path) -> None:
     gcp = _gcp_run(tmp_path, infra=True)
-    (gcp / "ai-handoff.json").write_text(record)
-    assert _cli(tree, "route", str(gcp))[1]["route"] == "delegate"
-    assert not (gcp / "ai-handoff.json").exists()
+    (gcp / "ai-handoff.json").write_bytes(record)
+    assert _cli(tree, "route", str(gcp), *args)[1]["route"] == want
+    held = gcp / "ai-handoff.json"
+    assert not held.exists() if want == "delegate" else json.loads(held.read_text())["status"] == "deferred"
 
 
 def test_an_infrastructure_run_needs_gcp_preferences_before_the_handoff(tree: Path, tmp_path: Path) -> None:
@@ -836,3 +848,44 @@ def test_a_handoff_record_with_malformed_fields_is_a_named_error(field, tree: Pa
     (gcp / "ai-workload-profile.json").write_text(json.dumps(_legacy([_model("gemini-2.5-pro", "vertex_ai_generative", "code")])))
     assert _cli(tree, "route", str(gcp))[1]["route"] == "delegate"
     assert not (gcp / "ai-handoff.json").exists()
+
+
+@pytest.mark.parametrize("change", [
+    lambda p: p.update(design_constraints=["target_region"]),
+    lambda p: p.update(metadata="full"),
+    lambda p: p.update(startup_constraints=["credits"]),
+    lambda p: p["metadata"].update(ai_preferences_source={"startup_keys": "credits"}),
+    lambda p: p["metadata"].update(ai_preferences_source=[]),
+], ids=["design-list", "metadata-string", "startup-list", "startup-keys-string", "source-list"])
+@pytest.mark.parametrize("command", ["host-answers", "route"])
+def test_gcp_preferences_with_a_wrong_field_type_get_a_named_error(change, command, tree: Path, tmp_path: Path) -> None:
+    gcp = _gcp_run(tmp_path, infra=True)
+    bma = _bma_run(tmp_path)
+    prefs = _gcp_prefs(gcp)
+    change(prefs)
+    (gcp / "preferences.json").write_text(json.dumps(prefs))
+    if command == "host-answers":
+        code, out = _open(tree, gcp, bma, "estimate")
+    else:
+        (gcp / "ai-workload-profile.json").unlink()
+        code, out = _cli(tree, "route", str(gcp))
+    assert code == 1 and out["error"] == "preferences_unreadable", out
+
+
+@pytest.mark.parametrize("infra_before", [True, False])
+def test_a_change_in_whether_infrastructure_moves_reopens_the_handoff(infra_before, tree: Path, tmp_path: Path) -> None:
+    gcp = _gcp_run(tmp_path, infra=infra_before)
+    _gcp_prefs(gcp)
+    bma = _bma_run(tmp_path)
+    assert _open(tree, gcp, bma, "estimate")[0] == 0
+    assert _cli(tree, "accept", str(gcp), str(bma), "--through", "estimate")[0] == 0
+    inventory = gcp / "gcp-resource-inventory.json"
+    if infra_before:
+        inventory.unlink()
+    else:
+        inventory.write_text(json.dumps({"resources": [{"type": "google_cloud_run_v2_service"}]}))
+    for args in (("host-answers", str(gcp), str(bma), "--stop-after", "estimate"), ("accept", str(gcp), str(bma), "--through", "estimate")):
+        code, out = _cli(tree, *args)
+        assert code == 1 and out["error"] == "infrastructure_changed", out
+    assert _cli(tree, "route", str(gcp))[1]["route"] == "delegate"
+    assert not (gcp / "ai-handoff.json").exists() and not (gcp / "aws-design-ai.json").exists()

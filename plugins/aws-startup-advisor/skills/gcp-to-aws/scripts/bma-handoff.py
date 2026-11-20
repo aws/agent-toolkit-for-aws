@@ -45,6 +45,8 @@ VERTEX_SERVICES = ("vertex_ai_generative", "vertex_ai_embeddings")
 # Legacy evidence sources that prove Vertex AI without reading code, and their #415 provenance and confidence.
 PROOF = {"monitoring": ("live_api", "high", "gcp-to-aws Cloud Monitoring publisher tokens"),
          "terraform": ("iac", "medium", "gcp-to-aws Terraform Vertex AI resource")}
+PREFS_OBJECTS = ("design_constraints", "metadata", "startup_constraints", "ai_constraints")
+UNREADABLE = object()  # an ai-handoff.json that cannot be parsed; withdrawn like a non-object record
 GEMINI_VERSION_SUFFIX = re.compile(r"(-latest|-preview(-[0-9-]+)?|-exp(-[0-9-]+)?|-[0-9]+)$")
 
 
@@ -114,7 +116,7 @@ def _check_sibling() -> None:
         code, out = _run("validate-ai-profile.py", str(legacy))
         if code == 0 or not isinstance(out, dict) or out.get("error") != "legacy_profile_rejected":
             raise HandoffError("bma_tampered", "validate-ai-profile.py did not reject a legacy GCP profile")
-        code, out = _run("readiness.py", str(Path(tmp) / "no-run"), "--through", "estimate")
+        code, out = _run("readiness.py", str(Path(tmp) / "no-run"), "--through", "discover")
         if code == 0 or not isinstance(out, dict) or out.get("reason") != "run_not_found":
             raise HandoffError("bma_tampered", "readiness.py did not report run_not_found for a missing run")
 
@@ -153,14 +155,33 @@ def _remove_copies(gcp_dir: Path, copied: dict) -> None:
             path.unlink()
 
 
+def _held_record(path: Path) -> Any:
+    try:
+        return _read_json(path, "handoff_unreadable") if path.exists() else None
+    except HandoffError:
+        return UNREADABLE
+
+
+def _gcp_prefs(path: Path) -> dict:
+    prefs = _read_json(path, "preferences_unreadable")
+    ok = isinstance(prefs, dict) and all(isinstance(prefs.get(k) or {}, dict) for k in PREFS_OBJECTS)
+    source = (prefs.get("metadata") or {}).get("ai_preferences_source") if ok else None
+    if source is not None:
+        keys = source.get("startup_keys", []) if isinstance(source, dict) else None
+        ok = isinstance(keys, list) and all(isinstance(k, str) for k in keys) and isinstance(source.get("startup_before", {}), dict)
+    if not ok:
+        raise HandoffError("preferences_unreadable", f"{path.name} has a field of the wrong type; run gcp-to-aws Clarify again")
+    return prefs
+
+
 def _withdraw(gcp_dir: Path) -> None:
     record_path = gcp_dir / "ai-handoff.json"
-    record = _read_json(record_path, "handoff_unreadable") if record_path.exists() else {}
+    record = _held_record(record_path)
     copied = record.get("artifacts") if isinstance(record, dict) else None
     _remove_copies(gcp_dir, copied if isinstance(copied, dict) else {})
     (gcp_dir / NEUTRAL_PROFILE).unlink(missing_ok=True)
     prefs_path = gcp_dir / "preferences.json"
-    prefs = _read_json(prefs_path, "preferences_unreadable") if prefs_path.exists() else None
+    prefs = _gcp_prefs(prefs_path) if prefs_path.exists() else None
     if isinstance(prefs, dict) and "ai_preferences_source" in (prefs.get("metadata") or {}):
         if prefs["metadata"].get("migration_type") == "ai-only":
             prefs_path.unlink()
@@ -190,9 +211,10 @@ def route(gcp_dir: Path, infra_only: bool) -> tuple[int, dict]:
         return 0, {"route": "defer", "reason": "user_chose_infra_only",
                    "message": "The AI workloads are deferred at your request; the infrastructure migration continues."}
     if status == "present":
-        held = _read_json(record, "handoff_unreadable") if record.exists() else None
+        held = _held_record(record)
         if held is not None and (not isinstance(held, dict) or held.get("status") == "deferred"
-                                 or held.get("profile_digest") != _profile_digest(gcp_dir)):
+                                 or held.get("profile_digest") != _profile_digest(gcp_dir)
+                                 or held.get("infrastructure_moves") != infra):
             _withdraw(gcp_dir)
         return 0, {"route": "delegate", "message": "AI Clarify, Design, and Estimate run in bedrock-migration-assessment."}
     reason = "bma_absent" if status == "absent" else "bma_tampered"
@@ -214,7 +236,7 @@ def route(gcp_dir: Path, infra_only: bool) -> tuple[int, dict]:
 
 def _normalize(raw: str) -> str:
     model = raw.lower()
-    model = re.sub(r"^publishers/[a-z0-9_-]+/models/", "", model)
+    model = re.sub(r"^(projects/[^/]+/locations/[^/]+/)?publishers/[a-z0-9_-]+/models/", "", model)
     if model.startswith("gemini-"):
         stripped = GEMINI_VERSION_SUFFIX.sub("", model)
         model = stripped if stripped != "gemini" else model
@@ -277,7 +299,8 @@ def convert(gcp_dir: Path, scan_path: Path | None) -> dict:
     _withdraw(gcp_dir)
     _write_json(out_path, profile)
     _write_json(gcp_dir / "ai-handoff.json", {"profile_digest": _profile_digest(gcp_dir), "status": "converted",
-                                               "assessment_profile_digest": "sha256:" + _sha(out_path.read_bytes()), "artifacts": {}})
+                                               "assessment_profile_digest": "sha256:" + _sha(out_path.read_bytes()), "artifacts": {},
+                                               "infrastructure_moves": _has_infrastructure(gcp_dir)})
     return {"ok": True, "out": str(out_path), "converted": sorted(observations), "not_converted": not_converted}
 
 
@@ -310,8 +333,8 @@ def _host_constraints(gcp_dir: Path) -> dict:
         return {}
     if not prefs_path.exists():
         raise HandoffError("preferences_missing", "this run moves infrastructure but has no preferences.json; run gcp-to-aws Clarify first")
-    prefs = _read_json(prefs_path, "preferences_unreadable")
-    given = (prefs.get("design_constraints") or {}) if isinstance(prefs, dict) else {}
+    prefs = _gcp_prefs(prefs_path)
+    given = prefs.get("design_constraints") or {}
     out = {}
     for field in HOST_FIELDS:
         wrapper = given.get(field)
@@ -329,6 +352,9 @@ def _open_record(gcp_dir: Path, bma_dir: Path) -> dict:
         raise HandoffError("handoff_unreadable", "ai-handoff.json has a malformed artifacts or through field; run convert again")
     if record.get("profile_digest") != _profile_digest(gcp_dir):
         raise HandoffError("profile_changed", "ai-workload-profile.json changed after convert; run convert again and start a new assessment run")
+    if record.get("infrastructure_moves") != _has_infrastructure(gcp_dir):
+        raise HandoffError("infrastructure_changed", "whether infrastructure moves changed after convert; run route and convert again "
+                           "and start a new assessment run")
     if record.get("assessment_dir") not in (None, bma_dir.name):
         raise HandoffError("handoff_mismatch", f"the open handoff names {record.get('assessment_dir')!r}, not {bma_dir.name!r}")
     return record
@@ -409,7 +435,7 @@ def _merge_preferences(gcp_dir: Path, bma_dir: Path, raw: bytes) -> None:
         assessment.setdefault("metadata", {})["ai_preferences_source"] = source
         _write_json(path, assessment)
         return
-    prefs = _read_json(path, "preferences_unreadable")
+    prefs = _gcp_prefs(path)
     earlier = (prefs.get("metadata") or {}).get("ai_preferences_source") or {}
     current = prefs.setdefault("startup_constraints", {})
     owned = set(earlier.get("startup_keys", []))

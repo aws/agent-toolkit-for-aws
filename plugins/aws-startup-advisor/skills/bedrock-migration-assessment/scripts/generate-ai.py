@@ -201,6 +201,8 @@ def _read(run_dir: Path, name: str) -> Any:
 
 def build_plan(run_dir: Path) -> dict:
     try:
+        status = readiness._status(run_dir)
+        readiness.refuse_combined(run_dir, status["migration_id"], status.get("initiated_by"))
         ready = readiness.check(run_dir, "estimate")
     except readiness.NotReady as exc:
         raise GenerateInputError(exc.reason, exc.detail)
