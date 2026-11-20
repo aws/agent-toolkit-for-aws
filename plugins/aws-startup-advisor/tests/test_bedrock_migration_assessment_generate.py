@@ -800,6 +800,11 @@ def test_budget_amount_comes_from_the_environment_without_editing_the_script(tmp
     assert dry.returncode == 0 and "500" in dry.stdout
     bad, _ = _setup(run, tmp_path, env={"BUDGET_USD": '5"}'})
     assert bad.returncode == 2 and "BUDGET_USD" in bad.stderr
+    for zero in ("0", "00", "0.0", "0.00"):
+        refused, calls = _setup(run, tmp_path, "--execute", env={"BUDGET_USD": zero})
+        assert refused.returncode == 2 and "above zero" in refused.stderr and _budget_doc(calls) is None, zero
+    small, calls = _setup(run, tmp_path, "--execute", env={"BUDGET_USD": "0.01"})
+    assert small.returncode == 0 and _budget_doc(calls)["BudgetLimit"]["Amount"] == "0.01"
     assert "in this file" not in GEN.render_setup(GEN.build_plan(run))
     assert GEN.check(run)["ok"]
     assert READY.check(_complete(run), "generate")

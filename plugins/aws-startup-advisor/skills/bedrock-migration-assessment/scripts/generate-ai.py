@@ -607,6 +607,9 @@ SERVICES_RE='^[A-Za-z0-9 ()._,-]*$'
 if ! [[ "$BUDGET_USD" =~ $USD_RE ]]; then
   echo "BUDGET_USD must be a USD amount such as 500 or 499.50" >&2; exit 2
 fi
+if [[ "$BUDGET_USD" =~ ^[0.]+$ ]]; then
+  echo "BUDGET_USD must be above zero; a zero budget alerts at once" >&2; exit 2
+fi
 if ! [[ "$BUDGET_SERVICES" =~ $SERVICES_RE ]]; then
   echo "BUDGET_SERVICES must be comma-separated Cost Explorer service names (letters, digits, spaces, ( ) . _ -)" >&2; exit 2
 fi
