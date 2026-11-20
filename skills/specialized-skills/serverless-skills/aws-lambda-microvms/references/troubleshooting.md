@@ -90,6 +90,8 @@ Hook server **must bind to `0.0.0.0`** on the configured `port` (commonly 9000).
 | Issue | Cause | Fix |
 |---|---|---|
 | Connector stuck in `PENDING` >10 min | ENI provisioning failure (subnet full, missing IAM perms). | Check `StateReason` on `get-network-connector`. Verify the operator role has `ec2:CreateNetworkInterface` and `ec2:CreateTags`. |
+| Create rejected, or connector `FAILED` with `InsufficientRolePermissions`: "The operator role does not have sufficient permissions to manage Elastic IP addresses." | The operator role is missing `ec2:AllocateAddress` or `ec2:AssociateAddress`. | Add both actions with the conditions in [networking.md](networking.md), then create the connector again. |
+| Connector `FAILED` with `InternetGatewayNotAttached` | `ElasticIpConfiguration` is `ServiceManaged` but the subnets' VPC has no internet gateway. | Attach an internet gateway and route the connector subnets to it, or don't use service-managed Elastic IPs. |
 | `InvalidGroup.NotFound` | Subnet and SG in different VPCs / regions. | Both must share VPC and Region with the connector. |
 | `Unable to assume role` | Operator role trust policy doesn't allow `lambda.amazonaws.com`. | Fix trust policy, retry. |
 | `Invalid security token` | Caller's AWS creds are stale. | Refresh credentials. |

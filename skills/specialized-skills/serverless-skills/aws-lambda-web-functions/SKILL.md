@@ -2,7 +2,7 @@
 name: aws-lambda-web-functions
 description: >
   Creates and deploys Node.js HTTP web applications on AWS Lambda Web Functions. Guides users through building web apps and APIs with Express, Fastify, or Hono, packaging, deploying via the aws lambda-web CLI, and iterating. Triggers when user wants to deploy a website or web app to AWS as serverless, deploy a Node.js HTTP server to AWS, build a serverless website or API with Node.js, deploy Express/Hono/Fastify apps, set up multi-region HTTP endpoints, connect a Node.js web app to private VPC resources, or explicitly mentions Lambda Web Functions. Does NOT trigger for non-Node.js runtimes or frameworks such as Flask or Django, event-driven patterns (SQS, Kinesis, S3 events), or container deployments.
-version: 3
+version: 4
 ---
 
 # AWS Lambda Web Functions
@@ -164,7 +164,7 @@ types, domains, traffic routing and the multi-region setup commands.
 
 ### VPC Egress
 
-By default a revision reaches the public internet over IPv4 and nothing private. To reach your VPC, put a version-qualified egress network connector ARN (`aws lambda-core create-network-connector`, compute type `WebFunction`) in the revision's `serviceConfig.egressNetworkConnectorArn`, serve it from a `HomeRegion` endpoint, and read the field back after every revision. See [references/networking.md](references/networking.md), or [references/infrastructure-as-code.md](references/infrastructure-as-code.md) to declare the connector and the revision in one stack.
+By default a revision reaches the public internet over IPv4 and nothing private. To reach your VPC, put a version-qualified egress network connector ARN (`aws lambda-core create-network-connector`, compute type `WebFunction`) in the revision's `serviceConfig.egressNetworkConnectorArn`, serve it from a `HomeRegion` endpoint, and read the field back after every revision. See [references/networking.md](references/networking.md), or [references/infrastructure-as-code.md](references/infrastructure-as-code.md) to declare the connector and the revision in one stack. For public IPv4 egress through the connector without a NAT gateway, set `ElasticIpConfiguration` `Type: ServiceManaged` on the connector (public subnets and an internet gateway required); see networking.md.
 
 ## Verify
 

@@ -1,6 +1,6 @@
 # Schema: preferences.json (AI-only)
 
-Clarify phase output (`references/phases/clarify/clarify-ai-only.md`). Design (`references/phases/design/design-ai.md`) and Estimate (`references/phases/estimate/estimate-ai.md`) read it; Generate will once that phase exists in this skill.
+Clarify phase output (`references/phases/clarify/clarify-ai-only.md`). Design (`references/phases/design/design-ai.md`), Estimate (`references/phases/estimate/estimate-ai.md`), and Generate (`references/phases/generate/generate-ai.md`) read it.
 
 ---
 
@@ -102,7 +102,7 @@ Use the **Impact** row for the selected answer from `clarify-ai-only.md` when th
 | `ai_complexity`          | `ai_constraints`      | Q9            | AI task complexity                                            | `[value]` affects recommended model size and agentic path                                         |
 | `ai_critical_feature`    | `ai_constraints`      | Q10           | Specialized features needed                                   | `[value]` gates the model shortlist and capability validation                                     |
 | `mantle_requirements`    | `ai_constraints`      | Q10.5         | Mantle-only requirements (asynchronous inference, provider-run tools, Projects/Workspaces, single-Region processing) | `[value]` entries with a selector route that workload to `bedrock-mantle`; no entry keeps `bedrock-runtime` with an explicit assumption |
-| `startup_program_status` | `startup_constraints` | Q11           | Have you applied for AWS Activate credits?                    | `[value]` triggers the Activate credits callout in the plan                                       |
+| `startup_program_status` | `startup_constraints` | Q11           | Have you applied for AWS Activate credits?                    | `[value]` picks Generate's one-line Activate credits note                                         |
 
 ---
 

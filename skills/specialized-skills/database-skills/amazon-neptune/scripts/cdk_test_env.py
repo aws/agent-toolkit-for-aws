@@ -6,8 +6,11 @@ Provisions a Neptune cluster inside a VPC for running end-to-end skill evals.
 Run this before executing the eval suite that requires a live Neptune cluster.
 
 Usage:
-    pip install aws-cdk-lib constructs
-    cdk deploy
+    pip install aws-cdk-lib==2.275.0 aws-cdk.aws-neptune-alpha==2.275.0a0 constructs==10.8.1
+    # The Neptune alpha module's version must match aws-cdk-lib's exactly; bump them together.
+    npm install -g aws-cdk@2.1147.0
+    # There is no cdk.json, so pass the app explicitly.
+    cdk deploy --app "python3 cdk_test_env.py"
 """
 
 import aws_cdk as cdk

@@ -1,7 +1,7 @@
-"""Model facts llm-to-bedrock's scripts read from the shared model catalogs.
+"""Model facts the llm-to-bedrock and bedrock-migration-assessment scripts read from the shared model catalogs.
 
 The catalogs are rendered from skills/shared/ai/models/bedrock-model-registry.json and vendored
-into this skill at references/vendored/ai/models/, so the skill runs standalone. Edit the
+into each skill at references/vendored/ai/models/, so the skill runs standalone. Edit the
 registry, run tools/build-model-catalogs.py and tools/sync-vendored.py; never restate these
 facts in code.
 """
@@ -12,7 +12,10 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
-MODELS_DIR = Path(__file__).resolve().parent.parent / "references" / "vendored" / "ai" / "models"
+_HERE = Path(__file__).resolve().parent
+# Same bytes in skills/shared/ai, a skill's references/vendored/ai, and llm-to-bedrock/scripts.
+MODELS_DIR = next((p for p in (_HERE / "models", _HERE.parent / "references" / "vendored" / "ai" / "models") if p.is_dir()),
+                  _HERE / "models")
 CATALOG_FILES = ("anthropic-bedrock.json", "openai-bedrock.json")
 
 # Cross-Region inference profile prefixes used by Bedrock models the catalogs do not cover

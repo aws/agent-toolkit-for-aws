@@ -6,7 +6,7 @@ Provides the core functions for building and querying a GraphRAG pipeline
 with Neptune Analytics. Used by references/graphrag.md.
 
 Usage:
-    pip install boto3
+    pip install boto3==1.43.124
     Set GRAPH_ID environment variable to your Neptune Analytics graph ID.
 """
 
@@ -136,25 +136,22 @@ def vector_search(
     graph_id: str, query_embedding: List[float], top_k: int = 5, vertex_label: str = "Chunk"
 ) -> List[Dict]:
     """Neptune Analytics vector similarity search constrained to one vertex label."""
-    vertex_filter = json.dumps(
-        {"equals": {"property": "~label", "value": vertex_label}}
-    )
     return run_query(
         graph_id,
         """
         CALL neptune.algo.vectors.topK.byEmbedding({
             embedding: $embedding,
             topK: $top_k,
-            vertexFilter: $vertex_filter
+            vertexFilter: {equals: {property: '~label', value: $label}}
         })
         YIELD node, score
         RETURN node.id AS id, node.text AS text, score
-        ORDER BY score DESC
+        ORDER BY score ASC
     """,
         parameters={
             "embedding": query_embedding,
             "top_k": top_k,
-            "vertex_filter": vertex_filter,
+            "label": vertex_label,
         },
     )
 

@@ -96,17 +96,22 @@ messages = get_recent_messages(session_id='sess-123', limit=20)
 
 ```python
 from scripts.agentic_memory import (
-    get_gremlin_client, remember_entity_gremlin,
+    get_gremlin_traversal, remember_entity_gremlin,
     remember_relationship_gremlin, recall_entity_gremlin
 )
 
-client = get_gremlin_client()
-remember_entity_gremlin(client, 'Alice', 'Person')
-remember_relationship_gremlin(client, 'Alice', 'Acme Corp', 'WORKS_AT')
-memory = recall_entity_gremlin(client, 'Alice')
+g, connection = get_gremlin_traversal()
+try:
+    remember_entity_gremlin(g, 'Alice', 'Person')
+    remember_relationship_gremlin(g, 'Alice', 'Acme Corp', 'WORKS_AT')
+    memory = recall_entity_gremlin(g, 'Alice')
+finally:
+    connection.close()
 ```
 
-Uses Gremlin bindings (parameterized) — no string interpolation.
+Uses Gremlin-Python traversal bytecode. Dynamic labels, property names, and
+values are traversal arguments rather than interpolated query text. Neptune
+does not support the `bindings` property for text Gremlin queries.
 
 ### Long-term — Neptune Analytics (openCypher + vector)
 
@@ -134,7 +139,7 @@ consolidate_memories(graph_id)  # Decay old facts, remove low-confidence
 
 ## Persistence Strategy (Critical for Analytics)
 
-Neptune Analytics is **ephemeral**. For production agents:
+A Neptune Analytics graph keeps its data while running or stopped, but `delete-graph` removes it unless you took a graph snapshot (including a final snapshot with `--no-skip-snapshot`) or exported it. For production agents:
 
 | Strategy | Tradeoff |
 |---|---|
@@ -153,7 +158,8 @@ Neptune Analytics is **ephemeral**. For production agents:
 4. **Separate vector store with Analytics** — Analytics has built-in vectors
 5. **No timestamps** — agents need temporal context for relevance
 6. **No persistence strategy** — Analytics memory is lost on graph deletion
-7. **String interpolation** — use parameterized queries (bindings or `$param`)
+7. **String interpolation** — use openCypher `$param` parameters or Gremlin-Python
+   bytecode; Neptune does not support Gremlin `bindings`
 8. **Filtering labels after vector `topK`** — use `vertexFilter` so unrelated
    labels do not consume the entity result slots
 

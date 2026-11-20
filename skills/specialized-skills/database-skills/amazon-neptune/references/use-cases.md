@@ -8,7 +8,10 @@ See also: [data-modeling.md](data-modeling.md) for modeling guidance,
 [querying.md](querying.md) for query syntax details.
 
 ⚠️ **Code style note**: Gremlin queries use Groovy `def` syntax (Console).
-For Python driver, extract the traversal string and pass to `client.submit()`.
+For Python, port each traversal to Gremlin-Python bytecode on a traversal
+source `g` (see the bytecode example in [querying.md](querying.md#connection))
+and pass values such as `flaggedId` as step arguments. Never paste values
+into a query string for `client.submit()`; that invites Gremlin injection.
 openCypher queries work directly via the Neptune HTTP API or boto3 SDK.
 
 ---
@@ -91,6 +94,21 @@ g.V().has('Account', 'id', accountId)
   .out('USES').in('USES')
   .has('id', within(knownFraudIds))
   .dedup().count()
+```
+
+The first query in Gremlin-Python bytecode, with `flagged_id` as an argument:
+
+```python
+from gremlin_python.process.traversal import P
+
+shared = (
+    g.V().has('Account', 'id', flagged_id).as_('start')
+    .out('USES').in_('USES')
+    .where(P.neq('start'))
+    .dedup()
+    .values('id')
+    .toList()
+)
 ```
 
 ### Sample queries (openCypher)
@@ -237,13 +255,14 @@ RETURN path
 CALL neptune.algo.vectors.topK.byEmbedding({
   embedding: $queryEmbedding,
   topK: 5,
-  vertexFilter: '{"equals":{"property":"~label","value":"Chunk"}}'
+  vertexFilter: {equals: {property: '~label', value: 'Chunk'}}
 })
 YIELD node, score
 WITH node AS chunk, score
 MATCH (chunk)-[:MENTIONS]->(e:Entity)-[:RELATED_TO]-(related)
 RETURN chunk.text, score, collect(DISTINCT e.name) AS entities,
        collect(DISTINCT related.name) AS related_entities
+ORDER BY score ASC
 ```
 
 **Before**: Vector-only RAG misses cross-document relationships.
@@ -326,10 +345,11 @@ RETURN e, collect(DISTINCT {entity: related.name, rel: r.type}) AS relationships
 CALL neptune.algo.vectors.topK.byEmbedding({
   embedding: $queryEmbedding,
   topK: 10,
-  vertexFilter: '{"equals":{"property":"~label","value":"Entity"}}'
+  vertexFilter: {equals: {property: '~label', value: 'Entity'}}
 })
 YIELD node, score
 RETURN node.name, node.type, node.description, score
+ORDER BY score ASC
 ```
 
 **Before**: Flat conversation logs, no structural recall.
