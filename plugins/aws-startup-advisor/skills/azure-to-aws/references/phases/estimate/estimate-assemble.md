@@ -108,7 +108,7 @@ Say a row name to change it — I'll re-run Design and Estimate and show this pa
 
 [A] That's what I needed for now — stop here with the design and the estimate
 [B] Explore what-if scenarios (region, HA, compute target, architecture) before deciding
-[C] Generate the migration artifacts — Terraform, the migration guide, and the report
+[C] Generate the migration artifacts — Terraform, migration scripts (operator-run, dry-run by default), the migration guide, and the report
 ```
 
 When `aws-design-ai.json` also exists (a mixed run), append " (plus the Bedrock migration script and A/B test harness for the AI route)" to option [C]: Generate runs `generate-artifacts-ai.md` on that run, so the label must not imply the infra pack is everything.
