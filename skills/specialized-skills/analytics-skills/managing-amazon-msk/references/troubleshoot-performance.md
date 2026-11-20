@@ -2,7 +2,7 @@
 
 ## Step 1: Determine broker type
 
-Run `aws kafka describe-cluster-v2 --cluster-arn <arn>`. If instance type starts with `express.`, skip all EBS-related checks — Express has no customer-managed EBS.
+Run `aws kafka describe-cluster-v2 --cluster-arn <arn>`. If instance type starts with `express.`, skip all EBS-related checks — Express has no customer-managed EBS. If it contains `-express.`, the cluster is in mixed mode during an in-place upgrade: apply EBS checks only to brokers whose `list-nodes` `BrokerNodeType` is `STANDARD`.
 
 ## Step 2: Check CPU and request handler utilization
 

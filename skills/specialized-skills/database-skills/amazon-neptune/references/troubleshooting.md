@@ -186,14 +186,18 @@ truncated or return only the first batch.
 # ❌ Returns only first 64KB of results
 results = client.submit("g.V().hasLabel('Person').valueMap()").all().result()
 
-# ✅ Paginate explicitly
-def paginate_all(client, label, page_size=500):
+# ✅ Paginate explicitly with Gremlin-Python bytecode (label and offsets are
+# traversal arguments, never query text). order() keeps pages stable.
+from gremlin_python.process.traversal import T
+
+def paginate_all(g, label, page_size=500):
     all_results = []
     offset = 0
     while True:
-        batch = client.submit(
-            f"g.V().hasLabel('{label}').range({offset}, {offset + page_size}).valueMap(true)"
-        ).all().result()
+        batch = (
+            g.V().hasLabel(label).order().by(T.id)
+            .range_(offset, offset + page_size).valueMap(True).toList()
+        )
         if not batch:
             break
         all_results.extend(batch)

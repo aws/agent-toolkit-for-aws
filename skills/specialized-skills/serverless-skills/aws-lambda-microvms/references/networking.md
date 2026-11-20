@@ -124,6 +124,7 @@ Steps:
 
 1. Build a `NetworkConnectorOperatorRole` (trust `lambda.amazonaws.com`; permissions to manage ENIs in your VPC):
    - `ec2:CreateNetworkInterface`, `ec2:CreateTags`.
+   - With service-managed Elastic IPs (below), also `ec2:AllocateAddress` on `arn:<partition>:ec2:*:*:elastic-ip/*`, `ec2:AssociateAddress` on `arn:<partition>:ec2:*:*:elastic-ip/*` with the condition `StringLike` `aws:ResourceTag/aws:lambda:networkConnectorId` = `nc-*` (only addresses Lambda tagged for a connector), plus both actions on `arn:<partition>:ec2:*:*:network-interface/*` with the condition `StringEquals` `ec2:ManagedResourceOperator` = `network-connectors.lambda.amazonaws.com` so they apply only to the connector's own ENIs.
 2. Create the connector:
 
    ```bash
@@ -149,7 +150,25 @@ Constraints:
 - Connector must be in the same Region as the MicroVM image.
 - `NetworkProtocol` supports both `IPv4` and `DualStack`.
 - The connector is **bound at run time** — you can't swap connectors on suspend/resume.
-- For internet *and* VPC access, configure a **NAT gateway** in your VPC.
+- For internet *and* VPC access, either configure a **NAT gateway** in your VPC, or use **service-managed Elastic IPs** in public subnets (below).
+
+### Elastic IP addresses (public IPv4 without a NAT gateway)
+
+Set `ElasticIpConfiguration` with `Type: ServiceManaged` in `VpcEgressConfiguration`. Lambda allocates a service-managed Elastic IP in the customer's account for each connector ENI, associates it with that ENI, and releases it when it deletes the ENI. Omitting the field, or `Type: None`, assigns none.
+
+```bash
+aws lambda-core create-network-connector \
+  --name my-vpc-egress \
+  --configuration '{"VpcEgressConfiguration":{"SubnetIds":["subnet-..."],"SecurityGroupIds":["sg-..."],"NetworkProtocol":"IPv4","AssociatedComputeResourceTypes":["MicroVm"],"ElasticIpConfiguration":{"Type":"ServiceManaged"}}}' \
+  --operator-role arn:<partition>:iam::<account>:role/NetworkConnectorOperatorRole
+```
+
+- **Requirements.** The VPC must have an internet gateway attached, or the connector goes `FAILED` with `InternetGatewayNotAttached`. Use public subnets (a `0.0.0.0/0` route to the internet gateway) so traffic actually leaves through the addresses. The operator role needs the two extra EC2 actions in step 1.
+- **Addresses.** Each address stays the same for the life of its ENI. They show in `aws ec2 describe-addresses` with `ServiceManaged` set to `lambda-network-connector`, can't be modified or released by the customer, and don't count toward the account's Elastic IP quota.
+- **Changing it.** `update-network-connector` with `ElasticIpConfiguration` applies to the ENIs of the new connector version (new ENIs, so new addresses); MicroVMs pick it up per the versioning rules below. If a destination allow-lists the addresses, re-read them after every update.
+- **Own addresses (BYOIP) or a contiguous Amazon block.** Use an Amazon VPC IPAM policy with an allocation rule for the `lambda-network-connector` resource type. The IPAM can be homed in another Region of the same partition, as long as the connector's Region is one of its operating Regions.
+- **Cost.** Charges depend on where the addresses come from (Amazon's default pool, BYOIP, or an Amazon-provided contiguous block); check current rates on the [Amazon VPC pricing](https://aws.amazon.com/vpc/pricing/) page rather than quoting them. A connector's addresses are charged for as long as it has ENIs, including when it is idle or `FAILED`, so delete connectors you no longer use.
+- **Security considerations.** Each connector ENI becomes publicly addressable. Keep the connector's security group free of inbound rules from the internet (security groups are stateful, so return traffic for outbound connections is still allowed), scope its egress rules to the destinations and ports the MicroVM actually needs, and use a network ACL on the public subnets if you need an extra deny layer. Service-managed Elastic IPs avoid the cost and setup of a NAT gateway; if you'd rather keep the ENIs off the internet entirely, use a NAT gateway in front of private subnets instead.
 
 ### Connector versioning
 
