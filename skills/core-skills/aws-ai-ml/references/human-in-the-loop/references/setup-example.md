@@ -106,7 +106,7 @@ The same operations are available as Python functions (`find_label_studio_space`
 | `<domain-id>` | From `discover` output | `d-xxxxxxxxxxxx` |
 | `<space-name>` | Shared space hosting the Label Studio app, from `discover` (or `create`) output | `label-studio-20260101120000` |
 | `<ebs-gb>` | The new space's storage volume in whole GB; default 5, up to the domain's `max_ebs_gb` from `discover` | `10` |
-| `<space-host>` | Host of the space's `space_url` from `discover` | `abc123example.studio.us-west-2.sagemaker.aws` |
+| `<space-host>` | Host of the space's `space_url` from `discover` | `<space-id>.studio.<region>.sagemaker.aws` |
 | `<admin-profile>` | The admin profile, which the skill acts as in Label Studio; confirmed at Step 3a.4 (required) | `data-scientist-1` |
 | `<annotator-profile>` | SageMaker user profile name from `profiles` output | `annotator-1` |
 | `<project-name>` | Short slug, no spaces | `fill-missing-outputs` |
