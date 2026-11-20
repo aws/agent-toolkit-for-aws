@@ -18,6 +18,9 @@ decide scope and basis: infra/billing alone -> INFRA_ONLY; a base route + AI -> 
 (the two figures summed). A standalone AI-only run is deferred — the contract only
 accepts AI_ONLY with sourcePlatform OPENAI, and the LLM-to-Bedrock path persists no
 cost file, so a GCP or Azure AI-only run has no valid mapping yet.
+A mixed Azure run (infra + AI) is also skipped today: the FULL scope needs a usable overall
+accuracy band from both estimates, and Azure's infrastructure estimate records none in the
+shape the writer accepts, so it returns PLAN_SKIP. Azure plans are infrastructure-only.
 
 Usage:
   python3 scripts/emit-plan-json.py --migration-dir <dir>

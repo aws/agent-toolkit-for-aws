@@ -83,6 +83,24 @@ def test_azure_infra_run_emits_plan(tmp_path: Path) -> None:
     assert round(sum(item["monthlyCost"] for item in data["cost"]["awsServiceItems"]), 2) == 460.13
 
 
+def test_azure_mixed_run_is_skipped_because_the_estimate_has_no_accuracy_band(tmp_path: Path) -> None:
+    """Documented limitation: Azure plan.json is infrastructure-only. A representative Azure
+    infra estimate plus a valid AI estimate is a FULL run, which needs a usable overall band
+    from both estimates; Azure's records none, so the writer skips (fail open, no file)."""
+    run = tmp_path / "run"
+    shutil.copytree(PLUGIN_ROOT / "fixtures" / "azure-iac-terraform" / "after-estimate", run)
+    shutil.copy(PLUGIN_ROOT / "fixtures" / "estimation-ai" / "multi-provider-direct" / "estimation-ai.json", run)
+    status_path = run / ".phase-status.json"
+    status = json.loads(status_path.read_text())
+    status.update({"owning_skill": "AZURE_TO_AWS", "run_id": "8c1e4f2a-3b6d-4a7e-9f10-5d2c8b7a6e41"})
+    status_path.write_text(json.dumps(status, indent=2))
+    result = subprocess.run([sys.executable, str(WRITER), "--migration-dir", str(run)], capture_output=True, text=True)
+    assert result.returncode == 0
+    assert "PLAN_SKIP | reason=FULL run needs a usable accuracy band from both the base and AI estimates" in result.stdout
+    assert not (run / "plan.json").exists()
+    assert "Azure plans are infrastructure-only" in WRITER.read_text()
+    (run / "estimation-ai.json").unlink()
+    assert _emit(run)["scope"] == "INFRA_ONLY"
 def test_invalid_or_missing_azure_estimates_still_fail_open(tmp_path: Path) -> None:
     golden = PLUGIN_ROOT / "fixtures" / "azure-iac-terraform" / "after-estimate"
     expected_reason = {
