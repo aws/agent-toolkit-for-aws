@@ -182,6 +182,8 @@ Then run the post-gate feedback checkpoint per `SKILL.md`. You already know this
 step's `PLAN_OK`/`PLAN_SKIP` status — author the close **once** with that
 knowledge, never as a two-pass edit of an already-shown message:
 
+- **AI-only run** (no `azure-resource-inventory.json`, so no `MIGRATION_GUIDE.md` is ever written): replace "generate the Terraform, migration scripts, and the migration guide" in either sentence with the
+  gate's artifact label in lowercase, for example 'generate the Bedrock setup script, provider adapter, and A/B test harness' (the AI-route `[C]` label in `estimate-assemble.md`).
 - If the writer printed `PLAN_SKIP` (no `plan.json`), close with: "Your decision is
   saved at `DECISION.md`. If you decide to migrate, say 'generate the Terraform,
   migration scripts, and the migration guide' — everything is saved and I'll pick up from here."

@@ -16,7 +16,7 @@ Read the JSON it prints. Do not redirect it to a file. On a non-zero exit, stop 
 | ----------------------- | ---------------------------------------------------------------------------------------- |
 | `design_not_found`      | Design has not finished; resume at Design.                                               |
 | `design_invalid`        | `aws-design-ai.json` no longer passes `design-ai.py check`; re-run Design.               |
-| `token_volume_unknown`  | Clarify's Q7 answer is not a known tier; re-run Clarify.                                 |
+| `preferences_invalid`   | A `preferences.json` value is not one Clarify writes, such as an unknown Q7 tier; quote `detail` and re-run Clarify: choose Start fresh, or re-use the answers and re-answer the question Clarify Step 4 names. |
 | `usage_unreadable`      | A usage profile is damaged; re-run that usage reader in Discover, or remove the file.    |
 | any other value         | Quote `detail`.                                                                          |
 
@@ -93,4 +93,4 @@ In under 25 lines, labeling every dollar figure as an estimated monthly cost:
 3. A model comparison table: model, estimated monthly cost, vs source, capabilities match.
 4. The recommended model, and the cost increase with its non-cost justification when Bedrock costs more.
 5. The top two or three optimizations, with Provisioned Throughput's terms when it is listed.
-6. The recommendation, and that Generate is not in this skill yet.
+6. The recommendation. SKILL.md Step 4 then asks whether to generate the migration artifacts.

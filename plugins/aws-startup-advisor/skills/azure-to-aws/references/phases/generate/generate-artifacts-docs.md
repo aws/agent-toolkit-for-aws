@@ -66,15 +66,18 @@ Required sections, in order:
    passes; DNS/traffic cutover last.
 
 ## Step 1a: MIGRATION_GUIDE.md — Database migration subsection
-Write this subsection only when `aws-design.json` contains a relational database. When the
-estate holds only other engines (Cosmos DB, Azure Cache for Redis, ...), write just the
-**Not covered by this runbook** note below, under a Database migration heading, and no
-branch: `scripts/02-migrate-data.sh` prints `ENGINE_NOT_SUPPORTED` for them and cites that
-note. For a relational database, read
-`data.db_cutover` from `preferences.json`. Step 3b of the Decision gate has already
-confirmed it (the Generate precondition refuses a row still flagged
-`deferred_to_generate`), so write exactly the branch the user chose and no other. Do not
-re-derive the answer from database size.
+Write this subsection whenever the Azure inventory or `aws-design.json` contains a data
+store of any engine: a relational database, Cosmos DB, Azure Cache for Redis, or anything
+else. Write a `dump_restore` or `dms` branch only when a covered relational database is
+present. For that case, read `data.db_cutover` from `preferences.json`. Step 3b of the
+Decision gate has already confirmed it (the Generate precondition refuses a row still
+flagged `deferred_to_generate`), so write exactly the branch the user chose and no other.
+Do not re-derive the answer from database size. An estate whose only data stores are other
+engines may have no `db_cutover` answer; write only the **Not covered by this runbook**
+note for it, so the guide still says that no tested data-migration path exists. For such an
+estate, write just the **Not covered by this runbook** note below, under a Database migration
+heading, and no branch: `scripts/02-migrate-data.sh` prints `ENGINE_NOT_SUPPORTED` for them
+and cites that note.
 
 Everything below is a checklist the operator carries out. This phase runs no database
 command and does not start replication. For `dump_restore` on PostgreSQL or MySQL the offline
@@ -139,6 +142,13 @@ Write the following as a checklist with an unchecked box per item.
 **Source prerequisites: Azure Database for PostgreSQL Flexible Server.** Per the AWS DMS
 guide to Azure Database for PostgreSQL flexible server as a source:
 
+- [ ] First, confirm the server's major version is on the AWS DMS supported-source list for
+  Azure Database for PostgreSQL Flexible Server (11.2, 12.15, 13.11, 14.8 and 15.3 when this
+  was written; check the current AWS DMS sources page), and pick a replication engine
+  version that supports it. If the version is not listed (for example PostgreSQL 16 or 17),
+  stop: use the `dump_restore` branch or a specialist instead, before changing any
+  parameter or restarting the server.
+
 - [ ] Set the `wal_level` server parameter to `LOGICAL` (Azure portal, Server parameters).
   Do not assume the older `azure.replication_support` parameter applies to Flexible Server;
   confirm in the current Azure documentation.
@@ -156,6 +166,11 @@ guide to Azure Database for PostgreSQL flexible server as a source:
 - [ ] Every table to replicate needs a primary key (or a replica identity) for CDC.
 
 **Source prerequisites: Azure Database for MySQL Flexible Server.**
+
+- [ ] First, confirm the server's major version is on the AWS DMS supported-source list for
+  Azure Database for MySQL Flexible Server (5.7 and 8 when this was written; check the
+  current AWS DMS sources page), and pick a replication engine version that supports it. If
+  it is not listed, stop: use the `dump_restore` branch or a specialist instead.
 
 - [ ] Confirm binary logging is on with `binlog_format` `ROW` and `binlog_row_image`
   `FULL`, per the AWS DMS MySQL source requirements. The AWS DMS MySQL source page asks for
@@ -175,11 +190,31 @@ guide to Azure Database for PostgreSQL flexible server as a source:
    in the target VPC. The instance incurs hourly charges from Estimate's Migration service
    line.
 2. Create the source endpoint (Azure server, TLS on) and the target endpoint (RDS/Aurora).
-   Run the endpoint connection tests and fix them before continuing.
+   Step 3 precreates foreign keys and triggers, and DMS loads several tables at once, so
+   child rows can arrive before their parents. On the target endpoint, set the extra
+   connection attribute that makes DMS's own sessions skip them: for a PostgreSQL target,
+   `afterConnectScript=SET session_replication_role='replica'` (bypasses foreign keys and
+   user triggers); for a MySQL target, `Initstmt=SET FOREIGN_KEY_CHECKS=0;` (the AWS DMS
+   MySQL target page requires foreign keys to be off during the full load; MySQL has no
+   session setting that skips triggers, so step 3 leaves them out of the MySQL schema). Run
+   the endpoint connection tests and fix them before continuing.
 3. Create the target schema first (for PostgreSQL, `pg_dump --schema-only` /
-   `pg_restore`; for MySQL, `mysqldump --no-data`). DMS moves data, not secondary objects.
-4. Create a database migration task of type full load plus CDC. Enable data validation and
-   CloudWatch logging for the task.
+   `pg_restore`; for MySQL, `mysqldump --no-data --skip-triggers`). A PostgreSQL schema-only
+   dump carries the foreign keys and triggers; keep them, because step 2's setting bypasses
+   them only for DMS's own sessions. On a MySQL target, keep the foreign keys but leave the
+   triggers out: `FOREIGN_KEY_CHECKS=0` does not stop triggers, so every trigger would fire
+   on each row DMS writes during the full load and CDC (audit or summary triggers would add
+   rows on top of the migrated copies, and a trigger that writes into a table DMS also loads
+   can hit duplicate keys). Save the trigger DDL for step 8 with
+   `mysqldump --no-create-info --no-data --triggers`. DMS moves data, not secondary objects.
+4. Create a database migration task of type full load plus CDC. Set the task's **target
+   table preparation mode** to **Do nothing** (`DO_NOTHING`), because step 3 precreated
+   the target schema. Do not keep **Drop tables on target** (`DROP_AND_CREATE`): it drops
+   each precreated table, with its constraints, defaults and partitions, and creates a
+   plain one before the full load. Use **Truncate** (`TRUNCATE_BEFORE_LOAD`) only when the
+   target tables hold rehearsal data that should be emptied. Have the operator confirm the
+   setting before starting the task. Enable data validation and CloudWatch logging for the
+   task.
 5. Start the task and wait for the full load to finish and CDC to begin.
 6. **Validate.** Watch the DMS validation state per table until every table is validated
    with no failed or suspended entries, and run the same row-count, checksum and invariant
@@ -187,9 +222,18 @@ guide to Azure Database for PostgreSQL flexible server as a source:
 7. **Monitor lag.** Watch the task's CDC latency source and target metrics in CloudWatch.
    Do not cut over until latency stays near zero for a period the team agrees on.
 8. **Cut over.** Freeze application writes on Azure, wait for CDC latency to reach zero
-   and validation to pass, stop the task, fix sequences and any objects DMS does not carry
-   (sequence values, triggers, secondary indexes as needed), switch the application to the
-   AWS endpoint, and run the smoke tests.
+   and validation to pass, and stop the task so no DMS session remains. Fix the objects DMS
+   does not carry (sequence values, secondary indexes as needed). On a PostgreSQL target the
+   foreign keys and triggers from step 3 were never dropped, so nothing in the schema needs
+   re-enabling; application sessions enforce them and fire the triggers from this point on.
+   On a MySQL target, create the triggers now from the DDL saved in step 3, before the
+   switch, so they do not fire on migrated rows. Before switching, confirm the foreign keys
+   and triggers exist (PostgreSQL: `pg_constraint`; MySQL:
+   `information_schema.REFERENTIAL_CONSTRAINTS` and `information_schema.TRIGGERS`). That is
+   an existence check only: `convalidated = true` does not show that the loaded rows satisfy
+   the constraints, because the load did not enforce them. The real integrity check is
+   looking for orphaned child rows. Then switch the application to the AWS endpoint and run
+   the smoke tests.
 9. **Roll back.** Before the switch, rollback is stopping the task and lifting the freeze on
    Azure. After the switch, DMS does not replicate back to Azure by default; keep the Azure
    server until the rollback window closes, and treat reverse replication as a separate

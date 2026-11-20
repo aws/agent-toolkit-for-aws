@@ -265,7 +265,7 @@ phase contract. Both are `_kind: sidebar` — off-backbone, trigger-entered, nev
 
 ## Defaults
 
-- **IaC output**: Terraform configurations, migration scripts (dry-run by default; none is run during Generate), documentation, and the migration report
+- **IaC output**: Terraform configurations, migration scripts (dry-run by default; none is run during Generate), documentation, and the migration report (the AI track also writes its Bedrock migration scripts)
 - **Region**: `us-east-1` unless the user specifies otherwise; Azure regions are mapped, not assumed
 - **Sizing**: Development tier, upgraded from measured utilization when RDfA or consent-gated `az monitor` metrics are available
 - **CPU architecture**: `x86_64` (see Philosophy — Graviton is an offered optimization here, not the default)

@@ -96,12 +96,21 @@ def test_generate_skill_text_matches_the_scripts_that_are_now_emitted() -> None:
     ) in gate
     assert "[C] Generate the migration artifacts — Terraform, the migration guide, and the report" not in gate
     estimate = _read(ESTIMATE)
-    assert estimate.count("generate the Terraform, migration scripts, and the migration guide") == 2
+    # Two close-out sentences plus the AI-only instruction that names the phrase to replace.
+    assert estimate.count("generate the Terraform, migration scripts, and the migration guide") == 3
     assert "generate the Terraform and the migration guide" not in estimate
     core = _read(DECISION_CORE)
     assert "generate the Terraform, migration scripts, and the migration guide" in core
     assert "migration scripts you run yourself and that are dry-run by default" in core
     assert "generate the Terraform and the migration guide" not in core
+    # The AI track is unchanged by the scripts fragment: a mixed run's default label names the Bedrock
+    # artifacts, and an AI-only run never writes MIGRATION_GUIDE.md, so neither close may promise it.
+    assert "append \" (plus the Bedrock migration script and A/B test harness for the AI route)\"" in gate
+    assert "AI-only run" in estimate and "no `MIGRATION_GUIDE.md` is ever written" in estimate
+    assert "On an AI-only run (no `azure-resource-inventory.json`)" in core
+    for text in (estimate, core):
+        assert "generate the Terraform and migration scripts" not in text
+        assert "and migration scripts'" not in text
 
 
 def test_generate_postconditions_still_require_a_verification_section() -> None:
@@ -109,3 +118,59 @@ def test_generate_postconditions_still_require_a_verification_section() -> None:
     assert "MIGRATION_GUIDE.md has Prerequisites and Verification sections" in generate
     docs = _read(DOCS)
     assert "**Verification**" in docs and "Prerequisites" in docs
+
+
+def test_dms_task_sets_table_preparation_mode_and_checks_source_version_first() -> None:
+    text = _read(DOCS)
+    branch = text.split("### Branch: `dms`", 1)[1].split("### Not covered by this runbook", 1)[0]
+    # The task must not keep Drop-tables-on-target after the schema was precreated.
+    steps = branch.split("**AWS DMS steps", 1)[1]
+    assert "**Do nothing** (`DO_NOTHING`)" in steps
+    assert "`DROP_AND_CREATE`" in steps and "Do not keep **Drop tables on target**" in steps
+    assert "`TRUNCATE_BEFORE_LOAD`" in steps
+    assert "confirm the setting before starting the task" in steps
+    # Both source checklists start with a supported-version check, before any parameter change.
+    pg = branch.split("**Source prerequisites: Azure Database for PostgreSQL Flexible Server.**", 1)[1]
+    pg = pg.split("**Source prerequisites: Azure Database for MySQL Flexible Server.**", 1)[0]
+    assert pg.index("supported-source list") < pg.index("`wal_level`")
+    assert "11.2, 12.15, 13.11, 14.8 and 15.3" in pg
+    my = branch.split("**Source prerequisites: Azure Database for MySQL Flexible Server.**", 1)[1]
+    my = my.split("**AWS DMS steps", 1)[0]
+    assert my.index("supported-source list") < my.index("binary logging")
+    assert "5.7 and 8" in my
+
+
+def test_not_covered_note_is_reachable_without_a_relational_database() -> None:
+    text = _read(DOCS)
+    section = text.split("## Step 1a:", 1)[1].split("### Branch: `dump_restore`", 1)[0]
+    assert "whenever the Azure inventory or `aws-design.json` contains a data store of any engine" in section
+    assert "Write a `dump_restore` or `dms` branch only when a covered relational database is present" in section
+    assert "only data stores are other engines may have no `db_cutover` answer" in section
+    assert "Write this subsection only when `aws-design.json` contains a relational database" not in text
+
+
+def test_dms_load_bypasses_foreign_keys_and_triggers_and_cutover_checks_them() -> None:
+    text = _read(DOCS)
+    steps = text.split("**AWS DMS steps", 1)[1].split("### Not covered by this runbook", 1)[0]
+    step2 = steps.split("2. Create the source endpoint", 1)[1].split("3. Create the target schema", 1)[0]
+    # Step 3 precreates foreign keys and triggers, so the target endpoint must bypass them for the load.
+    assert "afterConnectScript=SET session_replication_role='replica'" in step2
+    assert "Initstmt=SET FOREIGN_KEY_CHECKS=0;" in step2
+    assert "child rows can arrive before their parents" in step2
+    step3 = steps.split("3. Create the target schema", 1)[1].split("4. Create a database migration task", 1)[0]
+    assert "carries the foreign keys and triggers; keep them" in step3
+    # MySQL has no session setting that skips triggers: the schema is created without them and they are restored at cutover.
+    assert "mysqldump --no-data --skip-triggers" in step3
+    assert "`FOREIGN_KEY_CHECKS=0` does not stop triggers" in step3
+    assert "mysqldump --no-create-info --no-data --triggers" in step3
+    # Step 8 must agree with step 3: nothing is dropped, so it checks them instead of "fixing triggers".
+    step8 = steps.split("8. **Cut over.**", 1)[1].split("9. **Roll back.**", 1)[0]
+    assert "stop the task so no DMS session remains" in step8
+    assert "`pg_constraint`" in step8 and "`information_schema.REFERENTIAL_CONSTRAINTS`" in step8
+    # MySQL triggers are created after the task stops and before the switch; the catalog queries are an existence check only.
+    assert "On a MySQL target, create the triggers now from the DDL saved in step 3, before the switch" in step8
+    assert "`information_schema.TRIGGERS`" in step8
+    assert "That is an existence check only" in step8
+    assert "`convalidated = true` does not show that the loaded rows satisfy the constraints" in step8
+    assert "orphaned child rows" in step8
+    assert "sequence values, triggers, secondary indexes" not in step8

@@ -73,6 +73,8 @@ To reach private VPC resources, add an `AWS::Lambda::NetworkConnector` and refer
           NetworkProtocol: IPv4            # DualStack for IPv6 egress
           AssociatedComputeResourceTypes:
             - WebFunction
+          # ElasticIpConfiguration:        # public IPv4 without a NAT gateway; needs public subnets,
+          #   Type: ServiceManaged         # an internet gateway, and the extra operator-role actions in networking.md
 
   WebFunctionRevision:
     Type: AWS::Lambda::WebFunctionRevision
