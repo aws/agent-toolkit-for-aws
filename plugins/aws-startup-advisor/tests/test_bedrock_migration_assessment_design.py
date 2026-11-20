@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -245,6 +246,109 @@ def test_plan_fills_documented_defaults_for_unanswered_keys() -> None:
     assert constraints["compliance"] == {"value": ["unknown"], "chosen_by": "absent"}
 
 
+CLARIFY = (BMA / "references/phases/clarify/clarify-ai-only.md").read_text(encoding="utf-8")
+PINNED_QUESTIONS = {"ai_priority": "Q2", "ai_vision": "Q6", "ai_token_volume": "Q7", "ai_latency": "Q8",
+                    "ai_complexity": "Q9", "ai_critical_feature": "Q10"}
+PINNED = {
+    "ai_priority": ("quality", "speed", "cost", "balanced"),
+    "ai_latency": ("critical", "important", "flexible"),
+    "ai_complexity": ("simple", "moderate", "complex"),
+    "ai_token_volume": ("low", "medium", "high", "very_high"),
+    "ai_vision": ("text-only", "vision", "audio"),
+    "ai_critical_feature": ("function_calling", "ultra_long_context", "extended_thinking", "prompt_caching", "rag",
+                            "agentic", "realtime_speed", "image_generation", "speech", "none"),
+}
+
+
+def _interpret(key: str) -> tuple[dict[int, str], tuple[int, str]]:
+    line = next(l for l in CLARIFY.splitlines() if l.startswith(f"Interpret → `{key}`"))
+    mapping, _, default = line.partition("Default:")
+    pairs = {int(n): v for n, v in re.findall(r"(\d+) → `\"([a-z_-]+)\"`", mapping)}
+    n, value = re.search(r"(\d+) → `\"([a-z_-]+)\"`", default).groups()
+    return pairs, (int(n), value)
+
+
+def _with_value(prefs: dict, key: str, value) -> dict:
+    prefs = copy.deepcopy(prefs)
+    prefs["ai_constraints"][key] = {"value": value, "chosen_by": "user"}
+    return prefs
+
+
+def test_design_pins_the_clarify_values_with_a_listed_default() -> None:
+    assert DESIGN.PREFERENCE_VALUES == PINNED
+    for key, values in PINNED.items():
+        assert DESIGN.DEFAULTS[key] in values, key
+
+
+def test_token_volume_values_come_from_the_tier_table() -> None:
+    tiers = json.loads((BMA / "references/vendored/ai/token-volume-tiers.json").read_text(encoding="utf-8"))
+    assert PINNED["ai_token_volume"] == tuple(t["value"] for t in tiers["tiers"])
+
+
+@pytest.mark.parametrize(("key", "value"), [(k, v) for k, vs in PINNED.items() for v in vs])
+def test_plan_accepts_and_copies_every_pinned_value(key, value) -> None:
+    _, profile, prefs = _load(V10_FIXTURE)
+    assert DESIGN.build_plan(profile, _with_value(prefs, key, value))["constraints"][key] == {"value": value, "chosen_by": "user"}
+
+
+@pytest.mark.parametrize(("key", "value"), [
+    ("ai_priority", "fastest"), ("ai_priority", "Balanced"), ("ai_priority", ["balanced"]), ("ai_latency", "low"),
+    ("ai_complexity", "hard"), ("ai_token_volume", "huge"), ("ai_vision", "image"), ("ai_vision", ["vision"]),
+    ("ai_critical_feature", "long_context"), ("ai_critical_feature", ""), ("ai_critical_feature", None)])
+def test_plan_rejects_an_off_list_value_and_names_the_allowed_ones(key, value) -> None:
+    _, profile, prefs = _load(V10_FIXTURE)
+    with pytest.raises(DESIGN.DesignInputError) as err:
+        DESIGN.build_plan(profile, _with_value(prefs, key, value))
+    assert err.value.code == "preferences_invalid" and key in err.value.detail
+    assert all(v in err.value.detail for v in PINNED[key])
+
+
+def test_unpinned_keys_keep_their_free_form_values() -> None:
+    _, profile, prefs = _load(V10_FIXTURE)
+    prefs = _with_value(_with_value(prefs, "cross_cloud", "egress-concerned"), "ai_framework", ["direct", "langchain"])
+    assert DESIGN.build_plan(profile, prefs)["constraints"]["cross_cloud"]["value"] == "egress-concerned"
+
+
+@pytest.mark.parametrize("key", list(PINNED_QUESTIONS))
+def test_clarify_interpret_line_writes_exactly_the_pinned_values(key) -> None:
+    pairs, (_, default) = _interpret(key)
+    assert set(pairs.values()) == set(PINNED[key]) and default == DESIGN.DEFAULTS[key]
+
+
+@pytest.mark.parametrize("key", list(PINNED_QUESTIONS))
+def test_clarify_interpret_line_maps_every_answer_option(key) -> None:
+    section = CLARIFY[CLARIFY.index(f"## {PINNED_QUESTIONS[key]} — "):]
+    options = next(l for l in section.splitlines() if re.match(r"^> 1\\\)", l))
+    count = len(re.findall(r"(?:^> |\| )(\d+)\\\)", options))
+    pairs, (n, value) = _interpret(key)
+    dont_know = {"ai_token_volume": 5}.get(key)
+    assert sorted(pairs) == [i for i in range(1, count + 1) if i != dont_know] and pairs.get(n, value) == value
+
+
+def test_clarify_maps_specialized_and_dont_know_priority_to_balanced() -> None:
+    pairs, _ = _interpret("ai_priority")
+    assert (pairs[4], pairs[5], pairs[6]) == ("balanced", "balanced", "balanced")
+    line = next(l for l in CLARIFY.splitlines() if l.startswith("Interpret → `ai_priority`"))
+    assert "Q10 decides" in line
+
+
+def test_design_keeps_an_eligible_same_model_for_every_priority() -> None:
+    item = DESIGN_DOC[DESIGN_DOC.index("   2. The same model on Bedrock"):DESIGN_DOC.index("   3. `ai_priority`")]
+    assert "No `ai_priority` moves it to another family" in item
+    assert all(f"`{p}`" in item for p in ("quality", "speed", "cost"))
+
+
+def test_clarify_q5_agrees_that_a_priority_never_moves_a_same_model_source() -> None:
+    q5 = CLARIFY[CLARIFY.index("## Q5 — "):CLARIFY.index("### Batch 1 → Save Draft")]
+    assert "Q10 special features > the same model on Bedrock > Q2 priority" in q5
+    assert "GPT-5.5 + Q2=cost → GPT-5.5" in q5 and "GPT-5.5 + Q2=cost → Sonnet 5" not in q5
+
+
+def test_design_reads_guide_volume_sections_by_tier_name() -> None:
+    step2 = DESIGN_DOC[DESIGN_DOC.index("## Step 2"):DESIGN_DOC.index("## Step 3")]
+    assert "by tier name" in step2 and "token-volume-tiers.json" in step2 and "per-day" in step2
+
+
 def test_plan_maps_an_unknown_capability_to_unknown_with_low_confidence() -> None:
     profile = _openai_profile("openai.responses.create")
     profile["workloads"][0]["capability"] = "moderation"
@@ -386,6 +490,19 @@ def test_tiered_strategy_and_quota_floor_follow_volume(volume, required) -> None
     prefs["ai_constraints"]["ai_token_volume"]["value"] = volume
     plan = DESIGN.build_plan(profile, prefs)
     assert plan["tiered_strategy_required"] is required and (plan["quota_risk_floor"] == "high") is required
+
+
+@pytest.mark.parametrize("volume", PINNED["ai_token_volume"])
+@pytest.mark.parametrize("tiered", [True, False])
+def test_check_enforces_the_volume_rules_for_every_tier(volume, tiered) -> None:
+    def mutate(d, p, f):
+        f["ai_constraints"]["ai_token_volume"]["value"] = volume
+        d["ai_architecture"]["tiered_strategy"] = {"tiers": [], "note": "60/30/10"} if tiered else None
+        for row in d["ai_architecture"]["bedrock_models"]:
+            row["quota_risk"] = "high" if tiered else "low"
+    codes = _mutated(MANTLE_FIXTURE, mutate) & {"tiered_strategy", "quota_risk_floor"}
+    high = volume in ("high", "very_high")
+    assert codes == (set() if tiered == high else {"tiered_strategy", "quota_risk_floor"} if high else {"tiered_strategy"})
 
 
 # --------------------------------------------------------------------------- check: negatives
@@ -722,6 +839,74 @@ def test_cli_rejects_malformed_preferences_with_json(mutate, tmp_path: Path, cap
         assert json.loads(capsys.readouterr().out)["error"] == "preferences_invalid"
 
 
+def _old_run(tmp_path: Path, mutate) -> Path:
+    prefs = copy.deepcopy(_load(MANTLE_FIXTURE)[2])
+    mutate(prefs)
+    (tmp_path / "preferences.json").write_text(json.dumps(prefs))
+    return tmp_path
+
+
+@pytest.mark.parametrize(("mutate", "error", "named"), [
+    (lambda f: f["ai_constraints"]["ai_priority"].update(value="fastest"), "preferences_invalid", "ai_constraints.ai_priority"),
+    (lambda f: f["ai_constraints"]["ai_token_volume"].update(value="huge"), "preferences_invalid", "ai_constraints.ai_token_volume"),
+    (lambda f: f["ai_constraints"].update(ai_vision="image"), "preferences_invalid", "ai_constraints.ai_vision"),
+    (lambda f: f["metadata"].update(migration_type="full"), "preferences_not_ai_only", "migration_type"),
+    (lambda f: f.update(metadata=[]), "preferences_invalid", "metadata"),
+], ids=["old-priority", "old-volume", "bare-entry", "not-ai-only", "metadata"])
+def test_clarify_preferences_check_rejects_what_plan_rejects_without_a_profile(mutate, error, named, tmp_path: Path, capsys) -> None:
+    run = _old_run(tmp_path, mutate)
+    assert not (run / "ai-workload-profile.json").exists()
+    assert DESIGN.main(["preferences", str(run)]) == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["error"] == error and named in out["detail"]
+    shutil.copy(MANTLE_FIXTURE / "ai-workload-profile.json", run / "ai-workload-profile.json")
+    assert DESIGN.main(["plan", str(run)]) == 1 and json.loads(capsys.readouterr().out)["error"] == error
+
+
+def test_clarify_preferences_check_passes_a_file_once_the_named_question_is_answered_again(tmp_path: Path, capsys) -> None:
+    run = _old_run(tmp_path, lambda f: f["ai_constraints"].update(
+        ai_priority={"value": "fastest", "chosen_by": "default"}, ai_latency={"value": "low", "chosen_by": "user"}))
+    assert DESIGN.main(["preferences", str(run)]) == 1
+    assert "ai_constraints.ai_priority" in json.loads(capsys.readouterr().out)["detail"]
+    prefs = json.loads((run / "preferences.json").read_text())
+    prefs["ai_constraints"]["ai_priority"] = {"value": "speed", "chosen_by": "user"}
+    (run / "preferences.json").write_text(json.dumps(prefs))
+    assert DESIGN.main(["preferences", str(run)]) == 1
+    assert "ai_constraints.ai_latency" in json.loads(capsys.readouterr().out)["detail"]
+    prefs["ai_constraints"]["ai_latency"] = {"value": "critical", "chosen_by": "user"}
+    (run / "preferences.json").write_text(json.dumps(prefs))
+    assert DESIGN.main(["preferences", str(run)]) == 0 and json.loads(capsys.readouterr().out) == {"ok": True}
+
+
+def test_clarify_preferences_check_reports_a_missing_file(tmp_path: Path, capsys) -> None:
+    assert DESIGN.main(["preferences", str(tmp_path)]) == 1
+    assert json.loads(capsys.readouterr().out)["error"] == "preferences_not_found"
+
+
+def test_clarify_step_4_runs_the_preferences_check_before_completing_and_names_each_question() -> None:
+    step0 = CLARIFY[CLARIFY.index("## Step 0"):CLARIFY.index("## Step 1:")]
+    step4 = CLARIFY[CLARIFY.index("## Step 4"):]
+    assert "skip to Step 4, which checks the existing `preferences.json`" in step0
+    command = "python3 <SKILL_BASE>/scripts/design-ai.py preferences $MIGRATION_DIR"
+    assert step4.index(command) < step4.index('Set `phases.clarify` to `"completed"`')
+    assert 'Do not complete Clarify until it prints `"ok": true`' in step4
+    table = dict(re.findall(r"^\| `([a-z_]+)` +\| (Q[0-9.]+) +\|$", step4, re.M))
+    assert table == PINNED_QUESTIONS
+    for key, qid in table.items():
+        section = re.split(r"^## Q[0-9.]+ — ", CLARIFY[CLARIFY.index(f"## {qid} — "):], flags=re.M)[1]
+        assert f"Interpret → `{key}`" in section, (key, qid)
+    lines = re.findall(r"^\d\. (.+)$", step4, re.M)
+    assert len(lines) == 2 and lines[1].startswith("Otherwise") and "continue to Step 1" in lines[1]
+    assert '4 → `"balanced"` (Q10 decides)' in CLARIFY and "When the new Q2 answer is 4 (Specialized capability), ask Q10" in lines[0]
+
+
+def test_design_and_estimate_send_an_invalid_value_back_to_a_clarify_path_that_can_finish() -> None:
+    estimate = (BMA / "references/phases/estimate/estimate-ai.md").read_text(encoding="utf-8")
+    for doc in (DESIGN_DOC, estimate):
+        row = next(l for l in doc.splitlines() if l.startswith("| `preferences_invalid`"))
+        assert "choose Start fresh, or re-use the answers and re-answer the question Clarify Step 4 names" in row
+
+
 @pytest.mark.parametrize(("service", "ok"), [("transcribe", True), ("polly", False), (None, True)])
 def test_speech_rows_may_target_transcribe(service, ok) -> None:
     def mutate(d, p, f):
@@ -744,3 +929,10 @@ def test_speech_rows_may_target_transcribe(service, ok) -> None:
                 ids=", ".join(b["workload_id"] for b in d["design_blocks"][:2]))
     codes = _mutated(MANTLE_FIXTURE, mutate)
     assert (codes == set()) is ok, codes
+
+
+def test_design_drops_two_option_choices_that_cannot_serve_the_critical_feature() -> None:
+    text = (BMA / "references" / "phases" / "design" / "design-ai.md").read_text(encoding="utf-8")
+    step2 = text[text.index("   1. A Q10 `ai_critical_feature`"):]
+    assert "For `rag`, Bedrock Knowledge Bases needs a Claude or Nova target via Converse" in step2.splitlines()[0]
+    assert "Present only options that serve the item 2.1 feature" in step2

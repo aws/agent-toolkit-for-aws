@@ -287,6 +287,11 @@ def _run_dir(tmp_path: Path, source: Path) -> Path:
     return tmp_path
 
 
+def _off_list_volume(prefs: dict) -> dict:
+    prefs["ai_constraints"]["ai_token_volume"]["value"] = "huge"
+    return prefs
+
+
 @pytest.mark.parametrize(("edit", "error"), [
     (lambda d: (d / "aws-design-ai.json").unlink(), "design_not_found"),
     (lambda d: (d / "aws-design-ai.json").write_text(json.dumps({**_json(d / "aws-design-ai.json"), "design_blocks": []})), "design_invalid"),
@@ -297,7 +302,8 @@ def _run_dir(tmp_path: Path, source: Path) -> Path:
      "usage_unreadable"),
     (lambda d: (d / "openai-usage-profile.json").write_text(json.dumps({**_json(d / "openai-usage-profile.json"), "usage_by_model": [
         {"model": "gpt-4o", "input_tokens": "3000000", "output_tokens": 1}]})), "usage_unreadable"),
-], ids=["no-design", "bad-design", "bad-usage", "no-estimate", "bad-cost-status", "string-tokens"])
+    (lambda d: (d / "preferences.json").write_text(json.dumps(_off_list_volume(_json(d / "preferences.json")))), "preferences_invalid"),
+], ids=["no-design", "bad-design", "bad-usage", "no-estimate", "bad-cost-status", "string-tokens", "off-list-q7"])
 def test_cli_reports_input_errors_as_json(edit, error, tmp_path: Path, capsys) -> None:
     run = _run_dir(tmp_path, MEASURED)
     edit(run)
