@@ -17,7 +17,7 @@ For an **inline agent**, evaluate these same conditions against the fields of th
 **Alternative:** each collaborator is an ordinary Bedrock agent; any that doesn't itself collaborate can be migrated on its own (run this skill once per collaborator). Only the supervisor layer is excluded.
 
 ### 3. Unreachable knowledge base
-**Signal:** an associated KB is in an account/region the credentials cannot reach — so `bedrock-agent-runtime:Retrieve` can't reproduce its retrieval.
+**Signal:** an associated KB is in an account/region the credentials cannot reach — so `Retrieve` (IAM action `bedrock:Retrieve`) can't reproduce its retrieval.
 **Alternative:** grant cross-account/region access, then re-run.
 **Not the KB *type*:** every type (`VECTOR`/`MANAGED`/`KENDRA`/`SQL`) is reachable via `Retrieve` and eligible; type only picks the wiring (see [mapping.md](references/bedrock-agents-to-agentcore-harness/mapping.md)).
 

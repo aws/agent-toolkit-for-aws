@@ -19,7 +19,7 @@ metadata:
   type: skill
   version: "1.0.0"
   author: aws-agentcore
-  requires-cli: ">=0.9.0"
+  requires-cli: ">=1.0.0"
 ---
 
 # debug
@@ -63,7 +63,11 @@ If the issue is about agent behavior (wrong answers, errors, timeouts, tool fail
 
 ### Step 1: Verify CLI version
 
-Run `agentcore --version`. This skill requires v0.9.0 or later. If the version is older, tell the developer to run `agentcore update` before proceeding.
+Run `agentcore --version`. This skill requires v1.0.0 or later. If the version is older, tell the developer to run `npm install -g @aws/agentcore@latest` (or `agentcore update`) before proceeding.
+
+Then check the project format with `jq .version agentcore/agentcore.json`. If it's `1`, it's a v0 project. The v1 CLI runs it in compatibility mode — `deploy`, `status`, `logs`, `traces`, and `invoke` still work, but `add`, `remove`, `build`, and `export` are blocked. To migrate it fully, commit first: review `git status --short`, stage only the expected project files with `git add -- <paths>`, inspect `git diff --cached`, and then commit. Never use `git add -A` when secret files or trace exports may be present. Migrate refuses a dirty git tree even to print the plan, and a fresh v0 project starts dirty. Then run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). In an agent's non-TTY shell it never prompts. The plan is also saved under `agentcore/.cli/migrate/`.
+
+There is no `agentcore validate` in v1. Any project command parses `agentcore.json` and reports schema errors; `agentcore build` additionally synthesizes the CDK app locally without deploying, which is the closest offline check.
 
 ### Step 2: Understand the symptom
 
@@ -71,7 +75,7 @@ Ask (or infer from context):
 
 > "What's happening?
 >
-> 1. The agent returns an error message
+> 1. The agent returns an error message (for `Runtime initialization time exceeded`, go to **Symptom: 424 / "Runtime initialization time exceeded" on invoke**)
 > 2. The agent returns a wrong or unhelpful answer
 > 3. A specific tool call is failing
 > 4. Memory isn't working (agent doesn't remember things)
@@ -80,29 +84,65 @@ Ask (or infer from context):
 
 ### Step 3: Read traces and logs automatically
 
-Don't ask the developer to paste logs — read them directly.
+Don't ask the developer to paste logs — read them directly. After a recent deploy, check logs before traces: a startup crash leaves no new trace, and older traces from the previous version can mislead. If the failure hasn't happened in the last hour, reproduce it first (see **Reproduce the failure** below), then search.
 
 ```bash
-# List recent traces
-agentcore traces list --runtime <AgentName> --since 1h
+# What's deployed, and is it deployed? (resource names, ARNs/IDs, deployed vs local-only)
+agentcore status --json
+
+# List recent traces (--name can be omitted when the project has one runtime)
+agentcore traces runtime list --name <RuntimeName> --since 1h
 
 # Get the most recent trace ID
-agentcore traces list --runtime <AgentName> --since 1h --limit 1
+agentcore traces runtime list --name <RuntimeName> --since 1h --limit 1
 
-# Download and read the trace
-agentcore traces get <traceId> --runtime <AgentName>
+# Download the trace (writes <traceId>.json in the current directory)
+agentcore traces runtime get <traceId> --name <RuntimeName>
 
-# Search logs for errors
-agentcore logs --runtime <AgentName> --since 1h --level error
+# Search logs for errors. Python tracebacks carry no log level, so --level error
+# misses startup crashes. Each traceback line is a separate log event, so match
+# the exception line too, not just "Traceback"
+agentcore logs runtime --name <RuntimeName> --since 1h --query "?Traceback ?Error ?Exception"
+agentcore logs runtime --name <RuntimeName> --since 1h --level error
 
-# Search logs for a specific pattern
-agentcore logs --runtime <AgentName> --since 2h --query "timeout"
-agentcore logs --runtime <AgentName> --since 2h --query "model access"
+# Search logs for a specific pattern (CloudWatch Logs filter pattern)
+agentcore logs runtime --name <RuntimeName> --since 2h --query "timeout"
+agentcore logs runtime --name <RuntimeName> --since 2h --query "AccessDenied"
+
+# Stream new log records while you reproduce
+agentcore logs runtime --name <RuntimeName> --tail
 ```
 
-**Important:** CloudWatch put-to-get latency is **~10 seconds end-to-end** — that's the delay from when a span is emitted to when it's readable by `agentcore traces get` or `agentcore run eval`. There is **no separate "trace ingested but eval not ready yet" window**; the same ingestion step unlocks both paths. Older skills and docs said 30–60s for traces and 2–5 minutes for evals — both are stale. If you just invoked the agent, wait ~15 seconds and both trace reads and evals will work.
+For a **harness** (config-defined agent), use the same commands with `harness` in place of `runtime`: `agentcore traces harness list --name <HarnessName>`, `agentcore logs harness --name <HarnessName> --since 1h --level error`.
 
-Read `agentcore/agentcore.json` to get the agent name if not provided.
+Two gaps to know about. An invoke that fails because the agent never started (an import crash, for example) leaves **no trace** — go straight to logs. And `traces` and `logs` read one endpoint's log group — `DEFAULT` unless you pass `--qualifier <endpoint>` — so a call made against a named endpoint (e.g. `prod`) won't show up under `DEFAULT`.
+
+**Reproduce the failure** with a direct invocation, then read its trace:
+
+```bash
+# Deployed runtime (a session ID is generated if you don't pass one)
+agentcore invoke --runtime <RuntimeName> --payload '{"prompt": "..."}'
+
+# Deployed harness
+agentcore invoke --harness <HarnessName> --prompt "..."
+
+# Local dev server started by `agentcore dev`
+agentcore invoke --runtime <RuntimeName> --local --payload '{"prompt": "..."}'
+```
+
+For streaming agents, inspect the response body as well as the command status. An application failure can arrive as an SSE event such as `data: {"error": "...", "error_type": "AccessDeniedException"}` while the HTTP status is 200, the CLI prints `complete=true`, and the exit code is 0. Treat an `error` event as a failed reproduction in scripts and smoke tests.
+
+**Important:** Traces take **30–90 seconds** after an invocation to become readable by `agentcore traces runtime list/get` and `agentcore eval ondemand evaluate`; the same ingestion step unlocks both. The session ID can show `-` at first. Poll `traces runtime list` instead of sleeping. Online-eval results also wait until the session has been idle for the config's session timeout (default 5 min with `add online-eval`, 15 min with `eval online-eval create`), so first results can take 10–15+ minutes.
+
+If `agentcore status` fails with `No deployment targets are configured for project '<name>'`, the project has never been deployed (`agentcore/aws-targets.json` is empty) — there are no logs or traces to read yet; reproduce locally with `agentcore dev` or deploy first (→ `agents-deploy`).
+
+Read `agentcore/agentcore.json` to get the runtime name (`runtimes[].name`) or harness name (`harnesses[].name`) if not provided.
+
+Many deployed-resource commands (`agentcore runtime get`, `agentcore memory get`, `agentcore gateway get`) take a service **ID**, not the project name. Get it from `agentcore status --json` — each entry in `resources[]` has `resourceType`, `name`, `deploymentState`, and an `arn` (or `id`); the ID is the last segment of the ARN:
+
+```bash
+agentcore status --json | jq -r '.resources[] | select(.resourceType=="runtime" and .name=="<RuntimeName>") | .arn | split("/") | last'
+```
 
 ### Step 4: Diagnose by symptom
 
@@ -124,12 +164,24 @@ Check:
 
 ```bash
 aws iam simulate-principal-policy \
-  --policy-source-arn $(agentcore status --json | jq -r '.runtimes[0].executionRoleArn') \
+  --policy-source-arn $(agentcore runtime get --id <RuntimeId> --json | jq -r '.roleArn') \
   --action-names bedrock:InvokeModel \
   --resource-arns "arn:aws:bedrock:*::foundation-model/*"
 ```
 
-**Third cause:** Cross-region inference profile requires model access in all regions.
+**Third cause:** The model ID is wrong, stale, or not offered in the Runtime's region. The error is `ValidationException ... The provided model identifier is invalid`, and enabling model access does not fix it. Find the ID in the model loader (for example `app/<name>/model/load.py`) or in `app/<name>/harness.yaml`, then check it in the deployed region:
+
+```bash
+# Inference profile IDs (us., eu., apac., global. prefixes)
+aws bedrock get-inference-profile --inference-profile-identifier <model-id> --region <region>
+# Bare model IDs, or to see what the region offers
+aws bedrock list-foundation-models --region <region> --query 'modelSummaries[].modelId'
+aws bedrock list-inference-profiles --region <region> --query 'inferenceProfileSummaries[].inferenceProfileId'
+```
+
+`ResourceNotFoundException` from `get-inference-profile` means that profile doesn't exist in that region. Fix the ID, then run `agentcore deploy` again.
+
+**Fourth cause:** Cross-region inference profile requires model access in all regions.
 
 Model IDs starting with a geographic prefix are cross-region inference profiles that route requests within that geography:
 
@@ -140,7 +192,7 @@ Model IDs starting with a geographic prefix are cross-region inference profiles 
 | `apac.` | Asia Pacific | ap-northeast-1, ap-southeast-1, ap-southeast-2, ap-south-1 |
 | `global.` | All commercial regions worldwide | All supported regions |
 
-The AgentCore CLI scaffolds `global.` by default (e.g., `global.anthropic.claude-sonnet-4-5-20250929-v1:0`). All prefixes require model access enabled in every destination region the profile covers. For `us.` profiles, enable in all US regions; for `eu.`, all EU regions; for `global.`, all supported regions. Not all models support all prefixes — `global.` is currently available for select models only. Use `global.` for maximum throughput when available, or a geographic prefix when data residency requirements constrain where inference can run. Check the Bedrock inference profiles docs for current model × prefix availability.
+The AgentCore CLI's Bedrock templates scaffold a `global.` profile by default (e.g., `global.anthropic.claude-sonnet-5-5` — check the template's model loader, such as `app/<name>/model/load.py`, for the exact ID). All prefixes require model access enabled in every destination region the profile covers. For `us.` profiles, enable in all US regions; for `eu.`, all EU regions; for `global.`, all supported regions. Not all models support all prefixes — `global.` is currently available for select models only. Use `global.` for maximum throughput when available, or a geographic prefix when data residency requirements constrain where inference can run. Check the Bedrock inference profiles docs for current model × prefix availability.
 
 ---
 
@@ -149,7 +201,7 @@ The AgentCore CLI scaffolds `global.` by default (e.g., `global.anthropic.claude
 **Step 1:** Find the failing tool call in the trace:
 
 ```bash
-agentcore traces get <traceId> --runtime <AgentName>
+agentcore traces runtime get <traceId> --name <RuntimeName>
 ```
 
 Look for tool call entries with error status.
@@ -157,22 +209,26 @@ Look for tool call entries with error status.
 **Step 2:** Check the gateway status:
 
 ```bash
-agentcore status --type gateway
-agentcore fetch access --name <AgentName> --type agent
+# Is the gateway deployed? Note its ARN — the gateway ID is the last ARN segment
+agentcore status --json | jq '.resources[] | select(.resourceType=="gateway")'
+
+# Gateway details (URL, authorizer) and its targets
+agentcore gateway get --id <GatewayId> --json
+agentcore gateway target list --gateway-id <GatewayId> --json
 ```
 
 **Step 3:** Common tool call failures:
 
 **Gateway URL not set (local dev):**
-The `AGENTCORE_GATEWAY_*_URL` env var is only set after deploy. In `agentcore dev`, gateway tools aren't available. This is expected — the agent should handle this gracefully.
+The `AGENTCORE_GATEWAY_*_URL` env var is injected into the deployed runtime. `agentcore dev` doesn't set it — locally the runtime only gets its `envVars` from `agentcore.json` plus `agentcore/.env.local`. Either add the deployed gateway URL to `agentcore/.env.local` (get it from `agentcore gateway get --id <GatewayId> --json`) or make the agent handle a missing URL gracefully.
 
 **Auth failure on tool call:**
 
 ```bash
-agentcore logs --runtime <AgentName> --since 1h --query "auth"
+agentcore logs runtime --name <RuntimeName> --since 1h --query "auth"
 ```
 
-Check that the credential is configured correctly: `agentcore status --type credential`
+Check that the credential is deployed: `agentcore status --json` lists each credential with `deploymentState`; `agentcore identity api-key-credential-provider list --json` and `agentcore identity oauth2-credential-provider list --json` show what exists in the account. Run with no flags, the `eval`, `identity`, `runtime`, `harness`, `memory`, and `gateway` commands open the interactive TUI, which fails without a terminal (`interactive mode requires a TTY`) — pass `--json` (or the command's flags) from an agent shell.
 
 **Lambda function error:**
 The Lambda itself is failing. Check Lambda logs directly:
@@ -182,11 +238,11 @@ aws logs tail /aws/lambda/<function-name> --since 1h
 ```
 
 **Policy denial:**
-If a policy engine is attached, check policy decision logs:
+If a policy engine is attached in `ENFORCE`, a denied `tools/call` returns JSON-RPC error `-32002` ("Tool Execution Denied"). Runtime logs do not contain Gateway policy decisions, and the CLI configures no Gateway decision log; read the `AWS/Bedrock-AgentCore` `AllowDecisions`/`DenyDecisions` CloudWatch metrics as described in [`agents-connect/references/policy.md`](../agents-connect/references/policy.md) "Test and enforce". Check the attached engine and its policies:
 
 ```bash
-agentcore logs --runtime <AgentName> --since 1h --query "policy"
-agentcore status --type policy-engine
+# Policy engines appear in status with their policies nested under "children"
+agentcore status --json | jq '.resources[] | select(.resourceType=="policy-engine")'
 ```
 
 ---
@@ -196,7 +252,7 @@ agentcore status --type policy-engine
 **Step 1:** Read the trace to see the agent's reasoning:
 
 ```bash
-agentcore traces get <traceId> --runtime <AgentName>
+agentcore traces runtime get <traceId> --name <RuntimeName>
 ```
 
 The trace shows the model's reasoning steps, tool calls made, and the final response. Look for:
@@ -206,7 +262,7 @@ The trace shows the model's reasoning steps, tool calls made, and the final resp
 - Is the system prompt providing the right context?
 
 **Step 2:** Check if memory is involved:
-If the agent should be using memory context but isn't, see the "Symptom: Memory not persisting" section later in this skill, or load [`references/doctor.md`](references/doctor.md) if this is an environment issue.
+If the agent should be using memory context but isn't, see the "Symptom: Memory not working" section later in this skill, or load [`references/doctor.md`](references/doctor.md) if this is an environment issue.
 
 **Step 3:** Common causes:
 
@@ -223,31 +279,34 @@ If the agent should be using memory context but isn't, see the "Symptom: Memory 
 
 1. Verify LTM strategies are configured (SEMANTIC or USER_PREFERENCE):
 
-```bash
-agentcore status --type memory --json | jq '.memories[].strategies'
-```
+   ```bash
+   agentcore memory get --id <MemoryId> --json | jq '.memory.strategies'
+   ```
 
-1. Wait 5–30 seconds after a session ends — LTM extraction is async. The agent must finish its session before facts are extracted.
+2. Wait 5–30 seconds after a session ends — LTM extraction is async. The agent must finish its session before facts are extracted.
 
-2. Use UUIDs (v4) for session IDs — the platform requires a minimum of 33 characters. Short IDs like "session-1" cause LTM to fail silently. `agentcore invoke` generates compliant IDs by default.
+3. Use UUIDs (v4) for session IDs — the platform requires a minimum of 33 characters. Short IDs like "session-1" cause LTM to fail silently. `agentcore invoke` generates compliant IDs by default.
 
-3. Verify the memory resource is ACTIVE:
+4. Verify the memory resource is ACTIVE:
 
-```bash
-agentcore status --type memory
-```
+   ```bash
+   agentcore memory get --id <MemoryId> --json | jq -r '.memory.status'
+   ```
 
 **Memory not loading at session start:**
 
 1. Check the `MEMORY_*_ID` env var is set:
 
-```bash
-agentcore status --type memory --json | jq '.memories[].id'
-```
+   ```bash
+   # The memory ID the deployed runtime should receive (last ARN segment)
+   agentcore status --json | jq -r '.resources[] | select(.resourceType=="memory") | .arn | split("/") | last'
+   ```
 
-1. Verify the `actor_id` is consistent across sessions — memory is scoped per actor.
+   In `agentcore dev`, these values come from the runtime's `envVars` in `agentcore.json` and from `agentcore/.env.local` — set the `MEMORY_*_ID` there if you need deployed memory locally.
 
-2. Check the namespace paths in your retrieval config match the namespaces used when writing.
+2. Verify the `actor_id` is consistent across sessions — memory is scoped per actor.
+
+3. Check the namespace paths in your retrieval config match the namespaces used when writing.
 
 ---
 
@@ -256,7 +315,7 @@ agentcore status --type memory --json | jq '.memories[].id'
 **Step 1:** Check the trace for where time is being spent:
 
 ```bash
-agentcore traces get <traceId> --runtime <AgentName>
+agentcore traces runtime get <traceId> --name <RuntimeName>
 ```
 
 Look for long-running steps — model calls, tool calls, memory operations.
@@ -304,33 +363,36 @@ See `agents-harden` Session lifecycle management section for the full pattern.
 
 ---
 
-## Symptom: 424 Failed Dependency on invoke
+## Symptom: 424 / "Runtime initialization time exceeded" on invoke
 
-This usually means the agent container failed to start or crashed during initialization.
+The CLI reports this as `Runtime initialization time exceeded` (a `RuntimeClientError`); it never prints "424". It usually means the agent container failed to start or crashed during initialization.
 
-**Step 1:** Check the agent logs for startup errors:
+**Step 1:** Check the agent logs for startup errors. Don't filter with `--level error` — a startup traceback is raw stderr with no log level, so it gets filtered out:
 
 ```bash
-agentcore logs --runtime <AgentName> --since 30m --level error
+agentcore logs runtime --name <RuntimeName> --since 30m --query "?Traceback ?Error ?Exception"
+agentcore logs runtime --name <RuntimeName> --since 30m      # everything, if the query finds nothing
 ```
 
 **Step 2:** Common causes:
 
-**Missing Python dependency:** The agent code imports a package not in `pyproject.toml`. The container starts but crashes on first request. Fix: add the dependency and redeploy.
+**Missing Python dependency:** The agent code imports a package not in `pyproject.toml`. It crashes at import, before serving anything, so invoke fails with `Runtime initialization time exceeded` and the log shows a `ModuleNotFoundError`. Fix: add the dependency and redeploy.
 
 **Entrypoint crash:** The `main.py` throws an exception during import or `app.run()`. Check logs for the traceback.
 
 **Container image pull failure:** If using Container build, the ECR image may not exist or the execution role lacks `ecr:BatchGetImage`. Check:
 
 ```bash
-agentcore status --runtime <AgentName> --json
+agentcore runtime get --id <RuntimeId> --json
 ```
 
 **Memory resource not ACTIVE:** If the agent code assumes memory is available but the memory resource is still in CREATING state, the entrypoint may fail. Check:
 
 ```bash
-agentcore status --type memory
+agentcore memory get --id <MemoryId> --json | jq -r '.memory.status'
 ```
+
+**`Runtime initialization time exceeded. Please make sure that initialization completes in 30s.`** (`RuntimeClientError` on invoke): despite the wording, this usually means the agent **crashed at import** — a `ModuleNotFoundError`, a syntax error, a bad env var read at module level — not that it was slow. The deploy succeeds, `agentcore status` still says `deployed`, and the failed call leaves no trace. Search the logs for `Traceback` (above); fix the import or add the missing dependency to `pyproject.toml`, test with `agentcore dev`, and redeploy. Only if the logs show no traceback is it a genuinely slow start (next bullet).
 
 **Initialization timeout:** The agent takes too long to be ready for its first request — heavy imports at module level, synchronous database connections, or MCP client initialization during startup can exceed the service's health-check window. The symptom looks like a 424 on the first invoke but healthy on subsequent ones. Fix: move expensive setup out of module level, use lazy initialization, or warm the agent before production traffic. See `agents-harden` Initialization time section for patterns.
 
@@ -344,36 +406,46 @@ Usually not an agent bug — the dev server is on a different port than you expe
 
 | Protocol | Default |
 |---|---|
-| HTTP | 8080 |
+| HTTP / AGUI | 8080 |
 | MCP | 8000 |
 | A2A | 9000 |
 
-**When the default is occupied** (second dev session, a lingering process from a previous run, another service on 8080), the CLI **auto-increments** silently: 8080 → 8081 → 8082. A test harness or `curl` script hardcoded to 8080 will get `Connection refused` (curl exit code 7) while the agent is running fine on 8082.
+`agentcore dev --mode browser` also starts the Agent Inspector web UI, which binds 8081 by default (override with `--ui-port`).
+
+**When the default is occupied** (second dev session, a lingering process from a previous run, another service on 8080), the CLI **auto-increments** to the next free port: 8080 → 8081 → 8082. It prints a one-line notice (`Port 8080 is in use; using 8081.`) that's easy to miss. A test harness or `curl` script hardcoded to 8080 will get `Connection refused` (curl exit code 7) while the agent is running fine on 8081. An explicit `--port` never auto-increments — if that port is taken, `agentcore dev` fails with `Port <n> is already in use`.
 
 Diagnose in this order:
 
-1. Read the CLI banner that `agentcore dev` prints — it shows the actual bound port and URL. This is always the source of truth.
-2. If the banner is gone (terminal cleared, running in background), check the log file:
-
-   ```bash
-   tail -20 agentcore/.cli/logs/dev/*.log
-   ```
-
-3. Or find the process directly:
+1. Read the output of `agentcore dev` — it shows the actual bound port. This is always the source of truth.
+2. If that output is gone (terminal cleared, running in background), find the process directly:
 
    ```bash
    # macOS / Linux
-   ps aux | grep -E 'agentcore dev|uvicorn' | grep -v grep
+   ps aux | grep -E 'agentcore dev|uvicorn|tsx watch' | grep -v grep
    lsof -iTCP -sTCP:LISTEN -n -P | grep -E '8080|8081|8082|8000|9000'
    ```
 
+3. Invoke through the CLI with the port you found: `agentcore invoke --runtime <RuntimeName> --local --port 8081 --payload '{"prompt": "hi"}'`
+
 **Fix options:**
 
-- Pin the port explicitly: `agentcore dev --port 8080`
+- Pin the port explicitly: `agentcore dev --agent <RuntimeName> --port 8080` (`--port` applies to a single runtime)
 - Kill the process squatting on the default: `lsof -tiTCP:8080 -sTCP:LISTEN | xargs kill`
 - Update the hardcoded port in your test harness to read from the CLI output or from an env var
 
 This is also a common source of "works locally one day, fails the next" reports — the port shifted between runs.
+
+### `agentcore dev` won't start at all
+
+Match the error text:
+
+- `'uv' was not found on your PATH` / `'npm' was not found on your PATH` — Python runtimes run under `uv`, TypeScript runtimes under `npm exec tsx`. Load [`references/doctor.md`](references/doctor.md).
+- `'container runtime' was not found on your PATH` — the runtime has a `Dockerfile` (Container build). Install and start Docker, Podman, or Finch. `Finch is installed but its VM is not initialized` → run `finch vm init`.
+- `Local dev is not supported for runtime '<name>' (environment-python-bma)` — expected for the Bedrock Managed Agents template; deploy it and test against the deployed agent.
+- `No AgentCore project found at ... (looked for agentcore/agentcore.json)` — you're not inside a project directory.
+- `Agent '<name>' was not found. Available agents: ...` — `--agent` must match a `runtimes[].name` or `harnesses[].name`.
+
+For a **harness**, `agentcore dev` deploys the harness (unless `--skip-deploy`) and prints invoke guidance instead of running anything locally — so harness "dev" failures are deploy failures (→ `agents-deploy`).
 
 ---
 
@@ -381,20 +453,28 @@ This is also a common source of "works locally one day, fails the next" reports 
 
 **Step 1:** Verify the auth type matches the target type. This is the most common gateway error — using the wrong outbound auth for the target:
 
-| Target type | Valid outbound auth |
+| Target type (`targetType` in `agentCoreGateways[].targets[]`) | Valid `outboundAuth.type` |
 |---|---|
-| `mcp-server` | `none`, `oauth`, or IAM (SigV4 via API) |
-| `lambda-function-arn` | IAM only (automatic) |
-| `open-api-schema` | `oauth` or `api-key` (required) |
-| `api-gateway` | `none`, `api-key`, or IAM |
-| `smithy-model` | IAM or `oauth` |
+| `lambda` | `NONE` or `OAUTH`; omitted → gateway IAM role |
+| `lambdaFunctionArn` | omit it (gateway IAM role); the CLI rejects `outboundAuth` here |
+| `mcpServer` | `NONE` or `OAUTH` |
+| `openApiSchema` | `OAUTH` or `API_KEY` (required) |
+| `apiGateway` | `NONE` or `API_KEY`; omitted → gateway IAM role |
+| `smithyModel` | omit it (gateway IAM role) |
+| `httpRuntime` | `NONE` or `OAUTH`; omitted → gateway IAM role |
+| `connector` | omit it (gateway IAM role) |
+| `passthrough` | `GATEWAY_IAM_ROLE`, `OAUTH`, or `JWT_PASSTHROUGH` (required) |
+
+On the `agentcore add gateway-target` shortcut forms (`--endpoint` creates `mcpServer`, `--runtime` creates `httpRuntime`), `--outbound-auth none` writes `NONE` and `oauth` writes `OAUTH` (with `--credential-name`); leaving the flag off omits `outboundAuth`. `--help` also lists `api-key`, but both shortcut types reject it. Set `API_KEY` only in a `--target-configuration` JSON file for an `openApiSchema` or `apiGateway` target.
+
+Check what's configured in `agentcore/agentcore.json` under `agentCoreGateways[].targets[]`, or on the deployed side with `agentcore gateway target list --gateway-id <GatewayId> --json`.
 
 **Step 2:** Check for expired OAuth tokens. If the gateway target uses OAuth, the access token may have expired. Look for auth-related errors:
 
 ```bash
-agentcore logs --runtime <AgentName> --since 1h --query "auth"
-agentcore logs --runtime <AgentName> --since 1h --query "401"
-agentcore logs --runtime <AgentName> --since 1h --query "403"
+agentcore logs runtime --name <RuntimeName> --since 1h --query "auth"
+agentcore logs runtime --name <RuntimeName> --since 1h --query "401"
+agentcore logs runtime --name <RuntimeName> --since 1h --query "403"
 ```
 
 If tokens are expiring, verify the OAuth credential provider's token endpoint is reachable and the client credentials are still valid. For MCP server targets with OAuth, the gateway handles token refresh automatically — if it's failing, the credential provider config may be wrong.
@@ -402,20 +482,20 @@ If tokens are expiring, verify the OAuth credential provider's token endpoint is
 **Step 3:** Check the credential is configured:
 
 ```bash
-agentcore status --type credential
-agentcore status --type gateway --json
+agentcore status --json | jq '.resources[] | select(.resourceType=="credential" or .resourceType=="gateway")'
+agentcore identity oauth2-credential-provider list --json
 ```
 
 ---
 
 ## Symptom: No traces appearing
 
-**Wait ~15 seconds** — there's a short delay (typically ~10s) between invocation and trace availability.
+**Wait 30–90 seconds** — traces take that long after an invocation to become readable. Poll `agentcore traces runtime list` rather than sleeping.
 
-If still no traces after ~30 seconds:
+If still no traces after ~2 minutes:
 
 1. Verify observability was enabled when the agent was deployed
-2. Check the agent was actually invoked: `agentcore logs --runtime <AgentName> --since 1h`
+2. Check the agent was actually invoked: `agentcore logs runtime --name <RuntimeName> --since 1h`
 3. Check CloudWatch permissions on the execution role
 
 ---
@@ -424,11 +504,11 @@ If still no traces after ~30 seconds:
 
 This is the most common observability issue, especially for Container/Docker builds.
 
-AgentCore doesn't capture raw stdout. It uses OpenTelemetry to ship logs to CloudWatch. Three things must be true:
+AgentCore Runtime captures process stdout and stderr in its CloudWatch `runtime-logs` stream. OpenTelemetry carries structured application logs and traces. Check both paths when debugging missing output:
 
 **1. Your entrypoint must be wrapped with `opentelemetry-instrument`.**
 
-CodeZip builds do this automatically. Docker/Container builds need it added manually — this is the #1 thing people miss.
+CodeZip builds do this automatically, and the Dockerfile the CLI scaffolds for `agent-python-strands-container` already includes it. A Dockerfile you wrote yourself needs it added manually — this is the #1 thing people miss.
 
 In your Dockerfile CMD:
 
@@ -450,21 +530,21 @@ xray:PutTelemetryRecords
 xray:PutTraceSegments → scoped to *
 ```
 
-If using the AgentCore CLI with CodeZip, the CDK scaffold adds these automatically. If using a custom role or Container build, verify they're present.
+The CDK grants these to the execution role it creates, for CodeZip and Container builds alike. Only an imported role (`executionRoleArn`) needs them added by hand.
 
-**3. Use Python's `logging` module, not `print()`.**
+**3. Use Python's `logging` module for structured application logs.**
 
-OTEL hooks into `logging` automatically — no custom handlers needed. `print()` statements won't appear in CloudWatch.
+OTEL hooks into `logging` automatically — no custom handlers needed. `print()` writes to stdout, which appears in the Runtime's `runtime-logs` stream, but does not create a structured OTEL log record.
 
 ```python
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# ✅ This appears in CloudWatch
+# Structured OTEL application log
 logger.info("Processing request")
 
-# ❌ This does NOT appear in CloudWatch
+# Process stdout in the runtime-logs stream
 print("Processing request")
 ```
 
@@ -605,17 +685,19 @@ This makes the runtime sample every trace regardless of the parent context's sam
 
 ### Also check: invoking with the endpoint ARN instead of the agent ARN
 
-If traces show only a single top-level `AgentCore.Runtime.Invoke` span with no child spans, check the ARN your caller is using. The invoke target should be the agent runtime ARN:
+If traces show only a single top-level `AgentCore.Runtime.Invoke` span with no child spans, check the ARN your caller is using. The invoke target should be the agent runtime ARN (copy it from `agentcore status --json`; hyphens in the target name become `_`):
 
 ```
-arn:aws:bedrock-agentcore:<region>:<account>:runtime/<runtime-name>
+arn:aws:bedrock-agentcore:<region>:<account>:runtime/<project>_<target>_<runtime>-<id>
 ```
 
 Not the endpoint ARN:
 
 ```
-arn:aws:bedrock-agentcore:<region>:<account>:runtime/<runtime-name>/runtime-endpoint/DEFAULT
+arn:aws:bedrock-agentcore:<region>:<account>:runtime/<project>_<target>_<runtime>-<id>/runtime-endpoint/DEFAULT
 ```
+
+The deployed Runtime name is not the logical name in `agentcore.json`; copy the exact runtime ARN from `agentcore status --target <target> --json`.
 
 Invoking with the endpoint ARN can bypass the full trace instrumentation path. This is a subtle trap — both ARNs produce successful responses, but only the agent ARN produces complete traces.
 
@@ -682,9 +764,10 @@ A trace shows the full execution path of one agent invocation. Key sections:
 - **Latency breakdown** — time spent in each component
 
 ```bash
-# Download trace to a file for detailed inspection
-agentcore traces get <traceId> --runtime <AgentName> --output trace.json
-cat trace.json | jq '.trace.orchestrationTrace.modelInvocationOutput'
+# Download trace to a file for detailed inspection (a JSON array of span and log records)
+agentcore traces runtime get <traceId> --name <RuntimeName> --output trace.json
+jq 'length' trace.json        # how many records
+jq '.[0] | keys' trace.json   # inspect the record shape before filtering
 ```
 
 ## Output
@@ -706,8 +789,8 @@ Once you've identified the root cause, hand off to the skill that owns the fix:
 | Multi-agent delegation not working | `agents-build` | Load [`references/multi-agent.md`](../agents-build/references/multi-agent.md) |
 | Custom request headers not reaching agent code | `agents-build` | Load [`references/request-headers.md`](../agents-build/references/request-headers.md) |
 | Cross-account invocation from an app in another account | `agents-build` | Load [`references/integrate.md`](../agents-build/references/integrate.md) (cross-account section) |
-| Gateway auth misconfigured (401, wrong auth type) | `agents-connect` | Gateway auth matrix |
-| Gateway target type question (Lambda vs OpenAPI vs MCP vs API Gateway) | `agents-connect` | "What Gateway is and isn't" section |
+| Gateway auth misconfigured (401, wrong auth type) | `agents-connect` | Steps 3, "Create an authenticated Gateway", and 4, "Configure outbound authentication" |
+| Gateway target type question (Lambda vs OpenAPI vs MCP vs API Gateway) | `agents-connect` | Step 2, "Choose a target" |
 | Policy denying unexpectedly (Cedar, access denied on tool) | `agents-connect` | Load [`references/policy.md`](../agents-connect/references/policy.md) |
 | Observability not set up (no logs, no traces appearing) | `agents-optimize` | Load [`references/observability.md`](../agents-optimize/references/observability.md) |
 | Cold start / initialization too slow | `agents-harden` | Initialization time section |
