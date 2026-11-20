@@ -423,6 +423,12 @@ def test_zero_downtime_notice_gives_a_firestore_source_only_the_hold():
     assert "emit only the first `HOLD [zero-downtime-requested]` line: no prerequisite lines" in scripts
     assert "for a Firestore or other non-DMS source, the HOLD line alone and no prerequisite lines" in scripts
     assert "only for a PostgreSQL or MySQL source. For Firestore" in " ".join(DOCS.read_text().split())
+def test_clarify_does_not_promise_prerequisites_to_every_zero_downtime_source() -> None:
+    clarify = " ".join((ROOT / "skills/gcp-to-aws/references/phases/clarify/clarify-global.md").read_text().split())
+    assert "Generate lists the DMS prerequisites for a PostgreSQL or MySQL source, and other sources get only the HOLD" in clarify
+    assert "with the DMS prerequisites for a PostgreSQL or MySQL source, and the HOLD alone for other sources" in clarify
+    assert "(Generate lists the prerequisites;" not in clarify
+    assert "HOLD [zero-downtime-requested] with prerequisites" not in clarify
 def test_existing_holds_keep_their_text_and_gain_the_reason_code_in_instructions():
     assert 'echo "HOLD: size and migration-window requirements need a reviewed data migration plan." >&2' in block("# Large/unknown database:")
     assert 'echo "HOLD: generate and verify a source/target-specific data migration adapter." >&2' in block("# Non-PostgreSQL data migration")
