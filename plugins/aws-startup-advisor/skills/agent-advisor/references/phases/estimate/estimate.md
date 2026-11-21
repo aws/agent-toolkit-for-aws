@@ -74,9 +74,10 @@ date. To re-verify, update the fact and this table together.
   anchor here: use the instance type from the user's `instance_type_requirement` answer (else
   assume a mid-size general-purpose type and say so), and set `pricing_source: cached_stale`
   for that component with a note to verify the EC2 rate before committing.
-- Lambda MicroVMs — `lambda_microvms.json` fact `pricing`: arm64 ~$0.0997/vCPU-hour,
-  ~$0.0132/GB-hour; x86_64 ~$0.1176/vCPU-hour, ~$0.0156/GB-hour (about 18% more). Name the
-  architecture the band assumes; default to arm64 only when the design says the unit runs on it.
+- Lambda MicroVMs — `lambda_microvms.json` fact `pricing`. **Default: arm64** ~$0.0997/vCPU-hour,
+  ~$0.0132/GB-hour (the ARM64 handler packaging `decision-refs/lambda-microvms.md` describes);
+  x86_64 ~$0.1176/vCPU-hour, ~$0.0156/GB-hour (about 18% more) only when the design says the unit
+  runs on x86_64. Name the architecture the band assumes.
 - Fargate — `ecs.json` fact `fargate_pricing`. **Default: x86_64** ~$0.04048/vCPU-hour,
   ~$0.004445/GB-hour; arm64 ~$0.03238/vCPU-hour, ~$0.00356/GB-hour only when the design says the
   task runs on Graviton. Name the architecture the band assumes.

@@ -76,7 +76,7 @@ def test_inline_anchors_agree_with_the_facts() -> None:
     v2c = agentcore["runtime_v2_committed_baseline"]
     assert _rates(block, "committed-baseline SKUs (") == (v2c["vcpu_hour"], v2c["gb_hour"])
     lam = _fact("lambda_microvms", "pricing")["value"]
-    assert _rates(block, "`pricing`: arm64 ") == (lam["arm64"]["vcpu_hour"], lam["arm64"]["gb_hour"])
+    assert _rates(block, "`pricing`. **Default: arm64** ") == (lam["arm64"]["vcpu_hour"], lam["arm64"]["gb_hour"])
     assert _rates(block, "x86_64 ~$0.1176") == (lam["x86_64"]["vcpu_hour"], lam["x86_64"]["gb_hour"])
     fargate = _fact("ecs", "fargate_pricing")["value"]
     assert _rates(block, "`fargate_pricing`. **Default: x86_64** ") == (fargate["x86_64"]["vcpu_hour"], fargate["x86_64"]["gb_hour"])
@@ -106,5 +106,16 @@ def test_defaults_are_the_current_generation_and_named_in_the_table() -> None:
     assert _fact("ecs", "fargate_pricing")["value"]["default"] == "x86_64"
     assert "**Default: x86_64**" in block[block.index("- Fargate"):]
     assert _fact("lambda_microvms", "pricing")["value"]["default"] == "arm64"
+    lambda_line = block[block.index("- Lambda MicroVMs"):block.index("- Fargate")]
+    assert "**Default: arm64**" in lambda_line
+    assert "only when the design says the unit runs on x86_64" in lambda_line
+    assert "default to arm64 only when" not in lambda_line
     assert "Design does not look them up per run" in block
+
+
+def test_no_one_off_fix_script_ships_with_the_plugin() -> None:
+    """A one-off edit script (.fix739.py) was once committed under the plugin root; the marketplace
+    entry installs the whole directory, so any such file would ship to every user."""
+    stray = sorted(p.name for p in PLUGIN_ROOT.glob(".fix*.py")) + sorted(p.name for p in PLUGIN_ROOT.glob("fix*.py"))
+    assert stray == [], f"one-off scripts under the plugin root: {stray}"
 
