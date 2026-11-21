@@ -152,10 +152,13 @@ Code uses `embedding_model.encode(text)` as placeholder. Replace with:
 
 ## Persistence
 
-Neptune Analytics is **ephemeral**. For production:
+A Neptune Analytics graph keeps its data while running or stopped; `delete-graph`
+removes it unless you took a graph snapshot (including a final snapshot with
+`--no-skip-snapshot`) or exported it. For production:
 
-- Keep graph running (pay NCU hours), OR
-- Export to S3 periodically and reload, OR
+- Keep the graph running (full m-NCU rate), OR
+- Stop it between uses with `stop-graph` (data preserved at the reduced, non-zero stopped-graph rate; `start-graph` before the next use), OR
+- Snapshot or export to S3 and delete, then restore or re-import (no graph compute charges while deleted), OR
 - Use Neptune Database as persistent store, sync to Analytics for retrieval
 
 ## Common Mistakes

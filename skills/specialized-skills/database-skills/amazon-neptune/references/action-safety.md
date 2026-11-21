@@ -101,16 +101,17 @@ aws neptune delete-db-cluster \
 
 ### Delete Neptune Analytics Graph
 
-**Reversibility:** Irreversible. All in-memory data lost immediately.
+**Reversibility:** Irreversible. Graph data is removed unless a graph snapshot (prior, or final via `--no-skip-snapshot`) or S3 export exists.
 
 **Required safeguards:**
 
-1. Warn that Neptune Analytics is ephemeral — data cannot be recovered.
-2. Suggest exporting results to S3 before deletion.
-3. Require explicit user confirmation with the graph identifier.
+1. Warn that deletion removes the graph data; only a graph snapshot or S3 export can restore it.
+2. Suggest `--no-skip-snapshot` (final snapshot before deletion), `create-graph-snapshot`, or an S3 export, and `stop-graph` if the goal is only to reduce cost. `--skip-snapshot` / `--no-skip-snapshot` is required. A retained snapshot is billed as backup storage until deleted.
+3. Delete any private graph endpoints first (`delete-private-graph-endpoint`); deletion fails while they exist.
+4. Require explicit user confirmation with the graph identifier.
 
 ```bash
-aws neptune-graph delete-graph --graph-identifier g-xxxxxxxxxx
+aws neptune-graph delete-graph --graph-identifier g-xxxxxxxxxx --no-skip-snapshot
 ```
 
 ### Drop All Vertices/Edges (g.V().drop() / g.E().drop())
@@ -156,6 +157,18 @@ aws neptune-graph delete-graph --graph-identifier g-xxxxxxxxxx
 1. Warn that public endpoints expose the cluster to internet traffic.
 2. Confirm IAM auth is enabled (required for public endpoints).
 3. Recommend restricting security group inbound rules to specific IPs.
+
+### Stop / Start Neptune Analytics Graph
+
+**Reversibility:** Reversible. `stop-graph` preserves graph data, settings, and
+identifiers; `start-graph` restores service.
+
+**Required safeguards:**
+
+1. Confirm no jobs or applications still query the graph — it serves nothing while stopped.
+2. Explain that the reduced stopped-graph rate is non-zero, and that `start-graph` resumes full m-NCU billing.
+3. Warn that `start-graph` brings the graph up on the latest engine version.
+4. Require explicit user confirmation with the graph identifier.
 
 ### Scale Down (Instance Class or Reader Replicas)
 

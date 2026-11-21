@@ -271,7 +271,7 @@ def display_name_guess(model_id: str) -> str:
 
 def lookup(region: str, model_id: str) -> dict:
     profile_arn = re.fullmatch(
-        r"arn:aws:bedrock:[^:]+:[0-9]{12}:inference-profile/([^/]+)", model_id
+        r"arn:aws(?:-us-gov|-cn)?:bedrock:[^:]+:[0-9]{12}:inference-profile/([^/]+)", model_id
     )
     if profile_arn:
         model_id = profile_arn.group(1)

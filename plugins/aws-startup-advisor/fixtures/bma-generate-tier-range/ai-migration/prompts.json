@@ -1,0 +1,25 @@
+[
+  {
+    "id": "agent-step",
+    "route": "claude-sonnet-5__runtime-messages__messages",
+    "prompt": "List three steps to plan a product launch.",
+    "expected_traits": [
+      "launch"
+    ]
+  },
+  {
+    "id": "summarize",
+    "route": "gemini-2.5-flash__converse__converse",
+    "prompt": "Summarize in one sentence: The meeting moved to Friday because two speakers were travelling.",
+    "expected_traits": [
+      "Friday"
+    ]
+  },
+  {
+    "id": "shared",
+    "prompt": "Reply with the word ready.",
+    "expected_traits": [
+      "ready"
+    ]
+  }
+]

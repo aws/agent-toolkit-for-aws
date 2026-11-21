@@ -18,7 +18,7 @@ On a non-zero exit, stop and tell the user:
 | ------------------------- | ------------------------------------------------------------------------------------- |
 | `preferences_not_found`   | Clarify has not finished; resume at Clarify.                                          |
 | `preferences_not_ai_only` | `preferences.json` was not written by this skill's Clarify; re-run Clarify.           |
-| `preferences_invalid`     | A `preferences.json` field has the wrong type; quote `detail` and re-run Clarify.     |
+| `preferences_invalid`     | A `preferences.json` field has the wrong type or a value Clarify does not write; quote `detail` and re-run Clarify: choose Start fresh, or re-use the answers and re-answer the question Clarify Step 4 names. |
 | `profile_*`               | The profile no longer validates; quote `detail` and re-run Discover.                  |
 | any other value           | Quote `detail`.                                                                       |
 
@@ -68,14 +68,15 @@ A Claude target from any source follows the target contract for that model in `a
    | `text_to_speech`                                     | Amazon Polly: `target_aws_service: "polly"`, no `bedrock_models[]` row; Nova 2 Sonic only for speech-to-speech |
 
 2. **Text models, in this order:**
-   1. A Q10 `ai_critical_feature` the source model cannot serve, within the eligible pool.
-   2. The same model on Bedrock, when it is eligible and the Region carries it. An `ai_priority` of `balanced` or `cost` does not move it to another family; `cost` adds the cheapest adequate model as an alternative in the rationale (`ai-openai-to-bedrock.md` Tier 2).
+   1. A Q10 `ai_critical_feature` the source model cannot serve, within the eligible pool. For `rag`, Bedrock Knowledge Bases needs a Claude or Nova target via Converse (`ai-openai-to-bedrock.md`).
+   2. The same model on Bedrock, when it is eligible and the Region carries it. No `ai_priority` moves it to another family: `quality`, `speed`, and `cost` name the alternative they favor in the rationale, `cost` the cheapest adequate model (`ai-openai-to-bedrock.md` Tier 2).
    3. `ai_priority`, then `ai_token_volume` and `ai_latency`, then `ai_complexity` and `ai_vision`, using the provider guide's tables.
    4. The source model as the baseline.
 
-3. **Provider guide:** use the guide for the row's `provider` (`openai`: `ai-openai-to-bedrock.md`; `anthropic`: `ai-anthropic-to-bedrock.md`; `google`: `ai-gemini-to-bedrock.md`). A row whose `fronted_by` lists `openrouter` also follows `ai-openrouter-to-bedrock.md`: map each upstream model separately and keep a direct call and a gateway call of the same provider as different rows. Another provider has no guide: choose by item 2 and say so in the rationale.
-4. **No same-model target:** when the guide says to present two options (for example OpenAI Tier 1), ask the user once, listing every such row with both options and their trade-offs, before writing the design. Record the chosen option in the rationale.
+3. **Provider guide:** use the guide for the row's `provider` (`openai`: `ai-openai-to-bedrock.md`; `anthropic`: `ai-anthropic-to-bedrock.md`; `google`: `ai-gemini-to-bedrock.md`). A row whose `fronted_by` lists `openrouter` also follows `ai-openrouter-to-bedrock.md`: map each upstream model separately and keep a direct call and a gateway call of the same provider as different rows. Another provider has no guide: choose by item 2 and say so in the rationale. Read a guide's Volume-Based Recommendations by tier name (`low`, `medium`, `high`, `very_high`), with the per-month bounds in `references/vendored/ai/token-volume-tiers.json`, not the guide's per-day token figures.
+4. **No same-model target:** when the guide says to present two options (for example OpenAI Tier 1), ask the user once, listing every such row with both options and their trade-offs, before writing the design. Present only options that serve the item 2.1 feature; when one remains, use it without asking. Record the chosen option in the rationale.
 5. Treat a mapping as compatibility-guided, not 1:1 parity: every row with `model_change: true` needs prompt, tool-calling, and eval validation before cutover, stated in its rationale.
+6. **Unverified input:** when the provider guide says to probe an input modality on Bedrock before committing to the chosen model (GPT-5.5 audio or video input, `ai-openai-to-bedrock.md` Migration Decision Framework), name that probe in the row's `capability_gaps[]`: the model, the input, and that it must be verified on Bedrock before cutover.
 
 ## Step 3: Endpoint and client API per row
 

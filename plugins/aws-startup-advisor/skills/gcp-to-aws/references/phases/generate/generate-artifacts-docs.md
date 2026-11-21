@@ -99,7 +99,8 @@ Database Migration subsection (only if `scripts/02-migrate-data.sh` exists) with
 **Database connection checklist (PostgreSQL path):** document every execute input by its
 exact name: `SOURCE_HOST`, `SOURCE_PORT`, `SOURCE_DB_USER`, `SOURCE_DB_PASSWORD`,
 `TARGET_HOST`, `TARGET_PORT`, `TARGET_DB_USER`, `TARGET_DB_PASSWORD`, `DATABASE_NAME`,
-`DATA_VERIFIER`, `SOURCE_WRITES_FROZEN`, and `TARGET_WRITES_FROZEN`. Mark any generated
+`DATA_VERIFIER`, `SOURCE_WRITES_FROZEN`, and `TARGET_WRITES_FROZEN` (plus
+`ACCEPT_OFFLINE_DOWNTIME` when `cutover_strategy` is `zero-downtime`). Mark any generated
 default explicitly. Include a concrete source/target retrieval method and a credential-safe
 input method (for example, `read -r -s`), without writing credentials into the guide,
 Terraform outputs or shell history. Passwords containing `:`, `@`, `/`, `%`, apostrophes
@@ -117,7 +118,32 @@ for any documented psql command, with the explicit database and user arguments.
 **No implicit online migration:** `pg_dump`/`pg_restore` and the emitted `pgcopydb copy db`
 perform a single copy while writers are frozen. The parser rejects `--final-sync`;
 never publish a command using that flag or describe a second full copy as a delta.
-If the required outage is unacceptable, mark **HOLD: online/CDC migration requires a
+If `preferences.json` → `design_constraints.cutover_strategy` is `zero-downtime`, the
+Database Migration subsection MUST open with a named HOLD, **HOLD [zero-downtime-requested]:
+zero-downtime cutover was requested, but no tested replication workflow exists**, matching the
+notice printed by `scripts/02-migrate-data.sh` for any engine. State that online replication is
+not generated. For a PostgreSQL source up to 500GB the script still provides the offline copy,
+and `--execute` exits 1 unless the operator sets `ACCEPT_OFFLINE_DOWNTIME=yes`; list that
+variable with the other execute inputs. Downtime grows with database size, with writers frozen
+for the whole copy and verification window. For a non-PostgreSQL engine, `>500GB` or unknown
+size, no copy script is generated and the script keeps its HOLD with the same reason code.
+List the prerequisites for a future online migration, as the script's notice does, only for a
+PostgreSQL or MySQL source. For Firestore, or any other source AWS DMS cannot read (Firestore
+is not Cloud SQL and is not a DMS source), list no prerequisites and do not point to an online
+route; state only the named HOLD, as the script does. The PostgreSQL and MySQL prerequisites come from AWS DMS documentation; Cloud SQL flag names must be confirmed in
+current Google Cloud documentation. PostgreSQL: logical decoding on (the Cloud SQL
+`cloudsql.logical_decoding` flag set to on; `wal_level` is not set directly), `max_replication_slots`
+at least the number of concurrent DMS tasks, `max_wal_senders` above 1 and enough for them, a
+note that changing these flags restarts the instance, a role with the REPLICATION attribute
+(also cloudsqlsuperuser with the pglogical plugin), a primary key or replica identity on every
+table (otherwise DMS ignores UPDATE and DELETE), and partition operations are not replicated.
+MySQL: binary logging on, `binlog_format` ROW, `binlog_row_image` FULL, binary log retention of
+at least 1 day to cover the full load and catch-up, `binlog_checksum` NONE only for DMS 3.4.7 or
+earlier, and a user with REPLICATION CLIENT, REPLICATION SLAVE and SELECT (the DMS MySQL source
+requirements). RELOAD, LOCK TABLES, SHOW VIEW, EVENT, TRIGGER (and BACKUP_ADMIN on MySQL 8.0+) are
+also listed for DMS homogeneous data migrations; confirm which your task type needs. Both: a network path from the AWS DMS replication instance to
+Cloud SQL (authorized network or private connectivity). Do not present these as completed steps.
+When `cutover_strategy` is `zero-downtime`, only the named HOLD above applies. Otherwise, for any case where the required outage is unacceptable, mark the generic **HOLD: online/CDC migration requires a
 separately implemented and validated workflow**. Document its source privileges,
 replication configuration, catch-up/lag evidence, cutover and rollback only when the
 corresponding runnable artifacts exist. Keep large, unknown-size and unsupported
