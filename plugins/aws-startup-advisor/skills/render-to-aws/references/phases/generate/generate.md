@@ -21,7 +21,7 @@ _fragments:
     _trigger: { _when: "aws-design.json has a render.postgres or render.key_value mapping with disposition mapped" }
     _file: phases/generate/generate-infra-data.md
   - _id: artifacts-infra-workflow
-    _trigger: { _always: true }
+    _trigger: { _when: "aws-design.json has a render.workflow or render.workflow_task mapping (the fragment classifies each Workflow and writes terraform/workflow.tf only for a supported one; an estate with no Workflows has nothing for it to do)" }
     _file: phases/generate/generate-infra-workflow.md
   - _id: artifacts-baseline
     _trigger: { _always: true }
