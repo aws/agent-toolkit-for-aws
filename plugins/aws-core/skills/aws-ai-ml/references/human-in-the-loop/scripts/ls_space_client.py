@@ -232,7 +232,7 @@ class SpaceInfo:
     domain_name: str
     space_name: str
     owner_profile: Optional[str]
-    space_url: str  # origin, e.g. https://abc.studio.us-west-2.sagemaker.aws
+    space_url: str  # origin, e.g. https://<space-id>.studio.<region>.sagemaker.aws
 
     @property
     def ls_base_url(self) -> str:

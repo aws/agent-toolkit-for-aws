@@ -51,6 +51,7 @@ This skill is **reference content only**. Two sibling skills cover adjacent jobs
 - **`prefill-aws-activate-credits-application`** — stages an Activate credits application for the founder and returns a link for them to submit. Split by intent: **asking** about credits (eligibility, tiers, amounts, terms) stays here; **doing** the application (_"apply for me"_, _"pre-fill my application"_) hands off to that skill. MUST NOT start an application interview from this skill, and MUST NOT present the web form as the only way to begin one.
 
   When answering any _"how do I apply"_ question, **the pre-fill route goes first** — a short paragraph naming it as the faster path and ending with a plain invitation ("want me to do that?"), then the web steps for anyone who prefers the form. Do not bury it after the steps, the tiers, or the links, where it reads as a footnote. Keep it one offer: do not repeat it, and drop it for the rest of the conversation once declined.
+- **`claude-apps-to-bedrock`** — when the user wants to actually move their team's Claude Desktop or Claude Code to Bedrock (for example to pay with Activate credits), answer the credits question here, then hand off for the walkthrough.
 
 Boundary cases (a query that fits two skills) — read both. Example: _"how do I start with RAG on Bedrock?"_ → consult this skill's `references/learn/genai/...` for an article AND `prompt-library-for-startups` for a starter prompt.
 

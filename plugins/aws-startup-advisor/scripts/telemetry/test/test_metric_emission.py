@@ -52,7 +52,7 @@ SKILLS_DIR = PLUGIN_ROOT / "skills"
 NOT_A_SKILL = {"shared"}
 
 # Skills PluginSkillId has no member for yet; reporting one would 400 the whole request.
-NOT_YET_MODELLED: set[str] = set()
+NOT_YET_MODELLED: set[str] = {"claude-apps-to-bedrock"}
 
 
 def accept(home):
