@@ -141,11 +141,14 @@ resource "aws_launch_template" "eks_nodes" {
   )
   # IMDSv2 enforcement — security baseline, always applied (generate-terraform.md Step 1.5, EKS launch-template rider).
   # Hop limit 1 is intentionally stricter than the account default 2 in baseline.tf.
+  # instance_metadata_tags stays disabled: EC2 rejects launches whose instance tag keys contain
+  # "/" when tags are exposed through IMDS, and the kubernetes.io/cluster/<name> tag below is
+  # required for node discovery. nodeadm reads its NodeConfig from user data, not from tags.
   metadata_options {
     http_tokens                 = "required"
     http_put_response_hop_limit = 1
     http_endpoint               = "enabled"
-    instance_metadata_tags      = "enabled"
+    instance_metadata_tags      = "disabled"
   }
 
   network_interfaces {

@@ -70,3 +70,25 @@ def test_kubernetes_version_fallback_is_in_standard_support_and_documented() -> 
     assert "standard support runs to" in note, "the note must say why the fallback was chosen and when to re-check it"
     design = " ".join(DESIGN_EKS.read_text(encoding="utf-8").split())
     assert "`aws eks describe-cluster-versions`" in design and "describe-addon-versions" not in design
+
+
+def test_self_managed_launch_template_does_not_expose_slash_tags_through_imds() -> None:
+    """EC2 rejects a launch when instance tags are exposed through IMDS and a tag key contains "/"
+    (work-with-tags-in-IMDS: keys may use only letters, digits and + - = . , _ : @). The node template
+    must carry `kubernetes.io/cluster/<name>`, so `instance_metadata_tags` has to stay disabled while
+    IMDSv2 token enforcement is kept."""
+    text = GENERATE_EKS.read_text(encoding="utf-8")
+    template = _block(text, 'resource "aws_launch_template" "eks_nodes"', 'data "aws_ssm_parameter" "eks_ami"')
+    metadata = _block(template, "metadata_options {", "}")
+    assert 'http_tokens                 = "required"' in metadata
+    assert 'instance_metadata_tags      = "disabled"' in metadata
+    assert '"enabled"' not in metadata.replace('http_endpoint               = "enabled"', "")
+    tags = _block(template, "tag_specifications {", "}\n  }")
+    slash_keys = re.findall(r'"([^"\n]*/[^"\n]*)"\s*=', tags)
+    assert slash_keys, "the node template must still carry the kubernetes.io/cluster/<name> tag"
+    # The rider that documents this block for every self-managed template must agree.
+    rider = HEROKU / "references" / "phases" / "generate" / "generate-terraform.md"
+    rider_text = rider.read_text(encoding="utf-8")
+    rider_block = _block(rider_text, "**EKS launch-template rider", "**Emission conditions**")
+    assert 'instance_metadata_tags      = "disabled"' in rider_block
+    assert 'instance_metadata_tags      = "enabled"' not in rider_block
