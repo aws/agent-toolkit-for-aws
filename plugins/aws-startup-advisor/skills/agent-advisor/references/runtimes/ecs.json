@@ -24,5 +24,6 @@
     "expected_scale": { "prototype": 1, "growing": 2, "high": 4, "unknown": 2 }
   },
   "deployment_models": [],
-  "volatile_facts": [{ "key": "regions", "value": "all", "verify_via_mcp": false }]
+  "volatile_facts": [{ "key": "regions", "value": "all", "verify_via_mcp": false },
+    {"key": "fargate_pricing", "verification_key": "ecs.fargate_pricing", "value": {"region": "us-east-1", "unit": "USD per hour, Linux", "x86_64": {"vcpu_hour": 0.04048, "gb_hour": 0.004445}, "arm64": {"vcpu_hour": 0.03238, "gb_hour": 0.00356}, "default": "x86_64"}, "as_of": "2026-11-13", "source": "https://aws.amazon.com/fargate/pricing/", "verify_via_mcp": false, "verification_note": "Dated cache reference, not verified per run: update as_of and estimate.md together."}]
 }
