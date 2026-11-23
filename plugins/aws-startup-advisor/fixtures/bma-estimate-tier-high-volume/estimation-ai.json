@@ -170,7 +170,7 @@
     "migrate_if": "Measured volume confirms the Q7 band and the Haiku summaries pass evals.",
     "stay_if": "The Gemini workload's provider-run tools are essential and cannot move client-side.",
     "confidence": "low",
-    "rationale": "On the Q7 band the Bedrock range is $2.86 to $572.0 a month against $11.8 to $520.0 at list prices; confidence is low because no usage was measured."
+    "rationale": "On the Q7 band the Bedrock range is $3 to $572 a month against $12 to $520 at list prices; confidence is low because no usage was measured."
   },
   "cost_by_source": [
     {
