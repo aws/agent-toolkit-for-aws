@@ -49,7 +49,7 @@ This plugin includes the following default skills:
 | observability | Monitor applications with CloudWatch |
 | containers | Run containerized workloads on AWS |
 | storage | Store and manage data with AWS storage services |
-| aws-blocks | Build full-stack applications with AWS Blocks |
+| aws-cdk-blocks | Start an app with AWS CDK Blocks (formerly AWS Blocks), or add it to an existing project |
 | aws-emulator | Run AWS service APIs locally with AWS Emulator and check whether an app works on it |
 | aws-database | Route any AWS database task to the right service and skill |
 | aws-well-architected-review | Review a workload against the Well-Architected Framework across all six pillars |
