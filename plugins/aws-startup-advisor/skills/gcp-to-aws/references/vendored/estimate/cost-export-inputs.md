@@ -1,6 +1,6 @@
 # Retain selected cost inputs during Estimate
 
-The optional version-2 plan export uses retained Estimate evidence. Version 1 remains the default until compatible import readers are verified. Missing retained inputs must not fail Estimate or change its selected prices.
+The version-2 plan export uses retained Estimate evidence. The gcp-to-aws, heroku-to-aws and azure-to-aws web handoffs request it (see Export below); the emitter itself still defaults to version 1. Missing retained inputs must not fail Estimate or change its selected prices.
 
 ## Before pricing
 
