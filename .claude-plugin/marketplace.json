@@ -233,7 +233,7 @@
       ],
       "name": "aws-data-analytics",
       "source": "./plugins/aws-data-analytics",
-      "version": "1.7.0"
+      "version": "1.7.1"
     },
     {
       "category": "cloud",
