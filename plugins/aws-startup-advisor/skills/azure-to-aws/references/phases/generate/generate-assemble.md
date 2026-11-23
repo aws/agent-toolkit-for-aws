@@ -4,6 +4,7 @@ _of_phase: generate
 _reads:
   - artifacts-infra (fragment contribution)
   - artifacts-docs (fragment contribution)
+  - artifacts-scripts (fragment contribution, when the run has an infra track)
   - artifacts-report (fragment contribution)
   - artifacts-ai (fragment contribution, when aws-design-ai.json exists and run_mode is decide_and_execute)
 _produces:
@@ -42,6 +43,11 @@ and the state must be demonstrable:
 - **Intentionally not generated** — a skip (config source / observability) or a `deferred[]`
   specialist item. This MUST have a `generation-warnings.json` entry saying why.
 
+The scripts fragment reports each database that `scripts/02-migrate-data.sh` does not handle
+as a `warnings[]` entry `{ code: "ENGINE_NOT_SUPPORTED", subject, detail }`; expect one per such
+database and write it as given. The fragment does not write `generation-warnings.json`. When
+that database is also a `deferred[]` entry, its warning satisfies this handoff: write one entry
+per `azure_id`, not two.
 Any service that is neither generated nor warned is a **dropped resource** — a gate
 failure, not a warning.
 
@@ -63,6 +69,9 @@ Scan the emitted `.tf` files:
    contents; note discovery never captured Key Vault secret _values_, so this guards against
    any that leaked via app-settings.)
 
+Scan `scripts/*.sh` the same way: a script carries no password value or literal credential,
+no secret VALUE, and no connection URI containing a password. Scripts may name a Key Vault secret; they never hold its
+value. Scripts are written, never run, during Generate.
 On any gate failure: emit `GATE_FAIL`, do not mark the phase complete, do not patch the
 artifact to force a pass.
 
