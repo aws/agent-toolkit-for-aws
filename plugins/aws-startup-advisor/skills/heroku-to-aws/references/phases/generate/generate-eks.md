@@ -104,9 +104,10 @@ resource "aws_eks_node_group" "general" {
   node_group_name = "general"
   node_role_arn   = aws_iam_role.eks_nodes.arn
   subnet_ids      = [<subnet references>]
-
   instance_types = [<from design>]
-
+  # AL2023_x86_64_STANDARD, or AL2023_ARM_64_STANDARD when the instance type is Graviton.
+  # Never an AL2_* type: EKS stopped publishing Amazon Linux 2 AMIs on 2025-11-26.
+  ami_type = "<ami_type>"
   scaling_config {
     desired_size = <from design>
     max_size     = <from design>
@@ -116,25 +117,38 @@ resource "aws_eks_node_group" "general" {
 
 # Self-Managed Node Group (when node_group_type = "self-managed")
 # Use this path when design specifies eks-managed preference (full K8s control)
-
+# Nodes run the EKS-optimized Amazon Linux 2023 AMI. EKS stopped publishing Amazon Linux 2
+# AMIs on 2025-11-26 and never published them for Kubernetes 1.33 or later, so the AL2
+# SSM parameter does not exist for a current version. AL2023 boots with nodeadm, which
+# reads a NodeConfig document from user data instead of running /etc/eks/bootstrap.sh;
+# the cluster endpoint, CA and service CIDR are required because nodeadm does not call
+# DescribeCluster.
 resource "aws_launch_template" "eks_nodes" {
   name_prefix   = "<cluster_name>-node-"
   instance_type = <from design instance_types[0]>
   image_id      = data.aws_ssm_parameter.eks_ami.value
-
   user_data = base64encode(<<-EOF
-    #!/bin/bash
-    /etc/eks/bootstrap.sh ${aws_eks_cluster.main.name}
+    ---
+    apiVersion: node.eks.aws/v1alpha1
+    kind: NodeConfig
+    spec:
+      cluster:
+        name: ${aws_eks_cluster.main.name}
+        apiServerEndpoint: ${aws_eks_cluster.main.endpoint}
+        certificateAuthority: ${aws_eks_cluster.main.certificate_authority[0].data}
+        cidr: ${aws_eks_cluster.main.kubernetes_network_config[0].service_ipv4_cidr}
   EOF
   )
-
   # IMDSv2 enforcement — security baseline, always applied (generate-terraform.md Step 1.5, EKS launch-template rider).
   # Hop limit 1 is intentionally stricter than the account default 2 in baseline.tf.
+  # instance_metadata_tags stays disabled: EC2 rejects launches whose instance tag keys contain
+  # "/" when tags are exposed through IMDS, and the kubernetes.io/cluster/<name> tag below is
+  # required for node discovery. nodeadm reads its NodeConfig from user data, not from tags.
   metadata_options {
     http_tokens                 = "required"
     http_put_response_hop_limit = 1
     http_endpoint               = "enabled"
-    instance_metadata_tags      = "enabled"
+    instance_metadata_tags      = "disabled"
   }
 
   network_interfaces {
@@ -149,10 +163,11 @@ resource "aws_launch_template" "eks_nodes" {
   }
 }
 
+# <arch> is x86_64, or arm64 when design instance_types[0] is a Graviton type (a family
+# whose name ends in "g" before the size, such as m6g, m7g, c7g, r6g, t4g).
 data "aws_ssm_parameter" "eks_ami" {
-  name = "/aws/service/eks/optimized-ami/<kubernetes_version>/amazon-linux-2/recommended/image_id"
+  name = "/aws/service/eks/optimized-ami/<kubernetes_version>/amazon-linux-2023/<arch>/standard/recommended/image_id"
 }
-
 resource "aws_autoscaling_group" "eks_nodes" {
   name                = "<cluster_name>-nodes"
   desired_capacity    = <from design desired_size>
