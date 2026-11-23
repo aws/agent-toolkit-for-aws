@@ -114,5 +114,5 @@ Before marking Clarify complete:
 
 1. Every written constraint has `value`, `chosen_by`, `prompt`, and `design_consequence`.
 2. No empty strings for `prompt` or `design_consequence`.
-3. `question_id` present when the constraint maps to a catalog question.
-4. `source` present on every constraint where `chosen_by` is `"extracted"` or `"default"`. Omit for `"user"` and `"derived"`.
+3. `question_id` present when the constraint maps to a catalog question, except a host answer in combined mode, which has none.
+4. `source` present on every constraint where `chosen_by` is `"extracted"` or `"default"`. Omit for `"user"` and `"derived"`, except a host answer in combined mode, which keeps `host:<host_skill>` whatever its `chosen_by`.

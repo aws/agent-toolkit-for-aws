@@ -236,6 +236,11 @@ def test_preferences_schema_keeps_the_host_source_whatever_chosen_by() -> None:
     schema = (BMA / "references" / "shared" / "schema-preferences.md").read_text(encoding="utf-8")
     row = next(line for line in schema.splitlines() if line.startswith("| `source`"))
     assert "host:<host_skill>" in row and "combined mode" in row
+    checklist = schema[schema.index("## Validation"):]
+    question_id = next(line for line in checklist.splitlines() if line.startswith("3. "))
+    source = next(line for line in checklist.splitlines() if line.startswith("4. "))
+    assert "host answer in combined mode" in question_id
+    assert "host:<host_skill>" in source and "host answer in combined mode" in source
 
 
 def test_a_host_started_run_takes_the_profile_route_without_asking() -> None:
