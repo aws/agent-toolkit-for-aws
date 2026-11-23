@@ -111,6 +111,14 @@ Apply sheet edits to `$MIGRATION_DIR/preferences.json`:
   `workshop.cpu_architecture` from the sheet.
 - Leave every other non-knob field untouched.
 
+### 3a. Allocate the destination before repricing
+
+Allocate `estimate_scenario_id` as `scenario-00N`, where N = max existing + 1
+(zero-pad 3). It names this new Apply & reprice result. Do not change the index
+or preferences' `active_scenario_id` yet, and do not modify saved scenarios.
+Pass this ID through the inner Estimate cost engine and assembler. It is an
+invocation value, not a new preferences field.
+
 ### 4. Re-run Design (inner)
 
 Execute Design per **Inner runs** above against the frozen inventory + patched
@@ -118,20 +126,28 @@ preferences. Overwrite `$MIGRATION_DIR/aws-design.json`. Do not touch inventory.
 
 ### 5. Re-run Estimate (inner)
 
-Execute Estimate per **Inner runs** above. Overwrite
-`$MIGRATION_DIR/estimation-infra.json`. Chat note only:
+Execute Estimate per **Inner runs** above with `estimate_scenario_id` from
+step 3a. Capture inputs before pricing; the old active selection remains in
+preferences until step 6. The assembler MUST stamp the fresh estimate's
+`workshop.scenario_id` with the supplied destination, not the old active ID.
+If the allocation is unavailable or Estimate fails, stop this refresh without
+selecting a new scenario; do not relabel an older estimate to finish it.
+Overwrite `$MIGRATION_DIR/estimation-infra.json`. Chat note only:
 "Workshop reprice Estimate complete; returning to workshop loop."
 
 ### 6. Snapshot new scenario
 
-1. Allocate next id: `scenario-00N` where N = max existing + 1 (zero-pad 3).
+1. Use `estimate_scenario_id` from step 3a as `{id}`. Before copying, require the
+   fresh estimate's `workshop.scenario_id` to equal it, and require that no
+   manifest or artifact copies already exist for this destination. On mismatch,
+   stop and rerun the failed reprice; do not patch its stamp or overwrite history.
 2. If `index.json.scenarios.length` would exceed 5, **before deleting**: warn the
    user with the scenario id and label that will be evicted (oldest non-baseline),
    then delete that scenario's manifest + three artifact copies and drop it from
    `index.json.scenarios[]`. Never delete `baseline_scenario_id` unless the user
    explicitly resets the workshop.
 3. Copy working-tree preferences / aws-design / estimation-infra into
-   `scenarios/{id}.*`.
+   `scenarios/{id}.*`, preserving the fresh estimate's `export_inputs` unchanged.
 4. Build `preferences_subset`: dot-paths whose values differ from
    `scenario-001.preferences.json` (workshop knobs only — region, availability,
    database_ha, redis_ha, compute_target.default, cost_optimization,
@@ -142,6 +158,8 @@ Execute Estimate per **Inner runs** above. Overwrite
    present).
 6. Update `index.json`: append scenario, set `active_scenario_id`, set
    `preferences.workshop.active_scenario_id` to match; write preferences.
+   This selects the destination whose stamp and complete snapshots were checked
+   above. Clear the invocation's `estimate_scenario_id` before returning.
 
 ### 7. Hand back
 

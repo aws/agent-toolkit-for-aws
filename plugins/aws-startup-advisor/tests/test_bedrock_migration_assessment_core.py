@@ -223,7 +223,7 @@ def _skill_text_files() -> list[Path]:
 
 def _instruction_lines(path: Path) -> list[str]:
     text = path.read_text(encoding="utf-8")
-    if path.parent == BMA / "references/vendored/ai" and path.name in ("schema-design-aws-ai.md", "schema-estimate-ai.md"):
+    if path.parent == BMA / "references/vendored/ai" and path.name in ("schema-design-aws-ai.md", "schema-estimate-ai.md", "schema-generate-ai.md"):
         # A shared contract's intro note and Status section name the gcp/azure producers; they are not instructions to load them.
         head, _, tail = text.partition("## Status")
         lines = [("" if line.startswith(">") and i < head.find("## Shape") else line) for i, line in _offsets(head)]
@@ -305,17 +305,28 @@ def test_same_question_set_in_the_same_order() -> None:
     assert list(BMA_QUESTIONS) == list(GCP_QUESTIONS)
 
 
-# Interpret lines that name the stored value explicitly; GCP leaves it implicit.
+# Interpret lines that name the stored value explicitly (bma, then gcp); GCP leaves it implicit.
 EXPLICIT_INTERPRET = {
-    "Q6": 'Interpret → `ai_vision`: 1 → `"text-only"`, 2 → `"vision"`, 3 → `"audio"`. Default: 1 → `"text-only"` (no constraint).',
+    "Q2": ('Interpret → `ai_priority`: 1 → `"quality"`, 2 → `"speed"`, 3 → `"cost"`, 4 → `"balanced"` (Q10 decides), '
+           '5 → `"balanced"`, 6 → `"balanced"`. Default: 5 → `"balanced"`.', 'Interpret → `ai_priority`. Default: 5 → `"balanced"`.'),
+    "Q6": ('Interpret → `ai_vision`: 1 → `"text-only"`, 2 → `"vision"`, 3 → `"audio"`. Default: 1 → `"text-only"` (no constraint).',
+           "Interpret → `ai_vision`. Default: 1 → no constraint."),
+    "Q8": ('Interpret → `ai_latency`: 1 → `"critical"`, 2 → `"important"`, 3 → `"flexible"`. Default: 2 → `"important"`.',
+           'Interpret → `ai_latency`. Default: 2 → `"important"`.'),
+    "Q9": ('Interpret → `ai_complexity`: 1 → `"simple"`, 2 → `"moderate"`, 3 → `"complex"`. Default: 2 → `"moderate"`.',
+           'Interpret → `ai_complexity`. Default: 2 → `"moderate"`.'),
+    "Q10": ('Interpret → `ai_critical_feature`: 1 → `"function_calling"`, 2 → `"ultra_long_context"`, 3 → `"extended_thinking"`, '
+            '4 → `"prompt_caching"`, 5 → `"rag"`, 6 → `"agentic"`, 7 → `"realtime_speed"`, 8 → `"image_generation"`, '
+            '9 → `"speech"`, 10 → `"none"`. Default: 10 → `"none"` (no override).',
+            "Interpret → `ai_critical_feature`. Default: 10 → no override."),
 }
 
 
 @pytest.mark.parametrize("qid", list(GCP_QUESTIONS))
 def test_interpretation_is_identical(qid: str) -> None:
     if qid in EXPLICIT_INTERPRET:
-        assert _interpret_lines(BMA_QUESTIONS[qid]) == [EXPLICIT_INTERPRET[qid]]
-        assert _interpret_lines(GCP_QUESTIONS[qid]) == ["Interpret → `ai_vision`. Default: 1 → no constraint."]
+        bma, gcp = EXPLICIT_INTERPRET[qid]
+        assert _interpret_lines(BMA_QUESTIONS[qid]) == [bma] and _interpret_lines(GCP_QUESTIONS[qid]) == [gcp]
         return
     assert _interpret_lines(BMA_QUESTIONS[qid]) == _interpret_lines(GCP_QUESTIONS[qid])
     assert _interpret_lines(GCP_QUESTIONS[qid]), f"{qid} has no Interpret line to compare"

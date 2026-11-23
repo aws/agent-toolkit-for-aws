@@ -1,6 +1,6 @@
 # Schema: preferences.json (AI-only)
 
-Clarify phase output (`references/phases/clarify/clarify-ai-only.md`). Design (`references/phases/design/design-ai.md`) and Estimate (`references/phases/estimate/estimate-ai.md`) read it; Generate will once that phase exists in this skill.
+Clarify phase output (`references/phases/clarify/clarify-ai-only.md`). Design (`references/phases/design/design-ai.md`), Estimate (`references/phases/estimate/estimate-ai.md`), and Generate (`references/phases/generate/generate-ai.md`) read it.
 
 ---
 
@@ -15,7 +15,7 @@ Every key in `design_constraints`, `ai_constraints`, and `startup_constraints` (
 | `prompt`             | string | yes      | Question shown to the user, or a short detection label when skipped                                                                                                      |
 | `design_consequence` | string | yes      | One sentence: how this choice shaped the AWS design, estimate, or plan                                                                                                   |
 | `question_id`        | string | no       | AI-only catalog ID (`Q1`–`Q11`, `Q1.5`, `Q10.5`) when mapped; omit for derived values                                                                                    |
-| `source`             | string | no       | Raw provenance signal. Required when `chosen_by` is `"extracted"` (prefix `ai-profile:`) or `"default"` (`"default:<Qid>"`). Omit for `"user"` and `"derived"`. |
+| `source`             | string | no       | Raw provenance signal. Required when `chosen_by` is `"extracted"` (prefix `ai-profile:`) or `"default"` (`"default:<Qid>"`). Omit for `"user"` and `"derived"`, except a host answer in combined mode, which keeps `host:<host_skill>` whatever its `chosen_by` (see below). |
 
 **Do not write null values.** Omit keys that produce no constraint.
 
@@ -83,6 +83,8 @@ Use the **Impact** row for the selected answer from `clarify-ai-only.md` when th
 
 `metadata.report_caveats` is present only when a caveat was added (Q1.5 or Q10.5 default).
 
+In combined mode (`clarify-ai-only.md` § Combined mode), `metadata.questions_from_host` lists `"Q1.5"` when the host answered compliance, and each host answer in `design_constraints` carries `source: "host:<host_skill>"` with any `chosen_by` and no `question_id`.
+
 ---
 
 ## Constraint catalog (prompt + consequence templates)
@@ -102,7 +104,7 @@ Use the **Impact** row for the selected answer from `clarify-ai-only.md` when th
 | `ai_complexity`          | `ai_constraints`      | Q9            | AI task complexity                                            | `[value]` affects recommended model size and agentic path                                         |
 | `ai_critical_feature`    | `ai_constraints`      | Q10           | Specialized features needed                                   | `[value]` gates the model shortlist and capability validation                                     |
 | `mantle_requirements`    | `ai_constraints`      | Q10.5         | Mantle-only requirements (asynchronous inference, provider-run tools, Projects/Workspaces, single-Region processing) | `[value]` entries with a selector route that workload to `bedrock-mantle`; no entry keeps `bedrock-runtime` with an explicit assumption |
-| `startup_program_status` | `startup_constraints` | Q11           | Have you applied for AWS Activate credits?                    | `[value]` triggers the Activate credits callout in the plan                                       |
+| `startup_program_status` | `startup_constraints` | Q11           | Have you applied for AWS Activate credits?                    | `[value]` picks Generate's one-line Activate credits note                                         |
 
 ---
 
@@ -112,5 +114,5 @@ Before marking Clarify complete:
 
 1. Every written constraint has `value`, `chosen_by`, `prompt`, and `design_consequence`.
 2. No empty strings for `prompt` or `design_consequence`.
-3. `question_id` present when the constraint maps to a catalog question.
-4. `source` present on every constraint where `chosen_by` is `"extracted"` or `"default"`. Omit for `"user"` and `"derived"`.
+3. `question_id` present when the constraint maps to a catalog question, except a host answer in combined mode, which has none.
+4. `source` present on every constraint where `chosen_by` is `"extracted"` or `"default"`. Omit for `"user"` and `"derived"`, except a host answer in combined mode, which keeps `host:<host_skill>` whatever its `chosen_by`.

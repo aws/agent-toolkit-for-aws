@@ -43,11 +43,15 @@ access control; for who can call the endpoint, see [iam-and-security.md](referen
 |---|---|---|
 | No connector (the default) | Leaves from a Lambda-managed address, IPv4 only | Public internet; nothing private |
 | A VPC egress connector | Leaves through the connector's subnets and security groups | Your VPC; public destinations only through your NAT gateway (IPv4) or egress-only internet gateway (IPv6) |
+| A VPC egress connector with service-managed Elastic IPs | Leaves from a public IPv4 address Lambda assigns to each connector network interface | Your VPC, and public IPv4 destinations through the VPC's internet gateway, with no NAT gateway (see Public IPv4 With Service-Managed Elastic IPs) |
 
 A connector **replaces** the default path. In private subnets without a NAT route, public names
 still resolve but connections time out, so every third-party API call fails as soon as traffic
-shifts to the new revision. The source address is not fixed on either path: allow-list the
-connector's security groups or subnet CIDRs, never a single IP.
+shifts to the new revision. Without a connector, the source address is not fixed. Through a
+connector, public traffic leaves from your NAT gateway's Elastic IP or, with service-managed Elastic
+IPs, from each network interface's own address (new addresses after a connector update). To give a
+destination one stable range, use an IPAM policy with BYOIP or a contiguous block. For private
+destinations in your VPC, allow-list the connector's security groups or subnet CIDRs.
 
 ### Set Up VPC Egress
 
@@ -74,42 +78,17 @@ RDS and Aurora, and encryption at rest on ElastiCache.
 
 **3. Operator role.** Lambda assumes this role to manage network interfaces in your subnets. It
 is separate from the revision's execution role, which needs no VPC permissions. Trust
-`lambda.amazonaws.com` (`sts:AssumeRole`), conditioned on `aws:SourceAccount` set to your account
-so the role cannot be assumed on another account's behalf; add `aws:SourceArn` for the connector
-ARN once the connector exists, which narrows it to that one connector.
-
-Attach this permissions policy:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "CreateENI",
-      "Effect": "Allow",
-      "Action": "ec2:CreateNetworkInterface",
-      "Resource": [
-        "arn:aws:ec2:*:*:network-interface/*",
-        "arn:aws:ec2:*:*:subnet/*",
-        "arn:aws:ec2:*:*:security-group/*"
-      ]
-    },
-    {
-      "Sid": "TagENI",
-      "Effect": "Allow",
-      "Action": "ec2:CreateTags",
-      "Resource": "arn:aws:ec2:*:*:network-interface/*",
-      "Condition": {
-        "StringEquals": {
-          "ec2:ManagedResourceOperator": "network-connectors.lambda.amazonaws.com"
-        }
-      }
-    }
-  ]
-}
-```
-
-The role needs no delete permission:
+`lambda.amazonaws.com` (`sts:AssumeRole`) and allow `ec2:CreateNetworkInterface` on
+`network-interface/*`, `subnet/*` and `security-group/*`, and `ec2:CreateTags` on
+`network-interface/*` — not on `*`. If the connector uses service-managed Elastic IPs, also allow
+`ec2:AllocateAddress` on `elastic-ip/*`, `ec2:AssociateAddress` on `elastic-ip/*` with the condition `StringLike`
+`aws:ResourceTag/aws:lambda:networkConnectorId` = `nc-*` (only addresses Lambda tagged for a
+connector), and both actions on
+`network-interface/*` with the condition `StringEquals` `ec2:ManagedResourceOperator` =
+`network-connectors.lambda.amazonaws.com`, so they apply only to the connector's own network
+interfaces. Condition the trust policy on `aws:SourceAccount` set to your account, so the
+role cannot be assumed on another account's behalf; add `aws:SourceArn` for the connector ARN once
+the connector exists, which narrows it to that one connector. The role needs no delete permission:
 Lambda deletes the connector's network
 interfaces through the service-linked role `AWSServiceRoleForLambda`
 ([`AWSLambdaServiceRolePolicy`](https://docs.aws.amazon.com/lambda/latest/dg/security-iam-awsmanpol.html#lambda-security-iam-awsmanpol-AWSLambdaServiceRolePolicy)),
@@ -171,6 +150,42 @@ DNS result and the connection result separately. Confirm with VPC flow logs on t
 subnets: no records at all means traffic never entered the VPC (check the revision's reference
 first); `REJECT` records mean a security group or network ACL blocked it.
 
+### Public IPv4 With Service-Managed Elastic IPs
+
+To reach public IPv4 destinations through the connector without a NAT gateway, add
+`"ElasticIpConfiguration":{"Type":"ServiceManaged"}` to `VpcEgressConfiguration` in step 4. Lambda
+allocates a service-managed Elastic IP in the account for each connector network interface,
+associates it, and releases it when it deletes the interface. Omitting the field, or `Type: None`,
+assigns none.
+
+- **Requirements.** The VPC must have an internet gateway attached, or the connector fails with
+  `InternetGatewayNotAttached`; put the connector in public subnets (a `0.0.0.0/0` route to the
+  internet gateway) so traffic leaves through the addresses. The operator role needs the two extra
+  EC2 actions in step 3.
+- **Addresses.** Each address stays the same for the life of its network interface. They show in
+  `aws ec2 describe-addresses` with `ServiceManaged` set to
+  `lambda-network-connector`, can't be modified or released, and don't count toward the account's
+  Elastic IP quota.
+- **Changing it.** `update-network-connector` with `ElasticIpConfiguration` applies to the network
+  interfaces of the new connector version, so create a revision that names the new version and
+  shift traffic (see Change or Remove a Connector). If a destination allow-lists the addresses,
+  re-read them after every connector update.
+- **Own addresses (BYOIP) or a contiguous Amazon block.** Use an Amazon VPC IPAM policy with an
+  allocation rule for the `lambda-network-connector` resource type. The IPAM can be homed in another
+  Region of the same partition, as long as the connector's Region is one of its operating Regions.
+- **Cost.** Charges depend on where the addresses come from (Amazon's default pool, BYOIP, or an
+  Amazon-provided contiguous block); check current rates on the
+  [Amazon VPC pricing](https://aws.amazon.com/vpc/pricing/) page rather than quoting them. A
+  connector's addresses are charged for as long as it has network interfaces, including when it is
+  idle or `FAILED`, so delete connectors you no longer use.
+- **Security considerations.** Each connector network interface becomes publicly addressable. Keep
+  the connector's security group free of inbound rules from the internet (security groups are
+  stateful, so responses to outbound calls still arrive), keep its egress rules scoped to the
+  destinations and ports the function needs, and add a network ACL on the public subnets if you
+  want an extra deny layer. Service-managed Elastic IPs avoid the cost and setup of a NAT gateway;
+  if you'd rather keep the interfaces off the internet entirely, use a NAT gateway in front of
+  private subnets instead.
+
 ### Change or Remove a Connector
 
 - **Change:** `aws lambda-core update-network-connector --identifier {connector-id} --configuration '...'`
@@ -220,7 +235,7 @@ In addition to the Web Function actions in [iam-and-security.md](references/iam-
 |---|---|---|
 | `InvalidParameterValueException` ... "Subnets and Security Groups must belong to the same VPC" | Security group from another VPC | Use a security group in the subnets' VPC |
 | `InvalidParameterValueException` ... "SecurityGroupIds cannot be null or empty" | No security group given | Pass at least one security group |
-| `InvalidParameterValueException` ... "invalid ConnectorOperatorRole permissions" | Operator role lacks the permissions from step 3 | Attach the operator role policy from step 3 |
+| `InvalidParameterValueException` ... "invalid ConnectorOperatorRole permissions" | Operator role lacks the EC2 permissions in step 3 | Grant them on the operator role |
 | `ValidationException` ... "A version qualifier is required" | Unqualified connector ARN | Use `LatestVersionArn` from `get-network-connector` |
 | `ValidationException` ... "ARNs must start with 'arn:'" | Connector name or ID passed | Pass the version-qualified ARN |
 | `ValidationException` ... "is not active" | Connector still `PENDING` | Wait for `ACTIVE`, then create the revision |
@@ -230,7 +245,9 @@ In addition to the Web Function actions in [iam-and-security.md](references/iam-
 | `InvalidParameterValueException` ... "not compatible with the provided network protocol" | `DualStack` on subnets without IPv6 CIDRs | Add IPv6 CIDRs to every subnet, or use `IPv4` |
 | Revision is `Active` but private resources are unreachable | Reference missing from the serving revision, or the endpoint serves another revision | Read the revision back, then `revisionWeights` on the endpoint |
 | Endpoint creation or update rejected for a revision that carries a connector | The endpoint is `MultiRegion` or `PerRegion`, and a connector is Regional | Serve connector revisions from a `HomeRegion` endpoint |
-| Public API calls time out after moving to the connector | No NAT route in the connector's subnets | Add a `0.0.0.0/0` route to a NAT gateway, or keep that traffic on a revision without a connector |
+| Public API calls time out after moving to the connector | No NAT route in the connector's subnets, or, with service-managed Elastic IPs, no route to the internet gateway | Add a `0.0.0.0/0` route to a NAT gateway; with service-managed Elastic IPs, add a `0.0.0.0/0` route to the internet gateway; or keep that traffic on a revision without a connector |
+| Connector `FAILED` with `InternetGatewayNotAttached` | `ElasticIpConfiguration` is `ServiceManaged` but the subnets' VPC has no internet gateway | Attach an internet gateway and route the subnets to it, or create the connector without Elastic IPs |
+| Create rejected, or connector `FAILED` with `InsufficientRolePermissions`: "...sufficient permissions to manage Elastic IP addresses" | The operator role is missing `ec2:AllocateAddress` or `ec2:AssociateAddress` | Add both actions from step 3, then create the connector again |
 | Private name returns `ENOTFOUND` | Revision has no connector, VPC DNS attributes off, or private zone not associated | Check in that order |
 | VPC access works for some requests only | Endpoint split across a VPC and a non-VPC revision | Finish the shift to one revision |
 | Connector update had no effect | Revisions name the old version, including one a `deploy` carried forward | Create a revision with the new `LatestVersionArn` |

@@ -8,6 +8,18 @@ Produces the same `preferences.json` output but with `design_constraints` limite
 
 ---
 
+## Combined mode
+
+These rules apply only when `$MIGRATION_DIR/host-answers.json` exists (`SKILL.md` § Combined mode), on the Step 1.5 fast path as well as in Step 2. Everything else in this file is unchanged.
+
+- **Host answers.** For each wrapper in the file's `design_constraints`, copy it into `preferences.json` `design_constraints` as written. The host writes each one with `source: "host:<host_skill>"` and no `question_id`, because its question numbers are not this file's. A `compliance` wrapper replaces Q1.5: do not ask it, do not add the Q1.5 caveat, and record `"Q1.5"` in `metadata.questions_from_host` (create the array), not in the other three lists. A `target_region` wrapper replaces the derivation in Step 3. "Use defaults for the rest" never changes a host answer.
+- **Q4.** When `infrastructure_moves` is `true`, the infrastructure moves to AWS with the AI calls, so Q4 does not apply: do not ask it and do not write `cross_cloud`.
+- **Step 1.** When `infrastructure_moves` is `true`, replace the two lines under the heading with: "[host_skill] is moving your infrastructure. These questions cover the AI calls."
+- **Q11** is still asked: the host does not ask about credits.
+- **Step 4.** When `stop_after` is `clarify`, follow `SKILL.md` § Combined mode after the status update instead of continuing to Design.
+
+---
+
 ## Step 0: Prior Run Check
 
 Check `$MIGRATION_DIR/` for existing state:
@@ -19,7 +31,7 @@ Check `$MIGRATION_DIR/` for existing state:
 > 1. Re-use these preferences and skip questions
 > 2. Start fresh and re-answer all questions
 
-- If 1: delete `preferences-draft.json` if it exists, then skip to Step 4 with the existing `preferences.json`.
+- If 1: delete `preferences-draft.json` if it exists, then skip to Step 4, which checks the existing `preferences.json` before Clarify completes.
 - If 2: delete `preferences.json` and `preferences-draft.json` (if present), continue to Step 1.
 
 **Case 2 — Draft preferences exist** (`preferences-draft.json` present, no `preferences.json`):
@@ -175,6 +187,8 @@ Interpret → `design_constraints.compliance` array (same format as the full flo
 
 > 1\) Best quality/reasoning | 2\) Fastest speed | 3\) Lowest cost | 4\) Specialized capability (→ Q10\) | 5\) Balanced | 6\) I don't know
 
+These impacts apply to a source with no same model on Bedrock; a source with one keeps it (Q5 override hierarchy).
+
 | Answer   | Model Impact                                        |
 | -------- | --------------------------------------------------- |
 | Quality  | Claude Sonnet 5 primary; Opus 5.5 for hardest tasks |
@@ -183,7 +197,7 @@ Interpret → `design_constraints.compliance` array (same format as the full flo
 | Special  | Deferred to Q10                                     |
 | Balanced | Claude Sonnet 5                                     |
 
-Interpret → `ai_priority`. Default: 5 → `"balanced"`.
+Interpret → `ai_priority`: 1 → `"quality"`, 2 → `"speed"`, 3 → `"cost"`, 4 → `"balanced"` (Q10 decides), 5 → `"balanced"`, 6 → `"balanced"`. Default: 5 → `"balanced"`.
 
 ## Q3 — Monthly AI spend with your current AI providers?
 
@@ -210,7 +224,7 @@ Interpret → `cross_cloud`. Default: 2 → `"latency-acceptable"`.
 
 ## Q5 — Current model in use?
 
-Establishes baseline Bedrock recommendation. Override hierarchy: Q10 special features > Q2 priority > Q7/Q8 volume/latency > Q5 baseline.
+Establishes baseline Bedrock recommendation. Override hierarchy: Q10 special features > the same model on Bedrock > Q2 priority > Q7/Q8 volume/latency > Q5 baseline.
 
 _Skip when:_ the validator summary reports `models_extractable: true` — every source has `model_evidence: "observed"` and every observed model has at least one `confidence: "high"` evidence entry (user-confirmed evidence is always `high`) — auto-detect with `chosen_by: "extracted"`, `source: "ai-profile:ai_sources[].models"`, and do not present this question. The detected models are already shown in the Step 1 summary. Otherwise, present the question with the detected model(s) offered as the suggested answer. With 2+ detected models, record `ai_model_baseline` as an array (one entry per model).
 
@@ -243,7 +257,7 @@ while GPT-5.6 Global CRIS uses the standard rate. For Astra, compare its separat
 inference/context tier against the source price before claiming savings or parity.
 For sources without a Bedrock equivalent, present a same-vendor upgrade and a cross-family option.
 
-Override examples: GPT-4 + Q2=cost → Haiku; Flash + Q10=extended thinking → Sonnet; GPT-4o + Q10=speech → Nova 2 Sonic; GPT-5.5 + Q2=cost → Sonnet 5.
+Override examples: GPT-4 + Q2=cost → Haiku; Flash + Q10=extended thinking → Sonnet; GPT-4o + Q10=speech → Nova 2 Sonic; GPT-5.5 + Q2=cost → GPT-5.5, with Sonnet 5 named as the cost alternative.
 
 Interpret → `ai_model_baseline`. Default: auto-detect, fallback Q2 priority-based.
 
@@ -331,7 +345,7 @@ Present with concrete anchors: Critical = autocomplete/live chat; Important = ch
 | Important | Sonnet 5 with streaming; standard on-demand                  |
 | Flexible  | Any model; batch inference for cost savings                  |
 
-Interpret → `ai_latency`. Default: 2 → `"important"`.
+Interpret → `ai_latency`: 1 → `"critical"`, 2 → `"important"`, 3 → `"flexible"`. Default: 2 → `"important"`.
 
 ## Q9 — AI task complexity
 
@@ -345,7 +359,7 @@ Present with concrete examples: Simple = classify/extract/summarize; Moderate = 
 | Moderate | Sonnet 5 recommended; Haiku may suffice with prompt engineering       |
 | Complex  | Sonnet 5 required; extended thinking considered (note: on Sonnet 5.5, turning off up-front thinking requires `thinking: {"type": "between_tools"}` instead of "disabled" at high effort or below); Opus 5.5 for hardest |
 
-Interpret → `ai_complexity`. Default: 2 → `"moderate"`.
+Interpret → `ai_complexity`: 1 → `"simple"`, 2 → `"moderate"`, 3 → `"complex"`. Default: 2 → `"moderate"`.
 
 ## Q10 — Specialized features needed
 
@@ -364,7 +378,7 @@ Interpret → `ai_complexity`. Default: 2 → `"moderate"`.
 | Real-time conversational speech      | Amazon Nova 2 Sonic recommended for speech-to-speech; latency guidance included                                                                                                                                                                                                                                                                                                                                     |
 | None                                 | Default recommendation from Q2 priority stands                                                                                                                                                                                                                                                                                                                                                                     |
 
-Interpret → `ai_critical_feature`. Default: 10 → no override.
+Interpret → `ai_critical_feature`: 1 → `"function_calling"`, 2 → `"ultra_long_context"`, 3 → `"extended_thinking"`, 4 → `"prompt_caching"`, 5 → `"rag"`, 6 → `"agentic"`, 7 → `"realtime_speed"`, 8 → `"image_generation"`, 9 → `"speech"`, 10 → `"none"`. Default: 10 → `"none"` (no override).
 
 ## Q10.5 — Mantle-only requirements (asynchronous inference, provider-run tools, Projects/Workspaces, single-Region processing)
 
@@ -463,10 +477,23 @@ After writing `preferences.json`, delete `$MIGRATION_DIR/preferences-draft.json`
 
 Before phase completion, enforce output gate:
 
-- `preferences.json` must exist.
-- `preferences.json.metadata.migration_type` must equal `"ai-only"`.
+```bash
+python3 <SKILL_BASE>/scripts/design-ai.py preferences $MIGRATION_DIR
+```
 
-If either check fails: STOP and output: "AI-only clarify output validation failed. Fix `preferences.json` before completing Clarify."
+It checks that `preferences.json` exists, that `metadata.migration_type` is `"ai-only"`, and that every field has the type and, for Q2 and Q6–Q10, a value this file's Interpret lines write: the same check Design and Estimate run. Do not complete Clarify until it prints `"ok": true`. On a non-zero exit, quote `detail` and use the first line that matches:
+
+1. `error` is `preferences_invalid` and `detail` names `ai_constraints.<key>` for a key in the table below: ask that question again, write its interpreted answer into `preferences.json` with the full field shape and `chosen_by: "user"`, move its Q id into `metadata.questions_asked` and out of the other two lists, and run the check again. When the new Q2 answer is 4 (Specialized capability), ask Q10 the same way.
+2. Otherwise: output "AI-only clarify output validation failed." and start fresh as in Step 0 Case 1 option 2: delete `preferences.json` and `preferences-draft.json`, then continue to Step 1.
+
+| Key in `detail`        | Question |
+| ---------------------- | -------- |
+| `ai_priority`          | Q2       |
+| `ai_vision`            | Q6       |
+| `ai_token_volume`      | Q7       |
+| `ai_latency`           | Q8       |
+| `ai_complexity`        | Q9       |
+| `ai_critical_feature`  | Q10      |
 
 Use read-merge-write (as described in `SKILL.md`) to update `.phase-status.json` in the same turn as the output message:
 

@@ -1,0 +1,145 @@
+{
+  "phase": "generate",
+  "generation_source": "ai",
+  "timestamp": "2026-11-16T19:30:00Z",
+  "migration_plan": {
+    "duration_drivers": [
+      "One model, one client_config route",
+      "Model change from gpt-4o to GPT-5.6 Terra needs a prompt and eval pass"
+    ],
+    "approach": "Config change: keep the OpenAI SDK and point it at bedrock-runtime /openai/v1 with a Bedrock token and the GPT-5.6 Terra CRIS id.",
+    "phases": [
+      {
+        "name": "Set up and shadow",
+        "sequence": 1,
+        "activities": [
+          "Run setup_bedrock.sh",
+          "Attach the IAM policy",
+          "Run AI_PROVIDER=shadow"
+        ]
+      },
+      {
+        "name": "Compare",
+        "sequence": 2,
+        "activities": [
+          "Run test_comparison.py with representative prompts",
+          "Tune prompts for model changes"
+        ]
+      },
+      {
+        "name": "Move traffic",
+        "sequence": 3,
+        "activities": [
+          "Set AI_PROVIDER=bedrock on one service or environment at a time",
+          "Retire the source credentials once stable"
+        ]
+      }
+    ],
+    "models_to_migrate": [
+      "gpt-4o"
+    ]
+  },
+  "step_by_step_guide": {
+    "languages": [],
+    "primary_pattern": "direct_sdk",
+    "files_to_modify": [],
+    "dependency_changes": "Add aws-bedrock-token-generator>=1,<2; keep openai>=2.45.0,<3."
+  },
+  "rollback_plan": {
+    "mechanism": "feature_flag",
+    "flag_name": "AI_PROVIDER",
+    "default_value": "source",
+    "rollback_time": "Immediate: set AI_PROVIDER=source and reload the service",
+    "triggers": [
+      "Response quality below 90% of the source baseline",
+      "P95 latency above 2x the source baseline for 5 minutes",
+      "Error rate above 1% for 5 minutes",
+      "Cost per request above 3x the source"
+    ]
+  },
+  "monitoring": {
+    "dashboards": [
+      "Requests by provider",
+      "Latency P50/P95/P99",
+      "Error rate",
+      "Tokens",
+      "Cost"
+    ],
+    "alerting_rules": [
+      {
+        "severity": "Critical",
+        "condition": "Bedrock error rate above 5% for 2 minutes",
+        "action": "Set AI_PROVIDER=source"
+      },
+      {
+        "severity": "High",
+        "condition": "Bedrock P95 latency above 3x the source baseline for 5 minutes",
+        "action": "Investigate; set AI_PROVIDER=source if it persists"
+      },
+      {
+        "severity": "High",
+        "condition": "Response quality below 90% of the source score",
+        "action": "Set AI_PROVIDER=source and review prompts"
+      },
+      {
+        "severity": "Medium",
+        "condition": "Daily Bedrock cost above 2x the projected daily cost",
+        "action": "Review token usage and the AWS Budgets alert"
+      },
+      {
+        "severity": "Low",
+        "condition": "Token usage above 120% of the estimate",
+        "action": "Review the estimate and quotas"
+      }
+    ]
+  },
+  "production_readiness_checklist": [
+    "Bedrock model access confirmed for every route",
+    "IAM policy attached to the application role",
+    "Quotas checked or increased",
+    "test_comparison.py passes",
+    "Monitoring and the Bedrock budget active",
+    "Rollback to AI_PROVIDER=source tested"
+  ],
+  "success_criteria": {
+    "quality": {
+      "response_quality": ">= 90% of the source baseline",
+      "capability_coverage": "100% of the workloads in ai-workload-profile.json"
+    },
+    "latency": {
+      "p50": "within 1.5x of the source",
+      "p95": "within 2x of the source"
+    },
+    "cost": {
+      "monthly": "within 20% of estimation-ai.json",
+      "per_request": "within 30% of the source per request"
+    }
+  },
+  "recommendation": {
+    "approach": "Config change: keep the OpenAI SDK and point it at bedrock-runtime /openai/v1 with a Bedrock token and the GPT-5.6 Terra CRIS id.",
+    "confidence": "medium",
+    "key_risks": [
+      "gpt-4o -> GPT-5.6 Terra is a model change: compare answers before moving traffic",
+      "The 1.0 profile records no call sites, so the files to change must be found by hand"
+    ]
+  },
+  "artifacts_by_source": [
+    {
+      "provider": "openai",
+      "source_service": "openai_api",
+      "models": [
+        {
+          "model": "gpt-4o",
+          "generated_files": [
+            "ai-migration/README.md",
+            "ai-migration/iam-policy.json",
+            "ai-migration/prompts.json",
+            "ai-migration/routes/gpt-4o__runtime-openai-cris__chat-completions.py",
+            "ai-migration/setup_bedrock.sh",
+            "ai-migration/test_comparison.py"
+          ]
+        }
+      ]
+    }
+  ]
+}

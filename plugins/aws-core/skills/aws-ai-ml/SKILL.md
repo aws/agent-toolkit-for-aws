@@ -16,7 +16,7 @@ description: >
   deployment paths, and PySDK v3. NOT for SageMaker Ground Truth labeling jobs,
   Feature Store, or general AWS infrastructure.
 metadata:
-  version: "7"
+  version: "8"
 ---
 
 # AWS AI/ML Model Customization
@@ -47,6 +47,7 @@ Match the user's intent to the appropriate reference folder and load only that c
 | Manage project directory and artifacts | [references/directory-management/](references/directory-management/) | Starting a new project, resuming existing one, or when PLAN.md needs to be associated with a project directory. |
 | Set up, update, or delete a SageMaker Managed MLflow app | [references/manage-mlflow/](references/manage-mlflow/) | User says "set up MLflow", "create MLflow app", "update my MLflow app", "delete my MLflow app", "I need an MLflow server", asks "what is SageMaker MLflow", or a workflow needs an MLflow backend and none is connected. |
 | Diagnose a failing or unhealthy SageMaker endpoint | [references/endpoint-diagnostics/](references/endpoint-diagnostics/) | User reports endpoint errors, latency, inference failures, or a deployment that failed. "What's the status of my endpoint?", "Is my endpoint erroring?", "My endpoint failed — why?", "How many instances are running behind my endpoint?", "Is the latency my model or SageMaker?", "Show me the container logs for my endpoint." NOT for training-job issues, endpoint deletion, scaling changes, or new deployments. |
+| Reduce GPU inference cost or latency with a shared KV cache | [references/kv-cache-handoff.md](references/kv-cache-handoff.md) | User self-hosts open-weight LLMs on GPUs (EC2, EKS, or similar) using vLLM, SGLang, or TensorRT-LLM and asks about reducing inference cost, improving time-to-first-token, sharing KV cache across replicas, setting up ElastiCache for KV tensor storage, configuring LMCache, or adding a distributed L2 cache to their inference fleet. NOT for SageMaker managed endpoint optimization (route to model-deployment instead). |
 
 ## Rules
 
@@ -54,6 +55,7 @@ Match the user's intent to the appropriate reference folder and load only that c
 - **Progressive disclosure.** Load only the reference folder relevant to the current user intent. Do not load all references at once.
 - **Best-effort help.** If the user's request falls outside this skill's references, do not dead-end the conversation. Help them using general AWS knowledge and documentation, and inform the user that the guidance is not covered by this skill's validated workflows.
 - **Usage attribution.** Before running any AWS CLI command or packaged script, set `export AWS_SDK_UA_APP_ID=AWSSkill-SageMaker`.
+- **KV caching for self-hosted inference.** When the user self-hosts inference on GPUs and asks about reducing cost or latency via distributed KV caching, hand off to the `distributed-kv-caching` skill. See [references/kv-cache-handoff.md](references/kv-cache-handoff.md). This is outside SageMaker's service boundary but is a common follow-on from model deployment to self-hosted GPUs.
 
 ## Guardrail — where this skill's own files live (MCP vs local install)
 

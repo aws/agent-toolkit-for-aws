@@ -44,7 +44,7 @@ Core skills cover:
 - Observability (CloudWatch, X-Ray, CloudTrail)
 - Application integration (messaging, streaming)
 - Cost management (Billing and Cost Management)
-- Full-stack applictaion development (AWS Blocks)
+- Full-stack application development (AWS CDK Blocks)
 - Local development and testing against AWS service APIs (AWS Emulator)
 - Generative AI (Bedrock)
 - Databases (service selection and routing)
@@ -63,6 +63,7 @@ knowledge.
 Specialized skills are organized by AWS service category:
 
 - **[Analytics](specialized-skills/analytics-skills/)**
+- **[Business Research](specialized-skills/business-research-skills/)**
 - **[Customer Communications](specialized-skills/customer-communications-skills/)**
 - **[Database](specialized-skills/database-skills/)**
 - **[EC2](specialized-skills/ec2-skills/)**

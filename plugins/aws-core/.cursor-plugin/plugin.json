@@ -17,7 +17,7 @@
     "iam",
     "bedrock",
     "amazon-bedrock",
-    "aws-blocks",
+    "aws-cdk-blocks",
     "aws-emulator",
     "billing",
     "cost-explorer",

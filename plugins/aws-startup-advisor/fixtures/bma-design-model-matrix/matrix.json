@@ -1,0 +1,901 @@
+{
+  "description": "Expected Bedrock targets for Design's model choice. Each row is one source workload and one set of Clarify answers; allowed lists every target the vendored guides and Clarify's impact tables support for that row (base model ids without a CRIS prefix, a trailing * for a model the pricing cache lists by name only, or service:<name>). decided_by names the design-ai.md Step 2 rule that settles the row. design-ai.py check does not read this file.",
+  "pairwise": "Rows in group pairwise cover every pair of values across source, ai_priority, ai_latency, ai_complexity, ai_token_volume and ai_vision, except excluded_pairs.",
+  "excluded_pairs": [
+    {
+      "when": {
+        "source": "claude-sonnet-5",
+        "ai_vision": "audio"
+      },
+      "reason": "No Bedrock text model in ai-model-lifecycle.md Capability Constraints takes audio input, and the guides name no cross-family target for it; only a same-model source (GPT-5.5) has an answer, and ai-openai-to-bedrock.md Migration Decision Framework says to probe its audio input first"
+    },
+    {
+      "when": {
+        "source": "gpt-4o",
+        "ai_vision": "audio"
+      },
+      "reason": "No Bedrock text model in ai-model-lifecycle.md Capability Constraints takes audio input, and the guides name no cross-family target for it; only a same-model source (GPT-5.5) has an answer, and ai-openai-to-bedrock.md Migration Decision Framework says to probe its audio input first"
+    },
+    {
+      "when": {
+        "source": "gemini-2.5-flash",
+        "ai_vision": "audio"
+      },
+      "reason": "No Bedrock text model in ai-model-lifecycle.md Capability Constraints takes audio input, and the guides name no cross-family target for it; only a same-model source (GPT-5.5) has an answer, and ai-openai-to-bedrock.md Migration Decision Framework says to probe its audio input first"
+    }
+  ],
+  "wildcard_targets": {
+    "amazon.nova-2-sonic*": "Amazon Nova 2 Sonic"
+  },
+  "input_evidence_note": "A vision or audio row may allow a model that ai-model-lifecycle.md Capability Constraints does not list as taking that input only when input_evidence has an entry for it: the vendored guide, its section and a quote naming the model and the input. An entry with probe true means the guide says to probe that input on Bedrock before committing, and each row allowing the model lists it in probes; Design must then name the probe in that row's capability_gaps (design-ai.md Step 2 item 6).",
+  "input_evidence": [
+    {
+      "model": "openai.gpt-5.5",
+      "modality": "vision",
+      "file": "ai-openai-to-bedrock.md",
+      "section": "Feature Migration",
+      "names": "GPT-5.x",
+      "quote": "GPT-5.x (image input) or Claude / Nova",
+      "probe": false
+    },
+    {
+      "model": "openai.gpt-5.6-luna",
+      "modality": "vision",
+      "file": "ai-openai-to-bedrock.md",
+      "section": "Feature Migration",
+      "names": "GPT-5.x",
+      "quote": "GPT-5.x (image input) or Claude / Nova",
+      "probe": false
+    },
+    {
+      "model": "openai.gpt-5.6-terra",
+      "modality": "vision",
+      "file": "ai-openai-to-bedrock.md",
+      "section": "Feature Migration",
+      "names": "GPT-5.x",
+      "quote": "GPT-5.x (image input) or Claude / Nova",
+      "probe": false
+    },
+    {
+      "model": "amazon.nova-2-lite-v1:0",
+      "modality": "vision",
+      "file": "bedrock-pricing-cache.md",
+      "section": "Amazon Nova",
+      "names": "Nova 2 Lite",
+      "quote": "Nova 2 Lite by tier (text + image + video)",
+      "probe": false
+    },
+    {
+      "model": "openai.gpt-5.5",
+      "modality": "audio",
+      "file": "ai-openai-to-bedrock.md",
+      "section": "Migration Decision Framework",
+      "names": "GPT-5.5",
+      "quote": "GPT-5.5's native audio/video (omnimodal) input** in ways the Bedrock deployment cannot serve \u2014 Claude on Bedrock is text+image only, and the mantle GPT path should be probed for the specific modality before committing",
+      "probe": true
+    }
+  ],
+  "sources": {
+    "gpt-5.5": {
+      "fixture": "bma-design-openai-mantle-and-runtime",
+      "workload_id": "openai_api.gpt-5.5.openai.chat.completions.create.plain",
+      "model": "gpt-5.5",
+      "capability": "text_generation",
+      "same_model": "openai.gpt-5.5"
+    },
+    "claude-sonnet-5": {
+      "fixture": "bma-design-anthropic-gemini-high-volume",
+      "workload_id": "anthropic_api.claude-sonnet-5.anthropic.messages.create.plain",
+      "model": "claude-sonnet-5",
+      "capability": "text_generation",
+      "same_model": "anthropic.claude-sonnet-5"
+    },
+    "gpt-4o": {
+      "fixture": "bma-design-openai-mantle-and-runtime",
+      "workload_id": "openai_api.gpt-5.5.openai.chat.completions.create.plain",
+      "model": "gpt-4o",
+      "capability": "text_generation",
+      "same_model": null
+    },
+    "gemini-2.5-flash": {
+      "fixture": "bma-design-anthropic-gemini-high-volume",
+      "workload_id": "gemini_api.gemini-2.5-flash.genai.models.generate_content.plain",
+      "model": "gemini-2.5-flash",
+      "capability": "text_generation",
+      "same_model": null
+    },
+    "text-embedding-3-small": {
+      "fixture": "bma-design-openai-mantle-and-runtime",
+      "workload_id": "openai_api.text-embedding-3-small.openai.embeddings.create.plain",
+      "model": "text-embedding-3-small",
+      "capability": "embedding",
+      "same_model": null
+    },
+    "gpt-image-1": {
+      "fixture": "bma-design-openai-mantle-and-runtime",
+      "workload_id": "openai_api.gpt-5.5.openai.chat.completions.create.plain",
+      "model": "gpt-image-1",
+      "capability": "image_generation",
+      "same_model": null,
+      "workload": {
+        "sdk_method": "openai.images.generate",
+        "capability": "image_generation",
+        "capability_confidence": "high"
+      }
+    },
+    "whisper-1": {
+      "fixture": "bma-design-openai-mantle-and-runtime",
+      "workload_id": "openai_api.gpt-5.5.openai.chat.completions.create.plain",
+      "model": "whisper-1",
+      "capability": "speech_to_text",
+      "same_model": null,
+      "workload": {
+        "sdk_method": "openai.audio.transcriptions.create",
+        "capability": "speech_to_text",
+        "capability_confidence": "high"
+      }
+    },
+    "tts-1": {
+      "fixture": "bma-design-openai-mantle-and-runtime",
+      "workload_id": "openai_api.gpt-5.5.openai.chat.completions.create.plain",
+      "model": "tts-1",
+      "capability": "text_to_speech",
+      "same_model": null,
+      "workload": {
+        "sdk_method": "openai.audio.speech.create",
+        "capability": "text_to_speech",
+        "capability_confidence": "high"
+      }
+    }
+  },
+  "rows": [
+    {
+      "id": "pair-01",
+      "group": "pairwise",
+      "source": "gpt-4o",
+      "preferences": {
+        "ai_priority": "speed",
+        "ai_latency": "important",
+        "ai_complexity": "complex",
+        "ai_token_volume": "high",
+        "ai_vision": "text-only",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "amazon.nova-lite-v1:0",
+        "amazon.nova-micro-v1:0",
+        "anthropic.claude-haiku-5-5",
+        "anthropic.claude-opus-5-5",
+        "anthropic.claude-sonnet-5",
+        "openai.gpt-5.6-luna",
+        "openai.gpt-5.6-terra",
+        "openai.gpt-6-luna"
+      ],
+      "decided_by": "priority",
+      "basis": "ai-openai-to-bedrock.md Tier 1 (GPT-5.6 Terra or Claude Sonnet 5); ai-openai-to-bedrock.md GPT-4o row: OpenAI names gpt-6-luna as the replacement, a fast-tier active row in the pricing cache; Clarify Q2 speed; Tier 1 Option A fast tier (GPT-5.6 Luna); Clarify Q9 complex (Sonnet 5; Opus 5.5 for hardest)"
+    },
+    {
+      "id": "pair-02",
+      "group": "pairwise",
+      "source": "claude-sonnet-5",
+      "preferences": {
+        "ai_priority": "cost",
+        "ai_latency": "critical",
+        "ai_complexity": "complex",
+        "ai_token_volume": "low",
+        "ai_vision": "vision",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "anthropic.claude-sonnet-5"
+      ],
+      "decided_by": "same_model",
+      "basis": "design-ai.md Step 2 item 2.2; ai-anthropic-to-bedrock.md Step 1"
+    },
+    {
+      "id": "pair-03",
+      "group": "pairwise",
+      "source": "gpt-5.5",
+      "preferences": {
+        "ai_priority": "balanced",
+        "ai_latency": "flexible",
+        "ai_complexity": "complex",
+        "ai_token_volume": "medium",
+        "ai_vision": "audio",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "openai.gpt-5.5"
+      ],
+      "decided_by": "same_model",
+      "basis": "design-ai.md Step 2 item 2.2; ai-openai-to-bedrock.md Tier 0; ai-openai-to-bedrock.md Migration Decision Framework: probe GPT-5.5 audio input on Bedrock before committing",
+      "probes": [
+        {
+          "model": "openai.gpt-5.5",
+          "modality": "audio"
+        }
+      ]
+    },
+    {
+      "id": "pair-04",
+      "group": "pairwise",
+      "source": "gemini-2.5-flash",
+      "preferences": {
+        "ai_priority": "quality",
+        "ai_latency": "important",
+        "ai_complexity": "complex",
+        "ai_token_volume": "very_high",
+        "ai_vision": "vision",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "amazon.nova-2-lite-v1:0",
+        "amazon.nova-lite-v1:0",
+        "amazon.nova-pro-v1:0",
+        "anthropic.claude-haiku-5-5",
+        "anthropic.claude-opus-5-5",
+        "anthropic.claude-sonnet-5"
+      ],
+      "decided_by": "priority",
+      "basis": "ai-gemini-to-bedrock.md Legacy row for Gemini 2.5 Flash (Nova Lite; Sonnet 5); Clarify Q5 Gemini Flash -> Haiku 5.5; ai-gemini-to-bedrock.md Decision Paths by Priority: quality; ai-gemini-to-bedrock.md Volume-Based Recommendations (high, very high); Clarify Q9 complex (Sonnet 5; Opus 5.5 for hardest); ai-model-lifecycle.md Capability Constraints: Nova Micro has no image input"
+    },
+    {
+      "id": "pair-05",
+      "group": "pairwise",
+      "source": "gpt-5.5",
+      "preferences": {
+        "ai_priority": "quality",
+        "ai_latency": "critical",
+        "ai_complexity": "moderate",
+        "ai_token_volume": "high",
+        "ai_vision": "text-only",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "openai.gpt-5.5"
+      ],
+      "decided_by": "same_model",
+      "basis": "design-ai.md Step 2 item 2.2; ai-openai-to-bedrock.md Tier 0"
+    },
+    {
+      "id": "pair-06",
+      "group": "pairwise",
+      "source": "gpt-4o",
+      "preferences": {
+        "ai_priority": "speed",
+        "ai_latency": "flexible",
+        "ai_complexity": "moderate",
+        "ai_token_volume": "low",
+        "ai_vision": "vision",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "amazon.nova-lite-v1:0",
+        "anthropic.claude-haiku-5-5",
+        "anthropic.claude-sonnet-5",
+        "openai.gpt-5.6-luna",
+        "openai.gpt-5.6-terra",
+        "openai.gpt-6-luna"
+      ],
+      "decided_by": "priority",
+      "basis": "ai-openai-to-bedrock.md Tier 1 (GPT-5.6 Terra or Claude Sonnet 5); ai-openai-to-bedrock.md GPT-4o row: OpenAI names gpt-6-luna as the replacement, a fast-tier active row in the pricing cache; Clarify Q2 speed; Tier 1 Option A fast tier (GPT-5.6 Luna); ai-model-lifecycle.md Capability Constraints: Nova Micro has no image input"
+    },
+    {
+      "id": "pair-07",
+      "group": "pairwise",
+      "source": "claude-sonnet-5",
+      "preferences": {
+        "ai_priority": "cost",
+        "ai_latency": "important",
+        "ai_complexity": "moderate",
+        "ai_token_volume": "medium",
+        "ai_vision": "text-only",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "anthropic.claude-sonnet-5"
+      ],
+      "decided_by": "same_model",
+      "basis": "design-ai.md Step 2 item 2.2; ai-anthropic-to-bedrock.md Step 1"
+    },
+    {
+      "id": "pair-08",
+      "group": "pairwise",
+      "source": "gemini-2.5-flash",
+      "preferences": {
+        "ai_priority": "balanced",
+        "ai_latency": "flexible",
+        "ai_complexity": "moderate",
+        "ai_token_volume": "very_high",
+        "ai_vision": "text-only",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "amazon.nova-2-lite-v1:0",
+        "amazon.nova-lite-v1:0",
+        "amazon.nova-micro-v1:0",
+        "amazon.nova-pro-v1:0",
+        "anthropic.claude-haiku-5-5",
+        "anthropic.claude-sonnet-5"
+      ],
+      "decided_by": "priority",
+      "basis": "ai-gemini-to-bedrock.md Legacy row for Gemini 2.5 Flash (Nova Lite; Sonnet 5); Clarify Q5 Gemini Flash -> Haiku 5.5; ai-gemini-to-bedrock.md Decision Paths by Priority: balanced; ai-gemini-to-bedrock.md Volume-Based Recommendations (high, very high)"
+    },
+    {
+      "id": "pair-09",
+      "group": "pairwise",
+      "source": "gpt-5.5",
+      "preferences": {
+        "ai_priority": "speed",
+        "ai_latency": "critical",
+        "ai_complexity": "moderate",
+        "ai_token_volume": "very_high",
+        "ai_vision": "audio",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "openai.gpt-5.5"
+      ],
+      "decided_by": "same_model",
+      "basis": "design-ai.md Step 2 item 2.2; ai-openai-to-bedrock.md Tier 0; ai-openai-to-bedrock.md Migration Decision Framework: probe GPT-5.5 audio input on Bedrock before committing",
+      "probes": [
+        {
+          "model": "openai.gpt-5.5",
+          "modality": "audio"
+        }
+      ]
+    },
+    {
+      "id": "pair-10",
+      "group": "pairwise",
+      "source": "claude-sonnet-5",
+      "preferences": {
+        "ai_priority": "balanced",
+        "ai_latency": "flexible",
+        "ai_complexity": "simple",
+        "ai_token_volume": "high",
+        "ai_vision": "vision",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "anthropic.claude-sonnet-5"
+      ],
+      "decided_by": "same_model",
+      "basis": "design-ai.md Step 2 item 2.2; ai-anthropic-to-bedrock.md Step 1"
+    },
+    {
+      "id": "pair-11",
+      "group": "pairwise",
+      "source": "gpt-5.5",
+      "preferences": {
+        "ai_priority": "cost",
+        "ai_latency": "important",
+        "ai_complexity": "simple",
+        "ai_token_volume": "low",
+        "ai_vision": "audio",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "openai.gpt-5.5"
+      ],
+      "decided_by": "same_model",
+      "basis": "design-ai.md Step 2 item 2.2; ai-openai-to-bedrock.md Tier 0; ai-openai-to-bedrock.md Migration Decision Framework: probe GPT-5.5 audio input on Bedrock before committing",
+      "probes": [
+        {
+          "model": "openai.gpt-5.5",
+          "modality": "audio"
+        }
+      ]
+    },
+    {
+      "id": "pair-12",
+      "group": "pairwise",
+      "source": "gemini-2.5-flash",
+      "preferences": {
+        "ai_priority": "speed",
+        "ai_latency": "critical",
+        "ai_complexity": "simple",
+        "ai_token_volume": "medium",
+        "ai_vision": "vision",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "amazon.nova-lite-v1:0",
+        "anthropic.claude-haiku-5-5",
+        "anthropic.claude-sonnet-5"
+      ],
+      "decided_by": "priority",
+      "basis": "ai-gemini-to-bedrock.md Legacy row for Gemini 2.5 Flash (Nova Lite; Sonnet 5); Clarify Q5 Gemini Flash -> Haiku 5.5; ai-gemini-to-bedrock.md Decision Paths by Priority: speed; Clarify Q8 critical (Haiku / Nova Micro); Clarify Q9 simple (Haiku / Nova Micro); ai-model-lifecycle.md Capability Constraints: Nova Micro has no image input"
+    },
+    {
+      "id": "pair-13",
+      "group": "pairwise",
+      "source": "gpt-4o",
+      "preferences": {
+        "ai_priority": "quality",
+        "ai_latency": "flexible",
+        "ai_complexity": "simple",
+        "ai_token_volume": "very_high",
+        "ai_vision": "text-only",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "amazon.nova-micro-v1:0",
+        "anthropic.claude-haiku-5-5",
+        "anthropic.claude-opus-5-5",
+        "anthropic.claude-sonnet-5",
+        "openai.gpt-5.6-terra"
+      ],
+      "decided_by": "priority",
+      "basis": "ai-openai-to-bedrock.md Tier 1 (GPT-5.6 Terra or Claude Sonnet 5); Clarify Q2 quality (Opus 5.5 for hardest tasks); Clarify Q9 simple (Haiku / Nova Micro)"
+    },
+    {
+      "id": "pair-14",
+      "group": "pairwise",
+      "source": "gpt-4o",
+      "preferences": {
+        "ai_priority": "balanced",
+        "ai_latency": "critical",
+        "ai_complexity": "moderate",
+        "ai_token_volume": "low",
+        "ai_vision": "text-only",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "amazon.nova-micro-v1:0",
+        "anthropic.claude-haiku-5-5",
+        "anthropic.claude-sonnet-5",
+        "openai.gpt-5.6-terra"
+      ],
+      "decided_by": "two_options",
+      "basis": "ai-openai-to-bedrock.md Tier 1 (GPT-5.6 Terra or Claude Sonnet 5); Clarify Q8 critical (Haiku / Nova Micro)"
+    },
+    {
+      "id": "pair-15",
+      "group": "pairwise",
+      "source": "gpt-5.5",
+      "preferences": {
+        "ai_priority": "balanced",
+        "ai_latency": "important",
+        "ai_complexity": "complex",
+        "ai_token_volume": "medium",
+        "ai_vision": "vision",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "openai.gpt-5.5"
+      ],
+      "decided_by": "same_model",
+      "basis": "design-ai.md Step 2 item 2.2; ai-openai-to-bedrock.md Tier 0"
+    },
+    {
+      "id": "pair-16",
+      "group": "pairwise",
+      "source": "gemini-2.5-flash",
+      "preferences": {
+        "ai_priority": "cost",
+        "ai_latency": "flexible",
+        "ai_complexity": "moderate",
+        "ai_token_volume": "high",
+        "ai_vision": "vision",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "amazon.nova-2-lite-v1:0",
+        "amazon.nova-lite-v1:0",
+        "amazon.nova-pro-v1:0",
+        "anthropic.claude-haiku-5-5",
+        "anthropic.claude-sonnet-5"
+      ],
+      "decided_by": "priority",
+      "basis": "ai-gemini-to-bedrock.md Legacy row for Gemini 2.5 Flash (Nova Lite; Sonnet 5); Clarify Q5 Gemini Flash -> Haiku 5.5; ai-gemini-to-bedrock.md Decision Paths by Priority: cost; ai-gemini-to-bedrock.md Volume-Based Recommendations (high, very high); ai-model-lifecycle.md Capability Constraints: Nova Micro has no image input"
+    },
+    {
+      "id": "pair-17",
+      "group": "pairwise",
+      "source": "gpt-4o",
+      "preferences": {
+        "ai_priority": "cost",
+        "ai_latency": "critical",
+        "ai_complexity": "simple",
+        "ai_token_volume": "very_high",
+        "ai_vision": "text-only",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "amazon.nova-lite-v1:0",
+        "amazon.nova-micro-v1:0",
+        "anthropic.claude-haiku-5-5",
+        "anthropic.claude-sonnet-5",
+        "openai.gpt-5.6-terra",
+        "openai.gpt-6-luna"
+      ],
+      "decided_by": "priority",
+      "basis": "ai-openai-to-bedrock.md Tier 1 (GPT-5.6 Terra or Claude Sonnet 5); ai-openai-to-bedrock.md GPT-4o row: OpenAI names gpt-6-luna as the replacement, a fast-tier active row in the pricing cache; ai-openai-to-bedrock.md Tier 2; Clarify Q5 override GPT-4 + cost -> Haiku; Clarify Q8 critical (Haiku / Nova Micro); Clarify Q9 simple (Haiku / Nova Micro)"
+    },
+    {
+      "id": "pair-18",
+      "group": "pairwise",
+      "source": "claude-sonnet-5",
+      "preferences": {
+        "ai_priority": "quality",
+        "ai_latency": "critical",
+        "ai_complexity": "simple",
+        "ai_token_volume": "low",
+        "ai_vision": "vision",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "anthropic.claude-sonnet-5"
+      ],
+      "decided_by": "same_model",
+      "basis": "design-ai.md Step 2 item 2.2; ai-anthropic-to-bedrock.md Step 1"
+    },
+    {
+      "id": "pair-19",
+      "group": "pairwise",
+      "source": "gpt-4o",
+      "preferences": {
+        "ai_priority": "quality",
+        "ai_latency": "critical",
+        "ai_complexity": "moderate",
+        "ai_token_volume": "medium",
+        "ai_vision": "vision",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "anthropic.claude-haiku-5-5",
+        "anthropic.claude-opus-5-5",
+        "anthropic.claude-sonnet-5",
+        "openai.gpt-5.6-terra"
+      ],
+      "decided_by": "priority",
+      "basis": "ai-openai-to-bedrock.md Tier 1 (GPT-5.6 Terra or Claude Sonnet 5); Clarify Q2 quality (Opus 5.5 for hardest tasks); Clarify Q8 critical (Haiku / Nova Micro); ai-model-lifecycle.md Capability Constraints: Nova Micro has no image input"
+    },
+    {
+      "id": "pair-20",
+      "group": "pairwise",
+      "source": "gpt-5.5",
+      "preferences": {
+        "ai_priority": "quality",
+        "ai_latency": "critical",
+        "ai_complexity": "moderate",
+        "ai_token_volume": "high",
+        "ai_vision": "audio",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "openai.gpt-5.5"
+      ],
+      "decided_by": "same_model",
+      "basis": "design-ai.md Step 2 item 2.2; ai-openai-to-bedrock.md Tier 0; ai-openai-to-bedrock.md Migration Decision Framework: probe GPT-5.5 audio input on Bedrock before committing",
+      "probes": [
+        {
+          "model": "openai.gpt-5.5",
+          "modality": "audio"
+        }
+      ]
+    },
+    {
+      "id": "pair-21",
+      "group": "pairwise",
+      "source": "claude-sonnet-5",
+      "preferences": {
+        "ai_priority": "speed",
+        "ai_latency": "critical",
+        "ai_complexity": "complex",
+        "ai_token_volume": "very_high",
+        "ai_vision": "vision",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "anthropic.claude-sonnet-5"
+      ],
+      "decided_by": "same_model",
+      "basis": "design-ai.md Step 2 item 2.2; ai-anthropic-to-bedrock.md Step 1"
+    },
+    {
+      "id": "pair-22",
+      "group": "pairwise",
+      "source": "gemini-2.5-flash",
+      "preferences": {
+        "ai_priority": "speed",
+        "ai_latency": "flexible",
+        "ai_complexity": "complex",
+        "ai_token_volume": "low",
+        "ai_vision": "text-only",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "amazon.nova-lite-v1:0",
+        "amazon.nova-micro-v1:0",
+        "anthropic.claude-haiku-5-5",
+        "anthropic.claude-opus-5-5",
+        "anthropic.claude-sonnet-5"
+      ],
+      "decided_by": "priority",
+      "basis": "ai-gemini-to-bedrock.md Legacy row for Gemini 2.5 Flash (Nova Lite; Sonnet 5); Clarify Q5 Gemini Flash -> Haiku 5.5; ai-gemini-to-bedrock.md Decision Paths by Priority: speed; Clarify Q9 complex (Sonnet 5; Opus 5.5 for hardest)"
+    },
+    {
+      "id": "feature-function-calling",
+      "group": "critical_feature",
+      "source": "gemini-2.5-flash",
+      "preferences": {
+        "ai_priority": "cost",
+        "ai_latency": "important",
+        "ai_complexity": "moderate",
+        "ai_token_volume": "medium",
+        "ai_vision": "text-only",
+        "ai_critical_feature": "function_calling"
+      },
+      "allowed": [
+        "amazon.nova-lite-v1:0",
+        "amazon.nova-micro-v1:0",
+        "anthropic.claude-haiku-5-5",
+        "anthropic.claude-sonnet-5"
+      ],
+      "decided_by": "critical_feature",
+      "basis": "Clarify Q10 function calling names Claude Sonnet 5; the cost candidates Nova Lite and Nova Micro (ai-model-lifecycle.md Capability Constraints note 8) and Haiku 5.5 (ai-anthropic-to-bedrock.md Haiku 5.5 target contract) also call tools"
+    },
+    {
+      "id": "feature-ultra-long-context",
+      "group": "critical_feature",
+      "source": "gpt-4o",
+      "preferences": {
+        "ai_priority": "speed",
+        "ai_latency": "important",
+        "ai_complexity": "moderate",
+        "ai_token_volume": "medium",
+        "ai_vision": "text-only",
+        "ai_critical_feature": "ultra_long_context"
+      },
+      "allowed": [
+        "amazon.nova-2-lite-v1:0",
+        "anthropic.claude-haiku-5-5",
+        "anthropic.claude-opus-4-6-v1",
+        "anthropic.claude-opus-5-5",
+        "anthropic.claude-sonnet-4-6",
+        "anthropic.claude-sonnet-5",
+        "openai.gpt-5.6-luna",
+        "openai.gpt-5.6-terra",
+        "openai.gpt-6-luna"
+      ],
+      "decided_by": "critical_feature",
+      "basis": "Clarify Q10 ultra-long context names Opus 5.5, Sonnet/Opus 4.6 long-context SKUs, or Nova 2 Lite; the speed candidates Sonnet 5 and Haiku 5.5 have a 1M window and GPT-6 Luna a 1.05M window (ai-model-lifecycle.md Capability Constraints); GPT-5.6 Luna and GPT-5.6 Terra have a 1M tier (bedrock-pricing-cache.md)"
+    },
+    {
+      "id": "feature-extended-thinking",
+      "group": "critical_feature",
+      "source": "gemini-2.5-flash",
+      "preferences": {
+        "ai_priority": "cost",
+        "ai_latency": "important",
+        "ai_complexity": "moderate",
+        "ai_token_volume": "medium",
+        "ai_vision": "text-only",
+        "ai_critical_feature": "extended_thinking"
+      },
+      "allowed": [
+        "anthropic.claude-haiku-5-5",
+        "anthropic.claude-opus-4-6-v1",
+        "anthropic.claude-opus-5-5",
+        "anthropic.claude-sonnet-5"
+      ],
+      "decided_by": "critical_feature",
+      "basis": "Clarify Q10 extended thinking names Sonnet 5, Opus 5.5, Opus 4.6 when Batch is required; ai-gemini-to-bedrock.md 2.5 Flash Thinking row; the cost candidate Haiku 5.5 has adaptive thinking (ai-anthropic-to-bedrock.md Haiku 5.5 target contract); Nova Lite and Nova Micro have no thinking mode"
+    },
+    {
+      "id": "feature-prompt-caching",
+      "group": "critical_feature",
+      "source": "gpt-4o",
+      "preferences": {
+        "ai_priority": "cost",
+        "ai_latency": "important",
+        "ai_complexity": "moderate",
+        "ai_token_volume": "medium",
+        "ai_vision": "text-only",
+        "ai_critical_feature": "prompt_caching"
+      },
+      "allowed": [
+        "amazon.nova-lite-v1:0",
+        "amazon.nova-micro-v1:0",
+        "anthropic.claude-haiku-5-5",
+        "anthropic.claude-sonnet-5",
+        "openai.gpt-5.6-terra",
+        "openai.gpt-6-luna"
+      ],
+      "decided_by": "critical_feature",
+      "basis": "Clarify Q10 prompt caching names Claude Sonnet 5; the cost candidates Haiku 5.5, GPT-5.6 Terra and GPT-6 Luna have cache-read rates in bedrock-pricing-cache.md, and ai-openai-to-bedrock.md lists caching for GPT-5.6 Terra on every bedrock-runtime API and for GPT-6 Luna on every API of both endpoints; the cost candidates Nova Lite and Nova Micro have a cache-read rate 75% below the on-demand input price (bedrock-pricing-cache.md Amazon Nova, Cache read (Nova)); AWS limits Nova prompt caching to 20K tokens and to text prompts, so they serve caching only for a cached prefix under 20K tokens"
+    },
+    {
+      "id": "feature-rag",
+      "group": "critical_feature",
+      "source": "gpt-4o",
+      "preferences": {
+        "ai_priority": "quality",
+        "ai_latency": "important",
+        "ai_complexity": "moderate",
+        "ai_token_volume": "medium",
+        "ai_vision": "text-only",
+        "ai_critical_feature": "rag"
+      },
+      "allowed": [
+        "amazon.nova-micro-v1:0",
+        "anthropic.claude-haiku-5-5",
+        "anthropic.claude-opus-5-5",
+        "anthropic.claude-sonnet-5"
+      ],
+      "decided_by": "critical_feature",
+      "basis": "Clarify Q10 RAG recommends Bedrock Knowledge Bases, and ai-openai-to-bedrock.md When to prefer a Bedrock-native model (line 405) says to choose Claude / Nova via Converse when the workload needs Knowledge Bases; schema-design-aws-ai.md sets converse with model_change true for it. The quality candidates that are Claude or Nova stay; GPT-5.6 Terra does not"
+    },
+    {
+      "id": "feature-agentic",
+      "group": "critical_feature",
+      "source": "gemini-2.5-flash",
+      "preferences": {
+        "ai_priority": "speed",
+        "ai_latency": "important",
+        "ai_complexity": "moderate",
+        "ai_token_volume": "medium",
+        "ai_vision": "text-only",
+        "ai_critical_feature": "agentic"
+      },
+      "allowed": [
+        "anthropic.claude-sonnet-5"
+      ],
+      "decided_by": "critical_feature",
+      "basis": "Clarify Q10 agentic workflows: Claude Sonnet 5 with AgentCore"
+    },
+    {
+      "id": "feature-realtime-speed",
+      "group": "critical_feature",
+      "source": "gpt-4o",
+      "preferences": {
+        "ai_priority": "quality",
+        "ai_latency": "important",
+        "ai_complexity": "moderate",
+        "ai_token_volume": "medium",
+        "ai_vision": "text-only",
+        "ai_critical_feature": "realtime_speed"
+      },
+      "allowed": [
+        "amazon.nova-micro-v1:0",
+        "anthropic.claude-haiku-5-5",
+        "openai.gpt-6-luna"
+      ],
+      "decided_by": "critical_feature",
+      "basis": "Clarify Q10 real-time speed names Claude Haiku 5.5 or Nova Micro; GPT-6 Luna is the fast-tier replacement ai-openai-to-bedrock.md names for GPT-4o"
+    },
+    {
+      "id": "feature-image-generation",
+      "group": "critical_feature",
+      "source": "gemini-2.5-flash",
+      "preferences": {
+        "ai_priority": "cost",
+        "ai_latency": "important",
+        "ai_complexity": "moderate",
+        "ai_token_volume": "medium",
+        "ai_vision": "text-only",
+        "ai_critical_feature": "image_generation"
+      },
+      "allowed": [
+        "amazon.nova-2-lite-v1:0",
+        "amazon.nova-lite-v1:0",
+        "amazon.nova-pro-v1:0",
+        "anthropic.claude-haiku-5-5",
+        "anthropic.claude-sonnet-5"
+      ],
+      "decided_by": "critical_feature",
+      "basis": "Clarify Q10 image generation names Claude Sonnet 5 (vision) for the text side and Stability AI for generation; the cost candidates Nova Lite, Nova Pro and Haiku 5.5 take image input (ai-model-lifecycle.md Capability Constraints), and bedrock-pricing-cache.md prices Nova 2 Lite text + image + video input"
+    },
+    {
+      "id": "feature-speech",
+      "group": "critical_feature",
+      "source": "gpt-4o",
+      "preferences": {
+        "ai_priority": "quality",
+        "ai_latency": "important",
+        "ai_complexity": "moderate",
+        "ai_token_volume": "medium",
+        "ai_vision": "text-only",
+        "ai_critical_feature": "speech"
+      },
+      "allowed": [
+        "amazon.nova-2-sonic*"
+      ],
+      "decided_by": "critical_feature",
+      "basis": "Clarify Q10 conversational speech: Amazon Nova 2 Sonic"
+    },
+    {
+      "id": "feature-served-by-same-model",
+      "group": "critical_feature",
+      "source": "gpt-5.5",
+      "preferences": {
+        "ai_priority": "cost",
+        "ai_latency": "important",
+        "ai_complexity": "moderate",
+        "ai_token_volume": "medium",
+        "ai_vision": "text-only",
+        "ai_critical_feature": "function_calling"
+      },
+      "allowed": [
+        "openai.gpt-5.5"
+      ],
+      "decided_by": "same_model",
+      "basis": "design-ai.md Step 2 item 2.1 applies only to a feature the source model cannot serve; GPT-5.5 calls functions, so item 2.2 keeps it"
+    },
+    {
+      "id": "capability-text-embedding-3-small",
+      "group": "capability",
+      "source": "text-embedding-3-small",
+      "preferences": {
+        "ai_priority": "balanced",
+        "ai_latency": "important",
+        "ai_complexity": "moderate",
+        "ai_token_volume": "medium",
+        "ai_vision": "text-only",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "amazon.titan-embed-text-v2:0"
+      ],
+      "decided_by": "capability",
+      "basis": "design-ai.md Step 2 item 1 (By capability)"
+    },
+    {
+      "id": "capability-gpt-image-1",
+      "group": "capability",
+      "source": "gpt-image-1",
+      "preferences": {
+        "ai_priority": "balanced",
+        "ai_latency": "important",
+        "ai_complexity": "moderate",
+        "ai_token_volume": "medium",
+        "ai_vision": "text-only",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "stability.stable-image-core-v1:1",
+        "stability.stable-image-ultra-v1:1"
+      ],
+      "decided_by": "capability",
+      "basis": "design-ai.md Step 2 item 1 (By capability)"
+    },
+    {
+      "id": "capability-whisper-1",
+      "group": "capability",
+      "source": "whisper-1",
+      "preferences": {
+        "ai_priority": "balanced",
+        "ai_latency": "important",
+        "ai_complexity": "moderate",
+        "ai_token_volume": "medium",
+        "ai_vision": "text-only",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "service:transcribe"
+      ],
+      "decided_by": "capability",
+      "basis": "design-ai.md Step 2 item 1 (By capability)"
+    },
+    {
+      "id": "capability-tts-1",
+      "group": "capability",
+      "source": "tts-1",
+      "preferences": {
+        "ai_priority": "balanced",
+        "ai_latency": "important",
+        "ai_complexity": "moderate",
+        "ai_token_volume": "medium",
+        "ai_vision": "text-only",
+        "ai_critical_feature": "none"
+      },
+      "allowed": [
+        "service:polly"
+      ],
+      "decided_by": "capability",
+      "basis": "design-ai.md Step 2 item 1 (By capability)"
+    }
+  ]
+}

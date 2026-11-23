@@ -34,7 +34,7 @@ requires it; unavailable or declined telemetry never blocks this skill.
 - **x86_64 is the default architecture here, not Graviton**: Azure fleets carry Windows and .NET far more often than GCP or Heroku fleets do, and `references/shared/graviton.md`'s escape path (Windows, .NET Framework, GPU/CUDA, RDS SQL Server) fires routinely. Graviton is offered as an optimization, not assumed.
 - **Startup-weighted, not enterprise-weighted**: Azure Database for PostgreSQL/MySQL Flexible Server and Cosmos DB Core API get full depth. Azure SQL Database / Managed Instance / SQL-on-VM, Azure Hybrid Use Benefit licensing, elastic-pool consolidation, and Synapse sit behind specialist gates that fire only on detection.
 - **No human one-time migration costs**: do not present human labor, professional services, or people-time as dollar estimates or a "one-time migration cost" budget line. Vendor charges grounded in supported discovery data are allowed.
-- **Generate is opt-in**: Design and Estimate always run. Terraform, migration scripts, and docs are produced only after the user chooses Execute at the post-Estimate decision gate (`run_mode: decide_and_execute`).
+- **Generate is opt-in**: Design and Estimate always run. Terraform, migration scripts (dry-run by default), docs, and the report are produced only after the user chooses Execute at the post-Estimate decision gate (`run_mode: decide_and_execute`).
 
 ---
 
@@ -265,7 +265,7 @@ phase contract. Both are `_kind: sidebar` — off-backbone, trigger-entered, nev
 
 ## Defaults
 
-- **IaC output**: Terraform configurations, migration scripts, and documentation
+- **IaC output**: Terraform configurations, migration scripts (dry-run by default; none is run during Generate), documentation, and the migration report (the AI track also writes its Bedrock migration scripts)
 - **Region**: `us-east-1` unless the user specifies otherwise; Azure regions are mapped, not assumed
 - **Sizing**: Development tier, upgraded from measured utilization when RDfA or consent-gated `az monitor` metrics are available
 - **CPU architecture**: `x86_64` (see Philosophy — Graviton is an offered optimization here, not the default)

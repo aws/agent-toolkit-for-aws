@@ -8,7 +8,7 @@ The SKILL.md secret-file rule applies before Step 1: to see whether the project 
 
 - **Profile route:** the user names an existing `ai-workload-profile.json`. Only the provider-neutral contract is accepted: `schema_version` (`1.0` or `1.1`), `ai_sources[]`, and `gateways[]`, plus, in `1.1` only, the optional `integration`, `workloads[]`, `agentic_profile`, and `tool_manifest[]`.
 - **Scan route:** the user points at a codebase, or the project root contains source code and no profile was named.
-- If both apply, ask which one to use. If neither applies, ask for a profile path or a code directory.
+- If both apply, ask which one to use; a host-started run takes the Profile route without asking (`SKILL.md` § Combined mode). If neither applies, ask for a profile path or a code directory.
 
 ## Step 2a: Profile route
 
@@ -90,10 +90,10 @@ The preview names no Bedrock models or prices: Design chooses those. Do not writ
      "run_id": "[random UUID, written once]",
      "last_updated": "[ISO 8601 UTC]",
      "current_phase": "discover",
-     "phases": { "discover": "in_progress", "clarify": "pending", "design": "pending", "estimate": "pending" }
+     "phases": { "discover": "in_progress", "clarify": "pending", "design": "pending", "estimate": "pending", "generate": "pending" }
    }
    ```
 
-   Do not write `owning_skill`: this skill sends no telemetry.
+   Do not write `owning_skill`: this skill sends no telemetry. When a host skill started this run with its identifier and a profile path (`SKILL.md` § Combined mode), also write `initiated_by` with that identifier.
 
-3. Once the profile in `$MIGRATION_DIR` passes validation and Step 2d wrote `migration-preview.json`, set `phases.discover` to `"completed"` and `current_phase` to `"clarify"`, and keep the validator's JSON summary for Clarify.
+3. Once the profile in `$MIGRATION_DIR` passes validation and Step 2d wrote `migration-preview.json`, set `phases.discover` to `"completed"` and `current_phase` to `"clarify"`, and keep the validator's JSON summary for Clarify. When `initiated_by` is set, stop here and return control to the host skill.

@@ -61,9 +61,26 @@
   "optimized_projection": {},
   "recommendation": {}, // see § recommendation
   "cost_by_source": [], // many-valued — see § cost_by_source[]
+  "export_inputs": { // optional; omit when pre-pricing evidence is unavailable
+    "snapshot": {"version": 1, "runId": "<uuid>", "owningSkill": "<skill>", "files": {}},
+    "rows": {
+      "/cost_comparison/projected_bedrock_monthly": {
+        "monthlyCost": 1320.0,
+        "estimateInput": {"configurationSummary": "<retained aggregate usage and configuration>"}
+      }
+    }
+  },
   "services_not_estimated": [] // ALWAYS present, [] when every workload is token-priced
 }
 ```
+
+## export_inputs
+
+Optional retained evidence follows the producer skill's retained cost-input contract.
+For the AI route, use `/cost_comparison/projected_bedrock_monthly` and retain the
+complete selected aggregate, including every contributing model and usage source.
+The field is absent when pre-pricing capture or complete evidence is unavailable;
+it does not change the estimate result or completion gate.
 
 ## cost_by_source[]
 
@@ -156,6 +173,8 @@ priced, not token priced, and are listed here instead of silently omitted.
 - [ ] `migration_cost_considerations.categories` is `[]`.
 - [ ] Unknown source or target costs and their dependent deltas are `null`; known zero-dollar
       costs remain numeric `0`.
+- [ ] When `export_inputs` is present, it follows the retained-input contract and its AI row key
+      is `/cost_comparison/projected_bedrock_monthly`.
 - [ ] `services_not_estimated[]` is present (`[]` when clean).
 
 ## Status — target-only, no producer yet
@@ -165,7 +184,9 @@ This canonical contract has no producer in this change. Both GCP's
 `skills/azure-to-aws/references/phases/estimate/estimate-ai.md` still write against their own
 "Schema — top-level fields" table with GCP-/Azure-named fields (`current_costs.gcp_monthly_ai_spend`
 / `current_costs.azure_monthly_ai_spend`, `cost_comparison.current_gcp_monthly` /
-`cost_comparison.current_azure_monthly`), and neither emits `cost_by_source[]`. This document
+`cost_comparison.current_azure_monthly`), and neither emits `cost_by_source[]`. Both may
+additionally emit optional `export_inputs` under the retention contract above; that additive
+field does not claim adoption of the neutral target shape. This document
 (and its companion JSON Schema, `scripts/contracts/estimation-ai.schema.json`) is the TARGET
 contract. Repointing either skill's `estimate-ai.md` to emit this shape is deferred
 runtime-adoption work, named explicitly so a future PR does not silently assume today's runtime

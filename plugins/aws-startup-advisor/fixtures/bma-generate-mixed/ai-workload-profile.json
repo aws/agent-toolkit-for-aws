@@ -1,0 +1,127 @@
+{
+  "schema_version": "1.1",
+  "ai_sources": [
+    {
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model_families": [
+        "gpt"
+      ],
+      "model_evidence": "observed",
+      "models": [
+        "gpt-5.5",
+        "text-embedding-3-small"
+      ],
+      "model_observations": [
+        {
+          "normalized_model": "gpt-5.5",
+          "raw_model": "gpt-5.5",
+          "model_family": "gpt",
+          "evidence": [
+            {
+              "provenance": "code",
+              "confidence": "high",
+              "detail": "app/research.py:12 client.responses.create"
+            }
+          ]
+        },
+        {
+          "normalized_model": "text-embedding-3-small",
+          "raw_model": "text-embedding-3-small",
+          "model_family": "gpt",
+          "evidence": [
+            {
+              "provenance": "code",
+              "confidence": "high",
+              "detail": "app/index.py:8 client.embeddings.create"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "gateways": [],
+  "workloads": [
+    {
+      "workload_id": "openai_api.gpt-5.5.openai.responses.create.plain",
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model": "gpt-5.5",
+      "sdk_method": "openai.responses.create",
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "structured_output": false,
+      "call_sites": [
+        {
+          "file": "app/research.py",
+          "line": 12
+        }
+      ]
+    },
+    {
+      "workload_id": "openai_api.gpt-5.5.openai.chat.completions.create.plain",
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model": "gpt-5.5",
+      "sdk_method": "openai.chat.completions.create",
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "structured_output": false,
+      "call_sites": [
+        {
+          "file": "app/support.py",
+          "line": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "openai_api.text-embedding-3-small.openai.embeddings.create.plain",
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model": "text-embedding-3-small",
+      "sdk_method": "openai.embeddings.create",
+      "capability": "embedding",
+      "capability_confidence": "high",
+      "structured_output": false,
+      "call_sites": [
+        {
+          "file": "app/index.py",
+          "line": 8
+        }
+      ]
+    }
+  ],
+  "integration": {
+    "pattern": "direct_sdk",
+    "languages": [
+      "python"
+    ],
+    "frameworks": [],
+    "capabilities_summary": {
+      "text_generation": true,
+      "streaming": false,
+      "function_calling": false,
+      "vision": false,
+      "embeddings": true,
+      "batch_processing": false,
+      "speech_to_text": false,
+      "text_to_speech": false,
+      "image_generation": false
+    }
+  },
+  "mantle_signals": [
+    {
+      "selector": "web_search",
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model": "gpt-5.5",
+      "evidence": [
+        {
+          "provenance": "code",
+          "confidence": "high",
+          "detail": "app/research.py:14 \"type\": \"web_search\""
+        }
+      ]
+    }
+  ]
+}

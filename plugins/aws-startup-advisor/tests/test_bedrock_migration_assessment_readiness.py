@@ -109,12 +109,13 @@ def test_a_status_another_skill_wrote_or_a_broken_status_is_not_ready(status, re
     (lambda r: (r / "preferences.json").write_text("not json"), "artifact_unreadable"),
     (lambda r: (r / "preferences.json").write_text("[]"), "preferences_invalid"),
     (lambda r: _edit(r / "preferences.json", lambda d: d["metadata"].update(migration_type="full")), "preferences_invalid"),
+    (lambda r: _edit(r / "preferences.json", lambda d: d["ai_constraints"]["ai_priority"].update(value="fastest")), "preferences_invalid"),
     (lambda r: _edit(r / "ai-workload-profile.json", lambda d: d.update(summary={})), "profile_invalid"),
     (lambda r: _edit(r / "aws-design-ai.json", lambda d: d["design_blocks"].clear()), "design_invalid"),
     (lambda r: _edit(r / "estimation-ai.json", lambda d: d["cost_comparison"].update(projected_bedrock_monthly=1.0)), "estimate_invalid"),
     (lambda r: _edit(r / "openai-usage-profile.json", lambda d: d["usage_by_model"][0].update(input_tokens=9_000_000)), "estimate_invalid"),
     (lambda r: _edit(r / "openai-usage-profile.json", lambda d: d.update(metadata={})), "estimate_invalid"),
-], ids=["no-status", "bad-status-json", "status-array", "no-design", "prefs-not-json", "prefs-array", "prefs-not-ai-only",
+], ids=["no-status", "bad-status-json", "status-array", "no-design", "prefs-not-json", "prefs-array", "prefs-not-ai-only", "prefs-off-list-value",
         "legacy-profile", "design-tampered", "estimate-tampered", "usage-changed-after-estimate", "usage-broken"])
 def test_a_missing_tampered_or_stale_artifact_fails_closed(break_run, reason, tmp_path: Path, capsys) -> None:
     run = _run(tmp_path)
@@ -151,5 +152,5 @@ def test_the_skill_documents_exactly_the_reasons_the_script_returns() -> None:
     section = SKILL[SKILL.index("## Readiness for other skills"):SKILL.index("## Definitions")]
     documented = set(re.findall(r"`([a-z]+_[a-z_]+)`", section))
     assert returned == documented
-    assert "python3 scripts/readiness.py <MIGRATION_DIR> --through design|estimate" in section
+    assert "python3 scripts/readiness.py <MIGRATION_DIR> --through discover|clarify|design|estimate" in section
     assert "must not read `.phase-status.json` itself" in section
