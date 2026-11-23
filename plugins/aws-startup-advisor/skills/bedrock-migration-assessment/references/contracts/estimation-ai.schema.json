@@ -87,6 +87,62 @@
     "services_not_estimated": {
       "type": "array",
       "items": {"$ref": "#/definitions/serviceNotEstimated"}
+    },
+    "export_inputs": {
+      "type": "object",
+      "description": "Optional Estimate-retained evidence. Structure only: the emitter verifies input digests, the selected amount, scenario binding, and import bounds before attaching context.",
+      "required": ["snapshot", "rows"],
+      "additionalProperties": false,
+      "properties": {
+        "snapshot": {
+          "type": "object",
+          "required": ["version", "runId", "owningSkill", "files"],
+          "additionalProperties": false,
+          "properties": {
+            "version": {"type": "integer", "const": 1},
+            "runId": {"type": "string"},
+            "owningSkill": {"type": "string"},
+            "files": {
+              "type": "object",
+              "additionalProperties": {"type": ["string", "null"]}
+            }
+          }
+        },
+        "rows": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["monthlyCost", "estimateInput"],
+            "additionalProperties": false,
+            "properties": {
+              "monthlyCost": {"type": "number"},
+              "estimateInput": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "regionCode": {"type": "string"},
+                  "upfrontCost": {"type": "string"},
+                  "pricingBasis": {"type": "string"},
+                  "configurationSummary": {"type": "string"},
+                  "description": {"type": "string"},
+                  "source": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "estimateFile": {"type": "string"},
+                      "costPointer": {"type": "string"},
+                      "scenarioId": {"type": "string"},
+                      "resourceIds": {"type": "array", "items": {"type": "string"}}
+                    }
+                  }
+                }
+              },
+              "resourceIdPointers": {"type": "array", "items": {"type": "string"}},
+              "configurationPointers": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        }
+      }
     }
   },
   "definitions": {

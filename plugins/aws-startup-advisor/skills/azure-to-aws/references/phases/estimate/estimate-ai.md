@@ -8,6 +8,12 @@ _contributes:
 # Estimate — AI Workload Cost Engine
 
 > Loaded when ai-workload-profile.json exists. Contributes estimation-ai.json (the assembler is its creator; see estimate.md). Execute ALL steps in order.
+
+Before pricing, follow `references/vendored/estimate/cost-export-inputs.md` for
+`estimation-ai.json`. Retain the input snapshot and context for the complete
+selected Bedrock aggregate, including all contributing models and usage.
+Include `export_inputs` when evidence is available; do not infer missing usage
+or upfront values to complete it.
 >
 > **Fragment unit.** This fragment _contributes_ to `estimation-ai.json`; the artifact
 > itself is declared on the assembler's `_produces` and written there — the same
@@ -468,6 +474,7 @@ fields.
 | `optimized_projection`          | object | `monthly_with_optimizations`, `vs_current`, `note`                                                                              |
 | `recommendation`                | object | `path`, `path_label`, `migrate_if`, `stay_if`, `confidence`, `rationale` (see Part 7)                                           |
 | `services_not_estimated`        | array  | Traditional-AI workloads excluded from token cost: `{workload_id, target_aws_service, reason: "not_token_priced"}`              |
+| `export_inputs`                 | object | Optional pre-pricing snapshot and selected aggregate context from `references/vendored/estimate/cost-export-inputs.md`; omit when unavailable |
 
 `current_costs.azure_monthly_ai_spend` (NOT `gcp_monthly_ai_spend`) and
 `cost_comparison.current_azure_monthly` (NOT `current_gcp_monthly`) are the Azure field names.

@@ -8,6 +8,11 @@ _contributes:
 # Estimate — Infrastructure Cost Engine
 
 > **Fragment unit.** See `estimate.md` for how it is composed into the phase.
+
+Before pricing, follow `references/vendored/estimate/cost-export-inputs.md` for
+`estimation-infra.json`: capture the input snapshot, retain selected-row evidence
+while calculating, and include `export_inputs` in the output when available.
+Missing export evidence does not change the existing Estimate completion gates.
 > Prices every service in `aws-design.json`, derives the Azure baseline it is
 > compared against, and produces **two** AWS totals. The artifact write, the
 > decision gate, and the phase-status update belong to `estimate-assemble.md`.
