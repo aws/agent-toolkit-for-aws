@@ -1,6 +1,6 @@
 data "aws_elastic_beanstalk_solution_stack" "node" {
   most_recent = true
-  name_regex  = "^64bit Amazon Linux 2023 (.*) running Node.js 20$"
+  name_regex  = "^64bit Amazon Linux 2023 (.*) running Node.js 22$"
 }
 
 locals {

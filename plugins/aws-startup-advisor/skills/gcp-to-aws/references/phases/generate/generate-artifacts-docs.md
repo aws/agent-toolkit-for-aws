@@ -81,6 +81,7 @@ Generate the following sections:
 1. Apply: `terraform apply migration.tfplan`
 
 Post-Infrastructure Tasks checklist: verify resources, check security groups, validate IAM roles.
+For each `warnings[]` entry in `aws-design.json` about an Elastic Beanstalk platform branch (a retired or undeclared language version), add a numbered step naming the service, the source version, the branch the Terraform selects, and that the team must test the application on that runtime before cutover.
 
 **Section 3: Data Migration** — **Include ONLY if `scripts/02-migrate-data.sh`,
 `scripts/03-migrate-containers.sh`, or `scripts/04-migrate-secrets.sh` exist.**
