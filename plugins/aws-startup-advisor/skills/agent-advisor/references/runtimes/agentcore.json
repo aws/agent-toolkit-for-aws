@@ -54,6 +54,7 @@
       "value": "unsupported",
       "verify_via_mcp": true
     },
+    {"key": "microvms_pricing", "verification_key": "agentcore.microvms_pricing", "value": {"region": "us-east-1", "unit": "USD per hour, consumption-based microVMs, active CPU only", "runtime_v1": {"vcpu_hour": 0.0895, "gb_hour": 0.00945, "usagetype": "Runtime:Consumption-based:vCPU / :Memory"}, "runtime_v2_consumption": {"vcpu_hour": 0.1276, "gb_hour": 0.0169, "usagetype": "Runtime:Consumption-based:vCPU-v2 / :Memory-v2"}, "runtime_v2_committed_baseline": {"vcpu_hour": 0.0997, "gb_hour": 0.0132, "usagetype": "Runtime:Committed-baseline:vCPU-v2 / :Memory-v2"}, "default": "runtime_v2_consumption", "default_note": "New runtimes in us-east-1 and the other listed Regions default to platformVersion V2 since 2026-11-12 (https://aws.amazon.com/about-aws/whats-new/2026/11/new-agentcore-runtime-default/); V1 applies only to an existing runtime that stays on V1."}, "as_of": "2026-11-13", "source": "https://aws.amazon.com/bedrock/agentcore/pricing/", "verify_via_mcp": false, "verification_note": "Dated cache reference, not verified per run: update as_of and estimate.md together."},
     {
       "key": "instances_session_cap",
       "verification_key": "agentcore.instances_session_cap",
