@@ -174,11 +174,12 @@ def test_neither_skill_vendors_the_openai_guide():
 
 def test_handoff_completes_on_the_estimate_summary_not_on_design():
     # bedrock-migration-assessment runs Clarify, Design and Estimate and stops after Estimate
-    # (its SKILL.md: "After Estimate, show its summary and stop"). Marking the handoff done
+    # (its Step 4 offers opt-in Generate; a host skill answers no). Marking the handoff done
     # on the Design summary would let a session interrupted during Estimate skip the resume.
     for path in (HEROKU_SKILL, RENDER_SKILL):
         text = _text(path)
         assert "runs Clarify, Design and Estimate and stops" in text, path
+        assert "When it asks whether to generate the migration artifacts, answer no" in text, path
         assert "Clarify and Design and stops" not in text, path
         assert "When its Estimate summary has been shown, set `status` to `assessment_completed`" in text, path
         assert "design_completed" not in text, path
@@ -188,4 +189,4 @@ def test_handoff_completes_on_the_estimate_summary_not_on_design():
         assert "estimates its cost, then stops before generate" in text, path
         assert "stops before estimate and generate" not in text, path
     skill = _text(SKILLS / ASSESSMENT / "SKILL.md")
-    assert "After Estimate, show its summary and stop" in skill
+    assert "When another skill invoked this one only for Design or Estimate, it answers no." in skill
