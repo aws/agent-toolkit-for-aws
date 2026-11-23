@@ -592,7 +592,10 @@ be filled in, and run `python -c` against it rather than hand-joining. Control: 
 equal the set on your context's `Target Bedrock model(s)` line; a row whose source model has no validated
 entry makes the helper raise — stop and report it, never fall back to the row's original `aws_model_id`. When the design has two chat rows for one source model (for example a Mantle Responses row and a
 runtime Chat Completions row for the same GPT model), the orchestrator chose one for this rewrite: use only the
-row whose `required_client_api` equals your context's `Target API surface`, and skip the other.
+row named on your context's `Chosen chat row:` line, matching its `source_model_id`, `aws_model_id` and
+`migration_path`, and skip the others. Do not match on `required_client_api` or `Target API surface`: two rows
+can share the API and differ only in path (`mantle_openai_chat` and `runtime_openai_cris` are both
+`chat_completions`). When that line is missing, or names no row or more than one, stop and report it.
 
 **One `--target` pair per row, each with ITS OWN API** (`responses` | `chat_completions` | `converse` |
 `messages`; `invoke` for an embedding row). The primary chat row's API is the `Target API surface` from

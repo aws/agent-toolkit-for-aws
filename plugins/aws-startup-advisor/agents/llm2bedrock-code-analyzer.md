@@ -89,9 +89,12 @@ the target Bedrock model ID for §10 validation. There is no `use_case` field (a
 `migration_path` is `direct` and `required_client_api` is `invoke`, and `capabilities_matched`
 lists `embedding` or `image_generation`. `gpt-oss` may also use `invoke`, so the API alone does
 not decide; when the two disagree, stop and ask. Every other row is a chat row. When the design
-has two chat rows for one source model, use only the row whose `required_client_api` equals the
-context's `Target API surface` (the row recorded in `$BEDROCK_RUN_DIR/chat-row-choice.json`), and
-skip the other.
+has two chat rows for one source model, use only the row named on the context's `Chosen chat row:`
+line (the row recorded in `$BEDROCK_RUN_DIR/chat-row-choice.json`): its `source_model_id`,
+`aws_model_id` and `migration_path` must all match, and skip the others. Do not match on
+`required_client_api` or `Target API surface`: two rows can share the API and differ only in path
+(`mantle_openai_chat` and `runtime_openai_cris` are both `chat_completions`). When that line is
+missing, or names no row or more than one, stop and report it; never pick a row yourself.
 
 ## 6.2 `ai-workload-profile.json` — Source Provider & Framework
 

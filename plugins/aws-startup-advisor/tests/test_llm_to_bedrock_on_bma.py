@@ -398,9 +398,45 @@ def test_one_source_model_with_two_chat_rows_makes_b1_ask_not_pick_the_first(fix
     analyzer = _flat((PLUGIN_ROOT / "agents" / "llm2bedrock-code-analyzer.md").read_text(encoding="utf-8"))
     assert ("A row is an embedding or image row only when `migration_path` is `direct` and "
             "`required_client_api` is `invoke`") in analyzer
-    assert "use only the row whose `required_client_api` equals the context's `Target API surface`" in analyzer
+    assert "use only the row named on the context's `Chosen chat row:`" in analyzer
     assert "a row whose `required_client_api` is `invoke` is an embedding or image row" not in analyzer
     assert "except the unchosen second chat row for one source model" in analyzer
+
+
+def test_chosen_chat_row_is_matched_by_id_and_path_not_api() -> None:
+    """Review on #694 (P3): two chat rows for one source model can share an API and differ only in
+    path, so matching on `required_client_api` / `Target API surface` keeps both."""
+    source = (BMA / "scripts" / "design-ai.py").read_text(encoding="utf-8")
+    paths = re.search(r"PATH_CLIENT_APIS = \{(.*?)\n\}", source, re.S).group(1)
+    for path in ("mantle_openai_chat", "runtime_openai_cris"):
+        assert re.search(rf'"{path}": \{{[^}}]*"chat_completions"', paths), path
+    rows = [
+        {"source_model_id": "gpt-5.5", "aws_model_id": "openai.gpt-5.5",
+         "migration_path": "mantle_openai_chat", "required_client_api": "chat_completions"},
+        {"source_model_id": "gpt-5.5", "aws_model_id": "us.openai.gpt-5.5",
+         "migration_path": "runtime_openai_cris", "required_client_api": "chat_completions"},
+    ]
+    # The old rule: both rows match the Target API surface, so it cannot pick one.
+    assert len([r for r in rows if r["required_client_api"] == "chat_completions"]) == 2
+    # The new rule: the Chosen chat row line names exactly one row by id and path.
+    line = "gpt-5.5 -> us.openai.gpt-5.5 on runtime_openai_cris"
+    src, rest = line.split(" -> ")
+    model, path = rest.split(" on ")
+    chosen = [r for r in rows if (r["source_model_id"], r["aws_model_id"], r["migration_path"]) == (src, model, path)]
+    assert chosen == [rows[1]]
+
+    block = _section(TEXT, "Build this exact line format", "Prior-phase results are passed as FILE PATHS")
+    assert "\nChosen chat row: <the B1 choice from chat-row-choice.json" in block
+    b1 = _flat(_section(TEXT, "### B1 — Read Assess outputs", "### B2"))
+    assert "context block's `Chosen chat row:` line" in b1
+    assert "match the row by `aws_model_id` and `migration_path`, never by API" in b1
+    for name in ("llm2bedrock-code-analyzer.md", "llm2bedrock-report-generator.md"):
+        agent = _flat((PLUGIN_ROOT / "agents" / name).read_text(encoding="utf-8"))
+        assert "`Chosen chat row:` line" in agent, name
+        assert "Do not match on `required_client_api` or `Target API surface`" in agent, name
+        assert "names no row or more than one, stop and report it" in agent, name
+        assert "equals the context's `Target API surface`" not in agent, name
+        assert "equals your context's `Target API surface`, and skip the other" not in agent, name
 
 
 def test_a_row_is_embedding_or_image_only_on_direct_invoke_with_a_matching_capability() -> None:

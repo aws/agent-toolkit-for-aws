@@ -761,7 +761,11 @@ Read `$MIGRATION_DIR/aws-design-ai.json` and extract:
     `$BEDROCK_RUN_DIR/chat-row-choice.json` as `{"assess_design_sha256": ...,
     "source_model_id": ..., "aws_model_id": ..., "migration_path": ...,
     "required_client_api": ...}`. On a resume, reuse it only when its `assess_design_sha256`
-    equals the current readiness hash of `aws-design-ai.json`; otherwise ask again.
+    equals the current readiness hash of `aws-design-ai.json`; otherwise ask again. Pass the
+    choice to every agent on the context block's `Chosen chat row:` line. Two rows can share
+    `required_client_api` and differ only in path (a Projects workload on `mantle_openai_chat`
+    and the rest on `runtime_openai_cris`, both `chat_completions`), so the agents match the
+    row by `aws_model_id` and `migration_path`, never by API.
   - The rows kept here are "the plan's rows" for B4, the context block, C0 and C5: one row
     per source model for chat, plus every embedding or image row.
 - Collect all `aws_model_id` values into `$TARGET_MODELS` (array). Keep the role AND the
@@ -1059,6 +1063,7 @@ Target API path: <resolved_api_path from normalize_api_path above>
 Target API surface: <chat_completions for *_openai_chat, responses for *_openai_responses, messages for runtime_messages, otherwise converse — mantle_messages never reaches a dispatch (B1 lane gate)>
 Migration plan dir: <$MIGRATION_DIR>
 Resolved target model id: <override for the primary chat model — omit if none>
+Chosen chat row: <the B1 choice from chat-row-choice.json, as "<source_model_id> -> <aws_model_id> on <migration_path>" (the design's own aws_model_id, before overrides) — omit when B1 kept every chat row>
 Scripts directory (pinned uv toolchain): <$SCRIPTS>
 Report date suffix: <saved suffix from run-context — C5/C6 dispatches only>
 Usage baseline path: <$BEDROCK_RUN_DIR/usage-baseline.json — C5/C6 dispatches only, omit line if the file is absent>
