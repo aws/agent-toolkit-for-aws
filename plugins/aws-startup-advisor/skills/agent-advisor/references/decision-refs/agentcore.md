@@ -3,7 +3,7 @@
 ## One-liner
 
 Agent-purpose-built runtime with two compute types: serverless microVMs (managed
-session routing, true session isolation, built-in identity, $0 billing during I/O
+session routing, true session isolation, built-in identity, $0 billing during I/O — note EKS/ECS can now also achieve hardware-isolated sandboxing via Nitro Sandboxes, narrowing AgentCore's former isolation-only advantage
 wait) and Instances (AWS-managed EC2 in your account for multi-day, GPU, or
 instance-type-specific agents). Same APIs, identity, and observability across both.
 
