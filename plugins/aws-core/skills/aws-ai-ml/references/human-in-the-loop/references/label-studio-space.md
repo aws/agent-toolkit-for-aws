@@ -18,7 +18,7 @@ The skill does not host Label Studio. The **Label Studio app** runs in a **share
 - In each domain, the Label Studio space is the oldest such space that is not failed or being deleted. `create` names the spaces it makes `label-studio-<UTC YYYYMMDDHHMMSS>`.
 - `discover` returns at most one space per domain. `--space-name` checks only that space, which must be a Label Studio space.
 
-`<space-host>` comes from `describe-space --query Url` (e.g. `abc123example.studio.us-west-2.sagemaker.aws`). It is per-space, not the domain id.
+`<space-host>` comes from `describe-space --query Url` and has the shape `<space-id>.studio.<region>.sagemaker.aws`. `<space-id>` is the generated label Studio puts in that URL for a space: read it from `Url`, as no API returns it on its own (`describe-space` gives `DomainId`, `SpaceArn`, `SpaceName` and `Url`, never a space id). It is not the space name, and not the domain id — the domain id fills that position only for user-profile access, never for a space.
 
 Useful paths:
 
