@@ -150,7 +150,7 @@ def test_a2_runs_readiness_through_estimate_and_stops_on_any_non_ready_answer() 
     # every reason the script can return is named, so none is treated as ready
     reasons = _readiness_reasons()
     assert {"status_not_found", "status_unreadable", "artifact_missing", "not_this_skill"} <= reasons, reasons
-    assert len(reasons) == 13, reasons
+    assert len(reasons) == 16, reasons
     for reason in reasons:
         assert f"`{reason}`" in a2, reason
     assert "**Re-check before every later re-read.**" in a2 and "compare each printed `sha256`" in a2

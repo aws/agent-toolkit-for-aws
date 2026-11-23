@@ -626,10 +626,12 @@ python3 "$BMA_BASE/scripts/readiness.py" "$MIGRATION_DIR" --through estimate
 - **Exit 1, `"ready": false`** (any `reason`: `run_not_found`, `status_not_found`,
   `status_unreadable`, `status_invalid`, `not_this_skill`, `phase_incomplete`,
   `artifact_missing`, `artifact_unreadable`, `profile_invalid`, `preferences_invalid`,
-  `design_invalid`, `estimate_invalid`, or `generate_invalid`, which only `--through generate`
-  returns) → **stop.** Show the user the `reason` and
-  `detail`, and tell them to resume the run with bedrock-migration-assessment (name
-  `$MIGRATION_DIR`), then ask me to migrate again. Do not repair the run or its state file
+  `host_answers_invalid`, `host_answers_mismatch`, `design_invalid`, `estimate_invalid`, or
+  `generate_invalid` and `combined_run`, which only `--through generate` returns) → **stop.**
+  Show the user the `reason` and `detail`, and tell them to resume the run with
+  bedrock-migration-assessment (name `$MIGRATION_DIR`), then ask me to migrate again. On
+  `host_answers_invalid`, only the skill that started the run can rewrite
+  `host-answers.json`: tell the user to resume the run with that skill instead. Do not repair the run or its state file
   yourself, and do not continue to Phase B.
 - **Any other exit code, or output that is not one JSON object** → **stop** and show the
   user the command's output. Do not treat it as ready.
