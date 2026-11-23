@@ -1,0 +1,144 @@
+"""Tests for skills/claude-apps-to-bedrock/references/process_export.py.
+
+The script runs in a subprocess with HOME and USERPROFILE pointed at a temp dir
+(it writes a scratch folder under ~, which is USERPROFILE on Windows). The
+encoding tests force a non-UTF-8 locale to reproduce the Windows default-
+encoding crash on any OS (no -I here: it would ignore the locale variables).
+The collision test runs in UTF-8 mode so it can only fail on the collision.
+"""
+import json
+import os
+import pathlib
+import subprocess
+import sys
+import tempfile
+import unittest
+import zipfile
+
+SCRIPT = (pathlib.Path(__file__).resolve().parent.parent
+          / "skills" / "claude-apps-to-bedrock" / "references" / "process_export.py")
+
+
+def make_export(downloads, conversations, part="000"):
+    with zipfile.ZipFile(downloads / f"conversations-{part}.zip", "w") as zf:
+        zf.writestr("conversations.json", json.dumps(conversations, ensure_ascii=False))
+
+
+def conv(uuid, name, created, text):
+    return {
+        "uuid": uuid,
+        "name": name,
+        "created_at": created,
+        "summary": "",
+        "chat_messages": [
+            {"sender": "human", "text": text},
+            {"sender": "assistant", "content": [{"type": "text", "text": "ok " + text}]},
+        ],
+    }
+
+
+class ProcessExportTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        root = pathlib.Path(self.tmp.name)
+        self.home, self.downloads, self.out = root / "home", root / "dl", root / "out"
+        for d in (self.home, self.downloads):
+            d.mkdir()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_script(self, force_ascii_locale=True):
+        env = dict(os.environ, HOME=str(self.home), USERPROFILE=str(self.home),
+                   PYTHONIOENCODING="utf-8")
+        if force_ascii_locale:
+            env.update(LC_ALL="C", LANG="C", PYTHONUTF8="0", PYTHONCOERCECLOCALE="0")
+        utf8 = "utf8=0" if force_ascii_locale else "utf8=1"
+        return subprocess.run(
+            [sys.executable, "-X", utf8, str(SCRIPT), str(self.downloads), str(self.out)],
+            env=env, capture_output=True, text=True, encoding="utf-8")
+
+    def test_non_ascii_text_survives(self):
+        text = "Résumé 日本語 🚀 naïve"
+        make_export(self.downloads, [conv("u1", "Café plans 🚀", "2026-10-01T10:00:00Z", text)])
+        r = self.run_script()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        combined = (self.out / "COMBINED-1p-history.md").read_text(encoding="utf-8")
+        self.assertIn(text, combined)
+        self.assertIn("Café plans 🚀", (self.out / "GLOBAL-INSTRUCTIONS.txt").read_text(encoding="utf-8"))
+
+    def test_output_file_names_are_ascii(self):
+        # Linux with LANG=C can't create non-ASCII file names; macOS can, so
+        # check the names directly rather than relying on the OS to fail.
+        make_export(self.downloads, [
+            conv("u1", "Café plans 🚀", "2026-10-01T10:00:00Z", "hi"),
+            conv("u2", "日本語のメモ", "2026-10-02T10:00:00Z", "hi"),
+        ])
+        r = self.run_script()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        names = sorted(p.name for p in self.out.iterdir())
+        self.assertTrue(all(n.isascii() for n in names), names)
+        self.assertIn("2026-10-01-cafe-plans.md", names)
+        self.assertIn("2026-10-02-untitled.md", names)
+
+    def test_same_date_and_title_do_not_overwrite(self):
+        make_export(self.downloads, [
+            conv("u1", "Standup", "2026-10-01T09:00:00Z", "first"),
+            conv("u2", "Standup", "2026-10-01T17:00:00Z", "second"),
+        ])
+        r = self.run_script(force_ascii_locale=False)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        per_conv = sorted(p for p in self.out.glob("*.md") if p.name not in ("COMBINED-1p-history.md", "HISTORY-INDEX.md"))
+        self.assertEqual(len(per_conv), 2, [p.name for p in per_conv])
+        bodies = "".join(p.read_text(encoding="utf-8") for p in per_conv)
+        self.assertIn("first", bodies)
+        self.assertIn("second", bodies)
+
+    def test_dedupes_across_parts_and_skips_html_403_pages(self):
+        c = conv("u1", "Dup", "2026-10-01T09:00:00Z", "hello")
+        make_export(self.downloads, [c], part="000")
+        make_export(self.downloads, [c], part="001")
+        (self.downloads / "conversations-002.zip").write_text("<!DOCTYPE html>403", encoding="utf-8")
+        r = self.run_script()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("found 1 conversations", r.stdout)
+        self.assertIn("conversations-002.zip is not a valid zip", r.stdout)
+
+
+    def test_session_loaded_files_stay_small_for_a_long_history(self):
+        # ~/.claude/CLAUDE.md @-imports HISTORY-INDEX.md and Desktop adds
+        # GLOBAL-INSTRUCTIONS.txt to every chat, so both must stay bounded.
+        big = "x" * 10_000
+        make_export(self.downloads, [
+            dict(conv(f"u{i}", f"Topic {i}", f"2026-01-01T00:{i // 60:02d}:{i % 60:02d}Z", big),
+                 summary="s" * 300)
+            for i in range(299)]
+            + [conv("u299", "Topic 299 debug @~/.zshrc aliases", "2026-01-01T09:00:00Z", "hi")])
+        r = self.run_script(force_ascii_locale=False)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertGreater((self.out / "COMBINED-1p-history.md").stat().st_size, 4 * 1024 * 1024)
+        index = (self.out / "HISTORY-INDEX.md").read_bytes()
+        brief = (self.out / "GLOBAL-INSTRUCTIONS.txt").read_bytes()
+        self.assertLessEqual(len(index), 16_000)
+        self.assertLessEqual(len(brief), 4_000)
+        text = index.decode("utf-8")
+        self.assertIn("Topic 299", text)                  # newest first
+        self.assertIn("older conversations", text)
+        self.assertIn("`", text)                          # paths in backticks, not @-imports
+        self.assertNotIn("@", text)                       # a title's @path isn't an import
+        self.assertIn("\uff20~/.zshrc", text)
+
+    @unittest.skipIf(os.name == "nt", "POSIX permissions")
+    def test_output_is_private_and_raw_export_is_removed(self):
+        make_export(self.downloads, [conv("u1", "Secret", "2026-10-01T09:00:00Z", "hi")])
+        r = self.run_script(force_ascii_locale=False)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.out.stat().st_mode & 0o777, 0o700)
+        for f in self.out.iterdir():
+            self.assertEqual(f.stat().st_mode & 0o777, 0o600, f.name)
+        self.assertFalse((self.home / ".claude_export_tmp").exists())
+        self.assertIn("delete the export zips", r.stdout)
+
+
+if __name__ == "__main__":
+    unittest.main()

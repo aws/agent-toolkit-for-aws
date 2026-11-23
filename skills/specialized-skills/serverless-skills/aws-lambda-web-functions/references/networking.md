@@ -78,50 +78,17 @@ RDS and Aurora, and encryption at rest on ElastiCache.
 
 **3. Operator role.** Lambda assumes this role to manage network interfaces in your subnets. It
 is separate from the revision's execution role, which needs no VPC permissions. Trust
-`lambda.amazonaws.com` (`sts:AssumeRole`), conditioned on `aws:SourceAccount` set to your account
-so the role cannot be assumed on another account's behalf; add `aws:SourceArn` for the connector
-ARN once the connector exists, which narrows it to that one connector.
-
-Attach this permissions policy:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "CreateENI",
-      "Effect": "Allow",
-      "Action": "ec2:CreateNetworkInterface",
-      "Resource": [
-        "arn:aws:ec2:*:*:network-interface/*",
-        "arn:aws:ec2:*:*:subnet/*",
-        "arn:aws:ec2:*:*:security-group/*"
-      ]
-    },
-    {
-      "Sid": "TagENI",
-      "Effect": "Allow",
-      "Action": "ec2:CreateTags",
-      "Resource": "arn:aws:ec2:*:*:network-interface/*",
-      "Condition": {
-        "StringEquals": {
-          "ec2:ManagedResourceOperator": "network-connectors.lambda.amazonaws.com"
-        }
-      }
-    }
-  ]
-}
-```
-
-If the connector uses service-managed Elastic IPs, also allow
+`lambda.amazonaws.com` (`sts:AssumeRole`) and allow `ec2:CreateNetworkInterface` on
+`network-interface/*`, `subnet/*` and `security-group/*`, and `ec2:CreateTags` on
+`network-interface/*` — not on `*`. If the connector uses service-managed Elastic IPs, also allow
 `ec2:AllocateAddress` on `elastic-ip/*`, `ec2:AssociateAddress` on `elastic-ip/*` with the condition `StringLike`
 `aws:ResourceTag/aws:lambda:networkConnectorId` = `nc-*` (only addresses Lambda tagged for a
 connector), and both actions on
 `network-interface/*` with the condition `StringEquals` `ec2:ManagedResourceOperator` =
 `network-connectors.lambda.amazonaws.com`, so they apply only to the connector's own network
-interfaces.
-
-The role needs no delete permission:
+interfaces. Condition the trust policy on `aws:SourceAccount` set to your account, so the
+role cannot be assumed on another account's behalf; add `aws:SourceArn` for the connector ARN once
+the connector exists, which narrows it to that one connector. The role needs no delete permission:
 Lambda deletes the connector's network
 interfaces through the service-linked role `AWSServiceRoleForLambda`
 ([`AWSLambdaServiceRolePolicy`](https://docs.aws.amazon.com/lambda/latest/dg/security-iam-awsmanpol.html#lambda-security-iam-awsmanpol-AWSLambdaServiceRolePolicy)),
@@ -268,7 +235,7 @@ In addition to the Web Function actions in [iam-and-security.md](references/iam-
 |---|---|---|
 | `InvalidParameterValueException` ... "Subnets and Security Groups must belong to the same VPC" | Security group from another VPC | Use a security group in the subnets' VPC |
 | `InvalidParameterValueException` ... "SecurityGroupIds cannot be null or empty" | No security group given | Pass at least one security group |
-| `InvalidParameterValueException` ... "invalid ConnectorOperatorRole permissions" | Operator role lacks the permissions from step 3 | Attach the operator role policy from step 3 |
+| `InvalidParameterValueException` ... "invalid ConnectorOperatorRole permissions" | Operator role lacks the EC2 permissions in step 3 | Grant them on the operator role |
 | `ValidationException` ... "A version qualifier is required" | Unqualified connector ARN | Use `LatestVersionArn` from `get-network-connector` |
 | `ValidationException` ... "ARNs must start with 'arn:'" | Connector name or ID passed | Pass the version-qualified ARN |
 | `ValidationException` ... "is not active" | Connector still `PENDING` | Wait for `ACTIVE`, then create the revision |
