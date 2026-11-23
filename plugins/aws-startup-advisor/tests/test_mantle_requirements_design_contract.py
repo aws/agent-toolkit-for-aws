@@ -24,20 +24,16 @@ PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 SKILLS = PLUGIN_ROOT / "skills"
 
 DESIGN_AI_FILES = {
-    "gcp": SKILLS / "gcp-to-aws" / "references" / "phases" / "design" / "design-ai.md",
     "azure": SKILLS / "azure-to-aws" / "references" / "phases" / "design" / "design-ai.md",
 }
 SCHEMA_DOCS = {
     "shared": SKILLS / "shared" / "ai" / "schema-design-aws-ai.md",
-    "gcp-shadow": SKILLS / "gcp-to-aws" / "references" / "shared" / "schema-design-aws-ai.md",
     "azure-shadow": SKILLS / "azure-to-aws" / "references" / "shared" / "schema-design-aws-ai.md",
     "gcp-vendored": SKILLS / "gcp-to-aws" / "references" / "vendored" / "ai" / "schema-design-aws-ai.md",
     "azure-vendored": SKILLS / "azure-to-aws" / "references" / "vendored" / "ai" / "schema-design-aws-ai.md",
 }
 GENERATE_FILES = {
-    "gcp-artifacts": SKILLS / "gcp-to-aws" / "references" / "phases" / "generate" / "generate-artifacts-ai.md",
     "azure-artifacts": SKILLS / "azure-to-aws" / "references" / "phases" / "generate" / "generate-artifacts-ai.md",
-    "gcp-guide": SKILLS / "gcp-to-aws" / "references" / "phases" / "generate" / "generate-ai.md",
 }
 LLM_TO_BEDROCK_SKILL = SKILLS / "llm-to-bedrock" / "SKILL.md"
 REPORT_GENERATOR = PLUGIN_ROOT / "agents" / "llm2bedrock-report-generator.md"

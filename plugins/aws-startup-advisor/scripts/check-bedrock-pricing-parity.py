@@ -33,7 +33,6 @@ CANONICAL = PLUGIN / "skills/shared/ai/bedrock-pricing-cache.md"
 GCP_CACHE = PLUGIN / "skills/gcp-to-aws/references/shared/pricing-cache.md"
 GCP_SKILL = PLUGIN / "skills/gcp-to-aws/SKILL.md"
 GCP_ESTIMATE = PLUGIN / "skills/gcp-to-aws/references/phases/estimate/estimate.md"
-GCP_ESTIMATE_AI = PLUGIN / "skills/gcp-to-aws/references/phases/estimate/estimate-ai.md"
 AZURE_CACHE = PLUGIN / "skills/azure-to-aws/references/shared/pricing-cache.md"
 AZURE_ESTIMATE = PLUGIN / "skills/azure-to-aws/references/phases/estimate/estimate.md"
 AZURE_ESTIMATE_AI = PLUGIN / "skills/azure-to-aws/references/phases/estimate/estimate-ai.md"
@@ -158,7 +157,6 @@ def main() -> int:
     canonical = CANONICAL.read_text()
     remaining = GCP_CACHE.read_text()
     gcp_estimate = GCP_ESTIMATE.read_text()
-    gcp_estimate_ai = GCP_ESTIMATE_AI.read_text()
     azure_old = git_show(OLD_AZURE_CACHE)
     azure_cache = AZURE_CACHE.read_text()
     azure_estimate = AZURE_ESTIMATE.read_text()
@@ -206,7 +204,6 @@ def main() -> int:
     assert "±5-25%" not in gcp_estimate
     assert "infrastructure/source-provider cache (updated [date], ±5-10%)" in gcp_estimate
     assert "Bedrock cache (updated [date], ±15-25%)" in gcp_estimate
-    assert "a `references/vendored/ai/bedrock-pricing-cache.md` cell marked `_unverified_`" in gcp_estimate_ai
 
     assert "references/vendored/ai/bedrock-pricing-cache.md" in azure_estimate
     assert "references/vendored/ai/bedrock-pricing-cache.md` (primary for Bedrock)" in azure_estimate_ai

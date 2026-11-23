@@ -35,8 +35,6 @@ PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 SKILLS = PLUGIN_ROOT / "skills"
 SKILL_MD = SKILLS / "llm-to-bedrock" / "SKILL.md"
 SCRIPTS = SKILLS / "llm-to-bedrock" / "scripts"
-GCP_GENERATE_ARTIFACTS = SKILLS / "gcp-to-aws" / "references" / "phases" / "generate" / "generate-artifacts-ai.md"
-GCP_GENERATE_AI = SKILLS / "gcp-to-aws" / "references" / "phases" / "generate" / "generate-ai.md"
 AZURE_GENERATE_ARTIFACTS = SKILLS / "azure-to-aws" / "references" / "phases" / "generate" / "generate-artifacts-ai.md"
 REPORT_GENERATOR = PLUGIN_ROOT / "agents" / "llm2bedrock-report-generator.md"
 CANONICAL_GUIDE = SKILLS / "shared" / "ai" / "ai-openai-to-bedrock.md"
@@ -71,7 +69,7 @@ def _section(text: str, start: str, end: str) -> str:
 # --- Finding 1: the grant reaches every runtime Responses / Chat target, GPT-5.6 included ---
 
 def test_setup_recipes_grant_project_default_to_every_runtime_openai_target() -> None:
-    for path in (CANONICAL_GUIDE, GCP_GENERATE_AI, GCP_GENERATE_ARTIFACTS, AZURE_GENERATE_ARTIFACTS, REPORT_GENERATOR):
+    for path in (CANONICAL_GUIDE, AZURE_GENERATE_ARTIFACTS, REPORT_GENERATOR):
         text = path.read_text()
         windows = [text[max(0, m.start() - 900): m.end() + 900]
                    for m in re.finditer(r"project/default", text)]
@@ -105,7 +103,7 @@ def test_report_generator_iam_recipe_passes_one_target_pair_per_row() -> None:
     assert "`invoke` for an embedding row" in recipe
     # The legacy single-API form is documented as single-row only, never as the default.
     assert "use it only for a single-row plan" in recipe
-    for path in (CANONICAL_GUIDE, GCP_GENERATE_AI, GCP_GENERATE_ARTIFACTS, AZURE_GENERATE_ARTIFACTS):
+    for path in (CANONICAL_GUIDE, AZURE_GENERATE_ARTIFACTS):
         assert "iam_policy.py --target <aws_model_id>=<required_client_api>" in path.read_text(), path
         assert "iam_policy.py --runtime-api" not in path.read_text(), path
 
@@ -188,33 +186,6 @@ def _bullet_matches(bullet: str, migration_path: str) -> bool:
     if "or absent" in head:
         return migration_path in listed or migration_path == ""
     return migration_path in listed
-
-
-def test_gcp_step0_matches_mantle_messages_in_exactly_one_branch() -> None:
-    bullets = _step0_bullets(GCP_GENERATE_ARTIFACTS.read_text())
-    matches = [b for b in bullets if _bullet_matches(b, "mantle_messages")]
-    assert len(matches) == 1, [m[:120] for m in matches]
-    branch = matches[0]
-    assert '`migration_path` = `"mantle_messages"`' in branch
-    assert "bedrock-mantle.{region}.api.aws/anthropic" in branch
-    assert "`bedrock-mantle:*` IAM" in branch
-    assert "Do NOT generate `migrate_to_mantle.sh`" in branch
-    # The broad Mantle branch now enumerates the OpenAI-SDK spellings and excludes Messages.
-    mantle_branch = next(b for b in bullets if 'starts with `"mantle"`' in b)
-    assert '`"mantle_messages"` is NOT this branch' in mantle_branch
-    for spelling in ("mantle", "mantle_openai_chat", "mantle_openai_responses"):
-        assert [b for b in bullets if _bullet_matches(b, spelling)] == [mantle_branch], spelling
-
-
-def test_gcp_step0_supported_runtime_messages_route_keeps_messages() -> None:
-    bullets = _step0_bullets(GCP_GENERATE_ARTIFACTS.read_text())
-    matches = [b for b in bullets if _bullet_matches(b, "runtime_messages")]
-    assert len(matches) == 1
-    branch = matches[0]
-    assert "bedrock-runtime.{region}.amazonaws.com/anthropic" in branch
-    assert '`required_client_api` is `"messages"`' in branch
-    assert "do NOT rewrite to Converse" in branch
-    assert "do NOT generate a Mantle script" in branch
 
 
 # --- Finding 4: resolved_runtime_api survives the resume gate ---

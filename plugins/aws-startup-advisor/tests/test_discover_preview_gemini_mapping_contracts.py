@@ -1,13 +1,12 @@
-"""Text contract: Discover's preview maps every current Gemini id the same way Clarify does.
+"""Text contract: Discover's preview maps every current Gemini id the way the shared Gemini guide does.
 
 `discover-preview.md` Step 2A maps each observed source model with its own pattern table and
 shows the per-token cost direction before Clarify runs. A current Gemini id that matches no
 pattern falls through to the `Unknown / other` row (Nova Pro, $0.80 / $3.20), which for
-`gemini-3.5-flash-lite` ($0.30 / $2.50) displays "higher" while Clarify Q19 and the shared
-Gemini guide map it to Nova Lite ($0.06 / $0.24), "lower" on both rates. This test performs the
-preview lookup for each current Gemini Flash id and pins that it (a) never hits the fallback and
-(b) lands on the same primary target, with the same cost direction, as the Clarify Q19 row and
-the shared guide's cost table.
+`gemini-3.5-flash-lite` ($0.30 / $2.50) displays "higher" while the shared Gemini guide maps it
+to Nova Lite ($0.06 / $0.24), "lower" on both rates. This test performs the preview lookup for
+each current Gemini Flash id and pins that it (a) never hits the fallback and (b) lands on the
+same primary target, with the same cost direction, as the shared guide's cost table.
 """
 from __future__ import annotations
 
@@ -22,12 +21,11 @@ SKILLS = PLUGIN_ROOT / "skills"
 GEMINI_GUIDE = SKILLS / "shared" / "ai" / "ai-gemini-to-bedrock.md"
 GCP_REFS = SKILLS / "gcp-to-aws" / "references"
 DISCOVER_PREVIEW = GCP_REFS / "phases" / "discover" / "discover-preview.md"
-CLARIFY_AI = GCP_REFS / "phases" / "clarify" / "clarify-ai.md"
 
 FALLBACK_SUBJECT = "Unknown / other"
 PRICE = re.compile(r"\$(\d+(?:\.\d+)?)\s*/\s*\$(\d+(?:\.\d+)?)")
 
-# (source id, product name as the Clarify Q19 / guide tables spell it, primary Bedrock target)
+# (source id, product name as the guide table spells it, primary Bedrock target)
 CURRENT_GEMINI = [
     ("gemini-3.5-flash", "Gemini 3.5 Flash (GA)", "Nova Lite"),
     ("gemini-3.5-flash-lite", "Gemini 3.5 Flash-Lite", "Nova Lite"),
@@ -81,17 +79,10 @@ def preview_lookup(model_id: str) -> list[str]:
     raise AssertionError("unreachable: fallback row is always last")
 
 
-def _clarify_q19_row(product: str) -> list[str]:
-    text = CLARIFY_AI.read_text(encoding="utf-8")
-    rows = [_cells(ln) for ln in text.splitlines() if ln.startswith(f"| {product} ")]
-    assert len(rows) == 1, f"expected exactly one Clarify Q19 row for {product!r}, found {len(rows)}"
-    return rows[0]
-
-
 def _guide_cost_rows(product: str, target: str) -> list[list[str]]:
     text = GEMINI_GUIDE.read_text(encoding="utf-8")
     live = _section(text, "### Gemini Pro Tier", "### Legacy/Specialized")
-    # The guide marks GA rows "(GA)" where Clarify's Q19 table does not always; compare the bare name.
+    # The guide may not mark GA rows "(GA)"; compare the bare name.
     bare = product.replace(" (GA)", "")
     return [
         r
@@ -125,24 +116,20 @@ def test_lookup_harness_resolves_the_existing_rows_the_way_a_reader_would() -> N
 
 
 @pytest.mark.parametrize(("model_id", "product", "target"), CURRENT_GEMINI, ids=[m for m, _, _ in CURRENT_GEMINI])
-def test_current_gemini_id_has_an_explicit_preview_row_matching_clarify(model_id: str, product: str, target: str) -> None:
+def test_current_gemini_id_has_an_explicit_preview_row_matching_the_guide(model_id: str, product: str, target: str) -> None:
     row = preview_lookup(model_id)
     # (a) the lookup never falls through to Nova Pro-by-default.
     assert row[0] != FALLBACK_SUBJECT, f"{model_id} falls through to the Unknown / other row — add an explicit preview mapping"
-    # (b) the preview's primary target is the one Clarify Q19 and the shared guide name first.
+    # (b) the preview's primary target is the one the shared guide names first.
     preview_primary = row[1].split(";")[0].replace("Amazon ", "").strip()
     assert preview_primary == target, f"preview maps {model_id} to {row[1]!r}, expected {target!r} first"
-    clarify_row = _clarify_q19_row(product)
-    clarify_primary = clarify_row[1].split(";")[0]
-    assert clarify_primary.startswith(target), f"Clarify Q19 names {clarify_row[1]!r} first for {product}, preview says {target}"
     guide_rows = _guide_cost_rows(product, target)
     assert guide_rows, f"shared guide has no live-tier row {product!r} -> {target!r}"
     # The preview direction is the direction the guide's prices give — the reviewer's example was
-    # the fallback showing "higher" for 3.5 Flash-Lite where Clarify shows "lower".
+    # the fallback showing "higher" for 3.5 Flash-Lite where the guide shows "lower".
     source_price = tuple(map(float, PRICE.search(guide_rows[0][1]).groups()))
     target_price = tuple(map(float, PRICE.search(guide_rows[0][3]).groups()))
     assert _direction(source_price, target_price) == "lower", (product, target, source_price, target_price)
-    assert "cheaper" in clarify_primary, f"Clarify Q19 does not call {target} cheaper for {product}: {clarify_primary!r}"
     preview = DISCOVER_PREVIEW.read_text(encoding="utf-8")
     note = _section(preview, "**Current Gemini preview:**", "For each mapped model pair")
     assert f"`{model_id}`" in note and f'"lower"' in note, f"preview note must state the recorded direction for {model_id}"

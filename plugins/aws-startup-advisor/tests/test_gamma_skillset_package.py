@@ -67,6 +67,7 @@ def test_package_closes_dependencies_and_preserves_source_bytes(packages, skill)
     assert manifest["workers_registered"] is False
     assert manifest["skills"] == sorted([
         skill, "tf-best-practices", "contextual-offers-for-startups", "knowledge-base-for-startups",
+        *(["bedrock-migration-assessment"] if skill == "gcp-to-aws" else []),
     ])
     with zipfile.ZipFile(archive) as handle:
         assert {name.split("/")[0] for name in handle.namelist()} == {"README.md", "skills"}
@@ -186,7 +187,7 @@ def test_gcp_startup_gate_runs_from_documented_command_in_unrelated_cwd(packages
     assert helper.read_bytes() == (PLUGIN_ROOT / "scripts" / helper.name).read_bytes()
     invocation = f'python3 "<SKILL_BASE>/scripts/{helper.name}"'
     for relative in (
-        "references/phases/generate/generate-ai.md",
+        "references/phases/generate/generate-startup-programs.md",
         "references/shared/validate-artifacts.md",
         "references/shared/report-decision-core.md",
     ):

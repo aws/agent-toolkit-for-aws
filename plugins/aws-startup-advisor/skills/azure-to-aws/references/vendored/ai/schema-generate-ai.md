@@ -2,7 +2,8 @@
 
 > **Why this file exists.** `estimation-ai.json` just gained a single, provider-neutral written
 > contract (`schema-estimate-ai.md`, #389 follow-on). `generation-ai.json` is the same risk one
-> phase further: GCP's `skills/gcp-to-aws/references/phases/generate/generate-ai.md` and the
+> phase further: bedrock-migration-assessment's
+> `skills/bedrock-migration-assessment/references/phases/generate/generate-ai.md` and the
 > `generation-ai.json` section of Azure's
 > `skills/azure-to-aws/references/phases/generate/generate-artifacts-ai.md` each carry their own
 > "Schema — top-level fields" table for the same artifact. This file is the single,
@@ -118,7 +119,7 @@ a free-form string, not an enum, and this contract does not special-case the val
 - [ ] `production_readiness_checklist` has at least 5 items.
 - [ ] `success_criteria` covers `quality`, `latency`, and `cost`.
 
-## Status — one producer, GCP and Azure deferred
+## Status — one producer, Azure deferred
 
 `bedrock-migration-assessment` produces this contract: its Generate phase
 (`skills/bedrock-migration-assessment/references/phases/generate/generate-ai.md`) writes
@@ -126,10 +127,12 @@ a free-form string, not an enum, and this contract does not special-case the val
 validates it against the companion JSON Schema (`scripts/contracts/generation-ai.schema.json`)
 before the phase completes.
 
-GCP's `skills/gcp-to-aws/references/phases/generate/generate-ai.md` and the `generation-ai.json`
-section of Azure's `skills/azure-to-aws/references/phases/generate/generate-artifacts-ai.md`
-still write against their own "Schema — top-level fields" tables, and neither emits
-`artifacts_by_source[]`. For `gcp-to-aws` and `azure-to-aws` this document is the TARGET
-contract. Repointing either skill's generate phase to emit this shape is deferred
-runtime-adoption work, named explicitly so a future PR does not silently assume their runtime
-output already satisfies this contract.
+gcp-to-aws runs that phase in combined mode and copies `generation-ai.json` and its
+`ai-migration/` files (`skills/gcp-to-aws/references/shared/ai-handoff.md`).
+
+The `generation-ai.json` section of Azure's
+`skills/azure-to-aws/references/phases/generate/generate-artifacts-ai.md` still writes against its
+own "Schema — top-level fields" table and does not emit `artifacts_by_source[]`. For
+`azure-to-aws` this document is the TARGET contract. Repointing its generate phase to emit this
+shape is deferred runtime-adoption work, named explicitly so a future PR does not silently assume
+its runtime output already satisfies this contract.

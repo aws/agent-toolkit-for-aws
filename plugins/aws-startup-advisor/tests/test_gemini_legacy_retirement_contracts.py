@@ -31,8 +31,6 @@ SKILLS = PLUGIN_ROOT / "skills"
 LIFECYCLE = SKILLS / "shared" / "ai" / "ai-model-lifecycle.md"
 GEMINI_GUIDE = SKILLS / "shared" / "ai" / "ai-gemini-to-bedrock.md"
 GCP_REFS = SKILLS / "gcp-to-aws" / "references"
-CLARIFY_AI = GCP_REFS / "phases" / "clarify" / "clarify-ai.md"
-CLARIFY_AI_ONLY = GCP_REFS / "phases" / "clarify" / "clarify-ai-only.md"
 ESTIMATE_AI = GCP_REFS / "phases" / "estimate" / "estimate-ai.md"
 SCHEMA_PREFERENCES = GCP_REFS / "shared" / "schema-preferences.md"
 GCP_PRICING_CACHE = GCP_REFS / "shared" / "pricing-cache.md"
@@ -124,24 +122,6 @@ def test_gemini_guide_current_tables_have_no_2x_rows_and_legacy_rows_keep_the_ma
     assert "| Gemini 3.8 Flash (GA)     | $0.75 / $3.75" in text
     assert "| Gemini 3.5 Flash-Lite     | $0.30 / $2.50" in text
     assert "https://aistudio.google.com/docs/pricing" in text
-
-
-def test_q19_source_model_menu_flags_retired_gemini() -> None:
-    text = CLARIFY_AI.read_text(encoding="utf-8")
-    menu = [ln for ln in text.splitlines() if re.match(r"^> \d+\. ", ln) and GEMINI_RETIRED.search(ln)]
-    assert menu, "Q19 menu lost its Gemini 2.0 / 2.5 entries — a user still on one must be able to pick it"
-    seen = set()
-    for ln in menu:
-        # A replacement option may name 2.5 ("replacement for 2.5 Pro"); the retired option itself
-        # must be flagged the way the 1.5 options already are.
-        if re.search(r"^> \d+\. Gemini 2\.5", ln):
-            assert "retired" in ln and "Oct 20, 2026" in ln, ln
-            assert "Q19b" in ln, "the 2.5 option must route to Q19b so the serving API is captured"
-            seen.add("2.5")
-        if re.search(r"^> \d+\. Gemini 2\.0", ln):
-            assert "retired" in ln and "Jun 1, 2026" in ln, ln
-            seen.add("2.0")
-    assert seen == {"2.0", "2.5"}, f"Q19 menu is missing a flagged option for {sorted({'2.0', '2.5'} - seen)}"
 
 
 def test_lifecycle_ssot_records_the_gemini_retirements() -> None:
@@ -264,52 +244,6 @@ def test_gcp_pricing_cache_marks_retired_rows_and_selects_the_baseline_by_api_an
     # 2.0 is past shutdown on both APIs — still priced against the replacement.
     note_20 = next(ln for ln in gemini.splitlines() if ln.startswith("> **Gemini 2.0 retirement"))
     assert "both APIs" in note_20 and "replacement's rate" in note_20 and "Never use a 2.0 row" in note_20
-
-
-def test_clarify_captures_the_serving_api_and_estimate_reads_it() -> None:
-    clarify = CLARIFY_AI.read_text(encoding="utf-8")
-    q19b = _section(clarify, "## Q19b — Which Google API serves that Gemini model", "## Q20 —")
-    assert "`ai_source_serving_api`" in q19b or "ai_source_serving_api" in q19b
-    for value in ('"vertex_ai"', '"gemini_developer_api"', '"unknown"'):
-        assert value in q19b, f"Q19b is missing the {value} answer"
-    # Discover only knows Vertex AI (`models[].service: vertex_ai_generative`); the Developer API
-    # is asked, not guessed, and GCP-hosting alone never implies Vertex AI.
-    assert "`vertex_ai_generative`" in q19b and "no Developer API value" in q19b
-    # `vertex_ai_generative` is the Gemini category Discover assigns to every Gemini SDK (code scan
-    # pattern 2.3 lumps google.generativeai with vertexai.generative_models); only `detected_via`
-    # evidence establishes Vertex AI, so the value alone never resolves Q19b.
-    assert "not a Vertex AI signal" in q19b
-    assert "**with** `terraform` or `monitoring` in `detected_via`" in q19b
-    assert "`[\"code\"]` only is unresolved" in q19b
-    assert "never infer `vertex_ai` from the fact that the project is on GCP" in q19b
-    assert "$0.10/$0.40 with no cutoff" in q19b and "Dec 1, 2026" in q19b and "Jan 1, 2027" in q19b
-    # The 2.5 row of the Q19 table routes to Q19b and prices by API/date instead of banning 2.5 prices.
-    row = next(ln for ln in clarify.splitlines() if ln.startswith("| Gemini 2.5 Pro / Flash / Flash-Lite"))
-    assert "Ask Q19b" in row and "never use a 2.5 price" not in row, row
-    # The row's skip condition requires terraform/monitoring evidence, not the service value alone.
-    assert "`models[].service: vertex_ai_generative` **with** `terraform` or `monitoring`" in row, row
-    assert "unless Discover already shows `models[].service: vertex_ai_generative`" not in row, row
-    assert "2.5 Flash-Lite $0.10/$0.40 with no cutoff" in row and "until Dec 1, 2026" in row and "measured bill always wins" in row, row
-    # The AI-only flow asks the same question for a 2.5 baseline.
-    assert "Q19b" in CLARIFY_AI_ONLY.read_text(encoding="utf-8")
-    # The preferences schema carries the field.
-    assert "| `ai_source_serving_api`     | Q19b " in SCHEMA_PREFERENCES.read_text(encoding="utf-8")
-    # Estimate Part 1 level 3 picks the cache row by serving API + date, and only when no measured bill exists.
-    estimate = ESTIMATE_AI.read_text(encoding="utf-8")
-    part1 = _section(estimate, "## Part 1: Establish Current AI Costs", "## Part 2:")
-    assert "pick the row by serving API and date" in part1
-    assert "`vertex_ai_generative`" in part1 and "`ai_constraints.ai_source_serving_api`" in part1
-    # Clarify's answer wins; the Vertex branch needs terraform/monitoring evidence, never the
-    # `vertex_ai_generative` value alone (that would price code-scanned Developer API workloads
-    # at the replacement, e.g. 2.5 Flash-Lite $45 -> 3.5 Flash-Lite $232.50 at 150M / 75M).
-    assert "read `ai_constraints.ai_source_serving_api` from `preferences.json` first" in part1
-    assert "`detected_via` includes `terraform` or `monitoring`" in part1
-    assert "not a Vertex AI serving signal" in part1 and "a code-only row is `unknown`" in part1
-    assert "(`vertex_ai_generative` = Vertex AI)" not in part1
-    assert "`gemini-2.5-flash-lite` uses its own 0.10 / 0.40 row with no cutoff" in part1
-    assert "before 2026-12-01" in part1 and "on or after" in part1 and "2027-01-01" in part1
-    assert "Gemini 2.0 rows are never a baseline on either API" in part1
-    assert "a measured bill is always the baseline when it exists" in part1
 
 
 # --- A: recognition is preserved -------------------------------------------------------------

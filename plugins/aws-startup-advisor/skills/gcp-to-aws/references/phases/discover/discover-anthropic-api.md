@@ -482,7 +482,7 @@ volume:
      ["Anthropic Claude API"], "source": "anthropic_usage_api", "partial_window":
      <this profile's metadata.partial_window>, "cost_status": <this profile's
      metadata.cost_status> }` — stamp both fields here even in the single-provider
-     case, so Clarify's Q3 (`clarify-ai-only.md`) can check them without re-opening
+     case, so later readers of `current_costs` can check them without re-opening
      the usage-profile file itself.
    - **Existing billing-CSV costs for a DIFFERENT provider** (e.g. `ai_source`
      is `both`, CSV captured Vertex spend) → SUM the providers:

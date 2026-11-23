@@ -41,7 +41,7 @@ AZURE_ESTIMATE_ASSEMBLE = (
     / "estimate-assemble.md"
 )
 
-AI_ONLY_FILES = [GCP_ESTIMATE, AZURE_ESTIMATE_ASSEMBLE]
+AI_ONLY_FILES = [AZURE_ESTIMATE_ASSEMBLE]
 
 # The gateway/router framework set that Generate's Step 0 dispatch treats as
 # gateway config (generate-artifacts-ai.md Step 0 / generate-ai.md line 22).
@@ -141,3 +141,12 @@ def test_runtime_subroutes_resolve_to_runtime_label() -> None:
         )
         # Mantle label remains for the selector-gated routes.
         assert "[C] Generate the Mantle migration script and A/B test harness" in section
+
+
+def test_gcp_ai_only_option_c_names_what_the_assessment_generates() -> None:
+    text = GCP_ESTIMATE.read_text(encoding="utf-8")
+    assert "OpenRouter subroute" not in text
+    gate = text[text.index("For an AI-only run, also replace option C's"):]
+    assert "bedrock-migration-assessment's Generate" in gate
+    assert "[C] Generate the AI migration artifacts: Bedrock client files, a comparison harness, an IAM policy, and a dry-run setup script" in gate
+    assert "does not change the" in gate

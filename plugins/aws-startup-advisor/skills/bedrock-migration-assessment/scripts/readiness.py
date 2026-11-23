@@ -30,7 +30,7 @@ PHASES = (("discover", ("ai-workload-profile.json",)), ("clarify", ("preferences
           ("design", ("aws-design-ai.json",)), ("estimate", ("estimation-ai.json",)), ("generate", ("generation-ai.json",)))
 THROUGH = tuple(name for name, _ in PHASES)
 HOST_FIELDS = ("target_region", "compliance")
-HOST_STOPS = ("clarify", "design", "estimate")
+HOST_STOPS = ("clarify", "design", "estimate", "generate")
 
 
 class NotReady(Exception):
@@ -69,15 +69,20 @@ def _status(run_dir: Path) -> dict:
     return status
 
 
+def _host_shape_ok(host: Any) -> bool:
+    given = host.get("design_constraints") if isinstance(host, dict) else None
+    return isinstance(host, dict) and isinstance(host.get("host_skill"), str) and isinstance(given, dict) \
+        and host.get("stop_after") in HOST_STOPS and isinstance(host.get("infrastructure_moves"), bool) \
+        and not set(given) - set(HOST_FIELDS) and all(isinstance(v, dict) and "value" in v for v in given.values())
+
+
 def _host_answers(run_dir: Path, prefs: dict) -> None:
     path = run_dir / "host-answers.json"
     if not path.exists():
         return
     host = _json(path, "host_answers_invalid", "host_answers_invalid")
     given = host.get("design_constraints") if isinstance(host, dict) else None
-    if not isinstance(host, dict) or not isinstance(host.get("host_skill"), str) or not isinstance(given, dict) \
-            or host.get("stop_after") not in HOST_STOPS or not isinstance(host.get("infrastructure_moves"), bool) \
-            or set(given) - set(HOST_FIELDS) or not all(isinstance(v, dict) and "value" in v for v in given.values()):
+    if not _host_shape_ok(host):
         raise NotReady("host_answers_invalid", f"host-answers.json must name host_skill, stop_after, infrastructure_moves "
                        f"and only {', '.join(HOST_FIELDS)} wrappers")
     kept = prefs.get("design_constraints") or {}
@@ -88,9 +93,17 @@ def _host_answers(run_dir: Path, prefs: dict) -> None:
 
 def refuse_combined(run_dir: Path, migration_id: str, initiated_by: str | None) -> None:
     host = run_dir / "host-answers.json"
-    if initiated_by is not None or host.exists() or host.is_symlink():
-        raise NotReady("combined_run", f"run {migration_id!r} is a host skill's run (initiated_by {initiated_by!r} or host-answers.json); "
-                       "Generate runs only in a run this skill started on its own, so start a new run for it")
+    if initiated_by is None and not host.exists() and not host.is_symlink():
+        return
+    try:
+        answers = json.loads(host.read_bytes().decode("utf-8")) if host.is_file() and not host.is_symlink() else None
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        answers = None
+    asked = _host_shape_ok(answers) and answers["stop_after"] == "generate"
+    if not asked:
+        raise NotReady("combined_run", f"run {migration_id!r} is a host skill's run (initiated_by {initiated_by!r} or host-answers.json) "
+                       "and the host did not ask for Generate; Generate runs only in a run this skill started on its own, "
+                       "or when host-answers.json has stop_after generate")
 
 
 def check(run_dir: Path, through: str) -> dict:

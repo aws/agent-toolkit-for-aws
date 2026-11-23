@@ -33,23 +33,20 @@ SKILLS = PLUGIN_ROOT / "skills"
 SCRIPTS = SKILLS / "llm-to-bedrock" / "scripts"
 REPORT_GENERATOR = PLUGIN_ROOT / "agents" / "llm2bedrock-report-generator.md"
 CODE_REWRITER = PLUGIN_ROOT / "agents" / "llm2bedrock-code-rewriter.md"
-GCP_GENERATE_ARTIFACTS = SKILLS / "gcp-to-aws" / "references" / "phases" / "generate" / "generate-artifacts-ai.md"
 AZURE_GENERATE_ARTIFACTS = SKILLS / "azure-to-aws" / "references" / "phases" / "generate" / "generate-artifacts-ai.md"
 CANONICAL_GUIDE = SKILLS / "shared" / "ai" / "ai-openai-to-bedrock.md"
 VENDORED_GUIDES = [
     SKILLS / "gcp-to-aws" / "references" / "vendored" / "ai" / "ai-openai-to-bedrock.md",
     SKILLS / "azure-to-aws" / "references" / "vendored" / "ai" / "ai-openai-to-bedrock.md",
 ]
-GCP_DESIGN_AI = SKILLS / "gcp-to-aws" / "references" / "phases" / "design" / "design-ai.md"
 AZURE_DESIGN_AI = SKILLS / "azure-to-aws" / "references" / "phases" / "design" / "design-ai.md"
 CANONICAL_SCHEMA_DOC = SKILLS / "shared" / "ai" / "schema-design-aws-ai.md"
 VENDORED_SCHEMA_DOCS = [
     SKILLS / "gcp-to-aws" / "references" / "vendored" / "ai" / "schema-design-aws-ai.md",
     SKILLS / "azure-to-aws" / "references" / "vendored" / "ai" / "schema-design-aws-ai.md",
 ]
-GCP_SHADOW_SCHEMA = SKILLS / "gcp-to-aws" / "references" / "shared" / "schema-design-aws-ai.md"
 AZURE_SHADOW_SCHEMA = SKILLS / "azure-to-aws" / "references" / "shared" / "schema-design-aws-ai.md"
-ALL_SCHEMA_DOCS = [CANONICAL_SCHEMA_DOC, *VENDORED_SCHEMA_DOCS, GCP_SHADOW_SCHEMA, AZURE_SHADOW_SCHEMA]
+ALL_SCHEMA_DOCS = [CANONICAL_SCHEMA_DOC, *VENDORED_SCHEMA_DOCS, AZURE_SHADOW_SCHEMA]
 DESIGN_FIXTURES = sorted((PLUGIN_ROOT / "fixtures" / "aws-design-ai").glob("*/aws-design-ai.json"))
 NEW_FIXTURE = PLUGIN_ROOT / "fixtures" / "aws-design-ai" / "chat-source-web-search-continuity-kept" / "aws-design-ai.json"
 DESIGN_AI_SCHEMA = PLUGIN_ROOT / "scripts" / "contracts" / "aws-design-ai.schema.json"
@@ -137,7 +134,7 @@ def test_report_checklist_has_a_tool_level_permission_check() -> None:
 
 # --------------------------------------------------------------------------- F12 + F15: setup recipes
 
-@pytest.mark.parametrize("path", [GCP_GENERATE_ARTIFACTS, AZURE_GENERATE_ARTIFACTS, CANONICAL_GUIDE], ids=lambda p: p.parent.parent.name if "shared" not in p.parts else "canonical")
+@pytest.mark.parametrize("path", [AZURE_GENERATE_ARTIFACTS, CANONICAL_GUIDE], ids=lambda p: p.parent.parent.name if "shared" not in p.parts else "canonical")
 def test_setup_recipes_name_the_web_search_grants_and_mantle_stored_response_coverage(path: Path) -> None:
     text = _squash(path.read_text())
     # Round-2 pinned strings survive.
@@ -161,7 +158,7 @@ def test_setup_recipes_name_the_web_search_grants_and_mantle_stored_response_cov
 
 
 def test_setup_verification_has_a_tool_level_web_search_check() -> None:
-    for path in (GCP_GENERATE_ARTIFACTS, AZURE_GENERATE_ARTIFACTS):
+    for path in (AZURE_GENERATE_ARTIFACTS,):
         text = _squash(path.read_text())
         assert 'tools=[{"type": "web_search", "external_web_access": False}]' in text, path
         assert "`web_search_call` item or a `url_citation` annotation" in text, path
@@ -187,7 +184,7 @@ NINE_CARDS = [
 ]
 
 
-@pytest.mark.parametrize("path", [AZURE_DESIGN_AI, AZURE_SHADOW_SCHEMA, CANONICAL_SCHEMA_DOC, GCP_SHADOW_SCHEMA, CODE_REWRITER],
+@pytest.mark.parametrize("path", [AZURE_DESIGN_AI, AZURE_SHADOW_SCHEMA, CANONICAL_SCHEMA_DOC, CODE_REWRITER],
                          ids=lambda p: p.name if p.suffix == ".md" and "agents" in p.parts else str(p.relative_to(SKILLS)))
 def test_blanket_converse_only_guardrails_wording_is_gone(path: Path) -> None:
     text = _squash(path.read_text())
@@ -238,8 +235,7 @@ STEP_08_PHRASES = [
 ]
 
 
-@pytest.mark.parametrize(("path", "end"), [(GCP_DESIGN_AI, "## Part 1"), (AZURE_DESIGN_AI, "Exactly one of")],
-                         ids=["gcp", "azure"])
+@pytest.mark.parametrize(("path", "end"), [(AZURE_DESIGN_AI, "Exactly one of")], ids=["azure"])
 def test_step_08_validates_the_selector_against_its_api_before_choosing_a_path(path: Path, end: str) -> None:
     step = _squash(_section(path.read_text(), "## Step 0.8", end))
     for phrase in STEP_08_PHRASES:

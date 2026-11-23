@@ -22,12 +22,10 @@ OPENAI_ON_BEDROCK_FILES = [
 ]
 
 DESIGN_AI_FILES = [
-    PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "phases" / "design" / "design-ai.md",
     PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "phases" / "design" / "design-ai.md",
 ]
 
 GENERATE_ARTIFACTS_AI_FILES = [
-    PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "phases" / "generate" / "generate-artifacts-ai.md",
     PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "phases" / "generate" / "generate-artifacts-ai.md",
 ]
 
@@ -35,10 +33,8 @@ SCHEMA_DESIGN_AWS_AI = (
     PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "shared" / "schema-design-aws-ai.md"
 )
 
-GENERATE_AI_GCP = PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "phases" / "generate" / "generate-ai.md"
 
 ESTIMATE_AI_FILES = [
-    PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "phases" / "estimate" / "estimate-ai.md",
     PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "phases" / "estimate" / "estimate-ai.md",
 ]
 
@@ -105,13 +101,6 @@ def test_generate_artifacts_ai_dispatches_runtime_openai_cris() -> None:
         assert "runtime_openai_cris" in text, (
             f"{f}: generator does not dispatch runtime_openai_cris (Finding 2)"
         )
-
-
-def test_generate_ai_gcp_timeline_handles_runtime_openai_cris() -> None:
-    text = GENERATE_AI_GCP.read_text(encoding="utf-8")
-    assert "runtime_openai_cris" in text, (
-        "generate-ai.md: fast-track timeline does not branch on runtime_openai_cris (Finding 2)"
-    )
 
 
 def test_schema_design_aws_ai_vocabulary_includes_runtime_openai_cris() -> None:

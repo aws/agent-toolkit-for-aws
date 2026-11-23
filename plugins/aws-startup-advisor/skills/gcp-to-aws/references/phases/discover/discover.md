@@ -172,6 +172,14 @@ Runs AFTER 1a–1c sub-discoveries complete, so its IaC merge sees their output.
   files, application code, or billing exports), or re-run and accept live
   discovery."
 
+**Usage readers when bedrock-migration-assessment is installed.** When
+`ai-workload-profile.json` exists and `python3 <GCP_BASE>/scripts/bma-handoff.py probe`
+exits 0 (`<GCP_BASE>` as in `references/shared/ai-handoff.md` § Paths), skip 1e, 1f, and 1g:
+the assessment's own Discover measures that usage during the AI handoff, with its own single
+consent prompt per provider, and `accept` copies each usage profile into `$MIGRATION_DIR`.
+A resumed run whose `openai-capture/`, `openrouter-capture/`, or `anthropic-capture/`
+manifest already exists still follows that sub-file's resume rule below.
+
 **1e. OpenAI usage discovery (Admin API):**
 Runs AFTER 1a–1d complete, so its merge sees any `ai-workload-profile.json`.
 Load `references/phases/discover/discover-openai-api.md` when EITHER condition

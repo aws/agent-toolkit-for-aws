@@ -84,13 +84,6 @@ OPENROUTER_DISCOVER_FILES = [
 ESTIMATE_AI_FILES = [
     PLUGIN_ROOT
     / "skills"
-    / "gcp-to-aws"
-    / "references"
-    / "phases"
-    / "estimate"
-    / "estimate-ai.md",
-    PLUGIN_ROOT
-    / "skills"
     / "azure-to-aws"
     / "references"
     / "phases"

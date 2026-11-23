@@ -14,7 +14,6 @@ import pytest
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 SKILLS = PLUGIN_ROOT / "skills"
 BMA = SKILLS / "bedrock-migration-assessment"
-GCP_CLARIFY = SKILLS / "gcp-to-aws" / "references" / "phases" / "clarify" / "clarify-ai-only.md"
 BMA_CLARIFY = BMA / "references" / "phases" / "clarify" / "clarify-ai-only.md"
 BMA_PREFERENCES_SCHEMA = BMA / "references" / "shared" / "schema-preferences.md"
 CANONICAL_PROFILE_SCHEMA = PLUGIN_ROOT / "scripts" / "contracts" / "ai-workload-profile.schema.json"
@@ -278,89 +277,18 @@ def _question_sections(path: Path) -> dict[str, str]:
     return sections
 
 
-def _interpret_lines(body: str) -> list[str]:
-    return [line for line in body.splitlines() if line.startswith("Interpret →")]
-
-
-def _option_lines(body: str) -> list[str]:
-    return [line for line in body.splitlines() if re.match(r"^> (?:1\\\)|\d+\. )", line)]
-
-
-def _table_rows(body: str) -> list[str]:
-    return [line for line in body.splitlines() if line.startswith("| ") and not line.startswith("| ---")]
-
-
-GCP_QUESTIONS = _question_sections(GCP_CLARIFY)
 BMA_QUESTIONS = _question_sections(BMA_CLARIFY)
-
-# Rows whose wording was made provider-neutral; the decision they record is unchanged.
-NEUTRALIZED_ROWS = {
-    ("Q1.5", "| GDPR"): "document cross-border transfer from your current EU provider",
-    ("Q4", "| Latency critical"): "closest region to current deployment",
-    ("Q5", "| GPT-6.1 Terra"): '**Same model on Bedrock** | Use the model-specific endpoint and context-tier prices in the [GPT-6.1 Terra model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-terra.html); compare against measured source spend or verified source rates.',
-}
+QUESTION_ORDER = ["Q1", "Q1.5", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "Q8", "Q9", "Q10", "Q10.5", "Q11"]
 
 
-def test_same_question_set_in_the_same_order() -> None:
-    assert list(BMA_QUESTIONS) == list(GCP_QUESTIONS)
-
-
-# Interpret lines that name the stored value explicitly (bma, then gcp); GCP leaves it implicit.
-EXPLICIT_INTERPRET = {
-    "Q2": ('Interpret → `ai_priority`: 1 → `"quality"`, 2 → `"speed"`, 3 → `"cost"`, 4 → `"balanced"` (Q10 decides), '
-           '5 → `"balanced"`, 6 → `"balanced"`. Default: 5 → `"balanced"`.', 'Interpret → `ai_priority`. Default: 5 → `"balanced"`.'),
-    "Q6": ('Interpret → `ai_vision`: 1 → `"text-only"`, 2 → `"vision"`, 3 → `"audio"`. Default: 1 → `"text-only"` (no constraint).',
-           "Interpret → `ai_vision`. Default: 1 → no constraint."),
-    "Q8": ('Interpret → `ai_latency`: 1 → `"critical"`, 2 → `"important"`, 3 → `"flexible"`. Default: 2 → `"important"`.',
-           'Interpret → `ai_latency`. Default: 2 → `"important"`.'),
-    "Q9": ('Interpret → `ai_complexity`: 1 → `"simple"`, 2 → `"moderate"`, 3 → `"complex"`. Default: 2 → `"moderate"`.',
-           'Interpret → `ai_complexity`. Default: 2 → `"moderate"`.'),
-    "Q10": ('Interpret → `ai_critical_feature`: 1 → `"function_calling"`, 2 → `"ultra_long_context"`, 3 → `"extended_thinking"`, '
-            '4 → `"prompt_caching"`, 5 → `"rag"`, 6 → `"agentic"`, 7 → `"realtime_speed"`, 8 → `"image_generation"`, '
-            '9 → `"speech"`, 10 → `"none"`. Default: 10 → `"none"` (no override).',
-            "Interpret → `ai_critical_feature`. Default: 10 → no override."),
-}
-
-
-@pytest.mark.parametrize("qid", list(GCP_QUESTIONS))
-def test_interpretation_is_identical(qid: str) -> None:
-    if qid in EXPLICIT_INTERPRET:
-        bma, gcp = EXPLICIT_INTERPRET[qid]
-        assert _interpret_lines(BMA_QUESTIONS[qid]) == [bma] and _interpret_lines(GCP_QUESTIONS[qid]) == [gcp]
-        return
-    assert _interpret_lines(BMA_QUESTIONS[qid]) == _interpret_lines(GCP_QUESTIONS[qid])
-    assert _interpret_lines(GCP_QUESTIONS[qid]), f"{qid} has no Interpret line to compare"
-
-
-@pytest.mark.parametrize("qid", list(GCP_QUESTIONS))
-def test_answer_options_are_identical(qid: str) -> None:
-    bma = _option_lines(BMA_QUESTIONS[qid])
-    for line in _option_lines(GCP_QUESTIONS[qid]):
-        assert line in bma, f"{qid}: answer options changed: {line}"
-
-
-@pytest.mark.parametrize("qid", list(GCP_QUESTIONS))
-def test_answer_impacts_are_identical_except_neutralized_wording(qid: str) -> None:
-    bma_rows = _table_rows(BMA_QUESTIONS[qid])
-    for row in _table_rows(GCP_QUESTIONS[qid]):
-        neutral = next((text for (q, prefix), text in NEUTRALIZED_ROWS.items() if q == qid and row.startswith(prefix)), None)
-        if neutral is None:
-            assert row in bma_rows, f"{qid}: impact row changed: {row[:80]}"
-        else:
-            assert any(r.startswith(row.split("|")[0] + "|" + row.split("|")[1]) and neutral in r for r in bma_rows)
+def test_question_set_in_order() -> None:
+    assert list(BMA_QUESTIONS) == QUESTION_ORDER
 
 
 def _step3_fields(path: Path) -> dict[str, str]:
     text = path.read_text(encoding="utf-8")
     table = text[text.index("## Step 3"):text.index("## Step 4")]
     return dict(re.findall(r"^\| `([a-z_]+)`\s*\| `([a-z_.]+)`", table, flags=re.M))
-
-
-def test_preferences_fields_and_paths_are_identical_except_capabilities() -> None:
-    gcp = _step3_fields(GCP_CLARIFY)
-    bma = _step3_fields(BMA_CLARIFY)
-    assert gcp.pop("ai_capabilities_required") == "ai_constraints.ai_capabilities_required"
-    assert bma == gcp
 
 
 def _catalog() -> dict[str, tuple[str, str]]:

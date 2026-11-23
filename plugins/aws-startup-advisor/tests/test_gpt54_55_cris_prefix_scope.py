@@ -24,7 +24,6 @@ CATALOG = PLUGIN_ROOT / "skills" / "shared" / "ai" / "models" / "openai-bedrock.
 # Every file that names GPT-5.4 / GPT-5.5 alongside a CRIS-prefix grant.
 CONSUMERS = [
     PLUGIN_ROOT / "agents" / "llm2bedrock-code-rewriter.md",
-    PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "phases" / "design" / "design-ai.md",
     PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "phases" / "generate" / "generate-artifacts-ai.md",
     PLUGIN_ROOT / "skills" / "shared" / "ai" / "schema-design-aws-ai.md",
     PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "shared" / "schema-design-aws-ai.md",

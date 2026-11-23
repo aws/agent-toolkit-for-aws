@@ -1,6 +1,6 @@
 # Migration Complexity Tiers
 
-Shared classification loaded by `generate-billing.md` and `generate-infra.md` to right-size migration timelines. The AI path (`generate-ai.md`) self-sizes from workload profiles and does not use this file.
+Shared classification loaded by `generate-billing.md` and `generate-infra.md` to right-size migration timelines. The AI migration plan comes from bedrock-migration-assessment's Generate, which sizes itself and does not use this file.
 
 ## Inputs
 
@@ -31,7 +31,7 @@ ANY of the following:
 - Compliance requirements present (`compliance` is not empty/none)
 
 **AI isolation rule:** AI coexistence alone NEVER raises the infrastructure
-tier. `generate-ai.md` independently sizes AI integration/evaluation effort,
+tier. bedrock-migration-assessment's Generate independently sizes AI integration/evaluation effort,
 and that work commonly runs in parallel with infrastructure. Count only
 infrastructure complexity here; otherwise a one-service app with one model is
 incorrectly classified Large and its effort is double-counted.
@@ -81,7 +81,7 @@ Tier classification, stage structure, and duration drivers are **planning heuris
 
 Duration drivers are the honest replacement for hour/week estimates. Name only
 drivers that apply to THIS stack, and exclude calendar-only waiting,
-observation windows, and parallel AI work already covered by `generate-ai.md`.
+observation windows, and parallel AI work already covered by bedrock-migration-assessment's AI plan.
 
 - Name the **binding** driver first (the same input recorded in
   `tier_bound_by`), then at most 2–3 secondary drivers.

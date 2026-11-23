@@ -106,6 +106,9 @@ proceeding on a confirmed re-entry:
 
 1. Determine which routes were active in the artifacts already on disk (infra: `aws-design.json`;
    billing-only: `aws-design-billing.json` with `aws-design.json` absent; AI: `aws-design-ai.json`).
+   The AI route's files are copies `bma-handoff.py accept` made: do not delete them by hand.
+   Run `bma-handoff.py route` again (`ai-handoff.md` Step 1); it removes every copy whose
+   SHA-256 still matches and withdraws the AI answers it merged into `preferences.json`.
 2. Re-evaluate which routes the NEW discovery output supports, using the SAME rules
    `design.md`'s Routing Rules section uses (e.g. billing-only requires `billing-profile.json`
    with non-empty `services[]`).
@@ -127,10 +130,10 @@ Detailed checklists live in each phase file. Minimum gates:
 | Phase        | Key checks                                                                                                        |
 | ------------ | ----------------------------------------------------------------------------------------------------------------- |
 | **discover** | At least one discovery artifact; `migration-preview.json` when any artifact exists; route output gates (existing) |
-| **clarify**  | `preferences.json` valid; Cloud SQL in inventory → `design_constraints.availability.value` set                    |
-| **design**   | Active route artifacts present (existing gates)                                                                   |
-| **estimate** | Active route artifacts present; infra route → `recommendation.path` + non-empty `migrate_if` / `stay_if`          |
-| **generate** | Load `shared/validate-artifacts.md` before report; report pre-write sanity (see `generate-artifacts-report.md`); compliance-estimate staleness guard (see `generate.md` Prerequisites) |
+| **clarify**  | `preferences.json` valid; Cloud SQL in inventory → `design_constraints.availability.value` set; AI profile → `ai-handoff.json` accepted through `clarify` or `deferred` (`ai-handoff.md`) |
+| **design**   | Active route artifacts present (existing gates); AI route → `accept --through design` succeeded                   |
+| **estimate** | Active route artifacts present; infra route → `recommendation.path` + non-empty `migrate_if` / `stay_if`; AI route → `accept --through estimate` succeeded |
+| **generate** | Load `shared/validate-artifacts.md` before report; report pre-write sanity (see `generate-artifacts-report.md`); compliance-estimate staleness guard (see `generate.md` Prerequisites); AI route → `accept --through generate` succeeded |
 
 ---
 

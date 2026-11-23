@@ -37,11 +37,6 @@
       "source": "plugins/aws-startup-advisor/skills/contextual-offers-for-startups/SKILL.md",
       "ref": "references/offers.md",
       "reason": "The file is `../knowledge-base-for-startups/references/offers.md` (SKILL.md:29 has the correct path). Lines 3 and 149 use the unqualified short form, which resolves nowhere inside this skill. Fix: qualify both mentions."
-    },
-    {
-      "source": "plugins/aws-startup-advisor/skills/gcp-to-aws/references/phases/design/design-ai.md",
-      "ref": "shared/ai-model-lifecycle.md",
-      "reason": "Wrong path: gcp-to-aws has no references/shared/ai-model-lifecycle.md; the file is vendored at references/vendored/ai/ai-model-lifecycle.md (canonical skills/shared/ai/). design-ai.md:424 should say `references/vendored/ai/ai-model-lifecycle.md`."
     }
   ]
 }

@@ -80,10 +80,9 @@ Each skill's `clarify-global.md` (or equivalent) supplies:
 
 1. **Firing rule** — for a full-infrastructure migration this question is
    **always ESSENTIAL, no exceptions**. A skill's AI-only path may reuse this
-   same file (as `gcp-to-aws`'s `clarify-ai-only.md` already does for its Q1.5)
-   with skill-specific framing about where compliance applies when the
-   customer's infrastructure stays on the source cloud and only AI calls move
-   to Bedrock — see that fragment for the Bedrock-specific impact table
-   pattern, which supplements (does not replace) the impact table above.
+   same file with skill-specific framing about where compliance applies when
+   the customer's infrastructure stays on the source cloud and only AI calls
+   move to Bedrock, plus its own Bedrock-specific impact table, which
+   supplements (does not replace) the impact table above.
 2. **Cross-check with other answers** — e.g. GCP's flow cross-checks a GDPR
    answer against the region-geography question jointly.

@@ -70,10 +70,6 @@
         "shape": "skills/gcp-to-aws/references/shared/schema-discover-ai.md",
         "root_heading": "ai-workload-profile.json"
       },
-      "aws-design-ai.json": {
-        "shape": "skills/gcp-to-aws/references/shared/schema-design-aws-ai.md",
-        "root_heading": "Shape"
-      },
       "preferences.json": {
         "shape": "skills/gcp-to-aws/references/shared/schema-preferences.md",
         "root_heading": "Top-level shape",
@@ -151,6 +147,12 @@
           "preferences_subset"
         ],
         "_open_paths_why": "Edited preference paths vary by the supported workshop knobs; the scenario manifest links complete typed preference snapshots."
+      },
+      "estimation-ai.json": {
+        "json_schema": "scripts/contracts/estimation-ai.schema.json"
+      },
+      "generation-ai.json": {
+        "json_schema": "scripts/contracts/generation-ai.schema.json"
       }
     },
     "heroku-to-aws": {

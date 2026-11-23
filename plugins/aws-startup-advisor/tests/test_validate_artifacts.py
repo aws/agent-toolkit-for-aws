@@ -469,7 +469,7 @@ def test_neutral_fixture_skips_provider_artifacts_and_expected_snapshots(tmp_pat
     assert [p.name for p in va.find_artifacts(tmp_path)] == ["gcp-resource-inventory.json"]
 
 
-@pytest.mark.parametrize("skill", ["gcp-to-aws", "azure-to-aws"])
+@pytest.mark.parametrize("skill", ["azure-to-aws"])
 @pytest.mark.parametrize("artifact", ["estimation-ai.json", "generation-ai.json"])
 def test_target_only_ai_contracts_do_not_validate_current_skill_outputs(
     tmp_path: Path, skill: str, artifact: str
@@ -1396,3 +1396,20 @@ def test_gcp_estimate_snapshots_use_the_active_estimate_shape(tmp_path: Path):
         bad = json.loads(json.dumps(est))
         bad["pricing_source"]["services_by_source"]["live"] = ["Fargate"]
         assert ("UNKNOWN_KEY", "pricing_source.services_by_source.live") in run("bad-" + artifact, artifact, bad)
+
+
+@pytest.mark.parametrize("artifact", ["estimation-ai.json", "generation-ai.json", "aws-design-ai.json"])
+def test_gcp_copies_of_assessment_ai_artifacts_validate_against_the_neutral_schemas(tmp_path: Path, artifact: str):
+    """gcp-to-aws copies these files from bedrock-migration-assessment, so the neutral schemas apply."""
+    manifest = va.load_manifest(PLUGIN_ROOT / "scripts" / "artifact-contracts.json")
+    source = PLUGIN_ROOT / "fixtures" / "bma-generate-mixed" / artifact
+    (tmp_path / artifact).write_bytes(source.read_bytes())
+    findings = []
+    assert va.validate_run_dir(tmp_path, "gcp-to-aws", manifest, findings) == 1
+    assert findings == [], findings[:3]
+    broken = json.loads(source.read_text())
+    broken["unexpected_top_level_key"] = True
+    (tmp_path / artifact).write_text(json.dumps(broken))
+    findings = []
+    assert va.validate_run_dir(tmp_path, "gcp-to-aws", manifest, findings) == 1
+    assert findings
