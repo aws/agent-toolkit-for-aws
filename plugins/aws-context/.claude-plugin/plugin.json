@@ -1,7 +1,7 @@
 {
   "name": "aws-context",
-  "version": "0.0.1",
-  "description": "Placeholder for aws-context.",
+  "version": "0.1.0",
+  "description": "Ground coding agents in your organization's knowledge with AWS Context: retrieve from your agent context graph, correct or extend it, and record sessions.",
   "author": {
     "name": "Amazon Web Services"
   },
@@ -10,6 +10,13 @@
   "license": "Apache-2.0",
   "keywords": [
     "aws",
-    "aws-context"
+    "aws-context",
+    "knowledge-graph",
+    "context-graph",
+    "retrieval",
+    "agentic-retrieval",
+    "data-catalog",
+    "glue",
+    "bedrock-knowledge-bases"
   ]
 }

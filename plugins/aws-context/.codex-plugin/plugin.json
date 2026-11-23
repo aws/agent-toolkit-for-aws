@@ -1,7 +1,7 @@
 {
   "name": "aws-context",
-  "version": "0.0.1",
-  "description": "Placeholder for aws-context.",
+  "version": "0.1.0",
+  "description": "Ground coding agents in your organization's knowledge with AWS Context: retrieve from your agent context graph, correct or extend it, and record sessions.",
   "author": {
     "name": "Amazon Web Services",
     "url": "https://github.com/aws/agent-toolkit-for-aws"
@@ -11,20 +11,35 @@
   "license": "Apache-2.0",
   "keywords": [
     "aws",
-    "aws-context"
+    "aws-context",
+    "knowledge-graph",
+    "context-graph",
+    "retrieval",
+    "agentic-retrieval",
+    "data-catalog",
+    "glue",
+    "bedrock-knowledge-bases"
   ],
   "interface": {
     "displayName": "AWS Context",
-    "shortDescription": "Placeholder for aws-context.",
-    "longDescription": "Placeholder for aws-context.",
+    "shortDescription": "Ground your agent in your organization's knowledge with AWS Context",
+    "longDescription": "Ground coding agents in your organization's knowledge with AWS Context: retrieve from your agent context graph, correct or extend it, and record sessions.",
     "developerName": "Amazon Web Services",
     "category": "Cloud",
     "capabilities": [
-      "Read"
+      "Read",
+      "Write"
     ],
     "websiteURL": "https://github.com/aws/agent-toolkit-for-aws",
     "privacyPolicyURL": "https://aws.amazon.com/privacy/",
     "termsOfServiceURL": "https://aws.amazon.com/service-terms/",
-    "brandColor": "#FF9900"
-  }
+    "brandColor": "#FF9900",
+    "defaultPrompt": [
+      "Who owns the orders table?",
+      "How do we calculate monthly active users?",
+      "That table's description is wrong; fix it in AWS Context."
+    ]
+  },
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
 }
