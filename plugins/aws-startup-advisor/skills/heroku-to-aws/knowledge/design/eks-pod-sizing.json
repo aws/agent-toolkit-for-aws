@@ -283,8 +283,8 @@
   },
   "cluster": {
     "cluster_name": "heroku-migration-cluster",
-    "kubernetes_version_fallback": "1.31",
-    "_kubernetes_version_note": "FALLBACK only. The design-eks procedure should query the latest EKS-supported stable version at generation time (aws eks describe-addon-versions) and use this value only when the query is unavailable. Do NOT treat 1.31 as pinned.",
+    "kubernetes_version_fallback": "1.36",
+    "_kubernetes_version_note": "FALLBACK only. The design-eks procedure should query the newest version in EKS standard support at generation time (aws eks describe-cluster-versions) and use this value only when the query is unavailable. Do NOT treat 1.36 as pinned. 1.36 was chosen on 2026-11-20 because its standard support runs to 2027-08-02 (EKS Kubernetes release calendar); re-check it when within three months of that date.",
     "node_group_type_by_pref": {
       "eks-managed": "self-managed",
       "eks-or-ecs": "managed"

@@ -51,17 +51,36 @@ and the `units[]` array from design.json. Each unit has `id`, `workload_class`, 
    plus the model default's token rates as order-of-magnitude). Carry a "last updated" date.
 2. Record `pricing_source`: `cached` | `cached_stale` (if >90 days old).
 
-Cached anchors (order-of-magnitude, us-east-1, verify; last updated 2025-07-14):
+Cached anchors (order-of-magnitude, us-east-1, verify; last updated 2026-11-13, from the AWS Price
+List; each figure is also a `volatile_facts` entry with `as_of` and `source` in the runtime
+profile named, so the two must agree). The pricing facts are dated cache references
+(`verify_via_mcp: false`): Design does not look them up per run, so the freshness footer never
+lists a price as verified, and `pricing_source` stays `cached` or `cached_stale` by the table's
+date. To re-verify, update the fact and this table together.
 
-- AgentCore (microVMs compute type): ~$0.0895/vCPU-hour (active CPU only), ~$0.00945/GB-hour
+- AgentCore (microVMs compute type) — `agentcore.json` fact `microvms_pricing`. **Default: the
+  next-generation runtime (`platformVersion` V2), consumption ~$0.1276/vCPU-hour, ~$0.0169/GB-hour**
+  (active CPU only). Since 2026-11-12 a new runtime in us-east-1 and the other listed Regions is
+  V2 unless created with `platformVersion: V1`, so price a new deployment at V2 and name the
+  generation in the band. Use the V1 rate (~$0.0895/vCPU-hour, ~$0.00945/GB-hour, the original
+  `Runtime:Consumption-based` SKUs) only when the design says the unit stays on an existing V1
+  runtime. The V2 committed-baseline SKUs (~$0.0997/vCPU-hour, ~$0.0132/GB-hour) apply only when
+  the user has a committed baseline; say so when used. V2 also reclaims idle memory, so a
+  multi-turn agent's billed GB-hours can be well under its peak allocation; do not apply that
+  discount in the band, name it as an assumption.
 - AgentCore (Instances compute type, `agentcore_compute_type: "instances"` in design.json):
   EC2 On-Demand rate for the chosen instance type (user's Savings Plans / ODCRs apply) PLUS
   an AgentCore management fee — NOT consumption-based and NOT $0 during I/O wait. No cached
   anchor here: use the instance type from the user's `instance_type_requirement` answer (else
   assume a mid-size general-purpose type and say so), and set `pricing_source: cached_stale`
   for that component with a note to verify the EC2 rate before committing.
-- Lambda MicroVMs: ~$0.0997/vCPU-hour, ~$0.0132/GB-hour
-- Fargate: ~$0.04048/vCPU-hour, ~$0.004445/GB-hour
+- Lambda MicroVMs — `lambda_microvms.json` fact `pricing`. **Default: arm64** ~$0.0997/vCPU-hour,
+  ~$0.0132/GB-hour (the ARM64 handler packaging `decision-refs/lambda-microvms.md` describes);
+  x86_64 ~$0.1176/vCPU-hour, ~$0.0156/GB-hour (about 18% more) only when the design says the unit
+  runs on x86_64. Name the architecture the band assumes.
+- Fargate — `ecs.json` fact `fargate_pricing`. **Default: x86_64** ~$0.04048/vCPU-hour,
+  ~$0.004445/GB-hour; arm64 ~$0.03238/vCPU-hour, ~$0.00356/GB-hour only when the design says the
+  task runs on Graviton. Name the architecture the band assumes.
 - Bedrock model token rates: defer to `references/vendored/ai/bedrock-pricing-cache.md` for exact figures
 
 ## Step 3 — Produce a magnitude per unit, not a quote
