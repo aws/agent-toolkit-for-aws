@@ -210,8 +210,9 @@ def build_payload(event, install_id, now_ms=None):
 
 
 _PRIVATE_EVENT_FIELDS = frozenset({
-    "identity", "awsidentityproof", "expectedaccountid", "awsaccountid",
-    "accountid", "awsprofile", "profile", "credentials", "accesskeyid", "accesskey",
+    "identity", "awsidentityproof", "expectedaccountid", "expectedawsaccountid",
+    "awsaccountid", "accountid", "awsprofile", "profile", "credentials", "accesskeyid",
+    "accesskey",
     "awsaccesskeyid", "secretaccesskey", "secretkey", "awssecretaccesskey",
     "sessiontoken", "awssessiontoken", "token", "authorization", "xamzsecuritytoken",
 })

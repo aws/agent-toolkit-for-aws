@@ -128,6 +128,9 @@ print(json.dumps(client.send_event_result({'consentRecorded': {}})))
 
 @pytest.mark.parametrize("event", [
     {"awsAccountId": "123456789012"},
+    {"expectedAccountId": "123456789012"},
+    {"details": {"expectedAwsAccountId": "123456789012"}},
+    {"details": {"expected_aws_account_id": "123456789012"}},
     {"migrationActivity": {"attributes": [{"identity": {"accountId": "123456789012"}}]}},
     {"details": {"aws_profile": "private"}},
     {"details": {"AWS_SECRET_ACCESS_KEY": "do-not-send"}},
