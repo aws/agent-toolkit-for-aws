@@ -50,7 +50,7 @@ VALID_STATUSES = (ACCEPTED, OPT_OUT, PENDING)
 _ACCOUNT_PATTERN = re.compile(r"[0-9]{12}\Z")
 _STATE_KEYS = frozenset((
     "installId", "consentStatus", "noticeVersion", "identityMode",
-    "awsProfile", "expectedAwsAccountId", "setupId", "recoveryStatus", "recoveryReason",
+    "awsProfile", "expectedAccountId", "setupId", "recoveryStatus", "recoveryReason",
 ))
 _RECOVERY_REASONS = {
     "SIGN_IN_REQUIRED": frozenset(("CREDENTIALS_UNAVAILABLE", "SIGN_IN_REQUIRED")),
@@ -156,7 +156,7 @@ def _valid_state(data):
     if status == OPT_OUT:
         # A user can opt out by writing this one field by hand, without a UUID.
         return not any(key in data for key in (
-            "identityMode", "awsProfile", "expectedAwsAccountId", "setupId",
+            "identityMode", "awsProfile", "expectedAccountId", "setupId",
         ))
     if not _valid_install_id(data.get("installId")):
         return False
@@ -165,24 +165,24 @@ def _valid_state(data):
         # Records written before account sharing remain anonymous. Their
         # absent notice version means version 1, rather than the current notice.
         return status == ACCEPTED and not any(key in data for key in (
-            "awsProfile", "expectedAwsAccountId", "setupId",
+            "awsProfile", "expectedAccountId", "setupId",
         ))
     if mode not in (ANONYMOUS, AWS_ACCOUNT) or "noticeVersion" not in data:
         return False
     if mode == ANONYMOUS:
         return status == ACCEPTED and not any(key in data for key in (
-            "awsProfile", "expectedAwsAccountId", "setupId",
+            "awsProfile", "expectedAccountId", "setupId",
         ))
     if "awsProfile" in data and not _valid_profile(data["awsProfile"]):
         return False
     if status == PENDING:
         return (
-            "expectedAwsAccountId" not in data
+            "expectedAccountId" not in data
             and _valid_install_id(data.get("setupId"))
         )
     return (
-        "setupId" not in data and isinstance(data.get("expectedAwsAccountId"), str)
-        and bool(_ACCOUNT_PATTERN.fullmatch(data["expectedAwsAccountId"]))
+        "setupId" not in data and isinstance(data.get("expectedAccountId"), str)
+        and bool(_ACCOUNT_PATTERN.fullmatch(data["expectedAccountId"]))
     )
 
 
@@ -456,7 +456,7 @@ def complete_account(pending_state, account_id):
             return None
         written = dict(pending_state)
         del written["setupId"]
-        written.update(consentStatus=ACCEPTED, expectedAwsAccountId=account_id)
+        written.update(consentStatus=ACCEPTED, expectedAccountId=account_id)
         return _save_record(written)
 
 

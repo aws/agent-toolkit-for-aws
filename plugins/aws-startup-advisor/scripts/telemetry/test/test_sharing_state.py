@@ -24,7 +24,7 @@ def test_pending_clears_old_account_and_does_not_authorize_reporting(home):
     pending = record.begin_account("two", 3)
     assert pending["installId"] == accepted["installId"]
     assert pending["awsProfile"] == "two"
-    assert "expectedAwsAccountId" not in pending
+    assert "expectedAccountId" not in pending
     assert record.consent_status() == record.PENDING
     assert record.sharing_mode(pending) == record.AWS_ACCOUNT
     assert record.reporting_state() is None
@@ -53,7 +53,7 @@ def test_legacy_writers_clear_account_fields_and_keep_install_id(home, status):
     written = record.write_state(status)
     assert written["installId"] == accepted["installId"]
     assert "awsProfile" not in written
-    assert "expectedAwsAccountId" not in written
+    assert "expectedAccountId" not in written
     assert "setupId" not in written
     assert record.sharing_mode(written) == (
         record.ANONYMOUS if status == record.ACCEPTED else None
@@ -77,7 +77,7 @@ def test_legacy_missing_mode_and_version_means_anonymous_notice_one(home):
     {"noticeVersion": 0},
     {"noticeVersion": -1},
     {"awsProfile": "work"},
-    {"expectedAwsAccountId": "123456789012"},
+    {"expectedAccountId": "123456789012"},
     {"awsIdentityProof": {}},
     {"secretAccessKey": "never-store-this"},
 ))
@@ -90,9 +90,9 @@ def test_invalid_or_mixed_anonymous_record_never_authorizes_reporting(home, chan
 
 
 @pytest.mark.parametrize("field, value", (
-    ("expectedAwsAccountId", None),
-    ("expectedAwsAccountId", "123"),
-    ("expectedAwsAccountId", 123456789012),
+    ("expectedAccountId", None),
+    ("expectedAccountId", "123"),
+    ("expectedAccountId", 123456789012),
     ("awsProfile", ""),
     ("awsProfile", "x\nsecret"),
     ("awsProfile", None),

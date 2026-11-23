@@ -210,8 +210,9 @@ def build_payload(event, install_id, now_ms=None):
 
 
 _PRIVATE_EVENT_FIELDS = frozenset({
-    "identity", "awsidentityproof", "expectedawsaccountid", "awsaccountid",
-    "accountid", "awsprofile", "profile", "credentials", "accesskeyid", "accesskey",
+    "identity", "awsidentityproof", "expectedaccountid", "expectedawsaccountid",
+    "awsaccountid", "accountid", "awsprofile", "profile", "credentials", "accesskeyid",
+    "accesskey",
     "awsaccesskeyid", "secretaccesskey", "secretkey", "awssecretaccesskey",
     "sessiontoken", "awssessiontoken", "token", "authorization", "xamzsecuritytoken",
 })
@@ -300,7 +301,7 @@ def _send_event(event, url=None, timeout=TIMEOUT_SECONDS, selected_install_id=No
             url = configured["endpoint"]
             payload.update({
                 "reportingMode": "AWS_ACCOUNT",
-                "expectedAwsAccountId": selected["expectedAwsAccountId"],
+                "expectedAccountId": selected["expectedAccountId"],
                 "noticeVersion": selected["noticeVersion"],
             })
             prepared = credentials.prepare_report(payload, selected, configured, deadline - time.monotonic())

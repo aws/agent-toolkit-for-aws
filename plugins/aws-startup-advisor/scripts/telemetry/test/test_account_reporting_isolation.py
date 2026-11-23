@@ -91,7 +91,7 @@ builtins.__import__ = forbidden
 import client
 payload = client.build_payload({"test": {}}, "00000000-0000-4000-8000-000000000001")
 assert payload
-assert not {"identity", "expectedAwsAccountId", "awsIdentityProof"} & payload.keys()
+assert not {"identity", "expectedAccountId", "awsIdentityProof"} & payload.keys()
 print("OK")
 """ % str(TELEMETRY / "metric_emission")
     result = isolated_python(code, home)

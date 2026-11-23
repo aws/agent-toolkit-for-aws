@@ -76,7 +76,7 @@ accepted record:
 from auth import AccountIdentity, AccountReportingError, AwsAccountReporter
 
 # The adapter has already checked ACCEPTED, AWS_ACCOUNT and the notice policy.
-account = AccountIdentity(accepted_state["expectedAwsAccountId"])
+account = AccountIdentity(accepted_state["expectedAccountId"])
 reporter = AwsAccountReporter(
     audience=configured_reporting_audience,
     profile_name=accepted_state.get("awsProfile"),
@@ -85,7 +85,7 @@ prepared = reporter.prepare_report(
     {
         **existing_request,
         "reportingMode": "AWS_ACCOUNT",
-        "expectedAwsAccountId": account.account_id,
+        "expectedAccountId": account.account_id,
         "noticeVersion": accepted_state["noticeVersion"],
     },
     selected_account=account,
@@ -165,7 +165,7 @@ enable such a fallback policy.
   audience and no caller-supplied STS URL.
 - The digest is lowercase SHA-256 of RFC 8785 canonical UTF-8 request bytes,
   before adding the top-level `awsIdentityProof`.
-- The digest covers `reportingMode`, `expectedAwsAccountId`, `noticeVersion`,
+- The digest covers `reportingMode`, `expectedAccountId`, `noticeVersion`,
   and the rest of the request. The helper rejects an already-signed input.
 - The output adds `awsIdentityProof` with `version: 1` and a lowercase
   `headers` map. All supplied headers except `authorization` are signed.

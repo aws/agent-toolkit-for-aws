@@ -93,7 +93,7 @@ def test_anonymous_and_opt_out_do_not_load_credentials(home, monkeypatch, choice
         _, result, _ = request(server, "/choice", {"choice": choice})
         assert result["status"] in ("READY", "SKIPPED")
         state = record.read_state()
-        assert not {"awsProfile", "expectedAwsAccountId"}.intersection(state)
+        assert not {"awsProfile", "expectedAccountId"}.intersection(state)
         assert state["consentStatus"] == ("ACCEPTED" if choice == "ANONYMOUS" else "OPT_OUT")
 
 
@@ -146,13 +146,13 @@ def test_account_setup_shows_account_locally_and_returns_only_mode(home, monkeyp
         return True
     result = ui.open_sharing(change=True, timeout=5, opener=opener)
     assert result == {"status": "READY", "reportingMode": "AWS_ACCOUNT"}
-    assert record.read_state()["expectedAwsAccountId"] == "123456789012"
+    assert record.read_state()["expectedAccountId"] == "123456789012"
     assert len(sent) == 1
     payload, url = sent[0]
     assert url == account_policy["endpoint"]
     assert payload["pluginTelemetryEvent"] == {"consentRecorded": {}}
     assert payload["reportingMode"] == "AWS_ACCOUNT"
-    assert payload["expectedAwsAccountId"] == "123456789012"
+    assert payload["expectedAccountId"] == "123456789012"
 
 
 @pytest.mark.parametrize("failure", [False, OSError("synthetic transport failure")])

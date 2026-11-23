@@ -128,6 +128,9 @@ print(json.dumps(client.send_event_result({'consentRecorded': {}})))
 
 @pytest.mark.parametrize("event", [
     {"awsAccountId": "123456789012"},
+    {"expectedAccountId": "123456789012"},
+    {"details": {"expectedAwsAccountId": "123456789012"}},
+    {"details": {"expected_aws_account_id": "123456789012"}},
     {"migrationActivity": {"attributes": [{"identity": {"accountId": "123456789012"}}]}},
     {"details": {"aws_profile": "private"}},
     {"details": {"AWS_SECRET_ACCESS_KEY": "do-not-send"}},
@@ -159,7 +162,7 @@ def test_old_record_remains_credential_free_anonymous(home, collector):
         "consentStatus": "ACCEPTED", "installId": "11111111-2222-3333-4444-555555555555",
     }))
     assert client.send_event_result(EVENT, url=collector.url)["reportingMode"] == "ANONYMOUS"
-    assert not {"reportingMode", "expectedAwsAccountId", "awsIdentityProof"} & json.loads(collector.received[0]["body"]).keys()
+    assert not {"reportingMode", "expectedAccountId", "awsIdentityProof"} & json.loads(collector.received[0]["body"]).keys()
 
 
 def test_disabled_account_mode_keeps_choice_and_sends_nothing(home, monkeypatch):
@@ -189,7 +192,7 @@ def test_account_signing_uses_saved_selection_and_private_body(home, account_pol
 
     def prepare(payload, state, configured, timeout):
         assert state == selected
-        assert payload["expectedAwsAccountId"] == "123456789012"
+        assert payload["expectedAccountId"] == "123456789012"
         assert payload["noticeVersion"] == 3
         assert payload["reportingMode"] == "AWS_ACCOUNT"
         assert "awsProfile" not in payload
@@ -242,7 +245,7 @@ def test_expired_credentials_prompt_next_interactive_run_without_fallback(home, 
     })
     result = client.send_event_result(EVENT)
     assert result["status"] == "SIGN_IN_REQUIRED"
-    assert record.read_state()["expectedAwsAccountId"] == selected["expectedAwsAccountId"]
+    assert record.read_state()["expectedAccountId"] == selected["expectedAccountId"]
     assert record.read_state()["recoveryStatus"] == "SIGN_IN_REQUIRED"
     monkeypatch.setattr(credentials, "prepare_report", lambda *args: pytest.fail("background attempted recovery"))
     assert client.send_event_result(EVENT)["status"] == "SIGN_IN_REQUIRED"
@@ -273,7 +276,7 @@ def test_backend_codes_are_bounded_and_not_legacy_retry_statuses(home, account_p
     assert result["reasonCode"] == (code if code in client._BACKEND_ERRORS else "HTTP_REJECTED")
     assert "123456789012" not in json.dumps(result)
     if code == "ACCOUNT_MISMATCH":
-        assert record.read_state()["expectedAwsAccountId"] == selected["expectedAwsAccountId"]
+        assert record.read_state()["expectedAccountId"] == selected["expectedAccountId"]
         assert record.read_state()["recoveryStatus"] == "SETUP_REQUIRED"
 
 
