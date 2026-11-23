@@ -31,14 +31,12 @@ before opening a pull request.
 | `schema-design-aws-ai.md`            | Target-only `aws-design-ai.json` contract; `metadata.ai_sources[]`/`gateways[]` mirror `ai-workload-profile.schema.json` exactly |
 | `schema-estimate-ai.md`               | Target-only `estimation-ai.json` contract; `cost_by_source[]` traces per-source/per-model cost back to `aws-design-ai.json` |
 | `schema-generate-ai.md`               | Target-only `generation-ai.json` contract; `artifacts_by_source[]` traces per-source/per-model generated artifacts back to `estimation-ai.json` |
+| `iam_policy.py`, `model_catalog.py`  | The least-privilege Bedrock IAM policy builder and the catalog reader it uses; vendored into bedrock-migration-assessment, and byte-identical to llm-to-bedrock's `scripts/` copies (a test checks) |
 
 The Gemini and OpenRouter guides are source-cloud agnostic (the Bedrock target
 depends on the upstream model, not the source cloud), so they are canonical here
-and vendored like the OpenAI and Anthropic guides. A consuming skill's own
-runtime routing may still point at an adapter-local copy (gcp-to-aws keeps
-`references/design-refs/ai-gemini-to-bedrock.md` for its Gemini adapter)
-until the extraction stages repoint it; that is a separate decision from this
-shared guide existing.
+and vendored like the OpenAI and Anthropic guides. gcp-to-aws loads its vendored
+copy at `references/vendored/ai/ai-gemini-to-bedrock.md`.
 
 Deliberately NOT here: a source-cloud's `schema-discover-ai.md`, which is written
 against one provider's SDK surface.

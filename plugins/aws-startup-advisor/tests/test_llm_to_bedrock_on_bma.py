@@ -109,11 +109,11 @@ def test_phase_a_executes_bedrock_migration_assessment_files() -> None:
 
 def test_guide_and_endpoint_pointers_name_the_assessment_skills_copies() -> None:
     assert "`$BMA_BASE/references/vendored/ai/bedrock-endpoint-policy.md`" in TEXT
-    assert "`$BMA_BASE/references/shared/openai-on-bedrock.md`" in TEXT
+    assert "`$BMA_BASE/references/vendored/ai/openai-on-bedrock.md`" in TEXT
     assert (BMA / "references/vendored/ai/bedrock-endpoint-policy.md").is_file()
-    assert (BMA / "references/shared/openai-on-bedrock.md").is_file()
+    assert (BMA / "references/vendored/ai/openai-on-bedrock.md").is_file()
     resolver = (L2B / "references/helpers/resolve-bedrock-model-id/resolve-bedrock-model-id.md").read_text(encoding="utf-8")
-    assert resolver.count("`skills/bedrock-migration-assessment/references/shared/openai-on-bedrock.md`") == 3
+    assert resolver.count("`skills/bedrock-migration-assessment/references/vendored/ai/openai-on-bedrock.md`") == 3
 
 
 # --------------------------------------------------------------------------- (b) readiness handshake only
@@ -150,7 +150,7 @@ def test_a2_runs_readiness_through_estimate_and_stops_on_any_non_ready_answer() 
     # every reason the script can return is named, so none is treated as ready
     reasons = _readiness_reasons()
     assert {"status_not_found", "status_unreadable", "artifact_missing", "not_this_skill"} <= reasons, reasons
-    assert len(reasons) == 12, reasons
+    assert len(reasons) == 13, reasons
     for reason in reasons:
         assert f"`{reason}`" in a2, reason
     assert "**Re-check before every later re-read.**" in a2 and "compare each printed `sha256`" in a2

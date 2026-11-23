@@ -34,7 +34,7 @@ defaults (prefer managed Bedrock, no latency constraint, no budget cap).
 **Load the source-specific design reference based on `ai_source`:**
 
 - `"azure_openai"` or `"openai"` → load `references/vendored/ai/ai-openai-to-bedrock.md`
-  **and** `references/shared/openai-on-bedrock.md` (the fact base: Bedrock model IDs, endpoint
+  **and** `references/vendored/ai/openai-on-bedrock.md` (the fact base: Bedrock model IDs, endpoint
   paths, region matrix, quotas). Azure OpenAI serves OpenAI models, so the source model is
   usually itself the target — the mapping guide's Tier 0 (same-model) path is the default, not
   a cross-family swap, and it runs on `bedrock-runtime` (`migration_path: "runtime_openai_cris"`)
@@ -207,7 +207,7 @@ Overall = weakest across models. `recommend_stay` REQUIRES a non-cost reason in
 `honest_assessment_reason` when the source provider's models are on Bedrock.
 
 **Model-specific same-model pricing:** for OpenAI GPT targets, read
-`references/shared/openai-on-bedrock.md`: verified In-Region/Geo options use the
+`references/vendored/ai/openai-on-bedrock.md`: verified In-Region/Geo options use the
 data-residency-tier premium, while supported Global CRIS uses standard-rate parity.
 Report the actual option; do not downgrade solely for the modest verified premium.
 **GPT-5.6/GPT-6 only:** above 272K context, apply 2.0x input and 1.5x output rates only when
@@ -280,7 +280,7 @@ The **Mantle** path (`migration_path: "mantle_openai_responses"` / `"mantle_open
 carries `bedrock_models[].mantle_selector` (from Step 0.8 — derived from
 `ai_constraints.mantle_requirements` and cited in `mantle_requirement`;
 `references/vendored/ai/bedrock-endpoint-policy.md`); API continuity alone never selects Mantle.
-Every runtime row carries the Step 0.8 `endpoint_assumption` sentence. Read `references/shared/openai-on-bedrock.md` for exact
+Every runtime row carries the Step 0.8 `endpoint_assumption` sentence. Read `references/vendored/ai/openai-on-bedrock.md` for exact
 values. **A Chat Completions source is a
 supported near-drop-in for GPT-6 and GPT-5.6** (both list Chat Completions on mantle and runtime
 CRIS per their model cards) — keep `chat.completions.create` unless a Responses-only feature or

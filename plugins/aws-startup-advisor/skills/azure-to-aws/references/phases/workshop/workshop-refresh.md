@@ -34,6 +34,8 @@ When `scenarios/` or `scenarios/index.json` is absent:
    - `scenarios/scenario-001.preferences.json`
    - `scenarios/scenario-001.aws-design.json`
    - `scenarios/scenario-001.estimation-infra.json`
+   - For a contributing AI track, its matching design and estimate under the same
+     `scenario-001.` prefix. Preserve the estimates' `export_inputs`.
 4. Write `scenarios/scenario-001.json` (`source: "baseline"`, summary from
    `estimation-infra.json` including the three Premium/Balanced/Optimized
    monthly tiers per `estimate-infra.md` § Scenarios).
@@ -90,7 +92,8 @@ Inner workshop reprice. Chat note after Estimate:
 
 1. Next id `scenario-00N`.
 2. If length would exceed 5, **warn and name** oldest non-baseline before delete.
-3. Copy prefs / design / estimation into `scenarios/{id}.*`. This copy runs **after**
+3. Copy prefs / design / estimation into `scenarios/{id}.*`, for every contributing
+   track and with `export_inputs` unchanged. This copy runs **after**
    Step 3's provenance update, so the snapshot's `preferences.json` already carries
    `source: "user_corrected"` and the trimmed `questions_defaulted[]` — the order is
    load-bearing, not incidental.

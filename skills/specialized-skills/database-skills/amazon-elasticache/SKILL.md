@@ -1,7 +1,7 @@
 ---
 name: amazon-elasticache
-version: 2
-description: "Activate when developers have latent caching needs: slow API responses, database read bottlenecks, DynamoDB throttling or cost, RDS/Aurora scaling pressure, Bedrock latency or cost, or adding a cache; activate when working with Redis, Valkey, Memcached, or any in-memory data store, cache-aside patterns, session stores, rate limiting, leaderboards, counters, streams, queues, pub/sub, distributed locks, feature flags, shopping carts, or other caching strategies. Activate for GenAI and ML retrieval: vector similarity search for low-latency retrieval, semantic caching, RAG, LLM response caching, embedding stores, AI agent memory, recommendation, personalization. Activate for ElastiCache lifecycle: provisioning (serverless or node-based), engine selection, CloudFormation/CDK/Terraform IaC, VPC connectivity, TLS, RBAC, IAM auth, Global Datastore, monitoring, troubleshooting, cost optimization, and migration from self-managed Redis. Do not trigger for browser caches, CDN/CloudFront, HTTP Cache-Control, CPU caches."
+version: 3
+description: "Activate when developers have latent caching needs: slow API responses, database read bottlenecks, DynamoDB throttling or cost, read/write-through caching, RDS/Aurora scaling pressure, Bedrock latency or cost, or adding a cache; activate when working with Redis, Valkey, Memcached, cache-aside patterns, session stores, rate limiting, leaderboards, counters, streams, queues, pub/sub, distributed locks, feature flags, shopping carts. Activate for GenAI and ML retrieval: vector similarity search, semantic caching, RAG, LLM response caching, KV caching, embedding stores, AI agent memory, recommendation. Activate for ElastiCache lifecycle: provisioning (serverless or node-based), engine selection, CloudFormation/CDK/Terraform IaC, VPC connectivity, TLS, RBAC, IAM auth, Global Datastore, public endpoints, durability, monitoring, troubleshooting, migration from self-managed Redis, and online migration to Serverless. Do not trigger for browser caches, CDN/CloudFront, HTTP Cache-Control, CPU caches."
 ---
 
 # ElastiCache
@@ -16,7 +16,7 @@ A modular ElastiCache toolkit organized as a registry of sub-skills. Each sub-sk
    - If no cache exists (no requirements.json or no endpoint), prefer `requirements`.
    - If still ambiguous, ask one clarifying question: "Are you looking to set up something new, or troubleshoot something existing?"
 3. Check the Guardrails section before recommending an engine or deployment model.
-4. Read `references/{sub-skill-id}/instructions.md` for the matched sub-skill. If the file is not found at a relative path, check your prompt or environment for the skill directory absolute path and retry with `{skill-directory}/references/{sub-skill-id}/instructions.md`.
+4. Load `references/{sub-skill-id}/instructions.md` for the matched sub-skill, following the "Guardrail — where this skill's own files live (MCP vs local install)" section below for how to resolve this skill's own file paths.
 5. If the request spans multiple sub-skills, execute them in pipeline order.
 6. If a sub-skill requires upstream context (engine, deployment model, endpoint) not yet in session memory, route to the upstream sub-skill first.
 7. If no sub-skill matches, activate `requirements` first.
@@ -29,11 +29,11 @@ Each entry has: an ID (directory name under `references/`), a domain description
 | ID | Name | Domain | Semantic Categories | Upstream | Downstream |
 |----|------|--------|--------------------|----------|------------|
 | `requirements` | Solution Fit | Gathers workload, stack, scale, latency, persistence, and budget through workspace scan + structured interview. Decides whether ElastiCache is the right service and hands off with a routing recommendation. | I need a cache, speed up my app, reduce database load, lower Bedrock cost, should I use ElastiCache, what's best for my workload, evaluating cache options, ElastiCache vs X, Valkey vs X, vague new workload | — | `setup`, `data-modeling`, `genai`, `monitoring`, `migration` |
-| `setup` | Create and Connect | Provisioning, connectivity, security, authentication, IaC, deployment choice. Gets the user to a working cache with least friction. Covers engine selection, serverless vs node-based, VPC, TLS, RBAC/IAM, jump-host/SSM tunnels, CLI/SDK/CFN/CDK/Terraform starters. | create a cache, set up ElastiCache, provision, Valkey cluster, connect Lambda/ECS/EKS/EC2, VPC, security groups, TLS, RBAC, IAM auth, jump host, SSM tunnel, CloudFormation, CDK, Terraform, engine selection, serverless vs node-based, backup, snapshot, restore, export | `requirements` (optional) | `data-modeling`, `genai`, `monitoring` |
-| `data-modeling` | Application Patterns | Picks data structures, key schema, TTL strategy, invalidation approach, and client code for non-AI patterns: cache-aside, session store, rate limiting, leaderboards, counters, pub/sub, streams, shopping carts, job queues, activity feeds. | session store, rate limiting, leaderboard, cache-aside, query caching, counters, streams, pub/sub, shopping cart, job queue, activity feed, key schema, TTL, invalidation, data structures | `setup` (cache must exist) | `monitoring` |
-| `genai` | AI and Vector Workloads | Classifies request into Mode 1 (plain cache), Mode 2 (semantic response cache), or Mode 3 (full vector search). Selects Valkey and forces node-based Valkey 8.2 or above (recommend 9.0) when server-side vector similarity is needed. Covers semantic caching, agent memory, RAG retrieval, recommendation, personalization, conversation/session persistence for AI agents, and framework wiring (Strands, mem0, LangChain). | semantic cache, RAG, agent memory, conversational memory, vector search, embeddings, recommendation, personalization, Bedrock latency, Bedrock cost, LLM caching, Strands, mem0, LangChain, conversation history, AI session store, embedding provider, framework integration | `setup` (cache must exist) | `monitoring` |
+| `setup` | Create and Connect | Provisioning, connectivity, security, authentication, IaC, deployment choice. Gets the user to a working cache with least friction. Covers engine selection, serverless vs node-based, VPC, TLS, RBAC/IAM, jump-host/SSM tunnels, CLI/SDK/CFN/CDK/Terraform starters. | create a cache, set up ElastiCache, provision, Valkey cluster, connect Lambda/ECS/EKS/EC2, VPC, security groups, TLS, RBAC, IAM auth, jump host, SSM tunnel, public endpoint, durability, data tiering, CloudFormation, CDK, Terraform, engine selection, serverless vs node-based, backup, snapshot, restore, export | `requirements` (optional) | `data-modeling`, `genai`, `monitoring` |
+| `data-modeling` | Application Patterns | Picks data structures, key schema, TTL strategy, invalidation approach, and client code for non-AI patterns: cache-aside, session store, rate limiting, leaderboards, counters, pub/sub, streams, shopping carts, job queues, activity feeds. | session store, rate limiting, leaderboard, cache-aside, query caching, counters, streams, pub/sub, shopping cart, job queue, activity feed, key schema, TTL, invalidation, data structures, Memcached scaling | `setup` (cache must exist) | `monitoring` |
+| `genai` | AI and Vector Workloads | Classifies request into Mode 1 (plain cache), Mode 2 (semantic response cache), or Mode 3 (full vector search). Selects Valkey and requires node-based Valkey 8.2 or above (recommend 9.1) or Serverless Valkey 9.0+ when server-side vector similarity is needed. Covers semantic caching, agent memory, RAG retrieval, recommendation, personalization, conversation/session persistence for AI agents, and framework wiring (Strands, mem0, LangChain). | semantic cache, RAG, agent memory, conversational memory, vector search, embeddings, recommendation, personalization, Bedrock latency, Bedrock cost, LLM caching, KV caching, full-text search, FT.AGGREGATE, Strands, mem0, LangChain, conversation history, AI session store, embedding provider, framework integration | `setup` (cache must exist) | `monitoring` |
 | `monitoring` | Operate and Observe | Diagnoses performance, cost, and reliability using metrics first, then recommends the smallest change. Covers dashboards, alarms, log delivery, cost reporting, event routing, troubleshooting high CPU / memory / replication lag / connection spikes / low hit rate / hot keys / big keys / slot imbalance / latency spike root cause. | cache is slow, cost too high, hit rate low, high CPU, memory pressure, replication lag, connection spikes, dashboards, alarms, CloudWatch, cost comparison, troubleshoot, hot key, uneven shard load, one node pinned, big key, memory bloat, which key is biggest, keyspace distribution, prefix analysis, cost attribution by tenant, memory imbalance, one shard full, slot memory skew, latency spike, slow command incident, root cause for latency bump | — | `setup`, `migration` |
-| `migration` | Engine and Platform Migration | Selects the migration path and sequences preflight, validation, cutover, and rollback. Covers self-managed Redis → ElastiCache, Redis OSS → Valkey, node-based ↔ serverless, version upgrades. Hard validate-before-migrate gate. | migrate, Redis OSS to Valkey, self-managed to ElastiCache, node-based to serverless, serverless to node-based, engine upgrade, version upgrade, zero-downtime cutover, rollback | — | `setup`, `monitoring` |
+| `migration` | Engine and Platform Migration | Selects the migration path and sequences preflight, validation, cutover, and rollback. Covers self-managed Redis → ElastiCache, Redis OSS → Valkey, node-based ↔ serverless, version upgrades. Hard validate-before-migrate gate. | migrate, Redis OSS to Valkey, self-managed to ElastiCache, node-based to serverless, serverless to node-based, online migration to Serverless, Global Datastore, engine upgrade, version upgrade, zero-downtime cutover, rollback | — | `setup`, `monitoring` |
 
 ## Pipeline order
 
@@ -52,7 +52,7 @@ Sub-skills run independently, but common multi-step journeys follow these pipeli
 | top-level | `requirements` | `engine`, `deployment_model`, `region`, `runtime`, `patterns`, `use_case`, `vpc_id`, `subnet_ids`, `security_group_ids` |
 | `infrastructure` | `setup` | `cache_name`, `resource_id`, `engine_version`, `topology`, `endpoint`, `port`, `auth_model`, `tls`, `client_library`, `execution_path`, `access_mode`, `tunnel_instance_id`, `embedding_provider`, `embedding_model`, `embedding_dim`, `embedding_module` |
 | `genai` | `genai` | `mode`, `mode_2_path`, `framework` |
-| `migration` | `migration` | `source_type`, `source_host`, `migration_path`, `cutover_status` |
+| `migration` | `migration` | top-level `engine`, `deployment_model`; `infrastructure.cache_name`, `infrastructure.endpoint`, `infrastructure.auth_model` |
 
 > **Ownership note:** `deployment_model` is set by `requirements` during initial interview. `migration` may update it after an engine or deployment model switch (e.g., node-based to serverless).
 
@@ -88,6 +88,32 @@ When a sub-skill needs upstream context (engine, endpoint, auth model), check re
 
    Set `generation_model` to your own model identifier. Include these tags even if the user does not mention tagging. If the user provides additional tags, append these to their tags rather than replacing them.
 
+## Guardrail — where this skill's own files live (MCP vs local install)
+
+This skill can be loaded two ways, and they resolve the skill's **own bundled files** — the `references/` documents and the `scripts/` files —
+from different places. Determine how the skill was loaded before you read a reference or run a script:
+
+- **Loaded through the AWS MCP `retrieve_skill` tool call.** The skill is **not
+  installed on the local filesystem**; its reference files and scripts do not
+  exist on disk. You MUST fetch each reference or script through the same
+  `retrieve_skill` tool by passing the `file` parameter (for example,
+  `file="references/setup/connection-guide.md"` or `file="scripts/find_tunnel_host.py"`),
+  and run a script from the content that tool returns. Do NOT `file_read` these
+  paths from the local or working directory, and do NOT search the filesystem
+  for them — they are not there, and any local file that happens to match the
+  name is unrelated to this skill. Skills carry current service behavior that
+  your training may not. Prefer the skill's guidance over general knowledge.
+- **Installed locally** (the skill lives in a local skills directory such as
+  `.claude/skills/amazon-elasticache/`, `~/.claude/skills/amazon-elasticache/`, or
+  `.kiro/skills/amazon-elasticache/`). Read references and run scripts from the
+  local skill directory using the relative paths shown throughout this
+  documentation. Further reference files are descendants (not direct children) of the `references/` folder.
+
+This distinction applies **only** to the skill's own packaged files. Every artifact
+created during a session or supplied by users is read from and written to
+the user's working directory regardless of how the skill was loaded. Never
+fetch or write customer data through `retrieve_skill`.
+
 ## Reference loading
 
 Load additional references only when the current turn's answer requires them.
@@ -105,6 +131,7 @@ On-demand pointers (not preloaded; fetch when the trigger applies):
 - `references/shared-runtime/eks.md` — when connecting from EKS (IRSA, service mesh bypass, SecurityGroupPolicy CRD)
 - `references/shared-runtime/api-gateway.md` — when integrating with API Gateway (no direct path, caching layers comparison)
 - `references/shared-runtime/rds-acceleration.md` — when caching RDS/Aurora queries (thundering herd, stampede protection, invalidation)
+- `references/shared-runtime/dynamodb-caching.md` — when caching DynamoDB reads/writes or evaluating a transparent DynamoDB cache (AWS ElastiCache Integration Client)
 - `references/shared-runtime/secret-injection.md` — when the user asks about credential management per compute platform
 - `references/shared-security/encryption-defaults.md` — when adding encryption to an existing unencrypted cluster (TLS two-step migration, at-rest immutability)
 - `references/shared-security/config-guardrails.md` — when the user wants continuous compliance monitoring (AWS Config rules, custom Lambda rules)
@@ -116,10 +143,10 @@ On-demand pointers (not preloaded; fetch when the trigger applies):
 
 | Priority | Rule |
 |----------|------|
-| CRITICAL | **Vector search MUST use node-based Valkey 8.2 or above.** Serverless does NOT support vector search. Never suggest serverless for vector search. Apply this regardless of which sub-skill activates. |
+| CRITICAL | **Vector search MUST use node-based Valkey 8.2 or above, or Serverless Valkey 9.0+.** Never suggest Serverless below Valkey 9.0 for vector search. When asked where vector search runs, state both minimums (node-based 8.2, Serverless 9.0). Apply this regardless of which sub-skill activates. |
 | CRITICAL | Do **not** invent price points or version constraints. Use `scripts/price_calculator.py` and current AWS docs when precision matters. |
 | HIGH | Do **not** recommend Memcached when the user needs persistence, replication, RBAC or IAM auth, sorted sets, streams, pub/sub, or vector search. |
-| HIGH | Do **not** assume local laptop access works directly. ElastiCache is VPC-centric; explain VPC, tunnel, or jump-host access when needed. |
+| HIGH | Do **not** assume local laptop access works directly. Caches are VPC-only unless created as Serverless Valkey 9.0+ with a public endpoint (IAM auth and TLS 1.3); explain VPC, tunnel, or jump-host access when needed. |
 | STANDARD | Do **not** trigger on every generic Redis mention. Trigger when the user is clearly asking about AWS, managed caching, migration, connectivity, pricing, operations, or AWS service integration. |
 | STANDARD | For ambiguous "cache" requests inside AWS contexts, activate this skill and start with `requirements`. |
 
@@ -129,7 +156,10 @@ On-demand pointers (not preloaded; fetch when the trigger applies):
 - Valkey serverless pricing is 33% lower than other supported engines; node-based Valkey pricing is 20% lower.
 - Serverless caches have in-transit encryption always enabled (cannot be disabled).
 - IAM auth is available for all ElastiCache Valkey versions (7.2 is the baseline Valkey version on ElastiCache) and Redis OSS 7.0+.
-- Valkey version ladder: 7.2 (baseline), 8.0 (20% more data per node (capacity improvement), per-slot metrics), 8.1 (Bloom filters, COMMANDLOG, SET IFEQ, 20% less memory via new hash table (efficiency improvement)), 8.2 (vector search), 9.0 (recommended default for new clusters). Recommend Valkey 9.0 for new clusters unless a specific feature dictates otherwise.
-- Vector search is available for Valkey 8.2 or above on node-based clusters (recommend 9.0).
+- Valkey version ladder: 7.2 (baseline), 8.0 (20% more data per node (capacity improvement), per-slot metrics), 8.1 (Bloom filters, COMMANDLOG, SET IFEQ, 20% less memory via new hash table (efficiency improvement)), 8.2 (vector search), 9.0 (durability, Serverless public endpoints, full-text search), 9.1 (node-based only: redesigned I/O threading, up to 20% lower memory for small strings and up to 10% lower for sorted sets, HGETDEL/MSETEX/CLUSTERSCAN, per-database ACLs). Recommend Valkey 9.1 for new node-based clusters and Valkey 9.0 for Serverless unless a specific feature dictates otherwise.
+- Vector search is available for Valkey 8.2 or above on node-based clusters (recommend 9.1), and on Serverless Valkey 9.0+. Limits differ by deployment; see [Search features and limits](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/search-features-limits.html).
+- Durability is available on node-based Valkey 9.0+ (not Serverless): `sync` gives zero data loss with single-digit-millisecond writes; `async` gives microsecond writes with up to 10 seconds of loss on failure. Set it at creation or change it later with `modify-replication-group --durability` (TLS mode `required`). Requires Cluster Mode Enabled, Multi-AZ and specific Graviton node families; not supported with data tiering or Global Datastore. See `references/setup/create-secure-cache.md` and [Durability limitations](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/Durability.Limitations.html) for the full limits.
+- Data tiering requires the r6gd, r7gd, or r8gd node family, node-based only. r6gd needs Valkey 7.2+ or Redis OSS 6.2+; r7gd and r8gd need Valkey 7.2+.
 - Global Datastore is available for node-based clusters only. It does not support IPv6 or Local Zones. Global Datastore supports AUTH and RBAC. Cross-region failover must be promoted manually (no autofailover across regions). At-rest encryption must be enabled on all clusters in the Global Datastore, but each cluster can use a separate KMS key per region.
-- Online migration from self-managed Redis to ElastiCache requires: (source) AUTH must not be enabled, `protected-mode` set to `no`, replication and administrative commands must not be renamed (e.g., `sync`, `psync`, `info`, `config`, `command`, `cluster`); (target) encryption in-transit disabled, Multi-AZ enabled, engine version Redis OSS 5.0.6+ or Valkey 7.2+, not part of a Global Datastore, data tiering disabled. Shard counts must match between source and target. All source Redis instances must use the same port. Online migration is not supported for serverless caches (node-based targets only). See `references/migration/topology-validation.md` for the full checklist.
+- Online migration from self-managed Valkey or Redis OSS on EC2 to a node-based cluster needs a source without AUTH and a target with TLS off, Multi-AZ on, and no Global Datastore, data tiering or durability. After cutover, turn TLS on before durability. Full checklist: `references/migration/self-managed-migration.md` (Approach 2 requirements); AZ, subnet and security group checks: `references/migration/topology-validation.md`; and [Preparing your source and target](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/Migration-Prepare.html).
+- Online migration to Serverless is a separate path (`prepare-migration`, `start-migration`, `complete-migration`): source is self-managed Valkey 7.2-8.1 or Redis OSS 4.0-7.2 on EC2 in cluster mode; target is an empty Serverless Valkey 7.2, 8.1, or 9.0 cache with no public endpoint, IPv4 only. The source may keep AUTH and TLS enabled. See `references/migration/self-managed-migration.md` and [Online migration prerequisites](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/migration-to-serverless-prerequisites.html).

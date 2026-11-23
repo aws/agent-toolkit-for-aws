@@ -71,7 +71,7 @@ If the container already sets `JAVA_TOOL_OPTIONS`, append the `-javaagent` flag 
 
 Check the existing container `env` before writing this value.
 
-Set `OTEL_SERVICE_NAME` from the existing Deployment name or application name. Optionally add `OTEL_RESOURCE_ATTRIBUTES` for attributes such as `deployment.environment=production`.
+Set `OTEL_SERVICE_NAME` from the existing Deployment name or application name. Optionally add `OTEL_RESOURCE_ATTRIBUTES` for attributes such as `deployment.environment.name=production`.
 
 Preserve the container's existing `env`, `volumeMounts`, probes, and resources — append to them rather than replacing.
 

@@ -2,7 +2,7 @@
 name: aws-lambda-web-functions
 description: >
   Creates and deploys Node.js HTTP web applications on AWS Lambda Web Functions. Guides users through building web apps and APIs with Express, Fastify, or Hono, packaging, deploying via the aws lambda-web CLI, and iterating. Triggers when user wants to deploy a website or web app to AWS as serverless, deploy a Node.js HTTP server to AWS, build a serverless website or API with Node.js, deploy Express/Hono/Fastify apps, set up multi-region HTTP endpoints, connect a Node.js web app to private VPC resources, or explicitly mentions Lambda Web Functions. Does NOT trigger for non-Node.js runtimes or frameworks such as Flask or Django, event-driven patterns (SQS, Kinesis, S3 events), or container deployments.
-version: 2
+version: 4
 ---
 
 # AWS Lambda Web Functions
@@ -52,15 +52,22 @@ Any "no" rules Web Functions out. Invoke the `aws-serverless` skill to find a su
 
 ## Workflow
 
-Default to the `aws lambda-web` CLI — it's the quickest path. Use `aws lambda-web deploy` when the user asks for a single command or says they already deploy with it. It packages, uploads and creates or updates a project directory in one command, and `--hello-world` scaffolds and deploys a starter app (see Deploy (CLI) below). Otherwise, including for updates to an existing function, use the steps below. Use CloudFormation, CDK, SAM or Terraform when the user wants infrastructure-as-code or a repeatable production stack (see [references/infrastructure-as-code.md](references/infrastructure-as-code.md)).
+Default to the `aws lambda-web` CLI — it's the quickest path. Use `aws lambda-web deploy` when the user asks for a single command or says they already deploy with it. It packages, uploads and creates or updates a project directory in one command, and `--hello-world` scaffolds and deploys a starter app (see Deploy (CLI) below). Otherwise use the steps below. Use CloudFormation, CDK, SAM or Terraform when the user wants infrastructure-as-code or a repeatable production stack (see [references/infrastructure-as-code.md](references/infrastructure-as-code.md)).
+
+**Creating a function for the first time:**
 
 1. **Scaffold** - Express is inline below; for **Hono** or **Fastify**, read [references/frameworks.md](references/frameworks.md)
 2. **Choose endpoint auth** — **ask the user before deploying** (see below); endpoints are public unless they pick `IamAuth`
 3. **Test locally** — `node index.js`
 4. **Package** — ZIP with production deps (up to 512 MB)
-5. **Deploy** — `aws lambda-web create-web-function`
+5. **Deploy** — `aws lambda-web create-web-function` (creates the function, its first revision and an endpoint; it fails if the function already exists)
 6. **Verify** — get endpoint URL, then curl
-7. **Iterate** — create a new revision
+
+**Updating a function that already exists:** do not reach for `create-web-function` — it only
+creates. Repackage, upload, then `aws lambda-web create-web-function-revision` to ship the new code,
+and shift traffic if the endpoint is in `Disabled` mode. `aws lambda-web deploy` (without
+`--create`) does the same thing in one command. Either path is in
+[references/deployment.md](references/deployment.md).
 
 > **Public by default.** A `ApplicationManaged` endpoint is reachable by **anyone on the internet with the URL** — there is no AWS-layer auth and no built-in WAF, and the URL is not a secret. Before deploying, **ask the user** which they want:
 >
@@ -157,7 +164,7 @@ types, domains, traffic routing and the multi-region setup commands.
 
 ### VPC Egress
 
-By default a revision reaches the public internet over IPv4 and nothing private. To reach your VPC, put a version-qualified egress network connector ARN (`aws lambda-core create-network-connector`, compute type `WebFunction`) in the revision's `serviceConfig.egressNetworkConnectorArn`, serve it from a `HomeRegion` endpoint, and read the field back after every revision. See [references/networking.md](references/networking.md), or [references/infrastructure-as-code.md](references/infrastructure-as-code.md) to declare the connector and the revision in one stack.
+By default a revision reaches the public internet over IPv4 and nothing private. To reach your VPC, put a version-qualified egress network connector ARN (`aws lambda-core create-network-connector`, compute type `WebFunction`) in the revision's `serviceConfig.egressNetworkConnectorArn`, serve it from a `HomeRegion` endpoint, and read the field back after every revision. See [references/networking.md](references/networking.md), or [references/infrastructure-as-code.md](references/infrastructure-as-code.md) to declare the connector and the revision in one stack. For public IPv4 egress through the connector without a NAT gateway, set `ElasticIpConfiguration` `Type: ServiceManaged` on the connector (public subnets and an internet gateway required); see networking.md.
 
 ## Verify
 
@@ -217,7 +224,7 @@ for the authoritative values.
 | Per environment | Processes and threads | 1,024 |
 | Per environment | Init timeout | 10 seconds |
 | Per request | Timeout | 3–900 s (default 30 s) |
-| Per request | Header count | 6,300 |
+| Per request | Request header size | 128 KiB (131,072 bytes) |
 
 ## Cost Model
 

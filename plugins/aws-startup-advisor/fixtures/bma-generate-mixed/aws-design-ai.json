@@ -1,0 +1,193 @@
+{
+  "phase": "design",
+  "focus": "ai",
+  "timestamp": "2026-11-12T18:30:00Z",
+  "source_profile": "ai-workload-profile.json",
+  "metadata": {
+    "ai_sources": [
+      {
+        "provider": "openai",
+        "source_service": "openai_api",
+        "model_families": [
+          "gpt"
+        ],
+        "model_evidence": "observed",
+        "models": [
+          "gpt-5.5",
+          "text-embedding-3-small"
+        ],
+        "model_observations": [
+          {
+            "normalized_model": "gpt-5.5",
+            "raw_model": "gpt-5.5",
+            "model_family": "gpt",
+            "evidence": [
+              {
+                "provenance": "code",
+                "confidence": "high",
+                "detail": "app/research.py:12 client.responses.create"
+              }
+            ]
+          },
+          {
+            "normalized_model": "text-embedding-3-small",
+            "raw_model": "text-embedding-3-small",
+            "model_family": "gpt",
+            "evidence": [
+              {
+                "provenance": "code",
+                "confidence": "high",
+                "detail": "app/index.py:8 client.embeddings.create"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "gateways": [],
+    "bedrock_models_selected": [
+      "openai.gpt-5.5",
+      "us.openai.gpt-5.5",
+      "amazon.titan-embed-text-v2:0"
+    ],
+    "regional_validation": "checked"
+  },
+  "design_blocks": [
+    {
+      "workload_id": "openai_api.gpt-5.5.openai.responses.create.plain",
+      "model_id": "gpt-5.5",
+      "target_bedrock_model": "openai.gpt-5.5",
+      "target_aws_service": null,
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "rationale": "Same model on Bedrock. The research workload uses the provider-run Web Search tool (app/research.py:14), which only bedrock-mantle serves, so it keeps the OpenAI SDK on the Mantle Responses API.",
+      "confidence_warning": null
+    },
+    {
+      "workload_id": "openai_api.gpt-5.5.openai.chat.completions.create.plain",
+      "model_id": "gpt-5.5",
+      "target_bedrock_model": "us.openai.gpt-5.5",
+      "target_aws_service": null,
+      "capability": "text_generation",
+      "capability_confidence": "medium",
+      "rationale": "Same model on bedrock-runtime through the US cross-Region profile, keeping Chat Completions. Web Search needs the Responses API, and the user chose to keep this workload on Chat Completions without it.",
+      "confidence_warning": null
+    },
+    {
+      "workload_id": "openai_api.text-embedding-3-small.openai.embeddings.create.plain",
+      "model_id": "text-embedding-3-small",
+      "target_bedrock_model": "amazon.titan-embed-text-v2:0",
+      "target_aws_service": null,
+      "capability": "embedding",
+      "capability_confidence": "high",
+      "rationale": "No OpenAI embedding model runs on Bedrock; Titan Text Embeddings V2 replaces it, which means re-embedding the index.",
+      "confidence_warning": null
+    }
+  ],
+  "ai_architecture": {
+    "honest_assessment": "moderate_migrate",
+    "honest_assessment_reason": null,
+    "tiered_strategy": null,
+    "bedrock_models": [
+      {
+        "source_model_id": "gpt-5.5",
+        "aws_model_id": "openai.gpt-5.5",
+        "capabilities_matched": [
+          "text_generation"
+        ],
+        "capability_gaps": [],
+        "honest_assessment": "strong_migrate",
+        "source_provider_price": "5.00/30.00 per 1M tokens",
+        "bedrock_price": "5.50/33.00 per 1M tokens (In-Region)",
+        "price_comparison": "about 10% higher",
+        "migration_complexity": "low",
+        "model_change": false,
+        "migration_path": "mantle_openai_responses",
+        "quota_risk": "medium",
+        "required_client_api": "responses",
+        "mantle_selector": "web_search",
+        "mantle_requirement": {
+          "workload_id": "*",
+          "selector": "web_search",
+          "source": "detected",
+          "evidence": "app/research.py:14 \"type\": \"web_search\""
+        }
+      },
+      {
+        "source_model_id": "gpt-5.5",
+        "aws_model_id": "us.openai.gpt-5.5",
+        "capabilities_matched": [
+          "text_generation"
+        ],
+        "capability_gaps": [
+          "web_search (detected, app/research.py:14) is not available on bedrock-runtime; this workload keeps Chat Completions without it"
+        ],
+        "honest_assessment": "strong_migrate",
+        "source_provider_price": "5.00/30.00 per 1M tokens",
+        "bedrock_price": "unverified (the model card publishes no Geo price)",
+        "price_comparison": "unverified",
+        "migration_complexity": "low",
+        "model_change": false,
+        "migration_path": "runtime_openai_cris",
+        "quota_risk": "medium",
+        "required_client_api": "chat_completions",
+        "endpoint_assumption": "No Mantle-only requirement was recorded for openai_api.gpt-5.5.openai.chat.completions.create.plain; bedrock-runtime selected. If this workload needs background inference, server-side tools, Projects/Workspaces, or single-Region processing, re-run Clarify."
+      },
+      {
+        "source_model_id": "text-embedding-3-small",
+        "aws_model_id": "amazon.titan-embed-text-v2:0",
+        "capabilities_matched": [
+          "embedding"
+        ],
+        "capability_gaps": [],
+        "honest_assessment": "moderate_migrate",
+        "source_provider_price": "0.02 per 1M tokens",
+        "bedrock_price": "0.02 per 1M tokens",
+        "price_comparison": "parity",
+        "migration_complexity": "medium",
+        "model_change": true,
+        "migration_path": "direct",
+        "quota_risk": "low",
+        "required_client_api": "invoke",
+        "endpoint_assumption": "No Mantle-only requirement was recorded for openai_api.text-embedding-3-small.openai.embeddings.create.plain; bedrock-runtime selected. If this workload needs background inference, server-side tools, Projects/Workspaces, or single-Region processing, re-run Clarify."
+      }
+    ],
+    "capability_mapping": {
+      "text_generation": {
+        "parity": "full",
+        "notes": "Mantle Responses and runtime Chat Completions both serve GPT-5.5."
+      },
+      "embeddings": {
+        "parity": "full",
+        "notes": "Titan Text Embeddings V2 through InvokeModel; vectors are not compatible with the OpenAI index."
+      }
+    },
+    "code_migration": {
+      "primary_pattern": "direct_sdk",
+      "framework": "none",
+      "files_to_modify": [
+        "app/index.py",
+        "app/research.py",
+        "app/support.py"
+      ],
+      "dependency_changes": "openai SDK pointed at Bedrock with a Bedrock API key; boto3 for the embeddings call."
+    },
+    "infrastructure": [],
+    "services_to_migrate": [
+      {
+        "source_service": "openai_api",
+        "aws_service": "Amazon Bedrock",
+        "effort": "low",
+        "notes": "Same model for both text workloads; embeddings change model."
+      }
+    ]
+  },
+  "regional_warnings": [],
+  "multi_model_warnings": [
+    {
+      "type": "embeddings_reindex",
+      "message": "Moving text-embedding-3-small to Titan Text Embeddings V2 means re-embedding every document and rebuilding the index at the new dimension before cutover."
+    }
+  ],
+  "agentic_design": null
+}

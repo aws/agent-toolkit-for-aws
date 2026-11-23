@@ -73,6 +73,8 @@ To reach private VPC resources, add an `AWS::Lambda::NetworkConnector` and refer
           NetworkProtocol: IPv4            # DualStack for IPv6 egress
           AssociatedComputeResourceTypes:
             - WebFunction
+          # ElasticIpConfiguration:        # public IPv4 without a NAT gateway; needs public subnets,
+          #   Type: ServiceManaged         # an internet gateway, and the extra operator-role actions in networking.md
 
   WebFunctionRevision:
     Type: AWS::Lambda::WebFunctionRevision
@@ -244,7 +246,7 @@ bare function ARN matches nothing and the read is refused.
 
 - **Use `DependsOn`**. Without it Cfn could try to create revision or endpoint before the function exists.
 - **A code change needs a new S3 key or version.** Re-uploading over the same key reports "No changes to deploy". Use a new key (`function-v2.zip`) or set `S3Object.VersionId`.
-- **`RevisionWeights` is always required** on the endpoint, even for a single revision.
+- **`RevisionWeights` is required only when `AutoDeploymentMode` is `Disabled`**, and is rejected when it is `LatestRevision`.
 - **`FunctionName` must be the bare function name on every resource — never the function ARN.**
   An ARN is accepted at create time and the resources come up, then the endpoint's `DomainName`
   attribute cannot be read: `Property '/FunctionName' has value '{arn}' in the resource model but

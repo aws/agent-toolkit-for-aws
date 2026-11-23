@@ -24,8 +24,10 @@ import skill_invoked
 # PluginSkillId, transcribed from model/types/plugin-telemetry.smithy.
 MODELLED_SKILL_IDS = {
     "AGENT_ADVISOR",
+    "APPLY_FOR_ACTIVATE_CREDITS",
     "ARCHITECT_FOR_STARTUPS",
     "AZURE_TO_AWS",
+    "BEDROCK_MIGRATION_ASSESSMENT",
     "CONTEXTUAL_OFFERS_FOR_STARTUPS",
     "COST_REGRESSION_CHECK",
     "GCP_TO_AWS",
@@ -34,6 +36,7 @@ MODELLED_SKILL_IDS = {
     "LLM_TO_BEDROCK",
     "OPERATE_ON_AWS",
     "PROMPT_LIBRARY_FOR_STARTUPS",
+    "RENDER_TO_AWS",
     "SELF_HOSTED_LLM_BATCH_INFERENCE",
     "START_BUILDING_FOR_STARTUPS",
     "TF_BEST_PRACTICES",
@@ -49,7 +52,7 @@ SKILLS_DIR = PLUGIN_ROOT / "skills"
 NOT_A_SKILL = {"shared"}
 
 # Skills PluginSkillId has no member for yet; reporting one would 400 the whole request.
-NOT_YET_MODELLED = {"bedrock-migration-assessment", "render-to-aws"}
+NOT_YET_MODELLED: set[str] = {"claude-apps-to-bedrock"}
 
 
 def accept(home):

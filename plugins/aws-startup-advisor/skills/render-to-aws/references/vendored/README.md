@@ -36,8 +36,10 @@ published Blueprint schema.
 | `dsl/INTERPRETER.md`                    | `skills/shared/dsl/INTERPRETER.md`                    |
 | `state/phase-status.schema.json`        | `skills/shared/state/phase-status.schema.json`        |
 | `estimate/complexity-tiers.json`        | `skills/shared/estimate/complexity-tiers.json`        |
+| `estimate/cost-export-inputs.md`        | `skills/shared/estimate/cost-export-inputs.md`        |
 | `estimate/estimation-infra.schema.json` | `skills/shared/estimate/estimation-infra.schema.json` |
 | `estimate/pricing-mode.md`              | `skills/shared/estimate/pricing-mode.md`              |
 | `estimate/ri-sp-eligibility.md`         | `skills/shared/estimate/ri-sp-eligibility.md`         |
 | `pricing/aws-infra-pricing.json`        | `skills/shared/pricing/aws-infra-pricing.json`        |
 | `workshop/workshop-invariants.md`       | `skills/shared/workshop/workshop-invariants.md`       |
+| `migration/upfront-credits.md`          | `skills/shared/migration/upfront-credits.md`          |

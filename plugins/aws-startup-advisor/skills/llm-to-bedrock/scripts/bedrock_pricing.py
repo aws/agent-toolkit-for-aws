@@ -127,6 +127,12 @@ def unavailable(note: str) -> dict:
 # servicename: Claude Opus 5.5 (Amazon Bedrock Edition). Prices are per 1K.
 # Runtime uses Geo/Global profiles, or the bare ID in eu-west-2 (verified 2026-10-03).
 _OPUS55_ID = model_catalog.OPUS_55_ID
+# The version component that marks an Opus 5.5 id in any form (`anthropic.claude-opus-5-5`,
+# `us.anthropic.claude-opus-5-5`, ...). It is deliberately NOT the shorter `claude-opus-5`:
+# Opus 5 (`anthropic.claude-opus-5`) is a different, Active model with its own rates, so it
+# must not be routed to the Opus 5.5 table. A malformed 5.5-like id (`...-opus-5-55`) still
+# contains this marker and therefore still fails closed in `_opus55_pricing`.
+_OPUS55_MARKER = _OPUS55_ID.partition(".")[2]
 # Opus 5.5's inference-profile, Mantle and runtime in-region Regions come from the shared model
 # catalog (references/vendored/ai/models/); only its rates are restated in _opus55_pricing.
 _OPUS55_PROFILE_REGIONS = model_catalog.opus_55_profile_regions()
@@ -187,7 +193,7 @@ def _priced(entry: dict, note: str) -> dict:
 
 def _match_key(model_id: str) -> str | None:
     """The STATIC_FALLBACK key that prices `model_id`, or None."""
-    if "claude-opus-5" in model_id:
+    if _OPUS55_MARKER in model_id:
         return None  # Opus 5.5 requires exact, region-aware pricing.
     if model_id in STATIC_FALLBACK:
         return model_id
@@ -265,11 +271,11 @@ def display_name_guess(model_id: str) -> str:
 
 def lookup(region: str, model_id: str) -> dict:
     profile_arn = re.fullmatch(
-        r"arn:aws:bedrock:[^:]+:[0-9]{12}:inference-profile/([^/]+)", model_id
+        r"arn:aws(?:-us-gov|-cn)?:bedrock:[^:]+:[0-9]{12}:inference-profile/([^/]+)", model_id
     )
     if profile_arn:
         model_id = profile_arn.group(1)
-    if "claude-opus-5" in model_id:
+    if _OPUS55_MARKER in model_id:
         return _opus55_pricing(region, model_id)
     # Curated static table is the primary source: the Pricing API keys models
     # by display name and frequently lacks entries for new inference profiles.
@@ -306,6 +312,15 @@ def lookup(region: str, model_id: str) -> dict:
                 "Source-provider prices require separate verification."
             )
         return fb
+    if "claude-opus-5" in model_id:
+        # Opus 5.5 ids were handled above. What is left is Opus 5 (or a later 5.x) with no
+        # static row. Fail closed here, like the GPT case below, instead of calling the live
+        # lookup: it needs boto3 and the network, and it must never fall back to Opus 5.5's rate.
+        return unavailable(
+            f"no verified rate for {model_id}. It is not Claude Opus 5.5, and "
+            f"bedrock-pricing.json has no row for it. Read the rate from "
+            f"aws.amazon.com/bedrock/pricing and add it to skills/shared/ai/bedrock-pricing.json. "
+            f"Do not price it from Opus 5.5.")
     if is_mantle_gpt(model_id) or re.match(r"^[^.]+\.openai\.gpt-[56]", model_id):
         # Short-circuit: the PriceList API carries no rows for the proprietary GPT
         # models, so a live lookup would burn a round trip and still return nothing —

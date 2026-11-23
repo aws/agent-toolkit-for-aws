@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-10-10 (added the GPT-6 family — GPT-6 Astra, GPT-6 Sol, GPT-6 Luna, GPT-6.1 Sol — sourced
 from each model's own AWS Bedrock model card and OpenAI's own API pricing page, fetched 2026-10-10; see
-`shared/openai-on-bedrock.md` for full citations. Prior refresh, 2026-10-05: re-verified via the AWS Pricing MCP
+`references/vendored/ai/openai-on-bedrock.md` for full citations. Prior refresh, 2026-10-05: re-verified via the AWS Pricing MCP
 server, aws.amazon.com/bedrock/pricing, and the Bedrock model cards' Geo/Global inference ID tables — Claude
 Sonnet 5 $2/$10 (Global/base) / $2.20/$11 (Geo, `us.`-prefixed), Opus 4.8 $5/$25 (Global/base) / $5.50/$27.50
 (Geo), Sonnet 4.6 $3/$15 (Global/base) / $3.30/$16.50 (Geo), Haiku 4.5 $1/$5 (Global/base) / $1.10/$5.50 (Geo),
@@ -485,7 +485,7 @@ resulting rates).
 >
 > **GPT-6.1 Terra:** confirm availability, token limits, and pricing with the source provider.
 > Use measured/stated source spend or `pricing-fallback.md` when verified source rates are unavailable.
-> See `shared/openai-on-bedrock.md` for Bedrock availability and prices.
+> See `references/vendored/ai/openai-on-bedrock.md` for Bedrock availability and prices.
 
 ### Anthropic (Standard Tier, 1P API)
 

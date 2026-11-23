@@ -156,7 +156,7 @@ Apply in order; first match wins:
 - Note: `runtime`/`instance_class`/scaling come from the `*_app_version` resource, not the parent. The App Engine fan-out step (`phases/design/design-infra.md`) emits one EB environment per service; `gcp_type` stays `google_app_engine_application`.
 - Signals: PaaS deployment, `compute_model` absent or `"managed_platform"`
 - Fast-path condition met: `compute_model` not set to `"container_orchestration"` or `"serverless"`
-- → **AWS: Elastic Beanstalk (Python 3.9, LoadBalanced, t4g.medium, arm64)** — LoadBalanced from the version's `automatic_scaling`; t4g.medium from `instance_class` F4; Graviton default (per `elastic-beanstalk.md` Sizing Defaults, which size from the version's own config, not Q6)
+- → **AWS: Elastic Beanstalk (Python, LoadBalanced, t4g.medium, arm64)** — the Python platform version is resolved at Generate per `elastic-beanstalk.md` Supported Platforms (the `python39` branch was retired on 2026-08-13, so Generate names the lowest supported Python 3 branch and records a `warnings[]` entry); LoadBalanced from the version's `automatic_scaling`; t4g.medium from `instance_class` F4; Graviton default (per `elastic-beanstalk.md` Sizing Defaults, which size from the version's own config, not Q6)
 - Confidence: `deterministic` (App Engine → EB direct mapping, condition met)
 
 ### Example 4b: App Engine (user chose container orchestration)

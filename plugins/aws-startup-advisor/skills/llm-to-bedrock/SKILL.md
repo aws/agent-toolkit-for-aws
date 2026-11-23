@@ -53,6 +53,10 @@ This skill has two modes. Decide which the user wants **before** the Assess-skil
 The access-only mode does not use `bedrock-migration-assessment` at all, so requiring it there
 would block a user who only wants access enablement.
 
+If the user wants the Claude apps themselves (Claude Desktop or Claude Code) running on Bedrock,
+with no application code to migrate, stop and use `claude-apps-to-bedrock` instead. It calls this
+skill's Access-only mode for the model-access step when both are installed.
+
 Route to **Access-only mode** (jump to the "## Access-only mode" section below, skip 0b and
 Steps 1+) when either is true:
 
@@ -622,7 +626,8 @@ python3 "$BMA_BASE/scripts/readiness.py" "$MIGRATION_DIR" --through estimate
 - **Exit 1, `"ready": false`** (any `reason`: `run_not_found`, `status_not_found`,
   `status_unreadable`, `status_invalid`, `not_this_skill`, `phase_incomplete`,
   `artifact_missing`, `artifact_unreadable`, `profile_invalid`, `preferences_invalid`,
-  `design_invalid`, or `estimate_invalid`) → **stop.** Show the user the `reason` and
+  `design_invalid`, `estimate_invalid`, or `generate_invalid`, which only `--through generate`
+  returns) → **stop.** Show the user the `reason` and
   `detail`, and tell them to resume the run with bedrock-migration-assessment (name
   `$MIGRATION_DIR`), then ask me to migrate again. Do not repair the run or its state file
   yourself, and do not continue to Phase B.
@@ -1312,7 +1317,7 @@ Rebuild these context lines from the same normalized path on every dispatch/resu
 `assess_design_sha256` run-context check detects a changed model/API decision. If a bare
 Astra id is paired with a runtime path, or a CRIS id with Mantle, stop and correct the plan;
 do not switch endpoints or invent another profile. See the resolver's Case C and
-`$BMA_BASE/references/shared/openai-on-bedrock.md`.
+`$BMA_BASE/references/vendored/ai/openai-on-bedrock.md`.
 
 ### C7 — Render summary
 

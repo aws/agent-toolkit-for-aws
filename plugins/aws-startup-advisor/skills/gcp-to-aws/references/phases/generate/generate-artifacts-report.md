@@ -383,7 +383,7 @@ Source: `aws-design.json`, `terraform/baseline.tf`, `estimation-infra.json` obse
 
 **Terraform validation:** from `validation-report.json` when present (`status`, provider version).
 
-Source: estimation artifacts, `validation-report.json`, design warnings
+Source: estimation artifacts, `validation-report.json`, design warnings. A design warning about an Elastic Beanstalk platform branch (a service whose language version had a retired branch) is listed by service with the source version and the branch selected.
 
 ## Step 3: Generate HTML
 

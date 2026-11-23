@@ -18,7 +18,7 @@ Private captures and deployment facts stay ignored and out of Git. Evidence has 
 
 `skills/reporting-continuum-security/scripts/check-current-code.mjs` performs deterministic multi-location matching against a caller-bound source tree, with no network or application execution.
 
-- It returns **Open** only when every significant cited line in every location is unchanged, in order, at its cited position.
+- It returns **Open** only when every non-blank cited line in every location, including punctuation-only structural lines, is unchanged at its exact cited position. Indentation and inner whitespace are preserved; CRLF and trailing whitespace are presentation. Ellipsis lines remain gaps.
 - It returns **Needs review** for every other result when usable source exists, including moved, partial, changed, deleted, unreadable or unsafe locations. Match ratios and best ranges only help locate evidence.
 - With no usable source or snippet it returns scan-only **Open**, explicitly marked as not checked against code.
 
@@ -32,6 +32,17 @@ The self-check checks report structure and evidence consistency; it does not pro
 
 ## Repository-provided isolation and tests
 
-The distribution has no MCP server, acquisition helper, quota helper, plan helper, report renderer, or combined-test runner. Static checks verify manifests, required guidance and exact distribution contents. Offline tests cover the two shipped scripts and selected guidance contracts; they do not prove universal agent compliance.
+The distribution has no MCP server, acquisition helper, quota helper, plan helper, report renderer, or combined-test runner. Static checks verify manifests, required guidance and exact distribution contents. Zero-dependency offline `node:test` tests ship beside each script:
+
+- `skills/reporting-continuum-security/scripts/test/check-current-code.test.mjs` covers code identity, exact positions, fuzzy evidence ranges and unsafe or unreadable paths.
+- `skills/setting-up-continuum/scripts/test/new-external-id.test.mjs` covers random ID format, trust-policy consistency, mode 0600 and overwrite refusal.
+
+Run both from the repository root with Node.js 20 or newer:
+
+```bash
+node --test plugins/aws-continuum/skills/*/scripts/test/
+```
+
+The internal package also tests selected guidance contracts. These tests do not prove universal agent compliance.
 
 No bundled container, disabled-network guarantee, credential exclusion, dropped capabilities, memory limit, or repository-check resource limit is provided. A separately reviewed harness must establish any such property. Alternate hosts and real remediation trains require their own validation before stating release readiness.

@@ -151,7 +151,7 @@ environment: {
 
 Mount the volume at `C:\otel-auto-instrumentation` on the application container as well.
 
-Set `OTEL_SERVICE_NAME` from the existing ECS service or container name. Optionally add `OTEL_RESOURCE_ATTRIBUTES` for attributes such as `deployment.environment=production`.
+Set `OTEL_SERVICE_NAME` from the existing ECS service or container name. Optionally add `OTEL_RESOURCE_ATTRIBUTES` for attributes such as `deployment.environment.name=production`.
 
 ## Step 4: Make the application wait for the init container
 

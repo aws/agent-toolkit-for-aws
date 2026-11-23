@@ -23,11 +23,14 @@ if this skill needs one, add the copy **and** a row in the table below.
 | Vendored path                           | Canonical source                                      |
 | --------------------------------------- | ----------------------------------------------------- |
 | `workshop/workshop-invariants.md`       | `skills/shared/workshop/workshop-invariants.md`       |
+| `estimate/cost-export-inputs.md`        | `skills/shared/estimate/cost-export-inputs.md`        |
+| `migration/upfront-credits.md`          | `skills/shared/migration/upfront-credits.md`          |
 | `ai/ai-anthropic-to-bedrock.md`         | `skills/shared/ai/ai-anthropic-to-bedrock.md`         |
 | `ai/ai-capability-catalog.json`         | `skills/shared/ai/ai-capability-catalog.json`         |
 | `ai/ai-migration-guardrails.md`         | `skills/shared/ai/ai-migration-guardrails.md`         |
 | `ai/ai-model-lifecycle.md`              | `skills/shared/ai/ai-model-lifecycle.md`              |
 | `ai/ai-openai-to-bedrock.md`            | `skills/shared/ai/ai-openai-to-bedrock.md`            |
+| `ai/openai-on-bedrock.md`               | `skills/shared/ai/openai-on-bedrock.md`               |
 | `ai/ai-gemini-to-bedrock.md`            | `skills/shared/ai/ai-gemini-to-bedrock.md`            |
 | `ai/ai-openrouter-to-bedrock.md`        | `skills/shared/ai/ai-openrouter-to-bedrock.md`        |
 | `ai/bedrock-endpoint-policy.md`         | `skills/shared/ai/bedrock-endpoint-policy.md`         |

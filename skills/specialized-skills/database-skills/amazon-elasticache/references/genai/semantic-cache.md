@@ -5,7 +5,7 @@
 Semantic cache for LLM/API responses. Avoids redundant inference calls when prompts are semantically similar (not just exact match). Two deployment options:
 
 * **Application-side comparison** (serverless OK): Generate embeddings in app code, compare locally. No vector index needed in Valkey, just store/retrieve by key. Works with ElastiCache Serverless.
-* **Server-side vector similarity** (node-based Valkey 8.2 or above required; recommend 9.0): FT.SEARCH with KNN finds the nearest cached prompt. Sub-millisecond lookup. Requires ElastiCache node-based with search enabled.
+* **Server-side vector similarity** (node-based Valkey 8.2+, or Serverless Valkey 9.0+; recommend 9.1): FT.SEARCH with KNN finds the nearest cached prompt. Sub-millisecond lookup. Requires search enabled, on node-based Valkey 8.2+ or Serverless Valkey 9.0+.
 
 This guide covers the server-side approach. For the application-side approach (serverless OK, any Valkey version), use the `python_knn_search` fallback in `elasticache-search.md` with semantic cache key patterns below.
 

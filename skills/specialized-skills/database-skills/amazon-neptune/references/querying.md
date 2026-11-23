@@ -20,6 +20,27 @@ neptune_client = client.Client(
 results = neptune_client.submit("g.V().limit(10).valueMap(true)").all().result()
 ```
 
+For bytecode traversals (used in the pagination examples below), build a
+traversal source `g`. Reuse the connection and close it on shutdown. With IAM
+auth enabled, SigV4-sign the handshake (service `neptune-db`); a 403 means the
+request was not signed, so sign it rather than disabling IAM auth.
+
+```python
+import boto3
+from botocore.auth import SigV4Auth
+from botocore.awsrequest import AWSRequest
+from gremlin_python.driver.driver_remote_connection import DriverRemoteConnection
+from gremlin_python.process.anonymous_traversal import traversal
+
+url = 'wss://your-cluster.cluster-xxxx.us-east-1.neptune.amazonaws.com:8182/gremlin'
+creds = boto3.Session().get_credentials().get_frozen_credentials()
+request = AWSRequest(method='GET', url=url)
+SigV4Auth(creds, 'neptune-db', 'us-east-1').add_auth(request)
+
+connection = DriverRemoteConnection(url, 'g', headers=dict(request.headers))
+g = traversal().with_remote(connection)
+```
+
 ### Common traversal patterns
 
 ```groovy
@@ -70,12 +91,18 @@ For large datasets with deep pagination, prefer a **property-based cursor**
 # ❌ Wrong: no pagination — will time out or truncate on large graphs
 results = neptune_client.submit("g.V().hasLabel('Person').valueMap(true)").all().result()
 
-# ✅ Correct: paginate with range() — simple but O(n) for deep pages
+# ✅ Correct: paginate with range() — simple but O(n) for deep pages.
+# `g` is a Gremlin-Python traversal source; values are bytecode arguments.
+# order() gives range() a stable sequence so pages do not skip or repeat.
+from gremlin_python.process.traversal import Order, P, T
+
 PAGE_SIZE = 100
 
 def get_page(offset: int, page_size: int = PAGE_SIZE):
-    query = f"g.V().hasLabel('Person').range({offset}, {offset + page_size}).valueMap(true)"
-    return neptune_client.submit(query).all().result()
+    return (
+        g.V().hasLabel('Person').order().by(T.id).range_(offset, offset + page_size)
+        .valueMap(True).toList()
+    )
 
 # Iterate all pages
 offset = 0
@@ -89,11 +116,10 @@ while True:
 # ✅ Better for large datasets: cursor-based pagination using a property
 def get_page_cursor(last_seen_id: str = None, page_size: int = 100):
     """Use a sequential property as cursor for O(1) page access."""
+    traversal = g.V().hasLabel('Person')
     if last_seen_id:
-        query = f"g.V().hasLabel('Person').has('id', gt('{last_seen_id}')).order().by('id').limit({page_size}).valueMap(true)"
-    else:
-        query = f"g.V().hasLabel('Person').order().by('id').limit({page_size}).valueMap(true)"
-    return neptune_client.submit(query).all().result()
+        traversal = traversal.has('id', P.gt(last_seen_id))
+    return traversal.order().by('id', Order.asc).limit(page_size).valueMap(True).toList()
 ```
 
 ### repeat() / until() — graph traversal loops
