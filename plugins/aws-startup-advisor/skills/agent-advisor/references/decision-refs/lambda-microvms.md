@@ -1,4 +1,4 @@
-# Lambda MicroVMs — Service Card
+# Lambda MicroVMs — Service Card (should mention x86 and Arm architecture choice at image creation)
 
 ## One-liner
 
@@ -46,4 +46,4 @@ launch cap is the decisive weakness for high-volume platforms.
 
 ## Serving & security notes
 
-Entry: ARM64 handler packaging + lifecycle hooks (/ready, /launch, /resume, /suspend, /terminate); event-source wiring as needed. IAM: execution role with `bedrock:InvokeModel` (model-bearing units only — a model-less unit omits it) + service-specific permissions. Networking: per-MicroVM URL over TLS; public service endpoints OR private connectivity via AWS PrivateLink VPC Endpoints (for MicroVM control-plane API calls and per-MicroVM HTTP endpoint connections), available in all regions where Lambda MicroVMs is available.
+Entry: handler packaging (ARM64 default, or x86 if selected at image creation) + lifecycle hooks (/ready, /launch, /resume, /suspend, /terminate); event-source wiring as needed. IAM: execution role with `bedrock:InvokeModel` (model-bearing units only — a model-less unit omits it) + service-specific permissions. Networking: per-MicroVM URL over TLS; public service endpoints OR private connectivity via AWS PrivateLink VPC Endpoints (for MicroVM control-plane API calls and per-MicroVM HTTP endpoint connections), available in all regions where Lambda MicroVMs is available.
