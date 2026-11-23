@@ -92,7 +92,7 @@ def test_skill_wires_generate_as_an_opt_in_fifth_phase() -> None:
     assert 'set `phases.generate` to `"completed"` and `current_phase` to `"complete"`' in step5
     step4 = SKILL.split("## Step 4: Estimate", 1)[1].split("## Step 5", 1)[0]
     assert 'set `phases.estimate` to `"completed"` and `current_phase` to `"generate"`' in step4
-    assert "--through design|estimate|generate" in SKILL and "`generate_invalid`" in SKILL
+    assert "--through discover|clarify|design|estimate|generate" in SKILL and "`generate_invalid`" in SKILL
     discover = (BMA / "references/phases/discover/discover.md").read_text()
     assert '"estimate": "pending", "generate": "pending" }' in discover
     assert "Generate is not in this skill" not in SKILL + (BMA / "references/phases/estimate/estimate-ai.md").read_text()

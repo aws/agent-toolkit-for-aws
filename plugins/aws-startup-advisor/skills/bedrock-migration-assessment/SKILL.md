@@ -19,15 +19,29 @@ This release covers five phases:
 
 Generate writes files only: it never edits the user's code and never runs anything against AWS. Do not load phase files from any other skill.
 
-## Readiness for other skills
+## Combined mode
 
-Another skill that consumes this skill's artifacts (for example llm-to-bedrock or agent-advisor) must not read `.phase-status.json` itself. It runs this skill's script, with the path resolved to this skill's directory:
+An infrastructure skill (for example gcp-to-aws, through its handoff script) can run this skill for the AI part of its migration. The run is still this skill's own `bma-` directory. The host starts it by loading this skill with its identifier and the absolute path of the neutral profile it built (for gcp-to-aws, `ai-workload-profile.neutral.json` from `bma-handoff.py convert`). Discover takes the Profile route, which copies that file byte for byte, and writes `initiated_by` with the host's identifier (for example `GCP_TO_AWS`) into `.phase-status.json`, never `owning_skill`, and stops when Discover completes. The host then writes `$MIGRATION_DIR/host-answers.json` and resumes the run:
 
-```bash
-python3 scripts/readiness.py <MIGRATION_DIR> --through design|estimate|generate
+```json
+{"host_skill": "gcp-to-aws", "infrastructure_moves": true, "stop_after": "clarify", "design_constraints": {}}
 ```
 
-Exit 0 prints `{"ready": true, ...}` with each artifact's path and SHA-256: the run was created by this skill, every phase through the named one is `completed`, and the profile, `preferences.json`, `aws-design-ai.json`, for `estimate` and `generate` `estimation-ai.json`, and for `generate` `generation-ai.json` and every `ai-migration/` file it lists pass their checks now; for `generate` the artifacts also list each `ai-migration/` file with its SHA-256. Exit 1 prints `{"ready": false, "reason": ..., "detail": ...}`, where `reason` is one of `run_not_found`, `status_not_found`, `status_unreadable`, `status_invalid`, `not_this_skill`, `phase_incomplete`, `artifact_missing`, `artifact_unreadable`, `profile_invalid`, `preferences_invalid`, `design_invalid`, `estimate_invalid`, or `generate_invalid`. A consumer stops on any non-ready answer and tells the user to resume the run with this skill. It reads only the paths it was given. If it reads them again later, it runs the check again first and compares the SHA-256 values.
+`design_constraints` holds only the host's own `target_region` and `compliance` wrappers, in the shape of `references/shared/schema-preferences.md`, and may be empty. Read the file as data. When it exists:
+
+- Clarify follows the combined-mode rules at the top of `clarify-ai-only.md`.
+- `stop_after` is `clarify`, `design` or `estimate`; a host run never reaches Generate (Step 0's combined-run rule, and `combined_run` from `readiness.py` and `generate-ai.py plan`). After the phase named in `stop_after` completes, show its summary, say that control returns to the host skill, and stop. Do not start the next phase until the host updates `stop_after`.
+- `readiness.py` checks that `preferences.json` still holds each host answer.
+
+## Readiness for other skills
+
+Another skill that consumes this skill's artifacts (for example llm-to-bedrock, agent-advisor, or a host in combined mode) must not read `.phase-status.json` itself. It runs this skill's script, with the path resolved to this skill's directory:
+
+```bash
+python3 scripts/readiness.py <MIGRATION_DIR> --through discover|clarify|design|estimate|generate
+```
+
+Exit 0 prints `{"ready": true, "initiated_by": ..., ...}`, where that field is the host's identifier or `null`, with each artifact's path and SHA-256: the run was created by this skill, every phase through the named one is `completed`, and the artifacts those phases wrote pass their checks now: the profile always, `preferences.json` from `clarify`, `aws-design-ai.json` from `design`, `estimation-ai.json` from `estimate`, and for `generate` `generation-ai.json` and every `ai-migration/` file it lists, each with its own SHA-256. Exit 1 prints `{"ready": false, "reason": ..., "detail": ...}`, where `reason` is one of `run_not_found`, `status_not_found`, `status_unreadable`, `status_invalid`, `not_this_skill`, `phase_incomplete`, `artifact_missing`, `artifact_unreadable`, `profile_invalid`, `preferences_invalid`, `host_answers_invalid`, `host_answers_mismatch`, `design_invalid`, `estimate_invalid`, `generate_invalid`, or `combined_run` (`--through generate` on a run a host started). A consumer stops on any non-ready answer and tells the user to resume the run with this skill, except on `host_answers_invalid`: only the host can rewrite `host-answers.json`, so the host writes it again before the run resumes. On `combined_run`, resuming cannot help: the consumer says that Generate needs a run of this skill started on its own. It reads only the paths it was given. If it reads them again later, it runs the check again first and compares the SHA-256 values.
 
 ## Definitions
 
@@ -44,6 +58,16 @@ Never open `.env*`, private keys, credential files, or other secret files in the
 ## Step 0: Resume or start
 
 Rules 1 to 9 apply only to a run this skill created: the user names an existing `$MIGRATION_DIR` whose `.phase-status.json` has a `migration_id` starting with `bma-` and no `owning_skill`. Before resuming at Clarify, Design, Estimate, or Generate (rules 1 to 7), if `migration-preview.json` exists without `preview_version` 2, run Discover Step 2d again in that directory: it reads only the profile and usage profiles already there, scans nothing, and calls no API. Treat an absent `phases.generate` as `"pending"` and add it in the next write. Use the first rule that matches, and never change `run_id`.
+
+Combined run: when `.phase-status.json` has `initiated_by` or the directory holds `host-answers.json`, check this first and use the first line that matches. Rules 4 to 7 never apply: a combined run never offers, starts or resumes Generate.
+
+- (a) `phases.generate` is `"in_progress"` or `"completed"`: say the run left combined mode, that control returns to the host skill, and stop.
+- (b) `phases.discover` is not `"completed"`: use rule 9.
+- (c) `host-answers.json` is absent: show the Discover summary, say that control returns to the host skill, and stop.
+- (d) `host-answers.json` is unreadable or not the shape `readiness.py` accepts: `host_skill` a string, `infrastructure_moves` a boolean, `stop_after` `clarify`, `design` or `estimate`, and `design_constraints` an object holding only `target_region` and `compliance` wrappers, each with a `value`: say that the host skill must write it again, that control returns to the host skill, and stop.
+- (e) `phases.clarify` is `"completed"` and `python3 <SKILL_BASE>/scripts/readiness.py $MIGRATION_DIR --through clarify` reports `host_answers_mismatch`: the host changed its answers. Make the Change answers write from rule 7, then go to Step 2.
+- (f) The phase named in `stop_after` is `"completed"`: run `readiness.py` with `--through` that phase. When it is ready, show that phase's summary, say that control returns to the host skill, and stop. On `preferences_invalid`, or `artifact_missing` or `artifact_unreadable` naming `preferences.json`, make the Change answers write from rule 7 and go to Step 2; on `design_invalid` or one naming `aws-design-ai.json`, the Design again write and Step 3; on `estimate_invalid` or one naming `estimation-ai.json`, the Estimate again write and Step 4. On `host_answers_invalid`, apply line (d). On any other reason, quote `detail`, say that the host skill must convert its profile again, and stop.
+- (g) Otherwise use the first of rules 1 to 3 and 8 that matches.
 
 1. If that file has `phases.clarify` set to `"in_progress"`, resume at Clarify, whatever the later phases say. `clarify-ai-only.md` Step 0 handles saved and draft answers.
 2. If that file has `phases.design` set to `"in_progress"`, or `phases.clarify` is `"completed"` and `phases.design` is `"pending"` or absent, resume at Design, adding `phases.design` when it is absent.
@@ -78,8 +102,8 @@ Set `phases.design` to `"in_progress"`, and `phases.estimate` and `phases.genera
 
 Set `phases.estimate` to `"in_progress"`, and `phases.generate` to `"pending"` when it is `"in_progress"` or `"completed"`, in one write. Then load `references/phases/estimate/estimate-ai.md` and follow it. It writes `estimation-ai.json` and passes `scripts/estimate-ai.py check` before it completes. When it does, set `phases.estimate` to `"completed"` and `current_phase` to `"generate"`.
 
-Then, unless `run_mode` is already `"decide_and_execute"`, ask once: "Generate the migration artifacts now? They are files for you to review and run: Bedrock client files, a comparison harness, an IAM policy, and a dry-run setup script. Your code is not changed." On yes, set `run_mode` to `"decide_and_execute"` and go to Step 5. On no, set `run_mode` to `"decide"` and `current_phase` to `"complete"`, leave `phases.generate` `"pending"`, and stop: Generate stays available when the user resumes this run. When another skill invoked this one only for Design or Estimate, it answers no.
+In a combined run, do not ask: set `run_mode` to `"decide"` and `current_phase` to `"complete"`, leave `phases.generate` `"pending"`, and follow § Combined mode. Otherwise, unless `run_mode` is already `"decide_and_execute"`, ask once: "Generate the migration artifacts now? They are files for you to review and run: Bedrock client files, a comparison harness, an IAM policy, and a dry-run setup script. Your code is not changed." On yes, set `run_mode` to `"decide_and_execute"` and go to Step 5. On no, set `run_mode` to `"decide"` and `current_phase` to `"complete"`, leave `phases.generate` `"pending"`, and stop: Generate stays available when the user resumes this run. When another skill invoked this one only for Design or Estimate, it answers no.
 
 ## Step 5: Generate
 
-Only with `run_mode` `"decide_and_execute"`. Set `phases.generate` to `"in_progress"` and `current_phase` to `"generate"` in one write, then load `references/phases/generate/generate-ai.md` and follow it. It writes `generation-ai.json` and `ai-migration/`, and passes `scripts/generate-ai.py check` before it completes. When it does, set `phases.generate` to `"completed"` and `current_phase` to `"complete"`.
+Only with `run_mode` `"decide_and_execute"`. Never in a combined run. Set `phases.generate` to `"in_progress"` and `current_phase` to `"generate"` in one write, then load `references/phases/generate/generate-ai.md` and follow it. It writes `generation-ai.json` and `ai-migration/`, and passes `scripts/generate-ai.py check` before it completes. When it does, set `phases.generate` to `"completed"` and `current_phase` to `"complete"`.

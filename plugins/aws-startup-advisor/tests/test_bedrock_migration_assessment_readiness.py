@@ -152,5 +152,5 @@ def test_the_skill_documents_exactly_the_reasons_the_script_returns() -> None:
     section = SKILL[SKILL.index("## Readiness for other skills"):SKILL.index("## Definitions")]
     documented = set(re.findall(r"`([a-z]+_[a-z_]+)`", section))
     assert returned == documented
-    assert "python3 scripts/readiness.py <MIGRATION_DIR> --through design|estimate" in section
+    assert "python3 scripts/readiness.py <MIGRATION_DIR> --through discover|clarify|design|estimate" in section
     assert "must not read `.phase-status.json` itself" in section
