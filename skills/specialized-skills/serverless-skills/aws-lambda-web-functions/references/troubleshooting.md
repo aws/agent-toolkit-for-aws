@@ -66,7 +66,7 @@ a Node.js default rather than a platform quota:
 
 ```javascript
 const server = http.createServer(handler);
-server.maxHeadersCount = 2000;  // or 0 to disable the count check entirely
+server.maxHeadersCount = 2000;  // raise to a bounded value, leaving room for platform headers
 server.listen(port, host);
 ```
 
