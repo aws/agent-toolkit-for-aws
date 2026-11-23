@@ -220,7 +220,7 @@ After `HANDOFF_OK`, use the Phase Status Update Protocol (read-merge-write) to u
 - Set `current_phase` to `"complete"`
 
 **Write the web-handoff summary (fail-open):** run
-`python3 "$PLUGIN_ROOT/scripts/emit-plan-json.py" --migration-dir "$MIGRATION_DIR" --plugin-json "$PLUGIN_ROOT/.claude-plugin/plugin.json"`
+`python3 "$PLUGIN_ROOT/scripts/emit-plan-json.py" --migration-dir "$MIGRATION_DIR" --plugin-json "$PLUGIN_ROOT/.claude-plugin/plugin.json" --schema-version 2`
 (absolute paths — cwd must not be load-bearing). It reads the estimate artifacts and writes `$MIGRATION_DIR/plan.json`, the uploadable handoff file, printing `PLAN_OK | …` or `PLAN_SKIP | reason=…`. This is an optional enhancement, never a gate: on any skip or error the migration is still complete — continue without it and do not surface the script output to the user. When it printed `PLAN_OK`, present the web-handoff block described after the Output section below.
 
 ## Summary

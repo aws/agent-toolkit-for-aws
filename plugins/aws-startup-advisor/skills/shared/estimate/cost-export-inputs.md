@@ -52,7 +52,7 @@ The emitter compares the selected snapshots with the working files, checks any r
 
 ## Export
 
-Keep existing automatic export commands unchanged. After compatible readers have been verified, an explicitly requested local v2 export uses:
+The Estimate and Generate handoff commands of gcp-to-aws, heroku-to-aws and azure-to-aws request version 2 with `--schema-version 2`. The emitter itself still defaults to version 1. A local v2 export uses:
 
 ```text
 uv run --no-project <path-to-emit-plan-json.py> --migration-dir <run-directory> --schema-version 2

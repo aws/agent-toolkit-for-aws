@@ -171,7 +171,7 @@ Generate's own ordering: the export and CTA happen after the postcondition gate
 succeeds, so a `GATE_FAIL` blocks the export entirely, while an unrelated writer
 failure still fails open and never blocks the phase's completion (PR #435 review,
 databaseId 4240400327). Run
-`python3 "$PLUGIN_ROOT/scripts/emit-plan-json.py" --migration-dir "$MIGRATION_DIR" --plugin-json "$PLUGIN_ROOT/.claude-plugin/plugin.json"`
+`python3 "$PLUGIN_ROOT/scripts/emit-plan-json.py" --migration-dir "$MIGRATION_DIR" --plugin-json "$PLUGIN_ROOT/.claude-plugin/plugin.json" --schema-version 2`
 (absolute paths — cwd must not be load-bearing). It reads the estimate artifacts and
 writes `$MIGRATION_DIR/plan.json`, the uploadable handoff file, printing `PLAN_OK | …`
 or `PLAN_SKIP | reason=…`. This is an optional enhancement, never a gate: on any skip
