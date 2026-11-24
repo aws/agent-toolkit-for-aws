@@ -33,8 +33,23 @@
       "source_machine_type": "n2-standard-8",
       "warnings": [],
       "x86_equivalent": {
+        "architecture": "x86_64",
+        "aws_family": "m6i",
         "instance_type": "m6i.large",
-        "like_for_like": "m6i.2xlarge"
+        "like_for_like": "m6i.2xlarge",
+        "sized_from": {
+          "capped": "m6i.large",
+          "cpu_p95": 0.1214,
+          "like_for_like": "m6i.2xlarge",
+          "memory_p95": 0.1512,
+          "required_memory_gib": 6.29,
+          "required_vcpu": 1.26,
+          "step_cap": 2,
+          "uncapped": "m6i.large",
+          "window_days": 7
+        },
+        "sizing_provenance": "measured",
+        "warnings": []
       }
     },
     {
@@ -65,8 +80,23 @@
       "source_machine_type": "n2-standard-8",
       "warnings": [],
       "x86_equivalent": {
+        "architecture": "x86_64",
+        "aws_family": "m6i",
         "instance_type": "m6i.large",
-        "like_for_like": "m6i.2xlarge"
+        "like_for_like": "m6i.2xlarge",
+        "sized_from": {
+          "capped": "m6i.large",
+          "cpu_p95": 0.0819,
+          "like_for_like": "m6i.2xlarge",
+          "memory_p95": 0.0832,
+          "required_memory_gib": 3.46,
+          "required_vcpu": 0.85,
+          "step_cap": 2,
+          "uncapped": "m6i.large",
+          "window_days": 7
+        },
+        "sizing_provenance": "measured",
+        "warnings": []
       }
     },
     {
@@ -100,8 +130,26 @@
         "memory p95 0.6312 keeps the VM at like-for-like m7g.2xlarge; CPU alone would allow m7g.large"
       ],
       "x86_equivalent": {
+        "architecture": "x86_64",
+        "aws_family": "m6i",
         "instance_type": "m6i.2xlarge",
-        "like_for_like": "m6i.2xlarge"
+        "like_for_like": "m6i.2xlarge",
+        "sized_from": {
+          "capped": "m6i.2xlarge",
+          "cpu_p95": 0.1227,
+          "like_for_like": "m6i.2xlarge",
+          "memory_p95": 0.6312,
+          "required_memory_gib": 26.26,
+          "required_vcpu": 1.28,
+          "step_cap": 2,
+          "uncapped": "m6i.2xlarge",
+          "window_days": 7
+        },
+        "sizing_note": "memory_bound",
+        "sizing_provenance": "measured",
+        "warnings": [
+          "memory p95 0.6312 keeps the VM at like-for-like m6i.2xlarge; CPU alone would allow m6i.large"
+        ]
       }
     },
     {
@@ -125,8 +173,15 @@
         "burst: true was recorded but the VM stayed declared; a burstable target was not evaluated"
       ],
       "x86_equivalent": {
+        "architecture": "x86_64",
+        "aws_family": "m6i",
+        "declared_reason": "memory_unavailable",
         "instance_type": "m6i.2xlarge",
-        "like_for_like": "m6i.2xlarge"
+        "like_for_like": "m6i.2xlarge",
+        "sizing_provenance": "declared",
+        "warnings": [
+          "burst: true was recorded but the VM stayed declared; a burstable target was not evaluated"
+        ]
       }
     },
     {
@@ -148,8 +203,13 @@
       "source_machine_type": "e2-standard-2",
       "warnings": [],
       "x86_equivalent": {
+        "architecture": "x86_64",
+        "aws_family": "m6i",
+        "declared_reason": "insufficient",
         "instance_type": "m6i.large",
-        "like_for_like": "m6i.large"
+        "like_for_like": "m6i.large",
+        "sizing_provenance": "declared",
+        "warnings": []
       }
     },
     {
@@ -171,8 +231,13 @@
       "source_machine_type": "n2-standard-2",
       "warnings": [],
       "x86_equivalent": {
+        "architecture": "x86_64",
+        "aws_family": "m6i",
+        "declared_reason": "idle",
         "instance_type": "m6i.large",
-        "like_for_like": "m6i.large"
+        "like_for_like": "m6i.large",
+        "sizing_provenance": "declared",
+        "warnings": []
       }
     },
     {
@@ -194,8 +259,13 @@
       "source_machine_type": "e2-medium",
       "warnings": [],
       "x86_equivalent": {
+        "architecture": "x86_64",
+        "aws_family": "t3",
+        "declared_reason": "skipped_group_member",
         "instance_type": "t3.medium",
-        "like_for_like": "t3.medium"
+        "like_for_like": "t3.medium",
+        "sizing_provenance": "declared",
+        "warnings": []
       }
     },
     {
@@ -229,8 +299,26 @@
         "sustained 0.61 vCPU exceeds every t4g baseline at or below t4g.small (0.40 vCPU); kept at like-for-like, expect throttling or Unlimited-mode charges"
       ],
       "x86_equivalent": {
+        "architecture": "x86_64",
+        "aws_family": "t3",
         "instance_type": "t3.small",
-        "like_for_like": "t3.small"
+        "like_for_like": "t3.small",
+        "sized_from": {
+          "capped": "t3.small",
+          "cpu_p95": 1.2249,
+          "like_for_like": "t3.small",
+          "memory_p95": 0.381,
+          "required_memory_gib": 0.99,
+          "required_vcpu": 0.8,
+          "step_cap": 2,
+          "uncapped": "t3.small",
+          "window_days": 7
+        },
+        "sizing_note": "burstable_baseline_exceeded",
+        "sizing_provenance": "measured",
+        "warnings": [
+          "sustained 0.61 vCPU exceeds every t3 baseline at or below t3.small (0.40 vCPU); kept at like-for-like, expect throttling or Unlimited-mode charges"
+        ]
       }
     },
     {
@@ -265,8 +353,27 @@
         "burst pattern: sized onto burstable t4g where 0.82 vCPU of sustained load fits under the baseline"
       ],
       "x86_equivalent": {
+        "architecture": "x86_64",
+        "aws_family": "m6i",
         "instance_type": "t3.xlarge",
-        "like_for_like": "m6i.2xlarge"
+        "like_for_like": "m6i.2xlarge",
+        "sized_from": {
+          "burst_family": "t3",
+          "capped": "t3.xlarge",
+          "cpu_p95": 0.1029,
+          "like_for_like": "m6i.2xlarge",
+          "memory_p95": 0.1515,
+          "required_memory_gib": 6.3,
+          "required_vcpu": 1.07,
+          "step_cap": 2,
+          "uncapped": "t3.xlarge",
+          "window_days": 7
+        },
+        "sizing_note": "burst",
+        "sizing_provenance": "measured",
+        "warnings": [
+          "burst pattern: sized onto burstable t3 where 0.82 vCPU of sustained load fits under the baseline"
+        ]
       }
     },
     {

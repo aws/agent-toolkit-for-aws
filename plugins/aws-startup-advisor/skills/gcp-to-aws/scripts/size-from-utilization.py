@@ -28,6 +28,9 @@ _CUSTOM_RE = re.compile(r"^(?P<family>(?:[a-z0-9]+-)?custom)-(?P<vcpu>\d+)-(?P<m
 _SIZED_RE = re.compile(r"^(?P<family>[a-z0-9]+-[a-z]+)-(?P<n>\d+)$")
 _DB_CUSTOM_RE = re.compile(r"^db-custom-(?P<vcpu>\d+)-(?P<mb>\d+)$")
 _DB_LEGACY_RE = re.compile(r"^(?P<family>db-n1-(?:standard|highmem))-(?P<n>\d+)$")
+# Fields an x86_64 mapping takes from x86_equivalent instead of the Graviton decision.
+X86_EQUIVALENT_KEYS = ("instance_type", "aws_family", "architecture", "like_for_like", "sizing_provenance",
+                       "declared_reason", "sized_from", "sizing_note", "warnings")
 def load_json(path: Path) -> Any:
     with path.open(encoding="utf-8") as handle:
         return json.load(handle)
@@ -414,7 +417,9 @@ def size_inventory(inventory: dict[str, Any], catalog: Catalog, thresholds: dict
             decision["source_machine_type"] = machine_type
             if architecture == "graviton":
                 x86 = size_vm(spec, util, catalog, thresholds, cost_optimization, "x86", exempt)
-                decision["x86_equivalent"] = {"instance_type": x86["instance_type"], "like_for_like": x86["like_for_like"]}
+                # The full x86 decision: an x86_64 mapping (Graviton-incompatible tier) takes every sizing field
+                # from here so its like_for_like and sized_from name x86 sizes, not the Graviton ones above.
+                decision["x86_equivalent"] = {k: x86[k] for k in X86_EQUIVALENT_KEYS if k in x86}
         else:
             tier = tier_of(config)
             spec = catalog.cloudsql_spec(tier)

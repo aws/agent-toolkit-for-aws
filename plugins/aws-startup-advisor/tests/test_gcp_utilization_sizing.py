@@ -118,7 +118,14 @@ def test_bursty_vm_passes_the_vcpu_baseline_at_t4g_xlarge_and_fails_at_t4g_large
     assert sizer.baseline_ok(t4g["t4g.xlarge"], load_vcpu)  # 4 × 0.40 = 1.6
     assert decision["instance_type"] == "t4g.xlarge" and decision["sized_from"]["burst_family"] == "t4g"
     assert decision["like_for_like"] == "m7g.2xlarge"  # the like-for-like band is still the fixed family
-    assert decision["x86_equivalent"] == {"instance_type": "t3.xlarge", "like_for_like": "m6i.2xlarge"}
+    # x86_equivalent is the full x86 decision: an x86_64 mapping must not pair t3 with the m7g anchor.
+    x86 = decision["x86_equivalent"]
+    assert x86["instance_type"] == "t3.xlarge" and x86["like_for_like"] == "m6i.2xlarge"
+    assert x86["sizing_provenance"] == "measured" and x86["architecture"] == "x86_64"
+    assert x86["sized_from"]["like_for_like"] == "m6i.2xlarge" and x86["sized_from"]["burst_family"] == "t3"
+    assert x86["sized_from"]["capped"].startswith(("m6i.", "t3."))
+    assert x86["sized_from"]["uncapped"].startswith(("m6i.", "t3."))
+    assert not any(name.startswith("m7g.") for name in (x86["sized_from"]["uncapped"], x86["sized_from"]["capped"]))
 def test_bursty_vm_without_memory_stays_declared_memory_unavailable():
     decision = run()["batch_bursty"]
     assert decision["declared_reason"] == "memory_unavailable"
