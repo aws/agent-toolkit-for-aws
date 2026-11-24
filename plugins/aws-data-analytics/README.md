@@ -16,6 +16,7 @@ This plugin brings AWS data engineering expertise directly into your coding assi
 - **Stream Processing (Amazon Managed Service for Apache Flink)** — Develop, deploy, and tune Apache Flink applications on Amazon Managed Service for Apache Flink, including checkpointing, state, connectors, dependency management, and Flink 1.x to 2.x migration.
 - **AWS Glue Auto Upgrade** — Assess which AWS Glue Spark ETL jobs can use auto upgrade (GlueVersion = "auto"), turn it on for the jobs you confirm as safe to retry, set up upgrade email notifications, and review and approve or decline each pending upgrade yourself.
 - **Spark Troubleshooting (AWS Glue and Amazon EMR)** — Diagnose failed or slow Apache Spark workloads on AWS Glue, Amazon EMR on EC2, EMR Serverless, and EMR on EKS with the SageMaker Unified Studio Spark troubleshooting MCP server, and generate code fix recommendations when the root cause is in the job's code.
+- **Domain Usage (Amazon SageMaker Unified Studio)** — Query the SageMaker Unified Studio system tables with Athena: how a domain is used and how it changed (projects, members, connections, notebooks, subscriptions and subscription requests), who created or changed what, and which project, account and Region own a failing Glue, Redshift or notebook resource.
 
 ## Agent Skills
 
@@ -41,6 +42,7 @@ This plugin brings AWS data engineering expertise directly into your coding assi
 | 18 | `managing-data-asset-access` | Request, approve, share, audit, and revoke access to Amazon SageMaker Catalog assets through subscriptions, and confirm grants have settled | [SKILL.md](skills/managing-data-asset-access/SKILL.md) |
 | 19 | `managing-glue-jobs` | Assess AWS Glue Spark ETL jobs for auto upgrade, turn it on for the jobs you confirm, set up upgrade email notifications, and review and approve or decline pending upgrades, by job name or on a blocking-issue condition | [SKILL.md](skills/managing-glue-jobs/SKILL.md) |
 | 20 | `troubleshoot-spark-job` | Diagnose failed or slow Apache Spark workloads on AWS Glue, Amazon EMR on EC2, EMR Serverless, and EMR on EKS, and generate code fix recommendations when the root cause is code-level | [SKILL.md](skills/troubleshoot-spark-job/SKILL.md) |
+| 21 | `querying-aws-sagemaker-unified-studio-system-tables` | Query the Amazon SageMaker Unified Studio system tables with Athena: domain usage, growth, change history, subscriptions, and the project, account and Region that own a failing resource | [SKILL.md](skills/querying-aws-sagemaker-unified-studio-system-tables/SKILL.md) |
 
 ## MCP Servers
 
