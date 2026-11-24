@@ -255,18 +255,34 @@ def test_schema_documents_utilization_in_live_extensions_only():
         "disk_bytes_used",
         "database_id",
         "A 1.0 inventory without it still validates",
-        "Not yet used for sizing",
+        "§ Measured sizing",
+        "size-from-utilization.py",
     ):
         assert needle in live, needle
     assert "utilization" not in text[: text.index("### Live discovery extensions")]
 
 
-def test_report_exclusions_say_utilization_is_not_yet_used_for_sizing():
+def test_report_known_limitations_cover_every_declared_reason_and_note():
     text = REPORT.read_text()
     exclusions = text[text.index("**Exclusions list:**") : text.index("**Terraform validation:**")]
-    assert "not yet used for sizing" in exclusions
+    assert "not yet used for sizing" not in exclusions, "PR 1's placeholder line must be gone"
     assert "`utilization`" in exclusions
     assert "Cloud Monitoring read access" in exclusions
+    for needle in (
+        'coverage: "insufficient"',
+        '{"status": "unavailable"}',
+        "install the Ops Agent",
+        "burst: true",
+        "idle: true",
+        "skipped_group_member",
+        "user_exempt",
+        "conservative",
+        "memory_bound",
+        "memory_saturated",
+        "burstable_baseline_exceeded",
+        "IOPS were not measured",
+    ):
+        assert needle in exclusions, needle
     # Step 2d emits an all-no_data summary even when every monitoring row was
     # skipped, so the "captured" branch must not fire on `utilization` alone.
     assert "`coverage` is not `no_data`" in exclusions
@@ -283,7 +299,7 @@ def test_fixture_inventory_with_utilization_passes_the_contract():
     assert _unbaselined_errors(report) == []
     inventory = json.loads(INVENTORY.read_text())
     with_util = [r for r in inventory["resources"] if "utilization" in r]
-    assert len(with_util) == 3
+    assert len(with_util) == 11 == len(inventory["resources"])
     expected = {
         (u["resource_type"], u.get("instance_id") or u.get("database_id")): u
         for u in json.loads(EXPECTED_SUMMARY.read_text())["resources"]
