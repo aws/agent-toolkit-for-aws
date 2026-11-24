@@ -1,8 +1,8 @@
 ---
 name: aws-well-architected-review
-description: Performs a full AWS Well-Architected Framework review evaluating every framework question across all pillars discovered from the live AWS documentation by analyzing code, IaC, and configurations to produce evidence-backed findings with Eisenhower-prioritized remediation. Supports full reviews (every framework best practice with BP ID citations), quick reviews (question-level), pillar-scoped reviews, and lens-specific reviews using lenses discovered from the live AWS documentation. Triggers on mentions of Well-Architected review, WA review, WAR, WAFR, pillar assessment, architecture review, workload assessment, or cloud readiness evaluation. Does not apply to learning WA concepts without assessing a workload, ADRs, or migration readiness assessments.
+description: Performs a full AWS Well-Architected Framework review evaluating every framework question across all pillars discovered from the live AWS documentation by analyzing code, IaC, and configurations to produce evidence-backed findings with Eisenhower-prioritized remediation. Supports full reviews (every framework best practice with BP ID citations), quick reviews (question-level), pillar-scoped reviews, and lens-specific reviews using lenses discovered from the live AWS documentation. Also turns findings or named best practices into guardrails mapped to BP IDs (Config rules, CloudWatch alarms, permissions boundaries, SCPs, cfn-guard, CDK Aspects), deployed on user confirmation and verified. Triggers on mentions of Well-Architected review, WA review, WAR, WAFR, pillar assessment, architecture review, workload assessment, cloud readiness evaluation, or Well-Architected guardrails. Does not apply to learning WA concepts without assessing a workload, ADRs, or migration readiness assessments.
 metadata:
-  version: "3"
+  version: "4"
 ---
 
 # Well-Architected Review
@@ -13,7 +13,9 @@ Guides a systematic AWS Well-Architected Framework (WA Framework) review: discov
 
 Framework content is read from the live AWS documentation at review time, never from an embedded snapshot. The AWS MCP server is recommended, not required. When the session has its documentation reader (`aws___read_documentation`; a listed tool that must first be loaded counts as present), read pages with it, and fetch the same `docs.aws.amazon.com` page over HTTPS with the environment's web-fetch tool only when a call to the reader actually returned an error for that page. When the session has no such reader, read every page with the web-fetch tool from the start and record `mcp_error: aws___read_documentation not available in this session`. A web-fetch error that names a passing condition (a timeout, a 429 or 5xx status, or a failed domain safety check such as `Unable to verify if domain ... is safe to fetch`) counts only after three more attempts at that page. Only if no tool could read the pages (each documentation tool the session has actually returned an error, or it has none; record the raw errors), stop and ask the user before proceeding from internal knowledge. Only on the user's explicit agreement proceed in a degraded, title-based run, disclosing `BP pages read: 0 / N in scope` and that the framework inventory could not be verified live. A user instruction not to read BP pages (or not to use documentation, web or network tools) is that agreement already: proceed title-based without asking and name the instruction as the cause (see the evaluation procedure, 5c). So is an instruction to proceed without pausing or without confirmation: do not ask, deliver the disclosed degraded run, and name the tool errors as the cause. Do not depend on any non-public or internal best-practice/WA-guidance MCP; those are unavailable in supported runtimes.
 
-This skill is procedure only: it ships no executable code, and it never asks you to write or run a program. It uses the documentation tools above and the client's own file operations (its native file read, write and edit tools, and its shell only for plain file and directory operations that carry no workload or page text; see the pre-flight below). Every check in it is done by you, the agent, and is reported as agent-checked, never as machine-verified.
+This skill is procedure only: it ships no executable code, and a review never asks you to write or run a program. It uses the documentation tools above and the client's own file operations (its native file read, write and edit tools, and its shell only for plain file and directory operations that carry no workload or page text; see the pre-flight below). Every check in it is done by you, the agent, and is reported as agent-checked, never as machine-verified. Guardrails requests (below) are the one exception: they write control files into the workload's repository and, after the user confirms, deploy and test the controls with the user's own tools.
+
+**Guardrails requests.** When the user asks for guardrails, controls, policy checks or ongoing compliance for Well-Architected best practices (on their own, or by accepting the Step 8 offer after a review), read and follow [guardrails](references/guardrails.md) instead of Steps 1 to 8. A guardrails request is not a review: the review invariants, the corpus gate, the ledger and the report template below do not apply to it, while [security considerations](references/security-considerations.md), the untrusted-data rule and the no-invented-BP-ID rule do. A request for both (a review, then guardrails for its findings) runs the review to its final message first; the guardrails follow only when the user accepts the offer or asked for them up front, and then start from that review's findings.
 
 This skill performs an evidence-based review of an actual workload (from code, IaC, or a supplied architecture description) against the WA Framework. If the request is purely conceptual WA education (no workload to assess), an Architecture Decision Record, or a migration-readiness assessment, defer to the appropriate skill instead of proceeding with a review.
 
@@ -29,6 +31,7 @@ Detailed procedures live in reference files — read each one when its step says
 - [Report template](assets/report-template.md) — the full report structure for the report step
 - [Security considerations](references/security-considerations.md) — secure handling of workload data, review tooling, findings, and persisted artifacts
 - [Structured output](references/structured-output.md) — opt-in `aws-well-architected-review.json` (schema: `assets/output-schema.json`), only when the user asks for machine-readable output
+- [Guardrails](references/guardrails.md): turn findings or named best practices into Config rules, CloudWatch alarms, permissions boundaries, SCPs and CI policy checks mapped to BP IDs; plan, confirm, deploy, verify; optionally a governance steering file for AI coding agents
 
 ## Guardrail — where this skill's own files live (MCP vs local install)
 
@@ -156,7 +159,7 @@ At the end of that same message — never in a new one — offer:
 > - Generate IaC templates to remediate a specific finding?
 > - Create a migration plan for a specific architectural change?
 > - Compare your workload against a specific WA Lens in detail?
-> - Generate automated checks (Config rules, custom metrics) for ongoing compliance?
+> - Turn these findings into guardrails (Config rules, alarms, permissions boundaries, SCPs, cfn-guard or CDK checks) that I deploy after you confirm and then test?
 > - Produce a WA Tool import for tracking in the AWS console?
 
 ## Calibration Guidance
