@@ -32,7 +32,7 @@ SUPPORTED_SKILLS = ("gcp-to-aws", "heroku-to-aws")
 # This is intentionally explicit: mentioned migration alternatives are not
 # executable dependencies. Both migrations require the policy gate and offers.
 DEPENDENCIES = {
-    "gcp-to-aws": ("tf-best-practices", "contextual-offers-for-startups"),
+    "gcp-to-aws": ("tf-best-practices", "contextual-offers-for-startups", "bedrock-migration-assessment"),
     "heroku-to-aws": (
         "tf-best-practices", "contextual-offers-for-startups", "bedrock-migration-assessment",
     ),
@@ -61,13 +61,10 @@ REQUIRED_FILES = {
     "bedrock-migration-assessment": (
         "scripts/validate-ai-profile.py",
         "references/phases/discover/discover-app-code.md",
-    ),
-    "knowledge-base-for-startups": ("references/offers.md",),
-    "bedrock-migration-assessment": (
-        "scripts/validate-ai-profile.py",
         "scripts/readiness.py",
         "scripts/generate-ai.py",
     ),
+    "knowledge-base-for-startups": ("references/offers.md",),
     "gcp-to-aws": (
         "references/shared/validate-migration-report.md",
         "references/phases/generate/generate.md",
