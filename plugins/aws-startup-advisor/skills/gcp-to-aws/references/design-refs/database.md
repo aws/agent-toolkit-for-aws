@@ -30,7 +30,7 @@ Engine (PostgreSQL vs MySQL) comes from GCP `database_version`, not from Q12/Q13
 ### Cloud SQL
 
 - **Product family** → **Q6 only** (see table above). Do not default to Aurora.
-- **RDS path** (`single-az`, `multi-az`): Size from current Cloud SQL tier; `database_traffic` and `db_io_workload` select instance class, optional read replicas, and storage type (**gp3** default; **io2** / Provisioned IOPS when `db_io_workload = "high"`).
+- **RDS path** (`single-az`, `multi-az`): Size from current Cloud SQL tier, or from measured utilization when the inventory entry carries `utilization` (§ Measured sizing below: class from CPU and memory, then connections, then storage from `disk_bytes_used`); `database_traffic` and `db_io_workload` select optional read replicas and storage type (**gp3** default; **io2** / Provisioned IOPS when `db_io_workload = "high"`).
 - **Aurora path** (`multi-az-ha`, `multi-region`): Apply Q12 traffic and Q13 I/O for Aurora Standard vs I/O-Optimized, read replicas, Serverless v2, or DSQL review.
 - **Dev/low spend** → RDS `db.t4g.micro` or `db.t4g.small` single-AZ is appropriate when Q6 = Inconvenient — do not upsell to Aurora Serverless v2.
 - **Migration tooling** — Read `preferences.json` → `design_constraints.db_size.value` (set by Q13b in Clarify) to select the right tool: `"<10GB"` → pg_dump/pg_restore; `"10-100GB"` or `"100-500GB"` → pgcopydb; `">500GB"` → HOLD in Generate for a separately reviewed workflow (AWS DMS full-load + CDC may be appropriate); `"unknown"` → HOLD in Generate until actual size and the maintenance window are verified
@@ -124,6 +124,20 @@ Apply in order:
 - → **AWS: Aurora PostgreSQL Multi-AZ, I/O-Optimized storage**
 - Confidence: `inferred`
 
+## Measured sizing (Cloud SQL → RDS class, storage, RDS Proxy)
+
+On the RDS path, the instance class, allocated storage and the RDS Proxy decision come from the inventory entry's `utilization` object (Cloud Monitoring, `discover-live.md` rows 21e–21n) through the same script `design-refs/compute.md` § Measured sizing runs; its `cloudsql_database` decisions carry `instance_class`, `storage`, `rds_proxy`, `sizing_provenance` and the same `declared_reason` / `sizing_note` / `sized_from` fields. Copy `instance_class` and `storage.allocated_gib` / `storage_type` / `iops` / `throughput_mbps` into `aws_config`, `rds_proxy` into `aws_config.rds_proxy`, and the provenance fields onto the mapping. The classes, the Cloud SQL tier specs (`db-f1-micro` 0.2 reserved vCPU / 0.6 GiB, `db-custom-{vcpu}-{mb}`, legacy `db-n1-*`) and the `max_connections` formula live in `knowledge/design/instance-catalog.json`; `rds_proxy`, `storage` and `memory_saturated_p95_min` in `knowledge/estimate/rightsizing-thresholds.json`.
+
+The rule, for checking a decision by hand:
+
+1. **Anchor.** Like-for-like class = the smallest class in the mapped RDS family (`db.t4g` for the shared-core tiers, so `db-f1-micro` → `db.t4g.micro` as Example 1 says; `db.m7g` for standard/custom; `db.r7g` for highmem or custom above 6 GiB per vCPU) whose vCPU and memory are both at or above the tier's. Recorded as `like_for_like` on every decision.
+2. **Gate.** Same as compute (`cost_optimization`, `sizing_exemptions[]`, `coverage`, numeric memory) except that Cloud SQL never has `idle` or `mig_member`. A gated database keeps the anchor with `sizing_provenance: "declared"` and its `declared_reason`.
+3. **Class from CPU and memory first.** `required_vcpu = (reserved_vcpu or vcpu) × cpu.p95 × headroom_factor`, `required_memory_gib = memory_gib × memory.p95 × headroom_factor`; smallest class at or below the anchor meeting both; `step_cap` applies as for compute. **Measured sizing never picks a class above like-for-like.** When `memory.p95 >= 0.90` the class stays like-for-like, `sizing_provenance` stays `"measured"`, and `sizing_note: "memory_saturated"` records that the declared class is the floor, not evidence of need: Cloud SQL counts page cache, and a 0.6 GB `db-f1-micro` reads 0.99–1.0 all month, so `× 1.3` headroom would otherwise upsize it.
+4. **Then connections.** `max_connections` is the catalog **formula** on the picked class's memory (MySQL `memory_bytes / 12582880`; PostgreSQL `min(memory_bytes / 9531392, 5000)`), never a stored integer. PostgreSQL `connections.p95` is `num_backends` summed over every `database` label, system databases included. Add RDS Proxy (`aws_config.rds_proxy: true`) only when `connections.p95` exceeds `max_connections` **and** `cpu.p95 <= 0.50`; a busy database with many connections (`cpu.p95 > 0.50`) needs a larger class, not a proxy: it is already at like-for-like, measured sizing never picks above it, so the decision carries `sizing_note: "connections_bound"` and a warning to review by hand. A `connections` block with no data skips the proxy decision and says so. No `db.t4g` switch in v1: a measured database stays in its like-for-like family, and the EC2 credit table does not apply.
+5. **Storage.** `allocated_gib = disk_bytes_used.max × 1.5`, rounded up to the next 10 GiB, never below the engine minimum (20 GiB gp3; live: 87 MB used → 20 GiB). Write gp3 with the catalog's 3000 IOPS / 125 MB/s and a warning that v1 did not measure IOPS (shrinking from a large PD-SSD drops the IOPS that disk size was buying). Without `disk_bytes_used`, or when the class stayed declared (step 2), allocated storage falls back to the provisioned Cloud SQL disk as an upper bound (`storage.basis: "declared"`).
+
+Worked examples (`fixtures/gcp-utilization-capture/after-design/sizing-decisions.json`): the live `db-f1-micro` PostgreSQL at cpu 0.11 / memory 1.0 / 5 backends → `db.t4g.micro`, `memory_saturated`, `max_connections` 112, no proxy, 20 GiB gp3. A `db-custom-2-8192` MySQL at cpu 0.30 / memory 0.51 / 37 connections → `db.m7g.large` (the family minimum is also the anchor), `max_connections` 682, no proxy, 12 GiB used → 20 GiB gp3.
+
 ## Output Schema
 
 ```json
@@ -139,11 +153,31 @@ Apply in order:
     "engine_version": "15",
     "instance_class": "db.t4g.micro",
     "multi_az": false,
-    "storage_type": "gp3"
+    "storage_type": "gp3",
+    "allocated_gib": 20,
+    "iops": 3000,
+    "throughput_mbps": 125,
+    "rds_proxy": false
+  },
+  "sizing_provenance": "measured",
+  "sizing_note": "memory_saturated",
+  "like_for_like": "db.t4g.micro",
+  "sized_from": {
+    "cpu_p95": 0.1086,
+    "memory_p95": 0.9999,
+    "window_days": 30,
+    "required_vcpu": 0.03,
+    "required_memory_gib": 0.6,
+    "like_for_like": "db.t4g.micro",
+    "uncapped": "db.t4g.micro",
+    "capped": "db.t4g.micro",
+    "step_cap": 2,
+    "connections_p95": 5.0,
+    "max_connections": 112
   },
   "confidence": "inferred",
   "human_expertise_required": false,
-  "rationale": "Q6 single-az → RDS PostgreSQL; dev-tier sizing from Cloud SQL config; gp3 for low I/O",
+  "rationale": "Q6 single-az → RDS PostgreSQL; measured sizing: db.t4g.micro is the like-for-like floor (memory saturated), 5 backends vs 112 max_connections, 20 GiB gp3 minimum",
   "rubric_applied": [
     "User Preference: availability=single-az",
     "Operational Model: RDS over Aurora for low-HA workload",

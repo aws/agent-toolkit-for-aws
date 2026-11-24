@@ -6,14 +6,15 @@ AWS Graviton (ARM64) instances cost **~15–20% less per hour** than same-spec x
 
 ---
 
-## Savings model (keep the two mechanisms separate)
+## Savings model (keep the mechanisms separate)
 
 | Mechanism                                     | Magnitude                                           | Modeled in Estimate?                                                                                                      |
 | --------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| **Instance-hour price discount**              | 15–20% lower per hour vs x86 at same vCPU/memory    | **Yes** — this is the only savings counted in automated math                                                              |
-| **Performance uplift** (may allow downsizing) | workload-dependent, up to ~25% more throughput/vCPU | **No** — mention in Design narrative only ("validate with load test; you may be able to downsize further"); never counted |
+| **Instance-hour price discount**              | 15–20% lower per hour vs x86 at same vCPU/memory    | **Yes** — the only Graviton-specific savings counted in automated math                                                    |
+| **Performance uplift** (may allow downsizing) | workload-dependent, up to ~25% more throughput/vCPU | **No** — mention in Design narrative only ("validate with load test; you may be able to downsize further"); the uplift is never counted |
+| **Measured right-sizing** (`sizing_provenance: "measured"`) | per resource: `utilization.cpu.p95` / `memory.p95` × `headroom_factor` against `knowledge/design/instance-catalog.json` | **Yes** — a different mechanism from the uplift. Estimate prices the right-sized pick in its right-sized band and rebuilds the like-for-like band from `sized_from.like_for_like` (`estimate-infra.md` Part 2D). The "never counted" rule above is scoped to the architecture uplift and does not apply to measured right-sizing |
 
-**Why vCPU ≠ capacity:** Graviton vCPUs are physical cores; x86 vCPUs are typically hyperthreaded logical cores. The instance mapping below is a _starting point_, not a capacity guarantee. Right-sizing requires benchmarking.
+**Why vCPU ≠ capacity:** Graviton vCPUs are physical cores; x86 vCPUs are typically hyperthreaded logical cores. The instance mapping below is a _starting point_, not a capacity guarantee. Right-sizing beyond what the measured rule in `design-refs/compute.md` § Measured sizing produces requires benchmarking.
 
 ---
 
@@ -40,10 +41,12 @@ RDS (MySQL/PostgreSQL/MariaDB), Aurora, ElastiCache, OpenSearch, and MSK all sup
 | ----------------------------- | ------------------------ | ----------------------- |
 | e2-standard-4 / n2-standard-4 | m5.xlarge / m6i.xlarge   | m7g.xlarge              |
 | e2-standard-8 / n2-standard-8 | m5.2xlarge / m6i.2xlarge | m7g.2xlarge             |
-| c2-standard-8                 | c5.2xlarge / c6i.2xlarge | c7g.2xlarge             |
+| c2-standard-8                 | c5.4xlarge / c6i.4xlarge | c7g.4xlarge             |
 | n2-highmem-4                  | r5.xlarge / r6i.xlarge   | r7g.xlarge              |
 | e2-micro / e2-small           | t3.micro / t3.small      | t4g.micro / t4g.small   |
 | e2-medium                     | t3.medium                | t4g.medium              |
+
+These rows are special cases of the **like-for-like anchor** rule in `knowledge/design/instance-catalog.json`: the smallest size in the mapped AWS family whose vCPU **and** memory are both at or above the GCE machine type's declared values. Any machine type not listed (an `n2-standard-16` anchors to `m7g.4xlarge`) resolves through that rule, and `skills/gcp-to-aws/scripts/size-from-utilization.py` applies it. A `c2-standard-8` carries 32 GB on 8 vCPU while `c7g` is 2 GiB per vCPU, so its anchor is `c7g.4xlarge`, not `c7g.2xlarge`; the compute-optimized family is kept because the workload chose it.
 
 Verify exact pricing per target via `pricing-cache.md` (dev-tier rows); set `pricing_source: "unavailable"` for any family/size not cached.
 

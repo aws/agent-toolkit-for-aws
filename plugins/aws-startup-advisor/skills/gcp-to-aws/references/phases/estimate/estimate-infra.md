@@ -375,6 +375,21 @@ Emit an `architecture_comparison` block in `estimation-infra.json` per the `sche
 
 ---
 
+## Part 2D: Sizing bands (like-for-like vs right-sized)
+
+_Run only when_ at least one `aws-design.json` mapping carries `sizing_provenance: "measured"` (Compute Engine → EC2 or Cloud SQL → RDS sized by `design-refs/compute.md` / `database.md` § Measured sizing). Skip entirely when every mapping is `declared`; the Balanced tier is then the like-for-like figure and no second band is shown.
+
+Two bands, always both when this part runs:
+
+| Band | What it prices | How |
+| ---- | -------------- | --- |
+| **Like-for-like** (`projected_costs.sizing_bands.like_for_like_monthly`) | Every EC2 and RDS mapping at its `like_for_like` size (the anchor recorded on every decision, measured or declared), plus the unchanged rest of the Balanced tier | Rebuild each measured row from `sized_from.like_for_like` (**not** from `uncapped` or `capped`, which are the right-sized picks); declared rows are already at like-for-like. Price with the EC2 (Graviton/x86) and RDS recipes; `knowledge/design/instance-catalog.json` gives the vCPU/memory of both sides so the row is checkable |
+| **Right-sized** (`projected_costs.sizing_bands.right_sized_monthly`) | The design as recommended: `aws_config.instance_type` / `instance_class` (the `capped` pick), `allocated_gib` storage, RDS Proxy where `aws_config.rds_proxy` is true | This is the Balanced tier itself (`aws_monthly_balanced`); the band restates it beside the like-for-like figure |
+
+Record `sizing_bands.measured_resources`, `sizing_bands.delta_monthly = like_for_like_monthly − right_sized_monthly`, and `sizing_bands.basis` (one line: window days, `cost_optimization`, step cap). On every `projected_costs.breakdown` entry for an EC2 or RDS mapping add `sizing_basis` (`"measured"` | `"declared"`) and, when measured, `like_for_like_monthly` for that row so the report's Sizing basis column has a per-row source. This is **not** a fourth pricing tier: Premium / Balanced / Optimized stay as they are, and measured right-sizing is counted here and in the Balanced tier (it is a different mechanism from the Graviton performance uplift, which stays uncounted; see `graviton.md` § Savings model). `pricing_source` is unchanged. Burstable picks (`sized_from.burst_family`) are priced at the `t4g`/`t3` on-demand rate with no Unlimited-mode surcharge, and the report's Known limitations names them.
+
+---
+
 ## Part 3: Cost Comparison
 
 Present a side-by-side comparison:

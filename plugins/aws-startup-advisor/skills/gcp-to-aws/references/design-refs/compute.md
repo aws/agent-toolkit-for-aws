@@ -92,6 +92,31 @@ Branch on `preferences.json` → `design_constraints.cpu_architecture.value` (se
 
 Add a `graviton` block (see `schema-graviton.md`) to the service's output. GPU/CUDA workloads are always x86 here and routed to G5/G6 in the rubric eliminators.
 
+## Measured sizing (Compute Engine → EC2 instance type)
+
+Every `google_compute_instance` mapped to EC2 carries a `sizing_provenance`. Live discovery with Cloud Monitoring (`discover-live.md` rows 21a–21n) attaches a `utilization` object to the inventory entry; this section turns it into an instance type. The numbers live in `knowledge/design/instance-catalog.json` (sizes per AWS family, GCE machine-type specs, shared-core `reserved_vcpu`, the `*-custom-{vcpu}-{mb}` parser) and `knowledge/estimate/rightsizing-thresholds.json` (`headroom_factor`, `step_cap`, `coverage_min`, `burstable_caution`). Nothing here is computed from prose: **run the script once per design** and copy its decisions onto the mappings.
+
+```
+python3 "$PLUGIN_ROOT/skills/gcp-to-aws/scripts/size-from-utilization.py" \
+  --inventory "$MIGRATION_DIR/gcp-resource-inventory.json" \
+  --preferences "$MIGRATION_DIR/preferences.json" \
+  --output "$MIGRATION_DIR/sizing-decisions.json"
+```
+
+It reads `design_constraints.cost_optimization.value` (default `balanced`), `design_constraints.cpu_architecture.value` (default `graviton`) and `sizing_exemptions[]` from `preferences.json`, and emits one decision per VM and Cloud SQL instance (`database.md` consumes the Cloud SQL half). Copy these fields from the decision onto the EC2 mapping: `aws_config.instance_type`, `sizing_provenance`, and whichever of `declared_reason`, `sizing_note`, `sized_from` are present; append the decision's `warnings[]` to the design's `warnings[]`. Use `x86_equivalent.instance_type` instead when the mapping's `graviton.target_architecture` is `x86_64`. A VM the script lists under `skipped` (machine type not in the catalog) is sized by hand with `sizing_provenance: "declared"` and a warning naming the machine type.
+
+**The rule the script applies** (so a reviewer can check a decision by hand):
+
+1. **Like-for-like anchor.** Resolve the machine type to declared `vcpu`, `memory_gib` and, for shared-core types, `reserved_vcpu`. The anchor is the smallest size in the mapped AWS family (`graviton.md`; `t4g`/`t3` for `e2-micro|small|medium`) whose `vcpu` and `memory_gib` are both at or above the declared values. The anchor is always recorded as `like_for_like`, whatever the provenance, so Estimate can build the like-for-like band.
+2. **Gate.** The measured rule runs only when `cost_optimization` is `balanced` or `aggressive`, the VM is not in `sizing_exemptions[]`, `utilization.coverage == "sufficient"`, `utilization.memory` is numeric, `mig_member` is false and `idle` is false. Otherwise `sizing_provenance: "declared"`, `aws_config.instance_type` = the anchor, and `declared_reason` is the first that applies: `conservative`, `user_exempt`, `skipped_group_member`, `insufficient` (coverage `insufficient`, `no_data`, or no `utilization` at all), `memory_unavailable`, `idle`. Right-sizing on CPU alone cannot change the size inside a fixed-ratio family, so `memory_unavailable` is a hard stop, and the warning says to install the Ops Agent.
+3. **Requirement.** `required_vcpu = (reserved_vcpu or vcpu) × cpu.p95 × headroom_factor`; `required_memory_gib = memory_gib × memory.p95 × headroom_factor`. Shared-core `cpu.p95` is a fraction of `reserved_vcpu` and may exceed 1.0; it is used as is, never clamped (an `e2-small` at p95 1.22 is 0.61 vCPU of load).
+4. **Pick.** `uncapped` = the smallest size at or below the anchor meeting both requirements. Measured sizing **never picks above the anchor**: when nothing at or below it fits, the pick is the anchor with `sizing_note` `memory_bound` (memory requirement above the anchor's), `cpu_bound`, or `burstable_baseline_exceeded` (see 6). When the pick equals the anchor only because memory kept it there (CPU alone would allow smaller), `sizing_note: "memory_bound"`, still `sizing_provenance: "measured"`.
+5. **Cap.** `capped = max(uncapped, anchor − step_cap)` by catalog position; `step_cap` is 2 for `balanced` and null (no cap above the family minimum) for `aggressive`. The cap is a floor on how far down the pick may go, so `capped` is always at or above `uncapped` and still meets the requirement. `aws_config.instance_type` is `capped`.
+6. **Burstable targets.** When the target family is `t4g`/`t3` (anchor or `burst`), a size is acceptable only when `(reserved_vcpu or vcpu) × cpu.p95 <= target_vcpu × baseline_cpu_fraction` (`burstable_caution`): compare vCPU of load with vCPU of baseline, never the two fractions. When `utilization.burst` is true, prefer the burstable family at the smallest size at or below its own anchor meeting 3 **and** this check (`sized_from.burst_family`, `sizing_note: "burst"`); an `n2-standard-8` at p95 0.10 (0.82 vCPU) fails `t4g.large` (2 × 0.30 = 0.60) and lands on `t4g.xlarge` (4 × 0.40 = 1.6). When no burstable size passes, a fixed size in the mapped family with `sizing_note: "burst_no_burstable_fit"` and an Auto Scaling note.
+7. **Record** `sized_from: {cpu_p95, memory_p95, window_days, required_vcpu, required_memory_gib, like_for_like, uncapped, capped, step_cap}` and `sizing_provenance: "measured"`.
+
+Worked examples (`fixtures/gcp-utilization-capture/after-design/sizing-decisions.json`, `balanced`): `n2-standard-8` at cpu 0.12 / memory 0.15 → anchor `m7g.2xlarge`, required 1.26 vCPU / 6.3 GiB → `m7g.large`, exactly two steps, so Balanced and Aggressive agree. cpu 0.08 / memory 0.08 → `uncapped: m7g.medium`, Balanced `capped: m7g.large`, Aggressive takes `m7g.medium`. cpu 0.12 / memory 0.63 → needs 26 GiB → `m7g.2xlarge` = anchor, `memory_bound`. The Graviton ~25% per-vCPU uplift is **not** folded into any of this (`graviton.md`).
+
 ## 6-Criteria Rubric
 
 Apply in order; first match wins:
@@ -231,6 +256,9 @@ Deterministic (fast-path) mappings omit `rubric_applied`; inferred (rubric-based
     "target_architecture": "arm64",
     "caveats": []
   },
+  "sizing_provenance": "declared",
+  "declared_reason": "insufficient",
+  "like_for_like": "t4g.medium",
   "confidence": "inferred",
   "rationale": "Rubric: Compute Engine (always-on batch job) → EC2 with Auto Scaling",
   "rubric_applied": [
@@ -241,5 +269,26 @@ Deterministic (fast-path) mappings omit `rubric_applied`; inferred (rubric-based
     "Cluster Context: N/A",
     "Simplicity: EC2 + ASG"
   ]
+}
+```
+
+**Measured sizing fields** (from `size-from-utilization.py`, see § Measured sizing): `sizing_provenance` is `"measured"` or `"declared"` on every EC2 mapping; `declared_reason` (one of `insufficient`, `memory_unavailable`, `idle`, `skipped_group_member`, `user_exempt`, `conservative`) only when declared; `like_for_like` always; `sizing_note` (`memory_bound`, `cpu_bound`, `burst`, `burst_no_burstable_fit`, `burstable_baseline_exceeded`) and `sized_from` only when measured:
+
+```json
+{
+  "aws_config": { "instance_type": "m7g.large", "region": "us-east-1" },
+  "sizing_provenance": "measured",
+  "like_for_like": "m7g.2xlarge",
+  "sized_from": {
+    "cpu_p95": 0.1214,
+    "memory_p95": 0.1512,
+    "window_days": 30,
+    "required_vcpu": 1.26,
+    "required_memory_gib": 6.29,
+    "like_for_like": "m7g.2xlarge",
+    "uncapped": "m7g.large",
+    "capped": "m7g.large",
+    "step_cap": 2
+  }
 }
 ```
