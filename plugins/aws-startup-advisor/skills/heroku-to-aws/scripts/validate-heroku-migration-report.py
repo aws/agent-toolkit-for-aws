@@ -175,6 +175,17 @@ class _SectionParser(HTMLParser):
         # Stack of open sections we are capturing: each {id, parts, seen_depth}.
         self._open_sections: list[dict] = []
         self._section_depth = 0  # nesting depth of <section> (for fragment close)
+        # Rendered elements carrying the `appendix-header` class (the visible
+        # divider above the appendix block), counted with the same comment and
+        # inert-subtree exclusions as sections so decision mode can reject it.
+        self.appendix_headers = 0
+
+    @staticmethod
+    def _has_appendix_header_class(attrs: list[tuple[str, str | None]]) -> bool:
+        return any(
+            name == "class" and value is not None and "appendix-header" in value.split()
+            for name, value in attrs
+        )
 
     def _emit(self, markup: str) -> None:
         # Append raw markup to every section fragment currently being captured.
@@ -187,6 +198,8 @@ class _SectionParser(HTMLParser):
             return
         if self._inert_depth > 0:
             return  # inside an inert subtree — not rendered
+        if self._has_appendix_header_class(attrs):
+            self.appendix_headers += 1
         if tag == "section":
             # Keep nested section attributes in the containing fragment so a
             # second parser retains cost anchors and hidden ancestry.
@@ -205,6 +218,8 @@ class _SectionParser(HTMLParser):
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in _SECTION_INERT_TAGS or self._inert_depth > 0:
             return
+        if self._has_appendix_header_class(attrs):
+            self.appendix_headers += 1
         if tag == "section":
             self._emit(self.get_starttag_text() or "")
             sid = dict(attrs).get("id")
@@ -255,6 +270,11 @@ def _parse_sections(html: str) -> _SectionParser:
 def _section_counts(html: str) -> dict[str, int]:
     """Count rendered <section id> occurrences (comments/inert excluded)."""
     return _parse_sections(html).counts
+
+
+def _appendix_header_count(html: str) -> int:
+    """Count rendered elements with the `appendix-header` class (comments/inert excluded)."""
+    return _parse_sections(html).appendix_headers
 
 
 def _section_html(html: str, section_id: str) -> str | None:
@@ -1542,6 +1562,15 @@ def validate(html: str, migration_dir: Path | None, mode: str = "full") -> list[
                     f'decision mode forbids <section id="{sid}"> — the decision report '
                     "has no appendices; the full migration report (Generate) carries them"
                 )
+        # The visible divider above the appendix block is part of the same
+        # contract (report-decision-core.md: do not render `.appendix-header`).
+        # A lone divider with no sections under it still announces an appendix
+        # that does not exist. Same comment/inert exclusions as the sections.
+        if _appendix_header_count(html) > 0:
+            errors.append(
+                'decision mode forbids a rendered <div class="appendix-header"> — the '
+                "decision report has no appendix divider; the full migration report (Generate) carries it"
+            )
 
     if "draft for review" not in html.lower():
         errors.append('footer must contain "draft for review" disclaimer')

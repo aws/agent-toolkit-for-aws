@@ -102,6 +102,42 @@ def test_decision_report_ignores_appendix_in_comment_or_template() -> None:
     assert "REPORT_OK" in out
 
 
+def test_decision_report_rejects_a_lone_appendix_divider() -> None:
+    """report-decision-core.md forbids `.appendix-header` in decision mode even with
+    no appendix section under it: the divider announces an appendix that does not exist."""
+    for divider in (
+        '<div class="appendix-header">Appendix</div>',
+        '<div class="section-break appendix-header">Appendix</div>',
+        '<h2 class="appendix-header">Appendix</h2>',
+    ):
+        code, out = run(DECISION_GOOD.replace("</footer>", divider + "</footer>"), mode="decision")
+        assert code == 1, (divider, out)
+        assert 'decision mode forbids a rendered <div class="appendix-header">' in out, (divider, out)
+        assert "decision mode forbids <section id=" not in out, (divider, out)
+
+
+def test_decision_report_ignores_appendix_divider_in_comment_or_inert_subtree() -> None:
+    hidden = (
+        '<!-- <div class="appendix-header">Appendix</div> -->'
+        '<template><div class="appendix-header">Appendix</div></template>'
+        '<script>document.write(\'<div class="appendix-header">Appendix</div>\')</script>'
+    )
+    code, out = run(DECISION_GOOD.replace("</footer>", hidden + "</footer>"), mode="decision")
+    assert code == 0, out
+    assert "REPORT_OK" in out
+    # The stylesheet rule for the divider is required by the shell check and must not trip this.
+    assert ".appendix-header {" in DECISION_GOOD
+
+
+def test_full_report_keeps_its_appendix_divider() -> None:
+    """The divider is the full report's skeleton (generate-report.md Step 2); only decision mode rejects it."""
+    html = GOOD.replace('<section id="appendix-services">', '<div class="appendix-header">Appendix</div>\n<section id="appendix-services">', 1)
+    assert html != GOOD
+    code, out = run(html, mode="full")
+    assert code == 0, out
+    assert "REPORT_OK" in out
+
+
 def _without_style(html: str) -> str:
     start = html.index("<style>")
     end = html.index("</style>", start) + len("</style>")
