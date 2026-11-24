@@ -203,7 +203,8 @@ Live gcloud discovery produces the same inventory/cluster schemas with these add
           "mean": 0.0912,
           "max": 0.9, // max of hourly maxes; never drives burst
           "samples_present": 168,
-          "samples_expected": 168
+          "samples_expected": 168,
+          "status": "unavailable|no_data" // only when the metric has no data (row skipped/failed, incomplete page set); coverage is then no_data
         },
         "memory": {
           "p95": 0.1512,
@@ -229,8 +230,8 @@ Live gcloud discovery produces the same inventory/cluster schemas with these add
         "alignment": "1h",
         "cpu": { "p95": 0.1086, "mean": 0.0977, "max": 0.1572, "samples_present": 168, "samples_expected": 168 },
         "memory": { "p95": 0.9999, "mean": 0.9995, "max": 1.0, "samples_present": 168, "samples_expected": 168 },
-        "disk_bytes_used": { "p95": 87293952, "mean": 87293952, "max": 87293952, "samples_present": 168, "samples_expected": 168 }, // integer bytes
-        "connections": { "p95": 5.0, "mean": 3.2917, "max": 5.0, "samples_present": 168, "samples_expected": 168 }, // network/connections (MySQL, SQL Server) or postgresql/num_backends summed across databases
+        "disk_bytes_used": { "p95": 87293952, "mean": 87293952, "max": 87293952, "samples_present": 168, "samples_expected": 168, "status": "unavailable|no_data" }, // integer bytes; or {"status": "unavailable|no_data"} like every metric block
+        "connections": { "p95": 5.0, "mean": 3.2917, "max": 5.0, "samples_present": 168, "samples_expected": 168, "status": "unavailable|no_data" }, // network/connections (MySQL, SQL Server) or postgresql/num_backends summed across databases
         "coverage": "sufficient"
       }
     }

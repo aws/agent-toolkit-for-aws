@@ -272,6 +272,59 @@ def test_report_exclusions_say_utilization_is_not_yet_used_for_sizing():
     assert "`coverage` is not `no_data`" in exclusions
     assert "every `utilization.coverage` is `no_data`" in exclusions
     assert "when any inventory resource carries `utilization`" not in exclusions
+    # `coverage` is CPU-only, so the rule is three-way: a numeric memory/disk/
+    # connections block beside `coverage: no_data` is a partial capture, not a
+    # missing-read-access case.
+    assert "(i)" in exclusions and "(ii)" in exclusions and "(iii)" in exclusions
+    assert "partial 30-day utilization was captured" in exclusions
+    assert "name the metrics" in exclusions
+    assert "CPU coverage is unavailable" in exclusions
+    for block in ("`memory`", "`disk_bytes_used`", "`connections`"):
+        assert block in exclusions, block
+    assert "no `utilization` object anywhere has a numeric block" in exclusions
+
+
+def _exclusion_branch(resources: list[dict]) -> str:
+    """The documented three-way rule, applied to inventory resources."""
+    utilizations = [r["utilization"] for r in resources if "utilization" in r]
+    if any(u["coverage"] != "no_data" for u in utilizations):
+        return "captured"
+    blocks = ("memory", "disk_bytes_used", "connections")
+    if any("p95" in u.get(block, {}) for u in utilizations for block in blocks):
+        return "partial"
+    return "read_access"
+
+
+def test_partial_capture_inventory_validates_and_is_not_the_read_access_case(tmp_path):
+    inventory = json.loads(INVENTORY.read_text())
+    assert _exclusion_branch(inventory["resources"]) == "captured"
+    # Reviewer's shape: CPU rows skipped (coverage no_data everywhere) while the
+    # memory row succeeded with a complete numeric block.
+    for r in inventory["resources"]:
+        u = r.get("utilization")
+        if u is None:
+            continue
+        u["cpu"] = {"status": "no_data"}
+        u["coverage"] = "no_data"
+        if u["resource_type"] == "gce_instance":
+            u["burst"] = False
+            u["idle"] = False
+    partial = [r["utilization"] for r in inventory["resources"] if "utilization" in r]
+    assert all(u["coverage"] == "no_data" for u in partial)
+    assert any("p95" in u["memory"] for u in partial)
+    assert _exclusion_branch(inventory["resources"]) == "partial"
+    run_dir = tmp_path / "after-discover"
+    run_dir.mkdir()
+    (run_dir / "gcp-resource-inventory.json").write_text(json.dumps(inventory, indent=2) + "\n")
+    report = _run_validator(run_dir)
+    assert report["checked_artifacts"] == 1
+    assert _unbaselined_errors(report) == []
+    # Every metric a status block: only then does the read-access sentence apply.
+    for u in partial:
+        for block in ("memory", "disk_bytes_used", "connections"):
+            if block in u:
+                u[block] = {"status": "no_data"}
+    assert _exclusion_branch(inventory["resources"]) == "read_access"
 
 
 # --------------------------------------------------------------------------- fixture inventory
