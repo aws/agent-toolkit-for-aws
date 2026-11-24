@@ -2,7 +2,7 @@
 _assemble: assemble-estimate
 _of_phase: estimate
 _reads:
-  - design.json + cached rate anchors (combined inline in estimate.md)
+  - design.json + cached rate anchors (combined inline in estimate.md; the anchors are dated cache references mirrored by `verify_via_mcp: false` pricing facts in the runtime profiles, never a value Design verified this run)
 _produces:
   - estimate.json
 ---

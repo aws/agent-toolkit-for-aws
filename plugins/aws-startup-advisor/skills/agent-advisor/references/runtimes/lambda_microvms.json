@@ -61,6 +61,7 @@
   "volatile_facts": [
     { "key": "session_cap", "verification_key": "lambda_microvms.session_cap", "value": "8h", "verify_via_mcp": true },
     { "key": "max_compute", "value": "16vCPU/32GB", "verify_via_mcp": true },
+    {"key": "pricing", "verification_key": "lambda_microvms.pricing", "value": {"region": "us-east-1", "unit": "USD per hour (price list is per second: x3600)", "arm64": {"vcpu_hour": 0.0997, "gb_hour": 0.0132}, "x86_64": {"vcpu_hour": 0.1176, "gb_hour": 0.0156}, "default": "arm64"}, "as_of": "2026-11-13", "source": "https://aws.amazon.com/lambda/pricing/", "verify_via_mcp": false, "verification_note": "Dated cache reference, not verified per run: update as_of and estimate.md together."},
     {
       "key": "gpu_support",
       "verification_key": "lambda_microvms.gpu_support",

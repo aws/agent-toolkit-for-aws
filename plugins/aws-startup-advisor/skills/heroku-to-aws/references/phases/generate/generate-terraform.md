@@ -320,11 +320,11 @@ metadata_options {
   http_tokens                 = "required"
   http_put_response_hop_limit = 1
   http_endpoint               = "enabled"
-  instance_metadata_tags      = "enabled"
+  instance_metadata_tags      = "disabled"
 }
 ```
 
-Fargate and Elastic Beanstalk do not emit launch templates in this skill and are unaffected (no synthetic launch template is created). Hop limit `1` here is intentionally different from the account-level default `2` in `aws_ec2_instance_metadata_defaults.baseline` — strict on templates the plugin owns, permissive at the account default.
+Fargate and Elastic Beanstalk do not emit launch templates in this skill and are unaffected (no synthetic launch template is created). Hop limit `1` here is intentionally different from the account-level default `2` in `aws_ec2_instance_metadata_defaults.baseline` — strict on templates the plugin owns, permissive at the account default. `instance_metadata_tags` is `disabled` on this template because EC2 fails a launch whose instance tag keys contain `/` when tags are exposed through IMDS, and the node template carries the required `kubernetes.io/cluster/<name>` tag; nodeadm reads its NodeConfig from user data, so nothing on the node needs tags from IMDS.
 
 **Emission conditions**:
 

@@ -36,7 +36,7 @@ When the compute target preference indicates EKS:
 
 2. **Produce single EKS cluster entry** (constants from the `eks-pod-sizing.json` knowledge → its `cluster` block):
    - `cluster_name`: from `cluster.cluster_name` (`"heroku-migration-cluster"`)
-   - `kubernetes_version`: query the latest EKS-supported stable version at generation time (`aws eks describe-addon-versions`); if the query is unavailable, fall back to `cluster.kubernetes_version_fallback`. Do not hardcode — EKS deprecates older versions on a rolling basis.
+   - `kubernetes_version`: query the newest version in standard support at generation time (`aws eks describe-cluster-versions`, the version with the latest end-of-standard-support date); if the query is unavailable, fall back to `cluster.kubernetes_version_fallback`. Do not hardcode — EKS deprecates older versions on a rolling basis.
    - Node group type: from `cluster.node_group_type_by_pref` keyed on the preference (`eks-managed` → `self-managed`, more control; `eks-or-ecs` → `managed`, less operational burden)
    - Addons: from `cluster.addons`
 
