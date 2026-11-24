@@ -149,7 +149,12 @@ def test_row_21a_carries_the_full_curl_with_an_hour_aligned_30_day_window():
 
 def test_row_7_projects_the_instance_id_and_row_21_checks_the_monitoring_api():
     assert "json(id, name, zone" in ROWS["7"][1]
-    assert "monitoring.googleapis.com" in ROWS["21"][1]
+    # Assert the exact gcloud command fragment, not a bare hostname substring
+    # (CodeQL py/incomplete-url-substring-sanitization flags the latter).
+    assert (
+        'gcloud services list --enabled --filter="config.name=monitoring.googleapis.com"'
+        in ROWS["21"][1]
+    )
     assert ROWS["21"][2] == "`monitoring-api.json`"
     assert "`skipped`" in ROWS["21"][1]
     assert "never enable the API" in ROWS["21"][1]
