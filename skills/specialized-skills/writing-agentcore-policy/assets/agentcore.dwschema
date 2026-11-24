@@ -1,0 +1,29 @@
+// AgentCore event field contract: request/response/error in the policy session.
+// Matches the service event schema: the public `session-pinned.dwschema` with
+// AgentCore field names. The `sessionId` pin scopes every temporal predicate to
+// events from the current request's session.
+decision event <A>::request {
+    ...inputs(A),
+    eventPrincipal: principalType(A),
+    eventResource: resourceType(A),
+    requestId: String,
+    pin sessionId: String = context.sessionId,
+}
+
+event <A>::response {
+    ...inputs(A),
+    ...outputs(A),
+    eventPrincipal: principalType(A),
+    eventResource: resourceType(A),
+    requestId: String,
+    pin sessionId: String = context.sessionId,
+}
+
+// History-only: a call that the Gateway or target rejected, including policy denials.
+event <A>::error {
+    ...inputs(A),
+    eventPrincipal: principalType(A),
+    eventResource: resourceType(A),
+    requestId: String,
+    pin sessionId: String = context.sessionId,
+}

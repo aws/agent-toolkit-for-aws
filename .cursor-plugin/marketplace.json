@@ -37,6 +37,12 @@
       "source": "./plugins/aws-continuum",
       "description": "Discover, prioritize, validate, and remediate security risks across the software development lifecycle with AWS Continuum, right from your coding agent. See which risks are real and drive each one to a tested fix.",
       "version": "1.0.1"
+    },
+    {
+      "name": "aws-context",
+      "source": "./plugins/aws-context",
+      "description": "Ground coding agents in your organization's knowledge with AWS Context: retrieve from your agent context graph, correct or extend it, and record sessions.",
+      "version": "0.1.0"
     }
   ]
 }

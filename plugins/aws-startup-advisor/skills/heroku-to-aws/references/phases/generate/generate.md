@@ -221,3 +221,5 @@ worker, so the pasted error list is what makes the next attempt actionable.
 
 `report-validation-status.json` is a temp status sidecar (like the policy sidecar) — not a
 `_produces` artifact; it exists only to carry the validator result across the worker→gate boundary.
+
+The AI handoff does not wait until this step. When Discover wrote `ai-workload-profile.json`, `SKILL.md` already started `bedrock-migration-assessment` before Clarify. Generate still emits no AI model, price, adapter, or Terraform.

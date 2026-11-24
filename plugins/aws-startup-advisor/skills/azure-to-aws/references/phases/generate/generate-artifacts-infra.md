@@ -334,7 +334,10 @@ For each domain with services in the manifest, populate resource attributes from
   the app count. (This is why the fan-in fold happened in Design; honor it here.)
 - **Secrets:** a Key Vault secret becomes an `aws_secretsmanager_secret` +
   `aws_secretsmanager_secret_version` whose value is a placeholder/`var` reference or a
-  `# fill in Secrets Manager` note — **never** the source secret value. A Key Vault _key_
+  `# fill in Secrets Manager` note — **never** the source secret value. The Secrets Manager
+  secret `name` equals the Key Vault secret name. Every
+  `aws_secretsmanager_secret_version` carries `lifecycle { ignore_changes = [secret_string] }`,
+  so the value that `scripts/04-migrate-secrets.sh` writes is not reset by a later apply. A Key Vault _key_
   becomes a `aws_kms_key`. App settings that referenced a Key Vault secret reference the
   Secrets Manager ARN.
 - **Storage:** a Blob Storage container/account becomes an `aws_s3_bucket` emitted per the
@@ -365,8 +368,10 @@ For each domain with services in the manifest, populate resource attributes from
 
 ## Step 4: outputs.tf
 
-Output identifiers for key resources (VPC ID, DB endpoint, EB env URL, EKS cluster name)
-plus a **`migration_summary`** object with at least: `aws_region`, `environment`,
+Output identifiers for key resources (VPC ID, DB endpoint, EB env URL, EKS cluster name),
+a **`secret_names`** output when the design has Key Vault secrets (each Secrets Manager secret
+is named exactly as its Key Vault secret, so the map sends each name to itself and one name
+serves `scripts/04-migrate-secrets.sh` on both sides), plus a **`migration_summary`** object with at least: `aws_region`, `environment`,
 `migration_id`, `service_count` (resources actually emitted in this `terraform/`),
 `accounted_count` (= `generation-warnings.json.accounted`: generated + deferred +
 skipped/folded — the SAME figure the report body states, so the Terraform summary, the
