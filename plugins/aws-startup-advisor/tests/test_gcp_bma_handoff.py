@@ -989,6 +989,33 @@ def test_accept_generate_refuses_a_path_outside_ai_migration(rel, tree: Path, tm
     assert not (gcp / "generation-ai.json").exists()
 
 
+def test_a_region_change_after_a_generate_accept_reopens_clarify(tree: Path, tmp_path: Path) -> None:
+    gcp = _gcp_run(tmp_path, infra=True)
+    _gcp_prefs(gcp)
+    bma = _generated_bma_run(tmp_path)
+    _open(tree, gcp, bma, "generate")
+    assert _cli(tree, "accept", str(gcp), str(bma), "--through", "generate")[0] == 0
+    prefs = json.loads((gcp / "preferences.json").read_text())
+    prefs["design_constraints"]["target_region"]["value"] = "eu-west-1"
+    (gcp / "preferences.json").write_text(json.dumps(prefs))
+    assert _open(tree, gcp, bma, "clarify", convert=False)[0] == 0
+    assert not (gcp / "generation-ai.json").exists() and not (gcp / "ai-migration").exists()
+    code, out = _cli(tree, "accept", str(gcp), str(bma), "--through", "clarify")
+    assert (code, out["error"], out["reason"]) == (1, "assessment_not_ready", "host_answers_mismatch"), out
+    status = json.loads((bma / ".phase-status.json").read_text())
+    assert status["phases"]["generate"] == "completed"
+    assert json.loads((bma / "host-answers.json").read_text())["stop_after"] == "clarify"
+    # The assessment's Step 0 line (e) Change answers write, then its Clarify keeps the host's region.
+    status["phases"].update(clarify="completed", design="pending", estimate="pending", generate="pending")
+    (bma / ".phase-status.json").write_text(json.dumps(status))
+    bma_prefs = json.loads((bma / "preferences.json").read_text())
+    bma_prefs["design_constraints"]["target_region"]["value"] = "eu-west-1"
+    (bma / "preferences.json").write_text(json.dumps(bma_prefs))
+    code, out = _cli(tree, "accept", str(gcp), str(bma), "--through", "clarify")
+    assert code == 0, out
+    assert json.loads((gcp / "ai-handoff.json").read_text())["through"] == "clarify"
+
+
 def test_accept_never_moves_back_from_generate(tree: Path, tmp_path: Path) -> None:
     gcp = _gcp_run(tmp_path, infra=False)
     bma = _generated_bma_run(tmp_path)

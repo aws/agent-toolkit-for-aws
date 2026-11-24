@@ -12,7 +12,7 @@ gcp-to-aws does not clarify, design, price, or generate AI workloads itself. Whe
 
 ## Step 1: Route
 
-Clarify runs this step once, after its infrastructure questions are written to `preferences.json` (or straight away for an AI-only run). Run `HANDOFF probe`, then `HANDOFF route $MIGRATION_DIR`, and follow the row for the printed `route` and `reason` (`—` when there is no `reason`):
+Clarify runs this step once, after its infrastructure questions are written to `preferences.json` (or straight away for an AI-only run); § Runs without a handoff record also runs it. Run `HANDOFF probe`, then `HANDOFF route $MIGRATION_DIR`, and follow the row for the printed `route` and `reason` (`—` when there is no `reason`):
 
 | `route`    | `reason`                | What to do |
 | ---------- | ----------------------- | ---------- |
@@ -53,7 +53,16 @@ Each gcp-to-aws phase names its `<phase>` in § Phase entry points.
 | Estimate         | `estimate` | Step 4              | `estimation-ai.json` |
 | Generate         | `generate` | Step 4              | `generation-ai.json` and every `ai-migration/` file it lists |
 
-Design, Estimate, and Generate run Step 4 only when `ai-handoff.json` has a `status` other than `deferred`; with no `ai-handoff.json` or a deferred one, they skip the AI track. Generate is opt-in in this skill (`SKILL.md`, Generate is opt-in), so reaching its Step 4 means the user chose to generate; only then write `stop_after` `generate`, which is what lets the assessment run its own Generate.
+Design, Estimate, and Generate run Step 4 only when `ai-handoff.json` has a `status` other than `deferred`; with a deferred one, they skip the AI track. When `ai-workload-profile.json` exists and `ai-handoff.json` does not, they follow § Runs without a handoff record first. Generate is opt-in in this skill (`SKILL.md`, Generate is opt-in), so reaching its Step 4 means the user chose to generate; only then write `stop_after` `generate`, which is what lets the assessment run its own Generate.
+
+## Runs without a handoff record
+
+A run that has `ai-workload-profile.json` but no `ai-handoff.json` was started by an earlier version of this skill, which wrote its own AI files, or its handoff was withdrawn and not opened again. Before the phase that sent you here goes on:
+
+1. List the AI files this skill wrote that are present: `aws-design-ai.json`, `estimation-ai.json`, `generation-ai.json`, and `ai-migration/`. When there are any, tell the user that the AI workloads now run in bedrock-migration-assessment, that these files are removed so they are not mixed with its results, and that the infrastructure results stay; suggest copying `ai-migration/` first. Ask them to confirm. When they do not, stop the phase and say that it continues once they confirm.
+2. Run Step 1. When it stops the run, stop and keep the listed files.
+3. Delete the listed files, as `handoff-gates.md` step 3 does for a route that is no longer supported. They are not copies `accept` recorded, so `route` does not remove them.
+4. When Step 1 deferred the AI workloads, the phase skips the AI track. Otherwise run Steps 2 to 4 with `<phase>` `clarify`, as Clarify does, then return to the phase that sent you here. Its own Step 4 has the assessment run the earlier phases it still needs, and `accept` copies their files.
 
 ## Errors
 

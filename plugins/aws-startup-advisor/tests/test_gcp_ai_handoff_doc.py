@@ -182,6 +182,23 @@ def test_each_gcp_phase_calls_the_handoff_for_its_own_phase(file, phase) -> None
     assert re.search(rf"`{phase}`", text) and "ai-handoff.json" in text, file
 
 
+@pytest.mark.parametrize("file", ["design/design.md", "estimate/estimate.md", "generate/generate.md"])
+def test_a_run_without_a_handoff_record_is_routed_before_the_ai_gate(file) -> None:
+    text = (PHASES / file).read_text(encoding="utf-8")
+    entry_lines = [line for line in text.splitlines() if line.startswith("IF ") and "ai-handoff.json" in line]
+    missing = next(line for line in entry_lines if "`ai-handoff.json` does not exist" in line)
+    assert "`ai-workload-profile.json` exists" in missing and "Runs without a handoff record" in missing, missing
+    active = next(line for line in entry_lines if "other than `deferred`" in line)
+    assert "`ai-workload-profile.json` exists" in active and entry_lines.index(missing) < entry_lines.index(active), active
+    gate = next(line for line in text.splitlines() if line.lstrip().startswith("- ") and "is not `deferred`" in line)
+    assert "`ai-workload-profile.json` exists and `ai-handoff.json` exists" in gate, gate
+    legacy = _section(_doc(), "## Runs without a handoff record")
+    for name in ("aws-design-ai.json", "estimation-ai.json", "generation-ai.json", "ai-migration/", "Step 1", "`clarify`", "confirm"):
+        assert name in legacy, name
+    entry = _section(_doc(), "## Phase entry points")
+    assert "with no `ai-handoff.json` or a deferred one, they skip" not in entry
+
+
 def test_generate_runs_the_ai_track_only_on_the_execute_path() -> None:
     entry = _section(_doc(), "## Phase entry points")
     assert "Generate is opt-in" in entry and "only then write `stop_after` `generate`" in entry

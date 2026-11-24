@@ -65,6 +65,9 @@ SPEND_BASIS = {
     "cost_management_export": "BILLING_DATA",
     "consumption_data": "BILLING_DATA",
     "derived_from_skus": "INVENTORY_ESTIMATE",
+    # bedrock-migration-assessment's estimate-ai.md current_costs.source values.
+    "measured_usage": "BILLING_DATA",
+    "list_price": "TOKEN_VOLUME_ESTIMATE",
 }
 AI_SOURCE = {"openai": "OPENAI", "anthropic": "ANTHROPIC", "gemini": "GCP", "azure_openai": "AZURE", "other": "OTHER"}
 COMPLEXITY_TIER = frozenset({"SMALL", "MEDIUM", "LARGE"})
@@ -123,6 +126,7 @@ SOURCE_SPEND_KEYS = (
     "gcp_total_monthly",
     "total_monthly",
     "gcp_monthly_ai_spend",
+    "monthly_ai_spend",
     "total_current_ai_monthly",
     "heroku_monthly",
     "heroku_monthly_estimated",

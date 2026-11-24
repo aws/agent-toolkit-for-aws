@@ -45,6 +45,8 @@ Produces: `aws-design-billing.json`
 
 ### AI Workload Design
 
+IF `ai-workload-profile.json` exists AND `ai-handoff.json` does not exist: load `references/shared/ai-handoff.md` and follow its § Runs without a handoff record, then continue below.
+
 IF `ai-workload-profile.json` exists AND `ai-handoff.json` has a `status` other than `deferred`:
 
 → Load `references/shared/ai-handoff.md` and run its Step 4 with `<phase>` `design`. bedrock-migration-assessment designs the AI workloads, and `accept` copies its `aws-design-ai.json` here.
@@ -65,7 +67,7 @@ Before marking Design complete, enforce route output gates (fail closed):
 1. Determine which design routes ran:
    - IaC route: `gcp-resource-inventory.json` AND `gcp-resource-clusters.json` exist
    - Billing-only route: `billing-profile.json` exists **with non-empty `services[]`** AND `gcp-resource-inventory.json` does NOT exist (a skip-record profile — empty `services[]`, non-empty `warnings[]` — does not count)
-   - AI route: `ai-workload-profile.json` exists and `ai-handoff.json` is not `deferred`
+   - AI route: `ai-workload-profile.json` exists and `ai-handoff.json` exists and is not `deferred`
 2. Require at least one route to be active. If none active: STOP.
 3. For each active route, require its expected artifact:
    - IaC route -> `aws-design.json`

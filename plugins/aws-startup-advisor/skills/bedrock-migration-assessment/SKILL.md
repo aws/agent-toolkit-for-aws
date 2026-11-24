@@ -61,7 +61,7 @@ Rules 1 to 9 apply only to a run this skill created: the user names an existing 
 
 Combined run: when `.phase-status.json` has `initiated_by` or the directory holds `host-answers.json`, check this first and use the first line that matches. Rules 4 to 7 never apply: a combined run never offers Generate, and starts it, or resumes it the way rule 4 does, only through line (f).
 
-- (a) `phases.generate` is `"in_progress"` or `"completed"` and `stop_after` is not `generate`: say the run left combined mode, that control returns to the host skill, and stop.
+- (a) `phases.generate` is `"in_progress"` or `"completed"`, `stop_after` is not `generate`, and line (e) does not match: say the run left combined mode, that control returns to the host skill, and stop.
 - (b) `phases.discover` is not `"completed"`: use rule 9.
 - (c) `host-answers.json` is absent: show the Discover summary, say that control returns to the host skill, and stop.
 - (d) `host-answers.json` is unreadable or not the shape `readiness.py` accepts: `host_skill` a string, `infrastructure_moves` a boolean, `stop_after` `clarify`, `design`, `estimate` or `generate`, and `design_constraints` an object holding only `target_region` and `compliance` wrappers, each with a `value`: say that the host skill must write it again, that control returns to the host skill, and stop.

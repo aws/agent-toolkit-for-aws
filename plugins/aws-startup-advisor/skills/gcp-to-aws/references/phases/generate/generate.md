@@ -91,7 +91,9 @@ Produces: `generation-infra.json`
 
 ### AI Migration Plan and Artifacts
 
-IF `estimation-ai.json` exists AND `ai-handoff.json` has a `status` other than `deferred`:
+IF `ai-workload-profile.json` exists AND `ai-handoff.json` does not exist: load `references/shared/ai-handoff.md` and follow its § Runs without a handoff record, then continue below.
+
+IF `ai-workload-profile.json` exists AND `ai-handoff.json` has a `status` other than `deferred`:
 
 > Load `references/shared/ai-handoff.md` and run its Step 4 with `<phase>` `generate`. bedrock-migration-assessment writes the AI migration plan and its artifacts, and `accept` copies `generation-ai.json` and every `ai-migration/` file it lists here. This skill does not write AI artifacts of its own.
 
@@ -201,7 +203,7 @@ Verify both stages are complete:
 
 1. **Stage 1 route gates (fail closed)**:
    - If `estimation-infra.json` exists -> require `generation-infra.json`
-   - If `estimation-ai.json` exists and `ai-handoff.json` is not `deferred` -> require `generation-ai.json`, and `ai-handoff.json` with `through` `generate`
+   - If `ai-workload-profile.json` exists and `ai-handoff.json` exists and is not `deferred` -> require `generation-ai.json`, and `ai-handoff.json` with `through` `generate`
    - If `estimation-billing.json` exists -> require `generation-billing.json`
 2. **Stage 2 route gates (fail closed)**:
    - If infra artifact route is active (`generation-infra.json` AND `aws-design.json`) -> require `terraform/`, `scripts/`, and `validation-report.json`. Run `python3 "$PLUGIN_ROOT/skills/tf-best-practices/scripts/validate-terraform-report.py" "$MIGRATION_DIR/validation-report.json"` and require exit 0. This verifies the complete v2 record, including its permitted completion status and `POLICY_OK`; a partial report with only those two fields is insufficient. A skipped or aborted policy failure does not authorize infrastructure completion.

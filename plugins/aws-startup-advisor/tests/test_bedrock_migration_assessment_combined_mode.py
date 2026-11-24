@@ -277,6 +277,17 @@ def test_a_symlinked_host_answers_file_never_unlocks_generate(tmp_path: Path, ca
     assert _cli(run, "generate", capsys)[1]["reason"] == "combined_run"
 
 
+def test_step_0_lets_changed_host_answers_reset_a_run_that_already_generated() -> None:
+    step0 = SKILL[SKILL.index("## Step 0"):SKILL.index("## Step 1")]
+    rule = step0[step0.index("Combined run:"):step0.index("1. ")]
+    lines = [line for line in rule.splitlines() if line.startswith("- (")]
+    left = next(line for line in lines if "left combined mode" in line)
+    changed = next(line for line in lines if "`host_answers_mismatch`" in line and "Change answers" in line)
+    assert lines.index(changed) < lines.index(left) or "line (e) does not match" in left.split(":", 1)[0], left
+    reset = step0[step0.index("   - Change answers:"):].splitlines()[0]
+    assert all(f"`phases.{p}`" in reset for p in ("design", "estimate", "generate")) and '`"pending"`' in reset
+
+
 def test_step_0_runs_generate_only_when_the_host_asks_for_it() -> None:
     step0 = SKILL[SKILL.index("## Step 0"):SKILL.index("## Step 1")]
     rule = step0[step0.index("Combined run:"):step0.index("1. ")]

@@ -85,7 +85,9 @@ Produces: `estimation-billing.json`
 
 ### AI Estimate
 
-IF `aws-design-ai.json` exists AND `ai-handoff.json` has a `status` other than `deferred`:
+IF `ai-workload-profile.json` exists AND `ai-handoff.json` does not exist: load `references/shared/ai-handoff.md` and follow its § Runs without a handoff record, then continue below.
+
+IF `ai-workload-profile.json` exists AND `ai-handoff.json` has a `status` other than `deferred`:
 
 > Load `references/shared/ai-handoff.md` and run its Step 4 with `<phase>` `estimate`. bedrock-migration-assessment prices the AI design, and `accept` copies its `estimation-ai.json` here.
 
@@ -103,7 +105,7 @@ Before marking Estimate complete, enforce route output gates (fail closed):
 1. Determine which estimate routes ran:
    - Infra route: `aws-design.json` exists
    - Billing-only route: `aws-design-billing.json` exists AND `aws-design.json` does NOT exist
-   - AI route: `aws-design-ai.json` exists and `ai-handoff.json` is not `deferred`
+   - AI route: `ai-workload-profile.json` exists and `ai-handoff.json` exists and is not `deferred`
 2. Require at least one route to be active. If none active: STOP.
 3. For each active route, require its expected artifact:
    - Infra route -> `estimation-infra.json`
