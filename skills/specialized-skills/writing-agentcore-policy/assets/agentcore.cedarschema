@@ -1,0 +1,116 @@
+namespace AgentCore {
+
+@mcp_principal("User")
+entity OAuthUser {
+   id: String, // User id from sub claim of OIDC token. This is required
+} tags String;
+
+@mcp_principal("IamEntity")
+entity IamEntity {
+   id: String, // User ARN or assumed role ARN from STS
+};
+
+@mcp_principal("UnauthenticatedUser")
+entity UnauthenticatedUser;
+
+// The first type of resource supported by policy engine
+ // is an AgentCoreGateway. Tool-specific policies should
+ // refer to a specific gateway, generic policies can use
+ // wildcard resources or check that the resource is a
+ // gateway
+// Resource entity i.e. the receiver of the call
+// The McpServer entity should always be the resource entity,
+// Generator requires at least one resource type
+@mcp_resource("Gateway")
+entity Gateway;
+
+@mcp_context("system")
+type SystemContext = {
+    now: datetime
+};
+
+// ---- Guardrails Static Leaf Types ----
+
+type ContentFilterFinding = { confidenceScore: decimal };
+type PromptAttackFinding = { confidenceScore: decimal };
+type SensitiveInfoFinding = { confidenceScore: decimal };
+
+ // An action to categorize our actions into tools
+action Mcp appliesTo {
+    principal: [OAuthUser, IamEntity, UnauthenticatedUser],
+    resource: [Gateway],
+    context: {
+        sessionId: String,
+        system: SystemContext,
+        isOutput: Bool,
+        output?: {},
+    }
+};
+
+// ---- Http Protocol Action ----
+
+action Http appliesTo {
+    principal: [OAuthUser, IamEntity, UnauthenticatedUser],
+    resource: [Gateway],
+    context: {
+        sessionId: String,
+        system: SystemContext,
+        isOutput: Bool,
+        output?: {},
+    }
+};
+
+@mcp_action("CallTools")
+action CallTool in [Mcp] appliesTo {
+    principal: [OAuthUser, IamEntity, UnauthenticatedUser],
+    resource: [Gateway],
+    context: {
+        sessionId: String,
+        system: SystemContext,
+        isOutput: Bool,
+        output?: {},
+    }
+};
+
+action UnknownTool in [CallTool] appliesTo {
+     principal: [OAuthUser, IamEntity, UnauthenticatedUser],
+     resource: [Gateway],
+     context: {
+        sessionId: String,
+        system: SystemContext,
+        isOutput: Bool,
+        output?: {},
+     }
+};
+
+// ---- Runtime Action Groups ----
+
+action InvokeAgent in [Http] appliesTo {
+    principal: [OAuthUser, IamEntity, UnauthenticatedUser],
+    resource: [Gateway],
+    context: {
+        sessionId: String,
+        system: SystemContext,
+        isOutput: Bool,
+        input?: {},
+        output?: {},
+    }
+};
+
+action InvokeLLM in [Http] appliesTo {
+    principal: [OAuthUser, IamEntity, UnauthenticatedUser],
+    resource: [Gateway],
+    context: {
+        sessionId: String,
+        system: SystemContext,
+        isOutput: Bool,
+        input?: {},
+        output?: {},
+    }
+};
+
+
+
+
+
+}
