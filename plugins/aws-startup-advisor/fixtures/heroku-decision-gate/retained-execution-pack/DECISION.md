@@ -16,6 +16,8 @@ Go, with conditions, at medium confidence. Estimated AWS Balanced is $210 per mo
 | **Balanced** (compare Heroku to this row first) | **$210/mo**      |
 | Optimized                                       | $178/mo          |
 
+💡 Review [AWS Activate credits](https://aws.amazon.com/startups/credits/) tiers (Founders for self-funded startups, Portfolio for VC- or accelerator-backed ones) — your funding stage was not confirmed in Clarify. Credits apply only to charges after approval, so apply before any deployment.
+
 Heroku baseline (from your Heroku invoice): Est. $340/mo.
 
 ## Timeline

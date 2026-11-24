@@ -1173,3 +1173,109 @@ def test_security_appendix_requires_threat_columns() -> None:
     assert code == 1, out
     assert "What it does" in out
     assert "Threat mitigated" in out
+
+
+# --- AWS Activate credits callout (report-decision-core.md § Startup credits callout) ---
+
+ACTIVATE_LINK = '<a href="https://aws.amazon.com/startups/credits/">AWS Activate credits</a>'
+FOUNDERS_CALLOUT = (
+    '<div class="callout callout-info">💡 You\'re flagged as eligible for AWS Activate Founders '
+    "credits (up to $5,000) to offset infrastructure costs — apply at " + ACTIVATE_LINK
+    + " before running any deployment. Credits do not apply retroactively.</div>"
+)
+NEUTRAL_CALLOUT = (
+    '<div class="callout callout-info">💡 Review ' + ACTIVATE_LINK
+    + " tiers — funding stage not confirmed in Clarify.</div>"
+)
+
+
+def _with_summary(extra: str) -> str:
+    return GOOD.replace(
+        '<p class="verdict-headline">Go, with conditions</p>',
+        '<p class="verdict-headline">Go, with conditions</p>' + extra,
+    )
+
+
+def _prefs_dir(tmp: str, status: str | None) -> Path:
+    root = Path(tmp)
+    prefs: dict = {"global": {"target_region": "us-east-1"}}
+    if status is not None:
+        prefs["global"]["startup_program_status"] = status
+    (root / "preferences.json").write_text(json.dumps(prefs), encoding="utf-8")
+    return root
+
+
+def test_activate_mention_requires_apply_link() -> None:
+    html = _with_summary("<p>You may qualify for AWS Activate credits.</p>")
+    code, out = run(html)
+    assert code == 1
+    assert "no clickable official apply link" in out
+
+
+def test_activate_callout_with_link_passes_without_preferences() -> None:
+    code, out = run(_with_summary(FOUNDERS_CALLOUT.replace("eligible for AWS Activate Founders credits (up to $5,000)", "eligible for AWS Activate credits")))
+    assert code == 0, out
+
+
+def test_known_status_requires_callout() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        code, out = run(GOOD, _prefs_dir(tmp, "eligible_founders"))
+    assert code == 1
+    assert "has no AWS Activate credits callout" in out
+
+
+def test_founders_callout_passes_for_eligible_founders() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        code, out = run(_with_summary(FOUNDERS_CALLOUT), _prefs_dir(tmp, "eligible_founders"))
+    assert code == 0, out
+
+
+def test_unknown_status_forbids_tier_claim() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        code, out = run(_with_summary(FOUNDERS_CALLOUT), _prefs_dir(tmp, "unknown"))
+    assert code == 1
+    assert "neutral wording only" in out
+
+
+def test_absent_status_forbids_tier_claim() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        code, out = run(_with_summary(FOUNDERS_CALLOUT), _prefs_dir(tmp, None))
+    assert code == 1
+    assert "neutral wording only" in out
+
+
+def test_unknown_status_accepts_neutral_callout() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        code, out = run(_with_summary(NEUTRAL_CALLOUT), _prefs_dir(tmp, "unknown"))
+    assert code == 0, out
+
+
+def test_has_credits_forbids_apply_language() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        code, out = run(_with_summary(FOUNDERS_CALLOUT), _prefs_dir(tmp, "has_credits"))
+    assert code == 1
+    assert '"apply for" language' in out
+
+
+def test_has_credits_accepts_existing_credits_note() -> None:
+    callout = (
+        '<div class="callout callout-info">💡 Your existing ' + ACTIVATE_LINK
+        + " already cover the new AWS charges this plan creates.</div>"
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        code, out = run(_with_summary(callout), _prefs_dir(tmp, "has_credits"))
+    assert code == 0, out
+
+
+def test_invalid_status_value_fails() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        code, out = run(_with_summary(NEUTRAL_CALLOUT), _prefs_dir(tmp, "founders"))
+    assert code == 1
+    assert "is not one of" in out
+
+
+def test_activate_callout_enforced_in_decision_mode() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        code, out = run(DECISION_GOOD, _prefs_dir(tmp, "eligible_portfolio"), mode="decision")
+    assert code == 1
+    assert "has no AWS Activate credits callout" in out

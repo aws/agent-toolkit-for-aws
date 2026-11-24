@@ -34,7 +34,7 @@ _contributes:
 | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `estimation-infra.json`                                                                                                        | Recommendation path, three cost tiers, complexity, `optimization_opportunities[]`                                                                                               |
 | `aws-design.json`                                                                                                              | Short service count / primary compute target                                                                                                                                    |
-| `preferences.json`                                                                                                             | Region, HA, arch (active scenario = working tree)                                                                                                                               |
+| `preferences.json`                                                                                                             | Region, HA, arch (active scenario = working tree); `global.startup_program_status` for the Activate credits callout                                                                                                                               |
 | `scenarios/index.json` + manifests **+ each scenario's `scenarios/scenario-NNN.preferences.json` / `.aws-design.json` copies** | What-if table when ≥2 scenarios — manifests carry the cost tiers/complexity; the per-scenario Region/HA/Compute/Arch columns come from the scenario's preferences/design copies |
 | `MIGRATION_GUIDE.md`                                                                                                           | Must already exist (docs fragment ran first)                                                                                                                                    |
 | `heroku-resource-inventory.json`                                                                                               | `metadata.apps_by_stack_status` / `metadata.eol_stack_apps` for the end-of-life stack line (tolerate absence on older inventories)                                               |
@@ -169,7 +169,7 @@ Write a **self-contained** HTML file to `$MIGRATION_DIR/migration-report.html`
 | `exec-share`        | Always render, in both modes, immediately after the table of contents. The copy-ready CFO brief defined below. No new arithmetic |
 | `exec-timeline`     | Always render, in both modes, after `developer-workflow` and before `what-if-scenarios` (or before `next-steps` / `decision-cta` when there is no what-if section). The planning band defined below |
 | `shared-data-stores` | **Conditional** — only when the inventory has `shared_data_stores.cohorts` with at least one entry. One table: Cohort / Apps (count) / Shared stores (count) / App names. One sentence above it: apps in a cohort read the same database, cache or Kafka cluster and cannot be cut over strictly one at a time without cross-cloud access to that store; sequence them as a group or plan the interim connectivity. No ordering, no recommendation of which cohort goes first |
-| `next-steps`        | Ordered list pointing to `MIGRATION_GUIDE.md` phases (not a procedure dump). Include one bullet noting the Terraform ships with `baseline.tf` (account security baseline — GuardDuty, CloudTrail, budget alerts) and that three contact emails must be set in tfvars before `terraform plan` |
+| `next-steps`        | Ordered list pointing to `MIGRATION_GUIDE.md` phases (not a procedure dump). Include one bullet noting the Terraform ships with `baseline.tf` (account security baseline — GuardDuty, CloudTrail, budget alerts) and that three contact emails must be set in tfvars before `terraform plan`. Unless `startup_program_status` is `has_credits`, include one item: apply for [AWS Activate credits](https://aws.amazon.com/startups/credits/) before `terraform apply` — credits do not apply retroactively |
 
 **Cost-figure anchor (machine-checkable).** In `exec-costs`, wrap the recommended AWS
 monthly (Balanced) dollar figure in a `data-cost-key="aws_monthly_balanced"` attribute so
@@ -224,6 +224,18 @@ Only untagged _illustrative_ numbers are skipped.
    line — `Developer workflow was rated critical; see
    <a href="#developer-workflow">Developer workflow</a> for what stays, what changes
    and what must be built.`
+7. **AWS Activate credits callout (always, both modes):** the 💡
+   `<div class="callout callout-info">` defined in
+   `references/shared/report-decision-core.md` § Startup credits callout, placed after
+   the cost one-liner. Wording follows `preferences.json`
+   `global.startup_program_status`: `eligible_founders` → Founders (up to $5,000);
+   `eligible_portfolio` → Portfolio (up to $200,000, Org ID from your investor);
+   `has_credits` → credits already on the account, no "apply for"; `unknown`/absent
+   → neutral both-tiers wording with no confirmed tier. Always include the
+   clickable apply link `https://aws.amazon.com/startups/credits/` inside the
+   callout (the validator fails a summary that names Activate without it). Never a
+   metric card; never infer the tier from spend. Unless `has_credits`, say credits
+   are not retroactive — apply before `terraform apply`.
 
 ### `decision-basis` (end of summary, when v2 fields exist)
 
@@ -452,6 +464,8 @@ section { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; paddi
 .savings { color: #137333; font-weight: 650; }
 .increase { color: #c5221f; font-weight: 650; }
 .share-card { background: #f0f6fc; border: 1px solid #d0d7de; border-left: 4px solid #0969da; padding: 0.85rem 1rem; }
+.callout { padding: 0.85rem 1rem; border-radius: 6px; margin: 0.85rem 0; font-size: 0.95rem; }
+.callout-info { background: #eef5ff; border: 1px solid #0969da; border-left: 4px solid #0969da; }
 .appendix-header { background: #232f3e; color: #fff; padding: 1rem 1.5rem; margin: 2rem 0 1rem; }
 a:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
 table { width: 100%; border-collapse: collapse; margin: 0.75rem 0 1rem; font-size: 0.88rem; }
@@ -573,6 +587,10 @@ the report is edited — a stub is never acceptable):
 10. If `cost_comparison.comparison_status == 'incomplete_unmatched_services'`,
     confirm the unmatched-service caveat is visible text next to the
     Heroku-vs-AWS figure, not only inside `baseline_note`.
+11. `decision-summary` contains the 💡 Activate credits callout (`.callout-info`) with a
+    clickable `https://aws.amazon.com/startups/credits/` link, worded for
+    `global.startup_program_status` — tier and dollar amount only for `eligible_founders`
+    / `eligible_portfolio`, no "apply for" wording for `has_credits`, neutral for `unknown`.
 
 A report failure must not delete the Terraform/docs — repair the HTML in this fragment. Fixing
 the report is **only** done here, before control returns; the completion gate never edits it.

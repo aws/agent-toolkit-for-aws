@@ -49,7 +49,8 @@ Write `$MIGRATION_DIR/preferences.json`:
     "interim_cutover": false,
     "target_exit_date": "<ISO date or null>",
     "ktlo_warning": "<warning text or null>",
-    "fir_intent": "<Q11 value or null>"
+    "fir_intent": "<Q11 value or null>",
+    "startup_program_status": "<Q17 value: has_credits|eligible_founders|eligible_portfolio|unknown>"
   },
   "data": {
     "database_ha": "<Q6 value>",
@@ -117,6 +118,7 @@ Write `$MIGRATION_DIR/preferences.json`:
     "Q1": "user|extracted|default",
     "Q2": "user|extracted|default",
     "Q16": "user|default",
+    "Q17": "user|default",
     ...
   }
 }
@@ -148,6 +150,7 @@ Do **not** write a `workshop` object from Clarify. The what-if workshop
 9. `design_constraints.eb_deploy_method` is required when the resolved compute plan includes at least one Elastic Beanstalk formation; omit it for all-Fargate or all-EKS targets.
 10. Omit `workshop` on Clarify assemble — workshop mode owns that object.
 11. `operational.dockerfile_apps` is written only when `operational.containerization_status` is `"partial"` (Q12b follow-up): a non-empty array of inventory `apps[].app_name` values that already have a Dockerfile, including every `container`-stack app. Omit it for `containerized` and `buildpack_only`. Generate resolves each app's containerization method as `stack == "container"` or listed here → `dockerfile`, otherwise `operational.containerization_method`; an app's resolution is **never** inferred from its stack alone.
+12. `global.startup_program_status` is always written (Q17 fires on both paths) and is one of `"has_credits"`, `"eligible_founders"`, `"eligible_portfolio"`, `"unknown"`. `sources.Q17` is `"user"` only when the founder picked an option; a skipped or "use defaults for the rest" Q17 writes `"unknown"` with `sources.Q17: "default"` and lists `Q17` in `metadata.questions_defaulted`. The report (`references/shared/report-decision-core.md` § Startup credits callout) renders a tier only for `eligible_*` / `has_credits` and neutral wording for `"unknown"`; nothing in Design or Estimate reads this field, so it never moves the number.
 
 ---
 
@@ -168,6 +171,7 @@ Before handing off to Design:
 - [ ] If Private Space peering detected → `network.subnet_ids` contains 1–6 valid IDs
 - [ ] If peering detected and VPC ID needed → `network.existing_vpc_id` is populated
 - [ ] If Fir apps detected → `global.fir_intent` is populated (not null)
+- [ ] `global.startup_program_status` is one of `"has_credits"`, `"eligible_founders"`, `"eligible_portfolio"`, `"unknown"`, and `sources.Q17` is present; an `eligible_*` or `has_credits` value only with `sources.Q17` = `"user"`
 - [ ] `operational.containerization_status` is populated
 - [ ] `operational.log_retention_days`, when present (fresh or reused preferences alike), is an integer 1–3653; Generate maps it to the Elastic Beanstalk `RetentionInDays` domain (smallest accepted value >= the preference — `clarify-interview.md` Q13), so a value outside 1–3653 is rejected here, not rounded
 - [ ] `design_constraints.compute_target.default` is one of: `"elastic_beanstalk"`, `"ecs-fargate"`, `"eks-managed"`, `"eks-or-ecs"`
