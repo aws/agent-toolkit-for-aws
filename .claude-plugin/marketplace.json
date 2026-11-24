@@ -383,6 +383,24 @@
       "name": "aws-continuum",
       "source": "./plugins/aws-continuum",
       "version": "1.0.1"
+    },
+    {
+      "category": "cloud",
+      "description": "Ground coding agents in your organization's knowledge with AWS Context: retrieve from your agent context graph, correct or extend it, and record sessions.",
+      "keywords": [
+        "aws",
+        "aws-context",
+        "knowledge-graph",
+        "agent-context",
+        "retrieval",
+        "agentic-retrieval",
+        "data-catalog",
+        "glue",
+        "bedrock-knowledge-bases"
+      ],
+      "name": "aws-context",
+      "source": "./plugins/aws-context",
+      "version": "0.1.0"
     }
   ]
 }
