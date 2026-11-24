@@ -513,7 +513,7 @@ def test_final_recommendation_uses_computed_roi(skill):
     assert "~10% higher" not in final and "costs ~10% more" not in final
 
 
-def test_gcp_report_lists_only_generated_profile_attribution():
+def test_gcp_report_never_lists_profile_attribution():
     path = PLUGIN / "skills/gcp-to-aws/references/phases/generate/generate-artifacts-report.md"
     text = path.read_text()
     controls = text.split("**Cost guardrails", 1)[1].split("**What the baseline", 1)[0]
@@ -521,10 +521,7 @@ def test_gcp_report_lists_only_generated_profile_attribution():
     assert any("Bedrock budget" in line for line in unconditional_rows)
     assert any("Cost anomaly detection" in line for line in unconditional_rows)
     assert not any("Inference profiles" in line for line in unconditional_rows)
-    assert "actual generated `bedrock_monitoring.tf`" in controls
-    assert "enabled `aws_bedrock_inference_profile` resource" in controls
-    assert "`bedrock_inference_profile_arns` output" in controls
-    assert "add profile attribution only when an eligible profile was generated" in text
+    assert "Never add an Inference profiles row" in controls and "bedrock_monitoring.tf" not in text
 
 
 def advisor_comparator():

@@ -248,9 +248,8 @@ Open any JSON file with a text editor or `cat <filename> | python3 -m json.tool`
 
 | Artifact                                                    | Description                                                                       |
 | ----------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `ai-migration/bedrock_monitoring.tf`                        | Bedrock budget alerts and anomaly detection; add profile attribution only when an eligible profile was generated |
 | `ai-migration/STARTUP_PROGRAMS.md` or `STARTUP_PROGRAMS.md` | AWS Activate credit tiers, application URLs, eligibility guidance                 |
-| `ai-migration/setup_bedrock.sh`                             | Bedrock model access setup script                                                 |
+| `ai-migration/setup_bedrock.sh`                             | Bedrock model access setup, plus the Bedrock budget and cost anomaly monitor (dry run unless `--execute`) |
 | `ai-migration/test_comparison.py`                           | A/B comparison harness for source vs Bedrock quality                              |
 
 Do not list files that were not generated.
@@ -332,14 +331,16 @@ Full security baseline capabilities. Executive summary shows a teaser; this appe
 | AWS Config          | Continuous recording of resource configuration changes | Change audit trail for SOC 2 / PCI | ~$2–10/mo    |
 | Security Hub + FSBP | Automated security checks against AWS best practices   | Baseline posture scoring           | ~$1–15/mo    |
 
-**Cost guardrails (when `$MIGRATION_DIR/ai-migration/bedrock_monitoring.tf` exists):**
+**Cost guardrails (when `$MIGRATION_DIR/ai-migration/setup_bedrock.sh` exists and contains the step `== 6. Bedrock budget and cost anomaly monitor`):**
+
+bedrock-migration-assessment's Generate writes both controls into that script, and they exist only after the user runs it with `--execute`; say so under the table.
 
 | Control                         | What it does for you                                                    | Threat mitigated                                   | GCP equivalent                                 | Monthly cost |
 | ------------------------------- | ----------------------------------------------------------------------- | -------------------------------------------------- | ---------------------------------------------- | ------------ |
-| Bedrock budget (1.5× projected) | Hard spend alert at 150% of estimated AI costs — fires before month-end | Runaway token spend from buggy retry loops         | GCP Budgets (free, but no per-service scoping) | $0           |
-| Cost anomaly detection          | Daily digest when AI spend deviates from baseline (~24h data lag)       | Gradual cost creep, unexpected model-price changes | None (no GCP per-service anomaly equivalent)   | $0           |
+| Bedrock budget (1.5× projected) | Monthly budget at the script's `BUDGET_USD` default (1.5× the projected AI cost, at least $10); emails at 80% actual and 100% forecast when run with `--alert-email` | Runaway token spend from buggy retry loops         | GCP Budgets (free, but no per-service scoping) | $0           |
+| Cost anomaly detection          | Daily email for a spend anomaly whose impact is 50% or more of expected spend, when run with `--alert-email` (~24h data lag) | Gradual cost creep, unexpected model-price changes | None (no GCP per-service anomaly equivalent)   | $0           |
 
-Append an **Inference profiles (tagged)** row for per-model Cost Explorer attribution only when the actual generated `bedrock_monitoring.tf` contains an enabled `aws_bedrock_inference_profile` resource and its `bedrock_inference_profile_arns` output, and the selected model/API supports that profile. A file's existence, a comment mentioning profiles, or a disabled resource is not evidence of this control. Omit the row for Astra Mantle Chat/Responses and runtime OpenAI Chat/Responses; retain budget and anomaly rows. A supported runtime Converse pack that emits the profile retains the attribution row. Apply this same condition to the artifact description in Appendix E.
+Read the budget row from the script's variable lines, `BUDGET_USD="${BUDGET_USD:-<amount>}"` and `BUDGET_SERVICES="${BUDGET_SERVICES:-<services>}"`. When either default is empty, the script creates no budget: replace the budget row's "What it does for you" with "no budget until you export `BUDGET_USD`" (empty amount) or "no budget until you export `BUDGET_SERVICES` with the service names Cost Explorer shows" (empty services), and quote the matching line from `ai-migration/README.md`. Keep the anomaly row. Never add an Inference profiles row: the script creates no inference profile.
 
 These are detective controls, not spend caps. You will know within ~24 hours if something goes wrong — not at invoice time.
 
@@ -693,7 +694,7 @@ After generating the HTML file, verify:
    estimate. Never label it TCO. Sum the GCP side only when every source
    baseline is comparable; otherwise show "Not comparable."
 6. **Data accuracy**: Cost figures in HTML match the estimation artifact values exactly — **manual / agent self-check**; the automated validator does not verify numerics (see `validate-migration-report.md` scope).
-7. **Conditional sections**: AI appendix only present if AI artifacts exist; billing caveats shown when billing_data_available is false; Bedrock monitoring row only when `bedrock_monitoring.tf` exists; startup credits callout only when `STARTUP_PROGRAMS.md` or preference indicates eligibility
+7. **Conditional sections**: AI appendix only present if AI artifacts exist; billing caveats shown when billing_data_available is false; Bedrock cost guardrails only when `ai-migration/setup_bedrock.sh` has its budget and anomaly step; startup credits callout only when `STARTUP_PROGRAMS.md` or preference indicates eligibility
 8. **Decision summary**: Migration Decision Summary present when estimation or preview artifacts exist; uses `recommendation.path_label` when block present, plus a one-sentence recommendation banner
 9. **Human expertise flags**: Warning callouts appear for all services with `human_expertise_required: true`
 10. **Valid HTML**: Opening and closing tags match, no broken table structures

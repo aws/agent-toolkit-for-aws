@@ -504,7 +504,9 @@ def matches_advisor_model(advisor, plan_model, migration_path, runtime_api=None,
    Because the assessment's Design does not read the injection, the retry is a choice the user
    makes, never a loop: (a) reconfirm Model Recommend on the plan's model, then run Step 3.5
    again; (b) change the assessment's answers (its Clarify Q5 current model or Q2 priority) and
-   run its Design again through `ai-handoff.md`; or (c) end here. On (c), or when (b) produces
+   run its Design again through `ai-handoff.md`; or (c) end here. For a block with
+   `"advisor_unit": null`, offer only (c): neither (a) nor (b) changes its call sites, so it
+   would fail again. On (c), or when (b) produces
    the same mismatch, stop with `_halt_and_inform` and follow § Failure handling: the
    mismatch is recorded on the design block and the advisor's `design.json` stays the
    recommendation.

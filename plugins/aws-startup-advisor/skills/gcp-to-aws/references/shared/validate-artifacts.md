@@ -41,7 +41,7 @@ Optional checks: skip section in report if FAIL (do not halt).
 | 11 | AI generation plan      | If `estimation-ai.json` exists but not `generation-ai.json` → omit Appendix D.5                                                                                                |
 | 12 | Startup credits         | If no `STARTUP_PROGRAMS.md` and no `startup_program_status` in preferences → omit tier-specific credits callout                                                                |
 | 16 | Startup program honesty | When `startup_program_status.value == "unknown"`, run `python3 scripts/validate-startup-program-artifacts.py --migration-dir $MIGRATION_DIR` — must exit 0 before `HANDOFF_OK` |
-| 13 | Bedrock monitoring      | If `ai-migration/bedrock_monitoring.tf` missing → omit Bedrock anomaly row                                                                                                     |
+| 13 | Bedrock monitoring      | If `ai-migration/setup_bedrock.sh` is missing or lacks its budget and anomaly step → omit Bedrock anomaly row                                                                  |
 | 14 | Observability breakdown | If no observability key in `projected_costs.breakdown` → omit observability note                                                                                               |
 | 15 | Deferred services       | If no `Deferred — specialist engagement` in design → omit deferred callout                                                                                                     |
 

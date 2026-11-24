@@ -235,3 +235,49 @@ def test_agent_advisor_checks_every_assessment_model_against_the_advisor() -> No
     step = plan[plan.index("### Step 3.5"):plan.index("### Phase D")]
     assert "matched no unit" in step and "fails\nthis check under item 2" in step
     assert "(c) end here" in step and "§ Failure handling" in step
+
+
+# --------------------------------------------------------------------------- report cost guardrails
+
+REPORT_DOCS = ("phases/generate/generate-artifacts-report.md", "shared/report-decision-core.md", "shared/validate-artifacts.md")
+GUARDRAIL_STEP = "== 6. Bedrock budget and cost anomaly monitor"
+
+
+def test_gcp_report_keys_cost_guardrails_on_the_assessment_setup_script() -> None:
+    for rel in REPORT_DOCS:
+        text = (GCP / "references" / rel).read_text(encoding="utf-8")
+        assert "bedrock_monitoring.tf" not in text, rel
+        assert "ai-migration/setup_bedrock.sh" in text, rel
+    report = (GCP / "references" / REPORT_DOCS[0]).read_text(encoding="utf-8")
+    guard = report.split("**Cost guardrails", 1)[1].split("**What the baseline", 1)[0]
+    assert f"`{GUARDRAIL_STEP}`" in guard
+    assert "`BUDGET_USD`" in guard and "`BUDGET_SERVICES`" in guard and "no budget" in guard
+    assert "--execute" in guard and "Never add an Inference profiles row" in guard
+
+
+@pytest.mark.parametrize("fixture, usd_empty, services_empty", [
+    ("bma-generate-same-model", False, False), ("bma-generate-mixed", True, False), ("bma-generate-tier-range", False, True)])
+def test_the_assessment_setup_script_carries_what_the_report_reads(fixture: str, usd_empty: bool, services_empty: bool) -> None:
+    setup = (PLUGIN_ROOT / "fixtures" / fixture / "ai-migration" / "setup_bedrock.sh").read_text(encoding="utf-8")
+    assert GUARDRAIL_STEP in setup
+    usd = re.search(r'^BUDGET_USD="\$\{BUDGET_USD:-([0-9.]*)\}"$', setup, re.M)
+    services = re.search(r'^BUDGET_SERVICES="\$\{BUDGET_SERVICES:-([^"]*)\}"$', setup, re.M)
+    assert usd and services
+    assert (usd.group(1) == "") is usd_empty and (services.group(1) == "") is services_empty
+    assert "create-anomaly-monitor" in setup and "create-inference-profile" not in setup
+
+
+def test_clarify_runs_the_handoff_once_from_the_assembler_gate() -> None:
+    clarify = (PHASES / "clarify" / "clarify.md").read_text(encoding="utf-8")
+    step2 = clarify[clarify.index("## Step 2: Run the Fragments"):clarify.index("## Step 3: AI Handoff")]
+    item3 = next(line for line in step2.splitlines() if line.startswith("3. "))
+    assert "once" in item3 and "Completion Handoff Gate" in item3, item3
+    assemble = (PHASES / "clarify" / "clarify-assemble.md").read_text(encoding="utf-8")
+    assert "**On PASS:** run `clarify.md` § Step 3" in assemble
+
+
+def test_agent_advisor_ends_at_once_for_a_block_no_unit_matched() -> None:
+    plan = (SKILLS / "agent-advisor" / "references" / "phases" / "migration-plan" / "migration-plan.md").read_text(encoding="utf-8")
+    step = plan[plan.index("### Step 3.5"):plan.index("### Phase D")]
+    item2 = step[step.index("2. If model, API"):step.index("3. A live probe")]
+    assert "`\"advisor_unit\": null`" in item2 and "offer only (c)" in item2, item2

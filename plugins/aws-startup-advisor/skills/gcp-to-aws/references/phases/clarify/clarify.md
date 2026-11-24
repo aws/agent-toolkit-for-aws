@@ -331,7 +331,7 @@ split matters, so it is stated here rather than left to each unit — matching A
 2. Run `clarify-assemble.md`, which owns the whole conversation: the Assumption Sheet
    (Gate 1), the Essential Questions (Gate 2), the Answer Recap (Gate 3), the Category E
    opt-in, and the Full Flow variant — then writes `preferences.json`.
-3. Continue with Step 3.
+3. Run Step 3 once: the assembler's Completion Handoff Gate sends you there on PASS, and on FAIL Clarify stops before it.
 
 Why presentation sits in the assembler: with three fragments each presenting its own section
 the user would face three sheets and three rounds of essentials, interleaved. This phase runs

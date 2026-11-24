@@ -288,6 +288,12 @@ def test_step_0_lets_changed_host_answers_reset_a_run_that_already_generated() -
     assert all(f"`phases.{p}`" in reset for p in ("design", "estimate", "generate")) and '`"pending"`' in reset
 
 
+def test_step_4_asks_about_generate_only_outside_a_combined_run() -> None:
+    step4 = SKILL[SKILL.index("## Step 4"):SKILL.index("## Step 5")]
+    ask = next(s for s in step4.split(". ") if "ask once" in s)
+    assert ask.startswith("Outside a combined run"), ask
+
+
 def test_step_0_runs_generate_only_when_the_host_asks_for_it() -> None:
     step0 = SKILL[SKILL.index("## Step 0"):SKILL.index("## Step 1")]
     rule = step0[step0.index("Combined run:"):step0.index("1. ")]

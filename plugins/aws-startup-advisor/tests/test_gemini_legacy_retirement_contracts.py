@@ -184,8 +184,9 @@ def test_lifecycle_ssot_prices_the_source_baseline_by_serving_api_and_date() -> 
     assert next(ln for ln in section.splitlines() if ln.startswith("- **Any 2.0 model, either API:**")).count("replacement") >= 1
     assert "measured bill" in section and "authoritative" in section
     assert "https://aistudio.google.com/docs/pricing" in section
-    # The consumer that needs the serving API is named, and so is the Clarify field that carries it.
-    assert "ai_source_serving_api" in section and "Q19b" in section
+    # The serving API comes from the assessment profile's source_service, not a deleted Clarify question.
+    assert "`ai_sources[].source_service`" in section and "Q19b" not in section and "ai_source_serving_api" not in section
+    assert "the service could not be confirmed" in section and "compute both figures and label them" in section
     # Discover's `vertex_ai_generative` is the Gemini category, not proof of Vertex AI serving.
     assert "only for Vertex AI evidence" not in section
     assert "regardless of SDK" in section and "not a serving-API signal" in section
@@ -231,8 +232,8 @@ def test_gcp_pricing_cache_marks_retired_rows_and_selects_the_baseline_by_api_an
     # No universal ban on the 2.5 rows; the rule is API- and date-specific.
     assert "Never use a 2.5 row" not in note
     assert "serving API" in note and "measured bill" in note
-    assert "`vertex_ai_generative`" in note and "ai_source_serving_api" in note
-    assert "`ai_constraints.ai_source_serving_api` first" in note
+    assert "`vertex_ai_generative`" in note and "ai_source_serving_api" not in note
+    assert "the source's `source_service`" in note and "the service could not be confirmed" in note
     assert "`detected_via` includes `terraform` or `monitoring`" in note
     assert "not a Vertex AI serving signal" in note and "(`vertex_ai_generative` = Vertex AI)" not in note
     assert "**Vertex AI**" in note and "named replacement" in note
@@ -265,3 +266,18 @@ def test_detection_of_retired_gemini_ids_is_preserved() -> None:
     preview = (SKILLS / "gcp-to-aws" / "references" / "phases" / "discover" / "discover-preview.md").read_text(encoding="utf-8")
     assert "`gemini-2.0-flash` (retired Jun 1, 2026 — flag)" in preview
     assert "`gemini-2.0-flash-lite` (retired Jun 1, 2026 — flag)" in preview
+
+
+def test_no_doc_cites_the_deleted_serving_api_question() -> None:
+    hits = [f"{path.relative_to(SKILLS)}" for path in SKILLS.rglob("*.md")
+            if "Q19b" in (text := path.read_text(encoding="utf-8")) or "ai_source_serving_api" in text]
+    assert not hits, hits
+
+
+def test_assessment_discover_marks_an_unconfirmed_gemini_service_the_way_the_pricing_rule_reads_it() -> None:
+    discover = (SKILLS / "bedrock-migration-assessment" / "references" / "phases" / "discover" / "discover-app-code.md").read_text(encoding="utf-8")
+    rule = discover[discover.index("**google-genai mode.**"):].split("\n", 1)[0]
+    assert "use `gemini_api`" in rule and "the service could not be confirmed" in rule
+    for path in (SKILLS / "shared" / "ai" / "source-provider-pricing.md", GCP_PRICING_CACHE):
+        note = next(ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.startswith("> **Gemini 2.5 retirement"))
+        assert "`gemini_api` source whose evidence `detail` says the service could not be confirmed is `unknown`" in note, path
