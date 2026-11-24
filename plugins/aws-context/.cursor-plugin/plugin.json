@@ -1,0 +1,27 @@
+{
+  "name": "aws-context",
+  "displayName": "AWS Context",
+  "description": "Ground coding agents in your organization's knowledge with AWS Context: retrieve from your agent context graph, correct or extend it, and record sessions.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Amazon Web Services"
+  },
+  "homepage": "https://aws.amazon.com/products/developer-tools/agent-toolkit-for-aws/",
+  "repository": "https://github.com/aws/agent-toolkit-for-aws/tree/main/plugins/aws-context",
+  "license": "Apache-2.0",
+  "category": "developer-tools",
+  "keywords": [
+    "aws",
+    "aws-context",
+    "knowledge-graph",
+    "agent-context",
+    "retrieval",
+    "agentic-retrieval",
+    "data-catalog",
+    "glue",
+    "bedrock-knowledge-bases"
+  ],
+  "skills": "./skills/",
+  "commands": "./commands/",
+  "mcpServers": "./.mcp.json"
+}
