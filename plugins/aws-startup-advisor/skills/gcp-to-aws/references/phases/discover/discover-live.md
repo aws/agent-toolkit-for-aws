@@ -21,8 +21,9 @@
    `gcloud auth login` (interactive — hand off to the user), never
    `gcloud auth print-identity-token` (prints credentials).
    `gcloud auth print-access-token` is forbidden except the rows 16a–16c and
-   21a–21n temp-file exception in rule 2; the token is refreshed at the start
-   of each of those rows, and that command text is part of rows 16a and 21a.
+   21a–21n temp-file exception in rule 2; rows 16a–16c share one token, rows
+   21a–21n refresh it at the start of each row, and that command text is part
+   of rows 16a and 21a.
 2. **Never capture secret values.** Every capture command uses an explicit
    `--format="json(...)"` field projection. Projections include env var **names**
    but never env var **values**, and never GCE instance `metadata.items` values.
@@ -30,8 +31,9 @@
    only from `list-instances`.
    Rows 16a–16c and 21a–21n are the exception: `gcloud monitoring` has no
    time-series command, so they call `projects.timeSeries.list` with curl. The
-   bearer token is written only to a temp file outside `live-capture`, passed
-   to curl with `--header @`, refreshed at the start of each of those rows, and
+   bearer token is written only to a temp file outside `live-capture` and
+   passed to curl with `--header @`. Rows 16a–16c fetch it once before 16a;
+   rows 21a–21n fetch it again, refreshed at the start of each row. It is
    deleted after the last page of 16c and again after the last page of 21n. Do
    not copy that file into a capture, the manifest, or the transcript. This is
    the only allowed use of `gcloud auth print-access-token`. The redaction pass
@@ -271,7 +273,7 @@ from list errors alone.)
 | 21m | same `projects.timeSeries.list` curl as 21a with `filter=metric.type="cloudsql.googleapis.com/database/postgresql/num_backends" AND resource.type="cloudsql_database"` and `aggregation.perSeriesAligner=ALIGN_MEAN`. Follow `nextPageToken`. | `monitoring-sql-pgconn-ALIGN_MEAN-p<N>.json` | always |
 | 21n | same `projects.timeSeries.list` curl as 21a with `filter=metric.type="cloudsql.googleapis.com/database/postgresql/num_backends" AND resource.type="cloudsql_database"` and `aggregation.perSeriesAligner=ALIGN_MAX`. Follow `nextPageToken`. | `monitoring-sql-pgconn-ALIGN_MAX-p<N>.json` | always |
 | 22 | `gcloud compute instance-groups managed list --format="json(name, zone, region)"` — zonal groups set `zone`, regional groups set `region` | `mig-groups.json` | E |
-| 22a | once per group from row 22: `gcloud compute instance-groups managed list-instances <group> --zone=<zone> --format="json(instance)"` when `zone` is set, or `gcloud compute instance-groups managed list-instances <group> --region=<region> --format="json(instance)"` when `region` is set. Every returned instance is a MIG member (this includes GKE nodes; they are left alone in this change) | `mig-members-<group>.json` | E |
+| 22a | once per group from row 22: `gcloud compute instance-groups managed list-instances <group> --zone=<zone> --format="json(instance)"` when `zone` is set, or `gcloud compute instance-groups managed list-instances <group> --region=<region> --format="json(instance)"` when `region` is set. Row 22 returns `zone` and `region` as full resource URLs; `<zone>` and `<region>` are the last path segment of that value (e.g. `us-central1-a`, never the URL). Every returned instance is a MIG member (this includes GKE nodes; they are left alone in this change) | `mig-members-<group>.json` | E |
 
 **Row 1 note:** managed Cloud Run lists services across ALL regions when
 `--region` is omitted — do not pass a `--region` flag (a `--region=-` form is

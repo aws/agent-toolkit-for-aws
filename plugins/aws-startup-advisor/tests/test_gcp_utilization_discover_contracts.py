@@ -262,6 +262,11 @@ def test_report_exclusions_say_utilization_is_not_yet_used_for_sizing():
     assert "not yet used for sizing" in exclusions
     assert "`utilization`" in exclusions
     assert "Cloud Monitoring read access" in exclusions
+    # Step 2d emits an all-no_data summary even when every monitoring row was
+    # skipped, so the "captured" branch must not fire on `utilization` alone.
+    assert "`coverage` is not `no_data`" in exclusions
+    assert "every `utilization.coverage` is `no_data`" in exclusions
+    assert "when any inventory resource carries `utilization`" not in exclusions
 
 
 # --------------------------------------------------------------------------- fixture inventory
