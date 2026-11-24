@@ -382,26 +382,6 @@ the fields needed by Step 3, run it, write its JSON output next to the raw file
 with a `-extracted.json` suffix, and delete the script. Never Read the oversized
 raw file directly.
 
-**2d. Reduce monitoring captures.** After rows 21–22a have been attempted
-(or recorded `skipped`), run:
-
-```
-python3 "$PLUGIN_ROOT/skills/gcp-to-aws/scripts/summarize-monitoring.py" \
-  --capture-dir "$MIGRATION_DIR/live-capture" \
-  --project "$GCP_PROJECT" \
-  --window-start <the interval.startTime used in rows 21a–21n> \
-  --window-end <the interval.endTime used in rows 21a–21n>
-```
-
-It writes `$MIGRATION_DIR/live-capture/utilization-summary.json`, the only
-metrics artifact Discover reads: one summary object per VM in `gce.json` and
-per Cloud SQL instance in `sql.json`, with p95 / mean / max of the hourly
-values, sample counts, coverage, burst and idle flags, and `mig_member` from
-the row 22a files. Run it even when every monitoring row was skipped; it then
-emits `no_data` blocks and exits 0. Never Read a `monitoring-*.json` raw file
-yourself; the script is the only reader. Record each row 21–22a in the
-manifest `captures[]` and put the `monitoring-*.json` byte sizes in `note`.
-
 **2c. Write the manifest** — `$MIGRATION_DIR/live-capture/manifest.json`:
 
 ```json
@@ -422,6 +402,26 @@ manifest `captures[]` and put the `monitoring-*.json` byte sizes in `note`.
 Every attempted or deliberately skipped row gets an entry. `cai_enable_offered` /
 `cai_enable_accepted` record the Step 2a soft-ask (`accepted` is `true` /
 `false` / `null` when never offered).
+
+**2d. Reduce monitoring captures.** After rows 21–22a have been attempted
+(or recorded `skipped`), run:
+
+```
+python3 "$PLUGIN_ROOT/skills/gcp-to-aws/scripts/summarize-monitoring.py" \
+  --capture-dir "$MIGRATION_DIR/live-capture" \
+  --project "$GCP_PROJECT" \
+  --window-start <the interval.startTime used in rows 21a–21n> \
+  --window-end <the interval.endTime used in rows 21a–21n>
+```
+
+It writes `$MIGRATION_DIR/live-capture/utilization-summary.json`, the only
+metrics artifact Discover reads: one summary object per VM in `gce.json` and
+per Cloud SQL instance in `sql.json`, with p95 / mean / max of the hourly
+values, sample counts, coverage, burst and idle flags, and `mig_member` from
+the row 22a files. Run it even when every monitoring row was skipped; it then
+emits `no_data` blocks and exits 0. Never Read a `monitoring-*.json` raw file
+yourself; the script is the only reader. Record each row 21–22a in the
+manifest `captures[]` and put the `monitoring-*.json` byte sizes in `note`.
 
 ## Step 3: Map Captures to Inventory Resources
 

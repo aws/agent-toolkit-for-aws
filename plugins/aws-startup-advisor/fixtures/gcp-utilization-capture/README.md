@@ -41,9 +41,10 @@ Compute Engine (`gce.json`, `monitoring-gce-*`):
 - **new-vm** (e2-standard-2) — only the newest 100 of 168 hours -> no zero-fill,
   `samples_present: 100`, `coverage: insufficient`.
 - **idle-vm** (n2-standard-2) — cpu ~0.01, memory ~0.10 -> `idle: true`.
-- **web-mig-7f3k** (e2-medium) — listed in `mig-members.json` (row 22a output;
-  the live phase writes one `mig-members-<group>.json` per group and the script
-  globs `mig-members*.json`) -> `mig_member: true`.
+- **web-mig-7f3k** (e2-medium) — listed in `mig-members-web-mig.json` (row 22a
+  output for the `web-mig` group; the live phase writes one
+  `mig-members-<group>.json` per group and the script globs `mig-members*.json`)
+  -> `mig_member: true`.
 - **ops-small** (e2-small) — shared-core CPU: p95 ~1.2 and `max` 1.965 are kept,
   never clamped. Its Ops Agent memory has all FIVE `state` series (used, free,
   cached, buffered, slab) and each carries a per-series `"unit": "%"`, while the
@@ -68,7 +69,9 @@ Cloud SQL (`sql.json`, `monitoring-sql-*`):
 
 Other captures: `monitoring-api.json` (row 21), `mig-groups.json` (row 22) and
 `manifest.json` with one `captures[]` entry per row 7, 2, 21, 21a-21n, 22, 22a,
-all `status: "ok"`.
+all `status: "ok"`; each 21a-21n entry names its `-p1` file and its `note`
+carries the page count, page span and total byte size, as discover-live.md
+Step 2d requires.
 
 ## Files
 

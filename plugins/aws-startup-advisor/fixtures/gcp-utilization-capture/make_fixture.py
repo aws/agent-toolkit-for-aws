@@ -211,7 +211,8 @@ def build_sql() -> tuple[list[dict], dict[str, dict]]:
 def curl_row(metric_type: str, aligner: str) -> str:
     return (f'curl ... https://monitoring.googleapis.com/v3/projects/{PROJECT}/timeSeries '
             f'filter=metric.type="{metric_type}" aggregation.alignmentPeriod=3600s aggregation.perSeriesAligner={aligner} pageSize=1000')
-def build_manifest(monitoring_files: list[str]) -> dict:
+def build_manifest(monitoring_files: dict[str, int]) -> dict:
+    """monitoring_files maps each written monitoring-*.json name to its byte size (discover-live.md Step 2d: byte sizes go in `note`)."""
     captures = [
         {"command": f"gcloud compute instances list --project={PROJECT} --format=json(id, name, zone, machineType, status, ...)",
          "file": "gce.json", "status": "ok", "note": None},
@@ -227,16 +228,18 @@ def build_manifest(monitoring_files: list[str]) -> dict:
     for short, metric_type in series_rows:
         for aligner in ("ALIGN_MEAN", "ALIGN_MAX"):
             pages = sorted(f for f in monitoring_files if f.startswith(f"monitoring-{short}-{aligner}-p"))
+            total = sum(monitoring_files[f] for f in pages)
+            span = pages[0] if len(pages) == 1 else f"{pages[0]} .. {pages[-1]}"
             captures.append({
                 "command": curl_row(metric_type, aligner),
                 "file": pages[0],
                 "status": "ok",
-                "note": None if len(pages) == 1 else f"{len(pages)} pages ({pages[0]} .. {pages[-1]})",
+                "note": f"{len(pages)} page{'s' if len(pages) != 1 else ''} ({span}), {total} bytes",
             })
     captures.append({"command": f"gcloud compute instance-groups managed list --project={PROJECT} --format=json(name, zone, region)",
                      "file": "mig-groups.json", "status": "ok", "note": None})
     captures.append({"command": f"gcloud compute instance-groups managed list-instances web-mig --zone={ZONE} --project={PROJECT} --format=json(instance)",
-                     "file": "mig-members.json", "status": "ok", "note": None})
+                     "file": "mig-members-web-mig.json", "status": "ok", "note": None})
     return {
         "captured_at": ts(WINDOW_END),
         "gcloud_version": "Google Cloud SDK 532.0.0",
@@ -266,13 +269,15 @@ def main() -> None:
         "monitoring-gce-mem-ALIGN_MAX-p1.json": page("%", mem_max),
         **sql_files,
     }
+    sizes = {}
     for name, obj in monitoring_files.items():
         write(name, obj)
+        sizes[name] = (OUT / name).stat().st_size
     write_pretty("gce.json", gce_json)
     write_pretty("sql.json", sql_json)
     write_pretty("monitoring-api.json", [{"config": {"name": "monitoring.googleapis.com"}}])
     write_pretty("mig-groups.json", [{"name": "web-mig", "region": None, "zone": f"{COMPUTE}/zones/{ZONE}"}])
-    write_pretty("mig-members.json", [{"instance": f"{COMPUTE}/zones/{ZONE}/instances/web-mig-7f3k"}])
-    write_pretty("manifest.json", build_manifest(sorted(monitoring_files)))
+    write_pretty("mig-members-web-mig.json", [{"instance": f"{COMPUTE}/zones/{ZONE}/instances/web-mig-7f3k"}])
+    write_pretty("manifest.json", build_manifest(sizes))
 if __name__ == "__main__":
     main()

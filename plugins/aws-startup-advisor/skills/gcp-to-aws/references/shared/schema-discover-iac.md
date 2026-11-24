@@ -215,7 +215,7 @@ Live gcloud discovery produces the same inventory/cluster schemas with these add
         },
         "coverage": "sufficient|insufficient|no_data", // from cpu samples_present / samples_expected >= 0.8
         "burst": false, // GCE only: cpu.p95 < 0.30 and >= 2 consecutive hourly means > 2 * p95
-        "idle": false // GCE only: cpu.p95 < 0.05 and memory p95 < 0.20 (or memory unavailable) and not burst
+        "idle": false // GCE only: cpu.p95 < 0.05 and memory p95 < 0.20 (or memory is a status block) and not burst
       }
     },
     {
