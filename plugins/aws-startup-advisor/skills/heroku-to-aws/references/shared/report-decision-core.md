@@ -39,7 +39,7 @@ fresh decision without being touched or archived.
 - **HTML shell:** same inline-CSS `<head>` as the full report
   (`generate-report.md` Step 2 "Visual shell"), title "Heroku to AWS
   Migration Assessment — Decision Report". Body order: `decision-summary`,
-  then `<nav class="toc">`, then `decision-basis` (when present), `exec-costs`,
+  then `<nav class="toc">`, then `decision-basis` (when present), `exec-costs` →
   `developer-workflow`, `what-if-scenarios` (when present), and `decision-cta`
   (decision-mode only; it replaces `next-steps`). Do not render
   `.appendix-header` or any `appendix-*` section.
