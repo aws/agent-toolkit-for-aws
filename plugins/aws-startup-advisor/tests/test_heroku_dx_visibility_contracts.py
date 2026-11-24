@@ -174,3 +174,32 @@ def test_decision_report_renders_developer_workflow_pre_execution() -> None:
     )
     assert "Will be generated" in text
     assert "Developer\n  workflow" in text or "Developer workflow" in text  # DECISION.md twin
+
+
+def test_q12c_explains_targets_in_heroku_terms_and_names_express_mode() -> None:
+    """Q12c must give a Heroku user the management-model comparison before the option list,
+    name ECS Express Mode in a Fargate web row (not only inside option 3), and recommend
+    Fargate when every app already runs Heroku's container stack (step 4b)."""
+    text = INTERVIEW.read_text(encoding="utf-8")
+    section = text[text.index("#### Q12c") :]
+    section = section[: section.index("#### Q12d")]
+    options = section.index("> 1. Use this recommendation (default)")
+    # Comparison table precedes the options and covers the three management models.
+    table_header = "| | Elastic Beanstalk | ECS Fargate (web dynos on ECS Express Mode) | Amazon EKS |"
+    assert table_header in section and section.index(table_header) < options
+    for row in ("| Closest to |", "| You deploy |", "| You operate |", "| Scaling and billing |"):
+        assert row in section, f"comparison row {row!r} missing"
+    assert section.index("| Scaling and billing |") < options
+    # Express Mode is named in the Fargate web row wording, and never for workers.
+    assert "`web` → ECS Fargate on ECS Express Mode" in section
+    assert "Worker rows never mention Express Mode" in section
+    # Step 4b: the container signal flips the default to Fargate with no scale_note.
+    step_4b = section[section.index("4b. **Container signal.**") : section.index("4a. **Scale check.**")]
+    assert '`"containerized"`' in step_4b and "`ecs-fargate`" in step_4b
+    assert "`\"buildpack_only\"`" in step_4b and "`\"partial\"`" in step_4b
+    assert "step 4b fired and step 4a did not" in section
+    assert '"reasons": [<container-signal reason from step 4b>' in section
+    # The documented default row and option 1 both carry the 4b shape.
+    defaults_row = next(line for line in text.splitlines() if line.startswith("| Q12c — Compute target     |"))
+    assert "step 4b" in defaults_row
+    assert "when step 4a or 4b fired" in section

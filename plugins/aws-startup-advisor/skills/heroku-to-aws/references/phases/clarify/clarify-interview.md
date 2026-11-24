@@ -500,7 +500,25 @@ built.
    - web dynos → "managed LoadBalanced EB environment preserves PaaS-style web delivery"
    - non-web `quantity == 1` → "SingleInstance WebServer environment preserves the persistent worker process model"
    - lower dyno tiers (`eco`, `basic`, `standard-*`) → "lower operational burden than direct container orchestration"
-   - `operational.containerization_status == "containerized"` when already known → "Fargate activation cost is lower if direct container control is preferred"
+4b. **Container signal.** When `operational.containerization_status` is already
+   `"containerized"` at this point (extracted on the Assumption Sheet because every
+   inventory app runs the `container` stack, or confirmed there by the user), replace the
+   EB default from step 4 with `ecs-fargate` for every row that is not already
+   `system_forced`, with `chosen_by: "system_recommended"` and the reason: "every app
+   already ships from a Dockerfile on Heroku's container stack, so the team already builds
+   and owns its images; a managed container service is the closer match, and web dynos
+   land on ECS Express Mode with the load balancer, HTTPS, auto scaling and logs
+   provisioned for you." Set `recommendation.value: "ecs-fargate"`, `confidence: "high"`.
+   This follows AWS's rule for choosing between Beanstalk and ECS: decide by the
+   management model the team already has, not by workload compatibility, since an
+   ordinary web app runs on either. The user can still pick option 2 to force EB. Do
+   **not** fire this when the status is `"buildpack_only"`, `"partial"`, or not yet
+   known (Q12b is answered in Batch 3; only the sheet can resolve it before Q12c): a
+   buildpack team has not chosen to own images, and EB's source-deployment model is the
+   closer match for them. When 4b fires, the computed plan is shaped exactly like 4a's
+   (`compute_target.default` is `"ecs-fargate"`, `system_forced` rows need no
+   `overrides[]` entry, option 2 writes them back as overrides); the only difference is
+   that 4b writes no `scale_note`.
 4a. **Scale check.** Count the non-release formation rows. If the count is **more than
    40**, replace the EB default from step 4 with `ecs-fargate` for every row that is not
    already `system_forced`, with `chosen_by: "system_recommended"` and the reason:
@@ -530,13 +548,26 @@ built.
    target: "Keeping the Heroku workflow depends on the deploy pipeline layer (the
    report's Developer workflow section), not on Beanstalk versus ECS."
 5. Derive the recommendation summary:
-   - If step 4a set the Fargate default → `recommendation.value: "ecs-fargate"`, `confidence: "high"` (reasons include the scale reason; `system_forced` rows do not make this `"mixed"` — every row is Fargate). This rule wins over the two below.
+   - If step 4a or 4b set the Fargate default → `recommendation.value: "ecs-fargate"`, `confidence: "high"` (reasons include the scale reason or the container-signal reason, or both when both fired; `system_forced` rows do not make this `"mixed"` — every row is Fargate). This rule wins over the two below.
    - If all non-release rows recommend EB → `recommendation.value: "elastic_beanstalk"`, `confidence: "high"`
    - If any row is system-forced to Fargate while others remain EB → `recommendation.value: "mixed"`, `confidence: "high"`
    - If the user explicitly chooses all-Fargate or EKS below → record that user choice as the default with no system recommendation override, except scaled non-web EB downgrades remain forbidden.
 
-**Present the computed recommendation before the choices. Example wording:**
+**Present the targets in Heroku terms, then the computed recommendation, then the choices.** A Heroku
+user cannot choose between service names; the three targets differ in the management model, and
+that is what the explanation must make visible. Keep the comparison to the four rows below, keep
+each cell to one line, and do not add a cost column: the Estimate phase prices whichever plan is
+chosen, and a number here would be a guess. Example wording:
 
+> Three ways to run your dynos on AWS. They differ in how much of the platform you take on:
+>
+> | | Elastic Beanstalk | ECS Fargate (web dynos on ECS Express Mode) | Amazon EKS |
+> | --- | --- | --- | --- |
+> | Closest to | Heroku as you use it today: push source, the platform builds and runs it | A Heroku app you already ship as a container image | Kubernetes you run yourself |
+> | You deploy | Source, a Dockerfile, or an image; a deploy pipeline is generated (Q12d) | A container image you build (we generate the Dockerfile or buildpack image build if you have none) | Images plus Kubernetes manifests |
+> | You operate | Nothing below the app: AWS patches the platform and the EC2 instances it runs | Nothing below the container: no instances, no cluster to size; web dynos get a load balancer, HTTPS, auto scaling and logs set up for you | The cluster: upgrades, nodes, add-ons |
+> | Scaling and billing | EC2 instances, billed while they run, including when idle | Per task vCPU and memory, billed while tasks run, scaled on traffic | Node groups or EKS Auto Mode, plus the cluster fee |
+>
 > Based on your Heroku formations, I recommend:
 >
 > - `web` → Elastic Beanstalk: managed PaaS-style web environment
@@ -553,18 +584,43 @@ built.
 > 5. EKS acceptable — team can operate K8s, prefers managed node groups to reduce burden
 > 6. Set per-formation targets manually
 
+**Row wording for Fargate web formations.** Whenever a `web` row resolves to `ecs-fargate` in the
+computed plan (step 4a or step 4b), write it as "`web` → ECS Fargate on ECS Express Mode: load
+balancer, HTTPS, auto scaling and logs provisioned for you" and append the reason from the step
+that set it. Express Mode is the Fargate shape of a Heroku web dyno and the part of the Fargate
+path a Heroku user recognizes, so it belongs in the row, not only inside option 3. Design still
+decides the final `ecs_mode` per formation (`design-mapping.md` 2A); when the sheet already shows
+a condition that rules Express out, say so in the row instead of promising it: a Private Space
+app, or `dns_strategy: "route53"` if Q10 was resolved on the sheet. Q12e (release strategy) is
+asked in Batch 2, after this question, so it cannot rule Express out yet; the option 3 text
+carries that caveat. Worker rows never mention Express Mode.
+
+**Comparison facts, for follow-up questions.** Elastic Beanstalk accepts the same inputs Heroku
+does (source with a supported runtime, a Dockerfile, or a prebuilt image) and is the entry path
+AWS documents for teams leaving Heroku, Render or Railway
+([AWS docs](https://docs.aws.amazon.com/solutions/latest/deploy-to-done/migrating-from-comparative-platforms.html)).
+ECS Express Mode needs only a container image and two IAM roles and provisions the Fargate
+service, ALB with TLS, auto scaling, logs and a default URL; AWS scopes it to stateless HTTP
+services, and its canary deployment strategy and load balancer configuration cannot be changed
+on the service, which is why a rolling or blue/green release strategy (Q12e) moves a web dyno to
+a standard ECS service
+([AWS docs](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html)).
+AWS's rule for choosing between them is the management model the team wants, not whether the
+workload could run on either: almost every web app could. Do not recommend AWS App Runner.
+
 **Interpret:**
 
 - 1 → write the **computed plan** from steps 3–5, whichever shape it took:
-  - step 4a did **not** fire (40 or fewer non-release formations) → `design_constraints.compute_target: { "default": "elastic_beanstalk", "overrides": [<system_forced Fargate overrides>], "chosen_by": "system_recommended", "recommendation": { "value": "elastic_beanstalk|mixed", "confidence": "high|medium|low", "reasons": [<summary reasons>] } }`
-  - step 4a **fired** (41 or more) → `design_constraints.compute_target: { "default": "ecs-fargate", "overrides": [], "chosen_by": "system_recommended", "recommendation": { "value": "ecs-fargate", "confidence": "high", "reasons": [<scale reason from step 4a>, <system_forced worker reasons, if any>], "scale_note": "{N} formations" } }`. Never write `"default": "elastic_beanstalk"` for an accepted Fargate recommendation — Design resolves the target from `default`/`overrides[]`, so that would silently rebuild the per-formation EB estate the recommendation exists to avoid.
+  - neither step 4a nor step 4b fired (40 or fewer non-release formations, containerization status not `"containerized"` on the sheet) → `design_constraints.compute_target: { "default": "elastic_beanstalk", "overrides": [<system_forced Fargate overrides>], "chosen_by": "system_recommended", "recommendation": { "value": "elastic_beanstalk|mixed", "confidence": "high|medium|low", "reasons": [<summary reasons>] } }`
+  - step 4b fired and step 4a did not → `design_constraints.compute_target: { "default": "ecs-fargate", "overrides": [], "chosen_by": "system_recommended", "recommendation": { "value": "ecs-fargate", "confidence": "high", "reasons": [<container-signal reason from step 4b>, <system_forced worker reasons, if any>] } }` — no `scale_note`.
+  - step 4a **fired** (41 or more, whether or not 4b also fired) → `design_constraints.compute_target: { "default": "ecs-fargate", "overrides": [], "chosen_by": "system_recommended", "recommendation": { "value": "ecs-fargate", "confidence": "high", "reasons": [<scale reason from step 4a>, <system_forced worker reasons, if any>], "scale_note": "{N} formations" } }`. Never write `"default": "elastic_beanstalk"` for an accepted Fargate recommendation — Design resolves the target from `default`/`overrides[]`, so that would silently rebuild the per-formation EB estate the recommendation exists to avoid.
 - 2 → `design_constraints.compute_target: { "default": "elastic_beanstalk", "overrides": [<system_forced Fargate overrides for every non-web quantity > 1 formation>], "chosen_by": "user", "recommendation": <the computed recommendation from steps 3–5, unchanged — including "value": "ecs-fargate" and "scale_note" when step 4a fired> }`, and `recommendation.reasons` MUST include "user selected EB for all EB-compatible formations". This is the explicit EB override: it is the only path that keeps an EB default above the threshold, and the preserved `scale_note` lets the report say the recommendation was declined.
 - 3 → `design_constraints.compute_target: { "default": "ecs-fargate", "overrides": [], "chosen_by": "user", "recommendation": { "value": "ecs-fargate", "confidence": "high", "reasons": ["user selected direct managed containers for all dyno formations"] } }`
 - 4 → `design_constraints.compute_target: { "default": "eks-managed", "overrides": [], "chosen_by": "user", "recommendation": { "value": "eks-managed", "confidence": "high", "reasons": ["user selected Kubernetes control"] } }`
 - 5 → `design_constraints.compute_target: { "default": "eks-or-ecs", "overrides": [], "chosen_by": "user", "recommendation": { "value": "eks-or-ecs", "confidence": "medium", "reasons": ["user can operate Kubernetes but prefers managed node groups"] } }`
 - 6 → ask a short follow-up listing each formation and write `overrides[]` for user-selected deviations from the default. Do not allow EB for scaled non-web formations unless the user first changes the Heroku quantity to 1 or accepts a manual non-generated exception; generated artifacts must keep those formations on Fargate.
 
-**Default:** 1 — use the computed recommendation. "I don't know", a skipped question, "use defaults for the rest" and the fast path all map to 1 — the computed plan, including the Fargate default when step 4a fired — never to a blind EB-only default.
+**Default:** 1 — use the computed recommendation. "I don't know", a skipped question, "use defaults for the rest" and the fast path all map to 1 — the computed plan, including the Fargate default when step 4a or 4b fired — never to a blind EB-only default.
 
 **Design impact:** Design resolves each formation from `compute_target.default` plus matching `overrides[]`. EB-compatible web dynos map to LoadBalanced EB environments. EB-compatible persistent non-web dynos with `quantity == 1` map to SingleInstance WebServer environments. Persistent non-web dynos with `quantity > 1` map to Fargate to preserve horizontal worker count. `"ecs-fargate"` maps formations to Fargate services. `"eks-managed"` or `"eks-or-ecs"` maps formations to EKS Deployments. Non-formation resources (Postgres, Redis, Kafka, add-ons) are unaffected.
 
@@ -1191,7 +1247,7 @@ only.
 | Q12b — Containerization   | 2 (buildpack_only)                      | `containerization_status: "buildpack_only"` (no `dockerfile_apps`; the follow-up fires only on an explicit `partial` answer) |
 | Q12f — Containerization method | 1 (CNB, Heroku builder)            | `containerization_method: "cnb_heroku_builder"` (`"dockerfile"` without asking when Q12b is `containerized`) |
 
-| Q12c — Compute target     | 1 (use computed recommendation)         | `design_constraints.compute_target` follows the computed plan: `default: "elastic_beanstalk"` plus any `system_forced` Fargate overrides at 40 or fewer non-release formations; `default: "ecs-fargate"` with `recommendation.scale_note` at 41 or more |
+| Q12c — Compute target     | 1 (use computed recommendation)         | `design_constraints.compute_target` follows the computed plan: `default: "elastic_beanstalk"` plus any `system_forced` Fargate overrides at 40 or fewer non-release formations when the sheet did not resolve `containerization_status` to `"containerized"`; `default: "ecs-fargate"` with `recommendation.scale_note` at 41 or more, or without the note when every app runs the `container` stack (step 4b) |
 | Q12d — EB deploy method   | 1 (GitHub Actions)                      | `eb_deploy_method: "github_actions"` when resolved compute plan includes EB                                 |
 | Q12e — Release strategy   | 1 (canary)                              | `release_strategy: "canary"` when a web formation lands on Fargate with `dns_strategy: "external"`; N/A otherwise |
 | Q12 — Registry            | 1 (ECR)                                 | `container_registry: "ecr"`                                                                                 |
