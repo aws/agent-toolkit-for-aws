@@ -277,6 +277,31 @@
       "resource_type": "gce_instance",
       "window_days": 7,
       "zone": "us-central1-a"
+    },
+    {
+      "alignment": "1h",
+      "burst": true,
+      "coverage": "sufficient",
+      "cpu": {
+        "max": 0.95,
+        "mean": 0.0852,
+        "p95": 0.1029,
+        "samples_expected": 168,
+        "samples_present": 168
+      },
+      "idle": false,
+      "instance_id": "1000000000000000009",
+      "memory": {
+        "max": 0.1738,
+        "mean": 0.121,
+        "p95": 0.1515,
+        "samples_expected": 168,
+        "samples_present": 168
+      },
+      "mig_member": false,
+      "resource_type": "gce_instance",
+      "window_days": 7,
+      "zone": "us-central1-a"
     }
   ],
   "window_days": 7,

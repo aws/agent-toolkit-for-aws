@@ -3,10 +3,11 @@
 Canned Cloud Monitoring `projects.timeSeries.list` pages plus the `gce.json` /
 `sql.json` / MIG captures they join to, for testing
 `skills/gcp-to-aws/scripts/summarize-monitoring.py` (the reduction step of
-`references/phases/discover/discover-live.md` rows 21a-21n) without a GCP
-project. The synthetic project is `acme-prod` (same as `gcp-live-capture`),
+`references/phases/discover/discover-live.md` rows 21a-21n) and
+`skills/gcp-to-aws/scripts/size-from-utilization.py` (Design's measured
+sizing) without a GCP project. The synthetic project is `acme-prod` (same as `gcp-live-capture`),
 everything in `us-central1-a`. It lives in its own directory because the
-`gcp-live-capture` replay has an empty `gce.json` on purpose and adding eight
+`gcp-live-capture` replay has an empty `gce.json` on purpose and adding nine
 VMs there would break `expected-drift.json`.
 
 The raw pages were seeded from a real capture (shapes, units, point layout, the
@@ -50,6 +51,10 @@ Compute Engine (`gce.json`, `monitoring-gce-*`):
   cached, buffered, slab) and each carries a per-series `"unit": "%"`, while the
   other VMs rely on the response-level `unit`; only `state == "used"` reaches
   the summary.
+- **jobs-bursty** (n2-standard-8) — the same two hot hours as batch-bursty but
+  WITH memory (~0.15), so the sizing step's burst branch can fire. Generated
+  from its own `random.Random(SEED + 1)` so the eight VMs above and the Cloud
+  SQL series keep their original values.
 
 Cloud SQL (`sql.json`, `monitoring-sql-*`):
 
@@ -81,9 +86,32 @@ Step 2d requires.
 - `expected-utilization-summary.json` — the golden `utilization-summary.json`
   the script must reproduce byte-for-byte (`tests/test_gcp_summarize_monitoring.py`).
 - `after-discover/gcp-resource-inventory.json` — the inventory-with-`utilization`
-  golden for `lint:artifacts`: three resources (`web_steady`, `batch_bursty`
-  with memory `unavailable`, `orders_db`) whose `utilization` blocks are copied
-  verbatim from the expected summary.
+  golden for `lint:artifacts`: all nine VMs and both Cloud SQL instances, each
+  with its `utilization` block copied verbatim from the expected summary.
+- `after-clarify/preferences.json` — a `preferences.json` golden with
+  `design_constraints.cost_optimization` (`aggressive`) and a top-level
+  `sizing_exemptions` naming `web-steady`'s instance id, for the `user_exempt`
+  path and for `lint:artifacts` on the preferences schema.
+- `after-design/sizing-decisions.json` — the golden output of
+  `skills/gcp-to-aws/scripts/size-from-utilization.py` on the inventory above
+  with no preferences (`balanced`, Graviton), reproduced byte-for-byte by
+  `tests/test_gcp_utilization_sizing.py`.
+
+## What the sizing step lands on (`balanced`)
+
+| Resource | Source | Pick | Provenance | Why |
+| -------- | ------ | ---- | ---------- | --- |
+| web-steady | n2-standard-8 | m7g.large | measured | 1.26 vCPU / 6.3 GiB; two steps below the m7g.2xlarge anchor, so Balanced and Aggressive agree |
+| api-lowload | n2-standard-8 | m7g.large | measured | uncapped m7g.medium; Balanced caps two steps down, Aggressive takes m7g.medium |
+| cache-heavy | n2-standard-8 | m7g.2xlarge | measured, `memory_bound` | memory p95 0.63 needs 26 GiB; stays at the anchor |
+| batch-bursty | n2-standard-8 | m7g.2xlarge | declared, `memory_unavailable` | no Ops Agent |
+| new-vm | e2-standard-2 | m7g.large | declared, `insufficient` | 100 of 168 samples |
+| idle-vm | n2-standard-2 | m7g.large | declared, `idle` | cpu p95 0.01 |
+| web-mig-7f3k | e2-medium | t4g.medium | declared, `skipped_group_member` | MIG member |
+| ops-small | e2-small | t4g.small | measured, `burstable_baseline_exceeded` | 0.5 reserved vCPU × p95 1.22 = 0.61 vCPU of load beats every t4g baseline at or below the anchor |
+| jobs-bursty | n2-standard-8 | t4g.xlarge | measured, `burst` | 0.82 vCPU of load fails t4g.large (0.60) and passes t4g.xlarge (1.6) |
+| orders-db | db-f1-micro / PG15 | db.t4g.micro, 20 GiB gp3 | measured, `memory_saturated` | memory 1.0 is page cache; 5 backends vs max_connections 112, no proxy |
+| reports-db | db-custom-2-8192 / MySQL | db.m7g.large, 20 GiB gp3 | measured | family minimum is the anchor; 37 connections vs 682, no proxy |
 
 ## How to regenerate
 
@@ -98,6 +126,13 @@ python3 skills/gcp-to-aws/scripts/summarize-monitoring.py \
   --output fixtures/gcp-utilization-capture/expected-utilization-summary.json
 ```
 
-Both steps are deterministic: a second run must leave `git status` clean. If the
-expected summary changes, update the `utilization` blocks in
-`after-discover/gcp-resource-inventory.json` to match.
+```bash
+python3 skills/gcp-to-aws/scripts/size-from-utilization.py \
+  --inventory fixtures/gcp-utilization-capture/after-discover/gcp-resource-inventory.json \
+  --output fixtures/gcp-utilization-capture/after-design/sizing-decisions.json
+```
+
+All three steps are deterministic: a second run must leave `git status` clean.
+If the expected summary changes, update the `utilization` blocks in
+`after-discover/gcp-resource-inventory.json` to match, then regenerate
+`after-design/sizing-decisions.json`.
