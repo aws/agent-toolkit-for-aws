@@ -5,16 +5,17 @@ Required sections: decision-summary, exec-share, exec-timeline, exec-costs,
 cost-optimization, next-steps.
 Full mode also requires the Heroku appendix set (services, costs, configuration,
 security baseline, assumptions). The security appendix must name what each
-control does and which threat it mitigates. Decision mode omits those appendices.
+control does and which threat it mitigates. Decision mode rejects any rendered
+appendix section.
 The CFO brief is one static paragraph. The timeline states the complexity-tier
 planning band.
 Conditional: what-if-scenarios when scenarios/index.json has ≥2 entries.
 Footer must contain "draft for review".
 
-The visual shell matches the GCP report contract: page background, a
-max-width report, section cards, a metric grid, a verdict callout, a savings
-color, an appendix divider, visible keyboard focus, a 700px breakpoint, and
-print styles. Both report modes use that shell.
+The visual shell check, in both modes, requires a #f6f8fa or var() page
+background, a max-width report, section cards, a metric grid, bordered metric
+cards, a verdict callout, a savings color, a bordered share card, an appendix
+divider, visible keyboard focus, a 700px breakpoint, and print styles.
 
 Also enforces the report's decision-UX and a11y contract:
   - decision-summary must NOT contain any badge-verdict-* pill (the skeleton mandates
@@ -75,8 +76,11 @@ FULL_APPENDIX_SECTION_IDS = [
     "appendix-assumptions",
 ]
 
-# Same structural CSS checks as scripts/validate-migration-report.py. Agents may
-# refine colors and spacing, but the report must not fall back to unboxed prose.
+# The enforced subset of the stylesheet in generate-report.md "Visual shell".
+# The page background must be #f6f8fa or a CSS variable. Other colors and
+# spacing in these rules may be refined. Declarations the checker does not
+# list (h1, .verdict-headline, .metric-hero, .increase, table rules,
+# tr.active-scenario) are copied with the stylesheet and are not gated here.
 VISUAL_CONTRACT_CHECKS = [
     (
         r"body\s*\{[^}]*background\s*:\s*(?:var\([^)]*\)|#f6f8fa)",
@@ -1527,6 +1531,17 @@ def validate(html: str, migration_dir: Path | None, mode: str = "full") -> list[
             f'--mode {mode} report must not contain <section id="{other_terminal}"> '
             f"(that is the {other_mode}-mode terminal section)"
         )
+
+    if mode == "decision":
+        # Generate has not run. A rendered appendix would describe the Terraform
+        # baseline, and choices that are still defaults, as execution output.
+        # Comments and <template> are excluded by _section_counts.
+        for sid in counts:
+            if sid.startswith("appendix-"):
+                errors.append(
+                    f'decision mode forbids <section id="{sid}"> — the decision report '
+                    "has no appendices; the full migration report (Generate) carries them"
+                )
 
     if "draft for review" not in html.lower():
         errors.append('footer must contain "draft for review" disclaimer')

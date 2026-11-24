@@ -8,7 +8,7 @@ file; the content rules are identical in both:
 | Mode         | Loaded by                                      | Output                                                                                      |
 | ------------ | ---------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | **decision** | `estimate-assemble.md` Decision gate, choice A | Standalone `decision-report.html` + `DECISION.md` — decision core only, CTA footer          |
-| **full**     | `generate-report.md` Step 2                    | `migration-report.html` in full — the same sections, unchanged, no separate full-mode rules |
+| **full**     | `generate-report.md` Step 2                    | `migration-report.html` — the decision-core sections, plus the five appendices declared in `generate-report.md` |
 
 The full report and the decision report share the GCP visual shell defined in
 `generate-report.md` ("Visual shell"). The full report also has five

@@ -414,11 +414,30 @@ Omit the section when workshop was declined or never entered.
 
 ### Visual shell
 
-Use the same inline stylesheet contract as the GCP assessment. Both
-`migration-report.html` and `decision-report.html` include this shell. Colors
-and spacing may be refined. The selectors and properties below are required;
-`validate-heroku-migration-report.py` fails the report when any of them is
-missing from a `<style>` block.
+Both `migration-report.html` and `decision-report.html` include the stylesheet
+below. Copy it as written.
+
+`validate-heroku-migration-report.py` does not require every declaration in
+that block. It fails when a `<style>` block is missing any of these, and only
+these:
+
+- `body` `background` is `#f6f8fa` or a `var(...)`. Another hex value, or `rgb()`, fails. The error says "body must use a contrasting page background".
+- `.report` or `.container` sets `max-width`
+- `section` sets `background`, `border`, and `border-radius`
+- `.metrics` is `display: grid` with `grid-template-columns`
+- `.metric` sets `border` and `border-radius`
+- `.verdict` sets `background` and `border`
+- `.savings` sets `color`
+- `.share-card` sets `border`
+- `.appendix-header` is defined
+- a `:focus-visible` rule
+- `@media (max-width: 700px)`
+- `@media print`
+
+`h1`, `.verdict-headline`, `.metric-hero`, `.increase`, the `table` / `th, td` /
+`thead th` rules, and `tr.active-scenario` are part of the stylesheet to copy.
+The checker does not fail a report that omits them. Other colors and spacing
+inside the checked rules may be refined. The page background may not.
 
 ```css
 body { margin: 0; background: #f6f8fa; color: #1f2328; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 15px; line-height: 1.55; }

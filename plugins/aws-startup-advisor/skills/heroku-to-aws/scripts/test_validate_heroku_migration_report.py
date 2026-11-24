@@ -82,10 +82,54 @@ def test_full_report_requires_heroku_appendices() -> None:
     assert "appendix-services" in out
 
 
-def test_decision_report_omits_appendices() -> None:
-    code, out = run(DECISION_GOOD, mode="decision")
+def test_decision_report_rejects_a_rendered_appendix() -> None:
+    html = DECISION_GOOD.replace(
+        "</footer>",
+        '<section id="appendix-security"><p>CloudTrail and GuardDuty.</p></section></footer>',
+    )
+    code, out = run(html, mode="decision")
+    assert code == 1, out
+    assert 'decision mode forbids <section id="appendix-security">' in out
+
+
+def test_decision_report_ignores_appendix_in_comment_or_template() -> None:
+    hidden = (
+        '<!-- <section id="appendix-security"><p>CloudTrail and GuardDuty.</p></section> -->'
+        "<template><section id=\"appendix-security\"><p>CloudTrail and GuardDuty.</p></section></template>"
+    )
+    code, out = run(DECISION_GOOD.replace("</footer>", hidden + "</footer>"), mode="decision")
     assert code == 0, out
-    assert "appendix-services" not in out
+    assert "REPORT_OK" in out
+
+
+def _without_style(html: str) -> str:
+    start = html.index("<style>")
+    end = html.index("</style>", start) + len("</style>")
+    return html[:start] + html[end:]
+
+
+def test_full_report_without_style_block_fails_the_shell_check() -> None:
+    code, out = run(_without_style(GOOD))
+    assert code == 1, out
+    assert "body must use a contrasting page background" in out
+    assert "keyboard focus must be visibly styled" in out
+
+
+def test_missing_focus_visible_fails_with_that_message() -> None:
+    html = GOOD.replace(
+        "  a:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }\n",
+        "",
+    )
+    code, out = run(html)
+    assert code == 1, out
+    assert "keyboard focus must be visibly styled" in out
+    assert "body must use a contrasting page background" not in out
+
+
+def test_decision_report_without_style_block_fails_the_shell_check() -> None:
+    code, out = run(_without_style(DECISION_GOOD), mode="decision")
+    assert code == 1, out
+    assert "body must use a contrasting page background" in out
 
 
 def test_missing_cost_optimization_fails() -> None:

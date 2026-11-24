@@ -4,12 +4,19 @@ from __future__ import annotations
 
 import json
 # Tests invoke only the committed validator using list arguments without a shell.
+import re
 import subprocess  # nosec B404
 import sys
 import tempfile
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parent / "validate-heroku-migration-report.py"
+_APPENDIX_SECTION = re.compile(r'<section\s+id="appendix-[^"]*"[^>]*>.*?</section>\s*', re.DOTALL)
+
+
+def _decision_html(html: str) -> str:
+    """Decision mode rejects rendered appendices, so drop them with the terminal swap."""
+    return _APPENDIX_SECTION.sub("", html).replace('id="next-steps"', 'id="decision-cta"')
 
 GOOD = """<!DOCTYPE html>
 <html lang="en"><style>
@@ -72,7 +79,7 @@ def test_cost_figure_match_passes() -> None:
 
 
 def test_decision_report_checks_cost_figures() -> None:
-    html = GOOD.replace('id="next-steps"', 'id="decision-cta"')
+    html = _decision_html(GOOD)
     with tempfile.TemporaryDirectory() as tmp:
         migration_dir = _est_dir(tmp, 112)
         code, out = run(html, migration_dir, mode="decision")
@@ -141,7 +148,7 @@ def _est_dir_lfl(tmp: str, balanced: int, like_for_like: int | None) -> Path:
 
 
 def _mode_variants(html: str) -> list[tuple[str, str]]:
-    return [("full", html), ("decision", html.replace('id="next-steps"', 'id="decision-cta"'))]
+    return [("full", html), ("decision", _decision_html(html))]
 
 
 def test_like_for_like_anchor_match_passes_both_modes() -> None:
@@ -214,7 +221,7 @@ def test_nested_section_anchor_is_preserved() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         migration_dir = _est_dir(tmp, 112)
         for mode in ("full", "decision"):
-            report = html if mode == "full" else html.replace('id="next-steps"', 'id="decision-cta"')
+            report = html if mode == "full" else _decision_html(html)
             code, out = run(report, migration_dir, mode=mode)
             assert code == 0, out
 
@@ -227,7 +234,7 @@ def test_hidden_nested_section_does_not_supply_required_anchor() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         migration_dir = _est_dir(tmp, 112)
         for mode in ("full", "decision"):
-            report = html if mode == "full" else html.replace('id="next-steps"', 'id="decision-cta"')
+            report = html if mode == "full" else _decision_html(html)
             code, out = run(report, migration_dir, mode=mode)
             assert code == 1, out
             assert 'missing data-cost-key="aws_monthly_balanced"' in out
