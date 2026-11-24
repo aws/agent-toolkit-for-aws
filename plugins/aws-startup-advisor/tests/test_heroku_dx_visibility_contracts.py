@@ -185,13 +185,15 @@ def test_q12c_explains_targets_in_heroku_terms_and_names_express_mode() -> None:
     section = section[: section.index("#### Q12d")]
     options = section.index("> 1. Use this recommendation (default)")
     # Comparison table precedes the options and covers the three management models.
-    table_header = "| | Elastic Beanstalk | ECS Fargate (web dynos on ECS Express Mode) | Amazon EKS |"
+    table_header = "| | Elastic Beanstalk | ECS Fargate | Amazon EKS |"
     assert table_header in section and section.index(table_header) < options
     for row in ("| Closest to |", "| You deploy |", "| You operate |", "| Scaling and billing |"):
         assert row in section, f"comparison row {row!r} missing"
     assert section.index("| Scaling and billing |") < options
-    # Express Mode is named in the Fargate web row wording, and never for workers.
-    assert "`web` → ECS Fargate on ECS Express Mode" in section
+    # A Fargate web row is a standard ECS service; Express Mode is a condition, never the outcome,
+    # and never mentioned for workers.
+    assert "`web` → ECS Fargate: a standard ECS service behind" in section
+    assert "`web` → ECS Fargate on ECS Express Mode" not in section
     assert "Worker rows never mention Express Mode" in section
     # Step 4b: the container signal flips the default to Fargate with no scale_note.
     step_4b = section[section.index("4b. **Container signal.**") : section.index("4a. **Scale check.**")]
@@ -201,5 +203,68 @@ def test_q12c_explains_targets_in_heroku_terms_and_names_express_mode() -> None:
     assert '"reasons": [<container-signal reason from step 4b>' in section
     # The documented default row and option 1 both carry the 4b shape.
     defaults_row = next(line for line in text.splitlines() if line.startswith("| Q12c — Compute target     |"))
-    assert "step 4b" in defaults_row
+    assert "step 4b trigger" in defaults_row
     assert "when step 4a or 4b fired" in section
+
+
+def test_q12c_promises_express_mode_only_when_design_can_use_it() -> None:
+    """design-mapping.md 2A uses Express only when dns_strategy != route53, the task fits
+    4096/8192, the app is not CNB and not in a Private Space. Q10 defaults to route53 and the
+    fast path always applies that default, so Q12c must not promise Express on the fast path,
+    for performance-l+ dynos, or for CNB (buildpack) web apps; the persisted 4b reason must not
+    promise it at all."""
+    text = INTERVIEW.read_text(encoding="utf-8")
+    section = text[text.index("#### Q12c") :]
+    section = section[: section.index("#### Q12d")]
+    step_4b = section[section.index("4b. **Container signal.**") : section.index("4a. **Scale check.**")]
+    assert "Express Mode" not in step_4b.split("The reason names no ECS shape")[0], (
+        "the persisted step 4b recommendation reason must not promise ECS Express Mode"
+    )
+    row = section[section.index("**Row wording for Fargate web formations.**") : section.index("**Comparison facts")]
+    assert "**Fast path:** never mention Express Mode" in row
+    assert '`dns_strategy: "route53"` after' in row and "rules it out for every web dyno" in row
+    assert "`fargate_cpu <= 4096` and `fargate_memory <= 8192`" in row
+    assert "`performance-l` and larger map to 16 GiB or more and are out" in row
+    assert "not in a Private Space" in row
+    assert "resolves to CNB and does **not** qualify" in row
+    assert "if you keep your current DNS provider (Q10)" in row
+    # Batch references match the batch table: Q10 is Batch 2, Q12e is Batch 3, both after Q12c.
+    assert "Q10 (DNS, Batch 2) and Q12e (Batch 3) are both asked **after**" in row
+    assert "asked in Batch 2, after this question" not in section
+    batch_2 = next(line for line in text.splitlines() if line.startswith("| **2** |"))
+    batch_3 = next(line for line in text.splitlines() if line.startswith("| **3** |"))
+    assert "Q10" in batch_2 and "Q12e" not in batch_2
+    assert "Q12b" in batch_3
+    batch_3_body = text[text.index("### Batch 3: Operational / Conditional") :]
+    assert "#### Q12e" in batch_3_body and "#### Q12e" not in text[: text.index("### Batch 3: Operational / Conditional")]
+    # The comparison table header no longer folds Express into the Fargate column.
+    assert "| | Elastic Beanstalk | ECS Fargate | Amazon EKS |" in section
+    assert "ECS Fargate (web dynos on ECS Express Mode)" not in section
+    # Option 3 states the conditions rather than "land on".
+    assert "web dynos land on ECS Express Mode" not in section
+    assert "they move to ECS Express Mode" in section and "(Q10, default is Route 53)" in section
+
+
+def test_q12c_step_4b_trigger_is_stated_once_and_reused() -> None:
+    """Step 4b, Interpret option 1, the Default paragraph and the Defaults Table row must all
+    key off the same source-neutral trigger (status resolved to containerized before Q12c by
+    extraction on either path or on the sheet), so the fast path and the full flow give the
+    same inventory the same default."""
+    text = INTERVIEW.read_text(encoding="utf-8")
+    section = text[text.index("#### Q12c") :]
+    section = section[: section.index("#### Q12d")]
+    step_4b = section[section.index("4b. **Container signal.**") : section.index("4a. **Scale check.**")]
+    assert "The **4b trigger** is:" in step_4b
+    assert "applied directly on the fast" in step_4b and "takes 4b exactly like the full flow" in step_4b
+    interpret = section[section.index("**Interpret:**") :]
+    assert "the 4b trigger does not hold" in interpret
+    assert 'not `"containerized"` on the sheet' not in interpret
+    assert "the 4b trigger holds on the fast path" in section
+    defaults_row = next(line for line in text.splitlines() if line.startswith("| Q12c — Compute target     |"))
+    assert "the step 4b trigger, by extraction on either path or on the sheet" in defaults_row
+    assert "when the sheet did not resolve" not in defaults_row
+    # Combined 4a + 4b: the 4a shape carries the container-signal reason too.
+    shape_4a = interpret[interpret.index("step 4a **fired** (41 or more") :]
+    shape_4a = shape_4a[: shape_4a.index("Never write")]
+    assert "<container-signal reason from step 4b when 4b also fired>" in shape_4a
+    assert "or both when both fired" in section
