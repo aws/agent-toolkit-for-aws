@@ -79,7 +79,7 @@ These facts are stable-core for the AWS OpenSearch / Migration Assistant for Ama
 - The Solr-target restriction is **architectural**: Migration Assistant for Amazon OpenSearch Service Solr migrations (both Historical Data Migration backfill and Live Traffic Migration live cutover) target **OpenSearch 3.x or Amazon OpenSearch Serverless ONLY** — never OS 1.x/2.x. The legacy "Solr is RFS-only / not supported by Capture & Replay" wording is OUTDATED.
 - Migration Assistant for Amazon OpenSearch Service **3.0** deploys to Amazon EKS (Kubernetes). Earlier versions used ECS — plan EKS prereqs.
 
-> **Source / target version support is canonical at the AWS docs page** — do NOT replicate version cells in this skill. Cite **<https://docs.aws.amazon.com/solutions/latest/migration-assistant-for-amazon-opensearch-service/source-and-target-versions.html>** when version-range questions come up. ES 8.x is supported by both Historical Data Migration and Live Traffic Migration (confirmed); the documented page is the source of truth for the current floor and ceiling on each mode.
+> **Source / target version support is canonical at the AWS docs page** — do NOT replicate version cells in this skill. Cite the "Supported migration paths" matrix at **<https://docs.aws.amazon.com/solutions/latest/migration-assistant-for-amazon-opensearch-service/solution-overview.html>** when version-range questions come up. ES 8.x is supported by both Historical Data Migration and Live Traffic Migration (confirmed); the documented page is the source of truth for the current floor and ceiling on each mode.
 
 ## Components of a migration
 
@@ -95,7 +95,7 @@ Strategy selection happens *per component* — see the three sections below.
 
 ### 1. Historical Data Migration — strategies
 
-Source/target version eligibility for each tool: **<https://docs.aws.amazon.com/solutions/latest/migration-assistant-for-amazon-opensearch-service/source-and-target-versions.html>** (canonical; do not replicate version cells in this skill).
+Source/target version eligibility: the "Supported migration paths" matrix at **<https://docs.aws.amazon.com/solutions/latest/migration-assistant-for-amazon-opensearch-service/solution-overview.html>** (canonical; do not replicate version cells in this skill).
 
 | Tool | What it does | Notes |
 |---|---|---|
@@ -496,7 +496,7 @@ This is a fast lookup over the strategies in § "Components of a migration → H
 | **Customer rejects "third-party tooling"** | Application-layer dual-write (customer code; not third-party) |
 | **Maintenance window long enough to cover Historical Data Migration** | Skip Live Traffic Migration entirely — pause writes, run Historical Data Migration, cut over. The read-only window IS however long Historical Data Migration takes for this dataset. Estimate that duration up-front (gated by source size, network bandwidth, ingest worker count) and validate it fits the customer's maintenance budget. |
 
-> *Source/target version eligibility for each tool: see [Migration Assistant for Amazon OpenSearch Service source-and-target versions](https://docs.aws.amazon.com/solutions/latest/migration-assistant-for-amazon-opensearch-service/source-and-target-versions.html).* The ES 7.11 fork point is **architectural** (license boundary — Snapshot/Restore is blocked into AOS post-fork) and stays inline.
+> *Source/target version eligibility for each tool: see the [Migration Assistant for Amazon OpenSearch Service supported migration paths](https://docs.aws.amazon.com/solutions/latest/migration-assistant-for-amazon-opensearch-service/solution-overview.html).* The ES 7.11 fork point is **architectural** (license boundary — Snapshot/Restore is blocked into AOS post-fork) and stays inline.
 
 ### Always-true rules (across components)
 

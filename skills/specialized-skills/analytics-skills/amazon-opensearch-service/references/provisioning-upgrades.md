@@ -1,5 +1,9 @@
 # Domain Upgrades and Blue/Green Deployments
 
+Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/version-migration.html
+
+> OpenSearch REST calls in this file go through the `aws_opensearch` capability in `run_script` where the AWS MCP server is available, or `awscurl` otherwise; see [`data-plane-requests.md`](data-plane-requests.md).
+
 ## In-Place Version Upgrades
 
 ### Check Upgrade Eligibility

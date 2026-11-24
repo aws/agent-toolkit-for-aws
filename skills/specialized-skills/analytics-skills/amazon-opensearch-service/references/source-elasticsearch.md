@@ -17,7 +17,7 @@ Use this to populate §1 "Recommended path" and §8 "Migration Plan" in the repo
 | ES ≤ 7.10.2 | Pre-fork | Supported | Snapshot/Restore (maintenance window) OR MA HDM | Snapshot/Restore is the simplest path while license boundary allows |
 | ES ≥ 7.11 (7.11–7.17, 8.x) | Post-fork ELv2/SSPL | **BLOCKED** (license lockout) | MA HDM (large/complex) or `_reindex` from remote (small, ≥30 min window) | Snapshot/Restore is architecturally blocked post-fork |
 
-> Source/target version eligibility for each MA mode: see [Migration Assistant source-and-target versions](https://docs.aws.amazon.com/solutions/latest/migration-assistant-for-amazon-opensearch-service/source-and-target-versions.html) `[verify]`.
+> Source/target version eligibility for each MA mode: see [Migration Assistant supported migration paths](https://docs.aws.amazon.com/solutions/latest/migration-assistant-for-amazon-opensearch-service/solution-overview.html) `[verify]`.
 
 ---
 

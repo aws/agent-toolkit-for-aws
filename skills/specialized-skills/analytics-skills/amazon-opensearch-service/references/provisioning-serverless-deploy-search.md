@@ -1,6 +1,8 @@
 # Amazon OpenSearch Serverless — Deploy Search Configuration
 
-> The AWS MCP server is recommended for executing these commands but is not required — all steps use standard AWS CLI syntax.
+Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-configure-neural-search.html
+
+> The AWS MCP server is recommended for executing these commands but is not required — all steps use standard AWS CLI syntax. OpenSearch REST calls (`PUT <endpoint>/...`, `POST <endpoint>/_plugins/...`) go through `aws_opensearch` in `run_script` where the AWS MCP server is available, or `awscurl` otherwise; see [`data-plane-requests.md`](data-plane-requests.md).
 
 Deploy indices, ML models, and pipelines to a provisioned serverless collection.
 

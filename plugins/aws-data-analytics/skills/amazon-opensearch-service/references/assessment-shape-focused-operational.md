@@ -79,9 +79,9 @@ The single most likely failure mode for this exact path. Cite the gotcha number 
 
 ### 4. References footer (one line)
 
-A single line pointing to deeper material. Format:
+A single line with exactly one docs URL for the chosen path (this is the answer's docs URL; add no other), optionally followed by internal file pointers. Format:
 
-> *Deeper: see `references/assessment-workflow.md` § Path scoring; `references/assessment-gotchas.md` #2 for the snapshot block.*
+> *References: `<docs URL for the chosen path>`. Deeper: `references/assessment-workflow.md` § Path scoring; `references/assessment-gotchas.md` `#<N>`.*
 
 ---
 
@@ -116,7 +116,7 @@ This shape **must not** include any of these. If you find yourself writing them,
 
 1. **Pre-create the destination index** on the target domain with mappings and settings copied from source. The remote `_reindex` does NOT carry mappings — only `_source`. Pull source mappings via `GET <src>/<index>/_mapping` and PUT them on the destination.
 2. **Add the source endpoint to the domain's `reindex.remote.allowlist`** via Console → Domain → Cluster settings (or the `UpdateDomainConfig` API). Format: `host:port` (e.g. `10.0.5.20:9200`). Apply — wait for the blue/green to finish (~15 min).
-3. **Run the reindex** asynchronously. **Auth — prefer SigV4** when the source endpoint is IAM-capable: sign the `_reindex` POST with `awscurl` (or a SigV4 proxy) so no long-lived static credentials traverse the request body. If the source requires basic auth (legacy self-managed cluster), retrieve username/password from **AWS Secrets Manager at runtime** (`aws secretsmanager get-secret-value --secret-id <reindex-source-creds>`) and inject them as ephemeral inputs — do NOT hard-code credentials in scripts, IaC, or runbooks.
+3. **Run the reindex** asynchronously. **Auth — prefer SigV4** when the source endpoint is IAM-capable: sign the `_reindex` POST with `aws_opensearch.domain_request` (AWS MCP server) or `awscurl` (or a SigV4 proxy) so no long-lived static credentials traverse the request body. If the source requires basic auth (legacy self-managed cluster), retrieve username/password from **AWS Secrets Manager at runtime** (`aws secretsmanager get-secret-value --secret-id <reindex-source-creds>`) and inject them as ephemeral inputs — do NOT hard-code credentials in scripts, IaC, or runbooks.
 
    ```
    POST _reindex?wait_for_completion=false&slices=auto
@@ -142,7 +142,7 @@ This shape **must not** include any of these. If you find yourself writing them,
 
 **Central gotcha — ES 7.11+ snapshot prohibition (gotcha #2).** See `references/assessment-gotchas.md` #2 for the failure mode and reasoning. The `_reindex from remote` path is the supported workaround at this size. If the dataset were larger (>100 GB) you would graduate to Migration Assistant for Amazon OpenSearch Service Historical Data Migration instead — but at 50 GB, `_reindex` is simpler.
 
-*Deeper: see `references/assessment-workflow.md` § Path scoring; `references/assessment-gotchas.md` #2 for the snapshot block.*
+*References: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/remote-reindex.html. Deeper: `references/assessment-workflow.md` § Path scoring; `references/assessment-gotchas.md` #2 for the snapshot block.*
 
 ---
 
@@ -154,7 +154,7 @@ This shape **must not** include any of these. If you find yourself writing them,
 - [ ] **Allowlist / network config is an explicit step** (most common runbook omission)
 - [ ] **Validation step exists** (doc count, spot check, or `_cat/indices`)
 - [ ] **Exactly ONE gotcha cited**, by number from `references/assessment-gotchas.md`
-- [ ] **References footer is ONE line** pointing to deeper material
+- [ ] **References footer is ONE line** with exactly one docs URL for the chosen path
 - [ ] **No "Timeline" section**, no "Week 1", no engineer-weeks. (REMOVED FROM SUITE.)
 - [ ] **No exec summary, no readiness, no risk register, no sizing table, no fingerprint JSON**
 - [ ] **No sentence longer than ~30 words** — operational tone, not consultative

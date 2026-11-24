@@ -1,5 +1,9 @@
 # Troubleshooting AOS Log Analytics
 
+Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/monitoring-pipeline-logs.html, https://docs.aws.amazon.com/opensearch-service/latest/developerguide/supported-ppl.html
+
+> OpenSearch REST calls in this file go through the `aws_opensearch` capability in `run_script` where the AWS MCP server is available, or `awscurl` otherwise; see [`data-plane-requests.md`](data-plane-requests.md).
+
 ## Common Issues
 
 | Error | Cause | Fix |
@@ -16,7 +20,7 @@
 1. Check pipeline status: `aws osis get-pipeline --pipeline-name <name>`
 2. Check CloudWatch Logs for pipeline errors: `/aws/vendedlogs/OpenSearchIngestion/<pipeline-name>/`
 3. Verify source role can read CloudWatch: `aws iam simulate-principal-policy --action-names logs:GetLogEvents`
-4. Verify sink role can write to AOS: test with `curl -XPOST` using SigV4
+4. Verify sink role can write to AOS: assume the sink role and send a test `POST` with `awscurl` (`aws_opensearch` signs as the caller, not the sink role)
 
 ## Debugging PPL Queries
 

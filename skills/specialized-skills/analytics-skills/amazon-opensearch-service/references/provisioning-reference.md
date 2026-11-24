@@ -1,6 +1,8 @@
 # Provisioning capability — entry point and reference
 
-This file is the **entry point** for the `provisioning` capability. It covers cost considerations, security, high availability, and provides a navigation index over the rest of the provisioning files. Infrastructure operations use standard **AWS CLI** commands (e.g., `aws opensearch describe-domain`, `aws opensearchserverless create-collection`); the AWS MCP server's `call_aws` is a streamlined alternative when available but is not required. Data-plane operations (queries, mappings, ISM) use `awscurl` (SigV4-authenticated HTTP requests) regardless of MCP presence.
+Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/createupdatedomains.html, https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-manage.html
+
+This file is the **entry point** for the `provisioning` capability. It covers cost considerations, security, high availability, and provides a navigation index over the rest of the provisioning files. Infrastructure operations use standard **AWS CLI** commands (e.g., `aws opensearch describe-domain`, `aws opensearchserverless create-collection`); the AWS MCP server's `call_aws` is a streamlined alternative when available but is not required. Data-plane operations (queries, mappings, ISM) use the `aws_opensearch` capability in `run_script` where the AWS MCP server is available, and `awscurl` (SigV4-authenticated HTTP requests) otherwise; see [`data-plane-requests.md`](data-plane-requests.md).
 
 ## When to use this capability
 
