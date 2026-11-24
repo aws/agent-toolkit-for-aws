@@ -38,7 +38,7 @@
 | ---------------------------------------------------------------- | ------------------------------------------------- |
 | Monthly Lambda bill > $500 with predictable traffic              | Evaluate ECS Fargate — likely 40-60% cheaper      |
 | P99 latency >2s due to cold starts on critical path              | Add Provisioned Concurrency OR move to containers |
-| Event Function invocations exceeding 15-min execution timeout     | Move to ECS tasks or split the work with Step Functions |
+| Event Function invocations exceeding 30-min execution timeout     | Move to ECS tasks or split the work with Step Functions |
 | Team spending >20% of time on Lambda packaging/deployment issues | Consider containers for developer experience      |
 | Node.js HTTP server or streaming responses within the request timeout | Consider Web Functions (30s default, 900s maximum); no WebSocket upgrades or guaranteed process lifetime |
 | WebSockets, HTTP requests exceeding 900s, or a guaranteed long-running process | Use containers; an HTTP-server programming model does not remove these limits |
