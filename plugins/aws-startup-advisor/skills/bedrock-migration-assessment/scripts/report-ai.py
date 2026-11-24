@@ -44,6 +44,13 @@ DIGEST_META = re.compile(r'<meta name="bma-report-digest" content="([0-9a-f]*)">
 SECTION_OPEN = re.compile(r"<section\b[^>]*\bid=([\"'])([^\"']+)\1", re.I)
 TOC_HREF = re.compile(r'<nav class="toc"[^>]*>(.*?)</nav>', re.S)
 SOURCES = {"user": "Your answer", "derived": "Derived from your answers", "default": "Default", "extracted": "Found in your code"}
+# The target_aws_service enum in references/contracts/aws-design-ai.schema.json.
+AWS_SERVICES = {"textract": "Amazon Textract", "rekognition": "Amazon Rekognition", "transcribe": "Amazon Transcribe",
+                "comprehend": "Amazon Comprehend", "translate": "Amazon Translate", "polly": "Amazon Polly", "sagemaker": "Amazon SageMaker AI"}
+SECTION_INPUTS = {"decision-summary": "estimation-ai.json, preferences.json or generation-ai.json", "exec-share": "estimation-ai.json or aws-design-ai.json",
+                  "exec-assumptions": "estimation-ai.json or preferences.json", "exec-optimization": "estimation-ai.json",
+                  "exec-risks": "aws-design-ai.json or generation-ai.json", "appendix-ai": "aws-design-ai.json or estimation-ai.json",
+                  "appendix-artifacts": "generation-ai.json", "appendix-config": "preferences.json", "appendix-glossary": "no artifact"}
 GLOSSARY = (("Amazon Bedrock", "The AWS service that runs foundation models through one API, billed per token."),
             ("Inference profile", "A Bedrock model id with a Geo or global prefix (for example us.) that routes requests across Regions."),
             ("Converse", "The Bedrock API that sends the same request shape to every chat model."),
@@ -229,16 +236,33 @@ def render_decision(ctx: dict) -> str:
                     f'<h3>Stay entirely if</h3><p>{e(rec["stay_if"])}</p>\n<h3>Next steps</h3>{_ol(steps)}')
 
 
+def _and(items: list[str]) -> str:
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def _elsewhere(skipped: list[dict]) -> str:
+    by_service: dict[str, list[str]] = {}
+    for s in skipped:
+        by_service.setdefault(s["target_aws_service"], []).append(f"<code>{e(s['workload_id'])}</code>")
+    parts = [f"{_and(ids)} {'goes' if len(ids) == 1 else 'go'} to {e(AWS_SERVICES.get(svc, svc))}" for svc, ids in by_service.items()]
+    its = "its" if len(skipped) == 1 else "their"
+    return f" {_and(parts)}; {its} cost and setup are outside this estimate."
+
+
 def render_share(ctx: dict) -> str:
     est, design = ctx["data"]["estimation-ai.json"], ctx["data"]["aws-design-ai.json"]
     rec = est["recommendation"]
     current, how = _current(est)
-    sources = sorted({m["source_model_id"] for m in design["ai_architecture"]["bedrock_models"]})
-    text = (f"Draft estimate for {len(design['design_blocks'])} AI workloads that use {e(sources)}: running them on Amazon Bedrock "
+    on_bedrock = [b for b in design["design_blocks"] if b.get("target_bedrock_model")]
+    sources = sorted({b["model_id"] for b in on_bedrock})
+    one = len(on_bedrock) == 1
+    text = (f"Draft estimate for {len(on_bedrock)} AI workload{'' if one else 's'} that use{'s' if one else ''} {e(sources)}: "
+            f"running {'it' if one else 'them'} on Amazon Bedrock "
             f"with {e(est['recommended_model'].get('model'))} as the main model is estimated at {e(_projected(est))} a month, "
             f"against {e(current)} today ({e(how)}). The recommendation is {e(rec['path_label'])}, with {e(rec['confidence'])} confidence, "
             f"and every figure is an estimate to confirm before any commitment.")
-    return _section("exec-share", f'<div class="share-card"><p>{text}</p></div>')
+    skipped = est.get("services_not_estimated") or []
+    return _section("exec-share", f'<div class="share-card"><p>{text}{_elsewhere(skipped) if skipped else ""}</p></div>')
 
 
 def render_assumptions(ctx: dict) -> str:
@@ -311,7 +335,7 @@ def render_ai(ctx: dict) -> str:
     skipped = est.get("services_not_estimated") or []
     if skipped:
         body.append("<p>Not estimated, because they are not priced per token:</p>"
-                    + _ul([f"<code>{e(s.get('workload_id'))}</code>: {e(s.get('target_aws_service'))}" for s in skipped]))
+                    + _ul([f"<code>{e(s.get('workload_id'))}</code>: {e(AWS_SERVICES.get(s.get('target_aws_service'), s.get('target_aws_service')))}" for s in skipped]))
     return _section("appendix-ai", "\n".join(body))
 
 
@@ -365,9 +389,17 @@ def digest(document: str) -> str:
     return hashlib.sha256(DIGEST_META.sub('<meta name="bma-report-digest" content="">', document, count=1).encode("utf-8")).hexdigest()
 
 
+def _render_section(sid: str, ctx: dict) -> str:
+    try:
+        return RENDERERS[sid](ctx)
+    except (AttributeError, KeyError, TypeError, ValueError, IndexError) as exc:
+        raise ReportError("report_render_failed", f"{sid}: {SECTION_INPUTS[sid]} has a shape the report cannot read "
+                                                  f"({type(exc).__name__}: {exc})")
+
+
 def render(ctx: dict) -> str:
     ids = sections_for(ctx)
-    frag = {sid: RENDERERS[sid](ctx) for sid in ids}
+    frag = {sid: _render_section(sid, ctx) for sid in ids}
     toc = '<nav class="toc" aria-label="Contents"><h2>Contents</h2>' + _ul([f'<a href="#{sid}">{e(TITLES[sid])}</a>' for sid in ids]) + "</nav>"
     est = ctx["data"]["estimation-ai.json"]
     execs = "\n".join(frag[s] for s in ids if s.startswith("exec-"))
@@ -411,12 +443,13 @@ def existing(run_dir: Path) -> dict | None:
 
 def plan(run_dir: Path) -> dict:
     ctx = gather(run_dir)
+    document = render(ctx)
     prior = existing(run_dir)
     result = {"ok": True, "report": REPORT, "generated": ctx["generated"], "inputs": ctx["inputs"], "sections": sections_for(ctx)}
     if prior is None:
         return {**result, "state": "absent", "sha256": None, "current": False}
     return {**result, "state": "unchanged" if prior["written_by_this_skill"] else "edited", "sha256": prior["sha256"],
-            "current": prior["text"] == render(ctx)}
+            "current": prior["text"] == document}
 
 
 def write(run_dir: Path, expected: str | None) -> dict:
@@ -460,6 +493,9 @@ def check(run_dir: Path) -> dict:
     text, fresh = prior["text"], render(ctx)
     if text == fresh:
         return {"ok": True, "sha256": prior["sha256"], "sections": sections_for(ctx)}
+    if prior["written_by_this_skill"]:
+        return {"ok": False, "errors": [{"code": "report_stale",
+                                         "detail": "an input artifact changed after the report was written; run plan and write"}]}
     errors = []
     counts: dict[str, int] = {}
     for m in SECTION_OPEN.finditer(text):
@@ -476,11 +512,7 @@ def check(run_dir: Path) -> dict:
     if not nav:
         errors.append({"code": "report_toc_broken", "detail": '<nav class="toc"> is missing'})
     if not errors:
-        meta = DIGEST_META.search(text)
-        if not (meta and meta.group(1) == digest(text)):
-            errors.append({"code": "report_edited", "detail": f"{REPORT} was changed after this skill wrote it, or another tool wrote it"})
-        else:
-            errors.append({"code": "report_stale", "detail": "an input artifact changed after the report was written; run plan and write"})
+        errors.append({"code": "report_edited", "detail": f"{REPORT} was changed after this skill wrote it, or another tool wrote it"})
     return {"ok": False, "errors": errors}
 
 

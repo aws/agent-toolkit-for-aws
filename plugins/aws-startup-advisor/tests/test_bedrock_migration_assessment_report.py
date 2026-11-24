@@ -136,6 +136,66 @@ def test_artifact_text_is_shown_verbatim(tmp_path: Path) -> None:
     assert all(t in text for t in ("$12.49 for 1M tokens", "$2.50 answer", "A $2.50 setup fee and $2.86 a month."))
 
 
+def _share(text: str) -> str:
+    return re.sub(r"\s+", " ", re.search(r'<div class="share-card"><p>(.*?)</p>', text, re.S).group(1))
+
+
+def _add_service_block(ctx: dict, workload: str, model: str, service: str) -> None:
+    ctx["data"]["aws-design-ai.json"]["design_blocks"].append({
+        "workload_id": workload, "model_id": model, "target_bedrock_model": None, "target_aws_service": service,
+        "capability": "text_to_speech", "capability_confidence": "high", "rationale": "Speech goes to an AWS speech service.",
+        "confidence_warning": None})
+    ctx["data"]["estimation-ai.json"]["services_not_estimated"].append(
+        {"workload_id": workload, "target_aws_service": service, "reason": "not_token_priced"})
+
+
+def test_the_leadership_brief_counts_only_bedrock_workloads_and_names_the_others(tmp_path: Path) -> None:
+    run = _run(tmp_path, "bma-estimate-measured")
+    ctx = REPORT.gather(run)
+    _add_service_block(ctx, "openai_api.tts-1", "tts-1", "polly")
+    text = REPORT.render(ctx)
+    share = _share(text)
+    assert share.startswith("Draft estimate for 1 AI workload that uses gpt-4o: running it on Amazon Bedrock"), share
+    assert "2 AI workloads" not in share and "tts-1" not in share.split(":")[0]
+    assert ("<code>openai_api.tts-1</code> goes to Amazon Polly; its cost and setup are outside this estimate." in share), share
+    assert "<li><code>openai_api.tts-1</code>: Amazon Polly</li>" in text
+    report, estimate = tmp_path / "migration-report.html", tmp_path / "estimation-ai.json"
+    report.write_text(text, encoding="utf-8")
+    estimate.write_text(json.dumps(ctx["data"]["estimation-ai.json"]), encoding="utf-8")
+    proc = subprocess.run([sys.executable, str(PLUGIN_VALIDATOR), str(report), "--mode", "ai_only", "--estimation-ai", str(estimate),
+                           "--migration-dir", str(run)], capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_the_leadership_brief_groups_workloads_by_aws_service(tmp_path: Path) -> None:
+    ctx = REPORT.gather(_run(tmp_path, "bma-generate-mixed"))
+    for workload, model, service in (("w.tts", "tts-1", "polly"), ("w.stt", "whisper-1", "transcribe"), ("w.tts-hd", "tts-1-hd", "polly")):
+        _add_service_block(ctx, workload, model, service)
+    share = _share(REPORT.render(ctx))
+    assert share.startswith("Draft estimate for 3 AI workloads that use gpt-5.5, text-embedding-3-small: running them on Amazon Bedrock"), share
+    assert ("<code>w.tts</code> and <code>w.tts-hd</code> go to Amazon Polly and <code>w.stt</code> goes to Amazon Transcribe; "
+            "their cost and setup are outside this estimate." in share), share
+
+
+def test_the_leadership_brief_names_no_other_service_when_every_workload_runs_on_bedrock(tmp_path: Path) -> None:
+    share = _share(REPORT.render(REPORT.gather(_run(tmp_path, "bma-estimate-measured"))))
+    assert share.startswith("Draft estimate for 1 AI workload that uses gpt-4o: running it on Amazon Bedrock"), share
+    assert "outside this estimate" not in share
+
+
+@pytest.mark.parametrize("command", ["plan", "write", "check"])
+def test_an_artifact_shape_the_renderer_cannot_read_is_a_named_error(tmp_path: Path, command: str) -> None:
+    run = _run(tmp_path, "bma-estimate-measured")
+    if command == "check":
+        REPORT.write(run, None)
+    _edit(run / "estimation-ai.json", lambda d: d.update(model_comparison=[1]))
+    before = _snapshot(run)
+    rc, out = _cli(command, str(run))
+    assert rc == 1 and out["ok"] is False and out["error"] == "report_render_failed", out
+    assert "appendix-ai" in out["detail"] and "estimation-ai.json" in out["detail"]
+    assert _snapshot(run) == before
+
+
 def test_estimate_asks_for_whole_dollar_figures_in_its_rationale() -> None:
     doc = (BMA / "references/phases/estimate/estimate-ai.md").read_text(encoding="utf-8")
     assert "as whole dollars a month (`$3 to $572`, cents only below $2)" in doc
@@ -372,6 +432,17 @@ def test_check_names_a_report_whose_inputs_changed(tmp_path: Path) -> None:
     run = _run(tmp_path, "bma-generate-mixed")
     REPORT.write(run, None)
     _edit(run / "estimation-ai.json", lambda d: d["recommendation"].update(stay_if="A changed reason."))
+    assert [e["code"] for e in REPORT.check(run)["errors"]] == ["report_stale"]
+
+
+def test_check_names_an_untouched_report_stale_when_a_section_is_added(tmp_path: Path) -> None:
+    run = _run(tmp_path, "bma-estimate-measured")
+    opportunities = json.loads((run / "estimation-ai.json").read_text())["optimization_opportunities"]
+    _edit(run / "estimation-ai.json", lambda d: d.update(optimization_opportunities=[]))
+    REPORT.write(run, None)
+    assert "exec-optimization" not in REPORT.plan(run)["sections"]
+    _edit(run / "estimation-ai.json", lambda d: d.update(optimization_opportunities=opportunities))
+    assert REPORT.plan(run)["state"] == "unchanged"
     assert [e["code"] for e in REPORT.check(run)["errors"]] == ["report_stale"]
 
 
