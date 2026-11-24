@@ -1,0 +1,285 @@
+{
+  "_units": {
+    "gce-cpu": "10^2.%",
+    "gce-mem": "%",
+    "sql-conn": "1",
+    "sql-cpu": "10^2.%",
+    "sql-disk": "By",
+    "sql-mem": "1",
+    "sql-pgconn": "1"
+  },
+  "alignment": "1h",
+  "resources": [
+    {
+      "alignment": "1h",
+      "connections": {
+        "max": 5.0,
+        "mean": 3.2917,
+        "p95": 5.0,
+        "samples_expected": 168,
+        "samples_present": 168
+      },
+      "coverage": "sufficient",
+      "cpu": {
+        "max": 0.1572,
+        "mean": 0.0977,
+        "p95": 0.1086,
+        "samples_expected": 168,
+        "samples_present": 168
+      },
+      "database_id": "acme-prod:orders-db",
+      "disk_bytes_used": {
+        "max": 87293952,
+        "mean": 87293952,
+        "p95": 87293952,
+        "samples_expected": 168,
+        "samples_present": 168
+      },
+      "memory": {
+        "max": 1.0,
+        "mean": 0.9995,
+        "p95": 0.9999,
+        "samples_expected": 168,
+        "samples_present": 168
+      },
+      "region": "us-central1",
+      "resource_type": "cloudsql_database",
+      "window_days": 7
+    },
+    {
+      "alignment": "1h",
+      "connections": {
+        "max": 40.0,
+        "mean": 22.0256,
+        "p95": 36.8189,
+        "samples_expected": 168,
+        "samples_present": 168
+      },
+      "coverage": "sufficient",
+      "cpu": {
+        "max": 0.4886,
+        "mean": 0.2564,
+        "p95": 0.3025,
+        "samples_expected": 168,
+        "samples_present": 168
+      },
+      "database_id": "acme-prod:reports-db",
+      "disk_bytes_used": {
+        "max": 12885590016,
+        "mean": 12885248000,
+        "p95": 12885557248,
+        "samples_expected": 168,
+        "samples_present": 168
+      },
+      "memory": {
+        "max": 0.5263,
+        "mean": 0.4789,
+        "p95": 0.506,
+        "samples_expected": 168,
+        "samples_present": 168
+      },
+      "region": "us-central1",
+      "resource_type": "cloudsql_database",
+      "window_days": 7
+    },
+    {
+      "alignment": "1h",
+      "burst": false,
+      "coverage": "sufficient",
+      "cpu": {
+        "max": 0.9,
+        "mean": 0.0912,
+        "p95": 0.1214,
+        "samples_expected": 168,
+        "samples_present": 168
+      },
+      "idle": false,
+      "instance_id": "1000000000000000001",
+      "memory": {
+        "max": 0.173,
+        "mean": 0.1178,
+        "p95": 0.1512,
+        "samples_expected": 168,
+        "samples_present": 168
+      },
+      "mig_member": false,
+      "resource_type": "gce_instance",
+      "window_days": 7,
+      "zone": "us-central1-a"
+    },
+    {
+      "alignment": "1h",
+      "burst": false,
+      "coverage": "sufficient",
+      "cpu": {
+        "max": 0.1571,
+        "mean": 0.0609,
+        "p95": 0.0819,
+        "samples_expected": 168,
+        "samples_present": 168
+      },
+      "idle": false,
+      "instance_id": "1000000000000000002",
+      "memory": {
+        "max": 0.1003,
+        "mean": 0.0675,
+        "p95": 0.0832,
+        "samples_expected": 168,
+        "samples_present": 168
+      },
+      "mig_member": false,
+      "resource_type": "gce_instance",
+      "window_days": 7,
+      "zone": "us-central1-a"
+    },
+    {
+      "alignment": "1h",
+      "burst": false,
+      "coverage": "sufficient",
+      "cpu": {
+        "max": 0.199,
+        "mean": 0.0928,
+        "p95": 0.1227,
+        "samples_expected": 168,
+        "samples_present": 168
+      },
+      "idle": false,
+      "instance_id": "1000000000000000003",
+      "memory": {
+        "max": 0.6519,
+        "mean": 0.5933,
+        "p95": 0.6312,
+        "samples_expected": 168,
+        "samples_present": 168
+      },
+      "mig_member": false,
+      "resource_type": "gce_instance",
+      "window_days": 7,
+      "zone": "us-central1-a"
+    },
+    {
+      "alignment": "1h",
+      "burst": true,
+      "coverage": "sufficient",
+      "cpu": {
+        "max": 0.95,
+        "mean": 0.0849,
+        "p95": 0.1031,
+        "samples_expected": 168,
+        "samples_present": 168
+      },
+      "idle": false,
+      "instance_id": "1000000000000000004",
+      "memory": {
+        "status": "unavailable"
+      },
+      "mig_member": false,
+      "resource_type": "gce_instance",
+      "window_days": 7,
+      "zone": "us-central1-a"
+    },
+    {
+      "alignment": "1h",
+      "burst": false,
+      "coverage": "insufficient",
+      "cpu": {
+        "max": 0.3779,
+        "mean": 0.2083,
+        "p95": 0.2902,
+        "samples_expected": 168,
+        "samples_present": 100
+      },
+      "idle": false,
+      "instance_id": "1000000000000000005",
+      "memory": {
+        "max": 0.364,
+        "mean": 0.2723,
+        "p95": 0.3448,
+        "samples_expected": 168,
+        "samples_present": 100
+      },
+      "mig_member": false,
+      "resource_type": "gce_instance",
+      "window_days": 7,
+      "zone": "us-central1-a"
+    },
+    {
+      "alignment": "1h",
+      "burst": false,
+      "coverage": "sufficient",
+      "cpu": {
+        "max": 0.0903,
+        "mean": 0.0086,
+        "p95": 0.0117,
+        "samples_expected": 168,
+        "samples_present": 168
+      },
+      "idle": true,
+      "instance_id": "1000000000000000006",
+      "memory": {
+        "max": 0.1221,
+        "mean": 0.0926,
+        "p95": 0.104,
+        "samples_expected": 168,
+        "samples_present": 168
+      },
+      "mig_member": false,
+      "resource_type": "gce_instance",
+      "window_days": 7,
+      "zone": "us-central1-a"
+    },
+    {
+      "alignment": "1h",
+      "burst": false,
+      "coverage": "sufficient",
+      "cpu": {
+        "max": 0.3714,
+        "mean": 0.1982,
+        "p95": 0.2852,
+        "samples_expected": 168,
+        "samples_present": 168
+      },
+      "idle": false,
+      "instance_id": "1000000000000000007",
+      "memory": {
+        "max": 0.4669,
+        "mean": 0.3763,
+        "p95": 0.4421,
+        "samples_expected": 168,
+        "samples_present": 168
+      },
+      "mig_member": true,
+      "resource_type": "gce_instance",
+      "window_days": 7,
+      "zone": "us-central1-a"
+    },
+    {
+      "alignment": "1h",
+      "burst": false,
+      "coverage": "sufficient",
+      "cpu": {
+        "max": 1.965,
+        "mean": 0.964,
+        "p95": 1.2249,
+        "samples_expected": 168,
+        "samples_present": 168
+      },
+      "idle": false,
+      "instance_id": "1000000000000000008",
+      "memory": {
+        "max": 0.405,
+        "mean": 0.2986,
+        "p95": 0.381,
+        "samples_expected": 168,
+        "samples_present": 168
+      },
+      "mig_member": false,
+      "resource_type": "gce_instance",
+      "window_days": 7,
+      "zone": "us-central1-a"
+    }
+  ],
+  "window_days": 7,
+  "window_end": "2026-11-20T00:00:00Z",
+  "window_start": "2026-11-13T00:00:00Z"
+}

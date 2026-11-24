@@ -1,0 +1,170 @@
+[
+  {
+    "disks": [
+      {
+        "diskSizeGb": "50"
+      }
+    ],
+    "id": "1000000000000000001",
+    "labels": {
+      "env": "prod"
+    },
+    "machineType": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a/machineTypes/n2-standard-8",
+    "name": "web-steady",
+    "networkInterfaces": [
+      {
+        "network": "https://www.googleapis.com/compute/v1/projects/acme-prod/global/networks/main",
+        "subnetwork": "https://www.googleapis.com/compute/v1/projects/acme-prod/regions/us-central1/subnetworks/main"
+      }
+    ],
+    "status": "RUNNING",
+    "zone": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a"
+  },
+  {
+    "disks": [
+      {
+        "diskSizeGb": "50"
+      }
+    ],
+    "id": "1000000000000000002",
+    "labels": {
+      "env": "prod"
+    },
+    "machineType": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a/machineTypes/n2-standard-8",
+    "name": "api-lowload",
+    "networkInterfaces": [
+      {
+        "network": "https://www.googleapis.com/compute/v1/projects/acme-prod/global/networks/main",
+        "subnetwork": "https://www.googleapis.com/compute/v1/projects/acme-prod/regions/us-central1/subnetworks/main"
+      }
+    ],
+    "status": "RUNNING",
+    "zone": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a"
+  },
+  {
+    "disks": [
+      {
+        "diskSizeGb": "50"
+      }
+    ],
+    "id": "1000000000000000003",
+    "labels": {
+      "env": "prod"
+    },
+    "machineType": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a/machineTypes/n2-standard-8",
+    "name": "cache-heavy",
+    "networkInterfaces": [
+      {
+        "network": "https://www.googleapis.com/compute/v1/projects/acme-prod/global/networks/main",
+        "subnetwork": "https://www.googleapis.com/compute/v1/projects/acme-prod/regions/us-central1/subnetworks/main"
+      }
+    ],
+    "status": "RUNNING",
+    "zone": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a"
+  },
+  {
+    "disks": [
+      {
+        "diskSizeGb": "50"
+      }
+    ],
+    "id": "1000000000000000004",
+    "labels": {
+      "env": "prod"
+    },
+    "machineType": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a/machineTypes/n2-standard-8",
+    "name": "batch-bursty",
+    "networkInterfaces": [
+      {
+        "network": "https://www.googleapis.com/compute/v1/projects/acme-prod/global/networks/main",
+        "subnetwork": "https://www.googleapis.com/compute/v1/projects/acme-prod/regions/us-central1/subnetworks/main"
+      }
+    ],
+    "status": "RUNNING",
+    "zone": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a"
+  },
+  {
+    "disks": [
+      {
+        "diskSizeGb": "50"
+      }
+    ],
+    "id": "1000000000000000005",
+    "labels": {
+      "env": "prod"
+    },
+    "machineType": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a/machineTypes/e2-standard-2",
+    "name": "new-vm",
+    "networkInterfaces": [
+      {
+        "network": "https://www.googleapis.com/compute/v1/projects/acme-prod/global/networks/main",
+        "subnetwork": "https://www.googleapis.com/compute/v1/projects/acme-prod/regions/us-central1/subnetworks/main"
+      }
+    ],
+    "status": "RUNNING",
+    "zone": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a"
+  },
+  {
+    "disks": [
+      {
+        "diskSizeGb": "50"
+      }
+    ],
+    "id": "1000000000000000006",
+    "labels": {
+      "env": "prod"
+    },
+    "machineType": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a/machineTypes/n2-standard-2",
+    "name": "idle-vm",
+    "networkInterfaces": [
+      {
+        "network": "https://www.googleapis.com/compute/v1/projects/acme-prod/global/networks/main",
+        "subnetwork": "https://www.googleapis.com/compute/v1/projects/acme-prod/regions/us-central1/subnetworks/main"
+      }
+    ],
+    "status": "RUNNING",
+    "zone": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a"
+  },
+  {
+    "disks": [
+      {
+        "diskSizeGb": "50"
+      }
+    ],
+    "id": "1000000000000000007",
+    "labels": {
+      "env": "prod"
+    },
+    "machineType": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a/machineTypes/e2-medium",
+    "name": "web-mig-7f3k",
+    "networkInterfaces": [
+      {
+        "network": "https://www.googleapis.com/compute/v1/projects/acme-prod/global/networks/main",
+        "subnetwork": "https://www.googleapis.com/compute/v1/projects/acme-prod/regions/us-central1/subnetworks/main"
+      }
+    ],
+    "status": "RUNNING",
+    "zone": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a"
+  },
+  {
+    "disks": [
+      {
+        "diskSizeGb": "50"
+      }
+    ],
+    "id": "1000000000000000008",
+    "labels": {
+      "env": "prod"
+    },
+    "machineType": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a/machineTypes/e2-small",
+    "name": "ops-small",
+    "networkInterfaces": [
+      {
+        "network": "https://www.googleapis.com/compute/v1/projects/acme-prod/global/networks/main",
+        "subnetwork": "https://www.googleapis.com/compute/v1/projects/acme-prod/regions/us-central1/subnetworks/main"
+      }
+    ],
+    "status": "RUNNING",
+    "zone": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a"
+  }
+]
