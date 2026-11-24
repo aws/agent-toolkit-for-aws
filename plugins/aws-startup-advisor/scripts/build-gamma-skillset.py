@@ -220,6 +220,9 @@ def adapt_markdown(relative: str, data: bytes, skill: str) -> tuple[bytes, list[
     if skill == "gcp-to-aws":
         for helper in GCP_HELPERS:
             replacements[f"$PLUGIN_ROOT/scripts/{helper}"] = f"<SKILL_BASE>/scripts/{helper}"
+        # The skill's own helpers (skills/gcp-to-aws/scripts/*) travel with the
+        # skill tree, so they resolve directly under <SKILL_BASE>.
+        replacements["$PLUGIN_ROOT/skills/gcp-to-aws/scripts/"] = "<SKILL_BASE>/scripts/"
         if relative == "skills/gcp-to-aws/SKILL.md":
             heading = "# GCP-to-AWS Migration Skill\n"
             if heading not in text:

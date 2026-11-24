@@ -380,6 +380,7 @@ Source: `aws-design.json`, `terraform/baseline.tf`, `estimation-infra.json` obse
 - Deferred services (`deferred_services[]`, `excluded_from_totals`)
 - GCP egress when `migration_cost_considerations.billing_data_available === false`
 - Professional services / dual-run period (not modeled)
+- Utilization-based right-sizing: when any inventory resource carries `utilization` (live discovery with Cloud Monitoring), state that 30-day utilization was captured into the inventory but is not yet used for sizing — sizes are declared/like-for-like; sizing from utilization arrives in a follow-up. When no resource carries `utilization`, state that right-sizing requires live discovery with Cloud Monitoring read access.
 
 **Terraform validation:** from `validation-report.json` when present (`status`, provider version).
 
