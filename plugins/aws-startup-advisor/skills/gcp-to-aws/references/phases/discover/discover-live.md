@@ -368,7 +368,16 @@ A 4xx or 403 on a row, or an API that row 21 found disabled, records that row
 as `skipped`: that metric becomes `no_data` for every resource, and the other
 rows still run. It is never a halt. Access tokens expire after an hour and
 fourteen project-wide calls can take longer, so refresh the token at the start
-of each row 21a–21n, as row 21a says. Row 22a's `instance` values are full
+of each row 21a–21n, as row 21a says. A rerun of any row 21a–21n (token
+expiry, a retry, or a resumed Step 2) first deletes that row's existing
+`monitoring-<metric>-<aligner>-p*.json` pages and only then writes its new
+`-p1`; a page set is never a mix of runs. Step 2d's script enforces this: it
+reduces a row only when its manifest status is `ok`, every page is a
+`timeSeries` response rather than an HTTP `error` envelope, and the pages form
+a contiguous `-p1`..`-pN` chain in which only the last page lacks
+`nextPageToken`. Anything else (a `skipped`/`failed` row with old pages still
+on disk, a lone `-p1` that still has `nextPageToken`, a gap in the chain) is
+`no_data` for that metric. Row 22a's `instance` values are full
 resource URLs; Step 2d derives the VM name and zone from the last and
 `zones/<zone>` segments and joins them to `gce.json` by name and zone.
 
@@ -668,7 +677,7 @@ The parent `discover.md` owns the phase status update — do not touch
 | Asset search fails (other errors)                  | Fall back to per-service immediately — do not soft-ask                                                                                             |
 | Individual row fails (API not enabled, 403)        | Record `failed`/`skipped`, continue — never a halt (no per-row enable soft-ask)                                                                    |
 | Monitoring row 4xx / API disabled (rows 21–21n)    | Record `skipped`; that metric is `no_data` for every resource in `utilization-summary.json`; continue with the next row — never a halt                       |
-| Token expired mid-run                              | Stop capturing; hand off ("run `gcloud auth login`, then tell me to continue"); on resume re-run Step 2 (captures overwrite)                       |
+| Token expired mid-run                              | Stop capturing; hand off ("run `gcloud auth login`, then tell me to continue"); on resume re-run Step 2 (captures overwrite; a rerun row 21a–21n deletes its old `-p*` pages first) |
 | Capture file unparseable                           | Record warning, skip that file, continue                                                                                                           |
 | Every capture failed                               | Exit with no output; tell the user which permissions are missing (`roles/viewer` covers all rows)                                                  |
 

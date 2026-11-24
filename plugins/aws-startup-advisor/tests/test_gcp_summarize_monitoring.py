@@ -112,6 +112,58 @@ def test_paging_merges_a_series_split_across_pages(capture):
     merged = next(iter(loaded["series"].values()))
     assert len(merged["points"]) == HOURS
     assert merged["unit"] == "10^2.%"
+# ---------------------------------------------------------------- stale, failed and incomplete page sets
+def manifest(capture: Path, rows: dict[str, str]) -> None:
+    """manifest.json whose captures[] lists each monitoring-<short>-<aligner>-p1.json with the given status."""
+    captures = [{"command": "curl ...", "file": f"monitoring-{key}-p1.json", "status": status, "note": None}
+                for key, status in rows.items()]
+    write(capture, "manifest.json", {"captured_at": "2026-11-20T00:00:00Z", "project": PROJECT, "captures": captures})
+@pytest.mark.parametrize("status", ["skipped", "failed"])
+def test_manifest_row_not_ok_is_no_data_despite_pages_on_disk(capture, status):
+    iid = "1000000000000000001"
+    simple_vm(capture, iid)
+    manifest(capture, {"gce-cpu-ALIGN_MEAN": status, "gce-cpu-ALIGN_MAX": "ok"})
+    assert sm.load_metric(capture, "gce-cpu", "ALIGN_MEAN") == {"status": "no_data"}
+    assert sm.load_metric(capture, "gce-cpu", "ALIGN_MAX")["status"] == "ok"
+    vm = by_id(summarize(capture), iid)
+    assert vm["cpu"] == {"status": "no_data"}
+    assert vm["coverage"] == "no_data"
+def test_manifest_row_ok_or_absent_keeps_reducing(capture):
+    iid = "1000000000000000001"
+    simple_vm(capture, iid)
+    manifest(capture, {"gce-cpu-ALIGN_MEAN": "ok"})
+    assert sm.load_metric(capture, "gce-cpu", "ALIGN_MEAN")["status"] == "ok"
+    assert sm.load_metric(capture, "gce-cpu", "ALIGN_MAX")["status"] == "ok"
+    assert by_id(summarize(capture), iid)["coverage"] == "sufficient"
+def test_http_error_envelope_is_no_data_not_an_empty_response(capture):
+    iid = "1000000000000000001"
+    simple_vm(capture, iid)
+    envelope = {"error": {"code": 403, "message": "Permission monitoring.timeSeries.list denied", "status": "PERMISSION_DENIED"}}
+    write_metric(capture, "gce-cpu", "ALIGN_MEAN", [envelope])
+    assert sm.load_metric(capture, "gce-cpu", "ALIGN_MEAN") == {"status": "no_data"}
+    assert by_id(summarize(capture), iid)["cpu"] == {"status": "no_data"}
+def test_lone_first_page_with_next_page_token_is_no_data(capture):
+    iid = "1000000000000000001"
+    s = series(GCE_CPU, gce_labels(iid), {"instance_name": "vm"}, [0.1] * HOURS)
+    write_metric(capture, "gce-cpu", "ALIGN_MEAN", [page("10^2.%", [s], "tok")])
+    assert sm.load_metric(capture, "gce-cpu", "ALIGN_MEAN") == {"status": "no_data"}
+def test_gap_in_page_chain_is_no_data(capture):
+    iid = "1000000000000000001"
+    s = series(GCE_CPU, gce_labels(iid), {"instance_name": "vm"}, [0.1] * HOURS)
+    write(capture, "monitoring-gce-cpu-ALIGN_MEAN-p1.json", page("10^2.%", [s], "tok"))
+    write(capture, "monitoring-gce-cpu-ALIGN_MEAN-p3.json", page("10^2.%", [s]))
+    assert sm.load_metric(capture, "gce-cpu", "ALIGN_MEAN") == {"status": "no_data"}
+def test_stale_higher_page_after_a_shorter_rerun_is_no_data(capture):
+    iid = "1000000000000000001"
+    s = series(GCE_CPU, gce_labels(iid), {"instance_name": "vm"}, [0.1] * HOURS)
+    # A rerun wrote a terminal p1 but an older run's p2 survived: the chain has two terminal pages.
+    write_metric(capture, "gce-cpu", "ALIGN_MEAN", [page("10^2.%", [s]), page("10^2.%", [s])])
+    assert sm.load_metric(capture, "gce-cpu", "ALIGN_MEAN") == {"status": "no_data"}
+def test_middle_page_without_next_page_token_is_no_data(capture):
+    iid = "1000000000000000001"
+    s = series(GCE_CPU, gce_labels(iid), {"instance_name": "vm"}, [0.1] * HOURS)
+    write_metric(capture, "gce-cpu", "ALIGN_MEAN", [page("10^2.%", [s], "tok"), page("10^2.%", [s]), page("10^2.%", [s])])
+    assert sm.load_metric(capture, "gce-cpu", "ALIGN_MEAN") == {"status": "no_data"}
 # ---------------------------------------------------------------- units
 def test_normalize_unit_divides_percent_and_passes_others():
     assert sm.normalize_unit(50.0, "%") == 0.5
@@ -242,6 +294,29 @@ def test_burst_requires_two_consecutive_hot_means_not_a_hot_max(capture):
     vm = by_id(summarize(capture), iid)
     assert vm["cpu"]["max"] == 0.9
     assert vm["burst"] is False
+def test_hot_hours_separated_by_a_missing_bucket_are_not_consecutive(capture):
+    iid = "1000000000000000004"
+    write(capture, "gce.json", gce_json((iid, "vm", "n2-standard-8")))
+    ends = end_times(HOURS)
+    means = [0.10] * HOURS
+    means[40], means[42] = 0.6, 0.6
+    del ends[41], means[41]  # 167 of 168 buckets: coverage stays sufficient, the hour between the hot ones is absent
+    mean_series = series(GCE_CPU, gce_labels(iid), {"instance_name": "vm"}, means, ends=ends)
+    max_series = series(GCE_CPU, gce_labels(iid), {"instance_name": "vm"}, [m + 0.05 for m in means], ends=ends)
+    write_metric(capture, "gce-cpu", "ALIGN_MEAN", [page("10^2.%", [mean_series])])
+    write_metric(capture, "gce-cpu", "ALIGN_MAX", [page("10^2.%", [max_series])])
+    vm = by_id(summarize(capture), iid)
+    assert vm["coverage"] == "sufficient"
+    assert vm["cpu"]["samples_present"] == HOURS - 1
+    assert vm["burst"] is False
+    # The same two hot hours with the bucket between them also hot: a real run of adjacent hours.
+    means.insert(41, 0.6)
+    ends.insert(41, end_times(HOURS)[41])
+    mean_series = series(GCE_CPU, gce_labels(iid), {"instance_name": "vm"}, means, ends=ends)
+    max_series = series(GCE_CPU, gce_labels(iid), {"instance_name": "vm"}, [m + 0.05 for m in means], ends=ends)
+    write_metric(capture, "gce-cpu", "ALIGN_MEAN", [page("10^2.%", [mean_series])])
+    write_metric(capture, "gce-cpu", "ALIGN_MAX", [page("10^2.%", [max_series])])
+    assert by_id(summarize(capture), iid)["burst"] is True
 def test_single_hot_mean_is_not_a_burst(capture):
     iid = "1000000000000000001"
     means = [0.10] * HOURS
