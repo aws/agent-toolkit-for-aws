@@ -1,6 +1,6 @@
 # Lambda — Startup-Specific Guidance
 
-**Scope:** Unless a row explicitly names Web Functions, the pricing, tuning, language, and ARM64 guidance below describes **Lambda Event Functions**, the existing event-invocation model.
+**Scope:** Unless a row explicitly names Web Functions, the pricing, tuning, language, and ARM64 guidance below describes **Lambda Event Functions**, the existing event-invocation model. Note: Lambda Event Functions on Lambda Managed Instances now also support GPU (G-series) instances for workloads like ML inference, media processing, and rendering.
 
 [Lambda Web Functions](https://docs.aws.amazon.com/lambda/latest/dg/web-functions.html) run Node.js HTTP servers directly and support native response streaming. Their [request timeout](https://docs.aws.amazon.com/lambda/latest/dg/web-functions-revisions.html) defaults to 30 seconds and is configurable up to 900 seconds. They have their own deployment configuration and pricing; do not apply Event Function cost estimates or tuning settings to them. Check current runtime and Region availability before choosing them.
 

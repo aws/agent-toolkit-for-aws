@@ -4,7 +4,7 @@
 
 **Almost never as your first choice.** Start with Lambda or ECS Fargate. EC2 makes sense for startups only when:
 
-- You need GPUs (ML training/inference) — no Fargate GPU support
+- You need GPUs (ML training/inference) — no Fargate GPU support, though Lambda Event Functions on Managed Instances now support GPU for some workloads
 - You're running software that requires full OS control (custom kernels, specific drivers, Docker-in-Docker)
 - You're running a stateful workload that doesn't fit managed services (self-managed databases, Redis clusters, Kafka)
 - Your sustained compute spend exceeds $10K/month and you can commit to instance management
@@ -57,7 +57,7 @@
 | Signal                                             | Why EC2                                 |
 | -------------------------------------------------- | --------------------------------------- |
 | Monthly Fargate spend > $10K with >80% utilization | EC2 + Savings Plans is 30-50% cheaper   |
-| Need GPU instances                                 | No Fargate GPU support                  |
+| Need GPU instances                                 | No Fargate GPU support (but Lambda Event Functions on Managed Instances now support GPU)                  |
 | Need instance store NVMe for caching               | Fargate has no local storage option     |
 | Running workloads requiring privileged containers  | Fargate doesn't support privileged mode |
 
