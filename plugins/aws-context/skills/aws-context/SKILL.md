@@ -24,8 +24,7 @@ tables, columns, dashboards and documents. Edges are typed relationships between
 You do not need to know what is in the graph up front. You discover it at query time.
 Each graph is an AgentContext (agent context): its knowledge graph is what the tools below
 search and change. An AgentContext has an ID and an ARN on its Settings tab in the AWS Context
-console. IDs start with `ac-`, or `cg-` for graphs created before agent contexts. Ask the
-user once and reuse them for the session.
+console. IDs start with `ac-`. Ask the user once and reuse them for the session.
 
 ## Critical rules
 

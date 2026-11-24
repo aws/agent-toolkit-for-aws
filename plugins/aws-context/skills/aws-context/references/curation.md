@@ -39,7 +39,7 @@ user for the ARN from the graph's Settings tab in the AWS Context console.
 1. Record a trace only when the user asks.
 2. Remove credentials, tokens, keys, personal data the user has not approved, and anything they ask to leave out.
 3. Show the user what the trace will contain and which graph it is for, and in the same message ask who may see what AWS Context learns from it: only them, everyone who can read the graph, or specific people or groups. Done when the user has approved the content and chosen the readers.
-4. Call PutTrace with the graph's agent context ARN in `agentContextArns`. The older `...:context-graph/<id>` form is refused; for a `cg-` graph, use `...:agent-context/<id>` with the same ID. Set `accessControlConfig` from the user's choice:
+4. Call PutTrace with the graph's agent context ARN in `agentContextArns`. Set `accessControlConfig` from the user's choice:
    - **Only them:** leave `accessControlConfig` out. If PutTrace refuses because the caller has no end user, nothing was stored: tell the user this connection cannot limit a trace to them, and ask them to choose again.
    - **Everyone who can read the graph:** one entry, `ALLOW` with principal `*`.
    - **Specific people or groups:** one `ALLOW` entry each, with `principalType` `USER` and the person's sign-in email, or `GROUP` and the group ID the user gives you. Ask for the exact values. A wrong value is accepted but matches no one, so nobody sees the insights.

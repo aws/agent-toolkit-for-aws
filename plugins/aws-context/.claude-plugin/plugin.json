@@ -12,7 +12,7 @@
     "aws",
     "aws-context",
     "knowledge-graph",
-    "context-graph",
+    "agent-context",
     "retrieval",
     "agentic-retrieval",
     "data-catalog",
