@@ -240,9 +240,18 @@ def test_q12c_promises_express_mode_only_when_design_can_use_it() -> None:
     # The comparison table header no longer folds Express into the Fargate column.
     assert "| | Elastic Beanstalk | ECS Fargate | Amazon EKS |" in section
     assert "ECS Fargate (web dynos on ECS Express Mode)" not in section
-    # Option 3 states the conditions rather than "land on".
+    # Option 3 states every 2A condition rather than "land on".
     assert "web dynos land on ECS Express Mode" not in section
-    assert "they move to ECS Express Mode" in section and "(Q10, default is Route 53)" in section
+    option_3 = next(line for line in section.splitlines() if line.startswith("> 3. Use ECS Fargate"))
+    assert "they move to ECS Express Mode" in option_3 and "(Q10, default is Route 53)" in option_3
+    for condition in ("4 vCPU / 8 GiB", "own Dockerfile", "not in a Private Space", "canary (Q12e)"):
+        assert condition in option_3, condition
+    # The comparison table cell is shown on the fast path too, so it must carry the same conditions.
+    operate_cell = next(line for line in section.splitlines() if line.startswith("> | You operate |"))
+    assert "can use ECS Express Mode" in operate_cell and "when you keep your current DNS provider (Q10)" in operate_cell
+    for condition in ("4 vCPU / 8 GiB", "own Dockerfile", "no Private Space"):
+        assert condition in operate_cell, condition
+    assert "Express Mode provisions them for you when" not in operate_cell
 
 
 def test_q12c_step_4b_trigger_is_stated_once_and_reused() -> None:

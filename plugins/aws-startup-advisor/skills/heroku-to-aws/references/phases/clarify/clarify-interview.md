@@ -571,7 +571,7 @@ chosen, and a number here would be a guess. Example wording:
 > | --- | --- | --- | --- |
 > | Closest to | Heroku as you use it today: push source, the platform builds and runs it | A Heroku app you already ship as a container image | Kubernetes you run yourself |
 > | You deploy | Source, a Dockerfile, or an image; a deploy pipeline is generated (Q12d) | A container image you build (we generate the Dockerfile or buildpack image build if you have none) | Images plus Kubernetes manifests |
-> | You operate | Nothing below the app: AWS patches the platform and the EC2 instances it runs | Nothing below the container: no instances, no cluster to size; web dynos get a generated load balancer, HTTPS, auto scaling and logs (ECS Express Mode provisions them for you when you keep your current DNS provider, Q10) | The cluster: upgrades, nodes, add-ons |
+> | You operate | Nothing below the app: AWS patches the platform and the EC2 instances it runs | Nothing below the container: no instances, no cluster to size; web dynos get a generated load balancer, HTTPS, auto scaling and logs; a web dyno can use ECS Express Mode, which provisions them, when you keep your current DNS provider (Q10) and the app qualifies (dyno within 4 vCPU / 8 GiB, own Dockerfile, no Private Space) | The cluster: upgrades, nodes, add-ons |
 > | Scaling and billing | EC2 instances, billed while they run, including when idle | Per task vCPU and memory, billed while tasks run, scaled on traffic | Node groups or EKS Auto Mode, plus the cluster fee |
 >
 > Based on your Heroku formations, I recommend:
@@ -585,7 +585,7 @@ chosen, and a number here would be a guess. Example wording:
 >
 > 1. Use this recommendation (default)
 > 2. Use Elastic Beanstalk for all EB-compatible formations; keep system-forced Fargate overrides for scaled non-web workers
-> 3. Use ECS Fargate for all dyno formations (web dynos get a standard ECS service behind a generated ALB with HTTPS, auto scaling and logs; they move to ECS Express Mode, with AWS provisioning those, if you keep your current DNS provider (Q10, default is Route 53), the dyno fits 4 vCPU / 8 GiB, the app ships its own Dockerfile and releases are canary (Q12e); workers get standard ECS services)
+> 3. Use ECS Fargate for all dyno formations (web dynos get a standard ECS service behind a generated ALB with HTTPS, auto scaling and logs; they move to ECS Express Mode, with AWS provisioning those, if you keep your current DNS provider (Q10, default is Route 53), the dyno fits 4 vCPU / 8 GiB, the app ships its own Dockerfile, the app is not in a Private Space and releases are canary (Q12e); workers get standard ECS services)
 > 4. Use EKS — team has Kubernetes expertise and wants full K8s control
 > 5. EKS acceptable — team can operate K8s, prefers managed node groups to reduce burden
 > 6. Set per-formation targets manually
