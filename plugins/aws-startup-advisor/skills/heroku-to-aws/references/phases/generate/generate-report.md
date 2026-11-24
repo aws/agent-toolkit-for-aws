@@ -7,10 +7,14 @@ _contributes:
 
 # Generate — Stakeholder HTML Report (Heroku)
 
-> Thin shareable HTML for SAs / founders. Not a full GCP/Vercel assessment
-> clone — decision + costs + optional what-if scenarios, then point at
-> `MIGRATION_GUIDE.md` for procedure. Runs **after** docs so the guide exists
-> when the report links to it.
+> Stakeholder HTML that uses the same visual shell as the GCP migration
+> assessment (page background, section cards, metric grid, verdict callout,
+> appendix divider, focus and print styles). The Heroku report stays shorter:
+> decision, costs, developer workflow, what-if scenarios, and five appendices
+> the Heroku artifacts can fill. It does not include the GCP AI appendix,
+> security-gap analysis, timeline, or glossary. Cutover procedure stays in
+> `MIGRATION_GUIDE.md`. Runs **after** docs so the guide exists when the report
+> links to it.
 >
 > **This file is the single source of truth for `decision-summary` /
 > `decision-basis` / `exec-costs` / `what-if-scenarios` content rules.**
@@ -366,13 +370,62 @@ Omit the section when workshop was declined or never entered.
   `decision-summary` / `exec-costs` / `what-if-scenarios` (name things the
   reader controls).
 
-### Minimal CSS
+### Visual shell
 
-Use a short inline stylesheet: readable body font, `.report` max-width ~900px,
-tables with borders, `.active-scenario` or bold active row,
-`.verdict-headline` (large display type for the outcome — **not** a colored
-pill badge row), `.toc` list. Keep visual noise low — this is a one-pager for
-stakeholders, not a design system.
+Use the same inline stylesheet contract as the GCP assessment. Both
+`migration-report.html` and `decision-report.html` include this shell. Colors
+and spacing may be refined. The selectors and properties below are required;
+`validate-heroku-migration-report.py` fails the report when any of them is
+missing from a `<style>` block.
+
+```css
+body { margin: 0; background: #f6f8fa; color: #1f2328; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 15px; line-height: 1.55; }
+.report { max-width: 1040px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+h1 { font-size: 1.85rem; margin-bottom: 0.25rem; border-bottom: 3px solid #ff9900; padding-bottom: 0.5rem; }
+.verdict-headline { font-size: 2rem; line-height: 1.15; margin: 0 0 0.35rem; }
+section { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; scroll-margin-top: 1rem; }
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin: 0.85rem 0; }
+.metric { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 0.85rem 1rem; }
+.metric-hero { border: 2px solid #0d7377; }
+.verdict { background: #e6f4ea; border: 1px solid #137333; border-left: 4px solid #137333; padding: 0.75rem 1rem; }
+.savings { color: #137333; font-weight: 650; }
+.increase { color: #c5221f; font-weight: 650; }
+.appendix-header { background: #232f3e; color: #fff; padding: 1rem 1.5rem; margin: 2rem 0 1rem; }
+a:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
+table { width: 100%; border-collapse: collapse; margin: 0.75rem 0 1rem; font-size: 0.88rem; }
+th, td { border: 0; border-bottom: 1px solid #d0d7de; padding: 0.45rem 0.65rem; text-align: left; vertical-align: top; }
+thead th { border-bottom: 2px solid #d0d7de; }
+tr.active-scenario { font-weight: 650; }
+@media (max-width: 700px) { .report { padding: 1rem; } .metrics { grid-template-columns: 1fr; } }
+@media print { body { background: #fff; } .appendix { break-before: page; } }
+```
+
+Put the verdict headline in large display type. Do not render it as a colored
+pill. A go outcome may sit in `.verdict`. A conditional or stay outcome uses a
+pale warning callout so the color is not the only signal. The Balanced monthly
+figure is a `.metric-hero` inside `.metrics`, next to the Heroku baseline when
+one exists and the complexity tier. Mark a supported savings delta with
+`.savings` and a supported increase with `.increase`, and keep the `+` or `-`
+in the text.
+
+### Appendices (full report only)
+
+After `next-steps`, render `<div class="appendix">` preceded by
+`<div class="appendix-header">Appendix</div>`. Decision mode omits this block
+(`report-decision-core.md`). Each appendix is a `<section>` with a plain
+heading. Copy figures and choices from the artifacts. Do not invent rows.
+
+| Section ID | Content |
+| --- | --- |
+| `appendix-services` | One row per `aws-design.json` `services[]` entry: Heroku app, source, AWS service, and the size the reader controls (instance class, task size, count). |
+| `appendix-costs` | Estimate line items when the breakdown has them. Otherwise the Heroku baseline and the three AWS tiers, as estimated monthly whole dollars, plus the pricing-source caveat. |
+| `appendix-config` | Choices from `preferences.json`: region, availability, maintenance window, compute default and any formation override, Elastic Beanstalk deploy method, database HA, migration method, DNS. Columns: Choice, Your answer, What it changes. |
+| `appendix-security` | The account baseline Generate emits: alternate contacts, password policy, S3 public-access block, default EBS encryption, Access Analyzer, IMDSv2, CloudTrail, monthly budget, GuardDuty. Say that the three contact emails must be set before `terraform plan`, and that removing `baseline.tf` plus those three variables opts out. |
+| `appendix-assumptions` | `recommendation.decision_basis` measured, assumed, and unknown lists when present, copied as written, plus one pricing-provenance line. |
+
+Do not emit `appendix-ai`, `appendix-security-gap`, `appendix-steps`,
+`appendix-glossary`, `exec-timeline`, or `exec-tco`. The cutover procedure
+stays in `MIGRATION_GUIDE.md`.
 
 ### Table & figure accessibility (REQUIRED — the blocking validator enforces these)
 
@@ -380,7 +433,7 @@ stakeholders, not a design system.
   (`exec-costs`, `cost-optimization` when opportunities exist, `what-if-scenarios`) are
   column-headed, so emit `<th scope="col">…</th>` for each header cell.
 - **If you emit a `<figure>`, it must carry a non-empty `aria-label` and a `<figcaption>`.**
-  The one-pager normally has no figures; this only applies if you add one.
+  This report normally has no figures; this only applies if you add one.
 - `<html>` carries `lang="en"` (the skeleton already does).
 
 ### Skeleton
@@ -392,12 +445,13 @@ stakeholders, not a design system.
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Heroku to AWS Migration Assessment</title>
-  <style>/* inline */</style>
+  <style>/* visual shell from the section above */</style>
 </head>
 <body>
   <div class="report">
-    <nav class="toc">…</nav>
+    <h1>Heroku to AWS Migration Assessment</h1>
     <section id="decision-summary">…</section>
+    <nav class="toc">…</nav>
     <!-- <section id="decision-basis"> when recommendation.decision_basis exists -->
     <section id="exec-costs">
       <!-- every <th> declares scope; copy this header pattern for cost-optimization + what-if too -->
@@ -412,6 +466,14 @@ stakeholders, not a design system.
     <section id="developer-workflow">…</section>
     <!-- <section id="what-if-scenarios"> when ≥2 scenarios -->
     <section id="next-steps">…</section>
+    <div class="appendix-header">Appendix</div>
+    <div class="appendix">
+      <section id="appendix-services">…</section>
+      <section id="appendix-costs">…</section>
+      <section id="appendix-config">…</section>
+      <section id="appendix-security">…</section>
+      <section id="appendix-assumptions">…</section>
+    </div>
     <footer>Generated by Heroku to AWS Migration Advisor — draft for review; verify figures before executive sign-off.</footer>
   </div>
 </body>
@@ -427,7 +489,7 @@ wrote satisfies the contract, and if not, **fix and rewrite it here** (this is t
 the report is edited — a stub is never acceptable):
 
 1. File exists and is non-empty.
-2. Contains `decision-summary`, `exec-costs`, `cost-optimization`, `next-steps`, and `draft for review`.
+2. Contains `decision-summary`, `exec-costs`, `cost-optimization`, `next-steps`, the five appendix sections, the visual-shell selectors, and `draft for review`.
 3. `decision-summary` must **not contain** any `badge-verdict-*` class; when
    `recommendation.outcome` exists it must render a `verdict-headline` element.
 4. When `recommendation.decision_basis` exists: contains `decision-basis`.

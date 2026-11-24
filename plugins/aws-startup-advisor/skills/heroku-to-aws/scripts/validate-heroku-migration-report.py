@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""Validate heroku-to-aws migration-report.html (thin stakeholder report).
+"""Validate heroku-to-aws migration-report.html.
 
 Required sections: decision-summary, exec-costs, cost-optimization, next-steps.
+Full mode also requires the Heroku appendix set (services, costs, configuration,
+security baseline, assumptions). Decision mode omits those appendices.
 Conditional: what-if-scenarios when scenarios/index.json has ≥2 entries.
 Footer must contain "draft for review".
 
-Also enforces the report's own decision-UX and a11y contract (ported subset of
-the gcp-to-aws report validator, #223 — gated to what the Heroku one-pager
-actually emits):
+The visual shell matches the GCP report contract: page background, a
+max-width report, section cards, a metric grid, a verdict callout, a savings
+color, an appendix divider, visible keyboard focus, a 700px breakpoint, and
+print styles. Both report modes use that shell.
+
+Also enforces the report's decision-UX and a11y contract:
   - decision-summary must NOT contain any badge-verdict-* pill (the skeleton mandates
     a typography-first `verdict-headline`; color-only verdict carriers are banned).
   - when estimation-infra.json declares recommendation.outcome, decision-summary
@@ -15,10 +20,8 @@ actually emits):
   - <html> must declare a lang attribute; any <th> must declare scope=col|row;
     any <figure> must carry aria-label + <figcaption>.
 
-Deliberately NOT enforced (would false-fail the intentionally-thin Heroku
-report, whose skeleton puts <nav class="toc"> before the verdict and emits no
-<h1> / table <caption>): decision-before-TOC ordering, single-<h1>, per-table
-<caption>, glossary/appendix set.
+Deliberately NOT enforced: decision-before-TOC ordering, single-<h1>, per-table
+<caption>, and the GCP-only appendix set (AI, security gap, steps, glossary).
 
 Exit 0 on PASS, 1 on FAIL.
 
@@ -53,11 +56,79 @@ MODE_REQUIRED_SECTION_ID = {
 }
 
 
+# Full-report appendices the Heroku artifacts can fill. Decision mode omits them
+# because Generate has not run. The GCP AI, security-gap, steps, and glossary
+# appendices are not part of this set.
+FULL_APPENDIX_SECTION_IDS = [
+    "appendix-services",
+    "appendix-costs",
+    "appendix-config",
+    "appendix-security",
+    "appendix-assumptions",
+]
+
+# Same structural CSS checks as scripts/validate-migration-report.py. Agents may
+# refine colors and spacing, but the report must not fall back to unboxed prose.
+VISUAL_CONTRACT_CHECKS = [
+    (
+        r"body\s*\{[^}]*background\s*:\s*(?:var\([^)]*\)|#f6f8fa)",
+        "body must use a contrasting page background",
+    ),
+    (
+        r"\.(?:report|container)\s*\{[^}]*max-width\s*:",
+        "report shell must constrain line length with max-width",
+    ),
+    (
+        r"section\s*\{[^}]*background\s*:[^;}]+;?[^}]*border\s*:[^;}]+;?"
+        r"[^}]*border-radius\s*:",
+        "sections must render as bordered surface cards",
+    ),
+    (
+        r"\.metrics\s*\{[^}]*display\s*:\s*grid[^}]*grid-template-columns\s*:",
+        "executive metrics must use a responsive CSS grid",
+    ),
+    (
+        r"\.metric\s*\{[^}]*border\s*:[^;}]+;?[^}]*border-radius\s*:",
+        "metric cards must have a bordered card treatment",
+    ),
+    (
+        r"\.verdict\s*\{[^}]*background\s*:[^;}]+;?[^}]*border\s*:",
+        "recommendation must have a visually distinct callout treatment",
+    ),
+    (
+        r"\.savings\s*\{[^}]*color\s*:",
+        "supported savings values must have a reusable visual treatment",
+    ),
+    (
+        r"\.appendix-header\s*\{",
+        "shared shell must define an appendix divider",
+    ),
+    (
+        r":focus-visible\s*\{",
+        "keyboard focus must be visibly styled",
+    ),
+    (
+        r"@media\s*\([^)]*max-width\s*:\s*700px[^)]*\)",
+        "mobile readability breakpoint (700px) is required",
+    ),
+    (
+        r"@media\s+print\s*\{",
+        "print-specific styling is required",
+    ),
+]
+
+
 def _required_sections(mode: str) -> list[str]:
     required = [*COMMON_REQUIRED_SECTION_IDS, MODE_REQUIRED_SECTION_ID[mode]]
     if mode == "full":
         required.append("cost-optimization")
+        required.extend(FULL_APPENDIX_SECTION_IDS)
     return required
+
+
+def _validate_visual_shell(html: str) -> list[str]:
+    style = "\n".join(re.findall(r"<style\b[^>]*>(.*?)</style>", html, flags=re.IGNORECASE | re.DOTALL))
+    return [message for pattern, message in VISUAL_CONTRACT_CHECKS if not re.search(pattern, style, re.IGNORECASE | re.DOTALL)]
 
 # Section identity/count/fragment come from the stdlib HTML parser, never a
 # raw-source regex, so that:
@@ -1345,6 +1416,7 @@ def validate(html: str, migration_dir: Path | None, mode: str = "full") -> list[
     if "draft for review" not in html.lower():
         errors.append('footer must contain "draft for review" disclaimer')
 
+    errors.extend(_validate_visual_shell(html))
     errors.extend(_validate_currency_formatting(html))
     errors.extend(_validate_cost_figures(html, migration_dir))
 

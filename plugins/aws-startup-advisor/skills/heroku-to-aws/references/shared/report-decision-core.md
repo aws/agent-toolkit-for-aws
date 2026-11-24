@@ -10,14 +10,13 @@ file; the content rules are identical in both:
 | **decision** | `estimate-assemble.md` Decision gate, choice A | Standalone `decision-report.html` + `DECISION.md` — decision core only, CTA footer          |
 | **full**     | `generate-report.md` Step 2                    | `migration-report.html` in full — the same sections, unchanged, no separate full-mode rules |
 
-Heroku's report was already thin by design (`generate-report.md`'s own
-framing: "decision + costs + optional what-if scenarios... not a full
-GCP/Vercel assessment clone"). Unlike GCP's decision/full split, **Heroku has
-no appendices to omit in decision mode** — the full-mode report already is the
-decision core. This file exists so the Decision gate does not have to
-duplicate `generate-report.md`'s section rules, and so a future full-mode
-addition (e.g. an appendix) has one place to declare a decision-mode override,
-matching GCP's pattern.
+The full report and the decision report share the GCP visual shell defined in
+`generate-report.md` ("Visual shell"). The full report also has five
+appendices (`appendix-services`, `appendix-costs`, `appendix-config`,
+`appendix-security`, `appendix-assumptions`). **Decision mode omits that
+appendix block** — Generate has not run, so the security baseline and the
+artifact catalog are not execution output yet. This file is where that
+decision-mode override is declared.
 
 **Never patch one output into the other.** When Execute runs after a Decide
 run, `migration-report.html` is rendered **fresh from the artifacts** — do not
@@ -38,12 +37,12 @@ fresh decision without being touched or archived.
 ## Decision-mode specifics
 
 - **HTML shell:** same inline-CSS `<head>` as the full report
-  (`generate-report.md` Step 2 "Minimal CSS" + skeleton), title "Heroku to AWS
-  Migration Assessment — Decision Report". Body contains `<nav class="toc">`
-  then the sections below, in the same order `generate-report.md`'s skeleton
-  uses: `decision-summary` → `decision-basis` (when present) → `exec-costs` →
-  `developer-workflow` → `what-if-scenarios` (when present) → `decision-cta`
-  (new, decision-mode only, replaces `next-steps`).
+  (`generate-report.md` Step 2 "Visual shell"), title "Heroku to AWS
+  Migration Assessment — Decision Report". Body order: `decision-summary`,
+  then `<nav class="toc">`, then `decision-basis` (when present), `exec-costs`,
+  `developer-workflow`, `what-if-scenarios` (when present), and `decision-cta`
+  (decision-mode only; it replaces `next-steps`). Do not render
+  `.appendix-header` or any `appendix-*` section.
 - **Required section IDs in decision mode:** `decision-summary`, `exec-costs`
   (+ conditional `decision-basis`, `what-if-scenarios` per their triggers in
   `generate-report.md`). `developer-workflow` is always rendered (the
@@ -100,8 +99,6 @@ fresh decision without being touched or archived.
 
 ## Full-mode specifics
 
-No overrides today — `generate-report.md` Step 2 already IS the decision
-core; `migration-report.html`'s `next-steps` section (not `decision-cta`) is
-the only structural difference from decision mode. If a future change adds
-appendix-only content to the full report, declare its decision-mode override
-here rather than in `generate-report.md`.
+`migration-report.html` uses `next-steps` instead of `decision-cta`, and it
+adds the appendix block from `generate-report.md`. Decision mode does not
+render that block.
