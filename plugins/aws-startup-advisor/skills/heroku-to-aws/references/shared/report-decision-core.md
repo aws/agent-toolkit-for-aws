@@ -39,17 +39,19 @@ fresh decision without being touched or archived.
 - **HTML shell:** same inline-CSS `<head>` as the full report
   (`generate-report.md` Step 2 "Visual shell"), title "Heroku to AWS
   Migration Assessment — Decision Report". Body order: `decision-summary`,
-  then `<nav class="toc">`, then `decision-basis` (when present), `exec-costs` →
-  `developer-workflow`, `what-if-scenarios` (when present), and `decision-cta`
-  (decision-mode only; it replaces `next-steps`). Do not render
-  `.appendix-header` or any `appendix-*` section.
-- **Required section IDs in decision mode:** `decision-summary`, `exec-costs`
-  (+ conditional `decision-basis`, `what-if-scenarios` per their triggers in
-  `generate-report.md`). `developer-workflow` is always rendered (the
+  then `<nav class="toc">`, then `exec-share`, then `decision-basis` (when
+  present), `exec-costs` →
+  `developer-workflow`, then `exec-timeline`, `what-if-scenarios` (when
+  present), and `decision-cta` (decision-mode only; it replaces
+  `next-steps`). Do not render `.appendix-header` or any `appendix-*` section.
+- **Required section IDs in decision mode:** `decision-summary`, `exec-share`,
+  `exec-timeline`, `exec-costs` (+ conditional `decision-basis`,
+  `what-if-scenarios` per their triggers in `generate-report.md`).
+  `developer-workflow` is always rendered (the
   `decision-summary` pointer for a `critical` DX answer links to it, so the
   link must resolve) but is not in the validator's required set.
-- **Section content:** render `decision-summary`, `decision-basis`,
-  `exec-costs` / `what-if-scenarios`, and `developer-workflow` using the
+- **Section content:** render `decision-summary`, `exec-share`, `decision-basis`,
+  `exec-costs` / `what-if-scenarios`, `developer-workflow`, and `exec-timeline` using the
   **exact same rules** as `generate-report.md` Step 2 — do not restate them
   here; that file is the single source of truth for content rules in both
   modes.
@@ -78,8 +80,9 @@ fresh decision without being touched or archived.
   Plus one line: "This decision report was generated without execution
   artifacts; the full migration report replaces it if you proceed."
 - **`DECISION.md` (required twin):** same content as the HTML, as plain
-  Markdown (Slack/GitHub-friendly): verdict headline, cost line/table,
-  timeline band, `would_flip_if[]` when present, the developer-workflow
+  Markdown (Slack/GitHub-friendly): verdict headline, the same CFO paragraph
+  under a "Share with your CFO" heading, cost line/table, the timeline
+  planning band, `would_flip_if[]` when present, the developer-workflow
   table and its closing paragraph(s) as a Markdown table under a "Developer
   workflow" heading (same pre-execution wording as the HTML), the CTA line.
   No HTML tags.

@@ -1,8 +1,12 @@
 # Migration Decision — Heroku to AWS
 
-**Verdict: Go, with conditions** (phased migration · medium complexity · medium confidence)
+**Verdict: Go, with conditions** (phased migration · small complexity · medium confidence)
 
 Execution shape: Phased migration.
+
+## Share with your CFO
+
+Go, with conditions, at medium confidence. Estimated AWS Balanced is $210 per month against an estimated Heroku baseline of $340 per month. The migration shape is phased, and the planning band for this small estate is 2-6 weeks. Confirm the open condition before treating the monthly figure as final.
 
 ## Costs (estimated monthly)
 
@@ -16,7 +20,7 @@ Heroku baseline (from your Heroku invoice): Est. $340/mo.
 
 ## Timeline
 
-~6–10 weeks if you execute (medium complexity).
+Planning band: 2-6 weeks (small). This is the complexity-tier planning range, not a staffed schedule.
 
 ## What would flip this
 

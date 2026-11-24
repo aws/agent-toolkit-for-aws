@@ -11,10 +11,11 @@ _contributes:
 > assessment (page background, section cards, metric grid, verdict callout,
 > appendix divider, focus and print styles). The Heroku report stays shorter:
 > decision, costs, developer workflow, what-if scenarios, and five appendices
-> the Heroku artifacts can fill. It does not include the GCP AI appendix,
-> security-gap analysis, timeline, or glossary. Cutover procedure stays in
-> `MIGRATION_GUIDE.md`. Runs **after** docs so the guide exists when the report
-> links to it.
+> the Heroku artifacts can fill. It adds the copy-ready CFO brief and the
+> complexity-tier planning band, because both are already in the estimate.
+> It does not include the GCP AI appendix, security-gap analysis, or glossary.
+> Cutover procedure stays in `MIGRATION_GUIDE.md`. Runs **after** docs so the
+> guide exists when the report links to it.
 >
 > **This file is the single source of truth for `decision-summary` /
 > `decision-basis` / `exec-costs` / `what-if-scenarios` content rules.**
@@ -165,6 +166,8 @@ Write a **self-contained** HTML file to `$MIGRATION_DIR/migration-report.html`
 | `exec-costs`        | Heroku-vs-AWS side-by-side when a Heroku baseline exists (`current_costs.source != "unavailable"`); otherwise the AWS three-tier table with a one-line note that no Heroku baseline was available. Estimated monthly; Balanced primary. **When `current_costs.baseline_note` is present (any derived — not invoiced — source, including the Postgres Advanced per-pool formula), render it as a visible caveat line directly beside the Heroku current-monthly figure — never only in the accuracy band.** This is mandatory, not conditional on which derived source produced the note. **When `cost_comparison.comparison_status == "incomplete_unmatched_services"`, render the same mandatory caveat-beside-the-figure treatment, naming `cost_comparison.unmatched_deferred_services` and `unmatched_deferred_cost` directly beside the savings/difference figure — never present that dollar delta as decision-grade savings without it.** **When `aws-design.json` `metadata.postgres_followers_collapsed[]` is non-empty, add one line under the database rows listing each collapsed follower and what serves it (`served_by`: `rds_read_replica` → "RDS read replica of `{leader_resource_id}`", `aurora_reader` → "Aurora reader of `{leader_resource_id}`"), so the reader sees why the AWS database count is lower than the Heroku add-on count; skip silently when empty or absent.** This file is the single source of truth for `exec-costs` content rules, so `report-decision-core.md`'s reuse of these rules picks this up automatically. |
 | `cost-optimization` | Reserved Instance / Savings Plan opportunities table, or the explicit no-eligible-commitment statement — see below. Always present, never omitted                                                                                                                                            |
 | `developer-workflow` | Always render — in both report modes (`report-decision-core.md` renders it in `decision-report.html` / `DECISION.md` too, with its pre-execution wording override). Heading "Developer workflow: what stays, what changes, what you build". One line stating the Q5c answer. Then the table defined in § `developer-workflow` below. Then the closing paragraph(s) defined there. Reader vocabulary only — no file names or resource IDs |
+| `exec-share`        | Always render, in both modes, immediately after the table of contents. The copy-ready CFO brief defined below. No new arithmetic |
+| `exec-timeline`     | Always render, in both modes, after `developer-workflow` and before `what-if-scenarios` (or before `next-steps` / `decision-cta` when there is no what-if section). The planning band defined below |
 | `shared-data-stores` | **Conditional** — only when the inventory has `shared_data_stores.cohorts` with at least one entry. One table: Cohort / Apps (count) / Shared stores (count) / App names. One sentence above it: apps in a cohort read the same database, cache or Kafka cluster and cannot be cut over strictly one at a time without cross-cloud access to that store; sequence them as a group or plan the interim connectivity. No ordering, no recommendation of which cohort goes first |
 | `next-steps`        | Ordered list pointing to `MIGRATION_GUIDE.md` phases (not a procedure dump). Include one bullet noting the Terraform ships with `baseline.tf` (account security baseline — GuardDuty, CloudTrail, budget alerts) and that three contact emails must be set in tfvars before `terraform plan` |
 
@@ -235,6 +238,45 @@ either order is fine as long as the confidence pointer's href resolves):
 - One-line pricing provenance from `pricing_source` + accuracy band.
 
 Omit the section when `decision_basis` is absent (pre-extension artifacts).
+
+### `exec-share` (always render, both modes)
+
+Render `<section id="exec-share">` immediately after `<nav class="toc">`.
+Heading: `Share with your CFO`. Lead-in sentence, outside the card: "The
+one-paragraph version, ready to forward:". Then exactly one
+`<div class="share-card"><p>…</p></div>`. The card holds one paragraph of at
+least 20 words. No button, script, input, or second paragraph. No new
+arithmetic — restate figures already shown in the decision summary.
+
+The paragraph must still make sense pasted into an email. Use only:
+
+- the verdict and confidence
+- the estimated AWS Balanced monthly figure
+- the Heroku baseline when a comparable baseline exists; otherwise say the Heroku bill is not established
+- the migration shape (`path_label`)
+- at most three conditions or evidence gaps
+
+Label every amount as estimated. Preserve the same comparability caveats as
+`exec-costs`. In decision mode, omit Generate-only facts.
+
+### `exec-timeline` (always render, both modes)
+
+Render `<section id="exec-timeline">` after `developer-workflow`. Heading:
+`Timeline`.
+
+- Shape: `recommendation.path_label`.
+- Planning band from `complexity_tier`, copied from the Estimate timeline
+  table. Do not invent a different range:
+  - `small`: 2–6 weeks
+  - `medium`: 6–12 weeks
+  - `large`: 12–18 weeks
+- The words "planning band" are visible beside that range. The band is the
+  complexity-tier planning range, not a staffed schedule and not a commitment.
+- When preferences name a maintenance window, one line with the day and hour.
+  Skip when absent.
+- One line pointing at `MIGRATION_GUIDE.md` for the procedure. Do not paste
+  cutover or rollback steps into this section.
+- Do not invent a duration driver the artifacts do not name.
 
 ### `developer-workflow` (always render)
 
@@ -367,8 +409,8 @@ Omit the section when workshop was declined or never entered.
   the`projected_costs.*`tiers and the Heroku baseline to the nearest dollar when
   you write them into`exec-costs`, the cost one-liner, and the what-if table.
 - Reader vocabulary: no `*.json` filenames or `aws_*.` resource IDs in
-  `decision-summary` / `exec-costs` / `what-if-scenarios` (name things the
-  reader controls).
+  `decision-summary` / `exec-share` / `exec-timeline` / `exec-costs` /
+  `what-if-scenarios` (name things the reader controls).
 
 ### Visual shell
 
@@ -390,6 +432,7 @@ section { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; paddi
 .verdict { background: #e6f4ea; border: 1px solid #137333; border-left: 4px solid #137333; padding: 0.75rem 1rem; }
 .savings { color: #137333; font-weight: 650; }
 .increase { color: #c5221f; font-weight: 650; }
+.share-card { background: #f0f6fc; border: 1px solid #d0d7de; border-left: 4px solid #0969da; padding: 0.85rem 1rem; }
 .appendix-header { background: #232f3e; color: #fff; padding: 1rem 1.5rem; margin: 2rem 0 1rem; }
 a:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
 table { width: 100%; border-collapse: collapse; margin: 0.75rem 0 1rem; font-size: 0.88rem; }
@@ -420,12 +463,12 @@ heading. Copy figures and choices from the artifacts. Do not invent rows.
 | `appendix-services` | One row per `aws-design.json` `services[]` entry: Heroku app, source, AWS service, and the size the reader controls (instance class, task size, count). |
 | `appendix-costs` | Estimate line items when the breakdown has them. Otherwise the Heroku baseline and the three AWS tiers, as estimated monthly whole dollars, plus the pricing-source caveat. |
 | `appendix-config` | Choices from `preferences.json`: region, availability, maintenance window, compute default and any formation override, Elastic Beanstalk deploy method, database HA, migration method, DNS. Columns: Choice, Your answer, What it changes. |
-| `appendix-security` | The account baseline Generate emits: alternate contacts, password policy, S3 public-access block, default EBS encryption, Access Analyzer, IMDSv2, CloudTrail, monthly budget, GuardDuty. Say that the three contact emails must be set before `terraform plan`, and that removing `baseline.tf` plus those three variables opts out. |
+| `appendix-security` | The account baseline Generate emits, as a table with columns Control, Setting, What it does, and Threat mitigated. Rows: alternate contacts (an incident reaches someone who can act); password policy, 14 characters, reuse 24, maximum age 90 days (weak console passwords); S3 public-access block (accidental public buckets); default EBS encryption (data exposure from a stolen volume); Access Analyzer (a policy or bucket becomes public); IMDSv2 (credential theft through server-side request forgery); CloudTrail at the generated retention (who changed what); the monthly budget and its alert thresholds (bill shock); GuardDuty (credential theft and resource hijacking). Say that the three contact emails must be set before `terraform plan`, and that removing `baseline.tf` plus those three variables opts out. When the normalized compliance list contains soc2, pci, hipaa, or fedramp, add AWS Config (a record of configuration change) and Security Hub with FSBP (baseline posture checks), each with the same two meaning columns. Do not add those rows when compliance is none. Do not add a monthly-cost column or a Heroku-equivalent column. |
 | `appendix-assumptions` | `recommendation.decision_basis` measured, assumed, and unknown lists when present, copied as written, plus one pricing-provenance line. |
 
 Do not emit `appendix-ai`, `appendix-security-gap`, `appendix-steps`,
-`appendix-glossary`, `exec-timeline`, or `exec-tco`. The cutover procedure
-stays in `MIGRATION_GUIDE.md`.
+`appendix-glossary`, or `exec-tco`. The cutover procedure stays in
+`MIGRATION_GUIDE.md`.
 
 ### Table & figure accessibility (REQUIRED — the blocking validator enforces these)
 
@@ -452,6 +495,7 @@ stays in `MIGRATION_GUIDE.md`.
     <h1>Heroku to AWS Migration Assessment</h1>
     <section id="decision-summary">…</section>
     <nav class="toc">…</nav>
+    <section id="exec-share">…</section>
     <!-- <section id="decision-basis"> when recommendation.decision_basis exists -->
     <section id="exec-costs">
       <!-- every <th> declares scope; copy this header pattern for cost-optimization + what-if too -->
@@ -464,6 +508,7 @@ stays in `MIGRATION_GUIDE.md`.
     </section>
     <section id="cost-optimization">…</section>
     <section id="developer-workflow">…</section>
+    <section id="exec-timeline">…</section>
     <!-- <section id="what-if-scenarios"> when ≥2 scenarios -->
     <section id="next-steps">…</section>
     <div class="appendix-header">Appendix</div>
@@ -489,7 +534,7 @@ wrote satisfies the contract, and if not, **fix and rewrite it here** (this is t
 the report is edited — a stub is never acceptable):
 
 1. File exists and is non-empty.
-2. Contains `decision-summary`, `exec-costs`, `cost-optimization`, `next-steps`, the five appendix sections, the visual-shell selectors, and `draft for review`.
+2. Contains `decision-summary`, `exec-share`, `exec-timeline`, `exec-costs`, `cost-optimization`, `next-steps`, the five appendix sections, the visual-shell selectors (including `.share-card`), and `draft for review`. The security appendix table has What it does and Threat mitigated columns.
 3. `decision-summary` must **not contain** any `badge-verdict-*` class; when
    `recommendation.outcome` exists it must render a `verdict-headline` element.
 4. When `recommendation.decision_basis` exists: contains `decision-basis`.

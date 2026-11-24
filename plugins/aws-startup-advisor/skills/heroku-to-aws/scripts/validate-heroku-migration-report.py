@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Validate heroku-to-aws migration-report.html.
 
-Required sections: decision-summary, exec-costs, cost-optimization, next-steps.
+Required sections: decision-summary, exec-share, exec-timeline, exec-costs,
+cost-optimization, next-steps.
 Full mode also requires the Heroku appendix set (services, costs, configuration,
-security baseline, assumptions). Decision mode omits those appendices.
+security baseline, assumptions). The security appendix must name what each
+control does and which threat it mitigates. Decision mode omits those appendices.
+The CFO brief is one static paragraph. The timeline states the complexity-tier
+planning band.
 Conditional: what-if-scenarios when scenarios/index.json has ≥2 entries.
 Footer must contain "draft for review".
 
@@ -21,7 +25,8 @@ Also enforces the report's decision-UX and a11y contract:
     any <figure> must carry aria-label + <figcaption>.
 
 Deliberately NOT enforced: decision-before-TOC ordering, single-<h1>, per-table
-<caption>, and the GCP-only appendix set (AI, security gap, steps, glossary).
+<caption>, and the GCP-only appendix set (AI, security gap, steps, glossary,
+combined run rate).
 
 Exit 0 on PASS, 1 on FAIL.
 
@@ -36,6 +41,7 @@ import argparse
 import json
 import re
 import sys
+from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -44,6 +50,8 @@ from pathlib import Path
 # not carry the optimization table.
 COMMON_REQUIRED_SECTION_IDS = [
     "decision-summary",
+    "exec-share",
+    "exec-timeline",
     "exec-costs",
 ]
 # The structural difference between modes: full (migration-report.html) ends on a
@@ -98,6 +106,10 @@ VISUAL_CONTRACT_CHECKS = [
     (
         r"\.savings\s*\{[^}]*color\s*:",
         "supported savings values must have a reusable visual treatment",
+    ),
+    (
+        r"\.share-card\s*\{[^}]*border\s*:",
+        "the CFO brief must render as a bordered share card",
     ),
     (
         r"\.appendix-header\s*\{",
@@ -1390,6 +1402,109 @@ def _what_if_column_errors(section: str) -> list[str]:
     ]
 
 
+_TIMELINE_BANDS = {
+    "small": ("2-6", "2–6"),
+    "medium": ("6-12", "6–12"),
+    "large": ("12-18", "12–18"),
+}
+
+
+def _visible_text(fragment: str) -> str:
+    return " ".join(text for _kind, text in _rendered_entries(fragment))
+
+
+def _load_estimate(migration_dir: Path | None) -> dict | None:
+    if migration_dir is None:
+        return None
+    est_path = migration_dir / "estimation-infra.json"
+    if not est_path.is_file():
+        return None
+    try:
+        est = json.loads(est_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return est if isinstance(est, dict) else None
+
+
+def _validate_share_section(html: str) -> list[str]:
+    """The CFO brief is one static paragraph. A missing section is reported separately."""
+    section = _section_html(html, "exec-share")
+    if section is None:
+        return []
+    errors: list[str] = []
+    card = re.search(
+        r'<(?P<tag>div|aside)\b[^>]*class=["\'][^"\']*\bshare-card\b[^"\']*["\'][^>]*>'
+        r"(?P<body>.*?)</(?P=tag)>",
+        section,
+        re.I | re.DOTALL,
+    )
+    if not card:
+        errors.append('exec-share must contain a class="share-card" decision brief')
+        return errors
+    paragraphs = re.findall(r"<p\b[^>]*>(.*?)</p>", card.group("body"), re.I | re.DOTALL)
+    if len(paragraphs) != 1:
+        errors.append(
+            "exec-share share-card must contain exactly one standalone <p> "
+            f"(found {len(paragraphs)})"
+        )
+    else:
+        text = unescape(re.sub(r"<[^>]+>", " ", paragraphs[0]))
+        word_count = len(re.findall(r"\b[\w'-]+\b", text))
+        if word_count < 20:
+            errors.append(
+                "exec-share share-card paragraph must contain a substantive "
+                f"copy-ready brief of at least 20 words (found {word_count})"
+            )
+    if re.search(r"<(?:button|script|input|textarea)\b", section, re.I):
+        errors.append(
+            "exec-share must be a static copy-ready paragraph without buttons, "
+            "scripts, or editable controls"
+        )
+    return errors
+
+
+def _validate_timeline_section(html: str, migration_dir: Path | None) -> list[str]:
+    """The week range is the complexity-tier planning band, labeled as such."""
+    section = _section_html(html, "exec-timeline")
+    if section is None:
+        return []
+    errors: list[str] = []
+    visible = _visible_text(section).lower()
+    if "planning band" not in visible:
+        errors.append('exec-timeline must label the week range as a "planning band"')
+    tier = (_load_estimate(migration_dir) or {}).get("complexity_tier")
+    if isinstance(tier, str) and tier.lower() in _TIMELINE_BANDS:
+        bands = _TIMELINE_BANDS[tier.lower()]
+        if not any(band in visible for band in bands):
+            errors.append(
+                f"exec-timeline must show the {tier.lower()} planning band "
+                f"({bands[1]} weeks) from the complexity-tier table"
+            )
+    return errors
+
+
+def _validate_security_appendix(html: str, mode: str) -> list[str]:
+    """Full reports say what each baseline control does. Decision mode has no appendix."""
+    if mode != "full":
+        return []
+    section = _section_html(html, "appendix-security")
+    if not section:
+        return []
+    header = re.search(r"<thead\b.*?</thead>", section, re.DOTALL | re.IGNORECASE)
+    if not header:
+        return [
+            "appendix-security must contain a table with What it does and "
+            "Threat mitigated columns"
+        ]
+    hdr_text = header.group(0).lower()
+    errors: list[str] = []
+    if "what it does" not in hdr_text:
+        errors.append('appendix-security table must include a "What it does" column')
+    if "threat" not in hdr_text:
+        errors.append('appendix-security table must include a "Threat mitigated" column')
+    return errors
+
+
 def validate(html: str, migration_dir: Path | None, mode: str = "full") -> list[str]:
     errors: list[str] = []
     counts = _section_counts(html)
@@ -1417,6 +1532,9 @@ def validate(html: str, migration_dir: Path | None, mode: str = "full") -> list[
         errors.append('footer must contain "draft for review" disclaimer')
 
     errors.extend(_validate_visual_shell(html))
+    errors.extend(_validate_share_section(html))
+    errors.extend(_validate_timeline_section(html, migration_dir))
+    errors.extend(_validate_security_appendix(html, mode))
     errors.extend(_validate_currency_formatting(html))
     errors.extend(_validate_cost_figures(html, migration_dir))
 
