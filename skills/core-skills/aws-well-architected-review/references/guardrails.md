@@ -34,7 +34,7 @@ Build a short candidate list. For each candidate record the pillar, the BP ID, t
 - **From a review:** each High or Critical finding with a control-worthy configuration becomes a candidate. Take its BP ID from the review's ledger rows or JSON; those IDs were read in that run.
 - **Standalone:** find the configurations actually in use (encryption, public access, IAM scope, Multi-AZ, backups, deletion protection, logging, TLS, tagging) and map each to the best practice it relates to.
 
-Cite a BP ID only when a review you were given carries it, or when a Well-Architected page you read in this session shows it (find the page with `aws___search_documentation`, read it with `aws___read_documentation`, or fetch it over HTTPS when the session has no such reader). If you cannot confirm an ID, cite the question (for example `SEC 8`) and mark the control `BP ID unverified`. Never invent a `PILLAR##-BP##` ID.
+Cite a BP ID only when a review you were given carries it, or when a Well-Architected page you read in this session shows it (find the page with `aws___search_documentation`, read it with `aws___read_documentation`, or fetch it over HTTPS when the session has no such reader). If you cannot confirm an ID, cite the capability (for example `SEC08`) and mark the control `BP ID unverified`. Never invent a `PILLAR##-BP##` ID.
 
 Keep the set small: a few high-value controls the team will keep beats many noisy ones they will mute. Default to Security and Reliability when the user gives no pillar.
 
@@ -53,9 +53,9 @@ If no available enforcement point can implement a control, say so and what would
 
 Write every control as a file in the workload's repository (for example under `guardrails/`), in the workload's dialect and conventions. Each control:
 
-- names its BP ID (or question, marked unverified) in its name, description or a comment, and is labelled Preventive or Detective;
+- names its BP ID (or capability, marked unverified) in its name, description or a comment, and is labelled Preventive or Detective;
 - states in one line what it blocks or flags and why it matters;
-- for AWS resources, carries the tags `wa-best-practice=<BP ID or question>` and `managed-by=aws-well-architected-review` where the resource type supports tags, and a name with the prefix `wa-`.
+- for AWS resources, carries the tags `wa-best-practice=<BP ID or capability>` and `managed-by=aws-well-architected-review` where the resource type supports tags, and a name with the prefix `wa-`.
 
 Roll out preventive CI checks in warn mode first: a CDK Aspect uses `Annotations.of(node).addWarning(...)` until the user asks to block, and a cfn-guard or OPA step runs as a non-blocking CI step until then. Say how to switch to blocking (`addError`, a required CI step). An SCP has no warn mode, so it goes to a test OU or account first.
 
@@ -176,22 +176,22 @@ Only when the user asks for it, or accepts the G8 offer: write the standards beh
 
 1. **Location.** Use the steering file the repository already has for its agents: `CLAUDE.md`, `AGENTS.md`, a file in `.kiro/steering/`, or a rule in `.cursor/rules/`. When it has none, ask which agent the team uses; when the user named one, use its location.
 2. **Never overwrite.** In an existing file, add or update one section between the markers `<!-- wa-guardrails:start -->` and `<!-- wa-guardrails:end -->`, and leave everything outside them unchanged. Show the change before writing it, as in G5 (no AWS change is involved, so a request that already asked for the file is the confirmation).
-3. **Content.** Keep the section short enough for always-on context (about 40 lines). Every line cites the BP ID it comes from (or its question, marked unverified, as in G2):
+3. **Content.** Keep the section short enough for always-on context (about 40 lines). Every line cites the BP ID it comes from (or its capability, marked unverified, as in G2):
 
-   ```markdown
-   <!-- wa-guardrails:start -->
-   ## Well-Architected guardrails
+```markdown
+<!-- wa-guardrails:start -->
+## Well-Architected guardrails
 
-   ### Enforced automatically
-   - {control}: {what it blocks or flags}. {BP ID}. File or resource: `{path or ARN}`. {Preventive or Detective}; {warn mode or blocking}.
+### Enforced automatically
+- {control}: {what it blocks or flags}. {BP ID}. File or resource: `{path or ARN}`. {Preventive or Detective}; {warn mode or blocking}.
 
-   ### Conventions to follow (not enforced by a control)
-   - {convention}, because {BP ID}. Check: {how a reviewer or agent checks it}.
+### Conventions to follow (not enforced by a control)
+- {convention}, because {BP ID}. Check: {how a reviewer or agent checks it}.
 
-   ### When proposing or reviewing changes
-   - {standing instruction, for example: new data stores set encryption and backups before merge (BP IDs)}.
-   - Do not disable, weaken or bypass a control listed above; propose a change to the control instead.
-   <!-- wa-guardrails:end -->
-   ```
+### When proposing or reviewing changes
+- {standing instruction, for example: new data stores set encryption and backups before merge (BP IDs)}.
+- Do not disable, weaken or bypass a control listed above; propose a change to the control instead.
+<!-- wa-guardrails:end -->
+```
 
 4. **Keep it current.** When a later guardrails request adds a control, removes one or switches one from warn mode to blocking, update this section in the same change, so it never claims enforcement that is not there.
