@@ -13,7 +13,7 @@ Conditional: what-if-scenarios when scenarios/index.json has ≥2 entries.
 Footer must contain "draft for review".
 
 The AWS Activate credits callout (both modes): a decision-summary that names
-Activate must link https://aws.amazon.com/startups/credits/\; when preferences.json
+Activate must link https://aws.amazon.com/startups/credits/ ; when preferences.json
 global.startup_program_status is has_credits / eligible_founders /
 eligible_portfolio the callout must be present; unknown/absent status forbids a
 confirmed-tier claim; has_credits forbids "apply for" wording.
@@ -1462,23 +1462,42 @@ def _startup_program_status(migration_dir: Path | None) -> str | None:
     return value if isinstance(value, str) else None
 
 
+def _activate_callout_html(summary: str) -> str | None:
+    """Return the `.callout-info` fragment inside decision-summary that names Activate.
+
+    report-decision-core.md § Startup credits callout renders the credits
+    call-to-action as one `<div class="callout callout-info">` with inline content
+    only, so the first closing </div> ends it. The tier and apply-language rules
+    apply to this fragment alone — the rest of decision-summary legitimately
+    carries dollar figures ($5,000/mo estimates) and the word "apply".
+    """
+    for match in re.finditer(
+        r'<div\b[^>]*class=["\'][^"\']*\bcallout-info\b[^"\']*["\'][^>]*>(.*?)</div>',
+        summary,
+        re.I | re.DOTALL,
+    ):
+        if _ACTIVATE_MENTION.search(_visible_text(match.group(0))):
+            return match.group(0)
+    return None
+
+
 def _validate_activate_callout(html: str, migration_dir: Path | None) -> list[str]:
     """report-decision-core.md § Startup credits callout (both modes).
 
-    - A decision-summary that names AWS Activate must carry the clickable apply
-      link, so the action stays attached to the benefit.
+    - A decision-summary that names AWS Activate anywhere must carry the clickable
+      apply link, so the action stays attached to the benefit.
     - When preferences.json says the founder answered Q17 (status other than
-      "unknown"), decision-summary must render the callout.
-    - "unknown"/absent status: no confirmed-tier claim or tier dollar amount.
-    - "has_credits": no "apply for" language.
+      "unknown"), decision-summary must render the `.callout-info` credits callout.
+    - Inside that callout only: "unknown"/absent status forbids a confirmed-tier
+      claim or a tier dollar amount; "has_credits" forbids "apply for" language.
+      Cost lines and other prose in decision-summary are not scanned.
     """
     summary = _section_html(html, "decision-summary")
     if summary is None:
         return []
     errors: list[str] = []
-    visible = _visible_text(summary)
-    mentions = bool(_ACTIVATE_MENTION.search(visible))
-    if mentions and not _ACTIVATE_LINK.search(summary):
+    mentions_anywhere = bool(_ACTIVATE_MENTION.search(_visible_text(summary)))
+    if mentions_anywhere and not _ACTIVATE_LINK.search(summary):
         errors.append(
             "decision-summary mentions AWS Activate but has no clickable official "
             f"apply link ({ACTIVATE_APPLY_URL})"
@@ -1490,20 +1509,25 @@ def _validate_activate_callout(html: str, migration_dir: Path | None) -> list[st
             f"{', '.join(ACTIVATE_STATUSES)}"
         )
         return errors
-    if status in ("has_credits", "eligible_founders", "eligible_portfolio") and not mentions:
+    callout = _activate_callout_html(summary)
+    if status in ("has_credits", "eligible_founders", "eligible_portfolio") and callout is None:
         errors.append(
             f"preferences.json global.startup_program_status={status!r} but decision-summary "
-            "has no AWS Activate credits callout (report-decision-core.md § Startup credits callout)"
+            'has no AWS Activate credits <div class="callout callout-info"> '
+            "(report-decision-core.md § Startup credits callout)"
         )
-    if mentions and status in (None, "unknown") and _TIER_CLAIM.search(visible):
+    if callout is None:
+        return errors
+    callout_text = _visible_text(callout)
+    if status in (None, "unknown") and _TIER_CLAIM.search(callout_text):
         errors.append(
-            "decision-summary states a confirmed Activate tier or tier dollar amount but "
+            "Activate callout states a confirmed tier or tier dollar amount but "
             "global.startup_program_status is unknown/absent — neutral wording only"
         )
-    if mentions and status == "has_credits" and _APPLY_LANGUAGE.search(visible):
+    if status == "has_credits" and _APPLY_LANGUAGE.search(callout_text):
         errors.append(
-            'global.startup_program_status is "has_credits" but decision-summary still '
-            'uses "apply for" language for Activate credits'
+            'global.startup_program_status is "has_credits" but the Activate callout still '
+            'uses "apply for" language'
         )
     return errors
 

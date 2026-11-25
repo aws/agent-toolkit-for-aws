@@ -45,7 +45,7 @@ decision belongs at the decision moment, not only after Generate.
 | `eligible_founders`      | May state "You're flagged as eligible for AWS Activate Founders credits (up to $5,000)" — apply before `terraform apply`; credits do not apply retroactively |
 | `eligible_portfolio`     | May state Portfolio credits (up to $200,000) and the Activate Provider Org ID requirement (get it from your VC/accelerator before applying) |
 | `has_credits`            | Note that Activate credits are already on the account and apply to the new AWS charges; **no "apply for" language** |
-| `unknown` or absent      | **Neutral only:** e.g. "Review AWS Activate tiers (Founders up to $5K, Portfolio up to $200K) — funding stage not confirmed in Clarify." **Do not** write "eligible for Founders", "your status: eligible_*", or a dollar amount tied to a confirmed tier |
+| `unknown` or absent      | **Neutral only:** e.g. "Review AWS Activate credits tiers (Founders for self-funded startups, Portfolio for VC- or accelerator-backed ones) — funding stage not confirmed in Clarify." **Do not** write "eligible for Founders", "your status: eligible_*", or any tier dollar amount ($5K / $200K) |
 
 Rules:
 
@@ -60,6 +60,8 @@ Rules:
   (Markdown). The link goes **inside the callout**, so the action stays attached
   to the benefit. `validate-heroku-migration-report.py` fails a `decision-summary`
   that names Activate without this link, in both modes.
+  The validator's tier and apply-language rules read **only** this `.callout-info`
+  fragment, so cost lines elsewhere in `decision-summary` may carry any figure.
 - **Eligibility, one line:** Pre-Series B, founded in the last 10 years, AWS
   account on the Paid Tier plan, new to Activate or requesting more than before.
 - **Do not infer the tier** from Heroku spend, the AWS estimate, or the Q16

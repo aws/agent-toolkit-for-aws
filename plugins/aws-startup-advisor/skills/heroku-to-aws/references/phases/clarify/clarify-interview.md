@@ -38,8 +38,8 @@ Check `$MIGRATION_DIR/` for existing state:
   - **Present and empty**: the Decision gate's "Confirm execution choices" already ran and rewrote those `sources` entries to `"user"`. Accept as-is — do not re-list the IDs.
   - **Present and non-empty**: accept as-is.
   - **Legacy partial Dockerfile status.** When `operational.containerization_status` is `"partial"` and `operational.dockerfile_apps` is absent (written before the field existed), ask only the Q12b follow-up (the "Which apps already have a Dockerfile?" prompt below), offering the inventory `container`-stack apps as the pre-filled answer. Store the confirmed list as `operational.dockerfile_apps` with the follow-up's validation, and leave every other answer untouched. If the user declines to answer, write the `container`-stack apps only (the Generate fallback) and say so.
-  - **Legacy Activate status.** When `global.startup_program_status` is absent (written before Q17 existed), ask only Q17 (§ Q17 below, same lead-in) and store the answer with `sources.Q17: "user"`; if the user skips it, write `"unknown"` with `sources.Q17: "default"` and add `Q17` to `metadata.questions_defaulted`. Never silently write an `eligible_*` or `has_credits` value on reuse.
-  This normalization rebuilds a missing index over existing answers; it writes nothing to `questions_asked` or `questions_defaulted`, and the only values it writes are the documented default and `"default"` provenance for a question that never fired.
+  - **Legacy Activate status.** When `global.startup_program_status` is absent (written before Q17 existed), ask only Q17 (§ Q17 below, same lead-in). Answered → store the value with `sources.Q17: "user"` and add `Q17` to `metadata.questions_asked`. Skipped → write `"unknown"` with `sources.Q17: "default"` and add `Q17` to `metadata.questions_defaulted` (`clarify-assemble.md` rule 12). Never silently write an `eligible_*` or `has_credits` value on reuse.
+  This normalization rebuilds a missing index over existing answers; apart from the two legacy follow-ups above (the Q12b Dockerfile list and Q17, which record their own outcome in `questions_asked` / `questions_defaulted` as stated), it writes nothing to `questions_asked` or `questions_defaulted`, and the only values it writes are the documented default and `"default"` provenance for a question that never fired.
 - If 2: Delete `preferences.json`, continue to Step 1.
 
 **Case 2 — No prior state**: Continue to Step 1.
@@ -1225,6 +1225,12 @@ the rest") writes `"unknown"` with `sources.Q17: "default"` and records `Q17` in
 `metadata.questions_defaulted`; the report then renders the neutral Activate wording
 (`references/shared/report-decision-core.md` § Startup credits callout). Never write
 `eligible_*` or `has_credits` without an explicit answer.
+
+**Not a cost assumption.** Nothing in Design or Estimate reads this field, so a
+defaulted Q17 is **not** a row in the Decision gate's "Assumptions behind this number"
+block; the gate offers it as a separate one-line prompt, and a late answer there
+writes the field and `sources.Q17` without a reprice or scenario rebase
+(`estimate-assemble.md` § Handling a correction, Q17 bullet).
 
 ---
 

@@ -1221,7 +1221,7 @@ def test_known_status_requires_callout() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         code, out = run(GOOD, _prefs_dir(tmp, "eligible_founders"))
     assert code == 1
-    assert "has no AWS Activate credits callout" in out
+    assert 'has no AWS Activate credits <div class="callout callout-info">' in out
 
 
 def test_founders_callout_passes_for_eligible_founders() -> None:
@@ -1278,4 +1278,91 @@ def test_activate_callout_enforced_in_decision_mode() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         code, out = run(DECISION_GOOD, _prefs_dir(tmp, "eligible_portfolio"), mode="decision")
     assert code == 1
-    assert "has no AWS Activate credits callout" in out
+    assert 'has no AWS Activate credits <div class="callout callout-info">' in out
+
+
+# --- F1 regressions: the tier / apply-language rules read only the Activate callout ---
+
+DECISION_CORE_UNKNOWN_EXAMPLE = (
+    '<div class="callout callout-info">💡 Review ' + ACTIVATE_LINK
+    + " tiers (Founders for self-funded startups, Portfolio for VC- or accelerator-backed ones)"
+    " — funding stage not confirmed in Clarify.</div>"
+)
+FIVE_K_COST_LINE = (
+    "<p><strong>AWS estimate (Balanced):</strong> Est. $5,000/mo · "
+    "<strong>Your Heroku baseline:</strong> Est. $200,000/mo</p>"
+)
+
+
+def _decision_with_summary(extra: str) -> str:
+    marker = '<p class="verdict-headline">'
+    assert marker in DECISION_GOOD
+    head, tail = DECISION_GOOD.split(marker, 1)
+    close = tail.index("</p>") + len("</p>")
+    return head + marker + tail[:close] + extra + tail[close:]
+
+
+def test_unknown_status_accepts_five_thousand_dollar_cost_line_full_mode() -> None:
+    html = _with_summary(FIVE_K_COST_LINE + NEUTRAL_CALLOUT)
+    with tempfile.TemporaryDirectory() as tmp:
+        code, out = run(html, _prefs_dir(tmp, "unknown"))
+    assert code == 0, out
+
+
+def test_unknown_status_accepts_five_thousand_dollar_cost_line_decision_mode() -> None:
+    html = _decision_with_summary(FIVE_K_COST_LINE + NEUTRAL_CALLOUT)
+    with tempfile.TemporaryDirectory() as tmp:
+        code, out = run(html, _prefs_dir(tmp, "unknown"), mode="decision")
+    assert code == 0, out
+
+
+def test_absent_preferences_accepts_five_thousand_dollar_cost_line() -> None:
+    code, out = run(_with_summary(FIVE_K_COST_LINE + NEUTRAL_CALLOUT))
+    assert code == 0, out
+
+
+def test_decision_core_unknown_example_passes() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        code, out = run(_with_summary(DECISION_CORE_UNKNOWN_EXAMPLE), _prefs_dir(tmp, "unknown"))
+    assert code == 0, out
+
+
+def test_unknown_status_still_rejects_tier_amount_inside_callout() -> None:
+    callout = (
+        '<div class="callout callout-info">💡 Founders up to $5K via ' + ACTIVATE_LINK + ".</div>"
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        code, out = run(_with_summary(FIVE_K_COST_LINE + callout), _prefs_dir(tmp, "unknown"))
+    assert code == 1
+    assert "neutral wording only" in out
+
+
+def test_has_credits_accepts_apply_language_outside_callout() -> None:
+    callout = (
+        '<div class="callout callout-info">💡 Your existing ' + ACTIVATE_LINK
+        + " already cover the new AWS charges this plan creates.</div>"
+    )
+    prose = "<p>Apply before cutover: confirm the maintenance window with your team.</p>"
+    with tempfile.TemporaryDirectory() as tmp:
+        code, out = run(_with_summary(callout + prose), _prefs_dir(tmp, "has_credits"))
+    assert code == 0, out
+
+
+def test_has_credits_still_rejects_apply_for_inside_callout() -> None:
+    callout = (
+        '<div class="callout callout-info">💡 Apply for ' + ACTIVATE_LINK
+        + " before any deployment.</div>"
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        code, out = run(_with_summary(callout), _prefs_dir(tmp, "has_credits"))
+    assert code == 1
+    assert '"apply for" language' in out
+
+
+def test_validator_module_compiles_without_escape_warnings() -> None:
+    result = subprocess.run(  # nosec B603
+        [sys.executable, "-W", "error", "-c",
+         f"import ast, pathlib; ast.parse(pathlib.Path({str(SCRIPT)!r}).read_text(encoding='utf-8'))"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
