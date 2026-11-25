@@ -34,6 +34,50 @@ their own `terraform.tfvars`/state — may legitimately still be present after a
 workshop reprice (`workshop.md` § Entry never deletes it) and coexists with a
 fresh decision without being touched or archived.
 
+## Startup credits callout (both modes)
+
+`preferences.json` `global.startup_program_status` (Clarify Q17) drives one 💡
+callout in `decision-summary`. It is rendered in **both** modes — the credits
+decision belongs at the decision moment, not only after Generate.
+
+| `startup_program_status` | `decision-summary` copy |
+| ------------------------ | ----------------------- |
+| `eligible_founders`      | May state "You're flagged as eligible for AWS Activate Founders credits (up to $5,000)" — apply before `terraform apply`; credits do not apply retroactively |
+| `eligible_portfolio`     | May state Portfolio credits (up to $200,000) and the Activate Provider Org ID requirement (get it from your VC/accelerator before applying) |
+| `has_credits`            | Note that Activate credits are already on the account and apply to the new AWS charges; **no "apply for" language** |
+| `unknown` or absent      | **Neutral only:** e.g. "Review AWS Activate credits tiers (Founders for self-funded startups, Portfolio for VC- or accelerator-backed ones) — funding stage not confirmed in Clarify." **Do not** write "eligible for Founders", "your status: eligible_*", or any tier dollar amount ($5K / $200K) |
+
+Rules:
+
+- **Always a 💡 callout, never a metric card.** A credit offer is a call-to-action
+  with a link, not a measurement; a card in `.metrics` gives it false equivalence
+  with the run rate. Render it as a `<div class="callout callout-info">` (pale blue,
+  see the visual shell) inside `decision-summary`, after the cost one-liner.
+- **Apply link (required).** Whenever `decision-summary`, `next-steps`, or
+  `DECISION.md` mentions AWS Activate, include a clickable link to the official
+  apply page: `<a href="https://aws.amazon.com/startups/credits/">AWS Activate
+  credits</a>` (HTML) / `[AWS Activate credits](https://aws.amazon.com/startups/credits/)`
+  (Markdown). The link goes **inside the callout**, so the action stays attached
+  to the benefit. `validate-heroku-migration-report.py` fails a `decision-summary`
+  that names Activate without this link, in both modes.
+  The validator's tier and apply-language rules read **only** this `.callout-info`
+  fragment, so cost lines elsewhere in `decision-summary` may carry any figure.
+- **Eligibility, one line:** Pre-Series B, founded in the last 10 years, AWS
+  account on the Paid Tier plan, new to Activate or requesting more than before.
+- **Do not infer the tier** from Heroku spend, the AWS estimate, or the Q16
+  contract. The tier comes from Q17 only.
+- **Not retroactive.** When the status is not `has_credits`, say that credits
+  apply only to charges after approval, so the founder applies before
+  `terraform apply`. In full mode, also add one `next-steps` item: "Apply for AWS
+  Activate credits before `terraform apply`" (omit for `has_credits`).
+- The RI/Savings Plan caveat under `cost-optimization` ("Activate credits don't
+  cover RI/Savings Plan upfront costs") is unchanged and separate from this callout.
+- `DECISION.md` carries the same callout as one Markdown paragraph (💡 lead,
+  same wording rules, Markdown apply link) directly under the cost line.
+- The Decision gate's "See your AWS credits" web handoff (upload `plan.json` to
+  AWS Startups Migrate) is a different program and stays as is; this callout
+  does not replace it.
+
 ## Decision-mode specifics
 
 - **HTML shell:** same inline-CSS `<head>` as the full report
@@ -80,7 +124,7 @@ fresh decision without being touched or archived.
   Plus one line: "This decision report was generated without execution
   artifacts; the full migration report replaces it if you proceed."
 - **`DECISION.md` (required twin):** same content as the HTML, as plain
-  Markdown (Slack/GitHub-friendly): verdict headline, the same CFO paragraph
+  Markdown (Slack/GitHub-friendly): verdict headline, the Activate credits paragraph (§ Startup credits callout), the same CFO paragraph
   under a "Share with your CFO" heading, cost line/table, the timeline
   planning band, `would_flip_if[]` when present, the developer-workflow
   table and its closing paragraph(s) as a Markdown table under a "Developer

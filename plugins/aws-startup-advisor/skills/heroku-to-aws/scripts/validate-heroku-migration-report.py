@@ -12,6 +12,12 @@ planning band.
 Conditional: what-if-scenarios when scenarios/index.json has ≥2 entries.
 Footer must contain "draft for review".
 
+The AWS Activate credits callout (both modes): a decision-summary that names
+Activate must link https://aws.amazon.com/startups/credits/ ; when preferences.json
+global.startup_program_status is has_credits / eligible_founders /
+eligible_portfolio the callout must be present; unknown/absent status forbids a
+confirmed-tier claim; has_credits forbids "apply for" wording.
+
 The visual shell check, in both modes, requires a #f6f8fa or var() page
 background, a max-width report, section cards, a metric grid, bordered metric
 cards, a verdict callout, a savings color, a bordered share card, an appendix
@@ -1450,6 +1456,102 @@ def _load_estimate(migration_dir: Path | None) -> dict | None:
     return est if isinstance(est, dict) else None
 
 
+ACTIVATE_APPLY_URL = "https://aws.amazon.com/startups/credits/"
+ACTIVATE_STATUSES = ("has_credits", "eligible_founders", "eligible_portfolio", "unknown")
+_ACTIVATE_MENTION = re.compile(r"AWS\s+Activate|Activate\s+(?:Founders|Portfolio|credits)", re.I)
+_ACTIVATE_LINK = re.compile(r'href=["\']https://aws\.amazon\.com/startups/credits/?["\']', re.I)
+_TIER_CLAIM = re.compile(
+    r"eligible\s+for\b.{0,60}?\b(?:Founders|Portfolio)|\$\s?5,?000\b|\$5K\b|\$\s?200,?000\b|\$200K\b",
+    re.I | re.DOTALL,
+)
+_APPLY_LANGUAGE = re.compile(r"\bapply\s+(?:for|at|before|now)\b|\bapplying\s+for\b", re.I)
+
+
+def _startup_program_status(migration_dir: Path | None) -> str | None:
+    """Read preferences.json global.startup_program_status (Clarify Q17); None when unset."""
+    if migration_dir is None:
+        return None
+    path = migration_dir / "preferences.json"
+    if not path.is_file():
+        return None
+    try:
+        prefs = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    value = ((prefs or {}).get("global") or {}).get("startup_program_status")
+    return value if isinstance(value, str) else None
+
+
+def _activate_callout_html(summary: str) -> str | None:
+    """Return the `.callout-info` fragment inside decision-summary that names Activate.
+
+    report-decision-core.md § Startup credits callout renders the credits
+    call-to-action as one `<div class="callout callout-info">` with inline content
+    only, so the first closing </div> ends it. The tier and apply-language rules
+    apply to this fragment alone — the rest of decision-summary legitimately
+    carries dollar figures ($5,000/mo estimates) and the word "apply".
+    """
+    for match in re.finditer(
+        r'<div\b[^>]*class=["\'][^"\']*\bcallout-info\b[^"\']*["\'][^>]*>(.*?)</div>',
+        summary,
+        re.I | re.DOTALL,
+    ):
+        if _ACTIVATE_MENTION.search(_visible_text(match.group(0))):
+            return match.group(0)
+    return None
+
+
+def _validate_activate_callout(html: str, migration_dir: Path | None) -> list[str]:
+    """report-decision-core.md § Startup credits callout (both modes).
+
+    - A decision-summary that names AWS Activate anywhere must carry the clickable
+      apply link, so the action stays attached to the benefit.
+    - When preferences.json says the founder answered Q17 (status other than
+      "unknown"), decision-summary must render the `.callout-info` credits callout.
+    - Inside that callout only: "unknown"/absent status forbids a confirmed-tier
+      claim or a tier dollar amount; "has_credits" forbids "apply for" language.
+      Cost lines and other prose in decision-summary are not scanned.
+    """
+    summary = _section_html(html, "decision-summary")
+    if summary is None:
+        return []
+    errors: list[str] = []
+    mentions_anywhere = bool(_ACTIVATE_MENTION.search(_visible_text(summary)))
+    if mentions_anywhere and not _ACTIVATE_LINK.search(summary):
+        errors.append(
+            "decision-summary mentions AWS Activate but has no clickable official "
+            f"apply link ({ACTIVATE_APPLY_URL})"
+        )
+    status = _startup_program_status(migration_dir)
+    if status is not None and status not in ACTIVATE_STATUSES:
+        errors.append(
+            f"preferences.json global.startup_program_status={status!r} is not one of "
+            f"{', '.join(ACTIVATE_STATUSES)}"
+        )
+        return errors
+    callout = _activate_callout_html(summary)
+    if status in ("has_credits", "eligible_founders", "eligible_portfolio") and callout is None:
+        errors.append(
+            f"preferences.json global.startup_program_status={status!r} but decision-summary "
+            'has no AWS Activate credits <div class="callout callout-info"> '
+            "(report-decision-core.md § Startup credits callout)"
+        )
+    if callout is None:
+        return errors
+    callout_text = _visible_text(callout)
+    if status in (None, "unknown") and _TIER_CLAIM.search(callout_text):
+        errors.append(
+            "Activate callout states a confirmed tier or tier dollar amount but "
+            "global.startup_program_status is unknown/absent — neutral wording only"
+        )
+    if status == "has_credits" and _APPLY_LANGUAGE.search(callout_text):
+        errors.append(
+            'global.startup_program_status is "has_credits" but the Activate callout still '
+            'uses "apply for" language'
+        )
+    return errors
+
+
 def _validate_share_section(html: str) -> list[str]:
     """The CFO brief is one static paragraph. A missing section is reported separately."""
     section = _section_html(html, "exec-share")
@@ -1577,6 +1679,7 @@ def validate(html: str, migration_dir: Path | None, mode: str = "full") -> list[
 
     errors.extend(_validate_visual_shell(html))
     errors.extend(_validate_share_section(html))
+    errors.extend(_validate_activate_callout(html, migration_dir))
     errors.extend(_validate_timeline_section(html, migration_dir))
     errors.extend(_validate_security_appendix(html, mode))
     errors.extend(_validate_currency_formatting(html))

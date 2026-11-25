@@ -38,7 +38,8 @@ Check `$MIGRATION_DIR/` for existing state:
   - **Present and empty**: the Decision gate's "Confirm execution choices" already ran and rewrote those `sources` entries to `"user"`. Accept as-is — do not re-list the IDs.
   - **Present and non-empty**: accept as-is.
   - **Legacy partial Dockerfile status.** When `operational.containerization_status` is `"partial"` and `operational.dockerfile_apps` is absent (written before the field existed), ask only the Q12b follow-up (the "Which apps already have a Dockerfile?" prompt below), offering the inventory `container`-stack apps as the pre-filled answer. Store the confirmed list as `operational.dockerfile_apps` with the follow-up's validation, and leave every other answer untouched. If the user declines to answer, write the `container`-stack apps only (the Generate fallback) and say so.
-  This normalization rebuilds a missing index over existing answers; it writes nothing to `questions_asked` or `questions_defaulted`, and the only values it writes are the documented default and `"default"` provenance for a question that never fired.
+  - **Legacy Activate status.** When `global.startup_program_status` is absent (written before Q17 existed), ask only Q17 (§ Q17 below, same lead-in). Answered → store the value with `sources.Q17: "user"` and add `Q17` to `metadata.questions_asked`. Skipped → write `"unknown"` with `sources.Q17: "default"` and add `Q17` to `metadata.questions_defaulted` (`clarify-assemble.md` rule 12). Never silently write an `eligible_*` or `has_credits` value on reuse.
+  This normalization rebuilds a missing index over existing answers; apart from the two legacy follow-ups above (the Q12b Dockerfile list and Q17, which record their own outcome in `questions_asked` / `questions_defaulted` as stated), it writes nothing to `questions_asked` or `questions_defaulted`, and the only values it writes are the documented default and `"default"` provenance for a question that never fired.
 - If 2: Delete `preferences.json`, continue to Step 1.
 
 **Case 2 — No prior state**: Continue to Step 1.
@@ -86,10 +87,11 @@ ELSE full question flow (Assumption Sheet + progressive batches)
 | **Q3** — availability posture | Always |
 | **Q12c** — compute target recommendation | Always |
 | **Q11** — Fir intent | Only if a Fir-generation app was detected |
+| **Q17** — AWS Activate credits | Always — asked last, as its own one-line follow-up after the technical questions (see § Q17 Presentation) |
 
-These are the questions that change the **number** (availability, compute target) or the **safety posture** (compliance, region). Execution-only questions — **Q4** maintenance window, **Q6c** DB migration method, **Q12d** EB deploy method — are not on either path; they take their documented default here, are listed in `metadata.questions_deferred_to_generate`, and are asked for real at the Decision gate when the user chooses **[C] Generate** (see § Generate-time questions below).
+These are the questions that change the **number** (availability, compute target) or the **safety posture** (compliance, region). Q17 changes neither; it is on the fast path because the report's credits callout can only name a tier when the founder has answered, and the answer takes 30 seconds. Execution-only questions — **Q4** maintenance window, **Q6c** DB migration method, **Q12d** EB deploy method — are not on either path; they take their documented default here, are listed in `metadata.questions_deferred_to_generate`, and are asked for real at the Decision gate when the user chooses **[C] Generate** (see § Generate-time questions below).
 
-Compute `fast_path_question_count` from this table against the inventory and use that number in the offer — do not quote a fixed range. Worked examples, all on estates the gate admits (no Private Space): a Common Runtime `us` or `eu` app asks **3** (Q2, Q3, Q12c — region resolved from the runtime signal); apps spanning mixed regions or with no runtime signal ask **4** (+Q1); a Fir-generation app adds **Q11**.
+Compute `fast_path_question_count` from this table against the inventory and use that number in the offer — do not quote a fixed range. Worked examples, all on estates the gate admits (no Private Space): a Common Runtime `us` or `eu` app asks **4** (Q2, Q3, Q12c, Q17 — region resolved from the runtime signal); apps spanning mixed regions or with no runtime signal ask **5** (+Q1); a Fir-generation app adds **Q11**.
 
 **If fast-path eligible**, present:
 
@@ -165,6 +167,7 @@ Before generating questions, scan the inventory to determine which questions app
 | Q14 — Alerting preference            | Always                                                           | Never                                     |
 | Q15 — Cost optimization              | Always                                                           | Never                                     |
 | Q16 — Heroku contract                | `billing_profile` absent, `null`, or `available != true` (no invoice) | `billing_profile.available == true`, or user says "none" |
+| Q17 — AWS Activate credits           | Always — on both the fast path and the full flow                  | Never (a skip records `"unknown"`, it does not drop the question) |
 
 ### Extraction Rules (answer from the inventory before asking)
 
@@ -235,11 +238,11 @@ After determining active questions, organize them into **three progressive batch
 | **2** | Data / Network            | Q6, Q6b, Q6d, Q7–Q10   | Database HA, migration approach, database sizing basis (only when a right-sizing candidate exists), Redis HA, Kafka retention, VPC subnets, DNS strategy |
 
 **Not in any batch — Generate-time questions:** Q4 (maintenance window), Q6c (DB migration method), Q12d (EB deploy method). Nothing before Generate reads their fields; asking them in Clarify makes a user who stops at the decision answer questions they will never use. Clarify writes their documented defaults and lists them in `metadata.questions_deferred_to_generate`; `estimate-assemble.md` § Confirm execution choices asks them when the user chooses **[C] Generate**.
-| **3** | Operational / Conditional | Q11, Q12b, Q12f, Q12–Q16 | Fir intent, containerization status, container registry, log retention, alerting, cost optimization                                                   |
+| **3** | Operational / Conditional | Q11, Q12b, Q12f, Q12–Q17 | Fir intent, containerization status, container registry, log retention, alerting, cost optimization, then AWS Activate credits as a one-line follow-up |
 
 **Batch 2 is active** if ANY of: Postgres present, Redis present, Kafka present, Private Space detected, or DNS question is needed (always true → Batch 2 always fires with at least Q10).
 
-**Batch 3 is always active** (Q12–Q15 always fire; Q11 fires only if Fir detected; Q16 fires whenever `billing_profile` is absent, `null`, or has `available != true` — Discover omits the section entirely when no billing file was supplied, and that is the common no-invoice case; see Conditional Question Rules).
+**Batch 3 is always active** (Q12–Q15 and Q17 always fire; Q11 fires only if Fir detected; Q16 fires whenever `billing_profile` is absent, `null`, or has `available != true` — Discover omits the section entirely when no billing file was supplied, and that is the common no-invoice case; see Conditional Question Rules).
 
 Record the ordered list of active batches and count questions per batch after filtering. **Exclude questions resolved on the Assumption Sheet** (extracted, defaulted-and-confirmed, or corrected) — batches contain only the questions the user must actually answer.
 
@@ -294,6 +297,10 @@ You can answer each, skip individual ones, or say "use defaults for the rest."
 
 [Present active questions Q11–Q16 — Q16 only when it is active; it may be answered "none"]
 ```
+
+Then, once the Q11–Q16 answers are in, ask Q17 on its own with the lead-in from § Q17
+Presentation — it is a funding question, not a technical one, and is never mixed into
+the numbered technical batch.
 
 #### 3b. Wait for Response
 
@@ -1168,6 +1175,65 @@ only.
 
 ---
 
+#### Q17 — AWS Activate credits
+
+**Presentation:** Ask Q17 as its own short follow-up **after** the technical questions
+are answered — on the full flow after the Batch 3 answers, on the fast path after the
+last fast-path question — never mixed into a numbered technical batch. It is a funding
+question, not a technical one; separating it keeps the technical batch focused and
+makes clear that skipping it never affects the architecture (only the credits
+guidance). One-line lead-in: "Last one, and it's about money rather than tech:".
+
+**Rationale:** AWS Activate credits apply to the AWS infrastructure this migration
+stands up (compute, RDS, ElastiCache, data transfer — everything except the upfront
+cost of a Reserved Instance or Savings Plan). Surfacing eligibility at the migration
+decision moment helps startups reduce the cost of the migration itself. Thirty
+seconds to answer; can unlock $5K–$200K in credits.
+
+**Activate eligibility:** Pre-Series B, founded in the last 10 years, AWS Account on
+Paid Tier Plan, and either new to Activate Credits or requesting more credits than
+previously received.
+
+> AWS Activate credits offset AWS infrastructure costs during and after migration —
+> they apply to the compute, database and cache this plan stands up. Eligible
+> startups can get $5K–$200K depending on funding stage. Have you applied?
+>
+> 1. Yes — already have AWS Activate credits
+> 2. No — haven't applied yet (self-funded or pre-VC)
+> 3. No — VC/accelerator-backed but haven't applied
+> 4. I don't know
+
+| Answer                     | Recommendation impact                                                                                                                                                              |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Already have credits       | Report notes existing credits; no "apply for" language                                                                                                                             |
+| No — self-funded           | Report flags **AWS Activate Founders** (up to $5,000, self-service): aws.amazon.com/startups/credits — apply before `terraform apply`; credits do not apply retroactively           |
+| No — VC/accelerator-backed | Report flags **AWS Activate Portfolio** (up to $200,000): requires an Activate Provider Org ID from your VC/accelerator — get the Org ID before applying                           |
+| Don't know                 | Report uses neutral wording only (both tiers, no confirmed tier, no tier-specific dollar amount) and recommends checking with investors/accelerator for an Org ID                  |
+
+**Do not infer the tier from spend.** Heroku monthly spend, the AWS estimate, and the
+contract (Q16) say nothing about funding stage; the tier comes from this answer only.
+
+**Interpret** → `global.startup_program_status`:
+
+- 1 → `"has_credits"`
+- 2 → `"eligible_founders"`
+- 3 → `"eligible_portfolio"`
+- 4 → `"unknown"`
+
+**Default:** 4 → `startup_program_status: "unknown"`. A skipped Q17 (or "use defaults for
+the rest") writes `"unknown"` with `sources.Q17: "default"` and records `Q17` in
+`metadata.questions_defaulted`; the report then renders the neutral Activate wording
+(`references/shared/report-decision-core.md` § Startup credits callout). Never write
+`eligible_*` or `has_credits` without an explicit answer.
+
+**Not a cost assumption.** Nothing in Design or Estimate reads this field, so a
+defaulted Q17 is **not** a row in the Decision gate's "Assumptions behind this number"
+block; the gate offers it as a separate one-line prompt, and a late answer there
+writes the field and `sources.Q17` without a reprice or scenario rebase
+(`estimate-assemble.md` § Handling a correction, Q17 bullet).
+
+---
+
 ## Defaults Table
 
 | Question                  | Default                                 | Constraint                                                                                                  |
@@ -1199,6 +1265,7 @@ only.
 | Q14 — Alerting            | 1 (CloudWatch)                          | `alerting: "cloudwatch"`                                                                                    |
 | Q15 — Cost optimization   | 2 (balanced)                            | `cost_optimization: "balanced"`                                                                             |
 | Q16 — Heroku contract     | none                                    | `preferences.commercial` omitted                                                                            |
+| Q17 — Activate credits    | 4 (don't know)                          | `startup_program_status: "unknown"` — neutral Activate wording in the report; never a defaulted `eligible_*` |
 
 **Important:** Q9 and Q9b have no default — they are only asked when Private Space peering exists and required data is missing. If they fire, they must be answered (the system cannot proceed without subnet/VPC information for existing VPC references).
 
