@@ -1,5 +1,7 @@
 # CloudWatch Monitoring for AOS
 
+Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/managedomains-cloudwatchmetrics.html, https://docs.aws.amazon.com/opensearch-service/latest/developerguide/cloudwatch-alarms.html
+
 > **Note:** Enable OpenSearch application logs (index slow logs, search slow logs, error logs, audit logs) and configure CloudTrail for API-level auditing. Store logs in encrypted CloudWatch Logs groups (specify `--kms-key-id` at log group creation: `aws logs create-log-group --log-group-name /aws/opensearch/my-domain --kms-key-id arn:aws:kms:<region>:<account>:key/<key-id>`).
 
 ## Key Metrics to Monitor

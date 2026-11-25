@@ -1,5 +1,7 @@
 # Amazon OpenSearch Serverless — Agentic Search Setup (Flow Agent)
 
+Docs: https://docs.opensearch.org/latest/vector-search/ai-search/agentic-search/flow-agent/
+
 Configure agentic search on an Amazon OpenSearch Serverless collection using a **flow agent** with `QueryPlanningTool`. Uses Bedrock Claude as the reasoning model.
 
 Serverless collections MUST use a flow agent (`type: flow`); conversational agents are not supported on AOSS, because Amazon OpenSearch Serverless does not provide the stateful conversation-memory backing that conversational agents require. Verify agent-type support against the AWS docs (or `aws opensearchserverless` API capabilities) before assuming this limitation still holds. Flow agents are stateless — each query is planned and executed independently. For stateful multi-turn agentic search (memory + RAG), use an Amazon OpenSearch Service **domain** instead; see [`provisioning-agentic-setup.md`](provisioning-agentic-setup.md).
@@ -9,7 +11,7 @@ Serverless collections MUST use a flow agent (`type: flow`); conversational agen
 - A **NextGen** collection, ACTIVE — see [`provisioning-serverless-provision.md`](provisioning-serverless-provision.md).
 - Index created with data — see [`provisioning-serverless-deploy-search.md`](provisioning-serverless-deploy-search.md).
 - The collection's data access policy MUST include the `agent` ResourceType (Step 4), because pipeline-invoked agentic queries fail with `403 Forbidden` without it.
-- The AWS MCP server is recommended for executing these commands but is not required — steps use standard AWS CLI and `awscurl` syntax. IAM/policy steps use `aws` CLI; the data-plane `_plugins/_ml` and `_search/pipeline` calls (Steps 2, 3, 5, 6) are OpenSearch REST requests — send them with `awscurl` (AOSS uses `--service aoss --region <region>`), e.g. `awscurl --service aoss --region <region> -X POST "<collection-endpoint>/_plugins/_ml/models/_register?deploy=true" -H 'Content-Type: application/json' -d '<body>'`.
+- The AWS MCP server is recommended for executing these commands but is not required — steps use standard AWS CLI and `awscurl` syntax. IAM/policy steps use `aws` CLI; the data-plane `_plugins/_ml` and `_search/pipeline` calls (Steps 2, 3, 5, 6) are OpenSearch REST requests — send them with `aws_opensearch.collection_request` in `run_script` where the AWS MCP server is available (see [`data-plane-requests.md`](data-plane-requests.md)), otherwise with `awscurl` (AOSS uses `--service aoss --region <region>`), e.g. `awscurl --service aoss --region <region> -X POST "<collection-endpoint>/_plugins/_ml/models/_register?deploy=true" -H 'Content-Type: application/json' -d '<body>'`.
 
 ## Step 1: Create IAM Role for Bedrock Access
 

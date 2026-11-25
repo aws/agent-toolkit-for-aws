@@ -1,5 +1,7 @@
 # Security — Amazon OpenSearch controls
 
+> OpenSearch REST calls in this file go through the `aws_opensearch` capability in `run_script` where the AWS MCP server is available, or `awscurl` otherwise; see [`data-plane-requests.md`](data-plane-requests.md).
+
 Every assessment / recommendation MUST include a Security section that confirms each control below.
 
 ## Three security layers

@@ -39,6 +39,8 @@ After drafting Steps 3–7 with `[verify]` tags, do this in ONE pass:
 
 ## Topic → URL map
 
+Every URL below resolves to the named page. Cite these (or a URL from a loaded reference or a page fetched this session); never build a URL from a guessed path.
+
 ### Amazon OpenSearch Service (Managed)
 
 | Topic | URL |
@@ -61,6 +63,9 @@ After drafting Steps 3–7 with `[verify]` tags, do this in ONE pass:
 | Index State Management (ISM) | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/ism.html |
 | Snapshots | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/managedomains-snapshots.html |
 | Version migration | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/version-migration.html |
+| Creating and managing domains | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/createupdatedomains.html |
+| Remote reindex | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/remote-reindex.html |
+| Supported plugins by engine version | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/supported-plugins.html |
 | Pricing | https://aws.amazon.com/opensearch-service/pricing/ |
 
 ### Amazon OpenSearch Serverless
@@ -71,6 +76,9 @@ After drafting Steps 3–7 with `[verify]` tags, do this in ONE pass:
 | Serverless scaling | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-scaling.html |
 | NextGen vs Classic | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-vector-search.html |
 | Serverless general reference | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-genref.html |
+| Creating collections | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-create.html |
+| Deleting collections | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-delete.html |
+| Neural and hybrid search on Serverless | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-configure-neural-search.html |
 
 ### OpenSearch Ingestion (OSI)
 
@@ -78,6 +86,9 @@ After drafting Steps 3–7 with `[verify]` tags, do this in ONE pass:
 |---|---|
 | OSI overview | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/ingestion.html |
 | Features | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/osis-features-overview.html |
+| Tutorial: ingest into a domain | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/osis-get-started.html |
+| OpenTelemetry Collector → OSI | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/configure-client-otel.html |
+| Pipeline logs | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/monitoring-pipeline-logs.html |
 
 ### Migration Assistant for Amazon OpenSearch Service
 
@@ -86,7 +97,8 @@ After drafting Steps 3–7 with `[verify]` tags, do this in ONE pass:
 | Solutions overview | https://aws.amazon.com/solutions/implementations/migration-assistant-for-amazon-opensearch-service/ |
 | Project documentation | https://docs.opensearch.org/latest/migration-assistant/ |
 | Project repo | https://github.com/opensearch-project/opensearch-migrations |
-| Solution overview detail | https://docs.aws.amazon.com/solutions/latest/migration-assistant-for-amazon-opensearch-service/solution-overview.html |
+| Solution overview detail (incl. supported migration paths) | https://docs.aws.amazon.com/solutions/latest/migration-assistant-for-amazon-opensearch-service/solution-overview.html |
+| Solr traffic transformation (query parameters incl. `q.op`) | https://docs.aws.amazon.com/solutions/latest/migration-assistant-for-amazon-opensearch-service/transform-solr.html |
 
 ### Security
 
@@ -104,7 +116,16 @@ After drafting Steps 3–7 with `[verify]` tags, do this in ONE pass:
 | Topic | URL |
 |---|---|
 | k-NN field type (AWS) | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/knn.html |
-| k-NN methods and engines (project) | https://docs.opensearch.org/latest/search-plugins/knn/knn-methods-engines/ |
+| k-NN methods and engines (project) | https://docs.opensearch.org/latest/mappings/supported-field-types/knn-methods-engines/ |
+| Vector quantization (project) | https://docs.opensearch.org/latest/vector-search/optimizing-storage/knn-vector-quantization/ |
+| Vector search (AWS) | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/vector-search.html |
+| Semantic search (AWS) | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/semantic-search.html |
+| ML connectors for AWS services (Bedrock, SageMaker) | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/ml-amazon-connector.html |
+| Semantic search (project) | https://docs.opensearch.org/latest/vector-search/ai-search/semantic-search/ |
+| Hybrid search (project) | https://docs.opensearch.org/latest/vector-search/ai-search/hybrid-search/index/ |
+| Normalization processor (project) | https://docs.opensearch.org/latest/search-plugins/search-pipelines/normalization-processor/ |
+| Neural sparse search (project) | https://docs.opensearch.org/latest/vector-search/ai-search/neural-sparse-search/ |
+| Agentic search (project) | https://docs.opensearch.org/latest/vector-search/ai-search/agentic-search/index/ |
 | Vector capabilities blog | https://aws.amazon.com/blogs/big-data/amazon-opensearch-services-vector-database-capabilities-explained/ |
 | Hybrid search blog | https://opensearch.org/blog/hybrid-search/ |
 | RRF blog | https://opensearch.org/blog/introducing-reciprocal-rank-fusion-hybrid-search/ |
@@ -114,11 +135,33 @@ After drafting Steps 3–7 with `[verify]` tags, do this in ONE pass:
 | Topic | URL |
 |---|---|
 | OpenSearch documentation | https://docs.opensearch.org/latest/ |
-| Release notes | https://opensearch.org/lines/ |
+| Version history | https://docs.opensearch.org/latest/version-history/ |
 | Community forum | https://forum.opensearch.org/ |
 | OS 3.0 unveiling blog | https://opensearch.org/blog/unveiling-opensearch-3-0/ |
 | OpenSearch Benchmark | https://github.com/opensearch-project/opensearch-benchmark |
 | Observability platform | https://opensearch.org/platform/observability/ |
+
+### Log analytics, PPL, and trace analytics
+
+| Topic | URL |
+|---|---|
+| Observability overview (AWS) | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/observability.html |
+| Discover logs (AWS) | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/observability-analyze-logs.html |
+| Discover traces (AWS) | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/observability-analyze-traces.html |
+| Supported PPL commands (AWS) | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/supported-ppl.html |
+| PPL reference (project) | https://docs.opensearch.org/latest/sql-and-ppl/ppl/index/ |
+| Anomaly detection (AWS) | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/ad.html |
+| Log analytics with Data Prepper (project) | https://docs.opensearch.org/latest/data-prepper/common-use-cases/log-analytics/ |
+| Trace analytics with Data Prepper, incl. service map (project) | https://docs.opensearch.org/latest/data-prepper/common-use-cases/trace-analytics/ |
+| Trace analytics in Dashboards (project) | https://docs.opensearch.org/latest/observing-your-data/trace/index/ |
+
+### Agentic AI (OpenSearch UI)
+
+| Topic | URL |
+|---|---|
+| Agentic AI overview | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/application-ai-assistant.html |
+| Agentic Chat | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/application-agentic-chat.html |
+| Investigation Agent | https://docs.aws.amazon.com/opensearch-service/latest/developerguide/application-investigation-agent.html |
 
 ### Source-engine documentation
 
@@ -140,7 +183,7 @@ After drafting Steps 3–7 with `[verify]` tags, do this in ONE pass:
 | OS Serverless NextGen vs Classic capabilities | Current matrix | `serverless-vector-search.html` |
 | `max_clause_count` default for current OS | Search settings | `docs.opensearch.org/latest/install-and-configure/configuring-opensearch/search-settings/` |
 | GovCloud Historical Data Migration shard-size cap | Latest Migration Assistant for Amazon OpenSearch Service GovCloud notes | `solution-overview.html` |
-| Latest OpenSearch GA version | Release notes | `opensearch.org/lines/` |
+| Latest OpenSearch GA version | Version history | `docs.opensearch.org/latest/version-history/` |
 | FAISS HNSW vs IVF on Serverless | Current vector matrix | `serverless-vector-search.html` |
 
 ## Citation format for reports

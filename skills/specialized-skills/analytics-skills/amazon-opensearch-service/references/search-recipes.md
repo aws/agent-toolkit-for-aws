@@ -1,5 +1,9 @@
 # Search recipes — query DSL for app developers
 
+Docs: https://docs.opensearch.org/latest/query-dsl/
+
+> OpenSearch REST calls in this file go through the `aws_opensearch` capability in `run_script` where the AWS MCP server is available, or `awscurl` otherwise; see [`data-plane-requests.md`](data-plane-requests.md).
+
 The summary is in `SKILL.md` (§ Build a search feature). This file owns the recipes — copy-paste DSL for every common search pattern.
 
 ## Index design 101

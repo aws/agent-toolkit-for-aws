@@ -67,4 +67,4 @@ The Open Distro → OpenSearch plugin rename is mostly mechanical but is cited o
 | `opendistro-security-advanced-modules` | `opensearch-security` | Folded into `opensearch-security`. |
 | `opendistro-sql` | `opensearch-sql` | Drop-in; verify edge cases. |
 
-The supported-plugin list on managed AOS is `[verify]` against [supported-plugins.html](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/aos-supported-plugins.html) — the plugin catalog drifts.
+The supported-plugin list on managed AOS is `[verify]` against [supported-plugins.html](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/supported-plugins.html) — the plugin catalog drifts.

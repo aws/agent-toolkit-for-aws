@@ -1,5 +1,7 @@
 # OpenSearch Ingestion (OSI) Pipelines for Log Ingestion
 
+Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/osis-get-started.html, https://docs.aws.amazon.com/opensearch-service/latest/developerguide/configure-client.html
+
 ## Overview
 
 OpenSearch Ingestion (OSI) is a fully managed, serverless pipeline service that delivers logs from sources like CloudWatch Logs, Fluent Bit, and HTTP into AOS/AOSS without managing infrastructure.
