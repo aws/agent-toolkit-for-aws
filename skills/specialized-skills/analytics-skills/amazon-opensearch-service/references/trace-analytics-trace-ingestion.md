@@ -1,9 +1,11 @@
 # Trace Ingestion Setup for AOS/AOSS
 
+Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/configure-client-otel.html, https://docs.opensearch.org/latest/data-prepper/common-use-cases/trace-analytics/
+
 ## Architecture
 
 ```
-ADOT Collector / X-Ray → OSI Pipeline → AOS/AOSS (otel-v1-apm-span-*)
+ADOT Collector (OTLP HTTP, SigV4 `osis`) → OSI Pipeline (otel_trace_source) → AOS/AOSS (otel-v1-apm-span-*)
 ```
 
 ## Option 1: ADOT Collector → OSI Pipeline → AOS
@@ -36,13 +38,23 @@ aws osis create-pipeline --pipeline-name trace-pipeline \
 
 ```yaml
 version: "2"
-otel-trace-pipeline:
+entry-pipeline:
   source:
     otel_trace_source:
       path: "/v1/traces"
   processor:
+    - trace_peer_forwarder:
+  sink:
+    - pipeline:
+        name: "raw-trace-pipeline"
+    - pipeline:
+        name: "service-map-pipeline"
+raw-trace-pipeline:
+  source:
+    pipeline:
+      name: "entry-pipeline"
+  processor:
     - otel_traces:
-        record_type: "event"
   sink:
     - opensearch:
         hosts: ["https://<aos-endpoint>"]
@@ -50,6 +62,13 @@ otel-trace-pipeline:
         aws:
           sts_role_arn: "arn:aws:iam::<account>:role/OSIPipelineRole"
           region: "<region>"
+service-map-pipeline:
+  source:
+    pipeline:
+      name: "entry-pipeline"
+  processor:
+    - service_map:
+  sink:
     - opensearch:
         hosts: ["https://<aos-endpoint>"]
         index_type: trace-analytics-service-map
@@ -105,7 +124,7 @@ Ensure data access policy grants the pipeline role access to the collection.
 # Check pipeline status
 aws osis get-pipeline --pipeline-name trace-pipeline
 
-# Verify data is flowing (use awscurl for data-plane access)
+# Verify data is flowing (data-plane call: aws_opensearch with the AWS MCP server, awscurl otherwise; see data-plane-requests.md)
 awscurl --service es --region $AWS_REGION \
   -X POST "$OPENSEARCH_ENDPOINT/otel-v1-apm-span-*/_search" \
   -H 'Content-Type: application/json' \

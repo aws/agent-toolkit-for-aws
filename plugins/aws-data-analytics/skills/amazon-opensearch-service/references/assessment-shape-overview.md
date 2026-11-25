@@ -56,7 +56,7 @@ Pick the single highest-impact item for this source engine and call it out by na
 
 A single link in the body, near the closing sentence — NOT a Citations section. Pick the canonical entry point for the migration tool you named:
 
-- Migration Assistant for Amazon OpenSearch Service (any source): `https://docs.aws.amazon.com/opensearch-service/latest/developerguide/migration-assistant.html`
+- Migration Assistant for Amazon OpenSearch Service (any source): `https://docs.aws.amazon.com/solutions/latest/migration-assistant-for-amazon-opensearch-service/solution-overview.html`
 - `_reindex` from remote: `https://docs.aws.amazon.com/opensearch-service/latest/developerguide/remote-reindex.html`
 - In-place upgrade: `https://docs.aws.amazon.com/opensearch-service/latest/developerguide/version-migration.html`
 
@@ -94,11 +94,11 @@ Do **not** include the following in an OVERVIEW_REQUEST response:
 >
 > **Phase 2 — Query translation & shadow validation.** Convert eDisMax/standard handlers to OpenSearch DSL: `qf field^boost` → `multi_match type: best_fields`, `mm` passes UNCHANGED as `minimum_should_match`. Stand up an empty target domain and replay a representative query set against both engines. Compare top-K results before any cutover plan is locked in.
 >
-> **Phase 3 — Backfill with Migration Assistant for Amazon OpenSearch Service Historical Data Migration, cut over with Migration Assistant for Amazon OpenSearch Service Live Traffic Migration.** Solr → OpenSearch: target must be OS 3.x or Serverless (architectural rule). Tool eligibility per current Migration Assistant for Amazon OpenSearch Service versions: [source-and-target-versions](https://docs.aws.amazon.com/solutions/latest/migration-assistant-for-amazon-opensearch-service/source-and-target-versions.html). Take a Solr backup to S3, point Migration Assistant for Amazon OpenSearch Service at the snapshot for Historical Data Migration, then enable Live Traffic Migration for the cutover window.
+> **Phase 3 — Backfill with Migration Assistant for Amazon OpenSearch Service Historical Data Migration, cut over with Migration Assistant for Amazon OpenSearch Service Live Traffic Migration.** Solr → OpenSearch: target must be OS 3.x or Serverless (architectural rule). Check tool eligibility for your versions against the supported migration paths in the Migration Assistant for Amazon OpenSearch Service docs. Take a Solr backup to S3, point Migration Assistant for Amazon OpenSearch Service at the snapshot for Historical Data Migration, then enable Live Traffic Migration for the cutover window.
 >
 > **Phase 4 — Cutover & decommission.** Final delta backfill (rerun Historical Data Migration over the most recent shard of changes), DNS/app-config flip to the OpenSearch endpoint, monitor for 1–2 release cycles, then retire the Solr cluster.
 >
-> **Top migration note:** Many Solr deployments configure `q.op=AND` (Solr's own default is OR, but the AND override is common in production). OpenSearch's `query_string` defaults to OR. If your source uses `q.op=AND`, set `default_operator: AND` on every translated query handler — otherwise relevance regresses dramatically. This is the #1 cause of result divergence in Solr → OpenSearch migrations. See the Migration Assistant for Amazon OpenSearch Service docs at <https://docs.aws.amazon.com/opensearch-service/latest/developerguide/migration-assistant.html>.
+> **Top migration note:** Many Solr deployments configure `q.op=AND` (Solr's own default is OR, but the AND override is common in production). OpenSearch's `query_string` defaults to OR. If your source uses `q.op=AND`, set `default_operator: AND` on every translated query handler — otherwise relevance regresses dramatically. This is the #1 cause of result divergence in Solr → OpenSearch migrations. See the Migration Assistant for Amazon OpenSearch Service Solr query support (including `q.op`) at <https://docs.aws.amazon.com/solutions/latest/migration-assistant-for-amazon-opensearch-service/transform-solr.html>.
 >
 > **Next step:** share your `schema.xml` and a sample of the queries your app issues (top 10 by volume is enough). With those I can produce a field-by-field mapping and a query-translation reference so Phases 1 and 2 are fully concrete.
 

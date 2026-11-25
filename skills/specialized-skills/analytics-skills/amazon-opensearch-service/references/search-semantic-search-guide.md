@@ -1,5 +1,7 @@
 # Search capability — entry point and methods guide
 
+Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/semantic-search.html, https://docs.aws.amazon.com/opensearch-service/latest/developerguide/vector-search.html, https://docs.opensearch.org/latest/vector-search/ai-search/hybrid-search/index/
+
 This file is the **entry point** for the `search` capability. It covers vector / semantic / hybrid / sparse / dense / RAG retrieval on Amazon OpenSearch Service or Serverless. Supports Bedrock connectors (Titan, Cohere), self-hosted embedding models, FAISS HNSW vs Lucene, ELSER alternatives, and hybrid scoring.
 
 ## When to use this capability

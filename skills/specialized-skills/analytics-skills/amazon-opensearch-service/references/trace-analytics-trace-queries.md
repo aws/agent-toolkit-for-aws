@@ -1,6 +1,8 @@
 # Trace-analytics capability — entry point and query templates
 
-> The AWS MCP server is recommended for executing these commands but is not required — all steps use standard `awscurl` / AWS CLI syntax.
+Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/observability-analyze-traces.html, https://docs.opensearch.org/latest/sql-and-ppl/ppl/index/
+
+> The AWS MCP server is recommended for executing these commands but is not required — all steps use standard `awscurl` / AWS CLI syntax. Where the AWS MCP server is available, send the `awscurl` data-plane calls with the `aws_opensearch` capability instead; see [`data-plane-requests.md`](data-plane-requests.md).
 
 This file is the **entry point** for the `trace-analytics` capability. It covers distributed traces with OpenTelemetry — span queries, service maps, latency analysis (p50/p95/p99), error rate by service, and root-cause via parent/child spans.
 
@@ -44,7 +46,7 @@ For the full PPL command and function catalog, see [`observability-ppl-reference
 
 ## Data Plane Access with awscurl
 
-All queries below use the PPL API at `/_plugins/_ppl`. Use `awscurl` for SigV4-authenticated requests:
+All queries below use the PPL API at `/_plugins/_ppl`. Where the AWS MCP server is available, send them with `aws_opensearch.domain_request` / `aws_opensearch.collection_request` in `run_script` (see [`data-plane-requests.md`](data-plane-requests.md)); otherwise use `awscurl` for SigV4-authenticated requests:
 
 > **Credentials & monitoring:** source the SigV4 signing credentials from an IAM role (instance profile, ECS task role, or SSO session), not static access keys. Enable CloudTrail for management-plane audit and OpenSearch audit logs for data-plane access (to attribute PPL queries to callers), and alarm on `_plugins/_ppl` error rates.
 
@@ -66,7 +68,7 @@ awscurl --service aoss --region $AWS_REGION \
   -d '{"query": "<PPL_QUERY>"}'
 ```
 
-> **Prerequisites:** `pip install awscurl`, AWS credentials configured via `aws configure` or environment variables.
+> **Prerequisites (`awscurl` path only):** `pip install awscurl`, AWS credentials configured via `aws configure` or environment variables.
 
 ### Verifying Trace Indices
 
@@ -216,13 +218,32 @@ source = otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = 'execut
 
 ## Service Map Queries
 
-> **Important:** In `otel-v2-apm-service-map-*`, `sourceNode` and `targetNode` are nested struct objects with `keyAttributes.name` for the service name — not flat strings.
+> **Important:** Which service-map index exists depends on the processor. OSI's `service_map` processor (sink `index_type: trace-analytics-service-map`, as in [`trace-analytics-trace-ingestion.md`](trace-analytics-trace-ingestion.md)) writes `otel-v1-apm-service-map`. Data Prepper's `otel_apm_service_map` processor writes `otel-v2-apm-service-map-*`, where `sourceNode` and `targetNode` are object fields with `keyAttributes.name` for the service name — not flat strings.
 
 ### Service Topology
+
+v1 (`otel-v1-apm-service-map`):
+
+```ppl
+source = otel-v1-apm-service-map* | where isnotnull(destination.domain) | dedup serviceName, destination.domain | fields serviceName, destination.domain, destination.resource, traceGroupName
+```
+
+v2 (`otel-v2-apm-service-map-*`):
 
 ```ppl
 source = otel-v2-apm-service-map-* | dedup nodeConnectionHash | fields sourceNode, targetNode, sourceOperation, targetOperation
 ```
+
+### Service-map / dependency answer checklist
+
+When asked about service dependencies, the service map, or cross-service latency, the answer MUST include all of:
+
+- [ ] Run `GET _cat/indices/otel-v*-apm-service-map*` and use the topology query for the version present (v1 `dedup serviceName, destination.domain`, or v2 `dedup nodeConnectionHash`); `otel-v1-apm-span-*` serves latency, errors, and throughput.
+- [ ] For v2, the gotcha: `sourceNode` / `targetNode` are object fields (not `nested` type); filter on `sourceNode.keyAttributes.name` directly. A `term` on `sourceNode` itself returns zero hits.
+- [ ] Latency percentiles (p50/p90/p95/p99 on `durationInNanos`, see [Latency Percentiles by Service](#latency-percentiles-by-service)), noting the value is nanoseconds: divide by 1e6 for ms.
+- [ ] Error rate ([Error Rate by Service](#error-rate-by-service): `status.code = 2` over total spans).
+- [ ] Throughput ([Throughput Over Time](#throughput-over-time): `date_histogram` on `startTime` by `serviceName`).
+- [ ] A docs URL: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/observability-analyze-traces.html, or https://docs.opensearch.org/latest/data-prepper/common-use-cases/trace-analytics/ for service-map ingestion.
 
 ## Remote Service Identification with coalesce()
 
@@ -376,6 +397,19 @@ awscurl --service es --region $AWS_REGION \
 ```
 
 ### Service Map (DSL)
+
+Use the variant for the index that `GET _cat/indices/otel-v*-apm-service-map*` shows.
+
+v1 (`otel-v1-apm-service-map`), caller to called-service edges:
+
+```bash
+awscurl --service es --region $AWS_REGION \
+  -X POST "$OPENSEARCH_ENDPOINT/otel-v1-apm-service-map*/_search" \
+  -H 'Content-Type: application/json' \
+  -d '{"size": 200, "query": {"exists": {"field": "destination.domain"}}}'
+```
+
+v2 (`otel-v2-apm-service-map-*`):
 
 ```bash
 awscurl --service es --region $AWS_REGION \

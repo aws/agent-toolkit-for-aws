@@ -1,5 +1,7 @@
 # Troubleshooting AOS Domains and Collections
 
+Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/handling-errors.html
+
 > The AWS MCP server is recommended for executing these commands but is not required — all steps use standard AWS CLI syntax.
 
 ## Common Issues

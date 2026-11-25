@@ -1,6 +1,8 @@
 # PPL language reference (observability)
 
-> The AWS MCP server is recommended for executing these commands but is not required — all steps use standard `awscurl` / AWS CLI syntax.
+Docs: https://docs.opensearch.org/latest/sql-and-ppl/ppl/index/, https://docs.aws.amazon.com/opensearch-service/latest/developerguide/supported-ppl.html
+
+> The AWS MCP server is recommended for executing these commands but is not required — all steps use standard `awscurl` / AWS CLI syntax. Where the AWS MCP server is available, send the `awscurl` data-plane calls with the `aws_opensearch` capability instead; see [`data-plane-requests.md`](data-plane-requests.md).
 
 Shared PPL reference for the `log-analytics` and `trace-analytics` capabilities.
 Queries follow pipe-delimited syntax: `source=<index> | command1 | command2 ...`.
@@ -36,7 +38,7 @@ backtick-quoted, because the leading character is not a valid bare identifier.
 
 ## API endpoints
 
-Query (AOS uses `--service es`; AOSS uses `--service aoss`):
+Query (AOS uses `--service es`; AOSS uses `--service aoss`). Where the AWS MCP server is available, send the same path and body with `aws_opensearch` instead (see [`data-plane-requests.md`](data-plane-requests.md)):
 
 The endpoint URL MUST use HTTPS (not HTTP). `awscurl` will not upgrade an HTTP URL to HTTPS, so verify
 `$OPENSEARCH_ENDPOINT` starts with `https://` before executing any command below, because an
