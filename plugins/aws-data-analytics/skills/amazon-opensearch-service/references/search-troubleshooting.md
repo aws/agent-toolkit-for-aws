@@ -1,5 +1,9 @@
 # Troubleshooting AOS Search
 
+Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/knn.html, https://docs.aws.amazon.com/opensearch-service/latest/developerguide/ml-amazon-connector.html
+
+> OpenSearch REST calls in this file go through the `aws_opensearch` capability in `run_script` where the AWS MCP server is available, or `awscurl` otherwise; see [`data-plane-requests.md`](data-plane-requests.md).
+
 ## Common Issues
 
 | Error | Cause | Fix |

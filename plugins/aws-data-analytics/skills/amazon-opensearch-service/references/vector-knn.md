@@ -1,5 +1,7 @@
 # Vector & k-NN search on Amazon OpenSearch
 
+> OpenSearch REST calls in this file go through the `aws_opensearch` capability in `run_script` where the AWS MCP server is available, or `awscurl` otherwise; see [`data-plane-requests.md`](data-plane-requests.md).
+>
 > **Canonical k-NN reference for this skill.** The engine matrix and quantization comparisons below are the single source of truth — do NOT replicate elsewhere. Source of truth for current engine support: [knn.html](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/knn.html). Source of truth for Serverless vector workloads: [serverless-vector-search.html](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-vector-search.html).
 
 The summary version (decision tree, dimensions, hybrid search 101) is in `SKILL.md`. This file owns the engine deep-dive, memory math, hybrid search recipes, RAG ingestion patterns, and ELSER alternatives.
@@ -68,7 +70,7 @@ total_memory ≈ bytes_per_vector × num_vectors × (1 + replicas)
 
 Memory ratios (stable): fp32→fp16 = 2×, fp32→int8 = 4×, fp32→int4 = 8×, fp32→binary = 32×.
 
-For current per-method recall benchmarks (which AWS republishes per release), see [knn-vector-quantization.html](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/knn-vector-quantization.html).
+For each quantization method and its accuracy-versus-memory trade-off, see [Vector quantization](https://docs.opensearch.org/latest/vector-search/optimizing-storage/knn-vector-quantization/).
 
 ## Hybrid search (text + vector)
 

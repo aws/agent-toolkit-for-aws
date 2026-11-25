@@ -1,5 +1,7 @@
 # Amazon OpenSearch Service Domain — Provision
 
+Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/createupdatedomains.html, https://docs.aws.amazon.com/opensearch-service/latest/developerguide/fgac.html
+
 ## Prerequisites
 
 1. Confirm AWS credentials: `aws sts get-caller-identity`

@@ -1,6 +1,8 @@
 # Log-analytics capability — entry point and guide
 
-> The AWS MCP server is recommended for executing these commands but is not required — all steps use standard `awscurl` / AWS CLI syntax.
+Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/observability-analyze-logs.html, https://docs.aws.amazon.com/opensearch-service/latest/developerguide/supported-ppl.html, https://docs.aws.amazon.com/opensearch-service/latest/developerguide/ad.html
+
+> The AWS MCP server is recommended for executing these commands but is not required — all steps use standard `awscurl` / AWS CLI syntax. Where the AWS MCP server is available, send the `awscurl` data-plane calls with the `aws_opensearch` capability instead; see [`data-plane-requests.md`](data-plane-requests.md).
 
 This file is the **entry point** for the `log-analytics` capability. It covers log search at scale, observability, PPL queries, anomaly detection, OpenSearch Dashboards, alerting, and SIEM patterns — including replatforming from Splunk, Datadog, or self-managed ELK.
 
@@ -52,7 +54,7 @@ For the full PPL command and function catalog, see [`observability-ppl-reference
 
 ## Data Plane Access with awscurl
 
-Use `awscurl` for SigV4-authenticated HTTP requests to AOS/AOSS endpoints.
+Use `awscurl` for SigV4-authenticated HTTP requests to AOS/AOSS endpoints. Where the AWS MCP server is available, use `aws_opensearch.domain_request` / `aws_opensearch.collection_request` in `run_script` instead, which needs no endpoint or `awscurl` install. See [`data-plane-requests.md`](data-plane-requests.md).
 
 ### Setup
 
@@ -107,6 +109,7 @@ Determine the domain or collection type and endpoint using the AWS CLI (or `call
 - If the user names a domain: `aws opensearch describe-domain --domain-name <name>` → extract `Endpoint` and `ARN` (region from ARN). With AWS MCP: `call_aws opensearch describe-domain`.
 - If the user names a collection: `aws opensearchserverless batch-get-collection --names <name>` → extract `collectionEndpoint`. With AWS MCP: `call_aws opensearchserverless batch-get-collection`.
 - If unclear: list with `aws opensearch list-domain-names` or `aws opensearchserverless list-collections`
+- With `aws_opensearch`, skip the endpoint lookup: pass the domain name or collection ARN directly.
 
 This is important because the connection method, authentication, and available features differ between AOS domains and AOSS collections.
 

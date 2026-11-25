@@ -76,6 +76,19 @@
       },
       "category": "Cloud",
       "version": "1.0.1"
+    },
+    {
+      "name": "aws-context",
+      "source": {
+        "source": "local",
+        "path": "./plugins/aws-context"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Cloud",
+      "version": "0.1.0"
     }
   ]
 }

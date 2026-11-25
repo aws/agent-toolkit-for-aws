@@ -1,5 +1,7 @@
 # Amazon OpenSearch Serverless — Deprovision (Teardown)
 
+Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-delete.html
+
 Delete serverless resources in strict dependency order. Reversing the order fails, because a collection group cannot be deleted while it still has collections, and a security policy cannot be deleted while a collection it covers still exists.
 
 The AWS MCP server is recommended for executing these teardown commands but is not required — all steps use standard AWS CLI syntax.
