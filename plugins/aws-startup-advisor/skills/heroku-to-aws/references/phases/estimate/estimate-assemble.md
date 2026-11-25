@@ -230,7 +230,13 @@ Assumption Sheet lives when Clarify ran in fast-path mode — the user judges a
 default against the dollars it moves, not before they have a number — and on the
 full flow it shows the rows waved through with "use defaults for the rest".
 Extracted (Detected) values are not listed here; they were read from Heroku, not
-assumed.
+assumed. **Q17 (AWS Activate credits) is never a row here either**, even when it
+is in `metadata.questions_defaulted`: nothing in Design or Estimate reads
+`global.startup_program_status`, so it moves no dollars. When `sources.Q17` is
+`"default"`, add one line directly under the block instead — "You skipped the AWS
+Activate credits question; answer it any time (1 already have credits · 2
+self-funded, not applied · 3 VC/accelerator-backed, not applied) and the report's
+credits callout names your tier." — and handle the answer per the Q17 bullet below.
 
 **Handling a correction from this block:**
 
@@ -259,6 +265,17 @@ assumed.
   above as an assumption, and the saved active scenario carries the same
   provenance as the working tree. Scenarios the user did not change keep
   their own saved provenance.
+- If the answer is to **Q17 (AWS Activate credits)** — from the one-line prompt
+  under the block, or volunteered: interpret it through the Q17 catalog entry
+  (`clarify-interview.md` § Q17) and write `global.startup_program_status`, set
+  `sources.Q17` to `"user"`, move `Q17` from `metadata.questions_defaulted` to
+  `metadata.questions_asked`, set `metadata.timestamp`, and re-run the
+  `clarify-assemble.md` § Validation Checklist on the updated file (steps 1–3 of
+  the contract below). **Skip steps 4–5**: no reprice, no scenario rebase — Design
+  and Estimate do not read the field, and every saved scenario's
+  `scenario-NNN.preferences.json` keeps its own copy unchanged. Re-present the
+  gate (or the decision report, if the user asks for it) so the credits callout
+  reflects the new status.
 - Otherwise, the correction is a late answer to a Clarify question and runs
   the **same question contract** the interview would have run — a field-only
   write is not enough:

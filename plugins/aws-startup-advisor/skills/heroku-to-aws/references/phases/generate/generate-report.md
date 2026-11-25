@@ -7,10 +7,15 @@ _contributes:
 
 # Generate — Stakeholder HTML Report (Heroku)
 
-> Thin shareable HTML for SAs / founders. Not a full GCP/Vercel assessment
-> clone — decision + costs + optional what-if scenarios, then point at
-> `MIGRATION_GUIDE.md` for procedure. Runs **after** docs so the guide exists
-> when the report links to it.
+> Stakeholder HTML that uses the same visual shell as the GCP migration
+> assessment (page background, section cards, metric grid, verdict callout,
+> appendix divider, focus and print styles). The Heroku report stays shorter:
+> decision, costs, developer workflow, what-if scenarios, and five appendices
+> the Heroku artifacts can fill. It adds the copy-ready CFO brief and the
+> complexity-tier planning band, because both are already in the estimate.
+> It does not include the GCP AI appendix, security-gap analysis, or glossary.
+> Cutover procedure stays in `MIGRATION_GUIDE.md`. Runs **after** docs so the
+> guide exists when the report links to it.
 >
 > **This file is the single source of truth for `decision-summary` /
 > `decision-basis` / `exec-costs` / `what-if-scenarios` content rules.**
@@ -29,7 +34,7 @@ _contributes:
 | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `estimation-infra.json`                                                                                                        | Recommendation path, three cost tiers, complexity, `optimization_opportunities[]`                                                                                               |
 | `aws-design.json`                                                                                                              | Short service count / primary compute target                                                                                                                                    |
-| `preferences.json`                                                                                                             | Region, HA, arch (active scenario = working tree)                                                                                                                               |
+| `preferences.json`                                                                                                             | Region, HA, arch (active scenario = working tree); `global.startup_program_status` for the Activate credits callout                                                                                                                               |
 | `scenarios/index.json` + manifests **+ each scenario's `scenarios/scenario-NNN.preferences.json` / `.aws-design.json` copies** | What-if table when ≥2 scenarios — manifests carry the cost tiers/complexity; the per-scenario Region/HA/Compute/Arch columns come from the scenario's preferences/design copies |
 | `MIGRATION_GUIDE.md`                                                                                                           | Must already exist (docs fragment ran first)                                                                                                                                    |
 | `heroku-resource-inventory.json`                                                                                               | `metadata.apps_by_stack_status` / `metadata.eol_stack_apps` for the end-of-life stack line (tolerate absence on older inventories)                                               |
@@ -161,8 +166,10 @@ Write a **self-contained** HTML file to `$MIGRATION_DIR/migration-report.html`
 | `exec-costs`        | Heroku-vs-AWS side-by-side when a Heroku baseline exists (`current_costs.source != "unavailable"`); otherwise the AWS three-tier table with a one-line note that no Heroku baseline was available. Estimated monthly; Balanced primary. **When `current_costs.baseline_note` is present (any derived — not invoiced — source, including the Postgres Advanced per-pool formula), render it as a visible caveat line directly beside the Heroku current-monthly figure — never only in the accuracy band.** This is mandatory, not conditional on which derived source produced the note. **When `cost_comparison.comparison_status == "incomplete_unmatched_services"`, render the same mandatory caveat-beside-the-figure treatment, naming `cost_comparison.unmatched_deferred_services` and `unmatched_deferred_cost` directly beside the savings/difference figure — never present that dollar delta as decision-grade savings without it.** **When `aws-design.json` `metadata.postgres_followers_collapsed[]` is non-empty, add one line under the database rows listing each collapsed follower and what serves it (`served_by`: `rds_read_replica` → "RDS read replica of `{leader_resource_id}`", `aurora_reader` → "Aurora reader of `{leader_resource_id}`"), so the reader sees why the AWS database count is lower than the Heroku add-on count; skip silently when empty or absent.** This file is the single source of truth for `exec-costs` content rules, so `report-decision-core.md`'s reuse of these rules picks this up automatically. |
 | `cost-optimization` | Reserved Instance / Savings Plan opportunities table, or the explicit no-eligible-commitment statement — see below. Always present, never omitted                                                                                                                                            |
 | `developer-workflow` | Always render — in both report modes (`report-decision-core.md` renders it in `decision-report.html` / `DECISION.md` too, with its pre-execution wording override). Heading "Developer workflow: what stays, what changes, what you build". One line stating the Q5c answer. Then the table defined in § `developer-workflow` below. Then the closing paragraph(s) defined there. Reader vocabulary only — no file names or resource IDs |
+| `exec-share`        | Always render, in both modes, immediately after the table of contents. The copy-ready CFO brief defined below. No new arithmetic |
+| `exec-timeline`     | Always render, in both modes, after `developer-workflow` and before `what-if-scenarios` (or before `next-steps` / `decision-cta` when there is no what-if section). The planning band defined below |
 | `shared-data-stores` | **Conditional** — only when the inventory has `shared_data_stores.cohorts` with at least one entry. One table: Cohort / Apps (count) / Shared stores (count) / App names. One sentence above it: apps in a cohort read the same database, cache or Kafka cluster and cannot be cut over strictly one at a time without cross-cloud access to that store; sequence them as a group or plan the interim connectivity. No ordering, no recommendation of which cohort goes first |
-| `next-steps`        | Ordered list pointing to `MIGRATION_GUIDE.md` phases (not a procedure dump). Include one bullet noting the Terraform ships with `baseline.tf` (account security baseline — GuardDuty, CloudTrail, budget alerts) and that three contact emails must be set in tfvars before `terraform plan` |
+| `next-steps`        | Ordered list pointing to `MIGRATION_GUIDE.md` phases (not a procedure dump). Include one bullet noting the Terraform ships with `baseline.tf` (account security baseline — GuardDuty, CloudTrail, budget alerts) and that three contact emails must be set in tfvars before `terraform plan`. Unless `startup_program_status` is `has_credits`, include one item: apply for [AWS Activate credits](https://aws.amazon.com/startups/credits/) before `terraform apply` — credits do not apply retroactively |
 
 **Cost-figure anchor (machine-checkable).** In `exec-costs`, wrap the recommended AWS
 monthly (Balanced) dollar figure in a `data-cost-key="aws_monthly_balanced"` attribute so
@@ -217,6 +224,18 @@ Only untagged _illustrative_ numbers are skipped.
    line — `Developer workflow was rated critical; see
    <a href="#developer-workflow">Developer workflow</a> for what stays, what changes
    and what must be built.`
+7. **AWS Activate credits callout (always, both modes):** the 💡
+   `<div class="callout callout-info">` defined in
+   `references/shared/report-decision-core.md` § Startup credits callout, placed after
+   the cost one-liner. Wording follows `preferences.json`
+   `global.startup_program_status`: `eligible_founders` → Founders (up to $5,000);
+   `eligible_portfolio` → Portfolio (up to $200,000, Org ID from your investor);
+   `has_credits` → credits already on the account, no "apply for"; `unknown`/absent
+   → neutral both-tiers wording with no confirmed tier. Always include the
+   clickable apply link `https://aws.amazon.com/startups/credits/` inside the
+   callout (the validator fails a summary that names Activate without it). Never a
+   metric card; never infer the tier from spend. Unless `has_credits`, say credits
+   are not retroactive — apply before `terraform apply`.
 
 ### `decision-basis` (end of summary, when v2 fields exist)
 
@@ -231,6 +250,45 @@ either order is fine as long as the confidence pointer's href resolves):
 - One-line pricing provenance from `pricing_source` + accuracy band.
 
 Omit the section when `decision_basis` is absent (pre-extension artifacts).
+
+### `exec-share` (always render, both modes)
+
+Render `<section id="exec-share">` immediately after `<nav class="toc">`.
+Heading: `Share with your CFO`. Lead-in sentence, outside the card: "The
+one-paragraph version, ready to forward:". Then exactly one
+`<div class="share-card"><p>…</p></div>`. The card holds one paragraph of at
+least 20 words. No button, script, input, or second paragraph. No new
+arithmetic — restate figures already shown in the decision summary.
+
+The paragraph must still make sense pasted into an email. Use only:
+
+- the verdict and confidence
+- the estimated AWS Balanced monthly figure
+- the Heroku baseline when a comparable baseline exists; otherwise say the Heroku bill is not established
+- the migration shape (`path_label`)
+- at most three conditions or evidence gaps
+
+Label every amount as estimated. Preserve the same comparability caveats as
+`exec-costs`. In decision mode, omit Generate-only facts.
+
+### `exec-timeline` (always render, both modes)
+
+Render `<section id="exec-timeline">` after `developer-workflow`. Heading:
+`Timeline`.
+
+- Shape: `recommendation.path_label`.
+- Planning band from `complexity_tier`, copied from the Estimate timeline
+  table. Do not invent a different range:
+  - `small`: 2–6 weeks
+  - `medium`: 6–12 weeks
+  - `large`: 12–18 weeks
+- The words "planning band" are visible beside that range. The band is the
+  complexity-tier planning range, not a staffed schedule and not a commitment.
+- When preferences name a maintenance window, one line with the day and hour.
+  Skip when absent.
+- One line pointing at `MIGRATION_GUIDE.md` for the procedure. Do not paste
+  cutover or rollback steps into this section.
+- Do not invent a duration driver the artifacts do not name.
 
 ### `developer-workflow` (always render)
 
@@ -363,16 +421,87 @@ Omit the section when workshop was declined or never entered.
   the`projected_costs.*`tiers and the Heroku baseline to the nearest dollar when
   you write them into`exec-costs`, the cost one-liner, and the what-if table.
 - Reader vocabulary: no `*.json` filenames or `aws_*.` resource IDs in
-  `decision-summary` / `exec-costs` / `what-if-scenarios` (name things the
-  reader controls).
+  `decision-summary` / `exec-share` / `exec-timeline` / `exec-costs` /
+  `what-if-scenarios` (name things the reader controls).
 
-### Minimal CSS
+### Visual shell
 
-Use a short inline stylesheet: readable body font, `.report` max-width ~900px,
-tables with borders, `.active-scenario` or bold active row,
-`.verdict-headline` (large display type for the outcome — **not** a colored
-pill badge row), `.toc` list. Keep visual noise low — this is a one-pager for
-stakeholders, not a design system.
+Both `migration-report.html` and `decision-report.html` include the stylesheet
+below. Copy it as written.
+
+`validate-heroku-migration-report.py` does not require every declaration in
+that block. It fails when a `<style>` block is missing any of these, and only
+these:
+
+- `body` `background` is `#f6f8fa` or a `var(...)`. Another hex value, or `rgb()`, fails. The error says "body must use a contrasting page background".
+- `.report` or `.container` sets `max-width`
+- `section` sets `background`, `border`, and `border-radius`
+- `.metrics` is `display: grid` with `grid-template-columns`
+- `.metric` sets `border` and `border-radius`
+- `.verdict` sets `background` and `border`
+- `.savings` sets `color`
+- `.share-card` sets `border`
+- `.appendix-header` is defined
+- a `:focus-visible` rule
+- `@media (max-width: 700px)`
+- `@media print`
+
+`h1`, `.verdict-headline`, `.metric-hero`, `.increase`, the `table` / `th, td` /
+`thead th` rules, and `tr.active-scenario` are part of the stylesheet to copy.
+The checker does not fail a report that omits them. Other colors and spacing
+inside the checked rules may be refined. The page background may not.
+
+```css
+body { margin: 0; background: #f6f8fa; color: #1f2328; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 15px; line-height: 1.55; }
+.report { max-width: 1040px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+h1 { font-size: 1.85rem; margin-bottom: 0.25rem; border-bottom: 3px solid #ff9900; padding-bottom: 0.5rem; }
+.verdict-headline { font-size: 2rem; line-height: 1.15; margin: 0 0 0.35rem; }
+section { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; scroll-margin-top: 1rem; }
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin: 0.85rem 0; }
+.metric { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 0.85rem 1rem; }
+.metric-hero { border: 2px solid #0d7377; }
+.verdict { background: #e6f4ea; border: 1px solid #137333; border-left: 4px solid #137333; padding: 0.75rem 1rem; }
+.savings { color: #137333; font-weight: 650; }
+.increase { color: #c5221f; font-weight: 650; }
+.share-card { background: #f0f6fc; border: 1px solid #d0d7de; border-left: 4px solid #0969da; padding: 0.85rem 1rem; }
+.callout { padding: 0.85rem 1rem; border-radius: 6px; margin: 0.85rem 0; font-size: 0.95rem; }
+.callout-info { background: #eef5ff; border: 1px solid #0969da; border-left: 4px solid #0969da; }
+.appendix-header { background: #232f3e; color: #fff; padding: 1rem 1.5rem; margin: 2rem 0 1rem; }
+a:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
+table { width: 100%; border-collapse: collapse; margin: 0.75rem 0 1rem; font-size: 0.88rem; }
+th, td { border: 0; border-bottom: 1px solid #d0d7de; padding: 0.45rem 0.65rem; text-align: left; vertical-align: top; }
+thead th { border-bottom: 2px solid #d0d7de; }
+tr.active-scenario { font-weight: 650; }
+@media (max-width: 700px) { .report { padding: 1rem; } .metrics { grid-template-columns: 1fr; } }
+@media print { body { background: #fff; } .appendix { break-before: page; } }
+```
+
+Put the verdict headline in large display type. Do not render it as a colored
+pill. A go outcome may sit in `.verdict`. A conditional or stay outcome uses a
+pale warning callout so the color is not the only signal. The Balanced monthly
+figure is a `.metric-hero` inside `.metrics`, next to the Heroku baseline when
+one exists and the complexity tier. Mark a supported savings delta with
+`.savings` and a supported increase with `.increase`, and keep the `+` or `-`
+in the text.
+
+### Appendices (full report only)
+
+After `next-steps`, render `<div class="appendix">` preceded by
+`<div class="appendix-header">Appendix</div>`. Decision mode omits this block
+(`report-decision-core.md`). Each appendix is a `<section>` with a plain
+heading. Copy figures and choices from the artifacts. Do not invent rows.
+
+| Section ID | Content |
+| --- | --- |
+| `appendix-services` | One row per `aws-design.json` `services[]` entry: Heroku app, source, AWS service, and the size the reader controls (instance class, task size, count). |
+| `appendix-costs` | Estimate line items when the breakdown has them. Otherwise the Heroku baseline and the three AWS tiers, as estimated monthly whole dollars, plus the pricing-source caveat. |
+| `appendix-config` | Choices from `preferences.json`: region, availability, maintenance window, compute default and any formation override, Elastic Beanstalk deploy method, database HA, migration method, DNS. Columns: Choice, Your answer, What it changes. |
+| `appendix-security` | The account baseline Generate emits, as a table with columns Control, Setting, What it does, and Threat mitigated. Rows: alternate contacts (an incident reaches someone who can act); password policy, 14 characters, reuse 24, maximum age 90 days (weak console passwords); S3 public-access block (accidental public buckets); default EBS encryption (data exposure from a stolen volume); Access Analyzer (a policy or bucket becomes public); IMDSv2 (credential theft through server-side request forgery); CloudTrail at the generated retention (who changed what); the monthly budget and its alert thresholds (bill shock); GuardDuty (credential theft and resource hijacking). Say that the three contact emails must be set before `terraform plan`, and that removing `baseline.tf` plus those three variables opts out. When the normalized compliance list contains soc2, pci, hipaa, or fedramp, add AWS Config (a record of configuration change) and Security Hub with FSBP (baseline posture checks), each with the same two meaning columns. Do not add those rows when compliance is none. Do not add a monthly-cost column or a Heroku-equivalent column. |
+| `appendix-assumptions` | `recommendation.decision_basis` measured, assumed, and unknown lists when present, copied as written, plus one pricing-provenance line. |
+
+Do not emit `appendix-ai`, `appendix-security-gap`, `appendix-steps`,
+`appendix-glossary`, or `exec-tco`. The cutover procedure stays in
+`MIGRATION_GUIDE.md`.
 
 ### Table & figure accessibility (REQUIRED — the blocking validator enforces these)
 
@@ -380,7 +509,7 @@ stakeholders, not a design system.
   (`exec-costs`, `cost-optimization` when opportunities exist, `what-if-scenarios`) are
   column-headed, so emit `<th scope="col">…</th>` for each header cell.
 - **If you emit a `<figure>`, it must carry a non-empty `aria-label` and a `<figcaption>`.**
-  The one-pager normally has no figures; this only applies if you add one.
+  This report normally has no figures; this only applies if you add one.
 - `<html>` carries `lang="en"` (the skeleton already does).
 
 ### Skeleton
@@ -392,12 +521,14 @@ stakeholders, not a design system.
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Heroku to AWS Migration Assessment</title>
-  <style>/* inline */</style>
+  <style>/* visual shell from the section above */</style>
 </head>
 <body>
   <div class="report">
-    <nav class="toc">…</nav>
+    <h1>Heroku to AWS Migration Assessment</h1>
     <section id="decision-summary">…</section>
+    <nav class="toc">…</nav>
+    <section id="exec-share">…</section>
     <!-- <section id="decision-basis"> when recommendation.decision_basis exists -->
     <section id="exec-costs">
       <!-- every <th> declares scope; copy this header pattern for cost-optimization + what-if too -->
@@ -410,8 +541,17 @@ stakeholders, not a design system.
     </section>
     <section id="cost-optimization">…</section>
     <section id="developer-workflow">…</section>
+    <section id="exec-timeline">…</section>
     <!-- <section id="what-if-scenarios"> when ≥2 scenarios -->
     <section id="next-steps">…</section>
+    <div class="appendix-header">Appendix</div>
+    <div class="appendix">
+      <section id="appendix-services">…</section>
+      <section id="appendix-costs">…</section>
+      <section id="appendix-config">…</section>
+      <section id="appendix-security">…</section>
+      <section id="appendix-assumptions">…</section>
+    </div>
     <footer>Generated by Heroku to AWS Migration Advisor — draft for review; verify figures before executive sign-off.</footer>
   </div>
 </body>
@@ -427,7 +567,7 @@ wrote satisfies the contract, and if not, **fix and rewrite it here** (this is t
 the report is edited — a stub is never acceptable):
 
 1. File exists and is non-empty.
-2. Contains `decision-summary`, `exec-costs`, `cost-optimization`, `next-steps`, and `draft for review`.
+2. Contains `decision-summary`, `exec-share`, `exec-timeline`, `exec-costs`, `cost-optimization`, `next-steps`, the five appendix sections, the visual-shell selectors (including `.share-card`), and `draft for review`. The security appendix table has What it does and Threat mitigated columns.
 3. `decision-summary` must **not contain** any `badge-verdict-*` class; when
    `recommendation.outcome` exists it must render a `verdict-headline` element.
 4. When `recommendation.decision_basis` exists: contains `decision-basis`.
@@ -447,6 +587,10 @@ the report is edited — a stub is never acceptable):
 10. If `cost_comparison.comparison_status == 'incomplete_unmatched_services'`,
     confirm the unmatched-service caveat is visible text next to the
     Heroku-vs-AWS figure, not only inside `baseline_note`.
+11. `decision-summary` contains the 💡 Activate credits callout (`.callout-info`) with a
+    clickable `https://aws.amazon.com/startups/credits/` link, worded for
+    `global.startup_program_status` — tier and dollar amount only for `eligible_founders`
+    / `eligible_portfolio`, no "apply for" wording for `has_credits`, neutral for `unknown`.
 
 A report failure must not delete the Terraform/docs — repair the HTML in this fragment. Fixing
 the report is **only** done here, before control returns; the completion gate never edits it.

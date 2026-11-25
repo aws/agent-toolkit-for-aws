@@ -11,7 +11,7 @@ import json
 import math
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 # Every tunable lives in the skill's knowledge/estimate/rightsizing-thresholds.json (one file for
@@ -29,6 +29,7 @@ BURST_CPU_P95_MAX = THRESHOLDS["burst"]["cpu_p95_max"]
 BURST_SPIKE_MULTIPLE = THRESHOLDS["burst"]["spike_multiple"]
 BURST_CONSECUTIVE_HOURS = THRESHOLDS["burst"]["consecutive_hours"]
 ALIGNMENT = "1h"
+ALIGNMENT_PERIOD = timedelta(seconds=3600)
 ALIGNERS = ("ALIGN_MEAN", "ALIGN_MAX")
 METRIC_TYPES = {
     "gce-cpu": "compute.googleapis.com/instance/cpu/utilization",
@@ -70,23 +71,54 @@ def page_files(capture_dir: Path, short_name: str, aligner: str) -> list[Path]:
         if match:
             files.append((int(match.group(1)), path))
     return [path for _, path in sorted(files)]
+def manifest_rejects(capture_dir: Path, short_name: str, aligner: str) -> bool:
+    """True unless a readable manifest.json lists this row's monitoring-<short>-<aligner>-p* file with status ok.
+
+    Step 2c writes a manifest row for every monitoring call before Step 2d reduces, so pages on disk
+    with no readable manifest, no row for this file, or a row whose status is not ok are stale output
+    of an earlier run (or a skipped/failed retry) and must not be reduced. Only an explicit ok row
+    for a matching file admits the page set.
+    """
+    manifest = _read_json(capture_dir / "manifest.json", None)
+    captures = manifest.get("captures") if isinstance(manifest, dict) else None
+    if not isinstance(captures, list):
+        return True
+    prefix = f"monitoring-{short_name}-{aligner}-p"
+    accepted = False
+    for entry in captures:
+        if not isinstance(entry, dict) or not str(entry.get("file") or "").startswith(prefix):
+            continue
+        if entry.get("status") != "ok":
+            return True
+        accepted = True
+    return not accepted
+
+
 def load_metric(capture_dir: Path, short_name: str, aligner: str = "ALIGN_MEAN") -> dict[str, Any]:
     """Merge one metric's pages into series keyed by series_key, each carrying its resolved unit.
 
     Returns {"status": "ok", "unit": <unit>, "series": {key: series}} or {"status": "no_data"} when no
-    page exists, a page is unparseable, or any series has no usable unit (missing or {not_a_unit}).
+    readable manifest row marks this file ok (missing manifest, missing row, or skipped/failed), no page exists, a page is unparseable or an HTTP error envelope,
+    the pages are not a contiguous p1..pN chain whose last page alone lacks nextPageToken, or any series
+    has no usable unit (missing or {not_a_unit}).
     """
+    if manifest_rejects(capture_dir, short_name, aligner):
+        return {"status": "no_data"}
     files = page_files(capture_dir, short_name, aligner)
     if not files:
         return {"status": "no_data"}
     merged: dict[tuple, dict[str, Any]] = {}
     unit: str | None = None
-    for path in files:
+    for index, path in enumerate(files, start=1):
+        if int(_PAGE_RE.search(path.name).group(1)) != index:
+            return {"status": "no_data"}
         try:
             page = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return {"status": "no_data"}
-        if not isinstance(page, dict):
+        if not isinstance(page, dict) or "error" in page:
+            return {"status": "no_data"}
+        if bool(page.get("nextPageToken")) != (index < len(files)):
             return {"status": "no_data"}
         page_unit = page.get("unit")
         if unit is None and isinstance(page_unit, str) and page_unit != NOT_A_UNIT:
@@ -171,15 +203,25 @@ def coverage_of(cpu: dict[str, Any]) -> str:
         return "sufficient"
     return "insufficient"
 def flags(cpu: dict[str, Any], memory: dict[str, Any], cpu_means: dict[str, float]) -> tuple[str, bool, bool]:
-    """(coverage, burst, idle) for a GCE instance. burst uses time-ordered hourly means, never max."""
+    """(coverage, burst, idle) for a GCE instance. burst uses time-ordered hourly means, never max.
+
+    Consecutive means consecutive clock hours: a hot bucket only extends the run when it ends exactly one
+    alignment period after the previous bucket, so a missing hour between two hot hours resets the run.
+    """
     coverage = coverage_of(cpu)
     burst = False
     idle = False
     if coverage == "sufficient" and cpu["p95"] < BURST_CPU_P95_MAX:
         threshold = BURST_SPIKE_MULTIPLE * cpu["p95"]
         run = 0
+        previous: datetime | None = None
         for hour in sorted(cpu_means, key=parse_rfc3339):
-            run = run + 1 if cpu_means[hour] > threshold else 0
+            end = parse_rfc3339(hour)
+            if cpu_means[hour] > threshold:
+                run = run + 1 if previous is not None and end - previous == ALIGNMENT_PERIOD else 1
+            else:
+                run = 0
+            previous = end
             if run >= BURST_CONSECUTIVE_HOURS:
                 burst = True
                 break
