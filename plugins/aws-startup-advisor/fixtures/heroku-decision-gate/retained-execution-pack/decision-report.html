@@ -5,9 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Heroku to AWS Migration Assessment — Decision Report</title>
 <style>
-  body { margin: 0; font: 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; color: #1f2328; }
-  .report { max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem; }
-  .verdict-headline { font-size: 1.85rem; font-weight: 700; margin: 0.25rem 0; }
+  body { margin: 0; background: #f6f8fa; color: #1f2328; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 15px; line-height: 1.55; }
+  .report { max-width: 1040px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+  section { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; scroll-margin-top: 1rem; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; }
+  .metric { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 0.85rem 1rem; }
+  .verdict { background: #e6f4ea; border: 1px solid #137333; padding: 0.75rem 1rem; }
+  .savings { color: #137333; font-weight: 650; }
+  .share-card { background: #f0f6fc; border: 1px solid #d0d7de; border-left: 4px solid #0969da; padding: 0.85rem 1rem; }
+  .callout { padding: 0.85rem 1rem; border-radius: 6px; margin: 0.85rem 0; font-size: 0.95rem; }
+  .callout-info { background: #eef5ff; border: 1px solid #0969da; border-left: 4px solid #0969da; }
+  .appendix-header { background: #232f3e; color: #fff; padding: 1rem 1.5rem; }
+  a:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
+  @media (max-width: 700px) { .report { padding: 1rem; } }
+  @media print { body { background: #fff; } }
+  .verdict-headline { font-size: 2rem; line-height: 1.15; margin: 0 0 0.35rem; }
   table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; }
   th, td { border: 1px solid #d0d7de; padding: 0.45rem 0.65rem; text-align: left; }
   nav.toc a { color: #0969da; text-decoration: none; }
@@ -20,18 +32,27 @@
 <nav class="toc" aria-label="Table of contents">
   <ul>
     <li><a href="#decision-summary">Decision</a></li>
+    <li><a href="#exec-share">Share with your CFO</a></li>
     <li><a href="#exec-costs">Costs</a></li>
+    <li><a href="#exec-timeline">Timeline</a></li>
     <li><a href="#decision-cta">Ready to execute?</a></li>
   </ul>
 </nav>
 
+<section id="exec-share">
+<h2>Share with your CFO</h2>
+<p>The one-paragraph version, ready to forward:</p>
+<div class="share-card"><p>Go, with conditions, at medium confidence. Estimated AWS Balanced is $210 per month against an estimated Heroku baseline of $340 per month. The migration shape is phased, and the planning band for this small estate is 2-6 weeks. Confirm the open condition before treating the monthly figure as final.</p></div>
+</section>
+
 <section id="decision-summary">
 <h2>Migration Decision Summary</h2>
 <p class="verdict-headline">Go, with conditions</p>
-<p>Execution shape: Phased migration · Complexity: Medium</p>
+<p>Execution shape: Phased migration · Complexity: small</p>
 <p>Confidence: medium — full basis available on request.</p>
 <p><strong>AWS estimate (Balanced):</strong> Est. $210/mo · <strong>Your Heroku baseline:</strong> Est. $340/mo (from your Heroku invoice)</p>
-<p><strong>Timeline if you execute:</strong> ~6–10 weeks (medium complexity)</p>
+<div class="callout callout-info">💡 Review <a href="https://aws.amazon.com/startups/credits/">AWS Activate credits</a> tiers (Founders for self-funded startups, Portfolio for VC- or accelerator-backed ones) — your funding stage was not confirmed in Clarify. Credits apply only to charges after approval, so apply before any deployment.</div>
+<p><strong>Timeline if you execute:</strong> planning band 2-6 weeks (small complexity)</p>
 <ul>
   <li>What would flip this: a confirmed always-on traffic pattern would raise the AWS compute estimate materially.</li>
 </ul>
@@ -49,6 +70,11 @@
   </tbody>
 </table>
 <p>Heroku baseline (from your Heroku invoice): Est. $340/mo. All figures are estimated monthly costs.</p>
+</section>
+
+<section id="exec-timeline">
+<h2>Timeline</h2>
+<p>Shape: Phased migration. Planning band: 2-6 weeks for the small complexity tier. This planning band is the complexity-tier range, not a staffed schedule. The cutover procedure stays in the migration guide.</p>
 </section>
 
 <section id="decision-cta">

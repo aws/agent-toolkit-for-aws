@@ -17,11 +17,32 @@ from pathlib import Path
 SCRIPT = Path(__file__).resolve().parent / "validate-heroku-migration-report.py"
 
 GOOD = """<!DOCTYPE html>
-<html lang="en"><body><div class="report">
+<html lang="en">
+<style>
+  body { margin: 0; background: #f6f8fa; color: #1f2328; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 15px; line-height: 1.55; }
+  .report { max-width: 1040px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+  section { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; scroll-margin-top: 1rem; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; }
+  .metric { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 0.85rem 1rem; }
+  .verdict { background: #e6f4ea; border: 1px solid #137333; padding: 0.75rem 1rem; }
+  .savings { color: #137333; font-weight: 650; }
+  .share-card { background: #f0f6fc; border: 1px solid #d0d7de; border-left: 4px solid #0969da; padding: 0.85rem 1rem; }
+  .appendix-header { background: #232f3e; color: #fff; padding: 1rem 1.5rem; }
+  a:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
+  @media (max-width: 700px) { .report { padding: 1rem; } }
+  @media print { body { background: #fff; } }
+</style><body><div class="report">
 <section id="decision-summary"><p class="verdict-headline">Go</p></section>
+<section id="exec-share"><p>The one-paragraph version, ready to forward:</p><div class="share-card"><p>Go, with conditions, at medium confidence. The estimated AWS balanced rate is higher than the Heroku rate card, the shape is phased, and the planning band for this complexity tier is the duration to quote. Confirm the open conditions before treating the monthly figure as final.</p></div></section>
+<section id="exec-timeline"><h2>Timeline</h2><p>Phased migration. Planning band: 2-6 weeks for a small estate. This planning band is the complexity-tier range, not a staffed schedule.</p></section>
 <section id="exec-costs"><p>Balanced Est. $112/mo</p></section>
 <section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>
 <section id="next-steps"><ol><li>See MIGRATION_GUIDE.md</li></ol></section>
+<section id="appendix-services"><p>One designed service.</p></section>
+<section id="appendix-costs"><p>Balanced estimated monthly cost.</p></section>
+<section id="appendix-config"><p>Region and availability choices.</p></section>
+<section id="appendix-security"><table><thead><tr><th scope="col">Control</th><th scope="col">Setting</th><th scope="col">What it does</th><th scope="col">Threat mitigated</th></tr></thead><tbody><tr><td>GuardDuty</td><td>Enabled</td><td>Detects unusual API activity</td><td>Credential theft</td></tr></tbody></table></section>
+<section id="appendix-assumptions"><p>Measured, assumed, and unknown inputs.</p></section>
 <footer>draft for review</footer>
 </div></body></html>
 """

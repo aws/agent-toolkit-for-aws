@@ -151,7 +151,12 @@ def heroku_execution_run(parent: Path) -> Path:
 <table><caption>Compute commitment options</caption>
 <thead><tr><th scope="col">Option</th><th scope="col">Action</th></tr></thead>
 <tbody><tr><td>Compute Savings Plan</td><td>Review usage before a one-year commitment.</td></tr></tbody>
-</table></section>""")
+</table></section>
+<section id="appendix-services"><p>Fargate for the example web formation.</p></section>
+<section id="appendix-costs"><p>Balanced estimated monthly cost from the estimate.</p></section>
+<section id="appendix-config"><p>Region and availability choices from the decision.</p></section>
+<section id="appendix-security"><table><thead><tr><th scope="col">Control</th><th scope="col">Setting</th><th scope="col">What it does</th><th scope="col">Threat mitigated</th></tr></thead><tbody><tr><td>GuardDuty</td><td>Enabled</td><td>Detects unusual API activity</td><td>Credential theft</td></tr></tbody></table></section>
+<section id="appendix-assumptions"><p>Measured, assumed, and unknown inputs from the estimate.</p></section>""")
     (root / "migration-report.html").write_text(html)
     return root
 

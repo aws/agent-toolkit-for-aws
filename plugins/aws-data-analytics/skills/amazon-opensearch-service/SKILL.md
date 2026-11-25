@@ -2,14 +2,14 @@
 name: amazon-opensearch-service
 description: Guides migration, provisioning, search, log-analytics, trace-analytics, and Agentic AI Assistant workflows for Amazon OpenSearch Service and Serverless across six capabilities — migration (Solr/ES/self-managed into AOS/AOSS, schema/query translation, sizing, cutover); provisioning (domain + AOSS lifecycle, upgrades, FGAC, monitoring); search (vector / semantic / hybrid / RAG with Bedrock); log-analytics (PPL, OSI, anomaly detection, Dashboards); trace-analytics (OTel spans, service maps, Data Prepper); ai-assistant (natural language data exploration, incident investigation, root cause analysis). Triggers on OpenSearch, AOS, AOSS, Elasticsearch, Solr, vector/k-NN/semantic/hybrid search, RAG, log analytics, PPL, trace analytics, ISM, FAISS, HNSW, Migration Assistant, UltraWarm, OR1, query my data, analyze logs, investigate errors, root cause analysis.
 metadata:
-  version: "2"
+  version: "3"
 ---
 
 # Amazon OpenSearch Service — the unified skill
 
 This skill answers anything about Amazon OpenSearch Service or Serverless across six capabilities. **Step 0 below routes the question to ONE capability** and points at that capability's entry-point reference. Everything else — when to dispatch, sub-references, capability-specific facts, cross-capability links — lives in the entry-point reference for that capability.
 
-> **AWS MCP server is recommended, not required.** Capability references show standard AWS CLI commands as the primary syntax (e.g., `aws opensearch describe-domain`, `aws opensearchserverless create-collection`). Where the AWS MCP server is available, its `call_aws` tool offers a streamlined alternative — but every operation in this skill MUST work via the AWS CLI alone. Data-plane HTTP calls against AOS / AOSS use `awscurl` for SigV4-signed requests; this works in both contexts.
+> **AWS MCP server is recommended, not required.** Capability references show standard AWS CLI commands as the primary syntax (e.g., `aws opensearch describe-domain`, `aws opensearchserverless create-collection`). Where the AWS MCP server is available, its `call_aws` tool offers a streamlined alternative — but every operation in this skill MUST work via the AWS CLI alone. Data-plane HTTP calls against AOS / AOSS are written as `awscurl` commands; where the AWS MCP server is available, send them with the `aws_opensearch` capability in `run_script` instead, and use `awscurl` only when it is not. See [`references/data-plane-requests.md`](references/data-plane-requests.md).
 
 ## Step 0: detect the capability — first thing you do
 
@@ -31,11 +31,12 @@ If a prompt spans capabilities (e.g., *"migrate from Solr AND set up RAG on the 
 These rules apply to every response, regardless of capability. Capability-specific rules (sizing math, shape detection, Migration Assistant for Amazon OpenSearch Service capability matrix, k-NN engine selection) live in the entry-point references, not here.
 
 - **Report header (every multi-section response).** Begin every multi-section response with a single fenced metadata block: `> Generated: <ISO 8601 timestamp> | Skill: amazon-opensearch-service v<N>`. Get the time by calling the `current_time` tool (returns ISO 8601 in UTC). Read the skill version from this file's frontmatter `version:` field. For one-line answers (terse FOCUSED_OPERATIONAL replies, anti-pattern refusals) the header is optional; for any multi-section deliverable it is REQUIRED. Place it immediately after the report title and before the first `##` heading.
-- **No dollar estimates** (HARD CONSTRAINT). Never produce `$X/month`, `~$1,500`, or any dollar figure. Route every cost question to <https://calculator.aws> and stop. If a sub-reference contains dollar figures, treat them as informational context only and do NOT pass them through to the user.
+- **No dollar estimates** (HARD CONSTRAINT). Never produce `$X/month`, `~$1,500`, or any dollar figure. Route every cost question to <https://calculator.aws> instead of estimating; in a cost answer that link satisfies the docs-URL rule below. If a sub-reference contains dollar figures, treat them as informational context only and do NOT pass them through to the user.
 - **No credential leakage** (HARD CONSTRAINT). Never include master usernames, KMS key ARNs, VPC endpoint URLs, instance IPs, or account IDs in generated output.
 - **Pick one** for every A-vs-B decision. Name a primary recommendation in one line with a one-sentence reason. A *"go with B if..."* caveat is allowed AFTER the primary; never lead with conditional-only guidance.
 - **Source restatement.** The first 2–3 sentences must restate the source (engine + version + scale) when known, or restate the customer's question in concrete terms. The very first text the user sees must NOT be tool narration, meta-commentary, the report title, or simply restating the question verbatim.
 - **No marketing tone.** Do NOT use *"seamless"*, *"robust"*, *"best-in-class"*, *"production-hardened"*, *"enterprise-grade"*, *"world-class"*, *"cleanly"*, *"elegant"*. Do NOT stack 3+ vague hedges (*"typically"*, *"generally"*, *"usually"*, *"in most cases"*) in a single recommendation — be specific about when it does and does not apply.
+- **Docs URL.** Every answer includes at least one relevant docs URL. Copy it from a reference file you loaded, the topic → URL map in [`references/assessment-knowledge-retrieval.md`](references/assessment-knowledge-retrieval.md), or a page you fetched this session. Never build a URL from a guessed path. When the selected shape defines its own footer or single-URL rule, that URL satisfies this rule; do not add a second.
 - **Cross-capability handoff.** When a user prompt spans capabilities (e.g., *"migrate from Solr AND set up RAG on the new domain"*), pick the dominant capability for the response, then close with a one-line handoff: *"For \<other capability\>, see [`references/<other-capability>-<entry>.md`](...)."*
 
 ## Cross-cutting references (used across multiple capabilities)
@@ -49,6 +50,7 @@ These references are not capability-prefixed because they apply across capabilit
 - [`references/personas.md`](references/personas.md) — communication style per persona.
 - [`references/assessment-gotchas.md`](references/assessment-gotchas.md) — production gotcha catalog (cite by number in Migration specifics or Risks/blockers tables; each gotcha carries a `Category:` tag that determines its lane).
 - [`references/assessment-knowledge-retrieval.md`](references/assessment-knowledge-retrieval.md) — topic → tool → URL recipe for batched verification.
+- [`references/data-plane-requests.md`](references/data-plane-requests.md) — sending OpenSearch REST calls: `aws_opensearch` via the AWS MCP server's `run_script`, `awscurl` otherwise.
 
 Assets (`assets/`): report templates for FULL_ASSESSMENT renderings (Solr-source, ES-source, executive summary).
 

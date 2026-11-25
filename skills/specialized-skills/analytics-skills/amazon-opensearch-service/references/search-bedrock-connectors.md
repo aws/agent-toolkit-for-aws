@@ -1,5 +1,7 @@
 # Bedrock Connector Setup for AOS/AOSS
 
+Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/ml-amazon-connector.html
+
 ## Creating a Bedrock Connector
 
 ### Step 1: Create IAM Role for Connector
@@ -41,7 +43,7 @@ aws iam put-role-policy --role-name OpenSearchBedrockRole \
 
 **For Titan Embeddings V2 (1024 dimensions):**
 
-Use `awscurl` to call the OpenSearch API directly:
+Send this OpenSearch API call with `aws_opensearch.domain_request` / `aws_opensearch.collection_request` in `run_script` where the AWS MCP server is available, or with `awscurl` otherwise (see [`data-plane-requests.md`](data-plane-requests.md)):
 
 ```
 POST /_plugins/_ml/connectors/_create

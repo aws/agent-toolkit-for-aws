@@ -17,6 +17,8 @@ This release covers five phases:
 | Estimate | Runs `references/phases/estimate/estimate-ai.md`: prices the design from measured usage or the Q7 band, compares it with the current provider, and checks the result with `scripts/estimate-ai.py` | `estimation-ai.json`                           |
 | Generate | Opt-in. Runs `references/phases/generate/generate-ai.md`: writes the migration plan and the artifacts each route needs, and checks them with `scripts/generate-ai.py` | `generation-ai.json`, `ai-migration/`          |
 
+A run this skill started on its own also gets `migration-report.html`, a draft HTML report that `scripts/report-ai.py` renders from the artifacts, after Estimate when the user does not generate, and after Generate (`references/phases/report/report-ai.md`). It is not a phase, never blocks one, and is never written in a combined run.
+
 Generate writes files only: it never edits the user's code and never runs anything against AWS. Do not load phase files from any other skill.
 
 ## Combined mode
@@ -75,8 +77,8 @@ Combined run: when `.phase-status.json` has `initiated_by` or the directory hold
 3. If that file has `phases.estimate` set to `"in_progress"`, or `phases.design` is `"completed"` and `phases.estimate` is `"pending"` or absent, resume at Estimate, adding `phases.estimate` when it is absent.
 4. If that file has `phases.generate` set to `"in_progress"`, resume at Generate. Its Step 1 rewrites `ai-migration/` from the start.
 5. If that file has `phases.estimate` set to `"completed"`, `phases.generate` `"pending"`, and `run_mode` `"decide_and_execute"`, resume at Generate.
-6. If that file has `phases.estimate` set to `"completed"` and `phases.generate` `"pending"`, show the summary of the saved `estimation-ai.json` and offer to generate the migration artifacts, to run Estimate again, to run Design again, or to change answers. To generate, set `run_mode` to `"decide_and_execute"` and go to Step 5. The other three are the resets in rule 7.
-7. If that file has `phases.generate` set to `"completed"`, show the summary of the saved `generation-ai.json` and offer to generate again, to run Estimate again, to run Design again, or to change answers. Say that each choice replaces `ai-migration/` when Generate runs again, including `comparison_results.json`, so they can copy it first. Each choice is one write:
+6. If that file has `phases.estimate` set to `"completed"` and `phases.generate` `"pending"`, show the summary of the saved `estimation-ai.json` and offer to generate the migration artifacts, to run Estimate again, to run Design again, or to change answers. Run `python3 <SKILL_BASE>/scripts/report-ai.py plan $MIGRATION_DIR` too: when its `state` is `absent` or `current` is false, also offer to write the report with `report-ai.md`. To generate, set `run_mode` to `"decide_and_execute"` and go to Step 5. The other three are the resets in rule 7.
+7. If that file has `phases.generate` set to `"completed"`, show the summary of the saved `generation-ai.json` and offer to generate again, to run Estimate again, to run Design again, or to change answers. Run `python3 <SKILL_BASE>/scripts/report-ai.py plan $MIGRATION_DIR` too: when its `state` is `absent` or `current` is false, also offer to write the report with `report-ai.md`. Say that each choice replaces `ai-migration/` when Generate runs again, including `comparison_results.json`, so they can copy it first. Each choice is one write:
    - Generate again: set `phases.generate` to `"in_progress"` and `current_phase` to `"generate"`, then go to Step 5.
    - Estimate again: set `phases.estimate` and `phases.generate` to `"pending"` and `current_phase` to `"estimate"`, then go to Step 4.
    - Design again: set `phases.design`, `phases.estimate`, and `phases.generate` to `"pending"` and `current_phase` to `"design"`, then go to Step 3.

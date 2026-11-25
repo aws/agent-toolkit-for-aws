@@ -72,7 +72,7 @@ Provisioned Throughput has no 1-year or 3-year term. These levers have no upfron
 | Some workloads favor the move and some do not                                                | `migrate_phased`      |
 | Otherwise (cheaper, same model, or more expensive with a justifying non-cost reason)        | `migrate_optimized`   |
 
-Write `path`, `path_label`, `migrate_if`, `stay_if`, `confidence`, and a `rationale` that cites the figures from Step 0. A `tier` basis or a missing price lowers `confidence`; say why.
+Write `path`, `path_label`, `migrate_if`, `stay_if`, `confidence`, and a `rationale` that cites the figures from Step 0, as whole dollars a month (`$3 to $572`, cents only below $2). A `tier` basis or a missing price lowers `confidence`; say why.
 
 ## Step 5: Write and check
 

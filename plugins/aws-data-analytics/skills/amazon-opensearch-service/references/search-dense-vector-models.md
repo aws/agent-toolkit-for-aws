@@ -1,5 +1,7 @@
 # Dense Vector Models Guide
 
+Docs: https://docs.opensearch.org/latest/ml-commons-plugin/pretrained-models/, https://docs.opensearch.org/latest/ml-commons-plugin/remote-models/index/
+
 This document lists model options for Dense Vector Search in OpenSearch, categorized by deployment mode, with practical recommendations.
 
 > Key takeaways:

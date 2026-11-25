@@ -170,6 +170,7 @@ Live gcloud discovery produces the same inventory/cluster schemas with these add
 - `source` — `"terraform"`, `"live"`, or `"live+terraform"` (merged entry)
 - `unmanaged_by_terraform` — `true` when live discovery found the resource but no Terraform manages it (click-ops drift)
 - `not_found_live` — `true` when Terraform declares the resource but the (successful) live capture did not find it deployed
+- `utilization` — optional; present when live discovery captured Cloud Monitoring data (discover-live.md rows 21a–21n). One object per compute or database resource, copied verbatim from `live-capture/utilization-summary.json` (the output of `skills/gcp-to-aws/scripts/summarize-monitoring.py`, discover-live.md Step 2d) and joined on `config.id` + zone for VMs and `"<project>:" + config.name` for Cloud SQL. A 1.0 inventory without it still validates. Each metric block is either the five numeric keys or `{"status": "unavailable"}` (metric captured, no series for this resource) / `{"status": "no_data"}` (metric file missing, unit unresolvable, or row skipped). Not yet used for sizing (follow-up).
 
 **Top-level `live_metadata` section:**
 
@@ -185,6 +186,54 @@ Live gcloud discovery produces the same inventory/cluster schemas with these add
       "source": "live+terraform",
       "unmanaged_by_terraform": false,
       "not_found_live": false
+    },
+    {
+      "address": "google_compute_instance.web_steady",
+      "source": "live",
+      "unmanaged_by_terraform": true,
+      "utilization": { // copied from live-capture/utilization-summary.json; absent when no summary object matched
+        "resource_type": "gce_instance|cloudsql_database",
+        "instance_id": "1000000000000000001", // string: GCE ids exceed 2^53
+        "zone": "us-central1-a",
+        "window_days": 7,
+        "alignment": "1h",
+        "mig_member": false, // true when row 22a listed the VM in a managed instance group
+        "cpu": {
+          "p95": 0.1214, // nearest-rank p95 of hourly means; shared-core VMs may exceed 1.0
+          "mean": 0.0912,
+          "max": 0.9, // max of hourly maxes; never drives burst
+          "samples_present": 168,
+          "samples_expected": 168,
+          "status": "unavailable|no_data" // only when the metric has no data (row skipped/failed, incomplete page set); coverage is then no_data
+        },
+        "memory": {
+          "p95": 0.1512,
+          "mean": 0.1178,
+          "max": 0.173,
+          "samples_present": 168,
+          "samples_expected": 168,
+          "status": "unavailable|no_data" // only when the metric has no data; the five numeric keys are then absent
+        },
+        "coverage": "sufficient|insufficient|no_data", // from cpu samples_present / samples_expected >= 0.8
+        "burst": false, // GCE only: cpu.p95 < 0.30 and >= 2 consecutive hourly means > 2 * p95
+        "idle": false // GCE only: cpu.p95 < 0.05 and memory p95 < 0.20 (or memory is a status block) and not burst
+      }
+    },
+    {
+      "address": "google_sql_database_instance.orders_db",
+      "source": "live+terraform",
+      "utilization": {
+        "resource_type": "cloudsql_database",
+        "database_id": "acme-prod:orders-db", // "<project>:<instance name>", the Cloud Monitoring resource label
+        "region": "us-central1",
+        "window_days": 7,
+        "alignment": "1h",
+        "cpu": { "p95": 0.1086, "mean": 0.0977, "max": 0.1572, "samples_present": 168, "samples_expected": 168 },
+        "memory": { "p95": 0.9999, "mean": 0.9995, "max": 1.0, "samples_present": 168, "samples_expected": 168 },
+        "disk_bytes_used": { "p95": 87293952, "mean": 87293952, "max": 87293952, "samples_present": 168, "samples_expected": 168, "status": "unavailable|no_data" }, // integer bytes; or {"status": "unavailable|no_data"} like every metric block
+        "connections": { "p95": 5.0, "mean": 3.2917, "max": 5.0, "samples_present": 168, "samples_expected": 168, "status": "unavailable|no_data" }, // network/connections (MySQL, SQL Server) or postgresql/num_backends summed across databases
+        "coverage": "sufficient"
+      }
     }
   ],
   "live_metadata": {

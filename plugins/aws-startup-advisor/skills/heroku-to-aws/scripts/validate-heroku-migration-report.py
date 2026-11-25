@@ -1,13 +1,29 @@
 #!/usr/bin/env python3
-"""Validate heroku-to-aws migration-report.html (thin stakeholder report).
+"""Validate heroku-to-aws migration-report.html.
 
-Required sections: decision-summary, exec-costs, cost-optimization, next-steps.
+Required sections: decision-summary, exec-share, exec-timeline, exec-costs,
+cost-optimization, next-steps.
+Full mode also requires the Heroku appendix set (services, costs, configuration,
+security baseline, assumptions). The security appendix must name what each
+control does and which threat it mitigates. Decision mode rejects any rendered
+appendix section.
+The CFO brief is one static paragraph. The timeline states the complexity-tier
+planning band.
 Conditional: what-if-scenarios when scenarios/index.json has ≥2 entries.
 Footer must contain "draft for review".
 
-Also enforces the report's own decision-UX and a11y contract (ported subset of
-the gcp-to-aws report validator, #223 — gated to what the Heroku one-pager
-actually emits):
+The AWS Activate credits callout (both modes): a decision-summary that names
+Activate must link https://aws.amazon.com/startups/credits/ ; when preferences.json
+global.startup_program_status is has_credits / eligible_founders /
+eligible_portfolio the callout must be present; unknown/absent status forbids a
+confirmed-tier claim; has_credits forbids "apply for" wording.
+
+The visual shell check, in both modes, requires a #f6f8fa or var() page
+background, a max-width report, section cards, a metric grid, bordered metric
+cards, a verdict callout, a savings color, a bordered share card, an appendix
+divider, visible keyboard focus, a 700px breakpoint, and print styles.
+
+Also enforces the report's decision-UX and a11y contract:
   - decision-summary must NOT contain any badge-verdict-* pill (the skeleton mandates
     a typography-first `verdict-headline`; color-only verdict carriers are banned).
   - when estimation-infra.json declares recommendation.outcome, decision-summary
@@ -15,10 +31,9 @@ actually emits):
   - <html> must declare a lang attribute; any <th> must declare scope=col|row;
     any <figure> must carry aria-label + <figcaption>.
 
-Deliberately NOT enforced (would false-fail the intentionally-thin Heroku
-report, whose skeleton puts <nav class="toc"> before the verdict and emits no
-<h1> / table <caption>): decision-before-TOC ordering, single-<h1>, per-table
-<caption>, glossary/appendix set.
+Deliberately NOT enforced: decision-before-TOC ordering, single-<h1>, per-table
+<caption>, and the GCP-only appendix set (AI, security gap, steps, glossary,
+combined run rate).
 
 Exit 0 on PASS, 1 on FAIL.
 
@@ -33,6 +48,7 @@ import argparse
 import json
 import re
 import sys
+from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -41,6 +57,8 @@ from pathlib import Path
 # not carry the optimization table.
 COMMON_REQUIRED_SECTION_IDS = [
     "decision-summary",
+    "exec-share",
+    "exec-timeline",
     "exec-costs",
 ]
 # The structural difference between modes: full (migration-report.html) ends on a
@@ -53,11 +71,86 @@ MODE_REQUIRED_SECTION_ID = {
 }
 
 
+# Full-report appendices the Heroku artifacts can fill. Decision mode omits them
+# because Generate has not run. The GCP AI, security-gap, steps, and glossary
+# appendices are not part of this set.
+FULL_APPENDIX_SECTION_IDS = [
+    "appendix-services",
+    "appendix-costs",
+    "appendix-config",
+    "appendix-security",
+    "appendix-assumptions",
+]
+
+# The enforced subset of the stylesheet in generate-report.md "Visual shell".
+# The page background must be #f6f8fa or a CSS variable. Other colors and
+# spacing in these rules may be refined. Declarations the checker does not
+# list (h1, .verdict-headline, .metric-hero, .increase, table rules,
+# tr.active-scenario) are copied with the stylesheet and are not gated here.
+VISUAL_CONTRACT_CHECKS = [
+    (
+        r"body\s*\{[^}]*background\s*:\s*(?:var\([^)]*\)|#f6f8fa)",
+        "body must use a contrasting page background",
+    ),
+    (
+        r"\.(?:report|container)\s*\{[^}]*max-width\s*:",
+        "report shell must constrain line length with max-width",
+    ),
+    (
+        r"section\s*\{[^}]*background\s*:[^;}]+;?[^}]*border\s*:[^;}]+;?"
+        r"[^}]*border-radius\s*:",
+        "sections must render as bordered surface cards",
+    ),
+    (
+        r"\.metrics\s*\{[^}]*display\s*:\s*grid[^}]*grid-template-columns\s*:",
+        "executive metrics must use a responsive CSS grid",
+    ),
+    (
+        r"\.metric\s*\{[^}]*border\s*:[^;}]+;?[^}]*border-radius\s*:",
+        "metric cards must have a bordered card treatment",
+    ),
+    (
+        r"\.verdict\s*\{[^}]*background\s*:[^;}]+;?[^}]*border\s*:",
+        "recommendation must have a visually distinct callout treatment",
+    ),
+    (
+        r"\.savings\s*\{[^}]*color\s*:",
+        "supported savings values must have a reusable visual treatment",
+    ),
+    (
+        r"\.share-card\s*\{[^}]*border\s*:",
+        "the CFO brief must render as a bordered share card",
+    ),
+    (
+        r"\.appendix-header\s*\{",
+        "shared shell must define an appendix divider",
+    ),
+    (
+        r":focus-visible\s*\{",
+        "keyboard focus must be visibly styled",
+    ),
+    (
+        r"@media\s*\([^)]*max-width\s*:\s*700px[^)]*\)",
+        "mobile readability breakpoint (700px) is required",
+    ),
+    (
+        r"@media\s+print\s*\{",
+        "print-specific styling is required",
+    ),
+]
+
+
 def _required_sections(mode: str) -> list[str]:
     required = [*COMMON_REQUIRED_SECTION_IDS, MODE_REQUIRED_SECTION_ID[mode]]
     if mode == "full":
         required.append("cost-optimization")
+        required.extend(FULL_APPENDIX_SECTION_IDS)
     return required
+
+
+def _validate_visual_shell(html: str) -> list[str]:
+    style = "\n".join(re.findall(r"<style\b[^>]*>(.*?)</style>", html, flags=re.IGNORECASE | re.DOTALL))
+    return [message for pattern, message in VISUAL_CONTRACT_CHECKS if not re.search(pattern, style, re.IGNORECASE | re.DOTALL)]
 
 # Section identity/count/fragment come from the stdlib HTML parser, never a
 # raw-source regex, so that:
@@ -88,6 +181,17 @@ class _SectionParser(HTMLParser):
         # Stack of open sections we are capturing: each {id, parts, seen_depth}.
         self._open_sections: list[dict] = []
         self._section_depth = 0  # nesting depth of <section> (for fragment close)
+        # Rendered elements carrying the `appendix-header` class (the visible
+        # divider above the appendix block), counted with the same comment and
+        # inert-subtree exclusions as sections so decision mode can reject it.
+        self.appendix_headers = 0
+
+    @staticmethod
+    def _has_appendix_header_class(attrs: list[tuple[str, str | None]]) -> bool:
+        return any(
+            name == "class" and value is not None and "appendix-header" in value.split()
+            for name, value in attrs
+        )
 
     def _emit(self, markup: str) -> None:
         # Append raw markup to every section fragment currently being captured.
@@ -100,6 +204,8 @@ class _SectionParser(HTMLParser):
             return
         if self._inert_depth > 0:
             return  # inside an inert subtree — not rendered
+        if self._has_appendix_header_class(attrs):
+            self.appendix_headers += 1
         if tag == "section":
             # Keep nested section attributes in the containing fragment so a
             # second parser retains cost anchors and hidden ancestry.
@@ -118,6 +224,8 @@ class _SectionParser(HTMLParser):
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in _SECTION_INERT_TAGS or self._inert_depth > 0:
             return
+        if self._has_appendix_header_class(attrs):
+            self.appendix_headers += 1
         if tag == "section":
             self._emit(self.get_starttag_text() or "")
             sid = dict(attrs).get("id")
@@ -168,6 +276,11 @@ def _parse_sections(html: str) -> _SectionParser:
 def _section_counts(html: str) -> dict[str, int]:
     """Count rendered <section id> occurrences (comments/inert excluded)."""
     return _parse_sections(html).counts
+
+
+def _appendix_header_count(html: str) -> int:
+    """Count rendered elements with the `appendix-header` class (comments/inert excluded)."""
+    return _parse_sections(html).appendix_headers
 
 
 def _section_html(html: str, section_id: str) -> str | None:
@@ -1319,6 +1432,205 @@ def _what_if_column_errors(section: str) -> list[str]:
     ]
 
 
+_TIMELINE_BANDS = {
+    "small": ("2-6", "2–6"),
+    "medium": ("6-12", "6–12"),
+    "large": ("12-18", "12–18"),
+}
+
+
+def _visible_text(fragment: str) -> str:
+    return " ".join(text for _kind, text in _rendered_entries(fragment))
+
+
+def _load_estimate(migration_dir: Path | None) -> dict | None:
+    if migration_dir is None:
+        return None
+    est_path = migration_dir / "estimation-infra.json"
+    if not est_path.is_file():
+        return None
+    try:
+        est = json.loads(est_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return est if isinstance(est, dict) else None
+
+
+ACTIVATE_APPLY_URL = "https://aws.amazon.com/startups/credits/"
+ACTIVATE_STATUSES = ("has_credits", "eligible_founders", "eligible_portfolio", "unknown")
+_ACTIVATE_MENTION = re.compile(r"AWS\s+Activate|Activate\s+(?:Founders|Portfolio|credits)", re.I)
+_ACTIVATE_LINK = re.compile(r'href=["\']https://aws\.amazon\.com/startups/credits/?["\']', re.I)
+_TIER_CLAIM = re.compile(
+    r"eligible\s+for\b.{0,60}?\b(?:Founders|Portfolio)|\$\s?5,?000\b|\$5K\b|\$\s?200,?000\b|\$200K\b",
+    re.I | re.DOTALL,
+)
+_APPLY_LANGUAGE = re.compile(r"\bapply\s+(?:for|at|before|now)\b|\bapplying\s+for\b", re.I)
+
+
+def _startup_program_status(migration_dir: Path | None) -> str | None:
+    """Read preferences.json global.startup_program_status (Clarify Q17); None when unset."""
+    if migration_dir is None:
+        return None
+    path = migration_dir / "preferences.json"
+    if not path.is_file():
+        return None
+    try:
+        prefs = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    value = ((prefs or {}).get("global") or {}).get("startup_program_status")
+    return value if isinstance(value, str) else None
+
+
+def _activate_callout_html(summary: str) -> str | None:
+    """Return the `.callout-info` fragment inside decision-summary that names Activate.
+
+    report-decision-core.md § Startup credits callout renders the credits
+    call-to-action as one `<div class="callout callout-info">` with inline content
+    only, so the first closing </div> ends it. The tier and apply-language rules
+    apply to this fragment alone — the rest of decision-summary legitimately
+    carries dollar figures ($5,000/mo estimates) and the word "apply".
+    """
+    for match in re.finditer(
+        r'<div\b[^>]*class=["\'][^"\']*\bcallout-info\b[^"\']*["\'][^>]*>(.*?)</div>',
+        summary,
+        re.I | re.DOTALL,
+    ):
+        if _ACTIVATE_MENTION.search(_visible_text(match.group(0))):
+            return match.group(0)
+    return None
+
+
+def _validate_activate_callout(html: str, migration_dir: Path | None) -> list[str]:
+    """report-decision-core.md § Startup credits callout (both modes).
+
+    - A decision-summary that names AWS Activate anywhere must carry the clickable
+      apply link, so the action stays attached to the benefit.
+    - When preferences.json says the founder answered Q17 (status other than
+      "unknown"), decision-summary must render the `.callout-info` credits callout.
+    - Inside that callout only: "unknown"/absent status forbids a confirmed-tier
+      claim or a tier dollar amount; "has_credits" forbids "apply for" language.
+      Cost lines and other prose in decision-summary are not scanned.
+    """
+    summary = _section_html(html, "decision-summary")
+    if summary is None:
+        return []
+    errors: list[str] = []
+    mentions_anywhere = bool(_ACTIVATE_MENTION.search(_visible_text(summary)))
+    if mentions_anywhere and not _ACTIVATE_LINK.search(summary):
+        errors.append(
+            "decision-summary mentions AWS Activate but has no clickable official "
+            f"apply link ({ACTIVATE_APPLY_URL})"
+        )
+    status = _startup_program_status(migration_dir)
+    if status is not None and status not in ACTIVATE_STATUSES:
+        errors.append(
+            f"preferences.json global.startup_program_status={status!r} is not one of "
+            f"{', '.join(ACTIVATE_STATUSES)}"
+        )
+        return errors
+    callout = _activate_callout_html(summary)
+    if status in ("has_credits", "eligible_founders", "eligible_portfolio") and callout is None:
+        errors.append(
+            f"preferences.json global.startup_program_status={status!r} but decision-summary "
+            'has no AWS Activate credits <div class="callout callout-info"> '
+            "(report-decision-core.md § Startup credits callout)"
+        )
+    if callout is None:
+        return errors
+    callout_text = _visible_text(callout)
+    if status in (None, "unknown") and _TIER_CLAIM.search(callout_text):
+        errors.append(
+            "Activate callout states a confirmed tier or tier dollar amount but "
+            "global.startup_program_status is unknown/absent — neutral wording only"
+        )
+    if status == "has_credits" and _APPLY_LANGUAGE.search(callout_text):
+        errors.append(
+            'global.startup_program_status is "has_credits" but the Activate callout still '
+            'uses "apply for" language'
+        )
+    return errors
+
+
+def _validate_share_section(html: str) -> list[str]:
+    """The CFO brief is one static paragraph. A missing section is reported separately."""
+    section = _section_html(html, "exec-share")
+    if section is None:
+        return []
+    errors: list[str] = []
+    card = re.search(
+        r'<(?P<tag>div|aside)\b[^>]*class=["\'][^"\']*\bshare-card\b[^"\']*["\'][^>]*>'
+        r"(?P<body>.*?)</(?P=tag)>",
+        section,
+        re.I | re.DOTALL,
+    )
+    if not card:
+        errors.append('exec-share must contain a class="share-card" decision brief')
+        return errors
+    paragraphs = re.findall(r"<p\b[^>]*>(.*?)</p>", card.group("body"), re.I | re.DOTALL)
+    if len(paragraphs) != 1:
+        errors.append(
+            "exec-share share-card must contain exactly one standalone <p> "
+            f"(found {len(paragraphs)})"
+        )
+    else:
+        text = unescape(re.sub(r"<[^>]+>", " ", paragraphs[0]))
+        word_count = len(re.findall(r"\b[\w'-]+\b", text))
+        if word_count < 20:
+            errors.append(
+                "exec-share share-card paragraph must contain a substantive "
+                f"copy-ready brief of at least 20 words (found {word_count})"
+            )
+    if re.search(r"<(?:button|script|input|textarea)\b", section, re.I):
+        errors.append(
+            "exec-share must be a static copy-ready paragraph without buttons, "
+            "scripts, or editable controls"
+        )
+    return errors
+
+
+def _validate_timeline_section(html: str, migration_dir: Path | None) -> list[str]:
+    """The week range is the complexity-tier planning band, labeled as such."""
+    section = _section_html(html, "exec-timeline")
+    if section is None:
+        return []
+    errors: list[str] = []
+    visible = _visible_text(section).lower()
+    if "planning band" not in visible:
+        errors.append('exec-timeline must label the week range as a "planning band"')
+    tier = (_load_estimate(migration_dir) or {}).get("complexity_tier")
+    if isinstance(tier, str) and tier.lower() in _TIMELINE_BANDS:
+        bands = _TIMELINE_BANDS[tier.lower()]
+        if not any(band in visible for band in bands):
+            errors.append(
+                f"exec-timeline must show the {tier.lower()} planning band "
+                f"({bands[1]} weeks) from the complexity-tier table"
+            )
+    return errors
+
+
+def _validate_security_appendix(html: str, mode: str) -> list[str]:
+    """Full reports say what each baseline control does. Decision mode has no appendix."""
+    if mode != "full":
+        return []
+    section = _section_html(html, "appendix-security")
+    if not section:
+        return []
+    header = re.search(r"<thead\b.*?</thead>", section, re.DOTALL | re.IGNORECASE)
+    if not header:
+        return [
+            "appendix-security must contain a table with What it does and "
+            "Threat mitigated columns"
+        ]
+    hdr_text = header.group(0).lower()
+    errors: list[str] = []
+    if "what it does" not in hdr_text:
+        errors.append('appendix-security table must include a "What it does" column')
+    if "threat" not in hdr_text:
+        errors.append('appendix-security table must include a "Threat mitigated" column')
+    return errors
+
+
 def validate(html: str, migration_dir: Path | None, mode: str = "full") -> list[str]:
     errors: list[str] = []
     counts = _section_counts(html)
@@ -1342,9 +1654,34 @@ def validate(html: str, migration_dir: Path | None, mode: str = "full") -> list[
             f"(that is the {other_mode}-mode terminal section)"
         )
 
+    if mode == "decision":
+        # Generate has not run. A rendered appendix would describe the Terraform
+        # baseline, and choices that are still defaults, as execution output.
+        # Comments and <template> are excluded by _section_counts.
+        for sid in counts:
+            if sid.startswith("appendix-"):
+                errors.append(
+                    f'decision mode forbids <section id="{sid}"> — the decision report '
+                    "has no appendices; the full migration report (Generate) carries them"
+                )
+        # The visible divider above the appendix block is part of the same
+        # contract (report-decision-core.md: do not render `.appendix-header`).
+        # A lone divider with no sections under it still announces an appendix
+        # that does not exist. Same comment/inert exclusions as the sections.
+        if _appendix_header_count(html) > 0:
+            errors.append(
+                'decision mode forbids a rendered <div class="appendix-header"> — the '
+                "decision report has no appendix divider; the full migration report (Generate) carries it"
+            )
+
     if "draft for review" not in html.lower():
         errors.append('footer must contain "draft for review" disclaimer')
 
+    errors.extend(_validate_visual_shell(html))
+    errors.extend(_validate_share_section(html))
+    errors.extend(_validate_activate_callout(html, migration_dir))
+    errors.extend(_validate_timeline_section(html, migration_dir))
+    errors.extend(_validate_security_appendix(html, mode))
     errors.extend(_validate_currency_formatting(html))
     errors.extend(_validate_cost_figures(html, migration_dir))
 
