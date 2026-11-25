@@ -1,5 +1,7 @@
 # Document Processing with Docling
 
+Docs: https://docs.opensearch.org/latest/vector-search/ingesting-data/text-chunking/
+
 This guide covers how to process PDF, DOCX, PPTX, XLSX, HTML, and other document formats for ingestion into OpenSearch using [Docling](https://docling.site/).
 
 > The AWS MCP server is recommended for executing these commands but is not required — all steps use standard AWS CLI syntax.

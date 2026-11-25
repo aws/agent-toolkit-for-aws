@@ -51,7 +51,7 @@ The following sections **must not appear** in this shape's output:
 - **Migration path** — no logstash JDBC plan, no DMS plan, no reindex plan, no _bulk recipe.
 - **Readiness assessment** — no readiness score, no gap analysis, no "you're 70% ready".
 - **Timeline & Resourcing — removed from suite.** Do not produce engineer-weeks, sprint estimates, headcount, or a calendar plan. This section has been deleted from the entire skill.
-- **Citations section** — this shape is a refusal/redirect, not a researched recommendation. The Postgres recipe is well-known reference material; do not pad with citations.
+- **Citations section** — this shape is a refusal/redirect, not a researched recommendation. The Postgres recipe is well-known reference material; do not pad with citations. End with one docs URL instead: for the recommended alternative (e.g. https://docs.aws.amazon.com/AmazonRDS/latest/PostgreSQLReleaseNotes/postgresql-extensions.html for `pg_trgm` on RDS) or for the OpenSearch limitation behind the verdict.
 - **Customer-specific trade-offs** — no "if your team has more Postgres skill vs. OS skill" weighing. The pushback is about workload fit, not team skill.
 - **Persona block / stakeholder analysis** — irrelevant to a refusal.
 
@@ -117,6 +117,8 @@ The refusal is the deliverable. The Postgres recipe is the deliverable. There is
 > - You need cross-tenant federated search across many independent HR systems with > 50 sources.
 >
 > Until one of those is real, the right move is `CREATE EXTENSION pg_trgm;` not `aws opensearch create-domain`.
+>
+> Reference: https://docs.aws.amazon.com/AmazonRDS/latest/PostgreSQLReleaseNotes/postgresql-extensions.html
 
 ## 6. Pre-emit checklist (this shape only)
 
@@ -130,6 +132,7 @@ Tick every box before sending. If any box is unchecked, the response is wrong-sh
 - [ ] **No instance types appear anywhere in the response.** (grep mentally for `m6g`, `r6g`, `t3`, `data.`, `master.` / `cluster-manager.`, `.search`.)
 - [ ] **No shard/replica counts appear anywhere.** (grep for "shard", "replica", "primary", "AZ".)
 - [ ] **No Migration Path, Readiness, Timeline & Resourcing, or Citations section.** (Timeline & Resourcing is removed from the entire suite — do not reintroduce.)
+- [ ] Exactly one docs URL, for the recommended alternative or the OpenSearch limitation.
 - [ ] **No FORBIDDEN HEDGE phrases.** (grep for "Option B", "if you insist", "sidecar", "for completeness", "if you do go this path", "Plan B", "Option 2".)
 - [ ] The Postgres recipe is presented as **the** alternative, not as one of two options.
 - [ ] No persona block, no stakeholder analysis, no team-skill weighing.

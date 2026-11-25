@@ -1,5 +1,7 @@
 # Search Quality Evaluation Guide
 
+Docs: https://docs.opensearch.org/latest/search-plugins/search-relevance/index/
+
 Data-driven evaluation that runs real queries against the live index, computes quantitative metrics, and diagnoses issues with actionable recommendations.
 
 ## When to Evaluate

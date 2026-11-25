@@ -1,5 +1,9 @@
 # Amazon OpenSearch Service Domain — Deploy Search Configuration
 
+Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/semantic-search.html, https://docs.aws.amazon.com/opensearch-service/latest/developerguide/ml-amazon-connector.html
+
+> OpenSearch REST calls in this file go through the `aws_opensearch` capability in `run_script` where the AWS MCP server is available, or `awscurl` otherwise; see [`data-plane-requests.md`](data-plane-requests.md).
+
 Deploy index configuration, ML models, and pipelines to a provisioned domain.
 
 ## Step 1: Migrate Index Configuration

@@ -1,5 +1,7 @@
 # Amazon OpenSearch Serverless — Provision Collection
 
+Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-create.html
+
 > The AWS MCP server is recommended for executing these commands but is not required — all steps use standard AWS CLI syntax.
 
 ## Prerequisites
@@ -129,10 +131,11 @@ aws opensearchserverless create-collection \
 ## Step 5: Wait for Collection Active
 
 ```bash
-aws opensearchserverless batch-get-collection --names <collection-name>
+aws opensearchserverless batch-get-collection --names <collection-name> \
+  --query 'collectionDetails[0].[status,collectionEndpoint,failureCode,failureMessage]'
 ```
 
-Typically 1-3 minutes.
+Poll until `status` is `ACTIVE` (typically several minutes); do not create indexes or write data before then. If `status` is `FAILED`, stop and report `failureCode` and `failureMessage`. The collection endpoint has the form `https://<collection-id>.<region>.aoss.amazonaws.com`; send data-plane requests there, signed for service `aoss`.
 
 ## Next Step
 

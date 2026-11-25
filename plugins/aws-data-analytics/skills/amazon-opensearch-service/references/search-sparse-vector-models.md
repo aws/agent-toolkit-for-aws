@@ -1,5 +1,7 @@
 # Sparse Vector Models Guide
 
+Docs: https://docs.opensearch.org/latest/vector-search/ai-search/neural-sparse-search/
+
 This document lists the available models for Sparse Vector (Neural Sparse) Search in OpenSearch, categorized by deployment mode.
 
 ## 1. OpenSearch Node Deployment (CPU)
