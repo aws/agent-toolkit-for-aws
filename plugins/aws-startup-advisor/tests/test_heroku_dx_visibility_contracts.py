@@ -167,6 +167,21 @@ def test_scheduler_row_status_is_computed_from_mapped_vs_deferred() -> None:
     assert "`services[]` vs `deferred[]`" in core and "never asserted" in core
 
 
+def test_report_adds_cfo_brief_timeline_and_security_meaning() -> None:
+    text = REPORT.read_text(encoding="utf-8")
+    assert "### `exec-share`" in text
+    assert "Share with your CFO" in text
+    assert "### `exec-timeline`" in text
+    assert "planning band" in text
+    assert "2–6 weeks" in text and "12–18 weeks" in text
+    assert "What it does" in text and "Threat mitigated" in text
+    banned = text[text.index("Do not emit") : text.index("Do not emit") + 220]
+    assert "exec-timeline" not in banned
+    assert "appendix-security-gap" in banned
+    core = DECISION_CORE.read_text(encoding="utf-8")
+    assert "`exec-share`" in core and "`exec-timeline`" in core
+
+
 def test_decision_report_renders_developer_workflow_pre_execution() -> None:
     text = DECISION_CORE.read_text(encoding="utf-8")
     assert "`exec-costs` →\n  `developer-workflow`" in text or "`exec-costs` → `developer-workflow`" in text, (
