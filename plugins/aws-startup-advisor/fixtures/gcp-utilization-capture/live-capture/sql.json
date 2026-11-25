@@ -1,0 +1,24 @@
+[
+  {
+    "databaseVersion": "POSTGRES_15",
+    "name": "orders-db",
+    "region": "us-central1",
+    "settings": {
+      "availabilityType": "ZONAL",
+      "dataDiskSizeGb": "10",
+      "dataDiskType": "PD_HDD",
+      "tier": "db-f1-micro"
+    }
+  },
+  {
+    "databaseVersion": "MYSQL_8_0",
+    "name": "reports-db",
+    "region": "us-central1",
+    "settings": {
+      "availabilityType": "ZONAL",
+      "dataDiskSizeGb": "50",
+      "dataDiskType": "PD_SSD",
+      "tier": "db-custom-2-8192"
+    }
+  }
+]

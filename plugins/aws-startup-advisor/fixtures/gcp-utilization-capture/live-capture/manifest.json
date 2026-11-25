@@ -1,0 +1,125 @@
+{
+  "captured_at": "2026-11-20T00:00:00Z",
+  "gcloud_version": "Google Cloud SDK 532.0.0",
+  "account": "founder@acme-demo.com",
+  "project": "acme-prod",
+  "method": "per_service",
+  "cai_enable_offered": true,
+  "cai_enable_accepted": false,
+  "captures": [
+    {
+      "command": "gcloud compute instances list --project=acme-prod --format=json(id, name, zone, machineType, status, ...)",
+      "file": "gce.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "command": "gcloud sql instances list --project=acme-prod --format=json(...)",
+      "file": "sql.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "command": "gcloud services list --enabled --project=acme-prod --filter=\"config.name=monitoring.googleapis.com\" --format=\"json(config.name)\"",
+      "file": "monitoring-api.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "command": "curl ... https://monitoring.googleapis.com/v3/projects/acme-prod/timeSeries filter=metric.type=\"compute.googleapis.com/instance/cpu/utilization\" aggregation.alignmentPeriod=3600s aggregation.perSeriesAligner=ALIGN_MEAN pageSize=1000",
+      "file": "monitoring-gce-cpu-ALIGN_MEAN-p1.json",
+      "status": "ok",
+      "note": "2 pages (monitoring-gce-cpu-ALIGN_MEAN-p1.json .. monitoring-gce-cpu-ALIGN_MEAN-p2.json), 150567 bytes"
+    },
+    {
+      "command": "curl ... https://monitoring.googleapis.com/v3/projects/acme-prod/timeSeries filter=metric.type=\"compute.googleapis.com/instance/cpu/utilization\" aggregation.alignmentPeriod=3600s aggregation.perSeriesAligner=ALIGN_MAX pageSize=1000",
+      "file": "monitoring-gce-cpu-ALIGN_MAX-p1.json",
+      "status": "ok",
+      "note": "1 page (monitoring-gce-cpu-ALIGN_MAX-p1.json), 150239 bytes"
+    },
+    {
+      "command": "curl ... https://monitoring.googleapis.com/v3/projects/acme-prod/timeSeries filter=metric.type=\"agent.googleapis.com/memory/percent_used\" aggregation.alignmentPeriod=3600s aggregation.perSeriesAligner=ALIGN_MEAN pageSize=1000",
+      "file": "monitoring-gce-mem-ALIGN_MEAN-p1.json",
+      "status": "ok",
+      "note": "1 page (monitoring-gce-mem-ALIGN_MEAN-p1.json), 210485 bytes"
+    },
+    {
+      "command": "curl ... https://monitoring.googleapis.com/v3/projects/acme-prod/timeSeries filter=metric.type=\"agent.googleapis.com/memory/percent_used\" aggregation.alignmentPeriod=3600s aggregation.perSeriesAligner=ALIGN_MAX pageSize=1000",
+      "file": "monitoring-gce-mem-ALIGN_MAX-p1.json",
+      "status": "ok",
+      "note": "1 page (monitoring-gce-mem-ALIGN_MAX-p1.json), 210565 bytes"
+    },
+    {
+      "command": "curl ... https://monitoring.googleapis.com/v3/projects/acme-prod/timeSeries filter=metric.type=\"cloudsql.googleapis.com/database/cpu/utilization\" aggregation.alignmentPeriod=3600s aggregation.perSeriesAligner=ALIGN_MEAN pageSize=1000",
+      "file": "monitoring-sql-cpu-ALIGN_MEAN-p1.json",
+      "status": "ok",
+      "note": "1 page (monitoring-sql-cpu-ALIGN_MEAN-p1.json), 39614 bytes"
+    },
+    {
+      "command": "curl ... https://monitoring.googleapis.com/v3/projects/acme-prod/timeSeries filter=metric.type=\"cloudsql.googleapis.com/database/cpu/utilization\" aggregation.alignmentPeriod=3600s aggregation.perSeriesAligner=ALIGN_MAX pageSize=1000",
+      "file": "monitoring-sql-cpu-ALIGN_MAX-p1.json",
+      "status": "ok",
+      "note": "1 page (monitoring-sql-cpu-ALIGN_MAX-p1.json), 39477 bytes"
+    },
+    {
+      "command": "curl ... https://monitoring.googleapis.com/v3/projects/acme-prod/timeSeries filter=metric.type=\"cloudsql.googleapis.com/database/memory/utilization\" aggregation.alignmentPeriod=3600s aggregation.perSeriesAligner=ALIGN_MEAN pageSize=1000",
+      "file": "monitoring-sql-mem-ALIGN_MEAN-p1.json",
+      "status": "ok",
+      "note": "1 page (monitoring-sql-mem-ALIGN_MEAN-p1.json), 39499 bytes"
+    },
+    {
+      "command": "curl ... https://monitoring.googleapis.com/v3/projects/acme-prod/timeSeries filter=metric.type=\"cloudsql.googleapis.com/database/memory/utilization\" aggregation.alignmentPeriod=3600s aggregation.perSeriesAligner=ALIGN_MAX pageSize=1000",
+      "file": "monitoring-sql-mem-ALIGN_MAX-p1.json",
+      "status": "ok",
+      "note": "1 page (monitoring-sql-mem-ALIGN_MAX-p1.json), 39120 bytes"
+    },
+    {
+      "command": "curl ... https://monitoring.googleapis.com/v3/projects/acme-prod/timeSeries filter=metric.type=\"cloudsql.googleapis.com/database/disk/bytes_used\" aggregation.alignmentPeriod=3600s aggregation.perSeriesAligner=ALIGN_MEAN pageSize=1000",
+      "file": "monitoring-sql-disk-ALIGN_MEAN-p1.json",
+      "status": "ok",
+      "note": "1 page (monitoring-sql-disk-ALIGN_MEAN-p1.json), 40700 bytes"
+    },
+    {
+      "command": "curl ... https://monitoring.googleapis.com/v3/projects/acme-prod/timeSeries filter=metric.type=\"cloudsql.googleapis.com/database/disk/bytes_used\" aggregation.alignmentPeriod=3600s aggregation.perSeriesAligner=ALIGN_MAX pageSize=1000",
+      "file": "monitoring-sql-disk-ALIGN_MAX-p1.json",
+      "status": "ok",
+      "note": "1 page (monitoring-sql-disk-ALIGN_MAX-p1.json), 40362 bytes"
+    },
+    {
+      "command": "curl ... https://monitoring.googleapis.com/v3/projects/acme-prod/timeSeries filter=metric.type=\"cloudsql.googleapis.com/database/network/connections\" aggregation.alignmentPeriod=3600s aggregation.perSeriesAligner=ALIGN_MEAN pageSize=1000",
+      "file": "monitoring-sql-conn-ALIGN_MEAN-p1.json",
+      "status": "ok",
+      "note": "1 page (monitoring-sql-conn-ALIGN_MEAN-p1.json), 19906 bytes"
+    },
+    {
+      "command": "curl ... https://monitoring.googleapis.com/v3/projects/acme-prod/timeSeries filter=metric.type=\"cloudsql.googleapis.com/database/network/connections\" aggregation.alignmentPeriod=3600s aggregation.perSeriesAligner=ALIGN_MAX pageSize=1000",
+      "file": "monitoring-sql-conn-ALIGN_MAX-p1.json",
+      "status": "ok",
+      "note": "1 page (monitoring-sql-conn-ALIGN_MAX-p1.json), 18939 bytes"
+    },
+    {
+      "command": "curl ... https://monitoring.googleapis.com/v3/projects/acme-prod/timeSeries filter=metric.type=\"cloudsql.googleapis.com/database/postgresql/num_backends\" aggregation.alignmentPeriod=3600s aggregation.perSeriesAligner=ALIGN_MEAN pageSize=1000",
+      "file": "monitoring-sql-pgconn-ALIGN_MEAN-p1.json",
+      "status": "ok",
+      "note": "4 pages (monitoring-sql-pgconn-ALIGN_MEAN-p1.json .. monitoring-sql-pgconn-ALIGN_MEAN-p4.json), 76024 bytes"
+    },
+    {
+      "command": "curl ... https://monitoring.googleapis.com/v3/projects/acme-prod/timeSeries filter=metric.type=\"cloudsql.googleapis.com/database/postgresql/num_backends\" aggregation.alignmentPeriod=3600s aggregation.perSeriesAligner=ALIGN_MAX pageSize=1000",
+      "file": "monitoring-sql-pgconn-ALIGN_MAX-p1.json",
+      "status": "ok",
+      "note": "4 pages (monitoring-sql-pgconn-ALIGN_MAX-p1.json .. monitoring-sql-pgconn-ALIGN_MAX-p4.json), 75304 bytes"
+    },
+    {
+      "command": "gcloud compute instance-groups managed list --project=acme-prod --format=json(name, zone, region)",
+      "file": "mig-groups.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "command": "gcloud compute instance-groups managed list-instances web-mig --zone=us-central1-a --project=acme-prod --format=json(instance)",
+      "file": "mig-members-web-mig.json",
+      "status": "ok",
+      "note": null
+    }
+  ]
+}

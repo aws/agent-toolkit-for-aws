@@ -1,0 +1,160 @@
+{
+  "metadata": {
+    "discovery_timestamp": "2026-11-20T00:30:00Z",
+    "discovery_sources": [
+      "terraform",
+      "live"
+    ],
+    "clustering_mode": "simplified_live",
+    "project": "acme-prod"
+  },
+  "resources": [
+    {
+      "address": "google_compute_instance.web_steady",
+      "type": "google_compute_instance",
+      "name": "web_steady",
+      "classification": "PRIMARY",
+      "tier": "compute",
+      "confidence": 0.95,
+      "source": "live",
+      "unmanaged_by_terraform": true,
+      "config": {
+        "id": "1000000000000000001",
+        "name": "web-steady",
+        "zone": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a",
+        "machineType": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a/machineTypes/n2-standard-8",
+        "status": "RUNNING"
+      },
+      "utilization": {
+        "alignment": "1h",
+        "burst": false,
+        "coverage": "sufficient",
+        "cpu": {
+          "max": 0.9,
+          "mean": 0.0912,
+          "p95": 0.1214,
+          "samples_expected": 168,
+          "samples_present": 168
+        },
+        "idle": false,
+        "instance_id": "1000000000000000001",
+        "memory": {
+          "max": 0.173,
+          "mean": 0.1178,
+          "p95": 0.1512,
+          "samples_expected": 168,
+          "samples_present": 168
+        },
+        "mig_member": false,
+        "resource_type": "gce_instance",
+        "window_days": 7,
+        "zone": "us-central1-a"
+      },
+      "depth": 3,
+      "cluster_id": "compute_gce_us-central1_001"
+    },
+    {
+      "address": "google_compute_instance.batch_bursty",
+      "type": "google_compute_instance",
+      "name": "batch_bursty",
+      "classification": "PRIMARY",
+      "tier": "compute",
+      "confidence": 0.95,
+      "source": "live",
+      "unmanaged_by_terraform": true,
+      "config": {
+        "id": "1000000000000000004",
+        "name": "batch-bursty",
+        "zone": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a",
+        "machineType": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a/machineTypes/n2-standard-8",
+        "status": "RUNNING"
+      },
+      "utilization": {
+        "alignment": "1h",
+        "burst": true,
+        "coverage": "sufficient",
+        "cpu": {
+          "max": 0.95,
+          "mean": 0.0849,
+          "p95": 0.1031,
+          "samples_expected": 168,
+          "samples_present": 168
+        },
+        "idle": false,
+        "instance_id": "1000000000000000004",
+        "memory": {
+          "status": "unavailable"
+        },
+        "mig_member": false,
+        "resource_type": "gce_instance",
+        "window_days": 7,
+        "zone": "us-central1-a"
+      },
+      "depth": 3,
+      "cluster_id": "compute_gce_us-central1_001"
+    },
+    {
+      "address": "google_sql_database_instance.orders_db",
+      "type": "google_sql_database_instance",
+      "name": "orders_db",
+      "classification": "PRIMARY",
+      "tier": "data",
+      "confidence": 0.99,
+      "source": "live+terraform",
+      "config": {
+        "name": "orders-db",
+        "region": "us-central1",
+        "databaseVersion": "POSTGRES_15",
+        "settings.tier": "db-f1-micro",
+        "settings.availabilityType": "ZONAL",
+        "settings.dataDiskSizeGb": "10"
+      },
+      "utilization": {
+        "alignment": "1h",
+        "connections": {
+          "max": 5.0,
+          "mean": 3.2917,
+          "p95": 5.0,
+          "samples_expected": 168,
+          "samples_present": 168
+        },
+        "coverage": "sufficient",
+        "cpu": {
+          "max": 0.1572,
+          "mean": 0.0977,
+          "p95": 0.1086,
+          "samples_expected": 168,
+          "samples_present": 168
+        },
+        "database_id": "acme-prod:orders-db",
+        "disk_bytes_used": {
+          "max": 87293952,
+          "mean": 87293952,
+          "p95": 87293952,
+          "samples_expected": 168,
+          "samples_present": 168
+        },
+        "memory": {
+          "max": 1.0,
+          "mean": 0.9995,
+          "p95": 0.9999,
+          "samples_expected": 168,
+          "samples_present": 168
+        },
+        "region": "us-central1",
+        "resource_type": "cloudsql_database",
+        "window_days": 7
+      },
+      "depth": 3,
+      "cluster_id": "data_cloudsql_us-central1_001"
+    }
+  ],
+  "live_metadata": {
+    "found": true,
+    "captured_at": "2026-11-20T00:00:00Z",
+    "project": "acme-prod",
+    "method": "per_service",
+    "capture_warnings": [],
+    "unmapped_asset_types": {}
+  }
+}

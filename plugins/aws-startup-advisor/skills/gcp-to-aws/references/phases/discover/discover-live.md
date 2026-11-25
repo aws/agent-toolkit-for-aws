@@ -20,19 +20,25 @@
    `delete`, `set`, `add`, `remove`, `deploy`, `apply`, `import`, `patch`), never
    `gcloud auth login` (interactive — hand off to the user), never
    `gcloud auth print-identity-token` (prints credentials).
-   `gcloud auth print-access-token` is forbidden except the row 16a–16c
-   temp-file exception in rule 2, and that command text is part of row 16a.
+   `gcloud auth print-access-token` is forbidden except the rows 16a–16c and
+   21a–21n temp-file exception in rule 2; rows 16a–16c share one token, rows
+   21a–21n refresh it at the start of each row, and that command text is part
+   of rows 16a and 21a.
 2. **Never capture secret values.** Every capture command uses an explicit
    `--format="json(...)"` field projection. Projections include env var **names**
    but never env var **values**, and never GCE instance `metadata.items` values.
-   Rows 16a–16c are the exception: `gcloud monitoring` has no time-series
-   command, so they call `projects.timeSeries.list` with curl. The bearer
-   token is written only to a temp file outside `live-capture`, passed to
-   curl with `--header @`, and deleted before the next step. Do not copy that
-   file into a capture, the manifest, or the transcript. This is the only
-   allowed use of `gcloud auth print-access-token`. The redaction pass below
-   does not apply to the time-series files. `token_count` is a metric name,
-   not a credential.
+   Row 22a never reads `metadata.items` for `created-by`; MIG membership comes
+   only from `list-instances`.
+   Rows 16a–16c and 21a–21n are the exception: `gcloud monitoring` has no
+   time-series command, so they call `projects.timeSeries.list` with curl. The
+   bearer token is written only to a temp file outside `live-capture` and
+   passed to curl with `--header @`. Rows 16a–16c fetch it once before 16a;
+   rows 21a–21n fetch it again, refreshed at the start of each row. It is
+   deleted after the last page of 16c and again after the last page of 21n. Do
+   not copy that file into a capture, the manifest, or the transcript. This is
+   the only allowed use of `gcloud auth print-access-token`. The redaction pass
+   below does not apply to the time-series files. `token_count` is a metric
+   name, not a credential.
    Additionally, apply `discover-iac.md`'s sensitive-key redaction patterns
    (`password`, `secret`, `api_key`, `access_key`, `private_key`, `client_secret`,
    `token`, `credential`, `auth` — case-insensitive) to any config field before it
@@ -43,6 +49,9 @@
    `$MIGRATION_DIR/live-capture/`. Process any capture file larger than ~100
    resources with a throwaway extraction script (same pattern as `discover.md`'s
    lightweight billing extraction) — do NOT Read large raw captures into context.
+   Monitoring captures are reduced only by
+   `$PLUGIN_ROOT/skills/gcp-to-aws/scripts/summarize-monitoring.py` (Step 2d).
+   Never Read a `monitoring-*.json` raw file.
 5. **Consent first.** No `gcloud` command from the Step 2 table runs before the
    user answers `[A]` in Step 1. Preflight commands in Step 0 are limited to
    version/auth/config checks that touch no project data.
@@ -86,6 +95,15 @@ authenticated gcloud CLI. This runs LIST/DESCRIBE commands only:
     secret NAMES, labels, and — for Vertex publisher models —
     hourly totals of input and output tokens, invocation
     counts, and first-token latency.
+  ✓ Captured: 30 days of hourly CPU, memory, disk and connection
+    utilization for Compute Engine VMs and Cloud SQL instances,
+    read from Cloud Monitoring (platform metrics are collected
+    automatically and free; the read calls are inside the free
+    monthly allowance; needs `monitoring.timeSeries.list`, e.g.
+    Monitoring Viewer or broader; fourteen project-wide calls
+    take minutes on large projects; VMs without the Ops Agent
+    report memory as unavailable — I will not ask you to
+    install it).
   ✗ Never captured: env var values, secret values, database
     contents, instance metadata values, access tokens, source
     code, prompts, or completions. No command that creates,
@@ -134,7 +152,8 @@ the project; the Step 2 scale guard handles large outputs.)
   > Cloud Monitoring aggregates for publisher models, including serverless
   > Gemini, which has no endpoint. Do not join those files onto inventory
   > entries. An empty series is a normal result. Do not enable the Monitoring
-  > API yourself.
+  > API yourself. Rows 21 and 21a–21n (Mode `always`) also run on this
+  > path; Step 2d reduces them.
 - Failure → classify the error, then branch:
 
   **API not enabled** (stderr matches `SERVICE_DISABLED`, "has not been used",
@@ -202,7 +221,7 @@ the project; the Step 2 scale guard handles large outputs.)
   Fall through to per-service immediately; record `cai_enable_offered: false`.
 
   **Per-service fallthrough:** record `method: "per_service"` and run every
-  applicable table row below, including rows 16a, 16b, and 16c. Always keep the failed asset-search entry in
+  applicable table row below, including rows 16a, 16b, 16c, 21, and 21a–21n. Always keep the failed asset-search entry in
   `captures[]` with `status: "failed"` and the stderr summary in `note`.
 
 **2b. Capture Command Table.** Each row redirects to the named file. On
@@ -220,7 +239,7 @@ from list errors alone.)
 | 4  | `gcloud functions list --format="json(name, environment, runtime, entryPoint, availableMemoryMb, serviceConfig.availableMemory, serviceConfig.runtime, serviceConfig.timeoutSeconds, eventTrigger.eventType, serviceConfig.serviceAccountEmail)"`                                                                                                                                                        | `functions.json`        | E    |
 | 5  | `gcloud storage buckets list --format="json(name, location, storageClass, timeCreated, iamConfiguration.uniformBucketLevelAccess.enabled, versioning.enabled)"`                                                                                                                                                                                                                                          | `buckets.json`          | E    |
 | 6  | `gcloud pubsub topics list --format="json(name, labels)"`                                                                                                                                                                                                                                                                                                                                                | `pubsub.json`           |      |
-| 7  | `gcloud compute instances list --format="json(name, zone, machineType, status, networkInterfaces[].network, networkInterfaces[].subnetwork, disks[].diskSizeGb, serviceAccounts[].email, labels)"`                                                                                                                                                                                                       | `gce.json`              | E    |
+| 7  | `gcloud compute instances list --format="json(id, name, zone, machineType, status, networkInterfaces[].network, networkInterfaces[].subnetwork, disks[].diskSizeGb, serviceAccounts[].email, labels)"`                                                                                                                                                                                                       | `gce.json`              | E    |
 | 8  | `gcloud compute networks list --format="json(name, autoCreateSubnetworks, subnetworks)"`                                                                                                                                                                                                                                                                                                                 | `networks.json`         | E    |
 | 9  | `gcloud compute networks subnets list --format="json(name, region, network, ipCidrRange)"`                                                                                                                                                                                                                                                                                                               | `subnets.json`          | E    |
 | 10 | `gcloud redis instances list --region=<each walk region — see the region-walk note below> --format="json(name, tier, memorySizeGb, redisVersion, authorizedNetwork, locationId)"`                                                                                                                                                                                                                        | `redis-<region>.json`   | E    |
@@ -238,6 +257,23 @@ from list errors alone.)
 | 18 | `gcloud compute firewall-rules list --format="json(name, network, direction, priority)"` — deliberately minimal projection (no source ranges or target tags; the IaC path carries full rule config when Terraform exists)                                                                                                                                                                                | `firewalls.json`        | E    |
 | 19 | `gcloud compute networks vpc-access connectors describe <connector-id> --region=<from the connector id> --format="json(name, network)"` — ONLY for each distinct `run.googleapis.com/vpc-access-connector` annotation value seen in row 1 output; resolves connector → VPC for edge inference                                                                                                            | `connector-<name>.json` | E    |
 | 20 | `gcloud compute regions list --format="json(name)"` — per-service mode only: enumerates the region walk for rows 10 and 16 (region names only; one cheap call)                                                                                                                                                                                                                                           | `regions.json`          |      |
+| 21 | `gcloud services list --enabled --filter="config.name=monitoring.googleapis.com" --format="json(config.name)"` — an empty result records rows 21a–21n as `skipped` with note `monitoring.googleapis.com not enabled` and does not run them; never enable the API yourself | `monitoring-api.json` | always |
+| 21a | Before the first page, `gcloud auth print-access-token` is redirected to a temp file outside `live-capture` and `$MONITORING_AUTH_HEADER` is rebuilt beside it; repeat this refresh at the start of EVERY row 21a–21n and delete both files after the last page of 21n (utilization-metrics note). Then `curl --silent --show-error --header @"$MONITORING_AUTH_HEADER" --get "https://monitoring.googleapis.com/v3/projects/$GCP_PROJECT/timeSeries" --data-urlencode 'filter=metric.type="compute.googleapis.com/instance/cpu/utilization" AND resource.type="gce_instance"' --data-urlencode "interval.startTime=<UTC now rounded down to the hour minus 30 days, RFC3339>" --data-urlencode "interval.endTime=<UTC now rounded down to the hour, RFC3339>" --data-urlencode "aggregation.alignmentPeriod=3600s" --data-urlencode "aggregation.perSeriesAligner=ALIGN_MEAN" --data-urlencode "pageSize=1000"` — no cross-series reducer and no group-by fields (one series per VM); page N goes to the `-p<N>` file; follow `nextPageToken` until absent. | `monitoring-gce-cpu-ALIGN_MEAN-p<N>.json` | always |
+| 21b | same `projects.timeSeries.list` curl as 21a with `filter=metric.type="compute.googleapis.com/instance/cpu/utilization" AND resource.type="gce_instance"` and `aggregation.perSeriesAligner=ALIGN_MAX`. Follow `nextPageToken`. | `monitoring-gce-cpu-ALIGN_MAX-p<N>.json` | always |
+| 21c | same `projects.timeSeries.list` curl as 21a with `filter=metric.type="agent.googleapis.com/memory/percent_used" AND resource.type="gce_instance"` and `aggregation.perSeriesAligner=ALIGN_MEAN`. Follow `nextPageToken`. | `monitoring-gce-mem-ALIGN_MEAN-p<N>.json` | always |
+| 21d | same `projects.timeSeries.list` curl as 21a with `filter=metric.type="agent.googleapis.com/memory/percent_used" AND resource.type="gce_instance"` and `aggregation.perSeriesAligner=ALIGN_MAX`. Follow `nextPageToken`. | `monitoring-gce-mem-ALIGN_MAX-p<N>.json` | always |
+| 21e | same `projects.timeSeries.list` curl as 21a with `filter=metric.type="cloudsql.googleapis.com/database/cpu/utilization" AND resource.type="cloudsql_database"` and `aggregation.perSeriesAligner=ALIGN_MEAN`. Follow `nextPageToken`. | `monitoring-sql-cpu-ALIGN_MEAN-p<N>.json` | always |
+| 21f | same `projects.timeSeries.list` curl as 21a with `filter=metric.type="cloudsql.googleapis.com/database/cpu/utilization" AND resource.type="cloudsql_database"` and `aggregation.perSeriesAligner=ALIGN_MAX`. Follow `nextPageToken`. | `monitoring-sql-cpu-ALIGN_MAX-p<N>.json` | always |
+| 21g | same `projects.timeSeries.list` curl as 21a with `filter=metric.type="cloudsql.googleapis.com/database/memory/utilization" AND resource.type="cloudsql_database"` and `aggregation.perSeriesAligner=ALIGN_MEAN`. Follow `nextPageToken`. | `monitoring-sql-mem-ALIGN_MEAN-p<N>.json` | always |
+| 21h | same `projects.timeSeries.list` curl as 21a with `filter=metric.type="cloudsql.googleapis.com/database/memory/utilization" AND resource.type="cloudsql_database"` and `aggregation.perSeriesAligner=ALIGN_MAX`. Follow `nextPageToken`. | `monitoring-sql-mem-ALIGN_MAX-p<N>.json` | always |
+| 21i | same `projects.timeSeries.list` curl as 21a with `filter=metric.type="cloudsql.googleapis.com/database/disk/bytes_used" AND resource.type="cloudsql_database"` and `aggregation.perSeriesAligner=ALIGN_MEAN`. Follow `nextPageToken`. | `monitoring-sql-disk-ALIGN_MEAN-p<N>.json` | always |
+| 21j | same `projects.timeSeries.list` curl as 21a with `filter=metric.type="cloudsql.googleapis.com/database/disk/bytes_used" AND resource.type="cloudsql_database"` and `aggregation.perSeriesAligner=ALIGN_MAX`. Follow `nextPageToken`. | `monitoring-sql-disk-ALIGN_MAX-p<N>.json` | always |
+| 21k | same `projects.timeSeries.list` curl as 21a with `filter=metric.type="cloudsql.googleapis.com/database/network/connections" AND resource.type="cloudsql_database"` and `aggregation.perSeriesAligner=ALIGN_MEAN`. Follow `nextPageToken`. | `monitoring-sql-conn-ALIGN_MEAN-p<N>.json` | always |
+| 21l | same `projects.timeSeries.list` curl as 21a with `filter=metric.type="cloudsql.googleapis.com/database/network/connections" AND resource.type="cloudsql_database"` and `aggregation.perSeriesAligner=ALIGN_MAX`. Follow `nextPageToken`. | `monitoring-sql-conn-ALIGN_MAX-p<N>.json` | always |
+| 21m | same `projects.timeSeries.list` curl as 21a with `filter=metric.type="cloudsql.googleapis.com/database/postgresql/num_backends" AND resource.type="cloudsql_database"` and `aggregation.perSeriesAligner=ALIGN_MEAN`. Follow `nextPageToken`. | `monitoring-sql-pgconn-ALIGN_MEAN-p<N>.json` | always |
+| 21n | same `projects.timeSeries.list` curl as 21a with `filter=metric.type="cloudsql.googleapis.com/database/postgresql/num_backends" AND resource.type="cloudsql_database"` and `aggregation.perSeriesAligner=ALIGN_MAX`. Follow `nextPageToken`. | `monitoring-sql-pgconn-ALIGN_MAX-p<N>.json` | always |
+| 22 | `gcloud compute instance-groups managed list --format="json(name, zone, region)"` — zonal groups set `zone`, regional groups set `region` | `mig-groups.json` | E |
+| 22a | once per group from row 22: `gcloud compute instance-groups managed list-instances <group> --zone=<zone> --format="json(instance)"` when `zone` is set, or `gcloud compute instance-groups managed list-instances <group> --region=<region> --format="json(instance)"` when `region` is set. Row 22 returns `zone` and `region` as full resource URLs; `<zone>` and `<region>` are the last path segment of that value (e.g. `us-central1-a`, never the URL). Every returned instance is a MIG member (this includes GKE nodes; they are left alone in this change) | `mig-members-<group>.json` | E |
 
 **Row 1 note:** managed Cloud Run lists services across ALL regions when
 `--region` is omitted — do not pass a `--region` flag (a `--region=-` form is
@@ -317,6 +353,36 @@ fewer than 21 days. Do not map 16a–16d files to inventory resources. Row 16d's
 `displayName` only labels a tuned model whose endpoint `deployedModels[].model`
 is a resource name. Do not write zeros for models with no series.
 
+**Utilization-metrics note (rows 21–22a).** Rows 21a–21n read the same
+`projects.timeSeries.list` endpoint as 16a, one metric and one aligner per
+row, with no `crossSeriesReducer` and no `groupByFields`, so every VM and
+Cloud SQL instance keeps its own series. The window is 30 days and both ends
+sit on the whole hour: `interval.endTime` is UTC now rounded down to the hour
+and `interval.startTime` is that value minus 30 days. Use the same two values
+on every row and pass them to Step 2d. `pageSize` counts points, not series,
+so a single series split across `-p1`/`-p2` and one series per page are both
+normal; write page N to the row's `-p<N>` file and follow `nextPageToken`.
+These files are capture outputs only: list each in the manifest with its
+status and byte size, and never open one. Only Step 2d's script reads them.
+A 4xx or 403 on a row, or an API that row 21 found disabled, records that row
+as `skipped`: that metric becomes `no_data` for every resource, and the other
+rows still run. It is never a halt. Access tokens expire after an hour and
+fourteen project-wide calls can take longer, so refresh the token at the start
+of each row 21a–21n, as row 21a says. A rerun of any row 21a–21n (token
+expiry, a retry, or a resumed Step 2) first deletes that row's existing
+`monitoring-<metric>-<aligner>-p*.json` pages and only then writes its new
+`-p1`; a page set is never a mix of runs. Step 2d's script enforces this: it
+reduces a row only when a readable `manifest.json` lists that row's file with
+status `ok` (a missing manifest or a missing row is treated like a failed one),
+every page is a
+`timeSeries` response rather than an HTTP `error` envelope, and the pages form
+a contiguous `-p1`..`-pN` chain in which only the last page lacks
+`nextPageToken`. Anything else (a `skipped`/`failed` row with old pages still
+on disk, a lone `-p1` that still has `nextPageToken`, a gap in the chain) is
+`no_data` for that metric. Row 22a's `instance` values are full
+resource URLs; Step 2d derives the VM name and zone from the last and
+`zones/<zone>` segments and joins them to `gce.json` by name and zone.
+
 **Sizing caveat:** SQL `settings.dataDiskSizeGb` is PROVISIONED disk, not actual
 data volume. Downstream database-migration tool selection must treat it as an
 upper bound. (Follow-up: enrich with actual data size from monitoring metrics.
@@ -350,6 +416,26 @@ Every attempted or deliberately skipped row gets an entry. `cai_enable_offered` 
 `cai_enable_accepted` record the Step 2a soft-ask (`accepted` is `true` /
 `false` / `null` when never offered).
 
+**2d. Reduce monitoring captures.** After rows 21–22a have been attempted
+(or recorded `skipped`), run:
+
+```
+python3 "$PLUGIN_ROOT/skills/gcp-to-aws/scripts/summarize-monitoring.py" \
+  --capture-dir "$MIGRATION_DIR/live-capture" \
+  --project "$GCP_PROJECT" \
+  --window-start <the interval.startTime used in rows 21a–21n> \
+  --window-end <the interval.endTime used in rows 21a–21n>
+```
+
+It writes `$MIGRATION_DIR/live-capture/utilization-summary.json`, the only
+metrics artifact Discover reads: one summary object per VM in `gce.json` and
+per Cloud SQL instance in `sql.json`, with p95 / mean / max of the hourly
+values, sample counts, coverage, burst and idle flags, and `mig_member` from
+the row 22a files. Run it even when every monitoring row was skipped; it then
+emits `no_data` blocks and exits 0. Never Read a `monitoring-*.json` raw file
+yourself; the script is the only reader. Record each row 21–22a in the
+manifest `captures[]` and put the `monitoring-*.json` byte sizes in `note`.
+
 ## Step 3: Map Captures to Inventory Resources
 
 Synthesize Terraform-style identity so downstream design-refs (keyed on
@@ -363,6 +449,17 @@ Synthesize Terraform-style identity so downstream design-refs (keyed on
 - `source` = `"live"` on every entry
 - Rows 16a–16d are not inventory resources. Do not synthesize a `google_*`
   entry from `vertex-publisher-*.json` or `vertex-models-*.json`.
+- `utilization` = read `live-capture/utilization-summary.json` (Step 2d's
+  output; never a `monitoring-*.json`). For each `google_compute_instance`,
+  compare `config.id` (as a string) and the last path segment of `config.zone`
+  with a summary object's `instance_id` and `zone`; `instance_name`, where the
+  capture has it, is a cross-check only, never the join key. For each
+  `google_sql_database_instance`, build `"$GCP_PROJECT:" + config.name` and
+  match it to a summary object's `database_id`. Copy the matching summary
+  object onto the resource as `utilization`, a sibling of `config`. No match →
+  no `utilization` key. Compare ids as strings: GCE instance ids exceed 2^53
+  and lose digits as numbers. Rows 21–22a and `utilization-summary.json` are
+  not inventory resources.
 
 **Asset/CLI type → Terraform type mapping:**
 
@@ -514,7 +611,10 @@ falling back to the address name component). Then:
    never declared are enrichment, not conflicts. Record every OVERWRITTEN field in
    `live_metadata.drift.config_conflicts[]` as
    `{ "address", "field", "terraform_value", "live_value" }`. Set
-   `source: "live+terraform"`.
+   `source: "live+terraform"`. After the live `id` has been written onto the
+   IaC `config`, attach the live entry's `utilization` object as a sibling of
+   `config` on the merged entry; `utilization` is never a `config_conflicts`
+   entry.
 2. **Live-only:** append the entry with `unmanaged_by_terraform: true`. Attach it
    to an existing cluster of the same category+region when one exists; otherwise
    append a new simplified cluster (and add it to `creation_order` at its depth).
@@ -578,7 +678,8 @@ The parent `discover.md` owns the phase status update — do not touch
 | Asset search fails (permission denied)             | Soft-ask once: grant `roles/cloudasset.viewer` + docs link; on [Y] retry once; on [N]/retry-fail → per-service                                     |
 | Asset search fails (other errors)                  | Fall back to per-service immediately — do not soft-ask                                                                                             |
 | Individual row fails (API not enabled, 403)        | Record `failed`/`skipped`, continue — never a halt (no per-row enable soft-ask)                                                                    |
-| Token expired mid-run                              | Stop capturing; hand off ("run `gcloud auth login`, then tell me to continue"); on resume re-run Step 2 (captures overwrite)                       |
+| Monitoring row 4xx / API disabled (rows 21–21n)    | Record `skipped`; that metric is `no_data` for every resource in `utilization-summary.json`; continue with the next row — never a halt                       |
+| Token expired mid-run                              | Stop capturing; hand off ("run `gcloud auth login`, then tell me to continue"); on resume re-run Step 2 (captures overwrite; a rerun row 21a–21n deletes its old `-p*` pages first) |
 | Capture file unparseable                           | Record warning, skip that file, continue                                                                                                           |
 | Every capture failed                               | Exit with no output; tell the user which permissions are missing (`roles/viewer` covers all rows)                                                  |
 
@@ -597,4 +698,5 @@ FORBIDDEN — Do NOT include ANY of:
 - Env var values, secret values, or unredacted sensitive config anywhere
 
 **Your ONLY job: inventory what exists in GCP, and write
-`gcp-publisher-metrics-profile.json` when row 16a returned points. Nothing else.**
+`gcp-publisher-metrics-profile.json` when row 16a returned points, and carry
+`utilization` from `utilization-summary.json`. Nothing else.**

@@ -380,6 +380,10 @@ Source: `aws-design.json`, `terraform/baseline.tf`, `estimation-infra.json` obse
 - Deferred services (`deferred_services[]`, `excluded_from_totals`)
 - GCP egress when `migration_cost_considerations.billing_data_available === false`
 - Professional services / dual-run period (not modeled)
+- Utilization-based right-sizing, three-way on the inventory's `utilization` objects (`coverage` is derived from CPU only, so a numeric `memory`, `disk_bytes_used` or `connections` block can exist beside `coverage: no_data`; a metric block is numeric when it has `p95` rather than `status`):
+  - (i) at least one resource carries `utilization` whose `coverage` is not `no_data` (live discovery with Cloud Monitoring): state that 30-day utilization was captured into the inventory but is not yet used for sizing — sizes are declared/like-for-like; sizing from utilization arrives in a follow-up.
+  - (ii) every `utilization.coverage` is `no_data` but at least one resource has a numeric `memory`, `disk_bytes_used` or `connections` block: state that partial 30-day utilization was captured (name the metrics that have numeric blocks, and that CPU coverage is unavailable) but is not yet used for sizing — sizes are declared/like-for-like.
+  - (iii) no resource carries `utilization`, or no `utilization` object anywhere has a numeric block (the Monitoring API was disabled or every monitoring row was skipped): state that right-sizing requires live discovery with Cloud Monitoring read access.
 
 **Terraform validation:** from `validation-report.json` when present (`status`, provider version).
 
