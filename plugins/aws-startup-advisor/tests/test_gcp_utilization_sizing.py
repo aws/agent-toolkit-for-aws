@@ -509,3 +509,7 @@ def test_clarify_makes_cost_optimization_the_single_authoritative_sizing_field()
     assert "no HA upgrades, no\nright-sizing" not in text
     assert "`right_sizing: false`)" not in text  # the Category E default no longer forces it
     assert "`right_sizing` omitted; `cost_optimization` (Q-E0) governs" in text
+    prompt = text[text.index("Would you also like HA upgrade") : text.index("If user opts in, present Q-E1")]
+    assert "match current capacity" not in prompt and "conservative defaults" not in prompt
+    assert "instance sizing follows the\n> Right-sizing appetite" in prompt
+    assert 'source: "user:Q-E2"' not in q_e2  # schema-preferences.md: no source on user answers

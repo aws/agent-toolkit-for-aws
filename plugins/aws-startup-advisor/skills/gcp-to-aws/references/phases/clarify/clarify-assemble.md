@@ -222,7 +222,8 @@ Interpret → `right_sizing`: 1 → `true`, 2 → `false`. **Default: not asked 
 **`cost_optimization` is the only field Design reads** (`size-from-utilization.py` `read_preferences`;
 the shared cost-appetite file says this question is superseded by Q-E0), so each answer writes
 through to it: **2 (no)** sets `design_constraints.cost_optimization` to `conservative`
-(`chosen_by: "user"`, `question_id: "Q-E2"`, `source: "user:Q-E2"`), overriding the Q-E0 sheet
+(`chosen_by: "user"`, `question_id: "Q-E2"`; no `source` — `schema-preferences.md` omits it for user
+answers), overriding the Q-E0 sheet
 row — say so in the confirmation ("matching current capacity overrides the Balanced appetite");
 **1 (yes)** keeps the Q-E0 value unless it is `conservative`, in which case it becomes `balanced`
 the same way (a right-sizing opt-in with a like-for-like appetite is a contradiction, and
@@ -400,8 +401,9 @@ record (empty `services[]`, non-empty `warnings[]`; see `discover-billing.md` §
 record) has no billing data to base HA/right-sizing recommendations on, so do not offer
 it from file existence alone:
 
-> "Would you also like HA upgrade and right-sizing recommendations based on your billing
-> data? If not, I'll use conservative defaults (no upgrades, match current capacity)."
+> "Would you also like HA upgrade recommendations, and a chance to opt out of right-sizing?
+> If not, I'll keep your current topology (no HA upgrades), and instance sizing follows the
+> Right-sizing appetite you confirmed on the sheet."
 
 If user opts in, present Q-E1, and Q-E2 **unless** the cost-optimization-appetite row
 already resolved to `aggressive` (then apply `right_sizing: true` without asking Q-E2).
