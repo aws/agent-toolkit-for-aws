@@ -270,7 +270,7 @@ def test_report_known_limitations_cover_every_declared_reason_and_note():
     assert "Cloud Monitoring read access" in exclusions
     for needle in (
         'coverage: "insufficient"',
-        '{"status": "unavailable"}',
+        'declared_reason: "memory_unavailable"',
         "install the Ops Agent",
         "burst: true",
         "idle: true",

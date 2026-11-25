@@ -96,6 +96,10 @@ Step 2d requires.
   `skills/gcp-to-aws/scripts/size-from-utilization.py` on the inventory above
   with no preferences (`balanced`, Graviton), reproduced byte-for-byte by
   `tests/test_gcp_utilization_sizing.py`.
+- `after-design/sizing-decisions.with-preferences.json` — the same script run
+  with `after-clarify/preferences.json` (`aggressive`, `web-steady` exempt), so
+  the fixture's phases chain and the `user_exempt` and uncapped-aggressive paths
+  have a byte-for-byte artifact too (same test file).
 
 ## What the sizing step lands on (`balanced`)
 
@@ -130,9 +134,13 @@ python3 skills/gcp-to-aws/scripts/summarize-monitoring.py \
 python3 skills/gcp-to-aws/scripts/size-from-utilization.py \
   --inventory fixtures/gcp-utilization-capture/after-discover/gcp-resource-inventory.json \
   --output fixtures/gcp-utilization-capture/after-design/sizing-decisions.json
+python3 skills/gcp-to-aws/scripts/size-from-utilization.py \
+  --inventory fixtures/gcp-utilization-capture/after-discover/gcp-resource-inventory.json \
+  --preferences fixtures/gcp-utilization-capture/after-clarify/preferences.json \
+  --output fixtures/gcp-utilization-capture/after-design/sizing-decisions.with-preferences.json
 ```
 
 All three steps are deterministic: a second run must leave `git status` clean.
 If the expected summary changes, update the `utilization` blocks in
-`after-discover/gcp-resource-inventory.json` to match, then regenerate
-`after-design/sizing-decisions.json`.
+`after-discover/gcp-resource-inventory.json` to match, then regenerate both
+`after-design/sizing-decisions*.json` goldens.

@@ -513,3 +513,49 @@ def test_clarify_makes_cost_optimization_the_single_authoritative_sizing_field()
     assert "match current capacity" not in prompt and "conservative defaults" not in prompt
     assert "instance sizing follows the\n> Right-sizing appetite" in prompt
     assert 'source: "user:Q-E2"' not in q_e2  # schema-preferences.md: no source on user answers
+
+
+# --------------------------------------------------------------------------- self-review follow-ups
+
+EXPECTED_WITH_PREFS = FIXTURE / "after-design" / "sizing-decisions.with-preferences.json"
+
+
+def test_cli_with_the_fixture_preferences_reproduces_the_second_golden(tmp_path):
+    """after-clarify/preferences.json (aggressive + web_steady exempt) -> after-design/sizing-decisions.with-preferences.json."""
+    out = tmp_path / "with-prefs.json"
+    result = subprocess.run([sys.executable, str(SCRIPT), "--inventory", str(INVENTORY), "--preferences", str(PREFERENCES),
+                             "--output", str(out)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert out.read_bytes() == EXPECTED_WITH_PREFS.read_bytes()
+    data = json.loads(out.read_text())
+    assert data["cost_optimization"] == "aggressive" and data["sizing_exemptions"] == ["1000000000000000001"]
+    web = next(r for r in data["resources"] if r["key"] == "1000000000000000001")
+    assert web["sizing_provenance"] == "declared" and web["declared_reason"] == "user_exempt"
+
+
+def test_rds_proxy_is_disclosed_but_neither_priced_nor_generated():
+    """Estimate, Design, the report and the guide agree: rds_proxy is a recommendation only (no rate, no aws_db_proxy)."""
+    estimate = (REFS / "phases" / "estimate" / "estimate-infra.md").read_text()
+    database = (REFS / "design-refs" / "database.md").read_text()
+    report = (REFS / "phases" / "generate" / "generate-artifacts-report.md").read_text()
+    guide = (REFS / "phases" / "generate" / "generate-artifacts-docs.md").read_text()
+    generate_infra = (REFS / "phases" / "generate" / "generate-artifacts-infra.md").read_text()
+    assert "`aws_config.rds_proxy: true` is not priced" in estimate
+    assert "RDS Proxy where `aws_config.rds_proxy` is true" not in estimate
+    assert "`rds_proxy: true` is a recommendation only in this version" in database
+    assert "one line per `rds_proxy: true` database" in report and "not in the generated Terraform" in report
+    assert "`rds_proxy: true` database saying the proxy is recommended but not priced or generated" in guide
+    # If someone later adds an emitter or a rate, revisit this test together with the wording above.
+    assert "aws_db_proxy" not in generate_infra and "rds_proxy" not in generate_infra
+
+
+def test_guide_known_limitations_enumerate_the_same_reasons_as_the_report():
+    guide = (REFS / "phases" / "generate" / "generate-artifacts-docs.md").read_text()
+    report = (REFS / "phases" / "generate" / "generate-artifacts-report.md").read_text()
+    start = report.index("- (i) at least one resource carries `utilization`")
+    end = report.index("- (ii) every `utilization.coverage`")
+    branch_i = report[start:end]
+    for name in ("insufficient", "memory_unavailable", "burst", "idle", "skipped_group_member", "user_exempt",
+                 "conservative", "memory_bound", "memory_saturated", "burstable_baseline_exceeded"):
+        assert name in branch_i, name
+        assert f"`{name}`" in guide, name
