@@ -66,9 +66,22 @@ def sql_labels(name: str) -> dict:
     return {"region": "us-central1", "project_id": PROJECT, "database_id": f"{PROJECT}:{name}"}
 def write(capture: Path, name: str, obj) -> None:
     (capture / name).write_text(json.dumps(obj), encoding="utf-8")
-def write_metric(capture: Path, short: str, aligner: str, pages: list[dict]) -> None:
+def _manifest_upsert(capture: Path, file: str, status: str) -> None:
+    """Add or replace the manifest.json captures[] row for one monitoring file (Step 2c writes one per row)."""
+    path = capture / "manifest.json"
+    manifest = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {
+        "captured_at": "2026-11-20T00:00:00Z", "project": PROJECT, "captures": []}
+    manifest["captures"] = [e for e in manifest["captures"] if e.get("file") != file]
+    manifest["captures"].append({"command": "curl ...", "file": file, "status": status, "note": None})
+    write(capture, "manifest.json", manifest)
+
+
+def write_metric(capture: Path, short: str, aligner: str, pages: list[dict], manifest_status: str | None = "ok") -> None:
+    """Write a row's pages and, unless manifest_status is None, its ok manifest row (as Step 2c does)."""
     for index, body in enumerate(pages, start=1):
         write(capture, f"monitoring-{short}-{aligner}-p{index}.json", body)
+    if manifest_status is not None:
+        _manifest_upsert(capture, f"monitoring-{short}-{aligner}-p1.json", manifest_status)
 def gce_json(*vms: tuple[str, str, str]) -> list[dict]:
     return [{"id": iid, "name": name, "status": "RUNNING",
              "zone": f"{COMPUTE}/zones/{ZONE}",
@@ -114,10 +127,9 @@ def test_paging_merges_a_series_split_across_pages(capture):
     assert merged["unit"] == "10^2.%"
 # ---------------------------------------------------------------- stale, failed and incomplete page sets
 def manifest(capture: Path, rows: dict[str, str]) -> None:
-    """manifest.json whose captures[] lists each monitoring-<short>-<aligner>-p1.json with the given status."""
-    captures = [{"command": "curl ...", "file": f"monitoring-{key}-p1.json", "status": status, "note": None}
-                for key, status in rows.items()]
-    write(capture, "manifest.json", {"captured_at": "2026-11-20T00:00:00Z", "project": PROJECT, "captures": captures})
+    """Set the manifest.json status of each monitoring-<short>-<aligner>-p1.json row, replacing what write_metric recorded."""
+    for key, status in rows.items():
+        _manifest_upsert(capture, f"monitoring-{key}-p1.json", status)
 @pytest.mark.parametrize("status", ["skipped", "failed"])
 def test_manifest_row_not_ok_is_no_data_despite_pages_on_disk(capture, status):
     iid = "1000000000000000001"
@@ -128,13 +140,41 @@ def test_manifest_row_not_ok_is_no_data_despite_pages_on_disk(capture, status):
     vm = by_id(summarize(capture), iid)
     assert vm["cpu"] == {"status": "no_data"}
     assert vm["coverage"] == "no_data"
-def test_manifest_row_ok_or_absent_keeps_reducing(capture):
+def test_manifest_row_ok_keeps_reducing(capture):
     iid = "1000000000000000001"
     simple_vm(capture, iid)
     manifest(capture, {"gce-cpu-ALIGN_MEAN": "ok"})
     assert sm.load_metric(capture, "gce-cpu", "ALIGN_MEAN")["status"] == "ok"
     assert sm.load_metric(capture, "gce-cpu", "ALIGN_MAX")["status"] == "ok"
     assert by_id(summarize(capture), iid)["coverage"] == "sufficient"
+
+
+def test_missing_manifest_row_is_no_data_despite_pages_on_disk(capture):
+    """A page set with no manifest row is stale output of an earlier run, not a capture of this one."""
+    iid = "1000000000000000001"
+    simple_vm(capture, iid)
+    path = capture / "manifest.json"
+    manifest_obj = json.loads(path.read_text(encoding="utf-8"))
+    manifest_obj["captures"] = [e for e in manifest_obj["captures"] if e["file"] != "monitoring-gce-cpu-ALIGN_MEAN-p1.json"]
+    write(capture, "manifest.json", manifest_obj)
+    assert sm.load_metric(capture, "gce-cpu", "ALIGN_MEAN") == {"status": "no_data"}
+    assert sm.load_metric(capture, "gce-cpu", "ALIGN_MAX")["status"] == "ok"
+    assert by_id(summarize(capture), iid)["cpu"] == {"status": "no_data"}
+
+
+@pytest.mark.parametrize("damage", ["missing", "unreadable", "no_captures"])
+def test_missing_or_unreadable_manifest_is_no_data(capture, damage):
+    iid = "1000000000000000001"
+    simple_vm(capture, iid)
+    path = capture / "manifest.json"
+    if damage == "missing":
+        path.unlink()
+    elif damage == "unreadable":
+        path.write_text("{not json", encoding="utf-8")
+    else:
+        write(capture, "manifest.json", {"captured_at": "2026-11-20T00:00:00Z", "project": PROJECT})
+    assert sm.load_metric(capture, "gce-cpu", "ALIGN_MEAN") == {"status": "no_data"}
+    assert by_id(summarize(capture), iid)["coverage"] == "no_data"
 def test_http_error_envelope_is_no_data_not_an_empty_response(capture):
     iid = "1000000000000000001"
     simple_vm(capture, iid)
@@ -152,6 +192,7 @@ def test_gap_in_page_chain_is_no_data(capture):
     s = series(GCE_CPU, gce_labels(iid), {"instance_name": "vm"}, [0.1] * HOURS)
     write(capture, "monitoring-gce-cpu-ALIGN_MEAN-p1.json", page("10^2.%", [s], "tok"))
     write(capture, "monitoring-gce-cpu-ALIGN_MEAN-p3.json", page("10^2.%", [s]))
+    _manifest_upsert(capture, "monitoring-gce-cpu-ALIGN_MEAN-p1.json", "ok")
     assert sm.load_metric(capture, "gce-cpu", "ALIGN_MEAN") == {"status": "no_data"}
 def test_stale_higher_page_after_a_shorter_rerun_is_no_data(capture):
     iid = "1000000000000000001"

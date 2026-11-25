@@ -372,7 +372,9 @@ of each row 21a–21n, as row 21a says. A rerun of any row 21a–21n (token
 expiry, a retry, or a resumed Step 2) first deletes that row's existing
 `monitoring-<metric>-<aligner>-p*.json` pages and only then writes its new
 `-p1`; a page set is never a mix of runs. Step 2d's script enforces this: it
-reduces a row only when its manifest status is `ok`, every page is a
+reduces a row only when a readable `manifest.json` lists that row's file with
+status `ok` (a missing manifest or a missing row is treated like a failed one),
+every page is a
 `timeSeries` response rather than an HTTP `error` envelope, and the pages form
 a contiguous `-p1`..`-pN` chain in which only the last page lacks
 `nextPageToken`. Anything else (a `skipped`/`failed` row with old pages still

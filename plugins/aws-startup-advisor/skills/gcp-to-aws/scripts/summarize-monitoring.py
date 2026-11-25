@@ -65,23 +65,33 @@ def page_files(capture_dir: Path, short_name: str, aligner: str) -> list[Path]:
             files.append((int(match.group(1)), path))
     return [path for _, path in sorted(files)]
 def manifest_rejects(capture_dir: Path, short_name: str, aligner: str) -> bool:
-    """True when manifest.json lists this row's monitoring-<short>-<aligner>-p* file with a status other than ok.
+    """True unless a readable manifest.json lists this row's monitoring-<short>-<aligner>-p* file with status ok.
 
-    A skipped or failed row must not be reduced even when stale pages from an earlier run are still on disk.
-    A missing manifest or a manifest without a row for this file does not reject.
+    Step 2c writes a manifest row for every monitoring call before Step 2d reduces, so pages on disk
+    with no readable manifest, no row for this file, or a row whose status is not ok are stale output
+    of an earlier run (or a skipped/failed retry) and must not be reduced. Only an explicit ok row
+    for a matching file admits the page set.
     """
     manifest = _read_json(capture_dir / "manifest.json", None)
     captures = manifest.get("captures") if isinstance(manifest, dict) else None
+    if not isinstance(captures, list):
+        return True
     prefix = f"monitoring-{short_name}-{aligner}-p"
-    for entry in captures or []:
-        if isinstance(entry, dict) and str(entry.get("file") or "").startswith(prefix) and entry.get("status") != "ok":
+    accepted = False
+    for entry in captures:
+        if not isinstance(entry, dict) or not str(entry.get("file") or "").startswith(prefix):
+            continue
+        if entry.get("status") != "ok":
             return True
-    return False
+        accepted = True
+    return not accepted
+
+
 def load_metric(capture_dir: Path, short_name: str, aligner: str = "ALIGN_MEAN") -> dict[str, Any]:
     """Merge one metric's pages into series keyed by series_key, each carrying its resolved unit.
 
-    Returns {"status": "ok", "unit": <unit>, "series": {key: series}} or {"status": "no_data"} when the
-    manifest marks the row skipped/failed, no page exists, a page is unparseable or an HTTP error envelope,
+    Returns {"status": "ok", "unit": <unit>, "series": {key: series}} or {"status": "no_data"} when no
+    readable manifest row marks this file ok (missing manifest, missing row, or skipped/failed), no page exists, a page is unparseable or an HTTP error envelope,
     the pages are not a contiguous p1..pN chain whose last page alone lacks nextPageToken, or any series
     has no usable unit (missing or {not_a_unit}).
     """
