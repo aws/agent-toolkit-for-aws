@@ -68,7 +68,6 @@ Check current IAM action names against the docs — the list evolves.
 
 ## Path A — Strands agent with the Browser tool (recommended for most)
 
-
 ```python
 from strands import Agent
 from strands_tools.browser import AgentCoreBrowser
