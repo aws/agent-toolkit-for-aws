@@ -110,8 +110,8 @@ Step 2d requires.
 | web-mig-7f3k | e2-medium | t4g.medium | declared, `skipped_group_member` | MIG member |
 | ops-small | e2-small | t4g.small | measured, `burstable_baseline_exceeded` | 0.5 reserved vCPU × p95 1.22 = 0.61 vCPU of load beats every t4g baseline at or below the anchor |
 | jobs-bursty | n2-standard-8 | t4g.xlarge | measured, `burst` | 0.82 vCPU of load fails t4g.large (0.60) and passes t4g.xlarge (1.6) |
-| orders-db | db-f1-micro / PG15 | db.t4g.micro, 20 GiB gp3 | measured, `memory_saturated` | memory 1.0 is page cache; 5 backends vs max_connections 112, no proxy |
-| reports-db | db-custom-2-8192 / MySQL | db.m7g.large, 20 GiB gp3 | measured | family minimum is the anchor; 37 connections vs 682, no proxy |
+| orders-db | db-f1-micro / PG15 | db.t4g.micro, 20 GiB gp3 | measured, `memory_saturated` | memory 1.0 is page cache; 5 backends vs max_connections 79 (DBInstanceClassMemory, not advertised memory), no proxy |
+| reports-db | db-custom-2-8192 / MySQL | db.m7g.large, 20 GiB gp3 | measured | family minimum is the anchor; 37 connections vs 630, no proxy |
 
 ## How to regenerate
 

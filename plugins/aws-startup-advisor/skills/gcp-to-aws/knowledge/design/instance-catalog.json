@@ -169,11 +169,12 @@
     "_how_to_read": "Classes are ordered within each family. Cloud SQL `db-custom-<vcpu>-<mb>` parses like GCE custom types; `db-n1-standard-<n>` is n vCPU × 3.75 GiB and `db-n1-highmem-<n>` n × 6.5 GiB; the shared-core tiers are listed. Mapping: shared-core tiers → db.t4g (the like-for-like for db-f1-micro is db.t4g.micro, as design-refs/database.md Example 1 already says); standard/custom at or below 6 GiB per vCPU → db.m7g; highmem or custom above 6 GiB per vCPU → db.r7g. v1 never MOVES a measured database onto db.t4g: measured sizing stays inside the like-for-like family, so the EC2 credit table does not apply here.",
     "source": "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.DBInstanceClass.Summary.html",
     "max_connections": {
-      "_what_this_is": "A formula on the class's memory, not a stored integer. DBInstanceClassMemory is the class memory_gib in bytes (memory_gib × 1073741824).",
+      "_what_this_is": "A formula on DBInstanceClassMemory, not a stored integer. DBInstanceClassMemory is NOT the advertised class memory: RDS subtracts what it reserves for the operating system and its management processes before the engine divisor applies (CHAP_Limits: db.m7g.large MySQL is about 630, not 8 GiB / 12582880 = 683; db.t3.micro MySQL is about 60). AWS does not publish the deduction, so reserved_memory is a fit to those two documented anchors: DBInstanceClassMemory = (memory_gib − fixed_gib − fraction × memory_gib) × 1073741824.",
       "source": "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_Limits.html#RDS_Limits.MaxConnections",
-      "mysql": { "formula": "floor(memory_bytes / 12582880)", "divisor": 12582880 },
-      "mariadb": { "formula": "floor(memory_bytes / 12582880)", "divisor": 12582880 },
-      "postgresql": { "formula": "min(floor(memory_bytes / 9531392), 5000)", "divisor": 9531392, "cap": 5000 },
+      "reserved_memory": { "fixed_gib": 0.25, "fraction": 0.045, "_anchors": "db.m7g.large mysql 8 GiB → 630 (documented about 630); db.t3.micro mysql 1 GiB → 60 (documented about 60)" },
+      "mysql": { "formula": "floor(DBInstanceClassMemory / 12582880)", "divisor": 12582880 },
+      "mariadb": { "formula": "floor(DBInstanceClassMemory / 12582880)", "divisor": 12582880 },
+      "postgresql": { "formula": "min(floor(DBInstanceClassMemory / 9531392), 5000)", "divisor": 9531392, "cap": 5000 },
       "sqlserver": { "formula": "engine default 0 = unlimited; the proxy decision is skipped", "divisor": null }
     },
     "storage": {

@@ -98,11 +98,18 @@ class Catalog:
             return {"tier": tier, "vcpu": n, "reserved_vcpu": None, "memory_gib": n * family["gib_per_vcpu"],
                     "rds_family": family["rds_family"]}
         return None
+    def db_instance_class_memory(self, memory_gib: float) -> float:
+        """RDS DBInstanceClassMemory in bytes: the advertised class memory less what RDS reserves for the OS and
+        its management processes (catalog rds.max_connections.reserved_memory, fitted to the CHAP_Limits anchors)."""
+        reserved = self.rds["max_connections"]["reserved_memory"]
+        usable_gib = max(memory_gib - reserved["fixed_gib"] - reserved["fraction"] * memory_gib, 0.0)
+        return usable_gib * GIB
+
     def max_connections(self, engine: str, memory_gib: float) -> int | None:
         rule = self.rds["max_connections"].get(engine)
         if not rule or not rule.get("divisor"):
             return None
-        value = math.floor(memory_gib * GIB / rule["divisor"])
+        value = math.floor(self.db_instance_class_memory(memory_gib) / rule["divisor"])
         cap = rule.get("cap")
         return min(value, cap) if cap else value
 def engine_of(database_version: str) -> str:
@@ -265,7 +272,15 @@ def storage_decision(util: dict[str, Any] | None, config: dict[str, Any], catalo
     rules = thresholds["storage"]
     warnings: list[str] = []
     disk = (util or {}).get("disk_bytes_used") if measured_allowed else None
-    declared_gib = config.get("settings.dataDiskSizeGb") or (config.get("settings") or {}).get("dataDiskSizeGb") or config.get("disk_size")
+    # Live capture writes settings.dataDiskSizeGb; the IaC inventory's canonical key is config.disk_size_gb
+    # (schema-discover-iac.md "Canonical config keys"); raw Terraform settings.disk_size is the last resort.
+    declared_gib = None
+    for candidate in (config.get("disk_size_gb"), config.get("settings.dataDiskSizeGb"),
+                      (config.get("settings") or {}).get("dataDiskSizeGb"), config.get("disk_size"),
+                      (config.get("settings") or {}).get("disk_size")):
+        if candidate is not None:
+            declared_gib = candidate
+            break
     storage = {"storage_type": "gp3", "iops": rules["gp3_iops"], "throughput_mbps": rules["gp3_throughput_mbps"]}
     if isinstance(disk, dict) and isinstance(disk.get("max"), (int, float)):
         raw_gib = disk["max"] * rules["bytes_used_factor"] / GIB
@@ -279,8 +294,11 @@ def storage_decision(util: dict[str, Any] | None, config: dict[str, Any], catalo
             allocated = max(int(float(declared_gib)), gp3["min_allocated_gib"]) if declared_gib is not None else None
         except (TypeError, ValueError):
             allocated = None
-        storage.update({"allocated_gib": allocated, "basis": "declared",
-                        "calculation": "provisioned Cloud SQL disk (upper bound): the class stayed declared or disk_bytes_used was not captured"})
+        if allocated is None:
+            calculation = "no provisioned disk size in the inventory (disk_size_gb / settings.dataDiskSizeGb absent) and disk_bytes_used not captured: size storage by hand"
+        else:
+            calculation = f"provisioned Cloud SQL disk {declared_gib} GB (upper bound), min {gp3['min_allocated_gib']}: the class stayed declared or disk_bytes_used was not captured"
+        storage.update({"allocated_gib": allocated, "basis": "declared", "calculation": calculation})
     return storage, warnings
 def size_database(spec: dict[str, Any], engine: str, util: dict[str, Any] | None, config: dict[str, Any], catalog: Catalog,
                   thresholds: dict[str, Any], cost_optimization: str, exempt: bool) -> dict[str, Any]:
@@ -339,6 +357,9 @@ def size_database(spec: dict[str, Any], engine: str, util: dict[str, Any] | None
         max_conn = catalog.max_connections(engine, classes[pick]["memory_gib"])
         if is_numeric_block(connections) and max_conn is not None:
             conn_p95 = connections["p95"]
+            near_limit = proxy_rule.get("near_limit_fraction")
+            if conn_p95 <= max_conn and near_limit and conn_p95 >= max_conn * near_limit:
+                warnings.append(f"connections p95 {conn_p95} is within {round((1 - near_limit) * 100)}% of {classes[pick]['name']} max_connections {max_conn} (modeled from DBInstanceClassMemory, which RDS computes per class): confirm with SHOW GLOBAL VARIABLES LIKE 'max_connections' after migration or add RDS Proxy")
             if conn_p95 > max_conn:
                 if cpu_p95 <= proxy_rule["cpu_p95_max"]:
                     rds_proxy = True
@@ -383,13 +404,27 @@ def tier_of(config: dict[str, Any]) -> str:
     return str(config.get("settings.tier") or settings.get("tier") or config.get("tier") or "")
 def version_of(config: dict[str, Any]) -> str:
     return str(config.get("databaseVersion") or config.get("database_version") or "")
+def _constraint_value(constraints: dict[str, Any], key: str) -> Any:
+    entry = constraints.get(key)
+    return entry.get("value") if isinstance(entry, dict) else entry
+
+
 def read_preferences(path: Path | None) -> tuple[str | None, str | None, list[str]]:
+    """cost_optimization, cpu_architecture and sizing_exemptions from preferences.json.
+
+    Clarify Q-E2 "No — match current capacity" writes right_sizing: false AND cost_optimization: conservative
+    (clarify-assemble.md § Q-E2), so cost_optimization alone governs. A preferences file written before that
+    rule — right_sizing explicitly false beside a non-conservative appetite — is honoured the same way here:
+    an explicit "match current capacity" answer always yields declared sizes.
+    """
     if path is None:
         return None, None, []
     prefs = load_json(path)
     constraints = prefs.get("design_constraints") or {}
-    cost = (constraints.get("cost_optimization") or {}).get("value")
-    arch = (constraints.get("cpu_architecture") or {}).get("value")
+    cost = _constraint_value(constraints, "cost_optimization")
+    if _constraint_value(constraints, "right_sizing") is False:
+        cost = "conservative"
+    arch = _constraint_value(constraints, "cpu_architecture")
     exemptions = [str(x) for x in (prefs.get("sizing_exemptions") or [])]
     return cost, arch, exemptions
 def size_inventory(inventory: dict[str, Any], catalog: Catalog, thresholds: dict[str, Any], cost_optimization: str,

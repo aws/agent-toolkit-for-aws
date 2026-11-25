@@ -187,14 +187,15 @@ def test_cloud_sql_picks_class_from_cpu_and_memory_then_checks_connections():
     orders = run()["orders_db"]
     assert orders["instance_class"] == "db.t4g.micro" and orders["sizing_note"] == "memory_saturated"
     assert orders["sized_from"]["connections_p95"] == 5.0  # four num_backends series summed, system databases included
-    assert orders["sized_from"]["max_connections"] == 112 == min(1 * 1024 ** 3 // 9531392, 5000)
+    # DBInstanceClassMemory, not the advertised 1 GiB: (1 − 0.25 − 0.045) GiB / 9531392 = 79 (the naive 1 GiB / 9531392 would be 112)
+    assert orders["sized_from"]["max_connections"] == 79 == int(CATALOG.db_instance_class_memory(1) // 9531392) < 112
     assert orders["rds_proxy"] is False
     assert orders["storage"] == {"storage_type": "gp3", "iops": 3000, "throughput_mbps": 125, "allocated_gib": 20,
                                  "basis": "measured", "calculation": orders["storage"]["calculation"]}
     assert any("IOPS were not measured" in w for w in orders["warnings"])
     reports = run()["reports_db"]
     assert reports["engine"] == "mysql" and reports["instance_class"] == "db.m7g.large"
-    assert reports["sized_from"]["max_connections"] == 682 == 8 * 1024 ** 3 // 12582880
+    assert reports["sized_from"]["max_connections"] == 630 == int(CATALOG.db_instance_class_memory(8) // 12582880)  # AWS documents about 630 for db.m7g.large MySQL
     assert reports["rds_proxy"] is False and "sizing_note" not in reports
     assert reports["storage"]["allocated_gib"] == 20  # 12 GiB × 1.5 = 18 → 20
 def _synthetic_db(cpu_p95: float, memory_p95: float, connections_p95: float, tier: str = "db-custom-4-16384",
@@ -207,15 +208,15 @@ def _synthetic_db(cpu_p95: float, memory_p95: float, connections_p95: float, tie
                         "coverage": "sufficient", "cpu": block(cpu_p95), "memory": block(memory_p95),
                         "connections": block(connections_p95), "disk_bytes_used": block(disk_max)}}]}
 def test_rds_proxy_only_when_connections_exceed_the_formula_and_cpu_is_at_or_below_half():
-    # db-custom-4-16384 PostgreSQL → anchor db.m7g.xlarge (4 vCPU / 16 GiB); low CPU and memory → db.m7g.large (8 GiB, 901 conns)
+    # db-custom-4-16384 PostgreSQL → anchor db.m7g.xlarge (4 vCPU / 16 GiB); low CPU and memory → db.m7g.large (8 GiB, 832 conns)
     quiet = run(inventory=_synthetic_db(0.10, 0.20, 1200))["synthetic"]
-    assert quiet["instance_class"] == "db.m7g.large" and quiet["sized_from"]["max_connections"] == 8 * 1024 ** 3 // 9531392 == 901
+    assert quiet["instance_class"] == "db.m7g.large" and quiet["sized_from"]["max_connections"] == 832
     assert quiet["rds_proxy"] is True
     under = run(inventory=_synthetic_db(0.10, 0.20, 500))["synthetic"]
     assert under["rds_proxy"] is False and under["instance_class"] == "db.m7g.large"
     busy = run(inventory=_synthetic_db(0.60, 0.20, 2500))["synthetic"]
     assert busy["rds_proxy"] is False and busy["instance_class"] == "db.m7g.xlarge"  # like-for-like; never above it
-    assert busy["sizing_note"] == "connections_bound" and busy["sized_from"]["max_connections"] == 1802
+    assert busy["sizing_note"] == "connections_bound" and busy["sized_from"]["max_connections"] == 1693
     storage = quiet["storage"]
     assert storage["allocated_gib"] == 60 and storage["basis"] == "measured"  # 40 GiB × 1.5 = 60
 def test_measured_database_never_picks_above_like_for_like():
@@ -281,7 +282,7 @@ def test_catalog_sizes_are_ordered_and_sourced():
         keys = [(c["vcpu"], c["memory_gib"]) for c in body["classes"]]
         assert keys == sorted(keys), family
     assert data["rds"]["max_connections"]["mysql"]["divisor"] == 12582880
-    assert data["rds"]["max_connections"]["postgresql"] == {"formula": "min(floor(memory_bytes / 9531392), 5000)", "divisor": 9531392, "cap": 5000}
+    assert data["rds"]["max_connections"]["postgresql"] == {"formula": "min(floor(DBInstanceClassMemory / 9531392), 5000)", "divisor": 9531392, "cap": 5000}
     assert data["rds"]["max_connections"]["source"].startswith("https://docs.aws.amazon.com/AmazonRDS/")
     assert data["rds"]["storage"]["gp3"]["min_allocated_gib"] == 20
     for family, body in data["gce"]["families"].items():
@@ -295,7 +296,7 @@ def test_both_scripts_read_the_same_thresholds_file():
     assert (summarizer.BURST_CPU_P95_MAX, summarizer.BURST_SPIKE_MULTIPLE, summarizer.BURST_CONSECUTIVE_HOURS) == (0.3, 2, 2)
     assert THRESHOLDS["headroom_factor"] == 1.3
     assert THRESHOLDS["step_cap"] == {"balanced": 2, "aggressive": None}
-    assert THRESHOLDS["rds_proxy"] == {"connections_over_limit": True, "cpu_p95_max": 0.5}
+    assert THRESHOLDS["rds_proxy"] == {"connections_over_limit": True, "cpu_p95_max": 0.5, "near_limit_fraction": 0.9}
     assert THRESHOLDS["storage"] == {"bytes_used_factor": 1.5, "gp3_iops": 3000, "gp3_throughput_mbps": 125, "round_up_gib": 10}
     assert THRESHOLDS["memory_saturated_p95_min"] == 0.9
     for key in ("headroom_factor", "step_cap", "coverage_min", "idle", "burst", "rds_proxy", "memory_saturated", "storage"):
@@ -339,10 +340,12 @@ def test_database_md_measured_sizing_section_orders_class_then_connections_then_
         "`memory_bytes / 12582880`", "`min(memory_bytes / 9531392, 5000)`", "never a stored integer",
         "`cpu.p95 <= 0.50`", "`sizing_note: \"memory_saturated\"`", "never picks a class above like-for-like",
         "disk_bytes_used.max × 1.5", "20 GiB", "3000 IOPS / 125 MB/s", "did not measure IOPS", "No `db.t4g` switch in v1",
-        "`num_backends` summed over every `database` label",
+        "`num_backends` summed over every `database` label", "`config.disk_size_gb`", "`aws_config.allocated_storage`",
     ):
         assert needle in section, needle
-    assert '"rds_proxy": false' in text and '"max_connections": 112' in text
+    assert '"rds_proxy": false' in text and '"max_connections": 79' in text
+    assert "DBInstanceClassMemory" in section and "about 630" in section and "is **not** the advertised class memory" in section
+    assert '"allocated_storage": 20' in text and '"allocated_gib": 20' not in text  # one aws_config storage key
 def test_design_infra_finalizes_measured_sizing_on_every_ec2_and_rds_mapping():
     text = (REFS / "phases" / "design" / "design-infra.md").read_text()
     section = text[text.index("### Finalize measured sizing") : text.index("### Finalize `ecs_mode`")]
@@ -396,3 +399,113 @@ def test_skill_knowledge_paths_referenced_in_docs_exist():
     docs = "".join(p.read_text() for p in (REFS / "design-refs" / "compute.md", REFS / "design-refs" / "database.md",
                                            REFS / "shared" / "graviton.md", REFS / "phases" / "estimate" / "estimate-infra.md"))
     assert "knowledge/design/instance-catalog.json" in docs and "knowledge/estimate/rightsizing-thresholds.json" in docs
+
+
+# --------------------------------------------------------------------------- review round 1 (F1–F3)
+
+def test_max_connections_uses_db_instance_class_memory_and_matches_the_aws_anchors():
+    # CHAP_Limits: about 630 for MySQL on db.m7g.large (8 GiB), about 60 on db.t3.micro (1 GiB); naive total-memory maths gives 683 and 85
+    assert CATALOG.max_connections("mysql", 8) == 630
+    assert CATALOG.max_connections("mysql", 1) == 60
+    assert CATALOG.max_connections("postgresql", 1) == 79 < 112
+    assert CATALOG.max_connections("postgresql", 64) == 5000  # cap still applies
+    assert CATALOG.max_connections("sqlserver", 8) is None
+    doc = json.loads(CATALOG_PATH.read_text())["rds"]["max_connections"]
+    assert "NOT the advertised class memory" in doc["_what_this_is"] and "memory_gib × 1073741824" not in doc["_what_this_is"]
+    assert doc["reserved_memory"] == {"fixed_gib": 0.25, "fraction": 0.045, "_anchors": doc["reserved_memory"]["_anchors"]}
+
+
+def _mysql_m7g_large(connections_p95: float, cpu_p95: float = 0.20) -> dict:
+    # db-custom-2-8192 MySQL anchors at db.m7g.large (2 vCPU / 8 GiB), the family minimum, so the pick is always db.m7g.large
+    return _synthetic_db(cpu_p95, 0.50, connections_p95, tier="db-custom-2-8192", version="MYSQL_8_0")
+
+
+def test_six_hundred_fifty_connections_on_m7g_large_mysql_gets_rds_proxy_not_a_silent_pass():
+    over = run(inventory=_mysql_m7g_large(650))["synthetic"]
+    assert over["instance_class"] == "db.m7g.large" and over["sized_from"]["max_connections"] == 630
+    assert over["rds_proxy"] is True
+    assert any("exceeds db.m7g.large max_connections 630" in w for w in over["warnings"])
+
+
+def test_connections_within_ten_percent_of_the_modeled_limit_warn_without_a_proxy():
+    near = run(inventory=_mysql_m7g_large(600))["synthetic"]  # 600 >= 0.9 × 630 = 567, not over
+    assert near["rds_proxy"] is False
+    assert any("within 10% of db.m7g.large max_connections 630" in w and "SHOW GLOBAL VARIABLES" in w for w in near["warnings"])
+    clear = run(inventory=_mysql_m7g_large(500))["synthetic"]
+    assert clear["rds_proxy"] is False and not any("max_connections" in w for w in clear["warnings"])
+    assert THRESHOLDS["rds_proxy"]["near_limit_fraction"] == 0.9
+
+
+def _declared_db(config_extra: dict) -> dict:
+    """An IaC-only Cloud SQL entry (no utilization) so storage falls back to the provisioned disk."""
+    return {"metadata": {"project": "acme-prod"}, "resources": [{
+        "address": "google_sql_database_instance.iac", "type": "google_sql_database_instance",
+        "config": {"name": "iac", "database_version": "POSTGRES_15", "tier": "db-custom-2-8192", **config_extra}}]}
+
+
+def test_declared_storage_reads_the_canonical_iac_disk_size_gb_key():
+    canonical = run(inventory=_declared_db({"disk_size_gb": 500}))["iac"]
+    assert canonical["sizing_provenance"] == "declared" and canonical["declared_reason"] == "insufficient"
+    assert canonical["storage"]["allocated_gib"] == 500 and canonical["storage"]["basis"] == "declared"
+    assert "500 GB" in canonical["storage"]["calculation"]
+    small = run(inventory=_declared_db({"disk_size_gb": 5}))["iac"]
+    assert small["storage"]["allocated_gib"] == 20  # max(N, gp3 minimum)
+    live_key = run(inventory=_declared_db({"settings.dataDiskSizeGb": "120"}))["iac"]
+    assert live_key["storage"]["allocated_gib"] == 120
+    none = run(inventory=_declared_db({}))["iac"]
+    assert none["storage"]["allocated_gib"] is None and "size storage by hand" in none["storage"]["calculation"]
+    assert "upper bound" not in none["storage"]["calculation"]
+
+
+def test_design_and_estimate_price_the_same_rds_storage_key():
+    design_infra = (REFS / "phases" / "design" / "design-infra.md").read_text()
+    estimate = (REFS / "phases" / "estimate" / "estimate-infra.md").read_text()
+    database = (REFS / "design-refs" / "database.md").read_text()
+    assert "`aws_config.allocated_storage`" in estimate and "allocated_gib" not in estimate
+    assert "`allocated_storage`" in design_infra and "`allocated_gib`, `iops`" not in design_infra
+    assert '"allocated_storage": 20' in database and '"allocated_gib": 20' not in database
+    assert "`config.disk_size_gb`" in database  # the canonical IaC key the fallback reads
+
+
+def _prefs(tmp_path: Path, cost: str | None, right_sizing: bool | None) -> Path:
+    constraints: dict = {}
+    if cost is not None:
+        constraints["cost_optimization"] = {"value": cost, "chosen_by": "default", "question_id": "Q-E0"}
+    if right_sizing is not None:
+        constraints["right_sizing"] = {"value": right_sizing, "chosen_by": "user", "question_id": "Q-E2"}
+    path = tmp_path / "preferences.json"
+    path.write_text(json.dumps({"design_constraints": constraints}))
+    return path
+
+
+def test_q_e2_no_yields_declared_decisions_for_every_resource(tmp_path):
+    cost, _arch, _ex = sizer.read_preferences(_prefs(tmp_path, "balanced", False))
+    assert cost == "conservative"
+    decisions = run(cost)
+    assert all(d["sizing_provenance"] == "declared" and d["declared_reason"] == "conservative" for d in decisions.values())
+    assert sizer.read_preferences(_prefs(tmp_path, "balanced", True))[0] == "balanced"  # yes keeps the appetite
+    assert sizer.read_preferences(_prefs(tmp_path, "aggressive", None))[0] == "aggressive"  # not asked: Q-E0 governs
+    assert sizer.read_preferences(_prefs(tmp_path, None, None))[0] is None  # defaulted → balanced in main()
+
+
+def test_q_e2_no_through_the_cli_matches_conservative(tmp_path):
+    out = tmp_path / "out.json"
+    result = subprocess.run([sys.executable, str(SCRIPT), "--inventory", str(INVENTORY), "--preferences",
+                             str(_prefs(tmp_path, "balanced", False)), "--output", str(out)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    data = json.loads(out.read_text())
+    assert data["cost_optimization"] == "conservative" and data["measured_resources"] == 0
+
+
+def test_clarify_makes_cost_optimization_the_single_authoritative_sizing_field():
+    text = (REFS / "phases" / "clarify" / "clarify-assemble.md").read_text()
+    q_e2 = text[text.index("### Q-E2") : text.index("## Gate 2")]
+    assert "`cost_optimization` is the only field Design reads" in q_e2
+    assert "`conservative`" in q_e2 and '`question_id: "Q-E2"`' in q_e2
+    assert "not asked → omit `right_sizing`" in q_e2
+    assert "writes `cost_optimization: conservative`" in q_e2  # the 2 (no) impact row
+    category_e = text[text.index("_Default behavior when disabled:_") : text.index("### Q-E0")]
+    assert "follows the Right-sizing\nappetite row (Q-E0, default `balanced`)" in category_e
+    assert "no HA upgrades, no\nright-sizing" not in text
+    assert "`right_sizing: false`)" not in text  # the Category E default no longer forces it
+    assert "`right_sizing` omitted; `cost_optimization` (Q-E0) governs" in text

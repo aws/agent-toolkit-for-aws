@@ -133,10 +133,10 @@ The rule, for checking a decision by hand:
 1. **Anchor.** Like-for-like class = the smallest class in the mapped RDS family (`db.t4g` for the shared-core tiers, so `db-f1-micro` → `db.t4g.micro` as Example 1 says; `db.m7g` for standard/custom; `db.r7g` for highmem or custom above 6 GiB per vCPU) whose vCPU and memory are both at or above the tier's. Recorded as `like_for_like` on every decision.
 2. **Gate.** Same as compute (`cost_optimization`, `sizing_exemptions[]`, `coverage`, numeric memory) except that Cloud SQL never has `idle` or `mig_member`. A gated database keeps the anchor with `sizing_provenance: "declared"` and its `declared_reason`.
 3. **Class from CPU and memory first.** `required_vcpu = (reserved_vcpu or vcpu) × cpu.p95 × headroom_factor`, `required_memory_gib = memory_gib × memory.p95 × headroom_factor`; smallest class at or below the anchor meeting both; `step_cap` applies as for compute. **Measured sizing never picks a class above like-for-like.** When `memory.p95 >= 0.90` the class stays like-for-like, `sizing_provenance` stays `"measured"`, and `sizing_note: "memory_saturated"` records that the declared class is the floor, not evidence of need: Cloud SQL counts page cache, and a 0.6 GB `db-f1-micro` reads 0.99–1.0 all month, so `× 1.3` headroom would otherwise upsize it.
-4. **Then connections.** `max_connections` is the catalog **formula** on the picked class's memory (MySQL `memory_bytes / 12582880`; PostgreSQL `min(memory_bytes / 9531392, 5000)`), never a stored integer. PostgreSQL `connections.p95` is `num_backends` summed over every `database` label, system databases included. Add RDS Proxy (`aws_config.rds_proxy: true`) only when `connections.p95` exceeds `max_connections` **and** `cpu.p95 <= 0.50`; a busy database with many connections (`cpu.p95 > 0.50`) needs a larger class, not a proxy: it is already at like-for-like, measured sizing never picks above it, so the decision carries `sizing_note: "connections_bound"` and a warning to review by hand. A `connections` block with no data skips the proxy decision and says so. No `db.t4g` switch in v1: a measured database stays in its like-for-like family, and the EC2 credit table does not apply.
-5. **Storage.** `allocated_gib = disk_bytes_used.max × 1.5`, rounded up to the next 10 GiB, never below the engine minimum (20 GiB gp3; live: 87 MB used → 20 GiB). Write gp3 with the catalog's 3000 IOPS / 125 MB/s and a warning that v1 did not measure IOPS (shrinking from a large PD-SSD drops the IOPS that disk size was buying). Without `disk_bytes_used`, or when the class stayed declared (step 2), allocated storage falls back to the provisioned Cloud SQL disk as an upper bound (`storage.basis: "declared"`).
+4. **Then connections.** `max_connections` is the catalog **formula** on the picked class's `DBInstanceClassMemory` (MySQL `memory_bytes / 12582880`; PostgreSQL `min(memory_bytes / 9531392, 5000)`), never a stored integer — and `memory_bytes` is **not** the advertised class memory: RDS first subtracts what it reserves for the OS and its own processes (AWS documents about 630 on db.m7g.large MySQL, not 683, and about 60 on db.t3.micro), so the script models `DBInstanceClassMemory = (memory_gib − 0.25 − 0.045 × memory_gib) × 2^30` from the catalog's `reserved_memory` fit to those anchors. A `connections.p95` within 10% of the modeled limit gets a warning to confirm the real value (`SHOW GLOBAL VARIABLES LIKE 'max_connections'`) or add RDS Proxy. PostgreSQL `connections.p95` is `num_backends` summed over every `database` label, system databases included. Add RDS Proxy (`aws_config.rds_proxy: true`) only when `connections.p95` exceeds `max_connections` **and** `cpu.p95 <= 0.50`; a busy database with many connections (`cpu.p95 > 0.50`) needs a larger class, not a proxy: it is already at like-for-like, measured sizing never picks above it, so the decision carries `sizing_note: "connections_bound"` and a warning to review by hand. A `connections` block with no data skips the proxy decision and says so. No `db.t4g` switch in v1: a measured database stays in its like-for-like family, and the EC2 credit table does not apply.
+5. **Storage.** `allocated_gib = disk_bytes_used.max × 1.5`, rounded up to the next 10 GiB, never below the engine minimum (20 GiB gp3; live: 87 MB used → 20 GiB). When the class stayed declared or `disk_bytes_used` was not captured, the provisioned disk is the upper bound: `config.disk_size_gb` (the IaC inventory's canonical key), else the live capture's `settings.dataDiskSizeGb`, else raw `settings.disk_size`; `max(N, 20)` with `basis: "declared"`. Design copies `storage.allocated_gib` to **`aws_config.allocated_storage`** — the key the Estimate RDS recipe prices and Terraform's `allocated_storage` argument — never to a second storage key. Write gp3 with the catalog's 3000 IOPS / 125 MB/s and a warning that v1 did not measure IOPS (shrinking from a large PD-SSD drops the IOPS that disk size was buying). Without `disk_bytes_used`, or when the class stayed declared (step 2), allocated storage falls back to the provisioned Cloud SQL disk as an upper bound (`storage.basis: "declared"`).
 
-Worked examples (`fixtures/gcp-utilization-capture/after-design/sizing-decisions.json`): the live `db-f1-micro` PostgreSQL at cpu 0.11 / memory 1.0 / 5 backends → `db.t4g.micro`, `memory_saturated`, `max_connections` 112, no proxy, 20 GiB gp3. A `db-custom-2-8192` MySQL at cpu 0.30 / memory 0.51 / 37 connections → `db.m7g.large` (the family minimum is also the anchor), `max_connections` 682, no proxy, 12 GiB used → 20 GiB gp3.
+Worked examples (`fixtures/gcp-utilization-capture/after-design/sizing-decisions.json`): the live `db-f1-micro` PostgreSQL at cpu 0.11 / memory 1.0 / 5 backends → `db.t4g.micro`, `memory_saturated`, `max_connections` 79, no proxy, 20 GiB gp3. A `db-custom-2-8192` MySQL at cpu 0.30 / memory 0.51 / 37 connections → `db.m7g.large` (the family minimum is also the anchor), `max_connections` 630, no proxy, 12 GiB used → 20 GiB gp3.
 
 ## Output Schema
 
@@ -154,7 +154,7 @@ Worked examples (`fixtures/gcp-utilization-capture/after-design/sizing-decisions
     "instance_class": "db.t4g.micro",
     "multi_az": false,
     "storage_type": "gp3",
-    "allocated_gib": 20,
+    "allocated_storage": 20,
     "iops": 3000,
     "throughput_mbps": 125,
     "rds_proxy": false
@@ -173,11 +173,11 @@ Worked examples (`fixtures/gcp-utilization-capture/after-design/sizing-decisions
     "capped": "db.t4g.micro",
     "step_cap": 2,
     "connections_p95": 5.0,
-    "max_connections": 112
+    "max_connections": 79
   },
   "confidence": "inferred",
   "human_expertise_required": false,
-  "rationale": "Q6 single-az → RDS PostgreSQL; measured sizing: db.t4g.micro is the like-for-like floor (memory saturated), 5 backends vs 112 max_connections, 20 GiB gp3 minimum",
+  "rationale": "Q6 single-az → RDS PostgreSQL; measured sizing: db.t4g.micro is the like-for-like floor (memory saturated), 5 backends vs 79 max_connections, 20 GiB gp3 minimum",
   "rubric_applied": [
     "User Preference: availability=single-az",
     "Operational Model: RDS over Aurora for low-HA workload",

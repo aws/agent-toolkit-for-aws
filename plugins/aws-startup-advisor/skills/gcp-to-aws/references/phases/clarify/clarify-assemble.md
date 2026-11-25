@@ -159,8 +159,10 @@ After the user responds, write `preferences-draft.json` with all resolved values
 ## Category E — Migration Posture (Disabled by Default)
 
 _Fire when:_ User explicitly opts in.
-_Default behavior when disabled:_ Apply conservative defaults — no HA upgrades, no
-right-sizing.
+_Default behavior when disabled:_ No HA upgrades (`ha_upgrade: false`). Instance sizing is
+**not** forced to like-for-like by declining this category: it follows the Right-sizing
+appetite row (Q-E0, default `balanced`), which is always on the sheet. `right_sizing` is
+omitted when Q-E2 was not asked.
 
 **Superseded by the cost-optimization-appetite row (Q-E0 below) for the right-sizing
 half:** per `references/vendored/clarify/clarify-cost-appetite.md` § "What a consuming skill
@@ -214,12 +216,24 @@ Interpret → `ha_upgrade`: 1 → `true`, 2 → `false`. Default: 2 → `false`.
 
 > 1\) Yes — right-size based on utilization | 2\) No — match current capacity
 
-Interpret → `right_sizing`: 1 → `true`, 2 → `false`. Default: 2 → `false`.
+Interpret → `right_sizing`: 1 → `true`, 2 → `false`. **Default: not asked → omit `right_sizing`**
+(sizing follows Q-E0).
+
+**`cost_optimization` is the only field Design reads** (`size-from-utilization.py` `read_preferences`;
+the shared cost-appetite file says this question is superseded by Q-E0), so each answer writes
+through to it: **2 (no)** sets `design_constraints.cost_optimization` to `conservative`
+(`chosen_by: "user"`, `question_id: "Q-E2"`, `source: "user:Q-E2"`), overriding the Q-E0 sheet
+row — say so in the confirmation ("matching current capacity overrides the Balanced appetite");
+**1 (yes)** keeps the Q-E0 value unless it is `conservative`, in which case it becomes `balanced`
+the same way (a right-sizing opt-in with a like-for-like appetite is a contradiction, and
+`balanced` is the smallest step that lets the measured rule run). The script also treats an
+explicit `right_sizing: false` in an older `preferences.json` as `conservative`, so a "No" never
+produces a measured decision.
 
 | Answer | Recommendation Impact |
 | ------ | --------------------- |
 | 1 (yes) | Compute Engine and Cloud SQL are sized from 30 days of Cloud Monitoring data where the inventory carries `utilization` (`cost_optimization` sets the cap); name any resource with a known upcoming load change and the design will keep its declared size (`sizing_exemptions[]`, resolved as under Q-E0). Changes nothing when no utilization data was captured |
-| 2 (no) | Match current capacity: every resource keeps its like-for-like size (`sizing_provenance: "declared"`) |
+| 2 (no) | Match current capacity: writes `cost_optimization: conservative`, so every EC2 and RDS mapping keeps its like-for-like size (`sizing_provenance: "declared"`, `declared_reason: "conservative"`) |
 
 ## Gate 2 — The Essential Questions
 
@@ -391,7 +405,8 @@ it from file existence alone:
 
 If user opts in, present Q-E1, and Q-E2 **unless** the cost-optimization-appetite row
 already resolved to `aggressive` (then apply `right_sizing: true` without asking Q-E2).
-Otherwise, apply Category E defaults (`ha_upgrade: false`, `right_sizing: false`).
+Otherwise, apply the Category E default (`ha_upgrade: false`; `right_sizing` omitted — sizing
+follows the Q-E0 appetite row, default `balanced`).
 
 ## Answer Combination Triggers
 
@@ -744,7 +759,7 @@ skips, "use defaults for the rest", and the fast paths.
 | Q27 — Activate credits     | _(essential when Category H fires — ask in Gate 2; skip only via explicit answer or "use defaults for the rest")_ | `startup_program_status` per answer; skip → `"unknown"` with neutral downstream copy                                                                                                                 |
 | Q-E0 — Right-sizing appetite | B (balanced)                                                                                                    | `cost_optimization: "balanced"` — measured rule with a two-step cap where `utilization` exists; `sizing_exemptions` omitted                                                                 |
 | Q-E1 — HA upgrade          | 2 (no)                                                                                                            | `ha_upgrade: false`                                                                                                                                                                                  |
-| Q-E2 — Right-sizing        | 2 (no)                                                                                                            | `right_sizing: false`                                                                                                                                                                                |
+| Q-E2 — Right-sizing        | not asked                                                                                                            | `right_sizing` omitted; `cost_optimization` (Q-E0) governs                                                                                                                                                                                |
 
 ## Validation Checklist
 

@@ -15,8 +15,8 @@
     "rule": "(reserved_vcpu or declared_vcpu) × cpu.p95 <= target_vcpu × baseline_cpu_fraction",
     "_why": "cpu.p95 is a fraction of the SOURCE machine's CPU and baseline_cpu_fraction a fraction of the TARGET's; never compare them directly. Convert both to vCPU of load. n2-standard-8 at p95 0.12 is 0.96 vCPU; t4g.large's baseline is 2 × 0.30 = 0.60 vCPU (fails), t4g.xlarge's is 4 × 0.40 = 1.6 (passes). A burstable target below its baseline throttles, and the throttle looks like an application fault."
   },
-  "rds_proxy": { "connections_over_limit": true, "cpu_p95_max": 0.5 },
-  "_rds_proxy_why": "Add RDS Proxy only when connections.p95 exceeds the chosen class's max_connections (instance-catalog.json formula) AND cpu.p95 is at or below 0.50. A busy database with many connections needs a larger class, not a proxy in front of a saturated one.",
+  "rds_proxy": { "connections_over_limit": true, "cpu_p95_max": 0.5, "near_limit_fraction": 0.9 },
+  "_rds_proxy_why": "Add RDS Proxy only when connections.p95 exceeds the chosen class's max_connections (instance-catalog.json formula on DBInstanceClassMemory) AND cpu.p95 is at or below 0.50. A busy database with many connections needs a larger class, not a proxy in front of a saturated one. connections.p95 at or above near_limit_fraction × max_connections (and not over) is a warning: the limit is modeled from a fit, so confirm it on the instance or add RDS Proxy.",
   "memory_saturated_p95_min": 0.9,
   "_memory_saturated_why": "Cloud SQL memory utilization counts page cache; a 0.6 GB db-f1-micro reads 0.99–1.0 all month. At or above 0.90 the class stays like-for-like with sizing_note memory_saturated: the declared class is the floor, not evidence of need, and × 1.3 headroom must not upsize it.",
   "storage": { "bytes_used_factor": 1.5, "gp3_iops": 3000, "gp3_throughput_mbps": 125, "round_up_gib": 10 },
