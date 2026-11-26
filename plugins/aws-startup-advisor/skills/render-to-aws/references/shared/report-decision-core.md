@@ -70,22 +70,9 @@ only when rendered.
 
 **Deferred AI flag:** when `estimation-infra.json` → `ai_track.status` (or the design's AI track) is `deferred_shared_ai_engine`, add a callout under the verdict stating that the AI workload is assessed separately by `bedrock-migration-assessment` and carries no target, cost, model, adapter, or Terraform in this report. This does **not** block the phased migration of the infrastructure.
 
-**Startup credits callout (decision summary / verdict):**
-
-| `startup_program_status.value` | Verdict / metric copy                                                                                                                                                                                                                                |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `eligible_founders`            | May state "Eligible for up to $5K AWS Activate Founders credits" and link `STARTUP_PROGRAMS.md`                                                                                                                                                      |
-| `eligible_portfolio`           | May state Portfolio credits (up to $200K) and Org ID requirement                                                                                                                                                                                     |
-| `has_credits`                  | Note existing credits; no "apply for" language                                                                                                                                                                                                       |
-| `unknown`                      | **Neutral only:** e.g. "Review AWS Activate tiers in `STARTUP_PROGRAMS.md` — funding stage not confirmed in Clarify." **Do not** write "Eligible Founders tier", "your status: eligible_*", or dollar amounts tied to a specific tier in the verdict |
-
-**Sidebar callout box:** Show the 💡 Activate callout when `startup_program_status.value` is **not** `unknown`, **or** when `unknown` but you use the neutral wording above (optional). When `unknown`, do **not** imply a confirmed tier. **The Activate item is ALWAYS this callout, never a metric card** — it is a call-to-action with a link, not a measurement, and rendering it in the metric grid gives it false equivalence with the run-rate and timeline figures. The clickable apply link goes inside the callout. When `preferences.json` carries no `startup_program_status`, omit the callout.
+**Startup credits:** this skill collects no `startup_program_status` in Clarify and writes no `STARTUP_PROGRAMS.md`, so the report renders no AWS Activate callout and makes no credits claim.
 
 **Metric hierarchy (when the decision summary renders a metric grid):** the reader should not have to rank the numbers themselves. The one or two **primary** decision metrics — the Balanced AWS run rate, and the migration shape (approach + binding driver, e.g. "Phased · long pole: PostgreSQL cutover") — render first with `.metric-hero` treatment (larger value, accent border). Supporting metrics (Optimized scenario, savings) follow as standard cards, max ~5 total. Never render a week count or effort-hours as a metric card.
-
-Do **not** infer Activate tier from `current_costs.render_monthly` in the report or in `estimation-infra.json` ROI bullets.
-
-**Apply link (required):** Whenever the report or `STARTUP_PROGRAMS.md` mentions AWS Activate credits, include at least one clickable link to the official apply page: `<a href="https://aws.amazon.com/startups/credits/">AWS Activate credits</a>` (HTML report) or `[AWS Activate credits](https://aws.amazon.com/startups/credits/)` (Markdown). Place it in the decision-summary verdict, a callout, and/or the Next steps ordered list — not only in the appendix artifact catalog.
 
 Source: `estimation-infra.json` (`recommendation`, `complexity_tier`, `accuracy_confidence`, `ai_track`), `preferences.json`, `aws-design.json`
 

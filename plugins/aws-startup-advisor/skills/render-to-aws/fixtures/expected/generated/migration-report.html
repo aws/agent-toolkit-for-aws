@@ -27,6 +27,8 @@
     .callout { padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.92rem; }
     .callout-warn { background: #fff8c5; border: 1px solid #d4a72c; }
     .callout-info { background: #ddf4ff; border: 1px solid #54aeff; }
+    .reading-guide { margin: 0.4rem 0; font-size: 0.82rem; color: #656d76; }
+    .reading-guide summary { cursor: pointer; color: #0969da; }
     .warning { background: #fff8c5; border: 1px solid #d4a72c; border-left: 4px solid var(--amber); border-radius: 6px; padding: 0.75rem 1rem; }
     table { width: 100%; border-collapse: collapse; margin: 0.75rem 0 1.25rem; background: #fff; font-size: 0.88rem; }
     caption { text-align: left; font-size: 0.8rem; color: #656d76; padding: 0.25rem 0; caption-side: top; font-style: italic; }
@@ -132,11 +134,6 @@
         <strong>AI track deferred:</strong> the infrastructure migration can proceed now, but AI model, adapter, cost estimate, and
         generation remain deferred and resume from the preserved provider-neutral profile. No AI target, model, or cost appears in
         this report. <strong>This does not block</strong> the phased migration of the web, worker, cron, data, storage, and Workflow surfaces.
-      </div>
-      <div class="callout callout-info">
-        <strong>How to read cost tiers:</strong> Premium, Balanced, and Optimized are <em>pricing scenarios</em> for the same mapped
-        architecture, not three Terraform stacks. Balanced is the capacity-preserving scenario and the generated <code>terraform/</code>
-        implements it; Optimized is the right-sized scenario that measured utilization supports. No tier is a floor: every line is priced.
       </div>
       <h3>Key decisions ahead</h3>
       <ol class="compact">
@@ -307,6 +304,13 @@
           </tr>
         </tbody>
       </table>
+      <details class="reading-guide">
+        <summary>How to read the tiers</summary>
+        <p>Premium, Balanced, and Optimized are estimated monthly costs for the <em>same</em> mapped architecture, ordered highest to
+        lowest, not three Terraform stacks. Balanced is the primary figure and the capacity-preserving scenario the generated
+        Terraform implements; Premium and Optimized are bounds. Optimized is the right-sized scenario that measured utilization
+        supports. No tier is a floor: every line is priced.</p>
+      </details>
       <p>Human labor is excluded: the estimate records no migration labor cost, and these figures cover AWS service charges only.
          Pricing provenance: AWS rates use the reviewed us-east-1 cache for ECS, RDS, ElastiCache, Lambda, and EFS; CloudWatch is
          estimated; the Render baseline is user stated.</p>
