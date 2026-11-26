@@ -24,8 +24,7 @@ Read from `$MIGRATION_DIR/`: `aws-design.json` (`clusters[]` with `pattern_statu
 `azure-resource-inventory.json` (drift + reservation signals), `preferences.json`,
 and `scenarios/index.json` if it exists (workshop what-ifs).
 
-**Load `references/shared/report-decision-core.md` and render it in `full` mode.** That file is
-the single source of truth for every executive-summary section (Decision Summary through "What
+**Load `references/shared/report-decision-core.md` and render it in `full` mode.** That file loads the vendored canonical core (`references/vendored/report/report-decision-core.md`) first and then supplies this skill's parameters and add-ons; together they are the single source of truth for every executive-summary section (Decision Summary through "What
 this assessment rests on") — verdict typography, the required section IDs, baseline-quality and
 not-comparable rules, Activate wording, and the CSS readability contract all live there. Do not
 restate or paraphrase its rules here.

@@ -30,8 +30,7 @@ Read from `$MIGRATION_DIR/`: `aws-design.json` (`mappings[]` with `source_resour
 (resource kinds), the generated ledger from the infra and docs fragments, and the generated
 pack itself (`terraform/`, `scripts/`, `MIGRATION_GUIDE.md`, `README.md`).
 
-**Load `references/shared/report-decision-core.md` and render it in full mode.** That file is
-the single source of truth for every executive-summary section (Decision Summary through "What
+**Load `references/shared/report-decision-core.md` and render it in full mode.** That file loads the vendored canonical core (`references/vendored/report/report-decision-core.md`) first and then supplies this skill's parameters and add-ons; together they are the single source of truth for every executive-summary section (Decision Summary through "What
 this assessment rests on"), the render-specific required sections, the readability contract,
 and the exclusion list. Do not restate or paraphrase its rules here. If that file is missing,
 emit `GATE_FAIL | phase=generate | fragment=artifacts-report | reason=renderer_missing` and

@@ -81,6 +81,23 @@ def test_each_skill_layer_names_its_current_monthly_path(skill):
     assert VENDORED_POINTER in text, f"{skill} layer does not load {VENDORED_POINTER}"
 
 
+PARAMETER = re.compile(r"⟨[a-z_]+⟩")
+
+
+@pytest.mark.parametrize("skill", sorted(SKILLS))
+def test_each_skill_layer_supplies_every_canonical_parameter(skill):
+    """Every `⟨parameter⟩` the canonical writes must appear in the layer (as a value,
+    `n/a`, or a declared omission) — a parameter added to the canonical without a value
+    in some layer is exactly the drift this file exists to catch."""
+    canonical_params = set(PARAMETER.findall(_read(CANONICAL)))
+    assert canonical_params, "canonical declares no ⟨parameter⟩ placeholders"
+    layer_params = set(PARAMETER.findall(_read(_layer(skill))))
+    missing = sorted(canonical_params - layer_params)
+    assert not missing, f"{skill} layer does not supply: {missing}"
+    unknown = sorted(layer_params - canonical_params)
+    assert not unknown, f"{skill} layer supplies parameters the canonical never uses: {unknown}"
+
+
 def test_no_bare_week_range_in_canonical_or_layers():
     module = _load()
     week_patterns = [p for p, label in module.READABILITY_PATTERNS if "bare week-range" in label]

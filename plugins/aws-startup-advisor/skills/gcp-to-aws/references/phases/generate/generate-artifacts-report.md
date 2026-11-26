@@ -67,7 +67,7 @@ Gather data from all available artifacts. Each section below notes which artifac
 
 ## Step 1: Build Executive Summary Section
 
-**Load `references/shared/report-decision-core.md` and render it in `full` mode.** That file is the single source of truth for every executive-summary section (Decision Summary through "What this assessment rests on") — verdict typography, baseline-quality/not-comparable rules, Activate wording, and readability conventions all live there. Do not restate or paraphrase its rules here.
+**Load `references/shared/report-decision-core.md` and render it in `full` mode.** That file loads the vendored canonical core (`references/vendored/report/report-decision-core.md`) first and then supplies this skill's parameters and add-ons; together they are the single source of truth for every executive-summary section (Decision Summary through "What this assessment rests on") — verdict typography, baseline-quality/not-comparable rules, Activate wording, and readability conventions all live there. Do not restate or paraphrase its rules here.
 
 Full-mode notes:
 
