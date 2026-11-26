@@ -1,48 +1,650 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Render to AWS migration report</title>
-  <style>body{font:16px/1.55 system-ui,sans-serif;max-width:76rem;margin:auto;padding:2rem;color:#18212f}table{border-collapse:collapse;width:100%}th,td{border:1px solid #8993a4;padding:.5rem;text-align:left}th{background:#eef2f7}.warning{border-left:.35rem solid #9c5b00;padding:.75rem}code{overflow-wrap:anywhere}</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Render to AWS Migration Assessment — representative Blueprint estate</title>
+  <style>
+    :root {
+      --green: #1a7f37; --blue: #0969da; --amber: #bf8700; --red: #cf222e;
+      --bg: #f6f8fa; --text: #1f2328; --border: #d0d7de; --aws: #232f3e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      margin: 0; background: var(--bg); color: var(--text); line-height: 1.55; font-size: 15px;
+    }
+    .container { max-width: 1040px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+    h1 { font-size: 1.85rem; margin-bottom: 0.25rem; border-bottom: 3px solid #ff9900; padding-bottom: 0.5rem; }
+    h2 { font-size: 1.3rem; margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 0.45rem; }
+    h3 { font-size: 1.05rem; margin-top: 1.25rem; color: #424a53; }
+    .subtitle { color: #656d76; margin-bottom: 1rem; }
+    .badge { display: inline-block; padding: 0.2rem 0.65rem; border-radius: 2rem; font-weight: 600; font-size: 0.8rem; color: #fff; margin-right: 0.35rem; }
+    .badge-draft { background: #656d76; }
+    .verdict-headline { font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; margin: 0.5rem 0 0.1rem; border-bottom: 3px solid #0d7377; display: inline-block; padding-bottom: 0.15rem; }
+    .verdict-meta { color: #57606a; font-size: 0.92rem; margin: 0.2rem 0 0.6rem; }
+    .verdict { background: #dafbe1; border: 1px solid #4ac26b; border-left: 4px solid var(--green); border-radius: 6px; padding: 0.85rem 1rem; margin: 1rem 0; font-size: 1rem; }
+    .callout { padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.92rem; }
+    .callout-warn { background: #fff8c5; border: 1px solid #d4a72c; }
+    .callout-info { background: #ddf4ff; border: 1px solid #54aeff; }
+    .warning { background: #fff8c5; border: 1px solid #d4a72c; border-left: 4px solid var(--amber); border-radius: 6px; padding: 0.75rem 1rem; }
+    table { width: 100%; border-collapse: collapse; margin: 0.75rem 0 1.25rem; background: #fff; font-size: 0.88rem; }
+    caption { text-align: left; font-size: 0.8rem; color: #656d76; padding: 0.25rem 0; caption-side: top; font-style: italic; }
+    th, td { border: 1px solid var(--border); padding: 0.45rem 0.65rem; text-align: left; vertical-align: top; }
+    th { background: #f6f8fa; font-weight: 600; }
+    tr:nth-child(even) td { background: #fafbfc; }
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.85rem; margin: 1rem 0; }
+    .metric { background: #fff; border: 1px solid var(--border); border-radius: 6px; padding: 0.85rem 1rem; }
+    .metric strong { display: block; font-size: 1.45rem; line-height: 1.2; }
+    .metric span { font-size: 0.78rem; color: #656d76; text-transform: uppercase; letter-spacing: 0.02em; }
+    .metric small { display: block; color: #656d76; font-size: 0.78rem; margin-top: 0.2rem; }
+    .metric-hero { border: 2px solid #0d7377; }
+    .metric-hero strong { font-size: 1.9rem; }
+    .chip-warn { display: inline-block; background: #fff8c5; color: #7d4e00; border: 1px solid #d4a72c; border-radius: 10px; padding: 1px 8px; font-size: 0.72rem; font-weight: 600; text-transform: none; letter-spacing: 0; }
+    .share-card { background: #f1f8ff; border: 1px solid #54aeff; border-left: 4px solid var(--blue); border-radius: 6px; padding: 0.9rem 1rem; font-size: 0.95rem; }
+    .savings { color: var(--green); font-weight: 600; }
+    .increase { color: var(--red); font-weight: 600; }
+    section { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 1.35rem 1.5rem; margin-bottom: 1.25rem; }
+    .appendix-header { background: var(--aws); color: #fff; border: none; padding: 1rem 1.5rem; border-radius: 8px; margin: 2.5rem 0 1.25rem; }
+    .appendix-header h2 { color: #fff; border: none; margin: 0; }
+    .appendix-header p { margin: 0.35rem 0 0; opacity: 0.85; font-size: 0.9rem; }
+    ul.compact { margin: 0.4rem 0; padding-left: 1.25rem; }
+    ul.compact li, ol.compact li { margin: 0.25rem 0; }
+    .toc { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.5rem; margin-bottom: 1.25rem; }
+    .toc ol { margin: 0.5rem 0 0; padding-left: 1.25rem; columns: 2; column-gap: 2rem; }
+    .toc ul.toc-appendix { list-style: none; margin: 0.5rem 0 0; padding-left: 0; columns: 2; column-gap: 2rem; }
+    .toc li { margin: 0.2rem 0; font-size: 0.9rem; }
+    .toc a { color: var(--blue); text-decoration: none; }
+    .toc a:hover { text-decoration: underline; }
+    a:focus-visible, summary:focus-visible { outline: 3px solid #54aeff; outline-offset: 2px; border-radius: 2px; }
+    .toc .toc-group { font-weight: 600; margin-top: 0.75rem; font-size: 0.85rem; color: #656d76; text-transform: uppercase; letter-spacing: 0.02em; }
+    .toplink { float: right; font-size: 0.75rem; font-weight: 400; color: var(--blue); text-decoration: none; }
+    .tier-sub { font-size: 0.78rem; color: #656d76; font-style: italic; display: block; margin-top: 0.15rem; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.82rem; }
+    code { overflow-wrap: anywhere; }
+    .glossary-table th:first-child, .glossary-table td:first-child { width: 27%; background: #f6f8fa; }
+    .glossary-table td:first-child { color: var(--aws); font-weight: 600; }
+    footer { text-align: center; color: #656d76; font-size: 0.8rem; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+    @media (max-width: 700px) {
+      .container { padding: 1rem 0.75rem 2rem; }
+      section { padding: 1rem; }
+      .metrics { grid-template-columns: 1fr; }
+      .toc ol, .toc ul.toc-appendix { columns: 1; }
+      table { display: block; overflow-x: auto; }
+    }
+    @media print {
+      body { background: #fff; }
+      .container { max-width: none; padding: 0; }
+      .metric, .callout, tr { break-inside: avoid; }
+      .appendix-header { break-before: page; }
+      .toplink { display: none; }
+    }
+  </style>
 </head>
 <body>
-<header><h1>Render to AWS migration decision and execution pack</h1><p>This draft assessment describes the selected infrastructure migration and its validation limits.</p></header>
-<nav class="toc" aria-label="Table of contents"><h2>Contents</h2><ol>
-<li><a href="#decision-summary">Decision summary</a></li><li><a href="#architecture">Architecture</a></li><li><a href="#exec-targets">Selected targets</a></li><li><a href="#exec-costs">Costs</a></li><li><a href="#migration-data">Data migration</a></li><li><a href="#migration-storage">Storage migration</a></li><li><a href="#migration-deployment">Deployment migration</a></li><li><a href="#cutover">Cutover</a></li><li><a href="#rollback">Rollback</a></li><li><a href="#verification">Verification</a></li><li><a href="#deferred-surfaces">Deferred surfaces</a></li><li><a href="#appendix-accounting">Accounting</a></li><li><a href="#appendix-artifacts">Artifacts</a></li><li><a href="#appendix-assumptions">Assumptions</a></li>
-</ol></nav>
-<main>
-<section id="decision-summary"><h2>Decision summary</h2><p>Proceed in phases with the selected managed AWS targets. Current Render spend is <strong>$123.45 monthly</strong>; the capacity-preserving AWS total is <strong>$358.5 monthly</strong> and the right-sized total is <strong>$296.5 monthly</strong>. EFS is priced at the 5 GB Blueprint disk size.</p></section>
-<section id="architecture"><h2>Architecture</h2><p>The design uses build-once immutable promotion through ECR, managed PostgreSQL and Valkey, Fargate for direct task control, a private service-discovery path with no public load balancer, and CloudFront for static content. Project and environment boundaries become tagged, isolated network and deployment stacks.</p><p>Fargate deployment mode per service: rr-web is standard with a hand-built ALB (custom_domain_alb) and its default canary release becomes a rolling update; rr-private is standard (private_discovery); rr-worker is standard (no_http_listener); rr-cron is standard (no_http_listener). No service uses ECS Express Mode.</p></section>
-<section id="exec-targets"><h2>Selected targets</h2><table><caption>Exactly one selected AWS target for every designed Render resource</caption><thead><tr><th scope="col">Source kind</th><th scope="col">Selected AWS target</th><th scope="col">Generation outcome</th></tr></thead><tbody>
-<tr data-source-resource-id="rr-build" data-aws-service="Amazon ECR + CI/CD immutable digest promotion"><td>Build Source</td><td>Amazon ECR + CI/CD immutable digest promotion</td><td>Generated</td></tr>
-<tr data-source-resource-id="rr-cron" data-aws-service="Amazon EventBridge Scheduler + ECS on Fargate RunTask"><td>Cron job</td><td>Amazon EventBridge Scheduler + ECS on Fargate RunTask</td><td>Generated</td></tr>
-<tr data-source-resource-id="rr-db" data-aws-service="Amazon RDS for PostgreSQL"><td>PostgreSQL</td><td>Amazon RDS for PostgreSQL</td><td>Generated</td></tr>
-<tr data-source-resource-id="rr-disk" data-aws-service="Amazon EFS"><td>Persistent disk</td><td>Amazon EFS</td><td>Generated</td></tr>
-<tr data-source-resource-id="rr-domain" data-aws-service="AWS Certificate Manager + external DNS"><td>Custom domain</td><td>AWS Certificate Manager + external DNS</td><td>Generated</td></tr>
-<tr data-source-resource-id="rr-env" data-aws-service="AWS deployment environment stack"><td>Environment</td><td>AWS deployment environment stack</td><td>Consumed topology</td></tr>
-<tr data-source-resource-id="rr-env-group" data-aws-service="AWS Secrets Manager + AWS Systems Manager Parameter Store"><td>Environment group</td><td>AWS Secrets Manager + AWS Systems Manager Parameter Store</td><td>Generated</td></tr>
-<tr data-source-resource-id="rr-kv" data-aws-service="Amazon ElastiCache for Valkey node-based"><td>Key Value</td><td>Amazon ElastiCache for Valkey node-based</td><td>Generated</td></tr>
-<tr data-source-resource-id="rr-private" data-aws-service="ECS on Fargate"><td>Private service</td><td>ECS on Fargate</td><td>Generated</td></tr>
-<tr data-source-resource-id="rr-project" data-aws-service="AWS account and VPC environment strategy"><td>Project</td><td>AWS account and VPC environment strategy</td><td>Consumed topology</td></tr>
-<tr data-source-resource-id="rr-static" data-aws-service="Amazon S3 + Amazon CloudFront"><td>Static site</td><td>Amazon S3 + Amazon CloudFront</td><td>Generated</td></tr>
-<tr data-source-resource-id="rr-web" data-aws-service="ECS on Fargate"><td>Web service</td><td>ECS on Fargate</td><td>Generated</td></tr>
-<tr data-source-resource-id="rr-worker" data-aws-service="ECS on Fargate service"><td>Background worker</td><td>ECS on Fargate service</td><td>Generated</td></tr>
-<tr data-source-resource-id="rr-workflow" data-aws-service="AWS Step Functions Standard"><td>Workflow</td><td>AWS Step Functions Standard</td><td>Generated</td></tr>
-<tr data-source-resource-id="rr-workflow-task" data-aws-service="AWS Lambda"><td>Workflow task</td><td>AWS Lambda</td><td>Generated</td></tr>
-</tbody></table></section>
-<section id="exec-costs"><h2>Costs</h2><table><caption>Monthly known-cost comparison in USD</caption><thead><tr><th scope="col">Measure</th><th scope="col">Amount</th></tr></thead><tbody><tr><th scope="row">Current Render</th><td data-cost-key="current_render">$123.45</td></tr><tr><th scope="row">Capacity-preserving AWS total</th><td data-cost-key="capacity_preserving">$358.5</td></tr><tr><th scope="row">Right-sized AWS total</th><td data-cost-key="right_sized">$296.5</td></tr><tr><th scope="row">Right-sized delta</th><td data-cost-key="delta">$-62</td></tr></tbody></table><p>Human labor is excluded.</p></section>
-<section id="migration-data"><h2>Data migration</h2><p>Verify PostgreSQL version, extensions, source privileges, and connectivity before selecting AWS Database Migration Service for full load and CDC. Monitor lag, perform writer quiescence, apply the final delta, run row-count and checksum integrity checks, then switch connections. Validate Valkey persistence and eviction semantics without capturing values. Keep explicit source retention until sign-off.</p></section>
-<section id="migration-storage"><h2>Storage migration</h2><p>Create the encrypted EFS access point for <code>/var/data</code>; verify ownership, permissions, locking, latency, and capacity. Run a pre-copy, then writer quiescence and a final delta. Compare the integrity manifest before remounting. Retain the source disk for rollback.</p></section>
-<section id="migration-deployment"><h2>Deployment migration</h2><p>Build once and push one immutable ECR digest, then promote that digest without rebuilding. Record the serving deploy identity separately from the newest deploy, preserve auto-deploy state, and retain rollback lineage before shifting any environment.</p></section>
-<section id="cutover"><h2>Cutover</h2><p>Confirm prerequisites and certificate readiness, lower external DNS TTL in advance, freeze releases, establish writer quiescence, apply the final data deltas, shift traffic gradually, and hold the maintenance window until acceptance checks pass.</p></section>
-<section id="rollback"><h2>Rollback</h2><p>Use error rate, integrity, and lag as rollback triggers. Fence target writers before restoring the retained Render source writer, restore DNS and traffic, preserve target evidence, and honor the source retention window. Never allow two PostgreSQL primaries.</p></section>
-<section id="verification"><h2>Verification</h2><p>Check public and static endpoint responses, private endpoint reachability, database read/write and counts, cache eviction behavior, disk ownership and locking, worker drain/idempotency, cron overlap/retry behavior, image digest identity, and Workflow executions: declared retries and backoff, per-attempt timeout, task-token callback, retained logs, and alarms.</p></section>
-<section id="deferred-surfaces"><h2>Deferred surfaces</h2><p class="warning"><strong>deferred_shared_ai_engine:</strong> infrastructure can proceed, but AI model, adapter, estimate, and generation remain deferred and resume from the provider-neutral profile.</p></section>
-<section id="appendix-accounting" data-accounted-count="15"><h2>Accounting</h2><p>Fifteen design rows are accounted: thirteen generated, two consumed as topology, zero deferred mappings, and zero unsupported rows. No source row disappeared.</p></section>
-<section id="appendix-artifacts"><h2>Artifacts</h2><p>The pack contains Terraform, the migration guide, image/database/disk scripts, generation warnings, this report, and the independent validation report.</p></section>
-<section id="appendix-assumptions"><h2>Assumptions and limitations</h2><p>AWS pricing is a reviewed cache basis. Workflow Terraform covers only the semantics proven by the generation contract tests: task order, per-task retry with backoff, per-attempt timeout, task-token callback, and retained logging and alarms. Render execution parity is not claimed, and the Lambda package, runtime, handler, and memory are supplied by the owner. Apply is prohibited until provider-backed Terraform validation, source connectivity, migration rehearsal, and owner approval complete.</p></section>
-</main>
-<footer><p>Generated as a draft for review from the migration design. Validate architecture, estimates, procedures, and owners before making deployment decisions.</p></footer>
+  <div class="container">
+    <h1>Render to AWS Migration Assessment</h1>
+    <p class="subtitle">
+      Comprehensive report — Generated 2026-10-21<br />
+      Target region: <strong>us-east-1</strong> &nbsp;|&nbsp;
+      Source: Render Blueprint, 15 resources in one project with one production environment &nbsp;|&nbsp;
+      <span class="badge badge-draft">Golden fixture — synthetic estate</span>
+    </p>
+    <!-- EXECUTIVE SUMMARY -->
+    <section id="decision-summary">
+      <h2>Migration Decision Summary <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p class="verdict-headline">Go, in phases</p>
+      <p class="verdict-meta">Execution shape: Phased Migration &middot; Complexity: Large (15 design rows: 13 generated, 2 consumed as topology, none deferred or unsupported)</p>
+      <p class="verdict-meta">Confidence: Medium — full basis in <a href="#exec-assumptions">What This Assessment Rests On</a>.</p>
+      <div class="verdict">
+        <strong>Recommendation:</strong> Migrate in phases: every one of the 15 Render resources has a selected AWS target with
+        generated or consumed Terraform, the capacity-preserving AWS estimate is $358 per month with every line priced, and the one
+        condition is confirming EFS provisioned capacity before the persistent-disk cutover.
+      </div>
+      <div class="metrics">
+        <div class="metric metric-hero">
+          <span>Est. AWS monthly run rate (Balanced)</span>
+          <strong>$358</strong>
+          <small>Capacity-preserving scenario; 15 of 15 lines priced, no floor</small>
+        </div>
+        <div class="metric metric-hero">
+          <span>Migration shape</span>
+          <strong>Phased</strong>
+          <small>Long pole: PostgreSQL change-data-capture cutover inside the under-15-minute downtime answer</small>
+        </div>
+        <div class="metric">
+          <span>Current Render spend <span class="chip-warn">&#9888; not comparable</span></span>
+          <strong>$123</strong>
+          <small>Your stated figure (unverified), not an invoice read. The AWS scenarios add Multi-AZ PostgreSQL, a dedicated cache node, and 30-day log retention that the stated figure may not cover; do not read a savings figure from this pair.</small>
+        </div>
+        <div class="metric">
+          <span>Estate</span>
+          <strong>15 &rarr; 15</strong>
+          <small>15 discovered &middot; 15 design rows &middot; 13 generated + 2 consumed as topology</small>
+        </div>
+      </div>
+      <h3>Migrate if</h3>
+      <ul class="compact">
+        <li>Confirm EFS provisioned capacity: the disk line is priced at the 5 GB Blueprint size, and a larger real footprint changes the storage line and the pre-copy window</li>
+      </ul>
+      <p><strong>Stay entirely if:</strong> none — the estimate records no whole-stack reason to stay on Render.</p>
+      <div class="callout callout-warn">
+        <strong>AI track deferred:</strong> the infrastructure migration can proceed now, but AI model, adapter, cost estimate, and
+        generation remain deferred and resume from the preserved provider-neutral profile. No AI target, model, or cost appears in
+        this report. <strong>This does not block</strong> the phased migration of the web, worker, cron, data, storage, and Workflow surfaces.
+      </div>
+      <div class="callout callout-info">
+        <strong>How to read cost tiers:</strong> Premium, Balanced, and Optimized are <em>pricing scenarios</em> for the same mapped
+        architecture, not three Terraform stacks. Balanced is the capacity-preserving scenario and the generated <code>terraform/</code>
+        implements it; Optimized is the right-sized scenario that measured utilization supports. No tier is a floor: every line is priced.
+      </div>
+      <h3>Key decisions ahead</h3>
+      <ol class="compact">
+        <li>EFS capacity: keep the 5 GB Blueprint size as priced, or supply the measured disk footprint before the storage cutover</li>
+        <li>Release strategy for the public web service: the custom domain selects standard ECS, so the defaulted canary becomes a rolling update unless you accept Express Mode constraints</li>
+        <li>Source retention: the defaulted 14-day Render overlap sets the rollback window and the double-run cost period</li>
+        <li>Right-sizing: adopt the Optimized scenario after the measured utilization is confirmed in production, or stay on Balanced</li>
+      </ol>
+      <h3>Next steps</h3>
+      <ol class="compact">
+        <li>Confirm EFS provisioned capacity and the real disk footprint against the 5 GB Blueprint value</li>
+        <li>Request the public certificate in ACM and create its DNS validation records at the external DNS provider</li>
+        <li>Rehearse the PostgreSQL full load and change-data-capture in an isolated target before any writer cutover</li>
+        <li>Review the migrate-if condition and the rolling-release change with stakeholders, then schedule the phased cutover in stage order</li>
+      </ol>
+    </section>
+    <nav class="toc" id="toc" aria-label="Table of contents">
+      <strong>Contents</strong>
+      <div class="toc-group">Executive summary</div>
+      <ol>
+        <li><a href="#decision-summary">Migration Decision Summary</a></li>
+        <li><a href="#exec-share">Share With Your CFO</a></li>
+        <li><a href="#exec-services">Current Stack Overview</a></li>
+        <li><a href="#exec-architecture">Architecture Overview</a></li>
+        <li><a href="#exec-targets">Selected Targets</a></li>
+        <li><a href="#exec-costs">Infrastructure Cost Comparison</a></li>
+        <li><a href="#exec-timeline">Migration Shape</a></li>
+        <li><a href="#exec-risks">Top Risks</a></li>
+        <li><a href="#exec-assumptions">What This Assessment Rests On</a></li>
+      </ol>
+      <div class="toc-group">Migration execution</div>
+      <ol>
+        <li><a href="#migration-data">Data Migration</a></li>
+        <li><a href="#migration-storage">Storage Migration</a></li>
+        <li><a href="#migration-deployment">Deployment Migration</a></li>
+        <li><a href="#cutover">Cutover</a></li>
+        <li><a href="#rollback">Rollback</a></li>
+        <li><a href="#verification">Verification</a></li>
+        <li><a href="#deferred-surfaces">Deferred Surfaces</a></li>
+      </ol>
+      <div class="toc-group">Appendices</div>
+      <ul class="toc-appendix">
+        <li><a href="#appendix-services">Appendix A — Service Recommendations</a></li>
+        <li><a href="#appendix-accounting">Appendix A.1 — Generation Accounting</a></li>
+        <li><a href="#appendix-costs">Appendix B — Cost Estimates</a></li>
+        <li><a href="#appendix-steps">Appendix C — Migration Steps and Rollback</a></li>
+        <li><a href="#appendix-artifacts">Appendix E — Generated Artifacts Catalog</a></li>
+        <li><a href="#appendix-assumptions">Appendix I — Assumptions, Exclusions, and Validation</a></li>
+        <li><a href="#appendix-glossary">Appendix J — Glossary</a></li>
+      </ul>
+    </nav>
+    <section id="exec-share">
+      <h2>Share With Your CFO <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>The one-paragraph version, ready to forward:</p>
+      <div class="share-card">
+        <p><strong>Render estate to AWS:</strong> Go, in phases. All 15 Render resources map to managed AWS targets, and the
+        capacity-preserving estimate comes to $358 per month with every line priced; the right-sized scenario lowers that to $296
+        once measured utilization is confirmed. The $123 per month we stated for Render is unverified and is not a like-for-like
+        comparison, because the AWS design adds Multi-AZ PostgreSQL, a dedicated cache node, and retained logs. The migration is
+        phased in dependency order; the PostgreSQL change-data-capture cutover is the binding duration driver. The AI workload is
+        deferred and does not block the infrastructure move. Confidence: medium.</p>
+      </div>
+    </section>
+    <!-- CURRENT STACK -->
+    <section id="exec-services">
+      <h2>Current Stack Overview <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>Discovery read <strong>15 resources</strong> from the Render Blueprint: one project with one production environment, four
+         compute services, two data stores, one persistent disk, one static site, one custom domain, one environment group, one Build
+         Source, and one Workflow with one task. Design mapped all 15: <strong>13</strong> receive generated Terraform or scripts and
+         <strong>2</strong> (the project and the environment) are consumed as account and network topology rather than becoming a
+         resource of their own.</p>
+      <ul class="compact">
+        <li>Web service (public, custom domain, 1 vCPU, 2 GB, two tasks) and a private service reached only through service discovery</li>
+        <li>Background worker (continuous queue consumer) and a cron job that runs for about 20 minutes</li>
+        <li>PostgreSQL (Multi-AZ requirement, pgcrypto extension, writer only, under-15-minute downtime tolerance)</li>
+        <li>Key Value store (stable 3 GB capacity, persistence off, empty-start migration)</li>
+        <li>Persistent disk mounted at <code>/var/data</code> with shared POSIX access</li>
+        <li>Static site served from a publish directory with no server process</li>
+        <li>Custom domain with externally owned DNS and TLS terminated by Render today</li>
+        <li>Environment group of shared configuration names (secret values are never captured)</li>
+        <li>Build Source feeding several environments from one immutable build</li>
+        <li>Workflow with auditable history and callbacks, plus one five-minute stateless Workflow task</li>
+        <li>Project and environment boundaries <em>(consumed as topology: account, VPC, and isolated deployment stack)</em></li>
+      </ul>
+    </section>
+    <!-- ARCHITECTURE -->
+    <section id="exec-architecture">
+      <h2>Architecture Overview <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>The design uses build-once immutable promotion through Amazon ECR, managed PostgreSQL on Amazon RDS and managed Valkey on
+         Amazon ElastiCache, ECS on Fargate for direct task control, a private service-discovery path with no public load balancer
+         for the private service, and Amazon S3 with CloudFront for the static site. Project and environment boundaries become
+         tagged, isolated network and deployment stacks inside one AWS account. Secrets and non-secret configuration move to AWS
+         Secrets Manager and Systems Manager Parameter Store without copying values.</p>
+      <p>Fargate deployment mode per service: rr-web is standard with a hand-built ALB (custom_domain_alb) and its default canary
+         release becomes a rolling update; rr-private is standard (private_discovery); rr-worker is standard (no_http_listener);
+         rr-cron is standard (no_http_listener). No service uses ECS Express Mode.</p>
+      <ul class="compact">
+        <li><strong>Delivery:</strong> GitHub Actions assumes an OIDC role, pushes one immutable digest to ECR, and promotes that digest to each environment tag without rebuilding</li>
+        <li><strong>Compute:</strong> four Fargate workloads (web, private, worker, and a scheduled RunTask for the cron job); the Workflow runs on Step Functions Standard with a Lambda task</li>
+        <li><strong>Data:</strong> Multi-AZ RDS for PostgreSQL migrated by AWS Database Migration Service; a node-based ElastiCache for Valkey cluster started empty</li>
+        <li><strong>Storage and edge:</strong> an encrypted EFS access point for <code>/var/data</code>; S3 behind CloudFront for static assets; an ACM certificate while DNS stays external</li>
+      </ul>
+    </section>
+    <!-- SELECTED TARGETS -->
+    <section id="exec-targets">
+      <h2>Selected Targets <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <table>
+        <caption>Exactly one selected AWS target for every designed Render resource, with its generation outcome.</caption>
+        <thead><tr><th scope="col">Render resource</th><th scope="col">Source kind</th><th scope="col">Selected AWS target</th><th scope="col">Generation outcome</th></tr></thead>
+        <tbody>
+          <tr data-source-resource-id="rr-build" data-aws-service="Amazon ECR + CI/CD immutable digest promotion"><td>rr-build</td><td>Build Source</td><td>Amazon ECR + CI/CD immutable digest promotion</td><td>Generated</td></tr>
+          <tr data-source-resource-id="rr-cron" data-aws-service="Amazon EventBridge Scheduler + ECS on Fargate RunTask"><td>rr-cron</td><td>Cron job</td><td>Amazon EventBridge Scheduler + ECS on Fargate RunTask</td><td>Generated</td></tr>
+          <tr data-source-resource-id="rr-db" data-aws-service="Amazon RDS for PostgreSQL"><td>rr-db</td><td>PostgreSQL</td><td>Amazon RDS for PostgreSQL</td><td>Generated</td></tr>
+          <tr data-source-resource-id="rr-disk" data-aws-service="Amazon EFS"><td>rr-disk</td><td>Persistent disk</td><td>Amazon EFS</td><td>Generated</td></tr>
+          <tr data-source-resource-id="rr-domain" data-aws-service="AWS Certificate Manager + external DNS"><td>rr-domain</td><td>Custom domain</td><td>AWS Certificate Manager + external DNS</td><td>Generated</td></tr>
+          <tr data-source-resource-id="rr-env" data-aws-service="AWS deployment environment stack"><td>rr-env</td><td>Environment</td><td>AWS deployment environment stack</td><td>Consumed topology</td></tr>
+          <tr data-source-resource-id="rr-env-group" data-aws-service="AWS Secrets Manager + AWS Systems Manager Parameter Store"><td>rr-env-group</td><td>Environment group</td><td>AWS Secrets Manager + AWS Systems Manager Parameter Store</td><td>Generated</td></tr>
+          <tr data-source-resource-id="rr-kv" data-aws-service="Amazon ElastiCache for Valkey node-based"><td>rr-kv</td><td>Key Value</td><td>Amazon ElastiCache for Valkey node-based</td><td>Generated</td></tr>
+          <tr data-source-resource-id="rr-private" data-aws-service="ECS on Fargate"><td>rr-private</td><td>Private service</td><td>ECS on Fargate</td><td>Generated</td></tr>
+          <tr data-source-resource-id="rr-project" data-aws-service="AWS account and VPC environment strategy"><td>rr-project</td><td>Project</td><td>AWS account and VPC environment strategy</td><td>Consumed topology</td></tr>
+          <tr data-source-resource-id="rr-static" data-aws-service="Amazon S3 + Amazon CloudFront"><td>rr-static</td><td>Static site</td><td>Amazon S3 + Amazon CloudFront</td><td>Generated</td></tr>
+          <tr data-source-resource-id="rr-web" data-aws-service="ECS on Fargate"><td>rr-web</td><td>Web service</td><td>ECS on Fargate</td><td>Generated</td></tr>
+          <tr data-source-resource-id="rr-worker" data-aws-service="ECS on Fargate service"><td>rr-worker</td><td>Background worker</td><td>ECS on Fargate service</td><td>Generated</td></tr>
+          <tr data-source-resource-id="rr-workflow" data-aws-service="AWS Step Functions Standard"><td>rr-workflow</td><td>Workflow</td><td>AWS Step Functions Standard</td><td>Generated</td></tr>
+          <tr data-source-resource-id="rr-workflow-task" data-aws-service="AWS Lambda"><td>rr-workflow-task</td><td>Workflow task</td><td>AWS Lambda</td><td>Generated</td></tr>
+        </tbody>
+      </table>
+    </section>
+    <!-- COST COMPARISON (canonical tier table) -->
+    <section id="exec-costs">
+      <h2>Infrastructure Cost Comparison <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>Three pricing scenarios for the same mapped architecture, next to the Render figure you stated. The generated
+         <code>terraform/</code> implements the <strong>Balanced</strong> scenario. The per-line breakdown is in Appendix B.</p>
+      <table>
+        <caption>Estimated monthly AWS infrastructure costs by pricing scenario, in USD, compared with the stated Render figure. Every line is priced; no total is a floor.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Measure</th>
+            <th scope="col">Monthly (USD)</th>
+            <th scope="col">vs Balanced</th>
+            <th scope="col">What it means, for this stack</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">Current Render spend<br><span class="tier-sub">Your stated figure (unverified)</span></th>
+            <td data-cost-key="current_monthly">$123</td>
+            <td>not comparable</td>
+            <td>Stated by you as of 2026-10-21, not read from an invoice or export. It may exclude add-ons or cover a different scope; the AWS scenarios add Multi-AZ PostgreSQL, a dedicated cache node, and 30-day log retention.</td>
+          </tr>
+          <tr>
+            <th scope="row">Premium<br><span class="tier-sub">Highest resilience / highest monthly estimate</span></th>
+            <td data-cost-key="aws_monthly_premium">$394</td>
+            <td class="increase">+$36</td>
+            <td>Highest-resilience pricing scenario from the estimate; the artifact carries the total only, not a per-line breakdown.</td>
+          </tr>
+          <tr>
+            <th scope="row"><strong>Balanced</strong><br><span class="tier-sub">Default scenario; Terraform implements this tier</span></th>
+            <td data-cost-key="aws_monthly_balanced">$358</td>
+            <td>— anchor</td>
+            <td>Capacity-preserving scenario; the generated Terraform baseline. Every Render size is carried like-for-like, including EFS at the 5 GB Blueprint disk size.</td>
+          </tr>
+          <tr>
+            <th scope="row">Optimized<br><span class="tier-sub">Measured utilization applied to eligible lines</span></th>
+            <td data-cost-key="aws_monthly_optimized">$296</td>
+            <td class="savings" data-cost-key="delta">-$62</td>
+            <td>Right-sized scenario. Measured rightsizing lowers nine lines (compute, database, cache, Workflow); build, disk, domain, environment, configuration, and static lines are unchanged.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>Human labor is excluded: the estimate records no migration labor cost, and these figures cover AWS service charges only.
+         Pricing provenance: AWS rates use the reviewed us-east-1 cache for ECS, RDS, ElastiCache, Lambda, and EFS; CloudWatch is
+         estimated; the Render baseline is user stated.</p>
+    </section>
+    <!-- MIGRATION SHAPE -->
+    <section id="exec-timeline">
+      <h2>Migration Shape <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <table>
+        <caption>Phased infrastructure migration in dependency order. Stage order and gates carry the schedule; the plugin quotes no durations.</caption>
+        <thead><tr><th scope="col">Order</th><th scope="col">Stage</th><th scope="col">Activities</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Prerequisites</td><td>AWS credentials and region; remote state bootstrap; target secrets populated without copying values; PostgreSQL version, extensions, replication privileges, and network paths confirmed; ACM certificate issued through external DNS validation; IAM Identity Center directory and the CI OIDC role</td></tr>
+          <tr><td>2</td><td>Build and deployment</td><td>GitHub Actions pushes one immutable digest to ECR; the promotion helper previews, then promotes that digest to the environment tag without rebuilding</td></tr>
+          <tr><td>3</td><td>PostgreSQL</td><td>Schema and full-load rehearsal in an isolated target; AWS Database Migration Service change-data-capture after the privilege preflight; lag monitored</td></tr>
+          <tr><td>4</td><td>Key Value</td><td>Command, persistence, and eviction checks; empty start, so no data copy; endpoint switch at cutover</td></tr>
+          <tr><td>5</td><td>Persistent disk</td><td>Encrypted EFS access point for <code>/var/data</code>; pre-copy, writer quiescence, final delta, checksum manifest, remount</td></tr>
+          <tr><td>6</td><td>Deployment and service cutover</td><td>Private service discovery verified first; worker drained; Render cron disabled before EventBridge Scheduler is enabled; Workflow callers switched to Step Functions; desired counts restored</td></tr>
+          <tr><td>7</td><td>DNS and traffic</td><td>External DNS TTL lowered 24 hours ahead; release freeze; writer quiescence and final deltas; a single planned switch inside the short maintenance window</td></tr>
+          <tr><td>8</td><td>Verification</td><td>Endpoint, database, cache, disk, worker, cron, image-digest, and Workflow checks; Render retained 14 days after cutover and until sign-off</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Duration drivers:</strong> the PostgreSQL change-data-capture rehearsal and the under-15-minute downtime answer
+         (binding), the EFS pre-copy and final-delta window for the real disk footprint, and ACM certificate issuance through the
+         external DNS provider. Stage order and go/no-go gates carry the schedule; the plugin quotes no week or hour estimates.</p>
+      <p><strong>Cutover strategy:</strong> short window, single planned switch with traffic stopped &nbsp;|&nbsp;
+         PostgreSQL: full load plus change-data-capture &nbsp;|&nbsp; Key Value: empty start &nbsp;|&nbsp;
+         <strong>Rollback:</strong> Render resources retained 14 days after cutover; DNS and traffic switch last</p>
+    </section>
+    <!-- RISKS -->
+    <section id="exec-risks">
+      <h2>Top Risks <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <table>
+        <caption>Highest-severity migration risks, likelihood, and mitigations.</caption>
+        <thead><tr><th scope="col">Risk</th><th scope="col">Impact</th><th scope="col">Likelihood</th><th scope="col">Mitigation</th></tr></thead>
+        <tbody>
+          <tr><td>EFS is priced and sized at the 5 GB Blueprint disk value; the real footprint may be larger</td><td>Medium</td><td>Medium</td><td>Confirm EFS provisioned capacity and the measured disk footprint before the storage pre-copy (the migrate-if condition)</td></tr>
+          <tr><td>Release behavior changes for the public web service: the custom domain selects standard ECS, so the defaulted canary release becomes a rolling update (ecs_express_not_selected_rolling_release)</td><td>Medium</td><td>Certain</td><td>Accept the rolling update, or redesign the public ingress for ECS Express Mode; verify health checks and deployment circuit breaker settings before cutover</td></tr>
+          <tr><td>AI workload is deferred: no AI model, adapter, estimate, or Terraform is in this pack</td><td>Medium</td><td>Certain</td><td>Resume the AI track from the preserved provider-neutral profile when the engine is available; keep the infrastructure cutover independent of it</td></tr>
+          <tr><td>Source retention was defaulted to 14 days, which sets both the rollback window and the double-run cost period</td><td>Medium</td><td>Medium</td><td>Confirm the retention window with the owners; keep Render running until verification and sign-off, never shorter than the agreed window</td></tr>
+          <tr><td>Key Value starts empty, so queued and session data is lost at cutover and rollback cannot merge divergent writes</td><td>Low</td><td>Certain</td><td>Drain queues and announce the session reset inside the maintenance window; document the no-merge rollback</td></tr>
+        </tbody>
+      </table>
+    </section>
+    <!-- WHAT THIS ASSESSMENT RESTS ON -->
+    <section id="exec-assumptions">
+      <h2>What This Assessment Rests On <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p><strong>Assumptions applied by default</strong> — settings proposed by the plugin that you did not change; each one shifts the plan as described:</p>
+      <table>
+        <caption>Clarify questions resolved by documented default rather than your answer or the Blueprint.</caption>
+        <thead>
+          <tr><th scope="col">Setting</th><th scope="col">Assumed value</th><th scope="col">What it decides</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Budget guardrail</td><td>No budget limit</td><td>Recommends no AWS Budgets alert</td></tr>
+          <tr><td>Source retention after cutover</td><td>Retain 14 days</td><td>Keeps Render running 14 days after cutover</td></tr>
+          <tr><td>Preview delivery policy</td><td>Shared staging</td><td>Selects one staging stack and rejects per-PR stacks</td></tr>
+          <tr><td>Human sign-in</td><td>New IAM Identity Center directory</td><td>Creates a new IAM Identity Center directory and re-invites the team</td></tr>
+          <tr><td>Log retention</td><td>30 days</td><td>Sets 30-day CloudWatch Logs retention</td></tr>
+          <tr><td>PostgreSQL target when both managed services fit</td><td>RDS (not Aurora)</td><td>Selects lower-change RDS when both managed targets fit</td></tr>
+          <tr><td>Release strategy for the web service</td><td>Canary</td><td>Keeps ECS Express Mode eligible; the custom domain still selects standard ECS, so the release becomes a rolling update</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Confidence:</strong> Medium. Measured: every Render size, count, and setting from the Blueprint and your Clarify
+         answers; right-sized lines for compute, database, cache, and Workflow carry measured utilization. Assumed: the EFS line at
+         the 5 GB Blueprint disk size, CloudWatch volume, and the Build Source and Workflow lines, which are estimated rather than
+         rate-card priced. Unknown: the real disk footprint and whether the stated $123 covers this whole estate.</p>
+      <p><strong>Pricing provenance:</strong> AWS rates use the reviewed us-east-1 cache; the Render baseline is user stated. EFS is
+         priced from the reviewed rate row at the Blueprint disk size (5 GB, Standard storage); no unpriced lines remain.</p>
+    </section>
+    <!-- MIGRATION EXECUTION -->
+    <section id="migration-data">
+      <h2>Data Migration <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>Verify PostgreSQL version, extensions (pgcrypto), source privileges, connection pooling, and connectivity before selecting
+         AWS Database Migration Service for full load and change-data-capture; the under-15-minute downtime tolerance rules out
+         dump-and-restore. Rehearse schema and full load in an isolated target, start change-data-capture only after the privilege
+         preflight passes, and monitor lag. At cutover, perform writer quiescence, apply the final delta, run row-count and checksum
+         integrity checks, then switch the application connection. Validate Valkey command, persistence, and eviction semantics
+         without capturing values; the Key Value store starts empty, so no data is copied. Keep explicit source retention until sign-off.</p>
+    </section>
+    <section id="migration-storage">
+      <h2>Storage Migration <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>Create the encrypted EFS access point for <code>/var/data</code>; verify ownership, permissions, locking, latency, file count,
+         and capacity against the real footprint, not only the 5 GB Blueprint value. Run a pre-copy, then writer quiescence and a
+         final delta. Compare the checksum integrity manifest before remounting the Fargate tasks. Retain the source disk for rollback.
+         Do not substitute EBS for Fargate.</p>
+    </section>
+    <section id="migration-deployment">
+      <h2>Deployment Migration <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>Build once in GitHub Actions and push one immutable ECR digest, then promote that digest to each environment tag without
+         rebuilding; deploy the digest reference, not the tag. Record the serving deploy identity separately from the newest deploy,
+         preserve auto-deploy state, and retain rollback lineage before shifting any environment. The private service, worker, cron
+         task, and Workflow task packages follow the same digest-first rule.</p>
+    </section>
+    <section id="cutover">
+      <h2>Cutover <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>Confirm prerequisites and certificate readiness (the ACM certificate must report Issued before the listener is applied),
+         lower external DNS TTL 24 hours in advance, freeze releases, establish writer quiescence, apply the final data deltas, verify
+         private service discovery, disable the Render cron before enabling EventBridge Scheduler, switch Workflow callers, then switch
+         traffic once inside the short planned maintenance window with traffic stopped. DNS remains external; nothing fabricates
+         Route 53 ownership. Hold the window until acceptance checks pass.</p>
+    </section>
+    <section id="rollback">
+      <h2>Rollback <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>Use error rate, integrity mismatch, unacceptable lag, and failed behavior checks as rollback triggers. Fence target writers
+         before restoring the retained Render source writer, restore DNS and traffic to Render, preserve target evidence, and honor
+         the source retention window of 14 days after cutover and until sign-off. Never allow two PostgreSQL primaries. Key Value
+         rollback cannot merge writes made on AWS.</p>
+    </section>
+    <section id="verification">
+      <h2>Verification <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>Check public and static endpoint responses, private endpoint reachability, database read/write and reconciled counts and
+         checksums, cache eviction and persistence behavior, disk ownership, permissions, locking, and integrity, worker
+         drain/retry/idempotency, cron overlap policy, and that the running image digest is the promoted ECR digest. Run Workflow
+         executions and confirm the declared retries with their backoff, the per-attempt timeout, the task-token callback completing
+         inside its wait, retained execution logs, and the three Workflow alarms pointing at an owned notification target.</p>
+    </section>
+    <section id="deferred-surfaces">
+      <h2>Deferred Surfaces <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p class="warning"><strong>deferred_shared_ai_engine:</strong> infrastructure can proceed, but AI model, adapter, estimate, and generation remain deferred and resume from the provider-neutral profile.</p>
+      <p>No design row is deferred or unsupported in this pack: all 15 source rows produce Terraform or are consumed as topology.
+         Render run history, retry timing, and platform-error behavior are not claimed to match.</p>
+    </section>
+    <!-- APPENDIX -->
+    <div class="appendix-header">
+      <h2>Appendix: Detailed Migration Analysis</h2>
+      <p>Expanded sections sourced from the migration JSON artifacts and the generated Terraform</p>
+    </div>
+    <section id="appendix-services">
+      <h2>Appendix A — Service Recommendations <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <table>
+        <caption>Selected AWS service per Render resource, the design disposition, and how the choice was made.</caption>
+        <thead><tr><th scope="col">Render kind</th><th scope="col">Selected AWS service</th><th scope="col">Disposition</th><th scope="col">How we chose this</th></tr></thead>
+        <tbody>
+          <tr><td>Build Source (rr-build)</td><td>Amazon ECR + CI/CD immutable digest promotion</td><td>mapped</td><td>Deterministic: the Build Source feeds multiple environments, so a shared artifact requires immutable promotion; independent per-service builds would rebuild and lose artifact identity</td></tr>
+          <tr><td>Cron job (rr-cron)</td><td>Amazon EventBridge Scheduler + ECS on Fargate RunTask</td><td>mapped</td><td>Inferred: you confirmed a 20-minute duration, which exceeds the Lambda 15-minute ceiling; no array, GPU, or Batch queue requirement</td></tr>
+          <tr><td>PostgreSQL (rr-db)</td><td>Amazon RDS for PostgreSQL</td><td>mapped</td><td>Inferred: Multi-AZ requirement without global readers, Serverless, or any Aurora-only outcome; the startup fallback default selects the lower-change managed target</td></tr>
+          <tr><td>Persistent disk (rr-disk)</td><td>Amazon EFS</td><td>mapped</td><td>Inferred: POSIX paths with multiple Fargate clients require shared POSIX storage; EBS is single-attach, S3 lacks locking and rename</td></tr>
+          <tr><td>Custom domain (rr-domain)</td><td>AWS Certificate Manager + external DNS</td><td>mapped</td><td>Deterministic: you confirmed external DNS ownership, so AWS terminates TLS while the customer retains DNS</td></tr>
+          <tr><td>Environment (rr-env)</td><td>AWS deployment environment stack</td><td>consumed_topology</td><td>Inferred: the production environment is isolated, so the boundary becomes an isolated deployment stack rather than shared resources</td></tr>
+          <tr><td>Environment group (rr-env-group)</td><td>AWS Secrets Manager + AWS Systems Manager Parameter Store</td><td>mapped</td><td>Deterministic: shared configuration names are separated into secret and non-secret stores without capturing values</td></tr>
+          <tr><td>Key Value (rr-kv)</td><td>Amazon ElastiCache for Valkey node-based</td><td>mapped</td><td>Inferred: single-Region cache with stable 3 GB capacity and persistence off; no cross-Region writes, so MemoryDB and serverless were not selected</td></tr>
+          <tr><td>Private service (rr-private)</td><td>ECS on Fargate</td><td>mapped</td><td>Inferred: direct task control requested, no Kubernetes API requirement, and no internal load balancer, so Service Connect provides private discovery</td></tr>
+          <tr><td>Project (rr-project)</td><td>AWS account and VPC environment strategy</td><td>consumed_topology</td><td>Inferred: no compliance account split, separate environments required, so one shared account with isolated environment VPCs</td></tr>
+          <tr><td>Static site (rr-static)</td><td>Amazon S3 + Amazon CloudFront</td><td>mapped</td><td>Deterministic: a static publish directory with no server process needs no runtime compute</td></tr>
+          <tr><td>Web service (rr-web)</td><td>ECS on Fargate</td><td>mapped</td><td>Inferred: you selected direct task/service control and no Kubernetes eliminator fired; both Elastic Beanstalk models were rejected</td></tr>
+          <tr><td>Background worker (rr-worker)</td><td>ECS on Fargate service</td><td>mapped</td><td>Inferred: a continuously supervised queue consumer needs a service, not finite invocations or one-off tasks</td></tr>
+          <tr><td>Workflow (rr-workflow)</td><td>AWS Step Functions Standard</td><td>mapped</td><td>Inferred: auditable history and task-token callbacks require Standard; Express and Lambda durable functions were rejected</td></tr>
+          <tr><td>Workflow task (rr-workflow-task)</td><td>AWS Lambda</td><td>mapped</td><td>Inferred: a five-minute stateless task with a compatible runtime fits every Lambda limit; no Fargate or Batch eliminator fired</td></tr>
+        </tbody>
+      </table>
+    </section>
+    <section id="appendix-accounting">
+      <h2>Appendix A.1 — Generation Accounting <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p><strong data-accounted-count="15">15 design rows · 13 generated · 2 consumed topology · 0 deferred · 0 unsupported</strong>.
+         Every source row in <code>aws-design.json</code> appears in exactly one bucket of <code>generation-warnings.json</code>; no
+         source row disappeared.</p>
+      <table>
+        <caption>Complete source accounting: every design row, its bucket, and the files that carry it.</caption>
+        <thead><tr><th scope="col">Source row</th><th scope="col">Render kind</th><th scope="col">Bucket</th><th scope="col">Target files</th></tr></thead>
+        <tbody>
+          <tr><td>rr-build</td><td>render.build_source</td><td>generated</td><td><code>terraform/delivery.tf</code>, <code>scripts/promote-image.sh</code></td></tr>
+          <tr><td>rr-cron</td><td>render.cron_job</td><td>generated</td><td><code>terraform/compute.tf</code></td></tr>
+          <tr><td>rr-db</td><td>render.postgres</td><td>generated</td><td><code>terraform/data.tf</code>, <code>scripts/migrate-postgres.sh</code></td></tr>
+          <tr><td>rr-disk</td><td>render.persistent_disk</td><td>generated</td><td><code>terraform/storage.tf</code>, <code>scripts/migrate-disk.sh</code></td></tr>
+          <tr><td>rr-domain</td><td>render.custom_domain</td><td>generated</td><td><code>terraform/network.tf</code></td></tr>
+          <tr><td>rr-env</td><td>render.environment</td><td>consumed_topology</td><td><code>terraform/main.tf</code>, <code>terraform/network.tf</code></td></tr>
+          <tr><td>rr-env-group</td><td>render.environment_group</td><td>generated</td><td><code>terraform/delivery.tf</code></td></tr>
+          <tr><td>rr-kv</td><td>render.key_value</td><td>generated</td><td><code>terraform/data.tf</code></td></tr>
+          <tr><td>rr-private</td><td>render.private_service</td><td>generated</td><td><code>terraform/compute.tf</code></td></tr>
+          <tr><td>rr-project</td><td>render.project</td><td>consumed_topology</td><td><code>terraform/main.tf</code>, <code>terraform/network.tf</code></td></tr>
+          <tr><td>rr-static</td><td>render.static_site</td><td>generated</td><td><code>terraform/delivery.tf</code></td></tr>
+          <tr><td>rr-web</td><td>render.web_service</td><td>generated</td><td><code>terraform/compute.tf</code>, <code>terraform/network.tf</code></td></tr>
+          <tr><td>rr-worker</td><td>render.background_worker</td><td>generated</td><td><code>terraform/compute.tf</code></td></tr>
+          <tr><td>rr-workflow</td><td>render.workflow</td><td>generated</td><td><code>terraform/workflow.tf</code></td></tr>
+          <tr><td>rr-workflow-task</td><td>render.workflow_task</td><td>generated</td><td><code>terraform/workflow.tf</code></td></tr>
+        </tbody>
+      </table>
+    </section>
+    <section id="appendix-costs">
+      <h2>Appendix B — Cost Estimates <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>Per-line monthly amounts from the two estimate scenarios. Capacity-preserving carries every Render size like-for-like;
+         right-sized applies measured utilization where the evidence was sufficient. Neither scenario is a floor: no line is unpriced.</p>
+      <table>
+        <caption>Per-line AWS monthly estimate (USD) by scenario, with the pricing source and the right-sized confidence.</caption>
+        <thead><tr><th scope="col">Source row</th><th scope="col">AWS service</th><th scope="col">Capacity-preserving</th><th scope="col">Right-sized</th><th scope="col">Pricing source</th><th scope="col">Right-sized confidence</th></tr></thead>
+        <tbody>
+          <tr><td>rr-build</td><td>Amazon ECR + CI/CD immutable digest promotion</td><td>$10</td><td>$10</td><td>estimated</td><td>inferred</td></tr>
+          <tr><td>rr-cron</td><td>Amazon EventBridge Scheduler + ECS on Fargate RunTask</td><td>$20</td><td>$15</td><td>cached</td><td>measured</td></tr>
+          <tr><td>rr-db</td><td>Amazon RDS for PostgreSQL</td><td>$100</td><td>$80</td><td>cached</td><td>measured</td></tr>
+          <tr><td>rr-disk</td><td>Amazon EFS</td><td>$1.50</td><td>$1.50</td><td>cached</td><td>inferred</td></tr>
+          <tr><td>rr-domain</td><td>AWS Certificate Manager + external DNS</td><td>$0</td><td>$0</td><td>no direct charge</td><td>deterministic</td></tr>
+          <tr><td>rr-env</td><td>AWS deployment environment stack + Amazon CloudWatch Logs, Metrics, and Alarms (30-day retention)</td><td>$5</td><td>$5</td><td>estimated</td><td>inferred</td></tr>
+          <tr><td>rr-env-group</td><td>AWS Secrets Manager + AWS Systems Manager Parameter Store</td><td>$2</td><td>$2</td><td>cached</td><td>inferred</td></tr>
+          <tr><td>rr-kv</td><td>Amazon ElastiCache for Valkey node-based</td><td>$50</td><td>$40</td><td>cached</td><td>measured</td></tr>
+          <tr><td>rr-private</td><td>ECS on Fargate</td><td>$40</td><td>$35</td><td>cached</td><td>measured</td></tr>
+          <tr><td>rr-project</td><td>AWS account and VPC environment strategy</td><td>$0</td><td>$0</td><td>no direct charge</td><td>deterministic</td></tr>
+          <tr><td>rr-static</td><td>Amazon S3 + Amazon CloudFront</td><td>$15</td><td>$15</td><td>cached</td><td>inferred</td></tr>
+          <tr><td>rr-web</td><td>ECS on Fargate</td><td>$50</td><td>$40</td><td>cached</td><td>measured</td></tr>
+          <tr><td>rr-worker</td><td>ECS on Fargate service</td><td>$30</td><td>$25</td><td>cached</td><td>measured</td></tr>
+          <tr><td>rr-workflow</td><td>AWS Step Functions Standard</td><td>$25</td><td>$20</td><td>estimated</td><td>measured</td></tr>
+          <tr><td>rr-workflow-task</td><td>AWS Lambda</td><td>$10</td><td>$8</td><td>cached</td><td>measured</td></tr>
+          <tr><th scope="row">Total</th><td>15 lines</td><td>$358</td><td>$296</td><td>5 services cached, CloudWatch estimated</td><td>9 measured, 4 inferred, 2 deterministic</td></tr>
+        </tbody>
+      </table>
+      <h3>Scenario totals and the right-sizing delta</h3>
+      <ul class="compact">
+        <li>Capacity-preserving (Balanced): $358 per month; unpriced line IDs: none; floor: no</li>
+        <li>Right-sized (Optimized): $296 per month; unpriced line IDs: none; floor: no; annual $3,558</li>
+        <li>Premium: $394 per month, carried by the estimate as a total only</li>
+        <li>Delta (right-sized minus capacity-preserving): -$62 per month. Measured rightsizing lowers the AWS total; EFS is priced at 5 GB &times; $0.30 per GB-month in both scenarios</li>
+        <li>Current Render spend: $123 per month, user stated as of 2026-10-21; no invoice or export breakdown was supplied</li>
+      </ul>
+      <h3>Pricing sources</h3>
+      <p>Cached reviewed us-east-1 rates: ECS, RDS, ElastiCache, Lambda, EFS. Estimated: CloudWatch. Fallback: none. No service is
+         missing a fallback. Human labor is excluded (the estimate records no migration labor cost).</p>
+    </section>
+    <section id="appendix-steps">
+      <h2>Appendix C — Migration Steps and Rollback <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>Phases follow the sequence in <code>MIGRATION_GUIDE.md</code>. Every script under <code>scripts/</code> is
+         <strong>dry-run by default</strong> and takes <code>--execute</code> to act; none was executed during Generate. Durations are
+         not quoted; stage order and the verification gate after each phase carry the schedule.</p>
+      <h3>Phase 1 — Prerequisites</h3>
+      <ul class="compact">
+        <li>Configure AWS credentials, confirm us-east-1, install Terraform 1.5 or newer, and bootstrap remote state before normal initialization</li>
+        <li>Populate target secrets without copying values into Terraform or the guide; the CI role assumed through OIDC pushes to ECR without long-lived keys</li>
+        <li>Confirm PostgreSQL version, extensions, replication privileges, network paths, and the maintenance window</li>
+        <li>Request the public web certificate in ACM, create every DNS validation record at the external DNS provider, wait until ACM reports Issued, and supply the ARN before applying the stack</li>
+        <li>Create the IAM Identity Center directory and re-invite the team; define source-retention and rollback owners</li>
+      </ul>
+      <h3>Phase 2 — Build and deployment migration</h3>
+      <ul class="compact">
+        <li>Run <code>scripts/promote-image.sh ECR_REPOSITORY_URL SHA256_DIGEST TARGET_ENVIRONMENT</code> to preview promotion (dry run), then repeat with <code>--execute</code></li>
+        <li>The helper verifies an immutable ECR repository, resolves the exact source digest, and creates the environment promotion tag from that manifest without rebuilding</li>
+        <li>Deploy the <code>repository@sha256:...</code> reference, not the environment tag; record the serving deploy separately from the newest deploy</li>
+      </ul>
+      <h3>Phase 3 — PostgreSQL migration</h3>
+      <ul class="compact">
+        <li>Run <code>scripts/migrate-postgres.sh</code> (dry run) to print the full-load and change-data-capture stages, then with <code>--execute</code> only after confirmed writer quiescence</li>
+        <li>Rehearse schema and full load in an isolated target; start AWS Database Migration Service change-data-capture after the privilege preflight; monitor lag</li>
+        <li>Establish writer quiescence, apply the final delta, compare row counts and checksums, switch the connection, retain the Render source until sign-off</li>
+      </ul>
+      <h3>Phase 4 — Key Value migration</h3>
+      <ul class="compact">
+        <li>Verify supported commands, persistence, eviction, pub/sub, streams, and Lua behavior on the ElastiCache for Valkey node</li>
+        <li>Empty start: no data is copied, so queued and session data is lost at cutover; validate key-count and sample behavior without recording values</li>
+      </ul>
+      <h3>Phase 5 — Persistent-disk migration</h3>
+      <ul class="compact">
+        <li>Create the encrypted EFS access point for <code>/var/data</code>; check capacity, ownership, permissions, locking, file count, and performance</li>
+        <li>Run <code>scripts/migrate-disk.sh</code> (dry run) for the pre-copy plan, then with <code>--execute</code>; quiesce writers for the final delta, compare the checksum manifest, remount, retain the Render disk</li>
+      </ul>
+      <h3>Phase 6 — Deployment and service cutover</h3>
+      <ul class="compact">
+        <li>Verify private service discovery before public traffic; drain the worker and preserve graceful shutdown and idempotency</li>
+        <li>Disable the Render cron before enabling EventBridge Scheduler, preventing overlap; restore desired counts and pass health checks</li>
+        <li>Workflow: upload the reviewed Lambda package and set its runtime, handler, and memory variables; replace each Render caller with a Step Functions start-execution call; grant the callback sender its task-token permissions outside Terraform; stop Render runs before enabling the AWS callers</li>
+      </ul>
+      <h3>Phase 7 — DNS and traffic cutover</h3>
+      <ul class="compact">
+        <li>Lower external DNS TTL 24 hours in advance; freeze releases; quiesce data writers; complete final deltas</li>
+        <li>Switch traffic once inside the planned maintenance window with traffic stopped; the short window selects a single switch, not staged shifting</li>
+      </ul>
+      <h3>Phase 8 — Verification</h3>
+      <ul class="compact">
+        <li>Static, public, and private endpoints; database round-trip with reconciled counts and checksums; cache eviction and persistence; EFS ownership, permissions, locking, integrity</li>
+        <li>Worker drain/retry/idempotency; cron overlap policy; running image digest equals the promoted ECR digest</li>
+        <li>Workflow executions show the declared retries with backoff, the per-attempt timeout, and the task-token callback completing before its timeout; the three Workflow alarms exist and point at an owned notification target</li>
+      </ul>
+      <h3>Rollback procedure</h3>
+      <table>
+        <caption>Rollback triggers, actions, and recovery objectives by track.</caption>
+        <thead><tr><th scope="col">Track</th><th scope="col">Trigger</th><th scope="col">Action</th><th scope="col">Recovery objective</th></tr></thead>
+        <tbody>
+          <tr><td>PostgreSQL</td><td>Integrity mismatch, unacceptable lag, or application failure</td><td>Fence target writers, then re-enable the retained Render writer; never permit two primaries</td><td>Minutes — the Render database never stopped during the retention window</td></tr>
+          <tr><td>Persistent disk</td><td>Checksum manifest mismatch or permission failure after remount</td><td>Remount the retained Render disk; keep the EFS copy as evidence</td><td>Retention window (14 days after cutover)</td></tr>
+          <tr><td>Key Value</td><td>Cache behavior failure after the endpoint switch</td><td>Point the application back at the Render store; writes made on AWS cannot be merged</td><td>Minutes; divergent writes are lost by design</td></tr>
+          <tr><td>Web, private, worker, cron, Workflow</td><td>Error rate or failed behavior checks after the traffic switch</td><td>Restore external DNS and traffic to Render; re-enable the Render cron and Workflow callers; preserve target evidence</td><td>DNS TTL</td></tr>
+        </tbody>
+      </table>
+    </section>
+    <section id="appendix-artifacts">
+      <h2>Appendix E — Generated Artifacts Catalog <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <table>
+        <caption>Artifacts produced by the migration assessment.</caption>
+        <thead><tr><th scope="col">Artifact</th><th scope="col">Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>terraform/</code></td><td>main.tf, variables.tf, outputs.tf, baseline.tf, backup.tf, network.tf, compute.tf, data.tf, storage.tf, delivery.tf, monitoring.tf, workflow.tf, terraform.tfvars.example, README.md — the Balanced baseline; no AI resources</td></tr>
+          <tr><td><code>MIGRATION_GUIDE.md</code></td><td>Runbook: prerequisites, build and deployment, PostgreSQL, Key Value, persistent disk, deployment and service cutover, DNS and traffic, verification, rollback and source retention, known limitations</td></tr>
+          <tr><td><code>README.md</code></td><td>What was generated and how to validate and apply it</td></tr>
+          <tr><td><code>scripts/promote-image.sh</code></td><td>Immutable ECR digest promotion; dry run by default, <code>--execute</code> to act</td></tr>
+          <tr><td><code>scripts/migrate-postgres.sh</code></td><td>Dry-run-first PostgreSQL full-load and change-data-capture stages</td></tr>
+          <tr><td><code>scripts/migrate-disk.sh</code></td><td>Dry-run-first EFS pre-copy and final-delta stages</td></tr>
+          <tr><td><code>generation-warnings.json</code></td><td>Complete generation accounting (13 generated + 2 consumed topology = 15 accounted) and the two non-blocking warnings: deferred_shared_ai_engine and ecs_express_not_selected_rolling_release</td></tr>
+          <tr><td><code>validation-report.json</code></td><td>Independent validation evidence: Terraform fmt / init / validate, policy, secret scan, schemas, and both report validators; authoritative completion status</td></tr>
+          <tr><td><code>migration-report.html</code></td><td>This report</td></tr>
+        </tbody>
+      </table>
+    </section>
+    <section id="appendix-assumptions">
+      <h2>Appendix I — Assumptions, Exclusions, and Validation <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <h3>Pricing confidence</h3>
+      <p>AWS rates use the reviewed us-east-1 cache; the Render baseline is user stated. EFS is priced from the reviewed rate row at
+         the Blueprint disk size (5 GB, Standard storage); no unpriced lines remain. Cached: ECS, RDS, ElastiCache, Lambda, EFS.
+         Estimated: CloudWatch. Right-sized lines marked measured carry sufficient utilization evidence; inferred lines do not.</p>
+      <h3>Exclusions</h3>
+      <ul class="compact">
+        <li>Human labor: the estimate records no migration labor cost (null), so no engineering effort is priced</li>
+        <li>Workflow Terraform covers only the semantics proven by the generation contract tests: task order, per-task retry with backoff, per-attempt timeout, task-token callback, and retained logging and alarms. Render execution parity is not claimed, and the Lambda package, runtime, handler, and memory are supplied by the owner</li>
+        <li>Apply is prohibited until provider-backed Terraform validation, source connectivity, migration rehearsal, and owner approval complete</li>
+        <li>AI: no AI target, cost, model, adapter, or Terraform is in this pack; the AI track resumes from the preserved provider-neutral profile</li>
+      </ul>
+      <h3>Validation</h3>
+      <p><code>validation-report.json</code> status: <strong>passed</strong>. Checks: terraform fmt, terraform init, terraform validate,
+         policy (POLICY_OK), secret scan, schemas, and report — the shared report validator and the render-only report validator both
+         returned REPORT_OK. Timestamp 2026-10-21.</p>
+    </section>
+    <section id="appendix-glossary">
+      <h2>Appendix J — Glossary <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <table class="glossary-table">
+        <caption>Terms used in this report.</caption>
+        <thead><tr><th scope="col">Term</th><th scope="col">Meaning</th></tr></thead>
+        <tbody>
+          <tr><td>Monthly run rate</td><td>Estimated recurring cloud-service charges; excludes staffing, support, migration labor, and other ownership costs</td></tr>
+          <tr><td>Capacity-preserving</td><td>The Balanced scenario: every Render size carried like-for-like onto AWS; the generated Terraform implements it</td></tr>
+          <tr><td>Right-sized</td><td>The Optimized scenario: measured utilization applied to the lines where evidence was sufficient</td></tr>
+          <tr><td>Consumed topology</td><td>A design row (project, environment) that becomes account, VPC, or stack structure rather than its own AWS resource</td></tr>
+          <tr><td>Build-once promotion</td><td>One immutable image digest built once and promoted across environments by tag, never rebuilt</td></tr>
+          <tr><td>Writer quiescence</td><td>Stopping all writes to the source before the final delta so the target can be verified and switched safely</td></tr>
+          <tr><td>Change-data-capture</td><td>Continuous replication of source changes by AWS Database Migration Service after the full load</td></tr>
+          <tr><td>Source retention</td><td>The period Render resources stay running after cutover so rollback remains possible (14 days here)</td></tr>
+          <tr><td>ECS Express Mode</td><td>A simplified ECS deployment path; not selected here because the custom domain requires a hand-built ALB</td></tr>
+        </tbody>
+      </table>
+    </section>
+    <footer>
+      Generated by Render to AWS Migration Advisor — draft for review; verify figures against the source JSON artifacts before executive sign-off.<br />
+      Golden fixture rendered from the representative Render Blueprint estate. All figures sourced from the Design and Estimate JSON artifacts.
+    </footer>
+  </div>
 </body>
 </html>

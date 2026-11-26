@@ -1394,7 +1394,7 @@ def _validate_generated_pack(root: Path, generated: Path, ledger: dict[str, Any]
             "policy": {"status": "passed", "command": "validate-terraform-policy.py terraform", "evidence": evidence, "policy_status": "POLICY_OK", "violations": []},
             "secret_scan": {"status": "passed", "command": "gitleaks detect --no-git --source generated", "evidence": evidence},
             "schemas": {"status": "passed", "command": "jsonschema generated artifacts", "evidence": evidence},
-            "report": {"status": "passed", "command": "validate-render-migration-report.py", "evidence": evidence},
+            "report": {"status": "passed", "command": "validate-migration-report.py + validate-render-migration-report.py", "evidence": evidence},
         },
         "timestamp": "2026-10-21T12:00:00Z",
     }
@@ -1608,9 +1608,9 @@ EFS is priced from the reviewed rate row. AI is `deferred_shared_ai_engine`; Wor
 
     sections = {
         "decision-summary": "Complete deterministic decision summary.",
-        "architecture": f"Build-once private managed architecture. {escape(fargate_mode_statement(design))}",
+        "exec-architecture": f"Build-once private managed architecture. {escape(fargate_mode_statement(design))}",
         "exec-targets": "".join(f'<p data-source-resource-id="{escape(row["source_resource_id"])}" data-aws-service="{escape(row["aws_service"])}">{escape(row["aws_service"])}</p>' for row in design["mappings"]),
-        "exec-costs": f'<span data-cost-key="current_render">{estimate["current_costs"]["render_monthly"]}</span><span data-cost-key="capacity_preserving">{estimate["scenarios"]["capacity_preserving"]["known_cost_monthly_usd"]}</span><span data-cost-key="right_sized">{estimate["scenarios"]["right_sized"]["known_cost_monthly_usd"]}</span><span data-cost-key="delta">{estimate["delta_monthly_usd"]}</span>',
+        "exec-costs": f'<span data-cost-key="current_monthly">{estimate["current_costs"]["render_monthly"]}</span><span data-cost-key="aws_monthly_balanced">{estimate["projected_costs"]["aws_monthly_balanced"]}</span><span data-cost-key="aws_monthly_optimized">{estimate["projected_costs"]["aws_monthly_optimized"]}</span><span data-cost-key="delta">{estimate["delta_monthly_usd"]}</span>',
         "migration-data": "Postgres Database Migration Service writer quiescence integrity source retention.",
         "migration-storage": "EFS /var/data pre-copy delta ownership permissions integrity.",
         "migration-deployment": "ECR digest serving deploy auto-deploy rollback.",
