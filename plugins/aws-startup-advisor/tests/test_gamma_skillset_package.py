@@ -49,7 +49,7 @@ def source_copy(tmp_path):
     for relative in [
         ".claude-plugin/plugin.json",
         *(f"agents/{worker}" for worker in builder.WORKERS),
-        *(f"scripts/{helper}" for helper in builder.GCP_HELPERS),
+        *(f"scripts/{helper}" for helper in builder.ROOT_HELPERS["gcp-to-aws"]),
     ]:
         destination = source / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -115,8 +115,11 @@ def test_packaged_helpers_execute_independently_of_source_tree(packages, skill, 
         handle.extractall(tmp_path)
     scripts = tmp_path / "skills" / skill / "scripts"
     helpers = [scripts / "emit-plan-json.py"]
-    report = "validate-migration-report.py" if skill == "gcp-to-aws" else "validate-heroku-migration-report.py"
-    helpers.append(scripts / report)
+    # The shared report validator travels with both migration skills; heroku also
+    # keeps its own add-on validator.
+    helpers.append(scripts / "validate-migration-report.py")
+    if skill == "heroku-to-aws":
+        helpers.append(scripts / "validate-heroku-migration-report.py")
     if skill == "gcp-to-aws":
         helpers.append(scripts / "validate-startup-program-artifacts.py")
     helpers.append(tmp_path / "skills" / "tf-best-practices" / "scripts" / "validate-terraform-policy.py")
@@ -155,6 +158,28 @@ def test_packaged_helpers_execute_independently_of_source_tree(packages, skill, 
         assert plan["producerVersion"] == json.loads(
             (PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text()
         )["version"]
+
+
+def test_heroku_paths_resolve_inside_package(packages):
+    with zipfile.ZipFile(packages["heroku-to-aws"]) as handle:
+        base = "skills/heroku-to-aws"
+        for name in [
+            f"{base}/SKILL.md",
+            f"{base}/references/phases/generate/generate.md",
+            f"{base}/references/phases/generate/generate-report.md",
+            f"{base}/references/phases/generate/generate-assemble.md",
+            f"{base}/references/phases/estimate/estimate-assemble.md",
+            f"{base}/references/phases/workshop/workshop.md",
+            f"{base}/references/shared/report-decision-core.md",
+        ]:
+            text = handle.read(name).decode()
+            assert "$PLUGIN_ROOT/scripts/" not in text, name
+        assert "<SKILL_BASE>/scripts/validate-migration-report.py" in handle.read(
+            f"{base}/SKILL.md"
+        ).decode()
+        assert "<SKILL_BASE>/scripts/validate-heroku-migration-report.py" in handle.read(
+            f"{base}/SKILL.md"
+        ).decode()
 
 
 def test_gcp_paths_resolve_inside_package(packages):

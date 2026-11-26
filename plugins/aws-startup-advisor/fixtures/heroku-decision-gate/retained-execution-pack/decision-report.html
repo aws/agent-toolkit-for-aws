@@ -7,9 +7,11 @@
 <style>
   body { margin: 0; background: #f6f8fa; color: #1f2328; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 15px; line-height: 1.55; }
   .report { max-width: 1040px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+  h1 { font-size: 1.85rem; margin-bottom: 0.25rem; border-bottom: 3px solid #ff9900; padding-bottom: 0.5rem; }
   section { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; scroll-margin-top: 1rem; }
-  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin: 0.85rem 0; }
   .metric { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 0.85rem 1rem; }
+  .metric-hero { border: 2px solid #0d7377; }
   .verdict { background: #e6f4ea; border: 1px solid #137333; padding: 0.75rem 1rem; }
   .savings { color: #137333; font-weight: 650; }
   .share-card { background: #f0f6fc; border: 1px solid #d0d7de; border-left: 4px solid #0969da; padding: 0.85rem 1rem; }
@@ -29,11 +31,31 @@
 <body>
 <div class="report">
 
+<h1>Heroku to AWS Migration Assessment</h1>
+
+<section id="decision-summary">
+<h2>Migration Decision Summary</h2>
+<p class="verdict-headline">Go, with conditions</p>
+<p>Execution shape: Phased migration · Complexity: small</p>
+<p>Confidence: medium — full basis available on request.</p>
+<div class="metrics">
+  <div class="metric metric-hero"><strong>AWS estimate (Balanced)</strong><br>Est. $210/mo</div>
+  <div class="metric"><strong>Your Heroku baseline</strong><br>Est. $340/mo (from your Heroku invoice)</div>
+  <div class="metric"><strong>Migration shape</strong><br>Phased · small complexity</div>
+</div>
+<div class="callout callout-info">💡 Review <a href="https://aws.amazon.com/startups/credits/">AWS Activate credits</a> tiers (Founders for self-funded startups, Portfolio for VC- or accelerator-backed ones) — your funding stage was not confirmed in Clarify. Credits apply only to charges after approval, so apply before any deployment.</div>
+<p><strong>Timeline if you execute:</strong> phased migration, small complexity — stages and duration drivers in the Timeline section.</p>
+<ul>
+  <li>What would flip this: a confirmed always-on traffic pattern would raise the AWS compute estimate materially.</li>
+</ul>
+</section>
+
 <nav class="toc" aria-label="Table of contents">
   <ul>
     <li><a href="#decision-summary">Decision</a></li>
     <li><a href="#exec-share">Share with your CFO</a></li>
     <li><a href="#exec-costs">Costs</a></li>
+    <li><a href="#developer-workflow">Developer workflow</a></li>
     <li><a href="#exec-timeline">Timeline</a></li>
     <li><a href="#decision-cta">Ready to execute?</a></li>
   </ul>
@@ -42,20 +64,7 @@
 <section id="exec-share">
 <h2>Share with your CFO</h2>
 <p>The one-paragraph version, ready to forward:</p>
-<div class="share-card"><p>Go, with conditions, at medium confidence. Estimated AWS Balanced is $210 per month against an estimated Heroku baseline of $340 per month. The migration shape is phased, and the planning band for this small estate is 2-6 weeks. Confirm the open condition before treating the monthly figure as final.</p></div>
-</section>
-
-<section id="decision-summary">
-<h2>Migration Decision Summary</h2>
-<p class="verdict-headline">Go, with conditions</p>
-<p>Execution shape: Phased migration · Complexity: small</p>
-<p>Confidence: medium — full basis available on request.</p>
-<p><strong>AWS estimate (Balanced):</strong> Est. $210/mo · <strong>Your Heroku baseline:</strong> Est. $340/mo (from your Heroku invoice)</p>
-<div class="callout callout-info">💡 Review <a href="https://aws.amazon.com/startups/credits/">AWS Activate credits</a> tiers (Founders for self-funded startups, Portfolio for VC- or accelerator-backed ones) — your funding stage was not confirmed in Clarify. Credits apply only to charges after approval, so apply before any deployment.</div>
-<p><strong>Timeline if you execute:</strong> planning band 2-6 weeks (small complexity)</p>
-<ul>
-  <li>What would flip this: a confirmed always-on traffic pattern would raise the AWS compute estimate materially.</li>
-</ul>
+<div class="share-card"><p>Go, with conditions, at medium confidence. Estimated AWS Balanced is $210 per month against an estimated Heroku baseline of $340 per month. The migration shape is phased for this small estate. Confirm the open condition before treating the monthly figure as final.</p></div>
 </section>
 
 <section id="exec-costs">
@@ -72,9 +81,27 @@
 <p>Heroku baseline (from your Heroku invoice): Est. $340/mo. All figures are estimated monthly costs.</p>
 </section>
 
+<section id="developer-workflow">
+<h2>Developer workflow: what stays, what changes, what you build</h2>
+<p>Developer workflow priority was not rated critical in Clarify.</p>
+<table>
+  <caption>Developer workflow on Heroku today and on AWS</caption>
+  <thead><tr><th scope="col">Heroku today</th><th scope="col">On AWS</th><th scope="col">Status</th><th scope="col">Your estate</th></tr></thead>
+  <tbody>
+    <tr><td><code>git push heroku main</code> + buildpacks</td><td>CI builds a container image and deploys it to Elastic Beanstalk</td><td><strong>Will be generated</strong> — a deploy workflow per app</td><td>1 buildpack app on Beanstalk</td></tr>
+    <tr><td>Config vars</td><td>Parameter Store / Secrets Manager, injected at deploy</td><td><strong>Covered</strong> — bindings will be generated; you import the values</td><td>1 app</td></tr>
+    <tr><td><code>heroku run</code> / one-off dynos</td><td>ECS Exec or <code>eb ssh</code></td><td><strong>Covered</strong> — different command for the target</td><td>—</td></tr>
+    <tr><td><code>heroku logs --tail</code></td><td>CloudWatch Logs live tail</td><td><strong>Covered</strong></td><td>—</td></tr>
+    <tr><td>Release phase</td><td>A pre-deploy job in the workflow that runs before traffic shifts</td><td><strong>Build</strong></td><td>—</td></tr>
+    <tr><td>Add-on marketplace</td><td>Each add-on becomes an AWS service wired by the Terraform that Generate will produce</td><td><strong>No equivalent</strong> to the marketplace itself</td><td>1 add-on mapped (Postgres), 0 deferred</td></tr>
+  </tbody>
+</table>
+<p>The rows marked Build are a platform layer your team owns: release steps and a thin command wrapper. It is a bounded piece of platform work, and it is the same for every app.</p>
+</section>
+
 <section id="exec-timeline">
 <h2>Timeline</h2>
-<p>Shape: Phased migration. Planning band: 2-6 weeks for the small complexity tier. This planning band is the complexity-tier range, not a staffed schedule. The cutover procedure stays in the migration guide.</p>
+<p>Shape: Phased migration. Stage order: provision the AWS environment, migrate the database, then cut over DNS per app. Duration drivers: a small estate (two services) and a single-AZ database. The cutover procedure stays in the migration guide; this section is not a staffed schedule.</p>
 </section>
 
 <section id="decision-cta">
