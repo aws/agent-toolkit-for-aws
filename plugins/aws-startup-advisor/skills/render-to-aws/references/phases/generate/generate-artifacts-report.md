@@ -137,110 +137,83 @@ sections", which also lists the exact phrases the render-local validator looks f
 
 ## Step 3.5: Accounting split (REQUIRED)
 
-Any mapping / service / headline count the report states MUST equal
-`generation-warnings.json` → `accounting.accounted_count`, which equals the number of
-`aws-design.json` mappings (every mapping is classified exactly once). State the split in
-`appendix-accounting` so the reader sees how the design resolved rather than a bare number:
-**"N design rows · G generated · C consumed topology · D deferred · U unsupported"** where
-N = `design_count`, G = `generated_count`, C = `consumed_topology_count`, D =
-`deferred_count`, U = `unsupported_count`, and N = G + C + D + U. The
-`<section id="appendix-accounting">` element carries `data-accounted-count="N"`. The
+The accounting-split rule is the skeleton's (§ Accounting split); the render values are the
+⟨accounting_*⟩ rows of the parameter table in Step 3.75. The
+`<section id="appendix-accounting">` element carries `data-accounted-count="N"`, and the
 `exec-services` headline count, the Terraform `migration_summary` count, and the ledger must
-all agree. Deferred and unsupported rows are still rows the customer must plan for — never
-present them as generated.
+all agree.
 
-## Step 3.75: Stable appendix lettering (REQUIRED — validator-enforced)
+## Step 3.75: Appendix block (REQUIRED — skeleton-driven, validator-enforced)
 
-The letter is part of the heading and TOC label; it does not shift when a conditional section
-is absent:
+**Load `references/vendored/report/report-appendix-skeleton.md` and build the appendix block
+from it.** That file is the single source of truth for the stable appendix lettering (A–J plus
+the dotted A.1 slot; letters never shift when a conditional section is absent — a Render run
+has no `appendix-ai` and still uses Appendix E for artifacts), the appendix divider, and the
+purpose, trigger, data sources, table shapes and content rules of Appendices A, B, B.1, C, E,
+I and J. Everything each appendix needs is specified there and in the parameter table below,
+from the artifacts this skill writes — no other skill has to be installed. Do not restate or
+paraphrase its rules here. If the file is missing, emit
+`GATE_FAIL | phase=generate | fragment=artifacts-report | reason=renderer_missing` and stop.
 
-| Section ID              | Visible heading prefix                               |
-| ----------------------- | ---------------------------------------------------- |
-| `appendix-services`     | Appendix A — Service Recommendations                 |
-| `appendix-accounting`   | Appendix A.1 — Generation Accounting                 |
-| `appendix-costs`        | Appendix B — Cost Estimates                          |
-| `appendix-optimization` | Appendix B.1 — Savings Plans and Reserved Instances  |
-| `appendix-steps`        | Appendix C — Migration Steps and Rollback            |
-| `appendix-ai`           | Appendix D — AI Migration                            |
-| `appendix-artifacts`    | Appendix E — Generated Artifacts Catalog             |
-| `appendix-config`       | Appendix F — Your Configuration                      |
-| `appendix-security`     | Appendix G — Security Capabilities                   |
-| `appendix-security-gap` | Appendix H — Security Gap Analysis                   |
-| `appendix-assumptions`  | Appendix I — Assumptions, Exclusions, and Validation |
-| `appendix-glossary`     | Appendix J — Glossary                                |
+### Parameters
 
-Absent conditional sections keep their letters: a Render run has no `appendix-ai` (the AI
-track is deferred) and still uses Appendix E for artifacts, never renumbering it to D.
-`appendix-accounting` is render-specific and takes `A.1` so the shared letters A–J do not
-shift. Required here: A, A.1, B, C, E, I, J. `appendix-optimization` (B.1) only when
-`optimization_opportunities[]` is non-empty. The plugin-root validator checks both `<h2>` and
-TOC labels.
+| Parameter                                                                        | Value                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ⟨source_cloud⟩                                                                   | Render                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ⟨report_mode⟩                                                                    | `full` (render has no AI-only path — the AI track is deferred)                                                                                                                                                                                                                                                                                                                                                                                             |
+| ⟨precheck_owner⟩ / ⟨precheck_skill_flag⟩                                         | Caller-owned: `generate.md` § "Main-window artifact pre-check" runs `validate-artifacts.py` in the main window (Step 0 above) / `--skill render-to-aws`                                                                                                                                                                                                                                                                                                     |
+| ⟨appendices_rendered⟩                                                            | Required: A, A.1 (render add-on, "Appendix A.1 — Generation Accounting"), B, C, E, I, J. Conditional: B.1 only when `optimization_opportunities[]` is non-empty. Declared omissions: D — AI track deferred to `bedrock-migration-assessment` (Step 3.9 `deferred_shared_ai_engine`); F, G, H — the render content follow-up PR adds them; preferences dispositions and the generated baseline are not yet rendered as appendices (see Declared exceptions). |
+| ⟨appendix_header_text⟩                                                           | "Appendix: Detailed Migration Analysis"                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ⟨footer_text⟩                                                                    | "Generated by Render to AWS Migration Advisor — draft for review; verify figures against source JSON artifacts before executive sign-off." (Step 4)                                                                                                                                                                                                                                                                                                         |
+| ⟨extra_anchors⟩                                                                  | `delta` (render-local, `delta_monthly_usd`) and the `current_monthly` literal `unavailable` when `current_costs.source` is `unavailable` (Step 2)                                                                                                                                                                                                                                                                                                           |
+| ⟨accounting_ledger_field⟩                                                        | `generation-warnings.json` → `accounting.accounted_count`, which equals the number of `aws-design.json` mappings (every mapping is classified exactly once)                                                                                                                                                                                                                                                                                                 |
+| ⟨accounting_split_sentence⟩                                                      | **"N design rows · G generated · C consumed topology · D deferred · U unsupported"** where N = `design_count`, G = `generated_count`, C = `consumed_topology_count`, D = `deferred_count`, U = `unsupported_count`, and N = G + C + D + U                                                                                                                                                                                                                      |
+| ⟨accounting_location⟩                                                            | `appendix-accounting` (Appendix A.1 below), whose `<section>` carries `data-accounted-count="N"`                                                                                                                                                                                                                                                                                                                                                            |
+| ⟨validator_invocation⟩                                                           | The two-command block in Step 5 (plugin-root validator with `--estimation-infra`, `--aws-design`, `--migration-dir`; then the render-local validator)                                                                                                                                                                                                                                                                                                       |
+| ⟨design_mapping_source⟩                                                          | `aws-design.json` → `mappings[]` (`source_resource_id`, kind, `aws_service`, `disposition`, `confidence`)                                                                                                                                                                                                                                                                                                                                                   |
+| ⟨how_we_chose_vocabulary_ref⟩                                                    | the mapping's `confidence` in `aws-design.json` (`deterministic` / `inferred` / `billing_inferred`) — same value as the render decision-core layer                                                                                                                                                                                                                                                                                                          |
+| ⟨service_row_extras⟩                                                             | A disposition column: rows the ledger classified as consumed topology, deferred, or unsupported say so there                                                                                                                                                                                                                                                                                                                                                |
+| ⟨cost_breakdown_source⟩                                                          | Every line of `scenarios.capacity_preserving.lines` and `scenarios.right_sized.lines` with its monthly amount and `pricing_source` basis, plus the two scenario totals (`known_cost_monthly_usd`) — Balanced = capacity-preserving, Optimized = right-sized (decision core ⟨tier_semantics⟩)                                                                                                                                                              |
+| ⟨mandatory_breakdown_rows⟩                                                       | none beyond the canonical                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ⟨baseline_breakdown⟩                                                             | n/a — `current_costs.render_monthly` is a single figure with a `source`                                                                                                                                                                                                                                                                                                                                                                                     |
+| ⟨floor_fields⟩                                                                   | `is_floor` and `unpriced_line_ids` per scenario; when `is_floor` is true, label that total a **known-cost floor** and name the unpriced lines; when false, say no unpriced lines remain                                                                                                                                                                                                                                                                      |
+| ⟨extra_cost_columns⟩                                                             | none                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ⟨optimization_sources⟩ / ⟨ri_sp_eligibility_ref⟩                                 | Infra only (`estimation-infra.json`; no AI estimate exists in this skill) / `references/vendored/estimate/ri-sp-eligibility.md`                                                                                                                                                                                                                                                                                                                             |
+| ⟨phase_order_source⟩                                                             | `MIGRATION_GUIDE.md` order                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ⟨scripts_list⟩                                                                   | `scripts/promote-image.sh` (build-once ECR digest promotion), `scripts/migrate-postgres.sh` (PostgreSQL stages), `scripts/migrate-disk.sh` (EFS pre-copy and final delta)                                                                                                                                                                                                                                                                                  |
+| ⟨cutover_strategy_fields⟩                                                        | `cutover.source_retention` from `preferences.json`                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ⟨rollback_source⟩ / ⟨rollback_rows⟩                                              | The runbook's rollback section (`MIGRATION_GUIDE.md`) / Render source retained, DNS and traffic restored last, writer fencing lifted                                                                                                                                                                                                                                                                                                                        |
+| ⟨ai_appendix_spec⟩                                                               | Declared omission — the AI track is deferred to `bedrock-migration-assessment`; no `appendix-ai` is ever rendered                                                                                                                                                                                                                                                                                                                                           |
+| ⟨pack_extras⟩                                                                    | `generation-warnings.json`, `validation-report.json`                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ⟨data_artifacts⟩                                                                 | `preferences.json`, `render-resource-inventory.json`, `estimation-infra.json`, `aws-design.json`; `ai-workload-profile.json` when present                                                                                                                                                                                                                                                                                                                   |
+| ⟨preferences_groups⟩ / ⟨preferences_schema_ref⟩ / ⟨critical_default_caveats⟩     | n/a — Appendix F is a declared omission in this PR (render content follow-up)                                                                                                                                                                                                                                                                                                                                                                               |
+| ⟨baseline_controls_table⟩ / ⟨security_equivalent_label⟩ / ⟨security_extra_columns⟩ / ⟨budget_limit_formula⟩ / ⟨compliance_field⟩ / ⟨cost_guardrail_rows⟩ / ⟨opt_out_procedure⟩ | n/a — Appendix G is a declared omission in this PR (render content follow-up)                                                                                                                                                                                                                                                                                                                                                                |
+| ⟨gap_source_names⟩ / ⟨gap_extra_rows⟩ / ⟨observability_note_field⟩               | n/a — Appendix H is a declared omission in this PR (render content follow-up)                                                                                                                                                                                                                                                                                                                                                                               |
+| ⟨pricing_source_fields⟩                                                          | `pricing_source` (`status`, `message`, `services_by_source`, `services_with_missing_fallback`) and `accuracy_confidence`                                                                                                                                                                                                                                                                                                                                    |
+| ⟨exclusion_extras⟩                                                               | Human labor (`migration_cost_considerations.human_labor_monthly_usd` is null); unpriced or partially priced lines (`unpriced_line_ids`, `services_with_missing_fallback`); the Workflow semantics limited to the proven set (task order, retry with backoff, per-attempt timeout, task-token callback, retained logging and alarms, Map fan-out or compensation when declared) and never Render execution parity; the deferred AI track; `terraform apply` prohibited until provider-backed validation passes |
+| ⟨rightsizing_limitations⟩                                                        | n/a — the right-sized scenario is a priced tier (Optimized), not a limitation list                                                                                                                                                                                                                                                                                                                                                                         |
+| ⟨terraform_validation_rule⟩                                                      | From `validation-report.json` when the main window has already written one for this run (`status`, `policy_status`, a `passed_degraded_offline` provider outage); otherwise state that validation runs after the worker returns and its result lives in `validation-report.json`                                                                                                                                                                             |
+| ⟨warnings_sources⟩                                                               | `generation-warnings.json` (Step 3.9) — the ledger warnings the report already states in `deferred-surfaces`                                                                                                                                                                                                                                                                                                                                                |
+| ⟨glossary_examples⟩                                                              | ECR digest promotion, writer quiescence, known-cost floor, Express mode                                                                                                                                                                                                                                                                                                                                                                                     |
 
-## Step 3.8: Appendix build instructions
+### Declared exceptions
 
-Everything each appendix needs is specified here, from the artifacts this skill writes — no
-other skill has to be installed. Keep the lettering from Step 3.75.
+render-to-aws passes no `--profile`; the validator's default `full` set (A, B, C, E) is met.
+Divergence from the skeleton's optional appendices is declared here, pending the render
+content follow-up PR:
 
-### Appendix A — Service Recommendations (`appendix-services`, REQUIRED)
+- `appendix-ai` (D) — never rendered: the AI track is deferred to `bedrock-migration-assessment`.
+- `appendix-config` (F) — not rendered yet, although `preferences.json` exists; the follow-up adds it.
+- `appendix-security` (G) — not rendered yet, although `generate-artifacts-baseline.md` emits the baseline; the follow-up adds it.
+- `appendix-security-gap` (H) — not rendered yet; the follow-up adds it.
+- `appendix-optimization` (B.1) — conditional per the skeleton; absent when there are no opportunities.
 
-One row per `aws-design.json` mapping (at least two rows): Render resource, kind, selected
-AWS service, disposition, and **How we chose this** from the mapping confidence (Standard
-pairing / Tailored to your setup / Estimated from billing only). Rows the ledger classified
-as consumed topology, deferred, or unsupported say so in the disposition column.
+Add-on: `appendix-accounting` (A.1) below, checked by the render-local validator.
 
 ### Appendix A.1 — Generation Accounting (`appendix-accounting`, REQUIRED)
 
 The Step 3.5 split sentence, `data-accounted-count`, and one row per source resource from
 `accounting.source_resource_ids` with its classification and target file(s) or reason.
-
-### Appendix B — Cost Estimates (`appendix-costs`, REQUIRED)
-
-At least three body rows: every line of `scenarios.capacity_preserving.lines` and
-`scenarios.right_sized.lines` with its monthly amount and `pricing_source` basis, the two
-scenario totals (`known_cost_monthly_usd`), and `unpriced_line_ids` per scenario. When
-`is_floor` is true, label that total a **known-cost floor** and name the unpriced lines;
-when false, say no unpriced lines remain. Whole dollars throughout.
-
-### Appendix C — Migration Steps and Rollback (`appendix-steps`, REQUIRED)
-
-Numbered phases, each an `<h3>Phase N — …</h3>` block (at least two), in `MIGRATION_GUIDE.md`
-order, each naming what moves and the script the operator runs: `scripts/promote-image.sh`
-(build-once ECR digest promotion), `scripts/migrate-postgres.sh` (PostgreSQL stages),
-`scripts/migrate-disk.sh` (EFS pre-copy and final delta). State that every script is dry-run
-by default and that nothing was executed during Generate. Close with a **rollback table**
-(Track | Trigger | Action | Recovery objective) built from the runbook's rollback section:
-Render source retained, DNS and traffic restored last, writer fencing lifted. No week or
-hour durations.
-
-### Appendix E — Generated Artifacts Catalog (`appendix-artifacts`, REQUIRED)
-
-Every file in the pack: `terraform/*.tf`, `MIGRATION_GUIDE.md`, `README.md`, each script
-under `scripts/`, `generation-warnings.json`, `validation-report.json`, with one line on
-what each is for. Deferred work appears here only as "not generated".
-
-### Appendix I — Assumptions, Exclusions, and Validation (`appendix-assumptions`, REQUIRED)
-
-**Pricing confidence table:** source, status, accuracy band — from `pricing_source`
-(`status`, `message`, `services_by_source`, `services_with_missing_fallback`) and
-`accuracy_confidence`.
-
-**Exclusions list** — one line each, every one that applies: human labor
-(`migration_cost_considerations.human_labor_monthly_usd` is null); unpriced or
-partially priced lines (`unpriced_line_ids`, `services_with_missing_fallback`); the Workflow
-semantics limited to the proven set (task order, retry with backoff, per-attempt timeout,
-task-token callback, retained logging and alarms, Map fan-out or compensation when declared)
-and never Render execution parity; the deferred AI track; `terraform apply` prohibited until
-provider-backed validation passes.
-
-**Validation limitations:** from `validation-report.json` when the main window has already
-written one for this run (`status`, `policy_status`, a `passed_degraded_offline` provider
-outage); otherwise state that validation runs after the worker returns and its result lives
-in `validation-report.json`.
-
-### Appendix J — Glossary (`appendix-glossary`, REQUIRED)
-
-`<table class="glossary-table">` with `Term` / `Meaning` headers and at least three rows
-(e.g. ECR digest promotion, writer quiescence, known-cost floor, Express mode).
 
 ## Step 3.9: `generation-warnings.json`
 
@@ -264,9 +237,10 @@ deployment-success claim.
 
 ## Step 5: Validate the rendered report (REQUIRED — mandatory gate)
 
-The worker writes the candidate as `migration-report.html` but does not validate it. In the
-main window run both commands with absolute paths — the plugin-root structural gate first,
-the render-only pass second:
+The validation shape is the skeleton's (§ Validate the rendered report): the worker writes the
+candidate as `migration-report.html` but does not validate it. In the main window run both
+commands with absolute paths — the plugin-root structural gate first, the render-only pass
+second:
 
 ```bash
 python3 "$PLUGIN_ROOT/scripts/validate-migration-report.py" \
