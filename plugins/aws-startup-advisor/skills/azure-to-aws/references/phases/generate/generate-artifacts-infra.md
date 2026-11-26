@@ -438,7 +438,7 @@ path, and does NOT write `validation-report.json`. The orchestrator (`generate.m
 window) owns Terraform validation, the policy gate, and the single canonical
 `$MIGRATION_DIR/validation-report.json` write after the worker returns — passing only the
 terraform DIR to the skill and merging the policy verdict into the report as
-`policy_status`. See `generate.md` § "Step: Run the phase" step 4.
+`policy_status`. See `generate.md` § "Step: Run the phase" step 5.
 
 ## Phase completion
 

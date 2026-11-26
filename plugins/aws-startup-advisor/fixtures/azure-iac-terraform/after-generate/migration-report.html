@@ -974,10 +974,10 @@ terraform apply</pre>
       </ul>
 
       <h3>Terraform validation</h3>
-      <div class="callout callout-ok">
-        <strong>Validation report:</strong> status <code>passed</code> — fmt, init and validate; policy gate <code>POLICY_OK</code>
-        (tf-best-practices). Provider <code>hashicorp/aws</code>. The generated stack aligns with the Balanced cost tier.
-        <em>Golden fixture: this row is illustrative; no Terraform was applied.</em>
+      <div class="callout">
+        <strong>Validation report:</strong> Terraform fmt / init / validate and the policy gate
+        (tf-best-practices) run after this report is generated. The result of this run is in
+        <code>validation-report.json</code>; it is not repeated here.
       </div>
 
       <h3>Design and generation warnings</h3>
