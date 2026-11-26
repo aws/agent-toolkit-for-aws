@@ -53,8 +53,9 @@ def sql_series(metric_type: str, name: str, metric_labels: dict | None, pts: lis
         "valueType": value_type,
         "points": pts,
     }
-def uniform_series(low: float, high: float, n: int = HOURS) -> list[float]:
-    return [rng.uniform(low, high) for _ in range(n)]
+def uniform_series(low: float, high: float, n: int = HOURS, source: random.Random | None = None) -> list[float]:
+    source = source or rng
+    return [source.uniform(low, high) for _ in range(n)]
 def write(name: str, obj) -> None:
     (OUT / name).write_text(json.dumps(obj, separators=(",", ":")) + "\n", encoding="utf-8")
 def write_pretty(name: str, obj) -> None:
@@ -78,7 +79,13 @@ VMS = [
     ("idle-vm", "n2-standard-2", "1000000000000000006", (0.005, 0.012), (8.0, 10.5), HOURS),
     ("web-mig-7f3k", "e2-medium", "1000000000000000007", (0.10, 0.30), (30.0, 45.0), HOURS),
     ("ops-small", "e2-small", "1000000000000000008", (0.70, 1.25), (21.0, 39.0), HOURS),
+    # Added for the sizing step (PR 2): bursty WITH memory, so the burst branch can fire (batch-bursty
+    # has no Ops Agent and stays declared as memory_unavailable). Drawn from its own generator so the
+    # eight VMs above and the Cloud SQL series keep PR 1's values.
+    ("jobs-bursty", "n2-standard-8", "1000000000000000009", (0.05, 0.105), (8.0, 15.5), HOURS),
 ]
+BURSTY_SEED = SEED + 1
+rng_extra = random.Random(BURSTY_SEED)
 CPU = "compute.googleapis.com/instance/cpu/utilization"
 MEM = "agent.googleapis.com/memory/percent_used"
 def build_gce() -> tuple[list[dict], list[dict], list[dict], list[dict], list[dict]]:
@@ -95,11 +102,12 @@ def build_gce() -> tuple[list[dict], list[dict], list[dict], list[dict], list[di
             "status": "RUNNING",
             "zone": f"{COMPUTE}/zones/{ZONE}",
         })
-        means = uniform_series(*cpu_range, n=hours)
-        maxes = [m + rng.uniform(0.02, 0.08) for m in means]
+        source = rng_extra if name == "jobs-bursty" else rng
+        means = uniform_series(*cpu_range, n=hours, source=source)
+        maxes = [m + source.uniform(0.02, 0.08) for m in means]
         if name == "web-steady":
             means[50], maxes[50] = 0.12, 0.9  # one hot max with an ordinary mean: never a burst
-        if name == "batch-bursty":
+        if name in ("batch-bursty", "jobs-bursty"):
             means[40], means[41] = 0.6, 0.6  # two consecutive hot hourly means: burst
             maxes[40], maxes[41] = 0.95, 0.93
         if name == "ops-small":
@@ -108,8 +116,8 @@ def build_gce() -> tuple[list[dict], list[dict], list[dict], list[dict], list[di
         cpu_max.append(gce_series(CPU, instance_id, {"instance_name": name}, points(maxes)))
         if mem_range is None:
             continue
-        used = uniform_series(*mem_range, n=hours)
-        used_max = [u + rng.uniform(0.5, 2.0) for u in used]
+        used = uniform_series(*mem_range, n=hours, source=source)
+        used_max = [u + source.uniform(0.5, 2.0) for u in used]
         if name == "ops-small":
             # Ops Agent reports all five states; this VM's series carry a per-series unit.
             states = {

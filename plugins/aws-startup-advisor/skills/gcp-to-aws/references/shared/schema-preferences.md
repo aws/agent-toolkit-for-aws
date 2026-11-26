@@ -55,11 +55,17 @@ Use the **Recommendation Impact** row for the selected answer from the category 
     }
   },
   "ai_constraints": { "...": "..." },
-  "startup_constraints": { "...": "..." }
+  "startup_constraints": { "...": "..." },
+  "sizing_exemptions": ["1000000000000000001", "acme-prod:orders-db"]
 }
 ```
 
 `ai_constraints` omitted when no AI artifacts. `startup_constraints` optional (Q27).
+`sizing_exemptions` optional (Q-E0 veto in `clarify-assemble.md`): resources the user named as
+having a known upcoming load change, resolved by Clarify to a GCE `config.id` **string** or a
+Cloud SQL `"<project>:<name>"` key — never a display name. Design keeps each at its declared size
+with `declared_reason: "user_exempt"`. Omit the key when nothing was named; never write an empty
+array in place of "no exemptions".
 
 ---
 
@@ -71,6 +77,7 @@ Use when assembling Step 5. Replace `[value]` with the interpreted constraint.
 | --------------------------- | ------------------ | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `target_region`             | Q1                 | Where are your users located?                                      | All resources deploy in `[value]`; Bedrock model availability checked for this region                                                                                                                                                                                   |
 | `compliance`                | Q2 (AI-only: Q1.5) | Do you have any compliance or regulatory requirements?             | `[value]` drives baseline controls (CloudTrail, Config, Security Hub) and eligible regions; AI-only path additionally gates Bedrock models/regions (design-ai Step 0.7). `["unknown"]` = not confirmed: no-constraint for service selection, but report caveat required |
+| `cost_optimization`         | Q-E0               | How aggressively should we right-size your AWS design versus your current capacity? | `[value]` (`conservative` / `balanced` / `aggressive`) sets whether Compute Engine and Cloud SQL are sized from measured Cloud Monitoring utilization (`design-refs/compute.md` § Measured sizing) and the step cap below like-for-like; changes nothing without utilization data |
 | `gcp_monthly_spend`         | Q3                 | Approximately how much are you spending on GCP per month in total? | `[value]` band sets dev-tier sizing baseline and credits eligibility context                                                                                                                                                                                            |
 | `funding_stage`             | Q4                 | What is your funding stage?                                        | `[value]` informs Activate credits tier guidance                                                                                                                                                                                                                        |
 | `availability`              | Q6                 | What level of uptime does your application require?                | `[value]` drives RDS single-AZ vs Multi-AZ vs Aurora selection                                                                                                                                                                                                          |

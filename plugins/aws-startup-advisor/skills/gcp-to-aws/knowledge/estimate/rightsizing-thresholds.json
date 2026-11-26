@@ -1,0 +1,24 @@
+{
+  "_what_this_is": "Every tunable behind gcp-to-aws measured right-sizing, modelled on azure-to-aws's rightsizing-thresholds.json. skills/gcp-to-aws/scripts/summarize-monitoring.py reads coverage/idle/burst when it reduces Cloud Monitoring pages; skills/gcp-to-aws/scripts/size-from-utilization.py reads the rest when Design picks sizes; Estimate and the tests read the same file. Each value is a judgment call with a one-line rationale so a reviewer can argue the number, not the mechanism.",
+  "_precondition": "The sizing rule runs only for a resource whose `utilization.coverage` is `sufficient`, whose memory block is numeric, that is not `idle`, not a `mig_member`, not in `preferences.sizing_exemptions[]`, and whose `cost_optimization` is `balanced` or `aggressive`. Everything else keeps its declared (like-for-like) size with a `declared_reason`.",
+  "headroom_factor": 1.3,
+  "_headroom_factor_why": "Required capacity is p95 × 1.3: 30% above the hourly-mean p95 absorbs intra-hour peaks the hourly mean hides and leaves room for the post-migration load test. Sizing to the raw p95 would run the target hot from day one.",
+  "step_cap": { "balanced": 2, "aggressive": null },
+  "_step_cap_why": "How many catalog positions BELOW the like-for-like anchor a pick may go. Balanced stops two sizes down (a quarter of the vCPU) because a month of hourly means can still miss a quarterly peak; Aggressive (null) goes to the family minimum. The cap is a floor on the pick, never a ceiling: the capped size is always at or above the uncapped one and still meets required vCPU and memory, so it can never be below the requirement.",
+  "coverage_min": 0.8,
+  "_coverage_min_why": "samples_present / samples_expected on the CPU series. Below 80% the window has at least six missing days (of 30) and may sit inside a quiet stretch; the resource is `insufficient` and stays declared.",
+  "idle": { "cpu_p95_max": 0.05, "memory_p95_max": 0.2 },
+  "_idle_why": "GCE only. cpu.p95 under 5% with memory p95 under 20% (or memory unavailable) and no burst is a decommission candidate, not a right-sizing candidate; the rule would otherwise quietly migrate a 1% VM at the family minimum. Cloud SQL never gets idle: a quiet database still holds data.",
+  "burst": { "cpu_p95_max": 0.3, "spike_multiple": 2, "consecutive_hours": 2 },
+  "_burst_why": "cpu.p95 under 30% AND at least two consecutive hourly MEANS above 2 × p95. Hourly max never drives it: one busy minute in 30 days is not a burst pattern. The p95 ceiling keeps a steadily busy box from being labelled bursty.",
+  "burstable_caution": {
+    "rule": "(reserved_vcpu or declared_vcpu) × cpu.p95 <= target_vcpu × baseline_cpu_fraction",
+    "_why": "cpu.p95 is a fraction of the SOURCE machine's CPU and baseline_cpu_fraction a fraction of the TARGET's; never compare them directly. Convert both to vCPU of load. n2-standard-8 at p95 0.12 is 0.96 vCPU; t4g.large's baseline is 2 × 0.30 = 0.60 vCPU (fails), t4g.xlarge's is 4 × 0.40 = 1.6 (passes). A burstable target below its baseline throttles, and the throttle looks like an application fault."
+  },
+  "rds_proxy": { "connections_over_limit": true, "cpu_p95_max": 0.5, "near_limit_fraction": 0.9 },
+  "_rds_proxy_why": "Add RDS Proxy only when connections.p95 exceeds the chosen class's max_connections (instance-catalog.json formula on DBInstanceClassMemory) AND cpu.p95 is at or below 0.50. A busy database with many connections needs a larger class, not a proxy in front of a saturated one. connections.p95 at or above near_limit_fraction × max_connections (and not over) is a warning: the limit is modeled from a fit, so confirm it on the instance or add RDS Proxy.",
+  "memory_saturated_p95_min": 0.9,
+  "_memory_saturated_why": "Cloud SQL memory utilization counts page cache; a 0.6 GB db-f1-micro reads 0.99–1.0 all month. At or above 0.90 the class stays like-for-like with sizing_note memory_saturated: the declared class is the floor, not evidence of need, and × 1.3 headroom must not upsize it.",
+  "storage": { "bytes_used_factor": 1.5, "gp3_iops": 3000, "gp3_throughput_mbps": 125, "round_up_gib": 10 },
+  "_storage_why": "Allocated = disk_bytes_used.max × 1.5, rounded up to the next 10 GiB, never below the engine minimum (20 GiB gp3). 50% growth room covers a year at typical startup data growth without paying for the provisioned Cloud SQL disk that was an upper bound. gp3 baseline 3000 IOPS / 125 MB/s is what every volume under 400 GiB gets; v1 did not measure IOPS, so the design carries a warning when the source disk was large enough to have bought more."
+}

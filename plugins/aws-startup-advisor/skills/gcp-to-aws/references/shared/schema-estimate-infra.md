@@ -126,6 +126,13 @@ Validation: when all three tiers are present, `scenario_deltas.premium` and `sce
         "cloudwatch": 35.30,
         "ecr": { "monthly": 0.05, "calculation": "image storage GB × rate" }
       }
+    },
+    "sizing_bands": {
+      "like_for_like_monthly": 480.12,
+      "right_sized_monthly": 265,
+      "delta_monthly": 215.12,
+      "measured_resources": 7,
+      "basis": "30-day Cloud Monitoring p95 × 1.3 headroom, cost_optimization balanced (step cap 2); like-for-like rebuilt from sized_from.like_for_like"
     }
   },
 
@@ -551,6 +558,7 @@ Present in `estimation-infra.json` only when `preferences.json` → `design_cons
   CPU/memory; require an explicit count when application HA was requested.
 - Per-service `calculation` reconciles with `monthly`; derived rates are marked
   `estimated`, not `cached`, consistently with the top-level provenance list.
+- `projected_costs.sizing_bands` (optional) is present only when at least one `aws-design.json` mapping has `sizing_provenance: "measured"` (`estimate-infra.md` Part 2D); `right_sized_monthly` equals `aws_monthly_balanced`, `like_for_like_monthly` is rebuilt from each measured mapping's `sized_from.like_for_like`, and `delta_monthly = like_for_like_monthly − right_sized_monthly`. EC2 and RDS breakdown entries then carry `sizing_basis` (`"measured"` | `"declared"`) and, when measured, `like_for_like_monthly`
 - `projected_costs.breakdown` observability entry (when present) REPLACES any CloudWatch/log/metric costs in the "Supporting" row — never double-count
 - `cost_comparison` shows all three options with monthly and annual differences
 - `cost_comparison.commitment_context` is present if `billing-profile.json` has `commitments.has_active_cuds == true`; omitted otherwise

@@ -1,0 +1,235 @@
+{
+  "_what_this_is": "Ordered instance sizes per AWS family, GCE machine-type specs, and RDS classes used by design-refs/compute.md and design-refs/database.md to size from measured utilization (skills/gcp-to-aws/scripts/size-from-utilization.py reads this file; nothing is computed from prose). graviton.md maps families; this file lists the sizes inside them.",
+  "_like_for_like_anchor": "The smallest size in the mapped AWS family whose vcpu AND memory_gib are both at or above the source's declared vcpu and memory. graviton.md's six explicit rows are special cases of this rule and must agree with it (tests/test_gcp_utilization_sizing.py checks). The step cap in knowledge/estimate/rightsizing-thresholds.json counts positions down from the anchor within the same family list.",
+  "_units": "vcpu is the guest-visible vCPU count. memory_gib is GiB (GCE publishes machine memory in GB that are binary GiB). reserved_vcpu is the fraction of a physical core a shared-core type is guaranteed; compute.googleapis.com/instance/cpu/utilization is a fraction of THAT, so it exceeds 1.0 under load and the sizing formula multiplies cpu.p95 by reserved_vcpu when present, else by vcpu.",
+  "aws_families": {
+    "m7g": {
+      "architecture": "arm64",
+      "x86_fallback": "m6i",
+      "source": "https://aws.amazon.com/ec2/instance-types/m7g/",
+      "sizes": [
+        { "name": "m7g.medium", "vcpu": 1, "memory_gib": 4 },
+        { "name": "m7g.large", "vcpu": 2, "memory_gib": 8 },
+        { "name": "m7g.xlarge", "vcpu": 4, "memory_gib": 16 },
+        { "name": "m7g.2xlarge", "vcpu": 8, "memory_gib": 32 },
+        { "name": "m7g.4xlarge", "vcpu": 16, "memory_gib": 64 },
+        { "name": "m7g.8xlarge", "vcpu": 32, "memory_gib": 128 },
+        { "name": "m7g.12xlarge", "vcpu": 48, "memory_gib": 192 },
+        { "name": "m7g.16xlarge", "vcpu": 64, "memory_gib": 256 }
+      ]
+    },
+    "c7g": {
+      "architecture": "arm64",
+      "x86_fallback": "c6i",
+      "source": "https://aws.amazon.com/ec2/instance-types/c7g/",
+      "sizes": [
+        { "name": "c7g.medium", "vcpu": 1, "memory_gib": 2 },
+        { "name": "c7g.large", "vcpu": 2, "memory_gib": 4 },
+        { "name": "c7g.xlarge", "vcpu": 4, "memory_gib": 8 },
+        { "name": "c7g.2xlarge", "vcpu": 8, "memory_gib": 16 },
+        { "name": "c7g.4xlarge", "vcpu": 16, "memory_gib": 32 },
+        { "name": "c7g.8xlarge", "vcpu": 32, "memory_gib": 64 },
+        { "name": "c7g.12xlarge", "vcpu": 48, "memory_gib": 96 },
+        { "name": "c7g.16xlarge", "vcpu": 64, "memory_gib": 128 }
+      ]
+    },
+    "r7g": {
+      "architecture": "arm64",
+      "x86_fallback": "r6i",
+      "source": "https://aws.amazon.com/ec2/instance-types/r7g/",
+      "sizes": [
+        { "name": "r7g.medium", "vcpu": 1, "memory_gib": 8 },
+        { "name": "r7g.large", "vcpu": 2, "memory_gib": 16 },
+        { "name": "r7g.xlarge", "vcpu": 4, "memory_gib": 32 },
+        { "name": "r7g.2xlarge", "vcpu": 8, "memory_gib": 64 },
+        { "name": "r7g.4xlarge", "vcpu": 16, "memory_gib": 128 },
+        { "name": "r7g.8xlarge", "vcpu": 32, "memory_gib": 256 },
+        { "name": "r7g.12xlarge", "vcpu": 48, "memory_gib": 384 },
+        { "name": "r7g.16xlarge", "vcpu": 64, "memory_gib": 512 }
+      ]
+    },
+    "t4g": {
+      "architecture": "arm64",
+      "x86_fallback": "t3",
+      "burstable": true,
+      "source": "https://aws.amazon.com/ec2/instance-types/t4g/",
+      "baseline_source": "https://docs.aws.amazon.com/ec2/latest/instancetypes/gp.html#gp_network_performance",
+      "sizes": [
+        { "name": "t4g.nano", "vcpu": 2, "memory_gib": 0.5, "baseline_cpu_fraction": 0.05 },
+        { "name": "t4g.micro", "vcpu": 2, "memory_gib": 1, "baseline_cpu_fraction": 0.1 },
+        { "name": "t4g.small", "vcpu": 2, "memory_gib": 2, "baseline_cpu_fraction": 0.2 },
+        { "name": "t4g.medium", "vcpu": 2, "memory_gib": 4, "baseline_cpu_fraction": 0.2 },
+        { "name": "t4g.large", "vcpu": 2, "memory_gib": 8, "baseline_cpu_fraction": 0.3 },
+        { "name": "t4g.xlarge", "vcpu": 4, "memory_gib": 16, "baseline_cpu_fraction": 0.4 },
+        { "name": "t4g.2xlarge", "vcpu": 8, "memory_gib": 32, "baseline_cpu_fraction": 0.4 }
+      ]
+    },
+    "m6i": {
+      "architecture": "x86_64",
+      "source": "https://aws.amazon.com/ec2/instance-types/m6i/",
+      "sizes": [
+        { "name": "m6i.large", "vcpu": 2, "memory_gib": 8 },
+        { "name": "m6i.xlarge", "vcpu": 4, "memory_gib": 16 },
+        { "name": "m6i.2xlarge", "vcpu": 8, "memory_gib": 32 },
+        { "name": "m6i.4xlarge", "vcpu": 16, "memory_gib": 64 },
+        { "name": "m6i.8xlarge", "vcpu": 32, "memory_gib": 128 },
+        { "name": "m6i.12xlarge", "vcpu": 48, "memory_gib": 192 },
+        { "name": "m6i.16xlarge", "vcpu": 64, "memory_gib": 256 },
+        { "name": "m6i.24xlarge", "vcpu": 96, "memory_gib": 384 },
+        { "name": "m6i.32xlarge", "vcpu": 128, "memory_gib": 512 }
+      ]
+    },
+    "c6i": {
+      "architecture": "x86_64",
+      "source": "https://aws.amazon.com/ec2/instance-types/c6i/",
+      "sizes": [
+        { "name": "c6i.large", "vcpu": 2, "memory_gib": 4 },
+        { "name": "c6i.xlarge", "vcpu": 4, "memory_gib": 8 },
+        { "name": "c6i.2xlarge", "vcpu": 8, "memory_gib": 16 },
+        { "name": "c6i.4xlarge", "vcpu": 16, "memory_gib": 32 },
+        { "name": "c6i.8xlarge", "vcpu": 32, "memory_gib": 64 },
+        { "name": "c6i.12xlarge", "vcpu": 48, "memory_gib": 96 },
+        { "name": "c6i.16xlarge", "vcpu": 64, "memory_gib": 128 },
+        { "name": "c6i.24xlarge", "vcpu": 96, "memory_gib": 192 },
+        { "name": "c6i.32xlarge", "vcpu": 128, "memory_gib": 256 }
+      ]
+    },
+    "r6i": {
+      "architecture": "x86_64",
+      "source": "https://aws.amazon.com/ec2/instance-types/r6i/",
+      "sizes": [
+        { "name": "r6i.large", "vcpu": 2, "memory_gib": 16 },
+        { "name": "r6i.xlarge", "vcpu": 4, "memory_gib": 32 },
+        { "name": "r6i.2xlarge", "vcpu": 8, "memory_gib": 64 },
+        { "name": "r6i.4xlarge", "vcpu": 16, "memory_gib": 128 },
+        { "name": "r6i.8xlarge", "vcpu": 32, "memory_gib": 256 },
+        { "name": "r6i.12xlarge", "vcpu": 48, "memory_gib": 384 },
+        { "name": "r6i.16xlarge", "vcpu": 64, "memory_gib": 512 },
+        { "name": "r6i.24xlarge", "vcpu": 96, "memory_gib": 768 },
+        { "name": "r6i.32xlarge", "vcpu": 128, "memory_gib": 1024 }
+      ]
+    },
+    "t3": {
+      "architecture": "x86_64",
+      "burstable": true,
+      "source": "https://aws.amazon.com/ec2/instance-types/t3/",
+      "baseline_source": "https://docs.aws.amazon.com/ec2/latest/instancetypes/gp.html#gp_network_performance",
+      "sizes": [
+        { "name": "t3.nano", "vcpu": 2, "memory_gib": 0.5, "baseline_cpu_fraction": 0.05 },
+        { "name": "t3.micro", "vcpu": 2, "memory_gib": 1, "baseline_cpu_fraction": 0.1 },
+        { "name": "t3.small", "vcpu": 2, "memory_gib": 2, "baseline_cpu_fraction": 0.2 },
+        { "name": "t3.medium", "vcpu": 2, "memory_gib": 4, "baseline_cpu_fraction": 0.2 },
+        { "name": "t3.large", "vcpu": 2, "memory_gib": 8, "baseline_cpu_fraction": 0.3 },
+        { "name": "t3.xlarge", "vcpu": 4, "memory_gib": 16, "baseline_cpu_fraction": 0.4 },
+        { "name": "t3.2xlarge", "vcpu": 8, "memory_gib": 32, "baseline_cpu_fraction": 0.4 }
+      ]
+    }
+  },
+  "gce": {
+    "_how_to_read": "A machine type `<family>-<n>` has vcpu n and memory_gib n × gib_per_vcpu. `*-custom-<vcpu>-<mb>` (e.g. n2-custom-4-8192, e2-custom-2-4096, custom-4-8192 for n1) parses vcpu and memory_gib = mb / 1024 and takes the family's aws_family. Shared-core types are listed explicitly with reserved_vcpu. `aws_family` is the Graviton family; its x86 fallback is the family's `x86_fallback` above. Memory ratios from https://cloud.google.com/compute/docs/machine-resource#machine_type_comparison and the per-family pages linked below.",
+    "families": {
+      "e2-standard": { "gib_per_vcpu": 4, "aws_family": "m7g", "source": "https://cloud.google.com/compute/docs/general-purpose-machines#e2_machine_types" },
+      "e2-highmem": { "gib_per_vcpu": 8, "aws_family": "r7g", "source": "https://cloud.google.com/compute/docs/general-purpose-machines#e2_machine_types" },
+      "e2-highcpu": { "gib_per_vcpu": 1, "aws_family": "c7g", "source": "https://cloud.google.com/compute/docs/general-purpose-machines#e2_machine_types" },
+      "e2-custom": { "aws_family": "m7g", "source": "https://cloud.google.com/compute/docs/general-purpose-machines#e2_machine_types" },
+      "n2-standard": { "gib_per_vcpu": 4, "aws_family": "m7g", "source": "https://cloud.google.com/compute/docs/general-purpose-machines#n2_machine_types" },
+      "n2-highmem": { "gib_per_vcpu": 8, "aws_family": "r7g", "source": "https://cloud.google.com/compute/docs/general-purpose-machines#n2_machine_types" },
+      "n2-highcpu": { "gib_per_vcpu": 1, "aws_family": "c7g", "source": "https://cloud.google.com/compute/docs/general-purpose-machines#n2_machine_types" },
+      "n2-custom": { "aws_family": "m7g", "source": "https://cloud.google.com/compute/docs/general-purpose-machines#n2_machine_types" },
+      "n2d-standard": { "gib_per_vcpu": 4, "aws_family": "m7g", "source": "https://cloud.google.com/compute/docs/general-purpose-machines#n2d_machines" },
+      "n2d-highmem": { "gib_per_vcpu": 8, "aws_family": "r7g", "source": "https://cloud.google.com/compute/docs/general-purpose-machines#n2d_machines" },
+      "n2d-highcpu": { "gib_per_vcpu": 1, "aws_family": "c7g", "source": "https://cloud.google.com/compute/docs/general-purpose-machines#n2d_machines" },
+      "n2d-custom": { "aws_family": "m7g", "source": "https://cloud.google.com/compute/docs/general-purpose-machines#n2d_machines" },
+      "n1-standard": { "gib_per_vcpu": 3.75, "aws_family": "m7g", "source": "https://cloud.google.com/compute/docs/general-purpose-machines#n1_machines" },
+      "n1-highmem": { "gib_per_vcpu": 6.5, "aws_family": "r7g", "source": "https://cloud.google.com/compute/docs/general-purpose-machines#n1_machines" },
+      "n1-highcpu": { "gib_per_vcpu": 0.9, "aws_family": "c7g", "source": "https://cloud.google.com/compute/docs/general-purpose-machines#n1_machines" },
+      "custom": { "aws_family": "m7g", "source": "https://cloud.google.com/compute/docs/general-purpose-machines#n1_machines" },
+      "t2d-standard": { "gib_per_vcpu": 4, "aws_family": "m7g", "source": "https://cloud.google.com/compute/docs/general-purpose-machines#t2d_machines" },
+      "c2-standard": { "gib_per_vcpu": 4, "aws_family": "c7g", "source": "https://cloud.google.com/compute/docs/compute-optimized-machines#c2_machine_types" },
+      "c2d-standard": { "gib_per_vcpu": 4, "aws_family": "c7g", "source": "https://cloud.google.com/compute/docs/compute-optimized-machines#c2d_machine_types" },
+      "c2d-highmem": { "gib_per_vcpu": 8, "aws_family": "c7g", "source": "https://cloud.google.com/compute/docs/compute-optimized-machines#c2d_machine_types" },
+      "c2d-highcpu": { "gib_per_vcpu": 2, "aws_family": "c7g", "source": "https://cloud.google.com/compute/docs/compute-optimized-machines#c2d_machine_types" },
+      "c3-standard": { "gib_per_vcpu": 4, "aws_family": "c7g", "source": "https://cloud.google.com/compute/docs/general-purpose-machines#c3_series" },
+      "c3-highmem": { "gib_per_vcpu": 8, "aws_family": "c7g", "source": "https://cloud.google.com/compute/docs/general-purpose-machines#c3_series" },
+      "c3-highcpu": { "gib_per_vcpu": 2, "aws_family": "c7g", "source": "https://cloud.google.com/compute/docs/general-purpose-machines#c3_series" }
+    },
+    "shared_core": {
+      "_why": "cpu/utilization on these types is a fraction of reserved_vcpu and exceeds 1.0 under load (live: e2-small max 1.965). The formula uses reserved_vcpu; the like-for-like anchor uses the guest-visible vcpu, which is what graviton.md's e2-micro/small/medium rows already do.",
+      "source": "https://cloud.google.com/compute/docs/general-purpose-machines#sharedcore",
+      "types": {
+        "e2-micro": { "vcpu": 2, "reserved_vcpu": 0.25, "memory_gib": 1, "aws_family": "t4g" },
+        "e2-small": { "vcpu": 2, "reserved_vcpu": 0.5, "memory_gib": 2, "aws_family": "t4g" },
+        "e2-medium": { "vcpu": 2, "reserved_vcpu": 1, "memory_gib": 4, "aws_family": "t4g" },
+        "f1-micro": { "vcpu": 1, "reserved_vcpu": 0.2, "memory_gib": 0.6, "aws_family": "t4g" },
+        "g1-small": { "vcpu": 1, "reserved_vcpu": 0.5, "memory_gib": 1.7, "aws_family": "t4g" }
+      }
+    }
+  },
+  "rds": {
+    "_how_to_read": "Classes are ordered within each family. Cloud SQL `db-custom-<vcpu>-<mb>` parses like GCE custom types; `db-n1-standard-<n>` is n vCPU × 3.75 GiB and `db-n1-highmem-<n>` n × 6.5 GiB; the shared-core tiers are listed. Mapping: shared-core tiers → db.t4g (the like-for-like for db-f1-micro is db.t4g.micro, as design-refs/database.md Example 1 already says); standard/custom at or below 6 GiB per vCPU → db.m7g; highmem or custom above 6 GiB per vCPU → db.r7g. v1 never MOVES a measured database onto db.t4g: measured sizing stays inside the like-for-like family, so the EC2 credit table does not apply here.",
+    "source": "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.DBInstanceClass.Summary.html",
+    "max_connections": {
+      "_what_this_is": "A formula on DBInstanceClassMemory, not a stored integer. DBInstanceClassMemory is NOT the advertised class memory: RDS subtracts what it reserves for the operating system and its management processes before the engine divisor applies (CHAP_Limits: db.m7g.large MySQL is about 630, not 8 GiB / 12582880 = 683; db.t3.micro MySQL is about 60). AWS does not publish the deduction, so reserved_memory is a fit to those two documented anchors: DBInstanceClassMemory = (memory_gib − fixed_gib − fraction × memory_gib) × 1073741824.",
+      "source": "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_Limits.html#RDS_Limits.MaxConnections",
+      "reserved_memory": { "fixed_gib": 0.25, "fraction": 0.045, "_anchors": "db.m7g.large mysql 8 GiB → 630 (documented about 630); db.t3.micro mysql 1 GiB → 60 (documented about 60)" },
+      "mysql": { "formula": "floor(DBInstanceClassMemory / 12582880)", "divisor": 12582880 },
+      "mariadb": { "formula": "floor(DBInstanceClassMemory / 12582880)", "divisor": 12582880 },
+      "postgresql": { "formula": "min(floor(DBInstanceClassMemory / 9531392), 5000)", "divisor": 9531392, "cap": 5000 },
+      "sqlserver": { "formula": "engine default 0 = unlimited; the proxy decision is skipped", "divisor": null }
+    },
+    "storage": {
+      "_what_this_is": "gp3 is the default. Allocated = disk_bytes_used.max × bytes_used_factor (rightsizing-thresholds.json) rounded up to the next 10 GiB, never below min_allocated_gib.",
+      "source": "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_Storage.html#gp3-storage",
+      "gp3": { "min_allocated_gib": 20, "baseline_iops": 3000, "baseline_throughput_mbps": 125, "_baseline_applies_below_gib": 400 }
+    },
+    "families": {
+      "db.t4g": {
+        "architecture": "arm64",
+        "classes": [
+          { "name": "db.t4g.micro", "vcpu": 2, "memory_gib": 1 },
+          { "name": "db.t4g.small", "vcpu": 2, "memory_gib": 2 },
+          { "name": "db.t4g.medium", "vcpu": 2, "memory_gib": 4 },
+          { "name": "db.t4g.large", "vcpu": 2, "memory_gib": 8 },
+          { "name": "db.t4g.xlarge", "vcpu": 4, "memory_gib": 16 },
+          { "name": "db.t4g.2xlarge", "vcpu": 8, "memory_gib": 32 }
+        ]
+      },
+      "db.m7g": {
+        "architecture": "arm64",
+        "classes": [
+          { "name": "db.m7g.large", "vcpu": 2, "memory_gib": 8 },
+          { "name": "db.m7g.xlarge", "vcpu": 4, "memory_gib": 16 },
+          { "name": "db.m7g.2xlarge", "vcpu": 8, "memory_gib": 32 },
+          { "name": "db.m7g.4xlarge", "vcpu": 16, "memory_gib": 64 },
+          { "name": "db.m7g.8xlarge", "vcpu": 32, "memory_gib": 128 },
+          { "name": "db.m7g.12xlarge", "vcpu": 48, "memory_gib": 192 },
+          { "name": "db.m7g.16xlarge", "vcpu": 64, "memory_gib": 256 }
+        ]
+      },
+      "db.r7g": {
+        "architecture": "arm64",
+        "classes": [
+          { "name": "db.r7g.large", "vcpu": 2, "memory_gib": 16 },
+          { "name": "db.r7g.xlarge", "vcpu": 4, "memory_gib": 32 },
+          { "name": "db.r7g.2xlarge", "vcpu": 8, "memory_gib": 64 },
+          { "name": "db.r7g.4xlarge", "vcpu": 16, "memory_gib": 128 },
+          { "name": "db.r7g.8xlarge", "vcpu": 32, "memory_gib": 256 },
+          { "name": "db.r7g.12xlarge", "vcpu": 48, "memory_gib": 384 },
+          { "name": "db.r7g.16xlarge", "vcpu": 64, "memory_gib": 512 }
+        ]
+      }
+    },
+    "cloudsql": {
+      "source": "https://cloud.google.com/sql/docs/mysql/instance-settings#machine-type-2ndgen",
+      "shared_core": {
+        "db-f1-micro": { "vcpu": 1, "reserved_vcpu": 0.2, "memory_gib": 0.6, "rds_family": "db.t4g" },
+        "db-g1-small": { "vcpu": 1, "reserved_vcpu": 0.5, "memory_gib": 1.7, "rds_family": "db.t4g" }
+      },
+      "legacy_families": {
+        "db-n1-standard": { "gib_per_vcpu": 3.75, "rds_family": "db.m7g" },
+        "db-n1-highmem": { "gib_per_vcpu": 6.5, "rds_family": "db.r7g" }
+      },
+      "custom_highmem_gib_per_vcpu_above": 6
+    }
+  }
+}
