@@ -176,6 +176,16 @@ def test_profile_full_mode_required_set() -> None:
         assert validator.SKILL_PROFILES["heroku"]["not_required"][sid]
 
 
+def test_profile_not_required_never_overlaps_required_sections() -> None:
+    """`not_required` is documentary; a later edit must not list an ID in both maps."""
+    validator = _load()
+    profile = validator.SKILL_PROFILES["heroku"]
+    not_required = set(profile["not_required"])
+    for mode, ids in profile["required_sections"].items():
+        overlap = not_required & set(ids)
+        assert not overlap, f"{mode}: declared not_required but also required: {sorted(overlap)}"
+
+
 def test_profile_does_not_exempt_week_range_readability() -> None:
     validator = _load()
     errors = validator.validate_report(

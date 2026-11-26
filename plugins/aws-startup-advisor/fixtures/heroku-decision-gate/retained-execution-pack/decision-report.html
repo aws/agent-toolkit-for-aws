@@ -89,14 +89,18 @@
   <thead><tr><th scope="col">Heroku today</th><th scope="col">On AWS</th><th scope="col">Status</th><th scope="col">Your estate</th></tr></thead>
   <tbody>
     <tr><td><code>git push heroku main</code> + buildpacks</td><td>CI builds a container image and deploys it to Elastic Beanstalk</td><td><strong>Will be generated</strong> — a deploy workflow per app</td><td>1 buildpack app on Beanstalk</td></tr>
+    <tr><td>Pipelines and promote</td><td>Environments per stage with the same image promoted between them, approval-gated</td><td><strong>Will be generated</strong> — an approval-gated <code>promote.yml</code> for the Beanstalk app with a generated deploy workflow</td><td>1 app; no pipeline recorded</td></tr>
+    <tr><td>Review apps</td><td>An ephemeral environment per pull request, torn down on merge</td><td><strong>Build</strong> (or buy)</td><td>—</td></tr>
     <tr><td>Config vars</td><td>Parameter Store / Secrets Manager, injected at deploy</td><td><strong>Covered</strong> — bindings will be generated; you import the values</td><td>1 app</td></tr>
     <tr><td><code>heroku run</code> / one-off dynos</td><td>ECS Exec or <code>eb ssh</code></td><td><strong>Covered</strong> — different command for the target</td><td>—</td></tr>
     <tr><td><code>heroku logs --tail</code></td><td>CloudWatch Logs live tail</td><td><strong>Covered</strong></td><td>—</td></tr>
     <tr><td>Release phase</td><td>A pre-deploy job in the workflow that runs before traffic shifts</td><td><strong>Build</strong></td><td>—</td></tr>
+    <tr><td>Scheduler add-ons</td><td>EventBridge Scheduler</td><td><strong>Covered</strong> — schedules recreated by you; Generate emits no Terraform for the schedules themselves</td><td>0 scheduler add-ons mapped, 0 deferred</td></tr>
+    <tr><td><code>ps:scale</code></td><td>Autoscaling policy or one CLI call</td><td><strong>Covered</strong></td><td>—</td></tr>
     <tr><td>Add-on marketplace</td><td>Each add-on becomes an AWS service wired by the Terraform that Generate will produce</td><td><strong>No equivalent</strong> to the marketplace itself</td><td>1 add-on mapped (Postgres), 0 deferred</td></tr>
   </tbody>
 </table>
-<p>The rows marked Build are a platform layer your team owns: release steps and a thin command wrapper. It is a bounded piece of platform work, and it is the same for every app.</p>
+<p>The rows marked Build are a platform layer your team owns: a deploy pipeline for Fargate, EKS and manual-deploy apps, a promote step for every app that gets no generated <code>promote.yml</code>, release steps, review-app automation, and a thin command wrapper. It is weeks of platform work, not months, and it is the same for every app.</p>
 </section>
 
 <section id="exec-timeline">
