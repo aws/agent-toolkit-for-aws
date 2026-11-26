@@ -162,3 +162,18 @@ def test_golden_pins_lettering_accounting_and_anchor_placement() -> None:
         assert html.count(anchor) == 1, key
         assert anchor in exec_costs.group(1), key
     assert "0611-0606" not in html
+def test_decision_core_and_abis_name_the_render_local_cost_checks() -> None:
+    # The canonical report contract must match what stage 7 enforces: premium is required, not optional,
+    # and the ownership lists name the anchor-presence and projected/scenario checks.
+    shared = SKILL_ROOT / "references" / "shared"
+    core = (shared / "report-decision-core.md").read_text(encoding="utf-8")
+    abis = (shared / "script-abis.md").read_text(encoding="utf-8")
+    assert "optional `data-cost-key=\"aws_monthly_premium\"`" not in core
+    for text in (core, abis):
+        assert "COST_AWS_MONTHLY_PREMIUM_MISSING" in text or "aws_monthly_premium" in text
+    for code in (
+        "COST_AWS_MONTHLY_OPTIMIZED_MISSING", "COST_AWS_MONTHLY_PREMIUM_MISSING",
+        "COST_AWS_MONTHLY_BALANCED_SCENARIO_MISMATCH", "COST_AWS_MONTHLY_OPTIMIZED_SCENARIO_MISMATCH",
+    ):
+        assert code in core, code
+    assert "projected/scenario" in abis
