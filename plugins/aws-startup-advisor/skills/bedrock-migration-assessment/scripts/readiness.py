@@ -91,10 +91,15 @@ def _host_answers(run_dir: Path, prefs: dict) -> None:
             raise NotReady("host_answers_mismatch", f"preferences.json design_constraints.{field} differs from the host's answer")
 
 
-def refuse_combined(run_dir: Path, migration_id: str, initiated_by: str | None) -> None:
+def is_combined(run_dir: Path, initiated_by: str | None) -> bool:
     host = run_dir / "host-answers.json"
-    if initiated_by is None and not host.exists() and not host.is_symlink():
+    return initiated_by is not None or host.exists() or host.is_symlink()
+
+
+def refuse_combined(run_dir: Path, migration_id: str, initiated_by: str | None) -> None:
+    if not is_combined(run_dir, initiated_by):
         return
+    host = run_dir / "host-answers.json"
     try:
         answers = json.loads(host.read_bytes().decode("utf-8")) if host.is_file() and not host.is_symlink() else None
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):

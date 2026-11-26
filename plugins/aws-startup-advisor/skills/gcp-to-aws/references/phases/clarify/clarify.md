@@ -349,7 +349,7 @@ When `ai-workload-profile.json` does not exist, go to item 3.
 
 1. Load `references/shared/ai-handoff.md` and run its Steps 1 to 4 with `<phase>` `clarify`.
    A `stop` route leaves `phases.clarify` `"in_progress"` and ends the run; a `defer` route
-   skips the rest of this step.
+   skips item 2 and goes to item 3.
 2. After `accept --through clarify` succeeds, `preferences.json` holds this skill's
    infrastructure answers and the assessment's AI answers, and `ai-handoff.json` records the
    assessment run. Show the assessment's Clarify summary.

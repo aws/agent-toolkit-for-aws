@@ -489,6 +489,18 @@ def test_a_combined_run_gets_no_report(tmp_path: Path, marker: str) -> None:
     assert _snapshot(run) == before
 
 
+@pytest.mark.parametrize("initiated_by", [None, "GCP_TO_AWS"])
+def test_a_combined_run_that_asked_for_generate_gets_no_report(tmp_path: Path, initiated_by: str | None) -> None:
+    run = _run(tmp_path, "bma-generate-same-model", **({"initiated_by": initiated_by} if initiated_by else {}))
+    (run / "host-answers.json").write_text(json.dumps({"host_skill": "gcp-to-aws", "infrastructure_moves": True,
+                                                       "stop_after": "generate", "design_constraints": {}}))
+    before = _snapshot(run)
+    for command in ("plan", "write", "check"):
+        rc, out = _cli(command, str(run))
+        assert rc == 1 and out["error"] == "combined_run", (command, out)
+    assert _snapshot(run) == before
+
+
 def test_another_skills_run_is_refused(tmp_path: Path) -> None:
     run = _run(tmp_path, "bma-estimate-measured")
     _edit(run / ".phase-status.json", lambda d: d.update(migration_id="gcp-1116-1900"))
@@ -506,6 +518,10 @@ def test_skill_runs_the_report_after_estimate_and_generate_but_never_in_a_combin
     combined = step4.split("In a combined run")[1].split(".")[0]
     assert "report" not in combined
     assert "never written in a combined run" in SKILL and "Never in a combined run" in DOC
+
+
+def test_the_readiness_contract_says_the_report_is_not_an_artifact() -> None:
+    assert "`artifacts` never lists `migration-report.html`" in SKILL.split("## Definitions")[0]
 
 
 def test_step_0_offers_the_report_on_a_completed_run() -> None:

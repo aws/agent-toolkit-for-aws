@@ -161,7 +161,8 @@ def gather(run_dir: Path) -> dict:
     """Check the run, then read every input the report renders from, with its SHA-256."""
     try:
         status = readiness._status(run_dir)
-        readiness.refuse_combined(run_dir, status["migration_id"], status.get("initiated_by"))
+        if readiness.is_combined(run_dir, status.get("initiated_by")):
+            raise ReportError("combined_run", f"run {status['migration_id']!r} is a host skill's run; the host skill writes its report")
         generated = status["phases"].get("generate") == "completed"
         ready = readiness.check(run_dir, "generate" if generated else "estimate")
     except readiness.NotReady as exc:

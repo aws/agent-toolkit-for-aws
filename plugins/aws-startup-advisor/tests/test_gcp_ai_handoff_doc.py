@@ -276,6 +276,14 @@ def test_clarify_runs_the_handoff_once_from_the_assembler_gate() -> None:
     assert "**On PASS:** run `clarify.md` § Step 3" in assemble
 
 
+def test_a_deferred_clarify_handoff_still_completes_the_phase() -> None:
+    clarify = (PHASES / "clarify" / "clarify.md").read_text(encoding="utf-8")
+    step3 = clarify[clarify.index("## Step 3: AI Handoff"):]
+    item1 = step3[step3.index("1. Load"):step3.index("2. After")]
+    defer = item1[item1.index("a `defer` route"):]
+    assert "item 3" in defer and "rest of this step" not in defer, defer
+
+
 def test_agent_advisor_ends_at_once_for_a_block_no_unit_matched() -> None:
     plan = (SKILLS / "agent-advisor" / "references" / "phases" / "migration-plan" / "migration-plan.md").read_text(encoding="utf-8")
     step = plan[plan.index("### Step 3.5"):plan.index("### Phase D")]
