@@ -1,0 +1,471 @@
+{
+  "_what_this_is": "Output of skills/gcp-to-aws/scripts/size-from-utilization.py: one sizing decision per Compute Engine VM and Cloud SQL instance, copied onto aws-design.json entries by design-refs/compute.md and database.md \u00a7 Measured sizing.",
+  "cost_optimization": "balanced",
+  "cpu_architecture": "graviton",
+  "declared_resources": 4,
+  "measured_resources": 7,
+  "resources": [
+    {
+      "address": "google_compute_instance.web_steady",
+      "architecture": "arm64",
+      "aws_family": "m7g",
+      "declared": {
+        "memory_gib": 32,
+        "reserved_vcpu": null,
+        "vcpu": 8
+      },
+      "instance_type": "m7g.large",
+      "key": "1000000000000000001",
+      "like_for_like": "m7g.2xlarge",
+      "resource_type": "gce_instance",
+      "sized_from": {
+        "capped": "m7g.large",
+        "cpu_p95": 0.1214,
+        "like_for_like": "m7g.2xlarge",
+        "memory_p95": 0.1512,
+        "required_memory_gib": 6.29,
+        "required_vcpu": 1.26,
+        "step_cap": 2,
+        "uncapped": "m7g.large",
+        "window_days": 7
+      },
+      "sizing_provenance": "measured",
+      "source_machine_type": "n2-standard-8",
+      "warnings": [],
+      "x86_equivalent": {
+        "architecture": "x86_64",
+        "aws_family": "m6i",
+        "instance_type": "m6i.large",
+        "like_for_like": "m6i.2xlarge",
+        "sized_from": {
+          "capped": "m6i.large",
+          "cpu_p95": 0.1214,
+          "like_for_like": "m6i.2xlarge",
+          "memory_p95": 0.1512,
+          "required_memory_gib": 6.29,
+          "required_vcpu": 1.26,
+          "step_cap": 2,
+          "uncapped": "m6i.large",
+          "window_days": 7
+        },
+        "sizing_provenance": "measured",
+        "warnings": []
+      }
+    },
+    {
+      "address": "google_compute_instance.api_lowload",
+      "architecture": "arm64",
+      "aws_family": "m7g",
+      "declared": {
+        "memory_gib": 32,
+        "reserved_vcpu": null,
+        "vcpu": 8
+      },
+      "instance_type": "m7g.large",
+      "key": "1000000000000000002",
+      "like_for_like": "m7g.2xlarge",
+      "resource_type": "gce_instance",
+      "sized_from": {
+        "capped": "m7g.large",
+        "cpu_p95": 0.0819,
+        "like_for_like": "m7g.2xlarge",
+        "memory_p95": 0.0832,
+        "required_memory_gib": 3.46,
+        "required_vcpu": 0.85,
+        "step_cap": 2,
+        "uncapped": "m7g.medium",
+        "window_days": 7
+      },
+      "sizing_provenance": "measured",
+      "source_machine_type": "n2-standard-8",
+      "warnings": [],
+      "x86_equivalent": {
+        "architecture": "x86_64",
+        "aws_family": "m6i",
+        "instance_type": "m6i.large",
+        "like_for_like": "m6i.2xlarge",
+        "sized_from": {
+          "capped": "m6i.large",
+          "cpu_p95": 0.0819,
+          "like_for_like": "m6i.2xlarge",
+          "memory_p95": 0.0832,
+          "required_memory_gib": 3.46,
+          "required_vcpu": 0.85,
+          "step_cap": 2,
+          "uncapped": "m6i.large",
+          "window_days": 7
+        },
+        "sizing_provenance": "measured",
+        "warnings": []
+      }
+    },
+    {
+      "address": "google_compute_instance.cache_heavy",
+      "architecture": "arm64",
+      "aws_family": "m7g",
+      "declared": {
+        "memory_gib": 32,
+        "reserved_vcpu": null,
+        "vcpu": 8
+      },
+      "instance_type": "m7g.2xlarge",
+      "key": "1000000000000000003",
+      "like_for_like": "m7g.2xlarge",
+      "resource_type": "gce_instance",
+      "sized_from": {
+        "capped": "m7g.2xlarge",
+        "cpu_p95": 0.1227,
+        "like_for_like": "m7g.2xlarge",
+        "memory_p95": 0.6312,
+        "required_memory_gib": 26.26,
+        "required_vcpu": 1.28,
+        "step_cap": 2,
+        "uncapped": "m7g.2xlarge",
+        "window_days": 7
+      },
+      "sizing_note": "memory_bound",
+      "sizing_provenance": "measured",
+      "source_machine_type": "n2-standard-8",
+      "warnings": [
+        "memory p95 0.6312 keeps the VM at like-for-like m7g.2xlarge; CPU alone would allow m7g.large"
+      ],
+      "x86_equivalent": {
+        "architecture": "x86_64",
+        "aws_family": "m6i",
+        "instance_type": "m6i.2xlarge",
+        "like_for_like": "m6i.2xlarge",
+        "sized_from": {
+          "capped": "m6i.2xlarge",
+          "cpu_p95": 0.1227,
+          "like_for_like": "m6i.2xlarge",
+          "memory_p95": 0.6312,
+          "required_memory_gib": 26.26,
+          "required_vcpu": 1.28,
+          "step_cap": 2,
+          "uncapped": "m6i.2xlarge",
+          "window_days": 7
+        },
+        "sizing_note": "memory_bound",
+        "sizing_provenance": "measured",
+        "warnings": [
+          "memory p95 0.6312 keeps the VM at like-for-like m6i.2xlarge; CPU alone would allow m6i.large"
+        ]
+      }
+    },
+    {
+      "address": "google_compute_instance.batch_bursty",
+      "architecture": "arm64",
+      "aws_family": "m7g",
+      "declared": {
+        "memory_gib": 32,
+        "reserved_vcpu": null,
+        "vcpu": 8
+      },
+      "declared_detail": "memory is unavailable: CPU alone cannot change the size inside a fixed-ratio family; install the Ops Agent to unlock measured sizing",
+      "declared_reason": "memory_unavailable",
+      "instance_type": "m7g.2xlarge",
+      "key": "1000000000000000004",
+      "like_for_like": "m7g.2xlarge",
+      "resource_type": "gce_instance",
+      "sizing_provenance": "declared",
+      "source_machine_type": "n2-standard-8",
+      "warnings": [
+        "burst: true was recorded but the VM stayed declared; a burstable target was not evaluated"
+      ],
+      "x86_equivalent": {
+        "architecture": "x86_64",
+        "aws_family": "m6i",
+        "declared_reason": "memory_unavailable",
+        "instance_type": "m6i.2xlarge",
+        "like_for_like": "m6i.2xlarge",
+        "sizing_provenance": "declared",
+        "warnings": [
+          "burst: true was recorded but the VM stayed declared; a burstable target was not evaluated"
+        ]
+      }
+    },
+    {
+      "address": "google_compute_instance.new_vm",
+      "architecture": "arm64",
+      "aws_family": "m7g",
+      "declared": {
+        "memory_gib": 8,
+        "reserved_vcpu": null,
+        "vcpu": 2
+      },
+      "declared_detail": "cpu coverage 100/168 hourly samples (68 missing hours); below coverage_min",
+      "declared_reason": "insufficient",
+      "instance_type": "m7g.large",
+      "key": "1000000000000000005",
+      "like_for_like": "m7g.large",
+      "resource_type": "gce_instance",
+      "sizing_provenance": "declared",
+      "source_machine_type": "e2-standard-2",
+      "warnings": [],
+      "x86_equivalent": {
+        "architecture": "x86_64",
+        "aws_family": "m6i",
+        "declared_reason": "insufficient",
+        "instance_type": "m6i.large",
+        "like_for_like": "m6i.large",
+        "sizing_provenance": "declared",
+        "warnings": []
+      }
+    },
+    {
+      "address": "google_compute_instance.idle_vm",
+      "architecture": "arm64",
+      "aws_family": "m7g",
+      "declared": {
+        "memory_gib": 8,
+        "reserved_vcpu": null,
+        "vcpu": 2
+      },
+      "declared_detail": "cpu p95 0.0117 with memory p95 0.104: decommission candidate, kept at declared size",
+      "declared_reason": "idle",
+      "instance_type": "m7g.large",
+      "key": "1000000000000000006",
+      "like_for_like": "m7g.large",
+      "resource_type": "gce_instance",
+      "sizing_provenance": "declared",
+      "source_machine_type": "n2-standard-2",
+      "warnings": [],
+      "x86_equivalent": {
+        "architecture": "x86_64",
+        "aws_family": "m6i",
+        "declared_reason": "idle",
+        "instance_type": "m6i.large",
+        "like_for_like": "m6i.large",
+        "sizing_provenance": "declared",
+        "warnings": []
+      }
+    },
+    {
+      "address": "google_compute_instance.web_mig_7f3k",
+      "architecture": "arm64",
+      "aws_family": "t4g",
+      "declared": {
+        "memory_gib": 4,
+        "reserved_vcpu": 1,
+        "vcpu": 2
+      },
+      "declared_detail": "managed-instance-group member: right-size the group template in a follow-up, not one member",
+      "declared_reason": "skipped_group_member",
+      "instance_type": "t4g.medium",
+      "key": "1000000000000000007",
+      "like_for_like": "t4g.medium",
+      "resource_type": "gce_instance",
+      "sizing_provenance": "declared",
+      "source_machine_type": "e2-medium",
+      "warnings": [],
+      "x86_equivalent": {
+        "architecture": "x86_64",
+        "aws_family": "t3",
+        "declared_reason": "skipped_group_member",
+        "instance_type": "t3.medium",
+        "like_for_like": "t3.medium",
+        "sizing_provenance": "declared",
+        "warnings": []
+      }
+    },
+    {
+      "address": "google_compute_instance.ops_small",
+      "architecture": "arm64",
+      "aws_family": "t4g",
+      "declared": {
+        "memory_gib": 2,
+        "reserved_vcpu": 0.5,
+        "vcpu": 2
+      },
+      "instance_type": "t4g.small",
+      "key": "1000000000000000008",
+      "like_for_like": "t4g.small",
+      "resource_type": "gce_instance",
+      "sized_from": {
+        "capped": "t4g.small",
+        "cpu_p95": 1.2249,
+        "like_for_like": "t4g.small",
+        "memory_p95": 0.381,
+        "required_memory_gib": 0.99,
+        "required_vcpu": 0.8,
+        "step_cap": 2,
+        "uncapped": "t4g.small",
+        "window_days": 7
+      },
+      "sizing_note": "burstable_baseline_exceeded",
+      "sizing_provenance": "measured",
+      "source_machine_type": "e2-small",
+      "warnings": [
+        "sustained 0.61 vCPU exceeds every t4g baseline at or below t4g.small (0.40 vCPU); kept at like-for-like, expect throttling or Unlimited-mode charges"
+      ],
+      "x86_equivalent": {
+        "architecture": "x86_64",
+        "aws_family": "t3",
+        "instance_type": "t3.small",
+        "like_for_like": "t3.small",
+        "sized_from": {
+          "capped": "t3.small",
+          "cpu_p95": 1.2249,
+          "like_for_like": "t3.small",
+          "memory_p95": 0.381,
+          "required_memory_gib": 0.99,
+          "required_vcpu": 0.8,
+          "step_cap": 2,
+          "uncapped": "t3.small",
+          "window_days": 7
+        },
+        "sizing_note": "burstable_baseline_exceeded",
+        "sizing_provenance": "measured",
+        "warnings": [
+          "sustained 0.61 vCPU exceeds every t3 baseline at or below t3.small (0.40 vCPU); kept at like-for-like, expect throttling or Unlimited-mode charges"
+        ]
+      }
+    },
+    {
+      "address": "google_compute_instance.jobs_bursty",
+      "architecture": "arm64",
+      "aws_family": "m7g",
+      "declared": {
+        "memory_gib": 32,
+        "reserved_vcpu": null,
+        "vcpu": 8
+      },
+      "instance_type": "t4g.xlarge",
+      "key": "1000000000000000009",
+      "like_for_like": "m7g.2xlarge",
+      "resource_type": "gce_instance",
+      "sized_from": {
+        "burst_family": "t4g",
+        "capped": "t4g.xlarge",
+        "cpu_p95": 0.1029,
+        "like_for_like": "m7g.2xlarge",
+        "memory_p95": 0.1515,
+        "required_memory_gib": 6.3,
+        "required_vcpu": 1.07,
+        "step_cap": 2,
+        "uncapped": "t4g.xlarge",
+        "window_days": 7
+      },
+      "sizing_note": "burst",
+      "sizing_provenance": "measured",
+      "source_machine_type": "n2-standard-8",
+      "warnings": [
+        "burst pattern: sized onto burstable t4g where 0.82 vCPU of sustained load fits under the baseline"
+      ],
+      "x86_equivalent": {
+        "architecture": "x86_64",
+        "aws_family": "m6i",
+        "instance_type": "t3.xlarge",
+        "like_for_like": "m6i.2xlarge",
+        "sized_from": {
+          "burst_family": "t3",
+          "capped": "t3.xlarge",
+          "cpu_p95": 0.1029,
+          "like_for_like": "m6i.2xlarge",
+          "memory_p95": 0.1515,
+          "required_memory_gib": 6.3,
+          "required_vcpu": 1.07,
+          "step_cap": 2,
+          "uncapped": "t3.xlarge",
+          "window_days": 7
+        },
+        "sizing_note": "burst",
+        "sizing_provenance": "measured",
+        "warnings": [
+          "burst pattern: sized onto burstable t3 where 0.82 vCPU of sustained load fits under the baseline"
+        ]
+      }
+    },
+    {
+      "address": "google_sql_database_instance.orders_db",
+      "declared": {
+        "memory_gib": 0.6,
+        "reserved_vcpu": 0.2,
+        "vcpu": 1
+      },
+      "engine": "postgresql",
+      "instance_class": "db.t4g.micro",
+      "key": "acme-prod:orders-db",
+      "like_for_like": "db.t4g.micro",
+      "rds_family": "db.t4g",
+      "rds_proxy": false,
+      "resource_type": "cloudsql_database",
+      "sized_from": {
+        "capped": "db.t4g.micro",
+        "connections_p95": 5.0,
+        "cpu_p95": 0.1086,
+        "like_for_like": "db.t4g.micro",
+        "max_connections": 79,
+        "memory_p95": 0.9999,
+        "required_memory_gib": 0.6,
+        "required_vcpu": 0.03,
+        "step_cap": 2,
+        "uncapped": "db.t4g.micro",
+        "window_days": 7
+      },
+      "sizing_note": "memory_saturated",
+      "sizing_provenance": "measured",
+      "source_tier": "db-f1-micro",
+      "storage": {
+        "allocated_gib": 20,
+        "basis": "measured",
+        "calculation": "disk_bytes_used.max 87293952 \u00d7 1.5 = 0.12 GiB \u2192 next 10 GiB, min 20",
+        "iops": 3000,
+        "storage_type": "gp3",
+        "throughput_mbps": 125
+      },
+      "warnings": [
+        "memory p95 0.9999 is at saturation (Cloud SQL counts page cache); the declared class is the floor, not evidence of need",
+        "IOPS were not measured in v1: gp3 baseline 3000 IOPS / 125 MB/s assumed; a large PD-SSD may have been buying more IOPS than this"
+      ]
+    },
+    {
+      "address": "google_sql_database_instance.reports_db",
+      "declared": {
+        "memory_gib": 8.0,
+        "reserved_vcpu": null,
+        "vcpu": 2
+      },
+      "engine": "mysql",
+      "instance_class": "db.m7g.large",
+      "key": "acme-prod:reports-db",
+      "like_for_like": "db.m7g.large",
+      "rds_family": "db.m7g",
+      "rds_proxy": false,
+      "resource_type": "cloudsql_database",
+      "sized_from": {
+        "capped": "db.m7g.large",
+        "connections_p95": 36.8189,
+        "cpu_p95": 0.3025,
+        "like_for_like": "db.m7g.large",
+        "max_connections": 630,
+        "memory_p95": 0.506,
+        "required_memory_gib": 5.26,
+        "required_vcpu": 0.79,
+        "step_cap": 2,
+        "uncapped": "db.m7g.large",
+        "window_days": 7
+      },
+      "sizing_provenance": "measured",
+      "source_tier": "db-custom-2-8192",
+      "storage": {
+        "allocated_gib": 20,
+        "basis": "measured",
+        "calculation": "disk_bytes_used.max 12885590016 \u00d7 1.5 = 18.00 GiB \u2192 next 10 GiB, min 20",
+        "iops": 3000,
+        "storage_type": "gp3",
+        "throughput_mbps": 125
+      },
+      "warnings": [
+        "IOPS were not measured in v1: gp3 baseline 3000 IOPS / 125 MB/s assumed; a large PD-SSD may have been buying more IOPS than this"
+      ]
+    }
+  ],
+  "sizing_exemptions": [],
+  "skipped": [],
+  "thresholds": {
+    "coverage_min": 0.8,
+    "headroom_factor": 1.3,
+    "step_cap": 2
+  }
+}

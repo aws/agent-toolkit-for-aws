@@ -54,6 +54,94 @@
       "cluster_id": "compute_gce_us-central1_001"
     },
     {
+      "address": "google_compute_instance.api_lowload",
+      "type": "google_compute_instance",
+      "name": "api_lowload",
+      "classification": "PRIMARY",
+      "tier": "compute",
+      "confidence": 0.95,
+      "source": "live",
+      "unmanaged_by_terraform": true,
+      "config": {
+        "id": "1000000000000000002",
+        "name": "api-lowload",
+        "zone": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a",
+        "machineType": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a/machineTypes/n2-standard-8",
+        "status": "RUNNING"
+      },
+      "utilization": {
+        "alignment": "1h",
+        "burst": false,
+        "coverage": "sufficient",
+        "cpu": {
+          "max": 0.1571,
+          "mean": 0.0609,
+          "p95": 0.0819,
+          "samples_expected": 168,
+          "samples_present": 168
+        },
+        "idle": false,
+        "instance_id": "1000000000000000002",
+        "memory": {
+          "max": 0.1003,
+          "mean": 0.0675,
+          "p95": 0.0832,
+          "samples_expected": 168,
+          "samples_present": 168
+        },
+        "mig_member": false,
+        "resource_type": "gce_instance",
+        "window_days": 7,
+        "zone": "us-central1-a"
+      },
+      "depth": 3,
+      "cluster_id": "compute_gce_us-central1_001"
+    },
+    {
+      "address": "google_compute_instance.cache_heavy",
+      "type": "google_compute_instance",
+      "name": "cache_heavy",
+      "classification": "PRIMARY",
+      "tier": "compute",
+      "confidence": 0.95,
+      "source": "live",
+      "unmanaged_by_terraform": true,
+      "config": {
+        "id": "1000000000000000003",
+        "name": "cache-heavy",
+        "zone": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a",
+        "machineType": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a/machineTypes/n2-standard-8",
+        "status": "RUNNING"
+      },
+      "utilization": {
+        "alignment": "1h",
+        "burst": false,
+        "coverage": "sufficient",
+        "cpu": {
+          "max": 0.199,
+          "mean": 0.0928,
+          "p95": 0.1227,
+          "samples_expected": 168,
+          "samples_present": 168
+        },
+        "idle": false,
+        "instance_id": "1000000000000000003",
+        "memory": {
+          "max": 0.6519,
+          "mean": 0.5933,
+          "p95": 0.6312,
+          "samples_expected": 168,
+          "samples_present": 168
+        },
+        "mig_member": false,
+        "resource_type": "gce_instance",
+        "window_days": 7,
+        "zone": "us-central1-a"
+      },
+      "depth": 3,
+      "cluster_id": "compute_gce_us-central1_001"
+    },
+    {
       "address": "google_compute_instance.batch_bursty",
       "type": "google_compute_instance",
       "name": "batch_bursty",
@@ -84,6 +172,226 @@
         "instance_id": "1000000000000000004",
         "memory": {
           "status": "unavailable"
+        },
+        "mig_member": false,
+        "resource_type": "gce_instance",
+        "window_days": 7,
+        "zone": "us-central1-a"
+      },
+      "depth": 3,
+      "cluster_id": "compute_gce_us-central1_001"
+    },
+    {
+      "address": "google_compute_instance.new_vm",
+      "type": "google_compute_instance",
+      "name": "new_vm",
+      "classification": "PRIMARY",
+      "tier": "compute",
+      "confidence": 0.95,
+      "source": "live",
+      "unmanaged_by_terraform": true,
+      "config": {
+        "id": "1000000000000000005",
+        "name": "new-vm",
+        "zone": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a",
+        "machineType": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a/machineTypes/e2-standard-2",
+        "status": "RUNNING"
+      },
+      "utilization": {
+        "alignment": "1h",
+        "burst": false,
+        "coverage": "insufficient",
+        "cpu": {
+          "max": 0.3779,
+          "mean": 0.2083,
+          "p95": 0.2902,
+          "samples_expected": 168,
+          "samples_present": 100
+        },
+        "idle": false,
+        "instance_id": "1000000000000000005",
+        "memory": {
+          "max": 0.364,
+          "mean": 0.2723,
+          "p95": 0.3448,
+          "samples_expected": 168,
+          "samples_present": 100
+        },
+        "mig_member": false,
+        "resource_type": "gce_instance",
+        "window_days": 7,
+        "zone": "us-central1-a"
+      },
+      "depth": 3,
+      "cluster_id": "compute_gce_us-central1_001"
+    },
+    {
+      "address": "google_compute_instance.idle_vm",
+      "type": "google_compute_instance",
+      "name": "idle_vm",
+      "classification": "PRIMARY",
+      "tier": "compute",
+      "confidence": 0.95,
+      "source": "live",
+      "unmanaged_by_terraform": true,
+      "config": {
+        "id": "1000000000000000006",
+        "name": "idle-vm",
+        "zone": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a",
+        "machineType": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a/machineTypes/n2-standard-2",
+        "status": "RUNNING"
+      },
+      "utilization": {
+        "alignment": "1h",
+        "burst": false,
+        "coverage": "sufficient",
+        "cpu": {
+          "max": 0.0903,
+          "mean": 0.0086,
+          "p95": 0.0117,
+          "samples_expected": 168,
+          "samples_present": 168
+        },
+        "idle": true,
+        "instance_id": "1000000000000000006",
+        "memory": {
+          "max": 0.1221,
+          "mean": 0.0926,
+          "p95": 0.104,
+          "samples_expected": 168,
+          "samples_present": 168
+        },
+        "mig_member": false,
+        "resource_type": "gce_instance",
+        "window_days": 7,
+        "zone": "us-central1-a"
+      },
+      "depth": 3,
+      "cluster_id": "compute_gce_us-central1_001"
+    },
+    {
+      "address": "google_compute_instance.web_mig_7f3k",
+      "type": "google_compute_instance",
+      "name": "web_mig_7f3k",
+      "classification": "PRIMARY",
+      "tier": "compute",
+      "confidence": 0.95,
+      "source": "live",
+      "unmanaged_by_terraform": true,
+      "config": {
+        "id": "1000000000000000007",
+        "name": "web-mig-7f3k",
+        "zone": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a",
+        "machineType": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a/machineTypes/e2-medium",
+        "status": "RUNNING"
+      },
+      "utilization": {
+        "alignment": "1h",
+        "burst": false,
+        "coverage": "sufficient",
+        "cpu": {
+          "max": 0.3714,
+          "mean": 0.1982,
+          "p95": 0.2852,
+          "samples_expected": 168,
+          "samples_present": 168
+        },
+        "idle": false,
+        "instance_id": "1000000000000000007",
+        "memory": {
+          "max": 0.4669,
+          "mean": 0.3763,
+          "p95": 0.4421,
+          "samples_expected": 168,
+          "samples_present": 168
+        },
+        "mig_member": true,
+        "resource_type": "gce_instance",
+        "window_days": 7,
+        "zone": "us-central1-a"
+      },
+      "depth": 3,
+      "cluster_id": "compute_gce_us-central1_001"
+    },
+    {
+      "address": "google_compute_instance.ops_small",
+      "type": "google_compute_instance",
+      "name": "ops_small",
+      "classification": "PRIMARY",
+      "tier": "compute",
+      "confidence": 0.95,
+      "source": "live",
+      "unmanaged_by_terraform": true,
+      "config": {
+        "id": "1000000000000000008",
+        "name": "ops-small",
+        "zone": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a",
+        "machineType": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a/machineTypes/e2-small",
+        "status": "RUNNING"
+      },
+      "utilization": {
+        "alignment": "1h",
+        "burst": false,
+        "coverage": "sufficient",
+        "cpu": {
+          "max": 1.965,
+          "mean": 0.964,
+          "p95": 1.2249,
+          "samples_expected": 168,
+          "samples_present": 168
+        },
+        "idle": false,
+        "instance_id": "1000000000000000008",
+        "memory": {
+          "max": 0.405,
+          "mean": 0.2986,
+          "p95": 0.381,
+          "samples_expected": 168,
+          "samples_present": 168
+        },
+        "mig_member": false,
+        "resource_type": "gce_instance",
+        "window_days": 7,
+        "zone": "us-central1-a"
+      },
+      "depth": 3,
+      "cluster_id": "compute_gce_us-central1_001"
+    },
+    {
+      "address": "google_compute_instance.jobs_bursty",
+      "type": "google_compute_instance",
+      "name": "jobs_bursty",
+      "classification": "PRIMARY",
+      "tier": "compute",
+      "confidence": 0.95,
+      "source": "live",
+      "unmanaged_by_terraform": true,
+      "config": {
+        "id": "1000000000000000009",
+        "name": "jobs-bursty",
+        "zone": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a",
+        "machineType": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/us-central1-a/machineTypes/n2-standard-8",
+        "status": "RUNNING"
+      },
+      "utilization": {
+        "alignment": "1h",
+        "burst": true,
+        "coverage": "sufficient",
+        "cpu": {
+          "max": 0.95,
+          "mean": 0.0852,
+          "p95": 0.1029,
+          "samples_expected": 168,
+          "samples_present": 168
+        },
+        "idle": false,
+        "instance_id": "1000000000000000009",
+        "memory": {
+          "max": 0.1738,
+          "mean": 0.121,
+          "p95": 0.1515,
+          "samples_expected": 168,
+          "samples_present": 168
         },
         "mig_member": false,
         "resource_type": "gce_instance",
@@ -138,6 +446,62 @@
           "max": 1.0,
           "mean": 0.9995,
           "p95": 0.9999,
+          "samples_expected": 168,
+          "samples_present": 168
+        },
+        "region": "us-central1",
+        "resource_type": "cloudsql_database",
+        "window_days": 7
+      },
+      "depth": 3,
+      "cluster_id": "data_cloudsql_us-central1_001"
+    },
+    {
+      "address": "google_sql_database_instance.reports_db",
+      "type": "google_sql_database_instance",
+      "name": "reports_db",
+      "classification": "PRIMARY",
+      "tier": "data",
+      "confidence": 0.99,
+      "source": "live",
+      "unmanaged_by_terraform": true,
+      "config": {
+        "name": "reports-db",
+        "region": "us-central1",
+        "databaseVersion": "MYSQL_8_0",
+        "settings.tier": "db-custom-2-8192",
+        "settings.availabilityType": "ZONAL",
+        "settings.dataDiskSizeGb": "50"
+      },
+      "utilization": {
+        "alignment": "1h",
+        "connections": {
+          "max": 40.0,
+          "mean": 22.0256,
+          "p95": 36.8189,
+          "samples_expected": 168,
+          "samples_present": 168
+        },
+        "coverage": "sufficient",
+        "cpu": {
+          "max": 0.4886,
+          "mean": 0.2564,
+          "p95": 0.3025,
+          "samples_expected": 168,
+          "samples_present": 168
+        },
+        "database_id": "acme-prod:reports-db",
+        "disk_bytes_used": {
+          "max": 12885590016,
+          "mean": 12885248000,
+          "p95": 12885557248,
+          "samples_expected": 168,
+          "samples_present": 168
+        },
+        "memory": {
+          "max": 0.5263,
+          "mean": 0.4789,
+          "p95": 0.506,
           "samples_expected": 168,
           "samples_present": 168
         },

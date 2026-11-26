@@ -14,13 +14,20 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-# Thresholds live here in PR 1; PR 2 moves them to knowledge/estimate/rightsizing-thresholds.json.
-COVERAGE_MIN = 0.8
-IDLE_CPU_P95_MAX = 0.05
-IDLE_MEMORY_P95_MAX = 0.20
-BURST_CPU_P95_MAX = 0.30
-BURST_SPIKE_MULTIPLE = 2
-BURST_CONSECUTIVE_HOURS = 2
+# Every tunable lives in the skill's knowledge/estimate/rightsizing-thresholds.json (one file for
+# this script, size-from-utilization.py, Estimate and the tests). The script travels with the
+# skill tree, so the file is resolved relative to this script.
+THRESHOLDS_PATH = Path(__file__).resolve().parent.parent / "knowledge" / "estimate" / "rightsizing-thresholds.json"
+def load_thresholds(path: Path = THRESHOLDS_PATH) -> dict[str, Any]:
+    with path.open(encoding="utf-8") as handle:
+        return json.load(handle)
+THRESHOLDS = load_thresholds()
+COVERAGE_MIN = THRESHOLDS["coverage_min"]
+IDLE_CPU_P95_MAX = THRESHOLDS["idle"]["cpu_p95_max"]
+IDLE_MEMORY_P95_MAX = THRESHOLDS["idle"]["memory_p95_max"]
+BURST_CPU_P95_MAX = THRESHOLDS["burst"]["cpu_p95_max"]
+BURST_SPIKE_MULTIPLE = THRESHOLDS["burst"]["spike_multiple"]
+BURST_CONSECUTIVE_HOURS = THRESHOLDS["burst"]["consecutive_hours"]
 ALIGNMENT = "1h"
 ALIGNMENT_PERIOD = timedelta(seconds=3600)
 ALIGNERS = ("ALIGN_MEAN", "ALIGN_MAX")
