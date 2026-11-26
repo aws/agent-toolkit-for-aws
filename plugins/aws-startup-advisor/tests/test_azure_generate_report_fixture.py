@@ -70,3 +70,30 @@ def test_altered_current_spend_figure_fails_validator_and_oracle(tmp_path: Path)
     assert oracle.returncode == 1, oracle.stdout + oracle.stderr
     assert "current_monthly renders '$3,900/mo'" in oracle.stdout, oracle.stdout
 
+PRECHECK = PLUGIN_ROOT / "scripts" / "validate-artifacts.py"
+REPORT_FRAGMENT = (
+    PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "phases" / "generate" / "generate-artifacts-report.md"
+)
+def _assemble_run_dir(tmp_path: Path, *stages: str) -> Path:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir(parents=True)
+    for stage in stages:
+        shutil.copytree(FIXTURE / stage, run_dir, dirs_exist_ok=True)
+    return run_dir
+def test_generate_precheck_passes_on_the_assembled_golden_run(tmp_path: Path) -> None:
+    # generate.md step 2 runs this exact command (no baseline in --run-dir mode) and stops the
+    # phase on exit 1. The artifacts the Clarify/Design phases write must satisfy the contracts.
+    for stages in (
+        ("after-discover", "after-clarify-complete", "after-design", "after-estimate"),
+        ("after-discover", "after-clarify", "after-design", "after-estimate"),
+    ):
+        run_dir = _assemble_run_dir(tmp_path / stages[1], *stages)
+        result = _run(str(PRECHECK), "--run-dir", str(run_dir), "--skill", "azure-to-aws")
+        assert result.returncode == 0, f"{stages[1]}:\n{result.stdout}{result.stderr}"
+def test_report_fragment_does_not_read_validation_report_for_a_status() -> None:
+    # validation-report.json is written by the main window AFTER the report (generate.md step 5).
+    text = REPORT_FRAGMENT.read_text(encoding="utf-8")
+    section = text.split("**Terraform validation:**", 1)[1].split("**Design and generation warnings:**", 1)[0]
+    assert "do NOT read `validation-report.json`" in section
+    source_line = text.split("Source: `estimation-infra.json`", 1)[1].split("\n## ", 1)[0]
+    assert "validation-report.json" not in source_line.split("\n\n", 1)[0]

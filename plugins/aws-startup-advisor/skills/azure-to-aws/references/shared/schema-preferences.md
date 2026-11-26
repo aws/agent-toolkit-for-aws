@@ -104,7 +104,13 @@ licensing exposure and found none" is a different statement from silence.
     "redis_modules": { "disposition": "DETECTED", "value": false, "default": false }
   },
   "baseline": {
-    "azure_monthly_spend": { "disposition": "ESSENTIAL", "value": null, "default": null }
+    "azure_monthly_spend": {
+      "disposition": "ESSENTIAL",
+      "value": null,
+      "default": null,
+      "currency": "USD", // clarify-global.md Q-A5 records currency and period beside the figure
+      "period": "month"
+    }
   },
   "identity": {
     "disposition": "PROPOSED",
@@ -123,11 +129,21 @@ licensing exposure and found none" is a different statement from silence.
     },
     "sql_model": { "disposition": "N/A", "value": null, "default": null },
     "ahub_in_use": { "disposition": "DETECTED", "value": false, "default": false },
-    "blockers": [{ "azure_id": "<azure_id>", "code": "azure_edition_windows_server" }]
+    "blockers": [
+      {
+        "azure_id": "<azure_id>",
+        "code": "azure_edition_windows_server",
+        "severity": "blocker", // clarify-assemble.md § clarify_status requires "blocker" on every entry
+        "message": "<what the user must change before replication can start>"
+      }
+    ]
   },
   "app_service_plans": [
     {
       "plan_azure_id": "<azure_id>",
+      "plan_name_expression": "asp-${var.prefix}-web", // clarify-compute.md Q-C2: carried so the sheet can render the plan
+      "sku_name": "S1",
+      "worker_count": 2,
       "hosted_app_count": 5,
       "isolation_split": { "disposition": "PROPOSED", "value": false, "default": false }
     }
@@ -135,6 +151,8 @@ licensing exposure and found none" is a different statement from silence.
   "clusters": [
     {
       "cluster_id": "<slug>",
+      "confirmed": false, // pattern confirmation written by the assembler (clarify.md § Orientation)
+      "pattern_status": "catalog_absent", // copied from azure-resource-clusters.json — catalog_absent until patterns.md exists
       "pattern_id": {
         "disposition": "DETECTED",
         "value": "unclassified",

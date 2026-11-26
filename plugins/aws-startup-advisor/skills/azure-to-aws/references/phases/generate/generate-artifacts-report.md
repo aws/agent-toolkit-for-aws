@@ -366,8 +366,13 @@ design targets. Add an AI row from `estimation-ai.json` when it exists.
   inference, not a measurement). One line per group, naming the resources, so the reader
   knows which figures a later metrics capture would move.
 
-**Terraform validation:** from `validation-report.json` (`status`, `policy_status`, provider
-version) when present; on an AI-only run its `terraform_dir` is `ai-migration`.
+**Terraform validation:** do NOT read `validation-report.json` and do NOT state a status,
+policy verdict or provider version here. The main window writes that file in
+`generate.md` § "Step: Run the phase" step 5, after this report is written, so a read now
+returns nothing on a first run and the previous attempt's verdict on a re-run. Say that
+Terraform fmt / init / validate and the `tf-best-practices` policy gate run after the report
+is generated, and point the reader to `validation-report.json` (on an AI-only run its
+`terraform_dir` is `ai-migration`) for the result of this run.
 
 **Design and generation warnings:** `aws-design.json` → `warnings[]` (e.g. an
 `availability_downgrade_from_source` finding where a ZoneRedundant source maps to single-AZ)
@@ -375,7 +380,7 @@ and `generation-warnings.json` → `skipped[]` with their reasons, so a resource
 no Terraform is accounted for in writing.
 
 Source: `estimation-infra.json`, `aws-design.json`, `generation-warnings.json`,
-`validation-report.json`, `preferences.json`.
+`preferences.json`.
 
 ## Step 4: Draft-for-review footer (REQUIRED — `_assert`)
 
