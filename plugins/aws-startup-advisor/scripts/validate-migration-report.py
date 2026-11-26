@@ -292,10 +292,6 @@ MIN_CONTENT_DEPTH = {
     "appendix-steps": 2,
 }
 
-SECTION_OPEN = re.compile(
-    r"<section\b[^>]*\bid=(['\"])([^'\"]+)\1",
-    re.IGNORECASE,
-)
 
 # Migration ID baked into the reference fixture. If this appears in a real
 # $MIGRATION_DIR run, the agent copied the golden file verbatim (fixture bleed).
@@ -405,12 +401,41 @@ def _section_html(html: str, section_id: str) -> str | None:
     return parser.found_html
 
 
+class _SectionIdCountParser(HTMLParser):
+    """Count rendered <section id="..."> opens by parsed tag structure.
+
+    A regex over the raw source counts a section that exists only inside an HTML
+    comment (e.g. a skeleton's commented what-if placeholder) or a <template> /
+    <script> / <style> subtree, and misses unquoted or spaced `id = x`. The
+    required-section gates depend on this count, so it must follow what a browser
+    renders: comments are never tokenized as tags, inert subtrees are skipped, the
+    real `id` attribute is read in any legal spelling, and `data-id` is not `id`.
+    """
+    _INERT = {"script", "style", "template"}
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.counts: dict[str, int] = {}
+        self._inert_depth = 0
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in self._INERT:
+            self._inert_depth += 1
+            return
+        if self._inert_depth == 0 and tag == "section":
+            sid = dict(attrs).get("id")
+            if sid:
+                self.counts[sid] = self.counts.get(sid, 0) + 1
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in self._INERT:
+            return  # a self-closed inert tag has no subtree
+        self.handle_starttag(tag, attrs)
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self._INERT and self._inert_depth > 0:
+            self._inert_depth -= 1
 def _section_id_counts(html: str) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    for match in SECTION_OPEN.finditer(html):
-        sid = match.group(2)
-        counts[sid] = counts.get(sid, 0) + 1
-    return counts
+    parser = _SectionIdCountParser()
+    parser.feed(html)
+    parser.close()
+    return parser.counts
 
 
 def _validate_required_sections(

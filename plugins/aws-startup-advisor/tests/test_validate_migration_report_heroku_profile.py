@@ -270,3 +270,48 @@ def test_profile_mode_combination_is_rejected_by_argparse(tmp_path: Path) -> Non
     )
     assert result.returncode == 2, result.stderr
     assert "--profile heroku does not define --mode ai_only" in result.stderr
+# --- section gate follows rendered structure, not raw source ----------------------
+def _decision_cta_missing_errors(validator, replacement: str) -> list[str]:
+    html = _heroku_decision_html(drop="decision-cta").replace("<footer>", replacement + "<footer>")
+    return validator.validate_report(html, mode="decision", require_toc=False, profile="heroku")
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        '<!-- <section id="decision-cta"><h2>cta</h2><p>x</p></section> -->',
+        '<template><section id="decision-cta"><h2>cta</h2><p>x</p></section></template>',
+        '<script type="text/html"><section id="decision-cta"></section></script>',
+        '<section data-id="decision-cta"><h2>cta</h2><p>x</p></section>',
+    ],
+    ids=["comment", "template", "script", "data-id"],
+)
+def test_profile_required_section_only_in_comment_inert_or_data_id_is_missing(replacement: str) -> None:
+    errors = _decision_cta_missing_errors(_load(), replacement)
+    assert 'missing required <section id="decision-cta">' in errors, errors
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        '<section id=decision-cta><h2>cta</h2><p>x</p></section>',
+        "<section id = 'decision-cta'><h2>cta</h2><p>x</p></section>",
+    ],
+    ids=["unquoted", "spaced-single-quoted"],
+)
+def test_profile_required_section_with_legal_id_spelling_is_counted(replacement: str) -> None:
+    errors = _decision_cta_missing_errors(_load(), replacement)
+    assert not any("decision-cta" in e and "missing required" in e for e in errors), errors
+def test_section_id_counts_ignore_commented_duplicate_and_count_real_one() -> None:
+    validator = _load()
+    html = '<!-- <section id="exec-tco"> --><section id="exec-tco"></section>'
+    assert validator._section_id_counts(html) == {"exec-tco": 1}
+def test_commented_what_if_placeholder_does_not_satisfy_two_scenario_check(tmp_path: Path) -> None:
+    validator = _load()
+    (tmp_path / "scenarios").mkdir()
+    (tmp_path / "scenarios" / "index.json").write_text(
+        '{"scenarios": [{"id": "a"}, {"id": "b"}]}', encoding="utf-8"
+    )
+    html = _heroku_decision_html().replace(
+        "<footer>", '<!-- <section id="what-if-scenarios"><h2>w</h2></section> --><footer>'
+    )
+    errors = validator.validate_report(
+        html, mode="decision", require_toc=False, profile="heroku", migration_dir=tmp_path
+    )
+    assert any("what-if-scenarios" in e for e in errors), errors
