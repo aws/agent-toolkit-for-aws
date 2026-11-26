@@ -209,9 +209,8 @@ never renumbering it to D. The plugin-root report validator checks both `<h2>` a
 
 Appendices A, B, B.1, D, E, F and J are populated by Steps 1–3 and the shared
 `report-decision-core.md` rules. The four sections below have no other build instruction in
-this skill; they mirror the gcp-to-aws `generate-artifacts-report.md` appendix sections of
-the same name, re-pointed at the artifacts this skill actually writes. Keep the lettering
-from Step 3.75.
+this skill; everything they need is specified here, from the artifacts this skill writes —
+no other skill has to be installed. Keep the lettering from Step 3.75.
 
 ### Appendix C — Migration Steps and Rollback (`appendix-steps`, REQUIRED)
 
@@ -275,8 +274,7 @@ Terraform resource name in a `class="mono"` cell:
 State the budget limit `baseline.tf` wrote (`max(50, ceil(aws_monthly_balanced × 1.2))`) and
 say plainly that the Estimate does **not** roll CloudTrail storage, GuardDuty, Config or
 Security Hub into `aws_monthly_balanced` — the cost column is an indicative list-price range,
-not a line of the estimate (contrast gcp-to-aws, whose Estimate prices a `security_baseline`
-line).
+not a line of the estimate.
 
 **Compliance-conditional** (only when `preferences.json` →
 `design_constraints.compliance.value` contains `soc2`, `pci`, `hipaa` or `fedramp`): add rows
