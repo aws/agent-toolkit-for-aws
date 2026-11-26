@@ -56,3 +56,4 @@ if this skill needs one, add the copy **and** a row in the table below.
 | `clarify/clarify-multicloud.md`         | `skills/shared/clarify/clarify-multicloud.md`         |
 | `clarify/clarify-region.md`             | `skills/shared/clarify/clarify-region.md`             |
 | `report/report-decision-core.md`        | `skills/shared/report/report-decision-core.md`        |
+| `report/report-appendix-skeleton.md`    | `skills/shared/report/report-appendix-skeleton.md`    |

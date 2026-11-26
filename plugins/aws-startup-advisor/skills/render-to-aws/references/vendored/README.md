@@ -44,3 +44,4 @@ published Blueprint schema.
 | `workshop/workshop-invariants.md`       | `skills/shared/workshop/workshop-invariants.md`       |
 | `migration/upfront-credits.md`          | `skills/shared/migration/upfront-credits.md`          |
 | `report/report-decision-core.md`        | `skills/shared/report/report-decision-core.md`        |
+| `report/report-appendix-skeleton.md`    | `skills/shared/report/report-appendix-skeleton.md`    |
