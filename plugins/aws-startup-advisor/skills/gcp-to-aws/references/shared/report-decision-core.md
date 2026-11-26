@@ -81,6 +81,7 @@ Declared add-ons on top of the canonical contract — rules that exist only beca
 - **BigQuery next step (Decision summary, under the deferred-services callout):** when the deferred service is BigQuery, render the bq-assess `.callout-info` box directly under the canonical ⚠ specialist-engagement callout, per `references/shared/bq-assess-next-step.md` → Report callout. Never block or delay the report on it. In the Recommended AWS Architecture table, end BigQuery's specialist footnote with: "and see the BigQuery next step above." The `exec-tco` deferred-services exclusion names BigQuery as its example.
 - **Startup-program artifact check:** _Full mode only:_ after Generate, run `scripts/validate-startup-program-artifacts.py --migration-dir $MIGRATION_DIR`. (Decision mode: the Activate wording rules above still apply to the rendered content; the script runs when the Generate artifacts it checks exist.)
 - **AI-stale complexity (Timeline, full mode):** when infrastructure was classified Large solely because AI coexists, treat that as an invalid stale classification and re-run complexity sizing before rendering the timeline.
+- **What-if columns (What-if scenarios):** the comparison table's columns are the ones `references/phases/workshop/workshop-compare.md` defines; keep the two in step when either changes.
 
 ## Declared exceptions
 

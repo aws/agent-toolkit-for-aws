@@ -351,7 +351,7 @@ gcp-to-aws/
 │       ├── schema-discover-billing.md          # billing-profile schema (loaded by discover-billing.md)
 │       ├── schema-estimate-infra.md            # estimation-infra.json schema (loaded by estimate-infra.md at write time)
 │       ├── handoff-gates.md                    # Fail-closed phase handoff protocol (GATE_FAIL / HANDOFF_OK)
-│       ├── report-decision-core.md             # Executive-summary renderer spec (decision + full modes; loaded by estimate.md gate A and generate-artifacts-report.md)
+│       ├── report-decision-core.md             # GCP layer of the report decision core: parameters + add-ons over references/vendored/report/report-decision-core.md (loaded by estimate.md gate A and generate-artifacts-report.md)
 │       ├── bq-assess-next-step.md              # bq-assess next step: commands, existing-report check, per-surface text (conditional load)
 │       ├── validate-artifacts.md               # Pre-report validation (Generate Step 0; read-only)
 │       ├── validate-migration-report.md          # Post-write HTML completeness (Generate Step 4; also decision-report.html via --mode decision)
