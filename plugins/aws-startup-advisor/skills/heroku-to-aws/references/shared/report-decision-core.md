@@ -25,8 +25,9 @@ output lives in the JSON artifacts (`estimation-infra.json`, `preferences.json`,
 `aws-design.json`, `scenarios/` when present).
 
 **Decision mode is pre-execution for THIS decide-complete cycle — not "no
-generated files exist anywhere on disk."** `validate-heroku-migration-report.py
---mode decision` checks `.phase-status.json`'s `phases.generate` value
+generated files exist anywhere on disk."** The heroku add-on validator
+(`validate-heroku-migration-report.py --mode decision`) checks `.phase-status.json`'s
+`phases.generate` value
 (`"pending"` or absent passes; `"completed"`/`"in_progress"` fails), not
 whether `terraform/` or `generation-*.json` exist. A prior cycle's execution
 pack — including a customer's hand-edited `baseline.tf`/`variables.tf` or
@@ -58,9 +59,10 @@ Rules:
   apply page: `<a href="https://aws.amazon.com/startups/credits/">AWS Activate
   credits</a>` (HTML) / `[AWS Activate credits](https://aws.amazon.com/startups/credits/)`
   (Markdown). The link goes **inside the callout**, so the action stays attached
-  to the benefit. `validate-heroku-migration-report.py` fails a `decision-summary`
-  that names Activate without this link, in both modes.
-  The validator's tier and apply-language rules read **only** this `.callout-info`
+  to the benefit. The shared validator
+  (`$PLUGIN_ROOT/scripts/validate-migration-report.py --profile heroku`) fails a
+  `decision-summary` that names Activate without this link, in both modes.
+  The heroku add-on's tier and apply-language rules read **only** this `.callout-info`
   fragment, so cost lines elsewhere in `decision-summary` may carry any figure.
 - **Eligibility, one line:** Pre-Series B, founded in the last 10 years, AWS
   account on the Paid Tier plan, new to Activate or requesting more than before.
@@ -89,11 +91,17 @@ Rules:
   present), and `decision-cta` (decision-mode only; it replaces
   `next-steps`). Do not render `.appendix-header` or any `appendix-*` section.
 - **Required section IDs in decision mode:** `decision-summary`, `exec-share`,
-  `exec-timeline`, `exec-costs` (+ conditional `decision-basis`,
-  `what-if-scenarios` per their triggers in `generate-report.md`).
-  `developer-workflow` is always rendered (the
-  `decision-summary` pointer for a `critical` DX answer links to it, so the
-  link must resolve) but is not in the validator's required set.
+  `exec-costs`, `developer-workflow`, `exec-timeline`, `decision-cta` (+ conditional
+  `decision-basis`, `what-if-scenarios` per their triggers in `generate-report.md`).
+  The shared validator's heroku profile requires every one of these and a TOC link
+  to each; `developer-workflow` is required in both modes (the `decision-summary`
+  pointer for a `critical` DX answer links to it, so the link must resolve).
+  Structure the shared validator also checks here: exactly one `<h1>`,
+  `decision-summary` before `<nav class="toc">`, every `<th>` with `scope`, every
+  `<table>` with a `<caption>`, the Balanced figure as a `.metric-hero` card, no
+  quoted week range anywhere (durations are uncalibrated — give shape, stage order
+  and drivers instead), whole-dollar monthly figures, and the "What would flip
+  this" list rendering every `would_flip_if[]` entry.
 - **Section content:** render `decision-summary`, `exec-share`, `decision-basis`,
   `exec-costs` / `what-if-scenarios`, `developer-workflow`, and `exec-timeline` using the
   **exact same rules** as `generate-report.md` Step 2 — do not restate them
@@ -126,14 +134,33 @@ Rules:
 - **`DECISION.md` (required twin):** same content as the HTML, as plain
   Markdown (Slack/GitHub-friendly): verdict headline, the Activate credits paragraph (§ Startup credits callout), the same CFO paragraph
   under a "Share with your CFO" heading, cost line/table, the timeline
-  planning band, `would_flip_if[]` when present, the developer-workflow
+  shape and drivers, `would_flip_if[]` when present, the developer-workflow
   table and its closing paragraph(s) as a Markdown table under a "Developer
   workflow" heading (same pre-execution wording as the HTML), the CTA line.
   No HTML tags.
-- **Validation:** run
-  `python3 "<SKILL_BASE>/scripts/validate-heroku-migration-report.py" "$MIGRATION_DIR/decision-report.html" --mode decision --migration-dir "$MIGRATION_DIR"`
-  (absolute paths — cwd must not be load-bearing; `--migration-dir` is required so the
-  decision-mode pre-execution checks run) and fix failures before presenting.
+- **Validation (two commands, both must pass):** the shared validator carries the
+  structure and content standard under the heroku profile; the heroku add-on carries
+  the heroku-only rules (`heroku_monthly_like_for_like` anchor, Activate status rules,
+  `decision-basis`, the `.phase-status.json` pre-execution check, no `.appendix-header`
+  or `next-steps` in decision mode).
+
+  ```bash
+  python3 "$PLUGIN_ROOT/scripts/validate-migration-report.py" \
+    "$MIGRATION_DIR/decision-report.html" \
+    --profile heroku \
+    --mode decision \
+    --estimation-infra "$MIGRATION_DIR/estimation-infra.json" \
+    --migration-dir "$MIGRATION_DIR"
+  python3 "<SKILL_BASE>/scripts/validate-heroku-migration-report.py" \
+    "$MIGRATION_DIR/decision-report.html" \
+    --mode decision \
+    --migration-dir "$MIGRATION_DIR"
+  ```
+
+  Both must print `REPORT_OK` and exit 0. Either `REPORT_FAIL` blocks; a validator
+  that does not run (non-0/1 exit, missing `python3`) is not a pass. There is no skip
+  path. Absolute paths — cwd must not be load-bearing; `--migration-dir` is required
+  so the add-on's decision-mode pre-execution checks run. Fix failures before presenting.
 - **Cost labeling, reader vocabulary:** unchanged from `generate-report.md` —
   every dollar figure is "estimated monthly"; no `*.json` filenames or
   `aws_*.` resource IDs in `decision-summary` / `exec-costs` /
@@ -141,8 +168,12 @@ Rules:
   baseline → "(percentage not applicable)"; `attribution == "incomplete"` →
   the provisional label naming the unattributed add-ons, never
   "decision-grade") and its `heroku_monthly_like_for_like` anchor apply in
-  decision mode exactly as in `generate-report.md` Step 1; the validator
-  checks the anchor in both modes.
+  decision mode exactly as in `generate-report.md` Step 1; the heroku add-on
+  checks that anchor in both modes. The shared validator checks the
+  `aws_monthly_balanced` anchor and, when the estimate carries
+  `cost_comparison.heroku_monthly_baseline`, the `data-cost-key="current_monthly"`
+  anchor on the rendered Heroku baseline inside `exec-costs` — both required in
+  both modes.
 
 ## Full-mode specifics
 

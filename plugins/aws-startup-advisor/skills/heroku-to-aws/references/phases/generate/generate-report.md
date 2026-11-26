@@ -11,8 +11,8 @@ _contributes:
 > assessment (page background, section cards, metric grid, verdict callout,
 > appendix divider, focus and print styles). The Heroku report stays shorter:
 > decision, costs, developer workflow, what-if scenarios, and five appendices
-> the Heroku artifacts can fill. It adds the copy-ready CFO brief and the
-> complexity-tier planning band, because both are already in the estimate.
+> the Heroku artifacts can fill. It adds the copy-ready CFO brief, because the
+> figures it restates are already in the estimate.
 > It does not include the GCP AI appendix, security-gap analysis, or glossary.
 > Cutover procedure stays in `MIGRATION_GUIDE.md`. Runs **after** docs so the
 > guide exists when the report links to it.
@@ -162,23 +162,28 @@ Write a **self-contained** HTML file to `$MIGRATION_DIR/migration-report.html`
 
 | Section ID          | Content                                                                                                                                                                                                                                                                                      |
 | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `decision-summary`  | Typography-first verdict (see below), cost one-liner, next action                                                                                                                                                                                                                            |
+| `decision-summary`  | Typography-first verdict (see below), cost one-liner rendered as a `.metrics` grid whose Balanced card carries `class="metric metric-hero"` (e.g. `<div class="metrics"><div class="metric metric-hero"><strong>AWS estimate (Balanced)</strong><br>Est. $210/mo</div><div class="metric">…Heroku baseline…</div></div>` — the shared validator fails a summary with no `metric-hero`), next action. Placed **before** `<nav class="toc">` in both modes |
 | `exec-costs`        | Heroku-vs-AWS side-by-side when a Heroku baseline exists (`current_costs.source != "unavailable"`); otherwise the AWS three-tier table with a one-line note that no Heroku baseline was available. Estimated monthly; Balanced primary. **When `current_costs.baseline_note` is present (any derived — not invoiced — source, including the Postgres Advanced per-pool formula), render it as a visible caveat line directly beside the Heroku current-monthly figure — never only in the accuracy band.** This is mandatory, not conditional on which derived source produced the note. **When `cost_comparison.comparison_status == "incomplete_unmatched_services"`, render the same mandatory caveat-beside-the-figure treatment, naming `cost_comparison.unmatched_deferred_services` and `unmatched_deferred_cost` directly beside the savings/difference figure — never present that dollar delta as decision-grade savings without it.** **When `aws-design.json` `metadata.postgres_followers_collapsed[]` is non-empty, add one line under the database rows listing each collapsed follower and what serves it (`served_by`: `rds_read_replica` → "RDS read replica of `{leader_resource_id}`", `aurora_reader` → "Aurora reader of `{leader_resource_id}`"), so the reader sees why the AWS database count is lower than the Heroku add-on count; skip silently when empty or absent.** This file is the single source of truth for `exec-costs` content rules, so `report-decision-core.md`'s reuse of these rules picks this up automatically. |
 | `cost-optimization` | Reserved Instance / Savings Plan opportunities table, or the explicit no-eligible-commitment statement — see below. Always present, never omitted                                                                                                                                            |
-| `developer-workflow` | Always render — in both report modes (`report-decision-core.md` renders it in `decision-report.html` / `DECISION.md` too, with its pre-execution wording override). Heading "Developer workflow: what stays, what changes, what you build". One line stating the Q5c answer. Then the table defined in § `developer-workflow` below. Then the closing paragraph(s) defined there. Reader vocabulary only — no file names or resource IDs |
+| `developer-workflow` | Always render — in both report modes (`report-decision-core.md` renders it in `decision-report.html` / `DECISION.md` too, with its pre-execution wording override); the shared validator's heroku profile requires it in both modes. Heading "Developer workflow: what stays, what changes, what you build". One line stating the Q5c answer. Then the table defined in § `developer-workflow` below. Then the closing paragraph(s) defined there. Reader vocabulary only — no file names or resource IDs |
 | `exec-share`        | Always render, in both modes, immediately after the table of contents. The copy-ready CFO brief defined below. No new arithmetic |
-| `exec-timeline`     | Always render, in both modes, after `developer-workflow` and before `what-if-scenarios` (or before `next-steps` / `decision-cta` when there is no what-if section). The planning band defined below |
+| `exec-timeline`     | Always render, in both modes, after `developer-workflow` and before `what-if-scenarios` (or before `next-steps` / `decision-cta` when there is no what-if section). The migration shape, stage order and duration drivers defined below — no week, month or hour figure |
 | `shared-data-stores` | **Conditional** — only when the inventory has `shared_data_stores.cohorts` with at least one entry. One table: Cohort / Apps (count) / Shared stores (count) / App names. One sentence above it: apps in a cohort read the same database, cache or Kafka cluster and cannot be cut over strictly one at a time without cross-cloud access to that store; sequence them as a group or plan the interim connectivity. No ordering, no recommendation of which cohort goes first |
 | `next-steps`        | Ordered list pointing to `MIGRATION_GUIDE.md` phases (not a procedure dump). Include one bullet noting the Terraform ships with `baseline.tf` (account security baseline — GuardDuty, CloudTrail, budget alerts) and that three contact emails must be set in tfvars before `terraform plan`. Unless `startup_program_status` is `has_credits`, include one item: apply for [AWS Activate credits](https://aws.amazon.com/startups/credits/) before `terraform apply` — credits do not apply retroactively |
 
-**Cost-figure anchor (machine-checkable).** In `exec-costs`, wrap the recommended AWS
+**Cost-figure anchors (machine-checkable).** In `exec-costs`, wrap the recommended AWS
 monthly (Balanced) dollar figure in a `data-cost-key="aws_monthly_balanced"` attribute so
-the validator can confirm it matches `estimation-infra.json` `projected_costs.aws_monthly_balanced`
-— e.g. `<span data-cost-key="aws_monthly_balanced">$112/mo</span>`. The attribute is not
+the shared validator can confirm it matches `estimation-infra.json`
+`projected_costs.aws_monthly_balanced` — e.g.
+`<span data-cost-key="aws_monthly_balanced">$112/mo</span>`. When the estimate carries
+`cost_comparison.heroku_monthly_baseline`, wrap the rendered Heroku baseline figure in
+`exec-costs` in `data-cost-key="current_monthly"` the same way — the shared validator
+resolves `current_monthly` from that key for this skill. The attributes are not
 reader-visible text. The validator asserts the rendered dollars equal the JSON for every
-anchor present. **The `aws_monthly_balanced` anchor is mandatory whenever that JSON value
-exists and `exec-costs` is rendered — a missing anchor is a validator FAIL, not a skip.**
-Only untagged _illustrative_ numbers are skipped.
+anchor present. **Both anchors are mandatory whenever their JSON value exists and
+`exec-costs` is rendered — a missing anchor is a validator FAIL, not a skip.** Only untagged
+_illustrative_ numbers are skipped. (The scope-matched `heroku_monthly_like_for_like`
+anchor in Step 1 is checked by the heroku add-on validator.)
 
 ### `decision-summary` content (REQUIRED)
 
@@ -277,15 +282,18 @@ Render `<section id="exec-timeline">` after `developer-workflow`. Heading:
 `Timeline`.
 
 - Shape: `recommendation.path_label`.
-- Planning band from `complexity_tier`, copied from the Estimate timeline
-  table. Do not invent a different range:
-  - `small`: 2–6 weeks
-  - `medium`: 6–12 weeks
-  - `large`: 12–18 weeks
-- The words "planning band" are visible beside that range. The band is the
-  complexity-tier planning range, not a staffed schedule and not a commitment.
-- When preferences name a maintenance window, one line with the day and hour.
-  Skip when absent.
+- Stage order, as a short ordered list derived from the path: phased →
+  provision the AWS environment, migrate data, cut over per app; full cutover →
+  provision, then one migration window.
+- Duration drivers, named only from the artifacts: `complexity_tier` as a word
+  (small / medium / large), `complexity_inputs.service_count` and
+  `deferred_count`, database HA and the migration method from preferences, and
+  the maintenance window (one line with the day and hour) when preferences name
+  one. Skip any driver that is absent.
+- **No week, month or hour figure anywhere in the report.** Durations are
+  uncalibrated; the shared validator's readability gate fails a bare "N–M weeks"
+  and an "N–M hours" range. Say this is not a staffed schedule and not a
+  commitment.
 - One line pointing at `MIGRATION_GUIDE.md` for the procedure. Do not paste
   cutover or rollback steps into this section.
 - Do not invent a duration driver the artifacts do not name.
@@ -429,9 +437,10 @@ Omit the section when workshop was declined or never entered.
 Both `migration-report.html` and `decision-report.html` include the stylesheet
 below. Copy it as written.
 
-`validate-heroku-migration-report.py` does not require every declaration in
-that block. It fails when a `<style>` block is missing any of these, and only
-these:
+The validators do not require every declaration in that block. The shared
+validator (`$PLUGIN_ROOT/scripts/validate-migration-report.py --profile heroku`)
+fails when a `<style>` block is missing any of these, and the heroku add-on
+checks the `.share-card` rule; nothing else in the block is gated:
 
 - `body` `background` is `#f6f8fa` or a `var(...)`. Another hex value, or `rgb()`, fails. The error says "body must use a contrasting page background".
 - `.report` or `.container` sets `max-width`
@@ -503,11 +512,14 @@ Do not emit `appendix-ai`, `appendix-security-gap`, `appendix-steps`,
 `appendix-glossary`, or `exec-tco`. The cutover procedure stays in
 `MIGRATION_GUIDE.md`.
 
-### Table & figure accessibility (REQUIRED — the blocking validator enforces these)
+### Table & figure accessibility (REQUIRED — the shared validator enforces these)
 
+- **Exactly one `<h1>`** — the skeleton's report title. Section headings are `<h2>`.
+- **Every `<table>` has a `<caption>`** stating what the table shows.
 - **Every `<th>` must declare `scope="col"` or `scope="row"`.** The report's tables
-  (`exec-costs`, `cost-optimization` when opportunities exist, `what-if-scenarios`) are
-  column-headed, so emit `<th scope="col">…</th>` for each header cell.
+  (`exec-costs`, `cost-optimization` when opportunities exist, `developer-workflow`,
+  `what-if-scenarios`) are column-headed, so emit `<th scope="col">…</th>` for each
+  header cell.
 - **If you emit a `<figure>`, it must carry a non-empty `aria-label` and a `<figcaption>`.**
   This report normally has no figures; this only applies if you add one.
 - `<html>` carries `lang="en"` (the skeleton already does).
@@ -567,7 +579,7 @@ wrote satisfies the contract, and if not, **fix and rewrite it here** (this is t
 the report is edited — a stub is never acceptable):
 
 1. File exists and is non-empty.
-2. Contains `decision-summary`, `exec-share`, `exec-timeline`, `exec-costs`, `cost-optimization`, `next-steps`, the five appendix sections, the visual-shell selectors (including `.share-card`), and `draft for review`. The security appendix table has What it does and Threat mitigated columns.
+2. Contains `decision-summary` (before the TOC), `exec-share`, `exec-costs`, `developer-workflow`, `exec-timeline`, `cost-optimization`, `next-steps`, the five appendix sections, a TOC link to each of them, the visual-shell selectors (including `.share-card`), one `<h1>`, and `draft for review`. The security appendix table has What it does and Threat mitigated columns. No week, month or hour figure appears anywhere.
 3. `decision-summary` must **not contain** any `badge-verdict-*` class; when
    `recommendation.outcome` exists it must render a `verdict-headline` element.
 4. When `recommendation.decision_basis` exists: contains `decision-basis`.
@@ -575,7 +587,7 @@ the report is edited — a stub is never acceptable):
 6. `cost-optimization` is non-empty — the table or the explicit no-eligible-commitment
    sentence, never a blank section. If you wrote the sentence, it renders as visible
    text (not only inside a comment/`<template>`) and reads verbatim once entities decode.
-7. Every `<th>` declares `scope="col"`/`"row"`; any `<figure>` has `aria-label` + `<figcaption>`.
+7. Every `<th>` declares `scope="col"`/`"row"`; every `<table>` has a `<caption>`; any `<figure>` has `aria-label` + `<figcaption>`.
 8. **No monthly-scale dollar figure renders with cents.** Scan every `$` figure: any
    monthly total $2 or more must be whole-dollar (`$112/mo`, not` $112.34/mo`) — the
    validator's currency gate is blocking. Round any cents you find on a monthly figure
@@ -583,7 +595,10 @@ the report is edited — a stub is never acceptable):
 9. When `projected_costs.aws_monthly_balanced` is present, `exec-costs` wraps that
    figure in `<span data-cost-key="aws_monthly_balanced">$NNN/mo</span>` (the
    validator FAILs on a missing anchor — it is how the rendered figure is confirmed
-   against the estimate). The attribute is not reader-visible text.
+   against the estimate). The attribute is not reader-visible text. When
+   `cost_comparison.heroku_monthly_baseline` is present, the rendered Heroku baseline in
+   `exec-costs` is wrapped in `<span data-cost-key="current_monthly">$NNN/mo</span>` the
+   same way.
 10. If `cost_comparison.comparison_status == 'incomplete_unmatched_services'`,
     confirm the unmatched-service caveat is visible text next to the
     Heroku-vs-AWS figure, not only inside `baseline_note`.
@@ -602,19 +617,29 @@ the validator. The interpreter runs it in `generate.md`'s **"Finish Generate in 
 read-only `_postconditions` gate (per `INTERPRETER.md` § `_exec` step 4, gates are never
 dispatched):
 
-```
+```bash
+python3 "$PLUGIN_ROOT/scripts/validate-migration-report.py" \
+  "$MIGRATION_DIR/migration-report.html" \
+  --profile heroku \
+  --estimation-infra "$MIGRATION_DIR/estimation-infra.json" \
+  --migration-dir "$MIGRATION_DIR"
 python3 "<SKILL_BASE>/scripts/validate-heroku-migration-report.py" \
-  "$MIGRATION_DIR/migration-report.html" --mode full --migration-dir "$MIGRATION_DIR"
+  "$MIGRATION_DIR/migration-report.html" \
+  --migration-dir "$MIGRATION_DIR"
 ```
 
-`REPORT_OK` means the validator's decision-core checks passed. It is not a substitute for the content
-rules in this file: when `recommendation.would_flip_if` is non-empty the
+Both commands must print `REPORT_OK` and exit 0. Either `REPORT_FAIL` blocks; a validator that
+does not run (non-0/1 exit, missing `python3`, missing
+`$PLUGIN_ROOT/scripts/validate-migration-report.py`) is not a pass. There is no skip path.
+
+`REPORT_OK` from both means the structure and decision-core checks passed. It is not a substitute
+for the content rules in this file: when `recommendation.would_flip_if` is non-empty the
 summary must include a "What would flip this" list whose items render every
 entry (the heading over an empty or partial list fails; content inside
 `<template>` or comments does not count; the label may be a heading over the
 list or lead its first item, `<li>What would flip this: …</li>`), and when two or more scenarios
-exist the what-if table must include Region, HA, Compute, Arch, and Complexity.
-A report written only to satisfy the section-ID list will fail.
+exist the what-if table must include Scenario, Region, HA, Compute, Arch, Complexity and the
+three tier columns. A report written only to satisfy the section-ID list will fail.
 
 `REPORT_OK` → the report gate passes. `REPORT_FAIL` → the main-window step emits `GATE_FAIL` **and
 pastes the validator's `errors[]` verbatim**; the gate does not edit the HTML itself. The pasted
@@ -623,10 +648,29 @@ re-authors the report under this shell-less worker. On `REPORT_OK` the finish st
 `report-validation-status.json` (the durable result the read-only gate asserts). Recovery is a
 hand-edit of the report from those errors + a direct validator re-run and re-stamp (or a maintainer
 re-running Generate for a clean rebuild).
-The validator enforces the required sections, the `draft for review` footer, the typography-first
-verdict rules, the populated "What would flip this" list when `would_flip_if` is present, the what-if
-column set when two or more scenarios exist, non-empty `cost-optimization`, and the
-a11y subset the report emits (`<th scope>`, `<figure>` labels).
+**What each validator enforces.** The shared validator
+(`$PLUGIN_ROOT/scripts/validate-migration-report.py --profile heroku`) enforces the
+required section IDs for this skill in each mode (full: `decision-summary`, `exec-share`,
+`exec-timeline`, `exec-costs`, `developer-workflow`, `cost-optimization`, `next-steps` and the
+five appendices; decision: the exec set plus `developer-workflow` and `decision-cta`), the TOC
+(present, no broken links, every required section linked), `decision-summary` before the TOC,
+no rendered `appendix-*` in decision mode, the visual-shell stylesheet rules listed above,
+accessibility (`<html lang>`, exactly one `<h1>`, `<th scope>`, a `<caption>` on every table,
+`<figure>` labels), whole-dollar monthly currency, the readability rules (no bare week or hour
+ranges, no "TCO", no "Section N" headings, no vague intensifiers, ISO dates), reader vocabulary
+in the exec sections (no `*.json` or `aws_*.` tokens), the typography-first verdict rules (no
+`badge-verdict-*` pills; `verdict-headline` when `recommendation.outcome` exists), the
+`metric-hero` card, the populated "What would flip this" list, the exec-share brief (one
+`.share-card` paragraph of at least 20 words, no controls), the Activate apply link, the what-if
+column set when two or more scenarios exist, appendix content-depth floors, the `draft for
+review` footer, and the `aws_monthly_balanced` / `current_monthly` cost anchors. The heroku
+add-on (`<SKILL_BASE>/scripts/validate-heroku-migration-report.py`) enforces the heroku-only
+rules: no `decision-cta` in full mode and no `next-steps` or `.appendix-header` in decision
+mode, the `.share-card` border rule, the `heroku_monthly_like_for_like` anchor and its
+source-consistency check, the Activate status rules driven by `preferences.json`, non-empty
+`cost-optimization`, the security-appendix "What it does" / "Threat mitigated" columns,
+`decision-basis` when the estimate declares it, and the decision-mode `.phase-status.json`
+pre-execution check.
 
 ---
 
