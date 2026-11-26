@@ -90,6 +90,65 @@ OPTIONAL_SECTION_IDS = [
     "appendix-glossary",
 ]
 
+# Skill profiles: an explicit `--profile` opt-in for a skill whose report contract
+# differs in SHAPE from the gcp-derived default (heroku-to-aws is a PaaS source with
+# a shorter executive flow). A profile replaces the per-mode required-section set
+# and names, each with a one-line reason, the default checks it switches off.
+# Without --profile nothing here is consulted, so gcp-to-aws / azure-to-aws /
+# render-to-aws / bedrock-migration-assessment behave exactly as before.
+# "not_required" is documentary: those IDs are simply absent from the sets; the
+# dict records WHY so a follow-up can delete entries one at a time. "skip" names
+# the checks validate_report() guards on; every entry is a vocabulary difference
+# pending a heroku content follow-up, except "glossary" which follows from
+# appendix-glossary not being required.
+SKILL_PROFILES: dict[str, dict] = {
+    "heroku": {
+        "required_sections": {
+            "full": [
+                "decision-summary",
+                "exec-share",
+                "exec-timeline",
+                "exec-costs",
+                "developer-workflow",
+                "cost-optimization",
+                "next-steps",
+                "appendix-services",
+                "appendix-costs",
+                "appendix-config",
+                "appendix-security",
+                "appendix-assumptions",
+            ],
+            "decision": [
+                "decision-summary",
+                "exec-share",
+                "exec-timeline",
+                "exec-costs",
+                "developer-workflow",
+                "decision-cta",
+            ],
+        },
+        "not_required": {
+            "appendix-steps": "cutover procedure stays in MIGRATION_GUIDE.md",
+            "appendix-security-gap": "no source-cloud security posture to gap-compare on a PaaS",
+            "appendix-ai": "heroku-to-aws has no AI track",
+            "appendix-glossary": "PaaS report has no glossary appendix; follow-up may add one",
+        },
+        "skip": {
+            "glossary": "appendix-glossary not required (see not_required)",
+            "stay_if_heading": (
+                "vocabulary: heroku has no 'Stay entirely if' heading yet — content follow-up"
+            ),
+            "optimization_sections": (
+                "vocabulary: heroku names the section cost-optimization — content follow-up"
+            ),
+            "appendix_config_columns": (
+                "vocabulary: heroku columns are Choice / Your answer / What it changes "
+                "— content follow-up"
+            ),
+        },
+    },
+}
+
 FORBIDDEN_PATTERNS = [
     (r"\[placeholder\]", "placeholder text"),
     (r"\bTODO\b", "TODO marker"),
@@ -892,9 +951,12 @@ def _validate_action_lists(html: str) -> list[str]:
 
 
 def _validate_decision_language(
-    html: str, estimation_infra: dict | None
+    html: str, estimation_infra: dict | None, *, check_stay_if: bool = True
 ) -> list[str]:
-    """Keep whole-stack decisions distinct from track-scoped holds."""
+    """Keep whole-stack decisions distinct from track-scoped holds.
+
+    `check_stay_if=False` (a SKILL_PROFILES "stay_if_heading" skip) drops only the
+    heading-wording rules; the badge-verdict ban below always runs."""
     summary = _section_html(html, "decision-summary") or ""
     errors: list[str] = []
     recommendation = (estimation_infra or {}).get("recommendation") or {}
@@ -906,7 +968,9 @@ def _validate_decision_language(
             re.I,
         )
     )
-    if has_stay_reasons and expected_heading_count != 1:
+    if not check_stay_if:
+        pass
+    elif has_stay_reasons and expected_heading_count != 1:
         errors.append(
             "decision-summary has recommendation.stay_if reasons and must contain "
             'exactly one "Stay entirely if" heading '
@@ -1332,7 +1396,9 @@ def _normalize_money(text: str) -> str | None:
 # value is present wins (see _resolve_cost_anchor). `current_monthly` has one
 # candidate per source cloud because each skill names its current-spend field after
 # the platform it reads (gcp-to-aws: `current_costs.gcp_monthly`; azure-to-aws:
-# `current_costs.azure_monthly`) — the anchor itself is source-cloud-agnostic.
+# `current_costs.azure_monthly`; heroku-to-aws: `cost_comparison.heroku_monthly_baseline`,
+# whose `current_costs` object holds provenance metadata rather than a total) — the
+# anchor itself is source-cloud-agnostic.
 _COST_ANCHORS = {
     "aws_monthly_balanced": (("projected_costs", "aws_monthly_balanced"),),
     "aws_monthly_premium": (("projected_costs", "aws_monthly_premium"),),
@@ -1340,6 +1406,7 @@ _COST_ANCHORS = {
     "current_monthly": (
         ("current_costs", "gcp_monthly"),
         ("current_costs", "azure_monthly"),
+        ("cost_comparison", "heroku_monthly_baseline"),
     ),
 }
 
@@ -2187,6 +2254,22 @@ def _validate_decision_core_render(
     return errors
 
 
+def _required_ids_for(mode: str, profile: str | None) -> list[str]:
+    """Required-section set for `mode`, swapped for the profile's own when given."""
+    if profile is not None:
+        sets = SKILL_PROFILES[profile]["required_sections"]
+        if mode not in sets:
+            raise ValueError(
+                f"profile {profile!r} has no required-section set for mode {mode!r}"
+            )
+        return sets[mode]
+    if mode == "ai_only":
+        return AI_ONLY_REQUIRED_SECTION_IDS
+    if mode == "decision":
+        return DECISION_REQUIRED_SECTION_IDS
+    return REQUIRED_SECTION_IDS
+
+
 def validate_report(
     html: str,
     estimation_infra: dict | None = None,
@@ -2197,15 +2280,13 @@ def validate_report(
     check_readability: bool = True,
     migration_dir: Path | None = None,
     mode: str = "full",
+    profile: str | None = None,
 ) -> list[str]:
     errors: list[str] = []
 
-    if mode == "ai_only":
-        required_ids = AI_ONLY_REQUIRED_SECTION_IDS
-    elif mode == "decision":
-        required_ids = DECISION_REQUIRED_SECTION_IDS
-    else:
-        required_ids = REQUIRED_SECTION_IDS
+    required_ids = _required_ids_for(mode, profile)
+    # Default checks a SKILL_PROFILES entry switches off; empty without --profile.
+    skips = SKILL_PROFILES[profile]["skip"] if profile is not None else {}
     errors.extend(_validate_required_sections(html, required_ids))
 
     if mode == "decision":
@@ -2232,7 +2313,11 @@ def validate_report(
         errors.extend(_validate_readability(html))
         errors.extend(_validate_currency_formatting(html))
         errors.extend(_validate_exec_vocabulary(html))
-        errors.extend(_validate_decision_language(html, estimation_infra))
+        errors.extend(
+            _validate_decision_language(
+                html, estimation_infra, check_stay_if="stay_if_heading" not in skips
+            )
+        )
         # Normal generated reports require a TOC. Use the same signal to
         # enforce the visual shell while preserving --no-require-toc as the
         # lightweight escape hatch for deliberately minimal unit fixtures.
@@ -2302,24 +2387,26 @@ def validate_report(
     errors.extend(_validate_activate_link(html))
     if require_toc:
         errors.extend(_validate_share_section(html, estimation_infra, estimation_ai))
-    if mode in ("full", "ai_only") and require_toc:
+    if mode in ("full", "ai_only") and require_toc and "glossary" not in skips:
         errors.extend(_validate_glossary_table(html))
 
     # Ordered action lists and configuration provenance (when sections present).
     errors.extend(_validate_action_lists(html))
-    errors.extend(_validate_appendix_config(html))
+    if "appendix_config_columns" not in skips:
+        errors.extend(_validate_appendix_config(html))
 
     # Dedicated Cost Optimization section when Estimate emitted opportunities.
-    errors.extend(
-        _validate_optimization_sections(
-            html,
-            estimation_infra,
-            estimation_ai,
-            aws_design,
-            mode=mode,
-            require_toc=require_toc,
+    if "optimization_sections" not in skips:
+        errors.extend(
+            _validate_optimization_sections(
+                html,
+                estimation_infra,
+                estimation_ai,
+                aws_design,
+                mode=mode,
+                require_toc=require_toc,
+            )
         )
-    )
 
     # Decision-core content. --no-require-toc remains the escape hatch for
     # minimal unit fixtures; a normal Generate or Decision report must render
@@ -2396,7 +2483,17 @@ def main() -> int:
         help="full = migration-report.html (default); decision = decision-report.html "
         "written at the post-Estimate Decision gate (exec sections + CTA, no appendices)",
     )
+    parser.add_argument(
+        "--profile",
+        choices=sorted(SKILL_PROFILES),
+        default=None,
+        help="Skill profile (see SKILL_PROFILES): swaps in that skill's required-section "
+        "set and switches off the default checks the profile names. Omit for the "
+        "gcp-derived default contract.",
+    )
     args = parser.parse_args()
+    if args.profile and args.mode not in SKILL_PROFILES[args.profile]["required_sections"]:
+        parser.error(f"--profile {args.profile} does not define --mode {args.mode}")
 
     if not args.report_path.is_file():
         print(f"REPORT_FAIL | file={args.report_path} | reason=not_found", file=sys.stderr)
@@ -2425,6 +2522,7 @@ def main() -> int:
         check_readability=not args.no_readability,
         migration_dir=args.migration_dir,
         mode=args.mode,
+        profile=args.profile,
     )
     if errors:
         print("REPORT_FAIL | migration-report.html", file=sys.stderr)
@@ -2434,14 +2532,10 @@ def main() -> int:
 
     counts = _section_id_counts(html)
     optional_present = [sid for sid in OPTIONAL_SECTION_IDS if counts.get(sid, 0) >= 1]
-    required_count = len(
-        AI_ONLY_REQUIRED_SECTION_IDS
-        if args.mode == "ai_only"
-        else DECISION_REQUIRED_SECTION_IDS
-        if args.mode == "decision"
-        else REQUIRED_SECTION_IDS
-    )
+    required_count = len(_required_ids_for(args.mode, args.profile))
     mode_tag = "" if args.mode == "full" else f"mode={args.mode} | "
+    if args.profile:
+        mode_tag += f"profile={args.profile} | "
     print(
         f"REPORT_OK | {mode_tag}structure=complete | sections="
         + str(required_count)
