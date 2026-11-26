@@ -9,7 +9,7 @@ This fixture is the deterministic balanced-baseline output for the representativ
 - `scripts/promote-image.sh` — immutable ECR digest promotion.
 - `scripts/migrate-postgres.sh` — dry-run-first PostgreSQL migration stages.
 - `scripts/migrate-disk.sh` — dry-run-first EFS pre-copy/final-delta stages.
-- `migration-report.html` — validated stakeholder report.
+- `migration-report.html` — stakeholder report; passes both the shared plugin-root report validator and the render-local report validator.
 - `generation-warnings.json` — complete generation accounting and honest deferred surfaces.
 - `validation-report.json` — independent validation evidence and authoritative completion status.
 

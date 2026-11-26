@@ -1396,8 +1396,9 @@ def _normalize_money(text: str) -> str | None:
 # value is present wins (see _resolve_cost_anchor). `current_monthly` has one
 # candidate per source cloud because each skill names its current-spend field after
 # the platform it reads (gcp-to-aws: `current_costs.gcp_monthly`; azure-to-aws:
-# `current_costs.azure_monthly`; heroku-to-aws: `cost_comparison.heroku_monthly_baseline`,
-# whose `current_costs` object holds provenance metadata rather than a total) — the
+# `current_costs.azure_monthly`; render-to-aws: `current_costs.render_monthly`;
+# heroku-to-aws: `cost_comparison.heroku_monthly_baseline`, whose `current_costs`
+# object holds provenance metadata rather than a total) — the
 # anchor itself is source-cloud-agnostic.
 _COST_ANCHORS = {
     "aws_monthly_balanced": (("projected_costs", "aws_monthly_balanced"),),
@@ -1406,6 +1407,7 @@ _COST_ANCHORS = {
     "current_monthly": (
         ("current_costs", "gcp_monthly"),
         ("current_costs", "azure_monthly"),
+        ("current_costs", "render_monthly"),
         ("cost_comparison", "heroku_monthly_baseline"),
     ),
 }

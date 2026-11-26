@@ -5,7 +5,7 @@ description: "Migrate Render workloads to AWS through consented read-only discov
 
 # Render-to-AWS Migration Skill
 
-Use this skill for a full Render-to-AWS migration assessment and optional execution pack. The skill is self-contained: `<SKILL_BASE>` is the directory containing this file, and every runtime or reference path resolves beneath it.
+Use this skill for a full Render-to-AWS migration assessment and optional execution pack. `<SKILL_BASE>` is the directory containing this file, and every reference path and every `uv`-run tool resolves beneath it. Two plugin-root scripts are the exception: Generate runs the shared `$PLUGIN_ROOT/scripts/validate-artifacts.py` (artifact pre-check) and `$PLUGIN_ROOT/scripts/validate-migration-report.py` (report structure gate) with plain `python3`, where `$PLUGIN_ROOT` is the `aws-startup-advisor` plugin directory two levels above `<SKILL_BASE>` (`$SKILL_BASE/../..`). They are stdlib-only and need no `uv` environment.
 
 ## Interpreter and entry point
 
@@ -29,7 +29,7 @@ uv run --project "$SKILL_BASE/scripts" --frozen python -c 'import yaml,jsonschem
 
 If either probe fails, warn once, naming which failed (`uv` missing or frozen environment unavailable). The warning links <https://docs.astral.sh/uv/getting-started/installation/> and tells the user to install `uv`, confirm the preflight command above succeeds, and rerun the same request. Then continue only script-free work and stop at the first step that would invoke a script. Do not fall back to an ambient Python environment. User-described estates or figures are not a substitute for the normalizer, which owns resource identities. Script arguments, outputs, status tokens, and exit behavior are defined in `references/shared/script-abis.md`.
 
-Steps that need `uv`: Discover Steps 1 to 3 (capture, local producers, normalizer), Generate's main-window Blueprint semantic revalidation (`blueprint_validate` through `capture-render-cli.py`, run before the Generate worker when Blueprint evidence is absent or stale), and Generate stage 7 (report validation). Clarify, Design, Estimate, Workshop, Feedback, the dispatched workers, and Generate stages 1 to 6 do not. A Discover phase that has not completed halts after Step 0 (Discover Step 0b), before any attempt ID, consent prompt, manifest invalidation, or capture, whether or not artifacts already exist, and leaves Discover `in_progress`. A resumed run whose Discover is already complete continues without `uv` until it reaches a step listed above.
+Steps that need `uv`: Discover Steps 1 to 3 (capture, local producers, normalizer), Generate's main-window Blueprint semantic revalidation (`blueprint_validate` through `capture-render-cli.py`, run before the Generate worker when Blueprint evidence is absent or stale), and Generate stage 7 (the render-local report pass; the shared structural pass runs with `python3`). Clarify, Design, Estimate, Workshop, Feedback, the dispatched workers, and Generate stages 1 to 6 do not. A Discover phase that has not completed halts after Step 0 (Discover Step 0b), before any attempt ID, consent prompt, manifest invalidation, or capture, whether or not artifacts already exist, and leaves Discover `in_progress`. A resumed run whose Discover is already complete continues without `uv` until it reaches a step listed above.
 
 ## Discovery boundary
 
