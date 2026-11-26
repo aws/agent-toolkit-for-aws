@@ -37,10 +37,13 @@ the phase still reports success and the customer still receives the file.
 
 ## Step 0: Validate Artifacts (Read Only — REQUIRED before any HTML is written)
 
-Run the plugin's artifact validator against the run directory **before** building report
-content, the same way gcp-to-aws's `generate-artifacts-report.md` Step 0 runs its pre-report
-check. It is read-only: it checks the JSON artifacts this report is rendered from against
-their published contracts and rewrites nothing.
+The JSON artifacts this report is rendered from must pass the plugin's artifact validator
+**before** any report content is built. A report built on an artifact that fails its own
+contract inherits the defect and hides it.
+
+**This fragment runs in the file-only `rw` worker, which cannot run `python3`.** The check
+is therefore owned by the caller: `generate.md` § "Step: Run the phase" runs it in the MAIN
+window, before the worker is dispatched (step 2 there), as:
 
 ```bash
 python3 "$PLUGIN_ROOT/scripts/validate-artifacts.py" \
@@ -48,19 +51,18 @@ python3 "$PLUGIN_ROOT/scripts/validate-artifacts.py" \
   --skill azure-to-aws
 ```
 
-Branch on the exit code:
+and dispatches this fragment only on exit `0` (`PASS`). On exit `1` (`FAIL`) the caller
+surfaces every `ERROR` line to the user, emits
+`GATE_FAIL | phase=generate | fragment=artifacts-report | reason=artifact_contract`, names the
+phase that owns the failing artifact so the user can re-run it, does **NOT** patch any artifact
+to pass validation, and does **NOT** dispatch the worker — so `migration-report.html` is never
+written. Any other exit code means the validator did not run (e.g. `python3` unavailable):
+the caller tells the user the pre-report check was skipped and never records it as a pass.
 
-- `0` (`PASS`) — proceed to the Inputs below and Step 1.
-- `1` (`FAIL`) — surface every `ERROR` line to the user, emit
-  `GATE_FAIL | phase=generate | fragment=artifacts-report | reason=artifact_contract`, **do
-  NOT write** `migration-report.html`, **do NOT patch any artifact** to pass validation, and
-  return to the parent `generate.md`. The report is rendered from those artifacts; a report
-  built on an artifact that fails its own contract inherits the defect and hides it. Tell
-  the user which phase owns the failing artifact so they can re-run it.
-- any other code — the validator did not run (e.g. `python3` unavailable). Tell the user the
-  pre-report check was skipped; never record it as a pass.
-
-Resolve `$PLUGIN_ROOT` the same way Step 5 does for `validate-migration-report.py`.
+Inside this fragment, Step 0 is a precondition, not a command: if you are executing this
+file, the caller's check passed or was reported as skipped. Do not attempt to run the
+validator from the worker; never write the report when the caller reports the check as
+failed.
 
 ## AI-only report path (REQUIRED when there is no infrastructure track)
 
@@ -213,8 +215,9 @@ from Step 3.75.
 
 ### Appendix C — Migration Steps and Rollback (`appendix-steps`, REQUIRED)
 
-Numbered migration phases, each as an `<h3>Phase N — …</h3>` block (the validator counts
-these; two or more are required), carrying:
+Numbered migration phases, each as an `<h3>Phase N — …</h3>` block (the validator requires
+at least two, counting whichever is larger: these headings or the section's table rows),
+carrying:
 
 - Phase name and what moves — walk the cutover sequence `MIGRATION_GUIDE.md` lays out in
   dependency-tier order (`generate-artifacts-docs.md` Step 1 item 3), so the report and the
@@ -285,12 +288,15 @@ generated and what would trigger it.
 
 **Cost guardrails** (when `$MIGRATION_DIR/ai-migration/bedrock_monitoring.tf` exists): the
 Bedrock budget and cost-anomaly rows, with Azure Cost Management budgets / Azure OpenAI
-quota as the equivalents. Apply the same inference-profile condition gcp-to-aws applies: add
-an **Inference profiles (tagged)** row only when the generated file contains an enabled
-`aws_bedrock_inference_profile` resource and its output.
+quota as the equivalents. Add an **Inference profiles (tagged)** row only when the generated
+file contains an enabled `aws_bedrock_inference_profile` resource and its output.
 
-**What the baseline does NOT cover** — the SOC 2 / HIPAA / PCI / FedRAMP bullets (auditor,
-BAA, QSA, ATO), verbatim from gcp-to-aws.
+**What the baseline does NOT cover (you still need):**
+
+- SOC 2: Qualified auditor, formal policies, employee training, vendor management
+- HIPAA: BAA with AWS, qualified HIPAA auditor, data handling policies
+- PCI: QSA assessment, network segmentation validation, pen testing
+- FedRAMP: Agency-level NIST 800-53 controls, ATO process
 
 **To enable / opt out:** `terraform apply` on `baseline.tf`; opting out is the three-step
 procedure in `generate-artifacts-infra.md` Step 1.5 § "Opting out of the baseline" (the
@@ -354,8 +360,13 @@ design targets. Add an AI row from `estimation-ai.json` when it exists.
   SKU was mapped like-for-like, and that right-sizing needs an RDfA export or 14+ days of
   Azure Monitor P95 metrics in Discover. List each `declared_waste_found[]` entry (e.g. an
   idle App Service Plan carried as `idle: true`) as its own line. When utilization data was
-  present, list every EC2 / RDS mapping that is not fully measured, grouped by reason, as
-  the gcp-to-aws Appendix I does.
+  present (`basis` is `utilization` or `both`), list every EC2 / RDS mapping in
+  `aws-design.json` whose `sizing_provenance` is not `measured`, grouped by reason: no
+  `measured_utilization` on the source resource (the RDfA export or Azure Monitor window did
+  not cover it); `sizing_provenance: "user_stated"` (kept at the size you asked for);
+  `sizing_provenance: "model_prior"` (no `knowledge/` row covered the SKU, so the size is an
+  inference, not a measurement). One line per group, naming the resources, so the reader
+  knows which figures a later metrics capture would move.
 
 **Terraform validation:** from `validation-report.json` (`status`, `policy_status`, provider
 version) when present; on an AI-only run its `terraform_dir` is `ai-migration`.

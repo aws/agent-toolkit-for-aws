@@ -105,15 +105,18 @@ transition, and the `HANDOFF_OK` stay in the main window.
 worker emits `terraform/` only; it cannot invoke skills or run `terraform`/`python`.
 This mirrors gcp-to-aws's `generate.md`, which owns validation inline in its own main
 window and passes only the terraform DIR to the skill (the caller owns the report). See
-§ "Step: Run the phase" step 4.
+§ "Step: Run the phase" step 5.
 
-**Report validation gate:** `generate-artifacts-report.md` Step 0 runs the plugin's
-artifact validator (`scripts/validate-artifacts.py --skill azure-to-aws`) against
-`$MIGRATION_DIR` **before** any report HTML is written, as gcp-to-aws's report fragment runs
-its pre-report check. If it fails: surface the failure lines to the user, **do not write**
-`migration-report.html`, and do **NOT** patch artifacts to pass validation. The report is a
-required `_produces` artifact on every path, so the phase then stops at `_postconditions`
-with `GATE_FAIL` — the intended outcome, never a silent skip.
+**Artifact pre-check gate (main window, before dispatch):** the report is rendered from the
+phase artifacts, so `generate-artifacts-report.md` Step 0 requires them to pass the plugin's
+artifact validator (`scripts/validate-artifacts.py --run-dir "$MIGRATION_DIR" --skill
+azure-to-aws`) **before** any report HTML is written. The `rw` worker cannot run `python3`,
+so this phase runs the check itself in the MAIN window as step 2 of § "Step: Run the phase",
+and dispatches the worker only when it passes. On `FAIL`: surface the `ERROR` lines to the
+user, emit `GATE_FAIL | phase=generate | fragment=artifacts-report | reason=artifact_contract`,
+do **NOT** patch artifacts to pass validation, and do **NOT** dispatch — so
+`migration-report.html` is never written, and the phase stops with `GATE_FAIL` rather than
+silently skipping a required `_produces` artifact.
 
 ## Generate is opt-in, and the check has no mechanical teeth
 
@@ -152,15 +155,22 @@ fragment's own `## Status`, not this line, for its emitter detail.
 
 ## Step: Run the phase
 
-Steps 2–3 are the phase's WORK and are dispatched to the file-only `rw` worker. Step 4
-and step 5 run in the MAIN window — the worker cannot invoke skills or run
+Steps 3–4 are the phase's WORK and are dispatched to the file-only `rw` worker. Steps 1–2
+and steps 5–6 run in the MAIN window — the worker cannot invoke skills or run
 `terraform`/`python`.
 
 1. Verify the entry gate, including `run_mode`.
-2. Run each fragment whose `_trigger` holds. (worker)
-3. Run `generate-assemble.md`. (worker — emits `terraform/`, the docs, the report, and
+2. **Artifact pre-check — MAIN WINDOW, before dispatch.** Run
+   `python3 "$PLUGIN_ROOT/scripts/validate-artifacts.py" --run-dir "$MIGRATION_DIR" --skill azure-to-aws`
+   (read-only; it rewrites nothing). Exit `0`: continue. Exit `1`: surface every `ERROR`
+   line, emit `GATE_FAIL | phase=generate | fragment=artifacts-report | reason=artifact_contract`,
+   name the phase that owns the failing artifact, do **NOT** patch artifacts, and stop here —
+   nothing is dispatched and no report is written. Any other exit code: the validator did not
+   run; tell the user the pre-check was skipped, never record it as a pass, and continue.
+3. Run each fragment whose `_trigger` holds. (worker)
+4. Run `generate-assemble.md`. (worker — emits `terraform/`, the docs, the report, and
    `generation-warnings.json`; it does NOT validate or write `validation-report.json`.)
-4. **Validate the generated Terraform and write the validation report — MAIN WINDOW,
+5. **Validate the generated Terraform and write the validation report — MAIN WINDOW,
    after the worker returns and before `_postconditions`.** This MUST run in the main
    window because the `rw` worker cannot invoke skills or run `terraform`/`python`. This
    phase is the **caller** of the `tf-best-practices` validation protocol, exactly as
@@ -181,7 +191,7 @@ and step 5 run in the MAIN window — the worker cannot invoke skills or run
      pin the skill's raw verdict path as the report.
    - An unresolved `POLICY_FAIL` the user does not `skip`/`abort` sets `status: policy_failed`
      and blocks completion (the `_postconditions` `_assert`).
-5. Evaluate `_postconditions`. On all-pass emit `HANDOFF_OK` and advance to
+6. Evaluate `_postconditions`. On all-pass emit `HANDOFF_OK` and advance to
    `complete`; on any failure emit `GATE_FAIL` and stop.
 
 **Write the web-handoff summary (fail-open), only after `HANDOFF_OK`:** run
