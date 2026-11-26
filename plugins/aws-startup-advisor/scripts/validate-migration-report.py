@@ -1327,11 +1327,20 @@ def _normalize_money(text: str) -> str | None:
 # at. Required keys are the exception: a required figure whose JSON value exists must
 # BE anchored when exec-costs is present (see _REQUIRED_COST_KEYS) — a missing anchor
 # there is a FAIL, not a skip.
+#
+# Each key maps to an ordered tuple of candidate JSON paths; the FIRST path whose
+# value is present wins (see _resolve_cost_anchor). `current_monthly` has one
+# candidate per source cloud because each skill names its current-spend field after
+# the platform it reads (gcp-to-aws: `current_costs.gcp_monthly`; azure-to-aws:
+# `current_costs.azure_monthly`) — the anchor itself is source-cloud-agnostic.
 _COST_ANCHORS = {
-    "aws_monthly_balanced": ("projected_costs", "aws_monthly_balanced"),
-    "aws_monthly_premium": ("projected_costs", "aws_monthly_premium"),
-    "aws_monthly_optimized": ("projected_costs", "aws_monthly_optimized"),
-    "current_monthly": ("current_costs", "gcp_monthly"),
+    "aws_monthly_balanced": (("projected_costs", "aws_monthly_balanced"),),
+    "aws_monthly_premium": (("projected_costs", "aws_monthly_premium"),),
+    "aws_monthly_optimized": (("projected_costs", "aws_monthly_optimized"),),
+    "current_monthly": (
+        ("current_costs", "gcp_monthly"),
+        ("current_costs", "azure_monthly"),
+    ),
 }
 
 # Keys whose figure is load-bearing: when its JSON value exists AND the report has
@@ -1470,6 +1479,20 @@ def _dig(d: dict, path: tuple[str, ...]):
     return cur
 
 
+def _resolve_cost_anchor(
+    estimation_infra: dict, key: str
+) -> tuple[tuple[str, ...], object]:
+    """Return (path, value) for the first _COST_ANCHORS[key] candidate path whose
+    value is present in `estimation_infra`. When none is present, return the first
+    candidate path with None so callers can name it in a skip or error message."""
+    paths = _COST_ANCHORS[key]
+    for path in paths:
+        value = _dig(estimation_infra, path)
+        if value is not None:
+            return path, value
+    return paths[0], None
+
+
 def _validate_cost_figures(
     html: str, estimation_infra: dict | None, *, require_anchors: bool = True
 ) -> list[str]:
@@ -1491,10 +1514,9 @@ def _validate_cost_figures(
 
     for key, text in _cost_anchor_matches(html):
         key = key.lower()
-        path = _COST_ANCHORS.get(key)
-        if path is None:
+        if key not in _COST_ANCHORS:
             continue  # unknown anchor key -> not ours to assert
-        expected = _dig(estimation_infra, path)
+        path, expected = _resolve_cost_anchor(estimation_infra, key)
         if expected is None:
             continue  # the JSON does not carry this figure -> nothing to assert
         try:
@@ -1536,8 +1558,8 @@ def _validate_cost_figures(
         if exec_costs_html is not None:
             exec_costs_keys = {k.lower() for k, _ in _cost_anchor_matches(exec_costs_html)}
             for key in _REQUIRED_COST_KEYS:
-                path = _COST_ANCHORS[key]
-                if _dig(estimation_infra, path) is None:
+                path, value = _resolve_cost_anchor(estimation_infra, key)
+                if value is None:
                     continue  # JSON does not carry it -> nothing to require
                 if key not in exec_costs_keys:
                     errors.append(

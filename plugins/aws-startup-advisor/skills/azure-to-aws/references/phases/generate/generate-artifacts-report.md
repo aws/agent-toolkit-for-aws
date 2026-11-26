@@ -35,6 +35,33 @@ There is no hand-rolled fallback. If that file is missing, emit
 report that silently degrades to unstructured HTML is worse than one that fails loudly, because
 the phase still reports success and the customer still receives the file.
 
+## Step 0: Validate Artifacts (Read Only — REQUIRED before any HTML is written)
+
+Run the plugin's artifact validator against the run directory **before** building report
+content, the same way gcp-to-aws's `generate-artifacts-report.md` Step 0 runs its pre-report
+check. It is read-only: it checks the JSON artifacts this report is rendered from against
+their published contracts and rewrites nothing.
+
+```bash
+python3 "$PLUGIN_ROOT/scripts/validate-artifacts.py" \
+  --run-dir "$MIGRATION_DIR" \
+  --skill azure-to-aws
+```
+
+Branch on the exit code:
+
+- `0` (`PASS`) — proceed to the Inputs below and Step 1.
+- `1` (`FAIL`) — surface every `ERROR` line to the user, emit
+  `GATE_FAIL | phase=generate | fragment=artifacts-report | reason=artifact_contract`, **do
+  NOT write** `migration-report.html`, **do NOT patch any artifact** to pass validation, and
+  return to the parent `generate.md`. The report is rendered from those artifacts; a report
+  built on an artifact that fails its own contract inherits the defect and hides it. Tell
+  the user which phase owns the failing artifact so they can re-run it.
+- any other code — the validator did not run (e.g. `python3` unavailable). Tell the user the
+  pre-report check was skipped; never record it as a pass.
+
+Resolve `$PLUGIN_ROOT` the same way Step 5 does for `validate-migration-report.py`.
+
 ## AI-only report path (REQUIRED when there is no infrastructure track)
 
 An app-code-only / AI-workload repo produces the AI artifacts but **no infra track** —
@@ -95,20 +122,22 @@ Present the Premium / Balanced / Optimized comparison from `estimation-infra.jso
   RI-equivalent rate (never presented as free).
 - The baseline provenance (user-stated bracket vs invoice) and the accuracy band.
 
-**Cost-figure anchor (machine-checkable, REQUIRED).** Wrap the Balanced AWS monthly figure
-inside `<section id="exec-costs">` in a `data-cost-key="aws_monthly_balanced"` attribute
-(value = `projected_costs.aws_monthly_balanced`), so `validate-migration-report.py` can
-confirm the rendered dollars match the estimate. Optional per-tier:
-`data-cost-key="aws_monthly_premium"` / `"aws_monthly_optimized"`. Example:
-`<strong data-cost-key="aws_monthly_balanced">Est. $155/mo</strong>`. The attribute is not
-reader-visible text. The anchor must sit on a rendered element inside `exec-costs` itself —
+**Cost-figure anchors (machine-checkable, REQUIRED).** Wrap the Balanced AWS monthly figure
+and the current Azure monthly figure inside `<section id="exec-costs">` with a
+`data-cost-key` attribute, so `validate-migration-report.py` can confirm the rendered
+dollars match the estimate: `data-cost-key="aws_monthly_balanced"` on the element holding
+the Balanced dollar figure (value = `projected_costs.aws_monthly_balanced`), and
+`data-cost-key="current_monthly"` on the element holding the Azure figure (value =
+`current_costs.azure_monthly` — the validator resolves the `current_monthly` anchor from
+that key for this skill). Optional per-tier: `data-cost-key="aws_monthly_premium"` /
+`"aws_monthly_optimized"`. Example:
+`<strong data-cost-key="aws_monthly_balanced">Est. $155/mo</strong>` and
+`<span data-cost-key="current_monthly">$4,200/mo</span>`. The attribute is not
+reader-visible text. Each anchor must sit on a rendered element inside `exec-costs` itself —
 not in an HTML comment, and not merely somewhere else in the document (a decision-summary
-hero metric does not satisfy this rule). **It is mandatory whenever
-`projected_costs.aws_monthly_balanced` exists and `exec-costs` is rendered — a missing
-anchor is a validator FAIL, not a skip.** The `current_monthly` anchor that the GCP and
-Heroku reports carry does not apply here: this skill records current spend under
-`current_costs.azure_monthly`, which the validator does not map, so only untagged
-illustrative figures remain unchecked.
+hero metric does not satisfy this rule). **Both anchors are mandatory whenever their JSON
+value exists and `exec-costs` is rendered — a missing required anchor is a validator FAIL,
+not a skip.** Only untagged illustrative figures remain unchecked.
 
 ## Step 3: Surface the rest
 
@@ -173,6 +202,171 @@ part of the heading and TOC label; it does not shift when a conditional section 
 Render `appendix-artifacts` before `appendix-config`. Conditional sections keep their reserved
 letters when absent — for example, an infra-only report still uses Appendix E for artifacts,
 never renumbering it to D. The plugin-root report validator checks both `<h2>` and TOC labels.
+
+## Step 3.8: Appendix build instructions — C, G, H, I
+
+Appendices A, B, B.1, D, E, F and J are populated by Steps 1–3 and the shared
+`report-decision-core.md` rules. The four sections below have no other build instruction in
+this skill; they mirror the gcp-to-aws `generate-artifacts-report.md` appendix sections of
+the same name, re-pointed at the artifacts this skill actually writes. Keep the lettering
+from Step 3.75.
+
+### Appendix C — Migration Steps and Rollback (`appendix-steps`, REQUIRED)
+
+Numbered migration phases, each as an `<h3>Phase N — …</h3>` block (the validator counts
+these; two or more are required), carrying:
+
+- Phase name and what moves — walk the cutover sequence `MIGRATION_GUIDE.md` lays out in
+  dependency-tier order (`generate-artifacts-docs.md` Step 1 item 3), so the report and the
+  runbook agree on the order. Name the clusters from `aws-design.json` → `clusters[]` that
+  move in each phase.
+- The scripts the operator runs in that phase, by name and in order:
+  `scripts/01-validate-prerequisites.sh` (always first), `scripts/02-migrate-data.sh` when the
+  design has a database, `scripts/03-migrate-containers.sh` when it has an Azure Container
+  Registry, `scripts/04-migrate-secrets.sh` when it has a Key Vault, and
+  `scripts/05-validate-migration.sh` (always last). State that every script is dry-run by
+  default and that nothing was executed during Generate.
+- The cutover strategy each phase depends on, from `preferences.json`: `data.db_cutover`
+  (`dump_restore` — freeze, dump, restore, verify; or `dms` — DMS replication then a switch)
+  and `design_constraints.vm_cutover` (`mgn` or re-platform). Name a prerequisite blocker
+  verbatim when `preferences.json` records one (e.g. a `vm_cutover.conflict` such as
+  `azure_edition_windows_server`, which must be cleared before MGN can replicate).
+- Dependencies and the verification that gates the next phase (the Verification section per
+  service in `MIGRATION_GUIDE.md`).
+- Deferred items from `aws-design.json` → `deferred[]`, each named with its recommendation,
+  so a deferral the runbook carries is not silent in the report.
+
+Do not quote week or hour durations — the plugin has none that are calibrated. Communicate
+time as stage order plus duration drivers.
+
+**Rollback procedure** — a table (Track | Trigger | Action | Recovery objective) built from
+the runbook's rollback notes: keep the Azure resource running until verification passes; DNS
+and traffic cutover last; for `dump_restore`, rollback before the switch is lifting the write
+freeze on Azure; for `dms`, it is stopping the task and lifting the freeze; for `mgn`, the
+Azure VM stays up until the rollback window closes. Add an AI track row (feature-flag
+rollback to the current provider) when `ai-migration/` exists.
+
+Source: `MIGRATION_GUIDE.md`, `preferences.json`, `aws-design.json` (`clusters[]`,
+`deferred[]`), `generation-warnings.json` (`deferred[]`, `skipped[]`), the `scripts/` the run
+emitted.
+
+### Appendix G — Security Capabilities (`appendix-security`)
+
+Full security-baseline capability table. The executive flow carries only a teaser
+(`exec-security-teaser`); this appendix is the complete picture. One row per always-on
+control `terraform/baseline.tf` emits (`generate-artifacts-infra.md` Step 1.5), with the
+Terraform resource name in a `class="mono"` cell:
+
+| Control                       | Terraform resource                                | What it does for you                                                              | Azure equivalent                                        | Monthly cost   |
+| ----------------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------- | -------------- |
+| Alternate contacts            | `aws_account_alternate_contact.*`                 | Billing, operations and security notices reach a named owner                      | Subscription service-admin and billing contacts         | $0             |
+| IAM password policy           | `aws_iam_account_password_policy.baseline`        | 14-char minimum, reuse prevention, complexity for console users                   | Entra ID password protection                            | $0             |
+| S3 account public-access block | `aws_s3_account_public_access_block.baseline`    | Account-wide prevention of any bucket being made public                           | Storage account `allowBlobPublicAccess = false`         | $0             |
+| EBS default encryption        | `aws_ebs_encryption_by_default.baseline`          | Every volume encrypted at rest by default                                         | Managed-disk server-side encryption (platform default)  | $0             |
+| IAM Access Analyzer           | `aws_accessanalyzer_analyzer.baseline`            | Alerts when IAM policies or buckets grant external access                         | Entra Permissions Management / Defender CSPM (partial)  | $0             |
+| IMDSv2 required               | `aws_ec2_instance_metadata_defaults.baseline`     | Blocks SSRF from stealing instance credentials                                    | None (Azure IMDS has no token mode to enforce)          | $0             |
+| CloudTrail + S3 log bucket    | `aws_cloudtrail.baseline`                         | Immutable audit log of every API call                                             | Activity Log + Log Analytics export                     | ~$0.50–3/mo    |
+| AWS Budget                    | `aws_budgets_budget.monthly_spend`                | Alerts before spend passes the limit `baseline.tf` computed                       | Cost Management budgets                                 | $0             |
+| GuardDuty                     | `aws_guardduty_detector.baseline`                 | Detects compromised credentials, crypto mining, unusual API patterns              | Microsoft Defender for Cloud (paid plans)               | ~$2–25/mo      |
+
+State the budget limit `baseline.tf` wrote (`max(50, ceil(aws_monthly_balanced × 1.2))`) and
+say plainly that the Estimate does **not** roll CloudTrail storage, GuardDuty, Config or
+Security Hub into `aws_monthly_balanced` — the cost column is an indicative list-price range,
+not a line of the estimate (contrast gcp-to-aws, whose Estimate prices a `security_baseline`
+line).
+
+**Compliance-conditional** (only when `preferences.json` →
+`design_constraints.compliance.value` contains `soc2`, `pci`, `hipaa` or `fedramp`): add rows
+for `aws_config_configuration_recorder.baseline` (continuous configuration recording; Azure
+equivalent Azure Policy + change tracking) and `aws_securityhub_account.baseline` (automated
+checks against AWS best practices; Azure equivalent Defender for Cloud regulatory
+compliance). When the compliance list is empty or `["unknown"]`, say the add-on was not
+generated and what would trigger it.
+
+**Cost guardrails** (when `$MIGRATION_DIR/ai-migration/bedrock_monitoring.tf` exists): the
+Bedrock budget and cost-anomaly rows, with Azure Cost Management budgets / Azure OpenAI
+quota as the equivalents. Apply the same inference-profile condition gcp-to-aws applies: add
+an **Inference profiles (tagged)** row only when the generated file contains an enabled
+`aws_bedrock_inference_profile` resource and its output.
+
+**What the baseline does NOT cover** — the SOC 2 / HIPAA / PCI / FedRAMP bullets (auditor,
+BAA, QSA, ATO), verbatim from gcp-to-aws.
+
+**To enable / opt out:** `terraform apply` on `baseline.tf`; opting out is the three-step
+procedure in `generate-artifacts-infra.md` Step 1.5 § "Opting out of the baseline" (the
+Remote State section must survive). Point at `terraform/README.md`.
+
+Source: `terraform/baseline.tf` as emitted, `preferences.json` compliance values,
+`estimation-infra.json` → `projected_costs.aws_monthly_balanced` (budget limit).
+
+### Appendix H — Security Gap Analysis (`appendix-security-gap`, REQUIRED when infra track ran)
+
+Table: Capability | Azure (detected) | AWS (generated) | Gap / action. Minimum rows:
+
+- Network perimeter (network security groups and VNet subnets → VPC security groups and
+  subnets; count the `Microsoft.Network/*` entries in `azure-resource-inventory.json`)
+- Identity & access (Entra ID, managed identities and RBAC role assignments → IAM roles and
+  scoped policies; name the `preferences.json` → `identity.value` choice, e.g. a fresh IAM
+  Identity Center rather than Entra federation)
+- Audit logging (Azure Activity Log → CloudTrail in `baseline.tf`)
+- Threat detection (Microsoft Defender for Cloud, if enabled → GuardDuty in `baseline.tf`)
+- Secrets management (Key Vault → Secrets Manager; state whether `aws_config.kms_added` /
+  `acm_added` is true for the `Microsoft.KeyVault/vaults` service in `aws-design.json`)
+- Public data exposure (storage accounts with public blob access or an `allUsers`-style
+  grant in the inventory → S3 account-level public-access block)
+- Bastion / operator access (Azure Bastion → Systems Manager Session Manager, no instance)
+  when `Microsoft.Network/bastionHosts` is in the inventory
+- Observability cost shift (Azure Monitor / Log Analytics ingestion allowance vs CloudWatch
+  always-free tier; pull the gap text from the `estimation-infra.json` observability line's
+  `basis`, which states the assumed GB/mo — never say CloudWatch has no free tier)
+
+Source: `aws-design.json` (`services[]` with `azure_type`, `aws_service`, `aws_config`),
+`azure-resource-inventory.json`, `terraform/baseline.tf`, `estimation-infra.json`
+observability line. The Gap/action column compares the two postures and names the action
+(net-new control, mapped 1:1, review in production), not a bare "different".
+
+### Appendix I — Assumptions, Exclusions, and Validation (`appendix-assumptions`, REQUIRED)
+
+**Pricing confidence table:** domain, source, accuracy band, last updated — from
+`estimation-infra.json` → `pricing_source` (`status`, `cache_last_updated`, `cache_region`,
+`target_region`, `region_mismatch_note`) and `accuracy_confidence`. When
+`pricing_source.region_mismatch` is true, say which region the rates are from and which the
+design targets. Add an AI row from `estimation-ai.json` when it exists.
+
+**Exclusions list** — one line each, every one that applies:
+
+- Deferred services (`aws-design.json` → `deferred[]`, each with its `recommendation`; note
+  when the deferred resource is cost-bearing on Azure today, per the Estimate's
+  `deferred_bears_azure_cost` warning)
+- Unpriced and partially priced lines (`pricing_source.services_with_missing_fallback`,
+  `services_by_source.partial`, and the Estimate's `pricing_unavailable`, `pricing_partial`,
+  `quantity_unavailable` warnings) — say the totals are floors when `is_floor` is true
+- Windows licensing when `licensing_delta.fired` is true and `monthly_delta` is null
+  (`licensing_cost_absent`) — name the vCPU count carried without a licence cost
+- Azure egress and the other `migration_cost_considerations.categories[]` whose `monthly` is
+  null, each with its `basis`
+- Professional services / dual-run period (not modeled —
+  `migration_cost_considerations.no_labor_costs`)
+- Unexpired Azure reservations or savings plans (named, not quantified)
+- Utilization-based right-sizing (**Known limitations**): read
+  `cost_comparison.rightsizing_delta`. When `basis` is `none` — no RDfA report and no
+  `az monitor` metrics were discovered — one line states that the delta is $0 because every
+  SKU was mapped like-for-like, and that right-sizing needs an RDfA export or 14+ days of
+  Azure Monitor P95 metrics in Discover. List each `declared_waste_found[]` entry (e.g. an
+  idle App Service Plan carried as `idle: true`) as its own line. When utilization data was
+  present, list every EC2 / RDS mapping that is not fully measured, grouped by reason, as
+  the gcp-to-aws Appendix I does.
+
+**Terraform validation:** from `validation-report.json` (`status`, `policy_status`, provider
+version) when present; on an AI-only run its `terraform_dir` is `ai-migration`.
+
+**Design and generation warnings:** `aws-design.json` → `warnings[]` (e.g. an
+`availability_downgrade_from_source` finding where a ZoneRedundant source maps to single-AZ)
+and `generation-warnings.json` → `skipped[]` with their reasons, so a resource that produced
+no Terraform is accounted for in writing.
+
+Source: `estimation-infra.json`, `aws-design.json`, `generation-warnings.json`,
+`validation-report.json`, `preferences.json`.
 
 ## Step 4: Draft-for-review footer (REQUIRED — `_assert`)
 

@@ -21,12 +21,14 @@ output lives in the JSON artifacts.
 - **CTA footer (required, after the last section):** `<section id="decision-cta">` — "**Ready to execute?** Say \"generate the Terraform, migration scripts, and the migration guide\" and I'll produce the full execution pack (Terraform, migration scripts you run yourself and that are dry-run by default, the migration guide with its rollback and verification sections, and the migration report) from this same analysis." On an AI-only run (no `azure-resource-inventory.json`) there is no Terraform or migration guide to promise: say \"generate the migration artifacts\" and name the artifacts the gate's `[C]` label lists (estimate-assemble.md) instead. Plus one line: "This decision report was generated without execution artifacts; the full migration report replaces it if you proceed."
 - **`DECISION.md` (required twin):** same content as the HTML, as plain Markdown (Slack/GitHub-friendly): verdict headline, cost table, migrate-if/stay-if lists, timeline band, top risks, assumptions, CTA line. No HTML tags.
 - **Validation:** run `scripts/validate-migration-report.py $MIGRATION_DIR/decision-report.html --mode decision --migration-dir "$MIGRATION_DIR" [--estimation-infra ...] [--estimation-ai ...] [--aws-design ...]` and fix failures before presenting. Pass the estimation (and design) files when they exist so the Cost Optimization gate can fire. `--migration-dir` is required on a real run — the validator reads `scenarios/index.json` from it, and the Section 3b what-if column check only fires when that index lists two or more scenarios; omit it only when validating a checked-in fixture.
-- **Cost-figure anchor (machine-checkable, decision mode too):** the
-  `data-cost-key="aws_monthly_balanced"` anchor required by
-  `generate-artifacts-report.md` Step 2 applies here unchanged — wrap the Balanced dollar
-  figure inside `exec-costs` in it whenever `projected_costs.aws_monthly_balanced` exists.
-  A missing anchor is a validator FAIL, not a skip, and passing `--estimation-infra` is
-  what makes the gate fire.
+- **Cost-figure anchors (machine-checkable, decision mode too):** the
+  `data-cost-key="aws_monthly_balanced"` and `data-cost-key="current_monthly"` anchors
+  required by `generate-artifacts-report.md` Step 2 apply here unchanged — wrap the
+  Balanced dollar figure inside `exec-costs` in the first whenever
+  `projected_costs.aws_monthly_balanced` exists, and the current Azure figure in the second
+  whenever `current_costs.azure_monthly` exists (the validator resolves `current_monthly`
+  from that key for this skill). A missing required anchor is a validator FAIL, not a skip,
+  and passing `--estimation-infra` is what makes the gate fire.
 - All content rules below apply unchanged: baseline-quality badge + not-comparable rule, cost labeling ("Est."), readability (no artifact filenames in exec sections, no "Section N" headings, ordered action lists), Activate wording rules.
 
 ---

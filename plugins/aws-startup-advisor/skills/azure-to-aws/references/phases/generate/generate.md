@@ -107,6 +107,14 @@ This mirrors gcp-to-aws's `generate.md`, which owns validation inline in its own
 window and passes only the terraform DIR to the skill (the caller owns the report). See
 § "Step: Run the phase" step 4.
 
+**Report validation gate:** `generate-artifacts-report.md` Step 0 runs the plugin's
+artifact validator (`scripts/validate-artifacts.py --skill azure-to-aws`) against
+`$MIGRATION_DIR` **before** any report HTML is written, as gcp-to-aws's report fragment runs
+its pre-report check. If it fails: surface the failure lines to the user, **do not write**
+`migration-report.html`, and do **NOT** patch artifacts to pass validation. The report is a
+required `_produces` artifact on every path, so the phase then stops at `_postconditions`
+with `GATE_FAIL` — the intended outcome, never a silent skip.
+
 ## Generate is opt-in, and the check has no mechanical teeth
 
 The `run_mode` precondition above is an `_assert`. **CI binds `_assert` bodies but
