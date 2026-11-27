@@ -191,7 +191,7 @@
       <div class="share-card">
         <p><strong>Render estate to AWS:</strong> Go, in phases. All 15 Render resources map to managed AWS targets, and the
         Balanced estimate comes to $306 per month with every line priced (like-for-like before right-sizing: $358); commitment
-        discounts on eligible lines bring the Optimized figure to $244. The $123 per month we stated for Render is unverified and is not a like-for-like
+        discounts on eligible lines bring the Optimized figure to $245. The $123 per month we stated for Render is unverified and is not a like-for-like
         comparison, because the AWS design adds Multi-AZ PostgreSQL, a dedicated cache node, and retained logs. The migration is
         phased in dependency order; the PostgreSQL change-data-capture cutover is the binding duration driver. The AI workload is
         deferred and does not block the infrastructure move. Confidence: medium.</p>
@@ -299,9 +299,9 @@
           </tr>
           <tr>
             <th scope="row">Optimized<br><span class="tier-sub">Balanced with commitment discounts on eligible lines</span></th>
-            <td data-cost-key="aws_monthly_optimized">$244</td>
-            <td class="savings">-$63</td>
-            <td>Balanced with commitment discounts on eligible lines only: Compute Savings Plan on $123 of Fargate and Lambda at the 30% mid-point of the 1-year no-upfront range ($37) and Database Savings Plan on $130 of RDS and Valkey at 20% ($26); $54 of ineligible lines unchanged.</td>
+            <td data-cost-key="aws_monthly_optimized">$245</td>
+            <td class="savings">-$62</td>
+            <td>Balanced with commitment discounts on eligible lines only: Compute Savings Plan on $115 of Fargate at the 30% mid-point of the 1-year no-upfront range and $8 of Lambda at AWS's 17% Lambda maximum ($36 together) and Database Savings Plan on $130 of RDS and Valkey at 20% ($26); $54 of ineligible lines unchanged.</td>
           </tr>
           <tr>
             <th scope="row">Like-for-like, before right-sizing<br><span class="tier-sub">Comparison line, not a tier</span></th>
@@ -315,9 +315,10 @@
         <summary>How to read the tiers</summary>
         <p>Premium, Balanced, and Optimized are pricing scenarios for the <em>same</em> right-sized design, ordered highest to
         lowest, not three Terraform stacks. <code>terraform/</code> implements Balanced. Premium equals Balanced here because no
-        line takes a multi-AZ uplift. Optimized applies the commitment discount to the eligible subtotal only: $123 of Fargate and
-        Lambda &times; 30% (the 1-year no-upfront mid-point) = $37 and $130 of RDS and Valkey &times; 20% = $26, so
-        Optimized is $244 (306.50 minus 62.90 is 243.60, rounded to a whole dollar). The like-for-like line ($358) is a comparison figure, not a tier; its right-sizing
+        line takes a multi-AZ uplift. Optimized applies the commitment discount to the eligible subtotal only: $115 of Fargate
+        &times; 30% (the 1-year no-upfront mid-point) is about $35 and $8 of Lambda &times; 17% (AWS's published Lambda maximum) is $1.36,
+        so $36 together, and $130 of RDS and Valkey &times; 20% = $26, so
+        Optimized is $245 (306.50 minus 61.86 is 244.64, rounded to a whole dollar). The like-for-like line ($358) is a comparison figure, not a tier; its right-sizing
         delta is +$52 per month. No figure is a floor: every line is priced.</p>
       </details>
       <p>Human labor is excluded: the estimate records no migration labor cost, and these figures cover AWS service charges only.
@@ -522,14 +523,14 @@
           <tr><td>rr-worker</td><td>ECS on Fargate service</td><td>$30</td><td>$25</td><td>$18</td><td>cached</td><td>measured</td></tr>
           <tr><td>rr-workflow</td><td>AWS Step Functions Standard</td><td>$25</td><td>$20</td><td>$20</td><td>estimated</td><td>measured</td></tr>
           <tr><td>rr-workflow-task</td><td>AWS Lambda</td><td>$10</td><td>$8</td><td>$6</td><td>cached</td><td>measured</td></tr>
-          <tr><th scope="row">Total</th><td>15 lines</td><td>$358</td><td>$306</td><td>$244</td><td>5 services cached, CloudWatch estimated</td><td>7 measured, 6 inferred, 2 deterministic</td></tr>
+          <tr><th scope="row">Total</th><td>15 lines</td><td>$358</td><td>$306</td><td>$245</td><td>5 services cached, CloudWatch estimated</td><td>7 measured, 6 inferred, 2 deterministic</td></tr>
         </tbody>
       </table>
       <h3>Scenario totals and the right-sizing delta</h3>
       <ul class="compact">
         <li>Balanced (right-sized design; the Terraform implements it): $306 per month; unpriced line IDs: none; floor: no</li>
         <li>Premium: $306 per month; multi-AZ uplift $0 (no line takes an uplift); unpriced line IDs: none; floor: no</li>
-        <li>Optimized: $244 per month (243.60 before rounding); Compute Savings Plan $123 &times; 30% = $37, Database Savings Plan $130 &times; 20% = $26, $54 ineligible; unpriced line IDs: none; floor: no; annual $2,923</li>
+        <li>Optimized: $245 per month (244.64 before rounding); Compute Savings Plan $115 of Fargate &times; 30% + $8 of Lambda &times; 17% = $36, Database Savings Plan $130 &times; 20% = $26, $54 ineligible; unpriced line IDs: none; floor: no; annual $2,936</li>
         <li>Like-for-like, before right-sizing: $358 per month; unpriced line IDs: none; floor: no</li>
         <li>Right-sizing delta (like-for-like minus Balanced): +$52 per month, $624 per year, basis: measured utilization. Seven lines shrink (four Fargate task sizes, the RDS class to db.t4g.large, the Workflow and Lambda quantities); the Valkey node keeps its source-memory plan plus headroom. EFS is priced at 5 GB &times; $0.30 per GB-month in both figures</li>
         <li>Current Render spend: $123 per month, user stated as of 2026-10-21; no invoice or export breakdown was supplied</li>

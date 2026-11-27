@@ -5,7 +5,7 @@
   "pricing_source": {"status": "cached", "message": "AWS rates use the reviewed us-east-1 cache; Render baseline is user stated.", "services_by_source": {"cached": ["ecs", "rds", "elasticache", "lambda", "efs"], "fallback": [], "estimated": ["cloudwatch"]}, "services_with_missing_fallback": []},
   "accuracy_confidence": "EFS priced from the reviewed rate row at the Blueprint disk size (5 GB, Standard storage); no unpriced lines remain; the Valkey node keeps its source-memory plan",
   "current_costs": {"source": "user_stated", "render_monthly": 123.45, "currency": "USD", "baseline_note": "User-stated amount as of 2026-10-21", "breakdown": {}},
-  "projected_costs": {"aws_monthly_premium": 306.5, "aws_monthly_balanced": 306.5, "aws_monthly_optimized": 243.6, "aws_annual_optimized": 2923.2, "breakdown": {}},
+  "projected_costs": {"aws_monthly_premium": 306.5, "aws_monthly_balanced": 306.5, "aws_monthly_optimized": 244.64, "aws_annual_optimized": 2935.68, "breakdown": {}},
   "scenarios": {
     "premium": {
       "known_cost_monthly_usd": 306.5, "is_floor": false, "unpriced_line_ids": [],
@@ -49,8 +49,8 @@
       ]
     },
     "optimized": {
-      "known_cost_monthly_usd": 243.6, "is_floor": false, "unpriced_line_ids": [],
-      "commitment": {"compute_savings_plans": {"eligible_line_ids": ["line-cron", "line-private", "line-web", "line-worker", "line-workflow-task"], "eligible_subtotal_monthly_usd": 123.0, "rate": 0.3, "range": "20-40%", "discount_monthly_usd": 36.9}, "database_savings_plans": {"eligible_line_ids": ["line-db", "line-kv"], "eligible_subtotal_monthly_usd": 130.0, "rate": 0.2, "range": "up to 20% (provisioned)", "discount_monthly_usd": 26.0}, "ineligible_subtotal_monthly_usd": 53.5, "source": "knowledge/estimate/commitment-discount-ranges.json"},
+      "known_cost_monthly_usd": 244.64, "is_floor": false, "unpriced_line_ids": [],
+      "commitment": {"compute_savings_plans": {"eligible_line_ids": ["line-cron", "line-private", "line-web", "line-worker", "line-workflow-task"], "eligible_subtotal_monthly_usd": 123.0, "rate": 0.3, "range": "20-40%", "capped_lines": {"line-workflow-task": {"cap": 0.17, "source": "knowledge/estimate/commitment-discount-ranges.json service_caps AWS Lambda"}}, "discount_monthly_usd": 35.86}, "database_savings_plans": {"eligible_line_ids": ["line-db", "line-kv"], "eligible_subtotal_monthly_usd": 130.0, "rate": 0.2, "range": "up to 20% (provisioned)", "discount_monthly_usd": 26.0}, "ineligible_subtotal_monthly_usd": 53.5, "source": "knowledge/estimate/commitment-discount-ranges.json"},
       "lines": [
         {"line_id": "line-build", "source_resource_id": "rr-build", "aws_service": "Amazon ECR + CI/CD immutable digest promotion", "monthly_amount": 10.0, "pricing_source": "estimated", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
         {"line_id": "line-cron", "source_resource_id": "rr-cron", "aws_service": "Amazon EventBridge Scheduler + ECS on Fargate RunTask", "monthly_amount": 10.5, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
@@ -66,7 +66,7 @@
         {"line_id": "line-web", "source_resource_id": "rr-web", "aws_service": "ECS on Fargate", "monthly_amount": 28.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
         {"line_id": "line-worker", "source_resource_id": "rr-worker", "aws_service": "ECS on Fargate service", "monthly_amount": 17.5, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
         {"line_id": "line-workflow", "source_resource_id": "rr-workflow", "aws_service": "AWS Step Functions Standard", "monthly_amount": 20.0, "pricing_source": "estimated", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
-        {"line_id": "line-workflow-task", "source_resource_id": "rr-workflow-task", "aws_service": "AWS Lambda", "monthly_amount": 5.6, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true}
+        {"line_id": "line-workflow-task", "source_resource_id": "rr-workflow-task", "aws_service": "AWS Lambda", "monthly_amount": 6.64, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true}
       ]
     },
     "like_for_like": {

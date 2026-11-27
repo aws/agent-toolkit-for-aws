@@ -29,7 +29,7 @@ LOCAL_VALIDATOR = SKILL_ROOT / "scripts" / "validate-render-migration-report.py"
 ESTIMATE = EXPECTED / "estimation-infra.json"
 DESIGN = EXPECTED / "aws-design.json"
 
-GOLDEN_OPTIMIZED = '<td data-cost-key="aws_monthly_optimized">$244</td>'
+GOLDEN_OPTIMIZED = '<td data-cost-key="aws_monthly_optimized">$245</td>'
 GOLDEN_CURRENT = '<td data-cost-key="current_monthly">$123</td>'
 RR_WEB_ROW_RE = re.compile(r'<tr data-source-resource-id="rr-web" [^>]*>.*?</tr>\s*', re.DOTALL)
 APPENDIX_LABELS = (
@@ -86,11 +86,11 @@ def test_generate_golden_passes_local_validator() -> None:
 
 
 def test_altered_optimized_figure_fails_shared_validator(tmp_path: Path) -> None:
-    root, report = _altered_copy(tmp_path, GOLDEN_OPTIMIZED, GOLDEN_OPTIMIZED.replace("$244", "$230"))
+    root, report = _altered_copy(tmp_path, GOLDEN_OPTIMIZED, GOLDEN_OPTIMIZED.replace("$245", "$230"))
     result = _shared(report, root / "generated")
     assert result.returncode == 1, result.stdout + result.stderr
     assert 'cost figure mismatch: data-cost-key="aws_monthly_optimized"' in result.stderr, result.stderr
-    assert "projected_costs.aws_monthly_optimized = $244" in result.stderr, result.stderr
+    assert "projected_costs.aws_monthly_optimized = $245" in result.stderr, result.stderr
 
 
 def test_altered_current_spend_figure_fails_shared_validator(tmp_path: Path) -> None:

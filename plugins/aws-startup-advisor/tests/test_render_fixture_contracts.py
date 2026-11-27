@@ -240,13 +240,17 @@ def _percent_rate(range_label: str) -> Decimal:
     return Decimal(single.group(1)) / Decimal(100)
 def _recompute_optimized(estimate: dict) -> Decimal:
     """Recompute the Optimized total from Balanced and the knowledge ranges file; raise
-    when the estimate's recorded commitment arithmetic disagrees (never invent a rate)."""
+    when the estimate's recorded commitment arithmetic disagrees (never invent a rate).
+    A service AWS caps lower (service_caps) uses min(plan rate, cap) on its own line."""
     ranges = load(SKILL_ROOT / "knowledge/estimate/commitment-discount-ranges.json")
+    caps = ranges.get("service_caps", {})
     scenarios = estimate["scenarios"]
     balanced_lines = {row["line_id"]: row for row in scenarios["balanced"]["lines"]}
+    optimized_lines = {row["line_id"]: row for row in scenarios["optimized"]["lines"]}
     commitment = scenarios["optimized"]["commitment"]
     discounts = Decimal("0")
     eligible_total = Decimal("0")
+    line_discounts: dict[str, Decimal] = {}
     for plan in ranges["optimized_tier_uses"]:
         services = set(ranges["tier_mapping"][plan])
         eligible = [row for row in balanced_lines.values() if row["aws_service"] in services and row["monthly_amount"]]
@@ -262,14 +266,34 @@ def _recompute_optimized(estimate: dict) -> Decimal:
             raise AssertionError(f"{plan}: eligible subtotal differs")
         if Decimal(str(recorded["rate"])) != rate:
             raise AssertionError(f"{plan}: rate {recorded['rate']} is not the knowledge mid-point {rate}")
-        discount = (subtotal * rate).quantize(Decimal("0.01"))
+        expected_capped = {
+            row["line_id"]: Decimal(str(caps[row["aws_service"]]["cap"]))
+            for row in eligible
+            if row["aws_service"] in caps and Decimal(str(caps[row["aws_service"]]["cap"])) < rate
+        }
+        recorded_capped = {k: Decimal(str(v["cap"])) for k, v in recorded.get("capped_lines", {}).items()}
+        if recorded_capped != expected_capped:
+            raise AssertionError(f"{plan}: capped lines {recorded_capped} differ from service_caps {expected_capped}")
+        discount = Decimal("0")
+        for row in eligible:
+            line_rate = expected_capped.get(row["line_id"], rate)
+            line_discount = (Decimal(str(row["monthly_amount"])) * line_rate).quantize(Decimal("0.01"))
+            line_discounts[row["line_id"]] = line_discount
+            discount += line_discount
         if Decimal(str(recorded["discount_monthly_usd"])) != discount:
             raise AssertionError(f"{plan}: discount differs")
         discounts += discount
         eligible_total += subtotal
+    for line_id, row in balanced_lines.items():
+        expected_amount = None if row["monthly_amount"] is None else Decimal(str(row["monthly_amount"])) - line_discounts.get(line_id, Decimal("0"))
+        actual = optimized_lines[line_id]["monthly_amount"]
+        if (None if actual is None else Decimal(str(actual))) != expected_amount:
+            raise AssertionError(f"{line_id}: Optimized line {actual} is not Balanced minus its discount")
     balanced_total = Decimal(str(scenarios["balanced"]["known_cost_monthly_usd"]))
     assert Decimal(str(commitment["ineligible_subtotal_monthly_usd"])) == balanced_total - eligible_total
     return balanced_total - discounts
+
+
 def test_estimate_scenarios_floors_and_metric_gates_reconcile() -> None:
     estimate = load(EXPECTED / "estimation-infra.json")
     vendored_schema = load(SKILL_ROOT / "references/vendored/estimate/estimation-infra.schema.json")
@@ -312,7 +336,7 @@ def test_estimate_scenarios_floors_and_metric_gates_reconcile() -> None:
     assert Decimal(str(delta["annual"])) == Decimal("624.0")
     assert delta["basis"] in {"declared_waste", "utilization", "both", "none"}
     assert delta["explanation"] and delta["what_would_change_this"]
-    assert _recompute_optimized(estimate) == optimized == Decimal("243.6")
+    assert _recompute_optimized(estimate) == optimized == Decimal("244.64")
     assert estimate["migration_cost_considerations"]["human_labor_monthly_usd"] is None
 def test_estimate_optimized_rejects_an_invented_discount_rate() -> None:
     estimate = load(EXPECTED / "estimation-infra.json")
@@ -1404,3 +1428,21 @@ def test_baseline_opt_out_leaves_valid_terraform(tmp_path: Path) -> None:
             break
         time.sleep(15)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_estimate_optimized_caps_lambda_at_the_published_maximum() -> None:
+    """AWS states Compute Savings Plans save up to 17% on Lambda duration, below the 0.30 plan
+    rate, so the Lambda line takes 0.17 and a Lambda line discounted at 0.30 is rejected."""
+    estimate = load(EXPECTED / "estimation-infra.json")
+    ranges = load(SKILL_ROOT / "knowledge/estimate/commitment-discount-ranges.json")
+    assert Decimal(str(ranges["service_caps"]["AWS Lambda"]["cap"])) == Decimal("0.17")
+    assert "https://aws.amazon.com/blogs/aws/" in ranges["service_caps"]["AWS Lambda"]["source"]
+    lambda_line = next(r for r in estimate["scenarios"]["optimized"]["lines"] if r["aws_service"] == "AWS Lambda")
+    assert Decimal(str(lambda_line["monthly_amount"])) == Decimal("8.00") - Decimal("1.36")
+    uncapped = load(EXPECTED / "estimation-infra.json")
+    for row in uncapped["scenarios"]["optimized"]["lines"]:
+        if row["aws_service"] == "AWS Lambda":
+            row["monthly_amount"] = 5.6
+    uncapped["scenarios"]["optimized"]["commitment"]["compute_savings_plans"].pop("capped_lines")
+    with pytest.raises(AssertionError, match="capped lines"):
+        _recompute_optimized(uncapped)

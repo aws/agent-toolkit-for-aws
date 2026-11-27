@@ -99,7 +99,7 @@ validators can confirm the rendered dollars match the estimate:
 
 Example: `<td data-cost-key="aws_monthly_balanced">$306</td>` and
 `<td data-cost-key="current_monthly">$123</td>`. Monthly figures render as **whole dollars**
-rounded half-to-even (306.5 → `$306`, 243.6 → `$244`, 123.45 → `$123`); cents fail the
+rounded half-to-even (306.5 → `$306`, 244.64 → `$245`, 123.45 → `$123`); cents fail the
 currency gate. The attribute is not reader-visible text. Each anchor must sit on a rendered
 element inside `exec-costs` itself — not in an HTML comment, and not merely somewhere else in
 the document (a decision-summary hero metric does not satisfy this rule). **A missing
