@@ -17,6 +17,9 @@ accessibility, the visual shell, and the shared cost anchors
   migration section;
 * the render-local ``delta`` cost anchor (``rightsizing_delta.monthly``, like-for-like
   minus Balanced);
+* the render-local ``like_for_like_monthly`` cost anchor (``scenarios.like_for_like.known_cost_monthly_usd``,
+  exactly one inside ``exec-costs``, compared after whole-dollar half-even rounding like the
+  shared anchors; codes ``COST_LIKE_FOR_LIKE_MONTHLY_MISSING`` / ``_MISMATCH`` / ``_SOURCE_INVALID``);
 * exactly one ``aws_monthly_optimized`` anchor inside ``exec-costs`` (plus one
   ``aws_monthly_premium`` anchor when ``projected_costs.aws_monthly_premium`` exists), and
   ``projected_costs.aws_monthly_premium`` / ``aws_monthly_balanced`` / ``aws_monthly_optimized``
@@ -35,7 +38,7 @@ import argparse
 import json
 import re
 import sys
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -51,6 +54,11 @@ RENDER_SECTIONS = (
 INERT = {"script", "style", "template"}
 COST_PATHS = {
     "delta": ("rightsizing_delta", "monthly"),
+}
+# Anchors compared after the same display rounding the shared anchors use (whole dollars,
+# half-to-even, for monthly-scale figures; cents below $2), exactly one inside exec-costs.
+ROUNDED_COST_PATHS = {
+    "like_for_like_monthly": ("scenarios", "like_for_like", "known_cost_monthly_usd"),
 }
 SECTION_TERMS = {
     "exec-architecture": (("build-once", "build once"), ("private",), ("managed",)),
@@ -221,6 +229,12 @@ def _money(text: str) -> Decimal | None:
     return -value if (match.group(1) or match.group(2)) else value
 
 
+def _display_money(value: Decimal) -> Decimal:
+    """Display form of a dollar figure: whole dollars half-to-even at $2 and above, cents below."""
+    whole = value.quantize(Decimal("1"), rounding=ROUND_HALF_EVEN)
+    if abs(whole) >= 2:
+        return whole
+    return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN)
 def _ai_deferred(design: dict) -> bool:
     ai_track = design.get("ai_track")
     return isinstance(ai_track, dict) and ai_track.get("status") == "deferred_shared_ai_engine"
@@ -412,6 +426,18 @@ def validate(report: Path, migration_dir: Path) -> list[str]:
             errors.append(f"COST_{key.upper()}_SOURCE_INVALID")
             continue
         if _money(values[0]) != expected_decimal:
+            errors.append(f"COST_{key.upper()}_MISMATCH")
+    for key, path in ROUNDED_COST_PATHS.items():
+        expected = _dig(estimate, path)
+        values = parser.exec_costs.get(key, [])
+        if expected is None or len(values) != 1:
+            errors.append(f"COST_{key.upper()}_MISSING")
+            continue
+        expected_decimal = _decimal(expected)
+        if expected_decimal is None or not expected_decimal.is_finite():
+            errors.append(f"COST_{key.upper()}_SOURCE_INVALID")
+            continue
+        if _money(values[0]) != _display_money(expected_decimal):
             errors.append(f"COST_{key.upper()}_MISMATCH")
     errors.extend(_validate_current_monthly(estimate, parser.costs.get("current_monthly", [])))
     errors.extend(_validate_scenario_costs(estimate, parser.exec_costs))

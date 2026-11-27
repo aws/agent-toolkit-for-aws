@@ -238,11 +238,31 @@ def _percent_rate(range_label: str) -> Decimal:
     single = re.search(r"~\s*(\d+(?:\.\d+)?)%", range_label) or re.search(r"up to\s*(\d+(?:\.\d+)?)%", range_label)
     assert single, range_label
     return Decimal(single.group(1)) / Decimal(100)
-def _recompute_optimized(estimate: dict) -> Decimal:
+def _database_sp_generation(ranges: dict, mapping: dict | None, aws_service: str) -> tuple[bool, str]:
+    """(eligible, basis) for one line under ranges.database_savings_plans.generation_gate: the
+    class/node type recorded in aws-design.json aws_config must carry Generation 7 or newer in
+    its family token; a class that is not recorded is ineligible (never invented)."""
+    gate = ranges["ranges"]["database_savings_plans"]["generation_gate"]
+    field = gate["class_field_by_service"][aws_service]
+    recorded = (mapping or {}).get("aws_config", {}).get(field)
+    if not recorded:
+        return False, f"{field} is not recorded"
+    if recorded in gate["serverless_class_tokens"]:
+        return True, f"{recorded} is serverless and not generation-gated"
+    match = re.match(r"^(?:db|cache)\.[a-z]+(\d+)[a-z]*\.", recorded)
+    if not match:
+        return False, f"{recorded} has no generation in its family token"
+    generation = int(match.group(1))
+    return generation >= gate["minimum_generation"], f"{recorded} is Generation {generation}"
+def _recompute_optimized(estimate: dict, design: dict | None = None) -> Decimal:
     """Recompute the Optimized total from Balanced and the knowledge ranges file; raise
     when the estimate's recorded commitment arithmetic disagrees (never invent a rate).
-    A service AWS caps lower (service_caps) uses min(plan rate, cap) on its own line."""
+    A service AWS caps lower (service_caps) uses min(plan rate, cap) on its own line, and a
+    Database Savings Plan line must pass the Generation 7+ gate on the class/node type that
+    aws-design.json records for its source_resource_id."""
     ranges = load(SKILL_ROOT / "knowledge/estimate/commitment-discount-ranges.json")
+    design = design if design is not None else load(EXPECTED / "aws-design.json")
+    mappings = {row["source_resource_id"]: row for row in design["mappings"]}
     caps = ranges.get("service_caps", {})
     scenarios = estimate["scenarios"]
     balanced_lines = {row["line_id"]: row for row in scenarios["balanced"]["lines"]}
@@ -260,6 +280,21 @@ def _recompute_optimized(estimate: dict) -> Decimal:
             range_label = range_label.split("/")[-1]
         rate = _percent_rate(range_label)
         recorded = commitment[plan]
+        if plan == "database_savings_plans":
+            gated = {
+                row["line_id"]: _database_sp_generation(ranges, mappings.get(row["source_resource_id"]), row["aws_service"])
+                for row in eligible
+            }
+            for line_id in recorded["eligible_line_ids"]:
+                if line_id in gated and not gated[line_id][0]:
+                    raise AssertionError(f"{plan}: {line_id} is discounted but {gated[line_id][1]}; Generation 7+ is required")
+            expected_ineligible = {line_id: basis for line_id, (ok, basis) in gated.items() if not ok}
+            if recorded.get("ineligible_lines", {}) != expected_ineligible:
+                raise AssertionError(f"{plan}: ineligible_lines {recorded.get('ineligible_lines', {})} differ from {expected_ineligible}")
+            eligible = [row for row in eligible if gated[row["line_id"]][0]]
+            subtotal = sum(Decimal(str(row["monthly_amount"])) for row in eligible)
+            if not eligible and not recorded.get("reason"):
+                raise AssertionError(f"{plan}: an empty eligible set must record a reason")
         if sorted(recorded["eligible_line_ids"]) != sorted(row["line_id"] for row in eligible):
             raise AssertionError(f"{plan}: eligible lines differ")
         if Decimal(str(recorded["eligible_subtotal_monthly_usd"])) != subtotal:
@@ -332,11 +367,11 @@ def test_estimate_scenarios_floors_and_metric_gates_reconcile() -> None:
     assert Decimal(str(projected["aws_monthly_optimized"])) == optimized
     assert Decimal(str(projected["aws_annual_optimized"])) == optimized * 12
     delta = estimate["rightsizing_delta"]
-    assert like_for_like - balanced == Decimal(str(delta["monthly"])) == Decimal("52.0")
-    assert Decimal(str(delta["annual"])) == Decimal("624.0")
+    assert like_for_like - balanced == Decimal(str(delta["monthly"])) == Decimal("45.0")
+    assert Decimal(str(delta["annual"])) == Decimal("540.0")
     assert delta["basis"] in {"declared_waste", "utilization", "both", "none"}
     assert delta["explanation"] and delta["what_would_change_this"]
-    assert _recompute_optimized(estimate) == optimized == Decimal("244.64")
+    assert _recompute_optimized(estimate) == optimized == Decimal("277.8")
     assert estimate["migration_cost_considerations"]["human_labor_monthly_usd"] is None
 def test_estimate_optimized_rejects_an_invented_discount_rate() -> None:
     estimate = load(EXPECTED / "estimation-infra.json")
@@ -1210,6 +1245,7 @@ def _materialize_independent_mixed_pipeline(root: Path) -> dict[str, bytes]:
     ).validate(estimate)
     for scenario in estimate["scenarios"].values():
         assert [row["source_resource_id"] for row in scenario["lines"]] == design["accounting"]["accounted_resource_ids"]
+    assert _recompute_optimized(estimate, design) == Decimal(str(estimate["scenarios"]["optimized"]["known_cost_monthly_usd"]))
 
     ledger = harness.ledger_from_design(design, preferences)
     jsonschema.Draft202012Validator(
@@ -1430,19 +1466,118 @@ def test_baseline_opt_out_leaves_valid_terraform(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_estimate_optimized_caps_lambda_at_the_published_maximum() -> None:
-    """AWS states Compute Savings Plans save up to 17% on Lambda duration, below the 0.30 plan
-    rate, so the Lambda line takes 0.17 and a Lambda line discounted at 0.30 is rejected."""
+def test_estimate_optimized_caps_lambda_at_the_price_list_rate() -> None:
+    """The 1-year no-upfront Compute Savings Plan price list gives Lambda duration 11.8%
+    (arm64 12.2%), below the 0.30 plan rate, so the Lambda line takes 0.12 (17% is the
+    all-upfront rate) and a Lambda line discounted at 0.17 or 0.30 is rejected."""
     estimate = load(EXPECTED / "estimation-infra.json")
     ranges = load(SKILL_ROOT / "knowledge/estimate/commitment-discount-ranges.json")
-    assert Decimal(str(ranges["service_caps"]["AWS Lambda"]["cap"])) == Decimal("0.17")
-    assert "https://aws.amazon.com/blogs/aws/" in ranges["service_caps"]["AWS Lambda"]["source"]
+    cap = ranges["service_caps"]["AWS Lambda"]
+    assert Decimal(str(cap["cap"])) == Decimal("0.12")
+    for needle in ("AWSComputeSavingsPlan", "2026-11-24", "0.0000147", "0.0000166667", "All Upfront", "request"):
+        assert needle in cap["source"] or needle in cap["applies_to"], needle
+    assert "17%" in cap["source"] and "All Upfront" in cap["source"]
     lambda_line = next(r for r in estimate["scenarios"]["optimized"]["lines"] if r["aws_service"] == "AWS Lambda")
-    assert Decimal(str(lambda_line["monthly_amount"])) == Decimal("8.00") - Decimal("1.36")
+    assert Decimal(str(lambda_line["monthly_amount"])) == Decimal("10.00") - Decimal("1.20")
+    capped = estimate["scenarios"]["optimized"]["commitment"]["compute_savings_plans"]["capped_lines"]["line-workflow-task"]
+    assert Decimal(str(capped["cap"])) == Decimal("0.12")
+    assert "request charges" in capped["source"] and "upper bound" in capped["source"]
+    for wrong_rate, wrong_amount in (("0.17", "8.3"), ("0.30", "7.0")):
+        wrong = load(EXPECTED / "estimation-infra.json")
+        for row in wrong["scenarios"]["optimized"]["lines"]:
+            if row["aws_service"] == "AWS Lambda":
+                row["monthly_amount"] = float(wrong_amount)
+        wrong["scenarios"]["optimized"]["commitment"]["compute_savings_plans"]["capped_lines"]["line-workflow-task"]["cap"] = float(wrong_rate)
+        with pytest.raises(AssertionError, match="capped lines"):
+            _recompute_optimized(wrong)
     uncapped = load(EXPECTED / "estimation-infra.json")
     for row in uncapped["scenarios"]["optimized"]["lines"]:
         if row["aws_service"] == "AWS Lambda":
-            row["monthly_amount"] = 5.6
+            row["monthly_amount"] = 7.0
     uncapped["scenarios"]["optimized"]["commitment"]["compute_savings_plans"].pop("capped_lines")
     with pytest.raises(AssertionError, match="capped lines"):
         _recompute_optimized(uncapped)
+def _with_database_sp_discount(estimate: dict, line_id: str, balanced_amount: str, **extra: object) -> dict:
+    """Return a copy of the estimate that applies the 20% Database Savings Plan to one line."""
+    modified = json.loads(json.dumps(estimate))
+    plan = modified["scenarios"]["optimized"]["commitment"]["database_savings_plans"]
+    discount = (Decimal(balanced_amount) * Decimal("0.2")).quantize(Decimal("0.01"))
+    plan["eligible_line_ids"] = [line_id]
+    plan["eligible_subtotal_monthly_usd"] = float(balanced_amount)
+    plan["discount_monthly_usd"] = float(discount)
+    plan.pop("reason", None)
+    plan.pop("ineligible_lines", None)
+    plan.update(extra)
+    commitment = modified["scenarios"]["optimized"]["commitment"]
+    commitment["ineligible_subtotal_monthly_usd"] = float(
+        Decimal(str(commitment["ineligible_subtotal_monthly_usd"])) - Decimal(balanced_amount)
+    )
+    for row in modified["scenarios"]["optimized"]["lines"]:
+        if row["line_id"] == line_id:
+            row["monthly_amount"] = float(Decimal(balanced_amount) - discount)
+    return modified
+def test_database_savings_plan_requires_generation_7_or_newer() -> None:
+    """The fixture's db.t4g.large (Generation 4) and cache.m6g.large (Generation 6) are not
+    covered by Database Savings Plans, so Optimized records an empty eligible set with a reason."""
+    estimate = load(EXPECTED / "estimation-infra.json")
+    ranges = load(SKILL_ROOT / "knowledge/estimate/commitment-discount-ranges.json")
+    gate = ranges["ranges"]["database_savings_plans"]["generation_gate"]
+    assert gate["minimum_generation"] == 7 and "AWS Savings Plans FAQ" in gate["source"]
+    plan = estimate["scenarios"]["optimized"]["commitment"]["database_savings_plans"]
+    assert plan["eligible_line_ids"] == [] and plan["discount_monthly_usd"] == 0.0 and plan["reason"]
+    assert plan["ineligible_lines"] == {"line-db": "db.t4g.large is Generation 4", "line-kv": "cache.m6g.large is Generation 6"}
+    balanced = {r["line_id"]: r["monthly_amount"] for r in estimate["scenarios"]["balanced"]["lines"]}
+    optimized = {r["line_id"]: r["monthly_amount"] for r in estimate["scenarios"]["optimized"]["lines"]}
+    assert optimized["line-db"] == balanced["line-db"] and optimized["line-kv"] == balanced["line-kv"]
+    assert _recompute_optimized(estimate) == Decimal("277.8")
+    for row in estimate["optimization_opportunities"]:
+        text = json.dumps(row)
+        if "Database Savings" in text:
+            assert "Generation 7" in text and not re.search(r"\$\s?\d|saving[s_a-z]*\"?: *[1-9]", text), text
+    for generation, expected in (("db.t4g.large", False), ("db.m6g.large", False), ("db.r7g.large", True), ("db.m8g.large", True)):
+        design = {"aws_config": {"instance_class": generation}}
+        assert _database_sp_generation(ranges, design, "Amazon RDS for PostgreSQL")[0] is expected, generation
+    assert _database_sp_generation(ranges, {"aws_config": {"node_type": "cache.m7g.large"}}, "Amazon ElastiCache for Valkey node-based")[0]
+    assert not _database_sp_generation(ranges, {"aws_config": {"node_type": "cache.m6g.large"}}, "Amazon ElastiCache for Valkey node-based")[0]
+    assert not _database_sp_generation(ranges, {"aws_config": {}}, "Amazon RDS for PostgreSQL")[0]
+def test_database_savings_plan_discount_on_a_pre_generation_7_line_fails() -> None:
+    estimate = load(EXPECTED / "estimation-infra.json")
+    for line_id, amount in (("line-db", "80"), ("line-kv", "50")):
+        with pytest.raises(AssertionError, match="Generation 7"):
+            _recompute_optimized(_with_database_sp_discount(estimate, line_id, amount))
+    design = load(EXPECTED / "aws-design.json")
+    for mapping in design["mappings"]:
+        if mapping["source_resource_id"] == "rr-db":
+            del mapping["aws_config"]["instance_class"]
+    with pytest.raises(AssertionError, match="instance_class is not recorded"):
+        _recompute_optimized(_with_database_sp_discount(estimate, "line-db", "80"), design)
+def test_database_savings_plan_discount_passes_for_a_generation_7_class() -> None:
+    estimate = load(EXPECTED / "estimation-infra.json")
+    design = load(EXPECTED / "aws-design.json")
+    for mapping in design["mappings"]:
+        if mapping["source_resource_id"] == "rr-db":
+            mapping["aws_config"]["instance_class"] = "db.m7g.large"
+    upgraded = _with_database_sp_discount(
+        estimate, "line-db", "80", ineligible_lines={"line-kv": "cache.m6g.large is Generation 6"}
+    )
+    upgraded["scenarios"]["optimized"]["known_cost_monthly_usd"] = float(Decimal("277.8") - Decimal("16"))
+    assert _recompute_optimized(upgraded, design) == Decimal("261.8")
+def test_unsized_workflow_and_lambda_lines_keep_like_for_like_amounts() -> None:
+    """Design records no size or sizing provenance for rr-workflow / rr-workflow-task, so no tier may
+    lower them; every unsized line is identical in Balanced and like-for-like and takes inferred confidence."""
+    estimate = load(EXPECTED / "estimation-infra.json")
+    design = load(EXPECTED / "aws-design.json")
+    unsized = {
+        row["source_resource_id"] for row in design["mappings"] if "sizing_provenance" not in row["aws_config"]
+    }
+    assert {"rr-workflow", "rr-workflow-task"} <= unsized
+    like = {r["source_resource_id"]: r for r in estimate["scenarios"]["like_for_like"]["lines"]}
+    for tier in ("premium", "balanced"):
+        for row in estimate["scenarios"][tier]["lines"]:
+            if row["source_resource_id"] in unsized:
+                assert row["monthly_amount"] == like[row["source_resource_id"]]["monthly_amount"], (tier, row["line_id"])
+                assert row["evidence_sufficient"] is False
+                if row["pricing_source"] != "no_direct_charge":
+                    assert row["confidence"] == "inferred"
+    assert "Workflow and Lambda" in estimate["rightsizing_delta"]["explanation"]
+    assert "five lines" in estimate["rightsizing_delta"]["explanation"]
