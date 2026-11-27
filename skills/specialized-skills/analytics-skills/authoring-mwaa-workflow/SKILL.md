@@ -14,7 +14,7 @@ description: >
   running or smoke-testing a deployed workflow (handled by testing-mwaa-workflow) or
   diagnosing a failed run (handled by debugging-mwaa-workflow).
 metadata:
-  version: "1"
+  version: "2"
 ---
 
 # Authoring MWAA Workflows
@@ -108,7 +108,8 @@ Authoring owns all deployment and redeployment. Detail in
      resources — never say "deploy to an environment").
 
    **If the DAG/workflow has a schedule:**
-   - **Deploy and test** — deploy, unpause, trigger a run now
+   - **Deploy and test** — deploy, then hand to testing, which unpauses and
+     runs it now
    - **Deploy and unpause** — deploy, unpause, let it run on schedule (no
      immediate trigger)
    - **Deploy only** — upload to S3, leave paused
@@ -140,10 +141,12 @@ Authoring owns all deployment and redeployment. Detail in
      fix.
 3. **If "Deploy and unpause" selected** — deploy per step 2, then unpause.
    Do not trigger a run or invoke testing-mwaa-workflow.
-4. **If "Deploy and test" selected** — deploy per step 2, unpause if
-   applicable, then invoke testing-mwaa-workflow with the resolved target
-   (env name + `dag_id`, or workflow ARN). That hand-off is testing's
-   delegated invocation mode.
+4. **If "Deploy and test" selected** — deploy per step 2 (including its parse
+   check; on failure, fix and redeploy before going on), leave the DAG paused,
+   then invoke testing-mwaa-workflow with the resolved target (env name +
+   `dag_id`, or workflow ARN) and the DAG file's S3 key. testing does the
+   unpause, so it can adopt the run the unpause creates instead of triggering a
+   second one. That hand-off is testing's delegated invocation mode.
 
 > **HARD GATE:**
 > If testing is requested — whether upfront ("deploy and test") or later in

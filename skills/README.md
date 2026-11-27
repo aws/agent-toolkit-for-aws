@@ -63,6 +63,7 @@ knowledge.
 Specialized skills are organized by AWS service category:
 
 - **[Analytics](specialized-skills/analytics-skills/)**
+- **[Billing & Cost Management](specialized-skills/aws-billing-and-cost-management-skills/)**
 - **[Business Research](specialized-skills/business-research-skills/)**
 - **[Customer Communications](specialized-skills/customer-communications-skills/)**
 - **[Database](specialized-skills/database-skills/)**

@@ -23,12 +23,18 @@ CloudWatch using `aws logs filter-log-events` with the Task log group and a
 filter pattern matching the task ID or DAG run ID.
 
 `LoggingConfiguration` in `get-environment` gives the exact log group ARNs.
+Logging is opt-in per component, so before reading a group check its
+`Enabled` and `LogLevel` there (`DagProcessingLogs`, `SchedulerLogs`,
+`TaskLogs`, `WebserverLogs`, `WorkerLogs`). A disabled group has nothing to
+read, and a level such as `ERROR` hides the `INFO` lines where operators log
+progress and service run ids. In either case, say so instead of reporting "no
+errors", and offer the enable command under Remediation commands.
 Component-to-symptom mapping:
 
 | Component | Log group suffix | Read when |
 |-----------|------------------|-----------|
 | DAGProcessing | `-DAGProcessing` | DAG not appearing, import errors |
-| Scheduler | `-Scheduler` | run never started, scheduling gaps |
+| Scheduler | `-Scheduler` | run never started, scheduling gaps; a deferred task that failed with only `Trigger failure` or is stuck in `deferred` (this group also holds the triggerer's own stream; list the streams to find it) |
 | Task | `-Task` | a task failed; the real exception is here |
 | Worker | `-Worker` | SIGKILL/OOM, task stuck, autoscaling |
 | WebServer | `-WebServer` | UI 5xx, login failures |
@@ -57,28 +63,14 @@ Read `RestApiResponse.dag_runs[].state`. Filter for `failed`.
 
 ### Get task instances for a failed run
 
-Use the collection endpoint and pass the run in query parameters — the
-`--path` is capped at 64 characters (MWAA `InvokeRestApi`), and the per-run
-path below often exceeds it:
-
 ```bash
 aws mwaa invoke-rest-api --name <env> \
-  --path /dags/<dag_id>/taskInstances --method GET \
-  --query-parameters '{"dag_run_id":"<run_id>","limit":"100","offset":"0"}'
-```
-
-The per-run path is shorter to read but embeds `<run_id>` in the path, so
-`/dags/<dag_id>/dagRuns/<run_id>/taskInstances` frequently exceeds the 64-char
-limit and is rejected with an opaque `RestApiClientException`; use it only when
-the fully-substituted path stays under 64 characters:
-
-```bash
-aws mwaa invoke-rest-api --name <env> \
-  --path /dags/<dag_id>/dagRuns/<run_id>/taskInstances --method GET
+  --path /dags/<dag_id>/dagRuns/<run_id>/taskInstances --method GET \
+  --query-parameters '{"limit":"100","offset":"0"}'
 ```
 
 Read `RestApiResponse.task_instances[].state`. Failed tasks carry the exception
-in their Task log group (see above). **Both forms paginate** (Airflow REST
+in their Task log group (see above). **The response paginates** (Airflow REST
 default `limit` 100): a run using dynamic task mapping (`.expand()`) can have
 more than 100 task instances, so re-issue with `offset` incremented by 100
 until you have read `total_entries` — otherwise failed mapped tasks beyond the
@@ -107,11 +99,29 @@ it parsed and which file won a `dag_id` collision; read `is_active` on Airflow
 2.x, or `is_stale` (inverted) on Airflow 3.x, and `has_import_errors` for a
 parse failure.
 
+### Errors from invoke-rest-api
+
+Both `RestApiClientException` (Airflow 4xx) and `RestApiServerException`
+(Airflow 5xx) carry `RestApiStatusCode` and `RestApiResponse`. Read them
+first:
+
+- 404: wrong path, `dag_id`, `dag_run_id`, or `task_id`.
+- 400 (or 422 on Airflow 3): request schema or query-parameter problem (check
+  the path and body against the Airflow major's REST API).
+- 409: conflict, such as a `dag_run_id` or logical date that already exists.
+- 401/403: the mapped Airflow role lacks access. An `AccessDeniedException`
+  from `invoke-rest-api` itself is different: IAM denies the caller
+  `airflow:InvokeRestApi`, and the request never reached Airflow.
+- 5xx: retry with backoff before diagnosing, since it is often transient. If
+  it persists, check environment health (`get-environment` `Status`, then
+  `GET /health` on Airflow 2.x or `GET /monitor/health` on Airflow 3.x) and
+  `GET /importErrors`.
+
 ### Fallback
 
-A `RestApiClientException` (rare — possible on a mis-scoped execution role)
-means `invoke-rest-api` cannot reach the web server. Fall back to the Scheduler
-and DAGProcessing CloudWatch log groups for run/task state.
+If the API stays unusable after that, fall back to the Scheduler and
+DAGProcessing CloudWatch log groups for run/task state (check
+`LoggingConfiguration` first, as above).
 
 ## Remediation commands (present to user; do not execute)
 
@@ -136,6 +146,21 @@ and DAGProcessing CloudWatch log groups for run/task state.
 
 - Backfill: run `airflow dags backfill` through the MWAA CLI token endpoint
   (`aws mwaa create-cli-token`).
+
+- Enable a disabled component log group (an environment update; the
+  environment goes to `UPDATING` while it applies):
+
+  ```bash
+  aws mwaa update-environment --name <env> \
+    --logging-configuration 'SchedulerLogs={Enabled=true,LogLevel=INFO}'
+  ```
+
+  Logs can contain connection details, variable values and task payloads.
+  When the environment has a customer-managed `KmsKey`, MWAA encrypts its log
+  groups with that key, and the key policy must allow the CloudWatch Logs
+  service principal
+  (https://docs.aws.amazon.com/mwaa/latest/userguide/custom-keys-certs.html).
+  Mention this, and the log group's retention, when presenting the command.
 
 These change environment state. Present the exact command and its impact; let
 the user run it (production safety).
