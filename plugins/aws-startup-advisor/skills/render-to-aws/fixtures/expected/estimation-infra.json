@@ -95,7 +95,10 @@
   "cost_comparison": {},
   "migration_cost_considerations": {"human_labor_monthly_usd": null},
   "roi_analysis": {},
-  "optimization_opportunities": [],
+  "optimization_opportunities": [
+    {"opportunity": "Compute Savings Plans", "type": "compute_savings_plans", "target_services": ["ECS on Fargate", "ECS on Fargate service", "Amazon EventBridge Scheduler + ECS on Fargate RunTask", "AWS Lambda"], "savings_monthly": null, "savings_percent": "20-40%", "commitment": "1-year, no upfront", "implementation_effort": "low", "description": "Covers the four Fargate workloads and the Workflow Lambda task ($123 of Balanced). Percent-only until a 30-90 day AWS usage baseline exists; Optimized prices it at the 30% mid-point ($36.90). Incremental to Balanced and already included in Optimized."},
+    {"opportunity": "Database Savings Plans", "type": "database_savings_plans", "target_services": ["Amazon RDS for PostgreSQL", "Amazon ElastiCache for Valkey node-based"], "savings_monthly": 26.0, "savings_percent": "up to 20%", "commitment": "1-year, no upfront", "implementation_effort": "low", "description": "Covers the RDS PostgreSQL instance and the Valkey node ($130 of Balanced) at the 20% provisioned rate. Mutually exclusive with RDS Reserved Instances on the same database. Incremental to Balanced and already included in Optimized."}
+  ],
   "complexity_tier": "large",
   "complexity_inputs": {"service_count": 15},
   "financial_summary": {},

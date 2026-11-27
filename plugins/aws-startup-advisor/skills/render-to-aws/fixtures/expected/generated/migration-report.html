@@ -63,6 +63,10 @@
     .toplink { float: right; font-size: 0.75rem; font-weight: 400; color: var(--blue); text-decoration: none; }
     .tier-sub { font-size: 0.78rem; color: #656d76; font-style: italic; display: block; margin-top: 0.15rem; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.82rem; }
+    tr.active-scenario td { font-weight: 600; }
+    tr.active-scenario td:first-child { border-left: 4px solid #0d7377; }
+    tr.assumption td { font-style: italic; }
+    tr.assumption td:first-child { border-left: 4px solid #d4a72c; }
     code { overflow-wrap: anywhere; }
     .glossary-table th:first-child, .glossary-table td:first-child { width: 27%; background: #f6f8fa; }
     .glossary-table td:first-child { color: var(--aws); font-weight: 600; }
@@ -160,6 +164,9 @@
         <li><a href="#exec-architecture">Architecture Overview</a></li>
         <li><a href="#exec-targets">Selected Targets</a></li>
         <li><a href="#exec-costs">Infrastructure Cost Comparison</a></li>
+        <li><a href="#exec-optimization">Cost Optimization</a></li>
+        <li><a href="#what-if-scenarios">What-if Scenarios</a></li>
+        <li><a href="#exec-security-teaser">Security and Cost Guardrails</a></li>
         <li><a href="#exec-timeline">Migration Shape</a></li>
         <li><a href="#exec-risks">Top Risks</a></li>
         <li><a href="#exec-assumptions">What This Assessment Rests On</a></li>
@@ -179,8 +186,12 @@
         <li><a href="#appendix-services">Appendix A — Service Recommendations</a></li>
         <li><a href="#appendix-accounting">Appendix A.1 — Generation Accounting</a></li>
         <li><a href="#appendix-costs">Appendix B — Cost Estimates</a></li>
+        <li><a href="#appendix-optimization">Appendix B.1 — Savings Plans and Reserved Instances</a></li>
         <li><a href="#appendix-steps">Appendix C — Migration Steps and Rollback</a></li>
         <li><a href="#appendix-artifacts">Appendix E — Generated Artifacts Catalog</a></li>
+        <li><a href="#appendix-config">Appendix F — Your Configuration</a></li>
+        <li><a href="#appendix-security">Appendix G — Security Capabilities</a></li>
+        <li><a href="#appendix-security-gap">Appendix H — Security Gap Analysis</a></li>
         <li><a href="#appendix-assumptions">Appendix I — Assumptions, Exclusions, and Validation</a></li>
         <li><a href="#appendix-glossary">Appendix J — Glossary</a></li>
       </ul>
@@ -323,6 +334,70 @@
       <p>Human labor is excluded: the estimate records no migration labor cost, and these figures cover AWS service charges only.
          Pricing provenance: AWS rates use the reviewed us-east-1 cache for ECS, RDS, ElastiCache, Lambda, and EFS; CloudWatch is
          estimated; the Render baseline is user stated.</p>
+    </section>
+    <!-- COST OPTIMIZATION -->
+    <section id="exec-optimization">
+      <h2>Cost Optimization <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>Two commitment products apply to this stack. Both are measured against the <strong>Balanced</strong> on-demand figure
+         ($306 per month), and both are already inside the Optimized figure: the Savings Plan rows are incremental to Balanced and
+         <strong>not additive</strong> to Optimized, because Optimized already includes both commitment rows at their mid-point rate.
+         Optimized is a pricing scenario for comparison, not a commitment recommendation.</p>
+      <table>
+        <caption>Monthly posture comparison in USD: Balanced on-demand, each Savings Plan applied to Balanced, and the Optimized floor that includes both.</caption>
+        <thead><tr><th scope="col">Posture</th><th scope="col">Est. monthly</th><th scope="col">vs Balanced</th><th scope="col">What you commit to</th></tr></thead>
+        <tbody>
+          <tr><td>Balanced on-demand</td><td>$306</td><td>— anchor</td><td>Nothing; pay as you go for the right-sized design the Terraform implements</td></tr>
+          <tr><td>Balanced + Compute Savings Plan</td><td>20–40% lower on the $123 of Fargate and Lambda</td><td>percent-only for now</td><td>A 1-year, no-upfront hourly spend commitment on Fargate and Lambda. Shown as a range until a 30–90 day AWS usage baseline exists; Optimized prices it at the 30% mid-point ($37)</td></tr>
+          <tr><td>Balanced + Database Savings Plan</td><td>$280</td><td class="savings">-$26</td><td>A 1-year, no-upfront commitment on the $130 of RDS for PostgreSQL and the ElastiCache for Valkey node, at 20%</td></tr>
+          <tr><td>Optimized (floor)</td><td>$244</td><td class="savings">-$63</td><td>Both commitments at their mid-point rate; the $54 of ineligible lines is unchanged. Not a third commitment: it is the two rows above applied together</td></tr>
+        </tbody>
+      </table>
+      <h3>Which commitment fits</h3>
+      <ul class="compact">
+        <li><strong>Compute Savings Plan</strong> — the web, private and worker Fargate services, the scheduled cron task and the Workflow Lambda task ($123 of Balanced). Buy it only after 30–90 days of measured AWS usage; until then the saving is the 20–40% range, not a dollar figure.</li>
+        <li><strong>Database Savings Plan</strong> — the RDS for PostgreSQL instance and the Valkey cache node ($130 of Balanced), up to 20% at the 1-year no-upfront term: $26 per month.</li>
+        <li><strong>RDS Reserved Instances</strong> are mutually exclusive with the Database Savings Plan on the same database; the estimate models the Savings Plan and no Reserved Instance row.</li>
+        <li>No Fargate Spot or storage-class row: the estimate emits none for this stack (the worker is a continuous consumer and the disk is 5 GB).</li>
+      </ul>
+      <p>Line-level rows, the eligible subtotals and the upfront-payment note are in <a href="#appendix-optimization">Appendix B.1</a>.</p>
+    </section>
+    <!-- WHAT-IF SCENARIOS -->
+    <section id="what-if-scenarios">
+      <h2>What-if Scenarios <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>The workshop recorded two scenarios against the same frozen inventory. The baseline is active: the figures above and the
+         generated Terraform describe it. Each scenario's figures are the workshop snapshot on the us-east-1 cached-rate basis.</p>
+      <table>
+        <caption>Workshop scenarios compared: knobs, monthly USD per pricing scenario, and complexity. The active row is marked.</caption>
+        <thead><tr><th scope="col">Scenario</th><th scope="col">Region</th><th scope="col">HA</th><th scope="col">Compute</th><th scope="col">Arch</th><th scope="col">Premium $/mo</th><th scope="col">Balanced $/mo</th><th scope="col">Optimized $/mo</th><th scope="col">Complexity</th></tr></thead>
+        <tbody>
+          <tr class="active-scenario"><td>Baseline (active)</td><td>us-east-1</td><td>Multi-AZ</td><td>ECS on Fargate (direct task control)</td><td>x86_64</td><td>$306</td><td>$306</td><td>$244</td><td>Large</td></tr>
+          <tr><td>Graviton where compatible</td><td>us-east-1</td><td>Multi-AZ</td><td>ECS on Fargate (direct task control)</td><td>arm64</td><td>$288</td><td>$288</td><td>$230</td><td>Large</td></tr>
+        </tbody>
+      </table>
+      <ul class="compact">
+        <li><strong>Graviton where compatible vs baseline:</strong> one knob changes — CPU architecture x86_64 → arm64 for the Fargate tasks and the Lambda task where an arm64 image is available. Balanced falls from $306 to $288 and Optimized from $244 to $230; the right-sizing delta stays $52 and no line becomes unpriced.</li>
+        <li>The discovery inventory is frozen for both scenarios; the generated Terraform matches the <strong>active</strong> scenario only. Activating the Graviton scenario re-runs Design, Estimate and Generate on its preferences.</li>
+        <li>No region note applies: both scenarios target us-east-1, the region of the cached rates.</li>
+      </ul>
+    </section>
+    <!-- SECURITY AND COST GUARDRAILS (teaser; full table in Appendix G) -->
+    <section id="exec-security-teaser">
+      <h2>Security and Cost Guardrails <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>The generated pack includes an account-wide security baseline that Render does not expose to you today. Three of its
+         controls matter for the decision; none of them is a line of the estimate, and the cost column is an indicative list-price
+         range.</p>
+      <table>
+        <caption>Top always-on controls in the generated account baseline, what each does, and its indicative monthly cost (not part of the estimate).</caption>
+        <thead><tr><th scope="col">Control</th><th scope="col">What it does for you</th><th scope="col">Monthly cost</th></tr></thead>
+        <tbody>
+          <tr><td>GuardDuty</td><td>Detects compromised credentials and crypto mining within minutes; 30-day trial first</td><td>~$2–25/mo</td></tr>
+          <tr><td>CloudTrail</td><td>Immutable, multi-Region audit log of every API call with log-file validation, kept 90 days — required for SOC 2</td><td>~$0.50–3/mo</td></tr>
+          <tr><td>Budget alerts</td><td>Notifies the billing contact when actual spend passes 50%, 80% and 100% of a $368 monthly limit (120% of the Balanced estimate) — catches runaway resources</td><td>$0</td></tr>
+        </tbody>
+      </table>
+      <p>Your compliance answer is <strong>none</strong>, so the compliance add-on (AWS Config + Security Hub) was not generated;
+         declaring SOC 2, PCI, HIPAA or FedRAMP would add it at ~$3–25/mo. See <a href="#appendix-security">Appendix G</a> for the
+         full control-by-control table with Render equivalents and <a href="#appendix-security-gap">Appendix H</a> for the gap analysis.</p>
     </section>
     <!-- MIGRATION SHAPE -->
     <section id="exec-timeline">
@@ -538,6 +613,27 @@
       <p>Cached reviewed us-east-1 rates: ECS, RDS, ElastiCache, Lambda, EFS. Estimated: CloudWatch. Fallback: none. No service is
          missing a fallback. Human labor is excluded (the estimate records no migration labor cost).</p>
     </section>
+    <section id="appendix-optimization">
+      <h2>Appendix B.1 — Savings Plans and Reserved Instances <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>Line-level commitment opportunities from the estimate. Every row is incremental to <strong>Balanced</strong> ($306) and
+         <strong>not additive</strong> to Optimized ($244): the two Savings Plan rows below are exactly what Optimized already includes
+         at their mid-point rate, so never add them on top of the Optimized figure. Eligibility follows the shared Savings Plan and
+         Reserved Instance eligibility reference.</p>
+      <table>
+        <caption>Optimization opportunities from the estimate: target services, monthly savings against Balanced, commitment term and implementation effort.</caption>
+        <thead><tr><th scope="col">Optimization</th><th scope="col">Target services</th><th scope="col">Monthly savings</th><th scope="col">Commitment</th><th scope="col">Effort</th></tr></thead>
+        <tbody>
+          <tr><td>Compute Savings Plans</td><td>ECS on Fargate (web, private and worker services, and the scheduled cron task), AWS Lambda (Workflow task)</td><td>20–40% of $123 — percent-only until a 30–90 day usage baseline exists; Optimized prices it at the 30% mid-point ($37)</td><td>1-year, no upfront</td><td>Low</td></tr>
+          <tr><td>Database Savings Plans</td><td>Amazon RDS for PostgreSQL, Amazon ElastiCache for Valkey node-based</td><td>$26 (up to 20% of $130, at the 20% provisioned rate)</td><td>1-year, no upfront</td><td>Low</td></tr>
+        </tbody>
+      </table>
+      <ul class="compact">
+        <li>Eligible subtotals on Balanced: $123 under the Compute Savings Plan (five lines) and $130 under the Database Savings Plan (two lines); $54 of Balanced is ineligible (ECR, EFS, CloudWatch, Secrets Manager and Parameter Store, S3 and CloudFront, Step Functions, and the two no-charge rows) and is unchanged in Optimized.</li>
+        <li>RDS Reserved Instances are mutually exclusive with the Database Savings Plan on the same database workload; the estimate models the Savings Plan only, so no Reserved Instance row appears.</li>
+        <li>Upfront-payment variants (partial or all upfront, which discount more) are not modeled: every row is the 1-year no-upfront term, and this report makes no credits claim.</li>
+        <li>No Fargate Spot, S3 Intelligent-Tiering or other consumption-model row: the estimate emits none for this stack.</li>
+      </ul>
+    </section>
     <section id="appendix-steps">
       <h2>Appendix C — Migration Steps and Rollback <a class="toplink" href="#toc">&uarr; contents</a></h2>
       <p>Phases follow the sequence in <code>MIGRATION_GUIDE.md</code>. Every script under <code>scripts/</code> is
@@ -620,12 +716,165 @@
         </tbody>
       </table>
     </section>
+    <section id="appendix-config">
+      <h2>Appendix F — Your Configuration <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>Every Clarify question recorded in <code>preferences.json</code>, with how it was resolved and what it decided. Rows in
+         italics with an amber marker were resolved by a documented default rather than your answer; verify them before sign-off.</p>
+      <div class="callout callout-warn">
+        <strong>Budget guardrail defaulted</strong> (<span class="mono">cost.budget_guardrail</span> = no budget limit): the recorded
+        consequence is "recommends no AWS Budgets alert", so no user-chosen threshold exists. The generated account baseline still
+        creates a $368 monthly budget at the formula max(50, ceil(Balanced × 1.2)) with alerts at 50%, 80% and 100%; supply a number
+        in Clarify to replace the formula, or opt out as Appendix G describes.
+      </div>
+      <div class="callout callout-warn">
+        <strong>Source retention defaulted</strong> (<span class="mono">cutover.source_retention</span> = retain 14 days): this sets
+        both the rollback window and the period you pay Render and AWS at the same time. Confirm the window with the service owners.
+      </div>
+      <div class="callout callout-info">
+        <strong>Compliance: none</strong> (<span class="mono">global.compliance</span>): no AWS Config + Security Hub add-on was
+        generated and no store receives the regulated-data controls (customer-managed KMS key, in-Region-only backups). Declaring
+        SOC 2, PCI, HIPAA or FedRAMP changes both.
+      </div>
+      <div class="callout callout-info">
+        <strong>Availability: Multi-AZ</strong> (<span class="mono">global.availability</span>, confirmed in Clarify): RDS Multi-AZ
+        and the replicated Valkey node are in the Balanced price, which is why the Premium uplift is $0.
+      </div>
+      <table>
+        <caption>Clarify questions in resolution order: your answers first, then questions the Blueprint made not applicable, then documented defaults.</caption>
+        <thead><tr><th scope="col">Question / assumption</th><th scope="col">Your choice</th><th scope="col">Source</th><th scope="col">Design consequence</th></tr></thead>
+        <tbody>
+          <tr><td>Traffic cutover pattern <span class="mono">cutover.downtime_window</span></td><td>Short window</td><td>User answer</td><td>Writes a single planned switch with traffic stopped</td></tr>
+          <tr><td>Promotion pipeline CI system <span class="mono">delivery.ci_owner</span></td><td>GitHub Actions</td><td>User answer</td><td>Names GitHub Actions as the promotion runner</td></tr>
+          <tr><td>Deployment identity and IAM trust <span class="mono">identity.deploy_principal</span></td><td>CI OIDC role</td><td>User answer</td><td>Grants the CI role ECR push without long-lived keys</td></tr>
+          <tr><td>EventBridge target for the cron job (rr-cron) <span class="mono">cron.duration</span></td><td>20 minutes</td><td>User answer</td><td>Eliminates Lambda and selects ECS RunTask</td></tr>
+          <tr><td>PostgreSQL migration method (rr-db) <span class="mono">database.downtime_tolerance</span></td><td>Under 15 minutes</td><td>User answer</td><td>Makes dump/restore insufficient and requires logical replication or DMS change-data-capture</td></tr>
+          <tr><td>RDS versus Aurora versus EC2 target (rr-db) <span class="mono">database.extensions</span></td><td>pgcrypto</td><td>User answer</td><td>Keeps both managed targets eligible</td></tr>
+          <tr><td>Aurora versus RDS and reader instance count (rr-db) <span class="mono">database.reader_topology</span></td><td>Writer only</td><td>User answer</td><td>Does not trigger Aurora readers</td></tr>
+          <tr><td>Eligibility of logical replication and AWS DMS (rr-db) <span class="mono">database.replication_privilege</span></td><td>Available</td><td>User answer</td><td>Keeps logical replication and DMS change-data-capture eligible</td></tr>
+          <tr><td>Persistent storage target (rr-disk) <span class="mono">storage.access_semantics</span></td><td>Shared POSIX</td><td>User answer</td><td>Selects EFS and eliminates S3 and EBS</td></tr>
+          <tr><td>Route 53 inclusion (rr-domain) <span class="mono">domain.dns_owner</span></td><td>External</td><td>User answer</td><td>Keeps DNS external while ACM serves TLS</td></tr>
+          <tr><td>Staged DNS shift availability (rr-domain) <span class="mono">domain.ttl_control</span></td><td>TTL lowered 24 hours ahead</td><td>User answer</td><td>Lowers TTL ahead of the single switch; staging is not used because the cutover window is short</td></tr>
+          <tr><td>Key Value target (rr-kv) <span class="mono">key_value.cross_region_writes</span></td><td>No cross-Region writes</td><td>User answer</td><td>Does not trigger MemoryDB</td></tr>
+          <tr><td>Key Value migration method (rr-kv) <span class="mono">key_value.migration_strategy</span></td><td>Empty start</td><td>User answer</td><td>Writes an empty-start cutover step with no data copy</td></tr>
+          <tr><td>Private ingress target (rr-private) <span class="mono">private.load_balancing</span></td><td>No internal load balancer</td><td>User answer</td><td>Uses Service Connect without an internal load balancer</td></tr>
+          <tr><td>Web compute target (rr-web) <span class="mono">compute.management_model</span></td><td>Direct task control</td><td>User answer</td><td>Selects ECS on Fargate instead of either Elastic Beanstalk model</td></tr>
+          <tr><td>Worker target (rr-worker) <span class="mono">worker.execution_shape</span></td><td>Continuous consumer</td><td>User answer</td><td>Selects an ECS on Fargate service</td></tr>
+          <tr><td>Workflow callback timeout (rr-workflow) <span class="mono">workflow.callback_wait</span></td><td>3600 seconds</td><td>User answer</td><td>Sets the callback wait timeout on the Step Functions task-token state</td></tr>
+          <tr><td>Workflow orchestrator (rr-workflow) <span class="mono">workflow.orchestration_shape</span></td><td>Auditable callbacks</td><td>User answer</td><td>Selects Step Functions Standard</td></tr>
+          <tr><td>Workflow task target (rr-workflow-task) <span class="mono">workflow.task_duration</span></td><td>5 minutes</td><td>User answer</td><td>Permits Lambda for the stateless task</td></tr>
+          <tr><td>Workflow task retry policy (rr-workflow-task) <span class="mono">workflow.task_retry</span></td><td>3 retries, 2000 ms base wait, 2.0 backoff</td><td>User answer</td><td>Sets the Step Functions retrier explicitly instead of relying on a Render default</td></tr>
+          <tr><td>Customer-managed KMS key and in-Region-only backups (rr-db) <span class="mono">data.regulated_data</span></td><td>Not applicable</td><td>Not applicable (discovered)</td><td>Compliance is none, so no store receives the regulated-data controls</td></tr>
+          <tr><td>Customer-managed KMS key and in-Region-only backups (rr-disk) <span class="mono">data.regulated_data</span></td><td>Not applicable</td><td>Not applicable (discovered)</td><td>Compliance is none, so no store receives the regulated-data controls</td></tr>
+          <tr><td>Customer-managed KMS key and in-Region-only backups (rr-kv) <span class="mono">data.regulated_data</span></td><td>Not applicable</td><td>Not applicable (discovered)</td><td>Compliance is none, so no store receives the regulated-data controls</td></tr>
+          <tr class="assumption"><td>AWS Budgets alert recommendation <span class="mono">cost.budget_guardrail</span></td><td>No budget limit</td><td>Default applied (cost.no_budget_limit)</td><td>Recommends no AWS Budgets alert; the account baseline still writes the formula budget (Appendix G)</td></tr>
+          <tr class="assumption"><td>Rollback window and Render overlap <span class="mono">cutover.source_retention</span></td><td>Retain 14 days</td><td>Default applied (cutover.retain_14_days)</td><td>Keeps Render running 14 days after cutover</td></tr>
+          <tr class="assumption"><td>Preview delivery target <span class="mono">delivery.preview_policy</span></td><td>Shared staging</td><td>Default applied (delivery.shared_staging)</td><td>Selects one staging stack and rejects per-PR stacks</td></tr>
+          <tr class="assumption"><td>IAM Identity Center identity source <span class="mono">identity.human_sign_in</span></td><td>New Identity Center directory</td><td>Default applied (identity.identity_center_directory)</td><td>Creates a new IAM Identity Center directory and re-invites the team</td></tr>
+          <tr class="assumption"><td>CloudWatch Logs retention and alarm scope <span class="mono">observability.log_retention</span></td><td>30 days</td><td>Default applied (observability.30_days)</td><td>Sets 30-day log retention</td></tr>
+          <tr class="assumption"><td>PostgreSQL target (rr-db) <span class="mono">database.aurora_outcome</span></td><td>No Aurora-only outcome (RDS)</td><td>Default applied (postgres.startup_fallback)</td><td>Selects lower-change RDS when both managed targets fit</td></tr>
+          <tr class="assumption"><td>ECS Express Mode versus standard ECS service (rr-web) <span class="mono">compute.release_strategy</span></td><td>Canary</td><td>Default applied (release.canary_default)</td><td>Keeps ECS Express Mode eligible; the custom domain still selects standard ECS, so the release becomes a rolling update</td></tr>
+        </tbody>
+      </table>
+      <h3>Global settings</h3>
+      <table>
+        <caption>Estate-wide Clarify answers that every design and estimate decision inherits.</caption>
+        <thead><tr><th scope="col">Setting</th><th scope="col">Your choice</th><th scope="col">Source</th><th scope="col">Design consequence</th></tr></thead>
+        <tbody>
+          <tr><td>AWS Region <span class="mono">global.aws_region</span></td><td>us-east-1</td><td>Clarify global answer</td><td>Every priced rate and the generated provider Region are us-east-1; the rate cache is for the same Region, so no region note applies</td></tr>
+          <tr><td>Availability <span class="mono">global.availability</span></td><td>Multi-AZ</td><td>Clarify global answer</td><td>RDS Multi-AZ and the replicated Valkey node are in the Balanced price; the Premium uplift is $0</td></tr>
+          <tr><td>Compliance <span class="mono">global.compliance</span></td><td>none</td><td>Clarify global answer</td><td>No AWS Config + Security Hub add-on; no regulated-data controls on any store</td></tr>
+          <tr><td>Cost posture <span class="mono">global.cost_posture</span></td><td>Balanced</td><td>Clarify global answer</td><td>The Terraform implements the Balanced scenario; Optimized is shown as a pricing scenario only</td></tr>
+          <tr><td>CPU architecture <span class="mono">global.cpu_architecture</span></td><td>x86_64</td><td>Clarify global answer</td><td>Fargate tasks and the Lambda task are priced and generated on x86_64; the Graviton what-if scenario changes this knob</td></tr>
+          <tr><td>Management model <span class="mono">global.management_model</span></td><td>Direct task control</td><td>Clarify global answer</td><td>ECS on Fargate rather than Elastic Beanstalk for every service; no Kubernetes control plane</td></tr>
+        </tbody>
+      </table>
+      <p>The artifact carries no question prompt text and no source-signal column; the Question column names the decision each
+         question changes, with the question identifier beside it.</p>
+    </section>
+    <section id="appendix-security">
+      <h2>Appendix G — Security Capabilities <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>The generated <code>terraform/baseline.tf</code> adds account-wide controls that have no customer-managed equivalent on
+         Render. The executive summary carries only the three-row teaser; this is the complete picture, with the Render equivalent
+         (or its absence) for each control. The compliance answer is <strong>none</strong> and the CloudTrail retention is 90 days.</p>
+      <table>
+        <caption>Every always-on control the account baseline emits, its Render equivalent, the threat it mitigates, the Terraform resources that implement it, and its indicative monthly cost.</caption>
+        <thead><tr><th scope="col">Control</th><th scope="col">What it does for you</th><th scope="col">Render equivalent</th><th scope="col">Threat mitigated</th><th scope="col">Terraform resource</th><th scope="col">Monthly cost</th></tr></thead>
+        <tbody>
+          <tr><td>Alternate contacts</td><td>Registers operations, billing and security contacts so AWS notices reach the right person (placeholder phone number to replace after apply)</td><td>Team owners and the billing contact on the Render dashboard</td><td>Missed security, billing or operational notices</td><td class="mono">aws_account_alternate_contact.operations, aws_account_alternate_contact.billing, aws_account_alternate_contact.security</td><td>—</td></tr>
+          <tr><td>IAM password policy</td><td>Console passwords of 14 or more characters, rotated every 90 days, 24 previous passwords blocked, all character classes required</td><td>No customer-managed equivalent (platform-managed sign-in)</td><td>Weak or reused console passwords</td><td class="mono">aws_iam_account_password_policy.baseline</td><td>—</td></tr>
+          <tr><td>S3 account public-access block</td><td>Blocks public ACLs and public bucket policies on every bucket in the account</td><td>Render static sites are served public by design; no private-bucket equivalent</td><td>Accidental public data exposure</td><td class="mono">aws_s3_account_public_access_block.baseline</td><td>—</td></tr>
+          <tr><td>EBS default encryption</td><td>Every new EBS volume is encrypted at rest without per-resource settings</td><td>Platform-managed disks; no customer-visible setting</td><td>Unencrypted data at rest</td><td class="mono">aws_ebs_encryption_by_default.baseline</td><td>—</td></tr>
+          <tr><td>IAM Access Analyzer</td><td>Account-level analyzer that reports resources shared outside the account</td><td>No customer-managed equivalent</td><td>Unintended external access to a resource</td><td class="mono">aws_accessanalyzer_analyzer.baseline</td><td>—</td></tr>
+          <tr><td>IMDSv2 defaults</td><td>New EC2 instances require session tokens for instance metadata (hop limit 2)</td><td>No customer-managed equivalent (no EC2 on Render)</td><td>Credential theft through request forgery against instance metadata</td><td class="mono">aws_ec2_instance_metadata_defaults.baseline</td><td>—</td></tr>
+          <tr><td>CloudTrail with its log bucket</td><td>Multi-Region trail with log-file validation into an encrypted, versioned, public-access-blocked bucket whose objects expire after 90 days; the bucket policy admits only the trail</td><td>No customer-visible API audit log is captured from Render</td><td>Untraceable changes; an audit gap for SOC 2</td><td class="mono">aws_cloudtrail.baseline, aws_s3_bucket.cloudtrail_logs, aws_s3_bucket_public_access_block.cloudtrail_logs, aws_s3_bucket_server_side_encryption_configuration.cloudtrail_logs, aws_s3_bucket_versioning.cloudtrail_logs, aws_s3_bucket_lifecycle_configuration.cloudtrail_logs, aws_s3_bucket_policy.cloudtrail_logs</td><td>~$0.50–3/mo</td></tr>
+          <tr><td>Monthly budget</td><td>$368 monthly cost budget; notifies the billing contact when actual spend passes 50%, 80% and 100%</td><td>Render billing page; no threshold alert</td><td>Runaway spend noticed at invoice time</td><td class="mono">aws_budgets_budget.monthly_spend</td><td>$0</td></tr>
+          <tr><td>GuardDuty</td><td>Managed threat detection with findings published every 15 minutes; 30-day trial first</td><td>No detector on Render</td><td>Compromised credentials, crypto mining, reconnaissance</td><td class="mono">aws_guardduty_detector.baseline</td><td>~$2–25/mo</td></tr>
+          <tr><td>Remote state</td><td>Versioned, encrypted, public-access-blocked state bucket plus a DynamoDB lock table for Terraform state</td><td>Not applicable: the Blueprint lives in git</td><td>Lost or concurrently corrupted infrastructure state</td><td class="mono">aws_s3_bucket.tfstate, aws_s3_bucket_versioning.tfstate, aws_s3_bucket_server_side_encryption_configuration.tfstate, aws_s3_bucket_public_access_block.tfstate, aws_dynamodb_table.tfstate_lock</td><td>—</td></tr>
+          <tr><td>Alarms and alert topic</td><td>KMS-encrypted SNS topic with an operations subscription; CPU and memory alarms for ECS, 5xx, unhealthy-host and response-time alarms for the ALB, CPU, free-storage and connection alarms for RDS, CPU, memory and eviction alarms for ElastiCache, and web autoscaling</td><td>Service metrics and notifications on the Render dashboard</td><td>Unnoticed saturation or outage</td><td class="mono">terraform/monitoring.tf (operational, not an account-baseline control)</td><td>Within the $5 CloudWatch line of the estimate</td></tr>
+        </tbody>
+      </table>
+      <p>— : the shared contract gives no indicative price range for this control, and it is not a line of the estimate.</p>
+      <p><strong>Budget limit.</strong> <span class="mono">cost.budget_guardrail</span> was defaulted to no budget limit, so the
+         baseline uses the formula max(50, ceil(Balanced × 1.2)) = max(50, ceil(306.5 × 1.2)) = 368: the limit written to the budget is
+         <strong>$368</strong>, with notifications at 50%, 80% and 100% of actual spend. A number given in Clarify would replace the formula.</p>
+      <p><strong>Not in the estimate.</strong> The Estimate does not roll CloudTrail storage, GuardDuty, Config or Security Hub into
+         the Balanced figure ($306): the cost column is an indicative list-price range, not a line of the estimate, and Appendix B
+         carries no security line item because the estimate attaches estate-wide costs to design mappings.</p>
+      <p><strong>Compliance.</strong> Your compliance answer is <strong>none</strong>, so the compliance-conditional rows were not
+         generated: AWS Config (continuous recording of resource configuration changes; the change audit trail for SOC 2 and PCI) and
+         Security Hub with the Foundational Security Best Practices standard (automated checks against AWS best practices; baseline
+         posture scoring), together ~$3–25/mo. Declaring <span class="mono">soc2</span>, <span class="mono">pci</span>,
+         <span class="mono">hipaa</span> or <span class="mono">fedramp</span> in Clarify adds them. No Bedrock cost-guardrail rows exist:
+         this skill generates no AI pack.</p>
+      <p><strong>What the baseline does NOT cover (you still need):</strong></p>
+      <ul class="compact">
+        <li>SOC 2: Qualified auditor, formal policies, employee training, vendor management</li>
+        <li>HIPAA: BAA with AWS, qualified HIPAA auditor, data handling policies</li>
+        <li>PCI: QSA assessment, network segmentation validation, pen testing</li>
+        <li>FedRAMP: Agency-level NIST 800-53 controls, ATO process</li>
+      </ul>
+      <p><strong>To enable or opt out.</strong> The baseline applies with the rest of the stack (<code>terraform apply</code>). To
+         opt out, delete the block from the <code>Account Baseline</code> marker through the <code>End Account Baseline</code> marker
+         in <code>terraform/baseline.tf</code> and remove the <code>billing_email</code> and <code>security_email</code> rows from
+         the tfvars file; keep the shared declarations above the block and the Remote State section. The result must still pass
+         <code>terraform validate</code>. See <code>terraform/README.md</code>.</p>
+    </section>
+    <section id="appendix-security-gap">
+      <h2>Appendix H — Security Gap Analysis <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>Render's posture is described from the design and your Clarify answers (the discovery inventory records no security fields);
+         the AWS column is what the generated pack actually creates. The last column names the action, not a bare "different".</p>
+      <table>
+        <caption>Security capability comparison between the detected Render posture and the generated AWS pack, with the gap and the action for each.</caption>
+        <thead><tr><th scope="col">Capability</th><th scope="col">Render (detected)</th><th scope="col">AWS (generated)</th><th scope="col">Gap / action</th></tr></thead>
+        <tbody>
+          <tr><td>Network perimeter</td><td>Private services on the Render-managed network; the private service is reached by service discovery only</td><td>VPC with public and private subnets; a security group per role (edge, web, worker, private, data, EFS); the private service behind Service Connect with no internal load balancer</td><td>Mapped 1:1 for the private path. Net-new: you now own the security-group rules — review them in production</td></tr>
+          <tr><td>Identity &amp; access</td><td>Team members, deploy hooks and API keys</td><td>IAM Identity Center directory for people (defaulted), a CI OIDC role for ECR push without long-lived keys, scoped task roles per service</td><td>Net-new control: re-invite the team to Identity Center and keep the OIDC trust scoped to the repository</td></tr>
+          <tr><td>Audit logging</td><td>Service logs; no customer-visible API audit log</td><td>CloudTrail multi-Region trail with log-file validation, 90-day retention (account baseline)</td><td>Net-new control, not a line of the estimate; confirm 90 days meets your audit need</td></tr>
+          <tr><td>Threat detection</td><td>No intrusion or threat detector</td><td>GuardDuty detector with findings every 15 minutes (account baseline)</td><td>Net-new control; 30-day trial, then ~$2–25/mo outside the estimate</td></tr>
+          <tr><td>Public data exposure</td><td>Static site served public by design; no object storage</td><td>S3 reached only through CloudFront origin access control for the static site, plus the account-level S3 public-access block</td><td>Mapped 1:1 for the static site; net-new: every other bucket is private by default — review the CloudFront origin access in production</td></tr>
+          <tr><td>Observability cost shift</td><td>Plan-based log retention bundled in the Render plan</td><td>CloudWatch Logs, Metrics and Alarms at 30-day retention (defaulted), priced at $5 per month on the environment line</td><td>Cost shift: the estimate prices CloudWatch above the always-free tier while Render bundled logs; review against actual log volume in production</td></tr>
+          <tr><td>Secrets management</td><td>Environment group of shared configuration names (values never captured)</td><td>AWS Secrets Manager for secrets and Systems Manager Parameter Store for non-secret configuration, $2 per month</td><td>Mapped 1:1; net-new: populate values by hand before apply, never through Terraform</td></tr>
+          <tr><td>TLS and certificates</td><td>Render-managed TLS on the custom domain</td><td>ACM public certificate validated through your external DNS; TLS terminates at the ALB and CloudFront</td><td>Mapped 1:1; action: create the DNS validation records and wait for Issued before cutover</td></tr>
+          <tr><td>Operator access</td><td>Dashboard and shell access by Render team role</td><td>IAM Identity Center console sign-in; the generated task definitions do not enable ECS Exec</td><td>Review in production: decide whether to enable ECS Exec with audit logging, or keep operators to the console and CloudWatch</td></tr>
+        </tbody>
+      </table>
+    </section>
     <section id="appendix-assumptions">
       <h2>Appendix I — Assumptions, Exclusions, and Validation <a class="toplink" href="#toc">&uarr; contents</a></h2>
       <h3>Pricing confidence</h3>
-      <p>AWS rates use the reviewed us-east-1 cache; the Render baseline is user stated. EFS is priced from the reviewed rate row at
-         the Blueprint disk size (5 GB, Standard storage); no unpriced lines remain. Cached: ECS, RDS, ElastiCache, Lambda, EFS.
-         Estimated: CloudWatch. Balanced lines marked measured carry sufficient utilization evidence; inferred lines do not.</p>
+      <table>
+        <caption>Pricing confidence by domain and source: status, the estimate's accuracy and confidence statement, and the date each figure carries.</caption>
+        <thead><tr><th scope="col">Domain / source</th><th scope="col">Status</th><th scope="col">Accuracy / confidence</th><th scope="col">Dated</th></tr></thead>
+        <tbody>
+          <tr><td>AWS rates — ECS, RDS, ElastiCache, Lambda, EFS</td><td>cached (reviewed us-east-1 cache; the design targets us-east-1, so no region mismatch)</td><td>EFS priced from the reviewed rate row at the Blueprint disk size (5 GB, Standard storage); no unpriced lines remain; the Valkey node keeps its source-memory plan. Balanced lines: 7 measured, 6 inferred, 2 deterministic. The estimate records no numeric accuracy band</td><td>2026-10-21 (estimate timestamp)</td></tr>
+          <tr><td>AWS rates — CloudWatch Logs, Metrics and Alarms</td><td>estimated</td><td>Inferred from 30-day retention and the service count, not from a cached rate row</td><td>2026-10-21</td></tr>
+          <tr><td>Render baseline — current monthly spend</td><td>user stated</td><td>Unverified; not an invoice read, and its scope may differ from the AWS design</td><td>2026-10-21 (user-stated amount as of this date)</td></tr>
+          <tr><td>Fallback rates</td><td>none used</td><td>—</td><td>—</td></tr>
+          <tr><td>Services missing a fallback</td><td>none</td><td>—</td><td>—</td></tr>
+        </tbody>
+      </table>
+      <p>Balanced lines marked measured carry sufficient utilization evidence; inferred lines do not. No AI estimate exists, so no AI
+         row applies.</p>
       <h3>Exclusions</h3>
       <ul class="compact">
         <li>Human labor: the estimate records no migration labor cost (null), so no engineering effort is priced</li>
@@ -654,6 +903,9 @@
           <tr><td>Change-data-capture</td><td>Continuous replication of source changes by AWS Database Migration Service after the full load</td></tr>
           <tr><td>Source retention</td><td>The period Render resources stay running after cutover so rollback remains possible (14 days here)</td></tr>
           <tr><td>ECS Express Mode</td><td>A simplified ECS deployment path; not selected here because the custom domain requires a hand-built ALB</td></tr>
+          <tr><td>Savings Plan</td><td>A 1-year or 3-year hourly spend commitment that discounts eligible usage: Compute Savings Plans cover Fargate and Lambda, Database Savings Plans cover RDS and ElastiCache for Valkey. The estimate models the 1-year, no-upfront term at its mid-point rate</td></tr>
+          <tr><td>GuardDuty</td><td>Amazon GuardDuty, the managed threat-detection service in the generated account baseline; indicative cost only, not a line of the estimate</td></tr>
+          <tr><td>CloudTrail</td><td>AWS CloudTrail, the API audit log in the generated account baseline, kept 90 days in an encrypted bucket; indicative cost only, not a line of the estimate</td></tr>
         </tbody>
       </table>
     </section>

@@ -350,6 +350,60 @@ def test_workshop_fingerprint_scenario_cap_and_return_state_are_deterministic() 
     assert "never evict baseline" in refresh
 
 
+def test_workshop_index_fixture_matches_workshop_scenarios() -> None:
+    """scenarios/index.json is the workshop index the report validators read; workshop-scenarios.json
+    is the same index plus the test-only state_after_exit block. The active scenario must be the
+    baseline, and the baseline summary must equal the working estimate (workshop-invariants § 4)."""
+    index = load(EXPECTED / "scenarios/index.json")
+    workshop = load(EXPECTED / "workshop-scenarios.json")
+    assert index == {key: value for key, value in workshop.items() if key != "state_after_exit"}
+    assert index["active_scenario_id"] == index["baseline_scenario_id"]
+    assert len(index["scenarios"]) >= 2
+    baseline = next(row for row in index["scenarios"] if row["scenario_id"] == index["baseline_scenario_id"])
+    estimate = load(EXPECTED / "estimation-infra.json")
+    scenarios = estimate["scenarios"]
+    summary = baseline["estimation_summary"]
+    assert summary["like_for_like_known_cost_monthly_usd"] == scenarios["like_for_like"]["known_cost_monthly_usd"]
+    assert summary["like_for_like_is_floor"] is scenarios["like_for_like"]["is_floor"]
+    assert summary["like_for_like_unpriced_count"] == len(scenarios["like_for_like"]["unpriced_line_ids"])
+    assert summary["balanced_known_cost_monthly_usd"] == estimate["projected_costs"]["aws_monthly_balanced"]
+    assert summary["balanced_is_floor"] is scenarios["balanced"]["is_floor"]
+    assert summary["balanced_unpriced_count"] == len(scenarios["balanced"]["unpriced_line_ids"])
+    assert summary["premium_known_cost_monthly_usd"] == estimate["projected_costs"]["aws_monthly_premium"]
+    assert summary["optimized_known_cost_monthly_usd"] == estimate["projected_costs"]["aws_monthly_optimized"]
+    assert summary["rightsizing_delta_monthly_usd"] == estimate["rightsizing_delta"]["monthly"]
+    assert summary["complexity_tier"] == estimate["complexity_tier"]
+    assert summary["pricing_source"] == estimate["pricing_source"]["status"]
+    assert summary["recommendation_outcome"] == estimate["recommendation"]["path"]
+
+
+def test_estimate_optimization_opportunities_are_the_commitment_rows() -> None:
+    """optimization_opportunities[] carries exactly one row per commitment bucket with eligible
+    lines (estimate-infra.md rule 4): Compute SP percent-only, Database SP in dollars, both
+    1-year no-upfront and already included in Optimized."""
+    estimate = load(EXPECTED / "estimation-infra.json")
+    commitment = estimate["scenarios"]["optimized"]["commitment"]
+    balanced_lines = {row["line_id"]: row for row in estimate["scenarios"]["balanced"]["lines"]}
+    rows = estimate["optimization_opportunities"]
+    assert len(rows) == 2
+    by_type = {row["type"]: row for row in rows}
+    assert set(by_type) == {"compute_savings_plans", "database_savings_plans"}
+    for plan, row in by_type.items():
+        assert row["commitment"] == "1-year, no upfront"
+        assert row["implementation_effort"] == "low"
+        assert row["description"]
+        eligible_services = {balanced_lines[line_id]["aws_service"] for line_id in commitment[plan]["eligible_line_ids"]}
+        assert set(row["target_services"]) <= eligible_services, plan
+    compute = by_type["compute_savings_plans"]
+    assert compute["opportunity"] == "Compute Savings Plans"
+    assert compute["savings_monthly"] is None
+    assert compute["savings_percent"] == commitment["compute_savings_plans"]["range"]
+    database = by_type["database_savings_plans"]
+    assert database["opportunity"] == "Database Savings Plans"
+    assert Decimal(str(database["savings_monthly"])) == Decimal(str(commitment["database_savings_plans"]["discount_monthly_usd"]))
+    assert database["savings_percent"].startswith("up to 20%")
+
+
 def test_generate_ledger_schemas_and_complete_target_accounting() -> None:
     generated = EXPECTED / "generated"
     ledger = load(generated / "generation-warnings.json")
