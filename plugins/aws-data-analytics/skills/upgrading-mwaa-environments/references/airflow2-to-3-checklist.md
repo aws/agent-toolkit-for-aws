@@ -93,46 +93,27 @@ Fix: Rename function to `task_policy`.
 Search for: `on_success_callback` (no longer fires on skip), `trigger_rule="dummy"`, `TriggerRule.DUMMY`, `trigger_rule="none_failed_or_skipped"`, `expanded_ti_count`, `external_trigger`, `test_mode`
 Fix: Use `on_skipped_callback` for skip handling. `TriggerRule.DUMMY` -> `TriggerRule.ALWAYS`. `trigger_rule="none_failed_or_skipped"` -> `TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS`. `expanded_ti_count` -> REST API for mapped TIs. `external_trigger` -> `dag_run.run_type`. Remove `test_mode` reliance.
 
-## 15. TaskFlow `_TaskDecorator.output` removal
+## 15. `.output` and Ruff AIR201
 
-Search for: `.output` preceded by a `@task`-decorated function name (e.g., `my_task.output`, `create_cluster.output`)
-Ruff AIR rules do NOT detect this pattern.
-
-In AF2, `@task`-decorated functions expose a `.output` property on the decorator
-object that resolves to an XCom reference. In AF3, `_TaskDecorator.output` is
-removed entirely — accessing it raises `AttributeError`.
-
-Fix: Replace `<decorator_name>.output` with the variable holding the decorated
-function's call result. The call result is already an XCom-backed reference in
-both AF2 and AF3.
+`.output` is valid on a classic operator instance
+(`b = BashOperator(...)`, then `b.output`) on every Airflow version, so never
+flag it. On a `@task` function or its call result (`make.output`, or
+`res = make()` then `res.output`) it raises `AttributeError` on every version.
+When you fix an AIR201 hit by hand, pass the call result instead:
 
 ```python
-# BEFORE (AF2 pattern — fails on AF3)
 @task
-def create_cluster(subnet_id):
+def make():
     ...
-    return cluster_id
 
-create_cluster(subnet_id)
-next_task = SomeOperator(cluster_id=create_cluster.output)
-
-# AFTER (works on both AF2 and AF3)
-@task
-def create_cluster(subnet_id):
-    ...
-    return cluster_id
-
-result = create_cluster(subnet_id)
-next_task = SomeOperator(cluster_id=result)
+res = make()
+next_task = SomeOperator(value=res)  # not make.output
 ```
 
-**Ruff `--unsafe-fixes` can INTRODUCE this pattern.** `ruff --fix
---unsafe-fixes` (used in the upgrade skill's Phase 5) rewrites some `xcom_pull`
-Jinja templates (e.g. `"{{ task_instance.xcom_pull(task_ids='t') }}"`) into
-`t.output` — the exact AF3-invalid form shown above — and then does NOT re-flag
-it. So the original code can be clean of `.output` while the *fixed* code is
-not. Always re-run this section's grep on the **fixed** output after any
-`--unsafe-fixes` pass, not just on the original DAGs.
+`xcom_pull` templates still work on Airflow 3, so AIR201 fixes are optional.
+The Phase 5 command passes `--unfixable AIR201` because AIR201's auto-fix
+rewrites `"{{ ti.xcom_pull(task_ids='X') }}"` into `X.output` whenever a name
+`X` exists, which is invalid when `X` is a `@task` function.
 
 ## 16. Airflow CLI access from worker tasks
 

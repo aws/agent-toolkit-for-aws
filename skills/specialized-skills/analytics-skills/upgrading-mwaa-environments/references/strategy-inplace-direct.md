@@ -17,7 +17,8 @@ before proceeding to the next action.
 - Approach recorded as `in-place-direct` in the plan.
 - Upgrade path determined in the plan.
 - Docker validation (Phase 6) strongly recommended, since there is no test
-  copy.
+  copy, and especially when a version jump is `python_change` or
+  `crosses_major`.
 
 ## Execution Steps
 
@@ -34,6 +35,12 @@ version is not possible (verify the current EOS list at runtime). The
 Rehearsed in-place upgrade is recommended instead. Confirm to proceed with
 the Direct in-place upgrade.
 
+If the plan records Docker validation as `SKIP`, add to the warning:
+"Docker validation was skipped, so APIs removed between minor versions
+(which Ruff does not cover), provider changes in the target image, and
+removed-standard-library usage the static check missed will appear only as
+import errors on your live environment after the jump."
+
 ### 2. Run the step-by-step upgrade on your current environment
 
 Run the step-by-step upgrade on your current environment; starting
@@ -44,7 +51,8 @@ target, each version jump confirmed separately. See
 ### 3. Re-check your current environment at the target version
 
 ```
-aws mwaa invoke-rest-api --name <current-env> --method GET --path /health
+aws mwaa invoke-rest-api --name <current-env> --method GET --path /monitor/health  # Airflow 3.x
+aws mwaa invoke-rest-api --name <current-env> --method GET --path /health          # Airflow 2.x
 aws mwaa invoke-rest-api --name <current-env> --method GET --path /dags \
   --query-parameters '{"limit":"100","offset":"0"}'
 ```
