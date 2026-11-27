@@ -18,6 +18,10 @@
   .callout { padding: 0.85rem 1rem; border-radius: 6px; margin: 0.85rem 0; font-size: 0.95rem; }
   .callout-info { background: #eef5ff; border: 1px solid #0969da; border-left: 4px solid #0969da; }
   .appendix-header { background: #232f3e; color: #fff; padding: 1rem 1.5rem; }
+  .compact { margin: 0.25rem 0 0.75rem; padding-left: 1.25rem; }
+  .badge-impact-high, .badge-impact-critical { color: #c5221f; font-weight: 650; }
+  .badge-like-low, .badge-like-medium { color: #57606a; font-weight: 650; }
+  .assumption-default td:first-child { font-weight: 650; }
   a:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
   @media (max-width: 700px) { .report { padding: 1rem; } }
   @media print { body { background: #fff; } }
@@ -30,45 +34,63 @@
 </head>
 <body>
 <div class="report">
-
 <h1>Heroku to AWS Migration Assessment</h1>
-
 <section id="decision-summary">
 <h2>Migration Decision Summary</h2>
 <p class="verdict-headline">Go, with conditions</p>
 <p>Execution shape: Phased migration · Complexity: small</p>
-<p>Confidence: medium — full basis available on request.</p>
+<p>Confidence: medium — full basis in <a href="#exec-assumptions">What This Assessment Rests On</a>.</p>
 <div class="metrics">
   <div class="metric metric-hero"><strong>AWS estimate (Balanced)</strong><br>Est. $210/mo</div>
-  <div class="metric"><strong>Your Heroku baseline</strong><br>Est. $340/mo (from your Heroku invoice)</div>
+  <div class="metric"><strong>Your Heroku baseline</strong><br>Not established — no invoice or contract was supplied</div>
   <div class="metric"><strong>Migration shape</strong><br>Phased · small complexity</div>
 </div>
 <div class="callout callout-info">💡 Review <a href="https://aws.amazon.com/startups/credits/">AWS Activate credits</a> tiers (Founders for self-funded startups, Portfolio for VC- or accelerator-backed ones) — your funding stage was not confirmed in Clarify. Credits apply only to charges after approval, so apply before any deployment.</div>
 <p><strong>Timeline if you execute:</strong> phased migration, small complexity — stages and duration drivers in the Timeline section.</p>
+<h3>Migrate if</h3>
+<ul class="compact">
+  <li>You want the AWS control plane: your own account, network, IAM and the managed services around the app.</li>
+</ul>
+<h3>Stay entirely if</h3>
+<ul class="compact">
+  <li>You need the Heroku developer experience indefinitely and will not fund the platform layer the Developer workflow section describes.</li>
+</ul>
 <ul>
   <li>What would flip this: a confirmed always-on traffic pattern would raise the AWS compute estimate materially.</li>
 </ul>
 </section>
-
 <nav class="toc" aria-label="Table of contents">
   <ul>
     <li><a href="#decision-summary">Decision</a></li>
     <li><a href="#exec-share">Share with your CFO</a></li>
+    <li><a href="#exec-services">Current stack</a></li>
     <li><a href="#exec-costs">Costs</a></li>
     <li><a href="#developer-workflow">Developer workflow</a></li>
     <li><a href="#exec-timeline">Timeline</a></li>
+    <li><a href="#exec-risks">Top risks</a></li>
+    <li><a href="#exec-assumptions">What this assessment rests on</a></li>
     <li><a href="#decision-cta">Ready to execute?</a></li>
   </ul>
 </nav>
-
 <section id="exec-share">
 <h2>Share with your CFO</h2>
 <p>The one-paragraph version, ready to forward:</p>
-<div class="share-card"><p>Go, with conditions, at medium confidence. Estimated AWS Balanced is $210 per month against an estimated Heroku baseline of $340 per month. The migration shape is phased for this small estate. Confirm the open condition before treating the monthly figure as final.</p></div>
+<div class="share-card"><p>Go, with conditions, at medium confidence. Estimated AWS Balanced is $210 per month; the Heroku bill is not established, so no side-by-side saving is quoted. The migration shape is phased for this small estate. Confirm the open condition before treating the monthly figure as final.</p></div>
 </section>
-
+<section id="exec-services">
+<h2>Current Stack Overview</h2>
+<p>2 Heroku resources on one app (acme-web) were mapped to AWS targets. No add-on is deferred.</p>
+<table>
+  <caption>Heroku resources and their AWS targets</caption>
+  <thead><tr><th scope="col">Heroku app</th><th scope="col">Heroku primitive</th><th scope="col">AWS target</th></tr></thead>
+  <tbody>
+    <tr><td>acme-web</td><td>web formation (compute)</td><td>Elastic Beanstalk — t3.small, load-balanced, 1 to 2 instances</td></tr>
+    <tr><td>acme-web</td><td>Heroku Postgres add-on (database)</td><td>RDS PostgreSQL — db.t4g.medium, Multi-AZ, 64 GB storage</td></tr>
+  </tbody>
+</table>
+</section>
 <section id="exec-costs">
-<h2>Cost Comparison</h2>
+<h2>Cost Estimate</h2>
 <table>
   <caption>Estimated monthly cost by tier</caption>
   <thead><tr><th scope="col">Tier</th><th scope="col">Est. Monthly AWS</th></tr></thead>
@@ -78,9 +100,8 @@
     <tr><td>Optimized</td><td>Est. $163/mo</td></tr>
   </tbody>
 </table>
-<p>Heroku baseline (from your Heroku invoice): Est. $340/mo. All figures are estimated monthly costs.</p>
+<p>No Heroku baseline was available for this run (no invoice or contract was supplied), so no side-by-side comparison is shown. All figures are estimated monthly costs.</p>
 </section>
-
 <section id="developer-workflow">
 <h2>Developer workflow: what stays, what changes, what you build</h2>
 <p>Developer workflow priority was not rated critical in Clarify.</p>
@@ -102,20 +123,45 @@
 </table>
 <p>The rows marked Build are a platform layer your team owns: a deploy pipeline for Fargate, EKS and manual-deploy apps, a promote step for every app that gets no generated <code>promote.yml</code>, release steps, review-app automation, and a thin command wrapper. It is weeks of platform work, not months, and it is the same for every app.</p>
 </section>
-
 <section id="exec-timeline">
 <h2>Timeline</h2>
-<p>Shape: Phased migration. Stage order: provision the AWS environment, migrate the database, then cut over DNS per app. Duration drivers: a small estate (two services) and a single-AZ database. The cutover procedure stays in the migration guide; this section is not a staffed schedule.</p>
+<p>Shape: Phased migration. Stage order: provision the AWS environment, migrate the database, then cut over DNS per app. Duration drivers: a small estate (two services) and a Multi-AZ database. The cutover procedure stays in the migration guide; this section is not a staffed schedule.</p>
 </section>
-
+<section id="exec-risks">
+<h2>Top Risks</h2>
+<table>
+  <caption>Top risks, their impact and likelihood, and the mitigation for each</caption>
+  <thead><tr><th scope="col">Risk</th><th scope="col">Impact</th><th scope="col">Likelihood</th><th scope="col">Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>The traffic pattern is not confirmed; a sustained always-on load would raise the compute estimate.</td><td><span class="badge-impact-high">High</span></td><td><span class="badge-like-medium">Medium</span></td><td>Confirm the dyno run pattern before cutover sizing; the Balanced figure assumes the current formation.</td></tr>
+    <tr><td>The maintenance window was left to the AWS default.</td><td>Medium</td><td><span class="badge-like-medium">Medium</span></td><td>Choose a window at Generate; until then database patches and minor upgrades may land during business hours.</td></tr>
+    <tr><td>The database migration method defaulted to dump and restore.</td><td>Medium</td><td><span class="badge-like-low">Low</span></td><td>Confirmed at Generate; dump and restore needs one downtime window sized to the 20 GB estimate — pick DMS if that window is too long.</td></tr>
+  </tbody>
+</table>
+</section>
+<section id="exec-assumptions">
+<h2>What This Assessment Rests On</h2>
+<table>
+  <caption>Settings assumed by default and what each one changes in the design</caption>
+  <thead><tr><th scope="col">Setting</th><th scope="col">Assumed value</th><th scope="col">Design consequence</th></tr></thead>
+  <tbody>
+    <tr class="assumption-default"><td>Maintenance window</td><td>Flexible (AWS default)</td><td>Database and Beanstalk maintenance happen in the AWS default window; asked for real at Generate.</td></tr>
+    <tr class="assumption-default"><td>Database migration method</td><td>Dump and restore</td><td>One downtime window during cutover; the migration guide documents the dump and restore procedure. Asked for real at Generate.</td></tr>
+    <tr class="assumption-default"><td>Elastic Beanstalk deploy method</td><td>GitHub Actions</td><td>A deploy workflow and an approval-gated promote step are generated for the Beanstalk app. Asked for real at Generate.</td></tr>
+    <tr class="assumption-default"><td>Container registry</td><td>Amazon ECR</td><td>Images are published to ECR, which the Cloud Native Buildpacks path requires.</td></tr>
+    <tr class="assumption-default"><td>Containerization method</td><td>Cloud Native Buildpacks (Heroku builder)</td><td>Images are built from the same source with the Heroku builder; no Dockerfile is needed.</td></tr>
+    <tr class="assumption-default"><td>AWS Activate status</td><td>Unknown</td><td>The credits guidance stays neutral; no tier or amount is claimed.</td></tr>
+  </tbody>
+</table>
+<p>Confidence: medium — some material inputs assumed (the maintenance window and the migration method are defaults until Generate confirms them). Region, availability, database HA, compute target and the migration approach were confirmed by you; the containerization status was extracted from your Heroku inventory.</p>
+<p>Estimates based on cached AWS pricing (us-east-1 cache), accuracy ±5–10%.</p>
+</section>
 <section id="decision-cta">
 <h2>Ready to execute?</h2>
 <p><strong>Ready to execute?</strong> Say "generate the Terraform and migration scripts" and I'll produce the full execution pack (Terraform, migration scripts, MIGRATION_GUIDE.md) from this same analysis.</p>
 <p>This decision report was generated without execution artifacts; the full migration report replaces it if you proceed.</p>
 </section>
-
 <footer>Generated by Heroku to AWS Migration Advisor — draft for review; verify figures before executive sign-off.</footer>
-
 </div>
 </body>
 </html>

@@ -73,7 +73,7 @@ _postconditions:
     _on_failure: _halt_and_inform
   - _assert: "if preferences.json data.dns_strategy (the field Clarify Q10 writes; there is no global.dns_strategy) is 'route53' and at least one heroku-resource-inventory.json resource_type 'domain' resource belongs to a heroku_app whose web formation is an Elastic Beanstalk or Fargate service in aws-design.json, then terraform/dns.tf exists and declares hosted_zone_ids (map, one zone per hostname), heroku_dns_targets, heroku_apex_ips, and cutover_weight variables, a per-hostname local.aws_targets map (no shared scalar target), weighted apex_heroku/apex_aws records, and an aws_acm_certificate_validation resource, and no terraform file declares var.acm_certificate_arn; otherwise — including every EKS design and every domain whose app has no EB/Fargate web service — terraform/dns.tf does not exist and such domains are listed in generation-warnings.json"
     _on_failure: _halt_and_inform
-  - _assert: "migration-report.html has decision-summary, exec-share, exec-timeline, exec-costs, cost-optimization, next-steps, appendix-services, appendix-costs, appendix-config, appendix-security, appendix-assumptions, the GCP visual-shell selectors including .share-card, and a draft-for-review footer; the security appendix names What it does and Threat mitigated; if scenarios/index.json has ≥2 scenarios, also what-if-scenarios"
+  - _assert: "migration-report.html has decision-summary (with Migrate if / Stay entirely if and a Next steps ordered list), exec-share, exec-services, exec-costs, exec-optimization, developer-workflow, exec-timeline, exec-risks, exec-assumptions, appendix-services, appendix-costs, appendix-optimization, appendix-artifacts, appendix-config, appendix-security, appendix-assumptions, appendix-glossary, the GCP visual-shell selectors including .share-card, and a draft-for-review footer; the security appendix names What it does and Threat mitigated; the configuration appendix has Question, Your choice, Source and Design consequence columns; if scenarios/index.json has ≥2 scenarios, also what-if-scenarios"
     _on_failure: _halt_and_inform
   - _assert: "report-validation-status.json exists and its report_status is 'REPORT_OK', stamped by the main-window 'Finish Generate' report-validation step (described below, run BEFORE this gate); a REPORT_FAIL, a missing/not_run stamp (validator could not run), or a missing file blocks completion. This gate is READ-ONLY: do not run the validator or edit the report/stamp here."
     _on_failure: _halt_and_inform
@@ -215,7 +215,7 @@ returns and before `_postconditions`**.
    `{"report_status": "REPORT_FAIL", "errors": [ … ]}` with the `errors[]` of whichever
    validator failed, and **emit `GATE_FAIL`, pasting those errors verbatim** so the user
    knows exactly what failed (missing section id, a bare week range, empty
-   `cost-optimization`, a banned `badge-verdict-*` pill class, a `<th>` without `scope`, a
+   `appendix-optimization`, a banned `badge-verdict-*` pill class, a `<th>` without `scope`, a
    cost-figure mismatch, etc.). This step does **not** edit the HTML.
 
 4. If either validator cannot run at all (no shell on the host), do **not** write
