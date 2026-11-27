@@ -1,0 +1,92 @@
+{
+  "phase": "estimate",
+  "design_source": "aws-design.json",
+  "timestamp": "2026-07-19T18:30:00Z",
+  "pricing_source": {
+    "status": "cached",
+    "message": "us-east-1 cache"
+  },
+  "accuracy_confidence": "+/-5-10%",
+  "current_costs": {
+    "source": "unavailable",
+    "baseline_note": "no billing"
+  },
+  "projected_costs": {
+    "aws_monthly_premium": 210.0,
+    "aws_monthly_balanced": 210.0,
+    "aws_monthly_optimized": 163.0,
+    "aws_annual_optimized": 1956.0,
+    "_premium_basis": "No line has an unapplied Multi-AZ uplift: the RDS rate is baked_in Multi-AZ; Elastic Beanstalk's EC2 has no AZ-driven rate and its ALB is intrinsic. Premium equals Balanced, 210.",
+    "_optimized_basis": "Eligible subtotal 187 = Elastic Beanstalk EC2 component 92 (of 115: EC2 92 + ALB 16 + LCU 6 + EBS 1) x 0.30 compute_savings_plan -> 28, plus RDS 95 x 0.20 database_savings_plan_provisioned -> 19; ineligible 23 unchanged; 210 - 47 = 163. Rates from knowledge/estimate/estimate-defaults.json optimized_tier_discounts.",
+    "breakdown": {
+      "total": {
+        "premium": 210.0,
+        "mid": 210.0,
+        "low": 163.0
+      },
+      "Elastic Beanstalk": {
+        "premium": 115.0,
+        "mid": 115.0,
+        "low": 87.0,
+        "pricing_source": "cached"
+      },
+      "RDS PostgreSQL": {
+        "premium": 95.0,
+        "mid": 95.0,
+        "low": 76.0,
+        "pricing_source": "cached"
+      }
+    }
+  },
+  "complexity_tier": "small",
+  "complexity_inputs": {
+    "service_count": 2
+  },
+  "recommendation": {
+    "path": "migrate_optimized",
+    "path_label": "Migrate with Optimized pricing scenario",
+    "migrate_if": [
+      "want AWS control plane"
+    ],
+    "stay_if": [
+      "need Heroku DX indefinitely"
+    ],
+    "would_flip_if": [
+      "A confirmed always-on traffic pattern would raise the AWS compute estimate materially."
+    ]
+  },
+  "optimization_opportunities": [
+    {
+      "opportunity": "Compute Savings Plans",
+      "type": "compute_savings_plan",
+      "target_services": [
+        "Elastic Beanstalk"
+      ],
+      "savings_percent": "30% (1-year no-upfront mid-point)",
+      "savings_monthly": 28,
+      "commitment": "1-year no-upfront",
+      "timing": "post-migration (after 30-90 days of usage data)",
+      "implementation_effort": "low",
+      "prerequisite": "Establish an AWS compute usage baseline before committing",
+      "description": "Heroku dyno billing is flat-rate per dyno type; the Beanstalk EC2 usage pattern may differ. Covers the EC2 component (92 of the 115 Elastic Beanstalk line); the ALB, LCU and EBS components are not eligible."
+    },
+    {
+      "opportunity": "Database Savings Plans",
+      "type": "database_savings_plan",
+      "target_services": [
+        "RDS"
+      ],
+      "savings_percent": "20% (provisioned, 1-year no-upfront mid-point)",
+      "savings_monthly": 19,
+      "commitment": "1-year no-upfront",
+      "timing": "immediately post-migration or after instance right-sizing",
+      "implementation_effort": "low",
+      "prerequisite": "Confirm the db.t4g.medium Multi-AZ instance class before committing",
+      "description": "Heroku Postgres runs 24/7 with predictable usage. Database Savings Plans keep the flexibility to change instance class post-migration. Mutually exclusive with RDS Reserved Instances on the same workload."
+    }
+  ],
+  "workshop": {
+    "scenario_id": null,
+    "region_note": null
+  }
+}

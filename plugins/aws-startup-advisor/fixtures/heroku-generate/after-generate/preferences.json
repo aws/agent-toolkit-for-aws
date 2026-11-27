@@ -1,0 +1,119 @@
+{
+  "migration_id": "0818-1600",
+  "skill": "heroku-to-aws",
+  "metadata": {
+    "timestamp": "2026-08-18T16:05:00Z",
+    "clarify_mode": "full",
+    "questions_asked": [
+      "Q1",
+      "Q2",
+      "Q3",
+      "Q4",
+      "Q5",
+      "Q5c",
+      "Q6",
+      "Q6b",
+      "Q6c",
+      "Q10",
+      "Q12c",
+      "Q12d",
+      "Q13",
+      "Q14",
+      "Q15"
+    ],
+    "questions_defaulted": [
+      "Q12",
+      "Q12f",
+      "Q17"
+    ],
+    "questions_skipped_extracted": [
+      "Q12b"
+    ],
+    "questions_skipped_not_applicable": [
+      "Q7",
+      "Q8",
+      "Q9",
+      "Q9b",
+      "Q11",
+      "Q12e",
+      "Q16"
+    ],
+    "questions_deferred_to_generate": [],
+    "inventory_clarifications": {
+      "containerization_status": "stack:heroku-22"
+    }
+  },
+  "global": {
+    "target_region": "us-east-1",
+    "compliance": "none",
+    "availability": "multi-az",
+    "maintenance_window": {
+      "day": "sunday",
+      "hour_utc": 4
+    },
+    "environment_naming": "acme",
+    "dx_priority": "important",
+    "migration_approach": "full_cutover",
+    "interim_cutover": false,
+    "startup_program_status": "unknown"
+  },
+  "data": {
+    "database_ha": "multi-az",
+    "migration_method": "pg_dump_restore",
+    "estimated_db_size_gb": 20,
+    "db_size_source": "plan_derived",
+    "dns_strategy": "route53"
+  },
+  "operational": {
+    "container_registry": "ecr",
+    "containerization_status": "buildpack_only",
+    "containerization_method": "cnb_heroku_builder",
+    "log_retention_days": 30,
+    "alerting": "cloudwatch",
+    "cost_optimization": "balanced"
+  },
+  "design_constraints": {
+    "compute_target": {
+      "default": "elastic_beanstalk",
+      "overrides": [],
+      "chosen_by": "system_recommended",
+      "recommendation": {
+        "value": "elastic_beanstalk",
+        "confidence": "high",
+        "reasons": [
+          "one web formation on a buildpack stack, 40 or fewer formations: Elastic Beanstalk default"
+        ]
+      }
+    },
+    "eb_deploy_method": {
+      "value": "github_actions",
+      "chosen_by": "user"
+    }
+  },
+  "defaults_applied": [
+    "Q12",
+    "Q12f",
+    "Q17"
+  ],
+  "sources": {
+    "Q1": "user",
+    "Q2": "user",
+    "Q3": "user",
+    "Q4": "user",
+    "Q5": "user",
+    "Q5c": "user",
+    "Q6": "user",
+    "Q6b": "user",
+    "Q6c": "user",
+    "Q10": "user",
+    "Q12": "default",
+    "Q12b": "extracted",
+    "Q12c": "user",
+    "Q12d": "user",
+    "Q12f": "default",
+    "Q13": "user",
+    "Q14": "user",
+    "Q15": "user",
+    "Q17": "default"
+  }
+}

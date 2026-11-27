@@ -12,9 +12,8 @@ negative paths: an altered Balanced figure, a bare week range, a dropped
 validator with named lines; a `.phase-status.json` that says Generate completed fails the
 add-on with its named line.
 
-No full-mode heroku report fixture exists (no `fixtures/**/heroku*/migration-report.html`);
-the full-mode path is covered only by the synthetic report in
-`test_accept_migration_run.py`. Authoring one is a follow-up.
+The full-mode golden (`fixtures/heroku-generate/after-generate/migration-report.html`) is
+covered by test_heroku_generate_report_fixture.py.
 """
 from __future__ import annotations
 
@@ -65,11 +64,6 @@ def _copy(tmp_path: Path, name: str) -> Path:
     run_dir = tmp_path / name
     shutil.copytree(FIXTURE_ROOT / name, run_dir)
     return run_dir
-
-
-def test_no_full_mode_heroku_fixture_exists() -> None:
-    assert not list((PLUGIN_ROOT / "fixtures").glob("**/heroku*/**/migration-report.html"))
-    assert not list((PLUGIN_ROOT / "fixtures").glob("**/heroku*/migration-report.html"))
 
 
 @pytest.mark.parametrize("name", FIXTURES)
