@@ -8,30 +8,29 @@ Schema for `estimation-infra.json`, produced by `estimate-infra.md`.
 
 The fields **`aws_monthly_premium`**, **`aws_monthly_balanced`**, **`aws_monthly_optimized`** (under `projected_costs`) and **`option_a_premium`**, **`option_b_balanced`**, **`option_c_optimized`** (under `cost_comparison`) are **three pricing scenarios** for the **same** GCP->AWS mapping in `aws-design.json`. They are **not** three alternative Terraform roots.
 
-**`scenario_deltas` (required with three tiers):** `projected_costs.scenario_deltas` itemizes, per non-Balanced scenario, what concretely differs from Balanced **for this stack** — the estimate engine already knows (it priced the differences); this field makes the reader see them instead of inferring from generic labels. Each entry names the change AND its consequence when the change is architectural, not just financial (e.g. dropping a NAT Gateway is a network-posture change, not merely savings):
+**`scenario_deltas` (required with three tiers):** `projected_costs.scenario_deltas` itemizes, per non-Balanced scenario, what concretely differs from Balanced **for this stack** — the estimate engine already knows (it priced the differences); this field makes the reader see them instead of inferring from generic labels. Premium entries are the Multi-AZ uplift lines; Optimized entries are the commitment rows (commitment, rate, eligible line). Neither tier adds or removes a resource — architectural changes such as dropping a NAT Gateway are `optimization_opportunities` rows:
 
 ```json
 "scenario_deltas": {
   "premium": [
-    "RDS Multi-AZ instead of single-AZ (+$14/mo) — removes the single-AZ assumption",
-    "Provisioned compute headroom (+$X/mo)"
+    "RDS Multi-AZ instead of single-AZ (+$12/mo — db.t4g.micro at the cached Multi-AZ rate) — removes the single-AZ assumption"
   ],
   "optimized": [
-    "Drops NAT Gateway (-$33/mo) — tasks move to public subnets or VPC endpoints; security-posture change, not just savings",
-    "Assumes 1-year commitment pricing on compute (-$Y/mo) — requires an upfront commitment decision"
+    "Assumes a 1-year no-upfront Compute Savings Plan on Fargate at 30%, the mid-point of 20–40% (-$7/mo) — a commitment decision after a 30–90 day usage baseline",
+    "Assumes a 1-year no-upfront Database Savings Plan on RDS at ~20% (-$3/mo) — mutually exclusive with RDS Reserved Instances on the same instance"
   ]
 }
 ```
 
-Validation: when all three tiers are present, `scenario_deltas.premium` and `scenario_deltas.optimized` are non-empty string arrays; every architectural delta (resource added/removed vs the Balanced design) states its consequence, and commitment-based savings name the commitment. Readers of pre-extension artifacts must tolerate absence.
+Validation: when all three tiers are present, `scenario_deltas.premium` and `scenario_deltas.optimized` are non-empty string arrays (Premium may hold the single entry "No line has an unapplied Multi-AZ uplift — Premium equals Balanced"); Premium entries name the uplifted line, Optimized entries name the commitment and its rate. Readers of pre-extension artifacts must tolerate absence.
 
 | Tier key        | User-facing label | Subtitle (use in reports / MIGRATION_GUIDE)                                |
 | --------------- | ----------------- | -------------------------------------------------------------------------- |
-| **`premium`**   | Premium           | _Highest resilience / highest monthly estimate in this model_              |
-| **`balanced`**  | Balanced          | _Default scenario; compare GCP to this first_                              |
-| **`optimized`** | Optimized         | _Lower monthly estimate; reservations / Spot / storage trade-offs assumed_ |
+| **`premium`**   | Premium           | _Balanced plus the Multi-AZ / HA uplift_                                   |
+| **`balanced`**  | Balanced          | _Right-sized design at on-demand rates; compare GCP to this row first_     |
+| **`optimized`** | Optimized         | _Balanced with a commitment discount on RI/SP-eligible lines_              |
 
-**How to read:** Scenario order is **highest -> middle -> lowest** monthly AWS estimate for the modeled architecture. **Balanced** is the **primary** comparison row vs the GCP baseline. **Premium** and **Optimized** are **bounds** (HA vs cost-optimization skew).
+**How to read:** Scenario order is **highest -> middle -> lowest** monthly AWS estimate for the modeled architecture. **Balanced** is the right-sized figure (the one Terraform implements) and the **primary** comparison row vs the GCP baseline. **Premium** = Balanced plus the Multi-AZ / HA uplift on lines whose HA handling allows it; **Optimized** = Balanced with a mid-point commitment discount on the RI/SP-eligible subtotal only. Spot and storage-class assumptions are never tier inputs (plugin-wide rule: `references/vendored/report/report-decision-core.md` § Cost Comparison).
 
 **Terraform:** When the Generate phase produces `terraform/`, it implements **one** infrastructure baseline aligned with the **Balanced** scenario (`aligned_with_estimate_tier` in the `migration_summary` output). **Premium** and **Optimized** remain **estimate-only** unless the customer edits IaC. See `references/phases/generate/generate-artifacts-infra.md` (`terraform/README.md`, `main.tf` header comment).
 
@@ -571,7 +570,7 @@ Present in `estimation-infra.json` only when `preferences.json` → `design_cons
 - Each `optimization_opportunities[]` entry includes required fields: `opportunity`, `target_services`, `savings_percent`, `implementation_effort`, `description`. Optional fields: `type`, `savings_monthly` (null when post-migration sizing unavailable), `commitment`, `timing`, `prerequisite`, `references`, `alternative`
 - Compute Savings Plans entries for Cloud Run migrations MUST NOT include `savings_monthly` sized from GCP billing — use `savings_monthly: null` and `timing: post-migration`
 - Database Savings Plans entries MAY include `savings_monthly` only when projected DB on-demand exceeds $50/month
-- `optimization_opportunities` savings are incremental to **Balanced** on-demand totals — not additive on **Optimized** tier (which already embeds reservation/Spot assumptions)
+- `optimization_opportunities` savings are incremental to **Balanced** on-demand totals — not additive on **Optimized** tier (which already includes the commitment rows at their mid-point rate)
 - The Cost Optimization Opportunities section renders even when the design has no RI/SP-eligible service — per `ri-sp-eligibility.md`'s three-state model, state explicitly which state the design landed in rather than omitting the section
 - `financial_summary` provides a clear executive-level view
 - `recommendation` block exists with `path`, `path_label`, `migrate_if`, `stay_if`, and `next_steps` all populated

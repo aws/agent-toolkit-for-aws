@@ -153,7 +153,7 @@
       </div>
 
       <div class="callout callout-info">
-        <strong>How to read cost tiers:</strong> Premium, Balanced, and Optimized are <em>pricing scenarios</em> for the same mapped architecture — not three Terraform stacks. Generated <code>terraform/</code> implements the <strong>Balanced</strong> baseline only.
+        <strong>How to read cost tiers:</strong> Premium, Balanced, and Optimized are <em>pricing scenarios</em> for the same mapped architecture — not three Terraform stacks. <strong>Balanced</strong> is the right-sized design at on-demand rates and the only tier generated <code>terraform/</code> implements; <strong>Premium</strong> is Balanced plus the Multi-AZ uplift; <strong>Optimized</strong> is Balanced with a mid-point commitment discount on the RI/SP-eligible lines only. Spot and storage-class savings are opportunities, not tier inputs.
       </div>
 
       <h3>Migrate if</h3>
@@ -262,7 +262,7 @@
             <td>Infrastructure</td>
             <td>$165</td>
             <td>$112</td>
-            <td>$82</td>
+            <td>$102</td>
             <td class="savings">-$53</td>
           </tr>
           <tr>
@@ -276,7 +276,7 @@
             <td><strong>Total (excl. BigQuery)</strong></td>
             <td><strong>$1,415</strong></td>
             <td><strong>$652</strong></td>
-            <td><strong>$116*</strong></td>
+            <td><strong>$136*</strong></td>
             <td class="savings"><strong>-$763 (-54%)</strong></td>
           </tr>
           <tr>
@@ -337,25 +337,25 @@
         </thead>
         <tbody>
           <tr>
-            <td>Premium<br><span class="tier-sub">Highest resilience / highest monthly estimate</span></td>
-            <td>$198</td>
-            <td class="increase">+20% (+$33)</td>
-            <td class="increase">+$396</td>
-            <td>RDS Multi-AZ instead of single-AZ (+$21/mo) — removes the single-AZ assumption; Fargate provisioned headroom (+$12/mo)</td>
+            <td>Premium<br><span class="tier-sub">Balanced plus the Multi-AZ uplift</span></td>
+            <td>$124</td>
+            <td class="savings">-25% (-$41)</td>
+            <td class="savings">-$492</td>
+            <td>RDS Multi-AZ instead of single-AZ (+$12/mo — db.t4g.micro at the cached Multi-AZ rate) — removes the single-AZ assumption; no other line has an unapplied Multi-AZ uplift</td>
           </tr>
           <tr>
-            <td><strong>Balanced</strong><br><span class="tier-sub">Default scenario; Terraform implements this tier</span></td>
+            <td><strong>Balanced</strong><br><span class="tier-sub">Right-sized design at on-demand rates; Terraform implements this tier</span></td>
             <td><strong data-cost-key="aws_monthly_balanced">$112</strong></td>
             <td class="savings"><strong>-32% (-$53)</strong></td>
             <td class="savings"><strong>-$636</strong></td>
             <td>— anchor; matches generated Terraform</td>
           </tr>
           <tr>
-            <td>Optimized<br><span class="tier-sub">Spot, reservations, storage trade-offs assumed</span></td>
-            <td>$82</td>
-            <td class="savings">-50% (-$83)</td>
-            <td class="savings">-$996</td>
-            <td>Drops NAT Gateway (-$18/mo) — tasks move to public subnets or VPC endpoints, a posture change, not just savings; assumes a 1-year Compute Savings Plan (-$12/mo)</td>
+            <td>Optimized<br><span class="tier-sub">Balanced with a commitment discount on eligible lines</span></td>
+            <td>$102</td>
+            <td class="savings">-38% (-$63)</td>
+            <td class="savings">-$756</td>
+            <td>Assumes a 1-year no-upfront Compute Savings Plan on Fargate at 30%, the mid-point of 20–40% (−$7/mo) — a commitment decision after a 30–90 day usage baseline; assumes a 1-year no-upfront Database Savings Plan on RDS at ~20% (−$3/mo) — mutually exclusive with RDS Reserved Instances on the same instance</td>
           </tr>
         </tbody>
       </table>
@@ -365,9 +365,10 @@
       <h2>Cost Optimization</h2>
       <p>Generated Terraform is <strong>Balanced on-demand</strong> (Est. $112/mo).
          Savings Plans and Reserved Instances are account-level purchases after you
-         have a usage baseline. Do not add these rows on top of the Optimized tier
-         (Est. $82/mo) — that tier already embeds illustrative Spot and 1-year
-         Savings Plan assumptions.</p>
+         have a usage baseline. Optimized (Est. $102/mo) already includes the Compute
+         and Database Savings Plan rows below at their mid-point rates — do not add
+         those savings on top of it. Spot and S3-IA are post-migration opportunities,
+         not tier inputs.</p>
       <table>
         <caption>How the estimated monthly run rate changes if this stack takes a commitment. Figures are incremental to Balanced on-demand.</caption>
         <thead>
@@ -387,21 +388,21 @@
           </tr>
           <tr>
             <td>Compute Savings Plan (1-year, no upfront)</td>
-            <td>Est. $100</td>
-            <td>−$12</td>
+            <td>Est. $105</td>
+            <td>−$7</td>
             <td>Covers Fargate after 30–90 days of Cost Explorer data.</td>
           </tr>
           <tr>
             <td>Database Savings Plan (1-year, no upfront)</td>
-            <td>Est. ~20% off RDS</td>
-            <td>Typical ~20% on provisioned RDS</td>
+            <td>Est. $109</td>
+            <td>−$3</td>
             <td>Mutually exclusive with RDS Reserved Instances on the same workload.</td>
           </tr>
           <tr>
-            <td>Optimized composite (illustrative bound)</td>
-            <td>Est. $82</td>
-            <td>−$30</td>
-            <td>Already includes Spot and 1-year Savings Plan assumptions. Use as a floor, not a sum of extra discounts.</td>
+            <td>Optimized (both commitments)</td>
+            <td>Est. $102</td>
+            <td>−$10</td>
+            <td>Already includes the two rows above at their mid-point rates. Use as the committed floor, not a sum of extra discounts.</td>
           </tr>
         </tbody>
       </table>
@@ -742,8 +743,8 @@
 
     <section id="appendix-optimization">
       <h2>Savings Plans and Reserved Instances</h2>
-      <p>Incremental to Balanced on-demand (Est. $112/mo). Do not add these savings
-         onto Optimized (Est. $82/mo) — that tier already embeds reservation and Spot assumptions.</p>
+      <p>Incremental to Balanced on-demand (Est. $112/mo). Optimized (Est. $102/mo) already
+         includes the Savings Plan rows; Spot and S3-IA rows are post-migration opportunities, not tier inputs.</p>
       <table>
         <caption>Estimated cost savings available post-migration, infra and AI combined.</caption>
         <thead><tr><th scope="col">Optimization</th><th scope="col">Target</th><th scope="col">Est. savings</th><th scope="col">Commitment</th><th scope="col">Effort</th></tr></thead>
@@ -752,6 +753,7 @@
           <tr><td>Database Savings Plans</td><td>RDS</td><td>~20%</td><td>1-year no-upfront</td><td>Low</td></tr>
           <tr><td>S3 Infrequent Access</td><td>S3 build artifacts</td><td>$1/mo (38%)</td><td>None</td><td>Low</td></tr>
           <tr><td>Fargate Spot</td><td>Fargate dev/staging</td><td>$8/mo (70%)</td><td>None</td><td>Medium</td></tr>
+          <tr><td>NAT Gateway → VPC endpoints</td><td>NAT Gateway</td><td>$18/mo (~55%)</td><td>None</td><td>Medium</td></tr>
           <tr><td>Model downsizing (AI)</td><td>Bedrock text</td><td>$506/mo</td><td>None</td><td>Low (after A/B test)</td></tr>
           <tr><td>Prompt caching (Claude)</td><td>Bedrock</td><td>Workload-dependent; measure cache hits and writes</td><td>None</td><td>Low</td></tr>
         </tbody>
