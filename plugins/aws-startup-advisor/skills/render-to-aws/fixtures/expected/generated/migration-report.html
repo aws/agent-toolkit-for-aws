@@ -367,17 +367,17 @@
     <section id="what-if-scenarios">
       <h2>What-if Scenarios <a class="toplink" href="#toc">&uarr; contents</a></h2>
       <p>The workshop recorded two scenarios against the same frozen inventory. The baseline is active: the figures above and the
-         generated Terraform describe it. The baseline row equals the estimate above. The Graviton row is the workshop snapshot on the us-east-1 cached-rate basis, taken against an earlier estimate and not re-priced from the figures above.</p>
+         generated Terraform describe it. The baseline row equals the estimate above. The Graviton row is the same right-sized design re-priced on the us-east-1 cached rates with the arm64 Fargate and Lambda rates and the same tier rules.</p>
       <table>
         <caption>Workshop scenarios compared: knobs, monthly USD per pricing scenario, and complexity. The active row is marked.</caption>
         <thead><tr><th scope="col">Scenario</th><th scope="col">Region</th><th scope="col">HA</th><th scope="col">Compute</th><th scope="col">Arch</th><th scope="col">Premium $/mo</th><th scope="col">Balanced $/mo</th><th scope="col">Optimized $/mo</th><th scope="col">Complexity</th></tr></thead>
         <tbody>
           <tr class="active-scenario"><td>Baseline (active)</td><td>us-east-1</td><td>Multi-AZ</td><td>ECS on Fargate (direct task control)</td><td>x86_64</td><td>$314</td><td>$314</td><td>$278</td><td>Large</td></tr>
-          <tr><td>Graviton where compatible</td><td>us-east-1</td><td>Multi-AZ</td><td>ECS on Fargate (direct task control)</td><td>arm64</td><td>$288</td><td>$288</td><td>$230</td><td>Large</td></tr>
+          <tr><td>Graviton where compatible</td><td>us-east-1</td><td>Multi-AZ</td><td>ECS on Fargate (direct task control)</td><td>arm64</td><td>$288</td><td>$288</td><td>$260</td><td>Large</td></tr>
         </tbody>
       </table>
       <ul class="compact">
-        <li><strong>Graviton where compatible vs baseline:</strong> one knob changes — CPU architecture x86_64 → arm64 for the Fargate tasks and the Lambda task where an arm64 image is available. The snapshot shows Balanced at $288 and Optimized at $230, with a right-sizing delta of $52 and no line unpriced. Those snapshot figures were not re-derived after the baseline estimate changed (baseline right-sizing delta $45), so read the row as indicative and do not subtract it from the baseline row.</li>
+        <li><strong>Graviton where compatible vs baseline:</strong> one knob changes — CPU architecture x86_64 → arm64 for the Fargate tasks and the Lambda task where an arm64 image is available. The cached arm64 rates are about 80% of the x86_64 rates for Fargate vCPU and memory and for Lambda duration, so Balanced falls from $314 to $288 and the like-for-like line to $328, a right-sizing delta of $40. Optimized applies the same commitment rule to the smaller eligible lines (Compute Savings Plan about $29; still no Database Savings Plan, because the RDS and Valkey classes do not change), so it is $260. No line becomes unpriced.</li>
         <li>The discovery inventory is frozen for both scenarios; the generated Terraform matches the <strong>active</strong> scenario only. Activating the Graviton scenario re-runs Design, Estimate and Generate on its preferences.</li>
         <li>No region note applies: both scenarios target us-east-1, the region of the cached rates.</li>
       </ul>

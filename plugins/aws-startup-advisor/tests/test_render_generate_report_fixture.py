@@ -364,8 +364,8 @@ def test_golden_figures_derive_from_the_estimate_and_baseline() -> None:
     assert f"<td>${_whole(summary['premium_known_cost_monthly_usd'])}</td><td>${balanced}</td><td>${optimized}</td>" in baseline_row
     assert summary["balanced_known_cost_monthly_usd"] == scenarios["balanced"]["known_cost_monthly_usd"]
     assert summary["optimized_known_cost_monthly_usd"] == scenarios["optimized"]["known_cost_monthly_usd"]
-    # The Graviton row is a workshop snapshot; the report says so rather than presenting it as re-derived.
-    assert "workshop snapshot" in _section(html, "what-if-scenarios") and "not re-priced" in _section(html, "what-if-scenarios")
+    # The Graviton row is re-priced under the same rules, never a stale snapshot (workshop-compare.md).
+    assert "not re-priced" not in _section(html, "what-if-scenarios")
 def test_golden_database_savings_plan_rows_claim_no_saving() -> None:
     """No pre-Generation-7 line gets a Database Savings Plan saving or a purchase recommendation in the report."""
     html = REPORT.read_text(encoding="utf-8")
@@ -408,3 +408,82 @@ def test_golden_audit_log_and_budget_rows_match_render_docs() -> None:
     assert "Pro plans and higher" in spec and "https://render.com/docs/audit-logs" in spec
     assert "Promotional or AWS Activate credits do not cover the upfront cost" in re.sub(r"\s+", " ", spec).replace("promotional or AWS Activate", "Promotional or AWS Activate")
 
+
+
+
+def _graviton_from_baseline(estimate: dict) -> dict[str, Decimal]:
+    """Re-price the baseline's Balanced and like-for-like lines on the cached arm64 rates and apply
+    the tier rules: Premium = Balanced (no uplift on this estate), Optimized = Balanced minus the
+    Compute Savings Plan on eligible lines (Lambda at its cap), each line's discount rounded to whole
+    dollars half-even; no Database Savings Plan because the database classes do not change."""
+    pricing = json.loads((SKILL_ROOT / "references/vendored/pricing/aws-infra-pricing.json").read_text(encoding="utf-8"))
+    rates = json.loads((SKILL_ROOT / "references/vendored/estimate/commitment-discount-ranges.json").read_text(encoding="utf-8"))
+    eligibility = json.loads((SKILL_ROOT / "knowledge/estimate/estimate-defaults.json").read_text(encoding="utf-8"))["commitment_eligibility"]
+    cents = Decimal("0.01")
+    fargate = (Decimal(str(pricing["fargate"]["per_vcpu_hour_arm64"])) / Decimal(str(pricing["fargate"]["per_vcpu_hour"]))).quantize(cents, ROUND_HALF_EVEN)
+    lam = (Decimal(str(pricing["lambda"]["per_gb_second_arm64_first_6b"])) / Decimal(str(pricing["lambda"]["per_gb_second_x86_first_6b"]))).quantize(cents, ROUND_HALF_EVEN)
+
+    def ratio(service: str) -> Decimal:
+        if service == "AWS Lambda":
+            return lam
+        return fargate if "Fargate" in service else Decimal(1)
+
+    def reprice(lines: list[dict]) -> list[tuple[str, Decimal]]:
+        return [
+            (row["aws_service"], (Decimal(str(row["monthly_amount"])) * ratio(row["aws_service"])).quantize(cents, ROUND_HALF_EVEN))
+            for row in lines
+            if row["monthly_amount"] is not None
+        ]
+
+    balanced_lines = reprice(estimate["scenarios"]["balanced"]["lines"])
+    balanced = sum(amount for _, amount in balanced_lines)
+    like = sum(amount for _, amount in reprice(estimate["scenarios"]["like_for_like"]["lines"]))
+    compute = set(eligibility["compute_savings_plans"]["aws_services"])
+    plan = Decimal(str(rates["rates"]["compute_savings_plan"]["rate"]))
+    cap = Decimal(str(rates["service_caps"]["aws_lambda"]["cap"]))
+    discount = sum(
+        (amount * (min(plan, cap) if service == "AWS Lambda" else plan)).quantize(Decimal(1), ROUND_HALF_EVEN)
+        for service, amount in balanced_lines
+        if service in compute and amount
+    )
+    return {"balanced": balanced, "premium": balanced, "optimized": balanced - discount, "like_for_like": like, "delta": like - balanced}
+
+
+def test_graviton_what_if_scenario_is_re_derived_under_the_tier_rules() -> None:
+    """scenario-002 changes only the CPU architecture, so its summary must equal the baseline re-priced
+    on arm64 rates under the same tier rules; a stale snapshot (for example one that still carries a
+    Database Savings Plan discount) fails, and the report row shows the same figures."""
+    estimate = json.loads((EXPECTED / "estimation-infra.json").read_text(encoding="utf-8"))
+    expected = _graviton_from_baseline(estimate)
+    for path in (WORKSHOP_INDEX, EXPECTED / "workshop-scenarios.json"):
+        rows = json.loads(path.read_text(encoding="utf-8"))["scenarios"]
+        summary = next(row for row in rows if row["scenario_id"] == "scenario-002")["estimation_summary"]
+        assert Decimal(str(summary["balanced_known_cost_monthly_usd"])) == expected["balanced"], path.name
+        assert Decimal(str(summary["premium_known_cost_monthly_usd"])) == expected["premium"], path.name
+        assert Decimal(str(summary["optimized_known_cost_monthly_usd"])) == expected["optimized"], path.name
+        assert Decimal(str(summary["like_for_like_known_cost_monthly_usd"])) == expected["like_for_like"], path.name
+        assert Decimal(str(summary["rightsizing_delta_monthly_usd"])) == expected["delta"], path.name
+    html = REPORT.read_text(encoding="utf-8")
+    graviton = next(row for row in _tbody_rows(_section(html, "what-if-scenarios")) if "Graviton" in row)
+    figures = [_whole(expected[key]) for key in ("premium", "balanced", "optimized")]
+    assert "<td>${}</td><td>${}</td><td>${}</td>".format(*figures) in graviton, graviton
+
+
+def test_render_layer_cost_optimization_bullet_matches_step_2_5() -> None:
+    """The render layer is loaded for every full-mode report, so its Cost Optimization add-on must give
+    the same rules as generate-artifacts-report.md Step 2.5: one row per commitment bucket, a no-saving
+    Database Savings Plan row for pre-Generation-7 classes, and the credits caveat once below B.1."""
+    layer = (SKILL_ROOT / "references/shared/report-decision-core.md").read_text(encoding="utf-8")
+    spec = (SKILL_ROOT / "references/phases/generate/generate-artifacts-report.md").read_text(encoding="utf-8")
+    bullet = next(line for line in layer.splitlines() if line.startswith("- **Cost Optimization (`exec-optimization`"))
+    step = spec[spec.index("## Step 2.5"):]
+    caveat = (
+        "promotional or AWS Activate credits do not cover the upfront cost of Reserved Instances or Savings "
+        "Plans (Partial or All Upfront) and apply only to the ongoing discounted rate"
+    )
+    assert caveat in bullet
+    assert " ".join(caveat.split()) in " ".join(step.split())
+    assert "directly below the B.1 table" in bullet and "directly below the B.1 opportunities table" in " ".join(step.split())
+    assert "Generation 7+ gate" in bullet and "Generation 7+ gate" in step
+    for stale in ("with eligible lines, per", "carries its discount in dollars", "no credits claim is made", "is replaced by"):
+        assert stale not in bullet, stale
