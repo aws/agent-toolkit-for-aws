@@ -18,9 +18,11 @@ it when and how to use it.
 
 | Path | What it is |
 |---|---|
-| `skills/aws-context/` | The `aws-context` skill and its retrieval, curation and connecting references |
+| `skills/aws-context/` | The `aws-context` skill and its retrieval, curation, connecting and hooks references |
 | `commands/setup.md` | `/setup`: connect the agent to your graph's Region, with OAuth or SigV4 |
 | `commands/context-login.md` | `/context-login`: sign in, or check that you are signed in |
+| `commands/context-hooks.md` | `/context-hooks`: show or change the hooks |
+| `com.anthropic.claude-code/hooks/` | Claude Code hooks, off by default: prompt steering (`UserPromptSubmit`) and session traces (`SessionEnd`, PutTrace). Python 3.7+ standard library, with unit tests |
 | `.mcp.json`, `mcp.json` | The AWS Context MCP server, us-east-1 by default |
 
 ## Getting started
@@ -32,6 +34,14 @@ it when and how to use it.
 3. Ask a question about your organization's data.
 
 To create a graph, use the `setting-up-aws-context` skill in the `aws-core` plugin.
+
+## Hooks (Claude Code)
+
+Both hooks are off until you turn them on with `/context-hooks`, which shows what each one
+sends and waits for your yes. They call AWS Context with an AWS profile on your machine.
+Session traces send the session log as recorded, with nothing removed, so keep secrets and
+personal data out of sessions while traces are on. Other agents get the skill and commands
+without hooks.
 
 ## Privacy
 

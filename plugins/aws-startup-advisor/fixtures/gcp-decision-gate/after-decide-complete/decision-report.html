@@ -131,18 +131,18 @@
 <section id="exec-costs">
 <h2>Cost Comparison <a class="toplink" href="#toc">↑ contents</a></h2>
 <table><caption>Estimated monthly costs</caption><thead><tr><th scope="col">Tier</th><th scope="col" class="num">Est. Monthly AWS</th></tr></thead>
-<tbody><tr><td>Premium</td><td class="num">Est. $212/mo</td></tr><tr><td><strong>Balanced</strong> (compare GCP to this row first)</td><td class="num"><strong data-cost-key="aws_monthly_balanced">Est. $155/mo</strong></td></tr><tr><td>Optimized</td><td class="num">Est. $118/mo</td></tr></tbody></table>
+<tbody><tr><td>Premium</td><td class="num">Est. $167/mo</td></tr><tr><td><strong>Balanced</strong> (compare GCP to this row first)</td><td class="num"><strong data-cost-key="aws_monthly_balanced">Est. $155/mo</strong></td></tr><tr><td>Optimized</td><td class="num">Est. $140/mo</td></tr></tbody></table>
 <p><span class="chip-warn">⚠ not comparable</span> Your GCP baseline: estimated from resource configs (±20–30%, standing charges only). Your stated spend band ($1K–$5K/mo) measures your whole bill and is not directly comparable to the AWS figure above.</p>
 </section>
 <section id="exec-optimization">
 <h2>Cost Optimization <a class="toplink" href="#toc">↑ contents</a></h2>
-<p>Savings Plans and Reserved Instances are incremental to the Balanced on-demand baseline (Est. $155/mo). Do not add those savings on top of Optimized (Est. $118/mo) — that tier already embeds reservation assumptions.</p>
+<p>Savings Plans and Reserved Instances are incremental to the Balanced on-demand baseline (Est. $155/mo). Optimized (Est. $140/mo) already includes the Compute Savings Plan row below at its mid-point rate and nothing else — do not add it on top. The Database Savings Plan row is not in Optimized: db.t4g.micro is Generation 4 and Database Savings Plans cover Generation 7 and newer instances only.</p>
 <table>
 <caption>Post-migration commitment options vs Balanced on-demand.</caption>
 <thead><tr><th scope="col">Optimization</th><th scope="col">Target</th><th scope="col">Est. savings</th><th scope="col">Commitment</th><th scope="col">Effort</th></tr></thead>
 <tbody>
 <tr><td>Compute Savings Plans</td><td>Fargate</td><td>20–40%</td><td>1-year no-upfront</td><td>Low</td></tr>
-<tr><td>Database Savings Plans</td><td>RDS</td><td>~20%</td><td>1-year no-upfront</td><td>Low</td></tr>
+<tr><td>Database Savings Plans</td><td>RDS, only after moving off db.t4g.micro (Generation 4) to a Generation 7+ class</td><td>~20% on a qualifying class; none on db.t4g.micro</td><td>1-year no-upfront</td><td>Low</td></tr>
 </tbody>
 </table>
 </section>

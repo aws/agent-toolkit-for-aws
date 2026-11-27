@@ -67,7 +67,7 @@ Gather data from all available artifacts. Each section below notes which artifac
 
 ## Step 1: Build Executive Summary Section
 
-**Load `references/shared/report-decision-core.md` and render it in `full` mode.** That file is the single source of truth for every executive-summary section (Decision Summary through "What this assessment rests on") — verdict typography, baseline-quality/not-comparable rules, Activate wording, and readability conventions all live there. Do not restate or paraphrase its rules here.
+**Load `references/shared/report-decision-core.md` and render it in `full` mode.** That file loads the vendored canonical core (`references/vendored/report/report-decision-core.md`) first and then supplies this skill's parameters and add-ons; together they are the single source of truth for every executive-summary section (Decision Summary through "What this assessment rests on") — verdict typography, baseline-quality/not-comparable rules, Activate wording, and readability conventions all live there. Do not restate or paraphrase its rules here.
 
 Full-mode notes:
 
@@ -76,22 +76,64 @@ Full-mode notes:
 
 ## Step 2: Build Detailed Appendix
 
-The appendix follows the executive summary, clearly separated with an "Appendix: Detailed Migration Analysis" header.
+**Load `references/vendored/report/report-appendix-skeleton.md` and build the appendix block from it.** That file is the single source of truth for the shared appendix build — the stable lettering, the appendix divider, the purpose, trigger, data sources, table shapes and content rules of Appendices A, B, B.1, C, E, F, G, H, I and J, and the post-write appendix self-check. Do not restate or paraphrase its rules here. If the file is missing, emit `GATE_FAIL | phase=generate | fragment=artifacts-report | reason=renderer_missing` and stop.
 
-### Appendix Section A — Service Recommendations
+### Parameters
 
-For each mapped service, include:
+The skeleton's `⟨parameter⟩` values for this skill. The GCP-specific content the skeleton points at (Appendix B sizing columns, Appendix D, the Appendix F critical-default caveats, the Appendix G control rows, the Appendix I known limitations) follows under the GCP add-on headings below.
 
-- GCP service name and type
-- AWS service recommendation
-- **How the mapping was chosen** — use **Standard pairing**, **Tailored to your setup**, or **Estimated from billing only** (`design-refs/fast-path.md` → User-facing vocabulary); JSON `confidence` may appear in parentheses for support
-- Full rationale text from design artifact
-- If the mapping was **Tailored to your setup** (`inferred`) and `rubric_applied` is present: list the 6 criteria evaluations (appendix detail — optional in executive summary)
-- If `human_expertise_required: true`: include the specialist guidance callout
+| Parameter                                                                        | Value                                                                                                                                                                                                                                                                                                                                                                                      |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| ⟨source_cloud⟩                                                                   | GCP                                                                                                                                                                                                                                                                                                                                                                                        |
+| ⟨report_mode⟩                                                                    | `full`                                                                                                                                                                                                                                                                                                                                                                                     |
+| ⟨precheck_owner⟩ / ⟨precheck_skill_flag⟩                                         | In-fragment: Step 0 above loads `shared/validate-artifacts.md` / n/a (no `--skill` flag; the fragment runs the checks itself)                                                                                                                                                                                                                                                              |
+| ⟨appendices_rendered⟩                                                            | A, B, C, E, I, J required; B.1 conditional (`optimization_opportunities[]` non-empty); D conditional (AI artifacts exist); F conditional (`preferences.json` exists); G conditional (infra track ran, `baseline.tf` emitted); H conditional (infra track ran). No declared omissions.                                                                                                        |
+| ⟨appendix_header_text⟩                                                           | "Appendix: Detailed Migration Analysis"                                                                                                                                                                                                                                                                                                                                                    |
+| ⟨footer_text⟩                                                                    | "Generated by GCP to AWS Migration Advisor — draft for review; verify figures against source JSON artifacts before executive sign-off." (Step 3 HTML structure)                                                                                                                                                                                                                             |
+| ⟨extra_anchors⟩                                                                  | none — the decision core's `aws_monthly_balanced` / `current_monthly` (Step 4 item 15)                                                                                                                                                                                                                                                                                                     |
+| ⟨accounting_ledger_field⟩ / ⟨accounting_split_sentence⟩ / ⟨accounting_location⟩  | n/a — gcp-to-aws writes no generation ledger; the PRIMARY-services headline rule in `references/shared/report-decision-core.md` § 1 governs counts                                                                                                                                                                                                                                         |
+| ⟨validator_invocation⟩                                                           | The command block in Step 4 (`--estimation-infra`, `--estimation-ai`, `--aws-design`, `--migration-dir`; no `--profile`)                                                                                                                                                                                                                                                                  |
+| ⟨design_mapping_source⟩                                                          | `aws-design.json` `clusters[].resources[]`; fallback `aws-design-billing.json` `services[]`                                                                                                                                                                                                                                                                                                 |
+| ⟨how_we_chose_vocabulary_ref⟩                                                    | `design-refs/fast-path.md` → User-facing vocabulary                                                                                                                                                                                                                                                                                                                                        |
+| ⟨service_row_extras⟩                                                             | If the mapping was **Tailored to your setup** (`inferred`) and `rubric_applied` is present: list the 6 criteria evaluations (appendix detail — optional in executive summary)                                                                                                                                                                                                              |
+| ⟨cost_breakdown_source⟩                                                          | `estimation-infra.json` `projected_costs.breakdown`                                                                                                                                                                                                                                                                                                                                        |
+| ⟨mandatory_breakdown_rows⟩                                                       | compute, database, storage, networking; **security_baseline** (`mid` cost AND component sub-rows from `components`, e.g. GuardDuty, cloudtrail_s3, budgets); **observability** (`mid` and `note` — GCP free-tier comparison); supporting (Secrets Manager, ECR, etc.)                                                                                                                      |
+| ⟨baseline_breakdown⟩                                                             | `current_costs.breakdown` — compute/database/storage/networking/other vs infra total                                                                                                                                                                                                                                                                                                       |
+| ⟨floor_fields⟩                                                                   | n/a — the GCP estimate carries no `is_floor` / unpriced-line fields                                                                                                                                                                                                                                                                                                                        |
+| ⟨extra_cost_columns⟩                                                             | "Sizing basis" — see GCP add-on § Appendix Section B below                                                                                                                                                                                                                                                                                                                                 |
+| ⟨optimization_sources⟩ / ⟨ri_sp_eligibility_ref⟩                                 | Infra (`estimation-infra.json`) + AI (`estimation-ai.json`, `available` sequencing per `estimate-ai.md` Part 6) / `references/shared/ri-sp-eligibility.md`                                                                                                                                                                                                                                 |
+| ⟨phase_order_source⟩                                                             | The generation plan's `migration_plan` stages (`generation-infra.json`, fallback `generation-billing.json`)                                                                                                                                                                                                                                                                                 |
+| ⟨scripts_list⟩                                                                   | The `scripts/` the run emitted, in plan order                                                                                                                                                                                                                                                                                                                                              |
+| ⟨cutover_strategy_fields⟩                                                        | n/a — the GCP preferences record no cutover-strategy field; the plan's phase descriptions carry the strategy                                                                                                                                                                                                                                                                              |
+| ⟨rollback_source⟩ / ⟨rollback_rows⟩                                              | The generation plan's rollback triggers and steps / one row per track the plan names                                                                                                                                                                                                                                                                                                      |
+| ⟨ai_appendix_spec⟩                                                               | GCP add-on § Appendix Section D below                                                                                                                                                                                                                                                                                                                                                      |
+| ⟨pack_extras⟩                                                                    | `ai-migration/` adapter files when the AI track ran — see the conditional AI artifacts table in the GCP add-on § Appendix Section E below                                                                                                                                                                                                                                                  |
+| ⟨data_artifacts⟩                                                                 | The data-artifacts table in the GCP add-on § Appendix Section E below (`preferences.json`, `ai-workload-profile.json`, `gcp-resource-inventory.json`, `estimation-infra.json`, `aws-design.json`)                                                                                                                                                                                       |
+| ⟨preferences_groups⟩                                                             | `design_constraints`, `ai_constraints`, and `startup_constraints` (when present)                                                                                                                                                                                                                                                                                                           |
+| ⟨preferences_schema_ref⟩                                                         | `references/shared/schema-preferences.md`                                                                                                                                                                                                                                                                                                                                                  |
+| ⟨critical_default_caveats⟩                                                       | GCP add-on § Appendix Section F below (Q2 / Q3 / Q6 / Q11)                                                                                                                                                                                                                                                                                                                                 |
+| ⟨baseline_controls_table⟩                                                        | The eight-row table in the GCP add-on § Appendix Section G below                                                                                                                                                                                                                                                                                                                           |
+| ⟨security_equivalent_label⟩ / ⟨security_extra_columns⟩                           | "GCP equivalent" / "Threat mitigated"                                                                                                                                                                                                                                                                                                                                                      |
+| ⟨budget_limit_formula⟩                                                           | n/a — the GCP `baseline.tf` budget alert is listed as a control row; this spec states no formula                                                                                                                                                                                                                                                                                           |
+| ⟨compliance_field⟩                                                               | `preferences.json` → `design_constraints.compliance.value`                                                                                                                                                                                                                                                                                                                                 |
+| ⟨cost_guardrail_rows⟩                                                            | The two-row guardrails table in the GCP add-on § Appendix Section G below                                                                                                                                                                                                                                                                                                                 |
+| ⟨opt_out_procedure⟩                                                              | Run `terraform apply` on `baseline.tf`. To skip: delete `baseline.tf` before applying. See `terraform/README.md` for details.                                                                                                                                                                                                                                                              |
+| ⟨gap_source_names⟩                                                               | firewall rules → security groups; service accounts → IAM roles; Cloud Audit Logs → CloudTrail; SCC optional → GuardDuty in baseline.tf; public GCS → S3 (if public GCS/S3 detected in design); GCP larger free tier vs CloudWatch always-free tier (e.g. 50 GB GCP logging vs 5 GB CloudWatch always-free)                                                                                   |
+| ⟨gap_extra_rows⟩ / ⟨observability_note_field⟩                                    | none / `note`                                                                                                                                                                                                                                                                                                                                                                              |
+| ⟨pricing_source_fields⟩                                                          | `estimation-infra.json` → `pricing_source`, `accuracy_confidence`; fallback `estimation-ai.json` accuracy fields                                                                                                                                                                                                                                                                           |
+| ⟨exclusion_extras⟩                                                               | GCP egress when `migration_cost_considerations.billing_data_available === false`                                                                                                                                                                                                                                                                                                           |
+| ⟨rightsizing_limitations⟩                                                        | GCP add-on § Appendix Section I below ((i) / (ii) / (iii))                                                                                                                                                                                                                                                                                                                                 |
+| ⟨terraform_validation_rule⟩                                                      | GCP add-on § Appendix Section I below (`validation-report.json` when present)                                                                                                                                                                                                                                                                                                              |
+| ⟨warnings_sources⟩                                                               | Design warnings, including the Elastic Beanstalk platform-branch warning — GCP add-on § Appendix Section I below                                                                                                                                                                                                                                                                           |
+| ⟨glossary_examples⟩                                                              | monthly run rate, DMS, OAI, RTO, CUD, SCC, IMDSv2, P95, RAG (Step 3 readability rule 4)                                                                                                                                                                                                                                                                                                    |
 
-Source: design artifact (aws-design.json or aws-design-billing.json)
+### Declared exceptions
 
-### Appendix Section B — Cost Estimates
+None. gcp-to-aws follows the skeleton's default appendix set with no `--profile`.
+
+**GCP add-ons.** The sections below carry the GCP-specific content the parameter table points at; each keeps its canonical letter.
+
+### Appendix Section B — GCP columns and sizing basis
 
 **Per-service cost breakdown table** with columns: Service Category, AWS Service, Monthly Cost (Balanced), Sizing basis, Calculation/Notes.
 
@@ -223,16 +265,7 @@ Not all of these require waiting until migration is validated and stable — fig
 
 Source: `ai-workload-profile.json`, `aws-design-ai.json`, `estimation-ai.json`
 
-### Appendix Section E — Generated Artifacts Catalog
-
-List all files and directories generated during the Generate phase:
-
-- `terraform/` — list .tf files and **`README.md`**
-- `scripts/` — list migration scripts
-- `ai-migration/` — list adapter files (if applicable)
-- `MIGRATION_GUIDE.md`, `README.md`
-
-Check for actual file/directory existence before listing.
+### Appendix Section E — GCP data and AI artifact tables
 
 **Data artifacts (for detailed review):**
 
@@ -244,8 +277,6 @@ Check for actual file/directory existence before listing.
 | `estimation-infra.json`       | Detailed cost model, recommendation, per-service breakdown |
 | `aws-design.json`             | Full architecture design with rationale per service        |
 
-Open any JSON file with a text editor or `cat <filename> | python3 -m json.tool` for formatted output.
-
 **AI migration artifacts (conditional — only list if they exist on disk):**
 
 | Artifact                                                    | Description                                                                       |
@@ -254,44 +285,25 @@ Open any JSON file with a text editor or `cat <filename> | python3 -m json.tool`
 | `ai-migration/setup_bedrock.sh`                             | Bedrock model access setup, plus the Bedrock budget and cost anomaly monitor (dry run unless `--execute`) |
 | `ai-migration/test_comparison.py`                           | A/B comparison harness for source vs Bedrock quality                              |
 
-Do not list files that were not generated.
-
 ### Appendix Section F — Your Configuration (`appendix-config`, conditional)
 
-**Only include if `preferences.json` exists in `$MIGRATION_DIR/`.**
-
-Key decisions that shaped this migration plan. Read every object in `design_constraints`, `ai_constraints`, and `startup_constraints` (when present). Schema: `references/shared/schema-preferences.md`.
-
-Render an HTML table with **five columns**, one row per constraint object (iterate every key in `design_constraints`, `ai_constraints`, and `startup_constraints` when present — do not hardcode a subset):
-
-| Column                    | Source                                                                                                                                          |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Question / assumption** | `prompt` on each constraint object                                                                                                              |
-| **Your choice**           | formatted `value` (human-readable; expand arrays)                                                                                               |
-| **Source**                | `chosen_by` → "User answer", "Extracted from infrastructure", "Default applied", or "Derived"                                                   |
-| **Source signal**         | the `source` field when present (shows provenance like `terraform:availability_type=ZONAL` or `default:Q16`); leave blank for user/derived rows |
-| **Design consequence**    | `design_consequence` on each constraint object                                                                                                  |
-
-**Assumption flag:** Rows where `source` starts with `"default:"` are
-unverified assumptions — label them "Default applied" and use italic text or a
-border marker so the reader can spot values that were not explicitly verified.
-Do not lower text contrast: assumption rows must retain the same WCAG AA
-contrast floor as every other table row, including on alternating row
-backgrounds.
+**All five skeleton columns are required here, including Source signal:** GCP
+constraint objects carry a `source` field (`terraform:…`, `default:Q16`), so the
+column the skeleton marks optional is rendered on every row for this skill.
 
 **Critical-default caveats (required when present):** For a defaulted constraint
 whose question ID appears in `metadata.questions_defaulted`, render the matching
 caveat below. The unknown/missing-spend and unknown-compliance rules also apply
 regardless of `chosen_by` or question metadata:
 
-- `compliance` (Q2): render a warning callout: _"⚠️ Compliance was not explicitly confirmed. The security baseline assumes no regulatory requirements. If SOC 2, PCI, HIPAA, or FedRAMP applies, re-run Clarify or manually add controls."_ **Also fire this callout whenever `compliance.value` contains `"unknown"`** (regardless of `chosen_by` — covers both "I don't know" answers and defaulted runs). `"unknown"` never triggers the Section 4 compliance-controls note or any compliance-specific architecture.
+- `compliance` (Q2): render a warning callout: _"⚠ Compliance was not explicitly confirmed. The security baseline assumes no regulatory requirements. If SOC 2, PCI, HIPAA, or FedRAMP applies, re-run Clarify or manually add controls."_ **Also fire this callout whenever `compliance.value` contains `"unknown"`** (regardless of `chosen_by` — covers both "I don't know" answers and defaulted runs). `"unknown"` never triggers the Section 4 compliance-controls note or any compliance-specific architecture.
 - `gcp_monthly_spend` (Q3): when its value is `"unknown"` or the key is absent,
   render: _"GCP spend is unconfirmed. No spend band has been assumed. The report
   shows AWS costs; a full cost comparison is unavailable until a confirmed
   source baseline is provided."_ Show this for explicit user answers as well
   as skipped/defaulted questions. A separately calculated inventory estimate
   remains labelled as incomplete standing charges, not confirmed spend.
-- `availability` (Q6): render a warning callout: _"⚠️ Database availability was assumed (Multi-AZ) — the user never confirmed it. This assumption roughly doubles the database line vs single-AZ. Confirm the availability requirement (or compare a single-AZ scenario in the what-if workshop) before treating the database estimate as final."_
+- `availability` (Q6): render a warning callout: _"⚠ Database availability was assumed (Multi-AZ) — the user never confirmed it. This assumption roughly doubles the database line vs single-AZ. Confirm the availability requirement (or compare a single-AZ scenario in the what-if workshop) before treating the database estimate as final."_
 
 Place these callouts at the top of Appendix F, before the table, so they're immediately visible.
 
@@ -303,17 +315,9 @@ render source cost, savings, percentage changes, and ROI comparisons as
 Use the estimate's baseline source and caveat consistently in the executive
 summary and cost appendix.
 
-**Sort order:** user-answered rows first, then extracted, then default, then derived.
-
-**Legacy fallback:** If a constraint object lacks `prompt` or `design_consequence` (pre-extension runs), use the catalog in `schema-preferences.md` keyed by constraint name — never omit the appendix or leave cells empty.
-
-**Do not** reduce this section to a key/value dump without question text and consequences.
-
-Source: `preferences.json`
-
 ### Appendix Section G — Security Capabilities
 
-Full security baseline capabilities. Executive summary shows a teaser; this appendix provides the complete picture.
+Control rows for the skeleton's Appendix G table (⟨baseline_controls_table⟩):
 
 | Control                | What it does for you                                                                | Threat mitigated                      | GCP equivalent                             | Monthly cost |
 | ---------------------- | ----------------------------------------------------------------------------------- | ------------------------------------- | ------------------------------------------ | ------------ |
@@ -344,45 +348,15 @@ bedrock-migration-assessment's Generate writes both controls into that script, a
 
 Read the budget row from the script's variable lines, `BUDGET_USD="${BUDGET_USD:-<amount>}"` and `BUDGET_SERVICES="${BUDGET_SERVICES:-<services>}"`. When either default is empty, the script creates no budget: replace the budget row's "What it does for you" with "no budget until you export `BUDGET_USD`" (empty amount) or "no budget until you export `BUDGET_SERVICES` with the service names Cost Explorer shows" (empty services), and quote the matching line from `ai-migration/README.md`. Keep the anomaly row. Never add an Inference profiles row: the script creates no inference profile.
 
-These are detective controls, not spend caps. You will know within ~24 hours if something goes wrong — not at invoice time.
-
-**What the baseline does NOT cover (you still need):**
-
-- SOC 2: Qualified auditor, formal policies, employee training, vendor management
-- HIPAA: BAA with AWS, qualified HIPAA auditor, data handling policies
-- PCI: QSA assessment, network segmentation validation, pen testing
-- FedRAMP: Agency-level NIST 800-53 controls, ATO process
-
-**For detailed cost breakdown:** See Appendix B (cost estimates include security baseline as a line item).
-
-**To enable:** Run `terraform apply` on `baseline.tf`. To skip: delete `baseline.tf` before applying. See `terraform/README.md` for details.
+**What the baseline does NOT cover:** the canonical list (skeleton § Appendix G).
 
 Source: static content + `preferences.json` compliance values
 
-### Appendix Section H — Security Gap Analysis (`appendix-security-gap`, REQUIRED when infra track ran)
+### Appendix Section I — Known limitations (GCP right-sizing)
 
-Table: Capability | GCP (detected) | AWS (generated) | Gap / action
+**Exclusions list:** the canonical items (skeleton § Appendix I) plus the GCP-specific lines below.
 
-Minimum rows:
-
-- Network perimeter (firewall rules → security groups)
-- Identity & access (service accounts → IAM roles)
-- Audit logging (Cloud Audit Logs → CloudTrail)
-- Threat detection (SCC optional → GuardDuty in baseline.tf)
-- Public data exposure (if public GCS/S3 detected in design)
-- Observability cost shift (GCP larger free tier vs CloudWatch always-free tier; pull gap text from `estimation-infra.json` observability `note` — do **not** say CloudWatch has no free tier)
-
-Source: `aws-design.json`, `terraform/baseline.tf`, `estimation-infra.json` observability note. Gap/action column should compare tier sizes (e.g. 50 GB GCP logging vs 5 GB CloudWatch always-free) and note the estimate assumes usage above free-tier limits — never "no free logging tier on AWS."
-
-### Appendix Section I — Assumptions & Validation (`appendix-assumptions`, REQUIRED)
-
-**Pricing confidence table:** domain, source, accuracy band, last updated (from `pricing_source` / `accuracy_confidence`).
-
-**Exclusions list:**
-
-- Deferred services (`deferred_services[]`, `excluded_from_totals`)
 - GCP egress when `migration_cost_considerations.billing_data_available === false`
-- Professional services / dual-run period (not modeled)
 - Utilization-based right-sizing (**Known limitations**, one line per affected resource, each naming the action that would unlock measured sizing), three-way on the inventory's `utilization` objects (`coverage` is derived from CPU only, so a numeric `memory`, `disk_bytes_used` or `connections` block can exist beside `coverage: no_data`; a metric block is numeric when it has `p95` rather than `status`):
   - (i) at least one resource carries `utilization` whose `coverage` is not `no_data` (live discovery with Cloud Monitoring): list every EC2 / RDS mapping that is not fully measured, grouped by reason —
     `coverage: "insufficient"` ("N of M hourly samples; re-run discovery after the VM has 30 days of history"); `declared_reason: "memory_unavailable"` ("install the Ops Agent on these N VMs and re-run discovery"); `burst: true` ("sized onto a burstable `t4g`/`t3` from sustained hourly means — validate with a load test; Unlimited-mode charges are not priced", or, when it stayed declared, why); `idle: true` ("decommission candidate, kept at declared size — confirm before migrating"); `declared_reason: "skipped_group_member"` ("managed-instance-group member — right-size the group template, follow-up"); `declared_reason: "user_exempt"` ("kept at declared size at your request"); `declared_reason: "conservative"` (one line for all: "cost-optimization appetite Conservative — change it in Clarify to right-size"); `sizing_note: "memory_bound"` ("memory p95 keeps it at like-for-like; CPU alone would allow smaller"); `sizing_note: "memory_saturated"` ("Cloud SQL memory reads saturated (page cache); the declared class is the floor, not evidence of need"); `sizing_note: "burstable_baseline_exceeded"` ("sustained load exceeds every burstable baseline at or below like-for-like; expect throttling or move to a fixed family"). Add one line that IOPS were not measured for right-sized RDS storage (`storage.basis: "measured"`), and one line per `rds_proxy: true` database ("RDS Proxy recommended for N: connections p95 exceeds the class limit — not priced in this estimate and not in the generated Terraform; add it by hand or raise `max_connections` in a parameter group").
@@ -693,9 +667,7 @@ After generating the HTML file, verify:
 
 1. **Required section IDs**: Each required ID appears **exactly once** on `<section id="...">` (not on `<div>` or other elements). See validator script.
 2. **TOC integrity**: Every `<nav class="toc">` link `href="#id"` resolves to a `<section id="id">`; all required sections are linked.
-3. **Appendix not a stub**: Appendix B contains ≥3 cost line items with dollar amounts; Appendix A contains per-cluster or per-service mappings (not only JSON file links).
-4. **Security baseline surfaced**: When `projected_costs.breakdown.security_baseline` exists, GuardDuty or dollar-formatted component costs appear in `appendix-security` / `appendix-costs`.
-5. **Combined AWS monthly run rate**: When **both**
+3. **Combined AWS monthly run rate**: When **both**
    `estimation-infra.json` and `estimation-ai.json` exist, exactly one
    `exec-tco` section (legacy ID) with the summed AWS recurring service
    estimate. Never label it TCO. Sum the GCP side only when every source
@@ -738,9 +710,11 @@ After generating the HTML file, verify:
     mandatory whenever their JSON value exists and `exec-costs` is rendered — a missing
     required anchor is a validator FAIL, not a skip.** Only _untagged illustrative_
     numbers (and the optional per-tier figures when absent) are skipped.
-22. **Whole-dollar monthly figures**: No monthly-scale dollar figure
+16. **Whole-dollar monthly figures**: No monthly-scale dollar figure
     (`$2.00` or higher) renders with cents unless it is a per-unit/hourly
     rate — see rule 19 above.
+
+17. **Appendix self-check**: skeleton § Post-write appendix self-check (appendix depth, security baseline surfaced, conditional sections, `appendix-config` provenance columns, glossary last, Cost Optimization placement).
 
 **Run automated validator (mandatory when HTML was written):**
 

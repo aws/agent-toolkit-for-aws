@@ -3,12 +3,75 @@
   "design_source": "aws-design.json",
   "timestamp": "2026-10-21T12:00:00Z",
   "pricing_source": {"status": "cached", "message": "AWS rates use the reviewed us-east-1 cache; Render baseline is user stated.", "services_by_source": {"cached": ["ecs", "rds", "elasticache", "lambda", "efs"], "fallback": [], "estimated": ["cloudwatch"]}, "services_with_missing_fallback": []},
-  "accuracy_confidence": "EFS priced from the reviewed rate row at the Blueprint disk size (5 GB, Standard storage); no unpriced lines remain",
+  "accuracy_confidence": "EFS priced from the reviewed rate row at the Blueprint disk size (5 GB, Standard storage); no unpriced lines remain; the Valkey node keeps its source-memory plan",
   "current_costs": {"source": "user_stated", "render_monthly": 123.45, "currency": "USD", "baseline_note": "User-stated amount as of 2026-10-21", "breakdown": {}},
-  "projected_costs": {"aws_monthly_premium": 394.35, "aws_monthly_balanced": 358.5, "aws_monthly_optimized": 296.5, "aws_annual_optimized": 3558.0, "breakdown": {}},
+  "projected_costs": {"aws_monthly_premium": 313.5, "aws_monthly_balanced": 313.5, "aws_monthly_optimized": 278.5, "aws_annual_optimized": 3342.0, "_premium_basis": "Balanced 313.5 + 0.0 multi-AZ uplift: no line qualifies \u2014 the Valkey cache is already multi-AZ, RDS Multi-AZ is baked into its rate, and Fargate, EFS, Lambda and Step Functions have no AZ uplift. Premium equals Balanced, 313.5.", "_optimized_basis": "Compute Savings Plan at rate 0.3 (20-40%, 1-year no upfront) on the eligible subtotal 125.0, each line's discount rounded to whole dollars (half-even): line-cron 15.0 x 0.3 -> 4; line-private 35.0 x 0.3 -> 10; line-web 40.0 x 0.3 -> 12; line-worker 25.0 x 0.3 -> 8; line-workflow-task 10.0 x 0.12 -> 1; the Lambda line uses the 0.12 duration cap applied to the whole line as an upper bound (no duration/request split recorded) -> discount 35.0. Database Savings Plan: eligible subtotal 0.0 -> discount 0.0 (No line passes the Generation 7+ gate; Database Savings Plans cover Generation 7 and newer instances only. line-db: db.t4g.large is Generation 4; line-kv: cache.m6g.large is Generation 6). Ineligible subtotal 188.5 unchanged. Optimized = 313.5 - 35.0 - 0.0 = 278.5. Rates from references/vendored/estimate/commitment-discount-ranges.json.", "breakdown": {}},
   "scenarios": {
-    "capacity_preserving": {
+    "premium": {
+      "known_cost_monthly_usd": 313.5, "is_floor": false, "unpriced_line_ids": [],
+      "uplift_monthly_usd": 0.0, "uplifted_line_ids": [],
+      "lines": [
+        {"line_id": "line-build", "source_resource_id": "rr-build", "aws_service": "Amazon ECR + CI/CD immutable digest promotion", "monthly_amount": 10.0, "pricing_source": "estimated", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-cron", "source_resource_id": "rr-cron", "aws_service": "Amazon EventBridge Scheduler + ECS on Fargate RunTask", "monthly_amount": 15.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
+        {"line_id": "line-db", "source_resource_id": "rr-db", "aws_service": "Amazon RDS for PostgreSQL", "monthly_amount": 80.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
+        {"line_id": "line-disk", "source_resource_id": "rr-disk", "aws_service": "Amazon EFS", "monthly_amount": 1.5, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-domain", "source_resource_id": "rr-domain", "aws_service": "AWS Certificate Manager + external DNS", "monthly_amount": 0.0, "pricing_source": "no_direct_charge", "confidence": "deterministic", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-env", "source_resource_id": "rr-env", "aws_service": "AWS deployment environment stack + Amazon CloudWatch Logs, Metrics, and Alarms (30-day retention)", "monthly_amount": 5.0, "pricing_source": "estimated", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-env-group", "source_resource_id": "rr-env-group", "aws_service": "AWS Secrets Manager + AWS Systems Manager Parameter Store", "monthly_amount": 2.0, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-kv", "source_resource_id": "rr-kv", "aws_service": "Amazon ElastiCache for Valkey node-based", "monthly_amount": 50.0, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-private", "source_resource_id": "rr-private", "aws_service": "ECS on Fargate", "monthly_amount": 35.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
+        {"line_id": "line-project", "source_resource_id": "rr-project", "aws_service": "AWS account and VPC environment strategy", "monthly_amount": 0.0, "pricing_source": "no_direct_charge", "confidence": "deterministic", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-static", "source_resource_id": "rr-static", "aws_service": "Amazon S3 + Amazon CloudFront", "monthly_amount": 15.0, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-web", "source_resource_id": "rr-web", "aws_service": "ECS on Fargate", "monthly_amount": 40.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
+        {"line_id": "line-worker", "source_resource_id": "rr-worker", "aws_service": "ECS on Fargate service", "monthly_amount": 25.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
+        {"line_id": "line-workflow", "source_resource_id": "rr-workflow", "aws_service": "AWS Step Functions Standard", "monthly_amount": 25.0, "pricing_source": "estimated", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-workflow-task", "source_resource_id": "rr-workflow-task", "aws_service": "AWS Lambda", "monthly_amount": 10.0, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false}
+      ]
+    },
+    "balanced": {
+      "known_cost_monthly_usd": 313.5, "is_floor": false, "unpriced_line_ids": [],
+      "lines": [
+        {"line_id": "line-build", "source_resource_id": "rr-build", "aws_service": "Amazon ECR + CI/CD immutable digest promotion", "monthly_amount": 10.0, "pricing_source": "estimated", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-cron", "source_resource_id": "rr-cron", "aws_service": "Amazon EventBridge Scheduler + ECS on Fargate RunTask", "monthly_amount": 15.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
+        {"line_id": "line-db", "source_resource_id": "rr-db", "aws_service": "Amazon RDS for PostgreSQL", "monthly_amount": 80.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
+        {"line_id": "line-disk", "source_resource_id": "rr-disk", "aws_service": "Amazon EFS", "monthly_amount": 1.5, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-domain", "source_resource_id": "rr-domain", "aws_service": "AWS Certificate Manager + external DNS", "monthly_amount": 0.0, "pricing_source": "no_direct_charge", "confidence": "deterministic", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-env", "source_resource_id": "rr-env", "aws_service": "AWS deployment environment stack + Amazon CloudWatch Logs, Metrics, and Alarms (30-day retention)", "monthly_amount": 5.0, "pricing_source": "estimated", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-env-group", "source_resource_id": "rr-env-group", "aws_service": "AWS Secrets Manager + AWS Systems Manager Parameter Store", "monthly_amount": 2.0, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-kv", "source_resource_id": "rr-kv", "aws_service": "Amazon ElastiCache for Valkey node-based", "monthly_amount": 50.0, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-private", "source_resource_id": "rr-private", "aws_service": "ECS on Fargate", "monthly_amount": 35.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
+        {"line_id": "line-project", "source_resource_id": "rr-project", "aws_service": "AWS account and VPC environment strategy", "monthly_amount": 0.0, "pricing_source": "no_direct_charge", "confidence": "deterministic", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-static", "source_resource_id": "rr-static", "aws_service": "Amazon S3 + Amazon CloudFront", "monthly_amount": 15.0, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-web", "source_resource_id": "rr-web", "aws_service": "ECS on Fargate", "monthly_amount": 40.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
+        {"line_id": "line-worker", "source_resource_id": "rr-worker", "aws_service": "ECS on Fargate service", "monthly_amount": 25.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
+        {"line_id": "line-workflow", "source_resource_id": "rr-workflow", "aws_service": "AWS Step Functions Standard", "monthly_amount": 25.0, "pricing_source": "estimated", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-workflow-task", "source_resource_id": "rr-workflow-task", "aws_service": "AWS Lambda", "monthly_amount": 10.0, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false}
+      ]
+    },
+    "optimized": {
+      "known_cost_monthly_usd": 278.5, "is_floor": false, "unpriced_line_ids": [],
+      "commitment": {"compute_savings_plans": {"eligible_line_ids": ["line-cron", "line-private", "line-web", "line-worker", "line-workflow-task"], "eligible_subtotal_monthly_usd": 125.0, "rate": 0.3, "range": "20-40%", "capped_lines": {"line-workflow-task": {"cap": 0.12, "source": "references/vendored/estimate/commitment-discount-ranges.json service_caps aws_lambda; the line records no duration/request split, so the cap is applied to the whole line including request charges and the discount is an upper bound"}}, "discount_monthly_usd": 35.0}, "database_savings_plans": {"eligible_line_ids": [], "eligible_subtotal_monthly_usd": 0.0, "rate": 0.2, "range": "up to 20% (provisioned)", "discount_monthly_usd": 0.0, "reason": "No line passes the Generation 7+ gate; Database Savings Plans cover Generation 7 and newer instances only.", "ineligible_lines": {"line-db": "db.t4g.large is Generation 4", "line-kv": "cache.m6g.large is Generation 6"}}, "ineligible_subtotal_monthly_usd": 188.5, "source": "references/vendored/estimate/commitment-discount-ranges.json"},
+      "lines": [
+        {"line_id": "line-build", "source_resource_id": "rr-build", "aws_service": "Amazon ECR + CI/CD immutable digest promotion", "monthly_amount": 10.0, "pricing_source": "estimated", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-cron", "source_resource_id": "rr-cron", "aws_service": "Amazon EventBridge Scheduler + ECS on Fargate RunTask", "monthly_amount": 11.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
+        {"line_id": "line-db", "source_resource_id": "rr-db", "aws_service": "Amazon RDS for PostgreSQL", "monthly_amount": 80.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
+        {"line_id": "line-disk", "source_resource_id": "rr-disk", "aws_service": "Amazon EFS", "monthly_amount": 1.5, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-domain", "source_resource_id": "rr-domain", "aws_service": "AWS Certificate Manager + external DNS", "monthly_amount": 0.0, "pricing_source": "no_direct_charge", "confidence": "deterministic", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-env", "source_resource_id": "rr-env", "aws_service": "AWS deployment environment stack + Amazon CloudWatch Logs, Metrics, and Alarms (30-day retention)", "monthly_amount": 5.0, "pricing_source": "estimated", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-env-group", "source_resource_id": "rr-env-group", "aws_service": "AWS Secrets Manager + AWS Systems Manager Parameter Store", "monthly_amount": 2.0, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-kv", "source_resource_id": "rr-kv", "aws_service": "Amazon ElastiCache for Valkey node-based", "monthly_amount": 50.0, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-private", "source_resource_id": "rr-private", "aws_service": "ECS on Fargate", "monthly_amount": 25.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
+        {"line_id": "line-project", "source_resource_id": "rr-project", "aws_service": "AWS account and VPC environment strategy", "monthly_amount": 0.0, "pricing_source": "no_direct_charge", "confidence": "deterministic", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-static", "source_resource_id": "rr-static", "aws_service": "Amazon S3 + Amazon CloudFront", "monthly_amount": 15.0, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-web", "source_resource_id": "rr-web", "aws_service": "ECS on Fargate", "monthly_amount": 28.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
+        {"line_id": "line-worker", "source_resource_id": "rr-worker", "aws_service": "ECS on Fargate service", "monthly_amount": 17.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
+        {"line_id": "line-workflow", "source_resource_id": "rr-workflow", "aws_service": "AWS Step Functions Standard", "monthly_amount": 25.0, "pricing_source": "estimated", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
+        {"line_id": "line-workflow-task", "source_resource_id": "rr-workflow-task", "aws_service": "AWS Lambda", "monthly_amount": 9.0, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false}
+      ]
+    },
+    "like_for_like": {
       "known_cost_monthly_usd": 358.5, "is_floor": false, "unpriced_line_ids": [],
+      "label": "like-for-like, before right-sizing",
       "lines": [
         {"line_id": "line-build", "source_resource_id": "rr-build", "aws_service": "Amazon ECR + CI/CD immutable digest promotion", "monthly_amount": 10.0, "pricing_source": "estimated", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
         {"line_id": "line-cron", "source_resource_id": "rr-cron", "aws_service": "Amazon EventBridge Scheduler + ECS on Fargate RunTask", "monthly_amount": 20.0, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
@@ -26,34 +89,16 @@
         {"line_id": "line-workflow", "source_resource_id": "rr-workflow", "aws_service": "AWS Step Functions Standard", "monthly_amount": 25.0, "pricing_source": "estimated", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
         {"line_id": "line-workflow-task", "source_resource_id": "rr-workflow-task", "aws_service": "AWS Lambda", "monthly_amount": 10.0, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false}
       ]
-    },
-    "right_sized": {
-      "known_cost_monthly_usd": 296.5, "is_floor": false, "unpriced_line_ids": [],
-      "lines": [
-        {"line_id": "line-build", "source_resource_id": "rr-build", "aws_service": "Amazon ECR + CI/CD immutable digest promotion", "monthly_amount": 10.0, "pricing_source": "estimated", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
-        {"line_id": "line-cron", "source_resource_id": "rr-cron", "aws_service": "Amazon EventBridge Scheduler + ECS on Fargate RunTask", "monthly_amount": 15.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
-        {"line_id": "line-db", "source_resource_id": "rr-db", "aws_service": "Amazon RDS for PostgreSQL", "monthly_amount": 80.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
-        {"line_id": "line-disk", "source_resource_id": "rr-disk", "aws_service": "Amazon EFS", "monthly_amount": 1.5, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
-        {"line_id": "line-domain", "source_resource_id": "rr-domain", "aws_service": "AWS Certificate Manager + external DNS", "monthly_amount": 0.0, "pricing_source": "no_direct_charge", "confidence": "deterministic", "exclusion_reason": null, "evidence_sufficient": false},
-        {"line_id": "line-env", "source_resource_id": "rr-env", "aws_service": "AWS deployment environment stack + Amazon CloudWatch Logs, Metrics, and Alarms (30-day retention)", "monthly_amount": 5.0, "pricing_source": "estimated", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
-        {"line_id": "line-env-group", "source_resource_id": "rr-env-group", "aws_service": "AWS Secrets Manager + AWS Systems Manager Parameter Store", "monthly_amount": 2.0, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
-        {"line_id": "line-kv", "source_resource_id": "rr-kv", "aws_service": "Amazon ElastiCache for Valkey node-based", "monthly_amount": 40.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
-        {"line_id": "line-private", "source_resource_id": "rr-private", "aws_service": "ECS on Fargate", "monthly_amount": 35.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
-        {"line_id": "line-project", "source_resource_id": "rr-project", "aws_service": "AWS account and VPC environment strategy", "monthly_amount": 0.0, "pricing_source": "no_direct_charge", "confidence": "deterministic", "exclusion_reason": null, "evidence_sufficient": false},
-        {"line_id": "line-static", "source_resource_id": "rr-static", "aws_service": "Amazon S3 + Amazon CloudFront", "monthly_amount": 15.0, "pricing_source": "cached", "confidence": "inferred", "exclusion_reason": null, "evidence_sufficient": false},
-        {"line_id": "line-web", "source_resource_id": "rr-web", "aws_service": "ECS on Fargate", "monthly_amount": 40.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
-        {"line_id": "line-worker", "source_resource_id": "rr-worker", "aws_service": "ECS on Fargate service", "monthly_amount": 25.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
-        {"line_id": "line-workflow", "source_resource_id": "rr-workflow", "aws_service": "AWS Step Functions Standard", "monthly_amount": 20.0, "pricing_source": "estimated", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true},
-        {"line_id": "line-workflow-task", "source_resource_id": "rr-workflow-task", "aws_service": "AWS Lambda", "monthly_amount": 8.0, "pricing_source": "cached", "confidence": "measured", "exclusion_reason": null, "evidence_sufficient": true}
-      ]
     }
   },
-  "delta_monthly_usd": -62.0,
-  "delta_explanation": "Measured rightsizing reduces the AWS total by $62.00; EFS is priced at 5 GB x $0.30 per GB-month in both scenarios.",
+  "rightsizing_delta": {"monthly": 45.0, "annual": 540.0, "basis": "utilization", "explanation": "Measured utilization (seven-day window, every numeric threshold passed) right-sizes five lines: four Fargate task sizes and the RDS class to db.t4g.large; the Valkey node keeps its source-memory plan plus headroom. The Workflow and Lambda lines stay at their like-for-like amounts because the design records no size or sizing provenance for them. EFS is priced at 5 GB x $0.30 per GB-month in both figures.", "what_would_change_this": "A metrics window under seven days or below 0.80 coverage returns every line to like-for-like; a Valkey memory plan below 3 GB would let the cache node shrink; recorded Workflow and Lambda sizing would let those two lines right-size."},
   "cost_comparison": {},
   "migration_cost_considerations": {"human_labor_monthly_usd": null},
   "roi_analysis": {},
-  "optimization_opportunities": [],
+  "optimization_opportunities": [
+    {"opportunity": "Compute Savings Plans", "type": "compute_savings_plans", "target_services": ["ECS on Fargate", "ECS on Fargate service", "Amazon EventBridge Scheduler + ECS on Fargate RunTask", "AWS Lambda"], "savings_monthly": null, "savings_percent": "20-40%", "commitment": "1-year, no upfront", "implementation_effort": "low", "description": "Covers the four Fargate workloads and the Workflow Lambda task ($125 of Balanced). Percent-only until a 30-90 day AWS usage baseline exists; Optimized prices it at the 30% mid-point on the Fargate lines and the 12% cap on the Lambda line, each line's discount rounded to whole dollars ($35 in total). The Lambda line has no duration/request split, so its $1 is an upper bound. Incremental to Balanced and already included in Optimized."},
+    {"opportunity": "Database Savings Plans", "type": "database_savings_plans", "target_services": [], "savings_monthly": null, "savings_percent": "up to 20% (provisioned, Generation 7+ only)", "commitment": "1-year, no upfront", "implementation_effort": "low", "description": "No saving is claimed. Database Savings Plans cover Generation 7 and newer instances only, and the designed classes (db.t4g.large for RDS PostgreSQL, Generation 4; cache.m6g.large for the Valkey node, Generation 6) are ineligible. A Generation 7+ class (db.m7g or db.r7g for RDS, cache.m7g for ElastiCache) would qualify. Not included in Optimized."}
+  ],
   "complexity_tier": "large",
   "complexity_inputs": {"service_count": 15},
   "financial_summary": {},

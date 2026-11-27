@@ -6,37 +6,62 @@ Seeds the Neptune test cluster with sample data for eval runs.
 Covers: social graph, fraud detection graph, product catalog.
 
 Usage:
-    pip install gremlinpython==3.7.3 boto3==1.43.124
-    # gremlinpython is pinned to 3.7.3, the newest TinkerPop version Neptune engine
-    # 1.3.2.0+ supports (AWS: "Accessing a Neptune graph with Gremlin").
+    pip install gremlinpython==3.7.7 boto3==1.43.124
+    # gremlinpython is pinned to 3.7.7, the newest TinkerPop version Neptune engines
+    # 1.3.2.0 through 1.4.x support. For engine 1.5.0.0 and newer, use
+    # gremlinpython==3.8.1 (AWS: "Accessing a Neptune graph with Gremlin").
 
     # Seeding wipes the graph first (g.V().drop()), which requires explicit
     # confirmation — pass --confirm-wipe or set NEPTUNE_SEED_CONFIRM_WIPE=1.
     # The handshake is SigV4-signed (IAM auth), so AWS credentials and a region are required:
     # set AWS_REGION, or NEPTUNE_REGION to override it for Neptune only.
-    AWS_REGION=us-east-1 NEPTUNE_ENDPOINT=your-cluster.xxxx.neptune.amazonaws.com python seed_test_data.py --confirm-wipe
+    # Set NEPTUNE_AWS_PROFILE to a profile for a role scoped to the test cluster, or
+    # NEPTUNE_USE_DEFAULT_CREDENTIALS=1 when the default credentials already are that
+    # role. The script never falls back silently to the default credential chain.
+    AWS_REGION=us-east-1 NEPTUNE_AWS_PROFILE=neptune-test-seeder NEPTUNE_ENDPOINT=your-cluster.xxxx.neptune.amazonaws.com python seed_test_data.py --confirm-wipe
 """
 
 import os
 import sys
 import time
-from typing import Dict
+from typing import Dict, Optional
 
 NEPTUNE_ENDPOINT = os.environ.get("NEPTUNE_ENDPOINT", "localhost")
 NEPTUNE_PORT = 8182
 
 
+def _selected_profile() -> Optional[str]:
+    """Return the explicitly chosen AWS profile, or None for the scoped default chain.
+
+    ``AWS_PROFILE`` alone is not accepted: it is often the developer's everyday,
+    broad profile, and this script wipes the graph it connects to.
+    """
+    profile = os.environ.get("NEPTUNE_AWS_PROFILE")
+    if profile:
+        return profile
+    if os.environ.get("NEPTUNE_USE_DEFAULT_CREDENTIALS") == "1":
+        return None
+    raise RuntimeError(
+        "Set NEPTUNE_AWS_PROFILE to a profile for a role scoped to the test cluster "
+        "(see references/security.md), or set NEPTUNE_USE_DEFAULT_CREDENTIALS=1 "
+        "if the default credentials already are that scoped role."
+    )
+
+
 def _sigv4_headers(url: str) -> Dict[str, str]:
     """SigV4-sign the Gremlin WebSocket handshake for IAM database auth.
 
-    The test cluster (cdk_test_env.py) enables IAM auth, so an unsigned
-    handshake is refused with 403. Sign the request; never disable IAM auth.
+    Signs with the scoped identity from NEPTUNE_AWS_PROFILE, or with the default
+    chain only when NEPTUNE_USE_DEFAULT_CREDENTIALS=1. The test cluster
+    (cdk_test_env.py) enables IAM auth, so an unsigned handshake is refused with
+    403. Sign the request; never disable IAM auth.
     """
     import boto3
     from botocore.auth import SigV4Auth
     from botocore.awsrequest import AWSRequest
 
-    session = boto3.Session()
+    profile = _selected_profile()
+    session = boto3.Session(profile_name=profile) if profile else boto3.Session()
     region = os.environ.get("NEPTUNE_REGION") or session.region_name
     if not region:
         raise RuntimeError("Set AWS_REGION or NEPTUNE_REGION to sign Neptune requests.")

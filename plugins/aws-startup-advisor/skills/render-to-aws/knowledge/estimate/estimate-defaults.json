@@ -4,8 +4,15 @@
   "hours_per_month": 730,
   "rounding": {"mode": "ROUND_HALF_EVEN", "line_decimals": 2, "sum_rounded_lines": true},
   "source_cost_precedence": ["customer_invoice_or_export", "user_stated_monthly", "fresh_exact_render_pricing_cache", "unavailable"],
-  "aws_scenarios": ["capacity_preserving", "right_sized"],
-  "delta_formula": "right_sized_known_cost_monthly_usd - capacity_preserving_known_cost_monthly_usd",
+  "aws_scenarios": ["premium", "balanced", "optimized"],
+  "comparison_block": "like_for_like",
+  "rightsizing_delta_formula": "like_for_like_known_cost_monthly_usd - balanced_known_cost_monthly_usd",
+  "premium_rule": "balanced plus the multi_az_handling multiplier_x2 uplift on lines not already multi-AZ; baked_in, intrinsic and n/a lines get none",
+  "optimized_rule": "balanced minus the mid-point commitment discount from references/vendored/estimate/commitment-discount-ranges.json (rates.compute_savings_plan.rate, rates.database_savings_plan_provisioned.rate; min of the plan rate and service_caps for a capped service; a Database Savings Plan line must also pass the vendored generation_gate), computed per eligible line, each line's discount rounded to whole dollars half-to-even, then summed and subtracted from balanced",
+  "commitment_eligibility": {
+    "compute_savings_plans": {"rate_key": "rates.compute_savings_plan", "aws_services": ["ECS on Fargate", "ECS on Fargate service", "ECS on Fargate task", "Amazon EventBridge Scheduler + ECS on Fargate RunTask", "AWS Lambda"]},
+    "database_savings_plans": {"rate_key": "rates.database_savings_plan_provisioned", "aws_services": ["Amazon RDS for PostgreSQL", "Amazon Aurora PostgreSQL", "Amazon ElastiCache for Valkey node-based"], "_comment": "ElastiCache qualifies only for the Valkey engine; a Redis OSS exception is Database-SP-ineligible and its line is unchanged. A provisioned line is eligible only when its recorded class passes the vendored generation_gate (Generation 7 or newer)."}
+  },
   "missing_rate": {"monthly_amount": null, "exclude_from_sum": true, "total_label": "known-cost floor", "is_floor": true},
   "region_mismatch": {"reprice": false, "basis": "us-east-1", "require_region_note": true, "widen_accuracy": true},
   "human_labor": {"include_as_consideration": true, "monthly_amount": null},

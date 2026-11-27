@@ -676,16 +676,29 @@ def accept(root: Path, skill: str, terraform: Path | None = None) -> dict[str, A
                             {"unsupported_routes": other_routes, "supported": "infrastructure only"}))
     report_name = "decision-report.html" if route == "decision" else "migration-report.html"
     if (root / report_name).is_file():
-        validator = (SCRIPTS / "validate-migration-report.py" if skill == "gcp-to-aws" else
-                     PLUGIN / "skills/heroku-to-aws/scripts/validate-heroku-migration-report.py")
-        args = [sys.executable, str(validator), str(root / report_name),
-                "--migration-dir", str(root), "--mode", "decision" if route == "decision" else "full"]
+        mode = "decision" if route == "decision" else "full"
+        shared = [sys.executable, str(SCRIPTS / "validate-migration-report.py"), str(root / report_name),
+                  "--migration-dir", str(root), "--mode", mode,
+                  "--estimation-infra", str(root / "estimation-infra.json")]
         if skill == "gcp-to-aws":
-            args.extend(["--estimation-infra", str(root / "estimation-infra.json"),
-                         "--aws-design", str(root / "aws-design.json")])
+            shared.extend(["--aws-design", str(root / "aws-design.json")])
+            runs = {"shared": shared}
+        else:
+            # heroku-to-aws is a two-command gate: the shared validator under the heroku
+            # profile (structure / content standard) AND the heroku add-on (heroku-only
+            # rules). Both must exit 0.
+            shared.extend(["--profile", "heroku"])
+            runs = {"shared": shared,
+                    "heroku": [sys.executable,
+                               str(PLUGIN / "skills/heroku-to-aws/scripts/validate-heroku-migration-report.py"),
+                               str(root / report_name), "--migration-dir", str(root), "--mode", mode]}
+        results = {}
         with tempfile.TemporaryDirectory(prefix="migration-report-") as temp:
-            result = command(args, root, clean_environment(Path(temp)))
-        checks.append(check("rendered_report", "PASS" if result.get("returncode") == 0 else "FAIL", result))
+            for name, args in runs.items():
+                results[name] = command(args, root, clean_environment(Path(temp)))
+        passed = all(result.get("returncode") == 0 for result in results.values())
+        checks.append(check("rendered_report", "PASS" if passed else "FAIL",
+                            results["shared"] if skill == "gcp-to-aws" else results))
     if route == "execution":
         try:
             errors = validation_report_errors(read_object(root / "validation-report.json"))

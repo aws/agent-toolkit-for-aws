@@ -74,14 +74,16 @@ manifests, every service accounted for, no `{{VARIABLE}}` placeholders), then em
 `GATE_FAIL` (STOP) or
 `HANDOFF_OK | phase=generate | artifacts=terraform/,MIGRATION_GUIDE.md,README.md,migration-report.html,validation-report.json`.
 
-The report validator (**required, blocking**) runs in the **main window**, not here — this
+The report validators (**required, blocking**) run in the **main window**, not here — this
 assembler's `rwx` worker has a shell scoped to the Terraform policy checker
 (`INTERPRETER.md` § `_exec`). `generate.md`'s "Finish Generate in the main window"
-step first runs the shared generated-artifact checker, then runs
-`validate-heroku-migration-report.py` over `migration-report.html` **after this assembler
-returns and before** the read-only `_postconditions` gate; on `REPORT_OK` it stamps
-`report-validation-status.json` (the durable result the gate asserts), and on `REPORT_FAIL` it
-emits `GATE_FAIL` and pastes the validator's `errors[]`. Per `INTERPRETER.md` § `_postconditions`,
+step first runs the shared generated-artifact checker, then runs both report validators —
+`$PLUGIN_ROOT/scripts/validate-migration-report.py --profile heroku` (the shared
+structure/content gate) and `<SKILL_BASE>/scripts/validate-heroku-migration-report.py` (the
+heroku add-on) — over `migration-report.html` **after this assembler returns and before** the
+read-only `_postconditions` gate; when both print `REPORT_OK` it stamps
+`report-validation-status.json` (the durable result the gate asserts), and on either
+`REPORT_FAIL` it emits `GATE_FAIL` and pastes that validator's `errors[]`. Per `INTERPRETER.md` § `_postconditions`,
 the gate does **not** edit the HTML, artifacts, or state — it halts. Recovery is a hand-edit of
 `migration-report.html` from the pasted errors + a direct re-run of the validator and re-stamp (or
 a maintainer re-running Generate for a clean rebuild), not this assembler repairing the report.

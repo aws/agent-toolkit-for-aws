@@ -48,6 +48,8 @@ _preconditions:
     _on_failure: _unrecoverable
   - _validate_json: [aws-design.json, estimation-infra.json, preferences.json, heroku-resource-inventory.json]
     _on_failure: _unrecoverable
+  - _assert: "Tier-basis check: estimation-infra.json projected_costs._premium_basis and projected_costs._optimized_basis are both present. If either is absent the file predates the current Premium / Optimized definitions: tell the user its Premium and Optimized figures were produced under the earlier tier definitions and offer to re-run Estimate first (a user-confirmed re-run, never a silent repair; set phases.estimate and phases.generate back to pending only if they accept). If they decline, continue, and the report's reading guide states the earlier-definitions notice (report-decision-core.md, How to read cost tiers) instead of the new derivations."
+    _on_failure: _halt_and_inform
   - _assert: "preferences.json metadata.questions_deferred_to_generate is absent or an empty array — every Generate-time question Clarify defaulted (Q4 maintenance window, Q6c DB migration method, Q12d EB deploy method) was asked at the Decision gate's 'Confirm execution choices' step (estimate-assemble.md). A non-empty array means MIGRATION_GUIDE.md / Terraform is about to be written against an answer the user never gave; return to that step."
     _on_failure: _halt_and_inform
   - _assert: "When the design contains RDS PostgreSQL or Aurora PostgreSQL, rds-windows.json exists with the validated backup_window and maintenance_window prepared from current confirmed preferences by the main-window Decision gate. If absent or invalid, return to that gate before dispatch; the worker must not compute these using its policy-only shell."
@@ -73,7 +75,7 @@ _postconditions:
     _on_failure: _halt_and_inform
   - _assert: "if preferences.json data.dns_strategy (the field Clarify Q10 writes; there is no global.dns_strategy) is 'route53' and at least one heroku-resource-inventory.json resource_type 'domain' resource belongs to a heroku_app whose web formation is an Elastic Beanstalk or Fargate service in aws-design.json, then terraform/dns.tf exists and declares hosted_zone_ids (map, one zone per hostname), heroku_dns_targets, heroku_apex_ips, and cutover_weight variables, a per-hostname local.aws_targets map (no shared scalar target), weighted apex_heroku/apex_aws records, and an aws_acm_certificate_validation resource, and no terraform file declares var.acm_certificate_arn; otherwise — including every EKS design and every domain whose app has no EB/Fargate web service — terraform/dns.tf does not exist and such domains are listed in generation-warnings.json"
     _on_failure: _halt_and_inform
-  - _assert: "migration-report.html has decision-summary, exec-share, exec-timeline, exec-costs, cost-optimization, next-steps, appendix-services, appendix-costs, appendix-config, appendix-security, appendix-assumptions, the GCP visual-shell selectors including .share-card, and a draft-for-review footer; the security appendix names What it does and Threat mitigated; if scenarios/index.json has ≥2 scenarios, also what-if-scenarios"
+  - _assert: "migration-report.html has decision-summary (with Migrate if / Stay entirely if and a Next steps ordered list), exec-share, exec-services, exec-costs, exec-optimization, developer-workflow, exec-timeline, exec-risks, exec-assumptions, appendix-services, appendix-costs, appendix-optimization, appendix-artifacts, appendix-config, appendix-security, appendix-assumptions, appendix-glossary, the GCP visual-shell selectors including .share-card, and a draft-for-review footer; the security appendix names What it does and Threat mitigated; the configuration appendix has Question, Your choice, Source and Design consequence columns; if scenarios/index.json has ≥2 scenarios, also what-if-scenarios"
     _on_failure: _halt_and_inform
   - _assert: "report-validation-status.json exists and its report_status is 'REPORT_OK', stamped by the main-window 'Finish Generate' report-validation step (described below, run BEFORE this gate); a REPORT_FAIL, a missing/not_run stamp (validator could not run), or a missing file blocks completion. This gate is READ-ONLY: do not run the validator or edit the report/stamp here."
     _on_failure: _halt_and_inform
@@ -191,22 +193,34 @@ returns and before `_postconditions`**.
    assumed pass. The checker output is already the report; do not rewrite it as
    a success summary.
 
-2. Run the report validator (**required, blocking**):
+2. Run both report validators (**required, blocking** — the shared structure/content
+   gate under the heroku profile, then the heroku add-on):
 
-   ```
+   ```bash
+   python3 "$PLUGIN_ROOT/scripts/validate-migration-report.py" \
+     "$MIGRATION_DIR/migration-report.html" \
+     --profile heroku \
+     --estimation-infra "$MIGRATION_DIR/estimation-infra.json" \
+     --migration-dir "$MIGRATION_DIR"
    python3 "<SKILL_BASE>/scripts/validate-heroku-migration-report.py" \
-     "$MIGRATION_DIR/migration-report.html" --migration-dir "$MIGRATION_DIR"
+     "$MIGRATION_DIR/migration-report.html" \
+     --migration-dir "$MIGRATION_DIR"
    ```
 
-3. `REPORT_OK` → **stamp the durable result** so the gate reads an artifact, not conversation
-   memory: write `$MIGRATION_DIR/report-validation-status.json` as
-   `{"report_status": "REPORT_OK"}`, then continue to the gate. `REPORT_FAIL` → write
-   `{"report_status": "REPORT_FAIL", "errors": [ … ]}` and **emit `GATE_FAIL`, pasting the
-   validator's `errors[]` verbatim** so the user knows exactly what failed (missing scope id,
-   empty `cost-optimization`, a banned `badge-verdict-*` pill class, a `<th>` without `scope`,
-   missing `<html lang>`, etc.). This step does **not** edit the HTML.
+   Both commands must print `REPORT_OK` and exit 0. Either `REPORT_FAIL` blocks; a
+   validator that does not run (non-0/1 exit, missing `python3`, missing
+   `$PLUGIN_ROOT/scripts/validate-migration-report.py`) is not a pass. There is no skip path.
 
-4. If the validator cannot run at all (no shell on the host), do **not** write
+3. Both `REPORT_OK` → **stamp the durable result** so the gate reads an artifact, not
+   conversation memory: write `$MIGRATION_DIR/report-validation-status.json` as
+   `{"report_status": "REPORT_OK"}`, then continue to the gate. Any `REPORT_FAIL` → write
+   `{"report_status": "REPORT_FAIL", "errors": [ … ]}` with the `errors[]` of whichever
+   validator failed, and **emit `GATE_FAIL`, pasting those errors verbatim** so the user
+   knows exactly what failed (missing section id, a bare week range, empty
+   `appendix-optimization`, a banned `badge-verdict-*` pill class, a `<th>` without `scope`, a
+   cost-figure mismatch, etc.). This step does **not** edit the HTML.
+
+4. If either validator cannot run at all (no shell on the host), do **not** write
    `report_status: "REPORT_OK"` — leave the stamp absent (or `not_run`) so the gate fails closed.
 
 Then the `_postconditions` gate runs (read-only): the section-id `_assert` plus the

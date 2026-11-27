@@ -1,4 +1,16 @@
-"""Tests for the heroku-to-aws migration-report.html validator."""
+"""Tests for the heroku-to-aws add-on report validator.
+
+The shared validator (`$PLUGIN_ROOT/scripts/validate-migration-report.py --profile
+heroku`) owns the structure / content standard and has its own tests under
+`$P/tests/`. These tests cover only the heroku-only rules the add-on keeps: no
+`decision-cta` in full mode, the retired section ids (`next-steps`,
+`cost-optimization`, `decision-basis`) in both modes, the decision-mode
+`.appendix-header` ban, the `.share-card` CSS rule, the
+`heroku_monthly_like_for_like` anchor, the Activate status rules,
+`exec-optimization` / `appendix-optimization` content, the security-appendix
+columns, `exec-assumptions` when the estimate declares `decision_basis`, and the
+decision-mode `.phase-status.json` check.
+"""
 
 from __future__ import annotations
 
@@ -24,31 +36,22 @@ def run(html: str, migration_dir: Path | None = None, mode: str | None = None) -
         return result.returncode, result.stdout + result.stderr
 
 
-# A minimal but complete, compliant Heroku report.
+# A minimal Heroku report that satisfies every add-on rule. Structure (section
+# IDs, TOC, accessibility, visual shell) is the shared validator's job, so only
+# the `.share-card` rule is in the stylesheet here.
 GOOD = """<!DOCTYPE html>
 <html lang="en">
 <style>
-  body { margin: 0; background: #f6f8fa; color: #1f2328; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 15px; line-height: 1.55; }
-  .report { max-width: 1040px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
-  section { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; scroll-margin-top: 1rem; }
-  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; }
-  .metric { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 0.85rem 1rem; }
-  .verdict { background: #e6f4ea; border: 1px solid #137333; padding: 0.75rem 1rem; }
-  .savings { color: #137333; font-weight: 650; }
   .share-card { background: #f0f6fc; border: 1px solid #d0d7de; border-left: 4px solid #0969da; padding: 0.85rem 1rem; }
-  .appendix-header { background: #232f3e; color: #fff; padding: 1rem 1.5rem; }
-  a:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
-  @media (max-width: 700px) { .report { padding: 1rem; } }
-  @media print { body { background: #fff; } }
 </style>
 <body>
 <div class="report">
   <section id="decision-summary"><p class="verdict-headline">Go, with conditions</p></section>
-  <section id="exec-share"><p>The one-paragraph version, ready to forward:</p><div class="share-card"><p>Go, with conditions, at medium confidence. The estimated AWS balanced rate is higher than the Heroku rate card, the shape is phased, and the planning band for this complexity tier is the duration to quote. Confirm the open conditions before treating the monthly figure as final.</p></div></section>
-  <section id="exec-timeline"><h2>Timeline</h2><p>Phased migration. Planning band: 2-6 weeks for a small estate. This planning band is the complexity-tier range, not a staffed schedule.</p></section>
+  <section id="exec-share"><p>The one-paragraph version, ready to forward:</p><div class="share-card"><p>Go, with conditions, at medium confidence. The estimated AWS balanced rate is higher than the Heroku rate card and the shape is phased. Confirm the open conditions before treating the monthly figure as final.</p></div></section>
+  <section id="exec-timeline"><h2>Timeline</h2><p>Phased migration: provision, migrate data, cut over. Not a staffed schedule.</p></section>
   <section id="exec-costs"><table><thead><tr><th scope="col">Tier</th></tr></thead><tbody><tr><td>Balanced</td></tr></tbody></table></section>
-  <section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>
-  <section id="next-steps"><ol><li>See MIGRATION_GUIDE.md</li></ol></section>
+  <section id="exec-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>
+  <section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>
   <section id="appendix-services"><p>One designed service.</p></section>
 <section id="appendix-costs"><p>Balanced estimated monthly cost.</p></section>
 <section id="appendix-config"><p>Region and availability choices.</p></section>
@@ -75,31 +78,33 @@ def test_good_report_passes() -> None:
     assert "REPORT_OK" in out
 
 
-def test_full_report_requires_heroku_appendices() -> None:
-    html = GOOD.replace('<section id="appendix-services"><p>One designed service.</p></section>\n', "")
+
+def test_share_card_css_rule_is_required() -> None:
+    """The one visual-shell rule the add-on keeps: the CFO brief's share card border."""
+    html = GOOD.replace(
+        "  .share-card { background: #f0f6fc; border: 1px solid #d0d7de; border-left: 4px solid #0969da; padding: 0.85rem 1rem; }\n",
+        "  .share-card { background: #f0f6fc; padding: 0.85rem 1rem; }\n",
+    )
     code, out = run(html)
     assert code == 1, out
-    assert "appendix-services" in out
+    assert "the CFO brief must render as a bordered share card" in out
 
 
-def test_decision_report_rejects_a_rendered_appendix() -> None:
-    html = DECISION_GOOD.replace(
-        "</footer>",
-        '<section id="appendix-security"><p>CloudTrail and GuardDuty.</p></section></footer>',
-    )
+def test_share_card_css_rule_enforced_in_decision_mode() -> None:
+    html = DECISION_GOOD.replace("border: 1px solid #d0d7de; border-left: 4px solid #0969da; ", "")
     code, out = run(html, mode="decision")
     assert code == 1, out
-    assert 'decision mode forbids <section id="appendix-security">' in out
+    assert "the CFO brief must render as a bordered share card" in out
 
 
-def test_decision_report_ignores_appendix_in_comment_or_template() -> None:
-    hidden = (
-        '<!-- <section id="appendix-security"><p>CloudTrail and GuardDuty.</p></section> -->'
-        "<template><section id=\"appendix-security\"><p>CloudTrail and GuardDuty.</p></section></template>"
-    )
-    code, out = run(DECISION_GOOD.replace("</footer>", hidden + "</footer>"), mode="decision")
+def test_add_on_does_not_check_required_sections() -> None:
+    """Required section IDs are the shared validator's job (--profile heroku); the
+    add-on must not duplicate that rule, so a report missing an appendix passes here."""
+    html = GOOD.replace('<section id="appendix-services"><p>One designed service.</p></section>\n', "")
+    code, out = run(html)
     assert code == 0, out
     assert "REPORT_OK" in out
+    assert "missing required" not in out
 
 
 def test_decision_report_rejects_a_lone_appendix_divider() -> None:
@@ -125,8 +130,6 @@ def test_decision_report_ignores_appendix_divider_in_comment_or_inert_subtree() 
     code, out = run(DECISION_GOOD.replace("</footer>", hidden + "</footer>"), mode="decision")
     assert code == 0, out
     assert "REPORT_OK" in out
-    # The stylesheet rule for the divider is required by the shell check and must not trip this.
-    assert ".appendix-header {" in DECISION_GOOD
 
 
 def test_full_report_keeps_its_appendix_divider() -> None:
@@ -138,358 +141,6 @@ def test_full_report_keeps_its_appendix_divider() -> None:
     assert "REPORT_OK" in out
 
 
-def _without_style(html: str) -> str:
-    start = html.index("<style>")
-    end = html.index("</style>", start) + len("</style>")
-    return html[:start] + html[end:]
-
-
-def test_full_report_without_style_block_fails_the_shell_check() -> None:
-    code, out = run(_without_style(GOOD))
-    assert code == 1, out
-    assert "body must use a contrasting page background" in out
-    assert "keyboard focus must be visibly styled" in out
-
-
-def test_missing_focus_visible_fails_with_that_message() -> None:
-    html = GOOD.replace(
-        "  a:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }\n",
-        "",
-    )
-    code, out = run(html)
-    assert code == 1, out
-    assert "keyboard focus must be visibly styled" in out
-    assert "body must use a contrasting page background" not in out
-
-
-def test_decision_report_without_style_block_fails_the_shell_check() -> None:
-    code, out = run(_without_style(DECISION_GOOD), mode="decision")
-    assert code == 1, out
-    assert "body must use a contrasting page background" in out
-
-
-def test_missing_cost_optimization_fails() -> None:
-    html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        "",
-    )
-    code, out = run(html)
-    assert code == 1, out
-    assert "cost-optimization" in out
-
-
-def test_missing_draft_footer_fails() -> None:
-    html = GOOD.replace("draft for review; verify figures before executive sign-off.", "")
-    code, out = run(html)
-    assert code == 1, out
-    assert "draft for review" in out.lower()
-
-
-def test_badge_verdict_pill_fails() -> None:
-    html = GOOD.replace(
-        '<p class="verdict-headline">Go, with conditions</p>',
-        '<span class="badge-verdict-go">Go</span>',
-    )
-    code, out = run(html)
-    assert code == 1, out
-    assert "badge-verdict" in out.lower() or "verdict-headline" in out.lower()
-
-
-def test_th_without_scope_fails() -> None:
-    html = GOOD.replace('<th scope="col">Tier</th>', "<th>Tier</th>")
-    code, out = run(html)
-    assert code == 1, out
-    assert "scope" in out.lower()
-
-
-def test_missing_html_lang_fails() -> None:
-    html = GOOD.replace('<html lang="en">', "<html>")
-    code, out = run(html)
-    assert code == 1, out
-    assert "lang" in out.lower()
-
-
-def test_verdict_headline_required_when_recommendation_outcome_present() -> None:
-    # No verdict-headline in decision-summary; recommendation.outcome is declared → FAIL.
-    html = GOOD.replace(
-        '<p class="verdict-headline">Go, with conditions</p>',
-        "<p>Go, with conditions</p>",
-    )
-    with tempfile.TemporaryDirectory() as tmp:
-        code, out = run(html, migration_dir=_rec_dir(tmp))
-    assert code == 1, out
-    assert "verdict-headline" in out.lower()
-
-
-def test_verdict_headline_not_required_without_recommendation() -> None:
-    # Same HTML, but no estimation-infra.json recommendation → the headline
-    # requirement does not fire (the plain-text verdict is allowed).
-    html = GOOD.replace(
-        '<p class="verdict-headline">Go, with conditions</p>',
-        "<p>Go, with conditions</p>",
-    )
-    code, out = run(html)
-    assert code == 0, out
-    assert "REPORT_OK" in out
-
-
-def test_would_flip_required_when_artifact_has_it() -> None:
-    html = GOOD.replace(
-        '<p class="verdict-headline">Go, with conditions</p>',
-        '<p class="verdict-headline">Go, with conditions</p>'
-        "<h3>What would flip this</h3><ul><li>A published rate above the Heroku bill.</li></ul>",
-    )
-    with tempfile.TemporaryDirectory() as tmp:
-        d = Path(tmp)
-        (d / "estimation-infra.json").write_text(
-            json.dumps(
-                {
-                    "recommendation": {
-                        "outcome": "go_conditional",
-                        "would_flip_if": ["A published rate above the Heroku bill."],
-                    }
-                }
-            ),
-            encoding="utf-8",
-        )
-        missing, out = run(GOOD, migration_dir=d)
-        present, ok = run(html, migration_dir=d)
-    assert missing == 1, out
-    assert "would_flip" in out
-    assert present == 0, ok
-
-
-VERDICT = '<p class="verdict-headline">Go, with conditions</p>'
-FLIPS = ["A published rate above the Heroku bill.", "Dyno count doubles before cutover."]
-FLIP_ITEMS = "".join(f"<li>{flip}</li>" for flip in FLIPS)
-
-
-def _run_with_flips(html: str) -> tuple[int, str]:
-    with tempfile.TemporaryDirectory() as tmp:
-        d = Path(tmp)
-        (d / "estimation-infra.json").write_text(
-            json.dumps(
-                {"recommendation": {"outcome": "go_conditional", "would_flip_if": FLIPS}}
-            ),
-            encoding="utf-8",
-        )
-        return run(html, migration_dir=d)
-
-
-def test_would_flip_heading_accepts_equivalent_visible_spellings() -> None:
-    # Line breaks, &nbsp; entities and inline markup inside the heading all read
-    # as "What would flip this" to the reader and must match.
-    for heading in (
-        "<h3>What would flip this</h3>",
-        "<h3>What\nwould\nflip this</h3>",
-        "<h3>What&nbsp;would&nbsp;flip this</h3>",
-        "<h3>What <em>would</em> flip this</h3>",
-    ):
-        code, out = _run_with_flips(GOOD.replace(VERDICT, VERDICT + heading + f"<ul>{FLIP_ITEMS}</ul>"))
-        assert code == 0, (heading, out)
-
-
-def test_would_flip_heading_in_comment_or_template_fails() -> None:
-    for inert in (
-        "<!-- What would flip this -->",
-        "<template><h3>What would flip this</h3></template>",
-    ):
-        code, out = _run_with_flips(GOOD.replace(VERDICT, VERDICT + inert + f"<ul>{FLIP_ITEMS}</ul>"))
-        assert code == 1, (inert, out)
-        assert "would_flip" in out
-
-
-def test_would_flip_empty_list_fails() -> None:
-    code, out = _run_with_flips(
-        GOOD.replace(VERDICT, VERDICT + "<h3>What would flip this</h3><ul></ul>")
-    )
-    assert code == 1, out
-    assert "0 of 2" in out, out
-
-
-def test_would_flip_partial_list_fails() -> None:
-    code, out = _run_with_flips(
-        GOOD.replace(VERDICT, VERDICT + f"<h3>What would flip this</h3><ul><li>{FLIPS[0]}</li></ul>")
-    )
-    assert code == 1, out
-    assert "1 of 2" in out and "Dyno count" in out, out
-
-
-def _run_with_custom_flips(html: str, flips: list[str]) -> tuple[int, str]:
-    with tempfile.TemporaryDirectory() as tmp:
-        d = Path(tmp)
-        (d / "estimation-infra.json").write_text(
-            json.dumps(
-                {"recommendation": {"outcome": "go_conditional", "would_flip_if": flips}}
-            ),
-            encoding="utf-8",
-        )
-        return run(html, migration_dir=d)
-
-
-def test_would_flip_shared_suffix_cannot_cross_satisfy_items() -> None:
-    flips = [
-        "Database changes require specialist evidence",
-        "Compute changes require specialist evidence",
-    ]
-    html = GOOD.replace(
-        VERDICT,
-        VERDICT
-        + "<h3>What would flip this</h3>"
-        + "<ul><li>Database changes require specialist evidence</li></ul>",
-    )
-    code, out = _run_with_custom_flips(html, flips)
-    assert code == 1, out
-    assert "1 of 2" in out and "Compute" in out, out
-
-
-def test_would_flip_shared_suffix_complete_items_pass() -> None:
-    flips = [
-        "Database changes require specialist evidence",
-        "Compute changes require specialist evidence",
-    ]
-    html = GOOD.replace(
-        VERDICT,
-        VERDICT
-        + "<h3>What would flip this</h3>"
-        + "<ul>"
-        "<li>Database changes require specialist evidence</li>"
-        "<li>Compute changes require specialist evidence</li>"
-        "</ul>",
-    )
-    code, out = _run_with_custom_flips(html, flips)
-    assert code == 0, out
-    assert "REPORT_OK" in out
-
-
-def test_would_flip_complete_list_passes() -> None:
-    code, out = _run_with_flips(
-        GOOD.replace(VERDICT, VERDICT + f"<h3>What would flip this</h3><ul>{FLIP_ITEMS}</ul>")
-    )
-    assert code == 0, out
-    assert "REPORT_OK" in out
-
-
-def test_would_flip_lead_in_paragraph_before_list_passes() -> None:
-    # A one-sentence lead-in between the heading and the <ul> is legitimate
-    # output; the items below it are rendered and must be found (regression for
-    # the matcher stopping at the first non-item run and reporting "0 of N").
-    code, out = _run_with_flips(
-        GOOD.replace(
-            VERDICT,
-            VERDICT
-            + "<h3>What would flip this</h3>"
-            + '<p class="muted">Any of these would change the verdict:</p>'
-            + f"<ul>{FLIP_ITEMS}</ul>",
-        )
-    )
-    assert code == 0, out
-    assert "REPORT_OK" in out
-
-
-def test_would_flip_lead_in_paragraph_with_empty_list_fails() -> None:
-    code, out = _run_with_flips(
-        GOOD.replace(
-            VERDICT,
-            VERDICT
-            + "<h3>What would flip this</h3>"
-            + '<p class="muted">Any of these would change the verdict:</p><ul></ul>',
-        )
-    )
-    assert code == 1, out
-    assert "0 of 2" in out, out
-
-
-def test_would_flip_inline_label_item_passes() -> None:
-    # generate-report.md only asks for a "short unordered list"; the
-    # heroku-decision-gate fixtures render the label inside the first item
-    # (`<li>What would flip this: …</li>`) with no separate heading. That item's
-    # remainder plus its siblings are the list.
-    code, out = _run_with_flips(
-        GOOD.replace(
-            VERDICT,
-            VERDICT + f"<ul><li>What would flip this: {FLIPS[0]}</li><li>{FLIPS[1]}</li></ul>",
-        )
-    )
-    assert code == 0, out
-    assert "REPORT_OK" in out
-
-
-def test_would_flip_inline_label_partial_list_fails() -> None:
-    code, out = _run_with_flips(
-        GOOD.replace(VERDICT, VERDICT + f"<ul><li>What would flip this: {FLIPS[0]}</li></ul>")
-    )
-    assert code == 1, out
-    assert "1 of 2" in out and "Dyno count" in out, out
-
-
-def test_decision_gate_fixtures_render_their_flip_condition() -> None:
-    # The checked-in decision fixtures declare would_flip_if and render it in the
-    # inline-label shape; they must keep passing --mode decision so the fixture
-    # asserters (check_expected_decide*.py) exercise the flip check for real.
-    fixtures = SCRIPT.parents[3] / "fixtures" / "heroku-decision-gate"
-    for name in ("after-decide-complete", "retained-execution-pack"):
-        run_dir = fixtures / name
-        estimate = json.loads((run_dir / "estimation-infra.json").read_text(encoding="utf-8"))
-        assert estimate["recommendation"]["would_flip_if"], name
-        result = subprocess.run(  # nosec B603
-            [
-                sys.executable,
-                str(SCRIPT),
-                str(run_dir / "decision-report.html"),
-                "--mode",
-                "decision",
-                "--migration-dir",
-                str(run_dir),
-            ],
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 0, (name, result.stdout + result.stderr)
-
-
-def test_what_if_columns_required_when_section_present() -> None:
-    thin = GOOD.replace(
-        '<section id="next-steps">',
-        '<section id="what-if-scenarios"><table><thead><tr>'
-        '<th scope="col">Scenario</th><th scope="col">Monthly</th>'
-        "</tr></thead><tbody><tr><td>Baseline</td><td>$1</td></tr></tbody></table></section>"
-        '<section id="next-steps">',
-    )
-    full = GOOD.replace(
-        '<section id="next-steps">',
-        '<section id="what-if-scenarios"><table><thead><tr>'
-        '<th scope="col">Scenario</th><th scope="col">Region</th><th scope="col">HA</th>'
-        '<th scope="col">Compute</th><th scope="col">Arch</th>'
-        '<th scope="col">Complexity</th></tr></thead>'
-        "<tbody><tr><td>Baseline</td><td>us-east-1</td><td>Multi-AZ</td>"
-        "<td>Fargate</td><td>mixed</td><td>Large</td></tr></tbody></table></section>"
-        '<section id="next-steps">',
-    )
-    with tempfile.TemporaryDirectory() as tmp:
-        d = Path(tmp)
-        (d / "scenarios").mkdir()
-        (d / "scenarios" / "index.json").write_text(
-            json.dumps({"scenarios": [{"id": "a"}, {"id": "b"}]}), encoding="utf-8"
-        )
-        bad, bad_out = run(thin, migration_dir=d)
-        good, good_out = run(full, migration_dir=d)
-    assert bad == 1, bad_out
-    assert "Region" in bad_out
-    assert good == 0, good_out
-
-
-def test_what_if_required_when_two_scenarios() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
-        d = Path(tmp)
-        (d / "scenarios").mkdir()
-        (d / "scenarios" / "index.json").write_text(
-            json.dumps({"scenarios": [{"id": "a"}, {"id": "b"}]}), encoding="utf-8"
-        )
-        code, out = run(GOOD, migration_dir=d)
-    assert code == 1, out
-    assert "what-if-scenarios" in out
-
 
 def test_good_report_with_recommendation_passes() -> None:
     # Happy path WITH a declared outcome: the verdict-headline is present, so the
@@ -500,14 +151,64 @@ def test_good_report_with_recommendation_passes() -> None:
     assert "REPORT_OK" in out
 
 
-def test_empty_cost_optimization_fails() -> None:
+def test_empty_appendix_optimization_fails() -> None:
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"></section>',
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"></section>',
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out and "empty" in out.lower()
+    assert '<section id="appendix-optimization"> has no substantive content' in out
+    assert "empty" in out.lower()
+
+
+def test_empty_appendix_optimization_tbody_fails_naming_the_section() -> None:
+    html = GOOD.replace(
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><h2>Appendix B.1 — Savings Plans and Reserved Instances</h2>'
+        '<table><caption>Commitment products</caption><thead><tr><th scope="col">Optimization</th>'
+        '<th scope="col">Monthly savings</th></tr></thead><tbody></tbody></table></section>',
+    )
+    code, out = run(html)
+    assert code == 1, out
+    assert '<section id="appendix-optimization"> has no substantive content' in out
+    assert "exec-optimization" not in out
+
+
+def test_empty_exec_optimization_fails_naming_the_section() -> None:
+    html = GOOD.replace(
+        '<section id="exec-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="exec-optimization"><h2>Cost Optimization</h2></section>',
+    )
+    code, out = run(html)
+    assert code == 1, out
+    assert '<section id="exec-optimization"> has no substantive content' in out
+    assert '<section id="appendix-optimization"> has no substantive content' not in out
+
+
+def test_populated_exec_optimization_posture_table_passes() -> None:
+    html = GOOD.replace(
+        '<section id="exec-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="exec-optimization"><h2>Cost Optimization</h2><table><caption>Posture comparison</caption>'
+        '<thead><tr><th scope="col">Posture</th><th scope="col">Est. monthly</th></tr></thead>'
+        "<tbody><tr><td>Balanced on-demand</td><td>$210</td></tr>"
+        "<tr><td>Balanced with both Savings Plans</td><td>$163</td></tr></tbody></table>"
+        "<p>Savings Plan savings are not additive to the Optimized tier.</p></section>",
+    )
+    code, out = run(html)
+    assert code == 0, out
+    assert "REPORT_OK" in out
+
+
+def test_optimization_content_not_checked_in_decision_mode() -> None:
+    # Decision mode: exec-optimization follows the shared trigger; the add-on's
+    # content rule is full mode only.
+    html = DECISION_GOOD.replace(
+        '<section id="exec-costs">',
+        '<section id="exec-optimization"></section><section id="exec-costs">',
+    )
+    code, out = run(html, mode="decision")
+    assert code == 0, out
 
 
 def test_no_eligible_sentence_with_entity_hyphens_passes() -> None:
@@ -537,57 +238,57 @@ def test_no_eligible_sentence_only_in_comment_fails() -> None:
     # Regression (09-22 P2): the sentence present ONLY inside an HTML comment is
     # not rendered — must NOT satisfy the content requirement.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><!-- No 1-year/3-year commitment product applies to this architecture. --><p>See optimization notes.</p></section>',
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><!-- No 1-year/3-year commitment product applies to this architecture. --><p>See optimization notes.</p></section>',
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out
+    assert "appendix-optimization" in out
 
 
 def test_no_eligible_sentence_only_in_template_fails() -> None:
     # Regression (09-22 P2): the sentence present ONLY inside an inert <template>
     # is not rendered — must NOT satisfy the content requirement.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><template><p>No 1-year/3-year commitment product applies to this architecture.</p></template><p>See optimization notes.</p></section>',
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><template><p>No 1-year/3-year commitment product applies to this architecture.</p></template><p>See optimization notes.</p></section>',
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out
+    assert "appendix-optimization" in out
 
 
 def test_heading_only_cost_optimization_fails() -> None:
     # A heading alone (no opportunity table, no no-eligible-commitment sentence)
     # must not satisfy the content requirement.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><h2>Cost Optimization Opportunities</h2></section>',
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><h2>Cost Optimization Opportunities</h2></section>',
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out
+    assert "appendix-optimization" in out
 
 
 def test_table_headers_only_cost_optimization_fails() -> None:
     # A table with column headers but an empty <tbody> — no actual opportunity
     # rows — must not satisfy the content requirement either.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><table><thead><tr>'
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><table><thead><tr>'
         '<th scope="col">Opportunity</th><th scope="col">Savings</th>'
         "</tr></thead><tbody></tbody></table></section>",
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out
+    assert "appendix-optimization" in out
 
 
 def test_cost_optimization_with_real_opportunity_row_passes() -> None:
     # Control: an actual populated row in the tbody is real content and passes.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><table><thead><tr>'
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><table><thead><tr>'
         '<th scope="col">Opportunity</th></tr></thead><tbody><tr>'
         "<td>1yr Compute Savings Plan: ~25%</td></tr></tbody></table></section>",
     )
@@ -602,29 +303,29 @@ def test_empty_tbody_with_credits_disclaimer_fails() -> None:
     # the disclaimer is explanatory text, not an opportunity row or the explicit
     # no-eligible-commitment sentence.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><table><thead><tr>'
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><table><thead><tr>'
         '<th scope="col">Optimization</th></tr></thead><tbody></tbody></table>'
         "<p>Activate credits don't cover RI/Savings Plan upfront costs — they apply "
         "only to the ongoing discounted hourly rate.</p></section>",
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out
+    assert "appendix-optimization" in out
 
 
 def test_th_only_row_in_tbody_does_not_count_as_opportunity_row() -> None:
     # A <tbody> row made only of <th> cells (no <td>) must not count as a
     # populated opportunity row.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><table><thead><tr>'
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><table><thead><tr>'
         '<th scope="col">Opportunity</th></tr></thead><tbody><tr>'
         '<th scope="row">Totals</th></tr></tbody></table></section>',
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out
+    assert "appendix-optimization" in out
 
 
 def test_nbsp_only_opportunity_cell_fails() -> None:
@@ -633,26 +334,26 @@ def test_nbsp_only_opportunity_cell_fails() -> None:
     # text; a parser that decodes character references first correctly treats
     # it as blank.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><table><tbody><tr>'
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><table><tbody><tr>'
         "<td>&nbsp;</td></tr></tbody></table></section>",
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out
+    assert "appendix-optimization" in out
 
 
 def test_numeric_charref_only_opportunity_cell_fails() -> None:
     # Same as above but with the numeric character reference form (&#160;)
     # rather than the named entity.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><table><tbody><tr>'
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><table><tbody><tr>'
         "<td>&#160;</td></tr></tbody></table></section>",
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out
+    assert "appendix-optimization" in out
 
 
 def test_commented_out_opportunity_row_fails() -> None:
@@ -661,13 +362,13 @@ def test_commented_out_opportunity_row_fails() -> None:
     # HTML comment; a parser naturally routes comment text away from
     # handle_data.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><table><tbody>'
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><table><tbody>'
         "<!-- <tr><td>RDS Reserved Instance</td></tr> --></tbody></table></section>",
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out
+    assert "appendix-optimization" in out
 
 
 def test_opportunity_row_without_explicit_tbody_passes() -> None:
@@ -675,8 +376,8 @@ def test_opportunity_row_without_explicit_tbody_passes() -> None:
     # all is valid HTML (an implicit tbody is inferred) and a real opportunity
     # row inside it must still count as content.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><table><tr>'
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><table><tr>'
         "<td>RDS Reserved Instance</td></tr></table></section>",
     )
     code, out = run(html)
@@ -691,8 +392,8 @@ def test_opportunity_row_with_omitted_td_end_tag_passes() -> None:
     # parser only finalized a cell on an EXPLICIT handle_endtag("td"), so this
     # exact shape silently registered as empty and failed a valid report.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><table><tr>'
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><table><tr>'
         "<td>RDS Reserved Instance</tr></table></section>",
     )
     code, out = run(html)
@@ -705,8 +406,8 @@ def test_opportunity_row_with_sibling_omitted_td_end_tags_passes() -> None:
     # second cell's start tag implicitly closes the first. The real
     # opportunity text in the second cell must still be found.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><table><tr>'
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><table><tr>'
         "<td>Opportunity<td>RDS Reserved Instance</tr></table></section>",
     )
     code, out = run(html)
@@ -719,132 +420,14 @@ def test_opportunity_row_with_omitted_td_end_tag_blank_cell_still_fails() -> Non
     # accidentally start passing just because the end tag is optional —
     # only real, nonblank text should ever satisfy this check.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><table><tr><td></tr></table></section>',
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><table><tr><td></tr></table></section>',
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out
+    assert "appendix-optimization" in out
 
 
-def test_th_scope_with_spaces_around_equals_passes() -> None:
-    # scope = "col" (spaces around =) is valid HTML and must be accepted —
-    # a literal `scope="col"` regex would wrongly reject it.
-    html = GOOD.replace('<th scope="col">Tier</th>', '<th scope = "col">Tier</th>')
-    code, out = run(html)
-    assert code == 0, out
-    assert "REPORT_OK" in out
-
-
-def test_th_scope_unquoted_passes() -> None:
-    # scope=col (unquoted attribute value) is valid HTML and must be accepted.
-    html = GOOD.replace('<th scope="col">Tier</th>', "<th scope=col>Tier</th>")
-    code, out = run(html)
-    assert code == 0, out
-    assert "REPORT_OK" in out
-
-
-def test_th_scope_single_quoted_passes() -> None:
-    html = GOOD.replace('<th scope="col">Tier</th>', "<th scope='col'>Tier</th>")
-    code, out = run(html)
-    assert code == 0, out
-    assert "REPORT_OK" in out
-
-
-def test_html_lang_with_spaces_around_equals_passes() -> None:
-    html = GOOD.replace('<html lang="en">', '<html lang = "en">')
-    code, out = run(html)
-    assert code == 0, out
-    assert "REPORT_OK" in out
-
-
-def test_figure_aria_label_unquoted_passes() -> None:
-    html = GOOD.replace(
-        "</div>",
-        "<figure aria-label=Costs><figcaption>Costs</figcaption></figure></div>",
-    )
-    code, out = run(html)
-    assert code == 0, out
-    assert "REPORT_OK" in out
-
-
-def test_figure_without_aria_label_fails() -> None:
-    html = GOOD.replace("</div>", "<figure><figcaption>Costs</figcaption></figure></div>")
-    code, out = run(html)
-    assert code == 1, out
-    assert "aria-label" in out.lower()
-
-
-def test_figure_with_aria_label_and_figcaption_passes() -> None:
-    html = GOOD.replace(
-        "</div>",
-        '<figure aria-label="Cost breakdown"><figcaption>Costs</figcaption></figure></div>',
-    )
-    code, out = run(html)
-    assert code == 0, out
-    assert "REPORT_OK" in out
-
-
-def test_verdict_headline_with_spaces_around_equals_passes() -> None:
-    # class = "verdict-headline" (spaces around =) is valid HTML and must be
-    # accepted when recommendation.outcome is declared.
-    html = GOOD.replace(
-        '<p class="verdict-headline">Go, with conditions</p>',
-        '<p class = "verdict-headline">Go, with conditions</p>',
-    )
-    with tempfile.TemporaryDirectory() as tmp:
-        code, out = run(html, migration_dir=_rec_dir(tmp))
-    assert code == 0, out
-    assert "REPORT_OK" in out
-
-
-def test_verdict_headline_unquoted_passes() -> None:
-    # class=verdict-headline (unquoted, single token) is valid HTML and must be
-    # accepted when recommendation.outcome is declared.
-    html = GOOD.replace(
-        '<p class="verdict-headline">Go, with conditions</p>',
-        "<p class=verdict-headline>Go, with conditions</p>",
-    )
-    with tempfile.TemporaryDirectory() as tmp:
-        code, out = run(html, migration_dir=_rec_dir(tmp))
-    assert code == 0, out
-    assert "REPORT_OK" in out
-
-
-def test_badge_verdict_pill_with_spaces_around_equals_fails() -> None:
-    # class = "badge-verdict-go" (spaces around =) is valid, equivalent HTML and
-    # must still be caught by the badge ban — it must not bypass the check by
-    # using different (but legal) attribute formatting.
-    html = GOOD.replace(
-        '<p class="verdict-headline">Go, with conditions</p>',
-        '<p class="verdict-headline">Go, with conditions</p>'
-        '<span class = "badge-verdict-go">Go</span>',
-    )
-    code, out = run(html)
-    assert code == 1, out
-    assert "badge-verdict" in out.lower()
-
-
-def test_badge_verdict_pill_unquoted_fails() -> None:
-    # class=badge-verdict-go (unquoted) must also be caught — regression for the
-    # gap where a badge alongside a normal headline returned REPORT_OK because
-    # the literal `class="..."` regex didn't match unquoted attribute syntax.
-    html = GOOD.replace(
-        '<p class="verdict-headline">Go, with conditions</p>',
-        '<p class="verdict-headline">Go, with conditions</p>'
-        "<span class=badge-verdict-go>Go</span>",
-    )
-    code, out = run(html)
-    assert code == 1, out
-    assert "badge-verdict" in out.lower()
-
-
-def test_figure_without_figcaption_fails() -> None:
-    """A <figure> with aria-label but no <figcaption> fails (symmetric to the aria-label case)."""
-    html = GOOD.replace("</div>", '<figure aria-label="Costs">chart</figure></div>')
-    code, out = run(html)
-    assert code == 1, out
-    assert "figcaption" in out.lower()
 
 
 def test_validator_is_packaged_inside_the_skill_directory() -> None:
@@ -867,182 +450,44 @@ def test_validator_is_packaged_inside_the_skill_directory() -> None:
 
 def test_inert_only_opportunity_table_fails() -> None:
     """A whole opportunity table nested in a <template> is never rendered, so it
-    must not satisfy the cost-optimization content requirement."""
+    must not satisfy the appendix-optimization content requirement."""
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><template><table><tr>'
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><template><table><tr>'
         "<td>RDS Reserved Instance</td></tr></table></template></section>",
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out
+    assert "appendix-optimization" in out
 
 
 def test_opportunity_cell_only_inert_content_fails() -> None:
     """A visible row whose only cell content is an inert <template>/<script>
     subtree renders nothing, so it is not a populated opportunity row."""
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><table><tr>'
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><table><tr>'
         '<td><script type="application/json">{"x":1}</script></td></tr>'
         "<tr><td><template>RDS Reserved Instance</template></td></tr>"
         "</table></section>",
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out
+    assert "appendix-optimization" in out
 
 
-def test_verdict_headline_only_in_template_fails() -> None:
-    """A verdict-headline that exists only inside an inert <template> renders no
-    verdict, so a declared recommendation.outcome must still fail the check."""
-    html = GOOD.replace(
-        '<p class="verdict-headline">Go, with conditions</p>',
-        '<template><p class="verdict-headline">Go, with conditions</p></template>',
-    )
-    with tempfile.TemporaryDirectory() as tmp:
-        code, out = run(html, migration_dir=_rec_dir(tmp))
-    assert code == 1, out
-    assert "verdict-headline" in out.lower()
 
-
-def test_th_inside_template_not_audited_for_scope() -> None:
-    """A <th> inside an inert <template> is never rendered, so the accessibility
-    scan must not demand scope="col"/"row" on it (no false-positive). The visible
-    exec-costs table keeps its valid scope, so the report still passes."""
-    html = GOOD.replace(
-        "</table></section>",
-        "</table>"
-        "<template><table><tr><th>Hidden header, no scope</th></tr></table></template>"
-        "</section>",
-        1,
-    )
-    code, out = run(html)
-    assert code == 0, out
-    assert "REPORT_OK" in out
-
-
-def test_verdict_headline_only_in_hidden_element_or_ancestor_fails() -> None:
-    for replacement in (
-        '<p hidden class="verdict-headline">Go, with conditions</p>',
-        '<div hidden><p class="verdict-headline">Go, with conditions</p></div>',
-    ):
-        html = GOOD.replace(
-            '<p class="verdict-headline">Go, with conditions</p>', replacement
-        )
-        with tempfile.TemporaryDirectory() as tmp:
-            code, out = run(html, migration_dir=_rec_dir(tmp))
-        assert code == 1, (replacement, out)
-        assert "verdict-headline" in out.lower()
-
-
-def test_would_flip_populated_list_only_in_hidden_element_or_ancestor_fails() -> None:
-    for replacement in (
-        '<h3>What would flip this</h3><ul hidden>'
-        f'{FLIP_ITEMS}</ul>',
-        f'<div hidden><h3>What would flip this</h3><ul>{FLIP_ITEMS}</ul></div>',
-    ):
-        code, out = _run_with_flips(GOOD.replace(VERDICT, VERDICT + replacement))
-        assert code == 1, (replacement, out)
-        assert "would_flip" in out
-
-
-# --- Section-parser regressions (09-22 P2): section identity/counts come from the
-# stdlib parser, so comments and inert (script/style/template) subtrees never satisfy
-# a section gate, real quoted/unquoted/spaced ids pass, and data-id is not the id. ---
-
-
-def test_template_wrapped_section_does_not_satisfy_requirement() -> None:
-    # A required section wrapped entirely in an inert <template> is never rendered,
-    # so it must not count as present.
-    html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<template><section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section></template>',
-    )
-    code, out = run(html)
-    assert code == 1, out
-    assert "cost-optimization" in out
-
-
-def test_commented_section_does_not_satisfy_requirement() -> None:
-    # A section that exists only inside an HTML comment is not rendered.
-    html = GOOD.replace(
-        '<section id="next-steps"><ol><li>See MIGRATION_GUIDE.md</li></ol></section>',
-        "<!-- <section id=\"next-steps\"><ol><li>x</li></ol></section> -->",
-    )
-    code, out = run(html)
-    assert code == 1, out
-    assert "next-steps" in out
-
-
-def test_data_id_is_not_treated_as_section_id() -> None:
-    # data-id must not be read as the section id.
-    html = GOOD.replace(
-        '<section id="next-steps"><ol><li>See MIGRATION_GUIDE.md</li></ol></section>',
-        '<section data-id="next-steps"><ol><li>x</li></ol></section>',
-    )
-    code, out = run(html)
-    assert code == 1, out
-    assert "next-steps" in out
-
-
-def test_unquoted_and_spaced_section_ids_are_accepted() -> None:
-    # Equivalent HTML in different valid spellings must count the same.
-    html = GOOD.replace('<section id="next-steps">', "<section id = next-steps>")
-    code, out = run(html)
-    assert code == 0, out
-    assert "REPORT_OK" in out
-
-
-def test_commented_duplicate_does_not_inflate_count() -> None:
-    # A commented copy of a required section must not trigger a duplicate error.
-    html = GOOD.replace(
-        '<section id="exec-costs"><table><thead><tr><th scope="col">Tier</th></tr></thead><tbody><tr><td>Balanced</td></tr></tbody></table></section>',
-        '<section id="exec-costs"><table><thead><tr><th scope="col">Tier</th></tr></thead><tbody><tr><td>Balanced</td></tr></tbody></table></section>'
-        '<!-- <section id="exec-costs">dup</section> -->',
-    )
-    code, out = run(html)
-    assert code == 0, out
-    assert "REPORT_OK" in out
-
-
-def test_verdict_headline_only_in_template_fails_via_section_parser() -> None:
-    # A decision-summary whose entire content (verdict headline) lives inside a
-    # <template> renders no verdict; with a declared recommendation.outcome it must fail.
-    html = GOOD.replace(
-        '<section id="decision-summary"><p class="verdict-headline">Go, with conditions</p></section>',
-        '<template><section id="decision-summary"><p class="verdict-headline">Go, with conditions</p></section></template>'
-        '<section id="decision-summary"><p>Go, with conditions</p></section>',
-    )
-    with tempfile.TemporaryDirectory() as tmp:
-        code, out = run(html, migration_dir=_rec_dir(tmp))
-    assert code == 1, out
-    assert "verdict-headline" in out.lower()
-
-
-# --- Decision-mode coverage (--mode decision), ported to the co-located suite. ---
 
 DECISION_GOOD = """<!DOCTYPE html>
 <html lang="en">
 <style>
-  body { margin: 0; background: #f6f8fa; color: #1f2328; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 15px; line-height: 1.55; }
-  .report { max-width: 1040px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
-  section { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; scroll-margin-top: 1rem; }
-  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; }
-  .metric { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 0.85rem 1rem; }
-  .verdict { background: #e6f4ea; border: 1px solid #137333; padding: 0.75rem 1rem; }
-  .savings { color: #137333; font-weight: 650; }
   .share-card { background: #f0f6fc; border: 1px solid #d0d7de; border-left: 4px solid #0969da; padding: 0.85rem 1rem; }
-  .appendix-header { background: #232f3e; color: #fff; padding: 1rem 1.5rem; }
-  a:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
-  @media (max-width: 700px) { .report { padding: 1rem; } }
-  @media print { body { background: #fff; } }
 </style>
 <body>
 <div class="report">
   <section id="decision-summary"><p class="verdict-headline">Go, with conditions</p></section>
-  <section id="exec-share"><p>The one-paragraph version, ready to forward:</p><div class="share-card"><p>Go, with conditions, at medium confidence. The estimated AWS balanced rate is higher than the Heroku rate card, the shape is phased, and the planning band for this complexity tier is the duration to quote. Confirm the open conditions before treating the monthly figure as final.</p></div></section>
-  <section id="exec-timeline"><h2>Timeline</h2><p>Phased migration. Planning band: 2-6 weeks for a small estate. This planning band is the complexity-tier range, not a staffed schedule.</p></section>
+  <section id="exec-share"><p>The one-paragraph version, ready to forward:</p><div class="share-card"><p>Go, with conditions, at medium confidence. The estimated AWS balanced rate is higher than the Heroku rate card and the shape is phased. Confirm the open conditions before treating the monthly figure as final.</p></div></section>
+  <section id="exec-timeline"><h2>Timeline</h2><p>Phased migration: provision, migrate data, cut over. Not a staffed schedule.</p></section>
   <section id="exec-costs"><table><thead><tr><th scope="col">Tier</th></tr></thead><tbody><tr><td>Balanced</td></tr></tbody></table></section>
   <section id="decision-cta"><p>Ready to execute? Re-run with Execute.</p></section>
   <footer>Generated by Heroku to AWS Migration Advisor — draft for review; verify figures before executive sign-off.</footer>
@@ -1058,64 +503,179 @@ def test_decision_mode_minimal_passes() -> None:
     assert "REPORT_OK" in out
 
 
-def test_decision_mode_requires_decision_cta_not_next_steps() -> None:
-    # decision mode requires decision-cta; a next-steps terminal is the wrong mode.
-    html = DECISION_GOOD.replace("decision-cta", "next-steps")
-    code, out = run(html, mode="decision")
-    assert code == 1, out
-    assert "decision-cta" in out
-
-
 def test_full_mode_must_not_carry_decision_cta() -> None:
-    # The other mode's terminal section must not appear in full mode.
+    # The decision-mode terminal section must not appear in full mode.
     html = GOOD.replace(
-        '<section id="next-steps"><ol><li>See MIGRATION_GUIDE.md</li></ol></section>',
-        '<section id="next-steps"><ol><li>See MIGRATION_GUIDE.md</li></ol></section>'
-        '<section id="decision-cta"><p>x</p></section>',
+        "</footer>", '</footer><section id="decision-cta"><p>x</p></section>'
     )
     code, out = run(html)
     assert code == 1, out
-    assert "decision-cta" in out
+    assert '--mode full report must not contain <section id="decision-cta">' in out
+    assert "(that is the decision-mode terminal section)" in out
 
 
-def test_decision_basis_required_when_estimate_declares_it() -> None:
-    # When estimation-infra.json declares recommendation.decision_basis, the report
-    # must render a decision-basis section.
-    import json as _json
+def test_decision_mode_keeps_decision_cta() -> None:
+    # Control: decision-cta is decision mode's own terminal section.
+    assert DECISION_GOOD.count('<section id="decision-cta">') == 1
+    code, out = run(DECISION_GOOD, mode="decision")
+    assert code == 0, out
 
-    with tempfile.TemporaryDirectory() as tmp:
-        d = Path(tmp)
-        (d / "estimation-infra.json").write_text(
-            _json.dumps(
-                {"recommendation": {"outcome": "go_conditional", "decision_basis": "x"}}
-            ),
-            encoding="utf-8",
-        )
-        code, out = run(GOOD, migration_dir=d)
+
+# --- Retired heroku section ids (converged on the shared contract) ---
+
+RETIRED = {
+    "next-steps": (
+        '<section id="next-steps"><ol><li>See MIGRATION_GUIDE.md</li></ol></section>',
+        'the decision-summary "Next steps" <ol class="compact"> (full mode) / decision-cta (decision mode)',
+    ),
+    "cost-optimization": (
+        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        "exec-optimization plus appendix-optimization (Appendix B.1)",
+    ),
+    "decision-basis": (
+        '<section id="decision-basis"><h2>What This Assessment Rests On</h2><p>Measured: dyno count.</p></section>',
+        'exec-assumptions ("What This Assessment Rests On")',
+    ),
+}
+
+
+def _retired_message(retired_id: str) -> str:
+    return f'<section id="{retired_id}"> is a retired heroku section id — render {RETIRED[retired_id][1]} instead'
+
+
+def test_retired_ids_fail_in_full_mode() -> None:
+    for retired_id, (section, _replacement) in RETIRED.items():
+        html = GOOD.replace("</footer>", "</footer>" + section)
+        code, out = run(html)
+        assert code == 1, (retired_id, out)
+        assert _retired_message(retired_id) in out, (retired_id, out)
+        assert "retired" in out
+
+
+def test_retired_ids_fail_in_decision_mode() -> None:
+    for retired_id, (section, _replacement) in RETIRED.items():
+        html = DECISION_GOOD.replace("</footer>", "</footer>" + section)
+        code, out = run(html, mode="decision")
+        assert code == 1, (retired_id, out)
+        assert _retired_message(retired_id) in out, (retired_id, out)
+
+
+def test_retired_id_only_in_comment_is_not_rendered() -> None:
+    # A commented-out retired section is not rendered, so it is not an error.
+    html = GOOD.replace("</footer>", '</footer><!-- <section id="cost-optimization"><p>x</p></section> -->')
+    code, out = run(html)
+    assert code == 0, out
+
+
+def test_renamed_appendix_optimization_fails_naming_the_replacement() -> None:
+    # The acceptance scenario: a full report whose B.1 section still carries the
+    # retired id fails and the message names exec-optimization.
+    assert GOOD.count('id="appendix-optimization"') == 1
+    html = GOOD.replace('id="appendix-optimization"', 'id="cost-optimization"')
+    code, out = run(html)
     assert code == 1, out
-    assert "decision-basis" in out
+    assert "retired" in out and "exec-optimization" in out
 
 
-def test_decision_basis_commented_placeholder_does_not_satisfy() -> None:
-    # The shipped skeleton's commented decision-basis placeholder must not count.
-    import json as _json
+def _basis_dir(tmp: str) -> Path:
+    d = Path(tmp)
+    (d / "estimation-infra.json").write_text(
+        json.dumps({"recommendation": {"outcome": "go_conditional", "decision_basis": "x"}}),
+        encoding="utf-8",
+    )
+    return d
 
+
+EXEC_ASSUMPTIONS_MISSING = (
+    "estimation-infra.json declares recommendation.decision_basis but the report has no "
+    '<section id="exec-assumptions"> ("What This Assessment Rests On")'
+)
+EXEC_ASSUMPTIONS_SECTION = (
+    '<section id="exec-assumptions"><h2>What This Assessment Rests On</h2><p>Measured: dyno count.</p></section>'
+)
+
+
+def test_exec_assumptions_required_when_estimate_declares_decision_basis() -> None:
+    # When estimation-infra.json declares recommendation.decision_basis, the report
+    # must render exec-assumptions.
+    with tempfile.TemporaryDirectory() as tmp:
+        code, out = run(GOOD, migration_dir=_basis_dir(tmp))
+    assert code == 1, out
+    assert EXEC_ASSUMPTIONS_MISSING in out
+
+
+def test_exec_assumptions_rendered_section_passes() -> None:
+    html = GOOD.replace('<section id="exec-costs">', EXEC_ASSUMPTIONS_SECTION + '<section id="exec-costs">')
+    with tempfile.TemporaryDirectory() as tmp:
+        code, out = run(html, migration_dir=_basis_dir(tmp))
+    assert code == 0, out
+    assert "REPORT_OK" in out
+
+
+def test_exec_assumptions_commented_placeholder_does_not_satisfy() -> None:
+    # A commented exec-assumptions placeholder must not count.
     html = GOOD.replace(
-        '<section id="next-steps"><ol><li>See MIGRATION_GUIDE.md</li></ol></section>',
-        "<!-- <section id=\"decision-basis\">when Estimate declares it</section> -->"
-        '<section id="next-steps"><ol><li>See MIGRATION_GUIDE.md</li></ol></section>',
+        '<section id="exec-costs">',
+        "<!-- <section id=\"exec-assumptions\">when Estimate declares it</section> -->"
+        '<section id="exec-costs">',
     )
     with tempfile.TemporaryDirectory() as tmp:
-        d = Path(tmp)
-        (d / "estimation-infra.json").write_text(
-            _json.dumps(
-                {"recommendation": {"outcome": "go_conditional", "decision_basis": "x"}}
-            ),
+        code, out = run(html, migration_dir=_basis_dir(tmp))
+    assert code == 1, out
+    assert EXEC_ASSUMPTIONS_MISSING in out
+
+
+def test_retired_decision_basis_does_not_satisfy_decision_basis_rule() -> None:
+    # Rendering the retired id instead of exec-assumptions fails twice: the retired
+    # id and the missing exec-assumptions.
+    html = GOOD.replace('<section id="exec-costs">', RETIRED["decision-basis"][0] + '<section id="exec-costs">')
+    with tempfile.TemporaryDirectory() as tmp:
+        code, out = run(html, migration_dir=_basis_dir(tmp))
+    assert code == 1, out
+    assert EXEC_ASSUMPTIONS_MISSING in out
+    assert _retired_message("decision-basis") in out
+
+
+# --- Decision mode: .phase-status.json pre-execution invariant ---
+
+
+def _phase_dir(tmp: str, generate: str | None, raw: str | None = None) -> Path:
+    d = Path(tmp)
+    if raw is not None:
+        (d / ".phase-status.json").write_text(raw, encoding="utf-8")
+    elif generate is not None:
+        (d / ".phase-status.json").write_text(
+            json.dumps({"phases": {"estimate": "completed", "generate": generate}}),
             encoding="utf-8",
         )
-        code, out = run(html, migration_dir=d)
+    return d
+
+
+def test_decision_mode_pending_generate_passes() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        code, out = run(DECISION_GOOD, _phase_dir(tmp, "pending"), mode="decision")
+    assert code == 0, out
+    assert "REPORT_OK" in out
+
+
+def test_decision_mode_completed_generate_fails() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        code, out = run(DECISION_GOOD, _phase_dir(tmp, "completed"), mode="decision")
     assert code == 1, out
-    assert "decision-basis" in out
+    assert "decision mode: .phase-status.json phases.generate is 'completed'" in out
+
+
+def test_decision_mode_corrupt_phase_status_fails() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        code, out = run(DECISION_GOOD, _phase_dir(tmp, None, raw="{not json"), mode="decision")
+    assert code == 1, out
+    assert "decision mode: .phase-status.json exists but could not be read/parsed" in out
+
+
+def test_full_mode_ignores_completed_generate() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        code, out = run(GOOD, _phase_dir(tmp, "completed"), mode="full")
+    assert code == 0, out
 
 
 def _lfl_report(anchor_usd: str) -> str:
@@ -1158,46 +718,42 @@ def test_like_for_like_without_the_block_is_not_affected() -> None:
     assert code == 0, out
 
 
-def test_cfo_brief_requires_one_substantive_paragraph() -> None:
-    html = GOOD.replace(
-        '<div class="share-card"><p>Go, with conditions, at medium confidence. The estimated AWS balanced rate is higher than the Heroku rate card, the shape is phased, and the planning band for this complexity tier is the duration to quote. Confirm the open conditions before treating the monthly figure as final.</p></div>',
-        '<div class="share-card"><p>Too short.</p></div>',
-    )
-    code, out = run(html)
+
+def test_like_for_like_anchor_mismatch_fails_with_named_figure() -> None:
+    code, out = _lfl_run("150", {"heroku_monthly_like_for_like": 140,
+                                 "like_for_like_comparison": {"heroku_monthly_like_for_like": 140}})
     assert code == 1, out
-    assert "20 words" in out
+    assert 'cost figure mismatch: data-cost-key="heroku_monthly_like_for_like" renders "$150"' in out
+    assert "cost_comparison.heroku_monthly_like_for_like = $140" in out
 
 
-def test_cfo_brief_rejects_a_copy_button() -> None:
-    html = GOOD.replace(
-        '<section id="exec-share">',
-        '<section id="exec-share"><button type="button">Copy</button>',
-    )
-    code, out = run(html)
-    assert code == 1, out
-    assert "buttons" in out
-
-
-def test_timeline_requires_the_planning_band_label() -> None:
-    html = GOOD.replace(
-        "Phased migration. Planning band: 2-6 weeks for a small estate. This planning band is the complexity-tier range, not a staffed schedule.",
-        "Phased migration. About 2-6 weeks for a small estate.",
-    )
-    code, out = run(html)
-    assert code == 1, out
-    assert "planning band" in out
-
-
-def test_timeline_band_must_match_complexity_tier() -> None:
-    html = GOOD.replace("2-6 weeks", "12-18 weeks")
+def test_like_for_like_anchor_required_when_block_exists() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         d = Path(tmp)
         (d / "estimation-infra.json").write_text(
-            json.dumps({"complexity_tier": "small"}), encoding="utf-8"
+            json.dumps({"cost_comparison": {"heroku_monthly_like_for_like": 140,
+                                            "like_for_like_comparison": {"heroku_monthly_like_for_like": 140}}}),
+            encoding="utf-8",
         )
-        code, out = run(html, migration_dir=d)
+        code, out = run(GOOD, d)
     assert code == 1, out
-    assert "2–6" in out or "2-6" in out
+    assert 'missing data-cost-key="heroku_monthly_like_for_like" anchor inside <section id="exec-costs">' in out
+
+
+def test_add_on_does_not_check_the_balanced_anchor() -> None:
+    """`aws_monthly_balanced` moved to the shared validator; a wrong balanced figure
+    is not this validator's finding."""
+    html = GOOD.replace(
+        "<td>Balanced</td>",
+        '<td>Balanced</td><td><span data-cost-key="aws_monthly_balanced">$999/mo</span></td>',
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp)
+        (d / "estimation-infra.json").write_text(
+            json.dumps({"projected_costs": {"aws_monthly_balanced": 210}}), encoding="utf-8"
+        )
+        code, out = run(html, d)
+    assert code == 0, out
 
 
 def test_security_appendix_requires_threat_columns() -> None:
@@ -1212,6 +768,27 @@ def test_security_appendix_requires_threat_columns() -> None:
 
 
 # --- AWS Activate credits callout (report-decision-core.md § Startup credits callout) ---
+
+
+SECURITY_TABLE = (
+    '<table><thead><tr><th scope="col">Control</th><th scope="col">Setting</th><th scope="col">What it does</th><th scope="col">Threat mitigated</th></tr></thead>'
+    "<tbody><tr><td>GuardDuty</td><td>Enabled</td><td>Detects unusual API activity</td><td>Credential theft</td></tr></tbody></table>"
+)
+
+
+def test_security_appendix_without_table_fails() -> None:
+    assert SECURITY_TABLE in GOOD
+    html = GOOD.replace(SECURITY_TABLE, "<p>GuardDuty on.</p>")
+    code, out = run(html)
+    assert code == 1, out
+    assert "appendix-security must contain a table with What it does and Threat mitigated columns" in out
+
+
+def test_security_appendix_not_checked_in_decision_mode() -> None:
+    # Decision mode renders no appendix; the column rule is full-mode only.
+    code, out = run(DECISION_GOOD, mode="decision")
+    assert code == 0, out
+
 
 ACTIVATE_LINK = '<a href="https://aws.amazon.com/startups/credits/">AWS Activate credits</a>'
 FOUNDERS_CALLOUT = (
@@ -1239,13 +816,6 @@ def _prefs_dir(tmp: str, status: str | None) -> Path:
         prefs["global"]["startup_program_status"] = status
     (root / "preferences.json").write_text(json.dumps(prefs), encoding="utf-8")
     return root
-
-
-def test_activate_mention_requires_apply_link() -> None:
-    html = _with_summary("<p>You may qualify for AWS Activate credits.</p>")
-    code, out = run(html)
-    assert code == 1
-    assert "no clickable official apply link" in out
 
 
 def test_activate_callout_with_link_passes_without_preferences() -> None:

@@ -40,6 +40,8 @@ Check which estimation artifacts exist in `$MIGRATION_DIR/`:
 
 If **none** of these estimation artifacts exist: **STOP**. Output: "No estimation artifacts found. Run Phase 4 (Estimate) first."
 
+**Tier-basis check.** When `estimation-infra.json` exists, confirm `projected_costs._premium_basis` and `projected_costs._optimized_basis` are both present. If either is absent the file predates the current Premium / Optimized definitions: tell the user its Premium and Optimized figures were produced under the earlier tier definitions and offer to re-run Phase 4 (Estimate) first (user-confirmed per `shared/handoff-gates.md`; set `phases.estimate` and `phases.generate` back to `"pending"` only if they accept). If they decline, continue, and the report's reading guide states the earlier-definitions notice (`report-decision-core.md`, How to read cost tiers) instead of the new derivations.
+
 **Compliance-estimate staleness guard.** When `estimation-infra.json` exists, read
 `preferences.json` → `design_constraints.compliance.value` (absent / `none` / `unknown` →
 treat as no gating framework declared) and check whether it contains any of `soc2`, `pci`,

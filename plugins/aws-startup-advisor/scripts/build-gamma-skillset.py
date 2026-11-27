@@ -77,11 +77,18 @@ REQUIRED_FILES = {
         "references/vendored/dsl/INTERPRETER.md",
     ),
 }
-GCP_HELPERS = (
-    "validate-migration-report.py",
-    "emit-plan-json.py",
-    "validate-startup-program-artifacts.py",
-)
+# Plugin-root helpers (scripts/*.py) a skill invokes through `$PLUGIN_ROOT/scripts/`.
+# They are copied into the packaged skill's own scripts/ and every reference is
+# rewritten to `<SKILL_BASE>/scripts/<helper>`. heroku-to-aws needs only the
+# shared report validator (its other helpers already live in its skill tree).
+ROOT_HELPERS = {
+    "gcp-to-aws": (
+        "validate-migration-report.py",
+        "emit-plan-json.py",
+        "validate-startup-program-artifacts.py",
+    ),
+    "heroku-to-aws": ("validate-migration-report.py",),
+}
 ROOT_HELPER_REFERENCE = re.compile(
     r"(?<![\w./-])(?:plugins/aws-startup-advisor/)?scripts/([A-Za-z0-9_-]+\.py)"
 )
@@ -189,7 +196,7 @@ def validate_portable_references(payload: dict[str, bytes], skills: list[str]) -
         text = data.decode("utf-8")
         if "$PLUGIN_ROOT/" in text:
             raise PackageError(f"unmapped plugin-root dependency in {name}")
-        if name.startswith("skills/gcp-to-aws/"):
+        if name.split("/")[1] in ROOT_HELPERS:
             missing = ROOT_HELPER_REFERENCE.search(text)
             if missing:
                 raise PackageError(
@@ -221,9 +228,9 @@ def adapt_markdown(relative: str, data: bytes, skill: str) -> tuple[bytes, list[
         replacements["$PLUGIN_ROOT/.claude-plugin/plugin.json"] = (
             "<SKILL_BASE>/references/gamma/plugin.json"
         )
+    for helper in ROOT_HELPERS.get(skill, ()):
+        replacements[f"$PLUGIN_ROOT/scripts/{helper}"] = f"<SKILL_BASE>/scripts/{helper}"
     if skill == "gcp-to-aws":
-        for helper in GCP_HELPERS:
-            replacements[f"$PLUGIN_ROOT/scripts/{helper}"] = f"<SKILL_BASE>/scripts/{helper}"
         # The skill's own helpers (skills/gcp-to-aws/scripts/*) travel with the
         # skill tree, so they resolve directly under <SKILL_BASE>.
         replacements["$PLUGIN_ROOT/skills/gcp-to-aws/scripts/"] = "<SKILL_BASE>/scripts/"
@@ -251,10 +258,10 @@ def adapt_markdown(relative: str, data: bytes, skill: str) -> tuple[bytes, list[
         if original in text:
             text = text.replace(original, replacement)
             reasons.append(f"path: {original} -> {replacement}")
-    if skill == "gcp-to-aws":
+    if skill in ROOT_HELPERS:
         # Older references use bare paths (some are executable inline commands),
         # so adapting only $PLUGIN_ROOT forms misses real completion gates.
-        for helper in GCP_HELPERS:
+        for helper in ROOT_HELPERS[skill]:
             portable = f"<SKILL_BASE>/scripts/{helper}"
             for prefix in ("plugins/aws-startup-advisor/", ""):
                 old_path = f"{prefix}scripts/{helper}"
@@ -371,9 +378,8 @@ def build_payload(source: Path, primary: str) -> dict[str, bytes]:
     except (UnicodeError, ValueError, AttributeError) as error:
         raise PackageError(f"invalid source plugin manifest: {error}") from error
     add(source_manifest_path, f"skills/{primary}/references/gamma/plugin.json")
-    if primary == "gcp-to-aws":
-        for helper in GCP_HELPERS:
-            add(f"scripts/{helper}", f"skills/{primary}/scripts/{helper}")
+    for helper in ROOT_HELPERS.get(primary, ()):
+        add(f"scripts/{helper}", f"skills/{primary}/scripts/{helper}")
     for worker in WORKERS:
         add(f"agents/{worker}", f"skills/{primary}/references/gamma/workers/{worker}")
 
@@ -461,10 +467,9 @@ def verify_archive(archive: Path) -> dict:
             for relative in ("references/gamma/plugin.json",):
                 if f"skills/{primary}/{relative}" not in records:
                     raise PackageError(f"archive missing required helper: {relative}")
-            if primary == "gcp-to-aws":
-                for helper in GCP_HELPERS:
-                    if f"skills/{primary}/scripts/{helper}" not in records:
-                        raise PackageError(f"archive missing required helper: {helper}")
+            for helper in ROOT_HELPERS.get(primary, ()):
+                if f"skills/{primary}/scripts/{helper}" not in records:
+                    raise PackageError(f"archive missing required helper: {helper}")
             return manifest
     except (OSError, zipfile.BadZipFile, KeyError, TypeError, ValueError) as error:
         if isinstance(error, PackageError):

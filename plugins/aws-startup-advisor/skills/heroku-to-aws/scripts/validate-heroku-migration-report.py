@@ -1,45 +1,42 @@
 #!/usr/bin/env python3
-"""Validate heroku-to-aws migration-report.html.
+"""heroku-to-aws add-on checks for migration-report.html / decision-report.html.
 
-Required sections: decision-summary, exec-share, exec-timeline, exec-costs,
-cost-optimization, next-steps.
-Full mode also requires the Heroku appendix set (services, costs, configuration,
-security baseline, assumptions). The security appendix must name what each
-control does and which threat it mitigates. Decision mode rejects any rendered
-appendix section.
-The CFO brief is one static paragraph. The timeline states the complexity-tier
-planning band.
-Conditional: what-if-scenarios when scenarios/index.json has ≥2 entries.
-Footer must contain "draft for review".
+This is the SECOND of two validators. The shared validator at
+`$PLUGIN_ROOT/scripts/validate-migration-report.py --profile heroku` carries the
+structure and content standard (required section IDs per mode, TOC integrity,
+decision-summary before the TOC, the visual shell, accessibility, whole-dollar
+currency, readability and exec vocabulary, the typography-first verdict rules,
+`metric-hero`, the "What would flip this" list, the what-if columns, the exec-share
+brief, the `draft for review` footer, and the `aws_monthly_balanced` /
+`current_monthly` cost anchors). Nothing in this file repeats those rules.
 
-The AWS Activate credits callout (both modes): a decision-summary that names
-Activate must link https://aws.amazon.com/startups/credits/ ; when preferences.json
-global.startup_program_status is has_credits / eligible_founders /
-eligible_portfolio the callout must be present; unknown/absent status forbids a
-confirmed-tier claim; has_credits forbids "apply for" wording.
+This file enforces only what the shared validator does not:
+  - full mode renders no `decision-cta` (the decision-mode terminal section);
+  - no mode renders a retired heroku section id (`next-steps`, `cost-optimization`,
+    `decision-basis`) — the error names the shared-id replacement;
+  - decision mode renders no `.appendix-header` divider;
+  - the `.share-card` CSS rule gives the CFO brief a border;
+  - the `heroku_monthly_like_for_like` cost anchor: cross-checked against
+    `cost_comparison.heroku_monthly_like_for_like`, required inside exec-costs when
+    `cost_comparison.like_for_like_comparison` exists, and the estimate must agree
+    with itself about that figure;
+  - the AWS Activate callout rules driven by preferences.json
+    `global.startup_program_status` (known status requires the `.callout-info`
+    callout; unknown/absent forbids a confirmed-tier claim; has_credits forbids
+    "apply for" wording; an invalid value fails);
+  - full mode: `exec-optimization` and `appendix-optimization` (each when present)
+    render a populated table row or the exact no-eligible-commitment sentence;
+  - full mode: the `appendix-security` table has "What it does" and "Threat
+    mitigated" columns;
+  - `exec-assumptions` is rendered when `recommendation.decision_basis` exists;
+  - decision mode: `.phase-status.json` `phases.generate` is not completed /
+    in_progress, and an unreadable status file fails.
 
-The visual shell check, in both modes, requires a #f6f8fa or var() page
-background, a max-width report, section cards, a metric grid, bordered metric
-cards, a verdict callout, a savings color, a bordered share card, an appendix
-divider, visible keyboard focus, a 700px breakpoint, and print styles.
-
-Also enforces the report's decision-UX and a11y contract:
-  - decision-summary must NOT contain any badge-verdict-* pill (the skeleton mandates
-    a typography-first `verdict-headline`; color-only verdict carriers are banned).
-  - when estimation-infra.json declares recommendation.outcome, decision-summary
-    must contain a `verdict-headline` element.
-  - <html> must declare a lang attribute; any <th> must declare scope=col|row;
-    any <figure> must carry aria-label + <figcaption>.
-
-Deliberately NOT enforced: decision-before-TOC ordering, single-<h1>, per-table
-<caption>, and the GCP-only appendix set (AI, security gap, steps, glossary,
-combined run rate).
-
-Exit 0 on PASS, 1 on FAIL.
+Both validators must print REPORT_OK and exit 0. Exit 0 on PASS, 1 on FAIL.
 
 Usage:
   python3 validate-heroku-migration-report.py /path/to/migration-report.html \\
-      --migration-dir "$MIGRATION_DIR"
+      --migration-dir "$MIGRATION_DIR" [--mode full|decision]
 """
 
 from __future__ import annotations
@@ -48,109 +45,42 @@ import argparse
 import json
 import re
 import sys
-from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
 
-# Sections required in BOTH report modes. cost-optimization is required in full
-# mode only (see _required_sections) — the decision pack is pre-execution and does
-# not carry the optimization table.
-COMMON_REQUIRED_SECTION_IDS = [
-    "decision-summary",
-    "exec-share",
-    "exec-timeline",
-    "exec-costs",
-]
-# The structural difference between modes: full (migration-report.html) ends on a
-# next-steps list AND carries cost-optimization; decision (decision-report.html) ends
-# on a decision-cta pointing at Generate (next-steps assumes MIGRATION_GUIDE.md /
-# terraform/ already exist — they don't yet in decision mode).
-MODE_REQUIRED_SECTION_ID = {
-    "full": "next-steps",
-    "decision": "decision-cta",
+# decision (decision-report.html) ends on a decision-cta pointing at Generate; full
+# (migration-report.html) renders its Next steps as an <ol class="compact"> inside
+# decision-summary and ends on the appendix block. The shared validator's heroku
+# profile requires decision-cta in decision mode; this file rejects it in full mode.
+FULL_MODE_FORBIDDEN = "decision-cta"
+
+# Heroku section ids retired when the report converged on the shared contract.
+# Any rendered <section> with one of these ids fails in BOTH modes; the value names
+# what to render instead.
+RETIRED_SECTION_IDS = {
+    "next-steps": (
+        'the decision-summary "Next steps" <ol class="compact"> (full mode) / '
+        "decision-cta (decision mode)"
+    ),
+    "cost-optimization": "exec-optimization plus appendix-optimization (Appendix B.1)",
+    "decision-basis": 'exec-assumptions ("What This Assessment Rests On")',
 }
 
-
-# Full-report appendices the Heroku artifacts can fill. Decision mode omits them
-# because Generate has not run. The GCP AI, security-gap, steps, and glossary
-# appendices are not part of this set.
-FULL_APPENDIX_SECTION_IDS = [
-    "appendix-services",
-    "appendix-costs",
-    "appendix-config",
-    "appendix-security",
-    "appendix-assumptions",
-]
-
-# The enforced subset of the stylesheet in generate-report.md "Visual shell".
-# The page background must be #f6f8fa or a CSS variable. Other colors and
-# spacing in these rules may be refined. Declarations the checker does not
-# list (h1, .verdict-headline, .metric-hero, .increase, table rules,
-# tr.active-scenario) are copied with the stylesheet and are not gated here.
+# The one stylesheet rule the shared visual contract does not cover: the CFO brief's
+# share card (generate-report.md "Visual shell"). Everything else in that block is
+# gated by the shared validator.
 VISUAL_CONTRACT_CHECKS = [
-    (
-        r"body\s*\{[^}]*background\s*:\s*(?:var\([^)]*\)|#f6f8fa)",
-        "body must use a contrasting page background",
-    ),
-    (
-        r"\.(?:report|container)\s*\{[^}]*max-width\s*:",
-        "report shell must constrain line length with max-width",
-    ),
-    (
-        r"section\s*\{[^}]*background\s*:[^;}]+;?[^}]*border\s*:[^;}]+;?"
-        r"[^}]*border-radius\s*:",
-        "sections must render as bordered surface cards",
-    ),
-    (
-        r"\.metrics\s*\{[^}]*display\s*:\s*grid[^}]*grid-template-columns\s*:",
-        "executive metrics must use a responsive CSS grid",
-    ),
-    (
-        r"\.metric\s*\{[^}]*border\s*:[^;}]+;?[^}]*border-radius\s*:",
-        "metric cards must have a bordered card treatment",
-    ),
-    (
-        r"\.verdict\s*\{[^}]*background\s*:[^;}]+;?[^}]*border\s*:",
-        "recommendation must have a visually distinct callout treatment",
-    ),
-    (
-        r"\.savings\s*\{[^}]*color\s*:",
-        "supported savings values must have a reusable visual treatment",
-    ),
     (
         r"\.share-card\s*\{[^}]*border\s*:",
         "the CFO brief must render as a bordered share card",
     ),
-    (
-        r"\.appendix-header\s*\{",
-        "shared shell must define an appendix divider",
-    ),
-    (
-        r":focus-visible\s*\{",
-        "keyboard focus must be visibly styled",
-    ),
-    (
-        r"@media\s*\([^)]*max-width\s*:\s*700px[^)]*\)",
-        "mobile readability breakpoint (700px) is required",
-    ),
-    (
-        r"@media\s+print\s*\{",
-        "print-specific styling is required",
-    ),
 ]
-
-
-def _required_sections(mode: str) -> list[str]:
-    required = [*COMMON_REQUIRED_SECTION_IDS, MODE_REQUIRED_SECTION_ID[mode]]
-    if mode == "full":
-        required.append("cost-optimization")
-        required.extend(FULL_APPENDIX_SECTION_IDS)
-    return required
 
 
 def _validate_visual_shell(html: str) -> list[str]:
     style = "\n".join(re.findall(r"<style\b[^>]*>(.*?)</style>", html, flags=re.IGNORECASE | re.DOTALL))
     return [message for pattern, message in VISUAL_CONTRACT_CHECKS if not re.search(pattern, style, re.IGNORECASE | re.DOTALL)]
+
 
 # Section identity/count/fragment come from the stdlib HTML parser, never a
 # raw-source regex, so that:
@@ -294,6 +224,11 @@ def _section_html(html: str, section_id: str) -> str | None:
     return frags[0]
 
 
+# Monthly-scale totals (>= $2 after rounding) render as whole dollars; genuinely
+# small totals keep cents. Same threshold as the shared validator's currency gate.
+_CENTS_MEANINGFUL_BELOW = 2
+
+
 def _normalize_money(text: str) -> str | None:
     """Reduce a rendered money string to its canonical display form for exact
     comparison against the JSON figure (same normalization on both sides via
@@ -331,29 +266,25 @@ def _canonical_money(value: float) -> str:
 
 
 # Elements whose subtree the browser never renders — an anchor (or its text)
-# inside one must never stand in for the visible figure. Mirrors the currency
-# text parser's inert set so the anchor collector and the currency parser agree
-# on what "rendered" means.
+# inside one must never stand in for the visible figure.
 _ANCHOR_INERT_TAGS = {"script", "style", "template"}
 
 
-# data-cost-key anchor -> estimation-infra.json path. Heroku asserts the recommended
-# AWS monthly (Balanced) figure and the scope-matched Heroku baseline that
-# generate-report.md anchors as `heroku_monthly_like_for_like`; the full
-# current-spend comparator is a follow-up (Heroku's current_costs key is not yet
-# settled — heroku_monthly_baseline vs _estimated).
+# data-cost-key anchor -> estimation-infra.json path. The shared validator asserts
+# `aws_monthly_balanced` and `current_monthly` (heroku: cost_comparison.heroku_monthly_baseline);
+# this add-on asserts only the scope-matched Heroku figure that generate-report.md
+# anchors as `heroku_monthly_like_for_like` — a different number from the baseline
+# (baseline minus deferred add-on cost), which the shared validator does not know.
 _COST_ANCHORS = {
-    "aws_monthly_balanced": ("projected_costs", "aws_monthly_balanced"),
     "heroku_monthly_like_for_like": ("cost_comparison", "heroku_monthly_like_for_like"),
 }
-# Load-bearing keys: when the JSON value exists AND exec-costs is present, the anchor
-# MUST be present (a missing anchor is a FAIL, not a skip — otherwise an un-anchored
-# wrong figure passes, the bug P1-C exists to catch). Each entry maps the anchor key
-# to the JSON path whose presence makes it required: the like-for-like anchor is
-# required only when the estimate carries a `like_for_like_comparison` block (the
-# report's scope-matched row block exists exactly then); otherwise it is optional.
+# Load-bearing keys: when the trigger path exists in the JSON AND exec-costs is
+# present, the anchor MUST be present (a missing anchor is a FAIL, not a skip —
+# otherwise an un-anchored wrong figure passes). The like-for-like anchor is required
+# only when the estimate carries a `like_for_like_comparison` block (the report's
+# scope-matched row block exists exactly then); otherwise it is optional but still
+# cross-checked when present.
 _REQUIRED_COST_KEYS = {
-    "aws_monthly_balanced": ("projected_costs", "aws_monthly_balanced"),
     "heroku_monthly_like_for_like": ("cost_comparison", "like_for_like_comparison"),
 }
 
@@ -484,15 +415,13 @@ def _dig(d: dict, path: tuple[str, ...]):
 
 
 def _validate_cost_figures(html: str, migration_dir: Path | None) -> list[str]:
-    """Assert the report's cost figures match estimation-infra.json (P1-C).
+    """Assert the heroku-only cost anchor matches estimation-infra.json (P1-C).
+
+    The shared validator owns the `aws_monthly_balanced` / `current_monthly` anchors;
+    this function knows only `heroku_monthly_like_for_like` (see _COST_ANCHORS).
 
     Fail direction:
     - No estimation-infra.json / corrupt / not a dict -> skip (fail open on absence).
-    - aws_monthly_balanced present in JSON + exec-costs present -> an anchor MUST
-      exist INSIDE <section id="exec-costs">; a missing anchor there FAILs (an
-      un-anchored wrong figure, or an anchor placed elsewhere e.g. decision-summary,
-      must not pass) — mirrors validate-migration-report.py's required-anchors
-      section scoping.
     - cost_comparison.like_for_like_comparison present in JSON + exec-costs present
       -> a `heroku_monthly_like_for_like` anchor MUST exist inside exec-costs (the
       scope-matched row block is rendered exactly then); otherwise that anchor is
@@ -610,47 +539,15 @@ def _like_for_like_source_errors(est: dict) -> list[str]:
     return []
 
 
-def _body_scope(html: str) -> str:
-    """Body only, excluding <style> blocks, so CSS hex/decimal values never
-    trip the currency-formatting check (mirrors the GCP validator's
-    _readability_scope)."""
-    no_style = re.sub(r"<style\b.*?</style>", "", html, flags=re.DOTALL | re.IGNORECASE)
-    body = re.search(r"<body\b[^>]*>(.*?)</body>", no_style, re.DOTALL | re.IGNORECASE)
-    return body.group(1) if body else no_style
 
-
-# Ported from validate-migration-report.py — same currency-formatting rule
-# (monthly figures render as whole dollars; cents are reserved for genuinely
-# sub-dollar precision or per-unit rates). See that file's comment for the
-# full rationale; kept identical here so both validators stay in sync. The
-# Heroku report has no documented Calculation/Notes column (its exec-costs
-# section is a Heroku-vs-AWS side-by-side or three-tier table, per
-# generate-report.md — no per-service arithmetic show-work column), so this
-# copy has no calc-column exemption; everything else ports unchanged.
-CENTS_RE = re.compile(r"\$([0-9][0-9,]*)\.([0-9]{2})\b")
-
-# Deliberately does NOT accept a BARE "month"/"mo" as itself the qualifying
-# unit — see validate-migration-report.py's _RATE_SUFFIX_RE comment for the
-# full rationale (a bare "/mo" is exactly the unit an ordinary monthly total
-# is denominated in, not evidence of a per-unit rate). "/mo per <unit>" is
-# still accepted (e.g. "$5.00/mo per policy").
-_RATE_SUFFIX_RE = re.compile(
-    r"^\s*(?:/|\(|\bper\b)?\s*(?:mo\b\s*(?:per\b\s*)?)?"
-    r"(?:hr|hour|hourly|vcpu|gb|gib|tb|image|unit|policy|1m|10k|"
-    r"[0-9]+-mo)\b",
-    re.IGNORECASE,
-)
-
-_CENTS_MEANINGFUL_BELOW = 2
 
 
 class _DecodedTextParser(HTMLParser):
     """Extract rendered text as the browser would present it — entities
-    decoded, comments and inert content (script/style/template) excluded —
-    while preserving amount/unit adjacency across inline markup (mirrors
-    validate-migration-report.py's _DecodedTextRunParser; see that file's
-    class docstring for the full rationale). No Calculation/Notes column
-    tracking here — the Heroku report has no such column."""
+    decoded, comments and inert content (script/style/template) excluded,
+    hidden subtrees dropped — while preserving word adjacency across inline
+    markup. Used by the optimization-section content check and the Activate
+    callout rules so both agree on what "rendered" means."""
 
     _INLINE_TAGS = {
         "a", "abbr", "b", "bdi", "bdo", "cite", "code", "data", "dfn", "em",
@@ -668,21 +565,10 @@ class _DecodedTextParser(HTMLParser):
         self._parts: list[str] = []
         self._inert_depth = 0
         self._stack: list[dict[str, object]] = []
-        # Absolute offsets (into text()) of every block-level separator — a
-        # rate-suffix match must never read past one of these into unrelated
-        # content from a different cell/row/paragraph (see
-        # validate-migration-report.py's identical tracking for the full
-        # rationale — a single separating space does not itself stop a
-        # word-based regex when the next block happens to start with a real
-        # rate-unit word like "Hourly").
-        self._boundaries: list[int] = []
 
-    def _append(self, text: str, *, is_boundary: bool = False) -> None:
-        if not text:
-            return
-        if is_boundary:
-            self._boundaries.append(sum(len(p) for p in self._parts))
-        self._parts.append(text)
+    def _append(self, text: str) -> None:
+        if text:
+            self._parts.append(text)
 
     def _hidden(self) -> bool:
         return bool(self._stack and self._stack[-1]["hidden"])
@@ -710,10 +596,10 @@ class _DecodedTextParser(HTMLParser):
             self._stack.append({"tag": tag, "hidden": hidden})
         if hidden:
             if tag not in self._INLINE_TAGS:
-                self._append(" ", is_boundary=True)
+                self._append(" ")
             return
         if tag not in self._INLINE_TAGS:
-            self._append(" ", is_boundary=True)
+            self._append(" ")
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in self._INERT_TAGS or self._inert_depth > 0 or self._hidden():
@@ -721,7 +607,7 @@ class _DecodedTextParser(HTMLParser):
         if self._is_hidden(attrs):
             return
         if tag not in self._INLINE_TAGS:
-            self._append(" ", is_boundary=True)
+            self._append(" ")
 
     def handle_endtag(self, tag: str) -> None:
         if tag in self._INERT_TAGS:
@@ -733,10 +619,10 @@ class _DecodedTextParser(HTMLParser):
         hidden = self._pop_to(tag)
         if hidden or self._hidden():
             if tag not in self._INLINE_TAGS:
-                self._append(" ", is_boundary=True)
+                self._append(" ")
             return
         if tag not in self._INLINE_TAGS:
-            self._append(" ", is_boundary=True)
+            self._append(" ")
 
     def handle_data(self, data: str) -> None:
         if self._inert_depth == 0 and not self._hidden():
@@ -745,127 +631,15 @@ class _DecodedTextParser(HTMLParser):
     def text(self) -> str:
         return "".join(self._parts)
 
-    def boundaries(self) -> list[int]:
-        return self._boundaries
 
 
-def _decoded_text(html: str) -> tuple[str, list[int]]:
+def _visible_text(fragment: str) -> str:
+    """Rendered text of a fragment (entities decoded, comments and script/style/
+    template excluded, hidden subtrees dropped), whitespace collapsed."""
     parser = _DecodedTextParser()
-    parser.feed(_body_scope(html))
+    parser.feed(fragment)
     parser.close()
-    return parser.text(), parser.boundaries()
-
-
-def _validate_currency_formatting(html: str) -> list[str]:
-    """Monthly cost figures must render as whole dollars. Flag any $X.YY
-    figure whose whole-dollar part is >= $2 and that is not immediately
-    followed by a per-unit-rate suffix (/hr, per policy, etc.)."""
-    errors: list[str] = []
-    text, boundaries = _decoded_text(html)
-    seen: set[str] = set()
-    for match in CENTS_RE.finditer(text):
-        whole = int(match.group(1).replace(",", ""))
-        if whole < _CENTS_MEANINGFUL_BELOW:
-            continue
-        cutoff = match.end() + 25
-        for boundary in boundaries:
-            if boundary >= match.end():
-                cutoff = min(cutoff, boundary)
-                break
-        trailing = text[match.end():cutoff]
-        if _RATE_SUFFIX_RE.match(trailing):
-            continue
-        token = match.group(0)
-        if token in seen:
-            continue
-        seen.add(token)
-        errors.append(
-            f'currency formatting: "{token}" renders cents on a monthly-scale '
-            "figure — round to a whole dollar (cents only for genuinely "
-            'sub-dollar precision, e.g. "$1.50", "$0.40", or a per-unit rate '
-            'like "$0.018/hr")'
-        )
-    return errors
-
-
-class _TagAttrCollector(HTMLParser):
-    """Collect (tag, attrs-dict, is_self_closed) for every RENDERED start tag,
-    using the stdlib parser rather than a literal-syntax regex. This accepts any
-    legal HTML attribute spelling — quoted or unquoted values, spaces around `=`,
-    single or double quotes — instead of only the exact `name="value"` form a
-    hand-rolled regex happens to match.
-
-    Tags inside an inert subtree (`<script>`, `<style>`, `<template>`) are
-    skipped — the browser never renders them, so a class/attribute declared only
-    there (e.g. a `verdict-headline` inside a `<template>`) must not be read as a
-    rendered element. Mirrors _DecodedTextParser's inert handling so every
-    "is this rendered?" check in this file agrees on the answer."""
-
-    _INERT_TAGS = {"script", "style", "template"}
-    _VOID_TAGS = {
-        "area", "base", "br", "col", "embed", "hr", "img", "input",
-        "link", "meta", "param", "source", "track", "wbr",
-    }
-
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.tags: list[tuple[str, dict[str, str | None], bool]] = []
-        self._inert_depth = 0
-        self._stack: list[dict[str, object]] = []
-
-    def _hidden(self) -> bool:
-        return bool(self._stack and self._stack[-1]["hidden"])
-
-    @staticmethod
-    def _is_hidden(attrs: list[tuple[str, str | None]]) -> bool:
-        return "hidden" in dict(attrs)
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag in self._INERT_TAGS:
-            self._inert_depth += 1
-            return
-        if self._inert_depth > 0:
-            return
-        hidden = self._hidden() or self._is_hidden(attrs)
-        if tag not in self._VOID_TAGS:
-            self._stack.append({"tag": tag, "hidden": hidden})
-        if not hidden:
-            self.tags.append((tag, dict(attrs), False))
-
-    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        # A self-closed inert tag opens no subtree; a self-closed normal tag is a
-        # rendered element unless nested in an inert or hidden subtree.
-        if tag in self._INERT_TAGS or self._inert_depth > 0 or self._hidden():
-            return
-        if not self._is_hidden(attrs):
-            self.tags.append((tag, dict(attrs), True))
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag in self._INERT_TAGS and self._inert_depth > 0:
-            self._inert_depth -= 1
-            return
-        if self._inert_depth > 0:
-            return
-        for index in range(len(self._stack) - 1, -1, -1):
-            if self._stack[index]["tag"] == tag:
-                del self._stack[index:]
-                return
-
-
-def _collect_tags(html: str) -> list[tuple[str, dict[str, str | None], bool]]:
-    parser = _TagAttrCollector()
-    parser.feed(html)
-    parser.close()
-    return parser.tags
-
-
-def _html_lang_declared(html: str) -> bool:
-    for tag, attrs, _ in _collect_tags(html):
-        if tag != "html":
-            continue
-        lang = attrs.get("lang")
-        return bool(lang) and bool(re.fullmatch(r"[a-z]{2}(?:-[A-Za-z0-9]+)?", lang, re.IGNORECASE))
-    return False
+    return re.sub(r"\s+", " ", parser.text().replace("\u00a0", " ")).strip()
 
 
 NO_ELIGIBLE_COMMITMENT_SENTENCE = (
@@ -980,8 +754,8 @@ def _has_populated_opportunity_row(body: str) -> bool:
     return parser.found
 
 
-def _validate_optimization_content(body: str) -> list[str]:
-    """The cost-optimization section must render EITHER a populated opportunities
+def _validate_optimization_content(body: str, section_id: str) -> list[str]:
+    """The optimization section must render EITHER a populated opportunities
     table (a real <tbody> row with data) OR the explicit no-eligible-commitment
     sentence — nothing else counts as content. This is a positive check, not
     "any leftover text after stripping headings/<th>": that older approach let a
@@ -996,8 +770,8 @@ def _validate_optimization_content(body: str) -> list[str]:
     # the fallback sentence is recognized when written with entity escapes
     # (`1&#45;year`, `&nbsp;` between words) and is NOT satisfied by a copy that
     # exists only inside an HTML comment or <template> the browser never renders.
-    # Reuses the same _DecodedTextParser the currency check uses, so both agree
-    # on what "rendered" means.
+    # Reuses the same _DecodedTextParser the Activate callout rules use, so both
+    # agree on what "rendered" means.
     parser = _DecodedTextParser()
     parser.feed(body)
     parser.close()
@@ -1007,440 +781,13 @@ def _validate_optimization_content(body: str) -> list[str]:
     if NO_ELIGIBLE_COMMITMENT_SENTENCE in text:
         return []
     return [
-        '<section id="cost-optimization"> has no substantive content — render a '
+        f'<section id="{section_id}"> has no substantive content — render a '
         "populated opportunity row (not just column headers, an empty <tbody>, or "
         "other prose like the credits disclaimer) or the exact "
         f'"{NO_ELIGIBLE_COMMITMENT_SENTENCE}" sentence, never a blank, '
         "heading-only, or table-header-only section"
     ]
 
-
-def _class_tokens(html_fragment: str) -> set[str]:
-    """Return the set of all `class` attribute tokens across every tag in the
-    fragment, parsed via the stdlib HTMLParser (the same approach already used
-    for lang/scope/aria-label) rather than a literal `class="value"` regex. This
-    accepts any legal spelling — `class="a b"`, `class = "a b"`, or an unquoted
-    single token like `class=verdict-headline` — so equivalent HTML always
-    produces the same tokens regardless of formatting."""
-    tokens: set[str] = set()
-    for _, attrs, _ in _collect_tags(html_fragment):
-        cls = attrs.get("class")
-        if cls:
-            tokens.update(cls.split())
-    return tokens
-
-
-def _normalize_phrase(text: str) -> str:
-    """Lower-cased, whitespace-collapsed, dash-folded rendered text, so a heading
-    written as `What&nbsp;would\nflip this` compares equal to the plain spelling."""
-    text = text.replace("\u2014", "-").replace("\u2013", "-")
-    return re.sub(r"\s+", " ", text).strip().lower()
-
-
-def _word_shingles(text: str, size: int) -> set[str]:
-    words = re.findall(r"[a-z0-9]+", text.lower())
-    if not words:
-        return set()
-    if len(words) <= size:
-        return {" ".join(words)}
-    return {" ".join(words[i : i + size]) for i in range(len(words) - size + 1)}
-
-
-def _phrase_rendered(phrase: str, rendered_text: str, max_width: int = 4) -> bool:
-    """Ported from validate-migration-report.py — True when `rendered_text`
-    shares a word phrase with the artifact `phrase`, cut at the phrase's own
-    token width (capped at four) so one-to-three-word entries can match."""
-    words = re.findall(r"[a-z0-9]+", _normalize_phrase(phrase))
-    if not words:
-        return True
-    width = min(len(words), max_width)
-    return bool(_word_shingles(" ".join(words), width) & _word_shingles(rendered_text, width))
-
-
-def _unmatched_phrases(phrases: list[object], rendered_items: list[str]) -> list[str]:
-    """Return artifact phrases that cannot be assigned distinct rendered items."""
-    matched_items: dict[int, int] = {}
-
-    def assign(phrase_index: int, seen_items: set[int]) -> bool:
-        phrase = str(phrases[phrase_index])
-        for item_index, item in enumerate(rendered_items):
-            if item_index in seen_items or not _phrase_rendered(phrase, item):
-                continue
-            seen_items.add(item_index)
-            previous = matched_items.get(item_index)
-            if previous is None or assign(previous, seen_items):
-                matched_items[item_index] = phrase_index
-                return True
-        return False
-
-    for phrase_index in range(len(phrases)):
-        assign(phrase_index, set())
-    matched_phrases = set(matched_items.values())
-    return [str(phrase) for index, phrase in enumerate(phrases) if index not in matched_phrases]
-
-
-class _RenderedFragmentParser(HTMLParser):
-    """Ported from validate-migration-report.py — flatten a fragment into what
-    the browser shows, in document order: `("heading", run)` for an <h1>–<h6>,
-    `("li", item)` per list item and `("text", run)` for any other prose, each
-    decoded and normalized via _normalize_phrase. Inert subtrees and comments
-    are skipped (same rule as _DecodedTextParser / _TagAttrCollector), and
-    inline tags do not split a run, so `What <em>would</em> flip this` is one
-    phrase."""
-
-    _INLINE_TAGS = _DecodedTextParser._INLINE_TAGS
-    _INERT_TAGS = _DecodedTextParser._INERT_TAGS
-    _HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
-    _VOID_TAGS = _DecodedTextParser._VOID_TAGS
-
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.entries: list[tuple[str, str]] = []
-        self._inert_depth = 0
-        self._stack: list[dict[str, object]] = []
-        self._li_depth = 0
-        self._heading_depth = 0
-        self._buf: list[str] = []
-
-    def _hidden(self) -> bool:
-        return bool(self._stack and self._stack[-1]["hidden"])
-
-    @staticmethod
-    def _is_hidden(attrs: list[tuple[str, str | None]]) -> bool:
-        return "hidden" in dict(attrs)
-
-    def _pop_to(self, tag: str) -> bool:
-        for index in range(len(self._stack) - 1, -1, -1):
-            if self._stack[index]["tag"] == tag:
-                popped = self._stack[index:]
-                del self._stack[index:]
-                return any(bool(frame["hidden"]) for frame in popped)
-        return False
-
-    def _flush(self) -> None:
-        text = _normalize_phrase(" ".join(self._buf))
-        self._buf = []
-        if not text:
-            return
-        if self._li_depth:
-            kind = "li"
-        elif self._heading_depth:
-            kind = "heading"
-        else:
-            kind = "text"
-        self.entries.append((kind, text))
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag in self._INERT_TAGS:
-            self._inert_depth += 1
-            return
-        if self._inert_depth > 0:
-            return
-        hidden = self._hidden() or self._is_hidden(attrs)
-        if tag not in self._VOID_TAGS:
-            self._stack.append({"tag": tag, "hidden": hidden})
-        if hidden:
-            return
-        if tag not in self._INLINE_TAGS:
-            self._flush()
-        if tag == "li":
-            self._li_depth += 1
-        elif tag in self._HEADING_TAGS:
-            self._heading_depth += 1
-
-    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag in self._INERT_TAGS or self._inert_depth > 0 or self._hidden():
-            return
-        if self._is_hidden(attrs):
-            return
-        if tag not in self._INLINE_TAGS:
-            self._flush()
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag in self._INERT_TAGS:
-            if self._inert_depth > 0:
-                self._inert_depth -= 1
-            return
-        if self._inert_depth > 0:
-            return
-        hidden = self._pop_to(tag)
-        if hidden or self._hidden():
-            return
-        if tag not in self._INLINE_TAGS:
-            self._flush()
-        if tag == "li" and self._li_depth > 0:
-            self._li_depth -= 1
-        elif tag in self._HEADING_TAGS and self._heading_depth > 0:
-            self._heading_depth -= 1
-
-    def handle_data(self, data: str) -> None:
-        if self._inert_depth == 0 and not self._hidden():
-            self._buf.append(data)
-
-    def close(self) -> None:
-        super().close()
-        self._flush()
-
-
-def _rendered_entries(fragment: str) -> list[tuple[str, str]]:
-    parser = _RenderedFragmentParser()
-    parser.feed(fragment)
-    parser.close()
-    return parser.entries
-
-
-def _rendered_list_after_heading(
-    entries: list[tuple[str, str]], heading_phrase: str
-) -> list[str] | None:
-    """Ported from validate-migration-report.py — items of the rendered list
-    that `heading_phrase` introduces. Two shapes are accepted, both legitimate
-    under generate-report.md's "short unordered list": a heading (preferred) or
-    prose run carrying the phrase (`<h3>What would flip this</h3>`), with any
-    lead-in prose before the first <li> skipped and another heading before any
-    item meaning an empty list; or a list item carrying the phrase as an inline
-    label (`<li>What would flip this: …</li>`, the shape the heroku-decision-gate
-    fixtures render), whose remainder plus following sibling items are the
-    list. None when no rendered run carries the phrase, [] when it does but no
-    item renders under it (heading-only / empty <ul>)."""
-
-    def items_from(start: int) -> list[str]:
-        items: list[str] = []
-        for kind, text in entries[start:]:
-            if kind != "li":
-                break
-            items.append(text)
-        return items
-
-    for wanted in ("heading", "text", "li"):
-        for index, (kind, text) in enumerate(entries):
-            if kind != wanted or heading_phrase not in text:
-                continue
-            if kind == "li":
-                remainder = text.split(heading_phrase, 1)[1].lstrip(" :;,.-")
-                return ([remainder] if remainder else []) + items_from(index + 1)
-            for offset, (next_kind, _next_text) in enumerate(entries[index + 1 :], index + 1):
-                if next_kind == "li":
-                    return items_from(offset)
-                if next_kind == "heading":
-                    break
-            return []
-    return None
-
-
-def _validate_verdict(html: str, migration_dir: Path | None) -> list[str]:
-    """Typography-first verdict rules (skill: verdict is the section thesis and
-    must never be a colored-pill row)."""
-    errors: list[str] = []
-    summary = _section_html(html, "decision-summary")
-    if summary is None:
-        return errors  # missing-section already reported by the required-ID check
-
-    summary_classes = _class_tokens(summary)
-
-    # Colored pill badges are banned outright (not merely as the "sole" carrier).
-    if any(token.startswith("badge-verdict-") for token in summary_classes):
-        errors.append(
-            'decision-summary must use a typography-first verdict-headline, '
-            "not badge-verdict-* pills (meaning must not depend on color alone)"
-        )
-
-    # When Estimate declared a recommendation outcome, the verdict headline is required.
-    recommendation_outcome = False
-    flips: list = []
-    if migration_dir is not None:
-        est_path = migration_dir / "estimation-infra.json"
-        if est_path.is_file():
-            try:
-                est = json.loads(est_path.read_text(encoding="utf-8"))
-                rec = (est or {}).get("recommendation") or {}
-                recommendation_outcome = bool(rec.get("outcome"))
-                raw_flips = rec.get("would_flip_if") or []
-                flips = raw_flips if isinstance(raw_flips, list) else []
-            except (OSError, json.JSONDecodeError):
-                # Fail open on ambiguity: a missing/corrupt estimate does not force the
-                # verdict-headline requirement (we can't confirm an outcome was declared).
-                recommendation_outcome = False
-    if recommendation_outcome and "verdict-headline" not in summary_classes:
-        errors.append(
-            "estimation-infra.json declares recommendation.outcome but "
-            "decision-summary has no verdict-headline element "
-            '(render outcome_label as <p class="verdict-headline">…</p>)'
-        )
-    if flips:
-        # Match the heading on decoded, whitespace-normalized visible text (entities,
-        # line breaks and inline markup are all one phrase to the reader; comments and
-        # <template> content are not rendered), then require every artifact flip
-        # condition to appear as an item of the list that follows it.
-        items = _rendered_list_after_heading(_rendered_entries(summary), "what would flip")
-        if items is None:
-            errors.append(
-                "estimation-infra.json declares recommendation.would_flip_if but "
-                'decision-summary has no "What would flip this" list'
-            )
-        else:
-            missing = _unmatched_phrases(flips, items)
-            if missing:
-                errors.append(
-                    f'"What would flip this" list renders {len(flips) - len(missing)} of '
-                    f"{len(flips)} recommendation.would_flip_if entries — missing: "
-                    + "; ".join(f'"{flip}"' for flip in missing)
-                )
-    return errors
-
-
-class _AccessibilityParser(HTMLParser):
-    """Stdlib-parser accessibility scan: <th scope> and <figure aria-label> +
-    <figcaption>. Using the parser (rather than a literal `name="value"` regex)
-    accepts any legal HTML attribute syntax — `scope=col`, `scope = "col"`,
-    single quotes, etc. — the same attribute in different valid spellings must
-    not flip a validator result. VOID_ELEMENTS avoids mis-tracking self-closing
-    tags (e.g. <br>) as unclosed ancestors."""
-
-    VOID_ELEMENTS = {
-        "area", "base", "br", "col", "embed", "hr", "img", "input",
-        "link", "meta", "param", "source", "track", "wbr",
-    }
-    _INERT_TAGS = {"script", "style", "template"}
-
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.stack: list[str] = []
-        self.table_issues: list[int] = []  # 1-based table index with a scope-less <th>
-        self.figure_issues: list[tuple[int, bool, bool]] = []  # (index, has_aria_label, has_figcaption)
-        self._table_index = 0
-        self._figure_index = 0
-        self._table_depth = 0  # >0 while inside a <table> (nesting-tolerant)
-        self._table_bad_at: dict[int, bool] = {}
-        self._figure_stack: list[dict[str, bool | None]] = []
-        self._inert_depth = 0  # >0 while inside script/style/template
-
-    def _in_table(self) -> bool:
-        return self._table_depth > 0
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag in self._INERT_TAGS:
-            self._inert_depth += 1
-            return
-        if self._inert_depth > 0:
-            return  # a <th>/<figure> inside an inert subtree is not rendered — do not audit it
-        attr_map = dict(attrs)
-        if tag == "table":
-            self._table_depth += 1
-            if self._table_depth == 1:
-                self._table_index += 1
-                self._table_bad_at[self._table_index] = False
-        elif tag == "th" and self._in_table():
-            scope = attr_map.get("scope")
-            if not (scope and scope.lower() in ("col", "row")):
-                self._table_bad_at[self._table_index] = True
-        elif tag == "figure":
-            self._figure_index += 1
-            aria_label = attr_map.get("aria-label")
-            self._figure_stack.append(
-                {
-                    "index": self._figure_index,
-                    "has_aria_label": bool(aria_label and aria_label.strip()),
-                    "has_figcaption": False,
-                }
-            )
-        elif tag == "figcaption" and self._figure_stack:
-            self._figure_stack[-1]["has_figcaption"] = True
-        if tag not in self.VOID_ELEMENTS:
-            self.stack.append(tag)
-
-    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        # Self-closed tags never open a scope for descendants (e.g. a self-closed
-        # <figure /> can never contain a <figcaption>) — handled naturally since
-        # we don't push onto self.stack or self._figure_stack for these.
-        pass
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag in self._INERT_TAGS:
-            if self._inert_depth > 0:
-                self._inert_depth -= 1
-            return
-        if self._inert_depth > 0:
-            return
-        if tag == "table" and self._table_depth > 0:
-            self._table_depth -= 1
-            if self._table_depth == 0:
-                if self._table_bad_at.get(self._table_index):
-                    self.table_issues.append(self._table_index)
-        elif tag == "figure" and self._figure_stack:
-            fig = self._figure_stack.pop()
-            self.figure_issues.append(
-                (fig["index"], fig["has_aria_label"], fig["has_figcaption"])
-            )
-        while self.stack and tag in self.stack:
-            popped = self.stack.pop()
-            if popped == tag:
-                break
-
-
-def _validate_accessibility(html: str) -> list[str]:
-    """Dependency-free WCAG-oriented semantics — the safe subset the Heroku
-    one-pager emits (no single-<h1> / per-table-<caption> requirement)."""
-    errors: list[str] = []
-    if not _html_lang_declared(html):
-        errors.append("accessibility: <html> must declare a valid lang attribute")
-
-    body = re.sub(r"<style\b.*?</style>", "", html, flags=re.IGNORECASE | re.DOTALL)
-    parser = _AccessibilityParser()
-    parser.feed(body)
-    parser.close()
-
-    for index in parser.table_issues:
-        errors.append(
-            f'accessibility: table {index} header cells must declare '
-            'scope="col" or scope="row"'
-        )
-
-    for index, has_aria_label, has_figcaption in parser.figure_issues:
-        if not has_aria_label:
-            errors.append(f"accessibility: figure {index} must have an aria-label")
-        if not has_figcaption:
-            errors.append(f"accessibility: figure {index} must include a <figcaption>")
-    return errors
-
-
-def _what_if_column_errors(section: str) -> list[str]:
-    """Workshop compare tables use the same column set as generate-report.md."""
-    header = re.search(r"<thead\b.*?</thead>", section, re.DOTALL | re.IGNORECASE)
-    if not header:
-        return [
-            "what-if-scenarios must contain a table headed "
-            "Scenario, Region, HA, Compute, Arch, and Complexity"
-        ]
-    text = re.sub(r"<[^>]+>", " ", header.group(0)).lower()
-    missing = [
-        label
-        for label, present in (
-            ("Region", "region" in text),
-            ("HA", "ha" in text or "availability" in text),
-            ("Compute", "compute" in text),
-            ("Arch", re.search(r"\barch\b", text) is not None),
-            ("Complexity", "complexity" in text),
-        )
-        if not present
-    ]
-    if not missing:
-        return []
-    return [
-        "what-if-scenarios table is missing column(s): "
-        + ", ".join(missing)
-        + " (generate-report.md what-if table)"
-    ]
-
-
-_TIMELINE_BANDS = {
-    "small": ("2-6", "2–6"),
-    "medium": ("6-12", "6–12"),
-    "large": ("12-18", "12–18"),
-}
-
-
-def _visible_text(fragment: str) -> str:
-    return " ".join(text for _kind, text in _rendered_entries(fragment))
 
 
 def _load_estimate(migration_dir: Path | None) -> dict | None:
@@ -1459,7 +806,6 @@ def _load_estimate(migration_dir: Path | None) -> dict | None:
 ACTIVATE_APPLY_URL = "https://aws.amazon.com/startups/credits/"
 ACTIVATE_STATUSES = ("has_credits", "eligible_founders", "eligible_portfolio", "unknown")
 _ACTIVATE_MENTION = re.compile(r"AWS\s+Activate|Activate\s+(?:Founders|Portfolio|credits)", re.I)
-_ACTIVATE_LINK = re.compile(r'href=["\']https://aws\.amazon\.com/startups/credits/?["\']', re.I)
 _TIER_CLAIM = re.compile(
     r"eligible\s+for\b.{0,60}?\b(?:Founders|Portfolio)|\$\s?5,?000\b|\$5K\b|\$\s?200,?000\b|\$200K\b",
     re.I | re.DOTALL,
@@ -1504,8 +850,8 @@ def _activate_callout_html(summary: str) -> str | None:
 def _validate_activate_callout(html: str, migration_dir: Path | None) -> list[str]:
     """report-decision-core.md § Startup credits callout (both modes).
 
-    - A decision-summary that names AWS Activate anywhere must carry the clickable
-      apply link, so the action stays attached to the benefit.
+    (The apply-link rule — a summary that names Activate must link the official
+    apply page — is enforced by the shared validator and not repeated here.)
     - When preferences.json says the founder answered Q17 (status other than
       "unknown"), decision-summary must render the `.callout-info` credits callout.
     - Inside that callout only: "unknown"/absent status forbids a confirmed-tier
@@ -1516,12 +862,6 @@ def _validate_activate_callout(html: str, migration_dir: Path | None) -> list[st
     if summary is None:
         return []
     errors: list[str] = []
-    mentions_anywhere = bool(_ACTIVATE_MENTION.search(_visible_text(summary)))
-    if mentions_anywhere and not _ACTIVATE_LINK.search(summary):
-        errors.append(
-            "decision-summary mentions AWS Activate but has no clickable official "
-            f"apply link ({ACTIVATE_APPLY_URL})"
-        )
     status = _startup_program_status(migration_dir)
     if status is not None and status not in ACTIVATE_STATUSES:
         errors.append(
@@ -1552,62 +892,6 @@ def _validate_activate_callout(html: str, migration_dir: Path | None) -> list[st
     return errors
 
 
-def _validate_share_section(html: str) -> list[str]:
-    """The CFO brief is one static paragraph. A missing section is reported separately."""
-    section = _section_html(html, "exec-share")
-    if section is None:
-        return []
-    errors: list[str] = []
-    card = re.search(
-        r'<(?P<tag>div|aside)\b[^>]*class=["\'][^"\']*\bshare-card\b[^"\']*["\'][^>]*>'
-        r"(?P<body>.*?)</(?P=tag)>",
-        section,
-        re.I | re.DOTALL,
-    )
-    if not card:
-        errors.append('exec-share must contain a class="share-card" decision brief')
-        return errors
-    paragraphs = re.findall(r"<p\b[^>]*>(.*?)</p>", card.group("body"), re.I | re.DOTALL)
-    if len(paragraphs) != 1:
-        errors.append(
-            "exec-share share-card must contain exactly one standalone <p> "
-            f"(found {len(paragraphs)})"
-        )
-    else:
-        text = unescape(re.sub(r"<[^>]+>", " ", paragraphs[0]))
-        word_count = len(re.findall(r"\b[\w'-]+\b", text))
-        if word_count < 20:
-            errors.append(
-                "exec-share share-card paragraph must contain a substantive "
-                f"copy-ready brief of at least 20 words (found {word_count})"
-            )
-    if re.search(r"<(?:button|script|input|textarea)\b", section, re.I):
-        errors.append(
-            "exec-share must be a static copy-ready paragraph without buttons, "
-            "scripts, or editable controls"
-        )
-    return errors
-
-
-def _validate_timeline_section(html: str, migration_dir: Path | None) -> list[str]:
-    """The week range is the complexity-tier planning band, labeled as such."""
-    section = _section_html(html, "exec-timeline")
-    if section is None:
-        return []
-    errors: list[str] = []
-    visible = _visible_text(section).lower()
-    if "planning band" not in visible:
-        errors.append('exec-timeline must label the week range as a "planning band"')
-    tier = (_load_estimate(migration_dir) or {}).get("complexity_tier")
-    if isinstance(tier, str) and tier.lower() in _TIMELINE_BANDS:
-        bands = _TIMELINE_BANDS[tier.lower()]
-        if not any(band in visible for band in bands):
-            errors.append(
-                f"exec-timeline must show the {tier.lower()} planning band "
-                f"({bands[1]} weeks) from the complexity-tier table"
-            )
-    return errors
-
 
 def _validate_security_appendix(html: str, mode: str) -> list[str]:
     """Full reports say what each baseline control does. Decision mode has no appendix."""
@@ -1631,95 +915,66 @@ def _validate_security_appendix(html: str, mode: str) -> list[str]:
     return errors
 
 
+
+
 def validate(html: str, migration_dir: Path | None, mode: str = "full") -> list[str]:
     errors: list[str] = []
     counts = _section_counts(html)
 
-    for sid in _required_sections(mode):
-        n = counts.get(sid, 0)
-        if n == 0:
-            errors.append(f'missing required <section id="{sid}">')
-        elif n > 1:
-            errors.append(f'duplicate <section id="{sid}"> ({n} occurrences)')
-
-    # The other mode's terminal section must NOT appear — decision-report.html must
-    # not carry a next-steps pointer into an execution pack that does not exist yet,
-    # and migration-report.html must not carry the pre-execution decision-cta once the
-    # real next-steps exists.
-    other_mode = "decision" if mode == "full" else "full"
-    other_terminal = MODE_REQUIRED_SECTION_ID[other_mode]
-    if counts.get(other_terminal, 0) >= 1:
+    # migration-report.html must not carry the pre-execution decision-cta once the
+    # decision-summary Next steps list and the execution pack exist.
+    if mode == "full" and counts.get(FULL_MODE_FORBIDDEN, 0) >= 1:
         errors.append(
-            f'--mode {mode} report must not contain <section id="{other_terminal}"> '
-            f"(that is the {other_mode}-mode terminal section)"
+            f'--mode full report must not contain <section id="{FULL_MODE_FORBIDDEN}"> '
+            "(that is the decision-mode terminal section)"
         )
 
+    # Retired heroku ids fail in both modes, naming the shared-id replacement.
+    for retired_id, replacement in RETIRED_SECTION_IDS.items():
+        if counts.get(retired_id, 0) >= 1:
+            errors.append(
+                f'<section id="{retired_id}"> is a retired heroku section id — '
+                f"render {replacement} instead"
+            )
+
     if mode == "decision":
-        # Generate has not run. A rendered appendix would describe the Terraform
-        # baseline, and choices that are still defaults, as execution output.
-        # Comments and <template> are excluded by _section_counts.
-        for sid in counts:
-            if sid.startswith("appendix-"):
-                errors.append(
-                    f'decision mode forbids <section id="{sid}"> — the decision report '
-                    "has no appendices; the full migration report (Generate) carries them"
-                )
-        # The visible divider above the appendix block is part of the same
-        # contract (report-decision-core.md: do not render `.appendix-header`).
-        # A lone divider with no sections under it still announces an appendix
-        # that does not exist. Same comment/inert exclusions as the sections.
+        # The visible divider above the appendix block is part of the decision-mode
+        # contract (report-decision-core.md: do not render `.appendix-header`). The
+        # shared validator rejects rendered `appendix-*` sections; a lone divider
+        # with no sections under it still announces an appendix that does not
+        # exist. Same comment/inert exclusions as the sections.
         if _appendix_header_count(html) > 0:
             errors.append(
                 'decision mode forbids a rendered <div class="appendix-header"> — the '
                 "decision report has no appendix divider; the full migration report (Generate) carries it"
             )
 
-    if "draft for review" not in html.lower():
-        errors.append('footer must contain "draft for review" disclaimer')
-
     errors.extend(_validate_visual_shell(html))
-    errors.extend(_validate_share_section(html))
     errors.extend(_validate_activate_callout(html, migration_dir))
-    errors.extend(_validate_timeline_section(html, migration_dir))
     errors.extend(_validate_security_appendix(html, mode))
-    errors.extend(_validate_currency_formatting(html))
     errors.extend(_validate_cost_figures(html, migration_dir))
 
-    # cost-optimization must carry substantive content (generate-report.md Step 3
-    # item 6: a table of real opportunity rows, or the explicit no-eligible-commitment
-    # sentence — never empty, and never satisfied by a heading or table-header text
-    # alone). A heading like "Cost Optimization Opportunities" or a table with only
-    # column headers and an empty <tbody> must not pass as content. Full mode only —
-    # the decision pack carries no optimization table.
-    if mode == "full" and counts.get("cost-optimization", 0) >= 1:
-        body = _section_html(html, "cost-optimization") or ""
-        errors.extend(_validate_optimization_content(body))
 
-    errors.extend(_validate_verdict(html, migration_dir))
-    errors.extend(_validate_accessibility(html))
+    # exec-optimization and appendix-optimization (Appendix B.1) must carry
+    # substantive content (generate-report.md Step 3 item 6: a table of real rows, or
+    # the explicit no-eligible-commitment sentence — never empty, and never satisfied
+    # by a heading or table-header text alone). A heading like "Cost Optimization"
+    # or a table with only column headers and an empty <tbody> must not pass as
+    # content. Full mode only — in decision mode exec-optimization follows the shared
+    # trigger and there is no appendix.
+    if mode == "full":
+        for section_id in ("appendix-optimization", "exec-optimization"):
+            if counts.get(section_id, 0) >= 1:
+                body = _section_html(html, section_id) or ""
+                errors.extend(_validate_optimization_content(body, section_id))
 
     if migration_dir is not None:
-        index_path = migration_dir / "scenarios" / "index.json"
-        if index_path.is_file():
-            try:
-                index = json.loads(index_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                index = None
-            scenarios = (index or {}).get("scenarios") or []
-            if len(scenarios) >= 2 and counts.get("what-if-scenarios", 0) < 1:
-                errors.append(
-                    'scenarios/index.json has ≥2 scenarios but no '
-                    '<section id="what-if-scenarios">'
-                )
-            elif len(scenarios) >= 2:
-                section = _section_html(html, "what-if-scenarios") or ""
-                errors.extend(_what_if_column_errors(section))
 
-        # generate-report.md / report-decision-core.md § decision-basis: when Estimate
+        # generate-report.md / report-decision-core.md § exec-assumptions: when Estimate
         # declared decision_basis (evidence/assumptions behind the verdict), the report
         # MUST render it — in both modes, since decision mode reuses these exact content
         # rules. Read the same estimation-infra.json the report was built from, so a
-        # report that silently drops decision-basis cannot still say REPORT_OK.
+        # report that silently drops exec-assumptions cannot still say REPORT_OK.
         est_path = migration_dir / "estimation-infra.json"
         if est_path.is_file():
             try:
@@ -1727,10 +982,10 @@ def validate(html: str, migration_dir: Path | None, mode: str = "full") -> list[
             except (OSError, json.JSONDecodeError):
                 est = None
             decision_basis = ((est or {}).get("recommendation") or {}).get("decision_basis")
-            if decision_basis and counts.get("decision-basis", 0) < 1:
+            if decision_basis and counts.get("exec-assumptions", 0) < 1:
                 errors.append(
                     "estimation-infra.json declares recommendation.decision_basis "
-                    'but the report has no <section id="decision-basis"> '
+                    'but the report has no <section id="exec-assumptions"> '
                     '("What This Assessment Rests On")'
                 )
 
@@ -1775,6 +1030,7 @@ def validate(html: str, migration_dir: Path | None, mode: str = "full") -> list[
     return errors
 
 
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("report_path", type=Path)
@@ -1799,16 +1055,7 @@ def main() -> int:
             print(f"  - {err}", file=sys.stderr)
         return 1
 
-    counts = _section_counts(html)
-    optional = []
-    if counts.get("what-if-scenarios", 0) >= 1:
-        optional.append("what-if-scenarios")
-    required = _required_sections(args.mode)
-    print(
-        "REPORT_OK | structure=complete | sections="
-        f"{len(required)}/{len(required)}"
-        + (f" | optional={','.join(optional)}" if optional else "")
-    )
+    print(f"REPORT_OK | mode={args.mode} | heroku-addon=complete")
     return 0
 
 
