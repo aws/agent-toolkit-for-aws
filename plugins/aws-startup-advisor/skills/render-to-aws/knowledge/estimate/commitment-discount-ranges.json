@@ -1,0 +1,70 @@
+{
+  "schema_version": "1.0",
+  "_note": "Render-local copy of the plugin-wide Optimized-tier commitment rates, pending promotion to skills/shared/estimate/commitment-discount-ranges.json (same two numbers) vendored by all four skills; eligibility comes from references/vendored/estimate/ri-sp-eligibility.md, which wins on any disagreement.",
+  "term": "1-year, no upfront. The Optimized TIER prices the commitment a startup can realistically sign in its first year on AWS; longer terms and all-upfront payment belong in optimization_opportunities[], never in a tier.",
+  "midpoint_rule": "Apply the arithmetic mid-point of a `low-high%` range; a single `~N%` or `up to N%` value for the applicable usage mode is used as stated; a service with no entry here or no eligible row is ineligible and its line is unchanged. Where `service_caps` lists a lower AWS maximum for a service, that line uses min(plan rate, cap). A database_savings_plans line must also pass ranges.database_savings_plans.generation_gate (Generation 7 or newer, class recorded); otherwise it is ineligible and unchanged.",
+  "eligibility_source": "references/vendored/estimate/ri-sp-eligibility.md",
+  "optimized_tier_uses": [
+    "compute_savings_plans",
+    "database_savings_plans"
+  ],
+  "tier_mapping": {
+    "compute_savings_plans": [
+      "ECS on Fargate",
+      "ECS on Fargate service",
+      "ECS on Fargate task",
+      "Amazon EventBridge Scheduler + ECS on Fargate RunTask",
+      "AWS Lambda"
+    ],
+    "database_savings_plans": [
+      "Amazon RDS for PostgreSQL",
+      "Amazon Aurora PostgreSQL",
+      "Amazon ElastiCache for Valkey node-based"
+    ]
+  },
+  "service_caps": {
+    "_comment": "AWS publishes a lower maximum for these services than the plan rate, so the tier applies the cap to that line. Keyed by the aws_service label in tier_mapping.",
+    "AWS Lambda": {
+      "cap": 0.12,
+      "plan": "compute_savings_plans",
+      "applies_to": "duration (GB-second) charges only; Lambda request charges get no Savings Plan discount",
+      "source": "AWS Compute Savings Plans price list, us-east-1, publication 2026-11-24 (https://pricing.us-east-1.amazonaws.com/savingsPlan/v1.0/aws/AWSComputeSavingsPlan/20261124130343/us-east-1/index.json): 1-year No Upfront Lambda duration is $0.0000147 per GB-second against $0.0000166667 on-demand, 11.8% (arm64 $0.0000117 against $0.0000133334, 12.2%), so the cap is 0.12. The 17% AWS cites for Lambda is the All Upfront rate, which the Optimized tier never uses. When a Lambda line records no duration/request split, the cap is applied to the whole line, which includes request charges, so the recorded discount is an upper bound."
+    }
+  },
+  "ranges": {
+    "_comment": "Tier RATES only. The full optimization_opportunities[] entry (description, references, caveats) comes from estimate-infra.md prose, and ELIGIBILITY comes from references/vendored/estimate/ri-sp-eligibility.md, which wins on any disagreement.",
+    "compute_savings_plans": {
+      "savings_percent": "20-40%",
+      "rate": 0.30,
+      "provenance": "Typical 1-year no-upfront Compute Savings Plan discount; the same `aws_1yr_savings_plan_typical_discount` range gcp-to-aws cites in estimate-infra.md Part 3 (the 20-66% all-terms figure is the post-migration opportunity range, not the tier rate).",
+      "target_services": [
+        "Fargate",
+        "Lambda"
+      ]
+    },
+    "database_savings_plans": {
+      "_comment": "ElastiCache belongs here ONLY when the target engine is Valkey, and a provisioned node qualifies only at Generation 7 or newer (generation_gate). render-to-aws maps Render Key Value to ElastiCache Valkey node-based by default, but the line is discounted only when its recorded node_type passes the gate. A Redis OSS exception, a pre-Generation-7 class, and a class that is not recorded are Database-SP-INELIGIBLE and the line is unchanged.",
+      "savings_percent": "up to 35% (serverless) / up to 20% (provisioned)",
+      "rate": 0.20,
+      "provenance": "AWS states Database Savings Plans save up to 20% on provisioned RDS, Aurora and ElastiCache for Valkey, on eligible (Generation 7 and newer) instances only; the stated value applies as-is to a line that passes generation_gate.",
+      "generation_gate": {
+        "minimum_generation": 7,
+        "rule": "The generation is the integer in the instance family token of the recorded class: db.t4g -> 4, db.m6g -> 6, cache.m6g -> 6, db.r7g -> 7, cache.m7g -> 7, db.m8g -> 8. A line is eligible only when that integer is 7 or more. A line whose class is not recorded is ineligible; never infer or invent a class.",
+        "class_field_by_service": {
+          "Amazon RDS for PostgreSQL": "instance_class",
+          "Amazon Aurora PostgreSQL": "instance_class",
+          "Amazon ElastiCache for Valkey node-based": "node_type"
+        },
+        "not_generation_gated": ["Aurora Serverless (class db.serverless)", "DynamoDB throughput", "Keyspaces throughput"],
+        "serverless_class_tokens": ["db.serverless"],
+        "source": "AWS Savings Plans FAQ (https://aws.amazon.com/savingsplans/faq/), read 2026-11-27: Database Savings Plans cover Generation 7 and newer instances; ElastiCache coverage is Valkey only; serverless offerings and DynamoDB/Keyspaces throughput are not generation-gated.",
+        "upgrade_hint": "A Generation 7+ class would qualify, for example db.t4g -> db.m7g or db.r7g and cache.m6g -> cache.m7g. Mention it in optimization_opportunities[] with no dollar saving."
+      },
+      "target_services": [
+        "RDS",
+        "Aurora",
+        "ElastiCache (Valkey only)"
+      ]
+    }
+  }
+}
