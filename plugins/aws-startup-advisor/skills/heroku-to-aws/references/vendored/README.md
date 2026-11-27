@@ -32,3 +32,4 @@ if this skill needs one, add the copy **and** a row in the table below.
 | `pricing/aws-infra-pricing.json`        | `skills/shared/pricing/aws-infra-pricing.json`        |
 | `workshop/workshop-invariants.md`       | `skills/shared/workshop/workshop-invariants.md`       |
 | `migration/upfront-credits.md`          | `skills/shared/migration/upfront-credits.md`          |
+| `report/report-decision-core.md`        | `skills/shared/report/report-decision-core.md`        |

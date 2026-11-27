@@ -24,8 +24,7 @@ Read from `$MIGRATION_DIR/`: `aws-design.json` (`clusters[]` with `pattern_statu
 `azure-resource-inventory.json` (drift + reservation signals), `preferences.json`,
 and `scenarios/index.json` if it exists (workshop what-ifs).
 
-**Load `references/shared/report-decision-core.md` and render it in `full` mode.** That file is
-the single source of truth for every executive-summary section (Decision Summary through "What
+**Load `references/shared/report-decision-core.md` and render it in `full` mode.** That file loads the vendored canonical core (`references/vendored/report/report-decision-core.md`) first and then supplies this skill's parameters and add-ons; together they are the single source of truth for every executive-summary section (Decision Summary through "What
 this assessment rests on") — verdict typography, the required section IDs, baseline-quality and
 not-comparable rules, Activate wording, and the CSS readability contract all live there. Do not
 restate or paraphrase its rules here.
@@ -182,7 +181,7 @@ every mapping/plan/service/headline figure = `accounted` (with the three-way agr
 above). This mirrors gcp-to-aws `report-decision-core.md` where the discovered/current
 count is a separate figure from the mapping count.
 
-## Step 3.75: Stable appendix lettering (REQUIRED — validator-enforced)
+## Step 3.75: Stable appendix lettering (REQUIRED — authoring rule; the validator checks section IDs, not letters)
 
 Use the same stable customer-visible appendix labels as the full-report contract. The letter is
 part of the heading and TOC label; it does not shift when a conditional section is absent:
@@ -203,7 +202,7 @@ part of the heading and TOC label; it does not shift when a conditional section 
 
 Render `appendix-artifacts` before `appendix-config`. Conditional sections keep their reserved
 letters when absent — for example, an infra-only report still uses Appendix E for artifacts,
-never renumbering it to D. The plugin-root report validator checks both `<h2>` and TOC labels.
+never renumbering it to D. The plugin-root report validator checks the section IDs, not the letters, so the letters are an authoring rule.
 
 ## Step 3.8: Appendix build instructions — C, G, H, I
 
