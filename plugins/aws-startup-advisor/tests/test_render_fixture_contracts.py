@@ -312,7 +312,7 @@ def test_estimate_scenarios_floors_and_metric_gates_reconcile() -> None:
     assert Decimal(str(delta["annual"])) == Decimal("624.0")
     assert delta["basis"] in {"declared_waste", "utilization", "both", "none"}
     assert delta["explanation"] and delta["what_would_change_this"]
-    assert _recompute_optimized(estimate) == optimized == Decimal("227.61")
+    assert _recompute_optimized(estimate) == optimized == Decimal("243.6")
     assert estimate["migration_cost_considerations"]["human_labor_monthly_usd"] is None
 def test_estimate_optimized_rejects_an_invented_discount_rate() -> None:
     estimate = load(EXPECTED / "estimation-infra.json")

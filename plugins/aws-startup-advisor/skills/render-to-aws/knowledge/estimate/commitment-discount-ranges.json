@@ -1,6 +1,7 @@
 {
   "schema_version": "1.0",
-  "_note": "Verbatim copy of azure-to-aws knowledge/estimate/estimate-defaults.json -> optimization_savings_ranges, pending promotion to a shared skills/shared/estimate/ file vendored by all four skills; eligibility comes from references/vendored/estimate/ri-sp-eligibility.md, which wins on any disagreement.",
+  "_note": "Render-local copy of the plugin-wide Optimized-tier commitment rates, pending promotion to skills/shared/estimate/commitment-discount-ranges.json (same two numbers) vendored by all four skills; eligibility comes from references/vendored/estimate/ri-sp-eligibility.md, which wins on any disagreement.",
+  "term": "1-year, no upfront. The Optimized TIER prices the commitment a startup can realistically sign in its first year on AWS; longer terms and all-upfront payment belong in optimization_opportunities[], never in a tier.",
   "midpoint_rule": "Apply the arithmetic mid-point of a `low-high%` range; a single `~N%` or `up to N%` value for the applicable usage mode is used as stated; a service with no entry here or no eligible row is ineligible and its line is unchanged.",
   "eligibility_source": "references/vendored/estimate/ri-sp-eligibility.md",
   "optimized_tier_uses": [
@@ -22,59 +23,26 @@
     ]
   },
   "ranges": {
-    "_comment": "Savings RANGES for post-migration optimization opportunities, beyond the right-sized on-demand baseline. Ranges only: the full optimization_opportunities[] entry (description, references, caveats) comes from estimate-infra.md prose, and ELIGIBILITY comes from references/vendored/estimate/ri-sp-eligibility.md, which wins on any disagreement.",
+    "_comment": "Tier RATES only. The full optimization_opportunities[] entry (description, references, caveats) comes from estimate-infra.md prose, and ELIGIBILITY comes from references/vendored/estimate/ri-sp-eligibility.md, which wins on any disagreement.",
     "compute_savings_plans": {
-      "savings_percent": "20-66%",
+      "savings_percent": "20-40%",
+      "rate": 0.30,
+      "provenance": "Typical 1-year no-upfront Compute Savings Plan discount; the same `aws_1yr_savings_plan_typical_discount` range gcp-to-aws cites in estimate-infra.md Part 3 (the 20-66% all-terms figure is the post-migration opportunity range, not the tier rate).",
       "target_services": [
-        "Elastic Beanstalk",
-        "EC2",
-        "Fargate"
-      ],
-      "timing": "Post-migration (after a 30-90 day usage baseline)"
+        "Fargate",
+        "Lambda"
+      ]
     },
     "database_savings_plans": {
-      "_comment": "The full Database-SP-eligible list per ri-sp-eligibility.md. ElastiCache belongs here ONLY when the target engine is Valkey; azure-to-aws maps Azure Cache for Redis to ElastiCache Valkey by default (aws_config.engine = valkey), which qualifies; a Redis OSS exception is Database-SP-INELIGIBLE and falls through to elasticache_reserved_nodes instead.",
-      "savings_percent": "up to 35% (serverless) / ~20% (provisioned)",
+      "_comment": "ElastiCache belongs here ONLY when the target engine is Valkey; render-to-aws maps Render Key Value to ElastiCache Valkey node-based by default, which qualifies. A Redis OSS exception is Database-SP-INELIGIBLE and its line is unchanged.",
+      "savings_percent": "up to 35% (serverless) / up to 20% (provisioned)",
+      "rate": 0.20,
+      "provenance": "AWS states Database Savings Plans save up to 20% on provisioned RDS, Aurora and ElastiCache for Valkey; render's designs are provisioned, so the stated value applies as-is.",
       "target_services": [
         "RDS",
         "Aurora",
-        "DocumentDB",
-        "DynamoDB",
         "ElastiCache (Valkey only)"
-      ],
-      "timing": "Post-migration, or after right-sizing"
-    },
-    "rds_reserved_instances": {
-      "savings_percent": "up to 69%",
-      "target_services": [
-        "RDS",
-        "Aurora (provisioned)"
-      ],
-      "timing": "Post-migration (after the architecture stabilizes)"
-    },
-    "elasticache_reserved_nodes": {
-      "_comment": "The commitment lever when the ElastiCache target engine is Redis OSS or Memcached, which Database Savings Plans do not cover. Requires a node-based cluster: ElastiCache Serverless has no reservable nodes.",
-      "savings_percent": "30-55%",
-      "target_services": [
-        "ElastiCache (Redis OSS or Memcached, node-based only)"
-      ],
-      "timing": "Post-migration (after a usage baseline)"
-    },
-    "s3_intelligent_tiering": {
-      "savings_percent": "38-50%",
-      "target_services": [
-        "S3 storage"
-      ],
-      "timing": "During migration"
-    },
-    "ec2_spot": {
-      "savings_percent": "60-90%",
-      "target_services": [
-        "Interruption-tolerant EB worker environments",
-        "Batch EC2"
-      ],
-      "timing": "During migration, for fault-tolerant and idempotent workloads only"
-    },
-    "_no_graviton_entry": "There is deliberately NO arm64/Graviton savings entry here. The design defaults to x86_64 because of Windows and .NET prevalence, and an arm64 saving is only real for a workload whose stack is known to be portable. That belongs in the workshop sidebar, where the customer sees both prices, not in a list of assumed savings. A withdrawn recommendation costs more trust than one never made."
+      ]
+    }
   }
 }

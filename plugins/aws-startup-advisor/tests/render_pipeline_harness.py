@@ -100,8 +100,9 @@ BALANCED_FACTORS = {
 }
 # Optimized = Balanced with the mid-point commitment discount on RI/SP-eligible lines
 # only (knowledge/estimate/commitment-discount-ranges.json): Compute Savings Plan
-# 20-66% -> 43% on Fargate and Lambda, Database Savings Plan ~20% on RDS and Valkey.
-COMPUTE_SP_RATE = 0.43
+# 1-year no-upfront 20-40% -> 30% on Fargate and Lambda, Database Savings Plan up to
+# 20% (provisioned) on RDS and Valkey.
+COMPUTE_SP_RATE = 0.3
 DATABASE_SP_RATE = 0.2
 COMPUTE_SP_KINDS = ("render.web_service", "render.private_service", "render.background_worker", "render.cron_job", "render.workflow_task")
 DATABASE_SP_KINDS = ("render.postgres", "render.key_value")
@@ -227,8 +228,8 @@ def estimate_from_design(design: dict[str, Any]) -> dict[str, Any]:
             "discount_monthly_usd": round(subtotal * rate, 2),
         }
 
-    compute_sp = plan(COMPUTE_SP_KINDS, COMPUTE_SP_RATE, "20-66%")
-    database_sp = plan(DATABASE_SP_KINDS, DATABASE_SP_RATE, "~20% (provisioned)")
+    compute_sp = plan(COMPUTE_SP_KINDS, COMPUTE_SP_RATE, "20-40%")
+    database_sp = plan(DATABASE_SP_KINDS, DATABASE_SP_RATE, "up to 20% (provisioned)")
     balanced = block(balanced_lines)
     optimized = block(optimized_lines)
     optimized["commitment"] = {

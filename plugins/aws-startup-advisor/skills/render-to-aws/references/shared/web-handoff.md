@@ -11,7 +11,7 @@ uv run --project "$SKILL_BASE/scripts" --frozen python \
   "$SKILL_BASE/scripts/emit-plan-json.py" --migration-dir "$MIGRATION_DIR" --plugin-json "$PLUGIN_ROOT/.claude-plugin/plugin.json"
 ```
 
-The writer reads `.phase-status.json` and `estimation-infra.json`, writes `$MIGRATION_DIR/plan.json`, and prints `PLAN_OK | …` or `PLAN_SKIP | reason=…`. It copies validated values only. Render's baseline is copied only when `current_costs.currency` is `USD`, and the AWS total is the known-cost figure of the capacity-preserving scenario. When that figure is a floor, unpriced lines never appear as service items.
+The writer reads `.phase-status.json` and `estimation-infra.json`, writes `$MIGRATION_DIR/plan.json`, and prints `PLAN_OK | …` or `PLAN_SKIP | reason=…`. It copies validated values only. Render's baseline is copied only when `current_costs.currency` is `USD`, and the AWS total is the known-cost figure of the Balanced (right-sized) scenario, `scenarios.balanced`. When that figure is a floor, unpriced lines never appear as service items.
 
 If it printed `PLAN_SKIP`, omit everything below: there is no file to upload and no credits link.
 
