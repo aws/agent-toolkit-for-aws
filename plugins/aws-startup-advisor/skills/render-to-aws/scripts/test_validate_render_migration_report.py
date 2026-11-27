@@ -64,6 +64,12 @@ def _drop_section(text: str, section_id: str) -> str:
     return _drop_toc_link(pattern.sub("", text, count=1), section_id)
 
 
+def _drop_table_row(text: str, marker: str) -> str:
+    pattern = re.compile(rf"<tr>(?:(?!</tr>).)*{re.escape(marker)}(?:(?!</tr>).)*</tr>\s*", re.DOTALL)
+    assert len(pattern.findall(text)) == 1, marker
+    return pattern.sub("", text, count=1)
+
+
 def test_complete_report_passes_with_exact_status(tmp_path: Path) -> None:
     migration, report = prepared(tmp_path)
     code, output = run(report, migration)
@@ -93,6 +99,8 @@ def test_complete_report_passes_with_exact_status(tmp_path: Path) -> None:
         (lambda text: _replace_once(text, "cache eviction and persistence behavior, disk", "eviction and persistence behavior, disk"), "CONTENT_VERIFICATION_CACHE"),
         (lambda text: _drop_section(text, "cutover"), "SECTION_CUTOVER_MISSING"),
         (lambda text: _drop_toc_link(text, "cutover"), "TOC_RENDER_SECTION_MISSING"),
+        (lambda text: _drop_table_row(text, "aws_guardduty_detector.baseline"), "SECURITY_BASELINE_RESOURCE_MISSING"),
+        (lambda text: _drop_section(text, "appendix-security"), "SECTION_APPENDIX_SECURITY_MISSING"),
         (lambda text: text.replace("deferred_shared_ai_engine", "AI later"), "AI_DEFERRED_STATE_MISSING"),
         (lambda text: text.replace("</footer>", " contact user@example.com</footer>"), "PRIVACY_EMAIL"),
         (lambda text: text.replace("</footer>", " rendered from /Users/dev/render</footer>"), "PRIVACY_LOCAL_PATH"),
@@ -105,6 +113,15 @@ def test_report_mutations_fail_closed(tmp_path: Path, mutation, expected: str) -
     assert code == 1
     assert output.startswith("REPORT_FAIL |")
     assert expected in output
+
+
+def test_report_without_baseline_tf_skips_the_security_check(tmp_path: Path) -> None:
+    migration, report = prepared(tmp_path)
+    (migration / "terraform" / "baseline.tf").unlink()
+    report.write_text(_drop_section(report.read_text(encoding="utf-8"), "appendix-security"), encoding="utf-8")
+    code, output = run(report, migration)
+    assert code == 0, output
+    assert output == "REPORT_OK\n"
 
 
 def test_shared_validator_checks_are_not_duplicated_locally(tmp_path: Path) -> None:

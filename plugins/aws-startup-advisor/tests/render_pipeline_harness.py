@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess  # nosec B404 - fixed local validation tools, no shell
 import sys
+from decimal import ROUND_HALF_EVEN, Decimal
 from html import escape
 from pathlib import Path
 from typing import Any
@@ -99,18 +100,22 @@ BALANCED_FACTORS = {
     "render.postgres": 0.8,
 }
 # Optimized = Balanced with the mid-point commitment discount on RI/SP-eligible lines
-# only (knowledge/estimate/commitment-discount-ranges.json): Compute Savings Plan
-# 1-year no-upfront 20-40% -> 30% on Fargate, capped at 12% on Lambda (the 1-year
-# no-upfront Lambda duration rate); Database Savings Plan up to 20% (provisioned) on RDS
-# and Valkey lines whose recorded instance class / node type is Generation 7 or newer.
-# A line whose class is not recorded is ineligible.
-COMPUTE_SP_RATE = 0.3
-DATABASE_SP_RATE = 0.2
+# only. Rates, the Lambda cap and the Generation 7+ gate come from the vendored shared file
+# references/vendored/estimate/commitment-discount-ranges.json (rates, service_caps.aws_lambda,
+# generation_gate); the eligibility buckets are knowledge/estimate/estimate-defaults.json
+# commitment_eligibility. Compute Savings Plan 1-year no-upfront 20-40% -> 30% on Fargate,
+# capped at 12% on Lambda (the 1-year no-upfront Lambda duration rate); Database Savings
+# Plan up to 20% (provisioned) on RDS and Valkey lines whose recorded instance class / node
+# type is Generation 7 or newer (a line whose class is not recorded is ineligible). Each
+# eligible line's discount is rounded to whole dollars (half-to-even) before summing.
+_COMMITMENT = json.loads((SKILL_ROOT / "references/vendored/estimate/commitment-discount-ranges.json").read_text())
+COMPUTE_SP_RATE = _COMMITMENT["rates"]["compute_savings_plan"]["rate"]
+DATABASE_SP_RATE = _COMMITMENT["rates"]["database_savings_plan_provisioned"]["rate"]
 COMPUTE_SP_KINDS = ("render.web_service", "render.private_service", "render.background_worker", "render.cron_job", "render.workflow_task")
-COMPUTE_SP_CAPS = {"render.workflow_task": 0.12}
+COMPUTE_SP_CAPS = {"render.workflow_task": _COMMITMENT["service_caps"]["aws_lambda"]["cap"]}
 DATABASE_SP_KINDS = ("render.postgres", "render.key_value")
 DATABASE_SP_CLASS_FIELD = {"render.postgres": "instance_class", "render.key_value": "node_type"}
-DATABASE_SP_MINIMUM_GENERATION = 7
+DATABASE_SP_MINIMUM_GENERATION = _COMMITMENT["generation_gate"]["minimum_generation"]
 def database_sp_generation_gate(mapping: dict[str, Any]) -> tuple[bool, str]:
     """(eligible, basis) for one Design mapping under the Database Savings Plan Generation 7+ rule."""
     field = DATABASE_SP_CLASS_FIELD[mapping["render_kind"]]
@@ -239,12 +244,15 @@ def estimate_from_design(design: dict[str, Any]) -> dict[str, Any]:
         if kind in DATABASE_SP_KINDS and database_gate[row["line_id"]][0]:
             return DATABASE_SP_RATE
         return None
+    def line_discount(row: dict[str, Any], rate: float) -> int:
+        """One eligible line's discount in whole dollars, half-to-even (the vendored midpoint_rule)."""
+        return int((Decimal(str(row["monthly_amount"])) * Decimal(str(rate))).quantize(Decimal(1), rounding=ROUND_HALF_EVEN))
     optimized_lines = []
     for row in balanced_lines:
         row = dict(row)
         rate = line_rate(row)
         if rate is not None:
-            row["monthly_amount"] = round(row["monthly_amount"] - round(row["monthly_amount"] * rate, 2), 2)
+            row["monthly_amount"] = round(row["monthly_amount"] - line_discount(row, rate), 2)
         optimized_lines.append(row)
     def plan(kinds_in_plan: tuple[str, ...], rate: float, range_label: str) -> dict[str, Any]:
         eligible = [
@@ -257,10 +265,10 @@ def estimate_from_design(design: dict[str, Any]) -> dict[str, Any]:
             "eligible_subtotal_monthly_usd": subtotal,
             "rate": rate,
             "range": range_label,
-            "discount_monthly_usd": round(sum(round(row["monthly_amount"] * line_rate(row), 2) for row in eligible), 2),
+            "discount_monthly_usd": float(sum(line_discount(row, line_rate(row)) for row in eligible)),
         }
         capped = {
-            row["line_id"]: {"cap": COMPUTE_SP_CAPS[kinds[row["source_resource_id"]]], "source": "knowledge/estimate/commitment-discount-ranges.json service_caps AWS Lambda"}
+            row["line_id"]: {"cap": COMPUTE_SP_CAPS[kinds[row["source_resource_id"]]], "source": "references/vendored/estimate/commitment-discount-ranges.json service_caps aws_lambda; the line records no duration/request split, so the cap is applied to the whole line including request charges and the discount is an upper bound"}
             for row in eligible
             if COMPUTE_SP_CAPS.get(kinds[row["source_resource_id"]], rate) < rate
         }
@@ -280,7 +288,7 @@ def estimate_from_design(design: dict[str, Any]) -> dict[str, Any]:
         "ineligible_subtotal_monthly_usd": round(
             balanced["known_cost_monthly_usd"] - compute_sp["eligible_subtotal_monthly_usd"] - database_sp["eligible_subtotal_monthly_usd"], 2
         ),
-        "source": "knowledge/estimate/commitment-discount-ranges.json",
+        "source": "references/vendored/estimate/commitment-discount-ranges.json",
     }
     premium = block([dict(row) for row in balanced_lines])
     premium.update({"uplift_monthly_usd": 0.0, "uplifted_line_ids": []})
