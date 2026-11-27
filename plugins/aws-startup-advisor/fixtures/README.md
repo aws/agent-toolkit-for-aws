@@ -19,7 +19,7 @@ Also see:
 - `gcp-workshop/` — GCP what-if workshop seed + graviton reprice + `check_expected_workshop.py`
 - `azure-iac-terraform/` — a synthetic Azure Terraform estate with goldens for every phase (`after-discover/` through `after-generate/`, which carries a full `migration-report.html`) and a `check_expected_*.py` asserter per phase
 - `gcp-decision-gate/`, `heroku-decision-gate/` — decision-mode goldens (`decision-report.html` + `DECISION.md` + estimate) with `check_expected_decide.py`, run through the shared validator in `--mode decision`
-- `estimation-infra-reference.json` — the GCP estimate the reference report is rendered from. It and the estimates listed in `TIERED_ESTIMATES` (`tests/test_tier_semantics_contract.py`: the gcp, heroku and azure decision-gate and generate goldens and render's `fixtures/expected`) carry `_premium_basis` / `_optimized_basis` sentences showing the tier arithmetic; the gcp and heroku workshop seeds predate the tier rule and gain theirs in a follow-up (#797).
+- `estimation-infra-reference.json` — the GCP estimate the reference report is rendered from. Every estimate listed in `TIERED_ESTIMATES` (`tests/test_tier_semantics_contract.py`) carries `_premium_basis` / `_optimized_basis` sentences showing the tier arithmetic, and that test fails if one is missing or the tiers fall out of order; an estimate not in that list has not been re-derived under the tier rule.
 
 ## Migration report reference fixture
 
