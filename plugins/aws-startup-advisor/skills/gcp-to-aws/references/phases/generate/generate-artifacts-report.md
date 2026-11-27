@@ -101,7 +101,7 @@ The skeleton's `⟨parameter⟩` values for this skill. The GCP-specific content
 | ⟨baseline_breakdown⟩                                                             | `current_costs.breakdown` — compute/database/storage/networking/other vs infra total                                                                                                                                                                                                                                                                                                       |
 | ⟨floor_fields⟩                                                                   | n/a — the GCP estimate carries no `is_floor` / unpriced-line fields                                                                                                                                                                                                                                                                                                                        |
 | ⟨extra_cost_columns⟩                                                             | "Sizing basis" — see GCP add-on § Appendix Section B below                                                                                                                                                                                                                                                                                                                                 |
-| ⟨optimization_sources⟩ / ⟨ri_sp_eligibility_ref⟩                                 | Infra (`estimation-infra.json`) + AI (`estimation-ai.json`, `available` sequencing per `estimate-ai.md` Part 6) / `references/shared/ri-sp-eligibility.md`                                                                                                                                                                                                                                 |
+| ⟨optimization_sources⟩ / ⟨ri_sp_eligibility_ref⟩                                 | Infra (`estimation-infra.json`) + AI (`estimation-ai.json`, `available` sequencing from the `optimization_opportunities[]` rows bedrock-migration-assessment writes) / `references/shared/ri-sp-eligibility.md`                                                                                                                                                                                                                                 |
 | ⟨phase_order_source⟩                                                             | The generation plan's `migration_plan` stages (`generation-infra.json`, fallback `generation-billing.json`)                                                                                                                                                                                                                                                                                 |
 | ⟨scripts_list⟩                                                                   | The `scripts/` the run emitted, in plan order                                                                                                                                                                                                                                                                                                                                              |
 | ⟨cutover_strategy_fields⟩                                                        | n/a — the GCP preferences record no cutover-strategy field; the plan's phase descriptions carry the strategy                                                                                                                                                                                                                                                                              |
@@ -138,67 +138,6 @@ None. gcp-to-aws follows the skeleton's default appendix set with no `--profile`
 **Per-service cost breakdown table** with columns: Service Category, AWS Service, Monthly Cost (Balanced), Sizing basis, Calculation/Notes.
 
 **Sizing basis column:** from the breakdown entry's `sizing_basis` (`estimate-infra.md` Part 2D): `Measured (30-day p95)` for an EC2 or RDS row whose mapping has `sizing_provenance: "measured"`, with the like-for-like size and `like_for_like_monthly` in a `<small>`; `Declared` with the mapping's `declared_reason` in a `<small>` (`insufficient data`, `memory unavailable`, `idle`, `group member`, `user exempt`, `conservative`) for the rest; `—` for rows that carry no instance size (S3, SQS, networking). When `projected_costs.sizing_bands` is present, add one line under the table: "Like-for-like **$L**/mo vs right-sized **$R**/mo (N resources measured; basis)" from `like_for_like_monthly`, `right_sized_monthly`, `measured_resources` and `basis`, no recomputation.
-
-**Mandatory rows when present in `projected_costs.breakdown`:**
-
-- compute, database, storage, networking
-- **security_baseline** — include `mid` cost AND component sub-rows from `components` (e.g. GuardDuty, cloudtrail_s3, budgets)
-- **observability** — include `mid` and `note` (GCP free-tier comparison)
-- supporting (Secrets Manager, ECR, etc.)
-
-Do NOT collapse security_baseline into "other". Surface GuardDuty explicitly.
-
-**GCP baseline breakdown** (when `current_costs.breakdown` exists): table of compute/database/storage/networking/other vs infra total.
-
-Source: estimation artifact projected_costs.breakdown, current_costs.breakdown
-
-**Three-tier comparison table** with columns: **Tier** (name + subtitle as in Section 3), Monthly Cost, vs GCP Monthly, Annual Difference.
-
-Repeat the **How to read cost tiers** callout from Section 3 here or include a one-line pointer: _See executive summary — three tiers are scenario $ only; generated Terraform matches **Balanced** baseline._
-
-Source: estimation artifact cost_comparison
-
-**Do not** put the opportunity table only as an `<h3>` inside this appendix.
-When `optimization_opportunities[]` is non-empty, the executive
-`exec-optimization` section (see `report-decision-core.md` Section 3c) is
-required, and the line-level table MUST be a standalone
-`<section id="appendix-optimization">` immediately after `appendix-costs`.
-
-**Optimization opportunities table** (`appendix-optimization`) with columns:
-Optimization, Target, Monthly Savings (or Est. savings), Commitment, Effort.
-
-Merge infra (`estimation-infra.json`) and AI (`estimation-ai.json`) optimization rows when both exist. **The two sources use different field names for the same rendered column** — apply this key map, do not assume the field names match:
-
-| Column          | Infra key (`estimation-infra.json`)                          | AI key (`estimation-ai.json`)                                                                                                                                             |
-| --------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Optimization    | `opportunity`                                                | `opportunity`                                                                                                                                                             |
-| Target Services | `target_services`                                            | `target_services`                                                                                                                                                         |
-| Monthly Savings | `savings_monthly` (fall back to `savings_percent` when null) | `potential_savings_monthly` (fall back to `potential_savings_percent` when null — the AI schema requires this field on every entry precisely so this cell is never blank) |
-| Commitment      | `commitment`                                                 | `commitment`                                                                                                                                                              |
-| Effort          | `implementation_effort`                                      | `implementation_effort`                                                                                                                                                   |
-
-**Render the Activate-credits caveat once, below the whole merged table, scoped only to the infra-side rows it actually describes — never per-row and never implied to cover every row in a merged table.** That caveat applies only to RI/Savings Plan upfront costs. If the merged table contains any infra-side row with a `commitment` other than `"none"` (Compute SP, Database SP, RDS RI, DynamoDB reserved capacity, ElastiCache Reserved Nodes), render the caveat once beneath the table, worded to make clear it applies to those rows specifically (e.g. "The Activate-credits note below applies to the Reserved Instance/Savings Plan rows only"). Do not render it at all if the table contains only AI-side rows. AI-side rows (including Provisioned Throughput, which is billed hourly with no upfront fee) never trigger this caveat — if any AI-side row is `type: provisioned_throughput`, its Commitment cell reads the exact wording from that row's JSON (`"no-commit, 1-month, or 6-month"`), never the infra-side "1-year or 3-year" vocabulary, and never implies an upfront cost.
-
-**Sequencing (`available`):** AI-side rows carry an `available` field (`day_1`, `after_2_weeks_production_traffic`, `after_sustained_traffic_baseline` — the `optimization_opportunities[]` rows of `estimation-ai.json`, which bedrock-migration-assessment writes). Group or flag rows so a reader can tell day-1 levers (prompt caching, Batch API, model downsizing, input token reduction, multi-model tiered routing) apart from traffic-gated ones (Intelligent Prompt Routing, Provisioned Throughput) — do not present all optimization rows as equally actionable at migration time.
-
-A table buried only in Appendix B does **not** pass the report validator.
-
-Source: estimation artifact optimization_opportunities
-
-> **Security baseline costs** are included as a line item in the breakdown above. For Terraform resource names and GCP equivalents, see Appendix G.
-
-### Appendix Section C — Migration Steps
-
-Numbered migration phases from the generation plan, each with:
-
-- Phase name and description
-- Services included
-- Estimated duration
-- Dependencies and prerequisites
-
-Source: generation plan
-
-**Rollback procedure** — triggers, steps, and RTO from generation plan.
 
 ### Appendix Section D — AI Migration (conditional)
 
@@ -672,26 +611,18 @@ After generating the HTML file, verify:
    `exec-tco` section (legacy ID) with the summed AWS recurring service
    estimate. Never label it TCO. Sum the GCP side only when every source
    baseline is comparable; otherwise show "Not comparable."
-6. **Data accuracy**: Cost figures in HTML match the estimation artifact values exactly — **manual / agent self-check**; the automated validator does not verify numerics (see `validate-migration-report.md` scope).
-7. **Conditional sections**: AI appendix only present if AI artifacts exist; billing caveats shown when billing_data_available is false; Bedrock cost guardrails only when `ai-migration/setup_bedrock.sh` has its budget and anomaly step; startup credits callout only when `STARTUP_PROGRAMS.md` or preference indicates eligibility
-8. **Decision summary**: Migration Decision Summary present when estimation or preview artifacts exist; uses `recommendation.path_label` when block present, plus a one-sentence recommendation banner
-9. **Human expertise flags**: Warning callouts appear for all services with `human_expertise_required: true`
-10. **Valid HTML**: Opening and closing tags match, no broken table structures
-11. **No placeholders**: No `[placeholder]` or `TODO` text in the report output
-12. **Footer disclaimer**: Footer contains "draft for review"
-13. **Readability**: No literal `Rubric:` and no numbered headings (`Section 0`, `Section 1b`, `<hN>Section N — …`); security teaser up top with full table in the appendix; tables have `<caption>`/`scope`; acronyms expanded; one-sentence recommendation banner in decision summary
-14. **Reader vocabulary**: No artifact filenames (`*.json`) or Terraform resource IDs (`aws_*.*`) inside `decision-summary` / `exec-*` sections — those names live only in the technical appendices.
-15. **Consistent labels**: The recommended model and the chosen cost tier use one consistent name across verdict, tables, and appendices (no "recommended / selected / design target" drift for the same item).
-16. **Configuration provenance**: When `preferences.json` exists, `appendix-config` table has Question/assumption, Your choice, Source, and Design consequence columns populated from `prompt` and `design_consequence` fields (see `schema-preferences.md`).
-17. **Ordered next steps**: `Key decisions ahead` and `Next steps` in `decision-summary` use `<ol>`, not `<ul>`.
-18. **Style conventions**: No vague intensifiers (`very`, `significantly`, `extremely`, `vastly`) in body prose; all dates are `YYYY-MM-DD`; no status conveyed by color alone; action steps use active voice with a named actor; progress percentages show their denominator.
-19. **Leadership brief and glossary**: When monthly estimates exist,
-    `exec-share` is present after the TOC; full reports end with
-    `appendix-glossary`, rendered as a two-column table.
-20. **Cost Optimization section**: When `optimization_opportunities[]` is
-    non-empty, `exec-optimization` and `appendix-optimization` are present
-    and TOC-linked. Do not bury the opportunity table only in Appendix B.
-21. **Cost-figure anchors (machine-checkable).** Wrap the recommended AWS monthly
+4. **Data accuracy**: Cost figures in HTML match the estimation artifact values exactly — **manual / agent self-check**; the automated validator does not verify numerics (see `validate-migration-report.md` scope).
+5. **Decision summary**: Migration Decision Summary present when estimation or preview artifacts exist; uses `recommendation.path_label` when block present, plus a one-sentence recommendation banner
+6. **Human expertise flags**: Warning callouts appear for all services with `human_expertise_required: true`
+7. **Valid HTML**: Opening and closing tags match, no broken table structures
+8. **No placeholders**: No `[placeholder]` or `TODO` text in the report output
+9. **Footer disclaimer**: Footer contains "draft for review"
+10. **Readability**: No literal `Rubric:` and no numbered headings (`Section 0`, `Section 1b`, `<hN>Section N — …`); security teaser up top with full table in the appendix; tables have `<caption>`/`scope`; acronyms expanded; one-sentence recommendation banner in decision summary
+11. **Reader vocabulary**: No artifact filenames (`*.json`) or Terraform resource IDs (`aws_*.*`) inside `decision-summary` / `exec-*` sections — those names live only in the technical appendices.
+12. **Consistent labels**: The recommended model and the chosen cost tier use one consistent name across verdict, tables, and appendices (no "recommended / selected / design target" drift for the same item).
+13. **Ordered next steps**: `Key decisions ahead` and `Next steps` in `decision-summary` use `<ol>`, not `<ul>`.
+14. **Style conventions**: No vague intensifiers (`very`, `significantly`, `extremely`, `vastly`) in body prose; all dates are `YYYY-MM-DD`; no status conveyed by color alone; action steps use active voice with a named actor; progress percentages show their denominator.
+15. **Cost-figure anchors (machine-checkable).** Wrap the recommended AWS monthly
     figure and the current-spend comparator in `exec-costs` with a `data-cost-key`
     attribute so the validator can confirm the rendered dollars match the estimate:
     - Projected AWS monthly (Balanced): `data-cost-key="aws_monthly_balanced"` on the

@@ -247,12 +247,48 @@ def test_gcp_report_keys_cost_guardrails_on_the_assessment_setup_script() -> Non
     for rel in REPORT_DOCS:
         text = (GCP / "references" / rel).read_text(encoding="utf-8")
         assert "bedrock_monitoring.tf" not in text, rel
-        assert "ai-migration/setup_bedrock.sh" in text, rel
+        assert rel == "shared/report-decision-core.md" or "ai-migration/setup_bedrock.sh" in text, rel
     report = (GCP / "references" / REPORT_DOCS[0]).read_text(encoding="utf-8")
     guard = report.split("**Cost guardrails", 1)[1].split("**What the baseline", 1)[0]
     assert f"`{GUARDRAIL_STEP}`" in guard
     assert "`BUDGET_USD`" in guard and "`BUDGET_SERVICES`" in guard and "no budget" in guard
     assert "--execute" in guard and "Never add an Inference profiles row" in guard
+
+
+CANONICAL_REPORT = GCP / "references" / "vendored" / "report"
+
+
+def _guardrail_conditions() -> dict[str, str]:
+    core = (CANONICAL_REPORT / "report-decision-core.md").read_text(encoding="utf-8")
+    skeleton = (CANONICAL_REPORT / "report-appendix-skeleton.md").read_text(encoding="utf-8")
+    return {
+        "decision core fourth row": next(line for line in core.splitlines() if "The fourth row is **conditional**" in line),
+        "skeleton cost guardrails": skeleton.split("**Cost guardrails**", 1)[1].split("These are detective controls", 1)[0],
+        "skeleton check 3": skeleton.split("3. **Conditional sections**", 1)[1].split("\n4. ", 1)[0],
+    }
+
+
+@pytest.mark.parametrize("place", ["decision core fourth row", "skeleton cost guardrails", "skeleton check 3"])
+def test_the_canonical_report_keys_cost_guardrails_on_both_generators(place: str) -> None:
+    text = " ".join(_guardrail_conditions()[place].split())
+    assert "bedrock_monitoring.tf" in text and GUARDRAIL_STEP in text, place
+    assert "setup_bedrock.sh" in text or "setup script" in text, place
+
+
+def test_the_canonical_report_ties_profile_attribution_to_the_terraform_file() -> None:
+    text = " ".join(_guardrail_conditions()["skeleton cost guardrails"].split())
+    profiles = text.split("**Inference profiles (tagged)**", 1)[1]
+    assert "bedrock_monitoring.tf" in profiles and "never from the setup script" in profiles
+
+
+@pytest.mark.parametrize("layer, canonical", [
+    ("shared/report-decision-core.md", "report-decision-core.md"),
+    ("phases/generate/generate-artifacts-report.md", "report-appendix-skeleton.md")])
+def test_the_gcp_report_layer_does_not_restate_the_canonical(layer: str, canonical: str) -> None:
+    shared = {line.strip() for line in (CANONICAL_REPORT / canonical).read_text(encoding="utf-8").splitlines()}
+    repeated = [line.strip() for line in (GCP / "references" / layer).read_text(encoding="utf-8").splitlines()
+                if len(line.strip()) > 80 and line.strip() in shared]
+    assert not repeated, repeated[:3]
 
 
 @pytest.mark.parametrize("fixture, usd_empty, services_empty", [

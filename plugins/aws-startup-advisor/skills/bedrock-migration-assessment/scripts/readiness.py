@@ -48,7 +48,7 @@ def _json(path: Path, missing: str, unreadable: str, read: dict[str, bytes] | No
         return json.loads(raw.decode("utf-8"))
     except FileNotFoundError:
         raise NotReady(missing, f"{path.name} is not in the run directory")
-    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError, RecursionError) as exc:
         raise NotReady(unreadable, f"{path.name}: {exc}")
 
 
@@ -100,12 +100,14 @@ def refuse_combined(run_dir: Path, migration_id: str, initiated_by: str | None) 
     if not is_combined(run_dir, initiated_by):
         return
     host = run_dir / "host-answers.json"
-    try:
-        answers = json.loads(host.read_bytes().decode("utf-8")) if host.is_file() and not host.is_symlink() else None
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+    if not host.exists() and not host.is_symlink():
         answers = None
-    asked = _host_shape_ok(answers) and answers["stop_after"] == "generate"
-    if not asked:
+    elif host.is_symlink() or not host.is_file():
+        raise NotReady("host_answers_invalid", "host-answers.json must be a regular file in the run directory")
+    elif not _host_shape_ok(answers := _json(host, "host_answers_invalid", "host_answers_invalid")):
+        raise NotReady("host_answers_invalid", f"host-answers.json must name host_skill, stop_after, infrastructure_moves "
+                       f"and only {', '.join(HOST_FIELDS)} wrappers")
+    if answers is None or answers["stop_after"] != "generate":
         raise NotReady("combined_run", f"run {migration_id!r} is a host skill's run (initiated_by {initiated_by!r} or host-answers.json) "
                        "and the host did not ask for Generate; Generate runs only in a run this skill started on its own, "
                        "or when host-answers.json has stop_after generate")

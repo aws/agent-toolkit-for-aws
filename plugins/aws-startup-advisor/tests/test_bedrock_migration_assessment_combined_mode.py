@@ -204,10 +204,10 @@ def test_generate_plan_names_a_combined_run_before_any_missing_phase(stop_after,
     assert raised.value.code == "combined_run"
 
 
-def test_a_dangling_host_answers_link_still_marks_a_combined_run(tmp_path: Path, capsys) -> None:
+def test_a_dangling_host_answers_link_never_unlocks_generate(tmp_path: Path, capsys) -> None:
     run = _generated_run(tmp_path, False, None)
     (run / "host-answers.json").symlink_to(tmp_path / "gone.json")
-    assert _cli(run, "generate", capsys)[1]["reason"] == "combined_run"
+    assert _cli(run, "generate", capsys)[1]["reason"] == "host_answers_invalid"
     assert _module("bma_generate_standalone", "generate-ai.py").build_plan(_generated_run(tmp_path / "s", False, None))["routes"]
 
 
@@ -258,15 +258,17 @@ def test_a_host_that_asks_for_generate_gets_a_ready_generate(tmp_path: Path, cap
     assert _module("bma_generate_host", "generate-ai.py").build_plan(run)["routes"]
 
 
-@pytest.mark.parametrize("host", ["not json", "[]", json.dumps({"stop_after": "generate"})], ids=["not-json", "array", "bad-shape"])
+@pytest.mark.parametrize("host", ["not json", "[]", json.dumps({"stop_after": "generate"}), "[" * 200_000],
+                         ids=["not-json", "array", "bad-shape", "deeply-nested"])
 def test_a_broken_host_answers_file_never_unlocks_generate(host, tmp_path: Path, capsys) -> None:
     run = _generated_run(tmp_path, True, None)
     (run / "host-answers.json").write_text(host)
-    assert _cli(run, "generate", capsys)[1]["reason"] == "combined_run"
+    assert _cli(run, "clarify", capsys)[1]["reason"] == "host_answers_invalid"
+    assert _cli(run, "generate", capsys)[1]["reason"] == "host_answers_invalid"
     gen = _module("bma_generate_broken_host", "generate-ai.py")
     with pytest.raises(gen.GenerateInputError) as raised:
         gen.build_plan(run)
-    assert raised.value.code == "combined_run"
+    assert raised.value.code == "host_answers_invalid"
 
 
 def test_a_symlinked_host_answers_file_never_unlocks_generate(tmp_path: Path, capsys) -> None:
@@ -274,7 +276,7 @@ def test_a_symlinked_host_answers_file_never_unlocks_generate(tmp_path: Path, ca
     outside = tmp_path / "outside.json"
     (run / "host-answers.json").rename(outside)
     (run / "host-answers.json").symlink_to(outside)
-    assert _cli(run, "generate", capsys)[1]["reason"] == "combined_run"
+    assert _cli(run, "generate", capsys)[1]["reason"] == "host_answers_invalid"
 
 
 def test_step_0_lets_changed_host_answers_reset_a_run_that_already_generated() -> None:
@@ -314,3 +316,12 @@ def test_step_0_runs_generate_only_when_the_host_asks_for_it() -> None:
     assert "Never in a combined run" not in step5 and "`stop_after` is `generate`" in step5
     combined = SKILL[SKILL.index("## Combined mode"):SKILL.index("## Readiness for other skills")]
     assert "never reaches Generate" not in combined and "`generate`" in combined
+
+
+def test_a_broken_host_answers_file_sends_the_host_back_to_write_it() -> None:
+    generate = (BMA / "references" / "phases" / "generate" / "generate-ai.md").read_text(encoding="utf-8")
+    row = next(line for line in generate.splitlines() if line.startswith("| `host_answers_invalid`"))
+    assert "Only the host skill can write it again" in row
+    handoff = (PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "shared" / "ai-handoff.md").read_text(encoding="utf-8")
+    row = next(line for line in handoff.splitlines() if line.startswith("| `assessment_not_ready`"))
+    assert "`host_answers_invalid`" in row and "Step 4.1 again" in row

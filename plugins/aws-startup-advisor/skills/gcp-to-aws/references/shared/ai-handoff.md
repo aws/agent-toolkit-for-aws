@@ -72,7 +72,7 @@ Every command prints `{"ok": false, "error": ..., "detail": ...}` on failure. Qu
 | ------- | ---------- |
 | `bma_absent` | bedrock-migration-assessment was removed after Step 1. Run Step 1 again. |
 | `bma_tampered` | The assessment skill or its run failed a check. Say its results cannot be used, and run Step 1 again. |
-| `assessment_not_ready` | The assessment run has not finished `<phase>` (see `reason`). Resume it as in Step 4.2, then accept again. |
+| `assessment_not_ready` | The assessment run has not finished `<phase>` (see `reason`). Resume it as in Step 4.2, then accept again. When `reason` is `host_answers_invalid`, only this skill can fix it: run Step 4.1 again instead. |
 | `assessment_profile_mismatch` | `$BMA_DIR` holds another profile. Run Steps 2 to 4 again with a new assessment run. |
 | `profile_changed` | Discover changed `ai-workload-profile.json`. Run Steps 1 to 4 again with a new assessment run. |
 | `infrastructure_changed` | Whether infrastructure moves changed since convert. Run Steps 1 to 4 again with a new assessment run. |

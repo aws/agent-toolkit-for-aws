@@ -115,11 +115,11 @@ This file is read by each skill's Estimate-phase cost engine when constructing
 `optimization_opportunities[]`. It replaces each skill's previously
 independent, partially-divergent lists. See the skill-specific cost engine
 (`estimate-infra.md` for gcp-to-aws infra, `estimate-cost-engine.md` for
-heroku-to-aws, `estimate-ai.md` for gcp-to-aws's AI/Bedrock track) for the JSON
+heroku-to-aws, and bedrock-migration-assessment's `estimate-ai.md`, which gcp-to-aws runs for its AI/Bedrock track) for the JSON
 entry shapes and per-skill gating thresholds — this file defines eligibility
 and required caveats, not the JSON schema or dollar formulas.
 
-**AI-track note (`estimate-ai.md`):** this file's Bedrock row is the source of
+**AI-track note:** this file's Bedrock row is the source of
 truth for the Provisioned Throughput `type` value and commitment vocabulary.
 The other six AI-side optimizations (prompt caching, model tiering, batch API,
 input token reduction, multi-model routing, intelligent prompt routing) are
