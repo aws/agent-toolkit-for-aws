@@ -306,32 +306,36 @@
         </thead>
         <tbody>
           <tr>
-            <td>Premium<br><span class="tier-sub">Highest resilience / highest monthly estimate</span></td>
+            <td>Premium<br><span class="tier-sub">Balanced plus the Multi-AZ / HA uplift</span></td>
             <td><span data-cost-key="aws_monthly_premium">$480</span></td>
             <td class="increase">+$20</td>
             <td>$5,760</td>
             <td>Multi-AZ uplift on the ElastiCache session cache only. RDS gets no uplift (its rate already includes Multi-AZ) and MSK is intrinsically multi-AZ. The two Windows lines and FSx would also cost more at higher resilience but are excluded, so Premium understates the gap by more than Balanced does.</td>
           </tr>
           <tr>
-            <td><strong>Balanced</strong><br><span class="tier-sub">Default scenario; Terraform implements this tier</span></td>
+            <td><strong>Balanced</strong><br><span class="tier-sub">Right-sized design at on-demand rates; compare Azure to this row first; Terraform implements this tier</span></td>
             <td><strong data-cost-key="aws_monthly_balanced">$460</strong></td>
             <td>— anchor</td>
             <td>$5,522</td>
             <td>Like-for-like sizing from the declared SKUs; equals the right-sized figure because no utilization data was available to size down.</td>
           </tr>
           <tr>
-            <td>Optimized<br><span class="tier-sub">Commitment discount on eligible lines only (Compute SP 30%, Database SP 20%)</span></td>
-            <td><span data-cost-key="aws_monthly_optimized">$392</span></td>
-            <td class="savings">-$68</td>
-            <td>$4,706</td>
-            <td>Per-product 1-year no-upfront rates applied only to the RI/SP-eligible subtotal of $325: Compute Savings Plan 30% on the EC2 behind Elastic Beanstalk ($9), Database Savings Plan 20% on RDS ($55) and on ElastiCache for Valkey ($4); MSK, ALB, EBS, S3, Secrets Manager and CloudWatch have no commitment product and are unchanged. The most misleading of the three figures: a discounted floor reads as the cheapest credible number when it is the least complete.</td>
+            <td>Optimized<br><span class="tier-sub">Balanced with a commitment discount on RI/SP-eligible lines</span></td>
+            <td><span data-cost-key="aws_monthly_optimized">$451</span></td>
+            <td class="savings">-$9</td>
+            <td>$5,414</td>
+            <td>A 1-year no-upfront Compute Savings Plan at 30% on the EC2 behind Elastic Beanstalk, the only eligible line ($30 of EC2 gives a $9 discount). RDS (db.m6g.large, Generation 6) and ElastiCache (cache.t3.small, Generation 3) are not eligible for a Database Savings Plan, which covers Generation 7 and newer instances only, so they are unchanged; a Generation 7+ class would qualify. MSK, ALB, EBS, S3, Secrets Manager and CloudWatch have no commitment product and are unchanged. The most misleading of the three figures: a discounted floor reads as the cheapest credible number when it is the least complete.</td>
           </tr>
         </tbody>
       </table>
       <details class="reading-guide">
         <summary>How to read the tiers</summary>
         <p>The three AWS figures are estimated monthly costs for the <em>same</em> mapped architecture, ordered highest to lowest.
-        Use Balanced as the primary figure; Premium and Optimized are bounds. The generated Terraform implements the Balanced
+        <strong>Balanced</strong> is the right-sized design at on-demand rates and the primary figure to compare Azure with.
+        <strong>Premium</strong> is Balanced plus the Multi-AZ / HA uplift on each line that can take one.
+        <strong>Optimized</strong> is Balanced with a commitment discount on the RI/SP-eligible lines only; the Database
+        Savings Plan covers Generation 7 and newer instances only, so the Generation 6 RDS and Generation 3 ElastiCache
+        lines get no discount. The generated Terraform implements the Balanced
         baseline. The right-sizing delta is $0: no utilization data was discovered (Terraform only, no RDfA report and no
         Azure Monitor metrics), so every source SKU was mapped like-for-like and the Balanced and lift figures coincide.</p>
       </details>
@@ -348,7 +352,7 @@
       <h2>Cost Optimization <a class="toplink" href="#toc">&uarr; contents</a></h2>
       <p>Generated Terraform is <strong>Balanced on-demand</strong> (Est. $460/mo). Savings Plans and Reserved Instances are
          account-level purchases you make after you have a usage baseline. Do not add these rows on top of the Optimized tier
-         (Est. $392/mo) — that tier already embeds the Compute SP 30% / Database SP 20% commitment assumption on the eligible lines.</p>
+         (Est. $451/mo) — that tier already embeds the Compute SP 30% commitment assumption on the eligible EC2 line.</p>
       <table>
         <caption>How the estimated monthly run rate changes if this stack takes a commitment. Figures are incremental to Balanced on-demand.</caption>
         <thead>
@@ -380,9 +384,9 @@
           </tr>
           <tr>
             <td>Optimized composite (illustrative bound)</td>
-            <td>Est. $392</td>
-            <td>−$68</td>
-            <td>Already includes the Compute SP 30% / Database SP 20% commitment assumption on eligible lines. Use as a floor, not a sum of extra discounts.</td>
+            <td>Est. $451</td>
+            <td>−$9</td>
+            <td>Already includes the Compute SP 30% commitment assumption on the eligible EC2 line; RDS and ElastiCache are pre-Generation-7 and not in it. Use as a floor, not a sum of extra discounts.</td>
           </tr>
         </tbody>
       </table>
@@ -734,16 +738,16 @@
 
     <section id="appendix-optimization">
       <h2>Appendix B.1 — Savings Plans and Reserved Instances <a class="toplink" href="#toc">&uarr; contents</a></h2>
-      <p>Incremental to Balanced on-demand (Est. $460/mo). Do not add these savings onto Optimized (Est. $392/mo) — that tier
-         already embeds the Compute SP 30% / Database SP 20% commitment assumption on the eligible lines. Monthly savings are deliberately not quantified where
+      <p>Incremental to Balanced on-demand (Est. $460/mo). Do not add these savings onto Optimized (Est. $451/mo) — that tier
+         already embeds the Compute SP 30% commitment assumption on the eligible EC2 line. Monthly savings are deliberately not quantified where
          the covered lines include excluded (unpriced) services, so a percentage of the current floor would understate them.</p>
       <table>
         <caption>Estimated cost savings available post-migration, by commitment product.</caption>
         <thead><tr><th scope="col">Optimization</th><th scope="col">Target</th><th scope="col">Est. savings</th><th scope="col">Commitment</th><th scope="col">Effort</th></tr></thead>
         <tbody>
           <tr><td>Compute Savings Plans</td><td>Elastic Beanstalk EC2 instances, EC2 reporting</td><td>20–66% of the compute lines (not quantified: two of those lines are unpriced Windows floors)</td><td>1-year or 3-year, after 30–90 days of usage data</td><td>Low (post-migration)</td></tr>
-          <tr><td>RDS Reserved Instances</td><td>RDS PostgreSQL db.m6g.large</td><td>Up to 69% of the $275 line — the largest single priced line</td><td>1-year or 3-year, once the instance class is stable; mutually exclusive with a Database Savings Plan on the same instance</td><td>Low (post-migration)</td></tr>
-          <tr><td>ElastiCache Reserved Nodes</td><td>ElastiCache cache.t3.small (node-based)</td><td>30–55% of the $20 line</td><td>1-year or 3-year, after a usage baseline; Database Savings Plans do not cover Redis OSS, so Reserved Nodes is the applicable lever</td><td>Low (post-migration)</td></tr>
+          <tr><td>RDS Reserved Instances</td><td>RDS PostgreSQL db.m6g.large</td><td>Up to 69% of the $275 line — the largest single priced line</td><td>1-year or 3-year, once the instance class is stable; mutually exclusive with a Database Savings Plan on the same instance (a Database Savings Plan needs a Generation 7+ class; db.m6g is Generation 6)</td><td>Low (post-migration)</td></tr>
+          <tr><td>ElastiCache Reserved Nodes</td><td>ElastiCache cache.t3.small (node-based)</td><td>30–55% of the $20 line</td><td>1-year or 3-year, after a usage baseline; Database Savings Plans cover Generation 7 and newer instances only and cache.t3 is Generation 3, so Reserved Nodes is the applicable lever today</td><td>Low (post-migration)</td></tr>
           <tr><td>S3 Intelligent-Tiering</td><td>S3 assets bucket</td><td>38–50% of storage, once the object mix is known (the $5 line is a stated baseline, not a measured volume)</td><td>None</td><td>Low (during migration)</td></tr>
           <tr><td>Retire the idle plan</td><td>Elastic Beanstalk m6i.large (flagged idle)</td><td>The whole line — a $71/mo Linux-rate floor, more with the Windows licence</td><td>None; a Design decision to drop a zero-app plan</td><td>Low</td></tr>
         </tbody>

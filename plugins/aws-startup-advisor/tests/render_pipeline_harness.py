@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess  # nosec B404 - fixed local validation tools, no shell
 import sys
+from decimal import ROUND_HALF_EVEN, Decimal
 from html import escape
 from pathlib import Path
 from typing import Any
@@ -89,25 +90,43 @@ CAPACITY_COSTS = {
 }
 # Balanced = the right-sized design; the Valkey node is not right-sizable (its sizing
 # table preserves source memory plus headroom), so render.key_value is absent here.
+# render.workflow and render.workflow_task are absent too: Design records no size or
+# sizing provenance for them, so they keep their like-for-like amounts.
 BALANCED_FACTORS = {
     "render.web_service": 0.8,
     "render.private_service": 0.875,
     "render.background_worker": 5 / 6,
     "render.cron_job": 0.75,
-    "render.workflow": 0.8,
-    "render.workflow_task": 0.8,
     "render.postgres": 0.8,
 }
 # Optimized = Balanced with the mid-point commitment discount on RI/SP-eligible lines
-# only (references/vendored/estimate/commitment-discount-ranges.json, eligibility buckets
-# in knowledge/estimate/estimate-defaults.json commitment_eligibility): Compute Savings
-# Plan 1-year no-upfront 20-40% -> 30% on Fargate and Lambda, Database Savings Plan up to
-# 20% (provisioned) on RDS and Valkey.
-COMPUTE_SP_RATE = 0.3
-DATABASE_SP_RATE = 0.2
+# only. Rates, the Lambda cap and the Generation 7+ gate come from the vendored shared file
+# references/vendored/estimate/commitment-discount-ranges.json (rates, service_caps.aws_lambda,
+# generation_gate); the eligibility buckets are knowledge/estimate/estimate-defaults.json
+# commitment_eligibility. Compute Savings Plan 1-year no-upfront 20-40% -> 30% on Fargate,
+# capped at 12% on Lambda (the 1-year no-upfront Lambda duration rate); Database Savings
+# Plan up to 20% (provisioned) on RDS and Valkey lines whose recorded instance class / node
+# type is Generation 7 or newer (a line whose class is not recorded is ineligible). Each
+# eligible line's discount is rounded to whole dollars (half-to-even) before summing.
+_COMMITMENT = json.loads((SKILL_ROOT / "references/vendored/estimate/commitment-discount-ranges.json").read_text())
+COMPUTE_SP_RATE = _COMMITMENT["rates"]["compute_savings_plan"]["rate"]
+DATABASE_SP_RATE = _COMMITMENT["rates"]["database_savings_plan_provisioned"]["rate"]
 COMPUTE_SP_KINDS = ("render.web_service", "render.private_service", "render.background_worker", "render.cron_job", "render.workflow_task")
+COMPUTE_SP_CAPS = {"render.workflow_task": _COMMITMENT["service_caps"]["aws_lambda"]["cap"]}
 DATABASE_SP_KINDS = ("render.postgres", "render.key_value")
-OPTIMIZED_FACTORS = {**{kind: 1 - COMPUTE_SP_RATE for kind in COMPUTE_SP_KINDS}, **{kind: 1 - DATABASE_SP_RATE for kind in DATABASE_SP_KINDS}}
+DATABASE_SP_CLASS_FIELD = {"render.postgres": "instance_class", "render.key_value": "node_type"}
+DATABASE_SP_MINIMUM_GENERATION = _COMMITMENT["generation_gate"]["minimum_generation"]
+def database_sp_generation_gate(mapping: dict[str, Any]) -> tuple[bool, str]:
+    """(eligible, basis) for one Design mapping under the Database Savings Plan Generation 7+ rule."""
+    field = DATABASE_SP_CLASS_FIELD[mapping["render_kind"]]
+    recorded = mapping.get("aws_config", {}).get(field)
+    if not recorded:
+        return False, f"{field} is not recorded"
+    match = re.match(r"^(?:db|cache)\.[a-z]+(\d+)[a-z]*\.", recorded)
+    if not match:
+        return False, f"{recorded} has no generation in its family token"
+    generation = int(match.group(1))
+    return generation >= DATABASE_SP_MINIMUM_GENERATION, f"{recorded} is Generation {generation}"
 # Smallest node target in knowledge/design/keyvalue-elasticache-sizing.json; the
 # Design mapping carries it so Generate emits exactly the selected node type.
 VALKEY_NODE_TYPE = "cache.t4g.micro"
@@ -210,27 +229,57 @@ def estimate_from_design(design: dict[str, Any]) -> dict[str, Any]:
     balanced_lines = build_lines(BALANCED_FACTORS, measured=True)
     like_for_like_lines = build_lines({}, measured=False)
     kinds = {mapping["source_resource_id"]: mapping["render_kind"] for mapping in design["mappings"]}
+    mappings_by_source = {mapping["source_resource_id"]: mapping for mapping in design["mappings"]}
+    database_gate = {
+        row["line_id"]: database_sp_generation_gate(mappings_by_source[row["source_resource_id"]])
+        for row in balanced_lines
+        if kinds[row["source_resource_id"]] in DATABASE_SP_KINDS and row["monthly_amount"]
+    }
+    def line_rate(row: dict[str, Any]) -> float | None:
+        kind = kinds[row["source_resource_id"]]
+        if not row["monthly_amount"]:
+            return None
+        if kind in COMPUTE_SP_KINDS:
+            return min(COMPUTE_SP_RATE, COMPUTE_SP_CAPS.get(kind, COMPUTE_SP_RATE))
+        if kind in DATABASE_SP_KINDS and database_gate[row["line_id"]][0]:
+            return DATABASE_SP_RATE
+        return None
+    def line_discount(row: dict[str, Any], rate: float) -> int:
+        """One eligible line's discount in whole dollars, half-to-even (the vendored midpoint_rule)."""
+        return int((Decimal(str(row["monthly_amount"])) * Decimal(str(rate))).quantize(Decimal(1), rounding=ROUND_HALF_EVEN))
     optimized_lines = []
     for row in balanced_lines:
         row = dict(row)
-        factor = OPTIMIZED_FACTORS.get(kinds[row["source_resource_id"]])
-        if row["monthly_amount"] is not None and factor is not None:
-            row["monthly_amount"] = round(row["monthly_amount"] * factor, 2)
+        rate = line_rate(row)
+        if rate is not None:
+            row["monthly_amount"] = round(row["monthly_amount"] - line_discount(row, rate), 2)
         optimized_lines.append(row)
-
     def plan(kinds_in_plan: tuple[str, ...], rate: float, range_label: str) -> dict[str, Any]:
-        eligible = [row for row in balanced_lines if kinds[row["source_resource_id"]] in kinds_in_plan and row["monthly_amount"]]
+        eligible = [
+            row for row in balanced_lines
+            if kinds[row["source_resource_id"]] in kinds_in_plan and row["monthly_amount"] and (row["line_id"] not in database_gate or database_gate[row["line_id"]][0])
+        ]
         subtotal = round(sum(row["monthly_amount"] for row in eligible), 2)
-        return {
+        result = {
             "eligible_line_ids": [row["line_id"] for row in eligible],
             "eligible_subtotal_monthly_usd": subtotal,
             "rate": rate,
             "range": range_label,
-            "discount_monthly_usd": round(subtotal * rate, 2),
+            "discount_monthly_usd": float(sum(line_discount(row, line_rate(row)) for row in eligible)),
         }
-
+        capped = {
+            row["line_id"]: {"cap": COMPUTE_SP_CAPS[kinds[row["source_resource_id"]]], "source": "references/vendored/estimate/commitment-discount-ranges.json service_caps aws_lambda; the line records no duration/request split, so the cap is applied to the whole line including request charges and the discount is an upper bound"}
+            for row in eligible
+            if COMPUTE_SP_CAPS.get(kinds[row["source_resource_id"]], rate) < rate
+        }
+        if capped:
+            result["capped_lines"] = capped
+        return result
     compute_sp = plan(COMPUTE_SP_KINDS, COMPUTE_SP_RATE, "20-40%")
     database_sp = plan(DATABASE_SP_KINDS, DATABASE_SP_RATE, "up to 20% (provisioned)")
+    database_sp["ineligible_lines"] = {line_id: basis for line_id, (ok, basis) in database_gate.items() if not ok}
+    if not database_sp["eligible_line_ids"]:
+        database_sp["reason"] = "No line passes the Generation 7+ gate; Database Savings Plans cover Generation 7 and newer instances only."
     balanced = block(balanced_lines)
     optimized = block(optimized_lines)
     optimized["commitment"] = {
@@ -1447,7 +1496,7 @@ def _validate_generated_pack(root: Path, generated: Path, ledger: dict[str, Any]
             "policy": {"status": "passed", "command": "validate-terraform-policy.py terraform", "evidence": evidence, "policy_status": "POLICY_OK", "violations": []},
             "secret_scan": {"status": "passed", "command": "gitleaks detect --no-git --source generated", "evidence": evidence},
             "schemas": {"status": "passed", "command": "jsonschema generated artifacts", "evidence": evidence},
-            "report": {"status": "passed", "command": "validate-migration-report.py + validate-render-migration-report.py", "evidence": evidence},
+            "report": {"status": "passed", "command": "validate-render-migration-report.py", "evidence": evidence},
         },
         "timestamp": "2026-10-21T12:00:00Z",
     }
@@ -1663,7 +1712,7 @@ EFS is priced from the reviewed rate row. AI is `deferred_shared_ai_engine`; Wor
         "decision-summary": "Complete deterministic decision summary.",
         "exec-architecture": f"Build-once private managed architecture. {escape(fargate_mode_statement(design))}",
         "exec-targets": "".join(f'<p data-source-resource-id="{escape(row["source_resource_id"])}" data-aws-service="{escape(row["aws_service"])}">{escape(row["aws_service"])}</p>' for row in design["mappings"]),
-        "exec-costs": f'<span data-cost-key="current_monthly">{estimate["current_costs"]["render_monthly"]}</span><span data-cost-key="aws_monthly_balanced">{estimate["projected_costs"]["aws_monthly_balanced"]}</span><span data-cost-key="aws_monthly_optimized">{estimate["projected_costs"]["aws_monthly_optimized"]}</span><span data-cost-key="delta">{estimate["rightsizing_delta"]["monthly"]}</span>',
+        "exec-costs": f'<span data-cost-key="current_monthly">{estimate["current_costs"]["render_monthly"]}</span><span data-cost-key="aws_monthly_balanced">{estimate["projected_costs"]["aws_monthly_balanced"]}</span><span data-cost-key="aws_monthly_optimized">{estimate["projected_costs"]["aws_monthly_optimized"]}</span><span data-cost-key="aws_monthly_premium">{estimate["projected_costs"]["aws_monthly_premium"]}</span><span data-cost-key="like_for_like_monthly">${round(estimate["scenarios"]["like_for_like"]["known_cost_monthly_usd"])}</span><span data-cost-key="delta">{estimate["rightsizing_delta"]["monthly"]}</span>',
         "migration-data": "Postgres Database Migration Service writer quiescence integrity source retention.",
         "migration-storage": "EFS /var/data pre-copy delta ownership permissions integrity.",
         "migration-deployment": "ECR digest serving deploy auto-deploy rollback.",
