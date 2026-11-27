@@ -7,9 +7,9 @@
     "design_constraints.cpu_architecture.value": "graviton"
   },
   "estimation_summary": {
-    "aws_monthly_premium": 110.0,
+    "aws_monthly_premium": 97.0,
     "aws_monthly_balanced": 85.0,
-    "aws_monthly_optimized": 62.0,
+    "aws_monthly_optimized": 64.0,
     "complexity_tier": "small",
     "pricing_source": "cached",
     "region_note": null

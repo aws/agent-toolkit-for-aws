@@ -5,9 +5,9 @@
   "source": "baseline",
   "preferences_subset": {},
   "estimation_summary": {
-    "aws_monthly_premium": 120.0,
+    "aws_monthly_premium": 107.0,
     "aws_monthly_balanced": 95.0,
-    "aws_monthly_optimized": 70.0,
+    "aws_monthly_optimized": 71.0,
     "complexity_tier": "small",
     "pricing_source": "cached",
     "region_note": null

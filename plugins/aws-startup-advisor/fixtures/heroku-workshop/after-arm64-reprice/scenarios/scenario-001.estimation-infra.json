@@ -12,26 +12,28 @@
     "baseline_note": "no billing"
   },
   "projected_costs": {
-    "aws_monthly_premium": 120.0,
+    "aws_monthly_premium": 95.0,
     "aws_monthly_balanced": 95.0,
-    "aws_monthly_optimized": 78.0,
-    "aws_annual_optimized": 936.0,
+    "aws_monthly_optimized": 90.0,
+    "aws_annual_optimized": 1080.0,
+    "_premium_basis": "No line has an unapplied Multi-AZ uplift: the RDS db.t4g.medium rate is baked_in Multi-AZ (the design's multi_az: false is informational for this rate); Elastic Beanstalk's EC2 (t3.small) has no AZ-driven rate and its ALB is intrinsic. Premium equals Balanced, 95.",
+    "_optimized_basis": "Eligible subtotal 15.18 = the Elastic Beanstalk EC2 charge from the cache, ec2.instances[t3.small] 0.0208 x 730 x min_instances 1 = 15.18 (the rest of the held 50 Beanstalk line \u2014 ALB 16, LCU 6, EBS 1 and the remainder \u2014 is not EC2 and is ineligible); x 0.30 compute_savings_plan -> 5. Ineligible subtotal 79.82 unchanged, including RDS PostgreSQL 45: db.t4g.medium is Generation 4 and Database Savings Plans cover Generation 7 and newer instances only (AWS Savings Plans FAQ, read 2026-11-27); a Generation 7+ class (for example db.m7g or db.r7g) would qualify at 0.20. 95 - 5 = 90.0. Rates from references/vendored/estimate/commitment-discount-ranges.json (compute_savings_plan 0.30; database_savings_plan_provisioned 0.20 not applied).",
     "breakdown": {
       "total": {
-        "premium": 120.0,
+        "premium": 95.0,
         "mid": 95.0,
-        "low": 78.0
+        "low": 90.0
       },
       "Elastic Beanstalk": {
-        "premium": 60.0,
+        "premium": 50.0,
         "mid": 50.0,
-        "low": 40.0,
+        "low": 45.0,
         "pricing_source": "cached"
       },
       "RDS PostgreSQL": {
-        "premium": 60.0,
+        "premium": 45.0,
         "mid": 45.0,
-        "low": 38.0,
+        "low": 45.0,
         "pricing_source": "cached"
       }
     }
