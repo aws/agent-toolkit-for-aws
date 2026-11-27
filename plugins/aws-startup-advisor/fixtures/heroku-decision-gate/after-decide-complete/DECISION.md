@@ -6,7 +6,7 @@ Execution shape: Phased migration.
 
 ## Share with your CFO
 
-Go, with conditions, at medium confidence. Estimated AWS Balanced is $210 per month against an estimated Heroku baseline of $340 per month. The migration shape is phased, and the planning band for this small estate is 2-6 weeks. Confirm the open condition before treating the monthly figure as final.
+Go, with conditions, at medium confidence. Estimated AWS Balanced is $210 per month against an estimated Heroku baseline of $340 per month. The migration shape is phased for this small estate. Confirm the open condition before treating the monthly figure as final.
 
 ## Costs (estimated monthly)
 
@@ -22,7 +22,26 @@ Heroku baseline (from your Heroku invoice): Est. $340/mo.
 
 ## Timeline
 
-Planning band: 2-6 weeks (small). This is the complexity-tier planning range, not a staffed schedule.
+Shape: Phased migration. Stage order: provision the AWS environment, migrate the database, then cut over DNS per app. Duration drivers: a small estate (two services) and a single-AZ database. The cutover procedure stays in the migration guide; this is not a staffed schedule.
+
+## Developer workflow
+
+Developer workflow priority was not rated critical in Clarify.
+
+| Heroku today                        | On AWS                                                          | Status                                                         | Your estate                         |
+| ----------------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------- | ----------------------------------- |
+| `git push heroku main` + buildpacks | CI builds a container image and deploys it to Elastic Beanstalk | **Will be generated** — a deploy workflow per app              | 1 buildpack app on Beanstalk        |
+| Pipelines and promote               | Environments per stage with the same image promoted between them, approval-gated | **Will be generated** — an approval-gated `promote.yml` for the Beanstalk app with a generated deploy workflow | 1 app; no pipeline recorded          |
+| Review apps                         | An ephemeral environment per pull request, torn down on merge   | **Build** (or buy)                                             | —                                   |
+| Config vars                         | Parameter Store / Secrets Manager, injected at deploy           | **Covered** — bindings will be generated; you import the values | 1 app                              |
+| `heroku run` / one-off dynos        | ECS Exec or `eb ssh`                                            | **Covered** — different command for the target                 | —                                   |
+| `heroku logs --tail`                | CloudWatch Logs live tail                                       | **Covered**                                                    | —                                   |
+| Release phase                       | A pre-deploy job in the workflow that runs before traffic shifts | **Build**                                                     | —                                   |
+| Scheduler add-ons                   | EventBridge Scheduler                                           | **Covered** — schedules recreated by you; Generate emits no Terraform for the schedules themselves | 0 scheduler add-ons mapped, 0 deferred |
+| `ps:scale`                          | Autoscaling policy or one CLI call                              | **Covered**                                                    | —                                   |
+| Add-on marketplace                  | Each add-on becomes an AWS service wired by the Terraform that Generate will produce | **No equivalent** to the marketplace itself | 1 add-on mapped (Postgres), 0 deferred |
+
+The rows marked Build are a platform layer your team owns: a deploy pipeline for Fargate, EKS and manual-deploy apps, a promote step for every app that gets no generated `promote.yml`, release steps, review-app automation, and a thin command wrapper. It is weeks of platform work, not months, and it is the same for every app.
 
 ## What would flip this
 

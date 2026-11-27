@@ -6,11 +6,20 @@ description: "Migrate workloads from Heroku to AWS. Triggers on: migrate from He
 # Heroku-to-AWS Migration Skill
 
 The skill base directory is given in the "Base directory for this skill: X" line the
-harness emits at load time. Call it `<SKILL_BASE>`. The report validator lives at
-`<SKILL_BASE>/scripts/validate-heroku-migration-report.py` — resolve it relative to
-`<SKILL_BASE>`, never assume a plugin-root `scripts/` directory, since a standalone
-`npx skills add --skill heroku-to-aws` install carries only this skill's own
-directory tree, not the plugin's top-level `scripts/`.
+harness emits at load time. Call it `<SKILL_BASE>`. The plugin install root — two
+directories above `<SKILL_BASE>` — is `$PLUGIN_ROOT`.
+
+Report validation is a **two-command gate**. The shared validator
+`$PLUGIN_ROOT/scripts/validate-migration-report.py --profile heroku` carries the
+structure and content standard every migration report in this plugin meets; the
+heroku add-on `<SKILL_BASE>/scripts/validate-heroku-migration-report.py` carries the
+heroku-only rules. Both must print `REPORT_OK` and exit 0; either `REPORT_FAIL`
+blocks, and a validator that does not run is not a pass. A skill-only install
+(`npx skills add --skill heroku-to-aws`) carries this skill's tree but not the
+plugin's top-level `scripts/`; without `$PLUGIN_ROOT/scripts/validate-migration-report.py`
+Generate and the Decision gate cannot complete — fail closed, exactly as for a
+missing `python3`. The gamma package maps the shared validator into
+`<SKILL_BASE>/scripts/` so that build is self-contained.
 
 ## Optional usage telemetry
 
@@ -127,9 +136,10 @@ uvx --version 2>/dev/null || echo "UVX_MISSING"
   **Do not hard-stop** an infrastructure migration for missing `uv`.
 - If both are present: proceed without nagging.
 - Soft-warn once if `python3` is missing (Heroku report validation at Generate
-  uses `<SKILL_BASE>/scripts/validate-heroku-migration-report.py`). Earlier phases
+  runs `$PLUGIN_ROOT/scripts/validate-migration-report.py --profile heroku` and
+  `<SKILL_BASE>/scripts/validate-heroku-migration-report.py`). Earlier phases
   (Discover → Estimate) may continue after the warning, but **Generate does not
-  complete until the report validator runs successfully** — install `python3`
+  complete until both report validators run successfully** — install `python3`
   before Generate. This matches `generate.md`'s Finish-Generate step and its
   `report-validation-status.json` postcondition: absent or `not_run` validation is a
   blocking `GATE_FAIL`, not a pass. Never report an unvalidated report as passing.
