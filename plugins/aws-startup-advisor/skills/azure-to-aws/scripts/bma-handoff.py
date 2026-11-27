@@ -83,7 +83,7 @@ def _sha(data: bytes) -> str:
 def _read_json(path: Path, error: str) -> Any:
     try:
         return json.loads(path.read_bytes().decode("utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
         raise HandoffError(error, f"{path.name}: {exc}{FIXES.get(error, '')}")
 
 
@@ -117,7 +117,7 @@ def _run(script: str, *args: str) -> tuple[int, Any]:
     try:
         proc = subprocess.run([sys.executable, str(BMA_BASE / "scripts" / script), *args], capture_output=True, timeout=120)
         return proc.returncode, json.loads(proc.stdout.decode("utf-8"))
-    except (OSError, subprocess.TimeoutExpired, UnicodeDecodeError, json.JSONDecodeError):
+    except (OSError, subprocess.TimeoutExpired, UnicodeDecodeError, json.JSONDecodeError, RecursionError):
         return 1, None
 
 
@@ -316,7 +316,7 @@ def _model_reason(raw: Any, model_format: Any) -> str | None:
 
 
 def _row_sources(model: dict) -> set:
-    sources = {e.get("source") for e in _list(model.get("evidence")) if isinstance(e, dict)}
+    sources = {e["source"] for e in _list(model.get("evidence")) if isinstance(e, dict) and isinstance(e.get("source"), str)}
     return sources | {s for s in _list(model.get("detected_via")) if isinstance(s, str)}
 
 
@@ -328,7 +328,7 @@ def _row_kinds(model: dict, raw: str, index: dict) -> tuple[set[str], bool]:
             continue
         address, azure_id = (item.get(k) if isinstance(item.get(k), str) else None for k in ("address", "azure_id"))
         deployment = index.get(("address", address)) or index.get(("azure_id", azure_id and azure_id.lower()))
-        if deployment is not None:
+        if deployment is not None and kind == "terraform":
             deployment["declared"].add(raw.lower())
         state = _state_model(deployment) if deployment is not None else None
         (replaced if state is not None and state != raw.lower() else kept).add(kind)

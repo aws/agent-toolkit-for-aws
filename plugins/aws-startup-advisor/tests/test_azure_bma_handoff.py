@@ -18,6 +18,7 @@ SCRIPT = SKILLS / "azure-to-aws" / "scripts" / "bma-handoff.py"
 RUN_ID = "7c1d2e3f-8a9b-4c0d-9e1f-2a3b4c5d6e7f"
 BMA_FILES = ("ai-workload-profile.json", "preferences.json", "aws-design-ai.json", "estimation-ai.json", "openai-usage-profile.json")
 SUB = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-ai/providers/Microsoft.CognitiveServices/accounts/oai"
+DEEP_JSON = b"[" * 200000  # nested deep enough that json.loads raises RecursionError
 
 
 @pytest.fixture
@@ -181,9 +182,11 @@ def _readiness_finds_missing_runs(base: Path) -> None:
     _validator_accepts_azure_legacy,
     lambda b: (b / "scripts" / "validate-ai-profile.py").write_text('import sys; sys.stdout.buffer.write(b"\\xff\\xfe{}")\n'),
     lambda b: (b / "scripts" / "validate-ai-profile.py").write_text('print("validated")\n'),
+    lambda b: (b / "scripts" / "validate-ai-profile.py").write_text('print("[" * 200000)\n'),
     _readiness_finds_missing_runs,
 ], ids=["no-readiness", "no-estimate-phase", "renamed-skill", "skill-md-not-utf8", "validator-accepts-anything",
-        "validator-accepts-azure-legacy", "validator-prints-invalid-bytes", "validator-prints-non-json", "readiness-misreports-missing-run"])
+        "validator-accepts-azure-legacy", "validator-prints-invalid-bytes", "validator-prints-non-json",
+        "validator-prints-deep-json", "readiness-misreports-missing-run"])
 def test_probe_reports_a_changed_sibling_as_tampered(tamper, tree: Path) -> None:
     tamper(tree / "bedrock-migration-assessment")
     code, out = _cli(tree, "probe")
@@ -294,11 +297,12 @@ def test_every_generative_ai_source_delegates(ai_source, tree: Path, tmp_path: P
     assert _cli(tree, "route", str(run))[1]["route"] == "delegate"
 
 
-@pytest.mark.parametrize("raw", [b"{not json", b"\xff\xfe{}"])
-def test_an_unreadable_azure_profile_gets_a_named_error(raw, tree: Path, tmp_path: Path) -> None:
+@pytest.mark.parametrize("command", ["route", "convert"])
+@pytest.mark.parametrize("raw", [b"{not json", b"\xff\xfe{}", DEEP_JSON], ids=["not-json", "not-utf8", "too-deep"])
+def test_an_unreadable_azure_profile_gets_a_named_error(raw, command, tree: Path, tmp_path: Path) -> None:
     run = _azure_run(tmp_path, infra=True)
     (run / "ai-workload-profile.json").write_bytes(raw)
-    code, out = _cli(tree, "route", str(run))
+    code, out = _cli(tree, command, str(run))
     assert code == 1 and out["error"] == "legacy_unreadable", out
 
 
@@ -324,9 +328,10 @@ def test_a_run_without_an_inventory_has_no_infrastructure(tree: Path, tmp_path: 
     assert _cli(tree, "route", str(run))[1]["reason"] == "bma_required"
 
 
-def test_an_unreadable_inventory_gets_a_plain_error_code(tree: Path, tmp_path: Path) -> None:
+@pytest.mark.parametrize("raw", [b"{not json", DEEP_JSON], ids=["not-json", "too-deep"])
+def test_an_unreadable_inventory_gets_a_plain_error_code(raw, tree: Path, tmp_path: Path) -> None:
     run = _azure_run(tmp_path, infra=False)
-    (run / "azure-resource-inventory.json").write_text("{not json")
+    (run / "azure-resource-inventory.json").write_bytes(raw)
     code, out = _cli(tree, "route", str(run))
     assert code == 1 and out["error"] == "inventory_unreadable" and "Discover" in out["detail"], out
 
@@ -439,6 +444,18 @@ def test_a_merged_deployment_keeps_terraform_evidence_only_when_terraform_declar
     assert [e["provenance"] for e in by_model["gpt-4.1-mini"]["evidence"]] == ["live_api"]
 
 
+@pytest.mark.parametrize("source", ["live_az", "rdfa_report"])
+def test_a_state_row_naming_a_merged_deployment_adds_no_terraform_evidence(source, tree: Path, tmp_path: Path) -> None:
+    legacy = _legacy_dir(tmp_path) / "ai-workload-profile.json"
+    row = {"model_id": "gpt-4.1-mini", "service": "azure_openai", "detected_via": [],
+           "evidence": [{"source": source, "azure_id": f"{SUB}/deployments/by-expression"}]}
+    legacy.write_text(json.dumps(_legacy([row], infrastructure=[_merged_deployment("by-expression", "gpt-4.1-mini")])))
+    code, out = _cli(tree, "convert", str(legacy.parent))
+    assert code == 0 and out["converted"] == ["gpt-4.1-mini"], out
+    (observation,) = _azure_source(legacy.parent / "ai-workload-profile.neutral.json")["model_observations"]
+    assert "iac" not in [e["provenance"] for e in observation["evidence"]]
+
+
 def test_a_terraform_row_for_several_deployments_keeps_the_ones_state_did_not_replace(tree: Path, tmp_path: Path) -> None:
     legacy = _legacy_dir(tmp_path) / "ai-workload-profile.json"
     legacy.write_text(json.dumps(_legacy([_tf_row("gpt-4o", "chat", "batch"), _tf_row("gpt-4o-mini", "undeployed")], infrastructure=[
@@ -521,6 +538,7 @@ def test_wrongly_typed_azure_profile_items_are_skipped_not_crashed_on(tree: Path
         {"model_id": "gpt-4o", "service": "azure_openai", "detected_via": 7, "evidence": "terraform"},
         {"model_id": "gpt-4.1", "service": "azure_openai", "detected_via": None, "evidence": [7, {"source": "live_az"}]},
         {"model_id": "gpt-4.1-nano", "service": "azure_openai", "detected_via": [], "evidence": []},
+        {"model_id": "gpt-4o-mini", "service": "azure_openai", "detected_via": [], "evidence": [{"source": []}, {"source": {}}]},
     ], infrastructure=[
         7, {"role": "deployment", "address": "a", "config": "x"},
         {"role": "deployment", "source": "live", "sources": "rdfa", "config": {"model": {"name": 4}}},
@@ -532,6 +550,7 @@ def test_wrongly_typed_azure_profile_items_are_skipped_not_crashed_on(tree: Path
     assert out["converted"] == ["4o", "gpt-4.1"]
     assert out["not_converted"] == [{"model": "gpt-4o", "reason": "no_provenance"},
                                     {"model": "gpt-4.1-nano", "reason": "no_provenance"},
+                                    {"model": "gpt-4o-mini", "reason": "no_provenance"},
                                     {"model": None, "reason": "deployment_without_model", "deployment": "a"},
                                     {"model": None, "reason": "invalid_model_id"},
                                     {"model": "gpt-4.1-mini", "reason": "no_provenance"}]
@@ -610,7 +629,7 @@ def test_convert_refuses_to_change_an_openai_source_a_gateway_routes_to(upstream
     assert code == 1 and out["error"] == "convert_conflict" and not (legacy.parent / "ai-workload-profile.neutral.json").exists()
 
 
-@pytest.mark.parametrize("bad", [b"not json", b"\xff\xfe{}", json.dumps({"schema_version": "1.0", "ai_sources": [], "gateways": [],
+@pytest.mark.parametrize("bad", [b"not json", b"\xff\xfe{}", DEEP_JSON, json.dumps({"schema_version": "1.0", "ai_sources": [], "gateways": [],
                                                                          "summary": {}}).encode()])
 def test_convert_rejects_a_scan_the_validator_rejects(bad, tree: Path, tmp_path: Path) -> None:
     legacy = _legacy_dir(tmp_path) / "ai-workload-profile.json"
@@ -788,7 +807,7 @@ def test_host_answers_never_write_through_a_symlink(tree: Path, tmp_path: Path) 
     assert json.loads((azure / "ai-handoff.json").read_text())["status"] == "converted"
 
 
-@pytest.mark.parametrize("held", [b"{not json", b"\xff\xfe{}", b"[]"])
+@pytest.mark.parametrize("held", [b"{not json", b"\xff\xfe{}", b"[]", DEEP_JSON])
 def test_host_answers_replace_an_unreadable_host_answers_file(held, tree: Path, tmp_path: Path) -> None:
     azure = _azure_run(tmp_path, infra=True)
     _azure_prefs(azure)
@@ -851,14 +870,15 @@ def test_an_ai_only_accept_keeps_earlier_preferences_for_the_withdrawal(before, 
     assert (json.loads(prefs.read_text()) if prefs.exists() else None) == before
 
 
-def test_an_ai_only_accept_stops_on_earlier_preferences_that_are_not_an_object(tree: Path, tmp_path: Path) -> None:
+@pytest.mark.parametrize(("held", "advice"), [(b"[]", "move it aside"), (DEEP_JSON, "Clarify again")], ids=["list", "too-deep"])
+def test_an_ai_only_accept_stops_on_earlier_preferences_that_are_not_an_object(held, advice, tree: Path, tmp_path: Path) -> None:
     azure = _azure_run(tmp_path, infra=False)
-    (azure / "preferences.json").write_text("[]")
+    (azure / "preferences.json").write_bytes(held)
     bma = _bma_run(tmp_path)
     _open(tree, azure, bma, "clarify")
     code, out = _cli(tree, "accept", str(azure), str(bma), "--through", "clarify")
-    assert code == 1 and out["error"] == "preferences_unreadable" and "move it aside" in out["detail"]
-    assert (azure / "preferences.json").read_text() == "[]"
+    assert code == 1 and out["error"] == "preferences_unreadable" and advice in out["detail"]
+    assert (azure / "preferences.json").read_bytes() == held
 
 
 def test_accept_estimate_copies_the_design_and_estimate_and_closes_the_handoff(tree: Path, tmp_path: Path) -> None:
@@ -908,7 +928,8 @@ def test_accept_fails_closed_when_readiness_reports_a_wrong_hash(tree: Path, tmp
     assert not (azure / "aws-design-ai.json").exists() and not (azure / "estimation-ai.json").exists()
 
 
-@pytest.mark.parametrize("output", ['import sys; sys.stdout.buffer.write(b"\\xff\\xfe{}")\n', 'print("ready")\n'], ids=["not-utf8", "not-json"])
+@pytest.mark.parametrize("output", ['import sys; sys.stdout.buffer.write(b"\\xff\\xfe{}")\n', 'print("ready")\n', 'print("[" * 200000)\n'],
+                         ids=["not-utf8", "not-json", "too-deep"])
 def test_accept_fails_closed_when_readiness_prints_garbage(output, tree: Path, tmp_path: Path) -> None:
     azure = _azure_run(tmp_path, infra=True)
     _azure_prefs(azure)
@@ -1265,7 +1286,7 @@ def test_delegating_after_a_deferral_clears_the_deferral(tree: Path, tmp_path: P
     assert not (azure / "ai-handoff.json").exists()
 
 
-@pytest.mark.parametrize("record", [b"[]", b'"converted"', b"{not json", b"\xff\xfe{}"])
+@pytest.mark.parametrize("record", [b"[]", b'"converted"', b"{not json", b"\xff\xfe{}", DEEP_JSON])
 @pytest.mark.parametrize(("args", "want"), [((), "delegate"), (("--infra-only",), "defer")])
 def test_rerouting_replaces_a_handoff_record_that_is_not_an_object(record, args, want, tree: Path, tmp_path: Path) -> None:
     azure = _azure_run(tmp_path, infra=True)
