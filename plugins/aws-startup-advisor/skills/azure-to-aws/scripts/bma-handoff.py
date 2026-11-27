@@ -58,6 +58,11 @@ EVIDENCE_ORDER = ("terraform", "live", "rdfa")
 PREFS_OBJECTS = ("global", "design_constraints", "metadata", "startup_constraints", "ai_constraints")
 # Azure Clarify disposition to the assessment's chosen_by; PROPOSED is resolved per row.
 CHOSEN_BY = {"DETECTED": "extracted", "ESSENTIAL": "user"}
+# bedrock-migration-assessment schema-preferences.md constraint catalog: question text and design_consequence per host answer.
+HOST_QUESTIONS = {"target_region": "Which AWS Region should this migration target?",
+                  "compliance": "Do you have any compliance or regulatory requirements?"}
+HOST_CONSEQUENCES = {"target_region": "Bedrock resources deploy in {}; model availability is checked for this region",
+                     "compliance": "{} gates Bedrock models, regions, and logging"}
 FIXES = {"inventory_unreadable": "; run azure-to-aws Discover again", "legacy_unreadable": "; run azure-to-aws Discover again",
          "preferences_unreadable": "; run azure-to-aws Clarify again", "handoff_unreadable": "; run route and convert again",
          "host_answers_unreadable": "; run host-answers again", "scan_unreadable": "; scan the code with bedrock-migration-assessment again"}
@@ -315,8 +320,20 @@ def _row_sources(model: dict) -> set:
     return sources | {s for s in _list(model.get("detected_via")) if isinstance(s, str)}
 
 
-def _row_kinds(model: dict) -> set[str]:
-    return {PROOF_ALIASES[s] for s in _row_sources(model) if isinstance(s, str) and s in PROOF_ALIASES}
+def _row_kinds(model: dict, raw: str, index: dict) -> tuple[set[str], bool]:
+    kept, replaced = set(), set()
+    for item in (e for e in _list(model.get("evidence")) if isinstance(e, dict)):
+        kind = PROOF_ALIASES.get(item["source"]) if isinstance(item.get("source"), str) else None
+        if kind is None:
+            continue
+        address, azure_id = (item.get(k) if isinstance(item.get(k), str) else None for k in ("address", "azure_id"))
+        deployment = index.get(("address", address)) or index.get(("azure_id", azure_id and azure_id.lower()))
+        if deployment is not None:
+            deployment["declared"].add(raw.lower())
+        state = _state_model(deployment) if deployment is not None else None
+        (replaced if state is not None and state != raw.lower() else kept).add(kind)
+    listed = {PROOF_ALIASES[s] for s in _list(model.get("detected_via")) if isinstance(s, str) and s in PROOF_ALIASES}
+    return kept | (listed - replaced), bool(replaced)
 
 
 def _entry_kinds(entry: dict) -> set[str]:
@@ -348,18 +365,21 @@ def _observe(observations: dict, raw: str, kinds: set[str]) -> None:
     entry["evidence"].sort(key=lambda e: [PROOF[k][:2] for k in EVIDENCE_ORDER].index((e["provenance"], e["confidence"])))
 
 
-def _from_models(models: list, observations: dict, not_converted: list) -> None:
+def _from_models(models: list, deployments: list[dict], observations: dict, not_converted: list) -> None:
+    index = {(key, value): d for d in deployments for key in ("address", "azure_id") for value in d[key]}
     for model in models:
         raw = model.get("model_id") if isinstance(model, dict) else None
         if not isinstance(raw, str) or not raw:
             not_converted.append({"model": raw if isinstance(raw, str) else None, "reason": "invalid_model_id"})
             continue
         service = str(model.get("service", ""))
-        kinds = _row_kinds(model)
+        kinds, replaced = _row_kinds(model, raw, index)
         if service.startswith("cognitive_") or service == "azure_ml":
             reason = "traditional_ml"
-        elif service not in AZURE_OPENAI_SERVICES or not kinds:
-            reason = "code_evidence_only" if service not in AZURE_OPENAI_SERVICES or "code" in _row_sources(model) else "no_provenance"
+        elif service not in AZURE_OPENAI_SERVICES:
+            reason = "code_evidence_only"
+        elif not kinds:
+            reason = "drifted_deployment_model" if replaced else "code_evidence_only" if "code" in _row_sources(model) else "no_provenance"
         else:
             reason = _model_reason(raw, None)
         if reason:
@@ -368,20 +388,39 @@ def _from_models(models: list, observations: dict, not_converted: list) -> None:
             _observe(observations, raw, kinds)
 
 
-def _from_infrastructure(infrastructure: list, observations: dict, not_converted: list) -> None:
+def _deployments(infrastructure: list) -> list[dict]:
     groups: dict[Any, list[dict]] = {}
     for index, entry in enumerate(e for e in infrastructure if _is_deployment(e)):
         azure_id = entry.get("azure_id")
         groups.setdefault(azure_id.lower() if isinstance(azure_id, str) and azure_id else index, []).append(entry)
-    for entries in groups.values():
-        named = sorted(((min((list(PROOF).index(k) for k in _entry_kinds(e)), default=len(PROOF)), *_deployment_model(e))
-                       for e in entries if _deployment_model(e)[0] is not None), key=lambda n: n[0])
+    return [{"entries": entries, "declared": set(),
+             "named": sorted(((min((list(PROOF).index(k) for k in _entry_kinds(e)), default=len(PROOF)), *_deployment_model(e))
+                              for e in entries if _deployment_model(e)[0] is not None), key=lambda n: n[0]),
+             "address": {e["address"] for e in entries if isinstance(e.get("address"), str) and e["address"]},
+             "azure_id": {e["azure_id"].lower() for e in entries if isinstance(e.get("azure_id"), str) and e["azure_id"]}}
+            for entries in groups.values()]
+
+
+def _state_model(deployment: dict) -> str | None:
+    named = deployment["named"]
+    return named[0][1].lower() if named and isinstance(named[0][1], str) else None
+
+
+def _from_infrastructure(deployments: list[dict], observations: dict, not_converted: list) -> None:
+    for deployment in deployments:
+        entries, named = deployment["entries"], deployment["named"]
         if not named:
             label = next((e.get(k) for e in entries for k in ("address", "azure_id") if isinstance(e.get(k), str)), None)
             not_converted.append({"model": None, "reason": "deployment_without_model", "deployment": label})
             continue
         _, raw, model_format = named[0]
-        kinds = set().union(*(_entry_kinds(e) for e in entries if str(_deployment_model(e)[0]).lower() == str(raw).lower()))
+        kinds = set()
+        for entry in (e for e in entries if str(_deployment_model(e)[0]).lower() == str(raw).lower()):
+            entry_kinds = _entry_kinds(entry)
+            # A merged entry's config follows state, so its address proves the model only when a Terraform row declares it.
+            if entry_kinds - {"terraform"} and str(raw).lower() not in deployment["declared"]:
+                entry_kinds.discard("terraform")
+            kinds |= entry_kinds
         reason = _model_reason(raw, model_format)
         if reason:
             not_converted.append({"model": raw if isinstance(raw, str) else None, "reason": reason})
@@ -408,8 +447,9 @@ def convert(azure_dir: Path, scan_path: Path | None) -> dict:
             raise HandoffError("scan_invalid", "bedrock-migration-assessment's validator rejected the scanned profile")
     observations: dict[str, dict] = {}
     not_converted: list[dict] = []
-    _from_models(legacy["models"], observations, not_converted)
-    _from_infrastructure(legacy.get("infrastructure", []), observations, not_converted)
+    deployments = _deployments(legacy.get("infrastructure", []))
+    _from_models(legacy["models"], deployments, observations, not_converted)
+    _from_infrastructure(deployments, observations, not_converted)
     if observations:
         _merge_azure_openai(profile, list(observations.values()))
     if not profile["ai_sources"] and not profile["gateways"]:
@@ -427,7 +467,8 @@ def convert(azure_dir: Path, scan_path: Path | None) -> dict:
                               "assessment_profile_digest": "sha256:" + _sha(out_path.read_bytes()), "artifacts": {},
                               "infrastructure_moves": _has_infrastructure(azure_dir)})
     kept = set(next((s["models"] for s in profile["ai_sources"] if (s["provider"], s["source_service"]) == ("openai", "azure_openai")), []))
-    not_converted = [n for n in not_converted if not (isinstance(n["model"], str) and n["model"].lower() in kept)]
+    not_converted = [n for i, n in enumerate(not_converted) if not (isinstance(n["model"], str) and n["model"].lower() in kept)
+                     and not (n["reason"] == "drifted_deployment_model" and n in not_converted[:i])]
     return {"ok": True, "out": str(out_path), "converted": sorted(observations), "not_converted": not_converted}
 
 
@@ -466,7 +507,15 @@ def _host_answer(field: str, row: Any) -> dict | None:
     disposition = row.get("disposition")
     chosen_by = CHOSEN_BY.get(disposition) or (("default" if row.get("value") == row.get("default") else "user")
                                                 if disposition == "PROPOSED" else None)
-    return {"value": value, **({"chosen_by": chosen_by} if chosen_by else {}), "source": f"host:{HOST_SKILL}"}
+    if chosen_by is None:
+        return None
+    shown = value if isinstance(value, str) else ", ".join(value)
+    detail = row.get("source") if isinstance(row.get("source"), str) and row["source"].strip() else None
+    prompt = {"extracted": f"Detected by {HOST_SKILL}: {shown}" + (f" ({detail})" if detail else ""),
+              "user": f"{HOST_QUESTIONS[field]} (answered in {HOST_SKILL} Clarify)",
+              "default": f"{HOST_QUESTIONS[field]} (default applied)"}[chosen_by]
+    return {"value": value, "chosen_by": chosen_by, "prompt": prompt, "design_consequence": HOST_CONSEQUENCES[field].format(shown),
+            "source": f"host:{HOST_SKILL}"}
 
 
 def _host_constraints(azure_dir: Path) -> dict:
@@ -530,9 +579,9 @@ def host_answers(azure_dir: Path, bma_dir: Path, stop_after: str) -> dict:
         _restore_preferences(azure_dir)
         record.pop("through")
         record.update(status="in_progress", artifacts={})
+    _write_json(record_path, record)
     _write_json(held_path, {"host_skill": HOST_SKILL, "infrastructure_moves": _has_infrastructure(azure_dir),
                             "stop_after": stop_after, "design_constraints": constraints})
-    _write_json(record_path, record)
     return {"ok": True, "assessment_dir": bma_dir.name, "stop_after": stop_after, "host_answers": sorted(constraints)}
 
 
@@ -552,6 +601,7 @@ def accept(azure_dir: Path, bma_dir: Path, through: str) -> dict:
     data = _verified(bma_dir, _ready(bma_dir, through), through)
     if "sha256:" + _sha(data["ai-workload-profile.json"]) != record.get("assessment_profile_digest"):
         raise HandoffError("assessment_profile_mismatch", f"{bma_dir.name} no longer holds the profile this run handed over")
+    _remove_copies(azure_dir, {k: v for k, v in record.get("pending_artifacts", {}).items() if k not in THROUGH_FILES[through]})
     _write_json(record_path, record | {"pending_artifacts": {name: _sha(data[name]) for name in THROUGH_FILES[through][1:]}})
     _merge_preferences(azure_dir, bma_dir, data["preferences.json"])
     for name in THROUGH_FILES[through][1:]:

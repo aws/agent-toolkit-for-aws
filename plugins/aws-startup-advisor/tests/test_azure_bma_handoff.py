@@ -368,7 +368,7 @@ def test_convert_adds_azure_openai_models_that_terraform_live_or_rdfa_proved(tre
 def test_iac_and_live_entries_for_one_deployment_become_one_observation(tree: Path, tmp_path: Path) -> None:
     azure_id = f"{SUB}/deployments/chat"
     legacy = _legacy_dir(tmp_path) / "ai-workload-profile.json"
-    legacy.write_text(json.dumps(_legacy([], infrastructure=[
+    legacy.write_text(json.dumps(_legacy([_tf_row("GPT-4o-Mini-2024-07-18", "mini")], infrastructure=[
         _iac_deployment("chat", "gpt-4o", azure_id=azure_id),
         _live_deployment("chat", None),
         {**_iac_deployment("mini", "GPT-4o-Mini-2024-07-18", azure_id=f"{SUB}/deployments/mini"), "sources": ["terraform", "live", "rdfa"]},
@@ -396,6 +396,70 @@ def test_live_state_wins_over_a_drifted_terraform_model(live_id, tree: Path, tmp
     assert out["not_converted"] == [{"model": "gpt-4o", "reason": "drifted_deployment_model"}]
     assert [e["provenance"] for e in _azure_source(legacy.parent / "ai-workload-profile.neutral.json")["model_observations"][0]["evidence"]] \
         == ["live_api"]
+
+
+def _tf_row(model_id: str, *names: str) -> dict:
+    return {"model_id": model_id, "service": "azure_openai", "detected_via": ["terraform"], "capabilities_used": ["text_generation"],
+            "evidence": [{"source": "terraform", "file": "ai.tf", "address": f"azurerm_cognitive_deployment.{n}"} for n in names]}
+
+
+def _live_row(model_id: str) -> dict:
+    return {"model_id": model_id, "service": "azure_openai", "detected_via": [], "capabilities_used": ["text_generation"],
+            "evidence": [{"source": "live_az", "pattern": "az cognitiveservices account deployment list"}]}
+
+
+def _merged_deployment(name: str, model: str) -> dict:
+    return {**_iac_deployment(name, None, azure_id=f"{SUB}/deployments/{name}"), "sources": ["terraform", "live"], "config": {"model": model}}
+
+
+@pytest.mark.parametrize("shape", ["merged", "separate"])
+def test_a_terraform_model_row_that_live_state_replaced_is_reported_as_drifted(shape, tree: Path, tmp_path: Path) -> None:
+    azure_id = f"{SUB}/deployments/chat"
+    infrastructure = [_merged_deployment("chat", "gpt-4.1")] if shape == "merged" else [
+        _iac_deployment("chat", "gpt-4o", azure_id=azure_id), _live_deployment("chat", "gpt-4.1")]
+    legacy = _legacy_dir(tmp_path) / "ai-workload-profile.json"
+    legacy.write_text(json.dumps(_legacy([_tf_row("gpt-4o", "chat"), _live_row("gpt-4.1")], infrastructure=infrastructure)))
+    out_path = legacy.parent / "ai-workload-profile.neutral.json"
+    code, out = _cli(tree, "convert", str(legacy.parent))
+    assert code == 0 and out["converted"] == ["gpt-4.1"], out
+    assert out["not_converted"] == [{"model": "gpt-4o", "reason": "drifted_deployment_model"}]
+    (observation,) = _azure_source(out_path)["model_observations"]
+    assert [(e["provenance"], e["confidence"]) for e in observation["evidence"]] == [("live_api", "high")]
+    _validate(tree, out_path)
+
+
+def test_a_merged_deployment_keeps_terraform_evidence_only_when_terraform_declares_its_model(tree: Path, tmp_path: Path) -> None:
+    legacy = _legacy_dir(tmp_path) / "ai-workload-profile.json"
+    legacy.write_text(json.dumps(_legacy([_tf_row("gpt-4.1", "chat")], infrastructure=[
+        _merged_deployment("chat", "gpt-4.1"), _merged_deployment("by-expression", "gpt-4.1-mini")])))
+    code, out = _cli(tree, "convert", str(legacy.parent))
+    assert code == 0 and out["not_converted"] == [], out
+    by_model = {o["normalized_model"]: o for o in _azure_source(legacy.parent / "ai-workload-profile.neutral.json")["model_observations"]}
+    assert [e["provenance"] for e in by_model["gpt-4.1"]["evidence"]] == ["iac", "live_api"]
+    assert [e["provenance"] for e in by_model["gpt-4.1-mini"]["evidence"]] == ["live_api"]
+
+
+def test_a_terraform_row_for_several_deployments_keeps_the_ones_state_did_not_replace(tree: Path, tmp_path: Path) -> None:
+    legacy = _legacy_dir(tmp_path) / "ai-workload-profile.json"
+    legacy.write_text(json.dumps(_legacy([_tf_row("gpt-4o", "chat", "batch"), _tf_row("gpt-4o-mini", "undeployed")], infrastructure=[
+        _merged_deployment("chat", "gpt-4.1"), _iac_deployment("batch", "gpt-4o", azure_id=f"{SUB}/deployments/batch"),
+        _iac_deployment("undeployed", "gpt-4o-mini")])))
+    code, out = _cli(tree, "convert", str(legacy.parent))
+    assert code == 0 and out["converted"] == ["gpt-4.1", "gpt-4o", "gpt-4o-mini"] and out["not_converted"] == [], out
+    by_model = {o["normalized_model"]: o for o in _azure_source(legacy.parent / "ai-workload-profile.neutral.json")["model_observations"]}
+    assert [e["provenance"] for e in by_model["gpt-4o"]["evidence"]] == ["iac"]
+    assert [e["provenance"] for e in by_model["gpt-4.1"]["evidence"]] == ["live_api"]
+
+
+def test_an_rdfa_model_row_that_live_state_replaced_is_reported_as_drifted(tree: Path, tmp_path: Path) -> None:
+    azure_id = f"{SUB}/deployments/chat"
+    legacy = _legacy_dir(tmp_path) / "ai-workload-profile.json"
+    legacy.write_text(json.dumps(_legacy([
+        {"model_id": "gpt-4o", "service": "azure_openai", "detected_via": [], "evidence": [{"source": "rdfa_report", "azure_id": azure_id.upper()}]},
+    ], infrastructure=[{**_live_deployment("chat", "gpt-4.1"), "sources": ["live", "rdfa"]}])))
+    code, out = _cli(tree, "convert", str(legacy.parent))
+    assert code == 0 and out["converted"] == ["gpt-4.1"], out
+    assert out["not_converted"] == [{"model": "gpt-4o", "reason": "drifted_deployment_model"}]
 
 
 def test_convert_names_why_each_row_was_not_converted(tree: Path, tmp_path: Path) -> None:
@@ -603,8 +667,12 @@ def test_host_answers_pass_region_and_compliance_in_the_assessment_shape(tree: P
     assert code == 0 and out["host_answers"] == ["compliance", "target_region"]
     host = json.loads((bma / "host-answers.json").read_text())
     assert host == {"host_skill": "azure-to-aws", "infrastructure_moves": True, "stop_after": "clarify", "design_constraints": {
-        "target_region": {"value": "us-east-1", "chosen_by": "extracted", "source": "host:azure-to-aws"},
-        "compliance": {"value": ["hipaa"], "chosen_by": "user", "source": "host:azure-to-aws"}}}
+        "target_region": {"value": "us-east-1", "chosen_by": "extracted", "source": "host:azure-to-aws",
+                          "prompt": "Detected by azure-to-aws: us-east-1 (every resource is eastus)",
+                          "design_consequence": "Bedrock resources deploy in us-east-1; model availability is checked for this region"},
+        "compliance": {"value": ["hipaa"], "chosen_by": "user", "source": "host:azure-to-aws",
+                       "prompt": "Do you have any compliance or regulatory requirements? (answered in azure-to-aws Clarify)",
+                       "design_consequence": "hipaa gates Bedrock models, regions, and logging"}}}
     record = json.loads((azure / "ai-handoff.json").read_text())
     assert record == {"profile_digest": "sha256:" + _sha(azure / "ai-workload-profile.json"), "assessment_dir": bma.name,
                       "assessment_profile_digest": "sha256:" + _sha(bma / "ai-workload-profile.json"),
@@ -617,10 +685,12 @@ def test_host_answers_pass_region_and_compliance_in_the_assessment_shape(tree: P
     ({"disposition": "ESSENTIAL", "value": "none", "default": None}, "compliance", None),
     ({"disposition": "PROPOSED", "value": ["unknown"], "default": ["unknown"]}, "compliance", {"value": ["unknown"], "chosen_by": "default"}),
     ({"disposition": "PROPOSED", "value": "eu-west-1", "default": "us-east-1"}, "target_region", {"value": "eu-west-1", "chosen_by": "user"}),
-    ({"value": "eu-west-1"}, "target_region", {"value": "eu-west-1"}),
+    ({"value": "eu-west-1"}, "target_region", None),
+    ({"disposition": "N/A", "value": [], "default": None, "reason": "x"}, "compliance", None),
     ({"disposition": "DETECTED", "value": "", "default": ""}, "target_region", None),
     ("eu-west-1", "target_region", None),
-], ids=["empty-is-none", "unanswered", "scalar", "proposed-default", "proposed-changed", "no-disposition", "empty-region", "not-a-row"])
+], ids=["empty-is-none", "unanswered", "scalar", "proposed-default", "proposed-changed", "no-disposition", "not-applicable", "empty-region",
+        "not-a-row"])
 def test_each_azure_row_maps_to_one_host_answer_or_none(row, field, want, tree: Path, tmp_path: Path) -> None:
     azure = _azure_run(tmp_path, infra=True)
     prefs = _azure_prefs(azure)
@@ -629,7 +699,27 @@ def test_each_azure_row_maps_to_one_host_answer_or_none(row, field, want, tree: 
     bma = _bma_run(tmp_path)
     assert _open(tree, azure, bma, "clarify")[0] == 0
     given = json.loads((bma / "host-answers.json").read_text())["design_constraints"]
-    assert given.get(field) == (None if want is None else want | {"source": "host:azure-to-aws"})
+    answer = given.get(field)
+    assert (None if answer is None else {k: answer[k] for k in ("value", "chosen_by")}) == want
+    assert answer is None or answer["source"] == "host:azure-to-aws"
+
+
+@pytest.mark.parametrize("disposition", ["DETECTED", "PROPOSED", "ESSENTIAL"])
+def test_every_host_answer_is_a_complete_assessment_wrapper(disposition, tree: Path, tmp_path: Path) -> None:
+    azure = _azure_run(tmp_path, infra=True)
+    prefs = _azure_prefs(azure, compliance=["gdpr", "pci"])
+    for section, field in (("global", "target_region"), ("design_constraints", "compliance")):
+        prefs[section][field] = {**prefs[section][field], "disposition": disposition}
+        prefs[section][field].pop("source", None)
+    (azure / "preferences.json").write_text(json.dumps(prefs))
+    bma = _bma_run(tmp_path)
+    assert _open(tree, azure, bma, "clarify")[0] == 0
+    given = json.loads((bma / "host-answers.json").read_text())["design_constraints"]
+    assert sorted(given) == ["compliance", "target_region"]
+    for answer in given.values():
+        assert answer["chosen_by"] in ("user", "default", "extracted") and answer["source"] == "host:azure-to-aws"
+        assert "question_id" not in answer
+        assert all(isinstance(answer[k], str) and answer[k].strip() for k in ("prompt", "design_consequence")), answer
 
 
 def test_host_answers_for_an_ai_only_run_answer_nothing(tree: Path, tmp_path: Path) -> None:
@@ -947,6 +1037,23 @@ def test_an_accept_interrupted_between_copies_can_still_be_withdrawn(tree: Path,
     assert not (azure / "aws-design-ai.json").exists() and json.loads((azure / "preferences.json").read_text()) == prefs
 
 
+def test_an_interrupted_accept_retried_through_an_earlier_phase_removes_the_later_copy(tree: Path, tmp_path: Path, monkeypatch,
+                                                                                         capsys) -> None:
+    azure = _azure_run(tmp_path, infra=True)
+    _azure_prefs(azure)
+    bma = _bma_run(tmp_path)
+    _open(tree, azure, bma, "estimate")
+    module = _load_module(tree)
+    monkeypatch.setattr(module, "_write_bytes", _failing_write(module, "estimation-ai.json"))
+    assert module.main(["accept", str(azure), str(bma), "--through", "estimate"]) == 1
+    capsys.readouterr()
+    assert (azure / "aws-design-ai.json").exists()
+    code, out = _cli(tree, "accept", str(azure), str(bma), "--through", "clarify")
+    assert code == 0, out
+    assert not (azure / "aws-design-ai.json").exists()
+    assert set(json.loads((azure / "ai-handoff.json").read_text())["artifacts"]) == {"preferences.json"}
+
+
 def test_an_interrupted_accept_finishes_when_run_again(tree: Path, tmp_path: Path, monkeypatch, capsys) -> None:
     azure = _azure_run(tmp_path, infra=True)
     _azure_prefs(azure)
@@ -960,6 +1067,29 @@ def test_an_interrupted_accept_finishes_when_run_again(tree: Path, tmp_path: Pat
     assert code == 0, out
     record = json.loads((azure / "ai-handoff.json").read_text())
     assert record["status"] == "assessment_completed" and "pending_artifacts" not in record
+
+
+def test_new_host_answers_interrupted_before_the_reset_record_is_saved_reopen_on_retry(tree: Path, tmp_path: Path, monkeypatch,
+                                                                                         capsys) -> None:
+    azure = _azure_run(tmp_path, infra=True)
+    prefs = _azure_prefs(azure)
+    bma = _bma_run(tmp_path)
+    _open(tree, azure, bma, "estimate")
+    assert _cli(tree, "accept", str(azure), str(bma), "--through", "estimate")[0] == 0
+    prefs["global"]["target_region"]["value"] = "eu-west-1"
+    (azure / "preferences.json").write_text(json.dumps({**json.loads((azure / "preferences.json").read_text()), "global": prefs["global"]}))
+    module = _load_module(tree)
+    monkeypatch.setattr(module, "_write_bytes", _failing_write(module, "ai-handoff.json"))
+    assert module.main(["host-answers", str(azure), str(bma), "--stop-after", "clarify"]) == 1
+    assert json.loads(capsys.readouterr().out)["error"] == "filesystem_error"
+    monkeypatch.undo()
+    assert _open(tree, azure, bma, "clarify", convert=False)[0] == 0
+    bma_prefs = json.loads((bma / "preferences.json").read_text())
+    bma_prefs["design_constraints"]["target_region"]["value"] = "eu-west-1"
+    (bma / "preferences.json").write_text(json.dumps(bma_prefs))
+    code, out = _cli(tree, "accept", str(azure), str(bma), "--through", "clarify")
+    assert code == 0, out
+    assert json.loads((azure / "ai-handoff.json").read_text())["through"] == "clarify"
 
 
 def test_repeating_unchanged_host_answers_keeps_the_accepted_design(tree: Path, tmp_path: Path) -> None:
