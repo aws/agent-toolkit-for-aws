@@ -33,10 +33,11 @@ drift from:
 Usage:
     python3 check_expected_generate.py <migration_run_dir>
 
-<migration_run_dir> holds migration-report.html, estimation-infra.json, aws-design.json,
-preferences.json, generation-warnings.json and .phase-status.json (a scratch copy of
-after-generate/). Exits 0 on PASS, 1 on FAIL. Stdlib only; the validators are invoked as
-subprocesses so this script never imports (and never writes bytecode for) a sibling module.
+<migration_run_dir> holds migration-report.html, heroku-resource-inventory.json,
+estimation-infra.json, aws-design.json, preferences.json, generation-warnings.json and
+.phase-status.json (a scratch copy of after-generate/). Exits 0 on PASS, 1 on FAIL.
+Stdlib only; the validators are invoked as subprocesses so this script never imports (and
+never writes bytecode for) a sibling module.
 """
 from __future__ import annotations
 

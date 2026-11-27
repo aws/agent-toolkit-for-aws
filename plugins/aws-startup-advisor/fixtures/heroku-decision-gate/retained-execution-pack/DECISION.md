@@ -79,7 +79,7 @@ The rows marked Build are a platform layer your team owns: a deploy pipeline for
 | Maintenance window               | Flexible (AWS default)                     | Database and Beanstalk maintenance happen in the AWS default window; asked for real at Generate.                         |
 | Database migration method        | Dump and restore                           | One downtime window during cutover; the migration guide documents the dump and restore procedure. Asked for real at Generate. |
 | Elastic Beanstalk deploy method  | GitHub Actions                             | A deploy workflow and an approval-gated promote step are generated for the Beanstalk app. Asked for real at Generate.    |
-| Container registry               | Amazon ECR                                 | Images are published to ECR, which the Cloud Native Buildpacks path requires.                                            |
+| Container registry               | Amazon ECR                                 | Images are published to one ECR repository (`ecr.tf`), which the Cloud Native Buildpacks path requires.                                            |
 | Containerization method          | Cloud Native Buildpacks (Heroku builder)   | Images are built from the same source with the Heroku builder; no Dockerfile is needed.                                  |
 | AWS Activate status              | Unknown                                    | The credits guidance stays neutral; no tier or amount is claimed.                                                        |
 

@@ -1,0 +1,101 @@
+{
+  "migration_id": "0818-1600",
+  "skill": "heroku-to-aws",
+  "metadata": {
+    "discovery_timestamp": "2026-08-18T15:40:00Z",
+    "total_apps_discovered": 1,
+    "discovery_sources": ["live"],
+    "confidence": "full",
+    "apps_by_environment_tier": { "prod": 1, "staging": 0, "dev": 0, "unmarked": 0 },
+    "apps_by_stack_status": { "eol": 0, "deprecated": 0, "supported": 1, "container": 0, "unknown": 0 },
+    "eol_stack_apps": []
+  },
+  "apps": [
+    {
+      "app_name": "acme-web",
+      "app_id": null,
+      "region": "us",
+      "stack": "heroku-22",
+      "heroku_generation": "cedar",
+      "generation_action": "detect_only",
+      "generation_diagnostics": [],
+      "space": null,
+      "discovery_status": "success",
+      "failure_reason": null,
+      "procfile_parse_warning": null,
+      "app_json_parse_warning": null,
+      "environment_tier": "prod",
+      "environment_tier_source": "name-heuristic",
+      "stack_status": "supported",
+      "stack_eol_date": "2027-04-30"
+    }
+  ],
+  "resources": [
+    {
+      "resource_id": "acme-web:web",
+      "resource_type": "formation",
+      "heroku_app": "acme-web",
+      "source": "live",
+      "config": {
+        "process_type": "web",
+        "command": "bundle exec puma -C config/puma.rb",
+        "dyno_type": "standard-1x",
+        "quantity": 2
+      }
+    },
+    {
+      "resource_id": "formation:acme-web:release",
+      "resource_type": "formation",
+      "heroku_app": "acme-web",
+      "source": "live",
+      "config": {
+        "process_type": "release",
+        "command": "bundle exec rake db:migrate",
+        "dyno_type": "standard-1x",
+        "quantity": 0
+      }
+    },
+    {
+      "resource_id": "acme-web:postgres",
+      "resource_type": "addon",
+      "heroku_app": "acme-web",
+      "source": "live",
+      "config": {
+        "addon_service": "heroku-postgresql",
+        "plan": "standard-0",
+        "provider": "heroku",
+        "addon_name": "postgresql-acme-web",
+        "attached_apps": [],
+        "connection_pooling": true
+      }
+    },
+    {
+      "resource_id": "config:acme-web",
+      "resource_type": "config",
+      "heroku_app": "acme-web",
+      "source": "live",
+      "config": {
+        "config_var_keys": [
+          "DATABASE_URL",
+          "LANG",
+          "RACK_ENV",
+          "RAILS_ENV",
+          "RAILS_LOG_TO_STDOUT",
+          "RAILS_SERVE_STATIC_FILES",
+          "SECRET_KEY_BASE",
+          "WEB_CONCURRENCY"
+        ]
+      }
+    },
+    {
+      "resource_id": "domain:acme-web:www.acme.example",
+      "resource_type": "domain",
+      "heroku_app": "acme-web",
+      "source": "live",
+      "config": {
+        "hostname": "www.acme.example"
+      }
+    }
+  ],
+  "billing_profile": null
+}

@@ -197,7 +197,7 @@
   <caption>Settings assumed by default and what each one changes in the design</caption>
   <thead><tr><th scope="col">Setting</th><th scope="col">Assumed value</th><th scope="col">Design consequence</th></tr></thead>
   <tbody>
-    <tr class="assumption-default"><td>Container registry</td><td>Amazon ECR</td><td>Images are published to ECR, which the Cloud Native Buildpacks path requires.</td></tr>
+    <tr class="assumption-default"><td>Container registry</td><td>Amazon ECR</td><td>Images are published to one ECR repository (<code>ecr.tf</code>), which the Cloud Native Buildpacks path requires.</td></tr>
     <tr class="assumption-default"><td>Containerization method</td><td>Cloud Native Buildpacks (Heroku builder)</td><td>Images are built from the same source with the Heroku builder; no Dockerfile is needed.</td></tr>
     <tr class="assumption-default"><td>AWS Activate status</td><td>Unknown</td><td>The credits guidance stays neutral; no tier or amount is claimed.</td></tr>
   </tbody>
@@ -249,7 +249,7 @@
 <h2>Appendix E — Generated Artifacts Catalog</h2>
 <p>Files Generate produced in the migration directory, one line each:</p>
 <ul class="compact">
-  <li><code>terraform/</code> — <code>main.tf</code> (Beanstalk environment, RDS instance, networking), <code>variables.tf</code>, <code>outputs.tf</code>, <code>security.tf</code>, <code>baseline.tf</code> (account security baseline), <code>dns.tf</code> (Route 53 weighted cutover records), <code>.gitignore</code>, <code>terraform.tfvars.example</code></li>
+  <li><code>terraform/</code> — <code>main.tf</code> (Beanstalk environment, RDS instance, networking), <code>variables.tf</code>, <code>outputs.tf</code>, <code>security.tf</code>, <code>baseline.tf</code> (account security baseline), <code>ecr.tf</code> (the image repository for the buildpack app), <code>dns.tf</code> (Route 53 weighted cutover records for <code>www.acme.example</code>), <code>.gitignore</code>, <code>terraform.tfvars.example</code></li>
   <li><code>MIGRATION_GUIDE.md</code> — the phase-by-phase cutover and rollback procedure, including the dump and restore steps and the three-contact-email checklist</li>
   <li><code>README.md</code> — how to apply the pack</li>
   <li><code>scripts/migrate-postgres.sh</code> — dump and restore of the Heroku Postgres add-on into RDS</li>
@@ -279,6 +279,7 @@
     <tr><td>Do you need to meet any compliance frameworks?</td><td>None</td><td>User answer</td><td>No extra controls beyond the account baseline.</td></tr>
     <tr><td>What availability level does your production workload need?</td><td>Multi-AZ</td><td>User answer</td><td>RDS PostgreSQL with a Multi-AZ standby; applies to every data service.</td></tr>
     <tr><td>When should AWS perform maintenance operations?</td><td>Sunday at 04:00 UTC</td><td>User answer</td><td>Sets the RDS and Beanstalk maintenance window.</td></tr>
+    <tr><td>What should the primary environment be called in AWS resource naming and tags?</td><td>acme</td><td>User answer</td><td>Becomes the Terraform <code>environment</code> variable (resource names and the <code>Environment</code> tag); never changes the architecture or the estimate.</td></tr>
     <tr><td>How important is keeping the Heroku developer workflow?</td><td>Important</td><td>User answer</td><td>Changes what the report says must still be built; never changes the Terraform.</td></tr>
     <tr><td>What high-availability configuration do you want for PostgreSQL on AWS?</td><td>Multi-AZ</td><td>User answer</td><td>RDS PostgreSQL with Multi-AZ enabled.</td></tr>
     <tr><td>How do you want to phase the migration?</td><td>Full cutover</td><td>User answer</td><td>One migration window; no interim database exposure section in the guide.</td></tr>
@@ -287,8 +288,10 @@
     <tr><td>Which compute target should formations use?</td><td>Elastic Beanstalk</td><td>User answer</td><td>Resolves the web formation to one Beanstalk environment.</td></tr>
     <tr><td>How do you want to deploy code changes to Elastic Beanstalk?</td><td>GitHub Actions</td><td>User answer</td><td>Generates the deploy and promote workflows.</td></tr>
     <tr><td>How long should application logs be retained?</td><td>30 days</td><td>User answer</td><td>CloudWatch Logs retention of 30 days.</td></tr>
+    <tr><td>How do you want to handle alerting and on-call notifications?</td><td>CloudWatch Alarms + SNS</td><td>User answer</td><td>Recorded for your operations runbook; the generated Terraform emits no alarms or notification wiring, so the choice never moves the estimate.</td></tr>
     <tr><td>How aggressively should we optimize for cost vs. operational safety?</td><td>Balanced</td><td>User answer</td><td>Right-sizing margin applied to the Balanced tier.</td></tr>
     <tr><td>Is your application already containerized?</td><td>Buildpack only</td><td>Extracted from your Heroku inventory</td><td>Adds the Containerization Prerequisites section to the guide and asks how images are built.</td></tr>
+    <tr class="assumption-default"><td>Where should container images be stored for your containerized workloads?</td><td>Amazon ECR</td><td>Default applied</td><td>Images are published to one ECR repository (<code>ecr.tf</code>), which the Cloud Native Buildpacks path requires.</td></tr>
     <tr class="assumption-default"><td>How should buildpack apps get a container image?</td><td>Cloud Native Buildpacks (Heroku builder)</td><td>Default applied</td><td><code>pack build</code> with the Heroku builder, ECR repositories, no Dockerfile.</td></tr>
     <tr class="assumption-default"><td>Have you applied for AWS Activate credits?</td><td>Unknown</td><td>Default applied</td><td>Drives only the credits callout wording; never moves the estimate.</td></tr>
   </tbody>

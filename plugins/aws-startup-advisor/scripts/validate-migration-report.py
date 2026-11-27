@@ -143,6 +143,7 @@ SKILL_PROFILES: dict[str, dict] = {
         "skip": {},
     },
 }
+
 FORBIDDEN_PATTERNS = [
     (r"\[placeholder\]", "placeholder text"),
     (r"\bTODO\b", "TODO marker"),
