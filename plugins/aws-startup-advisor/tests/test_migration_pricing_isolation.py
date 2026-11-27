@@ -18,8 +18,8 @@ PINNED_SHA256 = {
     "azure-iac-terraform/after-estimate/estimation-infra.json": "cb330d8bfc23993b904468b4ade93e1db2d72fb6165cdebfd95eaeb8d2162899",
     "heroku-decision-gate/after-decide-complete/estimation-infra.json": "63d8b50ca8256fb1fb426a04ced6c66a7795364cc1a6d2864a0120a786333dec",
     "heroku-decision-gate/retained-execution-pack/estimation-infra.json": "63d8b50ca8256fb1fb426a04ced6c66a7795364cc1a6d2864a0120a786333dec",
-    "heroku-workshop/after-arm64-reprice/estimation-infra.json": "6757c43f05efe9f5982be65dcab00e49f9059528baf6b112539b5fc0e8be861b",
-    "heroku-workshop/seed/estimation-infra.json": "62da3cfffc002a7321056ddac96ed009c76724e432b7af8e3c225956466fdf5b",
+    "heroku-workshop/after-arm64-reprice/estimation-infra.json": "4fa6eaacb7defb5ff3e801bcea66ebb0d80436febaecff08620033eda1ddee91",
+    "heroku-workshop/seed/estimation-infra.json": "75bdb984a52bfaf35d8ea5796035f2753efde3e569b33139f54a770374902d7f",
 }
 EFS_ECR = re.compile(r"\b(efs|ecr|elastic file system|elastic container registry)\b", re.IGNORECASE)
 

@@ -111,6 +111,10 @@ TIERED_ESTIMATES = (
     "fixtures/heroku-decision-gate/retained-execution-pack/estimation-infra.json",
     "fixtures/azure-iac-terraform/after-estimate/estimation-infra.json",
     "skills/render-to-aws/fixtures/expected/estimation-infra.json",
+    "fixtures/gcp-workshop/seed/estimation-infra.json",
+    "fixtures/gcp-workshop/after-graviton-reprice/estimation-infra.json",
+    "fixtures/heroku-workshop/seed/estimation-infra.json",
+    "fixtures/heroku-workshop/after-arm64-reprice/estimation-infra.json",
 )
 
 

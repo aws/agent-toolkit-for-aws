@@ -4,9 +4,11 @@
     "status": "cached"
   },
   "projected_costs": {
-    "aws_monthly_premium": 110.0,
+    "aws_monthly_premium": 97.0,
     "aws_monthly_balanced": 85.0,
-    "aws_monthly_optimized": 62.0
+    "aws_monthly_optimized": 64.0,
+    "_premium_basis": "Declared basis: Fargate web (arm64) 40, Fargate worker (x86, incompatible) 31, RDS db.t4g.micro single-AZ 14. Premium = Balanced 85 + 12 RDS Multi-AZ uplift (14 -> 26 at the cached Multi-AZ rate: 0.032 x 730 + 10 GB x 0.23 = 25.66 ~ 26) = 97; Fargate is task-size driven (no uplift) and no other line has an AZ-rate variant.",
+    "_optimized_basis": "Eligible subtotal 71 = Fargate web 40 + Fargate worker 31 (Compute Savings Plan 0.30, the 1-year no-upfront mid-point of 20-40%: 40 x 0.30 = 12, 31 x 0.30 = 9.3 ~ 9 -> 21); ineligible subtotal 14 unchanged (RDS 14). RDS db.t4g.micro 14 is ineligible for the Database Savings Plan: it is Generation 4 and Database Savings Plans cover Generation 7 and newer instances only (AWS Savings Plans FAQ, read 2026-11-27); a Generation 7+ class (for example db.m7g or db.r7g) would qualify at 0.20. 85 - 21 = 64. Rates from references/vendored/estimate/commitment-discount-ranges.json."
   },
   "complexity_tier": "small",
   "recommendation": {
