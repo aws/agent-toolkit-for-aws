@@ -181,7 +181,7 @@ every mapping/plan/service/headline figure = `accounted` (with the three-way agr
 above). This mirrors gcp-to-aws `report-decision-core.md` where the discovered/current
 count is a separate figure from the mapping count.
 
-## Step 3.75: Stable appendix lettering (REQUIRED — validator-enforced)
+## Step 3.75: Stable appendix lettering (REQUIRED — authoring rule; the validator checks section IDs, not letters)
 
 Use the same stable customer-visible appendix labels as the full-report contract. The letter is
 part of the heading and TOC label; it does not shift when a conditional section is absent:
@@ -202,7 +202,7 @@ part of the heading and TOC label; it does not shift when a conditional section 
 
 Render `appendix-artifacts` before `appendix-config`. Conditional sections keep their reserved
 letters when absent — for example, an infra-only report still uses Appendix E for artifacts,
-never renumbering it to D. The plugin-root report validator checks both `<h2>` and TOC labels.
+never renumbering it to D. The plugin-root report validator checks the section IDs, not the letters, so the letters are an authoring rule.
 
 ## Step 3.8: Appendix build instructions — C, G, H, I
 

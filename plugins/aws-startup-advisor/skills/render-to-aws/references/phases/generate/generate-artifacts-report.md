@@ -93,8 +93,8 @@ validators can confirm the rendered dollars match the estimate:
 | ---------------------- | -------------------------------------------------------------------------- | ------------ |
 | `current_monthly`      | `current_costs.render_monthly`, or the literal text `unavailable` when `current_costs.source` is `unavailable` | plugin-root (dollars) / render-local (literal) |
 | `aws_monthly_balanced` | `projected_costs.aws_monthly_balanced` — the capacity-preserving scenario; matches the generated Terraform | plugin-root |
-| `aws_monthly_optimized`| `projected_costs.aws_monthly_optimized` — the right-sized scenario          | plugin-root  |
-| `aws_monthly_premium`  | `projected_costs.aws_monthly_premium` (optional; required when the value exists) | plugin-root |
+| `aws_monthly_optimized`| `projected_costs.aws_monthly_optimized` — the right-sized scenario; exactly one anchor in `exec-costs` | plugin-root (dollars) / render-local (presence) |
+| `aws_monthly_premium`  | `projected_costs.aws_monthly_premium` (required, exactly one anchor in `exec-costs`, whenever the value exists) | plugin-root (dollars) / render-local (presence) |
 | `delta`                | `delta_monthly_usd` — right-sized minus capacity-preserving, e.g. `-$62`   | render-local |
 
 Example: `<td data-cost-key="aws_monthly_balanced">$358</td>` and
@@ -149,7 +149,7 @@ N = `design_count`, G = `generated_count`, C = `consumed_topology_count`, D =
 all agree. Deferred and unsupported rows are still rows the customer must plan for — never
 present them as generated.
 
-## Step 3.75: Stable appendix lettering (REQUIRED — validator-enforced)
+## Step 3.75: Stable appendix lettering (REQUIRED — authoring rule; the validator checks section IDs, not letters)
 
 The letter is part of the heading and TOC label; it does not shift when a conditional section
 is absent:
@@ -173,8 +173,8 @@ Absent conditional sections keep their letters: a Render run has no `appendix-ai
 track is deferred) and still uses Appendix E for artifacts, never renumbering it to D.
 `appendix-accounting` is render-specific and takes `A.1` so the shared letters A–J do not
 shift. Required here: A, A.1, B, C, E, I, J. `appendix-optimization` (B.1) only when
-`optimization_opportunities[]` is non-empty. The plugin-root validator checks both `<h2>` and
-TOC labels.
+`optimization_opportunities[]` is non-empty. The plugin-root validator checks the section IDs, not the
+letters, so the letters are an authoring rule.
 
 ## Step 3.8: Appendix build instructions
 

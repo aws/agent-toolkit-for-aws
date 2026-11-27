@@ -88,7 +88,7 @@ above, or the profile's sets) is supplied by the skill layer.
 Appendix letters are stable: the letter is part of the `<h2>` heading and of
 the TOC label, and it does **not** shift when a conditional appendix is absent
 (a run with no AI track has no Appendix D and still labels its artifact catalog
-Appendix E). The shared validator checks both the heading and the TOC label.
+Appendix E). The shared validator checks section IDs, not these letters; lettering is an authoring rule, so keep the labels exactly as written here.
 
 | Section ID              | Visible heading prefix                               |
 | ----------------------- | ---------------------------------------------------- |
