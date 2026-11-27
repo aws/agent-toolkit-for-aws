@@ -13,9 +13,14 @@ accessibility, the visual shell, and the shared cost anchors
 * ledger reconciliation (``generation-warnings.json`` schema, per-bucket rows,
   accounting counts, warning codes) and the deferred-surface prose those
   warnings require;
-* render-required sections and their TOC links, plus the required phrases per
+* render-required sections (including Appendix I, ``appendix-assumptions``, which the shared
+  default set treats as optional) and their TOC links, plus the required phrases per
   migration section;
 * the render-local ``delta`` cost anchor (``delta_monthly_usd``);
+* exactly one ``aws_monthly_optimized`` anchor inside ``exec-costs`` (plus one
+  ``aws_monthly_premium`` anchor when ``projected_costs.aws_monthly_premium`` exists), and
+  ``projected_costs.aws_monthly_balanced`` / ``aws_monthly_optimized`` equal to
+  ``scenarios.capacity_preserving`` / ``right_sized`` ``.known_cost_monthly_usd``;
 * the unavailable-baseline literal when ``current_costs.render_monthly`` is null;
 * secrets, keys, and local-path exclusions in rendered text.
 
@@ -41,7 +46,7 @@ MAX_JSON_BYTES = 4 * 1024 * 1024
 RENDER_SECTIONS = (
     "exec-architecture", "exec-targets", "migration-data", "migration-storage",
     "migration-deployment", "cutover", "rollback", "verification",
-    "deferred-surfaces", "appendix-accounting",
+    "deferred-surfaces", "appendix-accounting", "appendix-assumptions",
 )
 INERT = {"script", "style", "template"}
 COST_PATHS = {
@@ -78,6 +83,7 @@ class ReportParser(HTMLParser):
         self.incomplete_mapping_rows = 0
         self.costs: dict[str, list[str]] = {}
         self.cost_stack: list[dict] = []
+        self.exec_costs: dict[str, list[str]] = {}
         self.accounted_values: list[str] = []
         self.rendered_text: list[str] = []
 
@@ -107,6 +113,8 @@ class ReportParser(HTMLParser):
                     if cost in self.cost_stack:
                         self.cost_stack.remove(cost)
                     self.costs.setdefault(cost["key"], []).append("".join(cost["parts"]))
+                    if cost["in_exec_costs"]:
+                        self.exec_costs.setdefault(cost["key"], []).append("".join(cost["parts"]))
                 if frame.get("mapping") is not None:
                     mapping = frame["mapping"]
                     if mapping in self.mapping_stack:
@@ -155,7 +163,7 @@ class ReportParser(HTMLParser):
                     self.incomplete_mapping_rows += 1
             cost_key = attrs.get("data-cost-key")
             if cost_key:
-                cost_frame = {"key": cost_key, "parts": []}
+                cost_frame = {"key": cost_key, "parts": [], "in_exec_costs": "exec-costs" in self.section_stack}
                 self.cost_stack.append(cost_frame)
                 frame["cost"] = cost_frame
             accounted = attrs.get("data-accounted-count")
@@ -238,6 +246,41 @@ def _validate_current_monthly(estimate: dict, values: list[str]) -> list[str]:
     return []
 
 
+# Estimate-phase mapping the report depends on: projected_costs.<key> must equal the
+# scenario total it is labelled with (render-to-aws estimate-assemble.md; report-decision-core.md
+# "Render scenario semantics"). The shared validator only compares the report to projected_costs,
+# so this render-local pass closes the gap between projected_costs and scenarios.
+SCENARIO_COSTS = (
+    ("aws_monthly_balanced", ("projected_costs", "aws_monthly_balanced"), ("scenarios", "capacity_preserving", "known_cost_monthly_usd")),
+    ("aws_monthly_optimized", ("projected_costs", "aws_monthly_optimized"), ("scenarios", "right_sized", "known_cost_monthly_usd")),
+)
+def _decimal(value: object) -> Decimal | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        return Decimal(str(value))
+    except InvalidOperation:
+        return None
+def _validate_scenario_costs(estimate: dict, exec_costs: dict[str, list[str]]) -> list[str]:
+    errors: list[str] = []
+    for key, projected_path, scenario_path in SCENARIO_COSTS:
+        projected = _dig(estimate, projected_path)
+        scenario = _dig(estimate, scenario_path)
+        if projected is None and scenario is None:
+            continue
+        projected_decimal, scenario_decimal = _decimal(projected), _decimal(scenario)
+        if projected_decimal is None or scenario_decimal is None or projected_decimal != scenario_decimal:
+            errors.append(f"COST_{key.upper()}_SCENARIO_MISMATCH")
+    # Optimized is required whenever the estimate carries it; premium whenever its value exists.
+    # Exactly one anchor inside exec-costs, so a stale or duplicated figure cannot hide.
+    for key in ("aws_monthly_optimized", "aws_monthly_premium"):
+        if _dig(estimate, ("projected_costs", key)) is None and not (
+            key == "aws_monthly_optimized" and _dig(estimate, ("scenarios", "right_sized", "known_cost_monthly_usd")) is not None
+        ):
+            continue
+        if len(exec_costs.get(key, [])) != 1:
+            errors.append(f"COST_{key.upper()}_MISSING")
+    return errors
 def _validate_ledger(ledger: dict, design: dict) -> list[str]:
     errors: list[str] = []
     mappings = design.get("mappings")
@@ -370,6 +413,7 @@ def validate(report: Path, migration_dir: Path) -> list[str]:
         if _money(values[0]) != expected_decimal:
             errors.append(f"COST_{key.upper()}_MISMATCH")
     errors.extend(_validate_current_monthly(estimate, parser.costs.get("current_monthly", [])))
+    errors.extend(_validate_scenario_costs(estimate, parser.exec_costs))
     accounted = ledger.get("accounting", {}).get("accounted_count")
     if parser.accounted_values != [str(accounted)]:
         errors.append("REPORT_ACCOUNTED_COUNT_MISMATCH")
