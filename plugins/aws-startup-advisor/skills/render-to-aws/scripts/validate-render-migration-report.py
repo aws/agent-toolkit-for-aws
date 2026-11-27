@@ -18,11 +18,15 @@ accessibility, the visual shell, and the shared cost anchors
 * the render-local ``delta`` cost anchor (``rightsizing_delta.monthly``, like-for-like
   minus Balanced);
 * the unavailable-baseline literal when ``current_costs.render_monthly`` is null;
+* Appendix G lists every resource address ``terraform/baseline.tf`` emits
+  (``SECURITY_BASELINE_RESOURCE_MISSING`` / ``SECTION_APPENDIX_SECURITY_MISSING``);
+  inert when no ``baseline.tf`` sits beside the report;
 * secrets, keys, and local-path exclusions in rendered text.
 
 Paths must be absolute and inside ``--migration-dir``; ``aws-design.json`` and
 ``estimation-infra.json`` are read from ``--migration-dir`` and
-``generation-warnings.json`` from the report's own directory.
+``generation-warnings.json`` and ``terraform/baseline.tf`` from the report's own
+directory.
 """
 
 from __future__ import annotations
@@ -60,6 +64,7 @@ SECTION_TERMS = {
 MONEY_RE = re.compile(
     r"(?<![A-Za-z0-9])(?:USD\s*)?([-\u2212])?\s*\$?\s*([-\u2212])?\s*([0-9][0-9,]*(?:\.[0-9]+)?)"
 )
+BASELINE_RESOURCE_RE = re.compile(r'^resource\s+"([a-z0-9_]+)"\s+"([a-z0-9_]+)"', re.M)
 
 
 class ReportParser(HTMLParser):
@@ -290,6 +295,25 @@ def _validate_ledger(ledger: dict, design: dict) -> list[str]:
     return errors
 
 
+def _validate_security_baseline(report_dir: Path, migration_dir: Path, parser: ReportParser) -> list[str]:
+    """Appendix G must name every ``resource "<type>" "<name>"`` address of terraform/baseline.tf.
+
+    Inert when no baseline.tf sits beside the report (the account baseline was
+    opted out or never generated).
+    """
+    baseline = report_dir / "terraform" / "baseline.tf"
+    if not baseline.is_file():
+        return []
+    baseline_text = _contained_regular(baseline, migration_dir, MAX_JSON_BYTES).read_text(encoding="utf-8")
+    if "appendix-security" not in parser.ids:
+        return ["SECTION_APPENDIX_SECURITY_MISSING"]
+    text = " ".join(parser.sections.get("appendix-security", []))
+    addresses = {f"{resource_type}.{name}" for resource_type, name in BASELINE_RESOURCE_RE.findall(baseline_text)}
+    if any(address not in text for address in addresses):
+        return ["SECURITY_BASELINE_RESOURCE_MISSING"]
+    return []
+
+
 def validate(report: Path, migration_dir: Path) -> list[str]:
     errors: list[str] = []
     report = _contained_regular(report, migration_dir, MAX_REPORT_BYTES)
@@ -343,6 +367,7 @@ def validate(report: Path, migration_dir: Path) -> list[str]:
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, jsonschema.SchemaError, jsonschema.ValidationError):
         errors.append("GENERATION_WARNINGS_SCHEMA_INVALID")
     errors.extend(_validate_ledger(ledger, design))
+    errors.extend(_validate_security_baseline(report.parent, migration_dir, parser))
 
     if parser.incomplete_mapping_rows:
         errors.append("TARGET_ROW_ATTRIBUTES_INCOMPLETE")

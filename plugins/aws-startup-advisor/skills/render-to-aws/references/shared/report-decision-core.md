@@ -44,7 +44,7 @@ Other files in this skill cite the decision core by its legacy section numbers. 
 Two validators gate the report, both run in the main window with absolute paths (`generate-artifacts-report.md` Step 5):
 
 - `$PLUGIN_ROOT/scripts/validate-migration-report.py` (`--mode full`, with `--estimation-infra`, `--aws-design`, and `--migration-dir`) is the structure/content gate: required section IDs and order, the CSS shell, verdict and metric-hero markup, the risk table, assumptions after risks, appendix depth and lettering, readability, accessibility, the glossary, and the shared cost anchors.
-- `$SKILL_BASE/scripts/validate-render-migration-report.py` (`--migration-dir`) is the render-only pass: the sections, terms, target rows, accounting, ledger reconciliation, `delta` anchor, unavailable-baseline literal, and exclusions listed below.
+- `$SKILL_BASE/scripts/validate-render-migration-report.py` (`--migration-dir`) is the render-only pass: the sections, terms, target rows, accounting, ledger reconciliation, `delta` anchor, unavailable-baseline literal, the Appendix G baseline-resource cross-check (`SECTION_APPENDIX_SECURITY_MISSING`, `SECURITY_BASELINE_RESOURCE_MISSING`), and exclusions listed below.
 
 Both must print `REPORT_OK`. A report that fails either is renamed `migration-report.incomplete.html`; it remains available for diagnosis but MUST NOT satisfy Generate `_produces` or completion. There is no skip-and-complete path.
 
@@ -84,10 +84,11 @@ Beyond the default `full` set, this skill requires each section below exactly on
 8. `verification` — concrete endpoint, database, cache, disk, worker/cron, and Workflow checks. Terms: `endpoint`; `database`; `cache`; `disk`; `workflow`.
 9. `deferred-surfaces` — the exact `deferred_shared_ai_engine` warning paragraph and every `conditional_workflow_generation_unsupported` warning. Deferred work is never represented as generated (`AI_DEFERRED_STATE_MISSING`, `AI_DEFERRED_WARNING_UNEXPECTED`, `WORKFLOW_LIMIT_MISSING`). This section (and the appendices) may name artifact filenames; `decision-summary` and the `exec-*` sections may not.
 10. `appendix-accounting` — heading "Appendix A.1 — Generation Accounting" (the canonical A.1 slot; the `.1` keeps the shared letters A–J from shifting): design/generated/consumed-topology/deferred/unsupported counts and all source rows. The section carries `data-accounted-count` equal to `generation-warnings.json` → `accounting.accounted_count` (`REPORT_ACCOUNTED_COUNT_MISMATCH`).
+11. `appendix-security` — when `terraform/baseline.tf` is emitted, Appendix G must exist and its Terraform column must name every `resource "<type>" "<name>"` address the file declares, written as `<type>.<name>` (`SECTION_APPENDIX_SECURITY_MISSING`, `SECURITY_BASELINE_RESOURCE_MISSING`). The check reads `terraform/baseline.tf` from the report's own directory and is inert when the file is absent (baseline opted out).
 
 ### Cross-artifact truth
 
-The render-local validator compares rendered targets to every `aws-design.json` mapping and accounting to `generation-warnings.json`; the plugin-root validator compares cost anchors to `estimation-infra.json`. The generation ledger classifies every design source exactly once as generated, consumed topology, deferred, or conditionally unsupported. AI is represented only by the exact deferred state; Workflow Terraform is represented only when its semantics are supported and validated.
+The render-local validator compares rendered targets to every `aws-design.json` mapping, accounting to `generation-warnings.json`, and Appendix G to the `resource` addresses of `terraform/baseline.tf`; the plugin-root validator compares cost anchors to `estimation-infra.json`. The generation ledger classifies every design source exactly once as generated, consumed topology, deferred, or conditionally unsupported. AI is represented only by the exact deferred state; Workflow Terraform is represented only when its semantics are supported and validated.
 
 The report is a customer artifact. It never contains source secrets, environment values, personal data, repository URLs, account/workspace/project/environment IDs, or local paths (`PRIVACY_EMAIL`, `PRIVACY_RENDER_API_KEY`, `PRIVACY_AWS_ACCESS_KEY`, `PRIVACY_PRIVATE_KEY`, `PRIVACY_LOCAL_PATH`).
 
