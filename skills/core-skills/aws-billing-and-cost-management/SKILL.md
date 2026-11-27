@@ -9,7 +9,7 @@ description: |
   right-size, budget alert, cost optimization, pricing, free tier, cost
   anomaly, CUR, cost audit, billing view, billing view ARN.
 metadata:
-  version: "1"
+  version: "2"
 ---
 
 # Billing and Cost Management
@@ -64,6 +64,7 @@ Read `references/deterministic-calculations.md` for patterns and examples.
 |----------|------|-----------|
 | What am I spending? Where are costs going up? | Cost Explorer | `references/cost-explorer.md` |
 | How much does a service cost? | Price List API | `references/pricing-lookup.md` |
+| How much will a planned workload or architecture cost per month? | Pricing Calculator | Load the `estimating-aws-workload-costs` skill |
 | Where can I save money? (start here) | Cost Optimization Hub | `references/cost-optimization-hub.md` |
 | Should I buy Savings Plans? | CE SP Recommendations | `references/savings-plans.md` |
 | Should I buy Reserved Instances? | CE RI Recommendations | `references/reserved-instances.md` |
