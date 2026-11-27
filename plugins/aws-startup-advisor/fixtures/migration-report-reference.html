@@ -262,7 +262,7 @@
             <td>Infrastructure</td>
             <td>$165</td>
             <td>$112</td>
-            <td>$102</td>
+            <td>$105</td>
             <td class="savings">-$53</td>
           </tr>
           <tr>
@@ -276,7 +276,7 @@
             <td><strong>Total (excl. BigQuery)</strong></td>
             <td><strong>$1,415</strong></td>
             <td><strong>$652</strong></td>
-            <td><strong>$136*</strong></td>
+            <td><strong>$139*</strong></td>
             <td class="savings"><strong>-$763 (-54%)</strong></td>
           </tr>
           <tr>
@@ -352,10 +352,10 @@
           </tr>
           <tr>
             <td>Optimized<br><span class="tier-sub">Balanced with a commitment discount on eligible lines</span></td>
-            <td>$102</td>
-            <td class="savings">-38% (-$63)</td>
-            <td class="savings">-$756</td>
-            <td>Assumes a 1-year no-upfront Compute Savings Plan on Fargate at 30%, the mid-point of 20–40% (−$7/mo) — a commitment decision after a 30–90 day usage baseline; assumes a 1-year no-upfront Database Savings Plan on RDS at ~20% (−$3/mo) — mutually exclusive with RDS Reserved Instances on the same instance</td>
+            <td>$105</td>
+            <td class="savings">-36% (-$60)</td>
+            <td class="savings">-$720</td>
+            <td>Assumes a 1-year no-upfront Compute Savings Plan on Fargate at 30%, the mid-point of 20–40% (−$7/mo) — a commitment decision after a 30–90 day usage baseline; no Database Savings Plan on RDS: db.t4g.micro is Generation 4 and Database Savings Plans cover Generation 7 and newer instances only, so the RDS line is unchanged (a Generation 7+ class would qualify at ~20%)</td>
           </tr>
         </tbody>
       </table>
@@ -365,9 +365,11 @@
       <h2>Cost Optimization</h2>
       <p>Generated Terraform is <strong>Balanced on-demand</strong> (Est. $112/mo).
          Savings Plans and Reserved Instances are account-level purchases after you
-         have a usage baseline. Optimized (Est. $102/mo) already includes the Compute
-         and Database Savings Plan rows below at their mid-point rates — do not add
-         those savings on top of it. Spot and S3-IA are post-migration opportunities,
+         have a usage baseline. Optimized (Est. $105/mo) already includes the Compute
+         Savings Plan row below at its mid-point rate — do not add that saving
+         on top of it. The Database Savings Plan is not in it: db.t4g.micro is
+         Generation 4 and Database Savings Plans cover Generation 7 and newer
+         instances only. Spot and S3-IA are post-migration opportunities,
          not tier inputs.</p>
       <table>
         <caption>How the estimated monthly run rate changes if this stack takes a commitment. Figures are incremental to Balanced on-demand.</caption>
@@ -394,15 +396,15 @@
           </tr>
           <tr>
             <td>Database Savings Plan (1-year, no upfront)</td>
-            <td>Est. $109</td>
-            <td>−$3</td>
-            <td>Mutually exclusive with RDS Reserved Instances on the same workload.</td>
+            <td>Est. $112</td>
+            <td>—</td>
+            <td>Not available on the designed db.t4g.micro (Generation 4): Database Savings Plans cover Generation 7 and newer instances only. A Generation 7+ class would qualify at ~20% and is mutually exclusive with RDS Reserved Instances on the same workload.</td>
           </tr>
           <tr>
-            <td>Optimized (both commitments)</td>
-            <td>Est. $102</td>
-            <td>−$10</td>
-            <td>Already includes the two rows above at their mid-point rates. Use as the committed floor, not a sum of extra discounts.</td>
+            <td>Optimized (Compute Savings Plan only)</td>
+            <td>Est. $105</td>
+            <td>−$7</td>
+            <td>Already includes the Compute Savings Plan row above at its mid-point rate. Use as the committed floor, not a sum of extra discounts.</td>
           </tr>
         </tbody>
       </table>
@@ -743,14 +745,14 @@
 
     <section id="appendix-optimization">
       <h2>Savings Plans and Reserved Instances</h2>
-      <p>Incremental to Balanced on-demand (Est. $112/mo). Optimized (Est. $102/mo) already
-         includes the Savings Plan rows; Spot and S3-IA rows are post-migration opportunities, not tier inputs.</p>
+      <p>Incremental to Balanced on-demand (Est. $112/mo). Optimized (Est. $105/mo) already
+         includes the Compute Savings Plan row; Spot and S3-IA rows are post-migration opportunities, not tier inputs.</p>
       <table>
         <caption>Estimated cost savings available post-migration, infra and AI combined.</caption>
         <thead><tr><th scope="col">Optimization</th><th scope="col">Target</th><th scope="col">Est. savings</th><th scope="col">Commitment</th><th scope="col">Effort</th></tr></thead>
         <tbody>
           <tr><td>Compute Savings Plans</td><td>Fargate</td><td>20–40%</td><td>1-year no-upfront</td><td>Low (post-migration)</td></tr>
-          <tr><td>Database Savings Plans</td><td>RDS</td><td>~20%</td><td>1-year no-upfront</td><td>Low</td></tr>
+          <tr><td>Database Savings Plans</td><td>RDS, only on a Generation 7+ class (db.t4g.micro is Generation 4, not covered)</td><td>~20% on a qualifying class; none on db.t4g.micro</td><td>1-year no-upfront</td><td>Low</td></tr>
           <tr><td>S3 Infrequent Access</td><td>S3 build artifacts</td><td>$1/mo (38%)</td><td>None</td><td>Low</td></tr>
           <tr><td>Fargate Spot</td><td>Fargate dev/staging</td><td>$8/mo (70%)</td><td>None</td><td>Medium</td></tr>
           <tr><td>NAT Gateway → VPC endpoints</td><td>NAT Gateway</td><td>$18/mo (~55%)</td><td>None</td><td>Medium</td></tr>

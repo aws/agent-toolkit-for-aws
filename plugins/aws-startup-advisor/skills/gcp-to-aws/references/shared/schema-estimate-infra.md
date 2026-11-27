@@ -17,7 +17,7 @@ The fields **`aws_monthly_premium`**, **`aws_monthly_balanced`**, **`aws_monthly
   ],
   "optimized": [
     "Assumes a 1-year no-upfront Compute Savings Plan on Fargate at 30%, the mid-point of 20–40% (-$7/mo) — a commitment decision after a 30–90 day usage baseline",
-    "Assumes a 1-year no-upfront Database Savings Plan on RDS at ~20% (-$3/mo) — mutually exclusive with RDS Reserved Instances on the same instance"
+    "No Database Savings Plan on RDS: db.t4g.micro is Generation 4 and Database Savings Plans cover Generation 7 and newer instances only, so the RDS line is unchanged (a Generation 7+ class would qualify at ~20%)"
   ]
 }
 ```
