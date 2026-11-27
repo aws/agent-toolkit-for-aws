@@ -6,6 +6,41 @@ and how to keep that file correct across the whole upgrade lifecycle: create it
 (Phase 0). These sections are what survives context compaction and what Phase 0
 resumes from.
 
+## Plan contents
+
+Write `.mwaa-upgrade-plan-<env-name>.md` to the workspace root (where
+`<env-name>` is the source environment name discovered in Phase 1). Include:
+
+- Environment details (source name, source version, region) plus the target
+  version and the full upgrade-path table
+- Chosen approach — its slug (`new-environment` / `in-place-rehearsed` /
+  `in-place-direct`)
+- Pre-flight results (S3 versioning, constraints, upgrade-path status)
+- Docker validation status: one row per image the plan calls for (version,
+  DAG set, status `PENDING`/`DONE`/`SKIP`; a check that didn't finish is
+  `SKIP` with the reason `check did not finish: <error>`)
+- Secrets backend detection results
+- External-resource collision warning (Phase 3 step 5a) and the source's
+  original `scheduler.catchup_by_default` value (New-environment and
+  Rehearsed upgrades)
+- Requirements changes needed
+- **Cross-major only** — metadata-DB-access findings (Phase 3 step 2): each DAG
+  using metadata-DB access, categorized as ORM-access (redesign to REST API or
+  drop) or CLI-access (redesign to MWAA CLI endpoint, or REST API, or drop);
+  plus a PENDING post-fix re-scan checkpoint (Phase 5 step 2d). Omit when no
+  version jump is `crosses_major`.
+- **Python-line change only** — `python-stdlib` findings (Phase 3 step 1a): per
+  `python_change` jump, the Python lines checked, the derived removed-name
+  list (or `INCOMPLETE` with the reason), and each hit
+  (`file | line | usage`, `PENDING`). Omit when no version jump is
+  `python_change`.
+- Approach-specific fields: New-environment upgrade — new environment name,
+  new-environment S3 paths; Rehearsed in-place upgrade — test-copy env name,
+  test-copy S3 paths; Direct in-place upgrade — none (in-place, no new/test
+  environment)
+- Batch table with per-DAG status
+- The `## Upgrade Path` table defined in SKILL.md Phase 4
+
 ## Write out every checkpoint and record-section into the plan (mandatory)
 
 The plan is the durable, resumable source of truth: Phase 0 resumes from it,
@@ -74,10 +109,41 @@ trackable item. At minimum the generated plan MUST contain:
   in-place upgrade, add `live_upgrade_allowed` — `yes` / `no` (`yes` only
   after the test-run checkpoint is `PASSED`) so a resuming agent cannot start
   the irreversible live upgrade on parse-only evidence.
+- For the New-environment upgrade and the Rehearsed in-place upgrade, a
+  Checklist item directly after the test-run checkpoint:
+  `Re-pause all DAGs on <new-env|test-copy> after the test-run checkpoint
+  [PENDING]`. For the Rehearsed in-place upgrade it must be `DONE` before
+  Step 2 (the live upgrade).
+- For the New-environment upgrade and the Rehearsed in-place upgrade, two
+  discrete Checklist items: `Pre-flight: extend execution role / trust policy
+  / KMS for <new-env|test-copy> [PENDING, NEEDS CONFIRMATION]` (before
+  create-environment) and `Clean up environment-scoped entries for
+  <retired-env> [PENDING, NEEDS CONFIRMATION]` (after that environment's
+  delete-environment completes: your old environment after 8.3 for the
+  New-environment upgrade, the test copy after Step 4 for the Rehearsed
+  in-place upgrade). Record two labelled lists (policy name, Sid, exact
+  resource/condition string, or KMS grant ID): `Found (scoped to <current-env>)` and
+  `Added (scoped to <new-env|test-copy>)`. Tag the entries in the list cleanup removes
+  (`Found` for the New-environment upgrade, `Added` for the Rehearsed in-place
+  upgrade) `exclusive` or `shared (<env or reason>)`, against the environment
+  being retired (discovery-preflight.md Step 2.3). Add a line
+  naming which list the cleanup item removes for the chosen approach: the
+  New-environment upgrade removes the `Found` list and keeps `Added` (the
+  new environment is now live); the Rehearsed in-place upgrade removes the
+  `Added` list and keeps `Found`. The cleanup item removes only `exclusive`
+  entries from that list, after re-running the shared check.
+- Under environment details, `Original pause state`: each DAG's `is_paused`
+  value at discovery. Going live (upgrade-engine.md step 1a, Phase 8.1(c))
+  unpauses only the DAGs recorded as unpaused.
+- Under environment details, the source's original
+  `scheduler.catchup_by_default` value (or "unset"); the new environment and
+  the test copy are created with it set to `False`.
 - Phase 8 broken into discrete tracked items: `8.1: Batched switchover
-  [PENDING]` (New-environment upgrade only), `8.2: Stability period
-  [PENDING]`, `8.3: Decommission [PENDING, NEEDS CONFIRMATION]`. Do not track
-  Phase 8 as a single line.
+  [PENDING]` (New-environment upgrade only), `8.1a: Ask whether to restore
+  the source's scheduler.catchup_by_default on <new-env> [PENDING, NEEDS
+  CONFIRMATION]` (New-environment upgrade only; record the answer),
+  `8.2: Stability period [PENDING]`, `8.3: Decommission [PENDING, NEEDS
+  CONFIRMATION]`. Do not track Phase 8 as a single line.
 
 The batch table's status vocabulary MUST distinguish parse-clean from
 test-run-verified. Use `LOADED` (uploaded, parses, zero import errors) as
@@ -100,7 +166,10 @@ MUST decompose these steps into individually-tracked sub-items:
 - Step 2 (Migrate Operational Metadata): track per-category: `Variables:
   [PENDING/SKIP/DONE]`, `Connections: [PENDING/SKIP/DONE]`, `Pools:
   [PENDING/SKIP/DONE]`. Pre-populate SKIP for categories handled by a secrets
-  backend (detected in Phase 3 Step 4).
+  backend (detected in Phase 3 Step 4). List the password-bearing connections
+  and every item skipped because it contained `***` (key or `conn_id` only,
+  never the value) under one out-of-band restore list; mark Variables or
+  Connections `DONE` only when that list is complete.
 - Step 4 (Deploy Fixed DAGs): for multi-jump paths, split into `4A: Deploy
   original DAGs (starting-version validation)` and `4B: Deploy fixed DAGs
   (post-target)`. The batch table must record which deployment phase each DAG
@@ -125,11 +194,10 @@ existing Phase 4 mandate (Steps 1 and 4 are already individually tracked).
 
 When any version jump crosses into a new major version, Phase 5 (Fix Code)
 must be written into the plan as individually-tracked sub-items in the
-Checklist. The re-scan step is the critical one — `--unsafe-fixes` can
-introduce runtime-breaking patterns (notably `_TaskDecorator.output`) that
-are invisible to Ruff but cause `AttributeError` at parse time on the target
-version. If context compacts before the re-scan runs, the plan must still
-instruct the agent to perform it.
+Checklist. The re-scan step is the critical one: it catches Airflow CLI
+usage in BashOperator (checklist section 16), which Ruff cannot see, across
+the files as fixed. If context compacts before the re-scan runs, the plan must
+still instruct the agent to perform it.
 
 Write Phase 5 into the plan as:
 
@@ -138,20 +206,44 @@ Write Phase 5 into the plan as:
   - 5.0: Redesign metadata-DB-access DAGs (if any flagged in Phase 3):
     ORM-access DAGs to REST API; CLI-access DAGs to MWAA CLI endpoint
     (run `cheat-sheet` on target env to confirm command availability) [PENDING]
-  - 5.1-N: Fix batch 1..N DAGs (Ruff --fix --unsafe-fixes + manual) [PENDING per batch]
-  - 5.FINAL: Re-scan ALL fixed files for .output on @task refs + airflow db CLI
-    (sections 15/16). MUST run AFTER all --unsafe-fixes and manual edits are
-    complete. Grep patterns: `\.output` adjacent to @task-decorated function
-    names, `airflow db` or `airflow CLI` in BashOperator strings. Any hits
+  - 5.1-N: Fix batch 1..N DAGs (Ruff --fix --unsafe-fixes --unfixable AIR201 + manual) [PENDING per batch]
+  - 5.FINAL: Re-scan ALL fixed files for airflow db CLI (section 16). MUST run
+    AFTER all Ruff fixes and manual edits are complete. Grep patterns:
+    `airflow db` or `airflow CLI` in BashOperator strings. Any hits
     require a fix-and-re-verify cycle before proceeding to Phase 6/7. [PENDING]
 ```
 
 The `5.FINAL` step is a required checkpoint: do not proceed to deployment
 (Phase 7/8) until the re-scan is recorded as DONE with zero hits. Its
-ordering constraint ("AFTER all --unsafe-fixes") must appear in the plan
-text — without it, a resuming agent may run the re-scan before applying
-fixes, get a clean result, and then introduce the very patterns the re-scan
-was meant to catch.
+ordering constraint ("AFTER all Ruff fixes and manual edits") must appear in
+the plan text — without it, a resuming agent may run the re-scan before
+applying fixes, get a clean result, and then introduce the very patterns the
+re-scan was meant to catch.
+
+## Phase 5 decomposition (Python-line change only)
+
+When any version jump is `python_change` and Phase 3 step 1a recorded
+`python-stdlib` hits, also write these tracked items into the Checklist
+(independent of the cross-major items above; a within-2.x path such as
+2.10.x → 2.11.x gets only these):
+
+```
+- [ ] Phase 5: Python-line fixes (<python_from> → <python_to>) [PENDING]
+  - 5-PY.1: Replace removed standard-library usages per python-stdlib-check.md
+    (imp -> importlib.util, distutils.version -> packaging.version, local
+    strtobool, SafeConfigParser -> ConfigParser, readfp -> read_file,
+    asyncore/asynchat -> asyncio, ...) [PENDING]
+  - 5-PY.2: Re-run the standard-library check on the FIXED files; every hit
+    DONE [PENDING]
+  - 5-PY.3: Deploy the fixed files BEFORE the python_change jump (to your
+    current environment for an in-place jump [NEEDS CONFIRMATION], or into
+    the new environment / test copy DAG path at creation) [PENDING]
+```
+
+These fixes also run on the source Python, so unlike AF3-only fixes they do
+not wait for the jump: deploy them before it. If the check was recorded
+`INCOMPLETE`, write a `5-PY.0: User acknowledged the INCOMPLETE stdlib check
+[PENDING]` item instead; the pre-jump gate in upgrade-engine.md reads it.
 
 ## Plan format contract
 
@@ -212,7 +304,7 @@ Step 1-checkpoint, or the Direct in-place upgrade's Step 4.
 | 3 | Every DAG the batch table shows deployed has a row in the `## Test-run results` table. | New-environment upgrade, Rehearsed in-place upgrade, Direct in-place upgrade |
 | 4 | `current_jump` / `jump_status` match the Upgrade Path table's per-jump Status (for the Rehearsed in-place upgrade, whichever of the test-copy/current-environment columns applies to where you are). | New-environment upgrade, Rehearsed in-place upgrade, Direct in-place upgrade |
 | 5 | No switchover batch is `Advanced` unless its `Monitored one full cycle?` cell is `yes`. | New-environment upgrade |
-| 6 | `live_upgrade_allowed` is present and is `yes` only when `test_run_checkpoint` is `PASSED` (otherwise `no`). | Rehearsed in-place upgrade |
+| 6 | `live_upgrade_allowed` is present and is `yes` only when `test_run_checkpoint` is `PASSED` and the re-pause item for the test copy is `DONE` (otherwise `no`). | Rehearsed in-place upgrade |
 
 ## Plan reconciliation on resume
 
@@ -230,7 +322,8 @@ resuming work, run this reconciliation:
      (paginate: loop `offset` by 100 until `total_entries`, per
      discovery-preflight.md Step 1.4) - are the DAGs deployed, and is
      `has_import_errors` false?
-   - `aws mwaa invoke-rest-api --name <env> --method GET --path /health` -
+   - `aws mwaa invoke-rest-api --name <env> --method GET --path /health`
+     (Airflow 2.x) or `--path /monitor/health` (Airflow 3.x) -
      metadatabase/scheduler healthy, heartbeat advancing?
 4. Repair the plan to match observed reality (correct the drifted
    statuses/checkpoint), and record what was repaired in the `Last updated`

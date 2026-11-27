@@ -10,7 +10,7 @@ path; version numbers are never hardcoded.
 
 - **Environment name** — the environment this engine mutates.
 - **Upgrade path** — ordered version jumps from the plan, each with `from`,
-  `to`, `python_change`, `crosses_major`.
+  `to`, `python_from`, `python_to`, `python_change`, `crosses_major`.
 - **Starting condition**:
   - **newly created** (validate at the starting version, then upgrade
     through the remaining version jumps) — the environment was created by
@@ -26,11 +26,37 @@ jump: downgrade from 3.x to 2.11.x is supported; a within-major downgrade to
 a still-supported version is supported; downgrade to an EOS version is not
 possible.
 
-## Validate / scan-logs / fix loop (run after an env reaches a version V)
+**Python-line gate (before presenting any `python_change` jump):** if
+`jump_j` is `python_change`, do not present
+`update-environment --airflow-version <jump_j.to>` until the plan shows no
+`python-stdlib` hit still `PENDING` (5-PY.1 / 5-PY.2 `DONE` and the fixes
+deployed, 5-PY.3) and the standard-library check is not `INCOMPLETE` unless
+the user acknowledged it (5-PY.0 `DONE`). If the gate fails, stop and report
+which items are open. Docker validation is not part of this gate. For a
+newly created environment, version jump 1 has no `update-environment` (the
+environment is created at `jump_1.to`). If jump 1 is `python_change`, apply
+the gate before deploying DAGs to it, checking 5-PY.1, 5-PY.2 and 5-PY.0 only.
+That deploy is what completes 5-PY.3.
+
+## Validate / fix loop (run after an env reaches a version V)
 
 1. Deploy the current DAG set to the environment; wait for parsing.
-1a. Unpause all deployed DAGs. Newly synced DAGs register as paused by default
-   on MWAA. For each DAG in the deployed set:
+1a. Unpause DAGs ONLY on an environment that is serving production: your
+   current environment in the Direct in-place upgrade, and your current
+   environment after its in-place jump in the Rehearsed in-place upgrade
+   (starting condition: upgraded in place). On the new environment
+   (New-environment upgrade) and the test copy (Rehearsed in-place upgrade),
+   skip this step and leave DAGs paused after deploy: they share connections
+   and variables with your current environment, so unpaused schedules there
+   run every DAG twice. If `/dags` shows a DAG there with `is_paused: false`
+   (it was created unpaused through `core.dags_are_paused_at_creation=False`
+   or `is_paused_upon_creation=False`), pause it with the same PATCH and
+   `{"is_paused":true}`. The testing skill unpauses each DAG only for its test
+   run, and Phase 8.1(c) is the first real unpause on the new environment.
+   On a production environment, newly synced DAGs register as paused by
+   default on MWAA, so unpause each DAG in the deployed set that was unpaused
+   before the upgrade (the `Original pause state` recorded at discovery).
+   Leave DAGs that were paused then paused, and list them for the user:
 
    ```
    aws mwaa invoke-rest-api --name <env> --method PATCH \
@@ -42,26 +68,15 @@ possible.
    ([docs](https://docs.aws.amazon.com/mwaa/latest/userguide/access-mwaa-apache-airflow-rest-api.html));
    it is also throttled per environment, so the sleep spaces calls out — prefer
    exponential backoff on a throttling error over assuming a fixed rate.)
-
-   **64-char `--path` caveat (applies to every per-DAG pause/unpause in this
-   skill — step 1a here, the AF2 pause loops below, and the batched switchover in
-   SKILL.md):** the per-DAG path `/dags/<dag_id>` can exceed `invoke-rest-api`'s
-   64-char `--path` limit for long `dag_id`s, and the PATCH is then rejected.
-   For an over-length `dag_id`, pause/unpause via the Airflow CLI
-   (`aws mwaa create-cli-token` -> `airflow dags pause|unpause <dag_id>`), which
-   has no path-length limit; on AF3 the bulk collection form
-   `--path /dags --query-parameters '{"dag_id_pattern":"<dag_id>"}'` also avoids
-   the per-DAG path.
 2. Check `has_import_errors` is false for all DAGs
    (`invoke-rest-api --path /dags`).
-3. **Scan logs** when the NEXT version jump crosses into a new major version
-   (this version is the required stepping-stone before the crossing): search
-   CloudWatch scheduler and task logs for `RemovedInAirflow3Warning` /
-   `RemovedInAirflow{N}Warning` and `DeprecationWarning`. Combine with the
-   Ruff AIR scan (`ruff check --preview --select AIR .`) and fix using
+3. **Pre-cross fixes** when the NEXT version jump crosses into a new major
+   version (this version is the required stepping-stone before the crossing):
+   run the Ruff AIR scan (`ruff check --preview --select AIR .`) and the manual
+   checklist greps, and fix using
    [airflow2-to-3-quick-reference.md](airflow2-to-3-quick-reference.md) and
-   [airflow2-to-3-checklist.md](airflow2-to-3-checklist.md). Re-deploy until no
-   `RemovedInAirflow{N}Warning` remains and imports are clean.
+   [airflow2-to-3-checklist.md](airflow2-to-3-checklist.md). Re-deploy until
+   Ruff and the checklist are clean and imports are clean.
 4. **Python-line re-validation:** if the just-reached version jump was
    flagged `python_change` (it crossed a Python-line boundary, e.g. 3.11 to
    3.12), run a dedicated requirements re-validation against the new
@@ -69,9 +84,17 @@ possible.
    before continuing. This is the generalized reason the intermediate step
    exists (to move Python safely and isolate compiled-dependency risk); it
    applies whether or not the version jump also crosses a major version.
-5. **Same-major version jump with no crossing ahead:** scan logs for generic
-   `DeprecationWarning` best-effort (non-blocking) to surface APIs removed in
-   the target.
+   A `ModuleNotFoundError` (or `ImportError` / `AttributeError`) for a
+   standard-library module or name after this jump means the Phase 3 step 1a
+   check missed it. Fix it the same way (Phase 5 step 3 replacements), redeploy
+   via step 1, and record it under the plan's `python-stdlib` findings with
+   the note "found after the jump".
+
+Do not search CloudWatch logs for `DeprecationWarning` /
+`RemovedInAirflow{N}Warning` as a check: warnings raised by DAG code do not
+reach those logs, so hits there are platform noise and no hits is not
+evidence of clean code. Deprecation warnings are advisory; removed APIs show
+up as import errors (step 2).
 
 ## Steps
 
@@ -79,7 +102,7 @@ possible.
 
 - **Validate at the starting version (version jump 1's `to`):** set
   `current_jump: 1`, `jump_status: validating`, then run the validate /
-  scan-logs / fix loop (so a resume during this window is unambiguous). If
+  fix loop (so a resume during this window is unambiguous). If
   there is no version jump 2, version jump 1's `to` is the target — validate
   and go to Finish.
 - **For each remaining version jump j = 2..N:** set requirements to
@@ -120,12 +143,13 @@ possible.
   done
   ```
 
-  Set plan `jump_status: upgrading`; present
+  Set plan `jump_status: upgrading`; apply the Python-line gate above if
+  `jump_j` is `python_change`; present
   `update-environment --airflow-version <jump_j.to>` for confirmation; execute;
   poll to AVAILABLE (report every 5 minutes; stop on UPDATE_FAILED/UNAVAILABLE);
-  set `jump_status: validating`; run the validate / scan-logs / fix loop
-  (which unpauses DAGs in step 1a after validation confirms the new version
-  is healthy); mark the version jump complete and save progress (version
+  set `jump_status: validating`; run the validate / fix loop
+  (step 1a leaves DAGs paused here, because a newly created environment is
+  the new environment or the test copy); mark the version jump complete and save progress (version
   jump Status, `## Where we are`, `Last updated`) BEFORE presenting the next
   version jump; advance `current_jump`.
 
@@ -169,11 +193,12 @@ possible.
   done
   ```
 
-  Set `jump_status: upgrading`; present
+  Set `jump_status: upgrading`; apply the Python-line gate above if `jump_j`
+  is `python_change`; present
   `update-environment --airflow-version <jump_j.to>` for confirmation; execute;
   poll to AVAILABLE; set `jump_status: validating`; run the validate /
-  scan-logs / fix loop (which unpauses DAGs in step 1a after validation;
-  scan logs when version jump j+1 is `crosses_major`); mark the version jump
+  fix loop (which unpauses DAGs in step 1a after validation; run the
+  pre-cross fixes when version jump j+1 is `crosses_major`); mark the version jump
   complete and save progress (version jump Status, `## Where we are`, `Last
   updated`) BEFORE presenting the next version jump; advance `current_jump`.
 
@@ -197,7 +222,8 @@ aws mwaa get-environment --name <env> --query "Environment.Status"
 - Verify health:
 
   ```
-  aws mwaa invoke-rest-api --name <env> --method GET --path /health
+  aws mwaa invoke-rest-api --name <env> --method GET --path /monitor/health  # Airflow 3.x
+  aws mwaa invoke-rest-api --name <env> --method GET --path /health          # Airflow 2.x
   ```
 
   Expected: metadatabase=healthy, scheduler=healthy.
