@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0",
+  "_what_this_is": "The commitment-discount rates the Optimized cost TIER applies, shared by every migration skill so the tier means the same thing in every report. Optimized = Balanced with these rates applied ONLY to the RI/SP-eligible subtotal (eligibility per ri-sp-eligibility.md in this same shared/estimate directory); the ineligible subtotal is unchanged. These are TIER rates, not the post-migration opportunity ranges: a skill's optimization_opportunities[] rows quote the wider all-term ranges (e.g. 20-66%) from its own estimate-defaults.json.",
+  "midpoint_rule": "Each rate below is the arithmetic mid-point of the typical 1-year, no-upfront range for that commitment product (compute_savings_plan), or the stated maximum where AWS publishes only an 'up to' figure for the product (database_savings_plan_provisioned: AWS states up to 20% on provisioned instances). Where AWS publishes a LOWER maximum for one service, that service uses its cap from service_caps instead: apply min(product rate, service cap). Apply the rate to the eligible line's Balanced on-demand amount, round each line's discount to whole dollars, sum, and record the rate(s) and both subtotals in the estimate artifact (projected_costs._optimized_basis).",
+  "eligibility_source": "ri-sp-eligibility.md (this directory; vendored into each skill at references/vendored/estimate/ri-sp-eligibility.md). A service with no eligible row there is ineligible and its line is unchanged. A provisioned database or cache line is also ineligible for the Database Savings Plan unless its recorded instance class is Generation 7 or newer (see generation_gate).",
+  "rates": {
+    "compute_savings_plan": {
+      "rate": 0.30,
+      "range": "20-40%",
+      "term": "1-year, no upfront",
+      "applies_to": ["EC2 (including the EC2 component of Elastic Beanstalk and EKS nodes)", "ECS on Fargate", "AWS Lambda (capped, see service_caps)"],
+      "source": "AWS Compute Savings Plans: up to 66% at the maximum term; the typical 1-year no-upfront saving is 20-40% (the figure the gcp-to-aws Part 3 commitment table and the azure-to-aws Optimized basis already use)."
+    },
+    "database_savings_plan_provisioned": {
+      "rate": 0.20,
+      "range": "up to 20%",
+      "term": "1-year, no upfront",
+      "applies_to": ["RDS (provisioned, Generation 7+ instance classes only)", "Aurora (provisioned, Generation 7+ instance classes only)", "ElastiCache for Valkey (node-based, Generation 7+ node types only)", "DocumentDB (Generation 7+)", "Neptune (Generation 7+)", "Keyspaces (capped, see service_caps)", "DynamoDB (capped, see service_caps)"],
+      "generation_gate": "see generation_gate below: a provisioned instance or node on a pre-Generation-7 class is INELIGIBLE and its line is unchanged",
+      "source": "AWS Database Savings Plans: up to 20% on provisioned engines (up to 35% on serverless, which is not a tier input because the tier prices the designed capacity)."
+    }
+  },
+  "generation_gate": {
+    "minimum_generation": 7,
+    "applies_to": "Database Savings Plan on provisioned instances and nodes (RDS, Aurora, ElastiCache, DocumentDB, Neptune and other instance-based database services)",
+    "not_gated": "Serverless offerings and DynamoDB / Keyspaces throughput capacity are not generation-gated (they use service_caps).",
+    "elasticache_engine": "Coverage for ElastiCache is limited to Valkey; Redis OSS and Memcached nodes are ineligible whatever their generation.",
+    "how_to_read_generation": "The integer in the instance family token: db.t4g -> 4, db.m6g -> 6, cache.t3 -> 3, db.t3 -> 3, db.r7g -> 7, db.m8g -> 8. A line with no recorded instance class is INELIGIBLE (never invent a class) and _optimized_basis says why.",
+    "source": "AWS Savings Plans FAQ (https://aws.amazon.com/savingsplans/faq/), read 2026-11-27: \"Database Savings Plans offer coverage for Generation 7 and newer instances across all eligible services. Coverage is limited to Valkey instances for ElastiCache.\""
+  },
+  "service_caps": {
+    "_rule": "AWS publishes a lower maximum for these services than the product rate above, so the tier applies the cap, never the product rate: rate_applied = min(product rate, cap). A service with no entry here uses its product rate.",
+    "aws_lambda": {
+      "cap": 0.12,
+      "product": "compute_savings_plan",
+      "applies_to_charge": "duration (GB-seconds, x86 and arm64) only; Lambda requests get no Savings Plan discount",
+      "source": "AWS Compute Savings Plans price list, us-east-1, publication 2026-11-24 (https://pricing.us-east-1.amazonaws.com/savingsPlan/v1.0/aws/AWSComputeSavingsPlan/20261124130343/us-east-1/index.json): 1-year No Upfront Lambda duration is $0.0000147 per GB-second against $0.0000166667 on-demand (11.8%; arm64 $0.0000117 against $0.0000133334, 12.2%), so the tier caps at 0.12. The 17% figure is the All Upfront rate and is not used."
+    },
+    "dynamodb_and_keyspaces_on_demand_throughput": {
+      "cap": 0.18,
+      "product": "database_savings_plan_provisioned",
+      "source": "AWS News Blog, 'Introducing Database Savings Plans for AWS Databases' (https://aws.amazon.com/blogs/aws/introducing-database-savings-plans-for-aws-databases/), read 2026-11-26: DynamoDB and Keyspaces on-demand throughput up to 18%."
+    },
+    "dynamodb_and_keyspaces_provisioned_capacity": {
+      "cap": 0.12,
+      "product": "database_savings_plan_provisioned",
+      "source": "AWS News Blog, 'Introducing Database Savings Plans for AWS Databases' (https://aws.amazon.com/blogs/aws/introducing-database-savings-plans-for-aws-databases/), read 2026-11-26: DynamoDB and Keyspaces provisioned capacity up to 12%."
+    }
+  },
+  "not_tier_inputs": "Spot pricing, S3 Intelligent-Tiering / Infrequent Access, Reserved Instances with upfront payment, ElastiCache Reserved Nodes, Graviton re-platforming, and every other consumption-model, storage-class or architecture assumption. Those are optimization_opportunities[] rows with their own savings ranges.",
+  "when_tiers_coincide": "If no priced line is eligible, Optimized equals Balanced and the report must say so where the reader sees the equal figures (report-decision-core.md, How to read the tiers)."
+}

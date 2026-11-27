@@ -7,7 +7,7 @@ _contributes:
 
 # Generate infrastructure artifacts
 
-Emit one balanced-baseline Terraform configuration for the exact recommendations in `aws-design.json`. This is not three stacks: capacity-preserving and right-sized values are pricing scenarios, while Terraform follows the selected balanced sizing recorded by Design.
+Emit one Terraform configuration for the exact recommendations in `aws-design.json`. It implements Balanced, the right-sized sizes recorded in `aws_config`. Premium and Optimized are pricing scenarios of that same design, and like-for-like is a comparison figure; none of them is a second stack.
 
 ## Required core
 

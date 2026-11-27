@@ -245,8 +245,10 @@ NOT collapse `security_baseline` into "other". Surface GuardDuty explicitly.
 decision core's tier subtitles define them), Monthly Cost, vs ⟨source_cloud⟩
 Monthly, Annual Difference. Repeat the **How to read cost tiers** guidance as a
 `<details class="reading-guide">` after the table, or include a one-line
-pointer: _See executive summary — three tiers are scenario $ only; generated
-Terraform matches **Balanced** baseline._
+pointer: _See executive summary — the three tiers are pricing scenarios for one
+design: Balanced is right-sized, Premium is Balanced plus the Multi-AZ / HA
+uplift, Optimized is Balanced minus a commitment discount on RI/SP-eligible
+lines; generated Terraform matches **Balanced**._
 
 **Floors and provenance.** State the baseline provenance (user-stated bracket
 vs invoice vs unavailable) and the accuracy band. When the estimate's
@@ -269,7 +271,12 @@ buried in Appendix B does **not** pass the report validator.
 
 **Optimization opportunities table** with columns: Optimization, Target,
 Monthly Savings (or Est. savings), Commitment, Effort. Eligibility follows the
-skill's ⟨ri_sp_eligibility_ref⟩.
+skill's ⟨ri_sp_eligibility_ref⟩. Every row is incremental to **Balanced**; the
+commitment rows (Savings Plans, Reserved Instances) are what **Optimized**
+already includes at their mid-point rate, so never add them on top of
+Optimized. Spot, S3 Intelligent-Tiering / Infrequent Access and other
+consumption-model or storage-class rows are opportunities only — no tier
+assumes them.
 
 When an AI estimate exists beside the infra estimate, merge the two sources'
 rows. **The two sources use different field names for the same rendered

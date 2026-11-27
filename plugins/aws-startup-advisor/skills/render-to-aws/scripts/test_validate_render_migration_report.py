@@ -24,7 +24,8 @@ GENERATED = EXPECTED / "generated"
 
 RR_WEB_ROW = '<tr data-source-resource-id="rr-web" data-aws-service="ECS on Fargate">'
 RR_DISK_ROW = '<tr data-source-resource-id="rr-disk" data-aws-service="Amazon EFS"><td>rr-disk</td><td>Persistent disk</td><td>Amazon EFS</td>'
-DELTA_CELL = '<td class="savings" data-cost-key="delta">-$62</td>'
+DELTA_CELL = '<td class="savings" data-cost-key="delta">+$45</td>'
+LIKE_FOR_LIKE_CELL = '<td data-cost-key="like_for_like_monthly">$358</td>'
 CURRENT_CELL = '<td data-cost-key="current_monthly">$123</td>'
 
 
@@ -76,8 +77,12 @@ def test_complete_report_passes_with_exact_status(tmp_path: Path) -> None:
         (lambda text: _replace_once(text, RR_WEB_ROW, RR_WEB_ROW.replace("ECS on Fargate", "Amazon App Runner")), "TARGET_MAPPING_MISMATCH"),
         (lambda text: _replace_once(text, RR_DISK_ROW, RR_DISK_ROW.replace("<td>Amazon EFS</td>", "<td>Elastic file storage</td>")), "TARGET_VISIBLE_TEXT_MISMATCH"),
         (lambda text: _replace_once(text, RR_DISK_ROW, RR_DISK_ROW.replace(' data-aws-service="Amazon EFS"', "")), "TARGET_ROW_ATTRIBUTES_INCOMPLETE"),
-        (lambda text: _replace_once(text, DELTA_CELL, DELTA_CELL.replace("-$62", "-$99")), "COST_DELTA_MISMATCH"),
+        (lambda text: _replace_once(text, DELTA_CELL, DELTA_CELL.replace("+$45", "+$99")), "COST_DELTA_MISMATCH"),
         (lambda text: _replace_once(text, DELTA_CELL, DELTA_CELL.replace(' data-cost-key="delta"', "")), "COST_DELTA_MISSING"),
+        (lambda text: _replace_once(text, LIKE_FOR_LIKE_CELL, LIKE_FOR_LIKE_CELL.replace("$358", "$999")), "COST_LIKE_FOR_LIKE_MONTHLY_MISMATCH"),
+        (lambda text: _replace_once(text, LIKE_FOR_LIKE_CELL, LIKE_FOR_LIKE_CELL.replace("$358", "$359")), "COST_LIKE_FOR_LIKE_MONTHLY_MISMATCH"),
+        (lambda text: _replace_once(text, LIKE_FOR_LIKE_CELL, LIKE_FOR_LIKE_CELL.replace(' data-cost-key="like_for_like_monthly"', "")), "COST_LIKE_FOR_LIKE_MONTHLY_MISSING"),
+        (lambda text: _replace_once(text, LIKE_FOR_LIKE_CELL, LIKE_FOR_LIKE_CELL + LIKE_FOR_LIKE_CELL), "COST_LIKE_FOR_LIKE_MONTHLY_MISSING"),
         (lambda text: _replace_once(text, 'data-accounted-count="15"', 'data-accounted-count="14"'), "REPORT_ACCOUNTED_COUNT_MISMATCH"),
         (lambda text: text.replace("build-once", "single-build"), "CONTENT_EXEC_ARCHITECTURE_BUILD-ONCE"),
         (lambda text: text.replace("Database Migration Service", "replication tooling"), "CONTENT_MIGRATION_DATA_DATABASE_MIGRATION_SERVICE"),
@@ -263,3 +268,33 @@ def test_validator_is_skill_local() -> None:
     assert SCRIPT.is_file()
     assert SCRIPT.parent.name == "scripts"
     assert SCRIPT.parent.parent.name == "render-to-aws"
+def _set_like_for_like(migration: Path, value: object) -> None:
+    path = migration / "estimation-infra.json"
+    estimate = json.loads(path.read_text(encoding="utf-8"))
+    estimate["scenarios"]["like_for_like"]["known_cost_monthly_usd"] = value
+    path.write_text(json.dumps(estimate), encoding="utf-8")
+def test_like_for_like_anchor_must_equal_the_estimate_value(tmp_path: Path) -> None:
+    migration, report = prepared(tmp_path)
+    _set_like_for_like(migration, 999)
+    code, output = run(report, migration)
+    assert code == 1
+    assert "COST_LIKE_FOR_LIKE_MONTHLY_MISMATCH" in output
+def test_like_for_like_anchor_uses_whole_dollar_half_even_rounding(tmp_path: Path) -> None:
+    for value, shown, ok in ((358.5, "$358", True), (359.5, "$360", True), (359.5, "$359", False), (358.4, "$358", True), (358.6, "$358", False)):
+        migration, report = prepared(tmp_path / f"{value}-{shown}")
+        _set_like_for_like(migration, value)
+        report.write_text(report.read_text(encoding="utf-8").replace(LIKE_FOR_LIKE_CELL, LIKE_FOR_LIKE_CELL.replace("$358", shown)), encoding="utf-8")
+        code, output = run(report, migration)
+        assert (code == 0) is ok, (value, shown, output)
+def test_like_for_like_estimate_value_missing_or_invalid_fails(tmp_path: Path) -> None:
+    migration, report = prepared(tmp_path / "invalid")
+    _set_like_for_like(migration, "not-a-number")
+    code, output = run(report, migration)
+    assert code == 1 and "COST_LIKE_FOR_LIKE_MONTHLY_SOURCE_INVALID" in output
+    migration, report = prepared(tmp_path / "missing")
+    path = migration / "estimation-infra.json"
+    estimate = json.loads(path.read_text(encoding="utf-8"))
+    del estimate["scenarios"]["like_for_like"]
+    path.write_text(json.dumps(estimate), encoding="utf-8")
+    code, output = run(report, migration)
+    assert code == 1 and "COST_LIKE_FOR_LIKE_MONTHLY_MISSING" in output

@@ -13,7 +13,7 @@ Load the vendored region, availability, compliance, cost-appetite, and multi-clo
 - Availability target, tolerated downtime, RTO, RPO, and whether source HA must be preserved.
 - Management model: traditional Elastic Beanstalk, Beanstalk-managed cluster mode, direct ECS task/service control, or direct Kubernetes administration. Never offer App Runner.
 - Deployment source and promotion intent: source build, Dockerfile, prebuilt image, or immutable Build Source artifact.
-- Capacity-preserving versus measured right-sizing permission, cost posture, and CPU architecture compatibility.
+- Like-for-like versus measured right-sizing permission (whether Balanced may be smaller than like-for-like), cost posture, and CPU architecture compatibility.
 - Preview-environment intent and production/staging isolation.
 - Whether any source service must call AWS during coexistence or cutover. When it must, record the service/workspace boundary and required AWS actions so Generate can recommend Render-managed OIDC with a least-privilege role instead of long-lived AWS access keys. Do not require this path when no Render-hosted workload needs AWS access.
 

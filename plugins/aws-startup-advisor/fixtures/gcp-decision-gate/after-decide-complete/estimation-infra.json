@@ -6,8 +6,10 @@
   },
   "projected_costs": {
     "aws_monthly_balanced": 155,
-    "aws_monthly_premium": 212,
-    "aws_monthly_optimized": 118
+    "aws_monthly_premium": 167,
+    "aws_monthly_optimized": 140,
+    "_premium_basis": "Declared basis: Fargate 50, RDS db.t4g.micro single-AZ 14, other lines 91 (S3, ALB, NAT Gateway, security baseline, CloudWatch, Secrets Manager/ECR). Premium = Balanced 155 + 12 RDS Multi-AZ uplift (14 -> 26 at the cached Multi-AZ rate) = 167; no other line has an AZ-rate variant.",
+    "_optimized_basis": "Eligible subtotal 50 = Fargate 50 (Compute Savings Plan 30%, mid-point of 20-40% -> 15); ineligible subtotal 105 unchanged (S3, ALB, NAT Gateway, security baseline, CloudWatch, Secrets Manager/ECR, plus RDS 14). RDS db.t4g.micro 14 is ineligible for the Database Savings Plan: it is Generation 4 and Database Savings Plans cover Generation 7 and newer instances only (AWS Savings Plans FAQ, read 2026-11-27); a Generation 7+ class (for example db.m7g or db.r7g) would qualify at 20%. 155 - 15 = 140."
   },
   "current_costs": {
     "source": "inventory_estimate"

@@ -100,14 +100,14 @@
       <p class="verdict-meta">Confidence: Medium — full basis in <a href="#exec-assumptions">What This Assessment Rests On</a>.</p>
       <div class="verdict">
         <strong>Recommendation:</strong> Migrate in phases: every one of the 15 Render resources has a selected AWS target with
-        generated or consumed Terraform, the capacity-preserving AWS estimate is $358 per month with every line priced, and the one
+        generated or consumed Terraform, the Balanced AWS estimate (the right-sized design the Terraform implements) is $314 per month with every line priced, and the one
         condition is confirming EFS provisioned capacity before the persistent-disk cutover.
       </div>
       <div class="metrics">
         <div class="metric metric-hero">
           <span>Est. AWS monthly run rate (Balanced)</span>
-          <strong>$358</strong>
-          <small>Capacity-preserving scenario; 15 of 15 lines priced, no floor</small>
+          <strong>$314</strong>
+          <small>Right-sized design; 15 of 15 lines priced, no floor</small>
         </div>
         <div class="metric metric-hero">
           <span>Migration shape</span>
@@ -140,7 +140,7 @@
         <li>EFS capacity: keep the 5 GB Blueprint size as priced, or supply the measured disk footprint before the storage cutover</li>
         <li>Release strategy for the public web service: the custom domain selects standard ECS, so the defaulted canary becomes a rolling update unless you accept Express Mode constraints</li>
         <li>Source retention: the defaulted 14-day Render overlap sets the rollback window and the double-run cost period</li>
-        <li>Right-sizing: adopt the Optimized scenario after the measured utilization is confirmed in production, or stay on Balanced</li>
+        <li>Right-sizing: the Terraform already implements the measured right-sizing; the like-for-like figure ($358) is shown for comparison, and Optimized adds commitment discounts after a usage baseline</li>
       </ol>
       <h3>Next steps</h3>
       <ol class="compact">
@@ -190,8 +190,8 @@
       <p>The one-paragraph version, ready to forward:</p>
       <div class="share-card">
         <p><strong>Render estate to AWS:</strong> Go, in phases. All 15 Render resources map to managed AWS targets, and the
-        capacity-preserving estimate comes to $358 per month with every line priced; the right-sized scenario lowers that to $296
-        once measured utilization is confirmed. The $123 per month we stated for Render is unverified and is not a like-for-like
+        Balanced estimate comes to $314 per month with every line priced (like-for-like before right-sizing: $358); commitment
+        discounts on eligible lines bring the Optimized figure to $278. The $123 per month we stated for Render is unverified and is not a like-for-like
         comparison, because the AWS design adds Multi-AZ PostgreSQL, a dedicated cache node, and retained logs. The migration is
         phased in dependency order; the PostgreSQL change-data-capture cutover is the binding duration driver. The AI workload is
         deferred and does not block the infrastructure move. Confidence: medium.</p>
@@ -265,10 +265,11 @@
     <!-- COST COMPARISON (canonical tier table) -->
     <section id="exec-costs">
       <h2>Infrastructure Cost Comparison <a class="toplink" href="#toc">&uarr; contents</a></h2>
-      <p>Three pricing scenarios for the same mapped architecture, next to the Render figure you stated. The generated
-         <code>terraform/</code> implements the <strong>Balanced</strong> scenario. The per-line breakdown is in Appendix B.</p>
+      <p>Three pricing scenarios for the same right-sized architecture, plus the like-for-like figure before right-sizing, next to
+         the Render figure you stated. The generated <code>terraform/</code> implements the <strong>Balanced</strong> scenario. The
+         per-line breakdown is in Appendix B.</p>
       <table>
-        <caption>Estimated monthly AWS infrastructure costs by pricing scenario, in USD, compared with the stated Render figure. Every line is priced; no total is a floor.</caption>
+        <caption>Estimated monthly AWS infrastructure costs by pricing scenario, with the like-for-like comparison, in USD, compared with the stated Render figure. Every line is priced; no total is a floor.</caption>
         <thead>
           <tr>
             <th scope="col">Measure</th>
@@ -285,31 +286,40 @@
             <td>Stated by you as of 2026-10-21, not read from an invoice or export. It may exclude add-ons or cover a different scope; the AWS scenarios add Multi-AZ PostgreSQL, a dedicated cache node, and 30-day log retention.</td>
           </tr>
           <tr>
-            <th scope="row">Premium<br><span class="tier-sub">Highest resilience / highest monthly estimate</span></th>
-            <td data-cost-key="aws_monthly_premium">$394</td>
-            <td class="increase">+$36</td>
-            <td>Highest-resilience pricing scenario from the estimate; the artifact carries the total only, not a per-line breakdown.</td>
+            <th scope="row">Premium<br><span class="tier-sub">Balanced plus the multi-AZ uplift</span></th>
+            <td data-cost-key="aws_monthly_premium">$314</td>
+            <td>+$0</td>
+            <td>Balanced plus the multi-AZ uplift. On this stack the uplift is $0: the Valkey cache is already multi-AZ, RDS Multi-AZ is in its rate, and Fargate, EFS, Lambda and Step Functions have no AZ uplift.</td>
           </tr>
           <tr>
-            <th scope="row"><strong>Balanced</strong><br><span class="tier-sub">Default scenario; Terraform implements this tier</span></th>
-            <td data-cost-key="aws_monthly_balanced">$358</td>
+            <th scope="row"><strong>Balanced</strong><br><span class="tier-sub">Right-sized design; Terraform implements this tier</span></th>
+            <td data-cost-key="aws_monthly_balanced">$314</td>
             <td>— anchor</td>
-            <td>Capacity-preserving scenario; the generated Terraform baseline. Every Render size is carried like-for-like, including EFS at the 5 GB Blueprint disk size.</td>
+            <td>Right-sized design; the generated Terraform implements this tier. Measured utilization right-sizes four Fargate task sizes and the RDS class; the Valkey node keeps its source-memory plan, and the Workflow and Lambda lines stay at their like-for-like amounts because the design records no sizing for them. EFS is priced at the 5 GB Blueprint disk size.</td>
           </tr>
           <tr>
-            <th scope="row">Optimized<br><span class="tier-sub">Measured utilization applied to eligible lines</span></th>
-            <td data-cost-key="aws_monthly_optimized">$296</td>
-            <td class="savings" data-cost-key="delta">-$62</td>
-            <td>Right-sized scenario. Measured rightsizing lowers nine lines (compute, database, cache, Workflow); build, disk, domain, environment, configuration, and static lines are unchanged.</td>
+            <th scope="row">Optimized<br><span class="tier-sub">Balanced with commitment discounts on eligible lines</span></th>
+            <td data-cost-key="aws_monthly_optimized">$278</td>
+            <td class="savings">-$36</td>
+            <td>Balanced with commitment discounts on eligible lines only: Compute Savings Plan on $115 of Fargate at the 30% mid-point of the 1-year no-upfront range and $10 of Lambda at 12% (the 1-year no-upfront Lambda duration rate; $36 together). No line qualifies for a Database Savings Plan: the RDS class db.t4g.large is Generation 4 and the Valkey node cache.m6g.large is Generation 6, and Database Savings Plans cover Generation 7 and newer only. $188 of other lines unchanged.</td>
+          </tr>
+          <tr>
+            <th scope="row">Like-for-like, before right-sizing<br><span class="tier-sub">Comparison line, not a tier</span></th>
+            <td data-cost-key="like_for_like_monthly">$358</td>
+            <td class="savings" data-cost-key="delta">+$45</td>
+            <td>Every Render size carried unchanged; the right-sizing delta is $45 per month ($540 per year), basis: measured utilization.</td>
           </tr>
         </tbody>
       </table>
       <details class="reading-guide">
         <summary>How to read the tiers</summary>
-        <p>Premium, Balanced, and Optimized are estimated monthly costs for the <em>same</em> mapped architecture, ordered highest to
-        lowest, not three Terraform stacks. Balanced is the primary figure and the capacity-preserving scenario the generated
-        Terraform implements; Premium and Optimized are bounds. Optimized is the right-sized scenario that measured utilization
-        supports. No tier is a floor: every line is priced.</p>
+        <p>Premium, Balanced, and Optimized are pricing scenarios for the <em>same</em> right-sized design, ordered highest to
+        lowest, not three Terraform stacks. <code>terraform/</code> implements Balanced. Premium equals Balanced here because no
+        line takes a multi-AZ uplift. Optimized applies the commitment discount to the eligible subtotal only: $115 of Fargate
+        &times; 30% (the 1-year no-upfront mid-point) is about $34 and $10 of Lambda &times; 12% (the 1-year no-upfront Lambda duration rate) is $1.200,
+        so $36 together. The Lambda line records no duration and request split, so the 12% applies to the whole line and the discount is an upper bound. No line gets a Database Savings Plan discount: db.t4g.large is Generation 4 and cache.m6g.large is Generation 6, and the plan covers Generation 7 and newer only. A Generation 7+ class (for example db.m7g for RDS or cache.m7g for the cache) would qualify; no saving is claimed for it here.
+        Optimized is $278 (313.50 minus 35.70 is 277.80, rounded to a whole dollar). The like-for-like line ($358) is a comparison figure, not a tier; its right-sizing
+        delta is +$45 per month. No figure is a floor: every line is priced.</p>
       </details>
       <p>Human labor is excluded: the estimate records no migration labor cost, and these figures cover AWS service charges only.
          Pricing provenance: AWS rates use the reviewed us-east-1 cache for ECS, RDS, ElastiCache, Lambda, and EFS; CloudWatch is
@@ -374,7 +384,7 @@
         </tbody>
       </table>
       <p><strong>Confidence:</strong> Medium. Measured: every Render size, count, and setting from the Blueprint and your Clarify
-         answers; right-sized lines for compute, database, cache, and Workflow carry measured utilization. Assumed: the EFS line at
+         answers; right-sized lines for compute and database carry measured utilization; the Workflow and Lambda lines stay at their like-for-like amounts because no sizing is recorded; the cache keeps its plan. Assumed: the EFS line at
          the 5 GB Blueprint disk size, CloudWatch volume, and the Build Source and Workflow lines, which are estimated rather than
          rate-card priced. Unknown: the real disk footprint and whether the stated $123 covers this whole estate.</p>
       <p><strong>Pricing provenance:</strong> AWS rates use the reviewed us-east-1 cache; the Render baseline is user stated. EFS is
@@ -491,36 +501,38 @@
     </section>
     <section id="appendix-costs">
       <h2>Appendix B — Cost Estimates <a class="toplink" href="#toc">&uarr; contents</a></h2>
-      <p>Per-line monthly amounts from the two estimate scenarios. Capacity-preserving carries every Render size like-for-like;
-         right-sized applies measured utilization where the evidence was sufficient. Neither scenario is a floor: no line is unpriced.</p>
+      <p>Per-line monthly amounts for the like-for-like comparison and the Balanced and Optimized scenarios. Like-for-like carries
+         every Render size unchanged; Balanced applies measured utilization where the evidence was sufficient; Optimized applies the
+         commitment discount to eligible lines. Premium equals Balanced on every line (uplift $0). No figure is a floor: no line is unpriced.</p>
       <table>
-        <caption>Per-line AWS monthly estimate (USD) by scenario, with the pricing source and the right-sized confidence.</caption>
-        <thead><tr><th scope="col">Source row</th><th scope="col">AWS service</th><th scope="col">Capacity-preserving</th><th scope="col">Right-sized</th><th scope="col">Pricing source</th><th scope="col">Right-sized confidence</th></tr></thead>
+        <caption>Per-line AWS monthly estimate (USD) by scenario, with the pricing source and the Balanced confidence.</caption>
+        <thead><tr><th scope="col">Source row</th><th scope="col">AWS service</th><th scope="col">Like-for-like</th><th scope="col">Balanced</th><th scope="col">Optimized</th><th scope="col">Pricing source</th><th scope="col">Balanced confidence</th></tr></thead>
         <tbody>
-          <tr><td>rr-build</td><td>Amazon ECR + CI/CD immutable digest promotion</td><td>$10</td><td>$10</td><td>estimated</td><td>inferred</td></tr>
-          <tr><td>rr-cron</td><td>Amazon EventBridge Scheduler + ECS on Fargate RunTask</td><td>$20</td><td>$15</td><td>cached</td><td>measured</td></tr>
-          <tr><td>rr-db</td><td>Amazon RDS for PostgreSQL</td><td>$100</td><td>$80</td><td>cached</td><td>measured</td></tr>
-          <tr><td>rr-disk</td><td>Amazon EFS</td><td>$1.50</td><td>$1.50</td><td>cached</td><td>inferred</td></tr>
-          <tr><td>rr-domain</td><td>AWS Certificate Manager + external DNS</td><td>$0</td><td>$0</td><td>no direct charge</td><td>deterministic</td></tr>
-          <tr><td>rr-env</td><td>AWS deployment environment stack + Amazon CloudWatch Logs, Metrics, and Alarms (30-day retention)</td><td>$5</td><td>$5</td><td>estimated</td><td>inferred</td></tr>
-          <tr><td>rr-env-group</td><td>AWS Secrets Manager + AWS Systems Manager Parameter Store</td><td>$2</td><td>$2</td><td>cached</td><td>inferred</td></tr>
-          <tr><td>rr-kv</td><td>Amazon ElastiCache for Valkey node-based</td><td>$50</td><td>$40</td><td>cached</td><td>measured</td></tr>
-          <tr><td>rr-private</td><td>ECS on Fargate</td><td>$40</td><td>$35</td><td>cached</td><td>measured</td></tr>
-          <tr><td>rr-project</td><td>AWS account and VPC environment strategy</td><td>$0</td><td>$0</td><td>no direct charge</td><td>deterministic</td></tr>
-          <tr><td>rr-static</td><td>Amazon S3 + Amazon CloudFront</td><td>$15</td><td>$15</td><td>cached</td><td>inferred</td></tr>
-          <tr><td>rr-web</td><td>ECS on Fargate</td><td>$50</td><td>$40</td><td>cached</td><td>measured</td></tr>
-          <tr><td>rr-worker</td><td>ECS on Fargate service</td><td>$30</td><td>$25</td><td>cached</td><td>measured</td></tr>
-          <tr><td>rr-workflow</td><td>AWS Step Functions Standard</td><td>$25</td><td>$20</td><td>estimated</td><td>measured</td></tr>
-          <tr><td>rr-workflow-task</td><td>AWS Lambda</td><td>$10</td><td>$8</td><td>cached</td><td>measured</td></tr>
-          <tr><th scope="row">Total</th><td>15 lines</td><td>$358</td><td>$296</td><td>5 services cached, CloudWatch estimated</td><td>9 measured, 4 inferred, 2 deterministic</td></tr>
+          <tr><td>rr-build</td><td>Amazon ECR + CI/CD immutable digest promotion</td><td>$10</td><td>$10</td><td>$10</td><td>estimated</td><td>inferred</td></tr>
+          <tr><td>rr-cron</td><td>Amazon EventBridge Scheduler + ECS on Fargate RunTask</td><td>$20</td><td>$15</td><td>$10</td><td>cached</td><td>measured</td></tr>
+          <tr><td>rr-db</td><td>Amazon RDS for PostgreSQL</td><td>$100</td><td>$80</td><td>$80</td><td>cached</td><td>measured</td></tr>
+          <tr><td>rr-disk</td><td>Amazon EFS</td><td>$1.50</td><td>$1.50</td><td>$1.50</td><td>cached</td><td>inferred</td></tr>
+          <tr><td>rr-domain</td><td>AWS Certificate Manager + external DNS</td><td>$0</td><td>$0</td><td>$0</td><td>no direct charge</td><td>deterministic</td></tr>
+          <tr><td>rr-env</td><td>AWS deployment environment stack + Amazon CloudWatch Logs, Metrics, and Alarms (30-day retention)</td><td>$5</td><td>$5</td><td>$5</td><td>estimated</td><td>inferred</td></tr>
+          <tr><td>rr-env-group</td><td>AWS Secrets Manager + AWS Systems Manager Parameter Store</td><td>$2</td><td>$2</td><td>$2</td><td>cached</td><td>inferred</td></tr>
+          <tr><td>rr-kv</td><td>Amazon ElastiCache for Valkey node-based</td><td>$50</td><td>$50</td><td>$50</td><td>cached</td><td>inferred</td></tr>
+          <tr><td>rr-private</td><td>ECS on Fargate</td><td>$40</td><td>$35</td><td>$24</td><td>cached</td><td>measured</td></tr>
+          <tr><td>rr-project</td><td>AWS account and VPC environment strategy</td><td>$0</td><td>$0</td><td>$0</td><td>no direct charge</td><td>deterministic</td></tr>
+          <tr><td>rr-static</td><td>Amazon S3 + Amazon CloudFront</td><td>$15</td><td>$15</td><td>$15</td><td>cached</td><td>inferred</td></tr>
+          <tr><td>rr-web</td><td>ECS on Fargate</td><td>$50</td><td>$40</td><td>$28</td><td>cached</td><td>measured</td></tr>
+          <tr><td>rr-worker</td><td>ECS on Fargate service</td><td>$30</td><td>$25</td><td>$18</td><td>cached</td><td>measured</td></tr>
+          <tr><td>rr-workflow</td><td>AWS Step Functions Standard</td><td>$25</td><td>$25</td><td>$25</td><td>estimated</td><td>inferred</td></tr>
+          <tr><td>rr-workflow-task</td><td>AWS Lambda</td><td>$10</td><td>$10</td><td>$9</td><td>cached</td><td>inferred</td></tr>
+          <tr><th scope="row">Total</th><td>15 lines</td><td>$358</td><td>$314</td><td>$278</td><td>5 services cached, CloudWatch estimated</td><td>5 measured, 8 inferred, 2 deterministic</td></tr>
         </tbody>
       </table>
       <h3>Scenario totals and the right-sizing delta</h3>
       <ul class="compact">
-        <li>Capacity-preserving (Balanced): $358 per month; unpriced line IDs: none; floor: no</li>
-        <li>Right-sized (Optimized): $296 per month; unpriced line IDs: none; floor: no; annual $3,558</li>
-        <li>Premium: $394 per month, carried by the estimate as a total only</li>
-        <li>Delta (right-sized minus capacity-preserving): -$62 per month. Measured rightsizing lowers the AWS total; EFS is priced at 5 GB &times; $0.30 per GB-month in both scenarios</li>
+        <li>Balanced (right-sized design; the Terraform implements it): $314 per month; unpriced line IDs: none; floor: no</li>
+        <li>Premium: $314 per month; multi-AZ uplift $0 (no line takes an uplift); unpriced line IDs: none; floor: no</li>
+        <li>Optimized: $278 per month (277.80 before rounding); Compute Savings Plan $115 of Fargate &times; 30% + $10 of Lambda &times; 12% = $36 (the Lambda line includes request charges, so this is an upper bound); Database Savings Plan: no eligible line (db.t4g.large is Generation 4, cache.m6g.large is Generation 6, Generation 7+ required); $188 of other lines unchanged; unpriced line IDs: none; floor: no; annual $3,334</li>
+        <li>Like-for-like, before right-sizing: $358 per month; unpriced line IDs: none; floor: no</li>
+        <li>Right-sizing delta (like-for-like minus Balanced): +$45 per month, $540 per year, basis: measured utilization. Five lines shrink (four Fargate task sizes, the RDS class to db.t4g.large); the Valkey node keeps its source-memory plan plus headroom, and the Workflow and Lambda lines stay at like-for-like because the design records no sizing for them. EFS is priced at 5 GB &times; $0.30 per GB-month in both figures</li>
         <li>Current Render spend: $123 per month, user stated as of 2026-10-21; no invoice or export breakdown was supplied</li>
       </ul>
       <h3>Pricing sources</h3>
@@ -597,7 +609,7 @@
         <caption>Artifacts produced by the migration assessment.</caption>
         <thead><tr><th scope="col">Artifact</th><th scope="col">Description</th></tr></thead>
         <tbody>
-          <tr><td><code>terraform/</code></td><td>main.tf, variables.tf, outputs.tf, baseline.tf, backup.tf, network.tf, compute.tf, data.tf, storage.tf, delivery.tf, monitoring.tf, workflow.tf, terraform.tfvars.example, README.md — the Balanced baseline; no AI resources</td></tr>
+          <tr><td><code>terraform/</code></td><td>main.tf, variables.tf, outputs.tf, baseline.tf, backup.tf, network.tf, compute.tf, data.tf, storage.tf, delivery.tf, monitoring.tf, workflow.tf, terraform.tfvars.example, README.md — the Balanced (right-sized) baseline; no AI resources</td></tr>
           <tr><td><code>MIGRATION_GUIDE.md</code></td><td>Runbook: prerequisites, build and deployment, PostgreSQL, Key Value, persistent disk, deployment and service cutover, DNS and traffic, verification, rollback and source retention, known limitations</td></tr>
           <tr><td><code>README.md</code></td><td>What was generated and how to validate and apply it</td></tr>
           <tr><td><code>scripts/promote-image.sh</code></td><td>Immutable ECR digest promotion; dry run by default, <code>--execute</code> to act</td></tr>
@@ -614,7 +626,7 @@
       <h3>Pricing confidence</h3>
       <p>AWS rates use the reviewed us-east-1 cache; the Render baseline is user stated. EFS is priced from the reviewed rate row at
          the Blueprint disk size (5 GB, Standard storage); no unpriced lines remain. Cached: ECS, RDS, ElastiCache, Lambda, EFS.
-         Estimated: CloudWatch. Right-sized lines marked measured carry sufficient utilization evidence; inferred lines do not.</p>
+         Estimated: CloudWatch. Balanced lines marked measured carry sufficient utilization evidence; inferred lines do not.</p>
       <h3>Exclusions</h3>
       <ul class="compact">
         <li>Human labor: the estimate records no migration labor cost (null), so no engineering effort is priced</li>
@@ -634,8 +646,9 @@
         <thead><tr><th scope="col">Term</th><th scope="col">Meaning</th></tr></thead>
         <tbody>
           <tr><td>Monthly run rate</td><td>Estimated recurring cloud-service charges; excludes staffing, support, migration labor, and other ownership costs</td></tr>
-          <tr><td>Capacity-preserving</td><td>The Balanced scenario: every Render size carried like-for-like onto AWS; the generated Terraform implements it</td></tr>
-          <tr><td>Right-sized</td><td>The Optimized scenario: measured utilization applied to the lines where evidence was sufficient</td></tr>
+          <tr><td>Like-for-like</td><td>The Render sizes carried unchanged onto AWS, before right-sizing; a comparison figure, not a tier</td></tr>
+          <tr><td>Right-sized (Balanced)</td><td>The design the generated Terraform implements, with measured utilization applied where the evidence was sufficient</td></tr>
+          <tr><td>Premium / Optimized</td><td>Pricing scenarios of the Balanced design: Balanced plus the multi-AZ uplift / Balanced with the commitment discount on eligible lines</td></tr>
           <tr><td>Consumed topology</td><td>A design row (project, environment) that becomes account, VPC, or stack structure rather than its own AWS resource</td></tr>
           <tr><td>Build-once promotion</td><td>One immutable image digest built once and promoted across environments by tag, never rebuilt</td></tr>
           <tr><td>Writer quiescence</td><td>Stopping all writes to the source before the final delta so the target can be verified and switched safely</td></tr>

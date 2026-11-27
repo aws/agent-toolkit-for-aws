@@ -24,6 +24,7 @@ if this skill needs one, add the copy **and** a row in the table below.
 | --------------------------------------- | ----------------------------------------------------- |
 | `workshop/workshop-invariants.md`       | `skills/shared/workshop/workshop-invariants.md`       |
 | `estimate/cost-export-inputs.md`        | `skills/shared/estimate/cost-export-inputs.md`        |
+| `estimate/commitment-discount-ranges.json` | `skills/shared/estimate/commitment-discount-ranges.json` |
 | `migration/upfront-credits.md`          | `skills/shared/migration/upfront-credits.md`          |
 | `ai/ai-anthropic-to-bedrock.md`         | `skills/shared/ai/ai-anthropic-to-bedrock.md`         |
 | `ai/ai-capability-catalog.json`         | `skills/shared/ai/ai-capability-catalog.json`         |
