@@ -8,7 +8,7 @@
   "comparison_block": "like_for_like",
   "rightsizing_delta_formula": "like_for_like_known_cost_monthly_usd - balanced_known_cost_monthly_usd",
   "premium_rule": "balanced plus the multi_az_handling multiplier_x2 uplift on lines not already multi-AZ; baked_in, intrinsic and n/a lines get none",
-  "optimized_rule": "balanced minus the mid-point commitment discount on the eligible subtotal per knowledge/estimate/commitment-discount-ranges.json",
+  "optimized_rule": "balanced minus the mid-point commitment discount on the eligible subtotal per knowledge/estimate/commitment-discount-ranges.json (min of plan rate and service_caps for a capped service)",
   "missing_rate": {"monthly_amount": null, "exclude_from_sum": true, "total_label": "known-cost floor", "is_floor": true},
   "region_mismatch": {"reprice": false, "basis": "us-east-1", "require_region_note": true, "widen_accuracy": true},
   "human_labor": {"include_as_consideration": true, "monthly_amount": null},

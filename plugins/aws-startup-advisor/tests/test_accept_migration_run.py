@@ -181,7 +181,7 @@ def heroku_execution_run(parent: Path) -> Path:
 <thead><tr><th scope="col">Line</th><th scope="col">Estimated monthly</th></tr></thead>
 <tbody><tr><td>AWS Premium</td><td>Est. $210/mo</td></tr>
 <tr><td>AWS Balanced</td><td>Est. $210/mo</td></tr>
-<tr><td>AWS Optimized</td><td>Est. $163/mo</td></tr></tbody>
+<tr><td>AWS Optimized</td><td>Est. $182/mo</td></tr></tbody>
 </table></section>
 <section id="appendix-optimization"><h2>Appendix B.1 — Savings Plans and Reserved Instances</h2>
 <p>No 1-year/3-year commitment product applies to this architecture.</p></section>

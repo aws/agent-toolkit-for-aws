@@ -12,6 +12,7 @@ shared anchors inside exec-costs).
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
@@ -28,7 +29,7 @@ LOCAL_VALIDATOR = SKILL_ROOT / "scripts" / "validate-render-migration-report.py"
 ESTIMATE = EXPECTED / "estimation-infra.json"
 DESIGN = EXPECTED / "aws-design.json"
 
-GOLDEN_OPTIMIZED = '<td data-cost-key="aws_monthly_optimized">$244</td>'
+GOLDEN_OPTIMIZED = '<td data-cost-key="aws_monthly_optimized">$278</td>'
 GOLDEN_CURRENT = '<td data-cost-key="current_monthly">$123</td>'
 RR_WEB_ROW_RE = re.compile(r'<tr data-source-resource-id="rr-web" [^>]*>.*?</tr>\s*', re.DOTALL)
 APPENDIX_LABELS = (
@@ -85,11 +86,11 @@ def test_generate_golden_passes_local_validator() -> None:
 
 
 def test_altered_optimized_figure_fails_shared_validator(tmp_path: Path) -> None:
-    root, report = _altered_copy(tmp_path, GOLDEN_OPTIMIZED, GOLDEN_OPTIMIZED.replace("$244", "$230"))
+    root, report = _altered_copy(tmp_path, GOLDEN_OPTIMIZED, GOLDEN_OPTIMIZED.replace("$278", "$230"))
     result = _shared(report, root / "generated")
     assert result.returncode == 1, result.stdout + result.stderr
     assert 'cost figure mismatch: data-cost-key="aws_monthly_optimized"' in result.stderr, result.stderr
-    assert "projected_costs.aws_monthly_optimized = $244" in result.stderr, result.stderr
+    assert "projected_costs.aws_monthly_optimized = $278" in result.stderr, result.stderr
 
 
 def test_altered_current_spend_figure_fails_shared_validator(tmp_path: Path) -> None:
@@ -119,6 +120,31 @@ def test_deleted_target_row_fails_local_validator(tmp_path: Path) -> None:
     assert "TARGET_MAPPING_MISMATCH" in result.stdout + result.stderr
 
 
+GOLDEN_PREMIUM = '<td data-cost-key="aws_monthly_premium">$314</td>'
+def test_removed_optimized_anchor_fails_local_validator(tmp_path: Path) -> None:
+    # The shared pass treats optimized as optional; the render pass requires it (at base: COST_RIGHT_SIZED_MISSING).
+    root, report = _altered_copy(tmp_path, GOLDEN_OPTIMIZED, "<td>$999</td>")
+    result = _local(report, root)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "COST_AWS_MONTHLY_OPTIMIZED_MISSING" in result.stdout + result.stderr
+def test_removed_premium_anchor_fails_local_validator(tmp_path: Path) -> None:
+    root, report = _altered_copy(tmp_path, GOLDEN_PREMIUM, "<td>$888</td>")
+    result = _local(report, root)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "COST_AWS_MONTHLY_PREMIUM_MISSING" in result.stdout + result.stderr
+def test_projected_costs_that_disagree_with_scenarios_fail_local_validator(tmp_path: Path) -> None:
+    root = tmp_path / "expected"
+    shutil.copytree(EXPECTED, root, ignore=shutil.ignore_patterns("generated-variants", "workflow-contracts", ".terraform*"))
+    estimate_path = root / "estimation-infra.json"
+    estimate = json.loads(estimate_path.read_text(encoding="utf-8"))
+    estimate["projected_costs"]["aws_monthly_balanced"] = 410
+    estimate["projected_costs"]["aws_monthly_optimized"] = 330
+    estimate_path.write_text(json.dumps(estimate), encoding="utf-8")
+    result = _local(root / "generated" / "migration-report.html", root)
+    assert result.returncode == 1, result.stdout + result.stderr
+    output = result.stdout + result.stderr
+    assert "COST_AWS_MONTHLY_BALANCED_SCENARIO_MISMATCH" in output
+    assert "COST_AWS_MONTHLY_OPTIMIZED_SCENARIO_MISMATCH" in output
 def test_golden_pins_lettering_accounting_and_anchor_placement() -> None:
     html = REPORT.read_text(encoding="utf-8")
     headings = re.findall(r"<h2>([^<]*)", html)
@@ -136,3 +162,18 @@ def test_golden_pins_lettering_accounting_and_anchor_placement() -> None:
         assert html.count(anchor) == 1, key
         assert anchor in exec_costs.group(1), key
     assert "0611-0606" not in html
+def test_decision_core_and_abis_name_the_render_local_cost_checks() -> None:
+    # The canonical report contract must match what stage 7 enforces: premium is required, not optional,
+    # and the ownership lists name the anchor-presence and projected/scenario checks.
+    shared = SKILL_ROOT / "references" / "shared"
+    core = (shared / "report-decision-core.md").read_text(encoding="utf-8")
+    abis = (shared / "script-abis.md").read_text(encoding="utf-8")
+    assert "optional `data-cost-key=\"aws_monthly_premium\"`" not in core
+    for text in (core, abis):
+        assert "COST_AWS_MONTHLY_PREMIUM_MISSING" in text or "aws_monthly_premium" in text
+    for code in (
+        "COST_AWS_MONTHLY_OPTIMIZED_MISSING", "COST_AWS_MONTHLY_PREMIUM_MISSING",
+        "COST_AWS_MONTHLY_BALANCED_SCENARIO_MISMATCH", "COST_AWS_MONTHLY_OPTIMIZED_SCENARIO_MISMATCH",
+    ):
+        assert code in core, code
+    assert "projected/scenario" in abis
