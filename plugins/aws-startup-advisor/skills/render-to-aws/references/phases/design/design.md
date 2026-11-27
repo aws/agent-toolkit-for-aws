@@ -17,6 +17,7 @@ _knowledge:
   - { file: knowledge/design/postgres-rds-sizing.json, _when: "the inventory contains PostgreSQL" }
   - { file: knowledge/design/keyvalue-elasticache-sizing.json, _when: "the inventory contains Key Value" }
   - { file: knowledge/design/disk-storage-routing.json, _when: "the inventory contains a persistent disk" }
+  - { file: knowledge/estimate/rightsizing-thresholds.json }
 _fragments:
   - _id: infra
     _trigger: { _always: true }
@@ -52,6 +53,8 @@ _postconditions:
   - _assert: "every candidate not selected by an applicable selector appears exactly once in rejected_candidates with a concrete reason"
     _on_failure: _halt_and_inform
   - _assert: "PostgreSQL, disks, Workflows, Workflow tasks, workers, and cron contain no unresolved alternatives"
+    _on_failure: _halt_and_inform
+  - _assert: "every mapping that records a size also records sizing_provenance, and a measured size passed every right-sizing threshold"
     _on_failure: _halt_and_inform
   - _assert: "App Runner and public ingress for private-only services do not appear without an explicit contradicted-source finding"
     _on_failure: _halt_and_inform

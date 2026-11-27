@@ -12,9 +12,8 @@ this file pins them to the canonical: the canonical states every definition, no 
 definition row in an owned estimate doc smuggles a consumption-model or storage-class
 assumption back in, and no layer's ⟨tier_semantics⟩ row redefines a tier.
 
-render-to-aws is excluded from the layer check until PR E2 (tier-semantics-render)
-converts its layer, which today defines Balanced as the capacity-preserving scenario.
-Add "render-to-aws" to LAYER_SKILLS when E2 lands.
+render-to-aws is in the layer check: its layer (merged from #790) declares Balanced as the
+right-sized design, so every merged state keeps render consistent with the canonical.
 """
 from __future__ import annotations
 
@@ -36,8 +35,7 @@ TIER_DEFINITION_FILES = (
     "skills/azure-to-aws/references/phases/estimate/estimate-infra.md",
 )
 
-# render-to-aws joins this tuple when PR E2 (tier-semantics-render) lands.
-LAYER_SKILLS = ("gcp-to-aws", "azure-to-aws", "heroku-to-aws")
+LAYER_SKILLS = ("gcp-to-aws", "azure-to-aws", "heroku-to-aws", "render-to-aws")
 
 # A tier definition row: a table row or a dash bullet whose first cell / token is the
 # bold tier name (`| **Premium** |`, `| **\`premium\`** |`, `- **Premium** —`, `- Premium:`).

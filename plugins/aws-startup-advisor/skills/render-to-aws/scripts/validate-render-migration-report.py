@@ -15,7 +15,15 @@ accessibility, the visual shell, and the shared cost anchors
   warnings require;
 * render-required sections and their TOC links, plus the required phrases per
   migration section;
-* the render-local ``delta`` cost anchor (``delta_monthly_usd``);
+* the render-local ``delta`` cost anchor (``rightsizing_delta.monthly``, like-for-like
+  minus Balanced);
+* the render-local ``like_for_like_monthly`` cost anchor (``scenarios.like_for_like.known_cost_monthly_usd``,
+  exactly one inside ``exec-costs``, compared after whole-dollar half-even rounding like the
+  shared anchors; codes ``COST_LIKE_FOR_LIKE_MONTHLY_MISSING`` / ``_MISMATCH`` / ``_SOURCE_INVALID``);
+* exactly one ``aws_monthly_optimized`` anchor inside ``exec-costs`` (plus one
+  ``aws_monthly_premium`` anchor when ``projected_costs.aws_monthly_premium`` exists), and
+  ``projected_costs.aws_monthly_premium`` / ``aws_monthly_balanced`` / ``aws_monthly_optimized``
+  equal to ``scenarios.premium`` / ``balanced`` / ``optimized`` ``.known_cost_monthly_usd``;
 * the unavailable-baseline literal when ``current_costs.render_monthly`` is null;
 * secrets, keys, and local-path exclusions in rendered text.
 
@@ -30,7 +38,7 @@ import argparse
 import json
 import re
 import sys
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -45,7 +53,12 @@ RENDER_SECTIONS = (
 )
 INERT = {"script", "style", "template"}
 COST_PATHS = {
-    "delta": ("delta_monthly_usd",),
+    "delta": ("rightsizing_delta", "monthly"),
+}
+# Anchors compared after the same display rounding the shared anchors use (whole dollars,
+# half-to-even, for monthly-scale figures; cents below $2), exactly one inside exec-costs.
+ROUNDED_COST_PATHS = {
+    "like_for_like_monthly": ("scenarios", "like_for_like", "known_cost_monthly_usd"),
 }
 SECTION_TERMS = {
     "exec-architecture": (("build-once", "build once"), ("private",), ("managed",)),
@@ -78,6 +91,7 @@ class ReportParser(HTMLParser):
         self.incomplete_mapping_rows = 0
         self.costs: dict[str, list[str]] = {}
         self.cost_stack: list[dict] = []
+        self.exec_costs: dict[str, list[str]] = {}
         self.accounted_values: list[str] = []
         self.rendered_text: list[str] = []
 
@@ -107,6 +121,8 @@ class ReportParser(HTMLParser):
                     if cost in self.cost_stack:
                         self.cost_stack.remove(cost)
                     self.costs.setdefault(cost["key"], []).append("".join(cost["parts"]))
+                    if cost["in_exec_costs"]:
+                        self.exec_costs.setdefault(cost["key"], []).append("".join(cost["parts"]))
                 if frame.get("mapping") is not None:
                     mapping = frame["mapping"]
                     if mapping in self.mapping_stack:
@@ -155,7 +171,7 @@ class ReportParser(HTMLParser):
                     self.incomplete_mapping_rows += 1
             cost_key = attrs.get("data-cost-key")
             if cost_key:
-                cost_frame = {"key": cost_key, "parts": []}
+                cost_frame = {"key": cost_key, "parts": [], "in_exec_costs": "exec-costs" in self.section_stack}
                 self.cost_stack.append(cost_frame)
                 frame["cost"] = cost_frame
             accounted = attrs.get("data-accounted-count")
@@ -213,6 +229,12 @@ def _money(text: str) -> Decimal | None:
     return -value if (match.group(1) or match.group(2)) else value
 
 
+def _display_money(value: Decimal) -> Decimal:
+    """Display form of a dollar figure: whole dollars half-to-even at $2 and above, cents below."""
+    whole = value.quantize(Decimal("1"), rounding=ROUND_HALF_EVEN)
+    if abs(whole) >= 2:
+        return whole
+    return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN)
 def _ai_deferred(design: dict) -> bool:
     ai_track = design.get("ai_track")
     return isinstance(ai_track, dict) and ai_track.get("status") == "deferred_shared_ai_engine"
@@ -238,6 +260,42 @@ def _validate_current_monthly(estimate: dict, values: list[str]) -> list[str]:
     return []
 
 
+# Estimate-phase mapping the report depends on: projected_costs.<key> must equal the
+# scenario total it is labelled with (render-to-aws estimate-assemble.md; report-decision-core.md
+# "Render scenario semantics"). The shared validator only compares the report to projected_costs,
+# so this render-local pass closes the gap between projected_costs and scenarios.
+SCENARIO_COSTS = (
+    ("aws_monthly_premium", ("projected_costs", "aws_monthly_premium"), ("scenarios", "premium", "known_cost_monthly_usd")),
+    ("aws_monthly_balanced", ("projected_costs", "aws_monthly_balanced"), ("scenarios", "balanced", "known_cost_monthly_usd")),
+    ("aws_monthly_optimized", ("projected_costs", "aws_monthly_optimized"), ("scenarios", "optimized", "known_cost_monthly_usd")),
+)
+def _decimal(value: object) -> Decimal | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        return Decimal(str(value))
+    except InvalidOperation:
+        return None
+def _validate_scenario_costs(estimate: dict, exec_costs: dict[str, list[str]]) -> list[str]:
+    errors: list[str] = []
+    for key, projected_path, scenario_path in SCENARIO_COSTS:
+        projected = _dig(estimate, projected_path)
+        scenario = _dig(estimate, scenario_path)
+        if projected is None and scenario is None:
+            continue
+        projected_decimal, scenario_decimal = _decimal(projected), _decimal(scenario)
+        if projected_decimal is None or scenario_decimal is None or projected_decimal != scenario_decimal:
+            errors.append(f"COST_{key.upper()}_SCENARIO_MISMATCH")
+    # Optimized is required whenever the estimate carries it; premium whenever its value exists.
+    # Exactly one anchor inside exec-costs, so a stale or duplicated figure cannot hide.
+    for key in ("aws_monthly_optimized", "aws_monthly_premium"):
+        if _dig(estimate, ("projected_costs", key)) is None and not (
+            key == "aws_monthly_optimized" and _dig(estimate, ("scenarios", "optimized", "known_cost_monthly_usd")) is not None
+        ):
+            continue
+        if len(exec_costs.get(key, [])) != 1:
+            errors.append(f"COST_{key.upper()}_MISSING")
+    return errors
 def _validate_ledger(ledger: dict, design: dict) -> list[str]:
     errors: list[str] = []
     mappings = design.get("mappings")
@@ -369,7 +427,20 @@ def validate(report: Path, migration_dir: Path) -> list[str]:
             continue
         if _money(values[0]) != expected_decimal:
             errors.append(f"COST_{key.upper()}_MISMATCH")
+    for key, path in ROUNDED_COST_PATHS.items():
+        expected = _dig(estimate, path)
+        values = parser.exec_costs.get(key, [])
+        if expected is None or len(values) != 1:
+            errors.append(f"COST_{key.upper()}_MISSING")
+            continue
+        expected_decimal = _decimal(expected)
+        if expected_decimal is None or not expected_decimal.is_finite():
+            errors.append(f"COST_{key.upper()}_SOURCE_INVALID")
+            continue
+        if _money(values[0]) != _display_money(expected_decimal):
+            errors.append(f"COST_{key.upper()}_MISMATCH")
     errors.extend(_validate_current_monthly(estimate, parser.costs.get("current_monthly", [])))
+    errors.extend(_validate_scenario_costs(estimate, parser.exec_costs))
     accounted = ledger.get("accounting", {}).get("accounted_count")
     if parser.accounted_values != [str(accounted)]:
         errors.append("REPORT_ACCOUNTED_COUNT_MISMATCH")

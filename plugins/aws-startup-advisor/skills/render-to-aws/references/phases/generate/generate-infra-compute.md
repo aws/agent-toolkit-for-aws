@@ -16,7 +16,7 @@ This fragment owns three shared addresses that other fragments (for example `wor
 - Emit one resource set per design row and tag it `SourceResourceId = "<source_resource_id>"`.
 - Name resources `"${local.name_prefix}-<role>"`, unique per source resource. Target group names are at most 32 characters and Scheduler schedule names at most 64.
 - Read `aws_config.vcpu`, `memory_gb`, `desired_count`, `graceful_shutdown_seconds`, `time_zone`, `duration_minutes`, and the architecture from `aws-design.json` when present. Never invent counts or sizes beyond the fallbacks below.
-- Fallbacks when `aws_config` omits a field (the representative design omits them for `rr-private`, `rr-worker`, and `rr-cron`). Generate resolves them without returning to Design:
+- Fallbacks when `aws_config` omits a field (the representative design records them for every Fargate row; the fallbacks apply when a design omits them). Generate resolves them without returning to Design:
   - `vcpu` and `memory_gb`: resolve the captured plan through `knowledge/design/service-plan-fargate-sizing.json` and take the smallest valid pair. With no resolvable plan, use 0.5 vCPU and 1 GB (`cpu = 512`, `memory = 1024`).
   - `desired_count`: preserve the captured instance count. With none captured, use 1. Never default to 2.
   - `time_zone`: `UTC`. `graceful_shutdown_seconds`: omit `stopTimeout` so the ECS default applies.
