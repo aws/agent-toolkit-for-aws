@@ -10,11 +10,11 @@ Go, with conditions, at medium confidence. Estimated AWS Balanced is $210 per mo
 
 ## Costs (estimated monthly)
 
-| Tier                                            | Est. Monthly AWS |
-| ----------------------------------------------- | ---------------- |
-| Premium                                         | $265/mo          |
-| **Balanced** (compare Heroku to this row first) | **$210/mo**      |
-| Optimized                                       | $178/mo          |
+| Tier                                                                 | Est. Monthly AWS |
+| -------------------------------------------------------------------- | ---------------- |
+| Premium — equals Balanced: every line that can take a resilience uplift is already Multi-AZ (the RDS rate includes it), so there is no higher-availability variant to price | $210/mo |
+| **Balanced** (compare Heroku to this row first)                      | **$210/mo**      |
+| Optimized                                                            | $182/mo          |
 
 💡 Review [AWS Activate credits](https://aws.amazon.com/startups/credits/) tiers (Founders for self-funded startups, Portfolio for VC- or accelerator-backed ones) — your funding stage was not confirmed in Clarify. Credits apply only to charges after approval, so apply before any deployment.
 

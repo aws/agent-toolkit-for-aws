@@ -174,9 +174,9 @@ def heroku_execution_run(parent: Path) -> Path:
 <section id="appendix-costs"><h2>Costs</h2><table><caption>Estimated monthly cost by tier</caption>
 <thead><tr><th scope="col">Line</th><th scope="col">Estimated monthly</th></tr></thead>
 <tbody><tr><td>Heroku baseline</td><td>Est. $340/mo</td></tr>
-<tr><td>AWS Premium</td><td>Est. $265/mo</td></tr>
+<tr><td>AWS Premium</td><td>Est. $210/mo</td></tr>
 <tr><td>AWS Balanced</td><td>Est. $210/mo</td></tr>
-<tr><td>AWS Optimized</td><td>Est. $178/mo</td></tr></tbody>
+<tr><td>AWS Optimized</td><td>Est. $182/mo</td></tr></tbody>
 </table></section>
 <section id="appendix-config"><h2>Configuration</h2><p>Region and availability choices from the decision.</p></section>
 <section id="appendix-security"><h2>Security baseline</h2><table><caption>Account baseline controls</caption><thead><tr><th scope="col">Control</th><th scope="col">Setting</th><th scope="col">What it does</th><th scope="col">Threat mitigated</th></tr></thead><tbody><tr><td>GuardDuty</td><td>Enabled</td><td>Detects unusual API activity</td><td>Credential theft</td></tr></tbody></table></section>

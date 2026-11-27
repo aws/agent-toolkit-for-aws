@@ -110,9 +110,9 @@ After writing `estimation-infra.json`, present a concise summary to the user:
 1. **Pricing source and accuracy** — State cache age and accuracy range
 2. **Heroku baseline vs AWS projected** (balanced tier) — one-line comparison (if a baseline was determined, labeled with its source; include the derived-baseline caveat when the source is not billing data)
 3. **Three-tier table**: Premium, Balanced, Optimized with monthly totals
-   - Premium: _Highest resilience / highest monthly estimate_
-   - Balanced: _Default scenario; compare Heroku to this first_
-   - Optimized: _Lower estimate; reservations / Spot trade-offs assumed_
+   - Premium: _Balanced plus the Multi-AZ / HA uplift_
+   - Balanced: _Right-sized design at on-demand rates; compare Heroku to this row first_
+   - Optimized: _Balanced with a commitment discount on RI/SP-eligible lines_
    - One-line note: Three figures are pricing scenarios for the same architecture (not three Terraform stacks). Generated Terraform aligns with Balanced.
 4. **Per-service cost breakdown** (balanced tier, 1 line per service)
 5. **Migration complexity**: tier + timeline range

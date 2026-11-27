@@ -1,8 +1,10 @@
 {
   "projected_costs": {
     "aws_monthly_balanced": 112,
-    "aws_monthly_premium": 198,
-    "aws_monthly_optimized": 82,
+    "aws_monthly_premium": 124,
+    "aws_monthly_optimized": 105,
+    "_premium_basis": "Balanced 112 + 12 RDS Multi-AZ uplift (db.t4g.micro at the cached Multi-AZ rate: 0.032 x 730 + 10 GB x 0.23 = 25.66 ~ 26 vs 14 single-AZ) = 124. Fargate is task-size driven (no uplift); ALB, S3, security baseline, CloudWatch, Secrets Manager and ECR have no AZ-rate variant.",
+    "_optimized_basis": "Eligible subtotal 22 = Fargate 22 (Compute Savings Plan 30%, mid-point of 20-40% -> 7); ineligible subtotal 90 unchanged (ALB, S3, NAT Gateway, security baseline, CloudWatch, Secrets Manager, ECR, plus RDS 14). RDS db.t4g.micro 14 is ineligible for the Database Savings Plan: it is Generation 4 and Database Savings Plans cover Generation 7 and newer instances only (AWS Savings Plans FAQ, read 2026-11-27); a Generation 7+ class (for example db.m7g or db.r7g) would qualify at 20%. 112 - 7 = 105.",
     "breakdown": {
       "security_baseline": {
         "service": "AWS Security Baseline (Tier 1)",
@@ -17,12 +19,11 @@
     },
     "scenario_deltas": {
       "premium": [
-        "RDS Multi-AZ instead of single-AZ (+$21/mo) - removes the single-AZ assumption",
-        "Fargate provisioned headroom, 2x task count (+$12/mo)"
+        "RDS Multi-AZ instead of single-AZ (+$12/mo - db.t4g.micro at the cached Multi-AZ rate) - removes the single-AZ assumption; no other line has an unapplied Multi-AZ uplift"
       ],
       "optimized": [
-        "Drops NAT Gateway (-$18/mo) - tasks move to public subnets or VPC endpoints; security-posture change, not just savings",
-        "Assumes 1-year Compute Savings Plan (-$12/mo) - requires an upfront commitment decision"
+        "Assumes a 1-year no-upfront Compute Savings Plan on Fargate at 30%, the mid-point of 20-40% (-$7/mo) - a commitment decision after a 30-90 day usage baseline",
+        "No Database Savings Plan on RDS: db.t4g.micro is Generation 4 and Database Savings Plans cover Generation 7 and newer instances only, so the RDS line is unchanged (a Generation 7+ class would qualify at ~20%)"
       ]
     }
   },
@@ -99,11 +100,11 @@
     {
       "opportunity": "Database Savings Plans",
       "type": "database_savings_plan",
-      "target_services": ["RDS"],
-      "savings_percent": "~20%",
+      "target_services": ["RDS (Generation 7+ classes only; db.t4g.micro is not covered)"],
+      "savings_percent": "~20% once on a Generation 7+ class; none on db.t4g.micro",
       "commitment": "1-year no-upfront",
       "implementation_effort": "Low",
-      "description": "Covers provisioned RDS. Mutually exclusive with RDS Reserved Instances on the same workload."
+      "description": "Covers provisioned RDS on Generation 7 and newer classes only; the designed db.t4g.micro (Generation 4) is not covered, so no dollar saving is claimed. Mutually exclusive with RDS Reserved Instances on the same workload."
     },
     {
       "opportunity": "S3 Infrequent Access",
@@ -120,6 +121,15 @@
       "savings_monthly": 8,
       "commitment": "None",
       "implementation_effort": "Medium"
+    },
+    {
+      "opportunity": "NAT Gateway -> VPC endpoints",
+      "target_services": ["NAT Gateway"],
+      "savings_percent": "~55%",
+      "savings_monthly": 18,
+      "commitment": "None",
+      "implementation_effort": "Medium",
+      "description": "Replace the NAT Gateway with gateway/interface VPC endpoints (S3, ECR, Secrets Manager, CloudWatch) or move tasks to public subnets - a network-posture change, not just savings"
     }
   ]
 }

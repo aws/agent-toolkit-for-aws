@@ -62,7 +62,7 @@ Build a generation manifest: read all resources from `aws-design.json` clusters,
 
 **Requirements:**
 
-- **File header comment block (first lines in `main.tf`, before `terraform {`):** Explain that (1) this directory implements the **single** architecture in `aws-design.json`; (2) the migration report’s **Premium / Balanced / Optimized** figures are **three pricing scenarios** from `estimation-infra.json` for that same map — **not** three separate generated stacks; (3) **this Terraform is aligned with the Balanced cost scenario** (default sizing/HA posture used for the middle estimate); (4) **Premium** = higher HA / higher $ model; **Optimized** = cost-optimization assumptions — users must **edit IaC or add modules** to realize those postures. Point readers to `terraform/README.md` and the `migration_summary` output.
+- **File header comment block (first lines in `main.tf`, before `terraform {`):** Explain that (1) this directory implements the **single** architecture in `aws-design.json`; (2) the migration report’s **Premium / Balanced / Optimized** figures are **three pricing scenarios** from `estimation-infra.json` for that same map — **not** three separate generated stacks; (3) **this Terraform is aligned with the Balanced cost scenario** (default sizing/HA posture used for the middle estimate); (4) **Premium** = Balanced plus the Multi-AZ / HA uplift; **Optimized** = Balanced with a commitment discount on RI/SP-eligible lines — users must **edit IaC** (Multi-AZ) or **buy the commitment** to realize those postures. Point readers to `terraform/README.md` and the `migration_summary` output.
 - `terraform` block: `required_version >= 1.5.0`, `hashicorp/aws ~> 5.80` (**`~> 6.71` when any Fargate entry is `ecs_mode: "express"`** — see § Fargate services: Express Mode vs standard), active S3 backend (see Step 1a below — do NOT comment it out)
 - `provider "aws"` block: `region = var.aws_region`, `default_tags` with Project, Environment, ManagedBy, MigrationId
 - Data sources: `aws_caller_identity`, `aws_region`, `aws_availability_zones`
@@ -145,7 +145,7 @@ Add a **Bootstrap** section to `terraform/README.md` explaining the two-step ini
 1. **What this directory is** — Implements one deployable baseline from `aws-design.json` (and `generation-infra.json` / `preferences.json` as applicable).
 2. **Cost tiers in the migration report** — Premium, Balanced, and Optimized are **monthly cost scenarios** in `estimation-infra.json` for the **same** service mapping; order is high → mid → low estimate.
 3. **Which scenario this Terraform matches** — **Balanced** (primary comparison to GCP; default migration posture in the advisor model). Premium and Optimized are **not** auto-generated as alternate roots.
-4. **If you need Premium or Optimized in production** — Manually adjust instance classes, Multi-AZ, Spot mix, Reserved Instances / Savings Plans, storage classes, etc., then re-estimate.
+4. **If you need Premium or Optimized in production** — Enable Multi-AZ on the uplifted lines for Premium, or purchase the named Savings Plan for Optimized, then re-estimate.
 5. **Artifacts** — Reference `estimation-infra.json`, `migration-report.html` / `MIGRATION_GUIDE.md` for full tier tables.
 
 Keep it under one screen of text.

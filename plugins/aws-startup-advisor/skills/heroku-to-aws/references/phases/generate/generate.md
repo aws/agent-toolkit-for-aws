@@ -48,6 +48,8 @@ _preconditions:
     _on_failure: _unrecoverable
   - _validate_json: [aws-design.json, estimation-infra.json, preferences.json, heroku-resource-inventory.json]
     _on_failure: _unrecoverable
+  - _assert: "Tier-basis check: estimation-infra.json projected_costs._premium_basis and projected_costs._optimized_basis are both present. If either is absent the file predates the current Premium / Optimized definitions: tell the user its Premium and Optimized figures were produced under the earlier tier definitions and offer to re-run Estimate first (a user-confirmed re-run, never a silent repair; set phases.estimate and phases.generate back to pending only if they accept). If they decline, continue, and the report's reading guide states the earlier-definitions notice (report-decision-core.md, How to read cost tiers) instead of the new derivations."
+    _on_failure: _halt_and_inform
   - _assert: "preferences.json metadata.questions_deferred_to_generate is absent or an empty array — every Generate-time question Clarify defaulted (Q4 maintenance window, Q6c DB migration method, Q12d EB deploy method) was asked at the Decision gate's 'Confirm execution choices' step (estimate-assemble.md). A non-empty array means MIGRATION_GUIDE.md / Terraform is about to be written against an answer the user never gave; return to that step."
     _on_failure: _halt_and_inform
   - _assert: "When the design contains RDS PostgreSQL or Aurora PostgreSQL, rds-windows.json exists with the validated backup_window and maintenance_window prepared from current confirmed preferences by the main-window Decision gate. If absent or invalid, return to that gate before dispatch; the worker must not compute these using its policy-only shell."
