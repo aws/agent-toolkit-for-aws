@@ -14,7 +14,7 @@ _knowledge:
   - { file: references/vendored/estimate/ri-sp-eligibility.md }
   - { file: knowledge/estimate/estimate-defaults.json }
   - { file: knowledge/estimate/rightsizing-thresholds.json }
-  - { file: knowledge/estimate/commitment-discount-ranges.json }
+  - { file: references/vendored/estimate/commitment-discount-ranges.json }
   - { file: knowledge/estimate/render-pricing-cache.json }
 _fragments:
   - _id: infra

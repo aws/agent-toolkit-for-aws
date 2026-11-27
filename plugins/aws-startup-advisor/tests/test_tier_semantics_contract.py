@@ -36,8 +36,7 @@ TIER_DEFINITION_FILES = (
     "skills/azure-to-aws/references/phases/estimate/estimate-infra.md",
 )
 
-# render-to-aws joins this tuple when PR E2 (tier-semantics-render) lands.
-LAYER_SKILLS = ("gcp-to-aws", "azure-to-aws", "heroku-to-aws")
+LAYER_SKILLS = ("gcp-to-aws", "azure-to-aws", "heroku-to-aws", "render-to-aws")
 
 # A tier definition row: a table row or a dash bullet whose first cell / token is the
 # bold tier name (`| **Premium** |`, `| **\`premium\`** |`, `- **Premium** —`, `- Premium:`).

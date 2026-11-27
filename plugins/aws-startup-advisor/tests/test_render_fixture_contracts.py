@@ -231,7 +231,7 @@ def test_rightsizing_thresholds_are_numeric_and_fail_closed() -> None:
 
 def _percent_rate(range_label: str) -> Decimal:
     """Mid-point of a `low-high%` range, or the stated `~N%` / `up to N%` value.
-    Mirrors knowledge/estimate/commitment-discount-ranges.json `midpoint_rule`."""
+    Mirrors references/vendored/estimate/commitment-discount-ranges.json `midpoint_rule`."""
     span = re.search(r"(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)%", range_label)
     if span:
         return (Decimal(span.group(1)) + Decimal(span.group(2))) / Decimal(200)
@@ -239,22 +239,23 @@ def _percent_rate(range_label: str) -> Decimal:
     assert single, range_label
     return Decimal(single.group(1)) / Decimal(100)
 def _recompute_optimized(estimate: dict) -> Decimal:
-    """Recompute the Optimized total from Balanced and the knowledge ranges file; raise
-    when the estimate's recorded commitment arithmetic disagrees (never invent a rate)."""
-    ranges = load(SKILL_ROOT / "knowledge/estimate/commitment-discount-ranges.json")
+    """Recompute the Optimized total from Balanced, the vendored shared rate file and the
+    knowledge eligibility buckets; raise when the estimate's recorded commitment arithmetic
+    disagrees (never invent a rate)."""
+    rates = load(SKILL_ROOT / "references/vendored/estimate/commitment-discount-ranges.json")["rates"]
+    eligibility = load(SKILL_ROOT / "knowledge/estimate/estimate-defaults.json")["commitment_eligibility"]
     scenarios = estimate["scenarios"]
     balanced_lines = {row["line_id"]: row for row in scenarios["balanced"]["lines"]}
     commitment = scenarios["optimized"]["commitment"]
     discounts = Decimal("0")
     eligible_total = Decimal("0")
-    for plan in ranges["optimized_tier_uses"]:
-        services = set(ranges["tier_mapping"][plan])
+    for plan, bucket in eligibility.items():
+        services = set(bucket["aws_services"])
         eligible = [row for row in balanced_lines.values() if row["aws_service"] in services and row["monthly_amount"]]
         subtotal = sum(Decimal(str(row["monthly_amount"])) for row in eligible)
-        range_label = ranges["ranges"][plan]["savings_percent"]
-        if plan == "database_savings_plans":
-            range_label = range_label.split("/")[-1]
-        rate = _percent_rate(range_label)
+        vendored = rates[bucket["rate_key"].split(".", 1)[1]]
+        rate = Decimal(str(vendored["rate"]))
+        assert rate == _percent_rate(vendored["range"]), f"{plan}: vendored rate {rate} is not the mid-point of {vendored['range']}"
         recorded = commitment[plan]
         if sorted(recorded["eligible_line_ids"]) != sorted(row["line_id"] for row in eligible):
             raise AssertionError(f"{plan}: eligible lines differ")

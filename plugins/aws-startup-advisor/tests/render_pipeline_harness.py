@@ -99,8 +99,9 @@ BALANCED_FACTORS = {
     "render.postgres": 0.8,
 }
 # Optimized = Balanced with the mid-point commitment discount on RI/SP-eligible lines
-# only (knowledge/estimate/commitment-discount-ranges.json): Compute Savings Plan
-# 1-year no-upfront 20-40% -> 30% on Fargate and Lambda, Database Savings Plan up to
+# only (references/vendored/estimate/commitment-discount-ranges.json, eligibility buckets
+# in knowledge/estimate/estimate-defaults.json commitment_eligibility): Compute Savings
+# Plan 1-year no-upfront 20-40% -> 30% on Fargate and Lambda, Database Savings Plan up to
 # 20% (provisioned) on RDS and Valkey.
 COMPUTE_SP_RATE = 0.3
 DATABASE_SP_RATE = 0.2
@@ -238,7 +239,7 @@ def estimate_from_design(design: dict[str, Any]) -> dict[str, Any]:
         "ineligible_subtotal_monthly_usd": round(
             balanced["known_cost_monthly_usd"] - compute_sp["eligible_subtotal_monthly_usd"] - database_sp["eligible_subtotal_monthly_usd"], 2
         ),
-        "source": "knowledge/estimate/commitment-discount-ranges.json",
+        "source": "references/vendored/estimate/commitment-discount-ranges.json",
     }
     premium = block([dict(row) for row in balanced_lines])
     premium.update({"uplift_monthly_usd": 0.0, "uplifted_line_ids": []})
