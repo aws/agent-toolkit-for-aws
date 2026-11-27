@@ -12,7 +12,7 @@ Go, with conditions, at medium confidence. Estimated AWS Balanced is $210 per mo
 
 | Tier                                                                 | Est. Monthly AWS |
 | -------------------------------------------------------------------- | ---------------- |
-| Premium (no uplift applies — the RDS rate already includes Multi-AZ) | $210/mo          |
+| Premium — equals Balanced: every line that can take a resilience uplift is already Multi-AZ (the RDS rate includes it), so there is no higher-availability variant to price | $210/mo |
 | **Balanced** (compare Heroku to this row first)                      | **$210/mo**      |
 | Optimized                                                            | $163/mo          |
 

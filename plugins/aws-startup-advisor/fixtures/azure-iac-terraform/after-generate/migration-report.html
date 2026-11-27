@@ -320,11 +320,11 @@
             <td>Like-for-like sizing from the declared SKUs; equals the right-sized figure because no utilization data was available to size down.</td>
           </tr>
           <tr>
-            <td>Optimized<br><span class="tier-sub">30% commitment discount assumed on eligible lines</span></td>
-            <td><span data-cost-key="aws_monthly_optimized">$363</span></td>
-            <td class="savings">-$97</td>
-            <td>$4,352</td>
-            <td>30% (mid-point of the applicable ranges) applied only to the RI/SP-eligible subtotal of $325 (EC2 behind Elastic Beanstalk, RDS, ElastiCache); MSK, ALB, EBS, S3, Secrets Manager and CloudWatch have no commitment product and are unchanged. The most misleading of the three figures: a discounted floor reads as the cheapest credible number when it is the least complete.</td>
+            <td>Optimized<br><span class="tier-sub">Commitment discount on eligible lines only (Compute SP 30%, Database SP 20%)</span></td>
+            <td><span data-cost-key="aws_monthly_optimized">$392</span></td>
+            <td class="savings">-$68</td>
+            <td>$4,706</td>
+            <td>Per-product 1-year no-upfront rates applied only to the RI/SP-eligible subtotal of $325: Compute Savings Plan 30% on the EC2 behind Elastic Beanstalk ($9), Database Savings Plan 20% on RDS ($55) and on ElastiCache for Valkey ($4); MSK, ALB, EBS, S3, Secrets Manager and CloudWatch have no commitment product and are unchanged. The most misleading of the three figures: a discounted floor reads as the cheapest credible number when it is the least complete.</td>
           </tr>
         </tbody>
       </table>
@@ -348,7 +348,7 @@
       <h2>Cost Optimization <a class="toplink" href="#toc">&uarr; contents</a></h2>
       <p>Generated Terraform is <strong>Balanced on-demand</strong> (Est. $460/mo). Savings Plans and Reserved Instances are
          account-level purchases you make after you have a usage baseline. Do not add these rows on top of the Optimized tier
-         (Est. $363/mo) — that tier already embeds a 30% commitment assumption on the eligible lines.</p>
+         (Est. $392/mo) — that tier already embeds the Compute SP 30% / Database SP 20% commitment assumption on the eligible lines.</p>
       <table>
         <caption>How the estimated monthly run rate changes if this stack takes a commitment. Figures are incremental to Balanced on-demand.</caption>
         <thead>
@@ -380,9 +380,9 @@
           </tr>
           <tr>
             <td>Optimized composite (illustrative bound)</td>
-            <td>Est. $363</td>
-            <td>−$97</td>
-            <td>Already includes the 30% commitment assumption on eligible lines. Use as a floor, not a sum of extra discounts.</td>
+            <td>Est. $392</td>
+            <td>−$68</td>
+            <td>Already includes the Compute SP 30% / Database SP 20% commitment assumption on eligible lines. Use as a floor, not a sum of extra discounts.</td>
           </tr>
         </tbody>
       </table>
@@ -734,8 +734,8 @@
 
     <section id="appendix-optimization">
       <h2>Appendix B.1 — Savings Plans and Reserved Instances <a class="toplink" href="#toc">&uarr; contents</a></h2>
-      <p>Incremental to Balanced on-demand (Est. $460/mo). Do not add these savings onto Optimized (Est. $363/mo) — that tier
-         already embeds a 30% commitment assumption on the eligible lines. Monthly savings are deliberately not quantified where
+      <p>Incremental to Balanced on-demand (Est. $460/mo). Do not add these savings onto Optimized (Est. $392/mo) — that tier
+         already embeds the Compute SP 30% / Database SP 20% commitment assumption on the eligible lines. Monthly savings are deliberately not quantified where
          the covered lines include excluded (unpriced) services, so a percentage of the current floor would understate them.</p>
       <table>
         <caption>Estimated cost savings available post-migration, by commitment product.</caption>

@@ -100,3 +100,75 @@ def test_layer_tier_semantics_declares_keys_and_does_not_redefine(skill: str):
         assert "aws_monthly_balanced" in row, f"{skill}: ⟨tier_semantics⟩ must name the Balanced key"
         hit = FORBIDDEN_IN_LAYER_RE.search(row)
         assert not hit, f"{skill}: ⟨tier_semantics⟩ redefines a tier ({hit.group(0)!r}): {row}"
+
+
+SHARED_RATES = PLUGIN_ROOT / "skills" / "shared" / "estimate" / "commitment-discount-ranges.json"
+VENDORED_RATES_SKILLS = ("gcp-to-aws", "azure-to-aws", "heroku-to-aws", "render-to-aws")
+# Every estimate artifact this series re-derived, plus azure's (already on the rule).
+TIERED_ESTIMATES = (
+    "fixtures/estimation-infra-reference.json",
+    "fixtures/gcp-decision-gate/after-decide-complete/estimation-infra.json",
+    "fixtures/heroku-decision-gate/after-decide-complete/estimation-infra.json",
+    "fixtures/heroku-decision-gate/retained-execution-pack/estimation-infra.json",
+    "fixtures/azure-iac-terraform/after-estimate/estimation-infra.json",
+)
+
+
+def test_shared_commitment_rates_are_the_single_tier_source():
+    """One shared file carries the Optimized tier rates; every skill vendors it and the
+    canonical and the three estimate docs point at it rather than restating a number."""
+    import json
+
+    rates = json.loads(_read(SHARED_RATES))["rates"]
+    assert rates["compute_savings_plan"]["rate"] == 0.30
+    assert rates["database_savings_plan_provisioned"]["rate"] == 0.20
+    for skill in VENDORED_RATES_SKILLS:
+        vendored = PLUGIN_ROOT / "skills" / skill / "references" / "vendored" / "estimate" / "commitment-discount-ranges.json"
+        assert vendored.is_file(), f"{skill} does not vendor commitment-discount-ranges.json"
+        assert vendored.read_bytes() == SHARED_RATES.read_bytes(), f"{skill} vendored rates drifted"
+    assert "commitment-discount-ranges.json" in _section(_read(CANONICAL), "## Cost Comparison")
+    for rel in (
+        "skills/gcp-to-aws/references/phases/estimate/estimate-infra.md",
+        "skills/heroku-to-aws/references/phases/estimate/estimate-cost-engine.md",
+        "skills/azure-to-aws/references/phases/estimate/estimate-infra.md",
+    ):
+        text = _read(PLUGIN_ROOT / rel)
+        rows = [line for line in text.splitlines() if TIER_ROW_RE.match(line) and "Optimized" in line]
+        assert rows and all("commitment-discount-ranges.json" in r for r in rows), (
+            f"{rel}: the Optimized tier row must take its rate from the vendored shared file"
+        )
+    # No skill keeps a private copy of the tier rate.
+    for skill in VENDORED_RATES_SKILLS:
+        defaults = PLUGIN_ROOT / "skills" / skill / "knowledge" / "estimate" / "estimate-defaults.json"
+        if defaults.is_file():
+            assert "optimized_tier_discounts" not in defaults.read_text(encoding="utf-8"), (
+                f"{skill}: tier rates belong in the shared file, not estimate-defaults.json"
+            )
+
+
+def test_canonical_requires_an_explanation_when_tier_figures_are_equal():
+    cost = _section(_read(CANONICAL), "## Cost Comparison")
+    for phrase in (
+        "When two or three tier figures are equal, say why where the reader sees them",
+        "Premium equals Balanced because every line that can take a resilience uplift is already multi-AZ",
+        "Optimized equals Balanced because none of the priced lines is eligible for a commitment discount",
+        "never pad a tier with an artificial delta",
+    ):
+        assert phrase in cost, f"canonical § Cost Comparison no longer states: {phrase}"
+
+
+@pytest.mark.parametrize("rel", TIERED_ESTIMATES)
+def test_tier_figures_are_ordered_and_explained(rel: str):
+    """Premium ≥ Balanced ≥ Optimized always holds under the rule (uplift adds, discount
+    subtracts). Each derived tier carries its `_basis` sentence, and an equal pair is
+    explained there rather than left as a bare coincidence."""
+    import json
+
+    pc = json.loads(_read(PLUGIN_ROOT / rel))["projected_costs"]
+    premium, balanced, optimized = (pc["aws_monthly_premium"], pc["aws_monthly_balanced"], pc["aws_monthly_optimized"])
+    assert premium >= balanced >= optimized, f"{rel}: tiers out of order {premium}/{balanced}/{optimized}"
+    assert pc.get("_premium_basis") and pc.get("_optimized_basis"), f"{rel}: derived tiers need a _basis sentence"
+    if premium == balanced:
+        assert re.search(r"uplift", pc["_premium_basis"], re.IGNORECASE), f"{rel}: Premium equals Balanced without saying why"
+    if optimized == balanced:
+        assert re.search(r"eligible", pc["_optimized_basis"], re.IGNORECASE), f"{rel}: Optimized equals Balanced without saying why"

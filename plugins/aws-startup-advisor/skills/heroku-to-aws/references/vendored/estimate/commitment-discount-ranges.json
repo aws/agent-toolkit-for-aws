@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "_what_this_is": "The commitment-discount rates the Optimized cost TIER applies, shared by every migration skill so the tier means the same thing in every report. Optimized = Balanced with these rates applied ONLY to the RI/SP-eligible subtotal (eligibility per ri-sp-eligibility.md in this same shared/estimate directory); the ineligible subtotal is unchanged. These are TIER rates, not the post-migration opportunity ranges: a skill's optimization_opportunities[] rows quote the wider all-term ranges (e.g. 20-66%) from its own estimate-defaults.json.",
+  "midpoint_rule": "Each rate below is the arithmetic mid-point of the typical 1-year, no-upfront range for that commitment product, or the documented single figure where AWS publishes one. Apply the rate to the eligible line's Balanced on-demand amount, round each line's discount to whole dollars, sum, and record the rate(s) and both subtotals in the estimate artifact (projected_costs._optimized_basis).",
+  "eligibility_source": "ri-sp-eligibility.md (this directory; vendored into each skill at references/vendored/estimate/ri-sp-eligibility.md). A service with no eligible row there is ineligible and its line is unchanged.",
+  "rates": {
+    "compute_savings_plan": {
+      "rate": 0.30,
+      "range": "20-40%",
+      "term": "1-year, no upfront",
+      "applies_to": ["EC2 (including the EC2 component of Elastic Beanstalk and EKS nodes)", "ECS on Fargate", "AWS Lambda"],
+      "source": "AWS Compute Savings Plans: up to 66% at the maximum term; the typical 1-year no-upfront saving is 20-40% (the figure the gcp-to-aws Part 3 commitment table and the azure-to-aws Optimized basis already use)."
+    },
+    "database_savings_plan_provisioned": {
+      "rate": 0.20,
+      "range": "up to 20%",
+      "term": "1-year, no upfront",
+      "applies_to": ["RDS (provisioned)", "Aurora (provisioned)", "ElastiCache for Valkey", "DocumentDB", "Neptune", "Keyspaces", "DynamoDB (any capacity mode)"],
+      "source": "AWS Database Savings Plans: up to 20% on provisioned engines (up to 35% on serverless, which is not a tier input because the tier prices the designed capacity)."
+    }
+  },
+  "not_tier_inputs": "Spot pricing, S3 Intelligent-Tiering / Infrequent Access, Reserved Instances with upfront payment, ElastiCache Reserved Nodes, Graviton re-platforming, and every other consumption-model, storage-class or architecture assumption. Those are optimization_opportunities[] rows with their own savings ranges.",
+  "when_tiers_coincide": "If no priced line is eligible, Optimized equals Balanced and the report must say so where the reader sees the equal figures (report-decision-core.md, How to read the tiers)."
+}
