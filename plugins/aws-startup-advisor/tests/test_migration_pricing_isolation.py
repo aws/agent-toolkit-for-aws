@@ -16,8 +16,8 @@ FIXTURES = PLUGIN / "fixtures"
 
 PINNED_SHA256 = {
     "azure-iac-terraform/after-estimate/estimation-infra.json": "55f52c50ece04b55dfa66e288e22eb5ea0e94bef2b5a840974dae9ce7f7ed034",
-    "heroku-decision-gate/after-decide-complete/estimation-infra.json": "96d55a2a529acd9616fc9b28c6997f4c897a6dc5dc54e42748be238f09d67c4e",
-    "heroku-decision-gate/retained-execution-pack/estimation-infra.json": "96d55a2a529acd9616fc9b28c6997f4c897a6dc5dc54e42748be238f09d67c4e",
+    "heroku-decision-gate/after-decide-complete/estimation-infra.json": "193713f4ddee19d5406b518a79595a33217ad5dee041cd08a6fd9433e11b86d7",
+    "heroku-decision-gate/retained-execution-pack/estimation-infra.json": "193713f4ddee19d5406b518a79595a33217ad5dee041cd08a6fd9433e11b86d7",
     "heroku-workshop/after-arm64-reprice/estimation-infra.json": "6757c43f05efe9f5982be65dcab00e49f9059528baf6b112539b5fc0e8be861b",
     "heroku-workshop/seed/estimation-infra.json": "62da3cfffc002a7321056ddac96ed009c76724e432b7af8e3c225956466fdf5b",
 }
