@@ -25,8 +25,7 @@ This runs as the rehearsal (`working_on`: the test copy).
 
 a. Create the test copy at **the first version jump's target**
    (`jump_1.to`) so the rehearsal follows your current environment's staged
-   path (surfacing the same pre-cross deprecation warnings your current
-   environment will hit). Never create the test copy at the source version.
+   path (the same version jumps your current environment will take). Never create the test copy at the source version.
    Match ALL configuration from your current environment: environment class,
    VPC, subnets, security groups, execution role, Airflow configuration
    overrides, logging configuration, weekly maintenance window, webserver
@@ -69,15 +68,17 @@ a. Create the test copy at **the first version jump's target**
       constraint file for that package (download it, edit that line, save it
       to the test copy's DAGs folder, reference it) rather than leaving a
       pin that fights the constraint.
-   3. **Verify (Phase 6 Docker, if available):** build the `jump_1.to` image
-      with `amazon-mwaa-docker-images` and confirm the requirements, startup
-      script, and plugins install cleanly; fix conflicts and retry until
-      clean. If Docker is unavailable, rely on the constraint
-      cross-reference above.
+   3. **Verify (Phase 6 Docker, if available):** run Phase 6's `test-dags`
+      procedure for `jump_1.to`; fix conflicts and retry until clean. If
+      version jump 1 is `python_change`, run it on the DAG set the test copy
+      starts with (including the Python-line fixes from Phase 5 step 3). If
+      Docker is unavailable, rely on the constraint cross-reference above.
 
    The engine advances the constraint per version jump toward the target
    after create (see upgrade-engine.md). Then create the test copy (only
-   after the requirements verify clean):
+   after the requirements verify clean, and only after the plan item
+   `Pre-flight: extend execution role / trust policy / KMS` is `DONE`; see
+   discovery-preflight.md Step 2.3):
 
    ```
    aws mwaa create-environment --name <test-copy> \
@@ -87,11 +88,11 @@ a. Create the test copy at **the first version jump's target**
      --requirements-s3-path <test-copy-requirements-path> \
      --plugins-s3-path <test-copy-plugins-path> \
      --startup-script-s3-path <test-copy-startup-path> \
-     --execution-role-arn <same-as-current-env> \
+     --execution-role-arn <same-as-current-env; extended for this environment at pre-flight Step 2.3> \
      --kms-key <same-as-current-env-KmsKey; omit ONLY if your current environment uses the AWS-owned key — confirm this immutable fallback> \
      --network-configuration '{"SubnetIds":<current-env-SubnetIds-array>,"SecurityGroupIds":<current-env-SecurityGroupIds-array>}' \
      --environment-class <same-as-current-env> \
-     --airflow-configuration-options <same-as-current-env> \
+     --airflow-configuration-options <same-as-current-env, with scheduler.catchup_by_default=False> \
      --logging-configuration <same-as-current-env> \
      --weekly-maintenance-window-start <same-as-current-env> \
      --webserver-access-mode <same-as-current-env> \
@@ -104,6 +105,15 @@ a. Create the test copy at **the first version jump's target**
 
    Omit any path/version flags for artifacts your current environment does
    not use. Poll until AVAILABLE.
+
+   **Catchup:** copy your current environment's `AirflowConfigurationOptions`
+   but set `scheduler.catchup_by_default` to `False`. Airflow 2 defaults it to
+   `True`, and an environment with no run history then backfills every
+   interval since `start_date` for any DAG that does not set `catchup`
+   explicitly, the moment the testing skill unpauses it. DAGs that set
+   `catchup=True` explicitly still catch up, which is intended. Record your
+   current environment's original value (or "unset") in the plan. The test
+   copy needs no restore, because it is deleted in Step 4.
 
 b. Migrate operational config to the test copy via `aws mwaa
    invoke-rest-api` (variables, connections, pools — same pattern as the
@@ -118,7 +128,8 @@ c. Run the step-by-step upgrade on the test copy; starting condition: newly
    created. See [upgrade-engine.md](upgrade-engine.md).
 
 d. Deploy fixed DAGs to the test copy in batches; confirm no import errors
-   via the engine's parse validation.
+   via the engine's parse validation. Leave the DAGs paused (engine step 1a);
+   pause any that came up unpaused.
 
 ### 1-checkpoint. Test-run the test copy (REQUIRED)
 
@@ -142,13 +153,22 @@ parse.
   validation passes. A DAG that only parses but fails at runtime will fail
   identically on your current environment after an irreversible in-place
   upgrade.
+- DAGs on the test copy stay paused except during their own test run: the
+  testing skill unpauses each DAG only for its test run. Once a DAG's test run
+  is terminal, pause it again on the test copy
+  (`PATCH /dags/<dag_id>` with `{"is_paused":true}`), so the test copy does
+  not run production schedules, including while your current environment is
+  paused for the live jump. Track this as `Re-pause all DAGs on <test-copy>
+  after the test-run checkpoint [PENDING]`.
 
 Record execution results in the plan under a `## Test-run results` section
 (DAG ID, run_id, state, duration, and any NEEDS-DECISION items).
 
 ### 2. Upgrade your current environment (the live upgrade)
 
-**Prerequisite:** Step 1-checkpoint test-run validation must have passed.
+**Prerequisite:** Step 1-checkpoint test-run validation must have passed,
+and every DAG on the test copy must be paused again (the re-pause item is
+`DONE`).
 When presenting the live upgrade for user confirmation, include a summary of
 the test copy's execution results so the user can make an informed decision.
 Example:
@@ -176,7 +196,8 @@ is healthy before marking complete. Do NOT proceed to Step 4 or 5 until this
 checkpoint passes.
 
 ```
-aws mwaa invoke-rest-api --name <current-env> --method GET --path /health
+aws mwaa invoke-rest-api --name <current-env> --method GET --path /monitor/health  # Airflow 3.x
+aws mwaa invoke-rest-api --name <current-env> --method GET --path /health          # Airflow 2.x
 aws mwaa invoke-rest-api --name <current-env> --method GET --path /dags \
   --query-parameters '{"limit":"100","offset":"0"}'
 ```
@@ -195,6 +216,14 @@ decommission path), with per-step user approval:
 ```
 aws mwaa delete-environment --name <test-copy>
 ```
+
+After the deletion completes, remove the test copy's environment-scoped
+permission entries recorded at pre-flight (role permission and trust
+policies, KMS), leaving your current environment's entries untouched. Remove
+only entries marked `exclusive` after re-running the shared-resource check
+(discovery-preflight.md Step 2.3). Re-read
+the policies first and show the diff for per-change approval (SKILL.md Phase
+8.3).
 
 ### 5. Mark Complete
 

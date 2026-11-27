@@ -36,7 +36,11 @@ For releases newer than 3.2.1, derive the Python version from the runtime fetch
 (`python_by_version`) above rather than from this list, since a future 3.x may
 adopt Python 3.13+.
 A version jump that crosses any of these boundaries carries compiled-dependency
-risk and is flagged `python_change`. `GetEnvironment` returns `AirflowVersion`
+and removed-standard-library risk and is flagged `python_change`; record its
+`python_from` and `python_to` (e.g. `3.11` and `3.12`) with it, because the
+standard-library check in
+[python-stdlib-check.md](python-stdlib-check.md) needs both versions.
+`GetEnvironment` returns `AirflowVersion`
 but not the Python version, so derive the source Python from these boundaries.
 
 A source below the current minimum supported version is below supported
@@ -64,7 +68,8 @@ https://raw.githubusercontent.com/apache/airflow/constraints-2.10.1/constraints-
 ## Version-jump rules
 
 - **Same major (2->2 or 3->3):** a single direct version jump source -> target
-  is the candidate. Flag `python_change` when it crosses a Python-line boundary.
+  is the candidate. Flag `python_change` (with `python_from`/`python_to`) when
+  it crosses a Python-line boundary.
 - **Cross-major (2->3):** MWAA offers the major upgrade only through the latest
   2.11.x. Route source -> latest-2.11.x (omit if source is already 2.11.x),
   then latest-2.11.x -> 3.x target. The final version jump is flagged
@@ -110,7 +115,10 @@ _Verify against the AWS MWAA documentation at runtime; feature support can chang
 - MWAA auto-routes paths based on environment Airflow version
 - AF2 environments: paths resolve to `/api/v1`
 - AF3 environments: paths resolve to `/api/v2`
-- Pass just the path portion (e.g., `/dags`, `/health`) without the version prefix
+- Pass just the path portion (e.g., `/dags`) without the version prefix
+- The health path differs by version: AF2 serves only `/health`, AF3 only
+  `/monitor/health`. Both return `metadatabase.status` and `scheduler.status`
+  (with `latest_scheduler_heartbeat`)
 - 10-second timeout, 6 MB max response
   (https://docs.aws.amazon.com/mwaa/latest/userguide/access-mwaa-apache-airflow-rest-api.html)
 - Requires IAM permission: `airflow:InvokeRestApi`

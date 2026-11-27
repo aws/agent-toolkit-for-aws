@@ -84,13 +84,13 @@ with no descriptive message.
 
 Capture the `dag_run_id` so the poll can find this exact run.
 
-**Unpause before triggering (AF3 behavior change).** On Airflow 3.x, a manual
-run POSTed against a *paused* DAG is accepted (the run is created in `queued`)
-but the scheduler does not execute it while the DAG is paused — it sits
-`queued` indefinitely and looks like a stuck trigger. Airflow 2.x runs manual
-triggers regardless of pause state; AF3 does not. Unpause first
-(`PATCH /dags/<dag_id>` with `{"is_paused": false}`), then trigger. This is
-common right after an upgrade, where DAGs are deployed paused.
+**Unpause before triggering.** A manual run POSTed against a *paused* DAG is
+accepted (the run is created in `queued`) but the scheduler does not execute it
+while the DAG is paused, on Airflow 2.x and 3.x alike. It sits `queued` with
+`start_date: null` and looks like a stuck trigger. Unpause first
+(`PATCH /dags/<dag_id>` with `{"is_paused": false}`), then trigger. The
+freshness gate's paused case (step 4 below) does this unpause and decides
+whether to adopt the run it creates or to trigger.
 
 **Prefer a definitely-past `logical_date`.** Manually triggered runs are
 processed regardless of `logical_date`, but using a timestamp in the past
@@ -112,37 +112,117 @@ task in retry-backoff still occupies a `max_active_runs` slot, so a new run
 sits `queued` behind it rather than starting — a stall that looks like a
 trigger failure but is the concurrency cap.
 
-## Existing runs after unpause
+## Before POSTing a manual trigger
 
 When a paused DAG is unpaused during testing (common in delegated mode — the
 DAG was just deployed paused), and `catchup=False` with an eligible interval
-already past, the scheduler creates a `scheduled__` run immediately. This
-consumes the next eligible `logical_date`.
+already past, the scheduler creates a `scheduled__` run immediately. A DAG
+created unpaused (`core.dags_are_paused_at_creation=False` or
+`is_paused_upon_creation=False`) gets the same run within seconds of its first
+parse. A prior run may therefore be the scheduler's run of the file you just
+deployed, the scheduler's run of a *previous* file, or a leftover from an
+earlier test.
 
-Before POSTing a manual trigger:
+**Apply the freshness gate** (delegated and standalone mode alike) before
+adopting any prior run. The reference time is the DAG file's **deploy time**,
+not `last_parsed_time` (which advances on every re-parse even when the file is
+unchanged):
 
-1. GET `/dags/<dag_id>/dagRuns` with `{"order_by": "-start_date", "limit": "1"}`.
-2. **Apply the freshness gate** — a prior run may have tested a previous
-   version of the artifact:
-   - **Delegated mode:** the artifact was just rewritten and redeployed.
-     Any prior run by definition tested the previous file. Skip adoption
-     and trigger fresh regardless of state.
-   - **Standalone mode:** compare `run.start_date` against
-     `dag.last_parsed_time` read from the `/dags` collection readiness
-     response (the ready check already fetches it; the collection returns
-     `last_parsed_time` per DAG, so there is no need to re-query the per-DAG
-     endpoint). If `start_date < last_parsed_time`, the run predates the
-     current artifact — treat as stale, trigger fresh.
-3. If a **fresh** run exists (passes the gate):
-   - Non-terminal (`queued`/`running`) — adopt it: skip the POST, proceed
-     directly to poll (Step 3) using the scheduler's `dag_run_id`.
-   - Terminal `success` — the DAG already passed; report it (Step 6).
-   - Terminal `failed` — the DAG already failed; proceed to Step 4 (diagnosis).
-4. If no fresh runs exist — POST the manual trigger as normal.
+1. **Resolve the deploy time** — the S3 `LastModified` of the DAG file object.
+   Read `SourceBucketArn` and `DagS3Path` from `get-environment`, then
+   head-object the file (in delegated mode the calling skill names the
+   file):
 
-This check is cheap (one GET) and prevents the silent-failure scenario where
-the POST returns `RestApiClientException` because the `logical_date` is
-already taken — indistinguishable from a transient error without this context.
+   ```bash
+   aws mwaa get-environment --name <env> \
+     --query 'Environment.{Bucket:SourceBucketArn,Path:DagS3Path}'
+   aws s3api head-object --bucket <source-bucket> --key <DagS3Path>/<file.py> \
+     --query 'LastModified'
+   ```
+
+   `SourceBucketArn` is `arn:aws:s3:::<source-bucket>`; use the bare bucket name
+   for `--bucket`.
+
+   If the deploy time cannot be read — `head-object` returns `AccessDenied`, or
+   the DAG file key is unknown (standalone mode with no hand-off) — do
+   **not** fall back to `last_parsed_time`. First ask the user for the DAG file
+   key (so `head-object` can run) or the file's deploy time directly. If neither
+   is available, tell the user freshness cannot be verified, treat **every**
+   prior run as stale, and apply the scheduled-DAG rules in step 4: a terminal
+   prior run, trigger fresh (under the Step 2 confirmation); a non-terminal
+   (`queued`/`running`) prior run, do not trigger silently — ask the user to
+   start a fresh run now (it runs alongside the in-flight run and can collide on
+   downstream resources) or wait for the in-flight run to finish and then
+   trigger fresh.
+
+2. **Fetch the most recent run:**
+
+   ```bash
+   aws mwaa invoke-rest-api --name <env> --path /dags/<dag_id>/dagRuns \
+     --method GET --query-parameters '{"order_by": "-start_date", "limit": "1"}'
+   ```
+
+   Read its `start_date` and `state` from `RestApiResponse.dag_runs[0]`.
+
+3. **Read whether the DAG has a schedule** from the `/dags` collection response
+   the readiness check already fetched. `timetable_description` is the primary
+   signal and is present on both majors: a value of
+   `"Never, external triggers only"` means no schedule. The per-major field
+   below is **absent (key omitted) or null** when there is no schedule and
+   carries the schedule when there is one — read it as confirmation, and never
+   require an explicit null (the live `/dags` response omits the key entirely
+   for an unscheduled DAG):
+   - **AF2 (v1):** no schedule when `schedule_interval` is absent or null. When
+     scheduled it is an object, e.g.
+     `{"__type": "CronExpression", "value": "@hourly"}`.
+   - **AF3 (v2):** no schedule when `timetable_summary` is absent or null. When
+     scheduled it is a cron string, e.g. `"0 * * * *"`.
+
+4. **Decide by pause state, then by schedule.** `is_paused` comes from the same
+   `/dags` response.
+
+   - **Paused.** No run can start until you unpause, so you choose the run
+     that tests the new file. Poll the `/dags` collection until
+     `last_parsed_time` is after `LastModified`, within the Step 1 readiness
+     window. From that response read the next run time (AF2:
+     `next_dagrun_create_after`; AF3: `next_dagrun_run_after`), which the DAG
+     processor recomputes on every parse, paused or not. Note the most recent
+     run, unpause (`PATCH /dags/<dag_id>` with `{"is_paused": false}`), and:
+     - **Next run time at or before the unpause** (a scheduled DAG whose latest
+       interval is due): the scheduler creates that run within seconds. Poll
+       `dagRuns` for a new `run_type` `scheduled` run that was not there
+       before the unpause, adopt it, and poll it in Step 3. Do not POST a
+       trigger, which would run the DAG twice against the same downstream
+       resources. If no such run appears within the readiness window, the
+       scheduler is not creating runs: go to Step 4 (diagnosis) rather than
+       triggering.
+     - **Next run time null** (no schedule) **or in the future:** no run is
+       coming now. POST the manual trigger.
+     - **The parse never came within the window:** unpause anyway and apply
+       the unpaused cases below.
+   - **Unpaused, no schedule.** A run whose `start_date >= LastModified` is
+     fresh: adopt it — non-terminal (`queued`/`running`), skip the POST and poll
+     it in Step 3; terminal `success`, report it (Step 6); terminal `failed`, go
+     to Step 4 (diagnosis). A run with `start_date < LastModified` is stale:
+     trigger fresh. If that stale run is still running, handle it as the
+     scheduled non-terminal case below.
+   - **Unpaused, scheduled.** Treat any scheduler-created or earlier run as
+     stale, even one with `start_date >= LastModified`: a scheduled run that
+     fires right after the upload can still have executed the previous file,
+     because the new file reaches the scheduler and workers only after MWAA's
+     S3 sync and the next parse. If the stale run is terminal, trigger fresh as
+     normal. If it is non-terminal (`queued`/`running`), **do not** trigger
+     silently — ask the user to either (a) start a fresh run now, which runs
+     alongside the in-flight run and can collide on downstream resources, or
+     (b) wait for the in-flight run to finish first. In delegated mode the
+     caller's approval to test does not cover this choice; ask. If they choose
+     to wait, poll the in-flight run to a terminal state (it is not the test
+     result — do not report it as one), then trigger fresh.
+
+The gate decides on deploy time and the DAG's schedule, never on the code a run
+executed: no MWAA or Airflow API exposes a run's source. On Airflow 3.2.1 a
+code-only change keeps the same DAG version and overwrites that version's stored
+source in place; on Airflow 2.x `/dagSources` returns only the current file.
 
 ## Poll to terminal
 
@@ -154,9 +234,7 @@ are: the run is behind a `max_active_runs` concurrency cap (prior runs still
 retrying), or the scheduler is overloaded. Check for other active runs of the
 same DAG before concluding the trigger failed.
 
-Mind the 64-character `--path` limit: a per-run path
-(`/dags/<dag_id>/dagRuns/<url-encoded-run-id>`) can exceed it. Poll the short
-collection path with query parameters instead:
+Poll the `dagRuns` collection:
 
 ```bash
 aws mwaa invoke-rest-api --name <env> --path /dags/<dag_id>/dagRuns \
@@ -171,7 +249,8 @@ states: `success`, `failed`.
 
 ## Fallback
 
-A `RestApiClientException` or timeout (rare with `invoke-rest-api`, possible on
-a mis-scoped execution role) falls back to the Scheduler and DAGProcessing
-CloudWatch log groups for run/task state, exactly as debugging-mwaa-workflow
-documents. Prefer `invoke-rest-api`; use logs only when it errors.
+A `RestApiServerException` that persists after retries, or a timeout, falls
+back to the Scheduler and DAGProcessing CloudWatch log groups for run/task
+state, exactly as debugging-mwaa-workflow documents. A `RestApiClientException`
+is a 4xx from Airflow, so read its `RestApiStatusCode` first (404 wrong
+`dag_run_id`, 401/403 role). Prefer `invoke-rest-api`; use logs only when it errors.
