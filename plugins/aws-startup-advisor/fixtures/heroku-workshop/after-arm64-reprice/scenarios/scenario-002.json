@@ -11,7 +11,7 @@
   "estimation_summary": {
     "aws_monthly_premium": 88.0,
     "aws_monthly_balanced": 88.0,
-    "aws_monthly_optimized": 82.0,
+    "aws_monthly_optimized": 84.0,
     "complexity_tier": "small",
     "pricing_source": "cached",
     "region_note": null
