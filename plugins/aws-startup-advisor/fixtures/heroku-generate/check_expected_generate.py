@@ -298,6 +298,17 @@ def main() -> int:
               f"aws_monthly_balanced renders {anchors['aws_monthly_balanced']!r} but "
               f"projected_costs.aws_monthly_balanced = {expected}")
 
+    # 9. Default parity: exec-assumptions and Appendix F flag the SAME defaulted answers
+    # (both tables mark a defaulted row with class="assumption-default"). A default
+    # surfaced in one table but not the other is how the pass-1 Q12 gap slipped through.
+    def _default_rows(section_id: str) -> int:
+        m = re.search(rf'<section id="{section_id}".*?</section>', html, re.S)
+        return len(re.findall(r'<tr[^>]*class="assumption-default"', m.group(0))) if m else -1
+
+    ea, ac = _default_rows("exec-assumptions"), _default_rows("appendix-config")
+    check(ea > 0, "exec-assumptions flags no assumption-default rows")
+    check(ea == ac, f"exec-assumptions flags {ea} defaulted answers but appendix-config flags {ac}")
+
     return _finish()
 
 
