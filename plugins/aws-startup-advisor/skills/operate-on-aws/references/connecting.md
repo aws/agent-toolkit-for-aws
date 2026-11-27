@@ -126,7 +126,7 @@ expires in 60 days, nothing needs storing.
       "command": "uvx",
       "timeout": 120000,
       "args": [
-        "mcp-proxy-for-aws==1.7.0",
+        "mcp-proxy-for-aws==2.0.0",
         "https://connect.aidevops.{region}.api.aws/mcp",
         "--service", "aidevops",
         "--region", "{region}",

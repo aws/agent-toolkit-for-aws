@@ -18,7 +18,7 @@ version-pinned command-line build of the open-source MCP Proxy for AWS:
 | Client | OAuth | SigV4 (local signing proxy, signs with the user's AWS profile) |
 |---|---|---|
 | Claude Code | `claude mcp add --scope user --transport http aws-context <endpoint>` | `claude mcp add --scope user aws-context -- uvx mcp-proxy-for-aws-cli@1.8.0 <endpoint> --service context-mcp --region <region> --profile <profile>` |
-| Codex (`~/.codex/config.toml`) | `[mcp_servers.aws-context]` with `url = "<endpoint>"` | `[mcp_servers.aws-context]` with `command = "uvx"` and `args = ["mcp-proxy-for-aws-cli@1.8.0", "<endpoint>", "--service", "context-mcp", "--region", "<region>", "--profile", "<profile>"]` |
+| Codex (`~/.codex/config.toml`) | `[mcp_servers.aws-context]` with `url = "<endpoint>"` | `[mcp_servers.aws-context]` with `command = "uvx"` and `args = ["mcp-proxy-for-aws-cli@2.0.0", "<endpoint>", "--service", "context-mcp", "--region", "<region>", "--profile", "<profile>"]` |
 | Other JSON clients | `{"type": "http", "url": "<endpoint>"}` under `mcpServers.aws-context` | `{"command": "uvx", "args": [same as Codex]}` under `mcpServers.aws-context` |
 
 Then ask the user to turn off the plugin's own AWS Context server in their client's MCP panel
