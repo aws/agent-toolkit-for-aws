@@ -191,22 +191,34 @@ returns and before `_postconditions`**.
    assumed pass. The checker output is already the report; do not rewrite it as
    a success summary.
 
-2. Run the report validator (**required, blocking**):
+2. Run both report validators (**required, blocking** — the shared structure/content
+   gate under the heroku profile, then the heroku add-on):
 
-   ```
+   ```bash
+   python3 "$PLUGIN_ROOT/scripts/validate-migration-report.py" \
+     "$MIGRATION_DIR/migration-report.html" \
+     --profile heroku \
+     --estimation-infra "$MIGRATION_DIR/estimation-infra.json" \
+     --migration-dir "$MIGRATION_DIR"
    python3 "<SKILL_BASE>/scripts/validate-heroku-migration-report.py" \
-     "$MIGRATION_DIR/migration-report.html" --migration-dir "$MIGRATION_DIR"
+     "$MIGRATION_DIR/migration-report.html" \
+     --migration-dir "$MIGRATION_DIR"
    ```
 
-3. `REPORT_OK` → **stamp the durable result** so the gate reads an artifact, not conversation
-   memory: write `$MIGRATION_DIR/report-validation-status.json` as
-   `{"report_status": "REPORT_OK"}`, then continue to the gate. `REPORT_FAIL` → write
-   `{"report_status": "REPORT_FAIL", "errors": [ … ]}` and **emit `GATE_FAIL`, pasting the
-   validator's `errors[]` verbatim** so the user knows exactly what failed (missing scope id,
-   empty `cost-optimization`, a banned `badge-verdict-*` pill class, a `<th>` without `scope`,
-   missing `<html lang>`, etc.). This step does **not** edit the HTML.
+   Both commands must print `REPORT_OK` and exit 0. Either `REPORT_FAIL` blocks; a
+   validator that does not run (non-0/1 exit, missing `python3`, missing
+   `$PLUGIN_ROOT/scripts/validate-migration-report.py`) is not a pass. There is no skip path.
 
-4. If the validator cannot run at all (no shell on the host), do **not** write
+3. Both `REPORT_OK` → **stamp the durable result** so the gate reads an artifact, not
+   conversation memory: write `$MIGRATION_DIR/report-validation-status.json` as
+   `{"report_status": "REPORT_OK"}`, then continue to the gate. Any `REPORT_FAIL` → write
+   `{"report_status": "REPORT_FAIL", "errors": [ … ]}` with the `errors[]` of whichever
+   validator failed, and **emit `GATE_FAIL`, pasting those errors verbatim** so the user
+   knows exactly what failed (missing section id, a bare week range, empty
+   `cost-optimization`, a banned `badge-verdict-*` pill class, a `<th>` without `scope`, a
+   cost-figure mismatch, etc.). This step does **not** edit the HTML.
+
+4. If either validator cannot run at all (no shell on the host), do **not** write
    `report_status: "REPORT_OK"` — leave the stamp absent (or `not_run`) so the gate fails closed.
 
 Then the `_postconditions` gate runs (read-only): the section-id `_assert` plus the

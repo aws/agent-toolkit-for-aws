@@ -23,6 +23,9 @@ import tempfile
 from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
+# Two-command gate: the shared validator (--profile heroku) carries the structure /
+# content standard; the heroku add-on carries the heroku-only rules. Both must pass.
+VALIDATOR_SHARED = PLUGIN_ROOT / "scripts" / "validate-migration-report.py"
 VALIDATOR = (
     PLUGIN_ROOT / "skills" / "heroku-to-aws" / "scripts" / "validate-heroku-migration-report.py"
 )
@@ -67,9 +70,22 @@ def main() -> int:
     check(report.exists(), "missing decision-report.html")
     check((run / "DECISION.md").exists(), "missing DECISION.md")
 
-    # The decision report passes the validator in decision mode, including the
-    # cross-artifact disk checks (terraform/, generation-*.json absence).
+    # The decision report passes BOTH validators in decision mode: the shared one
+    # under the heroku profile, then the heroku add-on (which carries the
+    # cross-artifact .phase-status.json pre-execution check).
     if report.exists():
+        shared = subprocess.run(  # nosec B603 — list args, no shell, committed script path only
+            [sys.executable, str(VALIDATOR_SHARED), str(report), "--profile", "heroku",
+             "--mode", "decision", "--estimation-infra", str(run / "estimation-infra.json"),
+             "--migration-dir", str(run)],
+            capture_output=True,
+            text=True,
+        )
+        check(
+            shared.returncode == 0,
+            "decision-report.html fails the shared validator --profile heroku --mode decision:\n"
+            f"{shared.stdout}{shared.stderr}",
+        )
         result = subprocess.run(  # nosec B603 — list args, no shell, committed script path only
             [sys.executable, str(VALIDATOR), str(report), "--mode", "decision",
              "--migration-dir", str(run)],
@@ -81,12 +97,12 @@ def main() -> int:
             f"decision-report.html fails --mode decision:\n{result.stdout}{result.stderr}",
         )
         # Content locks (beyond structure): typography-first verdict and the
-        # "if you execute" timeline-band label must survive refactors — these
+        # "if you execute" timeline label must survive refactors — these
         # are the same rules generate-report.md already enforces for the full
         # report; report-decision-core.md reuses them for decision mode.
         html = report.read_text()
         check('class="verdict-headline"' in html, "missing verdict-headline element")
-        check("if you execute" in html, 'timeline must be labeled "if you execute" (band, not schedule)')
+        check("if you execute" in html, 'timeline must be labeled "if you execute" (shape, not schedule)')
 
     # The decision-only exit writes the web-handoff plan.json from the run's
     # estimate artifacts. Run the writer against a scratch copy (so the golden

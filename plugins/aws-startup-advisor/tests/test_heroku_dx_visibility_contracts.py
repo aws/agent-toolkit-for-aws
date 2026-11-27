@@ -172,8 +172,14 @@ def test_report_adds_cfo_brief_timeline_and_security_meaning() -> None:
     assert "### `exec-share`" in text
     assert "Share with your CFO" in text
     assert "### `exec-timeline`" in text
-    assert "planning band" in text
-    assert "2–6 weeks" in text and "12–18 weeks" in text
+    # The timeline gives shape, stage order and duration drivers; the week-duration
+    # planning band left the spec (the shared validator fails a bare week range).
+    timeline = text[text.index("### `exec-timeline`") :]
+    timeline = timeline[: timeline.index("### `developer-workflow`")]
+    assert "Stage order" in timeline and "Duration drivers" in timeline
+    assert "No week, month or hour figure" in timeline
+    assert "planning band" not in text
+    assert "2–6 weeks" not in timeline and "12–18 weeks" not in timeline
     assert "What it does" in text and "Threat mitigated" in text
     banned = text[text.index("Do not emit") : text.index("Do not emit") + 220]
     assert "exec-timeline" not in banned

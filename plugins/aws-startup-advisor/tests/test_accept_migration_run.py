@@ -146,17 +146,42 @@ def heroku_execution_run(parent: Path) -> Path:
     html = (root / "decision-report.html").read_text().replace("decision-cta", "next-steps")
     html = html.replace("This decision report was generated without execution artifacts; the full migration report replaces it if you proceed.",
                         "The execution pack contains Terraform and migration guidance.")
-    html = html.replace("</footer>", """</footer>
-<section id="cost-optimization"><h2>Cost optimization</h2>
+    # The synthetic full report must satisfy the shared validator's heroku profile in
+    # full mode: every required section linked from the TOC, table appendices at the
+    # content-depth floor (services >= 2 rows, costs >= 3 rows), captions and scoped
+    # headers on every table, and the sections inside the report body.
+    html = html.replace(
+        '    <li><a href="#next-steps">Ready to execute?</a></li>\n',
+        """    <li><a href="#cost-optimization">Cost optimization</a></li>
+    <li><a href="#next-steps">Next steps</a></li>
+    <li><a href="#appendix-services">Appendix: services</a></li>
+    <li><a href="#appendix-costs">Appendix: costs</a></li>
+    <li><a href="#appendix-config">Appendix: configuration</a></li>
+    <li><a href="#appendix-security">Appendix: security baseline</a></li>
+    <li><a href="#appendix-assumptions">Appendix: assumptions</a></li>
+""")
+    html = html.replace("<footer>", """<section id="cost-optimization"><h2>Cost optimization</h2>
 <table><caption>Compute commitment options</caption>
 <thead><tr><th scope="col">Option</th><th scope="col">Action</th></tr></thead>
 <tbody><tr><td>Compute Savings Plan</td><td>Review usage before a one-year commitment.</td></tr></tbody>
 </table></section>
-<section id="appendix-services"><p>Fargate for the example web formation.</p></section>
-<section id="appendix-costs"><p>Balanced estimated monthly cost from the estimate.</p></section>
-<section id="appendix-config"><p>Region and availability choices from the decision.</p></section>
-<section id="appendix-security"><table><thead><tr><th scope="col">Control</th><th scope="col">Setting</th><th scope="col">What it does</th><th scope="col">Threat mitigated</th></tr></thead><tbody><tr><td>GuardDuty</td><td>Enabled</td><td>Detects unusual API activity</td><td>Credential theft</td></tr></tbody></table></section>
-<section id="appendix-assumptions"><p>Measured, assumed, and unknown inputs from the estimate.</p></section>""")
+<div class="appendix-header">Appendix</div>
+<section id="appendix-services"><h2>Services</h2><table><caption>AWS service per Heroku resource</caption>
+<thead><tr><th scope="col">Heroku app</th><th scope="col">Source</th><th scope="col">AWS service</th><th scope="col">Size</th></tr></thead>
+<tbody><tr><td>example</td><td>web formation</td><td>Fargate</td><td>0.5 vCPU, 1 GB</td></tr>
+<tr><td>example</td><td>Postgres add-on</td><td>RDS PostgreSQL</td><td>db.t4g.micro</td></tr></tbody>
+</table></section>
+<section id="appendix-costs"><h2>Costs</h2><table><caption>Estimated monthly cost by tier</caption>
+<thead><tr><th scope="col">Line</th><th scope="col">Estimated monthly</th></tr></thead>
+<tbody><tr><td>Heroku baseline</td><td>Est. $340/mo</td></tr>
+<tr><td>AWS Premium</td><td>Est. $265/mo</td></tr>
+<tr><td>AWS Balanced</td><td>Est. $210/mo</td></tr>
+<tr><td>AWS Optimized</td><td>Est. $178/mo</td></tr></tbody>
+</table></section>
+<section id="appendix-config"><h2>Configuration</h2><p>Region and availability choices from the decision.</p></section>
+<section id="appendix-security"><h2>Security baseline</h2><table><caption>Account baseline controls</caption><thead><tr><th scope="col">Control</th><th scope="col">Setting</th><th scope="col">What it does</th><th scope="col">Threat mitigated</th></tr></thead><tbody><tr><td>GuardDuty</td><td>Enabled</td><td>Detects unusual API activity</td><td>Credential theft</td></tr></tbody></table></section>
+<section id="appendix-assumptions"><h2>Assumptions</h2><p>Measured, assumed, and unknown inputs from the estimate.</p></section>
+<footer>""")
     (root / "migration-report.html").write_text(html)
     return root
 
