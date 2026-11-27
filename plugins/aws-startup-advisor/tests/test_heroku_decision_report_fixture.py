@@ -12,9 +12,8 @@ negative paths: an altered Balanced figure, a bare week range, a dropped
 validator with named lines; a `.phase-status.json` that says Generate completed fails the
 add-on with its named line.
 
-No full-mode heroku report fixture exists (no `fixtures/**/heroku*/migration-report.html`);
-the full-mode path is covered only by the synthetic report in
-`test_accept_migration_run.py`. Authoring one is a follow-up.
+The full-mode golden (`fixtures/heroku-generate/after-generate/migration-report.html`) is
+covered by test_heroku_generate_report_fixture.py.
 """
 from __future__ import annotations
 
@@ -67,11 +66,6 @@ def _copy(tmp_path: Path, name: str) -> Path:
     return run_dir
 
 
-def test_no_full_mode_heroku_fixture_exists() -> None:
-    assert not list((PLUGIN_ROOT / "fixtures").glob("**/heroku*/**/migration-report.html"))
-    assert not list((PLUGIN_ROOT / "fixtures").glob("**/heroku*/migration-report.html"))
-
-
 @pytest.mark.parametrize("name", FIXTURES)
 def test_golden_passes_both_validators(name: str) -> None:
     run_dir = FIXTURE_ROOT / name
@@ -116,7 +110,7 @@ def test_bare_week_range_fails_shared_validator(tmp_path: Path) -> None:
     """Regression guard for the removed planning band: a quoted week range in the
     timeline is a readability failure under the heroku profile."""
     run_dir = _copy(tmp_path, "after-decide-complete")
-    _mutate(run_dir, "<p>Shape: Phased migration.", "<p>Shape: Phased migration, about 2-6 weeks.")
+    _mutate(run_dir, "<p>Shape: Full cutover: one migration window.", "<p>Shape: Full cutover: one migration window, about 2-6 weeks.")
     result = _shared(run_dir)
     assert result.returncode == 1, result.stdout + result.stderr
     assert "readability: bare week-range estimate" in result.stderr, result.stderr

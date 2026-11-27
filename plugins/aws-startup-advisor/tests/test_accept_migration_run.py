@@ -143,44 +143,63 @@ def heroku_execution_run(parent: Path) -> Path:
         (root / "terraform" / name).write_text("# Minimal acceptance fixture.\n")
     write_json(root / "generation-warnings.json", {"warnings": []})
     write_json(root / "report-validation-status.json", {"report_status": "REPORT_OK"})
-    html = (root / "decision-report.html").read_text().replace("decision-cta", "next-steps")
-    html = html.replace("This decision report was generated without execution artifacts; the full migration report replaces it if you proceed.",
-                        "The execution pack contains Terraform and migration guidance.")
+    html = (root / "decision-report.html").read_text()
+    # Full mode has no decision-cta (the heroku add-on rejects it); the decision
+    # fixture's terminal section is deleted rather than renamed.
+    cta_start = html.index('<section id="decision-cta">')
+    cta_end = html.index("</section>", cta_start) + len("</section>\n")
+    html = html[:cta_start] + html[cta_end:]
     # The synthetic full report must satisfy the shared validator's heroku profile in
-    # full mode: every required section linked from the TOC, table appendices at the
-    # content-depth floor (services >= 2 rows, costs >= 3 rows), captions and scoped
+    # full mode: every required section linked from the TOC, the optimization pair
+    # (fallback sentence — the copied estimate has no opportunities), table appendices
+    # at the content-depth floor (services >= 2 rows, costs >= 3 rows), the
+    # appendix-config provenance columns, a glossary table, captions and scoped
     # headers on every table, and the sections inside the report body.
     html = html.replace(
-        '    <li><a href="#next-steps">Ready to execute?</a></li>\n',
-        """    <li><a href="#cost-optimization">Cost optimization</a></li>
-    <li><a href="#next-steps">Next steps</a></li>
-    <li><a href="#appendix-services">Appendix: services</a></li>
-    <li><a href="#appendix-costs">Appendix: costs</a></li>
-    <li><a href="#appendix-config">Appendix: configuration</a></li>
-    <li><a href="#appendix-security">Appendix: security baseline</a></li>
-    <li><a href="#appendix-assumptions">Appendix: assumptions</a></li>
+        '    <li><a href="#decision-cta">Ready to execute?</a></li>\n',
+        """    <li><a href="#exec-optimization">Cost optimization</a></li>
+    <li><a href="#appendix-services">Appendix A — Service Recommendations</a></li>
+    <li><a href="#appendix-costs">Appendix B — Cost Estimates</a></li>
+    <li><a href="#appendix-optimization">Appendix B.1 — Savings Plans and Reserved Instances</a></li>
+    <li><a href="#appendix-artifacts">Appendix E — Generated Artifacts Catalog</a></li>
+    <li><a href="#appendix-config">Appendix F — Your Configuration</a></li>
+    <li><a href="#appendix-security">Appendix G — Security Capabilities</a></li>
+    <li><a href="#appendix-assumptions">Appendix I — Assumptions, Exclusions, and Validation</a></li>
+    <li><a href="#appendix-glossary">Appendix J — Glossary</a></li>
 """)
-    html = html.replace("<footer>", """<section id="cost-optimization"><h2>Cost optimization</h2>
-<table><caption>Compute commitment options</caption>
-<thead><tr><th scope="col">Option</th><th scope="col">Action</th></tr></thead>
-<tbody><tr><td>Compute Savings Plan</td><td>Review usage before a one-year commitment.</td></tr></tbody>
-</table></section>
-<div class="appendix-header">Appendix</div>
-<section id="appendix-services"><h2>Services</h2><table><caption>AWS service per Heroku resource</caption>
+    html = html.replace('<section id="developer-workflow">', """<section id="exec-optimization"><h2>Cost Optimization</h2>
+<p>Savings against the Balanced on-demand figure: no 1-year/3-year commitment product applies to this architecture.</p>
+</section>
+<section id="developer-workflow">""", 1)
+    html = html.replace("<footer>", """<div class="appendix-header">Appendix</div>
+<section id="appendix-services"><h2>Appendix A — Service Recommendations</h2><table><caption>AWS service per Heroku resource</caption>
 <thead><tr><th scope="col">Heroku app</th><th scope="col">Source</th><th scope="col">AWS service</th><th scope="col">Size</th></tr></thead>
 <tbody><tr><td>example</td><td>web formation</td><td>Fargate</td><td>0.5 vCPU, 1 GB</td></tr>
 <tr><td>example</td><td>Postgres add-on</td><td>RDS PostgreSQL</td><td>db.t4g.micro</td></tr></tbody>
 </table></section>
-<section id="appendix-costs"><h2>Costs</h2><table><caption>Estimated monthly cost by tier</caption>
+<section id="appendix-costs"><h2>Appendix B — Cost Estimates</h2><table><caption>Estimated monthly cost by tier</caption>
 <thead><tr><th scope="col">Line</th><th scope="col">Estimated monthly</th></tr></thead>
-<tbody><tr><td>Heroku baseline</td><td>Est. $340/mo</td></tr>
-<tr><td>AWS Premium</td><td>Est. $210/mo</td></tr>
+<tbody><tr><td>AWS Premium</td><td>Est. $210/mo</td></tr>
 <tr><td>AWS Balanced</td><td>Est. $210/mo</td></tr>
 <tr><td>AWS Optimized</td><td>Est. $182/mo</td></tr></tbody>
 </table></section>
-<section id="appendix-config"><h2>Configuration</h2><p>Region and availability choices from the decision.</p></section>
-<section id="appendix-security"><h2>Security baseline</h2><table><caption>Account baseline controls</caption><thead><tr><th scope="col">Control</th><th scope="col">Setting</th><th scope="col">What it does</th><th scope="col">Threat mitigated</th></tr></thead><tbody><tr><td>GuardDuty</td><td>Enabled</td><td>Detects unusual API activity</td><td>Credential theft</td></tr></tbody></table></section>
-<section id="appendix-assumptions"><h2>Assumptions</h2><p>Measured, assumed, and unknown inputs from the estimate.</p></section>
+<section id="appendix-optimization"><h2>Appendix B.1 — Savings Plans and Reserved Instances</h2>
+<p>No 1-year/3-year commitment product applies to this architecture.</p></section>
+<section id="appendix-artifacts"><h2>Appendix E — Generated Artifacts Catalog</h2>
+<p>Terraform (core files and the account baseline), the migration guide and the README were generated; the validation report is written after this report.</p></section>
+<section id="appendix-config"><h2>Appendix F — Your Configuration</h2><table><caption>Your Clarify answers and what each one changes</caption>
+<thead><tr><th scope="col">Question</th><th scope="col">Your choice</th><th scope="col">Source</th><th scope="col">Design consequence</th></tr></thead>
+<tbody><tr><td>Which AWS region should your infrastructure be deployed to?</td><td>us-east-1</td><td>User answer</td><td>Every resource is created in this region.</td></tr>
+<tr><td>What availability level does your production workload need?</td><td>Single-AZ</td><td>User answer</td><td>RDS PostgreSQL without a standby.</td></tr></tbody>
+</table></section>
+<section id="appendix-security"><h2>Appendix G — Security Capabilities</h2><table><caption>Account baseline controls</caption><thead><tr><th scope="col">Control</th><th scope="col">Setting</th><th scope="col">What it does</th><th scope="col">Threat mitigated</th></tr></thead><tbody><tr><td>GuardDuty</td><td>Enabled</td><td>Detects unusual API activity</td><td>Credential theft</td></tr></tbody></table></section>
+<section id="appendix-assumptions"><h2>Appendix I — Assumptions, Exclusions, and Validation</h2><p>Measured, assumed, and unknown inputs from the estimate.</p></section>
+<section id="appendix-glossary"><h2>Appendix J — Glossary</h2><table class="glossary-table"><caption>Terms used in this report</caption>
+<thead><tr><th scope="col">Term</th><th scope="col">Meaning</th></tr></thead>
+<tbody><tr><td>Estimated monthly run rate</td><td>What the AWS resources cost per month, before credits.</td></tr>
+<tr><td>Balanced</td><td>The right-sized on-demand design.</td></tr>
+<tr><td>Savings Plan</td><td>A one- or three-year usage commitment in exchange for a lower hourly rate.</td></tr></tbody>
+</table></section>
 <footer>""")
     (root / "migration-report.html").write_text(html)
     return root

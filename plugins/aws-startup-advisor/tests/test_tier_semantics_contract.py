@@ -325,3 +325,25 @@ def test_azure_generate_report_teaches_the_canonical_tier_meanings():
         assert phrase in " ".join(html.split()).replace("<strong>", "").replace("</strong>", ""), f"azure report lacks: {phrase}"
     for stale in ("Highest resilience / highest monthly estimate", "Default scenario", "Premium and Optimized are bounds"):
         assert stale not in html, f"azure report still teaches: {stale}"
+
+
+
+def test_heroku_part6_database_savings_plan_rule_applies_the_generation_gate():
+    """The Part 6 opportunity rule must use the same Generation 7+ gate as the Optimized tier row, so a
+    real estimate for a pre-Generation-7 RDS class never lists a Database Savings Plan saving that the
+    report then calls ineligible."""
+    text = _read(PLUGIN_ROOT / "skills/heroku-to-aws/references/phases/estimate/estimate-cost-engine.md")
+    start = text.index("### Database Savings Plans (when RDS/Aurora")
+    section = text[start : text.index("\n### ", start + 1)]
+    assert "Generation 7+ gate" in section
+    assert "`savings_monthly: null`" in section
+    assert "eligible when the instance class passes the Generation 7+ gate" in section
+    assert "no target_services instance passes the Generation 7+ gate" in section
+
+
+def test_fixtures_readme_heroku_generate_tiers_match_the_golden():
+    import json
+
+    pc = json.loads(_read(PLUGIN_ROOT / "fixtures/heroku-generate/after-generate/estimation-infra.json"))["projected_costs"]
+    tiers = "/".join(str(int(pc[key])) for key in ("aws_monthly_premium", "aws_monthly_balanced", "aws_monthly_optimized"))
+    assert f"tiers {tiers}" in _read(PLUGIN_ROOT / "fixtures/README.md")

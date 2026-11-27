@@ -9,16 +9,19 @@ _contributes:
 
 > Stakeholder HTML that uses the same visual shell as the GCP migration
 > assessment (page background, section cards, metric grid, verdict callout,
-> appendix divider, focus and print styles). The Heroku report stays shorter:
-> decision, costs, developer workflow, what-if scenarios, and five appendices
-> the Heroku artifacts can fill. It adds the copy-ready CFO brief, because the
-> figures it restates are already in the estimate.
-> It does not include the GCP AI appendix, security-gap analysis, or glossary.
+> appendix divider, focus and print styles). The Heroku report follows the
+> shared decision core and appendix skeleton: decision, current stack, costs,
+> cost optimization, developer workflow, timeline, what-if scenarios, top
+> risks, what the assessment rests on, and Appendices A, B, B.1, E, F, G, I
+> and J. It adds the copy-ready CFO brief, because the figures it restates
+> are already in the estimate. It does not include the GCP AI appendix or the
+> security-gap analysis (a PaaS source has no security posture to compare).
 > Cutover procedure stays in `MIGRATION_GUIDE.md`. Runs **after** docs so the
 > guide exists when the report links to it.
 >
 > **This file is the single source of truth for `decision-summary` /
-> `decision-basis` / `exec-costs` / `what-if-scenarios` content rules.**
+> `exec-services` / `exec-costs` / `exec-optimization` / `what-if-scenarios` /
+> `exec-risks` / `exec-assumptions` content rules.**
 > `references/shared/report-decision-core.md` (loaded by the Decision gate,
 > `estimate-assemble.md` choice A) reuses these same rules to render
 > `decision-report.html` — it does not restate them. If you change a section's
@@ -164,12 +167,14 @@ Write a **self-contained** HTML file to `$MIGRATION_DIR/migration-report.html`
 | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `decision-summary`  | Typography-first verdict (see below), cost one-liner rendered as a `.metrics` grid whose Balanced card carries `class="metric metric-hero"` (e.g. `<div class="metrics"><div class="metric metric-hero"><strong>AWS estimate (Balanced)</strong><br>Est. $210/mo</div><div class="metric">…Heroku baseline…</div></div>` — the shared validator fails a summary with no `metric-hero`), next action. Placed **before** `<nav class="toc">` in both modes |
 | `exec-costs`        | Heroku-vs-AWS side-by-side when a Heroku baseline exists (`current_costs.source != "unavailable"`); otherwise the AWS three-tier table with a one-line note that no Heroku baseline was available. Estimated monthly; Balanced primary. **When `current_costs.baseline_note` is present (any derived — not invoiced — source, including the Postgres Advanced per-pool formula), render it as a visible caveat line directly beside the Heroku current-monthly figure — never only in the accuracy band.** This is mandatory, not conditional on which derived source produced the note. **When `cost_comparison.comparison_status == "incomplete_unmatched_services"`, render the same mandatory caveat-beside-the-figure treatment, naming `cost_comparison.unmatched_deferred_services` and `unmatched_deferred_cost` directly beside the savings/difference figure — never present that dollar delta as decision-grade savings without it.** **When `aws-design.json` `metadata.postgres_followers_collapsed[]` is non-empty, add one line under the database rows listing each collapsed follower and what serves it (`served_by`: `rds_read_replica` → "RDS read replica of `{leader_resource_id}`", `aurora_reader` → "Aurora reader of `{leader_resource_id}`"), so the reader sees why the AWS database count is lower than the Heroku add-on count; skip silently when empty or absent.** This file is the single source of truth for `exec-costs` content rules, so `report-decision-core.md`'s reuse of these rules picks this up automatically. |
-| `cost-optimization` | Reserved Instance / Savings Plan opportunities table, or the explicit no-eligible-commitment statement — see below. Always present, never omitted                                                                                                                                            |
+| `exec-services`     | Always render, in both modes, after `exec-share` and before `exec-costs`. Heading `Current Stack Overview`. One count line (`services.length` from the design) and one table row per `services[]` entry — see § `exec-services` below |
+| `exec-optimization` | Full mode: always render after `exec-costs` — the posture comparison, the not-additive caveat and "Which commitment fits", or the explicit no-eligible-commitment sentence when `optimization_opportunities[]` is empty. Decision mode: render only when `optimization_opportunities[]` is non-empty (the default trigger). See § `exec-optimization` below |
 | `developer-workflow` | Always render — in both report modes (`report-decision-core.md` renders it in `decision-report.html` / `DECISION.md` too, with its pre-execution wording override); the shared validator's heroku profile requires it in both modes. Heading "Developer workflow: what stays, what changes, what you build". One line stating the Q5c answer. Then the table defined in § `developer-workflow` below. Then the closing paragraph(s) defined there. Reader vocabulary only — no file names or resource IDs |
 | `exec-share`        | Always render, in both modes, immediately after the table of contents. The copy-ready CFO brief defined below. No new arithmetic |
-| `exec-timeline`     | Always render, in both modes, after `developer-workflow` and before `what-if-scenarios` (or before `next-steps` / `decision-cta` when there is no what-if section). The migration shape, stage order and duration drivers defined below — no week, month or hour figure |
+| `exec-timeline`     | Always render, in both modes, after `developer-workflow` and before `what-if-scenarios` (or before `exec-risks` when there is no what-if section). The migration shape, stage order and duration drivers defined below — no week, month or hour figure |
+| `exec-risks`        | Always render, in both modes, after `exec-timeline` / `what-if-scenarios`. Heading `Top Risks`. One table, columns Risk · Impact · Likelihood · Mitigation — see § `exec-risks` below. Never empty |
+| `exec-assumptions`  | Always render, in both modes, immediately after `exec-risks` — the last executive section (the shared validator fails it placed before `exec-risks`). Heading `What This Assessment Rests On`. Three parts — see § `exec-assumptions` below |
 | `shared-data-stores` | **Conditional** — only when the inventory has `shared_data_stores.cohorts` with at least one entry. One table: Cohort / Apps (count) / Shared stores (count) / App names. One sentence above it: apps in a cohort read the same database, cache or Kafka cluster and cannot be cut over strictly one at a time without cross-cloud access to that store; sequence them as a group or plan the interim connectivity. No ordering, no recommendation of which cohort goes first |
-| `next-steps`        | Ordered list pointing to `MIGRATION_GUIDE.md` phases (not a procedure dump). Include one bullet noting the Terraform ships with `baseline.tf` (account security baseline — GuardDuty, CloudTrail, budget alerts) and that three contact emails must be set in tfvars before `terraform plan`. Unless `startup_program_status` is `has_credits`, include one item: apply for [AWS Activate credits](https://aws.amazon.com/startups/credits/) before `terraform apply` — credits do not apply retroactively |
 
 **Cost-figure anchors (machine-checkable).** In `exec-costs`, wrap the recommended AWS
 monthly (Balanced) dollar figure in a `data-cost-key="aws_monthly_balanced"` attribute so
@@ -191,7 +196,13 @@ anchor in Step 1 is checked by the heroku add-on validator.)
    `recommendation.outcome` exists, render `outcome_label` as the section's
    **headline** in large display type (e.g.
    `<p class="verdict-headline">Go, with conditions</p>`), then one body-type
-   metadata line: `Execution shape: [path_label] · Complexity: [complexity_tier]`.
+   metadata line: `Execution shape: [migration shape] · Complexity: [complexity_tier]`.
+   The migration shape comes from `preferences.json` `global.migration_approach`,
+   never from `path_label` (which names the pricing scenario, not a shape):
+   `full_cutover` (or absent) → `Full cutover: one migration window`;
+   `interim_cutover_data_first` → `Data-first: interim cutover`. The `Migration
+   shape` metric card, the "Timeline if you execute" line and the `exec-share`
+   paragraph use the same derived shape.
    Do **not** render the verdict as a row of colored pill badges — structure
    carries the information; meaning must never depend on color alone (a muted
    accent on the headline is fine; the words carry the verdict). When `outcome`
@@ -204,9 +215,20 @@ anchor in Step 1 is checked by the heroku add-on validator.)
      how to obtain it — never present defer as "no answer," and do not show a
      savings headline as if the decision were made.
    - `stay`: headline is the stay label; do not imply a migrate path.
-2. **Confidence pointer (when `confidence` or `decision_basis` exists):** one
-   line under the verdict — `Confidence: [confidence] — full basis in
-   <a href="#decision-basis">What This Assessment Rests On</a>.`
+   1a. **Recommendation callout (required, both modes):** one sentence stating
+   the recommendation (the path, the migration shape and the governing
+   condition) in `<div class="verdict">…</div>` directly below the metadata
+   line — the green callout for `go` / `conditional_go` / migrate-path legacy
+   outcomes, the neutral variant for `stay` or `defer_for_evidence`. The shared
+   validator requires the exact `verdict` class token inside `decision-summary`
+   (`verdict-headline` does not satisfy it). `DECISION.md` carries the same
+   sentence as a `Recommendation:` paragraph under its `Execution shape` line.
+2. **Confidence pointer (always):** one line under the verdict —
+   `Confidence: [confidence] — full basis in
+   <a href="#exec-assumptions">What This Assessment Rests On</a>.` Use
+   `recommendation.confidence` when present; otherwise `medium` when any
+   `preferences.json` `sources.<QID>` is `default`, else `high` (the same rule
+   `exec-assumptions` part 2 applies).
 3. **Cost one-liner** — Balanced AWS monthly vs Heroku baseline when available
    (estimated monthly), else AWS Balanced alone.
    - **Estate line (when `metadata.apps_by_environment_tier` exists):** one line
@@ -215,8 +237,15 @@ anchor in Step 1 is checked by the heroku add-on validator.)
      count. This is the only rule for this line; the estate-workbook change reads the
      same field and quotes the same sentence. Skip silently when the tier map is absent
      (Terraform-only discovery).
-4. **What would flip this (v2):** from `recommendation.would_flip_if[]` when
-   present — short unordered list. Skip silently when absent.
+4. **Migrate if / Stay entirely if:** from `recommendation.migrate_if` and
+   `recommendation.stay_if`, rendered as `<h3>Migrate if</h3><ul class="compact">`
+   and `<h3>Stay entirely if</h3><ul class="compact">`, one `<li>` per entry,
+   placed before "What would flip this". The second heading is exactly
+   **"Stay entirely if"** — the shared validator fails a bare "Stay if" heading
+   and requires exactly one "Stay entirely if" heading when `stay_if` is
+   non-empty. Omit a list whose array is absent or empty.
+   4a. **What would flip this (v2):** from `recommendation.would_flip_if[]` when
+   present — short unordered list rendering every entry. Skip silently when absent.
    - **End-of-life stacks (conditional):** when
      `metadata.apps_by_stack_status.eol > 0`, add one line stating that N apps
      run on Heroku stacks that have reached end-of-life and no longer receive
@@ -229,7 +258,20 @@ anchor in Step 1 is checked by the heroku add-on validator.)
    line — `Developer workflow was rated critical; see
    <a href="#developer-workflow">Developer workflow</a> for what stays, what changes
    and what must be built.`
-7. **AWS Activate credits callout (always, both modes):** the 💡
+7. **Next steps (full mode only):** `<h3>Next steps</h3><ol class="compact">`
+   after "What would flip this" — the shared validator fails this heading over a
+   `<ul>`. Items, in this order: (1) "Set the three contact emails
+   (`operations_email`, `billing_email`, `security_email`) in `terraform.tfvars`
+   before `terraform plan` — checklist in MIGRATION_GUIDE.md — nothing can be
+   applied until then."; (2) follow the MIGRATION_GUIDE.md phases in order
+   (point at the guide, never paste the procedure); (3) the Terraform ships with
+   `baseline.tf` (account security baseline — GuardDuty, CloudTrail, budget
+   alerts); (4) unless `startup_program_status` is `has_credits`: apply for
+   [AWS Activate credits](https://aws.amazon.com/startups/credits/) before
+   `terraform apply` — credits do not apply retroactively. Decision mode renders
+   no Next steps list; `decision-cta` is its terminal section and the
+   one-sentence next action (item 5) stays.
+8. **AWS Activate credits callout (always, both modes):** the 💡
    `<div class="callout callout-info">` defined in
    `references/shared/report-decision-core.md` § Startup credits callout, placed after
    the cost one-liner. Wording follows `preferences.json`
@@ -242,19 +284,62 @@ anchor in Step 1 is checked by the heroku add-on validator.)
    metric card; never infer the tier from spend. Unless `has_credits`, say credits
    are not retroactive — apply before `terraform apply`.
 
-### `decision-basis` (end of summary, when v2 fields exist)
+### `exec-services` (always render, both modes)
 
-When `recommendation.decision_basis` is present, render
-`<section id="decision-basis">` **after** `decision-summary` and **before**
-`exec-costs` (or immediately before `next-steps` if you keep costs first —
-either order is fine as long as the confidence pointer's href resolves):
+Render `<section id="exec-services">` after `exec-share` and before
+`exec-costs`. Heading: `Current Stack Overview` (plain title — never "Section N").
 
-- Heading: `What This Assessment Rests On` (plain title — never "Section N").
-- Three compact columns/lists from `decision_basis`: **Measured** / **Assumed** /
-  **Unknown**. Invent nothing — copy the arrays as written.
-- One-line pricing provenance from `pricing_source` + accuracy band.
+- One count line: "{N} Heroku resources on {A} app(s) were mapped to AWS
+  targets", where `N` is `aws-design.json` `services.length` and `A` the number
+  of distinct `heroku_app` values. Then "No add-on is deferred." or "{D}
+  add-on(s) have no AWS mapping selected yet" from `deferred[]`.
+- One table (caption, `scope="col"` headers), columns **Heroku app / Heroku
+  primitive / AWS target**, one row per `services[]` entry: `heroku_app`; the
+  primitive named from `source_resource_id` with its type in parentheses (a
+  `:web` / `:worker` formation → "web formation (compute)"; a Postgres add-on →
+  "Heroku Postgres add-on (database)"; Redis → "(cache)"; Kafka → "(streaming)");
+  `aws_service` plus the size the reader controls from `aws_config` (instance
+  type or class, Multi-AZ, instance range, storage).
+- One line per `deferred[]` entry under the table: "{resource}: no AWS mapping
+  selected" — never fold a deferred add-on into the mapped rows.
+- Reader vocabulary only: no artifact filenames or Terraform resource IDs.
 
-Omit the section when `decision_basis` is absent (pre-extension artifacts).
+### `exec-assumptions` (always render, both modes — last executive section)
+
+Render `<section id="exec-assumptions">` **immediately after** `exec-risks`
+(the shared validator fails `exec-assumptions` placed before `exec-risks`) and
+before `decision-cta` (decision mode) or the appendix divider (full mode). The
+`decision-summary` confidence pointer links here. Heading: `What This
+Assessment Rests On` (plain title — never "Section N"). Three parts, all read
+from the artifacts — invent nothing:
+
+1. **Assumptions applied by default.** A table (caption, scoped headers),
+   columns **Setting / Assumed value / Design consequence**, one row per
+   question whose `preferences.json` `sources.<QID>` is `"default"` (the
+   `defaults_applied[]` IDs). Setting is the plain name and Design consequence
+   the catalog text from the ⟨preferences_groups⟩ row table under § Appendices
+   (keyed by field). Flag the three Generate-time questions (Q4, Q6c, Q12d) with
+   "asked for real at Generate" while they are listed in
+   `metadata.questions_deferred_to_generate`. `compute_target.chosen_by ==
+   "system_recommended"` is derived, not defaulted — it does not get a row.
+   When no `sources` entry is `default`, render one line instead: "All inputs
+   were confirmed by you or extracted from your Heroku inventory — nothing was
+   assumed."
+2. **Confidence.** When `recommendation.decision_basis` exists, render its
+   three arrays as compact **Measured** / **Assumed** / **Unknown** columns,
+   copied as written. Otherwise one line: `Confidence: [confidence] — [gloss]`,
+   where confidence is `recommendation.confidence` when present, else `medium`
+   when any `sources` entry is `default`, else `high`; gloss: high — "inputs
+   measured or confirmed"; medium — "some material inputs assumed" (name them);
+   low — "key inputs missing or stale". Say which inputs were confirmed by you
+   and which were extracted from your Heroku inventory.
+3. **Pricing provenance.** One line from `pricing_source.status` (+
+   `pricing_source.message` when it names a cache or region) and
+   `accuracy_confidence`, matching the Estimate chat summary — e.g. "Estimates
+   based on cached AWS pricing (us-east-1 cache), accuracy ±5–10%."
+
+The anti-stub rule applies: render the settings and consequences themselves,
+never "see the preferences file".
 
 ### `exec-share` (always render, both modes)
 
@@ -270,7 +355,8 @@ The paragraph must still make sense pasted into an email. Use only:
 - the verdict and confidence
 - the estimated AWS Balanced monthly figure
 - the Heroku baseline when a comparable baseline exists; otherwise say the Heroku bill is not established
-- the migration shape (`path_label`)
+- the migration shape (derived from `preferences.json` `global.migration_approach`
+  per `decision-summary` item 1 — never `path_label`)
 - at most three conditions or evidence gaps
 
 Label every amount as estimated. Preserve the same comparability caveats as
@@ -281,10 +367,19 @@ Label every amount as estimated. Preserve the same comparability caveats as
 Render `<section id="exec-timeline">` after `developer-workflow`. Heading:
 `Timeline`.
 
-- Shape: `recommendation.path_label`.
-- Stage order, as a short ordered list derived from the path: phased →
-  provision the AWS environment, migrate data, cut over per app; full cutover →
-  provision, then one migration window.
+- Shape: `preferences.json` `global.migration_approach` (Clarify Q6b), rendered
+  as in `decision-summary` item 1 — `full_cutover` (or absent) → `Full cutover:
+  one migration window`; `interim_cutover_data_first` → `Data-first: interim
+  cutover`. Never `recommendation.path_label`: that names the pricing scenario
+  ("Migrate with Optimized pricing scenario"), not a shape. This is the
+  ⟨duration_driver_source⟩ / ⟨stage_sequence_source⟩ the heroku layer of
+  `report-decision-core.md` points at.
+- Stage order, as a short ordered list derived from the same field:
+  `full_cutover` → provision the AWS environment, migrate the database inside
+  the migration window, cut over every app in that same window;
+  `interim_cutover_data_first` → provision, migrate the database first (interim
+  cutover, with the bounded Heroku-to-RDS access), then containerize and cut
+  over compute by `global.target_exit_date`.
 - Duration drivers, named only from the artifacts: `complexity_tier` as a word
   (small / medium / large), `complexity_inputs.service_count` and
   `deferred_count`, database HA and the migration method from preferences, and
@@ -373,32 +468,114 @@ Porter and Coherence; another vendor, another contract, faster start). The AWS c
 below is the same either way; the difference is people and time." Name the products
 plainly, make no recommendation between them, and never present a product's price.
 
-### `cost-optimization` (REQUIRED — always render, never omit)
+### `exec-optimization` (full mode: always render; decision mode: when opportunities exist)
 
-Render `<section id="cost-optimization">` after `exec-costs` (before
-`what-if-scenarios` when present, otherwise before `next-steps`). Source:
-`estimation-infra.json` → `optimization_opportunities[]`, per the eligibility
-rules and three-state model in
-`references/vendored/estimate/ri-sp-eligibility.md`.
+Render `<section id="exec-optimization">` immediately after `exec-costs`
+(before `developer-workflow`; `what-if-scenarios`, when present, follows
+`exec-timeline`). Heading: `Cost Optimization` (plain title — never "Section
+N"). Source: `estimation-infra.json` → `optimization_opportunities[]`, per the
+eligibility rules and three-state model in
+`references/vendored/estimate/ri-sp-eligibility.md`. In full mode the section
+is a heroku add-on: always rendered, never omitted. In decision mode it follows
+the default trigger — render it only when `optimization_opportunities[]` is
+non-empty, and add it to the TOC when rendered.
 
-- **When `optimization_opportunities` is non-empty:** render a table with
-  columns Optimization, Target Services, Monthly Savings, Commitment, Effort.
-  Below the table, one line: "Activate credits don't cover RI/Savings Plan
-  upfront costs — they apply only to the ongoing discounted hourly rate."
-- **When `optimization_opportunities` is empty:** do not omit the section or
-  leave it blank. Render one sentence: "No 1-year/3-year commitment product
-  applies to this architecture." When Bedrock is part of the design, add:
-  "Bedrock inference has a separate mechanism (Provisioned Throughput, 1- or
-  6-month commitment), evaluated separately from Reserved Instances/Savings
-  Plans."
+- **When `optimization_opportunities` is non-empty**, render in order:
+  1. A **posture comparison table** (caption, scoped headers), columns
+     Posture / Est. monthly / vs Balanced / What you commit to, rows: Balanced
+     on-demand (`aws_monthly_balanced`, "—", "nothing — pay as you go"); one row
+     per commitment opportunity ("Balanced with {opportunity}",
+     `aws_monthly_balanced − savings_monthly`, "−${savings_monthly}/mo",
+     `commitment`); Optimized (`aws_monthly_optimized`, the difference to
+     Balanced, "every eligible commitment at its mid-point rate"). Every figure
+     is an estimated monthly whole dollar.
+  2. One sentence, mandatory whenever the word "Optimized" appears in the
+     section: "Savings Plan savings are incremental to the Balanced on-demand
+     figure and are **not additive** to the Optimized tier — Optimized already
+     includes them at the mid-point rate." (The shared validator fails an
+     `exec-optimization` that mentions Optimized without a not-additive /
+     already-includes phrase, and one that never mentions Balanced.)
+  3. **Which commitment fits** — a short list, one item per opportunity:
+     `opportunity` → `target_services` → `commitment`, `implementation_effort`,
+     and `prerequisite` when present (a Compute Savings Plan is recommended in
+     percent only until a 30–90 day AWS usage baseline exists — `ri-sp-eligibility.md`
+     caveat 1). Database Savings Plans and RDS Reserved Instances are mutually
+     exclusive on the same database workload. A Database Savings Plan is
+     recommended only when the design's RDS instance class is Generation 7 or
+     newer, per the `generation_gate` in
+     `references/vendored/estimate/commitment-discount-ranges.json`; for a
+     pre-Generation-7 class (for example db.t4g) the item and its posture row
+     state that the class is ineligible, attach no dollar saving, and name a
+     qualifying class (db.m7g or db.r7g).
+  4. Full mode: one line linking down to the line-level table — "Line-level
+     opportunities:" followed by `<a href="#appendix-optimization">Appendix B.1 —
+     Savings Plans and Reserved Instances</a>`. Decision mode: there is no appendix, so
+     render the opportunity table itself here (columns Optimization / Target /
+     Monthly savings / Commitment / Effort, one row per opportunity) under the
+     list, and never emit `appendix-optimization`.
+- **When `optimization_opportunities` is empty (full mode):** do not omit the
+  section or leave it blank. Render one sentence, as visible text: "No
+  1-year/3-year commitment product applies to this architecture." When Bedrock
+  is part of the design, add: "Bedrock inference has a separate mechanism
+  (Provisioned Throughput, 1- or 6-month commitment), evaluated separately from
+  Reserved Instances/Savings Plans."
 
-Heading: `Cost Optimization Opportunities` (plain title — never "Section N").
+**Appendix B.1 — `appendix-optimization` (full mode, always render).** Render
+`<section id="appendix-optimization">` immediately after `appendix-costs`,
+heading `Appendix B.1 — Savings Plans and Reserved Instances`. When
+`optimization_opportunities[]` is non-empty: one table (caption, scoped
+headers), columns **Optimization / Target / Monthly savings / Commitment /
+Effort**, one row per opportunity — `opportunity` / `target_services` joined
+with ", " / `savings_monthly` as an estimated monthly whole dollar (fall back
+to `savings_percent` when `savings_monthly` is absent) / `commitment` /
+`implementation_effort`. The Optimization cell carries the product name as
+written ("Compute Savings Plans", "Database Savings Plans", "Reserved
+Instances") — the shared validator looks for a Savings Plan / Reserved Instance
+data row in this table, not in a heading or caveat. A Database Savings Plans row
+carries a dollar saving only for a Generation 7+ RDS instance class (the
+`generation_gate` in `references/vendored/estimate/commitment-discount-ranges.json`);
+for a pre-Generation-7 class the estimate records `savings_monthly: null` and
+the Monthly savings cell says the class is ineligible and names a qualifying
+class (db.m7g or db.r7g) instead of a figure. Below the table, once:
+"Activate credits don't cover RI/Savings Plan upfront costs — they apply only
+to the ongoing discounted hourly rate." When the array is empty, render the
+same no-eligible-commitment sentence as `exec-optimization` instead of a table.
+Both sections carry the sentence in that case; neither is ever blank.
+
+### `exec-risks` (always render, both modes)
+
+Render `<section id="exec-risks">` after `exec-timeline` (after
+`what-if-scenarios` when present) and immediately before `exec-assumptions`.
+Heading: `Top Risks` (plain title — never "Section N"). One table (caption,
+scoped headers) — the shared validator fails a bullet list — with columns
+**Risk / Impact / Likelihood / Mitigation**. Impact and Likelihood are separate
+one-word cells (Critical / High / Medium; High / Medium / Low), optionally
+wrapped in `.badge-impact-*` / `.badge-like-*` spans; never a combined phrase
+such as "high impact (low probability)". Up to five rows, highest severity
+first. Sources, in this order — invent nothing beyond them:
+
+1. `recommendation.conditions[]` and `would_flip_if[]` — one row each (the
+   condition or flip as the risk; the mitigation is what confirms it).
+2. `aws-design.json` `deferred[]` — one row per deferred add-on ("no AWS
+   mapping selected; its cost and cutover step are not in this estimate").
+3. `preferences.json` entries whose `sources.<QID>` is `"default"` on a cost-
+   or HA-bearing question: Q3 availability, Q6 database HA, Q12c compute
+   target, Q4 maintenance window, Q6c migration method — one row each, naming
+   the assumed value and what confirming it changes.
+4. Full mode only: `generation-warnings.json` `warnings[]` — one row per
+   warning that names an unsupported or skipped resource.
+
+Never leave the section empty: a run with no conditions, no deferred add-ons,
+no cost-bearing defaults and no warnings still renders one row for the pricing
+band (`accuracy_confidence`) — "the estimate may move within ±N%; mitigation:
+re-run Estimate against live pricing before committing". Reader vocabulary
+only: no artifact filenames or Terraform resource IDs in this section.
 
 ### Conditional — `what-if-scenarios`
 
 When `scenarios/index.json` exists and `scenarios[]` has **≥ 2** entries,
-render `<section id="what-if-scenarios">` **after** `exec-costs` and **before**
-`next-steps`:
+render `<section id="what-if-scenarios">` **after** `exec-timeline` and
+**before** `exec-risks`:
 
 Render, in order:
 
@@ -429,8 +606,9 @@ Omit the section when workshop was declined or never entered.
   the`projected_costs.*`tiers and the Heroku baseline to the nearest dollar when
   you write them into`exec-costs`, the cost one-liner, and the what-if table.
 - Reader vocabulary: no `*.json` filenames or `aws_*.` resource IDs in
-  `decision-summary` / `exec-share` / `exec-timeline` / `exec-costs` /
-  `what-if-scenarios` (name things the reader controls).
+  `decision-summary` / `exec-share` / `exec-services` / `exec-costs` /
+  `exec-optimization` / `exec-timeline` / `what-if-scenarios` / `exec-risks`
+  (name things the reader controls).
 
 ### Visual shell
 
@@ -456,7 +634,9 @@ checks the `.share-card` rule; nothing else in the block is gated:
 - `@media print`
 
 `h1`, `.verdict-headline`, `.metric-hero`, `.increase`, the `table` / `th, td` /
-`thead th` rules, and `tr.active-scenario` are part of the stylesheet to copy.
+`thead th` rules, `tr.active-scenario`, `.compact`, the `.badge-impact-*` /
+`.badge-like-*` risk badges, `.glossary-table` and `.assumption-default` are
+part of the stylesheet to copy.
 The checker does not fail a report that omits them. Other colors and spacing
 inside the checked rules may be refined. The page background may not.
 
@@ -476,6 +656,11 @@ section { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; paddi
 .callout { padding: 0.85rem 1rem; border-radius: 6px; margin: 0.85rem 0; font-size: 0.95rem; }
 .callout-info { background: #eef5ff; border: 1px solid #0969da; border-left: 4px solid #0969da; }
 .appendix-header { background: #232f3e; color: #fff; padding: 1rem 1.5rem; margin: 2rem 0 1rem; }
+.compact { margin: 0.25rem 0 0.75rem; padding-left: 1.25rem; }
+.badge-impact-critical, .badge-impact-high { color: #c5221f; font-weight: 650; }
+.badge-like-low, .badge-like-medium { color: #57606a; font-weight: 650; }
+.glossary-table td:first-child { font-weight: 650; white-space: nowrap; }
+.assumption-default td:first-child { font-weight: 650; }
 a:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
 table { width: 100%; border-collapse: collapse; margin: 0.75rem 0 1rem; font-size: 0.88rem; }
 th, td { border: 0; border-bottom: 1px solid #d0d7de; padding: 0.45rem 0.65rem; text-align: left; vertical-align: top; }
@@ -495,7 +680,7 @@ in the text.
 
 ### Appendices (full report only)
 
-After `next-steps`, render `<div class="appendix">` preceded by
+After `exec-assumptions`, render `<div class="appendix">` preceded by
 `<div class="appendix-header">Appendix</div>`. Decision mode omits this block
 (`report-decision-core.md`). Copy figures and choices from the artifacts. Do
 not invent rows.
@@ -503,17 +688,22 @@ not invent rows.
 **Load `references/vendored/report/report-appendix-skeleton.md` and build the
 appendix block from it.** That file is the single source of truth for the
 shared appendix build (lettering, divider, the purpose, trigger, data sources,
-table shapes and content rules of Appendices A, B, F, G and I as this skill
-renders them). Do not restate or paraphrase its rules here. If the file is
-missing, emit
+table shapes and content rules of Appendices A, B, B.1, E, F, G, I and J as
+this skill renders them). Do not restate or paraphrase its rules here. If the
+file is missing, emit
 `GATE_FAIL | phase=generate | fragment=artifacts-report | reason=renderer_missing`
-and stop. The Heroku report diverges from the skeleton's default **shape** —
-the PaaS profile `SKILL_PROFILES["heroku"]` in the shared validator, passed as
-`--profile heroku` — and every divergence is declared below.
+and stop. The Heroku report omits three appendices a PaaS source cannot fill —
+the profile `SKILL_PROFILES["heroku"]` in the shared validator, passed as
+`--profile heroku` — and every omission is declared below. Headings and TOC
+labels carry the skeleton's letters: `Appendix A — Service Recommendations`,
+`Appendix B — Cost Estimates`, `Appendix B.1 — Savings Plans and Reserved
+Instances`, `Appendix E — Generated Artifacts Catalog`, `Appendix F — Your
+Configuration`, `Appendix G — Security Capabilities`, `Appendix I —
+Assumptions, Exclusions, and Validation`, `Appendix J — Glossary`. C, D and H
+are absent and their letters stay reserved.
 
-Do not emit `appendix-ai`, `appendix-security-gap`, `appendix-steps`,
-`appendix-glossary`, `appendix-artifacts`, or `exec-tco`. The cutover procedure
-stays in `MIGRATION_GUIDE.md`.
+Do not emit `appendix-ai`, `appendix-security-gap`, `appendix-steps`, or
+`exec-tco`. The cutover procedure stays in `MIGRATION_GUIDE.md`.
 
 #### Parameters
 
@@ -522,59 +712,54 @@ stays in `MIGRATION_GUIDE.md`.
 | ⟨source_cloud⟩                                                                   | Heroku                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ⟨report_mode⟩                                                                    | `full` (decision mode renders no appendix block; heroku has no AI-only path)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ⟨precheck_owner⟩ / ⟨precheck_skill_flag⟩                                         | n/a — no artifact pre-check runs before the report; `generate.md`'s `_assert`s gate the phase / n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| ⟨appendices_rendered⟩                                                            | Required under `SKILL_PROFILES["heroku"]`: A (`appendix-services`), B (`appendix-costs`), F (`appendix-config`), G (`appendix-security`), I (`appendix-assumptions`). Declared omissions (Declared exceptions below): C, D, E, H, J; B.1 rendered as the exec `cost-optimization` section instead. Headings are plain titles (no A–J letters) — declared exception.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ⟨appendices_rendered⟩                                                            | Required under `SKILL_PROFILES["heroku"]`: A (`appendix-services`), B (`appendix-costs`), B.1 (`appendix-optimization`, always rendered — the no-eligible-commitment sentence when there are no opportunities), E (`appendix-artifacts`), F (`appendix-config`), G (`appendix-security`), I (`appendix-assumptions`), J (`appendix-glossary`). Declared omissions (Declared exceptions below): C, D, H. Lettered headings and TOC labels as the skeleton writes them.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | ⟨appendix_header_text⟩                                                           | "Appendix"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | ⟨footer_text⟩                                                                    | "Generated by Heroku to AWS Migration Advisor — draft for review; verify figures before executive sign-off." (Skeleton HTML below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | ⟨extra_anchors⟩                                                                  | `heroku_monthly_like_for_like` (scope-matched block, checked by the heroku add-on validator)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ⟨accounting_ledger_field⟩ / ⟨accounting_split_sentence⟩ / ⟨accounting_location⟩  | n/a — heroku-to-aws writes no generation ledger; the service count comes from `aws-design.json` `services[]`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ⟨validator_invocation⟩                                                           | The two-command block in Step 3 (shared validator with `--profile heroku`, `--estimation-infra`, `--migration-dir`; then `validate-heroku-migration-report.py`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | ⟨design_mapping_source⟩                                                          | `aws-design.json` `services[]`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| ⟨how_we_chose_vocabulary_ref⟩                                                    | n/a — the design rows carry no confidence vocabulary; targets are explained in `developer-workflow` and `appendix-services` (content follow-up)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ⟨how_we_chose_vocabulary_ref⟩                                                    | n/a — the design rows carry no confidence vocabulary; targets are explained in `exec-services`, `developer-workflow` and `appendix-services`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | ⟨service_row_extras⟩                                                             | One row per `services[]` entry: Heroku app, source, AWS service, and the size the reader controls (instance class, task size, count)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ⟨cost_breakdown_source⟩                                                          | `estimation-infra.json` `projected_costs.breakdown` line items when the breakdown has them. Otherwise the Heroku baseline and the three AWS tiers, as estimated monthly whole dollars, plus the pricing-source caveat.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | ⟨mandatory_breakdown_rows⟩ / ⟨baseline_breakdown⟩ / ⟨floor_fields⟩ / ⟨extra_cost_columns⟩ | none beyond the canonical / n/a (`cost_comparison.heroku_monthly_baseline` is a single figure with `baseline_note`) / n/a (no floor fields in the Heroku estimate) / none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| ⟨optimization_sources⟩ / ⟨ri_sp_eligibility_ref⟩                                 | Infra only (`estimation-infra.json` → `optimization_opportunities[]`) / `references/vendored/estimate/ri-sp-eligibility.md` — rendered as `cost-optimization` in the executive flow (declared `optimization_sections` skip)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ⟨optimization_sources⟩ / ⟨ri_sp_eligibility_ref⟩                                 | Infra only (`estimation-infra.json` → `optimization_opportunities[]`; item shape per `estimate-cost-engine.md` Part 6: `opportunity`, `type`, `target_services[]`, `savings_percent`, `savings_monthly`, `commitment`, `implementation_effort`, `prerequisite`) / `references/vendored/estimate/ri-sp-eligibility.md`. Rendered as `exec-optimization` (posture + which commitment fits) and Appendix B.1 `appendix-optimization` (line-level table) — both always present in full mode                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | ⟨phase_order_source⟩ / ⟨scripts_list⟩ / ⟨cutover_strategy_fields⟩ / ⟨rollback_source⟩ / ⟨rollback_rows⟩ | n/a — `appendix-steps` is a declared omission (cutover procedure stays in `MIGRATION_GUIDE.md`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | ⟨ai_appendix_spec⟩                                                               | Declared omission — heroku-to-aws has no AI track                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ⟨pack_extras⟩ / ⟨data_artifacts⟩                                                 | n/a — `appendix-artifacts` is a declared omission (the pack is listed in `README.md` and `next-steps` points at `MIGRATION_GUIDE.md`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| ⟨preferences_groups⟩                                                             | Choices from `preferences.json`: region, availability, maintenance window, compute default and any formation override, Elastic Beanstalk deploy method, database HA, migration method, DNS. Columns: Choice, Your answer, What it changes (declared `appendix_config_columns` skip).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| ⟨preferences_schema_ref⟩ / ⟨critical_default_caveats⟩                            | n/a — the heroku preferences carry no `prompt` / `design_consequence` catalog yet (content follow-up) / n/a — no critical-default caveats are rendered yet (content follow-up)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ⟨pack_extras⟩ / ⟨data_artifacts⟩                                                 | Appendix E lists what exists at render time, one line each: `terraform/` (core files `main.tf`, `variables.tf`, `outputs.tf`, `security.tf`, `.gitignore`, `terraform.tfvars.example` plus `baseline.tf`; conditional `pipeline.tf`, `eks.tf`, `ecr.tf`, `dns.tf` when present), `MIGRATION_GUIDE.md`, `README.md`, every `scripts/*.sh` present (`migrate-postgres.sh`, `migrate-redis.sh`), every `.github/workflows/*.yml` present (`deploy-eb.yml`, `promote.yml`), `kubernetes/` when present, and `generation-warnings.json`; then one line "Written after this report by the completion step: `validation-report.json`, `heroku-estate.xlsx`, `plan.json` (when their writers succeed)"; then "This report supersedes `decision-report.html`" when that file exists in the migration directory / Data artifacts table (Artifact · Contents): `preferences.json` (your Clarify answers and their provenance), `heroku-resource-inventory.json` (the discovered Heroku estate), `aws-design.json` (the AWS mapping per resource), `estimation-infra.json` (the three cost tiers and the recommendation)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ⟨preferences_groups⟩                                                             | Columns **Question / Your choice / Source / Design consequence** (the shared validator requires a question-or-assumption, choice, source and consequence header and at least two rows). One row per field below that is present in `preferences.json`, sorted user → extracted → default → derived; a default row is flagged (`class="assumption-default"`). Source from `sources.<QID>`: `user` → "User answer"; `extracted` → "Extracted from your Heroku inventory"; `default` → "Default applied"; `design_constraints.compute_target.chosen_by == "system_recommended"` → "Derived (recommended from the inventory)". Heroku constraints carry no per-field `prompt` / `design_consequence`, so the skeleton's legacy fallback applies: take the Question and Design consequence from this row catalog (keyed by field), never leave a cell empty. Row catalog (field · Q-ID · Question · Design consequence): `global.target_region` · Q1 · Which AWS region should your infrastructure be deployed to? · Every resource is created in this region; pricing is this region's. `global.compliance` · Q2 · Do you need to meet any compliance frameworks? · HIPAA → BAA-eligible services only; PCI → encryption at rest and in transit; SOC 2 → audit logging; none → no extra controls beyond the baseline. `global.availability` · Q3 · What availability level does your production workload need? · single-az / multi-az → RDS PostgreSQL; multi-az-ha / multi-region → Aurora; applies to every data service. `global.maintenance_window` · Q4 · When should AWS perform maintenance operations? · Sets the RDS and Beanstalk maintenance window; flexible leaves AWS defaults. `global.environment_naming` · Q5 · What should the primary environment be called in AWS resource naming and tags? · Becomes the Terraform `environment` variable (the environment segment of resource names and the `Environment` tag) and the guide's environment name; never changes the architecture or the estimate. `global.dx_priority` · Q5c · How important is keeping the Heroku developer workflow? · Changes what the report says must still be built; critical adds the build-vs-buy choice; never changes the Terraform. `data.database_ha` · Q6 · What high-availability configuration do you want for PostgreSQL on AWS? · single-az / multi-az → RDS (Multi-AZ when multi-az); multi-az-ha → Aurora. `global.migration_approach` · Q6b · How do you want to phase the migration? · data-first adds the interim database exposure section and a platform-risk callout to the guide. `data.migration_method` · Q6c · How would you like to migrate your PostgreSQL data to AWS? · Selects the data migration procedure in the guide; DMS adds the CDC limitation warning. `data.redis_ha` · Q7 (when present) · Do you want Redis replicated across AZs? · Replication group with a standby versus a single node. `data.dns_strategy` · Q10 · How do you want to manage DNS for your migrated services? · route53 generates `dns.tf` with weighted cutover records; external leaves DNS with your provider. `operational.containerization_status` · Q12b · Is your application already containerized? · buildpack_only / partial add the Containerization Prerequisites section and fire Q12f. `operational.containerization_method` · Q12f · How should buildpack apps get a container image? · cnb_heroku_builder → `pack build` with the Heroku builder, ECR repositories, no Dockerfile; dockerfile → `docker build` per app. `operational.container_registry` · Q12 · Where should container images be stored for your containerized workloads? · ecr → images are published to one ECR repository per Cloud Native Buildpacks app (`ecr.tf`), which that build path requires (the only option when Q12f is cnb_heroku_builder); external → no `ecr.tf` and no ECR login step, images are pulled from your registry. `design_constraints.compute_target` · Q12c · Which compute target should formations use? · Resolves each formation to Elastic Beanstalk, Fargate or EKS; one extra row per `overrides[]` entry naming the formation. `design_constraints.eb_deploy_method` · Q12d (when present) · How do you want to deploy code changes to Elastic Beanstalk? · github_actions generates the deploy and promote workflows; codepipeline generates `pipeline.tf`; manual generates no CI. `operational.log_retention_days` · Q13 · How long should application logs be retained? · CloudWatch Logs retention (mapped to the nearest Beanstalk-accepted value). `operational.alerting` · Q14 · How do you want to handle alerting and on-call notifications? · Recorded for your operations runbook; the generated Terraform emits no application alarms or on-call wiring for this answer (the account baseline's budget notifications are separate; see Appendix G), so the choice never moves the estimate. `operational.cost_optimization` · Q15 · How aggressively should we optimize for cost vs. operational safety? · Right-sizing margin applied to the Balanced tier. `global.startup_program_status` · Q17 · Have you applied for AWS Activate credits? · Drives only the credits callout wording; never moves the estimate.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ⟨preferences_schema_ref⟩ / ⟨critical_default_caveats⟩                            | `references/phases/clarify/clarify-interview.md` § Question Catalog (question text and Design impact per Q-ID; the row catalog above is its report-facing summary) / one `<div class="callout callout-info">` above the table for each of these when its `sources.<QID>` is `default`: Q2 compliance ("Compliance was not confirmed — no framework-specific controls were added; confirm before go-live"), Q3 availability ("Availability was defaulted to Multi-AZ — roughly a 2x database cost swing either way; confirm before cutover sizing"), Q17 startup-program status ("Funding stage not confirmed — the Activate guidance is neutral; answer Q17 to see the tier that applies"). None when none of the three is defaulted                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | ⟨baseline_controls_table⟩ / ⟨security_extra_columns⟩                             | The account baseline Generate emits, as a table with columns Control, Setting, What it does, and Threat mitigated. Rows: alternate contacts (an incident reaches someone who can act); password policy, 14 characters, reuse 24, maximum age 90 days (weak console passwords); S3 public-access block (accidental public buckets); default EBS encryption (data exposure from a stolen volume); Access Analyzer (a policy or bucket becomes public); IMDSv2 (credential theft through server-side request forgery); CloudTrail at the generated retention (who changed what); the monthly budget and its alert thresholds (bill shock); GuardDuty (credential theft and resource hijacking). Say that the three contact emails must be set before `terraform plan`. Do not add a monthly-cost column or a Heroku-equivalent column (declared exception — column vocabulary). |
 | ⟨security_equivalent_label⟩ / ⟨budget_limit_formula⟩ / ⟨cost_guardrail_rows⟩     | n/a — no Heroku-equivalent column (declared exception) / n/a — the budget row names its alert thresholds, not a formula / n/a — no AI track, no `bedrock_monitoring.tf`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | ⟨compliance_field⟩                                                               | The normalized compliance list: when it contains soc2, pci, hipaa, or fedramp, add AWS Config (a record of configuration change) and Security Hub with FSBP (baseline posture checks), each with the same two meaning columns. Do not add those rows when compliance is none.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | ⟨opt_out_procedure⟩                                                              | Removing `baseline.tf` plus those three contact variables opts out                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ⟨gap_source_names⟩ / ⟨gap_extra_rows⟩ / ⟨observability_note_field⟩               | n/a — `appendix-security-gap` is a declared omission (no source-cloud security posture to gap-compare on a PaaS)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| ⟨pricing_source_fields⟩ / ⟨rightsizing_limitations⟩                              | `recommendation.decision_basis` measured, assumed, and unknown lists when present, copied as written, plus one pricing-provenance line from `pricing_source.status` (declared exception — decision-basis vocabulary in place of the pricing-confidence table) / n/a — covered by the `decision_basis` lists                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| ⟨exclusion_extras⟩ / ⟨terraform_validation_rule⟩ / ⟨warnings_sources⟩           | none / n/a — this fragment runs before `validation-report.json` exists and states no Terraform status / n/a — no design warnings list is rendered yet (content follow-up)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| ⟨glossary_examples⟩                                                              | n/a — `appendix-glossary` is a declared omission                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ⟨pricing_source_fields⟩ / ⟨rightsizing_limitations⟩                              | `recommendation.decision_basis` measured, assumed, and unknown lists when present, copied as written, plus one pricing-provenance line from `pricing_source.status` (prose-only declared exception — the `decision_basis` lists in place of the pricing-confidence table; when the estimate has no `decision_basis`, the pricing-provenance line plus the `accuracy_confidence` band) / n/a — covered by the `decision_basis` lists                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ⟨exclusion_extras⟩ / ⟨terraform_validation_rule⟩ / ⟨warnings_sources⟩           | none / n/a — this fragment runs before `validation-report.json` exists and states no Terraform status / `generation-warnings.json` `warnings[]` and `aws-design.json` `warnings[]`, listed one line each under Appendix I ("none" when both are empty); the same warnings feed `exec-risks` source (4)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ⟨glossary_examples⟩                                                              | Estimated monthly run rate (what the AWS resources are expected to cost per month at list price, before credits; say it is "not the full ownership cost: staffing, tooling and operating labor are not priced" — the literal phrases "total cost of ownership" and "TCO" are banned anywhere in the report body by the shared validator's READABILITY rule), Balanced / Premium / Optimized (the three pricing tiers: right-sized on-demand; the same design with every resilience uplift; Balanced with every eligible commitment at its mid-point rate), Savings Plan, Multi-AZ, Elastic Beanstalk, Cloud Native Buildpacks, GuardDuty. At least three rows; `<table class="glossary-table">` with Term / Meaning headers, a caption and `scope="col"`; the final section of the report                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 #### Declared exceptions
 
 Every entry mirrors `SKILL_PROFILES["heroku"]` in
 `$PLUGIN_ROOT/scripts/validate-migration-report.py` (reason text copied from the
-validator), plus the appendix-level declarations the validator does not yet
-encode:
+validator), plus the prose-only declarations the validator does not encode:
 
 - `appendix-steps` (C) — not required: cutover procedure stays in MIGRATION_GUIDE.md.
-- `appendix-security-gap` (H) — not required: no source-cloud security posture to gap-compare on a PaaS.
 - `appendix-ai` (D) — not required: heroku-to-aws has no AI track.
-- `appendix-glossary` (J) — not required: PaaS report has no glossary appendix; follow-up may add one (`glossary` check skipped).
-- `appendix-artifacts` (E) — not rendered: the pack is listed in `README.md` and `next-steps` points at `MIGRATION_GUIDE.md`. The matching `not_required` row is missing from the validator profile (follow-up; the profile's `full` set simply omits the ID today).
-- `appendix-optimization` (B.1) — rendered as `cost-optimization` in the executive flow (`optimization_sections` skip: vocabulary — content follow-up).
-- `appendix-config` columns — Choice / Your answer / What it changes (`appendix_config_columns` skip: vocabulary — content follow-up).
-- `appendix-security` columns — Control · Setting · What it does · Threat mitigated, no cost or Heroku-equivalent column (the heroku add-on validator checks "What it does" / "Threat mitigated"; vocabulary — content follow-up).
-- `appendix-assumptions` — `decision_basis` lists instead of the pricing-confidence table (vocabulary — content follow-up).
-- Plain appendix headings without the A–J letters (vocabulary — content follow-up).
-- `stay_if_heading` skip — exec-flow vocabulary, declared in the decision-core layer.
+- `appendix-security-gap` (H) — not required: no source-cloud security posture to gap-compare on a PaaS.
+- The profile's `skip` map is empty: the glossary, "Stay entirely if", optimization-section and `appendix-config` column checks all run under `--profile heroku`.
+- `appendix-security` columns — Control · Setting · What it does · Threat mitigated, no cost or Heroku-equivalent column (the heroku add-on validator checks "What it does" / "Threat mitigated"; prose-only).
+- `appendix-assumptions` — `decision_basis` lists instead of the pricing-confidence table (prose-only).
+- `appendix-artifacts` (E) lists the pack at render time; `validation-report.json`, `heroku-estate.xlsx` and `plan.json` are named as written after this report (prose-only timing note).
 
 ### Table & figure accessibility (REQUIRED — the shared validator enforces these)
 
 - **Exactly one `<h1>`** — the skeleton's report title. Section headings are `<h2>`.
 - **Every `<table>` has a `<caption>`** stating what the table shows.
 - **Every `<th>` must declare `scope="col"` or `scope="row"`.** The report's tables
-  (`exec-costs`, `cost-optimization` when opportunities exist, `developer-workflow`,
-  `what-if-scenarios`) are column-headed, so emit `<th scope="col">…</th>` for each
-  header cell.
+  (`exec-services`, `exec-costs`, `exec-optimization`, `developer-workflow`,
+  `what-if-scenarios`, `exec-risks`, `exec-assumptions`, every appendix table) are
+  column-headed, so emit `<th scope="col">…</th>` for each header cell.
 - **If you emit a `<figure>`, it must carry a non-empty `aria-label` and a `<figcaption>`.**
   This report normally has no figures; this only applies if you add one.
 - `<html>` carries `lang="en"` (the skeleton already does).
@@ -596,28 +781,33 @@ encode:
     <section id="decision-summary">…</section>
     <nav class="toc">…</nav>
     <section id="exec-share">…</section>
-    <!-- <section id="decision-basis"> when recommendation.decision_basis exists -->
+    <section id="exec-services">…</section>
     <section id="exec-costs">
-      <!-- every <th> declares scope; copy this header pattern for cost-optimization + what-if too -->
+      <!-- every <th> declares scope; copy this header pattern for every other table too -->
       <table>
-        <thead><tr><th scope="col">Service</th><th scope="col">Heroku</th><th scope="col">AWS (Balanced)</th></tr></thead>
+        <caption>Estimated monthly AWS cost by tier</caption>
+        <thead><tr><th scope="col">Tier</th><th scope="col">Est. Monthly AWS</th></tr></thead>
         <tbody>…
-          <tr><td>Total</td><td>…</td><td><span data-cost-key="aws_monthly_balanced">$NNN/mo</span></td></tr>
+          <tr><td>Balanced</td><td><span data-cost-key="aws_monthly_balanced">$NNN/mo</span></td></tr>
         </tbody>
       </table>
     </section>
-    <section id="cost-optimization">…</section>
+    <section id="exec-optimization">…</section>
     <section id="developer-workflow">…</section>
     <section id="exec-timeline">…</section>
     <!-- <section id="what-if-scenarios"> when ≥2 scenarios -->
-    <section id="next-steps">…</section>
+    <section id="exec-risks">…</section>
+    <section id="exec-assumptions">…</section>
     <div class="appendix-header">Appendix</div>
     <div class="appendix">
-      <section id="appendix-services">…</section>
-      <section id="appendix-costs">…</section>
-      <section id="appendix-config">…</section>
-      <section id="appendix-security">…</section>
-      <section id="appendix-assumptions">…</section>
+      <section id="appendix-services"><h2>Appendix A — Service Recommendations</h2>…</section>
+      <section id="appendix-costs"><h2>Appendix B — Cost Estimates</h2>…</section>
+      <section id="appendix-optimization"><h2>Appendix B.1 — Savings Plans and Reserved Instances</h2>…</section>
+      <section id="appendix-artifacts"><h2>Appendix E — Generated Artifacts Catalog</h2>…</section>
+      <section id="appendix-config"><h2>Appendix F — Your Configuration</h2>…</section>
+      <section id="appendix-security"><h2>Appendix G — Security Capabilities</h2>…</section>
+      <section id="appendix-assumptions"><h2>Appendix I — Assumptions, Exclusions, and Validation</h2>…</section>
+      <section id="appendix-glossary"><h2>Appendix J — Glossary</h2>…</section>
     </div>
     <footer>Generated by Heroku to AWS Migration Advisor — draft for review; verify figures before executive sign-off.</footer>
   </div>
@@ -634,14 +824,16 @@ wrote satisfies the contract, and if not, **fix and rewrite it here** (this is t
 the report is edited — a stub is never acceptable):
 
 1. File exists and is non-empty.
-2. Contains `decision-summary` (before the TOC), `exec-share`, `exec-costs`, `developer-workflow`, `exec-timeline`, `cost-optimization`, `next-steps`, the five appendix sections, a TOC link to each of them, the visual-shell selectors (including `.share-card`), one `<h1>`, and `draft for review`. The security appendix table has What it does and Threat mitigated columns. No week, month or hour figure appears anywhere.
+2. Contains `decision-summary` (before the TOC, with the "Migrate if" / "Stay entirely if" lists and the `<h3>Next steps</h3><ol class="compact">`), `exec-share`, `exec-services`, `exec-costs`, `exec-optimization`, `developer-workflow`, `exec-timeline`, `exec-risks`, `exec-assumptions` (in that order, `exec-assumptions` last), the eight appendix sections A, B, B.1, E, F, G, I, J with their lettered headings, a TOC link to each of them, the visual-shell selectors (including `.share-card`), one `<h1>`, and `draft for review`. The security appendix table has What it does and Threat mitigated columns; the configuration appendix has Question / Your choice / Source / Design consequence columns and at least two rows; the glossary is a `glossary-table` with at least three rows. No week, month or hour figure appears anywhere.
 3. `decision-summary` must **not contain** any `badge-verdict-*` class; when
    `recommendation.outcome` exists it must render a `verdict-headline` element.
-4. When `recommendation.decision_basis` exists: contains `decision-basis`.
+4. `exec-assumptions` renders the defaults table (or the nothing-assumed line), the confidence line (or the `decision_basis` columns when the estimate declares them) and the pricing-provenance line; the confidence pointer in `decision-summary` links to `#exec-assumptions`. `exec-risks` has at least one table row.
 5. If `scenarios/index.json` has ≥2 scenarios, contains `what-if-scenarios`.
-6. `cost-optimization` is non-empty — the table or the explicit no-eligible-commitment
-   sentence, never a blank section. If you wrote the sentence, it renders as visible
-   text (not only inside a comment/`<template>`) and reads verbatim once entities decode.
+6. `exec-optimization` and `appendix-optimization` are non-empty — the posture table
+   plus the not-additive sentence and the B.1 opportunity table, or the explicit
+   no-eligible-commitment sentence in both, never a blank section. If you wrote the
+   sentence, it renders as visible text (not only inside a comment/`<template>`) and
+   reads verbatim once entities decode.
 7. Every `<th>` declares `scope="col"`/`"row"`; every `<table>` has a `<caption>`; any `<figure>` has `aria-label` + `<figcaption>`.
 8. **No monthly-scale dollar figure renders with cents.** Scan every `$` figure: any
    monthly total $2 or more must be whole-dollar (`$112/mo`, not` $112.34/mo`) — the
@@ -707,8 +899,10 @@ re-running Generate for a clean rebuild).
 **What each validator enforces.** The shared validator
 (`$PLUGIN_ROOT/scripts/validate-migration-report.py --profile heroku`) enforces the
 required section IDs for this skill in each mode (full: `decision-summary`, `exec-share`,
-`exec-timeline`, `exec-costs`, `developer-workflow`, `cost-optimization`, `next-steps` and the
-five appendices; decision: the exec set plus `developer-workflow` and `decision-cta`), the TOC
+`exec-services`, `exec-costs`, `exec-optimization`, `developer-workflow`, `exec-timeline`,
+`exec-risks`, `exec-assumptions` and the eight appendices A, B, B.1, E, F, G, I, J; decision:
+`decision-summary`, `exec-share`, `exec-services`, `exec-costs`, `developer-workflow`,
+`exec-timeline`, `exec-risks`, `exec-assumptions`, `decision-cta`), the TOC
 (present, no broken links, every required section linked), `decision-summary` before the TOC,
 no rendered `appendix-*` in decision mode, the visual-shell stylesheet rules listed above,
 accessibility (`<html lang>`, exactly one `<h1>`, `<th scope>`, a `<caption>` on every table,
@@ -716,16 +910,26 @@ accessibility (`<html lang>`, exactly one `<h1>`, `<th scope>`, a `<caption>` on
 ranges, no "TCO", no "Section N" headings, no vague intensifiers, ISO dates), reader vocabulary
 in the exec sections (no `*.json` or `aws_*.` tokens), the typography-first verdict rules (no
 `badge-verdict-*` pills; `verdict-headline` when `recommendation.outcome` exists), the
-`metric-hero` card, the populated "What would flip this" list, the exec-share brief (one
-`.share-card` paragraph of at least 20 words, no controls), the Activate apply link, the what-if
-column set when two or more scenarios exist, appendix content-depth floors, the `draft for
-review` footer, and the `aws_monthly_balanced` / `current_monthly` cost anchors. The heroku
-add-on (`<SKILL_BASE>/scripts/validate-heroku-migration-report.py`) enforces the heroku-only
-rules: no `decision-cta` in full mode and no `next-steps` or `.appendix-header` in decision
-mode, the `.share-card` border rule, the `heroku_monthly_like_for_like` anchor and its
-source-consistency check, the Activate status rules driven by `preferences.json`, non-empty
-`cost-optimization`, the security-appendix "What it does" / "Threat mitigated" columns,
-`decision-basis` when the estimate declares it, and the decision-mode `.phase-status.json`
+`metric-hero` card, the populated "What would flip this" list, exactly one "Stay entirely if"
+heading when `stay_if` is non-empty, the "Next steps" heading over an ordered list, the
+`exec-risks` table placed before `exec-assumptions`, the `exec-optimization` Balanced /
+not-additive wording and the Savings Plan row in the B.1 table when opportunities exist, the
+`appendix-config` Question / Your choice / Source / Design consequence columns, the
+`glossary-table` with at least three rows, the exec-share brief (one `.share-card` paragraph of
+at least 20 words, no controls), the Activate apply link, the what-if column set when two or
+more scenarios exist, appendix content-depth floors, the `draft for review` footer, and the
+`aws_monthly_balanced` / `current_monthly` cost anchors. The heroku add-on
+(`<SKILL_BASE>/scripts/validate-heroku-migration-report.py`) enforces the heroku-only rules:
+no `decision-cta` in full mode, no `.appendix-header` in decision mode, no retired section ID
+in either mode (`next-steps`, `cost-optimization`, `decision-basis` each fail with a message
+naming the replacement: the `decision-summary` Next steps list / `decision-cta`,
+`exec-optimization` plus `appendix-optimization`, `exec-assumptions`), the `.share-card`
+border rule, the `heroku_monthly_like_for_like` anchor and its source-consistency check, the
+Activate status rules driven by `preferences.json`, in full mode a populated table row or the
+exact no-eligible-commitment sentence in each of `exec-optimization` and
+`appendix-optimization` (when present), the security-appendix "What it does" / "Threat
+mitigated" columns, `exec-assumptions` ("What This Assessment Rests On") when the estimate
+declares `recommendation.decision_basis`, and the decision-mode `.phase-status.json`
 pre-execution check.
 
 ---

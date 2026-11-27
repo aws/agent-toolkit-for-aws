@@ -91,39 +91,47 @@ OPTIONAL_SECTION_IDS = [
 ]
 
 # Skill profiles: an explicit `--profile` opt-in for a skill whose report contract
-# differs in SHAPE from the gcp-derived default (heroku-to-aws is a PaaS source with
-# a shorter executive flow). A profile replaces the per-mode required-section set
-# and names, each with a one-line reason, the default checks it switches off.
+# differs in SHAPE from the gcp-derived default (heroku-to-aws is a PaaS source:
+# it adds exec-share, developer-workflow and an always-rendered optimization pair
+# in full mode). A profile replaces the per-mode required-section set and names,
+# each with a one-line reason, the default checks it switches off.
 # Without --profile nothing here is consulted, so gcp-to-aws / azure-to-aws /
 # render-to-aws / bedrock-migration-assessment behave exactly as before.
 # "not_required" is documentary: those IDs are simply absent from the sets; the
-# dict records WHY so a follow-up can delete entries one at a time. "skip" names
-# the checks validate_report() guards on; every entry is a vocabulary difference
-# pending a heroku content follow-up, except "glossary" which follows from
-# appendix-glossary not being required.
+# dict records WHY each PaaS omission is deliberate. "skip" names the checks
+# validate_report() guards on; heroku skips none — every vocabulary difference
+# was converged on the shared contract.
 SKILL_PROFILES: dict[str, dict] = {
     "heroku": {
         "required_sections": {
             "full": [
                 "decision-summary",
                 "exec-share",
-                "exec-timeline",
+                "exec-services",
                 "exec-costs",
+                "exec-optimization",
                 "developer-workflow",
-                "cost-optimization",
-                "next-steps",
+                "exec-timeline",
+                "exec-risks",
+                "exec-assumptions",
                 "appendix-services",
                 "appendix-costs",
+                "appendix-optimization",
+                "appendix-artifacts",
                 "appendix-config",
                 "appendix-security",
                 "appendix-assumptions",
+                "appendix-glossary",
             ],
             "decision": [
                 "decision-summary",
                 "exec-share",
-                "exec-timeline",
+                "exec-services",
                 "exec-costs",
                 "developer-workflow",
+                "exec-timeline",
+                "exec-risks",
+                "exec-assumptions",
                 "decision-cta",
             ],
         },
@@ -131,21 +139,8 @@ SKILL_PROFILES: dict[str, dict] = {
             "appendix-steps": "cutover procedure stays in MIGRATION_GUIDE.md",
             "appendix-security-gap": "no source-cloud security posture to gap-compare on a PaaS",
             "appendix-ai": "heroku-to-aws has no AI track",
-            "appendix-glossary": "PaaS report has no glossary appendix; follow-up may add one",
         },
-        "skip": {
-            "glossary": "appendix-glossary not required (see not_required)",
-            "stay_if_heading": (
-                "vocabulary: heroku has no 'Stay entirely if' heading yet — content follow-up"
-            ),
-            "optimization_sections": (
-                "vocabulary: heroku names the section cost-optimization — content follow-up"
-            ),
-            "appendix_config_columns": (
-                "vocabulary: heroku columns are Choice / Your answer / What it changes "
-                "— content follow-up"
-            ),
-        },
+        "skip": {},
     },
 }
 
@@ -1672,8 +1667,12 @@ def _validate_verdict(html: str, estimation_infra: dict | None) -> list[str]:
     if not estimation_infra or not estimation_infra.get("recommendation"):
         return []
     summary = _section_html(html, "decision-summary") or ""
-    if re.search(r'class="[^"]*\bverdict\b[^"]*"', summary, re.IGNORECASE):
-        return []
+    # Match the `verdict` class TOKEN exactly: split each class attribute on
+    # whitespace so `verdict-headline` / `verdict-meta` cannot satisfy the rule
+    # (a \b regex treats the hyphen as a word boundary and accepted them).
+    for attr in re.findall(r'class="([^"]*)"', summary, re.IGNORECASE):
+        if "verdict" in attr.lower().split():
+            return []
     return [
         "recommendation block exists but decision-summary has no verdict banner "
         '(wrap the one-sentence recommendation in class="verdict")'

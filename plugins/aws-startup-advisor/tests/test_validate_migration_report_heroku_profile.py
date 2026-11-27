@@ -8,9 +8,13 @@ Two pieces, both pinned here:
   mismatched fails with a line naming the path; figure rendered but unanchored fails;
   the gcp and azure paths are unchanged.
 - `--profile heroku` (`SKILL_PROFILES`) swaps in heroku's required-section set per mode
-  and switches off exactly the vocabulary-only checks the profile names (stay-if
-  heading, optimization section IDs, appendix-config columns, glossary). It does NOT
-  exempt the bare-week-range readability rule. Without `--profile` nothing changes.
+  (the default decision set plus `exec-share` and `developer-workflow`; the full set adds
+  the always-rendered optimization pair, `appendix-artifacts` and `appendix-glossary`),
+  declares exactly three PaaS omissions (`appendix-steps`, `appendix-security-gap`,
+  `appendix-ai`) and skips nothing: the "Stay entirely if" heading, the optimization
+  section IDs, the appendix-config provenance columns, the glossary table and the
+  bare-week-range readability rule all fire under the profile. Without `--profile`
+  nothing changes.
 """
 from __future__ import annotations
 
@@ -130,11 +134,29 @@ def _section(sid: str, body: str = "<p>x</p>") -> str:
     return f'<section id="{sid}"><h2>{sid}</h2>{body}</section>'
 
 
+HEROKU_DECISION_IDS = [
+    "decision-summary", "exec-share", "exec-services", "exec-costs", "developer-workflow",
+    "exec-timeline", "exec-risks", "exec-assumptions", "decision-cta",
+]
+HEROKU_FULL_IDS = [
+    "decision-summary", "exec-share", "exec-services", "exec-costs", "exec-optimization",
+    "developer-workflow", "exec-timeline", "exec-risks", "exec-assumptions",
+    "appendix-services", "appendix-costs", "appendix-optimization", "appendix-artifacts",
+    "appendix-config", "appendix-security", "appendix-assumptions", "appendix-glossary",
+]
+RISK_TABLE = (
+    "<table><caption>Top risks</caption><thead><tr><th scope='col'>Risk</th><th scope='col'>Impact</th>"
+    "<th scope='col'>Likelihood</th><th scope='col'>Mitigation</th></tr></thead>"
+    "<tbody><tr><td>r</td><td>High</td><td>Low</td><td>m</td></tr></tbody></table>"
+)
+
+
 def _heroku_decision_html(*, drop: str | None = None, timeline: str = "Phased migration.", summary_extra: str = "") -> str:
-    ids = ["decision-summary", "exec-share", "exec-costs", "developer-workflow", "exec-timeline", "decision-cta"]
+    ids = HEROKU_DECISION_IDS
     bodies = {
         "decision-summary": f'<p class="verdict-headline">Go</p>{summary_extra}',
         "exec-timeline": f"<p>{timeline}</p>",
+        "exec-risks": RISK_TABLE,
     }
     parts = [_section(sid, bodies.get(sid, "<p>x</p>")) for sid in ids if sid != drop]
     return "<html lang='en'><body>" + "".join(parts) + "<footer>draft for review</footer></body></html>"
@@ -143,12 +165,23 @@ def _heroku_decision_html(*, drop: str | None = None, timeline: str = "Phased mi
 def test_profile_swaps_required_sections_for_decision_mode() -> None:
     validator = _load()
     html = _heroku_decision_html()
+    # The default decision contract does not know heroku's add-on sections, but it does
+    # not demand anything heroku lacks either: the heroku decision set is a superset.
     default_errors = validator.validate_report(html, mode="decision", require_toc=False)
-    assert 'missing required <section id="exec-assumptions">' in default_errors
-    assert 'missing required <section id="exec-services">' in default_errors
-    assert 'missing required <section id="exec-risks">' in default_errors
+    assert not any("missing required" in e for e in default_errors), default_errors
     profile_errors = validator.validate_report(html, mode="decision", require_toc=False, profile="heroku")
     assert not any("missing required" in e for e in profile_errors), profile_errors
+    assert validator.SKILL_PROFILES["heroku"]["required_sections"]["decision"] == HEROKU_DECISION_IDS
+    assert set(validator.DECISION_REQUIRED_SECTION_IDS) <= set(HEROKU_DECISION_IDS)
+
+
+def test_profile_decision_mode_requires_the_shared_exec_sections() -> None:
+    validator = _load()
+    for sid in ("exec-assumptions", "exec-services", "exec-risks"):
+        errors = validator.validate_report(
+            _heroku_decision_html(drop=sid), mode="decision", require_toc=False, profile="heroku"
+        )
+        assert f'missing required <section id="{sid}">' in errors, (sid, errors)
 
 
 def test_profile_still_requires_heroku_sections() -> None:
@@ -165,15 +198,23 @@ def test_profile_still_requires_heroku_sections() -> None:
 
 def test_profile_full_mode_required_set() -> None:
     validator = _load()
-    ids = validator.SKILL_PROFILES["heroku"]["required_sections"]["full"]
-    assert "cost-optimization" in ids and "next-steps" in ids and "developer-workflow" in ids
-    for sid in ("appendix-services", "appendix-costs", "appendix-config", "appendix-security", "appendix-assumptions"):
-        assert sid in ids
-    for sid in ("appendix-steps", "appendix-artifacts", "appendix-glossary", "exec-assumptions", "exec-risks"):
-        assert sid not in ids
-    # Every PaaS-justified omission is declared with a reason.
-    for sid in ("appendix-steps", "appendix-security-gap", "appendix-ai", "appendix-glossary"):
-        assert validator.SKILL_PROFILES["heroku"]["not_required"][sid]
+    profile = validator.SKILL_PROFILES["heroku"]
+    ids = profile["required_sections"]["full"]
+    assert ids == HEROKU_FULL_IDS
+    for sid in (
+        "exec-assumptions", "exec-services", "exec-risks", "exec-optimization",
+        "appendix-optimization", "appendix-artifacts", "appendix-glossary", "developer-workflow",
+        "appendix-services", "appendix-costs", "appendix-config", "appendix-security", "appendix-assumptions",
+    ):
+        assert sid in ids, sid
+    for sid in ("appendix-steps", "appendix-security-gap", "appendix-ai", "cost-optimization", "next-steps", "decision-cta"):
+        assert sid not in ids, sid
+    # Every PaaS-justified omission is declared with a reason, and nothing else is.
+    assert set(profile["not_required"]) == {"appendix-steps", "appendix-security-gap", "appendix-ai"}
+    for reason in profile["not_required"].values():
+        assert reason
+    # Every vocabulary skip was converged: the default checks run in full.
+    assert profile["skip"] == {}
 
 
 def test_profile_not_required_never_overlaps_required_sections() -> None:
@@ -195,44 +236,73 @@ def test_profile_does_not_exempt_week_range_readability() -> None:
     assert any("readability: bare week-range estimate" in e for e in errors), errors
 
 
-def test_profile_skips_stay_if_heading_but_keeps_badge_ban() -> None:
+def test_profile_enforces_stay_entirely_if_heading_and_badge_ban() -> None:
     validator = _load()
     estimate = {"recommendation": {"stay_if": ["need Heroku DX indefinitely"], "outcome": "go"}}
     html = _heroku_decision_html(summary_extra='<span class="badge-verdict-go">Go</span>')
-    default_errors = validator.validate_report(html, estimate, mode="decision", require_toc=False)
-    assert any('"Stay entirely if" heading' in e for e in default_errors), default_errors
     profile_errors = validator.validate_report(html, estimate, mode="decision", require_toc=False, profile="heroku")
-    assert not any('"Stay entirely if" heading' in e for e in profile_errors), profile_errors
+    assert any('"Stay entirely if" heading' in e for e in profile_errors), profile_errors
     assert any("badge-verdict-* pills" in e for e in profile_errors), profile_errors
+    fixed = _heroku_decision_html(
+        summary_extra='<h3>Migrate if</h3><ul class="compact"><li>a</li></ul>'
+        '<h3>Stay entirely if</h3><ul class="compact"><li>need Heroku DX indefinitely</li></ul>'
+    )
+    fixed_errors = validator.validate_report(fixed, estimate, mode="decision", require_toc=False, profile="heroku")
+    assert not any("Stay" in e for e in fixed_errors), fixed_errors
+    bare = _heroku_decision_html(summary_extra='<h3>Stay if</h3><ul class="compact"><li>x</li></ul>')
+    bare_errors = validator.validate_report(bare, estimate, mode="decision", require_toc=False, profile="heroku")
+    assert any('"Stay entirely if" heading' in e for e in bare_errors), bare_errors
 
 
-def test_profile_skips_optimization_section_ids() -> None:
+def test_profile_demands_exec_optimization_when_opportunities_exist() -> None:
     validator = _load()
     estimate = {
         "projected_costs": {"aws_monthly_balanced": 210},
-        "optimization_opportunities": [{"service": "RDS", "type": "reserved_instance", "savings": 20}],
+        "optimization_opportunities": [{"opportunity": "Database Savings Plans", "type": "database_savings_plan", "target_services": ["RDS PostgreSQL"], "savings_monthly": 19}],
     }
     html = _heroku_decision_html()
-    default_errors = validator.validate_report(html, estimate, mode="decision", require_toc=False)
-    assert any("exec-optimization" in e for e in default_errors), default_errors
     profile_errors = validator.validate_report(html, estimate, mode="decision", require_toc=False, profile="heroku")
-    assert not any("exec-optimization" in e for e in profile_errors), profile_errors
+    assert any('no <section id="exec-optimization">' in e for e in profile_errors), profile_errors
+    default_errors = validator.validate_report(html, estimate, mode="decision", require_toc=False)
+    assert [e for e in profile_errors if "exec-optimization" in e] == [e for e in default_errors if "exec-optimization" in e]
 
 
-def test_profile_skips_appendix_config_columns() -> None:
-    validator = _load()
-    html = (
+def _heroku_full_html(config_table: str) -> str:
+    glossary = (
+        "<table class='glossary-table'><caption>Glossary</caption><thead><tr><th scope='col'>Term</th><th scope='col'>Meaning</th></tr></thead>"
+        "<tbody><tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr><tr><td>e</td><td>f</td></tr></tbody></table>"
+    )
+    bodies = {
+        "exec-risks": RISK_TABLE,
+        "exec-optimization": "<p>Balanced on-demand: no 1-year/3-year commitment product applies to this architecture.</p>",
+        "appendix-config": config_table,
+        "appendix-glossary": glossary,
+    }
+    return (
         "<html lang='en'><body>"
-        + "".join(_section(s) for s in ("decision-summary", "exec-share", "exec-costs", "developer-workflow", "exec-timeline", "cost-optimization", "next-steps"))
-        + _section("appendix-config", "<table><thead><tr><th scope='col'>Choice</th><th scope='col'>Your answer</th><th scope='col'>What it changes</th></tr></thead><tbody><tr><td>Region</td><td>us-east-1</td><td>Pricing</td></tr><tr><td>HA</td><td>single-AZ</td><td>Cost</td></tr></tbody></table>")
-        + "".join(_section(s) for s in ("appendix-services", "appendix-costs", "appendix-security", "appendix-assumptions"))
+        + "".join(_section(sid, bodies.get(sid, "<p>x</p>")) for sid in HEROKU_FULL_IDS)
         + "<footer>draft for review</footer></body></html>"
     )
-    default_errors = validator.validate_report(html, mode="full", require_toc=False)
-    assert any("appendix-config" in e and "column" in e.lower() for e in default_errors), default_errors
-    profile_errors = validator.validate_report(html, mode="full", require_toc=False, profile="heroku")
-    assert not any("appendix-config" in e for e in profile_errors), profile_errors
-    assert not any("appendix-glossary" in e for e in profile_errors), profile_errors
+
+
+OLD_CONFIG_COLUMNS = (
+    "<table><thead><tr><th scope='col'>Choice</th><th scope='col'>Your answer</th><th scope='col'>What it changes</th></tr></thead>"
+    "<tbody><tr><td>Region</td><td>us-east-1</td><td>Pricing</td></tr><tr><td>HA</td><td>Multi-AZ</td><td>Cost</td></tr></tbody></table>"
+)
+NEW_CONFIG_COLUMNS = (
+    "<table><thead><tr><th scope='col'>Question</th><th scope='col'>Your choice</th><th scope='col'>Source</th><th scope='col'>Design consequence</th></tr></thead>"
+    "<tbody><tr><td>Which AWS region?</td><td>us-east-1</td><td>User answer</td><td>Pricing</td></tr>"
+    "<tr><td>Availability?</td><td>Multi-AZ</td><td>User answer</td><td>RDS Multi-AZ</td></tr></tbody></table>"
+)
+
+
+def test_profile_enforces_appendix_config_columns() -> None:
+    validator = _load()
+    old_errors = validator.validate_report(_heroku_full_html(OLD_CONFIG_COLUMNS), mode="full", require_toc=False, profile="heroku")
+    assert any("appendix-config" in e and "column" in e.lower() for e in old_errors), old_errors
+    new_errors = validator.validate_report(_heroku_full_html(NEW_CONFIG_COLUMNS), mode="full", require_toc=False, profile="heroku")
+    assert not any("appendix-config" in e for e in new_errors), new_errors
+    assert not any("missing required" in e for e in new_errors), new_errors
 
 
 def test_default_behaviour_unchanged_without_profile() -> None:

@@ -2,11 +2,14 @@
 
 The shared validator (`$PLUGIN_ROOT/scripts/validate-migration-report.py --profile
 heroku`) owns the structure / content standard and has its own tests under
-`$P/tests/`. These tests cover only the heroku-only rules the add-on keeps: the
-other mode's terminal section, the decision-mode `.appendix-header` ban, the
-`.share-card` CSS rule, the `heroku_monthly_like_for_like` anchor, the Activate
-status rules, cost-optimization content, the security-appendix columns,
-`decision-basis`, and the decision-mode `.phase-status.json` check.
+`$P/tests/`. These tests cover only the heroku-only rules the add-on keeps: no
+`decision-cta` in full mode, the retired section ids (`next-steps`,
+`cost-optimization`, `decision-basis`) in both modes, the decision-mode
+`.appendix-header` ban, the `.share-card` CSS rule, the
+`heroku_monthly_like_for_like` anchor, the Activate status rules,
+`exec-optimization` / `appendix-optimization` content, the security-appendix
+columns, `exec-assumptions` when the estimate declares `decision_basis`, and the
+decision-mode `.phase-status.json` check.
 """
 
 from __future__ import annotations
@@ -47,8 +50,8 @@ GOOD = """<!DOCTYPE html>
   <section id="exec-share"><p>The one-paragraph version, ready to forward:</p><div class="share-card"><p>Go, with conditions, at medium confidence. The estimated AWS balanced rate is higher than the Heroku rate card and the shape is phased. Confirm the open conditions before treating the monthly figure as final.</p></div></section>
   <section id="exec-timeline"><h2>Timeline</h2><p>Phased migration: provision, migrate data, cut over. Not a staffed schedule.</p></section>
   <section id="exec-costs"><table><thead><tr><th scope="col">Tier</th></tr></thead><tbody><tr><td>Balanced</td></tr></tbody></table></section>
-  <section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>
-  <section id="next-steps"><ol><li>See MIGRATION_GUIDE.md</li></ol></section>
+  <section id="exec-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>
+  <section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>
   <section id="appendix-services"><p>One designed service.</p></section>
 <section id="appendix-costs"><p>Balanced estimated monthly cost.</p></section>
 <section id="appendix-config"><p>Region and availability choices.</p></section>
@@ -148,14 +151,64 @@ def test_good_report_with_recommendation_passes() -> None:
     assert "REPORT_OK" in out
 
 
-def test_empty_cost_optimization_fails() -> None:
+def test_empty_appendix_optimization_fails() -> None:
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"></section>',
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"></section>',
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out and "empty" in out.lower()
+    assert '<section id="appendix-optimization"> has no substantive content' in out
+    assert "empty" in out.lower()
+
+
+def test_empty_appendix_optimization_tbody_fails_naming_the_section() -> None:
+    html = GOOD.replace(
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><h2>Appendix B.1 — Savings Plans and Reserved Instances</h2>'
+        '<table><caption>Commitment products</caption><thead><tr><th scope="col">Optimization</th>'
+        '<th scope="col">Monthly savings</th></tr></thead><tbody></tbody></table></section>',
+    )
+    code, out = run(html)
+    assert code == 1, out
+    assert '<section id="appendix-optimization"> has no substantive content' in out
+    assert "exec-optimization" not in out
+
+
+def test_empty_exec_optimization_fails_naming_the_section() -> None:
+    html = GOOD.replace(
+        '<section id="exec-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="exec-optimization"><h2>Cost Optimization</h2></section>',
+    )
+    code, out = run(html)
+    assert code == 1, out
+    assert '<section id="exec-optimization"> has no substantive content' in out
+    assert '<section id="appendix-optimization"> has no substantive content' not in out
+
+
+def test_populated_exec_optimization_posture_table_passes() -> None:
+    html = GOOD.replace(
+        '<section id="exec-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="exec-optimization"><h2>Cost Optimization</h2><table><caption>Posture comparison</caption>'
+        '<thead><tr><th scope="col">Posture</th><th scope="col">Est. monthly</th></tr></thead>'
+        "<tbody><tr><td>Balanced on-demand</td><td>$210</td></tr>"
+        "<tr><td>Balanced with both Savings Plans</td><td>$163</td></tr></tbody></table>"
+        "<p>Savings Plan savings are not additive to the Optimized tier.</p></section>",
+    )
+    code, out = run(html)
+    assert code == 0, out
+    assert "REPORT_OK" in out
+
+
+def test_optimization_content_not_checked_in_decision_mode() -> None:
+    # Decision mode: exec-optimization follows the shared trigger; the add-on's
+    # content rule is full mode only.
+    html = DECISION_GOOD.replace(
+        '<section id="exec-costs">',
+        '<section id="exec-optimization"></section><section id="exec-costs">',
+    )
+    code, out = run(html, mode="decision")
+    assert code == 0, out
 
 
 def test_no_eligible_sentence_with_entity_hyphens_passes() -> None:
@@ -185,57 +238,57 @@ def test_no_eligible_sentence_only_in_comment_fails() -> None:
     # Regression (09-22 P2): the sentence present ONLY inside an HTML comment is
     # not rendered — must NOT satisfy the content requirement.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><!-- No 1-year/3-year commitment product applies to this architecture. --><p>See optimization notes.</p></section>',
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><!-- No 1-year/3-year commitment product applies to this architecture. --><p>See optimization notes.</p></section>',
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out
+    assert "appendix-optimization" in out
 
 
 def test_no_eligible_sentence_only_in_template_fails() -> None:
     # Regression (09-22 P2): the sentence present ONLY inside an inert <template>
     # is not rendered — must NOT satisfy the content requirement.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><template><p>No 1-year/3-year commitment product applies to this architecture.</p></template><p>See optimization notes.</p></section>',
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><template><p>No 1-year/3-year commitment product applies to this architecture.</p></template><p>See optimization notes.</p></section>',
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out
+    assert "appendix-optimization" in out
 
 
 def test_heading_only_cost_optimization_fails() -> None:
     # A heading alone (no opportunity table, no no-eligible-commitment sentence)
     # must not satisfy the content requirement.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><h2>Cost Optimization Opportunities</h2></section>',
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><h2>Cost Optimization Opportunities</h2></section>',
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out
+    assert "appendix-optimization" in out
 
 
 def test_table_headers_only_cost_optimization_fails() -> None:
     # A table with column headers but an empty <tbody> — no actual opportunity
     # rows — must not satisfy the content requirement either.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><table><thead><tr>'
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><table><thead><tr>'
         '<th scope="col">Opportunity</th><th scope="col">Savings</th>'
         "</tr></thead><tbody></tbody></table></section>",
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out
+    assert "appendix-optimization" in out
 
 
 def test_cost_optimization_with_real_opportunity_row_passes() -> None:
     # Control: an actual populated row in the tbody is real content and passes.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><table><thead><tr>'
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><table><thead><tr>'
         '<th scope="col">Opportunity</th></tr></thead><tbody><tr>'
         "<td>1yr Compute Savings Plan: ~25%</td></tr></tbody></table></section>",
     )
@@ -250,29 +303,29 @@ def test_empty_tbody_with_credits_disclaimer_fails() -> None:
     # the disclaimer is explanatory text, not an opportunity row or the explicit
     # no-eligible-commitment sentence.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><table><thead><tr>'
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><table><thead><tr>'
         '<th scope="col">Optimization</th></tr></thead><tbody></tbody></table>'
         "<p>Activate credits don't cover RI/Savings Plan upfront costs — they apply "
         "only to the ongoing discounted hourly rate.</p></section>",
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out
+    assert "appendix-optimization" in out
 
 
 def test_th_only_row_in_tbody_does_not_count_as_opportunity_row() -> None:
     # A <tbody> row made only of <th> cells (no <td>) must not count as a
     # populated opportunity row.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><table><thead><tr>'
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><table><thead><tr>'
         '<th scope="col">Opportunity</th></tr></thead><tbody><tr>'
         '<th scope="row">Totals</th></tr></tbody></table></section>',
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out
+    assert "appendix-optimization" in out
 
 
 def test_nbsp_only_opportunity_cell_fails() -> None:
@@ -281,26 +334,26 @@ def test_nbsp_only_opportunity_cell_fails() -> None:
     # text; a parser that decodes character references first correctly treats
     # it as blank.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><table><tbody><tr>'
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><table><tbody><tr>'
         "<td>&nbsp;</td></tr></tbody></table></section>",
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out
+    assert "appendix-optimization" in out
 
 
 def test_numeric_charref_only_opportunity_cell_fails() -> None:
     # Same as above but with the numeric character reference form (&#160;)
     # rather than the named entity.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><table><tbody><tr>'
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><table><tbody><tr>'
         "<td>&#160;</td></tr></tbody></table></section>",
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out
+    assert "appendix-optimization" in out
 
 
 def test_commented_out_opportunity_row_fails() -> None:
@@ -309,13 +362,13 @@ def test_commented_out_opportunity_row_fails() -> None:
     # HTML comment; a parser naturally routes comment text away from
     # handle_data.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><table><tbody>'
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><table><tbody>'
         "<!-- <tr><td>RDS Reserved Instance</td></tr> --></tbody></table></section>",
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out
+    assert "appendix-optimization" in out
 
 
 def test_opportunity_row_without_explicit_tbody_passes() -> None:
@@ -323,8 +376,8 @@ def test_opportunity_row_without_explicit_tbody_passes() -> None:
     # all is valid HTML (an implicit tbody is inferred) and a real opportunity
     # row inside it must still count as content.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><table><tr>'
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><table><tr>'
         "<td>RDS Reserved Instance</td></tr></table></section>",
     )
     code, out = run(html)
@@ -339,8 +392,8 @@ def test_opportunity_row_with_omitted_td_end_tag_passes() -> None:
     # parser only finalized a cell on an EXPLICIT handle_endtag("td"), so this
     # exact shape silently registered as empty and failed a valid report.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><table><tr>'
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><table><tr>'
         "<td>RDS Reserved Instance</tr></table></section>",
     )
     code, out = run(html)
@@ -353,8 +406,8 @@ def test_opportunity_row_with_sibling_omitted_td_end_tags_passes() -> None:
     # second cell's start tag implicitly closes the first. The real
     # opportunity text in the second cell must still be found.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><table><tr>'
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><table><tr>'
         "<td>Opportunity<td>RDS Reserved Instance</tr></table></section>",
     )
     code, out = run(html)
@@ -367,12 +420,12 @@ def test_opportunity_row_with_omitted_td_end_tag_blank_cell_still_fails() -> Non
     # accidentally start passing just because the end tag is optional —
     # only real, nonblank text should ever satisfy this check.
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><table><tr><td></tr></table></section>',
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><table><tr><td></tr></table></section>',
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out
+    assert "appendix-optimization" in out
 
 
 
@@ -397,30 +450,30 @@ def test_validator_is_packaged_inside_the_skill_directory() -> None:
 
 def test_inert_only_opportunity_table_fails() -> None:
     """A whole opportunity table nested in a <template> is never rendered, so it
-    must not satisfy the cost-optimization content requirement."""
+    must not satisfy the appendix-optimization content requirement."""
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><template><table><tr>'
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><template><table><tr>'
         "<td>RDS Reserved Instance</td></tr></table></template></section>",
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out
+    assert "appendix-optimization" in out
 
 
 def test_opportunity_cell_only_inert_content_fails() -> None:
     """A visible row whose only cell content is an inert <template>/<script>
     subtree renders nothing, so it is not a populated opportunity row."""
     html = GOOD.replace(
-        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
-        '<section id="cost-optimization"><table><tr>'
+        '<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        '<section id="appendix-optimization"><table><tr>'
         '<td><script type="application/json">{"x":1}</script></td></tr>'
         "<tr><td><template>RDS Reserved Instance</template></td></tr>"
         "</table></section>",
     )
     code, out = run(html)
     assert code == 1, out
-    assert "cost-optimization" in out
+    assert "appendix-optimization" in out
 
 
 
@@ -450,27 +503,78 @@ def test_decision_mode_minimal_passes() -> None:
     assert "REPORT_OK" in out
 
 
-def test_decision_mode_must_not_carry_next_steps() -> None:
-    # The other mode's terminal section must not appear: a next-steps list points at
-    # an execution pack that does not exist yet.
-    html = DECISION_GOOD.replace(
-        "</footer>", '</footer><section id="next-steps"><ol><li>x</li></ol></section>'
-    )
-    code, out = run(html, mode="decision")
-    assert code == 1, out
-    assert '--mode decision report must not contain <section id="next-steps">' in out
-
-
 def test_full_mode_must_not_carry_decision_cta() -> None:
-    # The other mode's terminal section must not appear in full mode.
+    # The decision-mode terminal section must not appear in full mode.
     html = GOOD.replace(
-        '<section id="next-steps"><ol><li>See MIGRATION_GUIDE.md</li></ol></section>',
-        '<section id="next-steps"><ol><li>See MIGRATION_GUIDE.md</li></ol></section>'
-        '<section id="decision-cta"><p>x</p></section>',
+        "</footer>", '</footer><section id="decision-cta"><p>x</p></section>'
     )
     code, out = run(html)
     assert code == 1, out
     assert '--mode full report must not contain <section id="decision-cta">' in out
+    assert "(that is the decision-mode terminal section)" in out
+
+
+def test_decision_mode_keeps_decision_cta() -> None:
+    # Control: decision-cta is decision mode's own terminal section.
+    assert DECISION_GOOD.count('<section id="decision-cta">') == 1
+    code, out = run(DECISION_GOOD, mode="decision")
+    assert code == 0, out
+
+
+# --- Retired heroku section ids (converged on the shared contract) ---
+
+RETIRED = {
+    "next-steps": (
+        '<section id="next-steps"><ol><li>See MIGRATION_GUIDE.md</li></ol></section>',
+        'the decision-summary "Next steps" <ol class="compact"> (full mode) / decision-cta (decision mode)',
+    ),
+    "cost-optimization": (
+        '<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>',
+        "exec-optimization plus appendix-optimization (Appendix B.1)",
+    ),
+    "decision-basis": (
+        '<section id="decision-basis"><h2>What This Assessment Rests On</h2><p>Measured: dyno count.</p></section>',
+        'exec-assumptions ("What This Assessment Rests On")',
+    ),
+}
+
+
+def _retired_message(retired_id: str) -> str:
+    return f'<section id="{retired_id}"> is a retired heroku section id — render {RETIRED[retired_id][1]} instead'
+
+
+def test_retired_ids_fail_in_full_mode() -> None:
+    for retired_id, (section, _replacement) in RETIRED.items():
+        html = GOOD.replace("</footer>", "</footer>" + section)
+        code, out = run(html)
+        assert code == 1, (retired_id, out)
+        assert _retired_message(retired_id) in out, (retired_id, out)
+        assert "retired" in out
+
+
+def test_retired_ids_fail_in_decision_mode() -> None:
+    for retired_id, (section, _replacement) in RETIRED.items():
+        html = DECISION_GOOD.replace("</footer>", "</footer>" + section)
+        code, out = run(html, mode="decision")
+        assert code == 1, (retired_id, out)
+        assert _retired_message(retired_id) in out, (retired_id, out)
+
+
+def test_retired_id_only_in_comment_is_not_rendered() -> None:
+    # A commented-out retired section is not rendered, so it is not an error.
+    html = GOOD.replace("</footer>", '</footer><!-- <section id="cost-optimization"><p>x</p></section> -->')
+    code, out = run(html)
+    assert code == 0, out
+
+
+def test_renamed_appendix_optimization_fails_naming_the_replacement() -> None:
+    # The acceptance scenario: a full report whose B.1 section still carries the
+    # retired id fails and the message names exec-optimization.
+    assert GOOD.count('id="appendix-optimization"') == 1
+    html = GOOD.replace('id="appendix-optimization"', 'id="cost-optimization"')
+    code, out = run(html)
+    assert code == 1, out
+    assert "retired" in out and "exec-optimization" in out
 
 
 def _basis_dir(tmp: str) -> Path:
@@ -482,38 +586,54 @@ def _basis_dir(tmp: str) -> Path:
     return d
 
 
-def test_decision_basis_required_when_estimate_declares_it() -> None:
+EXEC_ASSUMPTIONS_MISSING = (
+    "estimation-infra.json declares recommendation.decision_basis but the report has no "
+    '<section id="exec-assumptions"> ("What This Assessment Rests On")'
+)
+EXEC_ASSUMPTIONS_SECTION = (
+    '<section id="exec-assumptions"><h2>What This Assessment Rests On</h2><p>Measured: dyno count.</p></section>'
+)
+
+
+def test_exec_assumptions_required_when_estimate_declares_decision_basis() -> None:
     # When estimation-infra.json declares recommendation.decision_basis, the report
-    # must render a decision-basis section.
+    # must render exec-assumptions.
     with tempfile.TemporaryDirectory() as tmp:
         code, out = run(GOOD, migration_dir=_basis_dir(tmp))
     assert code == 1, out
-    assert 'recommendation.decision_basis but the report has no <section id="decision-basis">' in out
+    assert EXEC_ASSUMPTIONS_MISSING in out
 
 
-def test_decision_basis_rendered_section_passes() -> None:
-    html = GOOD.replace(
-        '<section id="exec-costs">',
-        '<section id="decision-basis"><h2>What This Assessment Rests On</h2><p>Measured: dyno count.</p></section>'
-        '<section id="exec-costs">',
-    )
+def test_exec_assumptions_rendered_section_passes() -> None:
+    html = GOOD.replace('<section id="exec-costs">', EXEC_ASSUMPTIONS_SECTION + '<section id="exec-costs">')
     with tempfile.TemporaryDirectory() as tmp:
         code, out = run(html, migration_dir=_basis_dir(tmp))
     assert code == 0, out
     assert "REPORT_OK" in out
 
 
-def test_decision_basis_commented_placeholder_does_not_satisfy() -> None:
-    # The shipped skeleton's commented decision-basis placeholder must not count.
+def test_exec_assumptions_commented_placeholder_does_not_satisfy() -> None:
+    # A commented exec-assumptions placeholder must not count.
     html = GOOD.replace(
-        '<section id="next-steps"><ol><li>See MIGRATION_GUIDE.md</li></ol></section>',
-        "<!-- <section id=\"decision-basis\">when Estimate declares it</section> -->"
-        '<section id="next-steps"><ol><li>See MIGRATION_GUIDE.md</li></ol></section>',
+        '<section id="exec-costs">',
+        "<!-- <section id=\"exec-assumptions\">when Estimate declares it</section> -->"
+        '<section id="exec-costs">',
     )
     with tempfile.TemporaryDirectory() as tmp:
         code, out = run(html, migration_dir=_basis_dir(tmp))
     assert code == 1, out
-    assert 'recommendation.decision_basis but the report has no <section id="decision-basis">' in out
+    assert EXEC_ASSUMPTIONS_MISSING in out
+
+
+def test_retired_decision_basis_does_not_satisfy_decision_basis_rule() -> None:
+    # Rendering the retired id instead of exec-assumptions fails twice: the retired
+    # id and the missing exec-assumptions.
+    html = GOOD.replace('<section id="exec-costs">', RETIRED["decision-basis"][0] + '<section id="exec-costs">')
+    with tempfile.TemporaryDirectory() as tmp:
+        code, out = run(html, migration_dir=_basis_dir(tmp))
+    assert code == 1, out
+    assert EXEC_ASSUMPTIONS_MISSING in out
+    assert _retired_message("decision-basis") in out
 
 
 # --- Decision mode: .phase-status.json pre-execution invariant ---

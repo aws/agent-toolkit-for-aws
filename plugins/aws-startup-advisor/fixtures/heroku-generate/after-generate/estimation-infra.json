@@ -1,0 +1,92 @@
+{
+  "phase": "estimate",
+  "design_source": "aws-design.json",
+  "timestamp": "2026-08-18T16:20:00Z",
+  "pricing_source": {
+    "status": "cached",
+    "message": "us-east-1 cache"
+  },
+  "accuracy_confidence": "+/-5-10%",
+  "current_costs": {
+    "source": "unavailable",
+    "baseline_note": "no billing"
+  },
+  "projected_costs": {
+    "aws_monthly_premium": 210.0,
+    "aws_monthly_balanced": 210.0,
+    "aws_monthly_optimized": 182.0,
+    "aws_annual_optimized": 2184.0,
+    "_premium_basis": "No line has an unapplied Multi-AZ uplift: the RDS rate is baked_in Multi-AZ; Elastic Beanstalk's EC2 has no AZ-driven rate and its ALB is intrinsic. Premium equals Balanced, 210.",
+    "_optimized_basis": "Eligible subtotal 92 = Elastic Beanstalk EC2 component 92 (of 115: EC2 92 + ALB 16 + LCU 6 + EBS 1) x 0.30 compute_savings_plan -> 28; ineligible subtotal 118 unchanged (ALB, LCU and EBS 23, plus RDS PostgreSQL 95). RDS PostgreSQL 95 is ineligible for the Database Savings Plan: Database Savings Plans cover Generation 7 and newer instances only (AWS Savings Plans FAQ, read 2026-11-27) and the design's db.t4g.medium is Generation 4; a Generation 7+ class (for example db.m7g or db.r7g) would qualify at 0.20. 210 - 28 = 182. Rates from references/vendored/estimate/commitment-discount-ranges.json (compute_savings_plan 0.30; database_savings_plan_provisioned 0.20 not applied).",
+    "breakdown": {
+      "total": {
+        "premium": 210.0,
+        "mid": 210.0,
+        "low": 182.0
+      },
+      "Elastic Beanstalk": {
+        "premium": 115.0,
+        "mid": 115.0,
+        "low": 87.0,
+        "pricing_source": "cached"
+      },
+      "RDS PostgreSQL": {
+        "premium": 95.0,
+        "mid": 95.0,
+        "low": 95.0,
+        "pricing_source": "cached"
+      }
+    }
+  },
+  "complexity_tier": "small",
+  "complexity_inputs": {
+    "service_count": 2
+  },
+  "recommendation": {
+    "path": "migrate_optimized",
+    "path_label": "Migrate with Optimized pricing scenario",
+    "migrate_if": [
+      "want AWS control plane"
+    ],
+    "stay_if": [
+      "need Heroku DX indefinitely"
+    ],
+    "would_flip_if": [
+      "A confirmed always-on traffic pattern would raise the AWS compute estimate materially."
+    ]
+  },
+  "optimization_opportunities": [
+    {
+      "opportunity": "Compute Savings Plans",
+      "type": "compute_savings_plan",
+      "target_services": [
+        "Elastic Beanstalk"
+      ],
+      "savings_percent": "30% (1-year no-upfront mid-point)",
+      "savings_monthly": 28,
+      "commitment": "1-year no-upfront",
+      "timing": "post-migration (after 30-90 days of usage data)",
+      "implementation_effort": "low",
+      "prerequisite": "Establish an AWS compute usage baseline before committing",
+      "description": "Heroku dyno billing is flat-rate per dyno type; the Beanstalk EC2 usage pattern may differ. Covers the EC2 component (92 of the 115 Elastic Beanstalk line); the ALB, LCU and EBS components are not eligible."
+    },
+    {
+      "opportunity": "Database Savings Plans",
+      "type": "database_savings_plan",
+      "target_services": [
+        "RDS"
+      ],
+      "savings_percent": "not applicable to db.t4g.medium (Generation 4); 20% (provisioned, 1-year no-upfront mid-point) on a Generation 7+ class",
+      "savings_monthly": null,
+      "commitment": "1-year no-upfront",
+      "timing": "only after a move to a Generation 7+ instance class",
+      "implementation_effort": "low",
+      "prerequisite": "Move the RDS instance to a Generation 7+ class (for example db.m7g or db.r7g); db.t4g.medium is Generation 4 and cannot be covered",
+      "description": "Heroku Postgres runs 24/7 with predictable usage, but the design's db.t4g.medium is Generation 4 and Database Savings Plans cover Generation 7 and newer instances only (AWS Savings Plans FAQ, read 2026-11-27), so no Database Savings Plan saving is claimed and the Optimized tier leaves the RDS line unchanged. A Generation 7+ class (for example db.m7g or db.r7g) would qualify at 20%. Mutually exclusive with RDS Reserved Instances on the same workload."
+    }
+  ],
+  "workshop": {
+    "scenario_id": null,
+    "region_note": null
+  }
+}

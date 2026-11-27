@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Heroku to AWS Migration Assessment</title>
+<style>
+  body { margin: 0; background: #f6f8fa; color: #1f2328; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 15px; line-height: 1.55; }
+  .report { max-width: 1040px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+  h1 { font-size: 1.85rem; margin-bottom: 0.25rem; border-bottom: 3px solid #ff9900; padding-bottom: 0.5rem; }
+  .verdict-headline { font-size: 2rem; line-height: 1.15; margin: 0 0 0.35rem; }
+  section { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; scroll-margin-top: 1rem; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin: 0.85rem 0; }
+  .metric { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 0.85rem 1rem; }
+  .metric-hero { border: 2px solid #0d7377; }
+  .verdict { background: #e6f4ea; border: 1px solid #137333; border-left: 4px solid #137333; padding: 0.75rem 1rem; }
+  .savings { color: #137333; font-weight: 650; }
+  .increase { color: #c5221f; font-weight: 650; }
+  .share-card { background: #f0f6fc; border: 1px solid #d0d7de; border-left: 4px solid #0969da; padding: 0.85rem 1rem; }
+  .callout { padding: 0.85rem 1rem; border-radius: 6px; margin: 0.85rem 0; font-size: 0.95rem; }
+  .callout-info { background: #eef5ff; border: 1px solid #0969da; border-left: 4px solid #0969da; }
+  .appendix-header { background: #232f3e; color: #fff; padding: 1rem 1.5rem; margin: 2rem 0 1rem; }
+  .compact { margin: 0.25rem 0 0.75rem; padding-left: 1.25rem; }
+  .badge-impact-critical, .badge-impact-high { color: #c5221f; font-weight: 650; }
+  .badge-like-low, .badge-like-medium { color: #57606a; font-weight: 650; }
+  .glossary-table td:first-child { font-weight: 650; white-space: nowrap; }
+  .assumption-default td:first-child { font-weight: 650; }
+  a:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
+  table { width: 100%; border-collapse: collapse; margin: 0.75rem 0 1rem; font-size: 0.88rem; }
+  th, td { border: 0; border-bottom: 1px solid #d0d7de; padding: 0.45rem 0.65rem; text-align: left; vertical-align: top; }
+  thead th { border-bottom: 2px solid #d0d7de; }
+  tr.active-scenario { font-weight: 650; }
+  @media (max-width: 700px) { .report { padding: 1rem; } .metrics { grid-template-columns: 1fr; } }
+  @media print { body { background: #fff; } .appendix { break-before: page; } }
+  nav.toc a { color: #0969da; text-decoration: none; }
+  footer { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #d0d7de; font-size: 0.8rem; color: #656d76; }
+</style>
+</head>
+<body>
+<div class="report">
+<h1>Heroku to AWS Migration Assessment</h1>
+<section id="decision-summary">
+<h2>Migration Decision Summary</h2>
+<p class="verdict-headline">Go, with conditions</p>
+<p>Execution shape: Full cutover: one migration window · Complexity: small</p>
+<div class="verdict"><strong>Recommendation:</strong> Migrate to AWS on the Optimized pricing scenario as a full cutover in one migration window, once the traffic pattern is confirmed.</div>
+<p>Confidence: medium — full basis in <a href="#exec-assumptions">What This Assessment Rests On</a>.</p>
+<div class="metrics">
+  <div class="metric metric-hero"><strong>AWS estimate (Balanced)</strong><br>Est. $210/mo</div>
+  <div class="metric"><strong>Your Heroku baseline</strong><br>Not established — no invoice or contract was supplied</div>
+  <div class="metric"><strong>Migration shape</strong><br>Full cutover · small complexity</div>
+</div>
+<div class="callout callout-info">💡 Review <a href="https://aws.amazon.com/startups/credits/">AWS Activate credits</a> tiers (Founders for self-funded startups, Portfolio for VC- or accelerator-backed ones) — your funding stage was not confirmed in Clarify. Credits apply only to charges after approval and are not retroactive, so apply before <code>terraform apply</code>.</div>
+<p><strong>Timeline if you execute:</strong> full cutover in one migration window, small complexity — stages and duration drivers in the Timeline section.</p>
+<h3>Migrate if</h3>
+<ul class="compact">
+  <li>You want the AWS control plane: your own account, network, IAM and the managed services around the app.</li>
+</ul>
+<h3>Stay entirely if</h3>
+<ul class="compact">
+  <li>You need the Heroku developer experience indefinitely and will not fund the platform layer the Developer workflow section describes.</li>
+</ul>
+<h3>What would flip this</h3>
+<ul class="compact">
+  <li>A confirmed always-on traffic pattern would raise the AWS compute estimate materially.</li>
+</ul>
+<p>Next action: set the three contact emails in the Terraform variables, then follow the migration guide phase by phase.</p>
+<h3>Next steps</h3>
+<ol class="compact">
+  <li>Set the three contact emails (<code>operations_email</code>, <code>billing_email</code>, <code>security_email</code>) in <code>terraform.tfvars</code> before <code>terraform plan</code> — checklist in MIGRATION_GUIDE.md — nothing can be applied until then.</li>
+  <li>Follow the MIGRATION_GUIDE.md phases in order: provision, migrate the database, cut over DNS, decommission.</li>
+  <li>The Terraform ships with <code>baseline.tf</code>, the account security baseline (GuardDuty, CloudTrail, budget alerts); keep it unless your account already carries these controls.</li>
+  <li>Apply for <a href="https://aws.amazon.com/startups/credits/">AWS Activate credits</a> before <code>terraform apply</code> — credits do not apply retroactively.</li>
+</ol>
+</section>
+<nav class="toc" aria-label="Table of contents">
+  <ul>
+    <li><a href="#decision-summary">Decision</a></li>
+    <li><a href="#exec-share">Share with your CFO</a></li>
+    <li><a href="#exec-services">Current stack</a></li>
+    <li><a href="#exec-costs">Costs</a></li>
+    <li><a href="#exec-optimization">Cost optimization</a></li>
+    <li><a href="#developer-workflow">Developer workflow</a></li>
+    <li><a href="#exec-timeline">Timeline</a></li>
+    <li><a href="#exec-risks">Top risks</a></li>
+    <li><a href="#exec-assumptions">What this assessment rests on</a></li>
+    <li><a href="#appendix-services">Appendix A — Service Recommendations</a></li>
+    <li><a href="#appendix-costs">Appendix B — Cost Estimates</a></li>
+    <li><a href="#appendix-optimization">Appendix B.1 — Savings Plans and Reserved Instances</a></li>
+    <li><a href="#appendix-artifacts">Appendix E — Generated Artifacts Catalog</a></li>
+    <li><a href="#appendix-config">Appendix F — Your Configuration</a></li>
+    <li><a href="#appendix-security">Appendix G — Security Capabilities</a></li>
+    <li><a href="#appendix-assumptions">Appendix I — Assumptions, Exclusions, and Validation</a></li>
+    <li><a href="#appendix-glossary">Appendix J — Glossary</a></li>
+  </ul>
+</nav>
+<section id="exec-share">
+<h2>Share with your CFO</h2>
+<p>The one-paragraph version, ready to forward:</p>
+<div class="share-card"><p>Go, with conditions, at medium confidence. Estimated AWS Balanced is $210 per month; the Heroku bill is not established, so no side-by-side saving is quoted. The migration shape is a full cutover in one migration window for this small estate, and the execution pack (Terraform, migration guide, deploy workflows) has been generated. Confirm the traffic pattern before treating the monthly figure as final.</p></div>
+</section>
+<section id="exec-services">
+<h2>Current Stack Overview</h2>
+<p>2 Heroku resources on one app (acme-web) were mapped to AWS targets. No add-on is deferred.</p>
+<table>
+  <caption>Heroku resources and their AWS targets</caption>
+  <thead><tr><th scope="col">Heroku app</th><th scope="col">Heroku primitive</th><th scope="col">AWS target</th></tr></thead>
+  <tbody>
+    <tr><td>acme-web</td><td>web formation (compute)</td><td>Elastic Beanstalk — t3.small, load-balanced, 1 to 2 instances</td></tr>
+    <tr><td>acme-web</td><td>Heroku Postgres add-on (database)</td><td>RDS PostgreSQL — db.t4g.medium, Multi-AZ, 64 GB storage</td></tr>
+  </tbody>
+</table>
+</section>
+<section id="exec-costs">
+<h2>Cost Estimate</h2>
+<table>
+  <caption>Estimated monthly AWS cost by pricing tier</caption>
+  <thead><tr><th scope="col">Tier</th><th scope="col">Est. Monthly AWS</th><th scope="col">What the tier means here</th></tr></thead>
+  <tbody>
+    <tr><td>Premium</td><td>Est. $210/mo</td><td>Premium equals Balanced because every line that can take a resilience uplift is already Multi-AZ in this design; there is no higher-availability variant to price.</td></tr>
+    <tr><td><strong>Balanced</strong></td><td><span data-cost-key="aws_monthly_balanced">Est. $210/mo</span></td><td>Right-sized on-demand pricing for the mapped design: one load-balanced Beanstalk environment and one Multi-AZ RDS instance.</td></tr>
+    <tr><td>Optimized</td><td>Est. $182/mo</td><td>Balanced with a Compute Savings Plan at 30% on the Beanstalk EC2 component only, 1-year no-upfront at the mid-point rate. The RDS line is unchanged: db.t4g.medium is Generation 4 and Database Savings Plans cover Generation 7 and newer instances only.</td></tr>
+  </tbody>
+</table>
+<details class="reading-guide">
+  <summary>How to read the three tiers</summary>
+  <p>Balanced is the figure to plan around. Premium shows what the same design costs with every resilience uplift applied — here nothing is left to uplift, so it matches Balanced. Optimized shows Balanced after every eligible commitment discount; it is a ceiling on savings, not a second design.</p>
+</details>
+<p>No Heroku baseline was available for this run (no invoice or contract was supplied), so no side-by-side comparison is shown.</p>
+<p><small>All figures are estimated monthly costs from cached AWS pricing (us-east-1), accuracy ±5–10%; they exclude data transfer, support plans and any Activate credits.</small></p>
+</section>
+<section id="exec-optimization">
+<h2>Cost Optimization</h2>
+<table>
+  <caption>Pricing postures compared with the Balanced on-demand figure</caption>
+  <thead><tr><th scope="col">Posture</th><th scope="col">Est. monthly</th><th scope="col">vs Balanced</th><th scope="col">What you commit to</th></tr></thead>
+  <tbody>
+    <tr><td>Balanced on-demand</td><td>Est. $210/mo</td><td>—</td><td>Nothing — pay as you go</td></tr>
+    <tr><td>Balanced with Compute Savings Plans</td><td>Est. $182/mo</td><td><span class="savings">−$28/mo</span></td><td>1-year no-upfront hourly compute commitment</td></tr>
+    <tr><td>Balanced with Database Savings Plans</td><td>Est. $210/mo</td><td>— (not eligible)</td><td>Nothing today — db.t4g.medium is Generation 4 and Database Savings Plans cover Generation 7 and newer classes only; a db.m7g or db.r7g class would qualify</td></tr>
+    <tr><td>Optimized</td><td>Est. $182/mo</td><td><span class="savings">−$28/mo</span></td><td>Every eligible commitment at its mid-point rate — here the Compute Savings Plan only</td></tr>
+  </tbody>
+</table>
+<p>Savings Plan savings are incremental to the Balanced on-demand figure and are <strong>not additive</strong> to the Optimized tier — Optimized already includes them at the mid-point rate. The two rows that reach $182 are the same money counted once.</p>
+<h3>Which commitment fits</h3>
+<ul class="compact">
+  <li>Compute Savings Plans → Elastic Beanstalk → 1-year no-upfront, low effort. Recommended in percent only until a 30 to 90 day AWS usage baseline exists; Heroku dyno billing is flat-rate, so the Beanstalk usage pattern may differ.</li>
+  <li>Database Savings Plans → RDS → not available for this design: db.t4g.medium is Generation 4 and Database Savings Plans cover Generation 7 and newer instances only, so no purchase is recommended and no saving is counted. A Generation 7+ class (db.m7g or db.r7g) would qualify at 20%. Database Savings Plans and RDS Reserved Instances are mutually exclusive on the same database workload.</li>
+</ul>
+<p>Line-level opportunities: <a href="#appendix-optimization">Appendix B.1 — Savings Plans and Reserved Instances</a>.</p>
+</section>
+<section id="developer-workflow">
+<h2>Developer workflow: what stays, what changes, what you build</h2>
+<p>Developer workflow priority was rated important, not critical, in Clarify.</p>
+<table>
+  <caption>Developer workflow on Heroku today and on AWS</caption>
+  <thead><tr><th scope="col">Heroku today</th><th scope="col">On AWS</th><th scope="col">Status</th><th scope="col">Your estate</th></tr></thead>
+  <tbody>
+    <tr><td><code>git push heroku main</code> + buildpacks</td><td>CI builds a container image and deploys it to Elastic Beanstalk</td><td><strong>Generated</strong> — a GitHub Actions deploy workflow per app</td><td>1 buildpack app, 0 already containerized; 1 on Beanstalk, 0 on Fargate/EKS</td></tr>
+    <tr><td>Pipelines and promote</td><td>Environments per stage with the same image promoted between them, approval-gated</td><td><strong>Generated</strong> — an approval-gated <code>promote.yml</code> for the Beanstalk app; <strong>Build</strong> for the pipeline stages and environments themselves</td><td>0 pipelines covering 0 apps</td></tr>
+    <tr><td>Review apps</td><td>An ephemeral environment per pull request, torn down on merge</td><td><strong>Build</strong> (or buy)</td><td>not enabled</td></tr>
+    <tr><td>Config vars</td><td>Parameter Store / Secrets Manager, injected at deploy; <code>config:set</code> becomes one CLI call</td><td><strong>Covered</strong> — one secrets binding per sensitive key is generated; you import the values</td><td>8 config var keys across 1 app</td></tr>
+    <tr><td><code>heroku run</code> / one-off dynos</td><td>ECS Exec or <code>eb ssh</code>; one-off tasks as a run-task call</td><td><strong>Covered</strong> — different command for the target</td><td>—</td></tr>
+    <tr><td><code>heroku logs --tail</code></td><td>CloudWatch Logs live tail</td><td><strong>Covered</strong></td><td>—</td></tr>
+    <tr><td>Release phase</td><td>A pre-deploy job in the workflow that runs before traffic shifts</td><td><strong>Build</strong></td><td>1 release process type</td></tr>
+    <tr><td>Scheduler add-ons</td><td>EventBridge Scheduler</td><td><strong>Covered</strong> — schedules recreated by you; no Terraform is emitted for the schedules themselves</td><td>0 scheduler add-ons mapped, 0 deferred</td></tr>
+    <tr><td><code>ps:scale</code></td><td>Autoscaling policy or one CLI call</td><td><strong>Covered</strong></td><td>—</td></tr>
+    <tr><td>Add-on marketplace</td><td>Each add-on becomes an AWS service wired by the generated Terraform</td><td><strong>No equivalent</strong> to the marketplace itself</td><td>1 add-on mapped (Postgres), 0 deferred</td></tr>
+  </tbody>
+</table>
+<p>The rows marked Build are a platform layer your team owns: a deploy pipeline for Fargate, EKS and manual-deploy apps, a promote step for every app that gets no generated <code>promote.yml</code>, release steps, review-app automation, and a thin command wrapper. It is weeks of platform work, not months, and it is the same for every app.</p>
+</section>
+<section id="exec-timeline">
+<h2>Timeline</h2>
+<p>Shape: Full cutover: one migration window. This is a stage order with its duration drivers, not a staffed schedule and not a commitment.</p>
+<ol class="compact">
+  <li>Provision the AWS environment from the generated Terraform (account baseline first, then the Beanstalk environment and the RDS instance).</li>
+  <li>Migrate the database with dump and restore inside the migration window.</li>
+  <li>Cut over every app in that same window with weighted Route 53 records, then decommission the Heroku app.</li>
+</ol>
+<p>Duration drivers: a small estate (two services, none deferred), a Multi-AZ database migrated by dump and restore (20 GB estimated), and a maintenance window of Sunday at 04:00 UTC for database patching. The cutover and rollback procedure stays in MIGRATION_GUIDE.md.</p>
+</section>
+<section id="exec-risks">
+<h2>Top Risks</h2>
+<table>
+  <caption>Top risks, their impact and likelihood, and the mitigation for each</caption>
+  <thead><tr><th scope="col">Risk</th><th scope="col">Impact</th><th scope="col">Likelihood</th><th scope="col">Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>The traffic pattern is not confirmed; a sustained always-on load would raise the compute estimate.</td><td><span class="badge-impact-high">High</span></td><td><span class="badge-like-medium">Medium</span></td><td>Confirm the dyno run pattern before cutover sizing; the Balanced figure assumes the current formation.</td></tr>
+    <tr><td>The estimate rests on cached pricing and may move within the ±5–10% accuracy band.</td><td>Medium</td><td><span class="badge-like-low">Low</span></td><td>Re-run Estimate against live pricing before committing to a Savings Plan.</td></tr>
+  </tbody>
+</table>
+</section>
+<section id="exec-assumptions">
+<h2>What This Assessment Rests On</h2>
+<table>
+  <caption>Settings assumed by default and what each one changes in the design</caption>
+  <thead><tr><th scope="col">Setting</th><th scope="col">Assumed value</th><th scope="col">Design consequence</th></tr></thead>
+  <tbody>
+    <tr class="assumption-default"><td>Container registry</td><td>Amazon ECR</td><td>Images are published to one ECR repository (<code>ecr.tf</code>), which the Cloud Native Buildpacks path requires.</td></tr>
+    <tr class="assumption-default"><td>Containerization method</td><td>Cloud Native Buildpacks (Heroku builder)</td><td>Images are built from the same source with the Heroku builder; no Dockerfile is needed.</td></tr>
+    <tr class="assumption-default"><td>AWS Activate status</td><td>Unknown</td><td>The credits guidance stays neutral; no tier or amount is claimed.</td></tr>
+  </tbody>
+</table>
+<p>Confidence: medium — some material inputs assumed (the container registry, the containerization method and your Activate status are documented defaults). Region, compliance, availability, maintenance window, database HA, migration approach and method, DNS strategy, compute target, deploy method, log retention and cost posture were confirmed by you; the containerization status was extracted from your Heroku inventory.</p>
+<p>Estimates based on cached AWS pricing (us-east-1 cache), accuracy ±5–10%.</p>
+</section>
+<div class="appendix-header">Appendix</div>
+<div class="appendix">
+<section id="appendix-services">
+<h2>Appendix A — Service Recommendations</h2>
+<p>One row per Heroku resource the design mapped. Sizes are the ones the generated Terraform provisions; you can change them in the variables before applying.</p>
+<table>
+  <caption>AWS service and size per Heroku resource</caption>
+  <thead><tr><th scope="col">Heroku app</th><th scope="col">Source</th><th scope="col">AWS service</th><th scope="col">Size</th></tr></thead>
+  <tbody>
+    <tr><td>acme-web</td><td>web formation</td><td>Elastic Beanstalk (Docker on 64bit Amazon Linux 2023)</td><td>t3.small, load-balanced, 1 to 2 instances, rolling deployments</td></tr>
+    <tr><td>acme-web</td><td>Heroku Postgres add-on</td><td>RDS PostgreSQL</td><td>db.t4g.medium, Multi-AZ, 64 GB storage</td></tr>
+  </tbody>
+</table>
+</section>
+<section id="appendix-costs">
+<h2>Appendix B — Cost Estimates</h2>
+<p>Estimated monthly whole dollars per line, from cached AWS pricing (us-east-1 cache), accuracy ±5–10%. No Heroku baseline was supplied, so there is no comparison column.</p>
+<table>
+  <caption>Estimated monthly cost per line and tier</caption>
+  <thead><tr><th scope="col">Line</th><th scope="col">Premium</th><th scope="col">Balanced</th><th scope="col">Optimized</th></tr></thead>
+  <tbody>
+    <tr><td>Elastic Beanstalk (EC2, ALB, LCU, EBS)</td><td>Est. $115/mo</td><td>Est. $115/mo</td><td>Est. $87/mo</td></tr>
+    <tr><td>RDS PostgreSQL (db.t4g.medium Multi-AZ)</td><td>Est. $95/mo</td><td>Est. $95/mo</td><td>Est. $95/mo</td></tr>
+    <tr><td><strong>Total</strong></td><td><strong>Est. $210/mo</strong></td><td><strong>Est. $210/mo</strong></td><td><strong>Est. $182/mo</strong></td></tr>
+  </tbody>
+</table>
+<p>Premium equals Balanced on every line: the RDS rate already includes Multi-AZ and the Beanstalk EC2 rate has no availability-zone uplift. Optimized applies the Compute Savings Plan to the EC2 component only ($92 of the $115 Beanstalk line, a $28 discount) and leaves the RDS line at its Balanced figure: db.t4g.medium is Generation 4, and Database Savings Plans cover Generation 7 and newer instances only (a db.m7g or db.r7g class would qualify at 20%). Optimized is $210 − $28 = $182 per month, $2,184 per year.</p>
+</section>
+<section id="appendix-optimization">
+<h2>Appendix B.1 — Savings Plans and Reserved Instances</h2>
+<table>
+  <caption>Commitment-based optimization opportunities from the estimate</caption>
+  <thead><tr><th scope="col">Optimization</th><th scope="col">Target</th><th scope="col">Monthly savings</th><th scope="col">Commitment</th><th scope="col">Effort</th></tr></thead>
+  <tbody>
+    <tr><td>Compute Savings Plans</td><td>Elastic Beanstalk</td><td>Est. $28/mo</td><td>1-year no-upfront</td><td>low</td></tr>
+    <tr><td>Database Savings Plans</td><td>RDS</td><td>None — db.t4g.medium is Generation 4; Database Savings Plans cover Generation 7 and newer classes only (db.m7g or db.r7g would qualify at 20%)</td><td>1-year no-upfront, not applicable today</td><td>n/a</td></tr>
+  </tbody>
+</table>
+<p>Activate credits don't cover RI/Savings Plan upfront costs — they apply only to the ongoing discounted hourly rate.</p>
+</section>
+<section id="appendix-artifacts">
+<h2>Appendix E — Generated Artifacts Catalog</h2>
+<p>Files Generate produced in the migration directory, one line each:</p>
+<ul class="compact">
+  <li><code>terraform/</code> — <code>main.tf</code> (Beanstalk environment, RDS instance, networking), <code>variables.tf</code>, <code>outputs.tf</code>, <code>security.tf</code>, <code>baseline.tf</code> (account security baseline), <code>ecr.tf</code> (the image repository for the buildpack app), <code>dns.tf</code> (Route 53 weighted cutover records for <code>www.acme.example</code>), <code>.gitignore</code>, <code>terraform.tfvars.example</code></li>
+  <li><code>MIGRATION_GUIDE.md</code> — the phase-by-phase cutover and rollback procedure, including the dump and restore steps and the three-contact-email checklist</li>
+  <li><code>README.md</code> — how to apply the pack</li>
+  <li><code>scripts/migrate-postgres.sh</code> — dump and restore of the Heroku Postgres add-on into RDS</li>
+  <li><code>.github/workflows/deploy-eb.yml</code> and <code>promote.yml</code> — the generated deploy and approval-gated promote workflows for the Beanstalk app</li>
+  <li><code>generation-warnings.json</code> — unsupported or skipped resources (none on this run)</li>
+</ul>
+<p>Written after this report by the completion step: <code>validation-report.json</code>, <code>heroku-estate.xlsx</code>, <code>plan.json</code> (when their writers succeed).</p>
+<table>
+  <caption>Data artifacts this report was rendered from</caption>
+  <thead><tr><th scope="col">Artifact</th><th scope="col">Contents</th></tr></thead>
+  <tbody>
+    <tr><td><code>preferences.json</code></td><td>Your Clarify answers and their provenance</td></tr>
+    <tr><td><code>heroku-resource-inventory.json</code></td><td>The discovered Heroku estate</td></tr>
+    <tr><td><code>aws-design.json</code></td><td>The AWS mapping per resource</td></tr>
+    <tr><td><code>estimation-infra.json</code></td><td>The three cost tiers, the commitment opportunities and the recommendation</td></tr>
+  </tbody>
+</table>
+</section>
+<section id="appendix-config">
+<h2>Appendix F — Your Configuration</h2>
+<div class="callout callout-info">Funding stage not confirmed — the Activate guidance is neutral; answer Q17 to see the tier that applies.</div>
+<table>
+  <caption>Your Clarify answers, where each came from, and what each one changes</caption>
+  <thead><tr><th scope="col">Question</th><th scope="col">Your choice</th><th scope="col">Source</th><th scope="col">Design consequence</th></tr></thead>
+  <tbody>
+    <tr><td>Which AWS region should your infrastructure be deployed to?</td><td>us-east-1</td><td>User answer</td><td>Every resource is created in this region; pricing is this region's.</td></tr>
+    <tr><td>Do you need to meet any compliance frameworks?</td><td>None</td><td>User answer</td><td>No extra controls beyond the account baseline.</td></tr>
+    <tr><td>What availability level does your production workload need?</td><td>Multi-AZ</td><td>User answer</td><td>RDS PostgreSQL with a Multi-AZ standby; applies to every data service.</td></tr>
+    <tr><td>When should AWS perform maintenance operations?</td><td>Sunday at 04:00 UTC</td><td>User answer</td><td>Sets the RDS and Beanstalk maintenance window.</td></tr>
+    <tr><td>What should the primary environment be called in AWS resource naming and tags?</td><td>acme</td><td>User answer</td><td>Becomes the Terraform <code>environment</code> variable (resource names and the <code>Environment</code> tag); never changes the architecture or the estimate.</td></tr>
+    <tr><td>How important is keeping the Heroku developer workflow?</td><td>Important</td><td>User answer</td><td>Changes what the report says must still be built; never changes the Terraform.</td></tr>
+    <tr><td>What high-availability configuration do you want for PostgreSQL on AWS?</td><td>Multi-AZ</td><td>User answer</td><td>RDS PostgreSQL with Multi-AZ enabled.</td></tr>
+    <tr><td>How do you want to phase the migration?</td><td>Full cutover</td><td>User answer</td><td>One migration window; no interim database exposure section in the guide.</td></tr>
+    <tr><td>How would you like to migrate your PostgreSQL data to AWS?</td><td>Dump and restore</td><td>User answer</td><td>Selects the dump and restore procedure in the guide.</td></tr>
+    <tr><td>How do you want to manage DNS for your migrated services?</td><td>Route 53</td><td>User answer</td><td>Generates <code>dns.tf</code> with weighted cutover records.</td></tr>
+    <tr><td>Which compute target should formations use?</td><td>Elastic Beanstalk</td><td>User answer</td><td>Resolves the web formation to one Beanstalk environment.</td></tr>
+    <tr><td>How do you want to deploy code changes to Elastic Beanstalk?</td><td>GitHub Actions</td><td>User answer</td><td>Generates the deploy and promote workflows.</td></tr>
+    <tr><td>How long should application logs be retained?</td><td>30 days</td><td>User answer</td><td>CloudWatch Logs retention of 30 days.</td></tr>
+    <tr><td>How do you want to handle alerting and on-call notifications?</td><td>CloudWatch Alarms + SNS</td><td>User answer</td><td>Recorded for your operations runbook; the generated Terraform emits no application alarms or on-call wiring for this answer (the account baseline's budget notifications are separate; see Appendix G), so the choice never moves the estimate.</td></tr>
+    <tr><td>How aggressively should we optimize for cost vs. operational safety?</td><td>Balanced</td><td>User answer</td><td>Right-sizing margin applied to the Balanced tier.</td></tr>
+    <tr><td>Is your application already containerized?</td><td>Buildpack only</td><td>Extracted from your Heroku inventory</td><td>Adds the Containerization Prerequisites section to the guide and asks how images are built.</td></tr>
+    <tr class="assumption-default"><td>Where should container images be stored for your containerized workloads?</td><td>Amazon ECR</td><td>Default applied</td><td>Images are published to one ECR repository (<code>ecr.tf</code>), which the Cloud Native Buildpacks path requires.</td></tr>
+    <tr class="assumption-default"><td>How should buildpack apps get a container image?</td><td>Cloud Native Buildpacks (Heroku builder)</td><td>Default applied</td><td><code>pack build</code> with the Heroku builder, ECR repositories, no Dockerfile.</td></tr>
+    <tr class="assumption-default"><td>Have you applied for AWS Activate credits?</td><td>Unknown</td><td>Default applied</td><td>Drives only the credits callout wording; never moves the estimate.</td></tr>
+  </tbody>
+</table>
+</section>
+<section id="appendix-security">
+<h2>Appendix G — Security Capabilities</h2>
+<p>The account baseline <code>baseline.tf</code> applies. The three contact emails must be set before <code>terraform plan</code>. Removing <code>baseline.tf</code> plus those three contact variables opts out.</p>
+<table>
+  <caption>Account baseline controls, what each does, and the threat it mitigates</caption>
+  <thead><tr><th scope="col">Control</th><th scope="col">Setting</th><th scope="col">What it does</th><th scope="col">Threat mitigated</th></tr></thead>
+  <tbody>
+    <tr><td>Alternate contacts</td><td>Operations, billing and security emails</td><td>Routes AWS notices to a named person</td><td>An incident reaches nobody who can act</td></tr>
+    <tr><td>Password policy</td><td>14 characters, reuse 24, maximum age 90 days</td><td>Enforces console password strength and rotation</td><td>Weak console passwords</td></tr>
+    <tr><td>S3 public-access block</td><td>Account-wide</td><td>Blocks public bucket policies and ACLs</td><td>Accidental public buckets</td></tr>
+    <tr><td>Default EBS encryption</td><td>Enabled</td><td>Encrypts every new volume at rest</td><td>Data exposure from a stolen volume</td></tr>
+    <tr><td>IAM Access Analyzer</td><td>Account analyzer</td><td>Flags resources shared outside the account</td><td>A policy or bucket becomes public</td></tr>
+    <tr><td>IMDSv2</td><td>Required on Beanstalk instances</td><td>Requires a session token for instance metadata</td><td>Credential theft through server-side request forgery</td></tr>
+    <tr><td>CloudTrail</td><td>30-day retention</td><td>Records every API call</td><td>Who changed what</td></tr>
+    <tr><td>Monthly budget</td><td>Alerts at 80% and 100%</td><td>Emails billing when spend crosses the thresholds</td><td>Bill shock</td></tr>
+    <tr><td>GuardDuty</td><td>Enabled</td><td>Detects unusual API activity and compromised instances</td><td>Credential theft and resource hijacking</td></tr>
+  </tbody>
+</table>
+</section>
+<section id="appendix-assumptions">
+<h2>Appendix I — Assumptions, Exclusions, and Validation</h2>
+<p><strong>Pricing provenance.</strong> Estimates based on cached AWS pricing (us-east-1 cache), accuracy ±5–10%. The estimate carries no measured, assumed and unknown lists; the confidence line in What This Assessment Rests On stands in for them.</p>
+<p><strong>Exclusions.</strong> Data transfer, AWS Support plans, Activate credits and the people cost of the platform layer the Developer workflow section describes are not priced. No Heroku baseline was available, so no saving is stated.</p>
+<p><strong>Design and generation warnings.</strong> None.</p>
+<p><strong>Terraform validation.</strong> This report is written before the Terraform is validated; see the validation report the completion step writes.</p>
+</section>
+<section id="appendix-glossary">
+<h2>Appendix J — Glossary</h2>
+<table class="glossary-table">
+  <caption>Terms used in this report</caption>
+  <thead><tr><th scope="col">Term</th><th scope="col">Meaning</th></tr></thead>
+  <tbody>
+    <tr><td>Estimated monthly run rate</td><td>What the AWS resources are expected to cost per month at list price, before credits. It is not the full ownership cost: staffing, tooling and operating labor are not priced in this report.</td></tr>
+    <tr><td>Balanced / Premium / Optimized</td><td>The three pricing tiers: right-sized on-demand; the same design with every resilience uplift applied; Balanced with every eligible commitment at its mid-point rate.</td></tr>
+    <tr><td>Savings Plan</td><td>A one- or three-year hourly spend commitment in exchange for a lower rate on compute or database usage.</td></tr>
+    <tr><td>Multi-AZ</td><td>A database with a synchronous standby in a second availability zone; the standby takes over on failure.</td></tr>
+    <tr><td>Elastic Beanstalk</td><td>The managed service that runs the web formation's container behind a load balancer and handles deployments.</td></tr>
+    <tr><td>Cloud Native Buildpacks</td><td>The tooling that turns the buildpack app's source into a container image with the Heroku builder, without a Dockerfile.</td></tr>
+    <tr><td>GuardDuty</td><td>The AWS threat-detection service the account baseline enables.</td></tr>
+  </tbody>
+</table>
+</section>
+</div>
+<footer>Generated by Heroku to AWS Migration Advisor — draft for review; verify figures before executive sign-off.</footer>
+</div>
+</body>
+</html>

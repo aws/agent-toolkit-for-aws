@@ -26,8 +26,9 @@ LFL_ANCHOR = '<span data-cost-key="heroku_monthly_like_for_like">$140/mo</span>'
 
 
 def _decision_html(html: str) -> str:
-    """Decision mode has no appendices; drop them with the terminal swap."""
-    return _APPENDIX_SECTION.sub("", html).replace('id="next-steps"', 'id="decision-cta"')
+    """Decision mode has no appendices; drop them (the add-on requires no terminal
+    section of its own, so nothing is renamed)."""
+    return _APPENDIX_SECTION.sub("", html)
 
 
 GOOD = f"""<!DOCTYPE html>
@@ -38,8 +39,8 @@ GOOD = f"""<!DOCTYPE html>
 <section id="exec-share"><p>The one-paragraph version, ready to forward:</p><div class="share-card"><p>Go, with conditions, at medium confidence. The estimated AWS balanced rate is higher than the Heroku rate card and the shape is phased. Confirm the open conditions before treating the monthly figure as final.</p></div></section>
 <section id="exec-timeline"><h2>Timeline</h2><p>Phased migration: provision, migrate data, cut over. Not a staffed schedule.</p></section>
 <section id="exec-costs"><p>Balanced $112/mo</p><p>Scope-matched: Heroku {LFL_ANCHOR} vs AWS Balanced $112/mo</p></section>
-<section id="cost-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>
-<section id="next-steps"><ol><li>See MIGRATION_GUIDE.md</li></ol></section>
+<section id="exec-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>
+<section id="appendix-optimization"><p>No 1-year/3-year commitment product applies to this architecture.</p></section>
 <section id="appendix-services"><p>One designed service.</p></section>
 <section id="appendix-costs"><p>Balanced estimated monthly cost.</p></section>
 <section id="appendix-config"><p>Region and availability choices.</p></section>

@@ -11,8 +11,9 @@ brief, the `draft for review` footer, and the `aws_monthly_balanced` /
 `current_monthly` cost anchors). Nothing in this file repeats those rules.
 
 This file enforces only what the shared validator does not:
-  - the other mode's terminal section is absent (`next-steps` in decision mode,
-    `decision-cta` in full mode);
+  - full mode renders no `decision-cta` (the decision-mode terminal section);
+  - no mode renders a retired heroku section id (`next-steps`, `cost-optimization`,
+    `decision-basis`) — the error names the shared-id replacement;
   - decision mode renders no `.appendix-header` divider;
   - the `.share-card` CSS rule gives the CFO brief a border;
   - the `heroku_monthly_like_for_like` cost anchor: cross-checked against
@@ -23,11 +24,11 @@ This file enforces only what the shared validator does not:
     `global.startup_program_status` (known status requires the `.callout-info`
     callout; unknown/absent forbids a confirmed-tier claim; has_credits forbids
     "apply for" wording; an invalid value fails);
-  - full mode: `cost-optimization` renders a populated opportunity row or the exact
-    no-eligible-commitment sentence;
+  - full mode: `exec-optimization` and `appendix-optimization` (each when present)
+    render a populated table row or the exact no-eligible-commitment sentence;
   - full mode: the `appendix-security` table has "What it does" and "Threat
     mitigated" columns;
-  - `decision-basis` is rendered when `recommendation.decision_basis` exists;
+  - `exec-assumptions` is rendered when `recommendation.decision_basis` exists;
   - decision mode: `.phase-status.json` `phases.generate` is not completed /
     in_progress, and an unreadable status file fails.
 
@@ -47,14 +48,22 @@ import sys
 from html.parser import HTMLParser
 from pathlib import Path
 
-# The mode-specific terminal section: full (migration-report.html) ends on a
-# next-steps list; decision (decision-report.html) ends on a decision-cta pointing
-# at Generate (next-steps assumes MIGRATION_GUIDE.md / terraform/ already exist —
-# they don't yet in decision mode). The shared validator's heroku profile requires
-# the right one; this file rejects the OTHER one.
-MODE_REQUIRED_SECTION_ID = {
-    "full": "next-steps",
-    "decision": "decision-cta",
+# decision (decision-report.html) ends on a decision-cta pointing at Generate; full
+# (migration-report.html) renders its Next steps as an <ol class="compact"> inside
+# decision-summary and ends on the appendix block. The shared validator's heroku
+# profile requires decision-cta in decision mode; this file rejects it in full mode.
+FULL_MODE_FORBIDDEN = "decision-cta"
+
+# Heroku section ids retired when the report converged on the shared contract.
+# Any rendered <section> with one of these ids fails in BOTH modes; the value names
+# what to render instead.
+RETIRED_SECTION_IDS = {
+    "next-steps": (
+        'the decision-summary "Next steps" <ol class="compact"> (full mode) / '
+        "decision-cta (decision mode)"
+    ),
+    "cost-optimization": "exec-optimization plus appendix-optimization (Appendix B.1)",
+    "decision-basis": 'exec-assumptions ("What This Assessment Rests On")',
 }
 
 # The one stylesheet rule the shared visual contract does not cover: the CFO brief's
@@ -537,7 +546,7 @@ class _DecodedTextParser(HTMLParser):
     """Extract rendered text as the browser would present it — entities
     decoded, comments and inert content (script/style/template) excluded,
     hidden subtrees dropped — while preserving word adjacency across inline
-    markup. Used by the cost-optimization content check and the Activate
+    markup. Used by the optimization-section content check and the Activate
     callout rules so both agree on what "rendered" means."""
 
     _INLINE_TAGS = {
@@ -745,8 +754,8 @@ def _has_populated_opportunity_row(body: str) -> bool:
     return parser.found
 
 
-def _validate_optimization_content(body: str) -> list[str]:
-    """The cost-optimization section must render EITHER a populated opportunities
+def _validate_optimization_content(body: str, section_id: str) -> list[str]:
+    """The optimization section must render EITHER a populated opportunities
     table (a real <tbody> row with data) OR the explicit no-eligible-commitment
     sentence — nothing else counts as content. This is a positive check, not
     "any leftover text after stripping headings/<th>": that older approach let a
@@ -772,7 +781,7 @@ def _validate_optimization_content(body: str) -> list[str]:
     if NO_ELIGIBLE_COMMITMENT_SENTENCE in text:
         return []
     return [
-        '<section id="cost-optimization"> has no substantive content — render a '
+        f'<section id="{section_id}"> has no substantive content — render a '
         "populated opportunity row (not just column headers, an empty <tbody>, or "
         "other prose like the credits disclaimer) or the exact "
         f'"{NO_ELIGIBLE_COMMITMENT_SENTENCE}" sentence, never a blank, '
@@ -912,17 +921,21 @@ def validate(html: str, migration_dir: Path | None, mode: str = "full") -> list[
     errors: list[str] = []
     counts = _section_counts(html)
 
-    # The other mode's terminal section must NOT appear — decision-report.html must
-    # not carry a next-steps pointer into an execution pack that does not exist yet,
-    # and migration-report.html must not carry the pre-execution decision-cta once the
-    # real next-steps exists.
-    other_mode = "decision" if mode == "full" else "full"
-    other_terminal = MODE_REQUIRED_SECTION_ID[other_mode]
-    if counts.get(other_terminal, 0) >= 1:
+    # migration-report.html must not carry the pre-execution decision-cta once the
+    # decision-summary Next steps list and the execution pack exist.
+    if mode == "full" and counts.get(FULL_MODE_FORBIDDEN, 0) >= 1:
         errors.append(
-            f'--mode {mode} report must not contain <section id="{other_terminal}"> '
-            f"(that is the {other_mode}-mode terminal section)"
+            f'--mode full report must not contain <section id="{FULL_MODE_FORBIDDEN}"> '
+            "(that is the decision-mode terminal section)"
         )
+
+    # Retired heroku ids fail in both modes, naming the shared-id replacement.
+    for retired_id, replacement in RETIRED_SECTION_IDS.items():
+        if counts.get(retired_id, 0) >= 1:
+            errors.append(
+                f'<section id="{retired_id}"> is a retired heroku section id — '
+                f"render {replacement} instead"
+            )
 
     if mode == "decision":
         # The visible divider above the appendix block is part of the decision-mode
@@ -942,23 +955,26 @@ def validate(html: str, migration_dir: Path | None, mode: str = "full") -> list[
     errors.extend(_validate_cost_figures(html, migration_dir))
 
 
-    # cost-optimization must carry substantive content (generate-report.md Step 3
-    # item 6: a table of real opportunity rows, or the explicit no-eligible-commitment
-    # sentence — never empty, and never satisfied by a heading or table-header text
-    # alone). A heading like "Cost Optimization Opportunities" or a table with only
-    # column headers and an empty <tbody> must not pass as content. Full mode only —
-    # the decision pack carries no optimization table.
-    if mode == "full" and counts.get("cost-optimization", 0) >= 1:
-        body = _section_html(html, "cost-optimization") or ""
-        errors.extend(_validate_optimization_content(body))
+    # exec-optimization and appendix-optimization (Appendix B.1) must carry
+    # substantive content (generate-report.md Step 3 item 6: a table of real rows, or
+    # the explicit no-eligible-commitment sentence — never empty, and never satisfied
+    # by a heading or table-header text alone). A heading like "Cost Optimization"
+    # or a table with only column headers and an empty <tbody> must not pass as
+    # content. Full mode only — in decision mode exec-optimization follows the shared
+    # trigger and there is no appendix.
+    if mode == "full":
+        for section_id in ("appendix-optimization", "exec-optimization"):
+            if counts.get(section_id, 0) >= 1:
+                body = _section_html(html, section_id) or ""
+                errors.extend(_validate_optimization_content(body, section_id))
 
     if migration_dir is not None:
 
-        # generate-report.md / report-decision-core.md § decision-basis: when Estimate
+        # generate-report.md / report-decision-core.md § exec-assumptions: when Estimate
         # declared decision_basis (evidence/assumptions behind the verdict), the report
         # MUST render it — in both modes, since decision mode reuses these exact content
         # rules. Read the same estimation-infra.json the report was built from, so a
-        # report that silently drops decision-basis cannot still say REPORT_OK.
+        # report that silently drops exec-assumptions cannot still say REPORT_OK.
         est_path = migration_dir / "estimation-infra.json"
         if est_path.is_file():
             try:
@@ -966,10 +982,10 @@ def validate(html: str, migration_dir: Path | None, mode: str = "full") -> list[
             except (OSError, json.JSONDecodeError):
                 est = None
             decision_basis = ((est or {}).get("recommendation") or {}).get("decision_basis")
-            if decision_basis and counts.get("decision-basis", 0) < 1:
+            if decision_basis and counts.get("exec-assumptions", 0) < 1:
                 errors.append(
                     "estimation-infra.json declares recommendation.decision_basis "
-                    'but the report has no <section id="decision-basis"> '
+                    'but the report has no <section id="exec-assumptions"> '
                     '("What This Assessment Rests On")'
                 )
 
