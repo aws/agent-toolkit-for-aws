@@ -26,8 +26,9 @@ For each entry in `index.scenarios[]` (stable order: baseline first, then by
    - Compute ← `design_constraints.compute_target.default` (or legacy `.value`)
    - Arch ← `workshop.cpu_architecture` or `x86_64`
 3. From `estimation_summary`: Premium / Balanced / Optimized $/mo and
-   `complexity_tier` (all three tiers — pitch compares Graviton Optimized vs
-   Multi-AZ Premium, not Balanced alone).
+   `complexity_tier` (all three tiers — pitch compares the commitment-priced
+   Optimized figure and the Multi-AZ Premium figure against Balanced, not
+   Balanced alone; an arm64 choice changes Balanced, not the tier rule).
 4. Mark the row active when `scenario_id == index.active_scenario_id`.
 
 ## Step 3: Present

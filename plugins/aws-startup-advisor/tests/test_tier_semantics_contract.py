@@ -172,3 +172,36 @@ def test_tier_figures_are_ordered_and_explained(rel: str):
         assert re.search(r"uplift", pc["_premium_basis"], re.IGNORECASE), f"{rel}: Premium equals Balanced without saying why"
     if optimized == balanced:
         assert re.search(r"eligible", pc["_optimized_basis"], re.IGNORECASE), f"{rel}: Optimized equals Balanced without saying why"
+
+
+def test_shared_rates_cap_services_below_their_product_rate():
+    """AWS publishes a lower maximum for Lambda (Compute Savings Plan, up to 17%) and for
+    DynamoDB / Keyspaces (Database Savings Plan, up to 18% on-demand and 12% provisioned)
+    than the 0.30 / 0.20 product rates. The tier must apply min(rate, cap), so the caps are
+    data in the shared file, each with a source."""
+    import json
+
+    data = json.loads(_read(SHARED_RATES))
+    caps = data["service_caps"]
+    products = {"compute_savings_plan": data["rates"]["compute_savings_plan"]["rate"],
+                "database_savings_plan_provisioned": data["rates"]["database_savings_plan_provisioned"]["rate"]}
+    expected = {"aws_lambda": 0.17, "dynamodb_and_keyspaces_on_demand_throughput": 0.18,
+                "dynamodb_and_keyspaces_provisioned_capacity": 0.12}
+    for key, cap in expected.items():
+        entry = caps[key]
+        assert entry["cap"] == cap, f"{key}: cap {entry['cap']} != published {cap}"
+        assert entry["cap"] < products[entry["product"]], f"{key}: a cap at or above the product rate caps nothing"
+        assert "https://aws.amazon.com/blogs/aws/" in entry["source"], f"{key}: cap needs a primary-source URL"
+    assert "min(product rate, service cap)" in data["midpoint_rule"]
+
+
+@pytest.mark.parametrize("rel", TIERED_ESTIMATES)
+def test_optimized_basis_does_not_cite_a_removed_rate_source(rel: str):
+    """The per-skill `optimized_tier_discounts` block was removed in favour of the shared
+    rate file; a fixture basis that still cites it points readers at a file that no longer
+    holds the rate."""
+    import json
+
+    basis = json.loads(_read(PLUGIN_ROOT / rel))["projected_costs"]["_optimized_basis"]
+    assert "optimized_tier_discounts" not in basis, f"{rel}: _optimized_basis cites a removed rate source"
+    assert "estimate-defaults.json" not in basis, f"{rel}: _optimized_basis cites estimate-defaults.json for a tier rate"

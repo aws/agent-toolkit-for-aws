@@ -17,7 +17,7 @@
     "aws_monthly_optimized": 163.0,
     "aws_annual_optimized": 1956.0,
     "_premium_basis": "No line has an unapplied Multi-AZ uplift: the RDS rate is baked_in Multi-AZ; Elastic Beanstalk's EC2 has no AZ-driven rate and its ALB is intrinsic. Premium equals Balanced, 210.",
-    "_optimized_basis": "Eligible subtotal 187 = Elastic Beanstalk EC2 component 92 (of 115: EC2 92 + ALB 16 + LCU 6 + EBS 1) x 0.30 compute_savings_plan -> 28, plus RDS 95 x 0.20 database_savings_plan_provisioned -> 19; ineligible 23 unchanged; 210 - 47 = 163. Rates from knowledge/estimate/estimate-defaults.json optimized_tier_discounts.",
+    "_optimized_basis": "Eligible subtotal 187 = Elastic Beanstalk EC2 component 92 (of 115: EC2 92 + ALB 16 + LCU 6 + EBS 1) x 0.30 compute_savings_plan -> 28, plus RDS 95 x 0.20 database_savings_plan_provisioned -> 19; ineligible 23 unchanged; 210 - 47 = 163. Rates from references/vendored/estimate/commitment-discount-ranges.json (compute_savings_plan 0.30, database_savings_plan_provisioned 0.20).",
     "breakdown": {
       "total": {
         "premium": 210.0,
