@@ -9,7 +9,7 @@
     "policy": {"status": "passed", "command": "validate-terraform-policy.py terraform --json .policy-verdict.tmp.json", "evidence": "Local policy validator returned POLICY_OK.", "policy_status": "POLICY_OK", "violations": []},
     "secret_scan": {"status": "passed", "command": "gitleaks detect --no-git --source generated", "evidence": "No generated secret finding was reported."},
     "schemas": {"status": "passed", "command": "jsonschema generation-warnings.json validation-report.json", "evidence": "Schemas and cross-artifact accounting passed."},
-    "report": {"status": "passed", "command": "validate-render-migration-report.py migration-report.html --migration-dir .", "evidence": "The skill-local report validator returned REPORT_OK."}
+    "report": {"status": "passed", "command": "validate-migration-report.py migration-report.html --estimation-infra ../estimation-infra.json --aws-design ../aws-design.json --migration-dir . && validate-render-migration-report.py migration-report.html --migration-dir ..", "evidence": "Both report validators returned REPORT_OK."}
   },
   "timestamp": "2026-10-21T12:00:00Z"
 }

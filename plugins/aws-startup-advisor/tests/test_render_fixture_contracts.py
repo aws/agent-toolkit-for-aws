@@ -1020,9 +1020,9 @@ def _materialize_complete_mocked_pipeline(root: Path) -> dict[str, bytes]:
         assert all((generated / target).is_file() for target in row["target_files"])
     sections = {
         "decision-summary": "Complete deterministic decision summary.",
-        "architecture": "Build-once private managed architecture.",
+        "exec-architecture": "Build-once private managed architecture.",
         "exec-targets": "".join(f'<p data-source-resource-id="{escape(row["source_resource_id"])}" data-aws-service="{escape(row["aws_service"])}">{escape(row["aws_service"])}</p>' for row in mappings),
-        "exec-costs": '<span data-cost-key="current_render">123.45</span><span data-cost-key="capacity_preserving">0.0</span><span data-cost-key="right_sized">0.0</span><span data-cost-key="delta">0.0</span>',
+        "exec-costs": f'<span data-cost-key="current_monthly">{estimate["current_costs"]["render_monthly"]}</span><span data-cost-key="aws_monthly_balanced">{estimate["projected_costs"]["aws_monthly_balanced"]}</span><span data-cost-key="aws_monthly_optimized">{estimate["projected_costs"]["aws_monthly_optimized"]}</span><span data-cost-key="delta">{estimate["delta_monthly_usd"]}</span>',
         "migration-data": "Postgres Database Migration Service writer quiescence integrity source retention.",
         "migration-storage": "EFS /var/data pre-copy delta ownership permissions integrity.",
         "migration-deployment": "ECR digest serving deploy auto-deploy rollback.",
