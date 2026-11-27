@@ -13,10 +13,12 @@ shared anchors inside exec-costs).
 from __future__ import annotations
 
 import json
+import math
 import re
 import shutil
 import subprocess
 import sys
+from decimal import ROUND_HALF_EVEN, Decimal
 from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
@@ -319,3 +321,90 @@ def test_decision_core_and_abis_name_the_render_local_cost_checks() -> None:
     ):
         assert code in core, code
     assert "projected/scenario" in abis
+def _whole(value: object) -> int:
+    """Whole dollars, half-to-even (the figure the report anchors carry)."""
+    return int(Decimal(str(value)).quantize(Decimal(1), rounding=ROUND_HALF_EVEN))
+def test_golden_figures_derive_from_the_estimate_and_baseline() -> None:
+    """Every dollar figure this PR added is re-derived from estimation-infra.json and baseline.tf,
+    never typed: tier anchors, B.1, the budget formula and limit, the teaser and the what-if baseline row."""
+    html = REPORT.read_text(encoding="utf-8")
+    estimate = json.loads(ESTIMATE.read_text(encoding="utf-8"))
+    scenarios = estimate["scenarios"]
+    balanced = _whole(scenarios["balanced"]["known_cost_monthly_usd"])
+    optimized = _whole(scenarios["optimized"]["known_cost_monthly_usd"])
+    like = _whole(scenarios["like_for_like"]["known_cost_monthly_usd"])
+    delta = _whole(estimate["rightsizing_delta"]["monthly"])
+    commitment = scenarios["optimized"]["commitment"]
+    compute = commitment["compute_savings_plans"]
+    discount = _whole(compute["discount_monthly_usd"])
+    assert commitment["database_savings_plans"]["discount_monthly_usd"] == 0.0
+    # Optimized = Balanced minus the sum of per-line whole-dollar discounts, so the exact difference is shown.
+    assert Decimal(str(scenarios["balanced"]["known_cost_monthly_usd"])) - Decimal(str(scenarios["optimized"]["known_cost_monthly_usd"])) == Decimal(str(compute["discount_monthly_usd"]))
+    exec_costs = _section(html, "exec-costs")
+    for key, value in (("aws_monthly_balanced", balanced), ("aws_monthly_optimized", optimized), ("like_for_like_monthly", like), ("delta", delta)):
+        assert re.search(rf'data-cost-key="{key}">\+?\$?{value}</td>', exec_costs), (key, value)
+    assert f'<td class="savings">-${discount}</td>' in exec_costs
+    optimization = _section(html, "exec-optimization")
+    assert f"<td>${balanced}</td>" in optimization and f"<td>${optimized}</td>" in optimization and f"-${discount}" in optimization
+    assert f"${_whole(compute['eligible_subtotal_monthly_usd'])} of Fargate and Lambda" in optimization
+    appendix_b = _section(html, "appendix-costs")
+    assert f"annual ${_whole(estimate['projected_costs']['aws_annual_optimized']):,}" in appendix_b
+    assert f"${balanced}</td><td>${optimized}</td>" in appendix_b
+    limit = max(50, math.ceil(Decimal(str(scenarios["balanced"]["known_cost_monthly_usd"])) * Decimal("1.2")))
+    baseline = BASELINE_TF.read_text(encoding="utf-8")
+    assert re.search(rf'limit_amount\s*=\s*"{limit}"', baseline), limit
+    security = _section(html, "appendix-security")
+    assert f"max(50, ceil({scenarios['balanced']['known_cost_monthly_usd']} × 1.2)) = {limit}" in security
+    assert f"<strong>${limit}</strong>" in security and f"<td>${limit} monthly cost budget;" in security
+    assert f"${limit} monthly limit" in _section(html, "exec-security-teaser")
+    assert f"${limit} monthly budget" in html
+    index = json.loads(WORKSHOP_INDEX.read_text(encoding="utf-8"))
+    summary = index["scenarios"][0]["estimation_summary"]
+    baseline_row = _tbody_rows(_section(html, "what-if-scenarios"))[0]
+    assert f"<td>${_whole(summary['premium_known_cost_monthly_usd'])}</td><td>${balanced}</td><td>${optimized}</td>" in baseline_row
+    assert summary["balanced_known_cost_monthly_usd"] == scenarios["balanced"]["known_cost_monthly_usd"]
+    assert summary["optimized_known_cost_monthly_usd"] == scenarios["optimized"]["known_cost_monthly_usd"]
+    # The Graviton row is a workshop snapshot; the report says so rather than presenting it as re-derived.
+    assert "workshop snapshot" in _section(html, "what-if-scenarios") and "not re-priced" in _section(html, "what-if-scenarios")
+def test_golden_database_savings_plan_rows_claim_no_saving() -> None:
+    """No pre-Generation-7 line gets a Database Savings Plan saving or a purchase recommendation in the report."""
+    html = REPORT.read_text(encoding="utf-8")
+    for section_id in ("exec-optimization", "appendix-optimization"):
+        section = _section(html, section_id)
+        rows = [row for row in _tbody_rows(section) if "Database Savings Plan" in row]
+        assert len(rows) == 1, section_id
+        for needle in ("Generation 4", "Generation 6", "Generation 7+", "db.m7g", "cache.m7g"):
+            assert needle in rows[0], (section_id, needle)
+        assert "$" not in rows[0], rows[0]
+        assert "no saving claimed" in rows[0].lower() or "No saving claimed" in rows[0], rows[0]
+    fits = _section(html, "exec-optimization")
+    bullet = re.search(r"<li><strong>Database Savings Plan</strong>(.*?)</li>", fits, re.DOTALL)
+    assert bullet is not None and "$" not in bullet.group(1) and "not available" in bullet.group(1)
+def test_golden_credits_caveat_appears_once_below_the_b1_table() -> None:
+    html = REPORT.read_text(encoding="utf-8")
+    caveat = (
+        "Promotional or AWS Activate credits do not cover the upfront cost of Reserved Instances or Savings Plans "
+        "(Partial or All Upfront) and apply only to the ongoing discounted rate."
+    )
+    assert html.count(caveat) == 1
+    section = _section(html, "appendix-optimization")
+    assert section.index("</table>") < section.index(caveat)
+    assert "credits claim" not in html
+def test_golden_audit_log_and_budget_rows_match_render_docs() -> None:
+    """Render docs (https://render.com/docs/audit-logs, read 2026-11-27): Pro plans and higher export
+    workspace audit logs of team actions, at least 90 days retained. The budget row makes no claim about spend alerts."""
+    html = REPORT.read_text(encoding="utf-8")
+    security = _section(html, "appendix-security")
+    trail = next(row for row in _tbody_rows(security) if _first_cell_text(row) == "CloudTrail with its log bucket")
+    audit = next(row for row in _tbody_rows(_section(html, "appendix-security-gap")) if _first_cell_text(row) == "Audit logging")
+    for row in (trail, audit):
+        assert "No customer-visible API audit log" not in row and "no customer-visible API audit log" not in row
+        assert "Pro plans and higher" in row and "90" in row and "not a trail of every API call" in row
+    assert "CloudTrail adds a per-API-call trail of the AWS account" in audit
+    budget = next(row for row in _tbody_rows(security) if _first_cell_text(row) == "Monthly budget")
+    assert "Render billing page" in budget and "no threshold alert" not in budget
+    spec = (SKILL_ROOT / "references/phases/generate/generate-artifacts-report.md").read_text(encoding="utf-8")
+    assert "without a customer-visible API audit log" not in spec
+    assert "Pro plans and higher" in spec and "https://render.com/docs/audit-logs" in spec
+    assert "Promotional or AWS Activate credits do not cover the upfront cost" in re.sub(r"\s+", " ", spec).replace("promotional or AWS Activate", "Promotional or AWS Activate")
+

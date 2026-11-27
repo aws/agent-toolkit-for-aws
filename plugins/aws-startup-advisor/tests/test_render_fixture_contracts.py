@@ -382,6 +382,37 @@ def test_estimate_scenarios_floors_and_metric_gates_reconcile() -> None:
     assert delta["explanation"] and delta["what_would_change_this"]
     assert _recompute_optimized(estimate) == optimized == Decimal("278.5")
     assert estimate["migration_cost_considerations"]["human_labor_monthly_usd"] is None
+def test_optimized_rounds_each_line_discount_to_whole_dollars_half_even() -> None:
+    """The vendored midpoint_rule rounds EACH eligible line's discount to whole dollars before summing.
+    Render uses half-even, so 4.5 -> 4, 10.5 -> 10, 7.5 -> 8. The expected discounts are computed
+    from the Balanced lines here, not typed, and Optimized = Balanced minus their sum."""
+    estimate = load(EXPECTED / "estimation-infra.json")
+    scenarios = estimate["scenarios"]
+    compute = scenarios["optimized"]["commitment"]["compute_savings_plans"]
+    balanced = {row["line_id"]: Decimal(str(row["monthly_amount"])) for row in scenarios["balanced"]["lines"]}
+    optimized = {row["line_id"]: Decimal(str(row["monthly_amount"])) for row in scenarios["optimized"]["lines"]}
+    expected = {}
+    for line_id in compute["eligible_line_ids"]:
+        rate = Decimal("0.12") if line_id in compute["capped_lines"] else Decimal("0.3")
+        expected[line_id] = (balanced[line_id] * rate).quantize(Decimal(1), rounding=ROUND_HALF_EVEN)
+    assert {line_id: balanced[line_id] - optimized[line_id] for line_id in expected} == expected
+    assert all(value == value.to_integral_value() for value in expected.values())
+    assert Decimal(str(compute["discount_monthly_usd"])) == sum(expected.values())
+    assert Decimal(str(scenarios["optimized"]["known_cost_monthly_usd"])) == Decimal(str(scenarios["balanced"]["known_cost_monthly_usd"])) - sum(expected.values())
+    # Half-even versus half-up, and rounding each line versus rounding the sum, give different dollars here.
+    assert any((balanced[line_id] * Decimal("0.3")) % 1 == Decimal("0.5") for line_id in expected)
+    unrounded = sum(balanced[line_id] * (Decimal("0.12") if line_id in compute["capped_lines"] else Decimal("0.3")) for line_id in expected)
+    assert unrounded != sum(expected.values())
+    # A recorded discount that is the unrounded sum, or an Optimized line left unrounded, is rejected.
+    for mutate in ("sum", "line"):
+        wrong = json.loads(json.dumps(estimate))
+        if mutate == "sum":
+            wrong["scenarios"]["optimized"]["commitment"]["compute_savings_plans"]["discount_monthly_usd"] = float(unrounded)
+        else:
+            row = next(r for r in wrong["scenarios"]["optimized"]["lines"] if r["line_id"] == "line-private")
+            row["monthly_amount"] = 24.5
+        with pytest.raises(AssertionError, match="discount differs|Optimized line"):
+            _recompute_optimized(wrong)
 def test_estimate_optimized_rejects_an_invented_discount_rate() -> None:
     estimate = load(EXPECTED / "estimation-infra.json")
     estimate["scenarios"]["optimized"]["commitment"]["compute_savings_plans"]["rate"] = 0.5
@@ -444,10 +475,39 @@ def test_workshop_index_fixture_matches_workshop_scenarios() -> None:
     assert summary["recommendation_outcome"] == estimate["recommendation"]["path"]
 
 
+def _assert_database_sp_row_is_gate_consistent(estimate: dict, design: dict) -> None:
+    """No pre-Generation-7 line may get a Database Savings Plan discount or a purchase
+    recommendation: a dollar-valued Database SP opportunity row needs at least one line that
+    passes the vendored generation gate, and its amount equals the recorded discount."""
+    vendored = load(SKILL_ROOT / "references/vendored/estimate/commitment-discount-ranges.json")
+    mappings = {row["source_resource_id"]: row for row in design["mappings"]}
+    balanced = {row["line_id"]: row for row in estimate["scenarios"]["balanced"]["lines"]}
+    plan = estimate["scenarios"]["optimized"]["commitment"]["database_savings_plans"]
+    for line_id in plan["eligible_line_ids"]:
+        row = balanced[line_id]
+        ok, basis = _database_sp_generation(vendored, mappings.get(row["source_resource_id"]), row["aws_service"])
+        assert ok, f"{line_id} gets a Database Savings Plan discount but {basis}"
+    gated_out = [
+        row for row in balanced.values()
+        if row["aws_service"] in _DATABASE_SP_CLASS_FIELD and row["monthly_amount"]
+        and not _database_sp_generation(vendored, mappings.get(row["source_resource_id"]), row["aws_service"])[0]
+    ]
+    for row in estimate["optimization_opportunities"]:
+        if row["type"] != "database_savings_plans":
+            continue
+        text = json.dumps(row)
+        if not plan["eligible_line_ids"]:
+            assert row["savings_monthly"] is None, f"Database Savings Plans row claims {row['savings_monthly']} with no Generation 7+ line"
+            assert row["target_services"] == [], "a Database Savings Plans row with no eligible line recommends no target service"
+            assert not re.search(r"\$\s?\d", text), f"Database Savings Plans row quotes a dollar figure: {text}"
+        else:
+            assert Decimal(str(row["savings_monthly"])) == Decimal(str(plan["discount_monthly_usd"]))
+        if gated_out:
+            assert "ineligible" in row["description"] and "Generation 7" in row["description"], row["description"]
 def test_estimate_optimization_opportunities_are_the_commitment_rows() -> None:
-    """optimization_opportunities[] carries exactly one row per commitment bucket with eligible
-    lines (estimate-infra.md rule 4): Compute SP percent-only, Database SP in dollars, both
-    1-year no-upfront and already included in Optimized."""
+    """optimization_opportunities[] carries one row per commitment bucket (estimate-infra.md rule 4):
+    Compute SP percent-only, and Database SP with no dollar saving while no line passes the
+    Generation 7+ gate. Both are 1-year no-upfront."""
     estimate = load(EXPECTED / "estimation-infra.json")
     commitment = estimate["scenarios"]["optimized"]["commitment"]
     balanced_lines = {row["line_id"]: row for row in estimate["scenarios"]["balanced"]["lines"]}
@@ -467,12 +527,31 @@ def test_estimate_optimization_opportunities_are_the_commitment_rows() -> None:
     assert compute["savings_percent"] == commitment["compute_savings_plans"]["range"]
     database = by_type["database_savings_plans"]
     assert database["opportunity"] == "Database Savings Plans"
-    assert Decimal(str(database["savings_monthly"])) == Decimal(str(commitment["database_savings_plans"]["discount_monthly_usd"]))
-    # The vendored `range` for the Database Savings Plan bucket, optionally suffixed with the
-    # usage mode in parentheses (estimate-infra.md rule 4).
-    assert re.fullmatch(r"up to 20%( \(provisioned\))?", database["savings_percent"]), database["savings_percent"]
-
-
+    assert commitment["database_savings_plans"]["eligible_line_ids"] == []
+    assert database["savings_monthly"] is None and database["target_services"] == []
+    assert "db.m7g" in database["description"] and "cache.m7g" in database["description"]
+    assert re.fullmatch(r"up to 20%( \(provisioned(, Generation 7\+ only)?\))?", database["savings_percent"]), database["savings_percent"]
+    _assert_database_sp_row_is_gate_consistent(estimate, load(EXPECTED / "aws-design.json"))
+def test_pre_generation_7_lines_get_no_database_sp_discount_or_dollar_row() -> None:
+    """line-db (db.t4g.large, Generation 4) and line-kv (cache.m6g.large, Generation 6) are
+    ineligible: a Database Savings Plan discount on either, or a dollar-valued Database Savings
+    Plans row while no line qualifies, fails."""
+    estimate = load(EXPECTED / "estimation-infra.json")
+    design = load(EXPECTED / "aws-design.json")
+    _assert_database_sp_row_is_gate_consistent(estimate, design)
+    dollar_row = json.loads(json.dumps(estimate))
+    next(r for r in dollar_row["optimization_opportunities"] if r["type"] == "database_savings_plans")["savings_monthly"] = 26.0
+    with pytest.raises(AssertionError, match="claims 26.0"):
+        _assert_database_sp_row_is_gate_consistent(dollar_row, design)
+    dollar_text = json.loads(json.dumps(estimate))
+    next(r for r in dollar_text["optimization_opportunities"] if r["type"] == "database_savings_plans")["description"] += " Saves $26 per month."
+    with pytest.raises(AssertionError, match="dollar figure"):
+        _assert_database_sp_row_is_gate_consistent(dollar_text, design)
+    for line_id, amount in (("line-db", "80"), ("line-kv", "50")):
+        discounted = _with_database_sp_discount(estimate, line_id, amount)
+        discounted["scenarios"]["optimized"]["commitment"]["database_savings_plans"]["eligible_line_ids"] = [line_id]
+        with pytest.raises(AssertionError, match="Database Savings Plan discount"):
+            _assert_database_sp_row_is_gate_consistent(discounted, design)
 def test_generate_ledger_schemas_and_complete_target_accounting() -> None:
     generated = EXPECTED / "generated"
     ledger = load(generated / "generation-warnings.json")
