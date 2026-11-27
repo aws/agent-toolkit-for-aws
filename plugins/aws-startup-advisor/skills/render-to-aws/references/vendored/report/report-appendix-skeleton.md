@@ -84,7 +84,7 @@ discovery count. Deferred and unsupported rows are still rows the customer
 must plan for — never present them as generated. A skill with no ledger
 declares these three parameters `n/a`.
 
-### Stable appendix lettering (validator-enforced)
+### Stable appendix lettering (pinned by the contract test)
 
 Use the same stable customer-visible appendix labels as the full-report
 contract. The letter is part of the `<h2>` heading and of the TOC label, and it
@@ -109,7 +109,8 @@ track has no Appendix D and still labels its artifact catalog Appendix E):
 Render `appendix-artifacts` before `appendix-config`. Conditional sections keep
 their reserved letters when absent — for example, an infra-only report still
 uses Appendix E for artifacts, never renumbering it to D. The shared validator
-checks both `<h2>` and TOC labels. A skill that adds its own appendix uses a
+checks section IDs, not these letters; the plugin's contract test pins the
+lettering table, so a skill keeps the labels exactly as written here. A skill that adds its own appendix uses a
 dotted slot (as A.1 does) so the shared letters never move.
 
 Which rows a skill renders is ⟨appendices_rendered⟩: per letter, **required**,
@@ -466,7 +467,7 @@ Minimum rows, with the source-side names from ⟨gap_source_names⟩:
 The Gap / action column compares the two postures and names the action
 (net-new control, mapped 1:1, review in production), not a bare "different".
 
-### Appendix I — Assumptions, Exclusions, and Validation (`appendix-assumptions`, REQUIRED)
+### Appendix I — Assumptions, Exclusions, and Validation (`appendix-assumptions`, required by the skill spec; the shared validator treats it as optional)
 
 **Pricing confidence table:** domain / source, status, accuracy band, last
 updated — from the estimate's ⟨pricing_source_fields⟩ and
