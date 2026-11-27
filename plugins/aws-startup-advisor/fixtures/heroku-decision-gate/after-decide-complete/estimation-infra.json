@@ -12,26 +12,28 @@
     "baseline_note": "no billing"
   },
   "projected_costs": {
-    "aws_monthly_premium": 265.0,
+    "aws_monthly_premium": 210.0,
     "aws_monthly_balanced": 210.0,
-    "aws_monthly_optimized": 178.0,
-    "aws_annual_optimized": 2136.0,
+    "aws_monthly_optimized": 163.0,
+    "aws_annual_optimized": 1956.0,
+    "_premium_basis": "No line has an unapplied Multi-AZ uplift: the RDS rate is baked_in Multi-AZ; Elastic Beanstalk's EC2 has no AZ-driven rate and its ALB is intrinsic. Premium equals Balanced, 210.",
+    "_optimized_basis": "Eligible subtotal 187 = Elastic Beanstalk EC2 component 92 (of 115: EC2 92 + ALB 16 + LCU 6 + EBS 1) x 0.30 compute_savings_plan -> 28, plus RDS 95 x 0.20 database_savings_plan_provisioned -> 19; ineligible 23 unchanged; 210 - 47 = 163. Rates from knowledge/estimate/estimate-defaults.json optimized_tier_discounts.",
     "breakdown": {
       "total": {
-        "premium": 265.0,
+        "premium": 210.0,
         "mid": 210.0,
-        "low": 178.0
+        "low": 163.0
       },
       "Elastic Beanstalk": {
-        "premium": 145.0,
+        "premium": 115.0,
         "mid": 115.0,
-        "low": 100.0,
+        "low": 87.0,
         "pricing_source": "cached"
       },
       "RDS PostgreSQL": {
-        "premium": 120.0,
+        "premium": 95.0,
         "mid": 95.0,
-        "low": 78.0,
+        "low": 76.0,
         "pricing_source": "cached"
       }
     }

@@ -10,6 +10,11 @@
     "elasticache_node": 0.5,
     "msk_broker": 2
   },
+  "optimized_tier_discounts": {
+    "_comment": "Mid-point rates the Optimized TIER applies to the RI/SP-eligible subtotal (estimate-cost-engine.md Part 2 § Cost Tier Calculation). compute_savings_plan is the mid-point of the typical 1-year no-upfront 20-40%; the 20-66% in optimization_savings_ranges is the full-term range the opportunity ROW quotes. database_savings_plan_provisioned is the documented ~20% provisioned point. The ineligible subtotal is never discounted.",
+    "compute_savings_plan": 0.30,
+    "database_savings_plan_provisioned": 0.20
+  },
   "optimization_savings_ranges": {
     "_comment": "Estimated savings RANGES per post-migration optimization opportunity, shown beyond the Balanced on-demand baseline. Ranges only (the LLM emits the full optimization_opportunities[] entry, with descriptions/references, from estimate.md prose). target_services / timing gate which opportunities are relevant to the designed architecture and match the emitted entry field names.",
     "compute_savings_plans": {
