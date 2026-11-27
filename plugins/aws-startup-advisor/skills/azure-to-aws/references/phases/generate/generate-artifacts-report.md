@@ -167,7 +167,7 @@ every mapping/plan/service/headline figure = `accounted` (with the three-way agr
 above). This mirrors gcp-to-aws `report-decision-core.md` where the discovered/current
 count is a separate figure from the mapping count.
 
-## Step 3.75: Appendix block (REQUIRED — skeleton-driven, validator-enforced)
+## Step 3.75: Appendix block (REQUIRED — skeleton-driven; the validator checks section IDs, the letters are an authoring rule pinned by the contract test)
 
 **Load `references/vendored/report/report-appendix-skeleton.md` and build the appendix block
 from it.** That file is the single source of truth for the stable appendix lettering (A–J,

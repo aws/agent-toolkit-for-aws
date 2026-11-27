@@ -177,3 +177,16 @@ def test_decision_core_and_abis_name_the_render_local_cost_checks() -> None:
     ):
         assert code in core, code
     assert "projected/scenario" in abis
+def test_missing_appendix_assumptions_section_fails_local_validator(tmp_path: Path) -> None:
+    # The render spec requires Appendix I; the shared default `full` set treats it as optional,
+    # so only the render-local pass can enforce it.
+    root, report = _altered_copy(tmp_path, '<section id="appendix-assumptions">', '<section id="appendix-assumptions-renamed">')
+    result = _local(report, root)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "SECTION_APPENDIX_ASSUMPTIONS_MISSING" in result.stdout + result.stderr
+def test_appendix_assumptions_without_toc_link_fails_local_validator(tmp_path: Path) -> None:
+    link = '<li><a href="#appendix-assumptions">Appendix I — Assumptions, Exclusions, and Validation</a></li>'
+    root, report = _altered_copy(tmp_path, link, "")
+    result = _local(report, root)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "TOC_RENDER_SECTION_MISSING" in result.stdout + result.stderr
