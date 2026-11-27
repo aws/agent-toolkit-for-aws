@@ -43,8 +43,8 @@ Other files in this skill cite the decision core by its legacy section numbers. 
 
 Two validators gate the report, both run in the main window with absolute paths (`generate-artifacts-report.md` Step 5):
 
-- `$PLUGIN_ROOT/scripts/validate-migration-report.py` (`--mode full`, with `--estimation-infra`, `--aws-design`, and `--migration-dir`) is the structure/content gate: required section IDs and order, the CSS shell, verdict and metric-hero markup, the risk table, assumptions after risks, appendix depth and lettering, readability, accessibility, the glossary, and the shared cost anchors.
-- `$SKILL_BASE/scripts/validate-render-migration-report.py` (`--migration-dir`) is the render-only pass: the sections, terms, target rows, accounting, ledger reconciliation, `delta` anchor, unavailable-baseline literal, optimized/premium anchor presence, projected/scenario cost equality, and exclusions listed below.
+- `$PLUGIN_ROOT/scripts/validate-migration-report.py` (`--mode full`, with `--estimation-infra`, `--aws-design`, and `--migration-dir`) is the structure/content gate: required section IDs and order, the CSS shell, verdict and metric-hero markup, the risk table, assumptions after risks, appendix depth and section IDs (the validator does not check appendix letters), readability, accessibility, the glossary, and the shared cost anchors.
+- `$SKILL_BASE/scripts/validate-render-migration-report.py` (`--migration-dir`) is the render-only pass: the sections, terms, target rows, accounting, ledger reconciliation, `delta` anchor, unavailable-baseline literal, optimized/premium anchor presence, projected/scenario cost equality, `appendix-assumptions`, and exclusions listed below.
 
 Both must print `REPORT_OK`. A report that fails either is renamed `migration-report.incomplete.html`; it remains available for diagnosis but MUST NOT satisfy Generate `_produces` or completion. There is no skip-and-complete path.
 
@@ -80,6 +80,7 @@ Beyond the default `full` set, this skill requires each section below exactly on
 8. `verification` — concrete endpoint, database, cache, disk, worker/cron, and Workflow checks. Terms: `endpoint`; `database`; `cache`; `disk`; `workflow`.
 9. `deferred-surfaces` — the exact `deferred_shared_ai_engine` warning paragraph and every `conditional_workflow_generation_unsupported` warning. Deferred work is never represented as generated (`AI_DEFERRED_STATE_MISSING`, `AI_DEFERRED_WARNING_UNEXPECTED`, `WORKFLOW_LIMIT_MISSING`). This section (and the appendices) may name artifact filenames; `decision-summary` and the `exec-*` sections may not.
 10. `appendix-accounting` — heading "Appendix A.1 — Generation Accounting" (the canonical A.1 slot; the `.1` keeps the shared letters A–J from shifting): design/generated/consumed-topology/deferred/unsupported counts and all source rows. The section carries `data-accounted-count` equal to `generation-warnings.json` → `accounting.accounted_count` (`REPORT_ACCOUNTED_COUNT_MISMATCH`).
+11. `appendix-assumptions` — Appendix I, Assumptions, Exclusions, and Validation. The render spec requires it; the shared default `full` set treats it as optional, so the render-local validator enforces it (`SECTION_APPENDIX_ASSUMPTIONS_MISSING` / `_DUPLICATE` / `_EMPTY`, `TOC_RENDER_SECTION_MISSING`).
 
 ### Cross-artifact truth
 
