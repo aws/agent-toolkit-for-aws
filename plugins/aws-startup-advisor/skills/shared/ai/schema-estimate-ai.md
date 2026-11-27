@@ -19,13 +19,11 @@
 > **This is a target-only contract, like `ai-migration-scenario.schema.json` (#410),
 > `ai-workload-profile.schema.json` (#415), and `aws-design-ai.schema.json` (#416).** Structural
 > validity against this document or its companion JSON Schema does NOT imply an implemented
-> pricing lookup, model mapping, or runtime-supported identity, and does NOT imply that either
-> skill's current `estimate-ai.md` actually emits this shape yet — NEITHER skill's `estimate-ai.md`
-> currently emits the neutral field names (`current_costs.monthly_ai_spend`,
-> `cost_comparison.current_source_monthly`, `cost_by_source[]`); current GCP/Azure output still
-> uses the GCP-/Azure-named fields documented in each skill's own `estimate-ai.md`, unchanged by
-> this document. No producer has been repointed to this canonical contract in this change — that
-> is deferred runtime-adoption work.
+> pricing lookup, model mapping, or runtime-supported identity. One skill produces it today:
+> `bedrock-migration-assessment`, whose Estimate phase checks it before completing; gcp-to-aws
+> runs that phase and copies the result. Azure's `estimate-ai.md` does not emit the neutral field
+> names (`current_costs.monthly_ai_spend`, `cost_comparison.current_source_monthly`,
+> `cost_by_source[]`) yet and still uses the Azure-named fields in its own table; see Status.
 
 ## Shape
 

@@ -1090,3 +1090,10 @@ def test_generate_contract_names_bedrock_migration_assessment_as_its_producer() 
     assert "`bedrock-migration-assessment`" in text and "scripts/generate-ai.py" in text
     status = text.split("## Status", 1)[1]
     assert "gcp-to-aws" in status and "azure-to-aws" in status and "deferred" in status
+
+
+@pytest.mark.parametrize("name", ["schema-design-aws-ai.md", "schema-estimate-ai.md", "schema-generate-ai.md"])
+def test_ai_contract_intros_agree_with_their_status_that_gcp_to_aws_has_a_producer(name: str) -> None:
+    intro = (PLUGIN_ROOT / "skills/shared/ai" / name).read_text().split("## Shape", 1)[0]
+    for stale in ("For `gcp-to-aws`", "GCP's `design-ai.md`", "GCP's `estimate-ai.md`", "GCP's `generate-ai.md`", "NEITHER skill", "No producer has been repointed"):
+        assert stale not in intro, stale

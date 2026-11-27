@@ -12,12 +12,13 @@
 > instead of drifting independently. Each consuming skill carries a byte-identical vendored copy
 > at `references/vendored/ai/schema-generate-ai.md`.
 >
-> **For `gcp-to-aws` and `azure-to-aws` this is a target-only contract, like
-> `schema-estimate-ai.md` and the rest of this contract family (#410, #415, #416).** Structural validity against this document or its
+> **For `azure-to-aws` this is a target-only contract, like `schema-estimate-ai.md` and the rest
+> of this contract family (#410, #415, #416).** Structural validity against this document or its
 > companion JSON Schema (`scripts/contracts/generation-ai.schema.json`) does NOT imply an
 > implemented adapter, rollout mechanism, or runtime-supported identity. One skill produces it
-> today: `bedrock-migration-assessment`, whose Generate phase checks it before completing. GCP's
-> `generate-ai.md` and Azure's `generate-artifacts-ai.md` do not emit this shape yet; see Status.
+> today: `bedrock-migration-assessment`, whose Generate phase checks it before completing;
+> gcp-to-aws runs that phase and copies the result. Azure's `generate-artifacts-ai.md` does not
+> emit this shape yet; see Status.
 
 ## Shape
 
