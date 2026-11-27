@@ -131,6 +131,9 @@ Your IAM role needs permissions for the AWS services used by the skills you inst
 - `airflow-serverless` - Amazon MWAA Serverless workflows and workflow runs (separate from `airflow`)
 - `athena` - Query execution and workgroup management
 - `glue` - Data Catalog operations and ETL jobs
+- `iam` - Execution role policy updates during Amazon MWAA environment upgrades
+- `kms` - Key policy and grant updates for MWAA environments that use a customer managed key
+- `logs` - CloudWatch Logs reads when debugging MWAA runs
 - `s3` - Object storage operations
 - `s3tables` - Managed Iceberg table operations (separate from `s3`)
 - `s3vectors` - Vector storage operations (separate from `s3`)

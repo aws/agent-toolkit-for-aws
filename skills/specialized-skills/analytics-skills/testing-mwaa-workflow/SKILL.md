@@ -12,7 +12,7 @@ description: >
   DAG to check it. Not applicable to writing or deploying a new workflow (handled by authoring-mwaa-workflow), or for diagnosing why a run failed or root-causing an
   error (handled by debugging-mwaa-workflow).
 metadata:
-  version: "1"
+  version: "2"
 ---
 
 # Testing MWAA Workflows
@@ -66,9 +66,10 @@ directory. Never fetch or write customer data through `retrieve_skill`.
 ### Invocation mode
 
 - **Standalone** — the user points at an existing, already-deployed target.
-- **Delegated** — authoring-mwaa-workflow deployed and handed over the resolved
-  target (env name + `dag_id`, or workflow ARN). Its "deploy and test now?"
-  approval satisfies the first trigger confirmation only.
+- **Delegated** — another skill (authoring-mwaa-workflow or
+  upgrading-mwaa-environments) deployed the target and handed over the resolved
+  target (env name + `dag_id`, or workflow ARN) and, for a DAG, its S3 key. That
+  skill's approval to test satisfies the first trigger confirmation only.
 
 ### Complexity
 
@@ -80,8 +81,8 @@ directory. Never fetch or write customer data through `retrieve_skill`.
 
 Confirm the artifact is deployed and parse-ready. Do not trigger blind. This step
 is MANDATORY even when you plan to adopt an existing run — the readiness data
-(`last_parsed_time`, `is_active`, `has_import_errors`) feeds the freshness gate
-in Step 2.
+(`is_active`/`is_stale`, `has_import_errors`) confirms the DAG is parsed and
+runnable before Step 2 decides whether to adopt a prior run.
 
 - **Provisioned:** confirm `dag_id` present with `has_import_errors: false`,
   then apply the version-aware ready check via the `/dags` collection endpoint.
@@ -116,25 +117,51 @@ require explicit user confirmation before the **first** trigger and each
 re-trigger.
 
 This gate is already satisfied when the user has given explicit approval for
-the action: in delegated mode the authoring "deploy and test now?" approval
-covers the first trigger, and an explicit pre-authorization to trigger a
+the action: in delegated mode the caller's approval to test covers the first
+trigger, and an explicit pre-authorization to trigger a
 specific run counts as that confirmation — do not re-ask when approval has
 already been given.
 
-Before triggering, check for scheduler-created runs (see provisioned-testing
-reference). Apply the **freshness gate** before adopting any prior run:
+Before triggering, apply the **freshness gate** to the most recent prior run
+(delegated and standalone mode alike). The gate's reference time is the DAG
+file's **deploy time** — the S3 `LastModified` of the DAG object — not
+`last_parsed_time`, which advances on every re-parse even when the file has not
+changed. If that deploy time cannot be read (head-object denied, or the DAG
+file key unknown in standalone mode), do not fall back to `last_parsed_time` —
+the provisioned-testing reference holds the fallback (ask for the key or deploy
+time; otherwise treat every prior run as stale). Fetch the most recent run (GET `/dags/<dag_id>/dagRuns`, ordered
+`-start_date`, limit 1) and decide by whether the DAG is paused, then by whether it has a schedule
+(the provisioned-testing reference holds the exact commands and the per-major
+fields):
 
-- **Delegated mode:** always trigger fresh. Prior runs predate the deployment
-  by definition — do not adopt regardless of state.
-- **Standalone mode:** compare `run.start_date` against `dag.last_parsed_time`
-  read from the `/dags` collection response the Step 1 readiness check already
-  fetches (the collection returns `last_parsed_time` per DAG in both v1 and v2 —
-  no per-DAG call needed). If `start_date < last_parsed_time`, the run tested a
-  prior artifact version — treat as stale, trigger fresh. Only adopt runs where
-  `start_date >= last_parsed_time`.
+- **Paused**: no run can start until you unpause, so you choose the run that
+  tests the new file. Wait until `last_parsed_time` is after the deploy time
+  (within the Step 1 readiness window), then unpause. If the DAG's next run is
+  already due, the scheduler creates that run at once: adopt it instead of
+  triggering a second one. Otherwise trigger. If the parse does not come within
+  the window, unpause anyway and continue as for an unpaused DAG.
+- **Unpaused, no schedule** (manual / externally triggered only): a run whose
+  `start_date` is at or after the deploy time is fresh — adopt it (non-terminal:
+  poll to terminal in Step 3; terminal `success`: report it; terminal `failed`:
+  go to Step 4). A run that started before the deploy time is stale: trigger
+  fresh, and if that stale run is still running handle it as the scheduled
+  non-terminal case below.
+- **Unpaused, scheduled**: treat any scheduler-created or earlier run as stale,
+  because a scheduled run that fires right after the upload can still have
+  executed the previous file — the new file reaches the scheduler and workers
+  only after MWAA's S3 sync and the next parse. If the stale run is terminal,
+  trigger fresh as normal. If it is non-terminal (`queued`/`running`), do not
+  trigger silently: ask the user to either start a fresh run now (it runs
+  alongside the in-flight run and can collide on downstream resources) or wait
+  for the in-flight run to finish first. In delegated mode the caller's
+  approval to test does not cover this choice — ask. If they choose to wait,
+  poll the in-flight run to a terminal state (it is not the test result; do not
+  report it as one), then trigger fresh.
 
-For fresh, non-stale runs that pass the gate: if a run already exists for the
-target interval, adopt it instead of POSTing. Monitor through Step 3.
+The gate cannot tell which code a run executed — no MWAA or Airflow API exposes
+a run's source, and a scheduled run can start before the new file is synced and
+parsed — so it decides on the deploy time and the DAG's schedule, never on the
+run's stored code.
 
 On a **retest**, all run identifiers must be fresh (Provisioned: both
 `dag_run_id` and `logical_date`; Serverless: new `start-workflow-run` call).
@@ -255,16 +282,15 @@ human-gated-pause, each named explicitly.
 | Symptom | Cause | Action |
 |---------|-------|--------|
 | DAG absent from `GET /dags` | S3-sync lag or import error | Hand to debugging-mwaa-workflow before triggering |
-| `--path` rejected / truncated | Path over 64 chars (https://docs.aws.amazon.com/cli/latest/reference/mwaa/invoke-rest-api.html) | Poll the collection path with `--query-parameters` |
-| `RestApiClientException` on poll | Web server unreachable | Fall back to DAGProcessing/Scheduler log groups |
+| `RestApiClientException` on poll | Airflow returned a 4xx (the web server is reachable) | Read `RestApiStatusCode`: 404 wrong `dag_run_id`, 401/403 role. Fall back to the DAGProcessing/Scheduler log groups only on `RestApiServerException` or a timeout |
 | `RestApiClientException` on dagRuns POST (empty message) | DAG not ready — AF2: `is_active=false` (activation incomplete); AF3: `is_stale=true` (`is_active` does not exist in v2) | Poll `/dags` collection until ready (AF2 `is_active=true` / AF3 `is_stale=false`); do not retry the trigger blind |
-| Manual run created but stuck in `queued`, never starts (AF3) | DAG is paused — AF3 does not execute manual runs while paused (AF2 does) | Unpause (`PATCH /dags/<dag_id>` `{"is_paused": false}`) then trigger; common right after an upgrade where DAGs are deployed paused |
+| Manual run created but stuck in `queued` with `start_date: null` | DAG is paused; neither Airflow 2.x nor 3.x executes manual runs while paused | Unpause (`PATCH /dags/<dag_id>` `{"is_paused": false}`); the queued run then starts. Common right after an upgrade where DAGs are deployed paused |
 | Serverless `get-workflow` not READY | Still creating/updating or failed | Wait for READY; if FAILED, hand to debugging |
 | Same failure two attempts running | Fix not addressing root cause | Stop at no-progress; summarize; do not burn the cap |
 
 ## References
 
-- [references/provisioned-testing.md](references/provisioned-testing.md) — exact invoke-rest-api commands (readiness, trigger, poll), 64-char path limit, retest hygiene, log fallback
+- [references/provisioned-testing.md](references/provisioned-testing.md) — exact invoke-rest-api commands (readiness, trigger, poll), retest hygiene, log fallback
 - [references/serverless-testing.md](references/serverless-testing.md) — exact mwaa-serverless commands (get-workflow, start-workflow-run, get-workflow-run), terminal states
 
 ## Security Considerations
