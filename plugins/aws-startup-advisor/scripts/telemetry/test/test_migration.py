@@ -399,15 +399,37 @@ def test_an_explicit_execute_request_ends_the_run_only_once_generate_is_complete
 def test_reports_an_llm_to_bedrock_run_in_its_dot_directory_at_run_level_only(project):
     # llm-to-bedrock keeps its own thin run state in .migration/.bedrock-<id>/ with
     # phases the model does not know (assess, execute): only run-level events leave.
-    p = project(phase_status(migration_id=".bedrock-0226-1430", owning_skill="LLM_TO_BEDROCK", current_phase="execute",
+    # <id> is the bedrock-migration-assessment run it consumed (bma-MMDD-HHMM).
+    p = project(phase_status(migration_id=".bedrock-bma-0226-1430", owning_skill="LLM_TO_BEDROCK", current_phase="execute",
                              phases={"assess": "completed", "execute": "in_progress"}),
-                run_name=".bedrock-0226-1430", artifacts={})
+                run_name=".bedrock-bma-0226-1430", artifacts={})
     first = p.reconcile()
     assert summary(first) == [("RUN_STARTED", None, None)]
     assert activity(first[0])["skill"] == "LLM_TO_BEDROCK"
-    p.write_status(phase_status(migration_id=".bedrock-0226-1430", owning_skill="LLM_TO_BEDROCK", current_phase="complete",
+    p.write_status(phase_status(migration_id=".bedrock-bma-0226-1430", owning_skill="LLM_TO_BEDROCK", current_phase="complete",
                                 phases={"assess": "completed", "execute": "completed"}))
     assert summary(p.reconcile()) == [("RUN_COMPLETED", None, "SUCCESS")]
+
+
+def test_an_llm_to_bedrock_migration_is_attributed_only_through_its_own_run(project):
+    # The assessment run llm-to-bedrock consumes is bedrock-migration-assessment's: it has a
+    # bma- id and no owning_skill, and llm-to-bedrock never writes owning_skill or
+    # initiated_by into it. That run emits nothing; the .bedrock-bma-<id> run beside it
+    # carries the attribution, with no initiating skill.
+    assessment = {"migration_id": "bma-0226-1430", "run_id": RUN_ID, "last_updated": "2026-02-26T15:35:22Z",
+                  "current_phase": "complete",
+                  "phases": {"discover": "completed", "clarify": "completed", "design": "completed", "estimate": "completed"}}
+    p = project(assessment, run_name="bma-0226-1430", artifacts={
+        "ai-workload-profile.json": {"schema_version": "1.0", "ai_sources": [], "gateways": []}})
+    own = p.root / ".migration" / ".bedrock-bma-0226-1430"
+    own.mkdir()
+    (own / ".phase-status.json").write_text(json.dumps(phase_status(
+        migration_id=".bedrock-bma-0226-1430", run_id="7c1e9a2b-4d3f-4b8a-9e6c-1a2b3c4d5e6f", owning_skill="LLM_TO_BEDROCK",
+        current_phase="execute", phases={"assess": "completed", "execute": "in_progress"})), encoding="utf-8")
+    events = [activity(b) for b in p.reconcile()]
+    assert [(e["eventName"], e["skill"]) for e in events] == [("RUN_STARTED", "LLM_TO_BEDROCK")]
+    assert "initiatingSkill" not in events[0]
+    assert not p.has_snapshot(), "the assessment run declares no owner, so nothing is recorded in it"
 
 
 def test_maps_the_azure_producer_fields_from_the_committed_fixtures(project):
@@ -532,7 +554,7 @@ def test_derives_attributes_from_producer_shaped_artifacts_including_the_ai_only
                                   "pricing_source": {"status": "cached", "fallback_staleness": {"is_stale": False}},
                                   "current_costs": {"source": "preferences", "gcp_monthly_spend": 2500}},
     })
-    ai_only = project({**done, "initiated_by": "LLM_TO_BEDROCK"}, run_name="0226-1500", artifacts={
+    ai_only = project(done, run_name="0226-1500", artifacts={
         "ai-workload-profile.json": {"summary": {"ai_source": "openai", "total_models_detected": 2}},
         "preferences.json": {"metadata": {"clarify_mode": "fast_path", "migration_type": "ai-only"}},
     })
@@ -545,7 +567,9 @@ def test_derives_attributes_from_producer_shaped_artifacts_including_the_ai_only
     assert g["RUN_COMPLETED"]["attributes"] == {"sourceProvider": "GCP", "runMode": "DECIDE"}
     assert a["DISCOVER"]["attributes"] == {"sourceProvider": "OPENAI", "hasAi": True}
     assert a["CLARIFY"]["attributes"] == {"sourceProvider": "OPENAI", "clarifyMode": "AI_ONLY"}
-    assert a["RUN_STARTED"]["initiatingSkill"] == "LLM_TO_BEDROCK"
+    # No skill starts a gcp-to-aws run for another skill any more: llm-to-bedrock assesses
+    # with bedrock-migration-assessment and is attributed through its own run (above).
+    assert "initiatingSkill" not in a["RUN_STARTED"]
 
 
 def test_detects_a_heroku_database_from_the_add_on_service(project):

@@ -256,8 +256,10 @@ def test_discover_and_clarify_wiring() -> None:
         assert rule in step0, rule
     assert "Treat as skipped: exit with no usage profile" not in READER
     assert "start at Step 1 intake, then Step 2. The next capture replaces these files." in READER
-    bedrock = (BMA.parent / "llm-to-bedrock/SKILL.md").read_text(encoding="utf-8")
-    assert "bedrock-migration-assessment's OpenAI usage profile" in bedrock
+    bedrock = " ".join((BMA.parent / "llm-to-bedrock/SKILL.md").read_text(encoding="utf-8").split())
+    # llm-to-bedrock reads only this skill's usage profiles, and every one of them writes cost_status.
+    assert "written by every bedrock-migration-assessment usage profile" in bedrock
+    assert "Every bedrock-migration-assessment usage profile writes this field, the OpenRouter one included" in bedrock
     assert "subtract it from the baseline row's `input_tokens` and copy it to" in bedrock
     assert "`cache_write_unsplit`" in bedrock
     assert "\"Not available (the cost request failed)\"" in CONTROLLER

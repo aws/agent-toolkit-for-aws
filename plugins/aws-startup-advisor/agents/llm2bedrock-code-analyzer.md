@@ -49,8 +49,11 @@ The orchestration skill has already located/cloned the source repository and pro
 
 # 6. Read the Assess output (model mapping + workload profile)
 
-Use the `Migration plan dir:` path from your context. This directory contains JSON artifacts
-produced by the Assess phase — NOT the old Markdown-table plan format.
+Use the `Migration plan dir:` path from your context. This directory is a
+`bedrock-migration-assessment` run: it holds the JSON artifacts that skill's Discover, Clarify
+and Design wrote (contracts in `skills/bedrock-migration-assessment/references/contracts/`),
+NOT the old Markdown-table plan format. The orchestrator has already confirmed the run with
+that skill's `skills/bedrock-migration-assessment/scripts/readiness.py`; read the files only, and never write into this directory.
 
 Read these two files:
 
@@ -60,24 +63,38 @@ Read these two files:
 cat <PLAN_DIR>/aws-design-ai.json
 ```
 
-Extract `ai_architecture.bedrock_models[]` — an array of objects:
+Extract `ai_architecture.bedrock_models[]`, an array of row objects. The fields you use:
 
 ```json
 [
   {
-    "source_model": "gpt-4o",
-    "aws_model_id": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-    "use_case": "primary"
+    "source_model_id": "gpt-4o",
+    "aws_model_id": "us.openai.gpt-5.6-terra",
+    "migration_path": "runtime_openai_cris",
+    "required_client_api": "chat_completions"
   },
   {
-    "source_model": "text-embedding-3-small",
+    "source_model_id": "text-embedding-3-small",
     "aws_model_id": "amazon.titan-embed-text-v2:0",
-    "use_case": "embeddings"
+    "migration_path": "direct",
+    "required_client_api": "invoke"
   }
 ]
 ```
 
-Each entry gives a source→target pair. Use `aws_model_id` as the target Bedrock model ID for §10 validation.
+Each row gives a source→target pair. The source model is `source_model_id`; an older plan may
+name it `source_model`, so read `source_model_id`, else `source_model`. Use `aws_model_id` as
+the target Bedrock model ID for §10 validation. There is no `use_case` field (an older plan's
+`use_case`, when present, still names the role). A row is an embedding or image row only when
+`migration_path` is `direct` and `required_client_api` is `invoke`, and `capabilities_matched`
+lists `embedding` or `image_generation`. `gpt-oss` may also use `invoke`, so the API alone does
+not decide; when the two disagree, stop and ask. Every other row is a chat row. When the design
+has two chat rows for one source model, use only the row named on the context's `Chosen chat row:`
+line (the row recorded in `$BEDROCK_RUN_DIR/chat-row-choice.json`): its `source_model_id`,
+`aws_model_id` and `migration_path` must all match, and skip the others. Do not match on
+`required_client_api` or `Target API surface`: two rows can share the API and differ only in path
+(`mantle_openai_chat` and `runtime_openai_cris` are both `chat_completions`). When that line is
+missing, or names no row or more than one, stop and report it; never pick a row yourself.
 
 ## 6.2 `ai-workload-profile.json` — Source Provider & Framework
 
@@ -87,14 +104,21 @@ cat <PLAN_DIR>/ai-workload-profile.json
 
 Extract:
 
-- `summary.ai_source` — the source provider string (`openai`/`gemini`/`anthropic`/`both`)
-- `integration.pattern` — framework pattern (`direct`/`langchain`/`llamaindex`/`ai-sdk`/`custom`)
-- `integration.primary_sdk` — exact SDK package name
-- `integration.capabilities_summary` — object with `streaming`, `function_calling`, `embeddings`, `vision` booleans
+- `ai_sources[].provider` and `ai_sources[].source_service`: the source providers
+  (`openai`, `anthropic`, `google`, or another lower-case id) and the service each is called
+  through (for example `openai_api`, `azure_openai`, `anthropic_api`, `gemini_api`,
+  `vertex_ai`). There is no `summary.ai_source`; an older profile that has one may be read as
+  a fallback. A gateway such as OpenRouter is listed in `gateways[]`, not `ai_sources[]`.
+- `integration.pattern`: `direct_sdk`, `framework`, `rest_api`, or `mixed`
+- `integration.frameworks[]` and `integration.primary_sdk` (optional): the frameworks and the
+  exact SDK package name
+- `integration.capabilities_summary`: booleans including `streaming`, `function_calling`,
+  `embeddings`, and `vision`
 
-Use these as a STARTING POINT for §7 (they may be stale or incomplete — always verify against the
-actual source code). If `summary.ai_source` disagrees with what you find in code, trust the code and
-note the discrepancy in `errors`.
+`integration` is optional: a schema 1.0 profile has none. Use these as a STARTING POINT for §7
+(they may be stale or incomplete; always verify against the actual source code). If
+`ai_sources[].provider` disagrees with what you find in code, trust the code and note the
+discrepancy in `errors`.
 
 ## 6.3 Fallback
 
@@ -128,7 +152,7 @@ Determine:
    For EVERY nonempty plan mapping, run the pinned helper:
 
    ```bash
-   uv run --project <scriptsDir> python <scriptsDir>/model_identity.py --provider '<source_provider>' --source '<source_model>' --target '<aws_model_id>'
+   uv run --project <scriptsDir> python <scriptsDir>/model_identity.py --provider '<source_provider>' --source '<row source_model_id>' --target '<aws_model_id>'
    ```
 
    Set `same_model_family: true` only if ALL results return `same_model: true`.
@@ -321,7 +345,7 @@ in-region route merely because its ID is absent from `ListInferenceProfiles`.
 
 **You MUST use the `resolve-bedrock-model-id` skill.** Do NOT roll your own validation with `aws bedrock list-foundation-models`, `aws bedrock get-foundation-model`, or `aws bedrock-runtime converse`. The skill is the single source of truth for what counts as a valid invokable ID, because many modern Bedrock models (e.g. Claude 4.x Haiku/Sonnet/Opus) are only invokable through cross-region _inference profiles_ (`us.…`, `global.…`, `eu.…`) — NOT via raw foundation-model IDs. A foundation-model ID that exists in `list-foundation-models` will still fail `converse` with `ValidationException: … on-demand throughput isn't supported` if you skip the inference-profile lookup.
 
-**Emit one `target_models` entry per plan mapping** — if the plan has 10 source→target mappings (e.g. chat=`gpt-4o`, embed=`text-embedding-3-small`, vision=`gpt-4o-vision`, …), `target_models` MUST have length 10. Do NOT collapse, dedupe, or drop entries.
+**Emit one `target_models` entry per plan mapping** — if the plan has 10 source→target mappings (e.g. chat=`gpt-4o`, embed=`text-embedding-3-small`, vision=`gpt-4o-vision`, …), `target_models` MUST have length 10. Do NOT collapse, dedupe, or drop entries, except the unchosen second chat row for one source model (§6.1).
 
 For each `target_model_id` in the plan's model mapping:
 

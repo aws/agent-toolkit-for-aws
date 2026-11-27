@@ -129,8 +129,12 @@ def test_generate_echoes_the_requirement_or_the_assumption(doc: str) -> None:
 def test_llm_to_bedrock_skill_explains_how_a_mantle_requirement_is_learned() -> None:
     text = _read(LLM_TO_BEDROCK_SKILL)
     policy = _section(text, "## Endpoint policy (bedrock-runtime default)", "## Phase A")
-    for token in ("ai_constraints.mantle_requirements", "Q22b", "Q10.5", "mantle_signals", "mantle_requirement", "endpoint_assumption"):
+    # Assess is bedrock-migration-assessment, whose only Clarify is the AI-only flow (Q10.5);
+    # the gcp-to-aws full-flow question Q22b is not part of this skill any more.
+    for token in ("ai_constraints.mantle_requirements", "Q10.5", "clarify-ai-only.md", "mantle_signals", "mantle_requirement",
+                  "endpoint_assumption"):
         assert token in policy, f"llm-to-bedrock Endpoint policy lacks {token!r}"
+    assert "Q22b" not in policy
     context = _section(text, "### The context block", "### C0 — Run-context gate")
     assert "Endpoint basis:" in context, "context block has no 'Endpoint basis:' line"
     assert "C6" in context.split("Endpoint basis:")[1][:400], "Endpoint basis line must scope itself to the C6 dispatch"

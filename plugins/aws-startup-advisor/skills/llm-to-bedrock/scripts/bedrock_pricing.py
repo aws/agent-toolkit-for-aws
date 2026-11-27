@@ -168,8 +168,8 @@ def _opus55_pricing(region: str, model_id: str) -> dict:
 # different models with independently published rates.
 _SNAPSHOT_SUFFIX = re.compile(r"(-\d{8})?(-v\d+(:\d+)?)?")
 
-# The literal the Estimate phases already consume for an unresolved context tier
-# (gcp-to-aws and azure-to-aws references/phases/estimate/estimate-ai.md).
+# The literal bedrock-migration-assessment's Estimate writes for an unresolved context tier
+# (skills/bedrock-migration-assessment/references/phases/estimate/estimate-ai.md, Step 1).
 _APPROXIMATE_TIER = "approximate — request-size distribution unknown"
 
 

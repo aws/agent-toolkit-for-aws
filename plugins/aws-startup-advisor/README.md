@@ -24,7 +24,7 @@ The eighteen skills below are the catalog. Install them together.
 | 5 | `gcp-to-aws` | Six-phase Google Cloud to AWS migration. Discovery reads Terraform, a live `gcloud` capture (read-only, consent-gated), application code, and billing exports. Direct OpenAI, OpenRouter, and Anthropic usage-API discovery (read-only, consent-gated) supplement real AI spend. Generate is opt-in. BigQuery is not mapped to an AWS analytics service | [SKILL.md](skills/gcp-to-aws/SKILL.md) |
 | 6 | `heroku-to-aws` | Six-phase Heroku to AWS migration with deterministic add-on mapping and an optional what-if repricing workshop | [SKILL.md](skills/heroku-to-aws/SKILL.md) |
 | 7 | `render-to-aws` | Render-to-AWS migration with consented read-only Blueprint, CLI, REST, application, and billing discovery; mandatory Clarify; deterministic design and estimates; optional workshop; and opt-in validated artifacts | [SKILL.md](skills/render-to-aws/SKILL.md) |
-| 8 | `llm-to-bedrock` | Rewrite OpenAI, Gemini, or Anthropic API call sites to Amazon Bedrock, evaluate quality, and deliver a git branch. The full migration requires `gcp-to-aws` or `azure-to-aws` alongside it (`gcp-to-aws` preferred when both are installed). Access-only mode (enable model access, no rewrite) does not | [SKILL.md](skills/llm-to-bedrock/SKILL.md) |
+| 8 | `llm-to-bedrock` | Rewrite OpenAI, Gemini, or Anthropic API call sites to Amazon Bedrock, evaluate quality, and deliver a git branch. The full migration requires `bedrock-migration-assessment` alongside it. Access-only mode (enable model access, no rewrite) does not | [SKILL.md](skills/llm-to-bedrock/SKILL.md) |
 | 9 | `tf-best-practices` | AWS Terraform authoring posture, security-baseline spec, and a read-only policy gate over generated Terraform | [SKILL.md](skills/tf-best-practices/SKILL.md) |
 | 10 | `operate-on-aws` | Incident investigation, root-cause analysis, and release-readiness review with AWS DevOps Agent, with cost, access, and code-egress disclosed up front | [SKILL.md](skills/operate-on-aws/SKILL.md) |
 | 11 | `knowledge-base-for-startups` | AWS Activate FAQ, credits guide, programs, partner offers, sample architectures, and AWS-curated learn articles | [SKILL.md](skills/knowledge-base-for-startups/SKILL.md) |
@@ -219,19 +219,17 @@ The `azure-to-aws`, `gcp-to-aws`, `heroku-to-aws`, and `render-to-aws` skills ru
 
 The `llm-to-bedrock` skill is a focused model and SDK rewrite. It assesses the codebase, rewrites OpenAI, Gemini, or Anthropic API call sites to Amazon Bedrock, evaluates the rewritten behavior against a golden prompt set, and delivers a ready-to-review git branch with a migration report.
 
-**A full migration requires `gcp-to-aws` or `azure-to-aws` installed alongside it.** Assess runs whichever sibling is present's discover, clarify, design, and estimate phases in the same session (`gcp-to-aws` preferred when both are installed), and installing `llm-to-bedrock` on its own stops there. Access-only mode does not need either sibling: it checks the models you name, walks the access step for each, and stops, with no rewrite and no branch. Install the pair for a migration:
+**A full migration requires `bedrock-migration-assessment` installed alongside it.** Assess runs that skill's discover, clarify, design, and estimate phases in the same session, then checks the run with its readiness script before any rewrite starts. Installing `llm-to-bedrock` on its own stops there. Access-only mode does not need it: it checks the models you name, walks the access step for each, and stops, with no rewrite and no branch. Install the pair for a migration:
 
 ```bash
-npx skills add aws/agent-toolkit-for-aws/plugins/aws-startup-advisor/skills --skill llm-to-bedrock --skill gcp-to-aws
+npx skills add aws/agent-toolkit-for-aws/plugins/aws-startup-advisor/skills --skill llm-to-bedrock --skill bedrock-migration-assessment
 ```
-
-(Substitute `azure-to-aws` if your source infra runs on Azure.)
 
 (The `--skill '*'` install above already includes both.)
 
-When the sibling's Discover captured real spend from the OpenAI Admin API, the OpenRouter API, or the Anthropic Admin API (consent-gated, read-only), `llm-to-bedrock` reuses that usage profile as the cost baseline instead of extrapolating from the golden prompt set.
+When `bedrock-migration-assessment`'s Discover captured real spend from the OpenAI Admin API, the OpenRouter API, or the Anthropic Admin API (consent-gated, read-only), `llm-to-bedrock` reuses that usage profile as the cost baseline instead of extrapolating from the golden prompt set. An earlier `gcp-to-aws` or `azure-to-aws` assessment is not reused: run Assess again.
 
-`bedrock-migration-assessment` is the provider-neutral AI engine that will take over this work from `gcp-to-aws` ([#389](https://github.com/aws/agent-toolkit-for-aws/issues/389)). Today it scans application code for AI providers, models, gateways, workloads, and agents and their tools, or accepts a provider-neutral `ai-workload-profile.json` (rejecting the older GCP-shaped profile by name), can measure OpenAI, Anthropic, and OpenRouter usage through their read-only admin APIs with consent, asks the AI-only Clarify questions, writes `aws-design-ai.json` in the provider-neutral design contract, prices it in `estimation-ai.json`, and, when you opt in, writes `generation-ai.json` and an `ai-migration/` folder of artifacts. It never edits your code. It does not depend on any infrastructure skill.
+`bedrock-migration-assessment` is the provider-neutral AI engine extracted from `gcp-to-aws` ([#389](https://github.com/aws/agent-toolkit-for-aws/issues/389)). It scans application code for AI providers, models, gateways, workloads, and agents and their tools, or accepts a provider-neutral `ai-workload-profile.json` (rejecting the older GCP-shaped profile by name), can measure OpenAI, Anthropic, and OpenRouter usage through their read-only admin APIs with consent, asks the AI-only Clarify questions, writes `aws-design-ai.json` in the provider-neutral design contract, prices it in `estimation-ai.json`, and, when you opt in, writes `generation-ai.json` and an `ai-migration/` folder of artifacts. It never edits your code. It does not depend on any infrastructure skill.
 
 Model mapping is compatibility-guided rather than one-to-one parity. Validate prompts, tool-calling behavior, and evaluation metrics before cutover.
 

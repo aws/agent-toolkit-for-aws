@@ -72,7 +72,7 @@ Multiple artifacts can be produced in a single run — they are not mutually exc
    }
    ```
 
-   `run_id` is minted once here: run `uuidgen` (or an equivalent random UUID source) and write its output verbatim; never copy a value from an example or a previous run. It is never changed or reused across runs; unlike `migration_id` it carries no timestamp, so it uniquely identifies this run for telemetry and for the plugin-to-web handoff. `owning_skill` is always `GCP_TO_AWS`. If another skill invoked this run, also set `initiated_by` to that skill's supplied identifier (for example, `"LLM_TO_BEDROCK"` for its Assess flow).
+   `run_id` is minted once here: run `uuidgen` (or an equivalent random UUID source) and write its output verbatim; never copy a value from an example or a previous run. It is never changed or reused across runs; unlike `migration_id` it carries no timestamp, so it uniquely identifies this run for telemetry and for the plugin-to-web handoff. `owning_skill` is always `GCP_TO_AWS`. If another skill invoked this run, also set `initiated_by` to that skill's identifier. (llm-to-bedrock no longer does: it runs Assess through bedrock-migration-assessment.)
 
    After the resume-vs-Fresh choice resolves and this state write is complete, if this is a
    fresh run, load `references/vendored/migration/upfront-credits.md` and render it verbatim

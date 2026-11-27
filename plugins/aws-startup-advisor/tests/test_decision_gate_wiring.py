@@ -96,17 +96,20 @@ def test_readme_uses_qualification_based_migration_credit_copy() -> None:
     assert "GCP, Heroku, and Render currently write importable plans" not in text
 
 
-def test_llm_a1_preinitializes_provider_state_in_the_selected_directory() -> None:
+def test_llm_a1_runs_assess_through_bma_without_writing_provider_state() -> None:
     llm_text = LLM_SKILL.read_text(encoding="utf-8")
     a1 = llm_text[
         llm_text.index("### A1 — Run Discover, Clarify, Design, and Estimate"):
         llm_text.index("### A2 — Confirm Assess is complete")
     ]
-    assert "Never create provider state in another path" in a1
-    assert "`GCP_TO_AWS` or `AZURE_TO_AWS`" in a1
-    assert "skip the provider's resume/Fresh prompt" in a1
-    assert "`initiated_by` to `LLM_TO_BEDROCK`" in a1
-    assert "genuinely unused" in a1
+    # #389 stage 3b: Assess runs through bedrock-migration-assessment only, in its own run dir
+    assert "$BMA_BASE/SKILL.md" in a1
+    assert "$REPO/.migration/bma-MMDD-HHMM/" in a1
+    assert "is not reused" in a1
+    # the old gcp/azure preinitialization is gone: llm-to-bedrock writes no provider state
+    assert "$ASSESS_BASE" not in a1
+    assert "`initiated_by` to `LLM_TO_BEDROCK`" not in a1
+    assert "`GCP_TO_AWS` or `AZURE_TO_AWS`" not in a1
     # the LLM-only offer is gone until this flow can write plan.json
     assert "upfront-credits-llm" not in a1
     assert ".llm-upfront-credits-offered" not in llm_text
