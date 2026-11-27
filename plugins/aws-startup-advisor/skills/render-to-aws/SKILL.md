@@ -5,7 +5,7 @@ description: "Migrate Render workloads to AWS through consented read-only discov
 
 # Render-to-AWS Migration Skill
 
-Use this skill for a full Render-to-AWS migration assessment and optional execution pack. `<SKILL_BASE>` is the directory containing this file, and every reference path and every `uv`-run tool resolves beneath it. Two plugin-root scripts are the exception: Generate runs the shared `$PLUGIN_ROOT/scripts/validate-artifacts.py` (artifact pre-check) and `$PLUGIN_ROOT/scripts/validate-migration-report.py` (report structure gate) with plain `python3`, where `$PLUGIN_ROOT` is the `aws-startup-advisor` plugin directory two levels above `<SKILL_BASE>` (`$SKILL_BASE/../..`). They are stdlib-only and need no `uv` environment.
+Use this skill for a full Render-to-AWS migration assessment and optional execution pack. `<SKILL_BASE>` is the directory containing this file, and every reference path and every `uv`-run tool resolves beneath it. Two plugin-root scripts are the exception: Generate runs the shared `$PLUGIN_ROOT/scripts/validate-artifacts.py` (artifact pre-check) and `$PLUGIN_ROOT/scripts/validate-migration-report.py` (report structure gate) with plain `python3`, where `$PLUGIN_ROOT` is the `aws-startup-advisor` plugin directory two levels above `<SKILL_BASE>` (`$SKILL_BASE/../..`). They are stdlib-only and need no `uv` environment. A skills-only install (`npx skills add --skill render-to-aws`) carries this skill's tree but not the plugin's top-level `scripts/`; without them Generate cannot complete the report gate and fails closed, exactly as for a missing `python3`.
 
 ## Interpreter and entry point
 

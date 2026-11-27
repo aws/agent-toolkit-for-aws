@@ -13,7 +13,8 @@ accessibility, the visual shell, and the shared cost anchors
 * ledger reconciliation (``generation-warnings.json`` schema, per-bucket rows,
   accounting counts, warning codes) and the deferred-surface prose those
   warnings require;
-* render-required sections and their TOC links, plus the required phrases per
+* render-required sections (including Appendix I, ``appendix-assumptions``, which the shared
+  default set treats as optional) and their TOC links, plus the required phrases per
   migration section;
 * the render-local ``delta`` cost anchor (``rightsizing_delta.monthly``, like-for-like
   minus Balanced);
@@ -53,7 +54,7 @@ MAX_JSON_BYTES = 4 * 1024 * 1024
 RENDER_SECTIONS = (
     "exec-architecture", "exec-targets", "migration-data", "migration-storage",
     "migration-deployment", "cutover", "rollback", "verification",
-    "deferred-surfaces", "appendix-accounting",
+    "deferred-surfaces", "appendix-accounting", "appendix-assumptions",
 )
 INERT = {"script", "style", "template"}
 COST_PATHS = {
