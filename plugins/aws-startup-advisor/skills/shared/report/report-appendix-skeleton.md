@@ -467,7 +467,7 @@ Minimum rows, with the source-side names from ⟨gap_source_names⟩:
 The Gap / action column compares the two postures and names the action
 (net-new control, mapped 1:1, review in production), not a bare "different".
 
-### Appendix I — Assumptions, Exclusions, and Validation (`appendix-assumptions`, required by the skill spec; the shared validator treats it as optional)
+### Appendix I — Assumptions, Exclusions, and Validation (`appendix-assumptions`, required by the skill spec; optional in the validator's default set, required under `--profile heroku`)
 
 **Pricing confidence table:** domain / source, status, accuracy band, last
 updated — from the estimate's ⟨pricing_source_fields⟩ and
