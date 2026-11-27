@@ -87,7 +87,9 @@ CAPACITY_COSTS = {
     "render.task_run": 0.0,
     "render.task_attempt": 0.0,
 }
-RIGHT_SIZED_FACTORS = {
+# Balanced = the right-sized design; the Valkey node is not right-sizable (its sizing
+# table preserves source memory plus headroom), so render.key_value is absent here.
+BALANCED_FACTORS = {
     "render.web_service": 0.8,
     "render.private_service": 0.875,
     "render.background_worker": 5 / 6,
@@ -95,8 +97,15 @@ RIGHT_SIZED_FACTORS = {
     "render.workflow": 0.8,
     "render.workflow_task": 0.8,
     "render.postgres": 0.8,
-    "render.key_value": 0.8,
 }
+# Optimized = Balanced with the mid-point commitment discount on RI/SP-eligible lines
+# only (knowledge/estimate/commitment-discount-ranges.json): Compute Savings Plan
+# 20-66% -> 43% on Fargate and Lambda, Database Savings Plan ~20% on RDS and Valkey.
+COMPUTE_SP_RATE = 0.43
+DATABASE_SP_RATE = 0.2
+COMPUTE_SP_KINDS = ("render.web_service", "render.private_service", "render.background_worker", "render.cron_job", "render.workflow_task")
+DATABASE_SP_KINDS = ("render.postgres", "render.key_value")
+OPTIMIZED_FACTORS = {**{kind: 1 - COMPUTE_SP_RATE for kind in COMPUTE_SP_KINDS}, **{kind: 1 - DATABASE_SP_RATE for kind in DATABASE_SP_KINDS}}
 # Smallest node target in knowledge/design/keyvalue-elasticache-sizing.json; the
 # Design mapping carries it so Generate emits exactly the selected node type.
 VALKEY_NODE_TYPE = "cache.t4g.micro"
@@ -169,15 +178,14 @@ def design_from_inventory(
 
 
 def estimate_from_design(design: dict[str, Any]) -> dict[str, Any]:
-    scenarios: dict[str, dict[str, Any]] = {}
-    for scenario_name in ("capacity_preserving", "right_sized"):
+    def build_lines(factors: dict[str, float], measured: bool) -> list[dict[str, Any]]:
         lines = []
         for index, mapping in enumerate(design["mappings"], 1):
             kind = mapping["render_kind"]
             amount = CAPACITY_COSTS.get(kind)
-            evidence_sufficient = scenario_name == "right_sized" and kind in RIGHT_SIZED_FACTORS
-            if amount is not None and evidence_sufficient:
-                amount = round(amount * RIGHT_SIZED_FACTORS[kind], 2)
+            evidence_sufficient = measured and kind in BALANCED_FACTORS
+            if amount is not None and kind in factors:
+                amount = round(amount * factors[kind], 2)
             lines.append(
                 {
                     "line_id": f"line-{index:03d}",
@@ -190,17 +198,55 @@ def estimate_from_design(design: dict[str, Any]) -> dict[str, Any]:
                     "evidence_sufficient": evidence_sufficient,
                 }
             )
+        return lines
+
+    def block(lines: list[dict[str, Any]]) -> dict[str, Any]:
         known = round(sum(row["monthly_amount"] for row in lines if row["monthly_amount"] is not None), 2)
         missing = [row["line_id"] for row in lines if row["monthly_amount"] is None]
-        scenarios[scenario_name] = {
-            "known_cost_monthly_usd": known,
-            "is_floor": bool(missing),
-            "unpriced_line_ids": missing,
-            "lines": lines,
+        return {"known_cost_monthly_usd": known, "is_floor": bool(missing), "unpriced_line_ids": missing, "lines": lines}
+
+    balanced_lines = build_lines(BALANCED_FACTORS, measured=True)
+    like_for_like_lines = build_lines({}, measured=False)
+    kinds = {mapping["source_resource_id"]: mapping["render_kind"] for mapping in design["mappings"]}
+    optimized_lines = []
+    for row in balanced_lines:
+        row = dict(row)
+        factor = OPTIMIZED_FACTORS.get(kinds[row["source_resource_id"]])
+        if row["monthly_amount"] is not None and factor is not None:
+            row["monthly_amount"] = round(row["monthly_amount"] * factor, 2)
+        optimized_lines.append(row)
+
+    def plan(kinds_in_plan: tuple[str, ...], rate: float, range_label: str) -> dict[str, Any]:
+        eligible = [row for row in balanced_lines if kinds[row["source_resource_id"]] in kinds_in_plan and row["monthly_amount"]]
+        subtotal = round(sum(row["monthly_amount"] for row in eligible), 2)
+        return {
+            "eligible_line_ids": [row["line_id"] for row in eligible],
+            "eligible_subtotal_monthly_usd": subtotal,
+            "rate": rate,
+            "range": range_label,
+            "discount_monthly_usd": round(subtotal * rate, 2),
         }
-    capacity = scenarios["capacity_preserving"]["known_cost_monthly_usd"]
-    right_sized = scenarios["right_sized"]["known_cost_monthly_usd"]
-    delta = round(right_sized - capacity, 2)
+
+    compute_sp = plan(COMPUTE_SP_KINDS, COMPUTE_SP_RATE, "20-66%")
+    database_sp = plan(DATABASE_SP_KINDS, DATABASE_SP_RATE, "~20% (provisioned)")
+    balanced = block(balanced_lines)
+    optimized = block(optimized_lines)
+    optimized["commitment"] = {
+        "compute_savings_plans": compute_sp,
+        "database_savings_plans": database_sp,
+        "ineligible_subtotal_monthly_usd": round(
+            balanced["known_cost_monthly_usd"] - compute_sp["eligible_subtotal_monthly_usd"] - database_sp["eligible_subtotal_monthly_usd"], 2
+        ),
+        "source": "knowledge/estimate/commitment-discount-ranges.json",
+    }
+    premium = block([dict(row) for row in balanced_lines])
+    premium.update({"uplift_monthly_usd": 0.0, "uplifted_line_ids": []})
+    like_for_like = block(like_for_like_lines)
+    like_for_like["label"] = "like-for-like, before right-sizing"
+    scenarios = {"premium": premium, "balanced": balanced, "optimized": optimized, "like_for_like": like_for_like}
+    balanced_total = balanced["known_cost_monthly_usd"]
+    optimized_total = optimized["known_cost_monthly_usd"]
+    delta = round(like_for_like["known_cost_monthly_usd"] - balanced_total, 2)
     return {
         "phase": "estimate",
         "design_source": "aws-design.json",
@@ -214,15 +260,20 @@ def estimate_from_design(design: dict[str, Any]) -> dict[str, Any]:
         "accuracy_confidence": "all lines priced from the reviewed cache",
         "current_costs": {"source": "user_stated", "render_monthly": 123.45, "currency": "USD", "baseline_note": "Fixture user-stated monthly amount", "breakdown": {}},
         "projected_costs": {
-            "aws_monthly_premium": capacity,
-            "aws_monthly_balanced": capacity,
-            "aws_monthly_optimized": right_sized,
-            "aws_annual_optimized": round(right_sized * 12, 2),
+            "aws_monthly_premium": premium["known_cost_monthly_usd"],
+            "aws_monthly_balanced": balanced_total,
+            "aws_monthly_optimized": optimized_total,
+            "aws_annual_optimized": round(optimized_total * 12, 2),
             "breakdown": {},
         },
         "scenarios": scenarios,
-        "delta_monthly_usd": delta,
-        "delta_explanation": f"Evidence-based right-sizing changes the known-cost floor by ${delta:.2f}.",
+        "rightsizing_delta": {
+            "monthly": delta,
+            "annual": round(delta * 12, 2),
+            "basis": "utilization",
+            "explanation": f"Evidence-based right-sizing lowers the known-cost floor by ${delta:.2f} per month against like-for-like.",
+            "what_would_change_this": "A metrics window under seven days or below 0.80 coverage returns every line to like-for-like.",
+        },
         "cost_comparison": {},
         "migration_cost_considerations": {"human_labor_monthly_usd": None},
         "roi_analysis": {},
@@ -1610,7 +1661,7 @@ EFS is priced from the reviewed rate row. AI is `deferred_shared_ai_engine`; Wor
         "decision-summary": "Complete deterministic decision summary.",
         "exec-architecture": f"Build-once private managed architecture. {escape(fargate_mode_statement(design))}",
         "exec-targets": "".join(f'<p data-source-resource-id="{escape(row["source_resource_id"])}" data-aws-service="{escape(row["aws_service"])}">{escape(row["aws_service"])}</p>' for row in design["mappings"]),
-        "exec-costs": f'<span data-cost-key="current_monthly">{estimate["current_costs"]["render_monthly"]}</span><span data-cost-key="aws_monthly_balanced">{estimate["projected_costs"]["aws_monthly_balanced"]}</span><span data-cost-key="aws_monthly_optimized">{estimate["projected_costs"]["aws_monthly_optimized"]}</span><span data-cost-key="delta">{estimate["delta_monthly_usd"]}</span>',
+        "exec-costs": f'<span data-cost-key="current_monthly">{estimate["current_costs"]["render_monthly"]}</span><span data-cost-key="aws_monthly_balanced">{estimate["projected_costs"]["aws_monthly_balanced"]}</span><span data-cost-key="aws_monthly_optimized">{estimate["projected_costs"]["aws_monthly_optimized"]}</span><span data-cost-key="delta">{estimate["rightsizing_delta"]["monthly"]}</span>',
         "migration-data": "Postgres Database Migration Service writer quiescence integrity source retention.",
         "migration-storage": "EFS /var/data pre-copy delta ownership permissions integrity.",
         "migration-deployment": "ECR digest serving deploy auto-deploy rollback.",

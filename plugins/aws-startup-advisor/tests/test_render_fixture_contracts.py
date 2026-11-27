@@ -88,6 +88,9 @@ def test_design_selectors_emit_one_target_all_rejections_and_exact_accounting() 
     assert private["aws_config"] == {
         "ingress": "AWS Cloud Map or ECS Service Connect",
         "public_load_balancer": False,
+        "vcpu": 0.25,
+        "memory_gb": 0.5,
+        "sizing_provenance": "measured",
         "ecs_mode": "standard",
         "ecs_mode_reason": "private_discovery",
     }
@@ -218,7 +221,7 @@ def test_rightsizing_thresholds_are_numeric_and_fail_closed() -> None:
     assert thresholds["interpolate_idle_gaps_as_zero"] is False
     assert thresholds["insufficient_evidence"] == {
         "confidence": "inferred",
-        "right_sized_equals_capacity_preserving": True,
+        "balanced_equals_like_for_like": True,
         "downsize_allowed": False,
     }
     assert thresholds["downsize_limits"]["maximum_cpu_p95_fraction"] == 0.4
@@ -226,12 +229,55 @@ def test_rightsizing_thresholds_are_numeric_and_fail_closed() -> None:
     assert thresholds["memory_headroom_multipliers"]["agent_browser_or_tool_process"] == 1.5
 
 
-def test_estimate_dual_totals_floors_and_metric_gates_reconcile() -> None:
+def _percent_rate(range_label: str) -> Decimal:
+    """Mid-point of a `low-high%` range, or the stated `~N%` / `up to N%` value.
+    Mirrors knowledge/estimate/commitment-discount-ranges.json `midpoint_rule`."""
+    span = re.search(r"(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)%", range_label)
+    if span:
+        return (Decimal(span.group(1)) + Decimal(span.group(2))) / Decimal(200)
+    single = re.search(r"~\s*(\d+(?:\.\d+)?)%", range_label) or re.search(r"up to\s*(\d+(?:\.\d+)?)%", range_label)
+    assert single, range_label
+    return Decimal(single.group(1)) / Decimal(100)
+def _recompute_optimized(estimate: dict) -> Decimal:
+    """Recompute the Optimized total from Balanced and the knowledge ranges file; raise
+    when the estimate's recorded commitment arithmetic disagrees (never invent a rate)."""
+    ranges = load(SKILL_ROOT / "knowledge/estimate/commitment-discount-ranges.json")
+    scenarios = estimate["scenarios"]
+    balanced_lines = {row["line_id"]: row for row in scenarios["balanced"]["lines"]}
+    commitment = scenarios["optimized"]["commitment"]
+    discounts = Decimal("0")
+    eligible_total = Decimal("0")
+    for plan in ranges["optimized_tier_uses"]:
+        services = set(ranges["tier_mapping"][plan])
+        eligible = [row for row in balanced_lines.values() if row["aws_service"] in services and row["monthly_amount"]]
+        subtotal = sum(Decimal(str(row["monthly_amount"])) for row in eligible)
+        range_label = ranges["ranges"][plan]["savings_percent"]
+        if plan == "database_savings_plans":
+            range_label = range_label.split("/")[-1]
+        rate = _percent_rate(range_label)
+        recorded = commitment[plan]
+        if sorted(recorded["eligible_line_ids"]) != sorted(row["line_id"] for row in eligible):
+            raise AssertionError(f"{plan}: eligible lines differ")
+        if Decimal(str(recorded["eligible_subtotal_monthly_usd"])) != subtotal:
+            raise AssertionError(f"{plan}: eligible subtotal differs")
+        if Decimal(str(recorded["rate"])) != rate:
+            raise AssertionError(f"{plan}: rate {recorded['rate']} is not the knowledge mid-point {rate}")
+        discount = (subtotal * rate).quantize(Decimal("0.01"))
+        if Decimal(str(recorded["discount_monthly_usd"])) != discount:
+            raise AssertionError(f"{plan}: discount differs")
+        discounts += discount
+        eligible_total += subtotal
+    balanced_total = Decimal(str(scenarios["balanced"]["known_cost_monthly_usd"]))
+    assert Decimal(str(commitment["ineligible_subtotal_monthly_usd"])) == balanced_total - eligible_total
+    return balanced_total - discounts
+def test_estimate_scenarios_floors_and_metric_gates_reconcile() -> None:
     estimate = load(EXPECTED / "estimation-infra.json")
     vendored_schema = load(SKILL_ROOT / "references/vendored/estimate/estimation-infra.schema.json")
     jsonschema.Draft7Validator(vendored_schema).validate(estimate)
     design_ids = {row["source_resource_id"] for row in load(EXPECTED / "aws-design.json")["mappings"]}
     scenarios = estimate["scenarios"]
+    assert list(scenarios) == ["premium", "balanced", "optimized", "like_for_like"]
+    assert "delta_monthly_usd" not in estimate
     for scenario in scenarios.values():
         lines = scenario["lines"]
         assert [row["source_resource_id"] for row in lines] == sorted(
@@ -243,18 +289,36 @@ def test_estimate_dual_totals_floors_and_metric_gates_reconcile() -> None:
         missing = [row["line_id"] for row in lines if row["monthly_amount"] is None]
         assert missing == scenario["unpriced_line_ids"]
         assert scenario["is_floor"] is bool(missing)
-
-    capacity_by_id = {row["source_resource_id"]: row for row in scenarios["capacity_preserving"]["lines"]}
-    for row in scenarios["right_sized"]["lines"]:
-        capacity = capacity_by_id[row["source_resource_id"]]
-        if row["monthly_amount"] is not None and capacity["monthly_amount"] is not None and row["monthly_amount"] < capacity["monthly_amount"]:
+    like_by_id = {row["source_resource_id"]: row for row in scenarios["like_for_like"]["lines"]}
+    for row in scenarios["balanced"]["lines"]:
+        like = like_by_id[row["source_resource_id"]]
+        if row["monthly_amount"] is not None and like["monthly_amount"] is not None and row["monthly_amount"] < like["monthly_amount"]:
             assert row["evidence_sufficient"] is True
             assert row["confidence"] == "measured"
-    expected_delta = Decimal(str(scenarios["right_sized"]["known_cost_monthly_usd"])) - Decimal(str(scenarios["capacity_preserving"]["known_cost_monthly_usd"]))
-    assert expected_delta == Decimal(str(estimate["delta_monthly_usd"])) == Decimal("-62.0")
+    premium = Decimal(str(scenarios["premium"]["known_cost_monthly_usd"]))
+    balanced = Decimal(str(scenarios["balanced"]["known_cost_monthly_usd"]))
+    optimized = Decimal(str(scenarios["optimized"]["known_cost_monthly_usd"]))
+    like_for_like = Decimal(str(scenarios["like_for_like"]["known_cost_monthly_usd"]))
+    assert premium >= balanced >= optimized
+    assert premium == balanced + Decimal(str(scenarios["premium"]["uplift_monthly_usd"]))
+    assert scenarios["like_for_like"]["label"] == "like-for-like, before right-sizing"
+    projected = estimate["projected_costs"]
+    assert Decimal(str(projected["aws_monthly_premium"])) == premium
+    assert Decimal(str(projected["aws_monthly_balanced"])) == balanced
+    assert Decimal(str(projected["aws_monthly_optimized"])) == optimized
+    assert Decimal(str(projected["aws_annual_optimized"])) == optimized * 12
+    delta = estimate["rightsizing_delta"]
+    assert like_for_like - balanced == Decimal(str(delta["monthly"])) == Decimal("52.0")
+    assert Decimal(str(delta["annual"])) == Decimal("624.0")
+    assert delta["basis"] in {"declared_waste", "utilization", "both", "none"}
+    assert delta["explanation"] and delta["what_would_change_this"]
+    assert _recompute_optimized(estimate) == optimized == Decimal("227.61")
     assert estimate["migration_cost_considerations"]["human_labor_monthly_usd"] is None
-
-
+def test_estimate_optimized_rejects_an_invented_discount_rate() -> None:
+    estimate = load(EXPECTED / "estimation-infra.json")
+    estimate["scenarios"]["optimized"]["commitment"]["compute_savings_plans"]["rate"] = 0.5
+    with pytest.raises(AssertionError, match="compute_savings_plans: rate"):
+        _recompute_optimized(estimate)
 def test_workshop_fingerprint_scenario_cap_and_return_state_are_deterministic() -> None:
     workshop = load(EXPECTED / "workshop-scenarios.json")
     scenarios = workshop["scenarios"]
@@ -268,8 +332,10 @@ def test_workshop_fingerprint_scenario_cap_and_return_state_are_deterministic() 
     for row in scenarios:
         summary = row["estimation_summary"]
         assert summary["calculator_url"] is None
-        assert summary["capacity_preserving_is_floor"] is (summary["capacity_preserving_unpriced_count"] > 0)
-        assert summary["right_sized_is_floor"] is (summary["right_sized_unpriced_count"] > 0)
+        assert summary["like_for_like_is_floor"] is (summary["like_for_like_unpriced_count"] > 0)
+        assert summary["balanced_is_floor"] is (summary["balanced_unpriced_count"] > 0)
+        assert summary["premium_known_cost_monthly_usd"] >= summary["balanced_known_cost_monthly_usd"] >= summary["optimized_known_cost_monthly_usd"]
+        assert summary["rightsizing_delta_monthly_usd"] == summary["like_for_like_known_cost_monthly_usd"] - summary["balanced_known_cost_monthly_usd"]
     assert workshop["state_after_exit"] == {
         "current_phase": "estimate",
         "workshop": "completed",
@@ -968,7 +1034,7 @@ def _materialize_complete_mocked_pipeline(root: Path) -> dict[str, bytes]:
     for scenario in estimate["scenarios"].values():
         scenario.update({"known_cost_monthly_usd": 0.0, "is_floor": False, "unpriced_line_ids": [], "lines": line_rows})
     estimate["projected_costs"].update({"aws_monthly_premium": 0.0, "aws_monthly_balanced": 0.0, "aws_monthly_optimized": 0.0, "aws_annual_optimized": 0.0})
-    estimate["delta_monthly_usd"] = 0.0
+    estimate["rightsizing_delta"].update({"monthly": 0.0, "annual": 0.0})
     estimate["complexity_inputs"]["service_count"] = len(source_ids)
     jsonschema.Draft7Validator(load(SKILL_ROOT / "references/vendored/estimate/estimation-infra.schema.json")).validate(estimate)
 
@@ -1022,7 +1088,7 @@ def _materialize_complete_mocked_pipeline(root: Path) -> dict[str, bytes]:
         "decision-summary": "Complete deterministic decision summary.",
         "exec-architecture": "Build-once private managed architecture.",
         "exec-targets": "".join(f'<p data-source-resource-id="{escape(row["source_resource_id"])}" data-aws-service="{escape(row["aws_service"])}">{escape(row["aws_service"])}</p>' for row in mappings),
-        "exec-costs": f'<span data-cost-key="current_monthly">{estimate["current_costs"]["render_monthly"]}</span><span data-cost-key="aws_monthly_balanced">{estimate["projected_costs"]["aws_monthly_balanced"]}</span><span data-cost-key="aws_monthly_optimized">{estimate["projected_costs"]["aws_monthly_optimized"]}</span><span data-cost-key="delta">{estimate["delta_monthly_usd"]}</span>',
+        "exec-costs": f'<span data-cost-key="current_monthly">{estimate["current_costs"]["render_monthly"]}</span><span data-cost-key="aws_monthly_balanced">{estimate["projected_costs"]["aws_monthly_balanced"]}</span><span data-cost-key="aws_monthly_optimized">{estimate["projected_costs"]["aws_monthly_optimized"]}</span><span data-cost-key="delta">{estimate["rightsizing_delta"]["monthly"]}</span>',
         "migration-data": "Postgres Database Migration Service writer quiescence integrity source retention.",
         "migration-storage": "EFS /var/data pre-copy delta ownership permissions integrity.",
         "migration-deployment": "ECR digest serving deploy auto-deploy rollback.",

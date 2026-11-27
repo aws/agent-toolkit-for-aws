@@ -254,16 +254,16 @@ def test_render_adapter_is_kept_so_enabling_it_is_a_one_line_change() -> None:
     assert callable(module._render_service_items)
 
 
-def test_render_infra_run_emits_plan_from_capacity_preserving_lines(tmp_path: Path) -> None:
+def test_render_infra_run_emits_plan_from_balanced_lines(tmp_path: Path) -> None:
     """Render keeps projected_costs.breakdown empty; service items come from the
-    capacity-preserving scenario lines, summed per label, with unpriced and zero
+    balanced (right-sized) scenario lines, summed per label, with unpriced and zero
     lines left out so the list reconciles to the known-cost figure."""
     plan, platform, scope = _build(_render_run(tmp_path), _writer_with_render_enabled())
     assert (platform, scope) == ("RENDER", "INFRA_ONLY")
     assert plan["sourcePlatform"] == "RENDER"
     assert plan["scope"] == "INFRA_ONLY"
     assert plan["runId"] == RENDER_RUN_ID
-    assert plan["cost"]["awsMonthly"] == 358.5
+    assert plan["cost"]["awsMonthly"] == 306.5
     assert plan["cost"]["awsMonthlyBasis"] == "BALANCED"
     assert plan["cost"]["sourceMonthly"] == 123.45
     assert "accuracy" not in plan["cost"]
@@ -272,8 +272,8 @@ def test_render_infra_run_emits_plan_from_capacity_preserving_lines(tmp_path: Pa
     assert len(names) == len(set(names))
     assert next(i for i in items if i["serviceName"] == "Amazon EFS")["monthlyCost"] == 1.5
     assert "AWS Certificate Manager + external DNS" not in names
-    assert next(i for i in items if i["serviceName"] == "ECS on Fargate")["monthlyCost"] == 90.0
-    assert round(sum(item["monthlyCost"] for item in items), 2) == 358.5
+    assert next(i for i in items if i["serviceName"] == "ECS on Fargate")["monthlyCost"] == 75.0
+    assert round(sum(item["monthlyCost"] for item in items), 2) == 306.5
     assert {item["classification"] for item in items} == {"INFRASTRUCTURE"}
 
 
@@ -290,16 +290,16 @@ def test_render_source_baseline_requires_explicit_usd(tmp_path: Path) -> None:
     for index, mutate in enumerate((drop_currency, euro, unavailable)):
         plan, _, _ = _build(_render_run(tmp_path, mutate, name=f"baseline-{index}"), _writer_with_render_enabled())
         assert "sourceMonthly" not in plan["cost"]
-        assert plan["cost"]["awsMonthly"] == 358.5
+        assert plan["cost"]["awsMonthly"] == 306.5
 
 
 def test_render_service_items_omitted_when_lines_do_not_reconcile(tmp_path: Path) -> None:
     def drift(estimate: dict) -> None:
-        estimate["scenarios"]["capacity_preserving"]["known_cost_monthly_usd"] = 999.0
+        estimate["scenarios"]["balanced"]["known_cost_monthly_usd"] = 999.0
 
     plan, _, _ = _build(_render_run(tmp_path, drift), _writer_with_render_enabled())
     assert "awsServiceItems" not in plan["cost"]
-    assert plan["cost"]["awsMonthly"] == 358.5
+    assert plan["cost"]["awsMonthly"] == 306.5
 
 
 def test_render_ai_estimate_fails_open_without_plan(tmp_path: Path) -> None:

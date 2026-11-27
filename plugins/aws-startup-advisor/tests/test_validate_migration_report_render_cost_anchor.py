@@ -20,8 +20,8 @@ def _load():
     return module
 def _exec_costs(
     current: str,
-    balanced: str = '<strong data-cost-key="aws_monthly_balanced">$358</strong>',
-    optimized: str = '<strong data-cost-key="aws_monthly_optimized">$296</strong>',
+    balanced: str = '<strong data-cost-key="aws_monthly_balanced">$306</strong>',
+    optimized: str = '<strong data-cost-key="aws_monthly_optimized">$228</strong>',
 ) -> str:
     return (
         '<section id="exec-costs"><h2>Infrastructure Cost Comparison</h2>'
@@ -31,9 +31,9 @@ def _exec_costs(
 RENDER_ESTIMATE = {
     "current_costs": {"source": "user_stated", "render_monthly": 123.45},
     "projected_costs": {
-        "aws_monthly_balanced": 358.5,
-        "aws_monthly_optimized": 296.5,
-        "aws_monthly_premium": 394.35,
+        "aws_monthly_balanced": 306.5,
+        "aws_monthly_optimized": 227.61,
+        "aws_monthly_premium": 306.5,
     },
 }
 GCP_ESTIMATE = {
@@ -64,7 +64,7 @@ def test_render_optimized_anchor_mismatch_fails() -> None:
     )
     errors = validator._validate_cost_figures(html, RENDER_ESTIMATE)
     assert len(errors) == 1, errors
-    assert "projected_costs.aws_monthly_optimized = $296" in errors[0]
+    assert "projected_costs.aws_monthly_optimized = $228" in errors[0]
 def test_render_current_monthly_anchor_missing_in_exec_costs_fails() -> None:
     validator = _load()
     html = _exec_costs("$123/mo")  # figure rendered but not anchored
