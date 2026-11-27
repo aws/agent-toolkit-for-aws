@@ -13,7 +13,7 @@ description: >
   Not applicable to authoring workflows (handled by authoring-mwaa-workflow), running or
   smoke-testing a workflow (handled by testing-mwaa-workflow), or CI-CD deploy failures.
 metadata:
-  version: "1"
+  version: "2"
 ---
 
 # Debugging MWAA Workflows
@@ -71,10 +71,26 @@ directory. Never fetch or write customer data through `retrieve_skill`.
 
 **Provisioned:** list failed DAG runs and task instances via
 `aws mwaa invoke-rest-api` (paths `/dags/{id}/dagRuns` and
-`/dags/{id}/dagRuns/{run_id}/taskInstances`). If `invoke-rest-api` errors
-(`RestApiClientException`), fall back to the Scheduler and DAGProcessing log
-groups. Get version and config from `aws mwaa get-environment`. See
+`/dags/{id}/dagRuns/{run_id}/taskInstances`). If `invoke-rest-api` fails
+with `RestApiClientException` (Airflow 4xx) or `RestApiServerException`
+(Airflow 5xx), read the error's `RestApiStatusCode` and `RestApiResponse`
+first: 404 means a wrong path or id, 400 or 422 a schema or parameter
+problem, 409 a conflict (a `dag_run_id` or logical date that already exists),
+and 401/403 the mapped Airflow role. An `AccessDeniedException` from
+`invoke-rest-api` itself means the caller lacks `airflow:InvokeRestApi`; the
+request never reached Airflow. Retry a 5xx with backoff before diagnosing,
+because it is often transient; if it persists, check environment health and
+`GET /importErrors`. Only if the API stays unusable, fall back to the
+Scheduler and DAGProcessing log groups. Get version and config from
+`aws mwaa get-environment`. See
 [references/provisioned-diagnostics.md](references/provisioned-diagnostics.md).
+
+**Provisioned logging is opt-in per component.** Before reading any log group
+(here or in Step 2), check `LoggingConfiguration` from `get-environment` for
+that component's `Enabled` and `LogLevel`. If a needed group is disabled, or
+its level is too high to show the error, say so and do not treat an empty
+result as "no errors". Suggest enabling it; that is an `update-environment`,
+so present the command for the user's approval.
 
 **Serverless:** `aws mwaa-serverless list-workflow-runs`, then
 `get-workflow-run`. Read `RunDetail.ErrorMessage` — an empty `TaskInstances`
@@ -88,6 +104,28 @@ Pull the real exception past boilerplate:
 
 **Provisioned:** read the Task log group first, then Worker/Scheduler/
 DAGProcessing as the symptom directs.
+
+For a deferrable AWS operator, how much of the service's error reaches the
+Task log depends on the operator's trigger (a Glue failure can show only
+`Trigger failure`). Find the service run identifiers in the Task log (Glue job
+name and `JobRunId`, EMR Serverless application id and job run id, Athena
+`QueryExecutionId`) and read the service's
+own run record with a read-only call, even when the Task log already shows
+an error: `aws glue get-job-run --job-name <name> --run-id <id>`
+(`JobRun.ErrorMessage`),
+`aws emr-serverless get-job-run --application-id <app> --job-run-id <id>`
+(`jobRun.stateDetails`), or
+`aws athena get-query-execution --query-execution-id <id>`
+(`QueryExecution.Status.StateChangeReason`).
+If the Task log shows only `Trigger failure`, or the task is stuck in
+`deferred`, also list the streams in the Scheduler log group and read the
+triggerer stream around the deferral time. MWAA has no separate log group for
+the triggerer: it runs in the scheduler's Fargate task and writes its own
+stream in the Scheduler log group. Airflow forwards a trigger's per-task
+events into the Task log, but triggerer process logs (trigger crashes, a
+triggerer that is down or overloaded, errors outside a task's context) are
+only in that stream. So debugging a deferrable task needs Scheduler logging
+enabled; disabling it also drops the triggerer logs.
 
 **Serverless:** `list-task-instances` then `get-task-instance` to get each
 task's `LogStream`, then read that stream in CloudWatch.
@@ -158,7 +196,10 @@ compliant artifact.
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| `RestApiClientException` (Provisioned) | Mis-scoped execution role or service error | Fall back to Scheduler/DAGProcessing log groups |
+| `RestApiClientException` (Provisioned) | Airflow returned 4xx | Read `RestApiStatusCode` and `RestApiResponse`: 404 wrong path or id, 400/422 schema or parameter, 409 conflict (run id or logical date exists), 401/403 mapped Airflow role |
+| `AccessDeniedException` from `invoke-rest-api` (Provisioned) | IAM denies `airflow:InvokeRestApi`; the request never reached Airflow | Check the caller's IAM policy for `airflow:InvokeRestApi` on the environment |
+| `RestApiServerException` (Provisioned) | Airflow returned 5xx, often transient | Retry with backoff; if it persists, check environment health and `GET /importErrors` |
+| Log group read returns nothing (Provisioned) | Component logging disabled, or `LogLevel` too high | Check `LoggingConfiguration` `Enabled`/`LogLevel`; suggest `update-environment` for the user to approve |
 | `ResourceNotFoundException` on get-workflow-run | Wrong workflow ARN or run id | Re-list with list-workflow-runs |
 | Task log stream empty (Serverless) | Wrong log group assumed | Read `LoggingConfiguration` from get-workflow |
 | No task logs but run FAILED | Definition/parse error | Read `RunDetail.ErrorMessage`; fix the YAML |

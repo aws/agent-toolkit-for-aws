@@ -68,9 +68,10 @@ so `create-environment` does not fail late on a pip resolution:
    that package (download it, edit that line, save it to the new
    environment's DAGs folder, reference it) rather than leaving a pin that
    fights the constraint.
-3. **Verify (Phase 6 Docker, if available):** build the `jump_1.to` image with
-   `amazon-mwaa-docker-images` and confirm the requirements, startup script, and
-   plugins install cleanly; fix conflicts and retry until clean. If Docker is
+3. **Verify (Phase 6 Docker, if available):** run Phase 6's `test-dags`
+   procedure for `jump_1.to`; fix conflicts and retry until clean. If version
+   jump 1 is `python_change`, run it on the DAG set the new environment starts
+   with (including the Python-line fixes from Phase 5 step 3). If Docker is
    unavailable, rely on the constraint cross-reference above.
 
 The engine advances the constraint per version jump toward the target after
@@ -78,7 +79,8 @@ create (see upgrade-engine.md). DAGs are written to `<new-env-dag-path>` by the
 engine (fixed code). Each of the new environment's S3 keys is dedicated, so
 `create-environment` references the new environment's paths without pinning an
 object version. Then create the new environment (only after the requirements
-verify clean):
+verify clean, and only after the plan item `Pre-flight: extend execution
+role / trust policy / KMS` is `DONE`; see discovery-preflight.md Step 2.3):
 
 ```
 aws mwaa create-environment --name <new-env> \
@@ -88,11 +90,11 @@ aws mwaa create-environment --name <new-env> \
   --requirements-s3-path <new-env-requirements-path> \
   --plugins-s3-path <new-env-plugins-path> \
   --startup-script-s3-path <new-env-startup-path> \
-  --execution-role-arn <same-as-current-env> \
+  --execution-role-arn <same-as-current-env; extended for this environment at pre-flight Step 2.3> \
   --kms-key <same-as-current-env-KmsKey; omit ONLY if your current environment uses the AWS-owned key — confirm this immutable fallback> \
   --network-configuration '{"SubnetIds":<current-env-SubnetIds-array>,"SecurityGroupIds":<current-env-SecurityGroupIds-array>}' \
   --environment-class <same-as-current-env> \
-  --airflow-configuration-options <same-as-current-env> \
+  --airflow-configuration-options <same-as-current-env, with scheduler.catchup_by_default=False> \
   --logging-configuration <same-as-current-env> \
   --weekly-maintenance-window-start <same-as-current-env> \
   --webserver-access-mode <same-as-current-env> \
@@ -105,6 +107,16 @@ aws mwaa create-environment --name <new-env> \
 
 Omit any path/version flags for artifacts your current environment does not
 use.
+
+**Catchup:** copy your current environment's `AirflowConfigurationOptions`
+but set `scheduler.catchup_by_default` to `False`. Airflow 2 defaults it to
+`True`, and an environment with no run history then backfills every interval
+since `start_date` for any DAG that does not set `catchup` explicitly, the
+moment it is unpaused (by the testing skill or at Phase 8.1(c)). DAGs that set
+`catchup=True` explicitly still catch up, which is intended. Record your
+current environment's original value (or "unset") in the plan; Phase 8 asks
+whether to restore it after the final switchover batch.
+
 Poll until AVAILABLE (may take up to a couple of hours):
 
 ```
@@ -119,15 +131,22 @@ No historical run data is migrated. Migrate only operational config:
 > and sensitive for secret-bearing config:
 >
 > - **Connection passwords do NOT round-trip.** `GET /connections` omits the
->   password in Airflow 2.x (schema `load_only`) and masks it in 3.x (redacted
->   validator), so the POST below recreates a **passwordless** connection. Treat
->   a migrated connection as incomplete: point it at a Secrets Manager / SSM
+>   password in Airflow 2.x (schema `load_only`), so the POST below recreates a
+>   **passwordless** connection. In 3.x it returns the password as `***`, and
+>   a copied connection would get `***` as its password (not passwordless).
+>   Treat a migrated connection as incomplete: point it at a Secrets Manager / SSM
 >   secrets backend (preferred — the secret never touches the API) or re-enter
 >   the password out of band, and verify each connection on the new environment
 >   before switchover.
+> - **On a 3.x source, more than the password is masked.** `GET /variables`
+>   and `GET /connections` return `***` for variables whose key matches the
+>   sensitive-name list (substrings such as `password`, `secret`, `token`,
+>   `api_key`, `private_key`, plus `core.sensitive_var_conn_names`), sensitive
+>   keys nested in JSON variable values, and sensitive fields in connection
+>   `extra`. POST stores `***` as the real value and raises no error.
 > - **The values that do transit are sensitive.** Variable values (returned
->   cleartext by `GET /variables`) and connection `extra` land in the `--body`
->   argument, visible in process args, shell history, and the MCP-server /
+>   cleartext by `GET /variables` on 2.x sources only) and connection
+>   `extra` land in the `--body` argument, visible in process args, shell history, and the MCP-server /
 >   CloudTrail audit log. Prefer a secrets backend so they never traverse the
 >   API/CLI; if inline migration is unavoidable, treat them as secrets and do
 >   not echo them.
@@ -140,6 +159,14 @@ environment that has more than 100 of any of them. Pass
 incremented by 100 until you have read `total_entries` items — the same
 limit/offset loop discovery-preflight.md Step 1.4 uses for `/dags` — POSTing
 every page to the new environment.
+
+**Never POST a value or extra that contains `***`.** Skip such a variable,
+POST such a connection without the masked password or `extra`, and record
+its key or `conn_id` (never the value) in the plan next to the
+password-bearing connections, so the user restores them in the same
+out-of-band pass. Report them in the Phase 8 pre-switchover summary. Mark the
+Variables or Connections category `DONE` only when those items are listed in
+the plan.
 
 **Variables** (skip if secrets backend handles these):
 
@@ -212,6 +239,8 @@ For each batch (0..N):
   aws mwaa invoke-rest-api --name <new-env> --method GET --path /dags/<dag_id>
   ```
 
+- Leave the batch's DAGs paused (engine step 1a); pause any that came up
+  unpaused.
 - On import errors, hand off to `debugging-mwaa-workflow`; fix, redeploy,
   re-verify. Loop within the batch until parsing is clean.
 - Update plan: mark batch DAGs deployed.
@@ -242,11 +271,84 @@ current environment is paused and no longer serving it.
 - Do NOT begin the batch-by-batch switchover until test-run validation
   passes. Parse success alone does not prove artifacts execute correctly at
   the target version.
+- DAGs on the new environment stay paused except during their own test run:
+  the testing skill unpauses each DAG only for its test run. Once a DAG's test
+  run is terminal, pause it again on the new environment
+  (`PATCH /dags/<dag_id>` with `{"is_paused":true}`), so it does not run its
+  schedule alongside your current environment before its Phase 8.1 batch.
+  Track this as `Re-pause all DAGs on <new-env> after the test-run
+  checkpoint [PENDING]`.
 
 Record execution results in the plan under a `## Test-run results` section
 (DAG ID, run_id, state, duration, and any NEEDS-DECISION items).
 
 ### 5. Proceed to Phase 8
 
-All batches test-run verified (Step 4-checkpoint), operational metadata
-migrated. Ready for switchover.
+All batches test-run verified (Step 4-checkpoint), every DAG paused again on
+the new environment, operational metadata migrated. Ready for switchover
+(Phase 8.1 below).
+
+## Phase 8.1: Batched switchover
+
+SKILL.md Phase 8 runs this section for the New-environment upgrade only, with
+explicit approval per batch. The stability period, decommission and
+permission cleanup stay in SKILL.md Phase 8.
+
+**Pre-switchover summary:** before the first batch, show the plan's
+out-of-band restore list (password-bearing connections and items skipped
+because they contained `***`, by key or `conn_id` only) and confirm with the
+user that each one is restored on the new environment.
+
+For each batch (matching the same batch grouping from Phase 7):
+
+a. Pause the batch's DAGs on your current environment (space calls with a
+   short sleep; `invoke-rest-api` has a 10-second timeout / 6 MB response
+   cap
+   ([docs](https://docs.aws.amazon.com/mwaa/latest/userguide/access-mwaa-apache-airflow-rest-api.html))
+   and is throttled per environment, so use backoff rather than a fixed rate):
+
+   ```
+   aws mwaa invoke-rest-api --name <current-env> --method PATCH \
+     --path /dags/<dag_id> --body '{"is_paused":true}'
+   sleep 0.2
+   ```
+
+b. Drain: wait for in-flight runs of those DAGs to complete on your current
+   environment. Poll `dag_runs` for `state=running`. If a run remains
+   in-flight after 10 minutes and its active task is a sensor or deferred
+   operator (list that run's tasks with `GET
+   /dags/<dag_id>/dagRuns/<run_id>/taskInstances` and look for
+   `state=deferred` or `state=up_for_reschedule`), proceed with unpausing
+   on the new environment. The
+   paused DAG on your current environment will not produce new runs; the
+   in-flight run will complete or timeout independently. It cannot
+   conflict with the new environment's Airflow metadata (the new
+   environment has no prior dag_runs for that execution_date), but it can
+   still collide with the new environment's first run on external
+   resources (fixed-name jobs, paths, tables; see SKILL.md Phase 3 step 5a).
+   Warn the user before unpausing a batch that has such a DAG still
+   draining.
+c. Unpause the same DAGs on the new environment (same 0.2s throttle),
+   except DAGs recorded as paused in the plan's `Original pause state`:
+   leave those paused and list them for the user.
+
+   ```
+   aws mwaa invoke-rest-api --name <new-env> --method PATCH \
+     --path /dags/<dag_id> --body '{"is_paused":false}'
+   sleep 0.2
+   ```
+
+d. Monitor the batch on the new environment for one full schedule cycle
+   before proceeding to the next batch. On failure, pause the batch on the
+   new environment, then re-enable it on your current environment
+   (rollback; again only the DAGs that were unpaused originally), and
+   investigate.
+
+After the final batch and before the stability period, ask the user
+whether to restore your current environment's original
+`scheduler.catchup_by_default` on the new environment (it has run history
+by then, so restoring only resumes gap-filling), and record the answer
+(8.1a).
+
+For small environments (fewer than 10 DAGs or all-simple classification),
+offer an all-at-once switchover as an alternative if the user prefers speed.
