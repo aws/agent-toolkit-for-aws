@@ -17,6 +17,9 @@ Also see:
 - `heroku-workshop/` — Heroku what-if workshop seed + arm64 reprice snapshot + `check_expected_workshop.py`
 - `heroku-nonweb-scaling/` — Heroku Design seed + golden output for the Horizontal Non-Web Capacity Guard (`eco`/`basic` worker at `quantity: 2` → Fargate) + `check_expected_nonweb_scaling.py`
 - `gcp-workshop/` — GCP what-if workshop seed + graviton reprice + `check_expected_workshop.py`
+- `azure-iac-terraform/` — a synthetic Azure Terraform estate with goldens for every phase (`after-discover/` through `after-generate/`, which carries a full `migration-report.html`) and a `check_expected_*.py` asserter per phase
+- `gcp-decision-gate/`, `heroku-decision-gate/` — decision-mode goldens (`decision-report.html` + `DECISION.md` + estimate) with `check_expected_decide.py`, run through the shared validator in `--mode decision`
+- `estimation-infra-reference.json` — the GCP estimate the reference report is rendered from. Every estimate listed in `TIERED_ESTIMATES` (`tests/test_tier_semantics_contract.py`) carries `_premium_basis` / `_optimized_basis` sentences showing the tier arithmetic, and that test fails if one is missing or the tiers fall out of order; an estimate not in that list has not been re-derived under the tier rule.
 
 ## Migration report reference fixture
 
