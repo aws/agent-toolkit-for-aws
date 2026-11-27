@@ -16,7 +16,7 @@ Applies to the `render.postgres` and `render.key_value` rows of `aws-design.json
 - Encrypt at rest and in transit. Use the single stack key `aws_kms_key.stack` declared by `kms.tf` (see `generate-artifacts-baseline.md`) for storage, Performance Insights, the managed secret, and the cache whenever `kms.tf` is emitted: that is when `global.compliance` contains `hipaa`, `pci` or `fedramp`, or an `aws_config` records `customer_managed_key: true`. `data.tf` never declares a KMS key or alias, and there is never an `aws_kms_key.data`. When `kms.tf` is not emitted, use AWS-managed encryption: `storage_encrypted = true` (or the at-rest flag) with no KMS argument anywhere. `kms.tf` exposes the key ARN through the output `kms_key_arn`.
 - Never emit a credential, connection string with a password, or `password`, `auth_token`, or `master_password` variable. Passwords created by RDS or by ElastiCache must never pass through Terraform state as inputs.
 - Take engine major version, extensions, and parameters from the Discover and Clarify evidence. Pin the major version explicitly and never use `latest` or an unconstrained version.
-- Size from the balanced sizing recorded by Design (`knowledge/design/postgres-rds-sizing.json`, `knowledge/design/keyvalue-elasticache-sizing.json`), through typed variables with validation.
+- Size from the right-sized (Balanced) sizing recorded by Design: `aws_config.instance_class` when present, otherwise the class the sizing knowledge file resolves (`knowledge/design/postgres-rds-sizing.json`, `knowledge/design/keyvalue-elasticache-sizing.json`), through typed variables with validation.
 - Emit non-secret endpoints, ports, and secret ARNs as outputs with descriptions. Mark an output `sensitive = true` only when its value contains something that must not be logged.
 
 ## Render PostgreSQL
@@ -74,7 +74,7 @@ Every target must preserve the persistence and eviction facts from the source. A
 - Persistence: `snapshot_retention_limit` of 0 for a cache that tolerates a cold start, and at least 1 with a `snapshot_window` for data that must survive a restart. Add `final_snapshot_identifier` when snapshots are on.
 - Maintenance: `auto_minor_version_upgrade = true`, `maintenance_window`, and `apply_immediately = false`.
 - Logs: add `log_delivery_configuration` for `slow-log` when a CloudWatch log group exists.
-- Node type: take `node_type` from the sizing knowledge file for the balanced scenario, as a typed variable.
+- Node type: take `aws_config.node_type` as recorded by Design (the Balanced design), as a typed variable.
 
 ### ElastiCache for Valkey Serverless (`aws_elasticache_serverless_cache`)
 

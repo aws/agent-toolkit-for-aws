@@ -397,12 +397,12 @@ def _service_rows(projected: object) -> list[tuple[str, str | None, dict]]:
 def _render_service_items(data: dict) -> list[dict]:
     """Per-service line items for a Render infra estimate. Render leaves
     projected_costs.breakdown empty and records its priced lines under
-    scenarios.capacity_preserving.lines[] (the scenario aws_monthly_balanced equals).
+    scenarios.balanced.lines[] (the right-sized scenario aws_monthly_balanced equals).
     Lines are summed per `aws_service` label; null, zero, and out-of-bounds amounts are
     skipped, so unpriced lines (the known-cost floor) never appear as a cost. The list is
     returned only when it reconciles to the scenario's known-cost figure, else omitted."""
     scenarios = data.get("scenarios")
-    scenario = scenarios.get("capacity_preserving") if isinstance(scenarios, dict) else None
+    scenario = scenarios.get("balanced") if isinstance(scenarios, dict) else None
     lines = scenario.get("lines") if isinstance(scenario, dict) else None
     if not isinstance(lines, list):
         return []

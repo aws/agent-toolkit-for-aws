@@ -24,7 +24,7 @@ GENERATED = EXPECTED / "generated"
 
 RR_WEB_ROW = '<tr data-source-resource-id="rr-web" data-aws-service="ECS on Fargate">'
 RR_DISK_ROW = '<tr data-source-resource-id="rr-disk" data-aws-service="Amazon EFS"><td>rr-disk</td><td>Persistent disk</td><td>Amazon EFS</td>'
-DELTA_CELL = '<td class="savings" data-cost-key="delta">-$62</td>'
+DELTA_CELL = '<td class="savings" data-cost-key="delta">+$52</td>'
 CURRENT_CELL = '<td data-cost-key="current_monthly">$123</td>'
 
 
@@ -76,7 +76,7 @@ def test_complete_report_passes_with_exact_status(tmp_path: Path) -> None:
         (lambda text: _replace_once(text, RR_WEB_ROW, RR_WEB_ROW.replace("ECS on Fargate", "Amazon App Runner")), "TARGET_MAPPING_MISMATCH"),
         (lambda text: _replace_once(text, RR_DISK_ROW, RR_DISK_ROW.replace("<td>Amazon EFS</td>", "<td>Elastic file storage</td>")), "TARGET_VISIBLE_TEXT_MISMATCH"),
         (lambda text: _replace_once(text, RR_DISK_ROW, RR_DISK_ROW.replace(' data-aws-service="Amazon EFS"', "")), "TARGET_ROW_ATTRIBUTES_INCOMPLETE"),
-        (lambda text: _replace_once(text, DELTA_CELL, DELTA_CELL.replace("-$62", "-$99")), "COST_DELTA_MISMATCH"),
+        (lambda text: _replace_once(text, DELTA_CELL, DELTA_CELL.replace("+$52", "+$99")), "COST_DELTA_MISMATCH"),
         (lambda text: _replace_once(text, DELTA_CELL, DELTA_CELL.replace(' data-cost-key="delta"', "")), "COST_DELTA_MISSING"),
         (lambda text: _replace_once(text, 'data-accounted-count="15"', 'data-accounted-count="14"'), "REPORT_ACCOUNTED_COUNT_MISMATCH"),
         (lambda text: text.replace("build-once", "single-build"), "CONTENT_EXEC_ARCHITECTURE_BUILD-ONCE"),

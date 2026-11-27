@@ -15,7 +15,8 @@ accessibility, the visual shell, and the shared cost anchors
   warnings require;
 * render-required sections and their TOC links, plus the required phrases per
   migration section;
-* the render-local ``delta`` cost anchor (``delta_monthly_usd``);
+* the render-local ``delta`` cost anchor (``rightsizing_delta.monthly``, like-for-like
+  minus Balanced);
 * the unavailable-baseline literal when ``current_costs.render_monthly`` is null;
 * secrets, keys, and local-path exclusions in rendered text.
 
@@ -45,7 +46,7 @@ RENDER_SECTIONS = (
 )
 INERT = {"script", "style", "template"}
 COST_PATHS = {
-    "delta": ("delta_monthly_usd",),
+    "delta": ("rightsizing_delta", "monthly"),
 }
 SECTION_TERMS = {
     "exec-architecture": (("build-once", "build once"), ("private",), ("managed",)),

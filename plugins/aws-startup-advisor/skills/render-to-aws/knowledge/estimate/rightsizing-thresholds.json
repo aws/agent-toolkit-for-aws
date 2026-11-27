@@ -20,5 +20,5 @@
     "rag_or_retrieval_cache": 1.4,
     "agent_browser_or_tool_process": 1.5
   },
-  "insufficient_evidence": {"confidence": "inferred", "right_sized_equals_capacity_preserving": true, "downsize_allowed": false}
+  "insufficient_evidence": {"confidence": "inferred", "balanced_equals_like_for_like": true, "downsize_allowed": false}
 }
