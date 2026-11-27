@@ -67,7 +67,7 @@ fresh decision without being touched or archived.
 
 ## Validator invocation
 
-Two commands, both must pass. The shared validator carries the structure and content standard under the heroku profile; the heroku add-on carries the heroku-only rules (`heroku_monthly_like_for_like` anchor, Activate status rules, `exec-assumptions` when the estimate declares `decision_basis`, non-empty `exec-optimization` / `appendix-optimization` in full mode, the `.phase-status.json` pre-execution check, no `decision-cta` in full mode, no `.appendix-header` element in decision mode, and no retired section ID in either mode).
+Two commands, both must pass. The shared validator carries the structure and content standard under the heroku profile; the heroku add-on carries the heroku-only rules (`heroku_monthly_like_for_like` anchor, Activate status rules, `exec-assumptions` when the estimate declares `decision_basis`, a populated row or the exact no-eligible-commitment sentence in `exec-optimization` and `appendix-optimization` in full mode, the `.phase-status.json` pre-execution check, no `decision-cta` in full mode, no `.appendix-header` element in decision mode, and no retired section ID in either mode — `next-steps`, `cost-optimization`, `decision-basis` fail with a message naming their replacement).
 
 ```bash
 python3 "$PLUGIN_ROOT/scripts/validate-migration-report.py" \

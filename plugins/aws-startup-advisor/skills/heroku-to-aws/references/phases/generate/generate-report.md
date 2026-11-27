@@ -886,11 +886,16 @@ more scenarios exist, appendix content-depth floors, the `draft for review` foot
 `aws_monthly_balanced` / `current_monthly` cost anchors. The heroku add-on
 (`<SKILL_BASE>/scripts/validate-heroku-migration-report.py`) enforces the heroku-only rules:
 no `decision-cta` in full mode, no `.appendix-header` in decision mode, no retired section ID
-in either mode, the `.share-card` border rule, the `heroku_monthly_like_for_like` anchor and
-its source-consistency check, the Activate status rules driven by `preferences.json`,
-non-empty `exec-optimization` / `appendix-optimization` in full mode, the security-appendix
-"What it does" / "Threat mitigated" columns, `exec-assumptions` when the estimate declares
-`decision_basis`, and the decision-mode `.phase-status.json` pre-execution check.
+in either mode (`next-steps`, `cost-optimization`, `decision-basis` each fail with a message
+naming the replacement: the `decision-summary` Next steps list / `decision-cta`,
+`exec-optimization` plus `appendix-optimization`, `exec-assumptions`), the `.share-card`
+border rule, the `heroku_monthly_like_for_like` anchor and its source-consistency check, the
+Activate status rules driven by `preferences.json`, in full mode a populated table row or the
+exact no-eligible-commitment sentence in each of `exec-optimization` and
+`appendix-optimization` (when present), the security-appendix "What it does" / "Threat
+mitigated" columns, `exec-assumptions` ("What This Assessment Rests On") when the estimate
+declares `recommendation.decision_basis`, and the decision-mode `.phase-status.json`
+pre-execution check.
 
 ---
 
