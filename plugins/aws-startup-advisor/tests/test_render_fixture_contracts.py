@@ -401,7 +401,9 @@ def test_estimate_optimization_opportunities_are_the_commitment_rows() -> None:
     database = by_type["database_savings_plans"]
     assert database["opportunity"] == "Database Savings Plans"
     assert Decimal(str(database["savings_monthly"])) == Decimal(str(commitment["database_savings_plans"]["discount_monthly_usd"]))
-    assert database["savings_percent"].startswith("up to 20%")
+    # The vendored `range` for the Database Savings Plan bucket, optionally suffixed with the
+    # usage mode in parentheses (estimate-infra.md rule 4).
+    assert re.fullmatch(r"up to 20%( \(provisioned\))?", database["savings_percent"]), database["savings_percent"]
 
 
 def test_generate_ledger_schemas_and_complete_target_accounting() -> None:
