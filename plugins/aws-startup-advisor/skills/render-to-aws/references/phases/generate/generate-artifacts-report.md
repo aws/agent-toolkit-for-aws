@@ -93,8 +93,8 @@ validators can confirm the rendered dollars match the estimate:
 | ---------------------- | -------------------------------------------------------------------------- | ------------ |
 | `current_monthly`      | `current_costs.render_monthly`, or the literal text `unavailable` when `current_costs.source` is `unavailable` | plugin-root (dollars) / render-local (literal) |
 | `aws_monthly_balanced` | `projected_costs.aws_monthly_balanced` — the right-sized design; matches the generated Terraform | plugin-root |
-| `aws_monthly_optimized`| `projected_costs.aws_monthly_optimized` — Balanced minus the commitment discount on eligible lines | plugin-root  |
-| `aws_monthly_premium`  | `projected_costs.aws_monthly_premium` (optional; required when the value exists) | plugin-root |
+| `aws_monthly_optimized`| `projected_costs.aws_monthly_optimized` — Balanced minus the commitment discount on eligible lines; exactly one anchor in `exec-costs` | plugin-root (dollars) / render-local (presence) |
+| `aws_monthly_premium`  | `projected_costs.aws_monthly_premium` (required, exactly one anchor in `exec-costs`, whenever the value exists) | plugin-root (dollars) / render-local (presence) |
 | `delta`                | `rightsizing_delta.monthly` — like-for-like minus Balanced, on the like-for-like comparison row, e.g. `+$52` | render-local |
 
 Example: `<td data-cost-key="aws_monthly_balanced">$306</td>` and
