@@ -17,6 +17,7 @@ right-sized design, so every merged state keeps render consistent with the canon
 """
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -109,6 +110,7 @@ TIERED_ESTIMATES = (
     "fixtures/heroku-decision-gate/after-decide-complete/estimation-infra.json",
     "fixtures/heroku-decision-gate/retained-execution-pack/estimation-infra.json",
     "fixtures/azure-iac-terraform/after-estimate/estimation-infra.json",
+    "skills/render-to-aws/fixtures/expected/estimation-infra.json",
 )
 
 
@@ -300,6 +302,14 @@ def test_canonical_flags_estimates_without_a_tier_basis_and_generate_offers_a_re
     ):
         text = _read(PLUGIN_ROOT / rel)
         assert "_optimized_basis" in text and "earlier tier definitions" in text and "re-run" in text.lower(), rel
+    # render writes both basis fields from its scenarios, so the rule never fires on a fresh
+    # render report: the committed fixture carries them, and the estimate spec says Estimate
+    # always writes them.
+    render_estimate = json.loads(_read(PLUGIN_ROOT / "skills/render-to-aws/fixtures/expected/estimation-infra.json"))
+    pc = render_estimate["projected_costs"]
+    assert pc.get("_premium_basis") and pc.get("_optimized_basis"), "render fixture lacks the tier basis fields"
+    render_spec = _read(PLUGIN_ROOT / "skills/render-to-aws/references/phases/estimate/estimate-infra.md")
+    assert "`_premium_basis`" in render_spec and "`_optimized_basis`" in render_spec, "render Estimate does not write the tier basis"
 
 
 def test_azure_generate_report_teaches_the_canonical_tier_meanings():

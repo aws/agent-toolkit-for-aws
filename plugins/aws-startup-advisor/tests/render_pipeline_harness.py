@@ -307,6 +307,14 @@ def estimate_from_design(design: dict[str, Any]) -> dict[str, Any]:
             "aws_monthly_balanced": balanced_total,
             "aws_monthly_optimized": optimized_total,
             "aws_annual_optimized": round(optimized_total * 12, 2),
+            "_premium_basis": (
+                f"Balanced {balanced_total} + {premium['uplift_monthly_usd']} multi-AZ uplift on "
+                f"{', '.join(premium['uplifted_line_ids']) or 'no line'}; Premium = {premium['known_cost_monthly_usd']}."
+            ),
+            "_optimized_basis": (
+                f"Commitment discounts on the eligible subtotal per plan from scenarios.optimized.commitment; "
+                f"Optimized = {optimized_total}."
+            ),
             "breakdown": {},
         },
         "scenarios": scenarios,
