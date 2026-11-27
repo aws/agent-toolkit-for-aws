@@ -87,7 +87,11 @@ explicitly instead.
    reserved capacity may include a preliminary dollar sizing when the target
    instance class is confirmed and projected on-demand cost clears the
    surfacing threshold (currently $50/month); Compute Savings Plans stay
-   percent-only until a real AWS baseline exists.
+   percent-only until a real AWS baseline exists. This governs the
+   recommendation in the Cost Optimization section. The Optimized cost TIER
+   is a pricing scenario, not a recommendation: it applies the shared tier
+   rates in `commitment-discount-ranges.json` to the eligible subtotal in
+   dollars so the reader can compare scenarios.
 2. **AWS credits do not cover upfront commitment costs.** Promotional or
    Activate credits cannot be applied to the upfront cost of Reserved
    Instances or Savings Plans (Partial Upfront or All Upfront) — they only

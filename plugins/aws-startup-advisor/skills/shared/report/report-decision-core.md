@@ -402,7 +402,11 @@ Render two things:
    savings on top of the Optimized tier — Optimized already includes the
    commitment rows at their mid-point rate (and nothing else: Spot and
    storage-class rows are opportunities, not tier inputs). State that caveat
-   in the section when Optimized is shown. Database Savings Plans and RDS Reserved
+   in the section when Optimized is shown. The Optimized tier is a **pricing
+   scenario** for the reader's comparison, not a commitment recommendation:
+   it may show a Compute Savings Plan in dollars, while the Cost Optimization
+   section still recommends a Compute Savings Plan only in percent until a
+   30–90 day AWS usage baseline exists (`ri-sp-eligibility.md` caveat 1). Database Savings Plans and RDS Reserved
    Instances are mutually exclusive on the same database workload.
 2. **Which commitment fits** — a short list from the opportunity rows
    (Compute Savings Plans, Database Savings Plans, Reserved Instances /
