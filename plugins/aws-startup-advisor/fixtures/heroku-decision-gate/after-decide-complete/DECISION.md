@@ -1,12 +1,14 @@
 # Migration Decision — Heroku to AWS
 
-**Verdict: Go, with conditions** (phased migration · small complexity · medium confidence)
+**Verdict: Go, with conditions** (full cutover · small complexity · medium confidence)
 
-Execution shape: Phased migration.
+Execution shape: Full cutover: one migration window.
+
+Recommendation: migrate to AWS on the Optimized pricing scenario as a full cutover in one migration window, once the open condition is confirmed.
 
 ## Share with your CFO
 
-Go, with conditions, at medium confidence. Estimated AWS Balanced is $210 per month; the Heroku bill is not established, so no side-by-side saving is quoted. The migration shape is phased for this small estate. Confirm the open condition before treating the monthly figure as final.
+Go, with conditions, at medium confidence. Estimated AWS Balanced is $210 per month; the Heroku bill is not established, so no side-by-side saving is quoted. The migration shape is a full cutover in one migration window for this small estate. Confirm the open condition before treating the monthly figure as final.
 
 ## Current stack
 
@@ -39,7 +41,7 @@ No Heroku baseline was available for this run (no invoice or contract was suppli
 
 ## Timeline
 
-Shape: Phased migration. Stage order: provision the AWS environment, migrate the database, then cut over DNS per app. Duration drivers: a small estate (two services) and a Multi-AZ database. The cutover procedure stays in the migration guide; this is not a staffed schedule.
+Shape: Full cutover: one migration window. Stage order: provision the AWS environment, migrate the database inside the migration window, then cut over every app in that same window. Duration drivers: a small estate (two services) and a Multi-AZ database. The cutover procedure stays in the migration guide; this is not a staffed schedule.
 
 ## Developer workflow
 

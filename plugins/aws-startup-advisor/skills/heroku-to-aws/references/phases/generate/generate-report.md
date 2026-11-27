@@ -196,7 +196,13 @@ anchor in Step 1 is checked by the heroku add-on validator.)
    `recommendation.outcome` exists, render `outcome_label` as the section's
    **headline** in large display type (e.g.
    `<p class="verdict-headline">Go, with conditions</p>`), then one body-type
-   metadata line: `Execution shape: [path_label] · Complexity: [complexity_tier]`.
+   metadata line: `Execution shape: [migration shape] · Complexity: [complexity_tier]`.
+   The migration shape comes from `preferences.json` `global.migration_approach`,
+   never from `path_label` (which names the pricing scenario, not a shape):
+   `full_cutover` (or absent) → `Full cutover: one migration window`;
+   `interim_cutover_data_first` → `Data-first: interim cutover`. The `Migration
+   shape` metric card, the "Timeline if you execute" line and the `exec-share`
+   paragraph use the same derived shape.
    Do **not** render the verdict as a row of colored pill badges — structure
    carries the information; meaning must never depend on color alone (a muted
    accent on the headline is fine; the words carry the verdict). When `outcome`
@@ -209,6 +215,14 @@ anchor in Step 1 is checked by the heroku add-on validator.)
      how to obtain it — never present defer as "no answer," and do not show a
      savings headline as if the decision were made.
    - `stay`: headline is the stay label; do not imply a migrate path.
+   1a. **Recommendation callout (required, both modes):** one sentence stating
+   the recommendation (the path, the migration shape and the governing
+   condition) in `<div class="verdict">…</div>` directly below the metadata
+   line — the green callout for `go` / `conditional_go` / migrate-path legacy
+   outcomes, the neutral variant for `stay` or `defer_for_evidence`. The shared
+   validator requires the exact `verdict` class token inside `decision-summary`
+   (`verdict-headline` does not satisfy it). `DECISION.md` carries the same
+   sentence as a `Recommendation:` paragraph under its `Execution shape` line.
 2. **Confidence pointer (always):** one line under the verdict —
    `Confidence: [confidence] — full basis in
    <a href="#exec-assumptions">What This Assessment Rests On</a>.` Use
@@ -341,7 +355,8 @@ The paragraph must still make sense pasted into an email. Use only:
 - the verdict and confidence
 - the estimated AWS Balanced monthly figure
 - the Heroku baseline when a comparable baseline exists; otherwise say the Heroku bill is not established
-- the migration shape (`path_label`)
+- the migration shape (derived from `preferences.json` `global.migration_approach`
+  per `decision-summary` item 1 — never `path_label`)
 - at most three conditions or evidence gaps
 
 Label every amount as estimated. Preserve the same comparability caveats as
@@ -352,10 +367,19 @@ Label every amount as estimated. Preserve the same comparability caveats as
 Render `<section id="exec-timeline">` after `developer-workflow`. Heading:
 `Timeline`.
 
-- Shape: `recommendation.path_label`.
-- Stage order, as a short ordered list derived from the path: phased →
-  provision the AWS environment, migrate data, cut over per app; full cutover →
-  provision, then one migration window.
+- Shape: `preferences.json` `global.migration_approach` (Clarify Q6b), rendered
+  as in `decision-summary` item 1 — `full_cutover` (or absent) → `Full cutover:
+  one migration window`; `interim_cutover_data_first` → `Data-first: interim
+  cutover`. Never `recommendation.path_label`: that names the pricing scenario
+  ("Migrate with Optimized pricing scenario"), not a shape. This is the
+  ⟨duration_driver_source⟩ / ⟨stage_sequence_source⟩ the heroku layer of
+  `report-decision-core.md` points at.
+- Stage order, as a short ordered list derived from the same field:
+  `full_cutover` → provision the AWS environment, migrate the database inside
+  the migration window, cut over every app in that same window;
+  `interim_cutover_data_first` → provision, migrate the database first (interim
+  cutover, with the bounded Heroku-to-RDS access), then containerize and cut
+  over compute by `global.target_exit_date`.
 - Duration drivers, named only from the artifacts: `complexity_tier` as a word
   (small / medium / large), `complexity_inputs.service_count` and
   `deferred_count`, database HA and the migration method from preferences, and
@@ -476,7 +500,13 @@ non-empty, and add it to the TOC when rendered.
      and `prerequisite` when present (a Compute Savings Plan is recommended in
      percent only until a 30–90 day AWS usage baseline exists — `ri-sp-eligibility.md`
      caveat 1). Database Savings Plans and RDS Reserved Instances are mutually
-     exclusive on the same database workload.
+     exclusive on the same database workload. A Database Savings Plan is
+     recommended only when the design's RDS instance class is Generation 7 or
+     newer, per the `generation_gate` in
+     `references/vendored/estimate/commitment-discount-ranges.json`; for a
+     pre-Generation-7 class (for example db.t4g) the item and its posture row
+     state that the class is ineligible, attach no dollar saving, and name a
+     qualifying class (db.m7g or db.r7g).
   4. Full mode: one line linking down to the line-level table — "Line-level
      opportunities:" followed by `<a href="#appendix-optimization">Appendix B.1 —
      Savings Plans and Reserved Instances</a>`. Decision mode: there is no appendix, so
@@ -501,7 +531,12 @@ to `savings_percent` when `savings_monthly` is absent) / `commitment` /
 `implementation_effort`. The Optimization cell carries the product name as
 written ("Compute Savings Plans", "Database Savings Plans", "Reserved
 Instances") — the shared validator looks for a Savings Plan / Reserved Instance
-data row in this table, not in a heading or caveat. Below the table, once:
+data row in this table, not in a heading or caveat. A Database Savings Plans row
+carries a dollar saving only for a Generation 7+ RDS instance class (the
+`generation_gate` in `references/vendored/estimate/commitment-discount-ranges.json`);
+for a pre-Generation-7 class the estimate records `savings_monthly: null` and
+the Monthly savings cell says the class is ineligible and names a qualifying
+class (db.m7g or db.r7g) instead of a figure. Below the table, once:
 "Activate credits don't cover RI/Savings Plan upfront costs — they apply only
 to the ongoing discounted hourly rate." When the array is empty, render the
 same no-eligible-commitment sentence as `exec-optimization` instead of a table.

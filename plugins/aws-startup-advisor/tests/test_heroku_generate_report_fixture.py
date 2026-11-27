@@ -8,8 +8,10 @@ content standard, then the heroku add-on (`skills/heroku-to-aws/scripts/validate
 migration-report.py --mode full`) for the heroku-only rules. This test runs both on the
 golden, runs the fixture's own oracle (`check_expected_generate.py`) on a scratch copy, and
 proves the negative paths on scratch copies: a dropped `exec-risks` section, a bare "Stay if"
-heading, a dropped `appendix-optimization` (Appendix B.1) and an altered Balanced figure each
-fail the shared validator with a named line. Each mutation first asserts its target string
+heading, a dropped `appendix-optimization` (Appendix B.1), an altered Balanced figure and a
+decision-summary whose only verdict-ish class is `verdict-headline` each fail the shared
+validator with a named line, while a compound `class="verdict callout"` still carries the
+`verdict` token and passes. Each mutation first asserts its target string
 occurs exactly once in the golden, so a silent fixture edit cannot turn a negative into a
 no-op.
 
@@ -33,6 +35,8 @@ GOLDEN_BALANCED = '<span data-cost-key="aws_monthly_balanced">Est. $210/mo</span
 ALTERED_BALANCED = '<span data-cost-key="aws_monthly_balanced">Est. $215/mo</span>'
 STAY_HEADING = "<h3>Stay entirely if</h3>"
 RISKS_TOC_LINE = '    <li><a href="#exec-risks">Top risks</a></li>\n'
+VERDICT_CALLOUT_OPEN = '<div class="verdict">'
+VERDICT_MESSAGE = "recommendation block exists but decision-summary has no verdict banner"
 B1_TOC_LINE = '    <li><a href="#appendix-optimization">Appendix B.1 — Savings Plans and Reserved Instances</a></li>\n'
 
 
@@ -137,3 +141,22 @@ def test_altered_balanced_figure_fails_shared_validator_and_oracle(tmp_path: Pat
     assert oracle.returncode == 1, oracle.stdout
     assert "fails the shared validator" in oracle.stdout
     assert "aws_monthly_balanced renders 'Est. $215/mo'" in oracle.stdout, oracle.stdout
+
+
+def test_verdict_headline_alone_fails_shared_validator(tmp_path: Path) -> None:
+    """The verdict rule wants the `verdict` class TOKEN. `verdict-headline` on the headline
+    is not the one-sentence recommendation callout (decision core item 1a) and must not
+    satisfy it — the old word-boundary regex treated the hyphen as a word boundary and did."""
+    run_dir = _copy(tmp_path)
+    _mutate(run_dir, VERDICT_CALLOUT_OPEN, '<div class="verdict-headline">')
+    result = _shared(run_dir)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert VERDICT_MESSAGE in result.stderr, result.stderr
+
+
+def test_compound_verdict_class_passes_shared_validator(tmp_path: Path) -> None:
+    run_dir = _copy(tmp_path)
+    _mutate(run_dir, VERDICT_CALLOUT_OPEN, '<div class="verdict callout">')
+    result = _shared(run_dir)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.startswith("REPORT_OK"), result.stdout

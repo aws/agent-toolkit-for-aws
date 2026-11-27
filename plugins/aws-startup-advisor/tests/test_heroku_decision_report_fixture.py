@@ -110,7 +110,7 @@ def test_bare_week_range_fails_shared_validator(tmp_path: Path) -> None:
     """Regression guard for the removed planning band: a quoted week range in the
     timeline is a readability failure under the heroku profile."""
     run_dir = _copy(tmp_path, "after-decide-complete")
-    _mutate(run_dir, "<p>Shape: Phased migration.", "<p>Shape: Phased migration, about 2-6 weeks.")
+    _mutate(run_dir, "<p>Shape: Full cutover: one migration window.", "<p>Shape: Full cutover: one migration window, about 2-6 weeks.")
     result = _shared(run_dir)
     assert result.returncode == 1, result.stdout + result.stderr
     assert "readability: bare week-range estimate" in result.stderr, result.stderr

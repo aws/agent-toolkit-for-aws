@@ -23,6 +23,15 @@ drift from:
     label, and no C, D or H section (the three declared PaaS omissions);
   * Appendix B.1 renders exactly the two Savings Plan rows the estimate's
     optimization_opportunities[] carries, in the opportunity table's Optimization cell;
+  * the Database Savings Plan Generation 7+ gate: when aws-design.json's RDS
+    aws_config.instance_class is pre-Generation-7 (db.t4g.medium here), no B.1 row and no
+    Cost Optimization posture row attaches a dollar saving to a Database Savings Plan, the
+    estimate's row carries savings_monthly null, and Optimized = Balanced minus the Compute
+    Savings Plan discount only (210 - 28 = 182);
+  * the migration shape reads from preferences.json global.migration_approach (full_cutover
+    → "Full cutover"), never "Phased", in decision-summary, exec-share and exec-timeline;
+  * the one-sentence recommendation sits in a class="verdict" callout inside decision-summary;
+  * the Pipelines and promote cell counts apps that appear in a pipeline's stages[] (none here);
   * exec-optimization names Optimized and carries the not-additive caveat and the word
     Balanced; exec-costs carries the Premium-equals-Balanced sentence (this estate has no
     resilience uplift left to price, so two tier figures are identical on purpose);
@@ -117,6 +126,7 @@ class _Sections(HTMLParser):
         self.toc_labels: dict[str, str] = {}
         self.toc_position: int | None = None
         self.rows: dict[str, list[str]] = {}
+        self.row_text: dict[str, list[str]] = {}
         self.anchors: list[tuple[str, str, str]] = []
         self._section: str | None = None
         self._parts: list[str] = []
@@ -128,6 +138,7 @@ class _Sections(HTMLParser):
         self._in_tbody = False
         self._row_first_cell: list[str] | None = None
         self._in_first_cell = False
+        self._row_parts: list[str] | None = None
         self._anchor: dict | None = None
 
     def handle_starttag(self, tag, attrs):
@@ -137,6 +148,7 @@ class _Sections(HTMLParser):
             self._parts = []
             self.order.append(a["id"])
             self.rows.setdefault(a["id"], [])
+            self.row_text.setdefault(a["id"], [])
         elif tag == "nav" and "toc" in (a.get("class") or ""):
             self._in_toc = True
             self.toc_position = len(self.order)
@@ -150,6 +162,7 @@ class _Sections(HTMLParser):
             self._in_tbody = True
         if tag == "tr" and self._in_tbody:
             self._row_first_cell = None
+            self._row_parts = []
         if tag in ("td", "th") and self._in_tbody and self._row_first_cell is None:
             self._row_first_cell = []
             self._in_first_cell = True
@@ -172,7 +185,9 @@ class _Sections(HTMLParser):
             self._in_first_cell = False
         if tag == "tr" and self._in_tbody and self._row_first_cell is not None and self._section:
             self.rows[self._section].append(" ".join("".join(self._row_first_cell).split()))
+            self.row_text[self._section].append(" ".join("".join(self._row_parts or []).split()))
             self._row_first_cell = None
+            self._row_parts = None
         if tag == "tbody":
             self._in_tbody = False
         if self._anchor and tag == self._anchor["tag"]:
@@ -188,6 +203,8 @@ class _Sections(HTMLParser):
             self._toc_parts.append(data)
         if self._in_first_cell and self._row_first_cell is not None:
             self._row_first_cell.append(data)
+        if self._row_parts is not None:
+            self._row_parts.append(" " + data)
         if self._anchor:
             self._anchor["parts"].append(data)
 
@@ -204,8 +221,12 @@ def main() -> int:
     run = Path(sys.argv[1]).resolve()
     report = run / "migration-report.html"
     estimate_path = run / "estimation-infra.json"
+    design_path = run / "aws-design.json"
+    prefs_path = run / "preferences.json"
     check(report.exists(), "missing migration-report.html")
     check(estimate_path.exists(), "missing estimation-infra.json")
+    check(design_path.exists(), "missing aws-design.json")
+    check(prefs_path.exists(), "missing preferences.json")
     if FAILS:
         return _finish()
 
@@ -231,6 +252,8 @@ def main() -> int:
 
     html = report.read_text(encoding="utf-8")
     est = json.loads(estimate_path.read_text(encoding="utf-8"))
+    design = json.loads(design_path.read_text(encoding="utf-8"))
+    prefs = json.loads(prefs_path.read_text(encoding="utf-8"))
     p = _Sections()
     p.feed(html)
     p.close()
@@ -269,6 +292,46 @@ def main() -> int:
     for item in opportunities:
         name = item.get("opportunity", "")
         check(any(name in cell for cell in b1_rows), f"appendix-optimization has no row for {name!r}")
+
+    # 4a. Database Savings Plan Generation 7+ gate (commitment-discount-ranges.json
+    #     generation_gate): a pre-Generation-7 RDS class gets no dollar saving anywhere.
+    rds_classes = [
+        (s.get("aws_config") or {}).get("instance_class")
+        for s in design.get("services", [])
+        if (s.get("aws_config") or {}).get("instance_class", "").startswith("db.")
+    ]
+    check(rds_classes == ["db.t4g.medium"], f"design RDS instance class is {rds_classes}, expected ['db.t4g.medium']")
+    db_rows = [r for r in est.get("optimization_opportunities") or [] if r.get("type") == "database_savings_plan"]
+    check(len(db_rows) == 1 and db_rows[0].get("savings_monthly") is None,
+          "estimate's Database Savings Plans row must carry savings_monthly null for a pre-Generation-7 class")
+    for sid in ("appendix-optimization", "exec-optimization"):
+        for row in p.row_text.get(sid, []):
+            if "Database Savings Plan" in row:
+                check(money(row.replace("$210", "")) is None,
+                      f"{sid} attaches a dollar saving to a Database Savings Plan on {rds_classes}: {row!r}")
+                check("Generation 7" in row, f"{sid} Database Savings Plan row must name the Generation 7+ gate: {row!r}")
+    pc = est.get("projected_costs", {})
+    check(pc.get("aws_monthly_optimized") == 182.0 and pc.get("aws_monthly_balanced") == 210.0,
+          f"Optimized must be Balanced 210 minus the Compute SP 28 = 182, got {pc.get('aws_monthly_optimized')}")
+    check(pc.get("aws_annual_optimized") == 2184.0, f"aws_annual_optimized must be 2184, got {pc.get('aws_annual_optimized')}")
+    check("Generation 7" in pc.get("_optimized_basis", "") and "db.t4g.medium" in pc.get("_optimized_basis", ""),
+          "_optimized_basis must name the Generation 7+ gate and the db.t4g.medium class")
+    check("Est. $182/mo" in p.sections.get("exec-costs", "") and "Est. $182/mo" in p.sections.get("appendix-costs", ""),
+          "exec-costs and appendix-costs must render Optimized as Est. $182/mo")
+    check("$163" not in html, "report still carries the pre-gate Optimized figure $163")
+
+    # 4b. Migration shape from preferences.json, the verdict callout, the pipeline count.
+    check(prefs.get("global", {}).get("migration_approach") == "full_cutover",
+          "preferences.json global.migration_approach is not full_cutover")
+    for sid in ("decision-summary", "exec-share", "exec-timeline"):
+        text = p.sections.get(sid, "")
+        check("Full cutover" in text or "full cutover" in text, f"{sid} must state the Full cutover shape")
+        check("hased" not in text, f"{sid} describes a phased migration but migration_approach is full_cutover")
+    summary_html = re.search(r'<section id="decision-summary".*?</section>', html, re.S)
+    check(summary_html is not None and re.search(r'<div class="verdict(?:\s[^"]*)?">', summary_html.group(0)) is not None,
+          'decision-summary has no <div class="verdict"> recommendation callout')
+    check("0 pipelines covering 0 apps" in p.sections.get("developer-workflow", ""),
+          "Pipelines and promote cell must read '0 pipelines covering 0 apps' (no pipeline in the inventory)")
 
     # 5. exec-optimization and exec-costs content the spec fixes for this estate.
     exec_opt = p.sections.get("exec-optimization", "")
@@ -320,8 +383,9 @@ def _finish() -> int:
         return 1
     print("PASS — migration-report.html passes both validators (--profile heroku --mode full, "
           "heroku add-on) and the full-mode pins (section order, lettering A/B/B.1/E/F/G/I/J, "
-          "two Savings Plan rows, not-additive caveat, Premium equals Balanced, ten workflow rows, "
-          "no week range, Balanced anchor)")
+          "two Savings Plan rows, Database Savings Plan generation gate, Full cutover shape, verdict "
+          "callout, not-additive caveat, Premium equals Balanced, ten workflow rows, no week range, "
+          "Balanced anchor)")
     return 0
 
 

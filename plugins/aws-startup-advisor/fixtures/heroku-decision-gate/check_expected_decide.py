@@ -102,7 +102,16 @@ def main() -> int:
         # report; report-decision-core.md reuses them for decision mode.
         html = report.read_text()
         check('class="verdict-headline"' in html, "missing verdict-headline element")
+        check('<div class="verdict">' in html, 'missing <div class="verdict"> recommendation callout (decision core item 1a)')
         check("if you execute" in html, 'timeline must be labeled "if you execute" (shape, not schedule)')
+        # The migration shape comes from preferences.json global.migration_approach
+        # (full_cutover here), never from recommendation.path_label.
+        check("Full cutover" in html and "hased" not in html,
+              "shape must read Full cutover (preferences global.migration_approach), not Phased")
+        decision_md = (run / "DECISION.md").read_text()
+        check("Full cutover" in decision_md and "hased" not in decision_md,
+              "DECISION.md shape must read Full cutover, not Phased")
+        check("Recommendation:" in decision_md, "DECISION.md is missing the one-sentence Recommendation paragraph")
 
     # The decision-only exit writes the web-handoff plan.json from the run's
     # estimate artifacts. Run the writer against a scratch copy (so the golden

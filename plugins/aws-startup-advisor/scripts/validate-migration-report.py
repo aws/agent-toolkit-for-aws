@@ -1642,8 +1642,12 @@ def _validate_verdict(html: str, estimation_infra: dict | None) -> list[str]:
     if not estimation_infra or not estimation_infra.get("recommendation"):
         return []
     summary = _section_html(html, "decision-summary") or ""
-    if re.search(r'class="[^"]*\bverdict\b[^"]*"', summary, re.IGNORECASE):
-        return []
+    # Match the `verdict` class TOKEN exactly: split each class attribute on
+    # whitespace so `verdict-headline` / `verdict-meta` cannot satisfy the rule
+    # (a \b regex treats the hyphen as a word boundary and accepted them).
+    for attr in re.findall(r'class="([^"]*)"', summary, re.IGNORECASE):
+        if "verdict" in attr.lower().split():
+            return []
     return [
         "recommendation block exists but decision-summary has no verdict banner "
         '(wrap the one-sentence recommendation in class="verdict")'
