@@ -26,8 +26,8 @@ Loaded conditionally when the task involves MediaPackage v2. The cross-service r
 
 ### Scaling limit (CRITICAL)
 
-- MediaPackage v2 has a 1000 manifest requests-per-second hard limit (verify current value from [Service Quotas](https://docs.aws.amazon.com/mediapackage/latest/userguide/quotas.html)). All CDNs pulling from MediaPackage v2 MUST have Origin Shield enabled.
-- For major events that may exceed the default per-region limit, open a Service Quotas request or an AWS Support case in advance with expected peak concurrency, CDN count, and event window.
+- MediaPackage v2 enforces per-endpoint egress rate limits: about 500 segment RPS and 10,000 manifest RPS per endpoint; verify current values from [Service Quotas](https://docs.aws.amazon.com/mediapackage/latest/userguide/quotas.html). Segments are the tighter limit. They are hard quotas, so the architecture has to stay within them; confirm with the `Adjustable` field from `aws service-quotas list-service-quotas --service-code mediapackagev2` before ruling out an increase request. All CDNs pulling from MediaPackage v2 MUST have Origin Shield enabled.
+- For major events, size the CDN tier rather than the origin: Origin Shield on every CDN, and enough cache-hit ratio that origin requests stay well inside the per-endpoint limits. Engage the AWS account team in advance with expected peak concurrency, CDN count, and event window.
 
 ### Input types
 
@@ -57,9 +57,10 @@ Loaded conditionally when the task involves MediaPackage v2. The cross-service r
 
 ### DRM constraints
 
-- SPEKE v2 with MediaPackage v2 MUST NOT use `keyRotationIntervalSeconds` with any value other than 0. Non-zero values return `UnprocessableEntityException`.
-- Key rotation REQUIRES SPEKE v1 on MediaPackage v1 (single-key only).
-- Multi-key encryption (per-resolution keys) REQUIRES SPEKE v2 (no key rotation).
+- `keyRotationIntervalSeconds` valid range is 300–31536000. Values below 300 (including `0`) return `ValidationException`. To disable rotation, omit the field.
+- Key rotation and multi-key encryption (per-track presets such as `PRESET_AUDIO_1` / `PRESET_VIDEO_1`) can be used together with SPEKE v2.
+- ISM (MSS) containers do not support key rotation; omit the field.
+- These limits can change. Before emitting an encryption config, confirm the current range in the installed CLI's model (`aws mediapackagev2 create-origin-endpoint help`, under `KeyRotationIntervalSeconds`).
 
 ### Destructive action guardrails
 

@@ -14,8 +14,10 @@ IF 403 on playback URL:
 IF manifest issues (404, empty, wrong variants):
   → See "Manifest Issues" below
 IF 429/503 under load:
-  → See "1000 RPS Limit" below (CRITICAL for production)
-IF migrating from v1 to v2:
+  → See "Egress Rate Limits" below (CRITICAL for production)
+IF planning or executing a v1 → v2 migration (not yet cut over):
+  → LOAD references/workflow-mediapackage-migration.md
+IF troubleshooting a workflow already migrated from v1 to v2:
   → See "Migration Issues" below
 ```
 
@@ -72,12 +74,12 @@ IF using CloudFront OAC:
 
 ---
 
-## 1000 RPS Limit (CRITICAL)
+## Egress Rate Limits (CRITICAL)
 
 | | |
 |---|---|
 | **Symptom** | 429 or 503 errors under load, viewer playback failures |
-| **Root cause** | MediaPackage v2 hard limit: 1000 manifest RPS from ALL CDNs combined |
+| **Root cause** | MediaPackage v2 per-endpoint egress limit reached across ALL CDNs combined (about 500 segment RPS or 10,000 manifest RPS; read the current values with `aws service-quotas list-service-quotas --service-code mediapackagev2`) |
 
 **Decision tree:**
 
@@ -89,7 +91,9 @@ IF MediaTailor requests counting against limit:
     content origin's own access logs (NOT the Requests metric, which is not comparable).
     MediaTailor reuses origin manifests, so fetches sit far below player requests
   → Check nothing makes the origin URL unique per request; that defeats reuse
-  → No documented setting reduces those fetches further. If the limit binds, request a quota increase
+  → No documented setting reduces those fetches further, and the per-endpoint manifest rate is a
+    hard quota (confirm with the `Adjustable` field in Service Quotas). If it binds, cut origin fetches (protect reuse, keep the
+    origin URL stable) or spread playback across more endpoints
   → Origin Shield on the MediaTailor origin does NOT help here. It reduces requests reaching
     MediaTailor, not MediaTailor's fetches from the origin
   → AWS does not recommend a CDN between a content origin and MediaTailor, so do not add one to
@@ -100,8 +104,12 @@ IF a CDN already sits between the content origin and MediaTailor AND manifests f
   → FIX: disable compression on that leg ONLY. Keep compression everywhere else, including the
     viewer-facing manifest behaviours, where it is a material delivery cost saving. A blanket
     compression disable multiplies manifest egress for no benefit
-IF approaching limit (EgressRequestCount > 800):
-  → Open a Service Quotas request or AWS Support case for a limit increase. Include peak concurrency, CDN count, and event window.
+IF approaching limit (above ~80% of the per-endpoint segment or manifest egress quota on one endpoint):
+  → These are hard quotas (confirm with the `Adjustable` field in Service Quotas, for
+    service code mediapackagev2). Reduce origin load instead: Origin
+    Shield on every CDN, raise the cache-hit ratio, or spread playback across more endpoints.
+    Engage the AWS account team ahead of a major event with peak concurrency, CDN count and
+    event window.
 ```
 
 **Prevention:** Always enable Origin Shield on EVERY CDN before production.
@@ -134,6 +142,9 @@ IF wrong variant count:
 |---|---|
 | **Symptom** | Issues after migrating from MediaPackage v1 to MediaPackage v2 |
 
+Post-migration symptoms only. To plan or execute the migration, LOAD
+`references/workflow-mediapackage-migration.md`.
+
 **Decision tree:**
 
 ```
@@ -142,13 +153,15 @@ IF stuck avails (CUE-OUT never closes):
   → CUE-IN event ID MUST match CUE-OUT event ID
   → Fix upstream signaling
 IF 429/503 (didn't have this on v1):
-  → MediaPackage v2 has stricter 1000 RPS limit. Add Origin Shield to ALL CDNs.
+  → MediaPackage v2 has stricter per-endpoint egress limits (about 500 segment / 10,000 manifest RPS; check current values in Service Quotas). Add Origin Shield to ALL CDNs.
 IF ingest errors:
-  → Update MediaLive from HlsGroupSettings to CmafIngestGroupSettings
-  → MediaPackage v2 can still egress HLS TS (no player changes needed)
+  → Check the channel's InputType first: a CMAF-input channel needs MediaLive on
+    CmafIngestGroupSettings, an HLS-input channel needs HlsGroupSettings. The
+    output group type MUST match the channel's InputType
+  → MediaPackage v2 can still egress HLS TS either way (no player changes needed)
 IF epoch locking broken:
-  → MediaPackage v2 JIT packaging is incompatible with epoch locking
-  → Use passthrough origin for epoch-locked segments
+  → Confirm the contribution feed carries source timecode (required for epoch locking)
+  → MediaPackage v2 supports epoch locking via epoch-locked CMAF ingest; a passthrough origin is not required (see the MediaPackage v2 User Guide, "Working with cross-Region failover", for current requirements)
 ```
 
 ---
@@ -158,7 +171,7 @@ IF epoch locking broken:
 | Metric | Expected | Alert if |
 |--------|----------|----------|
 | IngressBytes | Non-zero, stable | = 0 for >10s |
-| EgressRequestCount | < 1000 RPS | > 800 (approaching limit) |
+| EgressRequestCount | within per-endpoint limits | above ~80% of the applied per-endpoint segment or manifest egress quota (read with `aws service-quotas list-service-quotas --service-code mediapackagev2`) |
 | Egress4xxErrors | 0 | Spike (check endpoint policy) |
 | Egress5xxErrors | 0 | > 0 (service issue) |
 | IngressResponseTime | < 100ms | > 500ms (ingest bottleneck) |
