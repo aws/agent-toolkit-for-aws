@@ -10,8 +10,9 @@ or the run directory in an outbound request — the answer never depends on it.
 
 - AgentCore microVMs session cap (currently 8h) and Instances session cap (currently 14d)
 - AgentCore microVMs compute cap (2 vCPU / 8 GB; Instances lifts it via EC2 choice)
-- AgentCore / AgentCore Instances / Lambda MicroVMs region availability (Instances
-  launched 2026-08 in a limited region set)
+- AgentCore / AgentCore Instances / Lambda MicroVMs region availability (Instances:
+  15 Regions as of the 2026-11-16 snapshot — `instances_regions` in
+  `references/runtimes/agentcore.json`)
 - AWS Agent Registry region availability when Registry is selected, independently of runtime
   (`registry_regions` in `references/runtimes/agentcore.json`; see the procedure below)
 - Lambda MicroVMs launch TPS (5, not adjustable)
