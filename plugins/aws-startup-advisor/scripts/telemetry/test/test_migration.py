@@ -624,6 +624,22 @@ def test_reports_the_provenance_of_a_preferences_sourced_spend_figure(project):
     }
 
 
+@pytest.mark.parametrize("source, spend, want", [
+    ("measured_usage", None, ("UNDER_100", "BILLING_DATA")),
+    ("list_price", 2400.0, ("FROM_1K_TO_10K", "TOKEN_VOLUME_ESTIMATE")),
+    ("unknown", None, (None, None)),
+], ids=["measured", "list-price", "unknown"])
+def test_reports_the_spend_of_an_ai_estimate_copied_from_the_assessment(source, spend, want, project):
+    estimate = json.loads((PLUGIN_ROOT / "fixtures" / "bma-estimate-measured" / "estimation-ai.json").read_text())
+    estimate["current_costs"]["source"] = source
+    if source != "measured_usage":
+        estimate["current_costs"]["monthly_ai_spend"] = spend
+    p = project(phase_status(current_phase="generate", phases=with_phases(clarify="completed", design="completed", estimate="completed")),
+                artifacts={"gcp-resource-inventory.json": GCP_INVENTORY, "estimation-ai.json": estimate})
+    attributes = next(activity(b) for b in p.reconcile() if activity(b).get("phase") == "ESTIMATE")["attributes"]
+    assert (attributes.get("spendBand"), attributes.get("spendBasis")) == want
+
+
 def test_derives_the_enriched_estimate_attributes(project):
     p = project(phase_status(current_phase="workshop", phases=with_phases(clarify="completed", design="completed", estimate="completed")), artifacts={
         "gcp-resource-inventory.json": {"resources": GCP_INVENTORY["resources"], "summary": {"classification_coverage": "97%"}},

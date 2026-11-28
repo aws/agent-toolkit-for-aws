@@ -576,7 +576,7 @@ Present in `estimation-infra.json` only when `preferences.json` → `design_cons
 - `recommendation` block exists with `path`, `path_label`, `migrate_if`, `stay_if`, and `next_steps` all populated
 - `recommendation.path` is one of: `"migrate_optimized"`, `"migrate_phased"`, `"stay"`
 - `recommendation.next_steps` includes actionable items
-- No references to AI-specific costs (those belong in `estimate-ai.md`)
+- No references to AI-specific costs (those belong in `estimation-ai.json`, which bedrock-migration-assessment produces)
 - No references to billing-only estimates (those belong in `estimate-billing.md`)
 - All cost values are numbers, not strings
 - Output is valid JSON

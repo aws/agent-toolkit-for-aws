@@ -43,34 +43,18 @@ Each phase loads reference files on demand. To keep per-turn context manageable 
 
 | File                                             | Condition                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `vendored/ai/ai-gemini-to-bedrock.md`            | `ai-workload-profile.json` exists AND `summary.ai_source` = `"gemini"` or `"both"`                                                                                                                                                                                                                                                                                                                                                                                     |
-| `vendored/ai/ai-openai-to-bedrock.md`            | `ai-workload-profile.json` exists AND `summary.ai_source` = `"openai"` or `"both"`                                                                                                                                                                                                                                                                                                                                                                                     |
-| `vendored/ai/ai-anthropic-to-bedrock.md` | `ai-workload-profile.json` exists AND (`summary.ai_source` = `"anthropic"` OR Claude Haiku 5.5 is a candidate or selected target) |
-| `design-refs/ai.md`                              | `ai-workload-profile.json` exists AND `summary.ai_source` = `"other"`                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `design-refs/elastic-beanstalk.md`               | `google_app_engine_application` in inventory (optionally with `compute_model == "managed_platform"` in preferences) **and `compute` ≠ `"eks"`**. Supplementary reference for EB configuration detail (platforms, IAM, VPC, deployment policies). Does not replace `compute.md` — both may be needed in mixed projects. Skip when no App Engine is in inventory (even if `compute_model` is set), or when `compute: "eks"` (Q5 = multi-cloud) routed App Engine to EKS. |
-| `vendored/ai/design-ref-harness.md`              | `agentic_profile.is_agentic == true` AND `ai_constraints.agentic.migration_approach == "harness"`                                                                                                                                                                                                                                                                                                                                                                      |
-| `vendored/ai/design-ref-agentic-to-agentcore.md` | `agentic_profile.is_agentic == true` AND `ai_constraints.agentic.migration_approach == "strands"`                                                                                                                                                                                                                                                                                                                                                                      |
-| `shared/retarget-gotchas.md`                     | `agentic_profile.is_agentic == true` AND `ai_constraints.agentic.migration_approach == "retarget"`                                                                                                                                                                                                                                                                                                                                                                     |
 | `shared/graviton.md`                             | Compute, DB, or cache in inventory OR `graviton_profile` present (Design/Estimate/Generate)                                                                                                                                                                                                                                                                                                                                                                            |
 | `shared/bq-assess-next-step.md`                  | BigQuery detected (`bigquery_present` true, or a BigQuery resource marked `Deferred — specialist engagement`): the end-of-run offer (Workflow Execution step 10) and the BigQuery callouts in the reports, `MIGRATION_GUIDE.md`, the Terraform note, and the migration script                                                                                                                                                                                          |
 
 When adding new reference files, verify the phase's total loaded instructions remain under budget. If a new file would exceed ~800 lines when combined with other loaded refs, split it or make it conditional.
 
-**Hybrid stack budget warning:**
-
-When both `gcp-resource-inventory.json` AND `ai-workload-profile.json` exist, the combined design refs will approach the ~800-line budget. Output this warning to the user **before** loading the AI design refs:
-
-> "⚠️ This is a large hybrid stack (infrastructure + AI workloads). To ensure complete and accurate recommendations, consider running the migration in two separate passes:
->
-> **Pass 1 — Infrastructure:** Run with only your Terraform files to get infra mapping, Terraform generation, and cost estimates.
->
-> **Pass 2 — AI workloads:** Run with only your application code to get Bedrock model recommendations, provider adapters, and AI migration artifacts.
->
-> Continue with the combined run? (Y/N)"
-
-If the user chooses to continue, proceed with the combined run. Load AI refs **after** infra refs to preserve infra instruction fidelity. If the user declines, stop and instruct them to re-run with a single input source type.
-
-**This warning is advisory only** — it does not block the run.
+**AI workloads:** this skill does not load AI design references. When Discover writes
+`ai-workload-profile.json`, the bedrock-migration-assessment skill runs the AI Clarify, Design,
+Estimate, and Generate through `references/shared/ai-handoff.md`, so its instructions never
+share this skill's per-phase budget. That skill designs the model, endpoint, and client changes; it
+does not design an agent runtime (its `agentic_design` is `"undecided"`), so an agentic workload
+gets no AgentCore Harness or Strands design here. Point the user at agent-advisor for that.
 
 ---
 
@@ -85,6 +69,8 @@ User must provide at least one GCP source:
 - **OpenAI usage API** (supplement, for AI workloads on OpenAI): an OpenAI **Admin** API key with **Usage** set to **Read** (API scope `api.usage.read`) — read-only, consent-gated capture of real cost and token usage (see `references/phases/discover/discover-openai-api.md`); replaces manual billing CSV exports for OpenAI spend. Not a standalone source: usage data supplies spend and volumes but not integration or capability detail, so AI migration design still requires application code (or another source above)
 - **OpenRouter usage API** (supplement, for OpenRouter-fronted workloads): an OpenRouter **provisioning/management key** — consent-gated capture of aggregate cost and per-model usage (see `references/phases/discover/discover-openrouter-api.md`)
 - **Anthropic usage API** (supplement, for direct Claude API workloads): an Anthropic **Admin API key** — read-only, consent-gated capture of aggregate cost and per-model usage (see `references/phases/discover/discover-anthropic-api.md`). Anthropic does not currently offer a usage-only Admin-key scope; the capture uses only the two allowlisted usage/cost GET endpoints
+
+AI workloads also need the **bedrock-migration-assessment** skill installed beside this one, from the same plugin. Without it, a run with infrastructure continues and defers the AI workloads, and an AI-only run stops and asks for it (`references/shared/ai-handoff.md` Step 1).
 
 Provider usage data is supplementary rather than a standalone migration source: it measures spend and volume, but application code is still needed to identify call sites, capabilities, and migration behavior.
 
@@ -256,7 +242,7 @@ Replace `MMDD-HHMM` with the actual migration ID, generate the `last_updated` IS
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
 | **Discover** | `.tf` files, app source code, and/or billing exports (at least one required); optional OpenAI Admin API access, OpenRouter provisioning-key access, or Anthropic Admin API access supplements with real AI spend | `gcp-resource-inventory.json`, `gcp-resource-clusters.json`, `ai-workload-profile.json`, `billing-profile.json`, `openai-usage-profile.json`, `openrouter-usage-profile.json`, `anthropic-usage-profile.json`, `.phase-status.json` updated (outputs vary by input)                                            | `references/phases/discover/discover.md` |
 | **Clarify**  | Discovery artifacts (`gcp-resource-inventory.json`, `gcp-resource-clusters.json`, `ai-workload-profile.json`, `billing-profile.json` — whichever exist)                  | `preferences.json`, `.phase-status.json` updated                                                                                                                                                                                              | `references/phases/clarify/clarify.md`   |
-| **Design**   | `preferences.json` + discovery artifacts                                                                                                                                 | `aws-design.json` (infra), `aws-design-ai.json` (AI), `aws-design-billing.json` (billing-only)                                                                                                                                                | `references/phases/design/design.md`     |
+| **Design**   | `preferences.json` + discovery artifacts                                                                                                                                 | `aws-design.json` (infra), `aws-design-ai.json` (AI, copied from bedrock-migration-assessment), `aws-design-billing.json` (billing-only)                                                                                                                                                | `references/phases/design/design.md`     |
 | **Estimate** | `aws-design.json` or `aws-design-billing.json` or `aws-design-ai.json`, `preferences.json`                                                                               | `estimation-infra.json` or `estimation-ai.json` or `estimation-billing.json`, `.phase-status.json` updated                                                                                                                                    | `references/phases/estimate/estimate.md` |
 | **Workshop** | Post-Estimate infra artifacts (`gcp-resource-inventory.json`, `preferences.json`, `aws-design.json`, `estimation-infra.json`) — optional sidebar                         | `scenarios/`, patched `preferences.json` / design / estimate; `.phase-status.json` (`workshop`)                                                                                                                                               | `references/phases/workshop/workshop.md` |
 | **Generate** | `estimation-infra.json` or `estimation-ai.json` or `estimation-billing.json`, `aws-design.json` or `aws-design-billing.json` or `aws-design-ai.json`, `preferences.json` | `generation-infra.json` or `generation-ai.json` or `generation-billing.json` + `terraform/`, `scripts/`, `ai-migration/`, `validation-report.json` (when infra route active), `MIGRATION_GUIDE.md`, `README.md`, `.phase-status.json` updated | `references/phases/generate/generate.md` |
@@ -293,18 +279,14 @@ gcp-to-aws/
 │   │   │   ├── clarify.md                     # Phase 2: Clarify orchestrator
 │   │   │   ├── clarify-global.md              # Category A: Global/Strategic (Q1-Q7)
 │   │   │   ├── clarify-compute.md             # Categories B+C: Config Gaps + Compute (Q8-Q11)
-│   │   │   ├── clarify-database.md            # Category D: Database (Q12–Q13b)
-│   │   │   ├── clarify-ai.md                  # Categories F/G/H: AI/Bedrock, Agentic, Programs (Q14-Q27)
-│   │   │   └── clarify-ai-only.md             # Standalone AI-only migration flow
+│   │   │   └── clarify-database.md            # Category D: Database (Q12–Q13b)
 │   │   ├── design/
 │   │   │   ├── design.md                       # Phase 3: Design orchestrator
 │   │   │   ├── design-infra.md                 # Infrastructure design (IaC-based)
-│   │   │   ├── design-ai.md                    # AI workload design (Bedrock)
 │   │   │   └── design-billing.md               # Billing-only design (fallback)
 │   │   ├── estimate/
 │   │   │   ├── estimate.md                     # Phase 4: Estimate orchestrator
 │   │   │   ├── estimate-infra.md               # Infrastructure cost analysis
-│   │   │   ├── estimate-ai.md                  # AI workload cost analysis
 │   │   │   └── estimate-billing.md             # Billing-only cost analysis
 │   │   ├── workshop/
 │   │   │   ├── workshop.md                     # Sidebar: optional post-Estimate what-if
@@ -315,11 +297,9 @@ gcp-to-aws/
 │   │   ├── generate/
 │   │   │   ├── generate.md                     # Phase 5: Generate orchestrator
 │   │   │   ├── generate-infra.md               # Infrastructure migration plan
-│   │   │   ├── generate-ai.md                  # AI migration plan
 │   │   │   ├── generate-billing.md             # Billing-only migration plan
 │   │   │   ├── generate-artifacts-infra.md     # Terraform configurations
 │   │   │   ├── generate-artifacts-scripts.md  # Migration scripts
-│   │   │   ├── generate-artifacts-ai.md        # Provider adapter + test harness
 │   │   │   ├── generate-artifacts-billing.md   # Skeleton Terraform
 │   │   │   └── generate-artifacts-docs.md      # MIGRATION_GUIDE.md + README.md
 │   │   └── feedback/
@@ -351,6 +331,7 @@ gcp-to-aws/
 │       ├── schema-discover-billing.md          # billing-profile schema (loaded by discover-billing.md)
 │       ├── schema-estimate-infra.md            # estimation-infra.json schema (loaded by estimate-infra.md at write time)
 │       ├── handoff-gates.md                    # Fail-closed phase handoff protocol (GATE_FAIL / HANDOFF_OK)
+│       ├── ai-handoff.md                       # AI track: runs bedrock-migration-assessment through its bma-handoff.py
 │       ├── report-decision-core.md             # GCP layer of the report decision core: parameters + add-ons over references/vendored/report/report-decision-core.md (loaded by estimate.md gate A and generate-artifacts-report.md)
 │       ├── bq-assess-next-step.md              # bq-assess next step: commands, existing-report check, per-surface text (conditional load)
 │       ├── validate-artifacts.md               # Pre-report validation (Generate Step 0; read-only)

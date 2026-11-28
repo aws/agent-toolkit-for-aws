@@ -17,9 +17,6 @@ _fragments:
   - _id: database
     _trigger: { _when: "database resources present in the inventory — Cloud SQL, Spanner, Memorystore" }
     _file: phases/clarify/clarify-database.md
-  - _id: ai
-    _trigger: { _when: "ai-workload-profile.json exists in $MIGRATION_DIR" }
-    _file: phases/clarify/clarify-ai.md
 _assemble:
   _file: phases/clarify/clarify-assemble.md
 _produces:
@@ -45,13 +42,13 @@ _postconditions:
     _on_failure: _halt_and_inform
   - _validate_json: preferences.json
     _on_failure: _halt_and_inform
-  - _assert: "all Validation Checklist items in clarify-assemble.md pass"
+  - _assert: "all Validation Checklist items in clarify-assemble.md pass (skip for an AI-only run: bedrock-migration-assessment wrote its preferences.json and bma-handoff.py accept checked it)"
     _on_failure: _halt_and_inform
   - _assert: "every assumption-sheet row the user was shown appears in preferences.json with a disposition of DETECTED, PROPOSED, ESSENTIAL, or N/A, and a value that is either the user's answer or the documented default"
     _on_failure: _halt_and_inform
   - _assert: "design_constraints.target_region is set, and design_constraints.compliance is set (never silently 'none' — the compliance question is always ESSENTIAL for a full-infrastructure run)"
     _on_failure: _halt_and_inform
-  - _assert: "if ai-workload-profile.json exists, preferences.json carries workloads[] and (when agentic_profile.is_agentic) ai_constraints.agentic; every persisted workload row carries workload_id, capability, and target_bedrock_model; and startup_program_status is present (ESSENTIAL, value null until answered) — the workloads[] in preferences.json, not ai-workload-profile.json, is the downstream source of truth"
+  - _assert: "if ai-workload-profile.json exists, ai-handoff.json exists and either has status deferred, or has through set and preferences.json metadata.ai_preferences_source.assessment_dir equal to its assessment_dir — the AI answers come only from bedrock-migration-assessment through shared/ai-handoff.md"
     _on_failure: _halt_and_inform
 _forbids_files:
   - README.md
@@ -82,12 +79,15 @@ recommendation, changeable), **ESSENTIAL** (cannot be defaulted; must be answere
 
 **Five of Category A's questions are canonical, shared with `azure-to-aws`** —
 `references/vendored/clarify/`. See `clarify-global.md` for which ones and why. Categories B
-(config gaps), C (compute), D (database), F (AI), G (agentic), and H (startup programs) are
-GCP-specific: no shared file exists for them, either because there is no Azure equivalent
-(Category B/D's GCP-only signals, Q3/Q3.5) or because the decision shape genuinely diverges
-enough that unifying would blur real differences (Q7's single unified cutover question vs
-Azure's split VM/DB cutover; Category F/G/H's GCP-sourced AI signals vs Azure's own AI
-category).
+(config gaps), C (compute), and D (database) are GCP-specific: no shared file exists for them,
+either because there is no Azure equivalent (Category B/D's GCP-only signals, Q3/Q3.5) or
+because the decision shape genuinely diverges enough that unifying would blur real differences
+(Q7's single unified cutover question vs Azure's split VM/DB cutover).
+
+**AI workloads are not clarified here.** When `ai-workload-profile.json` exists,
+`references/shared/ai-handoff.md` runs the bedrock-migration-assessment skill's Clarify, which
+asks the AI and startup-program questions, and `bma-handoff.py accept --through clarify` merges
+its answers into `preferences.json`.
 
 Two GCP-specific mechanisms that no sibling skill has:
 
@@ -105,18 +105,17 @@ Two GCP-specific mechanisms that no sibling skill has:
 | `clarify-global.md`   | A — Global/Strategic                      | Q1–Q7                      | Always                                          |
 | `clarify-compute.md`  | B — Config Gaps, C — Compute              | Q7b–Q11b                   | Compute or billing-source resources present     |
 | `clarify-database.md` | D — Database                              | Q12–Q13b                   | Database resources present                      |
-| `clarify-ai.md`       | F — AI/Bedrock, G — Agentic, H — Programs | Q14–Q27                    | `ai-workload-profile.json` exists               |
-| `clarify-ai-only.md`  | _(standalone)_                            | Q1–Q11 (+ Q1.5 compliance) | AI-only migration (no infrastructure artifacts) |
+| `references/shared/ai-handoff.md` | AI and startup programs (bedrock-migration-assessment) | that skill's own Q1–Q11 | `ai-workload-profile.json` exists |
 
 ## Status — build step 5 (restructure)
 
 Implemented. This file is now a thin orchestrator manifest — the fragment-returns-rows /
 assembler-owns-conversation pattern shared with `azure-to-aws` — rather than the prior
-monolith that asked questions directly. `clarify-global.md`, `clarify-compute.md`,
-`clarify-database.md`, and `clarify-ai.md` are fragments; `clarify-assemble.md` is the sole
-unit that talks to the user, runs the sheet/essentials/recap/full-flow logic, and writes
-`preferences.json`. `clarify-ai-only.md` is unchanged — it remains a standalone flow read
-directly by Step 0 below, exactly as before.
+monolith that asked questions directly. `clarify-global.md`, `clarify-compute.md`, and
+`clarify-database.md` are fragments; `clarify-assemble.md` is the sole unit that talks to the
+user about infrastructure, runs the sheet/essentials/recap/full-flow logic, and writes
+`preferences.json`. The AI questions run afterwards in bedrock-migration-assessment, through
+`references/shared/ai-handoff.md` (Step 3 below).
 
 **What did NOT change in this restructure:** every firing rule, auto-extraction signal,
 default value, and interpretation rule from the prior monolith is preserved verbatim, moved
@@ -141,7 +140,8 @@ incompatible file offered for reuse dead-ends at `GATE_FAIL`. Check:
    present when compute resources exist in the current inventory.
 2. **Discovery match** — the file's `metadata.discovery_artifacts` is consistent with what
    exists in `$MIGRATION_DIR` now: if `ai-workload-profile.json` exists but the file has no
-   `ai_constraints` (or the reverse), or the inventory has database/compute resources whose
+   `metadata.ai_preferences_source` while `ai-handoff.json` is absent or not `deferred` (or the
+   file has one and the profile is gone), or the inventory has database/compute resources whose
    required constraints (`availability`, `db_size`) are absent, the file is stale relative to
    current discovery.
 
@@ -215,13 +215,12 @@ Test `services.length > 0`, not file existence.
   `billing-profile.json` as absent — no infrastructure and no non-empty-services billing
   artifact
 
-**If AI-only**: Read `clarify-ai-only.md` NOW and follow that flow. Skip all remaining steps
-below, including the fragment/assembler split — `clarify-ai-only.md` is a standalone flow
-that talks to the user directly, matching Azure's equivalent standalone route.
+**If AI-only**: skip Steps 1.5 and 2 and go to Step 3. bedrock-migration-assessment asks every
+question for this run, including region and compliance, and `accept` writes `preferences.json`.
 
-> **HARD GATE — AI-Only Path:** You MUST read `clarify-ai-only.md` before presenting any
-> questions. The question text, answer options, and interpretation rules are ONLY in that
-> file — they are NOT in this file. Do NOT fabricate questions from the summaries above.
+> **HARD GATE — AI-Only Path:** Do not ask AI questions from this skill. The question text,
+> answer options, and interpretation rules are ONLY in bedrock-migration-assessment's Clarify,
+> which Step 3 runs. Do NOT fabricate questions from the summaries above.
 
 ### Discovery Summary
 
@@ -294,11 +293,11 @@ ELSE proceed to Step 2 (Assumption-Sheet Wizard)
 
 **If `eligible_for_clarify_simple_path`**, present:
 
-> "Your stack looks straightforward with lightweight AI ([model IDs from profile]) — no
-> agentic framework detected.
+> "Your stack looks straightforward with lightweight AI ([model IDs from profile]).
 >
-> Want a short question set (~6 questions) instead of the full flow? I'll use discovery for
-> region, database sizing, and model detection.
+> Want a short infrastructure question set (~4 questions) instead of the full flow? I'll use
+> discovery for region and database sizing. The AI questions come afterwards, from the Bedrock
+> migration assessment.
 >
 > **[Yes — short path]** / **[No — ask me everything]**"
 
@@ -309,18 +308,12 @@ ELSE proceed to Step 2 (Assumption-Sheet Wizard)
 3. Ask only questions **not** resolved by extraction (after any user corrections):
    - **Q2** (compliance) — always ask
    - **Q7** (maintenance window) — always ask
-   - **Q16** (AI priority) — from `clarify-ai.md`
-   - **Q21** (AI latency) — from `clarify-ai.md`
    - **Q3** (GCP spend) — only if billing did not extract it
    - **Q1** (region) — only if region extraction ambiguous (multiple GCP regions)
 4. Apply documented defaults for all other unanswered questions. Record in
    `metadata.questions_defaulted`.
 5. Write `preferences.json` with `metadata.clarify_mode: "simple_hybrid"`. Skip straight to
-   Category E opt-in (if applicable), then the final write.
-
-**Agentic hard block:** If `agentic_profile.is_agentic == true`, **never offer** infra
-fast-path or simple hybrid path. Agentic workloads require Q23–Q26 (asked as essential
-questions in the wizard).
+   Category E opt-in (if applicable), then the final write, then Step 3.
 
 **If user chooses No, or neither path is eligible:** Continue to Step 2 (the wizard is the
 default full flow).
@@ -332,17 +325,16 @@ split matters, so it is stated here rather than left to each unit — matching A
 `clarify.md` § Step: Run the phase.
 
 1. Run each fragment whose `_trigger` holds (`clarify-global.md` always;
-   `clarify-compute.md`, `clarify-database.md`, `clarify-ai.md` per their triggers above). A
+   `clarify-compute.md` and `clarify-database.md` per their triggers above). A
    fragment **reads discovery, resolves what it can, assigns a disposition per row, and
    returns rows** — it asks nothing.
 2. Run `clarify-assemble.md`, which owns the whole conversation: the Assumption Sheet
    (Gate 1), the Essential Questions (Gate 2), the Answer Recap (Gate 3), the Category E
    opt-in, and the Full Flow variant — then writes `preferences.json`.
-3. Evaluate `_postconditions`. On all-pass emit `HANDOFF_OK`; on any failure emit `GATE_FAIL`
-   and stop.
+3. Run Step 3 once: the assembler's Completion Handoff Gate sends you there on PASS, and on FAIL Clarify stops before it.
 
-Why presentation sits in the assembler: with four fragments each presenting its own section
-the user would face four sheets and four rounds of essentials, interleaved. This phase runs
+Why presentation sits in the assembler: with three fragments each presenting its own section
+the user would face three sheets and three rounds of essentials, interleaved. This phase runs
 **one** sheet as a single mandatory gate and then batches the essentials, and the
 `_postconditions` above say _"every assumption-sheet row the user was shown"_ — singular. One
 gate, one recap, one place that knows the full row set. See `clarify-assemble.md` for the
@@ -350,3 +342,17 @@ complete sheet format, essentials batching, recap, Category E opt-in, Full Flow 
 `preferences.json` write, Defaults Table, Validation Checklist, and Completion Handoff Gate —
 all GCP-specific presentation and sequencing detail that lives there rather than here, exactly
 as Azure's assembler owns the same responsibilities for its five fragments.
+
+## Step 3: AI Handoff
+
+When `ai-workload-profile.json` does not exist, go to item 3.
+
+1. Load `references/shared/ai-handoff.md` and run its Steps 1 to 4 with `<phase>` `clarify`.
+   A `stop` route leaves `phases.clarify` `"in_progress"` and ends the run; a `defer` route
+   skips item 2 and goes to item 3.
+2. After `accept --through clarify` succeeds, `preferences.json` holds this skill's
+   infrastructure answers and the assessment's AI answers, and `ai-handoff.json` records the
+   assessment run. Show the assessment's Clarify summary.
+3. Evaluate `_postconditions`. On all-pass emit `HANDOFF_OK | phase=clarify |
+   artifacts=preferences.json` and update the phase status per `clarify-assemble.md` § Step 6;
+   on any failure emit `GATE_FAIL` and stop.

@@ -111,7 +111,7 @@ def test_a_host_answer_preferences_dropped_is_not_ready(tmp_path: Path, capsys) 
     json.dumps({"host_skill": "gcp-to-aws", "design_constraints": {"ai_priority": {"value": "cost"}}}),
     json.dumps({"host_skill": "gcp-to-aws", "design_constraints": {"compliance": ["none"]}}),
     json.dumps({"design_constraints": {}}),
-    json.dumps({"host_skill": "gcp-to-aws", "infrastructure_moves": True, "stop_after": "generate", "design_constraints": {}}),
+    json.dumps({"host_skill": "gcp-to-aws", "infrastructure_moves": True, "stop_after": "feedback", "design_constraints": {}}),
     json.dumps({"host_skill": "gcp-to-aws", "infrastructure_moves": True, "design_constraints": {}}),
     json.dumps({"host_skill": "gcp-to-aws", "infrastructure_moves": "yes", "stop_after": "clarify", "design_constraints": {}}),
 ], ids=["not-json", "array", "unknown-key", "bare-value", "no-host-skill", "unknown-stop", "no-stop", "non-bool-infra"])
@@ -179,7 +179,7 @@ def test_a_standalone_run_is_ready_through_generate(tmp_path: Path, capsys) -> N
 
 
 @pytest.mark.parametrize(("initiated_by", "stop_after"), [(True, "estimate"), (True, None), (False, "estimate"), (True, "clarify")])
-def test_a_combined_run_is_never_ready_through_generate(initiated_by, stop_after, tmp_path: Path, capsys) -> None:
+def test_a_combined_run_is_not_ready_through_generate_unless_the_host_asked(initiated_by, stop_after, tmp_path: Path, capsys) -> None:
     run = _generated_run(tmp_path, initiated_by, stop_after)
     code, out = _cli(run, "generate", capsys)
     assert code == 1 and out["reason"] == "combined_run", out
@@ -204,14 +204,14 @@ def test_generate_plan_names_a_combined_run_before_any_missing_phase(stop_after,
     assert raised.value.code == "combined_run"
 
 
-def test_a_dangling_host_answers_link_still_marks_a_combined_run(tmp_path: Path, capsys) -> None:
+def test_a_dangling_host_answers_link_never_unlocks_generate(tmp_path: Path, capsys) -> None:
     run = _generated_run(tmp_path, False, None)
     (run / "host-answers.json").symlink_to(tmp_path / "gone.json")
-    assert _cli(run, "generate", capsys)[1]["reason"] == "combined_run"
+    assert _cli(run, "generate", capsys)[1]["reason"] == "host_answers_invalid"
     assert _module("bma_generate_standalone", "generate-ai.py").build_plan(_generated_run(tmp_path / "s", False, None))["routes"]
 
 
-def test_step_0_returns_a_combined_run_to_the_host_and_never_offers_generate() -> None:
+def test_step_0_returns_a_combined_run_to_the_host_and_never_offers_generate_itself() -> None:
     step0 = SKILL[SKILL.index("## Step 0"):SKILL.index("## Step 1")]
     rule = step0[step0.index("Combined run:"):step0.index("1. ")]
     for phrase in ("`initiated_by`", "`host-answers.json`", "`stop_after`", "control returns to the host", "Rules 4 to 7 never apply"):
@@ -227,7 +227,6 @@ def test_step_0_returns_a_combined_run_to_the_host_and_never_offers_generate() -
         assert phrase in lines[stop], phrase
     step4 = SKILL[SKILL.index("## Step 4"):SKILL.index("## Step 5")]
     assert "In a combined run, do not ask" in step4
-    assert "Never in a combined run" in SKILL[SKILL.index("## Step 5"):]
     readiness = SKILL[SKILL.index("## Readiness for other skills"):SKILL.index("## Definitions")]
     assert "`combined_run`" in readiness
 
@@ -249,3 +248,80 @@ def test_a_host_started_run_takes_the_profile_route_without_asking() -> None:
     assert re.search(r"host-started run takes the Profile route without asking", step1)
     combined = SKILL[SKILL.index("## Combined mode"):SKILL.index("## Readiness for other skills")]
     assert "Profile route" in combined and "supplied-profile route" not in combined
+
+
+def test_a_host_that_asks_for_generate_gets_a_ready_generate(tmp_path: Path, capsys) -> None:
+    run = _generated_run(tmp_path, True, "generate")
+    code, out = _cli(run, "generate", capsys)
+    assert code == 0 and out["initiated_by"] == "GCP_TO_AWS", out
+    assert any(name.startswith("ai-migration/") for name in out["artifacts"])
+    assert _module("bma_generate_host", "generate-ai.py").build_plan(run)["routes"]
+
+
+@pytest.mark.parametrize("host", ["not json", "[]", json.dumps({"stop_after": "generate"}), "[" * 200_000],
+                         ids=["not-json", "array", "bad-shape", "deeply-nested"])
+def test_a_broken_host_answers_file_never_unlocks_generate(host, tmp_path: Path, capsys) -> None:
+    run = _generated_run(tmp_path, True, None)
+    (run / "host-answers.json").write_text(host)
+    assert _cli(run, "clarify", capsys)[1]["reason"] == "host_answers_invalid"
+    assert _cli(run, "generate", capsys)[1]["reason"] == "host_answers_invalid"
+    gen = _module("bma_generate_broken_host", "generate-ai.py")
+    with pytest.raises(gen.GenerateInputError) as raised:
+        gen.build_plan(run)
+    assert raised.value.code == "host_answers_invalid"
+
+
+def test_a_symlinked_host_answers_file_never_unlocks_generate(tmp_path: Path, capsys) -> None:
+    run = _generated_run(tmp_path, True, "generate")
+    outside = tmp_path / "outside.json"
+    (run / "host-answers.json").rename(outside)
+    (run / "host-answers.json").symlink_to(outside)
+    assert _cli(run, "generate", capsys)[1]["reason"] == "host_answers_invalid"
+
+
+def test_step_0_lets_changed_host_answers_reset_a_run_that_already_generated() -> None:
+    step0 = SKILL[SKILL.index("## Step 0"):SKILL.index("## Step 1")]
+    rule = step0[step0.index("Combined run:"):step0.index("1. ")]
+    lines = [line for line in rule.splitlines() if line.startswith("- (")]
+    left = next(line for line in lines if "left combined mode" in line)
+    changed = next(line for line in lines if "`host_answers_mismatch`" in line and "Change answers" in line)
+    assert lines.index(changed) < lines.index(left) or "line (e) does not match" in left.split(":", 1)[0], left
+    reset = step0[step0.index("   - Change answers:"):].splitlines()[0]
+    assert all(f"`phases.{p}`" in reset for p in ("design", "estimate", "generate")) and '`"pending"`' in reset
+
+
+def test_step_4_asks_about_generate_only_outside_a_combined_run() -> None:
+    step4 = SKILL[SKILL.index("## Step 4"):SKILL.index("## Step 5")]
+    ask = next(s for s in step4.split(". ") if "ask once" in s)
+    assert ask.startswith("Outside a combined run"), ask
+
+
+def test_step_0_runs_generate_only_when_the_host_asks_for_it() -> None:
+    step0 = SKILL[SKILL.index("## Step 0"):SKILL.index("## Step 1")]
+    rule = step0[step0.index("Combined run:"):step0.index("1. ")]
+    lines = [line for line in rule.splitlines() if line.startswith("- (")]
+    left = next(line for line in lines if "left combined mode" in line)
+    assert "`stop_after` is not `generate`" in left
+    resume = next(line for line in lines if "`stop_after` is `generate`" in line and "Step 5" in line)
+    condition = resume.split(":", 1)[0]
+    assert all(state in condition for state in ('`"pending"`', '`"in_progress"`', "absent")), condition
+    assert "resume at Generate as in rule 4" in resume and "the way rule 4 does" in rule
+    assert "`\"decide_and_execute\"`" in resume and lines.index(resume) < next(
+        i for i, line in enumerate(lines) if "named in `stop_after` is" in line)
+    stop = next(line for line in lines if "named in `stop_after` is" in line)
+    assert "`generate_invalid`" in stop and "Generate again" in stop
+    step4 = SKILL[SKILL.index("## Step 4"):SKILL.index("## Step 5")]
+    assert "`stop_after` is `generate`" in step4
+    step5 = SKILL[SKILL.index("## Step 5"):]
+    assert "Never in a combined run" not in step5 and "`stop_after` is `generate`" in step5
+    combined = SKILL[SKILL.index("## Combined mode"):SKILL.index("## Readiness for other skills")]
+    assert "never reaches Generate" not in combined and "`generate`" in combined
+
+
+def test_a_broken_host_answers_file_sends_the_host_back_to_write_it() -> None:
+    generate = (BMA / "references" / "phases" / "generate" / "generate-ai.md").read_text(encoding="utf-8")
+    row = next(line for line in generate.splitlines() if line.startswith("| `host_answers_invalid`"))
+    assert "Only the host skill can write it again" in row
+    handoff = (PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "shared" / "ai-handoff.md").read_text(encoding="utf-8")
+    row = next(line for line in handoff.splitlines() if line.startswith("| `assessment_not_ready`"))
+    assert "`host_answers_invalid`" in row and "Step 4.1 again" in row

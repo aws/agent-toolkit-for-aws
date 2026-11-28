@@ -14,9 +14,8 @@
 > `ai-workload-profile.schema.json` (#415).** Structural validity against this document or its
 > companion JSON Schema (`scripts/contracts/aws-design-ai.schema.json`) does NOT imply an
 > implemented detector, adapter, route, model mapping, or runtime-supported identity, and does
-> NOT imply that GCP's or Azure's current `design-ai.md` actually emits this shape yet. No
-> producer has been repointed to this canonical contract in this change — that is deferred
-> runtime-adoption work.
+> NOT imply that Azure's current `design-ai.md` emits this shape yet. One skill produces it:
+> `bedrock-migration-assessment`, whose Design phase gcp-to-aws runs in combined mode; see Status.
 >
 > **What changed from the prior Azure-only contract.** The prior contract's `metadata.ai_source`
 > was a single scalar string (`azure_openai | openai | anthropic | both | other`) that MUST
@@ -375,25 +374,20 @@ rubric file (`ai.md`, a provider-to-Bedrock mapping guide, or a `vendored/ai/*` 
       used only if no Active alternative exists, with the EOL date noted).
 - [ ] `"App Runner"` appears nowhere in the artifact.
 
-## Status — target-only, no producer yet
+## Status — one producer, Azure deferred
 
-This canonical contract has no producer in this change. The CURRENT emission contract for
-Azure's `aws-design-ai.json` is still
+`bedrock-migration-assessment` produces this contract: its Design phase
+(`skills/bedrock-migration-assessment/references/phases/design/design-ai.md`) writes
+`aws-design-ai.json` and checks it with `skills/bedrock-migration-assessment/scripts/design-ai.py check`.
+gcp-to-aws runs that phase in combined mode and copies the file
+(`skills/gcp-to-aws/references/shared/ai-handoff.md`), so `scripts/artifact-contracts.json` has no
+`gcp-to-aws` shadow entry for `aws-design-ai.json`: the shared `json_schema` entry applies.
+
+The CURRENT emission contract for Azure's `aws-design-ai.json` is still
 `skills/azure-to-aws/references/shared/schema-design-aws-ai.md` — the single-scalar
-`metadata.ai_source` shape (MUST equal `summary.ai_source` from the profile) that `design.md`,
+`metadata.ai_source` shape (MUST equal `summary.ai_source` from the profile) that its `design.md`,
 `design-ai.md`, and `estimate-ai.md` read and assert today. `scripts/artifact-contracts.json`'s
 `azure-to-aws` entry for `aws-design-ai.json` shadows the shared `json_schema` entry with that
 file's `Shape` block for exactly this reason: Azure's actual runtime output has not changed.
-GCP now has its own shadow entry mirroring Azure's: `scripts/artifact-contracts.json`'s
-`gcp-to-aws` entry for `aws-design-ai.json` points at
-`skills/gcp-to-aws/references/shared/schema-design-aws-ai.md`, which names GCP's current
-single-scalar `metadata.ai_source` emission (the shape `design-ai.md` writes today) as the
-emission contract, with this file as the target. GCP's actual runtime output has not changed
-either.
-
-This document (and its companion JSON Schema, `scripts/contracts/aws-design-ai.schema.json`)
-is the TARGET contract — the many-valued `ai_sources[]`/`gateways[]` shape neither skill's
-`design-ai.md` emits yet. Repointing either skill's `design-ai.md` to emit this shape is
-deferred runtime-adoption work, named explicitly so a future PR does not silently assume
-today's runtime output already satisfies this contract. `estimate-ai.md` and
-`generate-artifacts-ai.md` are unchanged and still read today's artifact shape.
+For `azure-to-aws` this document is the TARGET contract; repointing its `design-ai.md` is deferred
+runtime-adoption work.

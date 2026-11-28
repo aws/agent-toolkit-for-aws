@@ -27,13 +27,11 @@ ANTHROPIC_GUIDE = PLUGIN_ROOT / "skills" / "shared" / "ai" / "ai-anthropic-to-be
 LLM_TO_BEDROCK_SKILL = PLUGIN_ROOT / "skills" / "llm-to-bedrock" / "SKILL.md"
 
 DESIGN_AI_FILES = [
-    PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "phases" / "design" / "design-ai.md",
     PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "phases" / "design" / "design-ai.md",
 ]
 
 SCHEMA_FILES = [
     PLUGIN_ROOT / "skills" / "shared" / "ai" / "schema-design-aws-ai.md",
-    PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "shared" / "schema-design-aws-ai.md",
     PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "shared" / "schema-design-aws-ai.md",
 ]
 

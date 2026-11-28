@@ -83,15 +83,6 @@ def test_every_boundary_matches_one_displayed_label_and_its_tier(tokens) -> None
     assert matches == [tier_of(tokens)]
 
 
-def test_gcp_q7_shows_the_same_labels_and_auto_resolve_bands() -> None:
-    gcp = (PLUGIN_ROOT / "skills/gcp-to-aws/references/phases/clarify/clarify-ai-only.md").read_text(encoding="utf-8")
-    gcp_q7 = gcp[gcp.index("## Q7 "):gcp.index("## Q8 ")]
-    options = re.search(r"^> (1\\\).*)$", gcp_q7, re.M).group(1)
-    assert options == re.search(r"^> (1\\\).*)$", Q7, re.M).group(1)
-    for tier in TIERS["tiers"]:
-        assert f'{tier["label"].removesuffix(" tokens")} → `"{tier["value"]}"`' in gcp_q7
-
-
 def test_q7_places_a_measured_total_with_the_table_bounds() -> None:
     assert "references/vendored/ai/token-volume-tiers.json" in Q7 and "`min_tokens` inclusive, `max_tokens` exclusive" in Q7
     assert "Q7 also reads this skill's `references/vendored/ai/token-volume-tiers.json`" in CLARIFY

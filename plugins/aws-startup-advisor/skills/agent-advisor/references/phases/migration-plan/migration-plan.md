@@ -107,6 +107,12 @@ that does NOT go under `$GCP_BASE`is`$MIGRATION_DIR`, which stays under the targ
 | `design-refs/...` (short form) | `$GCP_BASE/references/design-refs/...`           |
 | `data/...`                     | `$GCP_BASE/data/...` (**not** under references/) |
 | `phases/...` (short form)      | `$GCP_BASE/references/phases/...`                |
+| `<GCP_BASE>/...`               | `$GCP_BASE/...`                                  |
+| `<BMA_BASE>/...`               | the absolute `bma_base` that `$GCP_BASE/scripts/bma-handoff.py probe` prints; never under `$GCP_BASE` or this skill |
+
+While following a bedrock-migration-assessment file that `ai-handoff.md` loads, its own
+`<SKILL_BASE>` and relative `references/...` or `scripts/...` paths resolve under `<BMA_BASE>`,
+not under `$GCP_BASE` (`$GCP_BASE/references/shared/ai-handoff.md` § Paths).
 
 Examples:
 
@@ -315,7 +321,7 @@ confirm with one keypress.
 Read `references/phases/migration-plan/migration-plan-gcp-constraints.md` and follow everything in it
 for the duration of this phase. It covers: design principles (dev sizing, no human costs,
 re-platform default, BigQuery gate), context loading budget, conditional file table,
-feedback sidebar auto-skip, and hybrid stack warning.
+and feedback sidebar auto-skip.
 
 ## Step 3 — Announce the transition
 
@@ -365,7 +371,7 @@ Key behaviors:
 ### Phase B — Clarify
 
 Read and execute: `$GCP_BASE/references/phases/clarify/clarify.md`
-(which in turn loads `clarify-ai-only.md` or `clarify-ai.md` as appropriate)
+(which runs the AI questions in bedrock-migration-assessment through `shared/ai-handoff.md`)
 
 Key behavior — apply injection context:
 When Clarify asks a question whose answer is already in the injection context (Step 2),
@@ -374,29 +380,36 @@ detection summary as pre-filled. Only ask what remains (typically: monthly AI sp
 priority, cross-cloud preference).
 
 Also inject `design_constraints.target_region` into `preferences.json` directly when a
-specific region was named (mark `chosen_by: "extracted"`).
+specific region was named (mark `chosen_by: "extracted"`). On an AI-only run there is no
+gcp-to-aws `preferences.json` before the handoff: when the assessment's Clarify asks for the
+region, present the injected region as the pre-selected answer.
+
+The `ai_constraints.agentic.*` rows of the injection table have no reader any more: the
+assessment's Clarify has no agentic questions and its Design writes `agentic_design:
+"undecided"`. `design.json` stays the authority for the runtime and deployment model (Step 3.5
+and Step 5's verdict check).
 
 On `HANDOFF_OK`: `preferences.json` present in `$MIGRATION_DIR`.
 
 ### Phase C — Design
 
 Read and execute: `$GCP_BASE/references/phases/design/design.md`
-(which routes to `design-ai.md`, `design-infra.md`, etc.)
+(the AI route runs bedrock-migration-assessment's Design through `shared/ai-handoff.md` and copies its `aws-design-ai.json`)
 
 **Key behavior — unit correlation (multi-unit runs only):**
 
-After design-ai reaches HANDOFF_OK and writes `aws-design-ai.json` to `$MIGRATION_DIR`,
+After Design reaches HANDOFF_OK and `aws-design-ai.json` is in `$MIGRATION_DIR`,
 YOU (the advisor's migration-plan interpreter) annotate each design_block with advisor
 unit context — this is a post-write annotation of the artifact FILE; gcp's instructions
 are not modified and gcp never sees this step:
 
-1. Read `aws-design-ai.json` → `design_blocks[]` (gcp's per-workload design output)
-2. For each design_block, match its `source_paths[]` against the injected units' `evidence` fields (from Step 2)
+1. Read `aws-design-ai.json` → `design_blocks[]` (the per-workload design output)
+2. For each design_block, find the `workloads[]` row with the same `workload_id` in `$MIGRATION_DIR/ai-workload-profile.neutral.json` (the profile the assessment designed), and match that row's `call_sites[].file` paths against the injected units' `evidence` fields (from Step 2). A profile without `workloads[]` (schema 1.0) gives no match
 3. If a match is found (any source path overlaps with evidence): ANNOTATE the design_block with ADDITIVE keys:
    - `"advisor_unit": "<unit_id>"`
    - `"advisor_target_runtime": "<target_runtime>"`
    - For non-agent units: `"advisor_compute_note": "compute layer fixed to <target_runtime> per agent-advisor (rule cited in design.json); do not re-map"`
-4. If no match is found (no evidence overlap): annotate `"advisor_unit": null` — visible, not guessed
+4. If no match is found (no evidence overlap): annotate `"advisor_unit": null` — visible, not guessed. Because the assessment's Design does not read the injection, a model-bearing block with `"advisor_unit": null` carries a model no advisor unit confirmed: Step 3.5 treats it as a mismatch under its item 2
 5. When agent-class units have DIFFERING migration approaches (multiple agent units with different `deployment_model` values), record on the non-primary unit's block:
    `"advisor_approach_note": "this unit's approach is <deployment_model> per advisor; the plan's code_migration follows the primary unit — see Tier-1 proposal"`
 
@@ -406,8 +419,10 @@ are not modified and gcp never sees this step:
 
 For every matched, model-bearing unit, compare the plan's model and migration path with
 that unit's `design.json` model contract, including its separate `invocation_model_id`.
-Carry the injected invocation identifier into the corresponding GCP `aws_model_id` unchanged.
-GCP represents each advisor `api_path` with the `migration_path` / `required_client_api`
+In a multi-unit run, a model-bearing design block that matched no unit (Phase C step 4) fails
+this check under item 2.
+bedrock-migration-assessment chooses the plan's models without reading the injection, so this
+check is where the advisor contract is enforced. The plan represents each advisor `api_path` with the `migration_path` / `required_client_api`
 vocabulary of `references/vendored/ai/bedrock-endpoint-policy.md` on the matched model row:
 
 | Advisor `api_path` | GCP `migration_path` | `required_client_api` | Notes |
@@ -421,15 +436,15 @@ vocabulary of `references/vendored/ai/bedrock-endpoint-policy.md` on the matched
 Every `runtime_*` row carries the `endpoint_assumption` sentence of
 `references/vendored/ai/schema-design-aws-ai.md` with the advisor `unit_id` as `<workload_id>` and
 no `mantle_requirement`; a `mantle_*` row's `mantle_requirement` is not part of the comparison
-below. GCP reads both Mantle fields from the injection file written in Step 2, so a
-`mantle_*` unit whose injection entry lacks `mantle_selector` cannot validate: fix the
+below. The advisor side of both Mantle fields comes from the injection file written in Step 2,
+so a `mantle_*` unit whose injection entry lacks `mantle_selector` cannot validate: fix the
 handoff (rerun Model Recommend and the handoff) rather than typing the selector into Design.
 
 An absent `runtime_api` on a legacy runtime plan means Converse; an explicit Chat/Responses
 choice is not equivalent. Do not replace a confirmed Global profile with US Geo or strip an ARN.
 Read each matched model row's `migration_path` and `required_client_api`; use legacy `runtime_api` and the `code_migration`
 defaults only for a single-unit legacy plan. A secondary unit must not inherit the primary's
-API or invocation profile. Missing per-unit data requires re-running Design with the injection.
+API or invocation profile. Missing per-unit data is a mismatch (item 2 below).
 
 Pass the resolved per-model API to `runtime_api` below and the row's `mantle_selector` (when
 present) to `mantle_selector`. A current Design plan with no explicit API defaults to Responses
@@ -486,6 +501,15 @@ def matches_advisor_model(advisor, plan_model, migration_path, runtime_api=None,
    account/region probe caused the mismatch. Resolution MUST return to Model Recommend, update
    `model-recommendation-input.json`, rerun `model_recommendation.py`, and reconfirm the new
    result. A migration engine is a consumer of the advisor contract, not a second selector.
+   Because the assessment's Design does not read the injection, the retry is a choice the user
+   makes, never a loop: (a) reconfirm Model Recommend on the plan's model, then run Step 3.5
+   again; (b) change the assessment's answers (its Clarify Q5 current model or Q2 priority) and
+   run its Design again through `ai-handoff.md`; or (c) end here. For a block with
+   `"advisor_unit": null`, offer only (c): neither (a) nor (b) changes its call sites, so it
+   would fail again. On (c), or when (b) produces
+   the same mismatch, stop with `_halt_and_inform` and follow § Failure handling: the
+   mismatch is recorded on the design block and the advisor's `design.json` stays the
+   recommendation.
 3. A live probe may invalidate availability, but it still does not authorize silent
    substitution. Probe failure blocks runnable implementation claims. Resolve credentials,
    IAM, profile ID, region, or model access first; return to Model Recommend only when the
@@ -506,7 +530,7 @@ On `HANDOFF_OK`: `estimation-ai.json` (and/or other estimate artifacts) present.
 ### Phase E — Generate
 
 Read and execute: `$GCP_BASE/references/phases/generate/generate.md`
-(which routes to `generate-ai.md`, `generate-artifacts-ai.md`, etc.)
+(the AI route runs bedrock-migration-assessment's Generate through `shared/ai-handoff.md` and copies `generation-ai.json` and its `ai-migration/` files)
 
 **Context firewall (important — gcp-to-aws is read-only and owns its own output).** Every
 artifact this phase produces — including `migration-report.html` — is rendered ENTIRELY by

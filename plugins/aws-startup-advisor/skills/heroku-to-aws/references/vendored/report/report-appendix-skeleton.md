@@ -185,7 +185,8 @@ report spec keeps):
    `appendix-security` / `appendix-costs`.
 3. **Conditional sections**: each conditional appendix is present only when
    its trigger in this file holds (AI appendix only when AI artifacts exist;
-   Bedrock monitoring rows only when `bedrock_monitoring.tf` exists).
+   Bedrock monitoring rows only when `bedrock_monitoring.tf` exists or the
+   AI setup script contains `== 6. Bedrock budget and cost anomaly monitor`).
 4. **Configuration provenance**: when `preferences.json` exists and
    `appendix-config` renders, its table has Question / assumption, Your
    choice, Source and Design consequence columns populated from `prompt` and
@@ -424,9 +425,14 @@ baseline posture scoring). When the compliance list is empty or `["unknown"]`,
 say the add-on was not generated and what would trigger it.
 
 **Cost guardrails** (when `$MIGRATION_DIR/ai-migration/bedrock_monitoring.tf`
-exists): the Bedrock budget and cost-anomaly rows, ⟨cost_guardrail_rows⟩. Add
-an **Inference profiles (tagged)** row for per-model Cost Explorer attribution
-only when the actual generated `bedrock_monitoring.tf` contains an enabled
+exists, or the AI setup script in `$MIGRATION_DIR/ai-migration/` that
+⟨cost_guardrail_rows⟩ names contains the step
+`== 6. Bedrock budget and cost anomaly monitor`, which
+bedrock-migration-assessment's Generate writes): the Bedrock budget and
+cost-anomaly rows, ⟨cost_guardrail_rows⟩. Add an
+**Inference profiles (tagged)** row for per-model Cost Explorer attribution,
+never from the setup script (it creates no inference profile), and only when the
+actual generated `bedrock_monitoring.tf` contains an enabled
 `aws_bedrock_inference_profile` resource and its `bedrock_inference_profile_arns`
 output, and the selected model/API supports that profile. A file's existence,
 a comment mentioning profiles, or a disabled resource is not evidence of this

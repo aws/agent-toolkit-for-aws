@@ -24,7 +24,6 @@ CONFIRM_MD = SKILL / "references" / "phases" / "confirm" / "confirm.md"
 DESIGN_MD = SKILL / "references" / "phases" / "design" / "design.md"
 POC_MD = SKILL / "references" / "phases" / "poc" / "poc.md"
 SKILL_MD = SKILL / "SKILL.md"
-GCP_DESIGN_AI_MD = PLUGIN_SKILLS / "gcp-to-aws" / "references" / "phases" / "design" / "design-ai.md"
 
 POLICY_REF = "bedrock-endpoint-policy.md"
 NEW_PATHS = ("runtime_openai_responses", "runtime_openai_chat", "runtime_messages")
@@ -69,7 +68,7 @@ def test_model_selection_lists_the_runtime_paths_and_the_selector_rule():
     assert "API continuity plus runtime-only governance" not in text
 
 
-@pytest.mark.parametrize("path", [MIGRATION_PLAN_MD, HANDOFF_MD, GCP_DESIGN_AI_MD])
+@pytest.mark.parametrize("path", [MIGRATION_PLAN_MD, HANDOFF_MD])
 def test_handoff_translation_names_every_new_path_and_the_selector(path):
     text = _norm(path)
     for needle in (*NEW_PATHS, "mantle_selector", "runtime_openai_cris", "required_client_api"):
@@ -184,10 +183,6 @@ def test_injection_round_trip_preserves_accepted_selector():
     assert matches(advisor, legacy_unit["model"], legacy_unit["api_path"], None, None) is False
     assert matches(advisor, gcp_row["aws_model_id"], gcp_row["migration_path"], None,
                    "web_search") is False
-
-
-def test_gcp_design_ai_todo_is_resolved():
-    assert "TODO(PR 3" not in GCP_DESIGN_AI_MD.read_text()
 
 
 def test_poc_constructs_runtime_messages_and_runtime_openai_clients():

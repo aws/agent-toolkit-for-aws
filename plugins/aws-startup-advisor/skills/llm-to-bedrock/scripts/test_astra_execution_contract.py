@@ -3,7 +3,6 @@ import base64
 import json
 import re
 import sys
-import textwrap
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock
@@ -389,7 +388,7 @@ def test_chat_image_helper_validates_missing_bytes():
 
 
 @pytest.mark.parametrize("source,target,expected", [(60, 60, 0), (60, 66, 10), (120, 60, -50), (0, 60, None)])
-@pytest.mark.parametrize("skill", ["gcp-to-aws", "azure-to-aws"])
+@pytest.mark.parametrize("skill", ["azure-to-aws"])
 def test_roi_executes_rate_derived_formula(source, target, expected, skill):
     text = (PLUGIN / "skills" / skill / "references/phases/estimate/estimate-ai.md").read_text()
     roi = text.split("## Part 5: ROI Analysis", 1)[1].split("## Part 6:", 1)[0]
@@ -407,8 +406,8 @@ def test_api_handoff_paths_and_real_evaluator_classifier_are_consistent():
     reference = (PLUGIN / "skills/llm-to-bedrock/references/helpers/behavior-delta-detection/references/openai-to-bedrock.md").read_text()
     assert "Same-vendor GPT endpoint and API deltas" in helper
     assert "## Same-vendor GPT endpoint and API deltas" in reference
-    for rel in ["skills/llm-to-bedrock/SKILL.md", "skills/gcp-to-aws/references/phases/design/design-ai.md",
-                "skills/gcp-to-aws/references/phases/generate/generate-ai.md",
+    for rel in ["skills/llm-to-bedrock/SKILL.md", "skills/azure-to-aws/references/phases/design/design-ai.md",
+                "skills/bedrock-migration-assessment/references/vendored/ai/bedrock-endpoint-policy.md",
                 "skills/gcp-to-aws/references/vendored/ai/ai-openai-to-bedrock.md"]:
         assert "mantle_openai_chat" in (PLUGIN / rel).read_text(), rel
     assert preflight_bedrock.is_mantle_model("openai.gpt-6-astra")
@@ -505,7 +504,7 @@ def test_azure_runtime_parent_gate_contract(model_id, region, allowed):
     assert "**`code_migration`** — `migration_path`" in schema
 
 
-@pytest.mark.parametrize("skill", ["gcp-to-aws", "azure-to-aws"])
+@pytest.mark.parametrize("skill", ["azure-to-aws"])
 def test_final_recommendation_uses_computed_roi(skill):
     text = (PLUGIN / "skills" / skill / "references/phases/estimate/estimate-ai.md").read_text()
     final = text.split("## Part 7: Migration Recommendation", 1)[1].split("## Output", 1)[0]
@@ -514,87 +513,7 @@ def test_final_recommendation_uses_computed_roi(skill):
     assert "~10% higher" not in final and "costs ~10% more" not in final
 
 
-@pytest.mark.parametrize("region", ["us-east-1", "us-west-2"])
-@pytest.mark.parametrize("api_path,endpoint", [
-    ("mantle_openai_chat", "chat/completions"),
-    ("mantle_openai_responses", "responses"),
-    ("runtime_openai_cris", "chat/completions"),
-    ("runtime_openai_cris", "responses"),
-])
-def test_gcp_generated_target_uses_real_sdk_wire_contract(region, api_path, endpoint, monkeypatch):
-    """Execute the actual generation template with the real SDK and offline HTTP."""
-    import httpx
-    import openai
-    import aws_bedrock_token_generator
-
-    path = PLUGIN / "skills/gcp-to-aws/references/phases/generate/generate-artifacts-ai.md"
-    section = path.read_text().split("## Step 2: Generate Test Comparison Harness", 1)[1].split(
-        "## Step 3:", 1)[0]
-    code = textwrap.dedent(re.search(r"  ```python\n(.*?)\n  ```", section, re.S).group(1))
-    model_id = "global.openai.gpt-6-astra" if api_path == "runtime_openai_cris" else "openai.gpt-6-astra"
-    code = (code.replace("{target_region}", region)
-            .replace("{aws_model_id}", model_id)
-            .replace("{required_client_api}", "chat_completions" if endpoint == "chat/completions" else "responses")
-            .replace("{migration_path}", api_path))
-    requests = []
-
-    def transport(request):
-        requests.append(request)
-        if endpoint == "chat/completions":
-            body = {"id": "chatcmpl-fixture", "object": "chat.completion", "created": 0,
-                    "model": "openai.gpt-6-astra", "choices": [{
-                        "index": 0, "finish_reason": "stop",
-                        "message": {"role": "assistant", "content": "answer"}}]}
-        else:
-            body = {"id": "resp_fixture", "object": "response", "created_at": 0,
-                    "model": "openai.gpt-6-astra", "status": "completed", "output": [{
-                        "id": "msg_fixture", "type": "message", "role": "assistant",
-                        "status": "completed", "content": [{
-                            "type": "output_text", "text": "answer", "annotations": []}]}]}
-        return httpx.Response(200, json=body)
-
-    client_name = "OpenAI" if api_path == "runtime_openai_cris" else "BedrockOpenAI"
-    real_client = getattr(openai, client_name)
-    with httpx.Client(transport=httpx.MockTransport(transport)) as http_client:
-        monkeypatch.setattr(aws_bedrock_token_generator, "provide_token",
-                            lambda **kwargs: "fixture-token")
-        monkeypatch.setattr(openai, client_name,
-                            lambda **kwargs: real_client(http_client=http_client, **kwargs))
-        ns = {}
-        exec(compile(code, str(path), "exec"), ns)  # nosec B102 - committed generator template
-        assert ns["call_bedrock"]("ping") == "answer"
-    assert len(requests) == 1
-    host = f"bedrock-runtime.{region}.amazonaws.com" if api_path == "runtime_openai_cris" else f"bedrock-mantle.{region}.api.aws"
-    assert str(requests[0].url) == f"https://{host}/openai/v1/{endpoint}"
-    payload = json.loads(requests[0].content)
-    assert payload["model"] == model_id
-    assert ("messages" in payload) is (endpoint == "chat/completions")
-    assert ("input" in payload) is (endpoint == "responses")
-    assert "provider_adapter" not in code
-
-
-def test_gcp_stage_two_artifacts_follow_mantle_and_runtime_contracts():
-    path = PLUGIN / "skills/gcp-to-aws/references/phases/generate/generate-artifacts-ai.md"
-    text = path.read_text()
-    route = text.split("## Step 0:", 1)[1].split("## Step 1M:", 1)[0]
-    for api_path in ("mantle_openai_chat", "mantle_openai_responses", "runtime_openai_cris"):
-        assert api_path in route
-    assert 'starts with `"mantle"`' in route
-    setup = text.split("## Step 3: Generate Bedrock Setup Script", 1)[1].split("## Step 3B", 1)[0]
-    assert "bedrock-mantle:CreateInference" in setup
-    assert "bedrock-mantle:CallWithBearerToken" in setup
-    assert "test_comparison.py --target-only --quick" in setup
-    assert "A Mantle selection must never run a Converse probe" in setup
-    assert "also authorize that exact `application-inference-profile/" in setup
-    assert "effective invocation target and IAM remain aligned" in setup
-    monitoring = text.split("## Step 3F:", 1)[1]
-    assert "omit the profile resource and its output for Mantle targets" in monitoring
-    assert 'copy_from = "{verified_model_source_arn}"' in monitoring
-    assert 'prefixed with "us." for US regions' not in monitoring
-    assert "Astra supports application inference profiles only on runtime Converse" in monitoring
-
-
-def test_gcp_report_lists_only_generated_profile_attribution():
+def test_gcp_report_never_lists_profile_attribution():
     path = PLUGIN / "skills/gcp-to-aws/references/phases/generate/generate-artifacts-report.md"
     text = path.read_text()
     controls = text.split("**Cost guardrails", 1)[1].split("**What the baseline", 1)[0]
@@ -602,10 +521,7 @@ def test_gcp_report_lists_only_generated_profile_attribution():
     assert any("Bedrock budget" in line for line in unconditional_rows)
     assert any("Cost anomaly detection" in line for line in unconditional_rows)
     assert not any("Inference profiles" in line for line in unconditional_rows)
-    assert "actual generated `bedrock_monitoring.tf`" in controls
-    assert "enabled `aws_bedrock_inference_profile` resource" in controls
-    assert "`bedrock_inference_profile_arns` output" in controls
-    assert "add profile attribution only when an eligible profile was generated" in text
+    assert "Never add an Inference profiles row" in controls and "bedrock_monitoring.tf" not in text
 
 
 def advisor_comparator():
@@ -648,20 +564,6 @@ def test_advisor_handoff_preserves_per_unit_runtime_profiles(prefix, as_arn, uni
     assert not matches(advisor, other_profile, "runtime_openai_cris", "converse")
     assert not matches({**advisor, "invocation_model_id": None},
                        invocation, "runtime_openai_cris", "converse")
-
-
-def test_gcp_design_producer_uses_current_cost_and_quota_contract():
-    text = (PLUGIN / "skills/gcp-to-aws/references/phases/design/design-ai.md").read_text()
-    assessment = text.split("**Stay-or-migrate assessment per model:**", 1)[1].split(
-        "**Model comparison table**", 1)[0]
-    assert "verified source" in assessment and "unavailable" in assessment
-    assert "report a modest cost increase rather than parity" not in assessment
-    quota = text.split("**Quota risk assessment**", 1)[1].split("## Part 1B:", 1)[0]
-    rows = [[cell.strip().strip('`"') for cell in line.strip("|").split("|")]
-            for line in quota.splitlines() if line.startswith("|")]
-    astra = next(row for row in rows if "Astra runtime" in row[1])
-    assert astra[0] == "medium" and astra[2] == "medium" and "10" in astra[1]
-    assert not any("other (1× burndown)" in row[1] for row in rows)
 
 
 @pytest.mark.parametrize("model,path", [

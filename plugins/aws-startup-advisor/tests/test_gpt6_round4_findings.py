@@ -25,10 +25,6 @@ PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 AZURE_DESIGN_MD = PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "phases" / "design" / "design.md"
 AZURE_GENERATE_MD = PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "phases" / "generate" / "generate.md"
 
-GCP_GENERATE_AI_MD = PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "phases" / "generate" / "generate-ai.md"
-GCP_GENERATE_ARTIFACTS_AI_MD = (
-    PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "phases" / "generate" / "generate-artifacts-ai.md"
-)
 
 GUARDRAILS_CANONICAL = PLUGIN_ROOT / "skills" / "shared" / "ai" / "ai-migration-guardrails.md"
 GUARDRAILS_VENDORED = [
@@ -43,7 +39,6 @@ OPENAI_GUIDE_VENDORED = [
 ]
 
 ESTIMATE_AI_FILES = [
-    PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "phases" / "estimate" / "estimate-ai.md",
     PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "phases" / "estimate" / "estimate-ai.md",
 ]
 
@@ -114,29 +109,6 @@ def test_azure_generate_assert_scopes_gpt_ban_to_bare_ids_and_carves_out_cris() 
 
 
 # --- Finding 0.2: GCP generate-ai.md Part 1 routing ---
-
-
-def test_gcp_generate_ai_routes_cris_through_bedrock_runtime_not_mantle() -> None:
-    text = GCP_GENERATE_AI_MD.read_text(encoding="utf-8")
-    assert "bedrock-runtime.{region}.amazonaws.com/openai/v1" in text, (
-        "generate-ai.md Part 1 must route runtime_openai_cris through the bedrock-runtime URL"
-    )
-    # The CRIS bullet must explicitly disclaim the mantle URL/IAM for this path.
-    normalized = _norm(text)
-    assert "not the mantle url" in normalized.lower() or "not** the mantle url" in normalized.lower()
-    assert "not** `bedrock-mantle:*`" in normalized or "not `bedrock-mantle:*`" in normalized.lower()
-
-
-def test_gcp_step1m_and_harness_agree_on_adapter_free_paths() -> None:
-    text = GCP_GENERATE_ARTIFACTS_AI_MD.read_text(encoding="utf-8")
-    step1m = text.split("## Step 1M:", 1)[1].split("## Step 1:", 1)[0]
-    harness = text.split("## Step 2:", 1)[1].split("## Step 3:", 1)[0]
-    assert "do not emit or import a provider-adapter stub" in step1m
-    assert "Mantle / runtime CRIS" in harness
-    assert "do not import `provider_adapter`" in harness
-    assert "from provider_adapter import get_provider" in harness
-    assert "client.responses.create" in harness
-    assert "client.chat.completions.create" in harness
 
 
 # --- Finding 0.3: canonical guide + vendored guardrails name full GPT-6 set ---

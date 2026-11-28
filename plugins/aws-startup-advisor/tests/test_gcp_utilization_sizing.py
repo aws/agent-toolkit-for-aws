@@ -362,7 +362,7 @@ def test_clarify_assemble_carries_the_sheet_row_the_q_e2_impact_row_and_exemptio
     assert '`declared_reason: "user_exempt"`' in q_e0
     q_e2 = text[text.index("### Q-E2") : text.index("## Gate 2")]
     assert "Recommendation Impact" in q_e2 and veto in q_e2 and "Changes nothing when no utilization data" in q_e2
-    sheet = text[text.index("**Assumed (documented defaults") : text.index("Q27 (AWS Activate credits)")]
+    sheet = text[text.index("**Assumed (documented defaults") : text.index("AI rows and AWS Activate credits")]
     assert "| Right-sizing appetite | Balanced |" in sheet
     assert "| Q-E0 — Right-sizing appetite | B (balanced)" in text
 def test_shared_cost_appetite_file_is_untouched_and_preferences_schema_carries_the_new_fields():

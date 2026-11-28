@@ -27,17 +27,13 @@ import pytest
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 SKILLS = PLUGIN_ROOT / "skills"
 
-GCP_CLARIFY_AI = SKILLS / "gcp-to-aws" / "references" / "phases" / "clarify" / "clarify-ai.md"
-GCP_CLARIFY_AI_ONLY = SKILLS / "gcp-to-aws" / "references" / "phases" / "clarify" / "clarify-ai-only.md"
-GCP_CLARIFY_ASSEMBLE = SKILLS / "gcp-to-aws" / "references" / "phases" / "clarify" / "clarify-assemble.md"
 AZURE_CLARIFY_AI = SKILLS / "azure-to-aws" / "references" / "phases" / "clarify" / "clarify-ai.md"
 AZURE_CLARIFY_AI_ONLY = SKILLS / "azure-to-aws" / "references" / "phases" / "clarify" / "clarify-ai-only.md"
 BMA_CLARIFY_AI_ONLY = SKILLS / "bedrock-migration-assessment" / "references" / "phases" / "clarify" / "clarify-ai-only.md"
-GCP_PREFERENCES_SCHEMA = SKILLS / "gcp-to-aws" / "references" / "shared" / "schema-preferences.md"
 BMA_PREFERENCES_SCHEMA = SKILLS / "bedrock-migration-assessment" / "references" / "shared" / "schema-preferences.md"
 BMA_RUN_FIXTURE = PLUGIN_ROOT / "fixtures" / "bma-ai-only-clarify" / "preferences.json"
 
-CLARIFY_FILES = [GCP_CLARIFY_AI, GCP_CLARIFY_AI_ONLY, AZURE_CLARIFY_AI, AZURE_CLARIFY_AI_ONLY, BMA_CLARIFY_AI_ONLY]
+CLARIFY_FILES = [AZURE_CLARIFY_AI, AZURE_CLARIFY_AI_ONLY, BMA_CLARIFY_AI_ONLY]
 
 CONSTRAINT = "ai_constraints.mantle_requirements"
 ENTRY_KEYS = {"workload_id", "selector", "source", "evidence", "region"}
@@ -92,54 +88,33 @@ def test_every_clarify_file_asks_the_mantle_only_requirements(path: Path) -> Non
 
 # --------------------------------------------------------------------------- (b) gcp and BMA Q10.5 stay in parity
 
-def test_q10_5_interpret_line_is_identical_and_names_the_full_vocabulary() -> None:
-    gcp = _question_sections(GCP_CLARIFY_AI_ONLY)
+def test_q10_5_interpret_line_names_the_full_vocabulary() -> None:
     bma = _question_sections(BMA_CLARIFY_AI_ONLY)
-    assert list(gcp) == list(bma)
-    assert list(gcp).index("Q10.5") == list(gcp).index("Q10") + 1
-    assert list(gcp).index("Q11") == list(gcp).index("Q10.5") + 1
-    gcp_interpret = _interpret_lines(gcp["Q10.5"])
-    assert gcp_interpret == _interpret_lines(bma["Q10.5"])
-    assert len(gcp_interpret) == 1
-    line = gcp_interpret[0]
+    assert list(bma).index("Q10.5") == list(bma).index("Q10") + 1
+    assert list(bma).index("Q11") == list(bma).index("Q10.5") + 1
+    interpret = _interpret_lines(bma["Q10.5"])
+    assert len(interpret) == 1
+    line = interpret[0]
     assert line.startswith(f"Interpret → `{CONSTRAINT}`")
     for selector in CLARIFY_SELECTORS:
         assert selector in line, selector
     assert "`detected | user | none`" in line
-    assert _table_rows(gcp["Q10.5"]) == _table_rows(bma["Q10.5"])
+    assert _table_rows(bma["Q10.5"])
     assert "_Skip when:_" not in bma["Q10.5"]
     assert "_Never skipped:_" in bma["Q10.5"]
     assert "mantle_signals_detected" in bma["Q10.5"]
-    assert "workloads[].mantle_signals" in gcp["Q10.5"]
 
 
 # --------------------------------------------------------------------------- (c) full flow wiring
 
 def test_full_flow_files_wire_q22b() -> None:
-    gcp = _read(GCP_CLARIFY_AI)
-    assert re.search(r"^## Q22b — Mantle-only requirements", gcp, flags=re.M)
-    assert gcp.index("## Q22 — ") < gcp.index("## Q22b — ") < gcp.index("## Category G")
-    assert "**Mantle-only signals:**" in gcp
-    assert f"## Preferences Output — `{CONSTRAINT}`" in gcp
-    assert '"question_id": "Q22b"' in gcp
-    assert "5 global questions (Q14, Q15, Q22b, framework, spend)" in gcp
-
     azure = _read(AZURE_CLARIFY_AI)
     assert "**Q22b — Mantle-only requirements.**" in azure
     assert '"mantle_requirements": { "disposition": "ESSENTIAL"' in azure
     assert f"| `{CONSTRAINT}`" in azure
 
-    assemble = _read(GCP_CLARIFY_ASSEMBLE)
-    assert "then AI/agentic (Q15, Q22b, Q23–Q25" in assemble
-    assert "- Q22b (Mantle-only requirements) defaults to the single entry" in assemble
-    assert '`source: "default:Q22b"`' in assemble
-    assert "| Q22b — Mantle-only requirements |" in assemble
-
 
 def test_ai_only_fast_paths_list_q10_5() -> None:
-    gcp = _read(GCP_CLARIFY_AI_ONLY)
-    assert "Present **only Q1.5, Q2, Q3, Q4, Q10.5, Q11**" in gcp
-    assert "Q10.5 (Mantle-only requirements) and Q11 (Activate status) are never dropped" in gcp
     azure = _read(AZURE_CLARIFY_AI_ONLY)
     assert "present ONLY Q1.5, Q2, Q3, Q4, Q10.5, Q11" in azure
     assert "**Q10.5 — Mantle-only requirements**" in azure
@@ -154,12 +129,7 @@ def test_preferences_catalogs_list_the_field_with_its_question_ids() -> None:
     catalog = {key: (section, qid) for key, section, qid in
                re.findall(r"^\| `([a-z_]+)`\s*\| `([a-z_]+)`\s*\| ([^|]+?)\s*\|", table, flags=re.M)}
     assert catalog["mantle_requirements"] == ("ai_constraints", "Q10.5")
-
-    gcp = _read(GCP_PREFERENCES_SCHEMA)
-    table = gcp[gcp.index("## Constraint catalog"):gcp.index("## Report consumption")]
-    rows = dict(re.findall(r"^\| `([a-z_]+)`\s*\| ([^|]+?)\s*\|", table, flags=re.M))
-    assert rows["mantle_requirements"] == "Q22b (AI-only: Q10.5)"
-    assert "`ai_constraints.mantle_requirements`" in _read(GCP_CLARIFY_AI_ONLY)
+    assert "`ai_constraints.mantle_requirements`" in _read(BMA_CLARIFY_AI_ONLY)
 
 
 # --------------------------------------------------------------------------- (e) the BMA run fixture records a valid answer

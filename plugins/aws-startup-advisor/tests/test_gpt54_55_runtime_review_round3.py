@@ -25,10 +25,7 @@ PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 SKILLS = PLUGIN_ROOT / "skills"
 AGENTS = PLUGIN_ROOT / "agents"
 
-GCP_GENERATE_AI = SKILLS / "gcp-to-aws" / "references" / "phases" / "generate" / "generate-ai.md"
-GCP_GENERATE_ARTIFACTS = SKILLS / "gcp-to-aws" / "references" / "phases" / "generate" / "generate-artifacts-ai.md"
 AZURE_GENERATE_ARTIFACTS = SKILLS / "azure-to-aws" / "references" / "phases" / "generate" / "generate-artifacts-ai.md"
-GCP_DESIGN_AI = SKILLS / "gcp-to-aws" / "references" / "phases" / "design" / "design-ai.md"
 AZURE_DESIGN_AI = SKILLS / "azure-to-aws" / "references" / "phases" / "design" / "design-ai.md"
 AZURE_SCHEMA = SKILLS / "azure-to-aws" / "references" / "shared" / "schema-design-aws-ai.md"
 REPORT_GENERATOR = AGENTS / "llm2bedrock-report-generator.md"
@@ -53,7 +50,7 @@ def _windows(text: str, pattern: re.Pattern[str], radius: int = 700) -> list[str
 # --- Finding 1: default-project grant reaches the GPT-5.5 / GPT-5.4 CRIS ids ---
 
 def test_setup_recipes_grant_project_default_for_gpt54_55_cris_ids() -> None:
-    for path in (GCP_GENERATE_AI, GCP_GENERATE_ARTIFACTS, AZURE_GENERATE_ARTIFACTS, REPORT_GENERATOR):
+    for path in (AZURE_GENERATE_ARTIFACTS, REPORT_GENERATOR):
         text = path.read_text()
         windows = _windows(text, re.compile(r"project/default"))
         assert windows, f"{path}: no project/default grant sentence"
@@ -65,19 +62,13 @@ def test_setup_recipes_grant_project_default_for_gpt54_55_cris_ids() -> None:
         assert not re.search(r"bare `?openai\.gpt-5\.[45]`?[^.]*(gets|needs|requires) (the )?project/default", text), path
 
 
-def test_no_recipe_still_scopes_project_default_to_gpt6_only() -> None:
-    gpt6_only = re.compile(r"For (a )?GPT-6 CRIS( id)?, (also )?grant `bedrock:InvokeModel` on `arn:aws:bedrock:\{region\}:\{account\}:project/default`\.")
-    for path in (GCP_GENERATE_AI, GCP_GENERATE_ARTIFACTS):
-        assert not gpt6_only.search(path.read_text()), f"{path}: project/default grant is still GPT-6-only"
-
-
 # --- Finding 2: application inference profiles force required_client_api: "converse" ---
 
 _CONVERSE_FIELD = re.compile(r"required_client_api(`)?:?\s*`?\"?converse\"?")
 
 
 def test_design_rule_requires_converse_for_application_profiles_on_gpt54_55() -> None:
-    for path in (GCP_DESIGN_AI, AZURE_DESIGN_AI, AZURE_SCHEMA):
+    for path in (AZURE_DESIGN_AI, AZURE_SCHEMA):
         text = path.read_text()
         windows = [w for w in _windows(text, re.compile(r"application inference profiles", re.IGNORECASE))
                    if _GPT_54_55.search(w) and _CONVERSE_FIELD.search(w)]
@@ -96,7 +87,7 @@ def test_design_rule_requires_converse_for_application_profiles_on_gpt54_55() ->
 
 
 def test_region_only_cris_move_keeps_responses_default() -> None:
-    for path in (GCP_DESIGN_AI, AZURE_DESIGN_AI, AZURE_SCHEMA):
+    for path in (AZURE_DESIGN_AI, AZURE_SCHEMA):
         text = path.read_text()
         assert re.search(r"default[^.]*region-only|region-only[^.]*default", text), (
             f"{path}: the responses default for a region-only CRIS move must remain"
@@ -104,7 +95,7 @@ def test_region_only_cris_move_keeps_responses_default() -> None:
 
 
 def test_design_checklists_assert_the_application_profile_rule() -> None:
-    for path in (GCP_DESIGN_AI, AZURE_SCHEMA):
+    for path in (AZURE_SCHEMA,):
         text = path.read_text()
         checklist = text[text.index("## Validation Checklist"):]
         item = [w for w in _windows(checklist, re.compile(r"application inference profiles"), 500)
@@ -132,7 +123,6 @@ def test_the_1_10x_geo_rate_names_gpt56_not_the_gpt5x_family() -> None:
 
 
 CLARIFY_AI_ONLY = [
-    SKILLS / "gcp-to-aws" / "references" / "phases" / "clarify" / "clarify-ai-only.md",
     SKILLS / "azure-to-aws" / "references" / "phases" / "clarify" / "clarify-ai-only.md",
     SKILLS / "bedrock-migration-assessment" / "references" / "phases" / "clarify" / "clarify-ai-only.md",
 ]

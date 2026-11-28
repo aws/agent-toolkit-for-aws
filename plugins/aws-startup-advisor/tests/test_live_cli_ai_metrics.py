@@ -22,7 +22,6 @@ GCP_LIVE = _read("skills/gcp-to-aws/references/phases/discover/discover-live.md"
 AZURE_ESTIMATE = _read(
     "skills/azure-to-aws/references/phases/estimate/estimate-ai.md"
 )
-GCP_ESTIMATE = _read("skills/gcp-to-aws/references/phases/estimate/estimate-ai.md")
 
 
 def test_azure_monitor_commands_and_consent():
@@ -87,10 +86,6 @@ def test_estimate_reads_live_metric_profiles():
     assert "not a customer-measured p95" in AZURE_ESTIMATE
     assert "Do not add it to `input_tokens`" in AZURE_ESTIMATE
     assert "maximum hour anywhere in the window" in AZURE_ESTIMATE
-    assert "gcp-publisher-metrics-profile.json" in GCP_ESTIMATE
-    assert "not a latency SLO" in GCP_ESTIMATE
-    assert "serverless Gemini" in GCP_ESTIMATE
-    assert "maximum hour anywhere in the window" in GCP_ESTIMATE
 
 
 def test_decline_and_clarify_consume_live_profiles():
@@ -103,12 +98,11 @@ def test_decline_and_clarify_consume_live_profiles():
     for relative in (
         "skills/azure-to-aws/references/phases/clarify/clarify-ai.md",
         "skills/azure-to-aws/references/phases/clarify/clarify-ai-only.md",
-        "skills/gcp-to-aws/references/phases/clarify/clarify-ai.md",
-        "skills/gcp-to-aws/references/phases/clarify/clarify-ai-only.md",
     ):
         text = _read(relative)
         assert "partial_window" in text
         assert "input_tokens + output_tokens" in text
+    assert "partial_window" in _read("skills/bedrock-migration-assessment/references/phases/clarify/clarify-ai-only.md")
     quotas = _read("skills/shared/ai/bedrock-quotas.md")
     assert "observed_on_demand_peak" in quotas
     assert "200,000" in quotas

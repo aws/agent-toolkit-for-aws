@@ -21,7 +21,7 @@ def _pair(skill: str, name: str) -> list[Path]:
 OPENAI = _pair("discover", "discover-openai-api.md")
 ANTHROPIC = _pair("discover", "discover-anthropic-api.md")
 OPENROUTER = _pair("discover", "discover-openrouter-api.md")
-ESTIMATE = _pair("estimate", "estimate-ai.md")
+ESTIMATE = [PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "phases" / "estimate" / "estimate-ai.md"]
 SKILL = PLUGIN_ROOT / "skills" / "llm-to-bedrock" / "SKILL.md"
 
 

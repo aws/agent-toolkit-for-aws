@@ -21,19 +21,14 @@ from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 
-GCP_GENERATE_ARTIFACTS_AI_MD = (
-    PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "phases" / "generate" / "generate-artifacts-ai.md"
-)
 AZURE_GENERATE_ARTIFACTS_AI_MD = (
     PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "phases" / "generate" / "generate-artifacts-ai.md"
 )
-GENERATE_ARTIFACTS_AI_FILES = [GCP_GENERATE_ARTIFACTS_AI_MD, AZURE_GENERATE_ARTIFACTS_AI_MD]
+GENERATE_ARTIFACTS_AI_FILES = [AZURE_GENERATE_ARTIFACTS_AI_MD]
 
-GCP_DESIGN_AI_MD = PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "phases" / "design" / "design-ai.md"
 AZURE_DESIGN_AI_MD = PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "phases" / "design" / "design-ai.md"
-DESIGN_AI_FILES = [GCP_DESIGN_AI_MD, AZURE_DESIGN_AI_MD]
+DESIGN_AI_FILES = [AZURE_DESIGN_AI_MD]
 
-GCP_GENERATE_AI_MD = PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "phases" / "generate" / "generate-ai.md"
 
 SCHEMA_DESIGN_AWS_AI = (
     PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "shared" / "schema-design-aws-ai.md"
@@ -134,11 +129,3 @@ def test_both_design_ai_no_longer_force_gpt6_chat_completions_reshape() -> None:
         )
         assert "GPT-5.5 and GPT-5.4 are the exception" not in text
         assert "unconfirmed" not in text
-
-
-def test_gcp_generate_ai_no_longer_forces_gpt6_chat_completions_reshape() -> None:
-    text = _norm(GCP_GENERATE_AI_MD.read_text(encoding="utf-8"))
-    assert "optional" in text.lower()
-    assert "GPT-5.5/GPT-5.4 follow the same rule" in text
-    assert "still need a reshape" not in text
-    assert "unconfirmed" not in text

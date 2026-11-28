@@ -440,7 +440,7 @@ applies is documented in the skill's RI/SP eligibility reference
 | Budget alerts                  | Email when spend exceeds threshold — catches runaway resources     | $0                                   |
 | Bedrock cost anomaly detection | Alerts within ~24h if AI spend spikes unexpectedly (AI track only) | $0 (Cost Explorer anomaly detection) |
 
-The fourth row is **conditional** — only render when `$MIGRATION_DIR/ai-migration/bedrock_monitoring.tf` exists on disk. Do NOT render based on `generation-ai.json` alone.
+The fourth row is **conditional** — only render when `$MIGRATION_DIR/ai-migration/bedrock_monitoring.tf` exists on disk, or `$MIGRATION_DIR/ai-migration/setup_bedrock.sh` exists and contains the step `== 6. Bedrock budget and cost anomaly monitor` (written by bedrock-migration-assessment's Generate). Do NOT render based on `generation-ai.json` alone.
 
 _Full mode:_ > See Appendix G for full security and cost guardrails table with ⟨source_cloud⟩ equivalents.
 

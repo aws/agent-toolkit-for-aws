@@ -134,6 +134,8 @@ def _skill_md_not_utf8(base: Path) -> None:
 @pytest.mark.parametrize("tamper", [
     lambda b: (b / "scripts" / "readiness.py").unlink(),
     lambda b: (b / "references" / "phases" / "design" / "design-ai.md").unlink(),
+    lambda b: (b / "references" / "phases" / "generate" / "generate-ai.md").unlink(),
+    lambda b: (b / "scripts" / "generate-ai.py").unlink(),
     lambda b: (b / "SKILL.md").write_text((b / "SKILL.md").read_text().replace("name: bedrock-migration-assessment", "name: other-skill", 1)),
     lambda b: (b / "SKILL.md").unlink(),
     _break_validator,
@@ -141,7 +143,7 @@ def _skill_md_not_utf8(base: Path) -> None:
     _validator_prints_invalid_bytes,
     _skill_md_not_utf8,
     _readiness_without_discover,
-], ids=["no-readiness", "no-design-phase", "renamed-skill", "no-skill-md", "validator-accepts-legacy", "readiness-always-ready",
+], ids=["no-readiness", "no-design-phase", "no-generate-phase", "no-generate-script", "renamed-skill", "no-skill-md", "validator-accepts-legacy", "readiness-always-ready",
         "validator-prints-invalid-bytes", "skill-md-not-utf8",
         "readiness-without-discover"])
 def test_probe_reports_a_changed_sibling_as_tampered(tamper, tree: Path) -> None:
@@ -833,8 +835,9 @@ def test_repeating_unchanged_host_answers_keeps_the_accepted_design(tree: Path, 
     assert json.loads((gcp / "ai-handoff.json").read_text())["through"] == "design"
 
 
-@pytest.mark.parametrize("field", [{"artifacts": ["aws-design-ai.json"]}, {"through": None}, {"through": "generate"}],
-                         ids=["artifacts-list", "through-null", "through-unknown"])
+@pytest.mark.parametrize("field", [{"artifacts": ["aws-design-ai.json"]}, {"through": None}, {"through": "feedback"},
+                                   {"usage_copies": ["openai-usage-profile.json"]}],
+                         ids=["artifacts-list", "through-null", "through-unknown", "usage-copies-list"])
 def test_a_handoff_record_with_malformed_fields_is_a_named_error(field, tree: Path, tmp_path: Path) -> None:
     gcp = _gcp_run(tmp_path, infra=True)
     _gcp_prefs(gcp)
@@ -914,3 +917,163 @@ def test_accept_names_an_assessment_file_removed_after_readiness(tree: Path, tmp
     code, out = _cli(tree, "accept", str(gcp), str(bma), "--through", "estimate")
     assert code == 1 and out["error"] == "bma_tampered", out
     assert not (gcp / "aws-design-ai.json").exists()
+
+
+# --------------------------------------------------------------------------- Generate and usage profiles
+
+def _generated_bma_run(tmp_path: Path) -> Path:
+    run = tmp_path / ".migration" / "bma-1116-1900"
+    shutil.copytree(FIXTURES / "bma-generate-same-model", run)
+    status = {"migration_id": run.name, "run_id": RUN_ID, "last_updated": "2026-11-19T21:00:00Z", "initiated_by": "GCP_TO_AWS",
+              "current_phase": "complete", "run_mode": "decide_and_execute",
+              "phases": dict.fromkeys(("discover", "clarify", "design", "estimate", "generate"), "completed")}
+    (run / ".phase-status.json").write_text(json.dumps(status))
+    return run
+
+
+def _listed(bma: Path) -> list[str]:
+    return sorted(str(p.relative_to(bma)) for p in (bma / "ai-migration").rglob("*") if p.is_file())
+
+
+def test_accept_generate_copies_the_plan_and_every_listed_file(tree: Path, tmp_path: Path) -> None:
+    gcp = _gcp_run(tmp_path, infra=False)
+    bma = _generated_bma_run(tmp_path)
+    code, out = _open(tree, gcp, bma, "generate")
+    assert code == 0 and json.loads((bma / "host-answers.json").read_text())["stop_after"] == "generate"
+    code, out = _cli(tree, "accept", str(gcp), str(bma), "--through", "generate")
+    assert code == 0, out
+    for rel in ["aws-design-ai.json", "estimation-ai.json", "generation-ai.json", *_listed(bma)]:
+        assert (gcp / rel).read_bytes() == (bma / rel).read_bytes(), rel
+    record = json.loads((gcp / "ai-handoff.json").read_text())
+    assert record["status"] == "assessment_completed" and record["through"] == "generate"
+    assert record["artifacts"] == {rel: _sha(bma / rel) for rel in
+                                   ["preferences.json", "aws-design-ai.json", "estimation-ai.json", "generation-ai.json", *_listed(bma)]}
+
+
+def test_withdrawing_a_generate_accept_keeps_files_the_user_changed_or_added(tree: Path, tmp_path: Path) -> None:
+    gcp = _gcp_run(tmp_path, infra=False)
+    bma = _generated_bma_run(tmp_path)
+    _open(tree, gcp, bma, "generate")
+    assert _cli(tree, "accept", str(gcp), str(bma), "--through", "generate")[0] == 0
+    (gcp / "ai-migration" / "README.md").write_text("my notes\n")
+    (gcp / "ai-migration" / "comparison_results.json").write_text("{}\n")
+    (gcp / "ai-workload-profile.json").unlink()
+    assert _cli(tree, "route", str(gcp))[1]["route"] == "no_ai"
+    left = sorted(str(p.relative_to(gcp)) for p in (gcp / "ai-migration").rglob("*") if p.is_file())
+    assert left == ["ai-migration/README.md", "ai-migration/comparison_results.json"]
+    assert not (gcp / "generation-ai.json").exists() and not (gcp / "ai-migration" / "routes").exists()
+
+
+def _readiness_reports_extra(base: Path, rel: str) -> None:
+    path = base / "scripts" / "readiness.py"
+    path.write_text(path.read_text().replace('if __name__ == "__main__":', (
+        "_real_check = check\n"
+        "def check(run_dir, through):\n"
+        "    out = _real_check(run_dir, through)\n"
+        "    if through == 'generate':\n"
+        f"        out['artifacts'][{rel!r}] = {{'path': 'x', 'sha256': hashlib.sha256((run_dir / 'escape.txt').read_bytes()).hexdigest()}}\n"
+        "    return out\n"
+        'if __name__ == "__main__":'), 1))
+
+
+@pytest.mark.parametrize("rel", ["ai-migration/../escape.txt", "escape.txt", "ai-migration//escape.txt"])
+def test_accept_generate_refuses_a_path_outside_ai_migration(rel, tree: Path, tmp_path: Path) -> None:
+    gcp = _gcp_run(tmp_path, infra=False)
+    bma = _generated_bma_run(tmp_path)
+    (bma / "escape.txt").write_text("x")
+    _readiness_reports_extra(tree / "bedrock-migration-assessment", rel)
+    _open(tree, gcp, bma, "generate")
+    code, out = _cli(tree, "accept", str(gcp), str(bma), "--through", "generate")
+    assert code == 1 and out["error"] == "bma_tampered" and "ai-migration/" in out["detail"], out
+    assert not (gcp / "escape.txt").exists() and not (gcp.parent / "escape.txt").exists()
+    assert not (gcp / "generation-ai.json").exists()
+
+
+def test_a_region_change_after_a_generate_accept_reopens_clarify(tree: Path, tmp_path: Path) -> None:
+    gcp = _gcp_run(tmp_path, infra=True)
+    _gcp_prefs(gcp)
+    bma = _generated_bma_run(tmp_path)
+    _open(tree, gcp, bma, "generate")
+    assert _cli(tree, "accept", str(gcp), str(bma), "--through", "generate")[0] == 0
+    prefs = json.loads((gcp / "preferences.json").read_text())
+    prefs["design_constraints"]["target_region"]["value"] = "eu-west-1"
+    (gcp / "preferences.json").write_text(json.dumps(prefs))
+    assert _open(tree, gcp, bma, "clarify", convert=False)[0] == 0
+    assert not (gcp / "generation-ai.json").exists() and not (gcp / "ai-migration").exists()
+    code, out = _cli(tree, "accept", str(gcp), str(bma), "--through", "clarify")
+    assert (code, out["error"], out["reason"]) == (1, "assessment_not_ready", "host_answers_mismatch"), out
+    status = json.loads((bma / ".phase-status.json").read_text())
+    assert status["phases"]["generate"] == "completed"
+    assert json.loads((bma / "host-answers.json").read_text())["stop_after"] == "clarify"
+    # The assessment's Step 0 line (e) Change answers write, then its Clarify keeps the host's region.
+    status["phases"].update(clarify="completed", design="pending", estimate="pending", generate="pending")
+    (bma / ".phase-status.json").write_text(json.dumps(status))
+    bma_prefs = json.loads((bma / "preferences.json").read_text())
+    bma_prefs["design_constraints"]["target_region"]["value"] = "eu-west-1"
+    (bma / "preferences.json").write_text(json.dumps(bma_prefs))
+    code, out = _cli(tree, "accept", str(gcp), str(bma), "--through", "clarify")
+    assert code == 0, out
+    assert json.loads((gcp / "ai-handoff.json").read_text())["through"] == "clarify"
+
+
+def test_accept_never_moves_back_from_generate(tree: Path, tmp_path: Path) -> None:
+    gcp = _gcp_run(tmp_path, infra=False)
+    bma = _generated_bma_run(tmp_path)
+    _open(tree, gcp, bma, "generate")
+    assert _cli(tree, "accept", str(gcp), str(bma), "--through", "generate")[0] == 0
+    code, out = _cli(tree, "accept", str(gcp), str(bma), "--through", "estimate")
+    assert code == 1 and out["error"] == "accept_regressed"
+
+
+def test_accept_copies_the_assessments_usage_profiles_back(tree: Path, tmp_path: Path) -> None:
+    gcp = _gcp_run(tmp_path, infra=False)
+    bma = _bma_run(tmp_path)
+    _open(tree, gcp, bma, "clarify")
+    code, out = _cli(tree, "accept", str(gcp), str(bma), "--through", "clarify")
+    assert code == 0 and out["usage_profiles"] == ["openai-usage-profile.json"]
+    assert (gcp / "openai-usage-profile.json").read_bytes() == (bma / "openai-usage-profile.json").read_bytes()
+    record = json.loads((gcp / "ai-handoff.json").read_text())
+    assert record["usage_copies"] == {"openai-usage-profile.json": _sha(bma / "openai-usage-profile.json")}
+    assert "openai-usage-profile.json" not in record["artifacts"]
+    (gcp / "ai-workload-profile.json").unlink()
+    _cli(tree, "route", str(gcp))
+    assert not (gcp / "openai-usage-profile.json").exists()
+
+
+def test_accept_keeps_a_usage_profile_gcp_discover_captured(tree: Path, tmp_path: Path) -> None:
+    gcp = _gcp_run(tmp_path, infra=False)
+    (gcp / "openai-usage-profile.json").write_text('{"metadata": {"source": "gcp"}}\n')
+    bma = _bma_run(tmp_path)
+    _open(tree, gcp, bma, "clarify")
+    code, out = _cli(tree, "accept", str(gcp), str(bma), "--through", "clarify")
+    assert code == 0 and out["usage_profiles"] == []
+    assert json.loads((gcp / "openai-usage-profile.json").read_text()) == {"metadata": {"source": "gcp"}}
+    (gcp / "ai-workload-profile.json").unlink()
+    _cli(tree, "route", str(gcp))
+    assert (gcp / "openai-usage-profile.json").exists()
+
+
+def test_accept_generate_never_writes_through_a_symlinked_ai_migration(tree: Path, tmp_path: Path) -> None:
+    gcp = _gcp_run(tmp_path, infra=False)
+    bma = _generated_bma_run(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (gcp / "ai-migration").symlink_to(outside, target_is_directory=True)
+    _open(tree, gcp, bma, "generate")
+    code, out = _cli(tree, "accept", str(gcp), str(bma), "--through", "generate")
+    assert code == 1 and out["error"] == "unsafe_destination", out
+    assert not any(outside.iterdir()) and not (gcp / "generation-ai.json").exists()
+
+
+def test_accept_generate_never_overwrites_a_generated_file_the_user_edited(tree: Path, tmp_path: Path) -> None:
+    gcp = _gcp_run(tmp_path, infra=False)
+    bma = _generated_bma_run(tmp_path)
+    _open(tree, gcp, bma, "generate")
+    assert _cli(tree, "accept", str(gcp), str(bma), "--through", "generate")[0] == 0
+    assert _cli(tree, "accept", str(gcp), str(bma), "--through", "generate")[0] == 0
+    (gcp / "ai-migration" / "README.md").write_text("my notes\n")
+    code, out = _cli(tree, "accept", str(gcp), str(bma), "--through", "generate")
+    assert code == 1 and out["error"] == "destination_changed" and "ai-migration/README.md" in out["detail"], out
+    assert (gcp / "ai-migration" / "README.md").read_text() == "my notes\n"
+    (gcp / "ai-migration" / "README.md").unlink()
+    assert _cli(tree, "accept", str(gcp), str(bma), "--through", "generate")[0] == 0

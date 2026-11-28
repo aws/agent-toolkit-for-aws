@@ -45,16 +45,20 @@ Produces: `aws-design-billing.json`
 
 ### AI Workload Design
 
-IF `ai-workload-profile.json` exists:
+IF `ai-workload-profile.json` exists AND `ai-handoff.json` does not exist: load `references/shared/ai-handoff.md` and follow its § Runs without a handoff record, then continue below.
 
-→ Load `design-ai.md`
+IF `ai-workload-profile.json` exists AND `ai-handoff.json` has a `status` other than `deferred`:
+
+→ Load `references/shared/ai-handoff.md` and run its Step 4 with `<phase>` `design`. bedrock-migration-assessment designs the AI workloads, and `accept` copies its `aws-design-ai.json` here.
 
 Produces: `aws-design-ai.json`
+
+IF `ai-handoff.json` has `status` `deferred`: skip the AI route, and name the deferral and its `reason` in the design summary card.
 
 ### Mutual Exclusion
 
 - **design-infra** and **design-billing** never both run (billing-only is the fallback when no IaC exists).
-- **design-ai** runs independently of either design-infra or design-billing (no shared state). Run it after the infra/billing design completes.
+- The AI route runs independently of either design-infra or design-billing (no shared state). Run it after the infra/billing design completes.
 
 ## Phase Completion
 
@@ -63,7 +67,7 @@ Before marking Design complete, enforce route output gates (fail closed):
 1. Determine which design routes ran:
    - IaC route: `gcp-resource-inventory.json` AND `gcp-resource-clusters.json` exist
    - Billing-only route: `billing-profile.json` exists **with non-empty `services[]`** AND `gcp-resource-inventory.json` does NOT exist (a skip-record profile — empty `services[]`, non-empty `warnings[]` — does not count)
-   - AI route: `ai-workload-profile.json` exists
+   - AI route: `ai-workload-profile.json` exists and `ai-handoff.json` exists and is not `deferred`
 2. Require at least one route to be active. If none active: STOP.
 3. For each active route, require its expected artifact:
    - IaC route -> `aws-design.json`
@@ -103,6 +107,9 @@ After outer-run `HANDOFF_OK`, present a compact card built from the design artif
 | ----------- | ---------- | ----------------- |
 | [top 3-5 PRIMARY mappings] | [aws_service] | [Standard pairing / Tailored to your setup / Estimated from billing only] |
 
+[If `ai-handoff.json` is `deferred`:]
+AI workloads: deferred ([reason]); no Bedrock design in this run.
+
 [If any resource is "Deferred — specialist engagement":]
 Deferred (specialist engagement): [service names] — excluded from automated design and estimated AWS monthly run rate.
 
@@ -135,7 +142,6 @@ Sub-design files may reference rubrics in `design-refs/`:
 - `design-refs/storage.md` — Storage service rubric
 - `design-refs/networking.md` — Networking service rubric
 - `design-refs/messaging.md` — Messaging service rubric
-- `design-refs/ai.md` — AI/ML service rubric
 
 ## Scope Boundary
 

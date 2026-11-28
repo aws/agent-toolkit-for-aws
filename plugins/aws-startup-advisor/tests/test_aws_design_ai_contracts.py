@@ -408,24 +408,22 @@ def _gcp_scalar_design() -> dict:
     }
 
 
-def test_gcp_scalar_ai_source_validates_under_the_gcp_shape_contract() -> None:
-    """Validated AS skill=gcp-to-aws, the scalar document follows the GCP Shape contract at
-    skills/gcp-to-aws/references/shared/schema-design-aws-ai.md and is accepted — GCP's own
-    manifest entry shadows the shared target-only schema, mirroring Azure's entry."""
+def test_gcp_copies_of_the_assessment_design_validate_under_the_shared_schema() -> None:
+    """gcp-to-aws copies aws-design-ai.json from bedrock-migration-assessment, so it has no shadow
+    Shape contract: the shared target schema applies, accepts the assessment's design, and rejects
+    the old scalar envelope."""
     manifest = VALIDATOR.load_manifest(MANIFEST_PATH)
     findings: list = []
     contracts = VALIDATOR.build_contracts(manifest, "gcp-to-aws", findings)
     matched = [c for c in contracts if c.artifact_glob == "aws-design-ai.json"]
-    assert len(matched) == 1
-    assert matched[0].shape is not None, (
-        "gcp-to-aws must shadow the shared aws-design-ai.json schema with its own Shape "
-        "contract, or GCP's actual scalar emission is validated against the target-only "
-        "schema and rejected"
-    )
-    design = _gcp_scalar_design()
-    design_findings: list = []
-    VALIDATOR.validate_shape(matched[0].shape.root, design, "", "design", matched[0].shape.label, design_findings)
-    assert design_findings == []
+    assert len(matched) == 1 and matched[0].shape is None and matched[0].json_schema is not None
+    copied = json.loads((PLUGIN_ROOT / "fixtures" / "bma-generate-mixed" / "aws-design-ai.json").read_text())
+    for design, ok in ((copied, True), (_gcp_scalar_design(), False)):
+        design_findings: list = []
+        VALIDATOR.validate_json_schema(
+            matched[0].json_schema, design, "", "design", matched[0].json_schema_path, design_findings
+        )
+        assert (design_findings == []) is ok, design_findings[:3]
 
 
 def test_gcp_scalar_ai_source_fails_the_target_only_schema_with_no_skill() -> None:

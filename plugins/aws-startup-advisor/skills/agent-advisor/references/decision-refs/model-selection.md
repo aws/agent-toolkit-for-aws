@@ -1,9 +1,8 @@
 # Bedrock Model Selection (mapping only — no pricing)
 
-Distilled from the `gcp-to-aws` skill's Q16/Q17 tables and `ai-model-lifecycle.md`.
-**Source:** `skills/gcp-to-aws/references/phases/clarify/clarify-ai.md` (Q16/Q17)
-
-- `skills/shared/ai/ai-model-lifecycle.md`. Last aligned: 2026-06-30.
+Distilled from the Q16/Q17 tables gcp-to-aws carried before its AI Clarify moved to
+bedrock-migration-assessment, and from `ai-model-lifecycle.md`.
+**Source:** `skills/shared/ai/ai-model-lifecycle.md`. Last aligned: 2026-06-30.
 
 The tables below remain a **coarse compatibility hint** for old scoring-result consumers.
 The authoritative deterministic implementation is the

@@ -34,19 +34,9 @@ speculatively load all sub-files.
   `open "$MIGRATION_DIR/migration-report.html"` (macOS) or
   `xdg-open "$MIGRATION_DIR/migration-report.html"` (Linux) after writing the file.
 
-Conditional files (load ONLY when condition is true):
-
-| File                                             | Condition                                                                          |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| `vendored/ai/ai-gemini-to-bedrock.md`            | `ai-workload-profile.json` exists AND `summary.ai_source` = `"gemini"` or `"both"` |
-| `vendored/ai/ai-openai-to-bedrock.md`            | `ai-workload-profile.json` exists AND `summary.ai_source` = `"openai"` or `"both"` |
-| `vendored/ai/ai-anthropic-to-bedrock.md` | `ai-workload-profile.json` exists AND (`summary.ai_source` = `"anthropic"` OR Claude Haiku 5.5 is a candidate or selected target) |
-| `design-refs/ai.md`                              | `ai-workload-profile.json` exists AND `summary.ai_source` = `"other"`              |
-| `vendored/ai/design-ref-harness.md`              | `agentic_profile.is_agentic == true` AND `migration_approach == "harness"`         |
-| `vendored/ai/design-ref-agentic-to-agentcore.md` | `agentic_profile.is_agentic == true` AND `migration_approach == "strands"`         |
-| `shared/retarget-gotchas.md`                     | `agentic_profile.is_agentic == true` AND `migration_approach == "retarget"`        |
-
-All paths above are relative to `$GCP_BASE/references/` (defined in migration-plan.md).
+gcp-to-aws loads no AI design references of its own: its AI track runs in the
+bedrock-migration-assessment skill through `$GCP_BASE/references/shared/ai-handoff.md`, whose
+files resolve under `<BMA_BASE>` (see the path table in migration-plan.md).
 
 ## Feedback sidebar handling
 
@@ -54,11 +44,3 @@ gcp-to-aws's `discover.md` and `estimate.md` each offer a feedback prompt after 
 `HANDOFF_OK`. Because this execution runs inside agent-advisor's session, automatically
 choose "skip feedback" (option B) at both sidebars and continue to the next phase. Do
 NOT load `$GCP_BASE/references/phases/feedback/feedback.md`.
-
-## Hybrid stack warning
-
-When both `gcp-resource-inventory.json` AND `ai-workload-profile.json` exist in
-`$MIGRATION_DIR`, the combined design refs approach the ~800 line budget. Present the
-user with the option to run infrastructure and AI workloads as two separate passes (as
-specified in gcp-to-aws's SKILL.md hybrid stack warning), then continue based on their
-answer.

@@ -36,8 +36,6 @@ SCRIPTS = SKILLS / "llm-to-bedrock" / "scripts"
 ANALYZER = PLUGIN_ROOT / "agents" / "llm2bedrock-code-analyzer.md"
 REPORT_GENERATOR = PLUGIN_ROOT / "agents" / "llm2bedrock-report-generator.md"
 ANALYSIS_SCHEMA = SCRIPTS / "schemas" / "analysis.json"
-GCP_GENERATE_ARTIFACTS = SKILLS / "gcp-to-aws" / "references" / "phases" / "generate" / "generate-artifacts-ai.md"
-GCP_GENERATE_AI = SKILLS / "gcp-to-aws" / "references" / "phases" / "generate" / "generate-ai.md"
 AZURE_GENERATE_ARTIFACTS = SKILLS / "azure-to-aws" / "references" / "phases" / "generate" / "generate-artifacts-ai.md"
 CANONICAL_GUIDE = SKILLS / "shared" / "ai" / "ai-openai-to-bedrock.md"
 VENDORED_GUIDES = [
@@ -156,7 +154,7 @@ def test_report_checklist_has_a_create_plus_retrieve_permission_check() -> None:
 
 
 def test_setup_contracts_name_the_get_invoke_grant_and_its_controls() -> None:
-    for path in (CANONICAL_GUIDE, GCP_GENERATE_AI, GCP_GENERATE_ARTIFACTS, AZURE_GENERATE_ARTIFACTS):
+    for path in (CANONICAL_GUIDE, AZURE_GENERATE_ARTIFACTS):
         text = " ".join(path.read_text().split())
         assert "bedrock:GetInvoke" in text, f"{path}: no GetInvoke grant"
         assert "client.responses.retrieve(id)" in text, path
@@ -168,7 +166,7 @@ def test_setup_contracts_name_the_get_invoke_grant_and_its_controls() -> None:
         # Converse / Messages control.
         assert re.search(r"`converse`(,| /) `messages`", text), f"{path}: converse / messages must be excluded"
     # Setup verification does create-plus-retrieve.
-    for path in (GCP_GENERATE_ARTIFACTS, AZURE_GENERATE_ARTIFACTS, CANONICAL_GUIDE):
+    for path in (AZURE_GENERATE_ARTIFACTS, CANONICAL_GUIDE):
         text = " ".join(path.read_text().split())
         assert "client.responses.retrieve(r.id)" in text, f"{path}: no create-plus-retrieve verification"
 

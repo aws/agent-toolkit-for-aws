@@ -244,8 +244,8 @@ short-circuit it.
    volume and cost. Any other non-empty warning means some endpoint failed and
    that category's volume is UNKNOWN, not zero; propagate the caveat forward.
 6. Compute `summary.monthly_cost_usd` SUMMED across every profile in the winning run (never
-   max/pick-one, reusing `estimate-ai.md`'s documented SUM discipline from both skills —
-   gcp's and azure's `estimate-ai.md` apply the identical rule), combining `usage_by_model[]`
+   max/pick-one, reusing azure-to-aws `estimate-ai.md`'s documented SUM discipline, which
+   bedrock-migration-assessment's `estimate-ai.py` also applies for gcp-to-aws), combining `usage_by_model[]`
    with the same normalization rules (OpenRouter `prompt_tokens`/`completion_tokens` →
    `input_tokens`/`output_tokens`; Anthropic `cache_read_tokens` stay in the volume
    sum. `cache_creation_tokens` is NOT folded into `input_tokens`. When the row has
@@ -260,7 +260,7 @@ short-circuit it.
    add them on top. The usage response does not name a 5-minute or 1-hour write
    duration, so this stays the unpriced component rather than an ordinary-input
    price. `input_cached_tokens` stay inside `input_tokens`. See
-   `estimate-ai.md`'s Prerequisites section in either sibling skill for the
+   azure-to-aws `estimate-ai.md`'s Prerequisites section for the
    `uncached_input_tokens + cache_read_input_tokens + cache_creation_input_tokens`
    contract). Apply the
    `metadata.partial_window` exception: a
@@ -555,7 +555,12 @@ capture or golden-dataset extrapolation when no existing profile was found.
 `$ASSESS_BASE/references/shared/pricing-cache.md`. `$MIGRATION_DIR` is the one path that does
 **not** resolve under `$ASSESS_BASE` — it stays under `$REPO` per `$ASSESS_SKILL`'s own
 convention (A1 below). `$ASSESS_SKILL`'s files are **read-only** here — this phase never edits
-them.
+them. gcp-to-aws's AI handoff (`references/shared/ai-handoff.md`) names two more bases:
+`<GCP_BASE>` is `$ASSESS_BASE`, and `<BMA_BASE>` is the absolute `bma_base` that
+`$ASSESS_BASE/scripts/bma-handoff.py probe` prints. While following a
+bedrock-migration-assessment file that the handoff loads, its `<SKILL_BASE>` and relative
+`references/...` or `scripts/...` paths resolve under `<BMA_BASE>`, never under `$ASSESS_BASE`
+or this skill.
 
 ### A1 — Run Discover, Clarify, Design, and Estimate
 
@@ -622,13 +627,16 @@ Then, in order:
    / `azure-resource-inventory.json`, or `billing-profile.json` is present in
    `$MIGRATION_DIR`.
 3. **Read and execute** `$ASSESS_BASE/references/phases/clarify/clarify.md` in full. It routes
-   itself — when `ai-workload-profile.json` is the only discovery artifact, it reads
-   `clarify-ai-only.md` and runs that standalone flow; if infra artifacts also exist, it runs
-   the fragment/assembler split instead. Either way, follow what it loads exactly.
+   itself. In gcp-to-aws, the AI questions run in bedrock-migration-assessment through
+   `references/shared/ai-handoff.md`, after any infrastructure questions; azure-to-aws reads
+   its own `clarify-ai-only.md` or fragments. Either way, follow what it loads exactly.
    On `HANDOFF_OK`: `preferences.json` is present in `$MIGRATION_DIR`.
-4. **Read and execute** `$ASSESS_BASE/references/phases/design/design.md` in full. It routes
-   to `design-ai.md` when `ai-workload-profile.json` exists — that is the file this skill's
-   Execute phase depends on. On `HANDOFF_OK`: `aws-design-ai.json` is present in
+4. **Read and execute** `$ASSESS_BASE/references/phases/design/design.md` in full. When
+   `ai-workload-profile.json` exists it produces `aws-design-ai.json`, the file this skill's
+   Execute phase depends on: gcp-to-aws copies it from bedrock-migration-assessment's Design
+   (`ai-handoff.md`), azure-to-aws writes it in its own `design-ai.md`. If the gcp-to-aws
+   handoff deferred or stopped the AI track, there is no `aws-design-ai.json`: tell the user
+   why and stop this skill. On `HANDOFF_OK`: `aws-design-ai.json` is present in
    `$MIGRATION_DIR` (plus `aws-design.json`/`aws-design-billing.json` too, if an infra or
    billing route also ran).
 5. **Read and execute** `$ASSESS_BASE/references/phases/estimate/estimate.md` in full. You do

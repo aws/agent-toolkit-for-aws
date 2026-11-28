@@ -28,6 +28,8 @@ REQUIRED_FILES = (
     "references/phases/clarify/clarify-ai-only.md",
     "references/phases/design/design-ai.md",
     "references/phases/estimate/estimate-ai.md",
+    "references/phases/generate/generate-ai.md",
+    "scripts/generate-ai.py",
 )
 # Fixed probe inputs: a minimal neutral profile the validator must accept and a legacy one it must reject.
 GOOD_PROFILE = {"schema_version": "1.0", "gateways": [], "ai_sources": [{
@@ -38,9 +40,12 @@ LEGACY_PROFILE = {"metadata": {}, "summary": {"ai_source": "openai"}, "models": 
 HOST_FIELDS = ("target_region", "compliance")
 AI_TYPE_PREFIX = "google_vertex_ai"
 NEUTRAL_PROFILE = "ai-workload-profile.neutral.json"
-PHASE_ORDER = ("clarify", "design", "estimate")
+PHASE_ORDER = ("clarify", "design", "estimate", "generate")
 THROUGH_FILES = {"clarify": ("preferences.json",), "design": ("preferences.json", "aws-design-ai.json"),
-                 "estimate": ("preferences.json", "aws-design-ai.json", "estimation-ai.json")}
+                 "estimate": ("preferences.json", "aws-design-ai.json", "estimation-ai.json"),
+                 "generate": ("preferences.json", "aws-design-ai.json", "estimation-ai.json", "generation-ai.json")}
+AI_MIGRATION = "ai-migration"
+USAGE_PROFILES = ("openai-usage-profile.json", "anthropic-usage-profile.json", "openrouter-usage-profile.json")
 VERTEX_SERVICES = ("vertex_ai_generative", "vertex_ai_embeddings")
 # Legacy evidence sources that prove Vertex AI without reading code, and their #415 provenance and confidence.
 PROOF = {"monitoring": ("live_api", "high", "gcp-to-aws Cloud Monitoring publisher tokens"),
@@ -148,11 +153,34 @@ def _profile_digest(gcp_dir: Path) -> str:
     return "sha256:" + _sha((gcp_dir / "ai-workload-profile.json").read_bytes())
 
 
+def _generated_file(rel: Any) -> bool:
+    parts = rel.split("/") if isinstance(rel, str) else []
+    return len(parts) > 1 and parts[0] == AI_MIGRATION and all(p not in ("", ".", "..") for p in parts)
+
+
+def _inside(gcp_dir: Path, rel: str) -> bool:
+    path = gcp_dir
+    for part in rel.split("/"):
+        path = path / part
+        if path.is_symlink():
+            return False
+    return True
+
+
 def _remove_copies(gcp_dir: Path, copied: dict) -> None:
-    for name in THROUGH_FILES["estimate"][1:]:
-        path = gcp_dir / name
-        if path.exists() and copied.get(name) == _sha(path.read_bytes()):
+    for rel, sha in copied.items():
+        if rel not in (*THROUGH_FILES["generate"][1:], *USAGE_PROFILES) and not _generated_file(rel):
+            continue
+        path = gcp_dir / rel
+        if _inside(gcp_dir, rel) and path.is_file() and sha == _sha(path.read_bytes()):
             path.unlink()
+    root = gcp_dir / AI_MIGRATION
+    if root.is_dir() and not root.is_symlink():
+        for folder in sorted((d for d in root.rglob("*") if d.is_dir() and not d.is_symlink()), key=lambda d: len(d.parts), reverse=True):
+            if not any(folder.iterdir()):
+                folder.rmdir()
+        if not any(root.iterdir()):
+            root.rmdir()
 
 
 def _held_record(path: Path) -> Any:
@@ -177,8 +205,9 @@ def _gcp_prefs(path: Path) -> dict:
 def _withdraw(gcp_dir: Path) -> None:
     record_path = gcp_dir / "ai-handoff.json"
     record = _held_record(record_path)
-    copied = record.get("artifacts") if isinstance(record, dict) else None
-    _remove_copies(gcp_dir, copied if isinstance(copied, dict) else {})
+    for field in ("artifacts", "usage_copies"):
+        copied = record.get(field) if isinstance(record, dict) else None
+        _remove_copies(gcp_dir, copied if isinstance(copied, dict) else {})
     (gcp_dir / NEUTRAL_PROFILE).unlink(missing_ok=True)
     prefs_path = gcp_dir / "preferences.json"
     prefs = _gcp_prefs(prefs_path) if prefs_path.exists() else None
@@ -216,7 +245,7 @@ def route(gcp_dir: Path, infra_only: bool) -> tuple[int, dict]:
                                  or held.get("profile_digest") != _profile_digest(gcp_dir)
                                  or held.get("infrastructure_moves") != infra):
             _withdraw(gcp_dir)
-        return 0, {"route": "delegate", "message": "AI Clarify, Design, and Estimate run in bedrock-migration-assessment."}
+        return 0, {"route": "delegate", "message": "AI Clarify, Design, Estimate, and Generate run in bedrock-migration-assessment."}
     reason = "bma_absent" if status == "absent" else "bma_tampered"
     if infra and (status == "absent" or infra_only):
         _withdraw(gcp_dir)
@@ -348,8 +377,9 @@ def _open_record(gcp_dir: Path, bma_dir: Path) -> dict:
     record = _read_json(record_path, "handoff_unreadable") if record_path.exists() else None
     if not isinstance(record, dict) or record.get("status") not in ("converted", "in_progress", "assessment_completed"):
         raise HandoffError("handoff_not_open", "no open AI handoff; run convert first")
-    if not isinstance(record.get("artifacts", {}), dict) or record.get("through", "clarify") not in PHASE_ORDER:
-        raise HandoffError("handoff_unreadable", "ai-handoff.json has a malformed artifacts or through field; run convert again")
+    if not isinstance(record.get("artifacts", {}), dict) or not isinstance(record.get("usage_copies", {}), dict) \
+            or record.get("through", "clarify") not in PHASE_ORDER:
+        raise HandoffError("handoff_unreadable", "ai-handoff.json has a malformed artifacts, usage_copies or through field; run convert again")
     if record.get("profile_digest") != _profile_digest(gcp_dir):
         raise HandoffError("profile_changed", "ai-workload-profile.json changed after convert; run convert again and start a new assessment run")
     if record.get("infrastructure_moves") != _has_infrastructure(gcp_dir):
@@ -407,19 +437,56 @@ def accept(gcp_dir: Path, bma_dir: Path, through: str) -> dict:
     data = _verified(bma_dir, _ready(bma_dir, through), through)
     if "sha256:" + _sha(data["ai-workload-profile.json"]) != record.get("assessment_profile_digest"):
         raise HandoffError("assessment_profile_mismatch", f"{bma_dir.name} no longer holds the profile this run handed over")
+    copies = [name for name in data if name not in ("ai-workload-profile.json", "preferences.json")]
+    unsafe = [rel for rel in copies if not _inside(gcp_dir, rel)]
+    if unsafe:
+        raise HandoffError("unsafe_destination", f"{unsafe[0]} passes through a symbolic link in this run directory; remove the link and accept again")
+    earlier = record.get("artifacts") or {}
+    edited = [rel for rel in copies if _generated_file(rel) and (gcp_dir / rel).is_file()
+              and _sha((gcp_dir / rel).read_bytes()) not in (_sha(data[rel]), earlier.get(rel))]
+    if edited:
+        raise HandoffError("destination_changed", f"{edited[0]} was changed after the last accept; copy it elsewhere, remove it, and accept again")
     _merge_preferences(gcp_dir, bma_dir, data["preferences.json"])
-    for name in THROUGH_FILES[through][1:]:
-        _write_bytes(gcp_dir / name, data[name])
-    record.update(status="assessment_completed" if through == "estimate" else "in_progress", through=through,
-                  artifacts={name: _sha(data[name]) for name in THROUGH_FILES[through]})
+    _remove_copies(gcp_dir, {rel: sha for rel, sha in (record.get("artifacts") or {}).items() if _generated_file(rel) and rel not in data})
+    for rel in copies:
+        (gcp_dir / rel).parent.mkdir(parents=True, exist_ok=True)
+        _write_bytes(gcp_dir / rel, data[rel])
+    usage = _copy_usage(gcp_dir, bma_dir, record.get("usage_copies") or {})
+    record.update(status="in_progress" if through in ("clarify", "design") else "assessment_completed", through=through,
+                  artifacts={rel: _sha(data[rel]) for rel in data if rel != "ai-workload-profile.json"}, usage_copies=usage)
     _write_json(record_path, record)
-    return {"ok": True, "through": through, "copied": list(THROUGH_FILES[through][1:]), "artifacts": record["artifacts"]}
+    return {"ok": True, "through": through, "copied": copies, "artifacts": record["artifacts"], "usage_profiles": sorted(usage)}
+
+
+def _copy_usage(gcp_dir: Path, bma_dir: Path, earlier: dict) -> dict:
+    copied = {}
+    for name in USAGE_PROFILES:
+        source, target = bma_dir / name, gcp_dir / name
+        ours = target.is_file() and not target.is_symlink() and earlier.get(name) == _sha(target.read_bytes())
+        if target.exists() and not ours or target.is_symlink():
+            continue
+        if not source.is_file():
+            if ours:
+                target.unlink()
+            continue
+        try:
+            raw = source.read_bytes()
+        except OSError as exc:
+            raise HandoffError("bma_tampered", f"{name} in the assessment run is unreadable: {exc}")
+        _write_bytes(target, raw)
+        copied[name] = _sha(raw)
+    return copied
 
 
 def _verified(bma_dir: Path, ready: dict, through: str) -> dict[str, bytes]:
     reported = ready.get("artifacts") or {}
+    expected = ("ai-workload-profile.json", *THROUGH_FILES.get(through, ()))
+    generated = [rel for rel in reported if rel not in expected] if through == "generate" else []
+    outside = [rel for rel in generated if not _generated_file(rel)]
+    if outside:
+        raise HandoffError("bma_tampered", f"readiness.py reported {outside[0]!r}, which is not a file under {AI_MIGRATION}/")
     data = {}
-    for name in ("ai-workload-profile.json", *THROUGH_FILES.get(through, ())):
+    for name in (*expected, *sorted(generated)):
         try:
             raw = (bma_dir / name).read_bytes()
         except OSError as exc:

@@ -85,16 +85,18 @@ Produces: `estimation-billing.json`
 
 ### AI Estimate
 
-IF `aws-design-ai.json` exists:
+IF `ai-workload-profile.json` exists AND `ai-handoff.json` does not exist: load `references/shared/ai-handoff.md` and follow its § Runs without a handoff record, then continue below.
 
-> Load `estimate-ai.md`
+IF `ai-workload-profile.json` exists AND `ai-handoff.json` has a `status` other than `deferred`:
+
+> Load `references/shared/ai-handoff.md` and run its Step 4 with `<phase>` `estimate`. bedrock-migration-assessment prices the AI design, and `accept` copies its `estimation-ai.json` here.
 
 Produces: `estimation-ai.json`
 
 ### Mutual Exclusion
 
 - **estimate-infra** and **estimate-billing** never both run (billing-only is the fallback when no IaC exists).
-- **estimate-ai** runs independently of either estimate-infra or estimate-billing (no shared state). Run it after the infra/billing estimate completes.
+- The AI route runs independently of either estimate-infra or estimate-billing (no shared state). Run it after the infra/billing estimate completes.
 
 ## Phase Completion
 
@@ -103,7 +105,7 @@ Before marking Estimate complete, enforce route output gates (fail closed):
 1. Determine which estimate routes ran:
    - Infra route: `aws-design.json` exists
    - Billing-only route: `aws-design-billing.json` exists AND `aws-design.json` does NOT exist
-   - AI route: `aws-design-ai.json` exists
+   - AI route: `ai-workload-profile.json` exists and `ai-handoff.json` exists and is not `deferred`
 2. Require at least one route to be active. If none active: STOP.
 3. For each active route, require its expected artifact:
    - Infra route -> `estimation-infra.json`
@@ -311,48 +313,10 @@ For AI-only / billing-only runs (no infra inventory), present the gate without
 option B and set `phases.workshop` → `"completed"`. Prefix the presented gate
 with the same breadcrumb line: "Phase 4 of 6 complete (Estimate). Remaining:
 Generate (+ optional Feedback)." For an AI-only run, also replace option C's
-label with the artifact route Generate will actually emit. Resolve that route
-in this order — the OpenRouter subroute wins over `migration_path`, because
-`generate-artifacts-ai.md` Step 3B does — and then show only the matching label:
-
-1. **OpenRouter subroute**, when `aws-design-ai.json` →
-   `code_migration.openrouter_path` is set, or `ai-workload-profile.json` has a
-   `base_url` containing `openrouter.ai`:
-   - `"same_model_runtime"` → `[C] Generate the Bedrock runtime (CRIS) migration script and A/B test harness`
-     (Step 3B skips gateway config and runs Step 1M's CRIS variant; no provider adapter).
-   - `"same_model_mantle"` → `[C] Generate the Mantle migration script and A/B test harness`
-     (Step 3B skips gateway config and runs Step 1M; no provider adapter).
-   - `"direct"` → `[C] Generate the Bedrock setup script, provider adapter, and A/B test harness`
-     (Step 3B skips gateway config and emits the adapter).
-   - `"litellm"`, `"keep_openrouter"`, or absent → `[C] Generate the gateway config, Bedrock setup script, and A/B test harness`
-     (absent defaults to litellm). Do not promise a provider adapter on these three.
-2. **Otherwise** read `ai_architecture.code_migration.migration_path`. Design
-   records `"runtime_openai_cris"` by default, `"mantle_openai_responses"` /
-   `"mantle_openai_chat"` (not `"mantle"`) only with a `mantle_selector`, and
-   `"converse"`; accept every Mantle spelling:
-   - `"runtime_openai_cris"` → the Bedrock runtime (CRIS) label above.
-   - `"mantle"`, `"mantle_openai_responses"` or `"mantle_openai_chat"` → the Mantle label above.
-   - `"converse"`, `"direct"`, `"runtime_messages"`, `"mantle_messages"`, or `"gpt-oss"` → the adapter label above.
-     `"converse"` is an explicit Converse rewrite, not a Mantle script and not gateway config;
-     the two Messages paths keep the Anthropic SDK inside the adapter.
-   - `"llm_router"`, `"api_gateway"`, `"voice_platform"`, or `"framework"` → the
-     gateway label above. This bullet does not apply when step 1 already matched
-     an OpenRouter subroute.
-   - **absent/missing `migration_path`** → consult the confirmed framework in
-     `preferences.json` → `ai_constraints.ai_framework.value` (an ARRAY) BEFORE
-     defaulting: if that array includes any of `"llm_router"`, `"api_gateway"`,
-     `"voice_platform"`, or `"framework"`, show the gateway label above; otherwise
-     show the adapter label. This mirrors `generate-artifacts-ai.md` Step 0's
-     framework-based dispatch (a gateway framework routes to Step 3B gateway
-     config, not the adapter), so the menu label matches the artifact Generate
-     emits when `migration_path` was never recorded.
-
-Whichever label is shown, add a line to the presented gate stating that this
-does not deploy any servers and does not rewrite the existing application
-code — but it DOES write `ai-migration/bedrock_monitoring.tf` (budget,
-anomaly detection, inference profiles — Step 3F, emitted on every path): say
-so explicitly rather than claiming "no infrastructure," since that file is
-real Terraform the user will see land in Generate's output. A billing-only
+label with what bedrock-migration-assessment's Generate writes:
+`[C] Generate the AI migration artifacts: Bedrock client files, a comparison harness, an IAM policy, and a dry-run setup script`,
+and add a line to the presented gate stating that this deploys nothing and does not change the
+existing application code. A billing-only
 run keeps option C's existing label (`[C] Generate Terraform and migration
 scripts`); that route writes `terraform/skeleton.tf`.
 

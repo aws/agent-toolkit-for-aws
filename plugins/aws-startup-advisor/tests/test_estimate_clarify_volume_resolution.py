@@ -54,15 +54,6 @@ AZURE_ESTIMATE_AI = (
     / "estimate"
     / "estimate-ai.md"
 )
-GCP_ESTIMATE_AI = (
-    PLUGIN_ROOT
-    / "skills"
-    / "gcp-to-aws"
-    / "references"
-    / "phases"
-    / "estimate"
-    / "estimate-ai.md"
-)
 AZURE_CLARIFY_AI_ONLY = (
     PLUGIN_ROOT
     / "skills"
@@ -120,9 +111,8 @@ def test_azure_estimate_ai_no_longer_unconditionally_directs_to_tier_table() -> 
     assert "was derived by summing ONLY the full-window" in text
 
 
-def test_azure_and_gcp_estimate_ai_partial_provider_exception_match_in_substance() -> None:
+def test_azure_estimate_ai_partial_provider_exception_keeps_its_rule() -> None:
     azure_text = _normalize(AZURE_ESTIMATE_AI.read_text(encoding="utf-8"))
-    gcp_text = _normalize(GCP_ESTIMATE_AI.read_text(encoding="utf-8"))
     shared_phrases = [
         "Do NOT fall back to the",
         "tier table for the partial profile's portion",
@@ -132,8 +122,7 @@ def test_azure_and_gcp_estimate_ai_partial_provider_exception_match_in_substance
         "scenario for the partial provider's portion, not derived from the other provider's volume",
     ]
     for phrase in shared_phrases:
-        assert phrase in azure_text, f"Azure estimate-ai.md missing ported phrase: {phrase!r}"
-        assert phrase in gcp_text, f"GCP estimate-ai.md missing reference phrase: {phrase!r}"
+        assert phrase in azure_text, f"Azure estimate-ai.md missing phrase: {phrase!r}"
 
 
 def test_clarify_q3_first_branch_checks_provenance_before_auto_resolving() -> None:

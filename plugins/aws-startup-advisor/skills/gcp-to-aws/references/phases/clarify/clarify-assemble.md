@@ -5,12 +5,10 @@ _reads:
   - global (fragment contribution)
   - compute (fragment contribution, when triggered)
   - database (fragment contribution, when triggered)
-  - ai (fragment contribution, when ai-workload-profile.json exists)
 _produces:
   - preferences.json
 _knowledge:
   - { file: references/shared/schema-preferences.md }
-  - { file: references/shared/schema-discover-ai.md, _when: "ai-workload-profile.json exists in $MIGRATION_DIR" }
 ---
 
 # Clarify — Assemble Preferences
@@ -63,7 +61,6 @@ each consequence to one line — use the consequence text supplied by each row's
 | Database size | up to 10 GB allocated (actual data may be less) | Terraform `disk_size` | Migration tool ceiling; script measures actual size |
 | DB traffic / I/O | Steady / Low (dev-tier `db-f1-micro`) | Terraform tier + ZONAL | gp3 storage, no replicas |
 | Cloud SQL HA | Zonal (1 instance) | billing-profile.json | No Aurora Multi-AZ failover |
-| AI model | gemini-3.8-flash | ai-workload-profile.json | Bedrock mapping baseline |
 
 **Assumed (documented defaults — correct anything that's wrong):**
 
@@ -71,13 +68,11 @@ each consequence to one line — use the consequence text supplied by each row's
 | ------- | ------------- | ------------------------- |
 | Multi-cloud | AWS-only | ECS Fargate eligible; multi-cloud would force EKS |
 | Cloud Run spend | $100–$500/mo | Feeds migrate-vs-stay analysis |
-| AI priority | Balanced | Sonnet-class default model |
-| AI latency | Important (<2s) | Sonnet + streaming; <500ms would force Haiku/Nova |
 | WebSockets | None (unverified — no code scan) | Standard ALB config |
 | Right-sizing appetite | Balanced | Sized from 30 days of Cloud Monitoring data where captured; name any resource with a known upcoming load change and the design keeps its declared size |
 
-Q27 (AWS Activate credits) is **not** on this sheet — it is asked in Gate 2 when AI
-workloads are detected.
+AI rows and AWS Activate credits are **not** on this sheet: when AI workloads are detected,
+bedrock-migration-assessment asks them after this sheet (`clarify.md` § Step 3).
 
 Reply:
 1. **Confirm all** (or "looks good") — I'll record these and ask only the [N] essential
@@ -124,10 +119,8 @@ These instances disagree on availability. Which posture should we use for the mi
 | `availability: dev` / `single-az`                | `availability: "single-az"`, `chosen_by: "user"`                              | No                     |
 | `db size: <10GB` / `10-100GB` / etc.             | Set `db_size` to stated band, `chosen_by: "user"`                             | No if band is explicit |
 | `region: [AWS region]`                           | Set `target_region`, `chosen_by: "user"`                                      | No                     |
-| `model: [model name]`                            | Set `ai_model_baseline`, `chosen_by: "user"`                                  | No if maps cleanly     |
 | `websockets: yes`                                | Set `websocket: "required"`, `chosen_by: "user"`                              | No                     |
 | `spend: $5K-$20K`                                | Set `gcp_monthly_spend`, `chosen_by: "user"`                                  | No if band is explicit |
-| `ai priority: cost` / `speed` / `quality`        | Set `ai_priority`, `chosen_by: "user"`                                        | No                     |
 | `multi-cloud: yes`                               | `compute: "eks"`, `chosen_by: "user"`; Q8 → N/A; Q7b → N/A (App Engine → EKS) | No                     |
 | "ask me about [setting]"                         | Convert that row to ESSENTIAL                                                 | Yes — full question    |
 | Vague correction ("that's wrong")                | Convert that row to ESSENTIAL                                                 | Yes — full question    |
@@ -149,7 +142,7 @@ and run the **Full Flow variant** (below) instead of Gate 2.
 
 - Extracted: raw provenance signal (e.g. `"terraform:availability_type=ZONAL"`,
   `"billing:region=us-west1"`, `"ai-profile:integration.pattern=direct_sdk"`)
-- Default: `"default:<Qid>"` (e.g. `"default:Q16"`)
+- Default: `"default:<Qid>"` (e.g. `"default:Q5"`)
 
 Omit `source` when `chosen_by` is `"user"` or `"derived"`.
 
@@ -277,9 +270,7 @@ Present the essential questions (from each fragment's disposition, plus any rows
 text, context, and options from the fragment files. Typical total: 2–7.
 
 **Batch composition:** core first (Q1/Q2/Q3/Q3.5/Q7 + conflicts, from `clarify-global.md`),
-then AI/agentic (Q15, Q22b, Q23–Q25, multi-workload confirmations, from `clarify-ai.md`). **Q27 is
-not batched** — ask it as its own short follow-up after the last batch, per the presentation
-rule in `clarify-ai.md` Q27 (it's a funding question, not a technical one). Write
+then compute and database essentials. Write
 `preferences-draft.json` between batches (same schema as `preferences.json` plus
 `metadata.wizard_stage`). When more than one batch is needed, open each with a progress line:
 "Batch [i] of [k]."
@@ -319,19 +310,8 @@ default genuinely does not exist:
   `references/vendored/clarify/clarify-compliance.md`.
 - Q7 defaults to 4 (flexible).
 - Q3 defaults to 2 ($1K–$5K) with a report caveat that spend was not confirmed.
-- **Q27 must not be silently defaulted in wizard mode** when Category H fired — if the user
-  skips it, record `startup_program_status: "unknown"` with `chosen_by: "default"` and
-  `source: "default:Q27"`; downstream artifacts must use neutral Activate copy (both tiers, no
-  "your status: eligible_*").
-- Q22b (Mantle-only requirements) defaults to the single entry
-  `{ "workload_id": "*", "selector": "none", "source": "none" }` in
-  `ai_constraints.mantle_requirements` with `chosen_by: "default"`, `source: "default:Q22b"`,
-  and appends "Mantle-only requirements were not confirmed by the user; bedrock-runtime
-  assumed" to `metadata.report_caveats[]` (Design then records `bedrock-runtime` with the
-  assumption sentence).
-- Q3.5, Q23–Q25, and unresolved multi-instance conflicts fall back to their documented
-  defaults (Q3.5 → 5; Q23 → framework-based; Q24 → session; Q25 → medium; conflicts → most
-  conservative posture) with `chosen_by: "default"`.
+- Q3.5 and unresolved multi-instance conflicts fall back to their documented defaults
+  (Q3.5 → 5; conflicts → most conservative posture) with `chosen_by: "default"`.
   Then run the **Answer Recap** (below) with the defaulted rows included, then Category E
   opt-in, then Step 5.
 
@@ -341,7 +321,7 @@ N/A).
 
 ## Gate 3 — The Answer Recap (Check Your Answers)
 
-After the last essential batch is answered and interpreted (and after Q27 when it fired),
+After the last essential batch is answered and interpreted,
 play back what was recorded — the essentials are the only answers in the flow the user states
 rather than confirms, and shorthand ("1A 2C") plus plain-word answers pass through an
 interpretation step the user never sees. One compact table, questions asked in Gate 2 only
@@ -354,7 +334,6 @@ interpretation step the user never sees. One compact table, questions asked in G
 | -------- | ----------- | ----------- |
 | Compliance (Q2) | "2A" | None |
 | Cutover window (Q7) | "monthly is fine" | Monthly maintenance window |
-| AI spend (Q15) | "about a grand" | $500–$2K/month |
 
 Anything wrong? Name it ("cutover: weekly") — or say "looks good" and I'll proceed to design.
 ```
@@ -381,11 +360,10 @@ and this is the user's one chance to see what "the rest" actually meant. Then wa
 
 **GCP-specific — `azure-to-aws` has no equivalent opt-out flow.** When the user opted out of
 the wizard, run the progressive-batch flow: present ALL active questions (no dispositions) in
-up to three batches — Strategic (Q1–Q7, minus Q4), Infrastructure (Q8–Q13b including Q11b
-Graviton and Category B), AI (Q14–Q27, Q23–Q26 only if agentic) — writing
-`preferences-draft.json`
+up to two batches — Strategic (Q1–Q7, minus Q4) and Infrastructure (Q8–Q13b including Q11b
+Graviton and Category B) — writing `preferences-draft.json`
 between batches with `metadata.batches_completed` / `metadata.batches_remaining` (values:
-`"strategic"`, `"infrastructure"`, `"ai"`). Per-question skip and "use defaults for the rest"
+`"strategic"`, `"infrastructure"`). Per-question skip and "use defaults for the rest"
 behave as documented. Set `metadata.clarify_mode: "full"`. The **Answer Recap** above runs
 after the final batch here too (all answered questions as rows; skipped/defaulted ones
 summarized in one line, not per-row — intentional compression so a 20+ question full-flow
@@ -436,24 +414,6 @@ follows the Q-E0 appetite row, default `balanced`).
 | HIPAA compliance                         | Q2 = HIPAA                                                                         | BAA services only, specific regions                                                             |
 | FedRAMP required                         | Q2 = FedRAMP                                                                       | GovCloud regions only                                                                           |
 | CCPA / CPRA                              | Q2 = 7 (CCPA / CPRA)                                                               | Consumer privacy, logging/retention, data-inventory posture; confirm regions with legal review  |
-| Gateway-only AI                          | Q14 = 2 only (LLM router/gateway)                                                  | Config change only; skip SDK migration                                                          |
-| LangChain/LangGraph AI                   | Q14 includes 3                                                                     | Provider swap via ChatBedrock; 1–3 days                                                         |
-| OpenAI Agents SDK                        | Q14 includes 5                                                                     | Highest AI effort; AgentCore (Harness/Runtime); 2–4 weeks                                       |
-| Multi-agent + MCP                        | Q14 = 4 + 6                                                                        | AgentCore to unify orchestration + MCP (Gateway)                                                |
-| Voice platform AI                        | Q14 includes 7                                                                     | Check native Bedrock support; Nova 2 Sonic if needed                                            |
-| GPT-5.5 migration                        | Q19 = GPT-5.5                                                                      | Claude Opus 4.6 — Bedrock 17% cheaper on output; or Sonnet 5 for 68% savings                    |
-| GPT-5.5 Pro migration                    | Q19 = GPT-5.5 Pro                                                                  | GPT-5.6 Sol (same vendor), or Claude Opus 5.5 (Global) — 88% cheaper at 150M/75M              |
-| GPT-5.4 migration                        | Q19 = GPT-5.4                                                                      | Claude Sonnet 5 — ~36% cheaper blended; AWS consolidation                                       |
-| GPT-5.4 Mini/Nano migration              | Q19 = GPT-5.4 Mini or Nano                                                         | Nova Lite/Micro — 87-94% cheaper on Bedrock                                                     |
-| GPT-4 Turbo migration                    | Q19 = GPT-4 Turbo                                                                  | GPT-5.6 Sol (OpenAI's substitute; GPT-4 Turbo shut down 2026-10-23), or Claude Sonnet 5 — price against a measured bill, no live saving |
-| o-series migration                       | Q19 = o-series                                                                     | GPT-5.6 Sol (OpenAI's substitute; o1 / o1-pro / o3-mini / o4-mini shut down 2026-10-23, o3 / o3-pro on 2026-12-11), or Claude Sonnet 5 with extended thinking |
-| High-volume cost-critical AI             | Q18 = High + cost critical                                                         | Nova Micro or Haiku 5.5; verify on-demand quotas, price tier, and measured throughput                                                |
-| Reasoning/agent workload                 | Q17 = Extended thinking                                                            | Claude Sonnet 5 extended thinking; Opus 4.6 for hardest                                         |
-| Speech-to-speech AI                      | Q17 = Real-time speech                                                             | Nova 2 Sonic                                                                                    |
-| RAG workload                             | Q17 = RAG optimization                                                             | Bedrock Knowledge Bases + Titan Embeddings                                                      |
-| Vision workload                          | Q20 = Vision required                                                              | Claude Sonnet 5 (multimodal)                                                                    |
-| Latency-critical AI                      | Q21 = Critical                                                                     | Haiku 5.5 or Nova Micro + streaming                                                             |
-| Complex reasoning tasks                  | Q22 = Complex                                                                      | Claude Sonnet 5; Opus 4.6 for hardest                                                           |
 
 ## Step 5: Assemble and Write preferences.json
 
@@ -473,11 +433,11 @@ the draft-specific metadata fields (`draft`, `wizard_stage`, `batches_completed`
     "migration_type": "full",
     "timestamp": "<ISO timestamp>",
     "discovery_artifacts": ["gcp-resource-inventory.json", "ai-workload-profile.json"],
-    "questions_asked": ["Q2", "Q7", "Q15", "Q27"],
-    "questions_defaulted": ["Q5", "Q9", "Q11", "Q11b", "Q16", "Q17", "Q18", "Q21", "Q22"],
-    "questions_skipped_extracted": ["Q1", "Q6", "Q12", "Q13", "Q13b", "Q14", "Q19", "Q20"],
+    "questions_asked": ["Q2", "Q7"],
+    "questions_defaulted": ["Q5", "Q9", "Q11", "Q11b"],
+    "questions_skipped_extracted": ["Q1", "Q6", "Q12", "Q13", "Q13b"],
     "questions_skipped_early_exit": ["Q8"],
-    "questions_skipped_not_applicable": ["Q3.5", "Q4", "Q10", "Q23", "Q24", "Q25", "Q26"],
+    "questions_skipped_not_applicable": ["Q3.5", "Q4", "Q10"],
     "category_e_enabled": false,
     "clarify_mode": "wizard",
     "inventory_clarifications": {}
@@ -569,94 +529,6 @@ the draft-specific metadata fields (`draft`, `wizard_stage`, `batches_completed`
       "design_consequence": "10-100GB → pgcopydb migration tooling",
       "question_id": "Q13b"
     }
-  },
-  "ai_constraints": {
-    "ai_framework": {
-      "value": ["direct"],
-      "chosen_by": "extracted",
-      "source": "ai-profile:integration.pattern=direct_sdk",
-      "prompt": "Detected: direct SDK integration from ai-workload-profile.json",
-      "design_consequence": "Direct SDK pattern → Converse API adapter with feature-flag cutover",
-      "question_id": "Q14"
-    },
-    "ai_monthly_spend": {
-      "value": "$500-$2K",
-      "chosen_by": "user",
-      "prompt": "Approximately how much do you spend on AI/ML per month?",
-      "design_consequence": "$500-$2K band sets token volume and model tier assumptions",
-      "question_id": "Q15"
-    },
-    "ai_priority": {
-      "value": "balanced",
-      "chosen_by": "default",
-      "source": "default:Q16",
-      "prompt": "What matters most for your AI workloads? (default applied)",
-      "design_consequence": "Assuming balanced priority → Sonnet-class default model",
-      "question_id": "Q16"
-    },
-    "ai_critical_feature": {
-      "value": "none",
-      "chosen_by": "default",
-      "source": "default:Q17",
-      "prompt": "Which AI capability is most critical? (default applied)",
-      "design_consequence": "No specialized feature → Q16 priority decides the model",
-      "question_id": "Q17"
-    },
-    "ai_token_volume": {
-      "value": "low",
-      "chosen_by": "default",
-      "source": "default:Q18",
-      "prompt": "What is your token volume and cost sensitivity? (default applied)",
-      "design_consequence": "Assuming low volume → on-demand pricing, no provisioned throughput analysis",
-      "question_id": "Q18"
-    },
-    "ai_model_baseline": {
-      "value": "gemini-3.8-flash",
-      "chosen_by": "extracted",
-      "source": "ai-profile:models[0].model_id",
-      "prompt": "Detected: primary production model from ai-workload-profile.json",
-      "design_consequence": "Baseline model drives the Bedrock mapping and cost comparison",
-      "question_id": "Q19"
-    },
-    "ai_vision": {
-      "value": "text-only",
-      "chosen_by": "extracted",
-      "source": "ai-profile:capabilities_summary.vision=false",
-      "prompt": "Detected: capabilities_summary shows no vision usage",
-      "design_consequence": "Assuming text-only → full model catalog",
-      "question_id": "Q20"
-    },
-    "ai_latency": {
-      "value": "important",
-      "chosen_by": "default",
-      "source": "default:Q21",
-      "prompt": "How important is AI response latency? (default applied)",
-      "design_consequence": "Assuming <2s latency → Sonnet-class + streaming",
-      "question_id": "Q21"
-    },
-    "ai_complexity": {
-      "value": "moderate",
-      "chosen_by": "default",
-      "source": "default:Q22",
-      "prompt": "How complex are your AI tasks? (default applied)",
-      "design_consequence": "Assuming moderate complexity → Sonnet-class model",
-      "question_id": "Q22"
-    },
-    "ai_capabilities_required": {
-      "value": ["text_generation", "streaming"],
-      "chosen_by": "derived",
-      "prompt": "Derived from detected capabilities and your answers",
-      "design_consequence": "Required capabilities union enforced in Bedrock model mapping and validation checklist"
-    }
-  },
-  "startup_constraints": {
-    "startup_program_status": {
-      "value": "eligible_founders",
-      "chosen_by": "user",
-      "question_id": "Q27",
-      "prompt": "Have you applied for AWS Activate credits?",
-      "design_consequence": "Activate Founders ($5K) callout in report and STARTUP_PROGRAMS.md"
-    }
   }
 }
 ```
@@ -665,10 +537,9 @@ the draft-specific metadata fields (`draft`, `wizard_stage`, `batches_completed`
 
 Full schema and constraint catalog: `references/shared/schema-preferences.md`.
 
-1. Every entry in `design_constraints`, `ai_constraints`, and `startup_constraints` (when
-   present) is an object with **`value`**, **`chosen_by`**, **`prompt`**, and
-   **`design_consequence`** fields. Optional **`question_id`** when mapped to the Q1–Q27
-   catalog. Optional **`source`** when `chosen_by` is `"extracted"` or `"default"`.
+1. Every entry in `design_constraints` is an object with **`value`**, **`chosen_by`**,
+   **`prompt`**, and **`design_consequence`** fields. Optional **`question_id`** when mapped to
+   the Q1–Q13b catalog. Optional **`source`** when `chosen_by` is `"extracted"` or `"default"`.
 2. **`prompt`:** verbatim question from the fragment file when `chosen_by` is `"user"`;
    detection label when `"extracted"`; question + `" (default applied)"` when `"default"`;
    derivation label when `"derived"`.
@@ -688,7 +559,7 @@ Full schema and constraint catalog: `references/shared/schema-preferences.md`.
    (prefix `terraform:`, `billing:`, `code:`, `inventory:`, `ai-profile:`, or artifact
    filename). Default: `"default:<Qid>"`. Omit `source` for `"user"` and `"derived"`. Report
    generation uses `source` prefixed `default:` to flag unverified assumptions.
-6. Only write a key to `design_constraints` / `ai_constraints` if the answer produces a
+6. Only write a key to `design_constraints` if the answer produces a
    constraint. Absent keys mean "no constraint — Design decides."
 7. Do not write null values. Do not omit `prompt` or `design_consequence` on any written
    constraint.
@@ -702,14 +573,9 @@ Full schema and constraint catalog: `references/shared/schema-preferences.md`.
     sheet-confirmed (wizard) or skipped (full flow / "use defaults").
 12. `metadata.questions_skipped_not_applicable` records questions skipped because the
     relevant service wasn't in the inventory or their firing condition wasn't met.
-13. `ai_constraints` section is present ONLY if Category F fired. Omit entirely if no AI
-    artifacts exist.
-14. `ai_constraints.ai_capabilities_required` is the UNION of detected capabilities from
-    `ai-workload-profile.json` + critical feature from Q17 + vision from Q20. `chosen_by` is
-    `"derived"`.
-15. `ai_constraints.ai_framework` is an array (Q14 is select-all-that-apply). If
-    auto-detected, `chosen_by` is `"extracted"` with `source`.
-16. `metadata.clarify_mode` is one of `"wizard"`, `"full"`, `"fast_path"`,
+13. Write no `ai_constraints` and no `startup_constraints`: `bma-handoff.py accept` adds them
+    from bedrock-migration-assessment (`clarify.md` § Step 3).
+14. `metadata.clarify_mode` is one of `"wizard"`, `"full"`, `"fast_path"`,
     `"simple_hybrid"`.
 
 After writing `preferences.json`, delete `$MIGRATION_DIR/preferences-draft.json` and
@@ -744,21 +610,6 @@ skips, "use defaults for the rest", and the fast paths.
 | Q12 — DB traffic           | 1 (steady)                                                                                                        | `database_traffic: "steady"`                                                                                                                                                                         |
 | Q13 — DB I/O               | 2 (medium)                                                                                                        | `db_io_workload: "medium"`                                                                                                                                                                           |
 | Q13b — DB size             | 5 (unknown)                                                                                                       | `db_size: "unknown"` → Generate HOLDs the data step until size is verified                                                                                                                                                           |
-| Q14 — AI framework         | _(auto-detect)_                                                                                                   | `ai_framework` from code detection, fallback `["direct"]`                                                                                                                                            |
-| Q15 — AI spend             | 2 ($500–$2K)                                                                                                      | `ai_monthly_spend: "$500-$2K"` _(essential — defaulted only via "use defaults for the rest")_                                                                                                        |
-| Q16 — AI priority          | 5 (balanced)                                                                                                      | `ai_priority: "balanced"`                                                                                                                                                                            |
-| Q17 — Critical feature     | 10 (none)                                                                                                         | no additional override                                                                                                                                                                               |
-| Q18 — Volume + cost        | 1 (low + quality)                                                                                                 | `ai_token_volume: "low"`                                                                                                                                                                             |
-| Q19 — Current model        | _(auto-detect)_                                                                                                   | `ai_model_baseline` from code detection                                                                                                                                                              |
-| Q20 — Input types          | 1 (text only)                                                                                                     | no constraint                                                                                                                                                                                        |
-| Q21 — AI latency           | 2 (important)                                                                                                     | `ai_latency: "important"`                                                                                                                                                                            |
-| Q22 — Task complexity      | 2 (moderate)                                                                                                      | `ai_complexity: "moderate"`                                                                                                                                                                          |
-| Q22b — Mantle-only requirements | none (bedrock-runtime assumed, report caveat)                                                                | `ai_constraints.mantle_requirements` default entry                                                                                                                                                   |
-| Q23 — Agentic approach     | _(framework-based auto-detect; see `clarify-ai.md`)_                                                              | `ai_constraints.agentic.migration_approach`                                                                                                                                                          |
-| Q24 — Agent memory         | 2 (session)                                                                                                       | `ai_constraints.agentic.memory_requirement: "session"`                                                                                                                                               |
-| Q25 — Task duration        | 2 (medium)                                                                                                        | `ai_constraints.agentic.task_duration: "medium"`                                                                                                                                                     |
-| Q26 — Incremental          | path-based                                                                                                        | `incremental_migration`: `true` for Harness path, `false` for retarget                                                                                                                               |
-| Q27 — Activate credits     | _(essential when Category H fires — ask in Gate 2; skip only via explicit answer or "use defaults for the rest")_ | `startup_program_status` per answer; skip → `"unknown"` with neutral downstream copy                                                                                                                 |
 | Q-E0 — Right-sizing appetite | B (balanced)                                                                                                    | `cost_optimization: "balanced"` — measured rule with a two-step cap where `utilization` exists; `sizing_exemptions` omitted                                                                 |
 | Q-E1 — HA upgrade          | 2 (no)                                                                                                            | `ha_upgrade: false`                                                                                                                                                                                  |
 | Q-E2 — Right-sizing        | not asked                                                                                                            | `right_sizing` omitted; `cost_optimization` (Q-E0) governs                                                                                                                                                                                |
@@ -772,7 +623,7 @@ Before handing off to Design:
 - [ ] Every constraint with `chosen_by: "extracted"` or `chosen_by: "default"` has a `source`
       field with the correct prefix (`terraform:`, `billing:`, `inventory:`, `ai-profile:`,
       or `default:<Qid>`)
-- [ ] Essential questions (Q2, Q7, and conditional Q1/Q3/Q3.5/**Q27**/Q15/Q23–Q25/conflicts)
+- [ ] Essential questions (Q2, Q7, and conditional Q1/Q3/Q3.5/conflicts)
       were asked, answered, or explicitly defaulted via "use defaults for the rest"
 - [ ] The Answer Recap was shown after the final Gate 2 batch (including defaulted rows on
       "use defaults for the rest") and the user responded to it before Category E /
@@ -793,14 +644,12 @@ Before handing off to Design:
 - [ ] Explicit unknown answers for Q3/Q3.5/Q11 remain `value: "unknown"` with
       `chosen_by: "user"`; skipped facts remain unknown rather than monetary
       estimates or a claim of no commitments
-- [ ] Every entry in `design_constraints` and `ai_constraints` has `value` and `chosen_by`
+- [ ] Every entry in `design_constraints` has `value` and `chosen_by`
       fields
 - [ ] Config gap answers recorded in `metadata.inventory_clarifications` (billing mode only)
 - [ ] Early-exit skips recorded in `metadata.questions_skipped_early_exit`
-- [ ] `ai_constraints` section present ONLY if Category F fired
-- [ ] If Category F fired, `ai_constraints.ai_framework` is populated (from detection or Q14)
-- [ ] If Category F fired, `ai_capabilities_required` is derived from detection + Q17 + Q20
-- [ ] `ai_constraints.ai_framework` is an array (Q14 is multi-select)
+- [ ] Before the AI handoff, no `ai_constraints` or `startup_constraints` section; after it,
+      `metadata.ai_preferences_source` names the assessment run `ai-handoff.json` records
 - [ ] Output is valid JSON
 - [ ] `preferences-draft.json` has been deleted (if it existed)
 - [ ] `metadata.clarify_mode` is set to `"wizard"`, `"full"`, `"fast_path"`, or
@@ -842,19 +691,12 @@ reason=stale_downstream`.
    expected behavior (matching the `clarify-database.md` auto-detect rule "if multiple
    instances disagree, ask Q13b"). Otherwise: `GATE_FAIL | phase=clarify |
    field=metadata.questions_asked | reason=extractable_question_asked_Q13b`.
-8. **Extraction consistency — Q19** _(skip when `metadata.clarify_mode` is `"full"`)_: If
-   `ai-workload-profile.json` exists with `models[0].model_id` set at confidence ≥ 0.8 →
-   `Q19` must NOT appear in `metadata.questions_asked` unless `ai_constraints
-   .ai_model_baseline.chosen_by` is `"user"`. Otherwise: `GATE_FAIL | phase=clarify |
-   field=metadata.questions_asked | reason=extractable_question_asked_Q19`. (Detect-confirm
-   cards for sub-threshold or tied detection per `clarify-ai.md` are not affected — they fire
-   only when confidence < 0.8.)
-
 **On any FAIL:** Emit `GATE_FAIL | phase=clarify | field=<path> | reason=missing`. **Do NOT
 modify artifacts to pass the gate.** **Do NOT update `.phase-status.json`.** Tell the user to
 answer the missing question or re-run Clarify.
 
-**On PASS:** Emit `HANDOFF_OK | phase=clarify | artifacts=preferences.json`.
+**On PASS:** run `clarify.md` § Step 3 (the AI handoff). It emits `HANDOFF_OK | phase=clarify |
+artifacts=preferences.json` once the handoff is accepted, deferred, or not needed.
 
 ## Step 6: Update Phase Status
 

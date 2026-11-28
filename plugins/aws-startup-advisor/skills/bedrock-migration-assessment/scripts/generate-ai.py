@@ -51,7 +51,7 @@ MIGRATION_ID_RE = re.compile(r"^bma-\d{4}-\d{4}$")
 CONFIDENCE = ("low", "medium", "high")
 PLACEHOLDER = "WRITE:"
 DASHBOARDS = ["Requests by provider", "Latency P50/P95/P99", "Error rate", "Tokens", "Cost"]
-# gcp-to-aws generate-artifacts-ai.md Step 3F: Bedrock budget is 1.5x the projected monthly figure, at least $10.
+# Bedrock budget is 1.5x the projected monthly figure, at least $10.
 BUDGET_MULTIPLIER = 1.5
 BUDGET_MINIMUM = 10
 BEDROCK_SERVICE = "Amazon Bedrock"
