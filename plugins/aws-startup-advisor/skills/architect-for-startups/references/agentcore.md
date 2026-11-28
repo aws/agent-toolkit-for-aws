@@ -50,9 +50,9 @@ Month 6+:    Add Memory, Gateway, Identity as specific needs emerge
 
 ### PoC to Production Pitfall
 
-The AgentCore CLI (`agentcore init` → `agentcore deploy`) is fast for prototyping but creates resources that are NOT in IaC. Startups frequently build on CLI-deployed agents for months, then face a painful migration when they need CI/CD.
+The AgentCore CLI (`agentcore create` → `agentcore deploy`) is fast for prototyping, and it deploys through an AWS CDK app generated in the project (`agentcore/cdk/`), so resources are CloudFormation-managed. The pitfall is where the project lives: startups often keep deploying from one laptop for months, then face a painful migration when they need CI/CD.
 
-**Rule**: If you expect to use AgentCore for more than 2 weeks, start with CDK from day one. The AgentCore Starter Toolkit provides CDK templates — use them.
+**Rule**: If you expect to use AgentCore for more than 2 weeks, commit the CLI project (including `agentcore/`) to git from day one and run `agentcore deploy` from CI. Extend the generated CDK app instead of creating resources by hand. The deprecated Starter Toolkit and its templates are not recommended.
 
 ## Credits Guidance
 

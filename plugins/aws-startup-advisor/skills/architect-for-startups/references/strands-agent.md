@@ -77,6 +77,6 @@ your Strands supervisor/routing logic.
 
 - **Default model is Claude Sonnet** — expensive for iteration. Override to Nova Micro/Lite during development: saves 10-20x on development costs.
 - **VPC config is immutable** — if you deploy with VPC settings and realize you don't need them, you must create an entirely new agent config. Start WITHOUT VPC unless you know you need private resource access.
-- **`agentcore destroy` deletes everything** — including memory resources with user data. Always `--dry-run` first. No undo.
-- **Memory provisioning takes 2-3 minutes** — friction during rapid iteration. Use NO_MEMORY for development, add memory only in staging/prod configs.
-- **OTel is on by default in AgentCore** — traces go to CloudWatch/X-Ray (which costs money). Disable with `--disable-otel` during early development if you're not looking at traces yet.
+- **Removing everything deletes everything** — `agentcore remove all --yes` followed by `agentcore deploy --yes` removes the target's whole stack, including memory resources with user data. Run `agentcore status` first to see what is deployed. No undo.
+- **Memory provisioning takes 2-3 minutes** — friction during rapid iteration. Leave Memory out of early iterations and add it with `agentcore add memory` once the agent works. The Strands templates include Memory, so start from `agent-python-minimal` or remove it from the project.
+- **OTel is on by default in AgentCore** — traces go to CloudWatch/X-Ray (which costs money). The old `--disable-otel` flag was a Starter Toolkit option and does not exist in the AgentCore CLI; `agentcore dev --no-traces` only turns off local trace collection.
