@@ -5,6 +5,7 @@
 - What It Is
 - Harness vs. Runtime
 - Deployment Workflow
+- Clean up a Harness project
 - Configuration Surface
 - Per-Invocation Overrides
 - Versions and Endpoints
@@ -34,9 +35,9 @@ Both run inside AgentCore Runtime infrastructure, but they solve different probl
 
 | | Harness | Runtime |
 |---|---------|---------|
-| **You provide** | Configuration (no code) | Agent code + ARM64 container |
+| **You provide** | Configuration (no orchestration code) | Agent code, packaged as CodeZip or a container |
 | **Agent loop** | Managed (Strands) | You write it |
-| **Change model / add a tool** | Config change, no redeploy | Code change + redeploy |
+| **Change model / add a tool** | Edit Harness config, then deploy the project | Change code or config, then deploy the project |
 | **Framework choice** | Strands only | Any (LangGraph, CrewAI, custom) |
 | **Best for** | Fast setup, dynamic config | Custom loop control, non-loop patterns (graph/workflow), bidirectional streaming, hooks |
 
@@ -70,19 +71,47 @@ Deployment Progress (all three stages are required — creation alone does not y
 - Skipping Step 2 — a harness is not invokable until `get-harness` reports `READY`.
 - Invoking with `--input-text` or `--harness-id` — there is no such parameter. Invocation is on the **data plane** (`bedrock-agentcore`), takes a `runtimeSessionId` (≥33 chars) and a `messages` list, and returns a **stream** of events you must iterate (see Streaming Response Format). Treating the response as a single string drops the agent's output.
 
-**AgentCore CLI:**
+**AgentCore CLI v1:**
 
 ```bash
-npm install -g @aws/agentcore@preview
-# Set the execution-limit guardrails (max iterations, max tokens, timeout) explicitly
-# rather than relying on defaults — see Security Considerations. Use `agentcore create --help`
-# for the current flag names, or set them on the underlying create-harness call below.
-agentcore create --name myresearchagent --model-provider bedrock
-agentcore deploy
-agentcore invoke --harness myresearchagent --session-id "$(uuidgen)" "Hello, what can you do?"
+npm install -g @aws/agentcore@latest
+agentcore create --name ResearchProject --template empty
+cd ResearchProject
+agentcore add harness \
+  --name ResearchHarness \
+  --model '{"provider":"bedrock","modelId":"global.anthropic.claude-sonnet-5-5"}' \
+  --authorizer-type AWS_IAM \
+  --max-iterations 25 --max-tokens 4096 --timeout-seconds 300
+agentcore build
+agentcore deploy --region <region>
+agentcore status --json
+agentcore invoke --harness ResearchHarness --prompt "Hello, what can you do?"
 ```
 
-Useful CLI commands: `agentcore dev` (local dev server + inspector), `agentcore status`, `agentcore add harness`.
+The editable Harness files are `app/ResearchHarness/harness.yaml` and `system-prompt.md`. The first deploy creates the default target in `agentcore/aws-targets.json` from the effective account and region. `agentcore dev` can run a Runtime locally and can deploy or use a Harness in AWS; it does not run a Harness locally.
+
+The `agentcore add harness` JSON flags use project-input shapes, which differ from the API and `harness.yaml` shapes below:
+
+| CLI flag | v1 JSON example |
+|---|---|
+| `--model` | `'{"provider":"bedrock","modelId":"<model-id>"}'` |
+| `--memory` | `'{"mode":"managed","strategies":["SEMANTIC","SUMMARIZATION"]}'`, `'{"mode":"existing","arn":"<memory-arn>"}'`, or `'{"mode":"disabled"}'` |
+| `--skills` | `'[{"s3Uri":"s3://bucket/key/"},{"path":"./skills/local"}]'` |
+| `--tools` | `'[{"type":"agentcore_code_interpreter","name":"code_interpreter","config":{"agentCoreCodeInterpreter":{}}}]'` |
+| `--authorizer-configuration` | `'{"customJwtAuthorizer":{"discoveryUrl":"https://issuer/.well-known/openid-configuration"}}'` with `--authorizer-type CUSTOM_JWT` |
+
+Every v1 project tool needs `name`, including built-in tools. Use the API/YAML member names only when editing `harness.yaml` or calling the service API directly.
+
+### Clean up a Harness project
+
+For a project dedicated to this Harness, inspect `agentcore status --target <target> --json` and the target's account and region in `agentcore/aws-targets.json`. Delete any non-default Harness endpoints first. After confirming the teardown, remove its deployed resources:
+
+```bash
+agentcore remove all --yes
+agentcore deploy --yes --target <target>
+```
+
+`remove all` empties the shared project configuration for every target and removes project credential keys from `agentcore/.env.local`. Back up those files and use the `agents-deploy` target-specific teardown procedure for a project with other targets or resources. For a shared project where only this Harness should go, use `agentcore remove harness --name <HarnessName>` and deploy the selected target instead.
 
 **AWS CLI / SDK:**
 
@@ -125,7 +154,7 @@ for event in response["stream"]:
 - `harnessName` must start with a letter and contain only letters, digits, and underscores, max 40 characters.
 - `runtimeSessionId` MUST be at least 33 characters — a standard UUID (36 chars, with hyphens) satisfies this. If your `uuidgen` strips hyphens (32 chars), it will be too short; append a suffix or concatenate two. Over the wire it maps to the `X-Amzn-Bedrock-AgentCore-Runtime-Session-Id` header. Reuse the same session id across invocations to continue the conversation in the same environment.
 - When no model is configured the harness applies a default Bedrock model; check the [CreateHarness API reference](https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/API_CreateHarness.html) for the current default, and `aws bedrock list-foundation-models` for available model IDs.
-- Install the AgentCore CLI from the `@aws/agentcore@preview` npm channel (`npm install -g @aws/agentcore@preview`).
+- Install AgentCore CLI v1.0.0 or later with `npm install -g @aws/agentcore@latest`.
 - Refer to the latest AWS documentation for authoritative API parameters.
 
 ## Configuration Surface
@@ -148,9 +177,9 @@ for event in response["stream"]:
 
 Refer to the latest [CreateHarness API reference](https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/API_CreateHarness.html) for the authoritative field list.
 
-### Field shapes
+### CreateHarness API and `harness.yaml` field shapes
 
-The optional fields are typed shapes, not loose key/values — use the exact member names below. `model`, `memory`, and each `skills` entry are **unions** (set exactly one variant); `tools` and `systemPrompt` are **lists**.
+The shapes below describe the CreateHarness API and the CLI-generated `harness.yaml`; they are **not** JSON for `agentcore add harness` flags. The optional fields are typed shapes, not loose key/values — use the exact member names below. `model`, `memory`, and each `skills` entry are **unions** (set exactly one variant); `tools` and `systemPrompt` are **lists**. In a v1 project, every tool also requires a `name`.
 
 ```jsonc
 // model: HarnessModelConfiguration union — variant key is bedrockModelConfig
@@ -165,14 +194,17 @@ The optional fields are typed shapes, not loose key/values — use the exact mem
   "apiFormat": "converse_stream",                      // converse_stream | responses | chat_completions
   "additionalParams": {}                               // optional: provider-specific params passed through unchanged
 }}
+// v1 project harness.yaml / `agentcore add harness --model`: additionalParams is
+// lite_llm-only; the CLI rejects it for bedrock, open_ai, and gemini even though
+// the CreateHarness API accepts it on every variant.
 
 // systemPrompt: list of content blocks (NOT a bare string)
 "systemPrompt": [ { "text": "You are a helpful assistant." } ]
 
-// tools: list of { type, name?, config }; type is a wire enum, config holds the matching variant
+// tools: list of { type, name, config }; type is a wire enum, config holds the matching variant
 "tools": [
-  { "type": "agentcore_code_interpreter", "config": { "agentCoreCodeInterpreter": {} } },
-  { "type": "agentcore_gateway", "config": { "agentCoreGateway": { "gatewayArn": "<gateway-arn>" } } },
+  { "type": "agentcore_code_interpreter", "name": "code_interpreter", "config": { "agentCoreCodeInterpreter": {} } },
+  { "type": "agentcore_gateway", "name": "my_gateway", "config": { "agentCoreGateway": { "gatewayArn": "<gateway-arn>" } } },
   { "type": "remote_mcp", "name": "my_mcp", "config": { "remoteMcp": { "url": "https://mcp.example.com/mcp" } } }
 ]
 
@@ -251,8 +283,8 @@ The imperative shell operation `InvokeAgentRuntimeCommand` (`POST /runtimes/<age
 
 - A harness accepts exactly one inbound auth method, decided by whether it has an `authorizerConfiguration`: **SigV4** (AWS IAM) when absent, **OAuth JWT** when present. The harness rejects a Bearer token on a SigV4 harness, and rejects SigV4 on an OAuth JWT harness — there is no mixed mode.
 - **Per-user identity for downstream tools requires OAuth JWT.** SigV4 does NOT propagate per-user identity into downstream tool calls, so AgentCore Identity Token Vault features (user-scoped tokens, on-behalf-of exchange) are only available on the OAuth JWT inbound path.
-- OAuth JWT config is `authorizerConfiguration.customJWTAuthorizer` with `discoveryUrl` (required), `allowedAudience`, and `allowedClients`. With the CLI use `--authorizer-type CUSTOM_JWT --discovery-url <url> --allowed-clients <id>`. (Do not use `oidcAuthorizerConfiguration` — that name appears in some examples but is not the API field.)
-- Set `allowedAudience` and/or `allowedClients` to constrain which tokens are accepted: `allowedAudience` validates the JWT `aud` claim and `allowedClients` validates the client ID, so a token issued for a different service or client cannot be replayed against the harness. A JWT authorizer with neither constraint accepts any valid token from the issuer.
+- In `harness.yaml`, OAuth JWT config is `authorizerConfiguration.customJWTAuthorizer` with `discoveryUrl` (required), `allowedAudience`, and `allowedClients`. The v1 CLI flag uses different capitalization: `agentcore add harness --authorizer-type CUSTOM_JWT --authorizer-configuration '{"customJwtAuthorizer":{"discoveryUrl":"https://idp.example.com/.well-known/openid-configuration","allowedAudience":["<audience>"]}}'`. The CLI converts `customJwtAuthorizer` to the `customJWTAuthorizer` YAML key. Alternatively, edit `harness.yaml` and run `agentcore build`. (Do not use `oidcAuthorizerConfiguration` — that is not the API field.)
+- Set `allowedAudience` and/or `allowedClients` to constrain which tokens are accepted: `allowedAudience` validates the JWT `aud` claim and `allowedClients` validates the client ID, so a token issued for a different service or client cannot be replayed against the harness. The v1 project CLI requires at least one of `allowedAudience`, `allowedClients`, `allowedScopes`, or `customClaims`, and rejects a `discoveryUrl`-only authorizer.
 
 **Network and container:**
 

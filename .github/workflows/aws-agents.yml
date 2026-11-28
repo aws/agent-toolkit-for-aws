@@ -1,0 +1,24 @@
+name: AWS agents
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "plugins/aws-agents/**"
+      - ".github/workflows/aws-agents.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  aws-agents:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+        with:
+          working_directory: plugins/aws-agents
+      - name: Run aws-agents checks
+        run: mise -C plugins/aws-agents run ci
