@@ -23,9 +23,11 @@ Gather the following inputs and confirm prerequisites **before** running any ste
 
 - **profile_name** (required): The AWS CLI profile name to use for all commands. You MUST ask the user: "What profile name do you want to use for your AWS CLI credentials?"
 - **AWS experience** (required): The user has access to either our new AWS experience or our advanced AWS experience. If not provided in the prompt, you MUST ask the user: "Did you sign up recently for AWS using a social provider like Google or GitHub, and did you create a project?" If they say yes, they are using our new AWS experience. If they say no, they are using our advanced AWS experience.
-- **Region** (required): The default AWS Region for the user's account. If not provided in the prompt, you MUST ask for it before proceeding:
-  - If the AWS experience parameter is our advanced AWS experience, ask: "What AWS Region do you want to use as your default Region?"
-  - If the AWS experience parameter is our new AWS experience, ask: "What AWS Region was your project created in?" They can find this value in the additional info tab of their project in AWS Settings.
+- **Region** (required unless the user has said they have no AWS account): The default AWS Region for the user's account.
+  - If the user has said they have no AWS account, do NOT ask this now. There is no project yet to have a Region, and a guessed answer written to the profile before Step 3 can cause `aws signup` to keep that guess instead of the account's real home Region. Step 3 obtains and confirms the Region after the account exists.
+  - Otherwise, if not provided in the prompt, ask for it before proceeding:
+    - If the AWS experience parameter is our advanced AWS experience, ask: "What AWS Region do you want to use as your default Region?"
+    - If the AWS experience parameter is our new AWS experience, ask: "What AWS Region was your project created in?" They can find this value in the additional info tab of their project in AWS Settings.
 - **operating_system** (optional): macOS, Linux, or Windows. If not provided, Step 1 detects it automatically. You MUST detect the OS automatically before asking the user.
 
 ### Input constraints
@@ -148,7 +150,19 @@ If the CLI reports an invalid choice, run the two commands above instead: set th
 
 A browser window opens. The human user signs in, or creates an AWS account if they have none. Either command routes them to the right place. Tell the user to complete the browser flow. The command waits for the whole flow, including account creation. Leave it running unless the user asks you to stop it or to run it again, for example with a different Region. Wait for the command to exit before proceeding to Step 4.
 
-**Success:** `aws login` or `aws signup` exits with code 0.
+If you ran `aws signup`, read the Region it wrote to the profile and confirm it with the user before moving on:
+
+```bash
+aws configure get region --profile <profile_name>
+```
+
+Tell the user this is the new account's home Region and ask them to confirm it matches what they see in AWS Settings → View all projects → Overview → Additional Info → Region. If it doesn't match, or `aws signup` reported that it could not determine the home Region, correct it:
+
+```bash
+aws configure set region <correct region> --profile <profile_name>
+```
+
+**Success:** `aws login` or `aws signup` exits with code 0, and for `aws signup` the profile's Region is confirmed against the user's project.
 
 If this step fails, see [Troubleshooting: Step 3](setup-troubleshooting.md#step-3-log-in-to-aws).
 
