@@ -197,7 +197,7 @@ and steps 5–6 run in the MAIN window — the worker cannot invoke skills or ru
    `complete`; on any failure emit `GATE_FAIL` and stop.
 
 **Write the web-handoff summary (fail-open), only after `HANDOFF_OK`:** run
-`python3 "$PLUGIN_ROOT/scripts/emit-plan-json.py" --migration-dir "$MIGRATION_DIR" --plugin-json "$PLUGIN_ROOT/.claude-plugin/plugin.json"`
+`python3 "$PLUGIN_ROOT/scripts/emit-plan-json.py" --migration-dir "$MIGRATION_DIR" --plugin-json "$PLUGIN_ROOT/.claude-plugin/plugin.json" --schema-version 2`
 (absolute paths — cwd must not be load-bearing). It reads the estimate artifacts and
 writes `$MIGRATION_DIR/plan.json`, the uploadable handoff file, printing `PLAN_OK | …`
 or `PLAN_SKIP | reason=…`. This is an optional enhancement, never a gate: on any skip

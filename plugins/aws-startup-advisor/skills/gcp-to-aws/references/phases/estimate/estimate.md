@@ -203,7 +203,7 @@ commit." Suggest at most one.
      combination means "decision complete, execution available on request";
      see `schema-phase-status.md`).
   3. **Write the web-handoff summary (fail-open):** run
-     `python3 "$PLUGIN_ROOT/scripts/emit-plan-json.py" --migration-dir "$MIGRATION_DIR" --plugin-json "$PLUGIN_ROOT/.claude-plugin/plugin.json"`
+     `python3 "$PLUGIN_ROOT/scripts/emit-plan-json.py" --migration-dir "$MIGRATION_DIR" --plugin-json "$PLUGIN_ROOT/.claude-plugin/plugin.json" --schema-version 2`
      (absolute paths — cwd must not be load-bearing). It reads the estimate
      artifacts and writes `$MIGRATION_DIR/plan.json`, the uploadable handoff
      file, printing `PLAN_OK | …` or `PLAN_SKIP | reason=…`. This is an optional
