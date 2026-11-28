@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Azure to AWS Migration Assessment — azure-iac-terraform corpus</title>
+  <style>
+    :root {
+      --green: #1a7f37; --blue: #0969da; --amber: #bf8700; --red: #cf222e;
+      --purple: #8250df; --bg: #f6f8fa; --text: #1f2328; --border: #d0d7de;
+      --aws: #232f3e; --azure: #0078d4;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      margin: 0; background: var(--bg); color: var(--text); line-height: 1.55; font-size: 15px;
+    }
+    .container { max-width: 1040px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+    h1 { font-size: 1.85rem; margin-bottom: 0.25rem; border-bottom: 3px solid #ff9900; padding-bottom: 0.5rem; }
+    h2 { font-size: 1.3rem; margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 0.45rem; }
+    h3 { font-size: 1.05rem; margin-top: 1.25rem; color: #424a53; }
+    h4 { font-size: 0.95rem; margin: 1rem 0 0.4rem; color: #656d76; }
+    .subtitle { color: #656d76; margin-bottom: 1rem; }
+    .badge { display: inline-block; padding: 0.2rem 0.65rem; border-radius: 2rem; font-weight: 600; font-size: 0.8rem; color: #fff; margin-right: 0.35rem; }
+    .badge-draft { background: #656d76; }
+    .verdict-headline { font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; margin: 0.5rem 0 0.1rem; border-bottom: 3px solid #0d7377; display: inline-block; padding-bottom: 0.15rem; }
+    .verdict-meta { color: #57606a; font-size: 0.92rem; margin: 0.2rem 0 0.6rem; }
+    .verdict { background: #dafbe1; border: 1px solid #4ac26b; border-left: 4px solid var(--green); border-radius: 6px; padding: 0.85rem 1rem; margin: 1rem 0; font-size: 1rem; }
+    .callout { padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.92rem; }
+    .callout-warn { background: #fff8c5; border: 1px solid #d4a72c; }
+    .callout-info { background: #ddf4ff; border: 1px solid #54aeff; }
+    .callout-ok { background: #dafbe1; border: 1px solid #4ac26b; }
+    table { width: 100%; border-collapse: collapse; margin: 0.75rem 0 1.25rem; background: #fff; font-size: 0.88rem; }
+    caption { text-align: left; font-size: 0.8rem; color: #656d76; padding: 0.25rem 0; caption-side: top; font-style: italic; }
+    th, td { border: 1px solid var(--border); padding: 0.45rem 0.65rem; text-align: left; vertical-align: top; }
+    th { background: #f6f8fa; font-weight: 600; }
+    tr:nth-child(even) td { background: #fafbfc; }
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.85rem; margin: 1rem 0; }
+    .metric { background: #fff; border: 1px solid var(--border); border-radius: 6px; padding: 0.85rem 1rem; }
+    .metric strong { display: block; font-size: 1.45rem; line-height: 1.2; }
+    .metric span { font-size: 0.78rem; color: #656d76; text-transform: uppercase; letter-spacing: 0.02em; }
+    .metric small { display: block; color: #656d76; font-size: 0.78rem; margin-top: 0.2rem; }
+    .metric-hero { border: 2px solid #0d7377; }
+    .metric-hero strong { font-size: 1.9rem; }
+    .chip-warn { display: inline-block; background: #fff8c5; color: #7d4e00; border: 1px solid #d4a72c; border-radius: 10px; padding: 1px 8px; font-size: 0.72rem; font-weight: 600; text-transform: none; letter-spacing: 0; }
+    .share-card { background: #f1f8ff; border: 1px solid #54aeff; border-left: 4px solid var(--blue); border-radius: 6px; padding: 0.9rem 1rem; font-size: 0.95rem; }
+    .savings { color: var(--green); font-weight: 600; }
+    .increase { color: var(--red); font-weight: 600; }
+    section { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 1.35rem 1.5rem; margin-bottom: 1.25rem; }
+    .appendix-header { background: var(--aws); color: #fff; border: none; padding: 1rem 1.5rem; border-radius: 8px; margin: 2.5rem 0 1.25rem; }
+    .appendix-header h2 { color: #fff; border: none; margin: 0; }
+    .appendix-header p { margin: 0.35rem 0 0; opacity: 0.85; font-size: 0.9rem; }
+    ul.compact { margin: 0.4rem 0; padding-left: 1.25rem; }
+    ul.compact li, ol.compact li { margin: 0.25rem 0; }
+    .toc { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.5rem; margin-bottom: 1.25rem; }
+    .toc ol { margin: 0.5rem 0 0; padding-left: 1.25rem; columns: 2; column-gap: 2rem; }
+    .toc ul.toc-appendix { list-style: none; margin: 0.5rem 0 0; padding-left: 0; columns: 2; column-gap: 2rem; }
+    .toc li { margin: 0.2rem 0; font-size: 0.9rem; }
+    .toc a { color: var(--blue); text-decoration: none; }
+    .toc a:hover { text-decoration: underline; }
+    a:focus-visible, summary:focus-visible { outline: 3px solid #54aeff; outline-offset: 2px; border-radius: 2px; }
+    .toc .toc-group { font-weight: 600; margin-top: 0.75rem; font-size: 0.85rem; color: #656d76; text-transform: uppercase; letter-spacing: 0.02em; }
+    .toplink { float: right; font-size: 0.75rem; font-weight: 400; color: var(--blue); text-decoration: none; }
+    .tier-sub { font-size: 0.78rem; color: #656d76; font-style: italic; display: block; margin-top: 0.15rem; }
+    .badge-conf { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 0.72rem; font-weight: 600; }
+    .badge-std { background: #e6f4ea; color: #137333; }
+    .badge-tail { background: #fef7e0; color: #b05a00; }
+    .badge-defer { background: #ffebe9; color: #cf222e; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.82rem; }
+    figure.diagram-fig { margin: 0.75rem 0 1.25rem; }
+    .diagram { background: #f6f8fa; border: 1px solid var(--border); border-radius: 6px; padding: 1rem; overflow-x: auto; font-family: ui-monospace, monospace; font-size: 0.78rem; line-height: 1.45; white-space: pre; }
+    figure.diagram-fig figcaption { font-size: 0.8rem; color: #656d76; margin-top: 0.35rem; }
+    details.why, details.reading-guide { margin: 0.4rem 0; font-size: 0.82rem; color: #656d76; }
+    details.why summary, details.reading-guide summary { cursor: pointer; color: var(--blue); }
+    details.why ul { margin: 0.4rem 0; padding-left: 1.1rem; }
+    .glossary-table th:first-child, .glossary-table td:first-child { width: 27%; background: #f6f8fa; }
+    .glossary-table td:first-child { color: var(--aws); font-weight: 600; }
+    .cluster-block { border-left: 3px solid var(--azure); padding-left: 1rem; margin: 1rem 0; }
+    footer { text-align: center; color: #656d76; font-size: 0.8rem; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+    @media (max-width: 700px) {
+      .container { padding: 1rem 0.75rem 2rem; }
+      section { padding: 1rem; }
+      .metrics { grid-template-columns: 1fr; }
+      .toc ol, .toc ul.toc-appendix { columns: 1; }
+      table, .diagram { display: block; overflow-x: auto; }
+    }
+    @media print {
+      body { background: #fff; }
+      .container { max-width: none; padding: 0; }
+      .metric, .callout, tr { break-inside: avoid; }
+      .appendix-header { break-before: page; }
+      .toplink { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Azure to AWS Migration Assessment</h1>
+    <p class="subtitle">
+      Comprehensive report — Migration ID <strong>0908-1200</strong> (internal run identifier) — Generated 2026-09-08<br />
+      Target region: <strong>eu-west-1</strong> (from Azure westeurope) &nbsp;|&nbsp;
+      Source: Terraform workspace, 30 resources in 3 resource groups &nbsp;|&nbsp;
+      <span class="badge badge-draft">Golden fixture — synthetic estate</span>
+    </p>
+
+    <!-- EXECUTIVE SUMMARY -->
+    <section id="decision-summary">
+      <h2>Migration Decision Summary <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p class="verdict-headline">Go, with conditions</p>
+      <p class="verdict-meta">Execution shape: Phased Migration &middot; Complexity: Large (16 mapped services across 5 workload clusters, one deferred)</p>
+      <p class="verdict-meta">Confidence: Low — full basis in <a href="#exec-assumptions">What This Assessment Rests On</a>.</p>
+
+      <div class="verdict">
+        <strong>Recommendation:</strong> Migrate in phases. AWS can host every workload in this estate, and the priced portion
+        comes to roughly $460/mo against a stated $4,200/mo Azure figure — but five of seventeen services are unpriced,
+        so that gap is a floor comparison and not yet a business case.
+      </div>
+
+      <div class="metrics">
+        <div class="metric metric-hero">
+          <span>Est. AWS monthly run rate (Balanced)</span>
+          <strong>$460</strong>
+          <small>Floor: 12 of 17 lines priced; Windows licensing, DocumentDB, FSx and Lambda volume excluded</small>
+        </div>
+        <div class="metric metric-hero">
+          <span>Migration shape</span>
+          <strong>Phased</strong>
+          <small>Long pole: Postgres dump-and-restore cutover; the reporting VM waits on a re-image</small>
+        </div>
+        <div class="metric">
+          <span>Current Azure spend <span class="chip-warn">&#9888; not comparable</span></span>
+          <strong>$4,200</strong>
+          <small>Figure you stated, not an invoice read; it may cover more than this estate. Do not read a savings percentage from these two numbers.</small>
+        </div>
+        <div class="metric">
+          <span>Estate</span>
+          <strong>30 &rarr; 17</strong>
+          <small>30 discovered &middot; 16 mapped services &middot; 17 accounted (16 + 1 deferred)</small>
+        </div>
+      </div>
+
+      <h3>Conditions</h3>
+      <ul class="compact">
+        <li>Price fsx-for-windows-file-server-reports and documentdb-catalog before treating either total as decision-grade — today both are floors</li>
+        <li>Reprice rds-postgresql-store for single-AZ — the only RDS rate table available is Multi-AZ, so this line, 59% of the priced total, is roughly 2x too high</li>
+        <li>Confirm the Windows licensing basis: License Included covers 6 vCPU across two workloads and is the line most likely to move the total</li>
+        <li>Reprice in eu-west-1 — these are us-east-1 rates, and eu-west-1 runs roughly 5-12% higher on compute and RDS</li>
+        <li>Refresh the pricing cache: it is past its own 30-day staleness window (last updated 2026-07-19)</li>
+        <li>Confirm the availability requirement — it was answered single-az against a ZoneRedundant source, and Multi-AZ roughly doubles the database line</li>
+        <li>Supply utilization data to see what right-sizing is worth; today the delta is $0 because every size was mapped like-for-like</li>
+        <li>Confirm the runtime for the four web apps that declare an empty site_config — only the storefront app declares a stack</li>
+      </ul>
+
+      <div class="callout callout-warn">
+        <strong>Specialist engagement required:</strong> the IoT Hub <code>telemetry_ingest</code> (S1, capacity 1) has no automated AWS mapping
+        from this plugin — IoT Hub and Device Provisioning map to AWS IoT Core, and device provisioning and fleet identity are their own project.
+        Engage your AWS account team. It is cost-bearing on Azure today and the AWS estimate carries no line for it: a missing cost here is a
+        deferral, not a free service. <strong>This does not block</strong> the phased migration of the web, function, catalog and reporting workloads.
+      </div>
+
+      <div class="callout callout-info">
+        <strong>AWS Activate:</strong> startup-program eligibility was not asked in this run, so no credit tier is assumed.
+        If you are a venture-backed or accelerator-affiliated startup,
+        <a href="https://aws.amazon.com/startups/credits/">check AWS Activate credits</a> before committing a start date.
+      </div>
+
+      <div class="callout callout-info">
+        <strong>How to read cost tiers:</strong> Premium, Balanced, and Optimized are <em>pricing scenarios</em> for the same mapped
+        architecture — not three Terraform stacks. Generated <code>terraform/</code> implements the <strong>Balanced</strong> baseline only.
+        All three are floors: five lines are excluded from every tier.
+      </div>
+
+      <h3>Migrate if</h3>
+      <ul class="compact">
+        <li>Windows licensing on AWS is confirmed to cost less than the Azure equivalent — 6 vCPU of Windows compute is currently unpriced on the AWS side</li>
+        <li>The Bastion-to-Session-Manager and Cosmos-Mongo-to-DocumentDB changes are acceptable operationally</li>
+        <li>The re-image prerequisite on the reporting VM is scheduled, since MGN cannot replicate the Azure Edition image</li>
+      </ul>
+
+      <h3>Stay entirely if</h3>
+      <ul class="compact">
+        <li>The 512 GiB SMB share and the Cosmos Mongo account turn out to be materially more expensive on AWS once priced</li>
+        <li>The stated $4,200 covers substantially more than this estate, so the apparent saving is not real</li>
+      </ul>
+
+      <h3>What would flip this</h3>
+      <ul class="compact">
+        <li>Repricing the RDS line for single-AZ roughly halves 59% of the priced total, which moves the AWS figure down by around $130/mo — in the opposite direction to pricing the five excluded services, so the two corrections partly offset and the net direction is unknown until both are done</li>
+        <li>Pricing the five excluded services pushes the AWS total materially higher — the two Windows lines alone are a $210/mo floor whose licence component is unpriced, so the true total is meaningfully above $460</li>
+        <li>The stated $4,200 turns out to include other subscriptions, which would shrink or erase the apparent saving</li>
+        <li>The availability answer changes to multi-az, roughly doubling the $275 database line</li>
+      </ul>
+
+      <h3>Key decisions ahead</h3>
+      <ol class="compact">
+        <li>Database availability: keep single-AZ as answered, or move to Multi-AZ and accept roughly 2x on the largest line</li>
+        <li>Target region: eu-west-1 (Ireland) crosses a border from westeurope (Netherlands); eu-central-1 (Frankfurt) is the listed alternative</li>
+        <li>Postgres cutover: dump-and-restore (64 GiB, defaulted) or DMS replication for a shorter write freeze</li>
+        <li>Whether to carry the idle P1v3 Windows plan at all — it has zero apps today</li>
+        <li>IoT Hub path with your AWS account team</li>
+      </ol>
+
+      <h3>Next steps</h3>
+      <ol class="compact">
+        <li>Add DocumentDB, FSx for Windows and Windows-licensed EC2 rate rows to the pricing cache, then re-run Estimate</li>
+        <li>Re-image the reporting VM off 2022-datacenter-azure-edition so MGN can replicate it</li>
+        <li>Export Azure Cost Management data to replace the stated baseline with an invoiced one</li>
+        <li>Review the conditions above with stakeholders and schedule the phased cutover in cluster order</li>
+      </ol>
+    </section>
+
+    <nav class="toc" id="toc" aria-label="Table of contents">
+      <strong>Contents</strong>
+      <div class="toc-group">Executive summary</div>
+      <ol>
+        <li><a href="#decision-summary">Migration Decision Summary</a></li>
+        <li><a href="#exec-share">Share With Your CFO</a></li>
+        <li><a href="#exec-services">Current Stack Overview</a></li>
+        <li><a href="#exec-costs">Infrastructure Cost Comparison</a></li>
+        <li><a href="#exec-optimization">Cost Optimization</a></li>
+        <li><a href="#exec-architecture">Architecture Overview</a></li>
+        <li><a href="#exec-security-teaser">Security Posture</a></li>
+        <li><a href="#exec-timeline">Migration Shape</a></li>
+        <li><a href="#exec-risks">Top Risks</a></li>
+        <li><a href="#exec-assumptions">What This Assessment Rests On</a></li>
+      </ol>
+      <div class="toc-group">Appendices</div>
+      <ul class="toc-appendix">
+        <li><a href="#appendix-services">Appendix A — Service Recommendations</a></li>
+        <li><a href="#appendix-costs">Appendix B — Cost Estimates</a></li>
+        <li><a href="#appendix-optimization">Appendix B.1 — Savings Plans and Reserved Instances</a></li>
+        <li><a href="#appendix-steps">Appendix C — Migration Steps and Rollback</a></li>
+        <li><a href="#appendix-artifacts">Appendix E — Generated Artifacts Catalog</a></li>
+        <li><a href="#appendix-config">Appendix F — Your Configuration</a></li>
+        <li><a href="#appendix-security">Appendix G — Security Capabilities</a></li>
+        <li><a href="#appendix-security-gap">Appendix H — Security Gap Analysis</a></li>
+        <li><a href="#appendix-assumptions">Appendix I — Assumptions, Exclusions, and Validation</a></li>
+        <li><a href="#appendix-glossary">Appendix J — Glossary</a></li>
+      </ul>
+    </nav>
+
+    <section id="exec-share">
+      <h2>Share With Your CFO <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>The one-paragraph version, ready to forward:</p>
+      <div class="share-card">
+        <p><strong>Azure estate to AWS:</strong> Go, with conditions. The priced part of the estate comes to an estimated
+        $460 per month on AWS (Balanced tier), against the $4,200 per month we stated for Azure. The two numbers are not
+        comparable yet: five of seventeen services are unpriced on the AWS side, the largest priced line uses a Multi-AZ rate
+        against a single-AZ design, and the Azure figure is stated rather than invoiced. The migration is phased in dependency
+        order; the Postgres cutover is the binding duration driver, and the Windows reporting VM waits on a re-image before it
+        can replicate. Confidence: low until the five lines are priced.</p>
+      </div>
+    </section>
+
+    <!-- CURRENT STACK -->
+    <section id="exec-services">
+      <h2>Current Stack Overview <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>Discovery read <strong>30 resources</strong> from the Terraform workspace across three resource groups
+         (rg-app, rg-data, rg-shared). Design mapped them to <strong>16 AWS services</strong> and deferred one, so the plan
+         accounts for <strong>17</strong>: 30 discovered &middot; 16 mapped services &middot; 17 accounted (16 + 1 deferred).
+         The difference between 30 and 17 is resource groups (no AWS equivalent), network interfaces and private endpoints
+         (read for their edges, then folded into the resource they belong to), five web apps folded into their one App Service
+         Plan, and two observability resources that are re-established on the target rather than migrated.</p>
+      <ul class="compact">
+        <li>App Service — one S1 Linux plan hosting five web apps (storefront, admin, checkout, docs, webhooks)</li>
+        <li>Azure Functions — one Y1 consumption plan hosting one function app (imageresize)</li>
+        <li>Azure Database for PostgreSQL Flexible Server (GP_Standard_D2s_v3, 64 GiB, ZoneRedundant)</li>
+        <li>Azure Cache for Redis (Standard C1)</li>
+        <li>Cosmos DB account, Mongo API</li>
+        <li>Event Hubs namespace (Standard, 2 throughput units, Kafka enabled)</li>
+        <li>Storage account with a 512 GiB SMB file share</li>
+        <li>Key Vault, Bastion host, VNet with two subnets and a route table</li>
+        <li>Windows Server 2022 reporting VM (Standard_D4s_v5) and an idle P1v3 Windows App Service Plan with zero apps</li>
+        <li>IoT Hub (S1) <em>(deferred — specialist engagement)</em></li>
+        <li>Log Analytics workspace and Application Insights <em>(re-established on CloudWatch, not migrated)</em></li>
+      </ul>
+    </section>
+
+    <!-- COST COMPARISON (canonical tier table) -->
+    <section id="exec-costs">
+      <h2>Infrastructure Cost Comparison <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>Three pricing scenarios for the same mapped architecture. The generated <code>terraform/</code> implements the
+         <strong>Balanced</strong> tier. The per-service breakdown and the excluded lines are in Appendix B.</p>
+      <div class="metrics">
+        <div class="metric">
+          <span>Current Azure spend <span class="chip-warn">&#9888; not comparable</span></span>
+          <strong><span data-cost-key="current_monthly">$4,200/mo</span></strong>
+          <small>Stated by you, not read from an invoice (as stated by the customer). It may include other subscriptions, support plans or marketplace items, or exclude discounts you hold. The AWS figures below are floors. Do not read a savings % from this pair.</small>
+        </div>
+        <div class="metric">
+          <span>Est. AWS monthly (Balanced)</span>
+          <strong>$460</strong>
+          <small>12 of 17 lines priced; see the excluded lines in Appendix B</small>
+        </div>
+      </div>
+      <table>
+        <caption>Estimated monthly AWS infrastructure costs by pricing tier. Every tier is a floor: five lines are excluded from all three.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Tier</th>
+            <th scope="col">Est. Monthly AWS</th>
+            <th scope="col">vs Balanced</th>
+            <th scope="col">Annual (est.)</th>
+            <th scope="col">What differs, for this stack</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Premium<br><span class="tier-sub">Balanced plus the Multi-AZ / HA uplift</span></td>
+            <td><span data-cost-key="aws_monthly_premium">$480</span></td>
+            <td class="increase">+$20</td>
+            <td>$5,760</td>
+            <td>Multi-AZ uplift on the ElastiCache session cache only. RDS gets no uplift (its rate already includes Multi-AZ) and MSK is intrinsically multi-AZ. The two Windows lines and FSx would also cost more at higher resilience but are excluded, so Premium understates the gap by more than Balanced does.</td>
+          </tr>
+          <tr>
+            <td><strong>Balanced</strong><br><span class="tier-sub">Right-sized design at on-demand rates; compare Azure to this row first; Terraform implements this tier</span></td>
+            <td><strong data-cost-key="aws_monthly_balanced">$460</strong></td>
+            <td>— anchor</td>
+            <td>$5,522</td>
+            <td>Like-for-like sizing from the declared SKUs; equals the right-sized figure because no utilization data was available to size down.</td>
+          </tr>
+          <tr>
+            <td>Optimized<br><span class="tier-sub">Balanced with a commitment discount on RI/SP-eligible lines</span></td>
+            <td><span data-cost-key="aws_monthly_optimized">$451</span></td>
+            <td class="savings">-$9</td>
+            <td>$5,414</td>
+            <td>A 1-year no-upfront Compute Savings Plan at 30% on the EC2 behind Elastic Beanstalk, the only eligible line ($30 of EC2 gives a $9 discount). RDS (db.m6g.large, Generation 6) and ElastiCache (cache.t3.small, Generation 3) are not eligible for a Database Savings Plan, which covers Generation 7 and newer instances only, so they are unchanged; a Generation 7+ class would qualify. MSK, ALB, EBS, S3, Secrets Manager and CloudWatch have no commitment product and are unchanged. The most misleading of the three figures: a discounted floor reads as the cheapest credible number when it is the least complete.</td>
+          </tr>
+        </tbody>
+      </table>
+      <details class="reading-guide">
+        <summary>How to read the tiers</summary>
+        <p>The three AWS figures are estimated monthly costs for the <em>same</em> mapped architecture, ordered highest to lowest.
+        <strong>Balanced</strong> is the right-sized design at on-demand rates and the primary figure to compare Azure with.
+        <strong>Premium</strong> is Balanced plus the Multi-AZ / HA uplift on each line that can take one.
+        <strong>Optimized</strong> is Balanced with a commitment discount on the RI/SP-eligible lines only; the Database
+        Savings Plan covers Generation 7 and newer instances only, so the Generation 6 RDS and Generation 3 ElastiCache
+        lines get no discount. The generated Terraform implements the Balanced
+        baseline. The right-sizing delta is $0: no utilization data was discovered (Terraform only, no RDfA report and no
+        Azure Monitor metrics), so every source SKU was mapped like-for-like and the Balanced and lift figures coincide.</p>
+      </details>
+      <div class="callout callout-warn">
+        <strong>Why there is no savings headline.</strong> The arithmetic difference is large, and it is not a credible finding.
+        The errors run in both directions: the AWS side excludes five services including both Windows compute lines
+        (understating), while its largest single line is priced from a Multi-AZ rate table against a single-AZ design
+        (overstating by roughly 2x). The Azure side is a figure you stated, which may cover more than this estate.
+        These are stated here rather than netted off.
+      </div>
+    </section>
+
+    <section id="exec-optimization">
+      <h2>Cost Optimization <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>Generated Terraform is <strong>Balanced on-demand</strong> (Est. $460/mo). Savings Plans and Reserved Instances are
+         account-level purchases you make after you have a usage baseline. Do not add these rows on top of the Optimized tier
+         (Est. $451/mo) — that tier already embeds the Compute SP 30% commitment assumption on the eligible EC2 line.</p>
+      <table>
+        <caption>How the estimated monthly run rate changes if this stack takes a commitment. Figures are incremental to Balanced on-demand.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Posture</th>
+            <th scope="col">Est. monthly</th>
+            <th scope="col">vs Balanced</th>
+            <th scope="col">What you commit to</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Balanced on-demand (this Terraform)</td>
+            <td>Est. $460</td>
+            <td>—</td>
+            <td>No term commitment. Pay list hourly rates.</td>
+          </tr>
+          <tr>
+            <td>Compute Savings Plan on the Elastic Beanstalk EC2 instances</td>
+            <td>Not quantified</td>
+            <td>20–66% of the EC2 component</td>
+            <td>1-year or 3-year, after 30–90 days of usage data. Not quantified because the compute lines it would cover include the two excluded Windows lines.</td>
+          </tr>
+          <tr>
+            <td>RDS Reserved Instance on the Postgres instance</td>
+            <td>Not quantified</td>
+            <td>Up to 69% of the $275 RDS line</td>
+            <td>1-year or 3-year, once the instance class is stable. Mutually exclusive with a Database Savings Plan on the same instance.</td>
+          </tr>
+          <tr>
+            <td>Optimized composite (illustrative bound)</td>
+            <td>Est. $451</td>
+            <td>−$9</td>
+            <td>Already includes the Compute SP 30% commitment assumption on the eligible EC2 line; RDS and ElastiCache are pre-Generation-7 and not in it. Use as a floor, not a sum of extra discounts.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>Line-level targets are in <a href="#appendix-optimization">Appendix B.1 — Savings Plans and Reserved Instances</a>.</p>
+    </section>
+
+    <!-- ARCHITECTURE -->
+    <section id="exec-architecture">
+      <h2>Architecture Overview <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>Discovery grouped the estate into five workload clusters. No pattern catalog was on disk for this run, so each
+         cluster carries its target shape as a rationale, not a named architecture pattern — the report does not claim
+         architectural insight it does not have.</p>
+
+      <div class="cluster-block">
+        <h4>Web workload (rg-app + rg-data) — the priced core</h4>
+        <p>One workload spanning two resource groups: the S1 App Service Plan and its five web apps are one compute unit, and
+           the storefront app addresses the Postgres Flexible Server and the Redis cache through app settings, which is what
+           merged the groups. The VNet, its two subnets, the route table, the Bastion host, the Key Vault and the two
+           observability resources attached here because they carry no primary resource of their own.
+           <strong>Becomes:</strong> one Elastic Beanstalk environment on the plan's capacity, one RDS PostgreSQL instance,
+           one ElastiCache Valkey cluster, one MSK cluster, in one VPC with the source address space (10.20.0.0/16) preserved.</p>
+      </div>
+      <div class="cluster-block">
+        <h4>Function workload (rg-app)</h4>
+        <p>A second compute unit with no relationship to the web workload: the Y1 consumption plan, its one function app, the
+           storage account that function addresses, and the SMB file share in that account.
+           <strong>Becomes:</strong> Lambda for the function, S3 for the blob surface, FSx for Windows File Server for the SMB share.</p>
+      </div>
+      <div class="cluster-block">
+        <h4>Catalog store (rg-data)</h4>
+        <p>The Cosmos DB account is a workload of its own — nothing in the estate references it.
+           <strong>Becomes:</strong> one Amazon DocumentDB cluster, because the account's API is Mongo.</p>
+      </div>
+      <div class="cluster-block">
+        <h4>Reporting VM (rg-shared)</h4>
+        <p>The Windows reporting VM and its NIC, with the IoT Hub attached as an edgeless fragment.
+           <strong>Becomes:</strong> one EC2 instance (m6i.xlarge, Windows Server 2022, License Included) with a gp3 root volume;
+           the IoT Hub is deferred to a specialist engagement.</p>
+      </div>
+      <div class="cluster-block">
+        <h4>Idle plan (rg-shared) — a cost finding, not a workload</h4>
+        <p>A single P1v3 Windows App Service Plan with zero apps on it. It is money being spent with no workload behind it,
+           and it is raised as a cost-optimization finding. <strong>Carried as:</strong> an Elastic Beanstalk environment
+           flagged idle, so the decision to drop it is yours and visible.</p>
+      </div>
+
+      <h3>High-level service mapping</h3>
+      <table>
+        <caption>Azure services mapped to AWS targets, with how each pairing was chosen.</caption>
+        <thead><tr><th scope="col">Azure service</th><th scope="col">AWS service</th><th scope="col">How we chose this</th></tr></thead>
+        <tbody>
+          <tr><td>App Service Plan S1 (5 web apps)</td><td>Elastic Beanstalk (2 × t3.small + ALB)</td><td><span class="badge-conf badge-tail">Tailored to your setup</span> managed platform kept; containers would change two variables at once</td></tr>
+          <tr><td>Functions, Y1 consumption plan</td><td>Lambda</td><td><span class="badge-conf badge-tail">Tailored to your setup</span> consumption plan has no worker capacity to size</td></tr>
+          <tr><td>PostgreSQL Flexible Server</td><td>RDS PostgreSQL 16, db.m6g.large, single-AZ</td><td><span class="badge-conf badge-tail">Tailored to your setup</span> single-AZ as you answered; source is ZoneRedundant</td></tr>
+          <tr><td>Azure Cache for Redis C1</td><td>ElastiCache Valkey, cache.t3.small</td><td><span class="badge-conf badge-std">Standard pairing</span></td></tr>
+          <tr><td>Cosmos DB (Mongo API)</td><td>Amazon DocumentDB, db.t3.medium</td><td><span class="badge-conf badge-std">Standard pairing</span> Mongo API is the discriminator</td></tr>
+          <tr><td>Event Hubs (Kafka enabled)</td><td>Amazon MSK, 2 × kafka.t3.small</td><td><span class="badge-conf badge-std">Standard pairing</span> Kafka surface is the discriminator</td></tr>
+          <tr><td>Storage account (blob)</td><td>S3 Standard</td><td><span class="badge-conf badge-std">Standard pairing</span></td></tr>
+          <tr><td>File share (SMB, 512 GiB)</td><td>FSx for Windows File Server, SSD, single-AZ</td><td><span class="badge-conf badge-std">Standard pairing</span> SMB protocol is the discriminator</td></tr>
+          <tr><td>Key Vault</td><td>Secrets Manager</td><td><span class="badge-conf badge-std">Standard pairing</span></td></tr>
+          <tr><td>Bastion host (Basic)</td><td>Systems Manager Session Manager (no instance)</td><td><span class="badge-conf badge-std">Standard pairing</span></td></tr>
+          <tr><td>VNet, subnets, route table</td><td>VPC, subnets, route table</td><td><span class="badge-conf badge-std">Standard pairing</span></td></tr>
+          <tr><td>Windows VM Standard_D4s_v5</td><td>EC2 m6i.xlarge, Windows Server 2022</td><td><span class="badge-conf badge-tail">Tailored to your setup</span> x86_64 forced by the Windows image</td></tr>
+          <tr><td>App Service Plan P1v3 Windows (idle)</td><td>Elastic Beanstalk, m6i.large (flagged idle)</td><td><span class="badge-conf badge-tail">Tailored to your setup</span></td></tr>
+          <tr><td>IoT Hub S1</td><td>Deferred — specialist engagement</td><td><span class="badge-conf badge-defer">Specialist required</span></td></tr>
+        </tbody>
+      </table>
+
+      <h3>Architecture diagram</h3>
+      <figure class="diagram-fig" role="img" aria-label="Proposed AWS architecture in eu-west-1 and the migration cluster order">
+        <div class="diagram" role="img" aria-label="Internet users reach a public Application Load Balancer in AWS eu-west-1. The ALB fronts an Elastic Beanstalk environment of two t3.small instances running the five web apps. The environment connects to RDS PostgreSQL db.m6g.large single-AZ, ElastiCache Valkey cache.t3.small, Amazon MSK with two kafka.t3.small brokers, and Secrets Manager, all in one VPC with subnets snet-apps and snet-data and the source 10.20.0.0/16 address space. A Lambda function reads an S3 bucket and an FSx for Windows file share. A DocumentDB cluster holds the catalog. An EC2 m6i.xlarge Windows reporting instance sits in the apps subnet; operators reach it through Session Manager. An account-wide security baseline provides CloudTrail, GuardDuty, Budgets, Access Analyzer and IMDSv2. The IoT Hub is deferred to a specialist engagement.">&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
+&#9474;                          Internet / Users                                   &#9474;
+&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9516;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;
+                                     &#9474; HTTPS
+                                     &#9660;
+  AWS eu-west-1 &middot; VPC 10.20.0.0/16
+  [ ALB (public) ] &#9472;&#9472;&#9658; [ Elastic Beanstalk: 2 &times; t3.small (storefront, admin, checkout, docs, webhooks) ]
+                            &#9474;                &#9474;                 &#9474;               &#9474;
+                 [ RDS Postgres 16 ]  [ ElastiCache ]   [ MSK 2 brokers ]  [ Secrets Manager ]
+                 [ db.m6g.large   ]  [ Valkey t3.small]  [ kafka.t3.small ]
+                 [ single-AZ      ]
+  snet-apps: [ EC2 m6i.xlarge Windows reporting ] &#9664;&#9472;&#9472; Session Manager (no bastion)
+  Function workload: [ Lambda imageresize ] &#9472;&#9472;&#9658; [ S3 assets ]   [ FSx for Windows 512 GiB ]
+  Catalog:           [ DocumentDB db.t3.medium ]
+  Security baseline (baseline.tf): CloudTrail &middot; GuardDuty &middot; Budgets &middot; Access Analyzer &middot; IMDSv2 &middot; S3 public-access block
+
+  Deferred: IoT Hub telemetry_ingest &rarr; specialist engagement (AWS IoT Core)</div>
+        <figcaption>Users &rarr; public ALB &rarr; Elastic Beanstalk &rarr; RDS / ElastiCache / MSK / Secrets Manager in one VPC;
+          Lambda + S3 + FSx for the function workload; DocumentDB for the catalog; a Windows EC2 instance reached through
+          Session Manager; account-wide security baseline. The IoT Hub is deferred.</figcaption>
+      </figure>
+
+      <h3>Migration cluster order</h3>
+      <ol class="compact">
+        <li>Network, identity and secrets — VPC, subnets, route table, Session Manager, Secrets Manager (tier 1)</li>
+        <li>Data — RDS PostgreSQL, ElastiCache, DocumentDB, S3, FSx for Windows (tier 2)</li>
+        <li>Compute — Elastic Beanstalk web environment, Lambda, MSK, the reporting EC2 instance (tier 3)</li>
+        <li>Edge — ALB listeners and DNS cutover last (tier 4)</li>
+        <li><em>Deferred:</em> IoT Hub telemetry_ingest</li>
+      </ol>
+    </section>
+
+    <!-- SECURITY TEASER (full detail in Appendix G / H) -->
+    <section id="exec-security-teaser">
+      <h2>Security Posture <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>The generated <code>terraform/baseline.tf</code> deploys an account-wide security baseline — alternate contacts, an IAM
+         password policy, the S3 account public-access block, EBS default encryption, IAM Access Analyzer, IMDSv2 by default,
+         CloudTrail with its own log bucket, an AWS Budget at $553/mo (1.2 × the Balanced estimate, rounded up), and GuardDuty.
+         No compliance framework was declared, so AWS Config and Security Hub were not added.</p>
+      <p>These controls are <strong>not</strong> in the $460 estimate: the Estimate does not price CloudTrail storage, GuardDuty,
+         Config or Security Hub, so expect a small additional charge (GuardDuty is the dominant one, scaling with API and VPC
+         flow volume after its 30-day trial). Full control-by-control detail, Azure equivalents, and the Azure&rarr;AWS gap
+         analysis are in <a href="#appendix-security">Appendix G</a> and <a href="#appendix-security-gap">Appendix H</a>.</p>
+      <div class="callout callout-info">
+        <strong>Compliance add-on (not generated):</strong> no SOC 2, PCI, HIPAA, or FedRAMP framework was declared. If one applies,
+        set it in your preferences and re-run Generate to add AWS Config and Security Hub to the baseline.
+      </div>
+    </section>
+
+    <!-- TIMELINE -->
+    <section id="exec-timeline">
+      <h2>Migration Shape <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <table>
+        <caption>Phased infrastructure migration in dependency-tier order. Stage order and gates carry the schedule; the plugin quotes no durations.</caption>
+        <thead><tr><th scope="col">Order</th><th scope="col">Phase</th><th scope="col">Activities</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Prerequisites</td><td>AWS account and IAM Identity Center set-up (fresh, not Entra federation); run the prerequisite checks; apply the security baseline; re-image the reporting VM off the Azure Edition image</td></tr>
+          <tr><td>2</td><td>Network, identity, secrets</td><td>Apply the Terraform for VPC, subnets, route table, Session Manager and Secrets Manager; copy Key Vault secrets (dry run first)</td></tr>
+          <tr><td>3</td><td>Data</td><td>Provision RDS, ElastiCache, DocumentDB, S3 and FSx; sync blobs and the SMB share; Postgres dump-and-restore rehearsal</td></tr>
+          <tr><td>4</td><td>Compute</td><td>Elastic Beanstalk environment with the five apps, Lambda, MSK; MGN replication of the reporting VM once re-imaged</td></tr>
+          <tr><td>5</td><td>Cutover</td><td>Write freeze on Azure Postgres, final dump and restore, verification; DNS and traffic switch last</td></tr>
+          <tr><td>6</td><td>Validation and teardown planning</td><td>Run the post-migration validation checks; keep Azure resources until verification passes; plan teardown and the IoT Hub specialist track</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Duration drivers:</strong> the Postgres write freeze for a 64 GiB dump-and-restore (binding), the reporting VM
+         re-image prerequisite before MGN can start, and pricing the five excluded lines before the business case is
+         decision-grade. Stage order and go/no-go gates carry the schedule; the plugin quotes no week or hour estimates.</p>
+      <p><strong>Cutover strategy:</strong> Postgres dump-and-restore (defaulted: largest relational database 64 GiB) &nbsp;|&nbsp;
+         VM: MGN replication (blocked until re-image) &nbsp;|&nbsp;
+         <strong>Rollback:</strong> keep every Azure resource running until verification passes; DNS and traffic switch last</p>
+    </section>
+
+    <!-- RISKS -->
+    <section id="exec-risks">
+      <h2>Top Risks <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <table>
+        <caption>Highest-severity migration risks, likelihood, and mitigations.</caption>
+        <thead><tr><th scope="col">Risk</th><th scope="col">Impact</th><th scope="col">Likelihood</th><th scope="col">Mitigation</th></tr></thead>
+        <tbody>
+          <tr><td>Business case rests on floors: five lines unpriced, RDS over-priced by roughly 2x</td><td>High</td><td>Certain</td><td>Add DocumentDB, FSx and Windows-licensed EC2 rates to the pricing cache; reprice RDS single-AZ; re-run Estimate before deciding</td></tr>
+          <tr><td>Reporting VM image (2022-datacenter-azure-edition) is refused by AWS Application Migration Service</td><td>Medium</td><td>Certain until re-imaged</td><td>Re-image to a standard Windows Server edition before replication; treat as a prerequisite, not a cost</td></tr>
+          <tr><td>Availability downgrade: ZoneRedundant Postgres maps to single-AZ RDS</td><td>High</td><td>Medium</td><td>Confirm the single-AZ answer; Multi-AZ roughly doubles the $275 line; the source posture is surfaced as a finding</td></tr>
+          <tr><td>Data residency: westeurope (Netherlands) to eu-west-1 (Ireland) crosses a border</td><td>Medium</td><td>Medium</td><td>Confirm residency commitments; eu-central-1 (Frankfurt) is the listed alternative</td></tr>
+          <tr><td>Stated Azure baseline covers more than this estate</td><td>Medium</td><td>Medium</td><td>Export Cost Management data and replace the stated figure with an invoiced one</td></tr>
+          <tr><td>Telemetry history does not migrate (Log Analytics, Application Insights)</td><td>Low</td><td>Certain</td><td>Export retained telemetry by hand before turning the workspace off; dashboards and alarms are re-authored on CloudWatch</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- WHAT THIS ASSESSMENT RESTS ON -->
+    <section id="exec-assumptions">
+      <h2>What This Assessment Rests On <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p><strong>Assumptions applied by default</strong> — settings proposed by the plugin that you did not change; each one shifts the plan as described:</p>
+      <table>
+        <caption>Settings resolved by documented default rather than your answer or your Terraform.</caption>
+        <thead>
+          <tr><th scope="col">Setting</th><th scope="col">Assumed value</th><th scope="col">What it decides</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Compute target</td><td>Elastic Beanstalk</td><td>App Service Plans become Beanstalk environments rather than containers</td></tr>
+          <tr><td>Cost optimization appetite</td><td>Balanced</td><td>Changes nothing in this run: no utilization data was discovered, so no size could be reduced</td></tr>
+          <tr><td>Traffic pattern</td><td>Steady</td><td>Fixed instance counts; no scaling schedule in the estimate</td></tr>
+          <tr><td>Database cutover</td><td>Dump and restore</td><td>Largest relational database is 64 GiB, under the 100 GiB threshold for recommending DMS</td></tr>
+          <tr><td>Storage I/O</td><td>Medium</td><td>gp3 volumes at baseline IOPS</td></tr>
+          <tr><td>User geography</td><td>Single region</td><td>One region, no CloudFront or Global Accelerator priced</td></tr>
+          <tr><td>Identity</td><td>Fresh IAM Identity Center re-invite</td><td>No Entra federation workstream; recorded for later</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Confidence:</strong> Low. Measured: every source SKU, size and storage figure from the Terraform (30 resources), and AWS
+         rates for the 12 priced lines from the vendored rate card. Assumed: 1 ALB LCU; 17.5 GB/mo of logs (±35%); S3 and Secrets
+         Manager priced from stated baselines, not estate volumes; us-east-1 rates for an eu-west-1 target. Unknown: the Windows
+         licence cost on AWS, DocumentDB and FSx rates, Lambda invocation volume, MSK per-broker storage, whether the stated
+         $4,200 covers only this estate, and the utilization of every workload.</p>
+      <p><strong>Pricing provenance:</strong> cached AWS rates last updated 2026-07-19, past the cache's own 30-day staleness window;
+         us-east-1 rates against an eu-west-1 target (compute and RDS run roughly 5–12% higher there). The accuracy is mixed
+         direction, not a simple band: exclusions push every total down, the Multi-AZ RDS rate pushes the largest line up, and
+         the two do not cancel in any knowable amount.</p>
+    </section>
+
+    <!-- APPENDIX -->
+    <div class="appendix-header">
+      <h2>Appendix: Detailed Migration Analysis</h2>
+      <p>Expanded sections sourced from the migration JSON artifacts and the generated Terraform</p>
+    </div>
+
+    <section id="appendix-services">
+      <h2>Appendix A — Service Recommendations <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>Per-resource mapping, grouped by workload cluster. Confidence <em>deterministic</em> means the ARM type resolves through a
+         fast-path table row with a single mechanical discriminator; <em>inferred</em> means a design rubric chose between candidates.
+         Rows: 16 mapped + 1 deferred = 17 accounted, from <code>generation-warnings.json</code>.</p>
+
+      <div class="cluster-block">
+        <h4>Cluster: rg-app-tf-web — web workload</h4>
+        <table>
+          <caption>Web workload resources mapped to AWS targets.</caption>
+          <thead><tr><th scope="col">Azure resource (ARM type)</th><th scope="col">AWS service</th><th scope="col">Confidence</th><th scope="col">Target configuration</th></tr></thead>
+          <tbody>
+            <tr><td>tf:web — Microsoft.Web/serverfarms (S1 Linux, 5 apps)</td><td>Elastic Beanstalk</td><td>inferred</td><td>2 × t3.small, min 2 / max 2, x86_64, one environment; five apps folded in (storefront declares Node 20; admin, checkout, docs, webhooks declare an empty site_config — runtime to confirm)</td></tr>
+            <tr><td>tf:store — Microsoft.DBforPostgreSQL/flexibleServers</td><td>RDS PostgreSQL</td><td>inferred</td><td>db.m6g.large, PostgreSQL 16, single-AZ, 64 GiB gp3, 14-day backups. Source is ZoneRedundant: availability downgrade surfaced as a finding</td></tr>
+            <tr><td>tf:session — Microsoft.Cache/Redis (Standard C1)</td><td>ElastiCache Valkey</td><td>deterministic</td><td>cache.t3.small, 1 node, no cluster mode</td></tr>
+            <tr><td>tf:telemetry — Microsoft.EventHub/namespaces (Kafka enabled)</td><td>MSK</td><td>deterministic</td><td>2 × kafka.t3.small brokers; per-broker storage not sized</td></tr>
+            <tr><td>tf:main — Microsoft.KeyVault/vaults</td><td>Secrets Manager</td><td>deterministic</td><td>No KMS or ACM added (no keys or certificates declared)</td></tr>
+            <tr><td>bas-jump — Microsoft.Network/bastionHosts (Basic)</td><td>Systems Manager Session Manager</td><td>deterministic</td><td>Emits no instance; no cost</td></tr>
+            <tr><td>tf:core — Microsoft.Network/virtualNetworks</td><td>VPC</td><td>deterministic</td><td>10.20.0.0/16, eu-west-1</td></tr>
+            <tr><td>snet-apps, snet-data — Microsoft.Network/virtualNetworks/subnets</td><td>VPC subnets</td><td>deterministic</td><td>10.20.1.0/24 (apps, routed by rt-egress), 10.20.2.0/24 (data)</td></tr>
+            <tr><td>rt-egress — Microsoft.Network/routeTables</td><td>VPC route table</td><td>deterministic</td><td>Associated with the apps subnet; no routes, so no NAT gateway is implied or priced</td></tr>
+          </tbody>
+        </table>
+        <details class="why">
+          <summary>Why Elastic Beanstalk and not containers?</summary>
+          <ul>
+            <li>App Service is a managed platform; moving to containers would change the runtime model and the hosting model at once, mid-migration</li>
+            <li>The plan hosts five apps on shared capacity, which maps to one environment, not five compute lines</li>
+            <li>Your compute-target preference was the Elastic Beanstalk default and was not changed</li>
+          </ul>
+        </details>
+      </div>
+
+      <div class="cluster-block">
+        <h4>Cluster: rg-app-tf-func — function workload</h4>
+        <table>
+          <caption>Function workload resources mapped to AWS targets.</caption>
+          <thead><tr><th scope="col">Azure resource (ARM type)</th><th scope="col">AWS service</th><th scope="col">Confidence</th><th scope="col">Target configuration</th></tr></thead>
+          <tbody>
+            <tr><td>tf:func — Microsoft.Web/serverfarms (Y1 consumption, 1 function app)</td><td>Lambda</td><td>inferred</td><td>Per-invocation; memory unset (per-function setting); invocation volume unknown</td></tr>
+            <tr><td>tf:assets — Microsoft.Storage/storageAccounts (LRS)</td><td>S3</td><td>deterministic</td><td>S3 Standard; multi-AZ within the region by default, more redundancy than LRS at no extra charge</td></tr>
+            <tr><td>reports — Microsoft.Storage/storageAccounts/fileServices/shares (SMB, 512 GiB)</td><td>FSx for Windows File Server</td><td>deterministic</td><td>512 GiB SSD, SINGLE_AZ_2</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="cluster-block">
+        <h4>Cluster: rg-data-tf-catalog — catalog store</h4>
+        <table>
+          <caption>Catalog store mapped to AWS.</caption>
+          <thead><tr><th scope="col">Azure resource (ARM type)</th><th scope="col">AWS service</th><th scope="col">Confidence</th><th scope="col">Target configuration</th></tr></thead>
+          <tbody>
+            <tr><td>tf:catalog — Microsoft.DocumentDB/databaseAccounts (Mongo API)</td><td>DocumentDB</td><td>deterministic</td><td>db.t3.medium, 1 instance; the Mongo API is the discriminator (a Core/SQL account would have gone to DynamoDB)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="cluster-block">
+        <h4>Cluster: rg-shared-tf-reporting — reporting VM</h4>
+        <table>
+          <caption>Reporting VM cluster mapped to AWS, with its deferral.</caption>
+          <thead><tr><th scope="col">Azure resource (ARM type)</th><th scope="col">AWS service</th><th scope="col">Confidence</th><th scope="col">Target configuration</th></tr></thead>
+          <tbody>
+            <tr><td>tf:reporting — Microsoft.Compute/virtualMachines (Standard_D4s_v5, Windows Server 2022)</td><td>EC2</td><td>inferred</td><td>m6i.xlarge, Windows Server 2022, License Included, gp3 root (size unstated by the image). Prerequisite: re-image off 2022-datacenter-azure-edition before MGN</td></tr>
+            <tr><td>tf:telemetry_ingest — Microsoft.Devices/IotHubs (S1, capacity 1)</td><td><span class="badge-conf badge-defer">Deferred — specialist engagement</span></td><td>namespace rule</td><td>IoT Hub / DPS → AWS IoT Core; device provisioning and fleet identity are their own project and outside this skill's scope. Cost-bearing on Azure today; no AWS line</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="cluster-block">
+        <h4>Cluster: rg-shared-tf-legacy — idle plan</h4>
+        <table>
+          <caption>Idle App Service Plan carried as a flagged target.</caption>
+          <thead><tr><th scope="col">Azure resource (ARM type)</th><th scope="col">AWS service</th><th scope="col">Confidence</th><th scope="col">Target configuration</th></tr></thead>
+          <tbody>
+            <tr><td>tf:legacy — Microsoft.Web/serverfarms (P1v3 Windows, 0 apps)</td><td>Elastic Beanstalk</td><td>inferred</td><td>m6i.large, Windows Server (IIS), flagged <code>idle: true</code> — real waste; removing it is your decision, not the plugin's</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Resources that produce no AWS target</h3>
+      <ul class="compact">
+        <li><strong>Resource groups</strong> rg-app, rg-data, rg-shared — AWS has no equivalent; grouping intent becomes account structure and tags you apply by hand.</li>
+        <li><strong>Network interface</strong> tf:reporting and the <strong>private endpoint</strong> on tf:store — read for the edges they contribute (VNet colocation, app-to-data link), then expressed as the instance's ENI and the RDS subnet group plus security group.</li>
+        <li><strong>Web apps</strong> storefront, admin, checkout, docs, webhooks — folded into the tf:web plan's Elastic Beanstalk environment.</li>
+        <li><strong>Log Analytics workspace</strong> tf:core and <strong>Application Insights</strong> tf:storefront — observability is re-established on CloudWatch (log groups with 30-day retention, metrics, Application Signals); retained telemetry does not import.</li>
+      </ul>
+    </section>
+
+    <section id="appendix-costs">
+      <h2>Appendix B — Cost Estimates <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>The Balanced total of <strong>$460/mo</strong> is a <strong>floor</strong>: 12 of 17 lines are priced. Components below are
+         rounded to whole dollars, so they sum to within a dollar of the artifact total. Rates are cached us-east-1 rates dated
+         2026-07-19 against an eu-west-1 target.</p>
+
+      <h3>Per-service breakdown (AWS Balanced tier, priced lines)</h3>
+      <table>
+        <caption>Estimated monthly AWS cost by service (Balanced tier), with calculation notes from the estimate.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Cluster</th>
+            <th scope="col">AWS Service</th>
+            <th scope="col">Est. Monthly</th>
+            <th scope="col">Calculation / notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Web</td><td>RDS PostgreSQL (db.m6g.large, 64 GiB)</td><td>$275</td><td class="mono">0.356 × 730 hrs = 259.88, plus 64 GiB × 0.23 = 14.72. Rate table is Multi-AZ (baked in) against a single-AZ design: roughly 2x too high</td></tr>
+          <tr><td>Web</td><td>MSK (2 × kafka.t3.small)</td><td>$67</td><td class="mono">0.0456 × 730 hrs × 2 brokers. Intrinsic multi-AZ; broker storage not sized</td></tr>
+          <tr><td>Web</td><td>Elastic Beanstalk (2 × t3.small + ALB + EBS)</td><td>$54</td><td class="mono">EC2 0.0208 × 730 × 2 = 30.37; ALB 16.43 fixed + 0.008 × 730 × 1 LCU = 5.84; EBS gp3 0.08 × 8 GB × 2 = 1.28. Beanstalk fee $0</td></tr>
+          <tr><td>Web</td><td>CloudWatch</td><td>$38</td><td class="mono">17.5 GB/mo logs (heuristic, ±35%), 85 custom metrics, 34 alarms, no tracing detected. Range $25–$52</td></tr>
+          <tr><td>Web</td><td>ElastiCache Valkey (cache.t3.small)</td><td>$20</td><td class="mono">0.0272 × 730 hrs × 1 node</td></tr>
+          <tr><td>Function</td><td>S3 Standard</td><td>$5</td><td>Stated baseline from the rate file; Terraform declares no blob volume</td></tr>
+          <tr><td>Web</td><td>Secrets Manager</td><td>$2</td><td>Stated baseline; one vault, zero secret child resources declared</td></tr>
+          <tr><td>Web</td><td>VPC, subnets, route table, Session Manager</td><td>$0</td><td>Not billed at this configuration: no NAT gateway, no endpoints, Basic-tier bastion maps to free Session Manager</td></tr>
+          <tr><td><strong>Priced subtotal</strong></td><td>&mdash;</td><td><strong>$460</strong></td><td>Balanced = right-sized = lift (no utilization data, so no size changed)</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Excluded lines (why the total is a floor)</h3>
+      <table>
+        <caption>Services excluded from every tier total, with the reason and the known quantity.</caption>
+        <thead><tr><th scope="col">Cluster</th><th scope="col">AWS Service</th><th scope="col">Exclusion</th><th scope="col">What is known</th></tr></thead>
+        <tbody>
+          <tr><td>Reporting</td><td>EC2 m6i.xlarge, Windows Server 2022</td><td>Partial rate — Windows licence missing</td><td>Linux-rate floor of $140/mo; Windows on a general-purpose size costs roughly 2x the Linux row. Root volume unpriced (size unstated)</td></tr>
+          <tr><td>Idle plan</td><td>Elastic Beanstalk m6i.large, Windows (IIS)</td><td>Partial rate — Windows licence missing</td><td>Linux-rate floor of $71/mo; the source plan has zero apps and is flagged idle</td></tr>
+          <tr><td>Function</td><td>FSx for Windows File Server (512 GiB SSD)</td><td>No rate in the pricing cache</td><td>Quantity known (512 GiB, single-AZ); only the rate is missing</td></tr>
+          <tr><td>Catalog</td><td>DocumentDB db.t3.medium</td><td>No rate in the pricing cache</td><td>Instance class known; DocumentDB rates are a different service from RDS and were not borrowed</td></tr>
+          <tr><td>Function</td><td>Lambda</td><td>No quantity</td><td>Rates exist; invocation volume is not declared in Terraform and the Y1 plan provisions no capacity to carry across</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Migration-period costs (not in the monthly figures)</h3>
+      <ul class="compact">
+        <li><strong>Azure egress</strong> — per-GB outbound applies to the Postgres database (64 GiB allocated), the Cosmos account, the assets storage account, the 512 GiB SMB share and the VM disks. Terraform declares allocated sizes, not used bytes, so the transfer volume is unknown and was not assumed.</li>
+        <li><strong>Parallel operation</strong> — roughly the stated Azure figure per month for the cutover window, with the same stated-not-invoiced caveat.</li>
+        <li><strong>DMS replication</strong> — applies only if you switch the database cutover from dump-and-restore to DMS; duration-driven, no figure.</li>
+        <li><strong>MGN replication</strong> — replication-server hours for the reporting VM, starting only after the re-image prerequisite is met.</li>
+        <li><strong>Unexpired Azure commitments</strong> — nothing in the Terraform declares a reservation or savings plan; named, not quantified.</li>
+        <li>No professional-services, people-time or day-rate figure appears anywhere in this estimate, by rule.</li>
+      </ul>
+
+      <h3>Non-cost benefits (from the ROI analysis)</h3>
+      <ul class="compact">
+        <li>Session Manager replaces the Bastion host with no instance to run or patch</li>
+        <li>S3 Standard is multi-AZ within the region by default — more redundancy than the source's LRS at no extra charge</li>
+        <li>Managed DMS and MGN cutover paths for the database and the VM</li>
+        <li>Full infrastructure control (VPC, security groups, IAM) and finer autoscaling on Elastic Beanstalk and RDS</li>
+        <li>Access to commitment products (Savings Plans, Reserved Instances, Spot) that Azure prices differently</li>
+      </ul>
+      <p>Tier totals and the not-comparable note are in <a href="#exec-costs">Infrastructure Cost Comparison</a>.
+         Commitment discounts are in <a href="#appendix-optimization">Appendix B.1</a>.</p>
+    </section>
+
+    <section id="appendix-optimization">
+      <h2>Appendix B.1 — Savings Plans and Reserved Instances <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>Incremental to Balanced on-demand (Est. $460/mo). Do not add these savings onto Optimized (Est. $451/mo) — that tier
+         already embeds the Compute SP 30% commitment assumption on the eligible EC2 line. Monthly savings are deliberately not quantified where
+         the covered lines include excluded (unpriced) services, so a percentage of the current floor would understate them.</p>
+      <table>
+        <caption>Estimated cost savings available post-migration, by commitment product.</caption>
+        <thead><tr><th scope="col">Optimization</th><th scope="col">Target</th><th scope="col">Est. savings</th><th scope="col">Commitment</th><th scope="col">Effort</th></tr></thead>
+        <tbody>
+          <tr><td>Compute Savings Plans</td><td>Elastic Beanstalk EC2 instances, EC2 reporting</td><td>20–66% of the compute lines (not quantified: two of those lines are unpriced Windows floors)</td><td>1-year or 3-year, after 30–90 days of usage data</td><td>Low (post-migration)</td></tr>
+          <tr><td>RDS Reserved Instances</td><td>RDS PostgreSQL db.m6g.large</td><td>Up to 69% of the $275 line — the largest single priced line</td><td>1-year or 3-year, once the instance class is stable; mutually exclusive with a Database Savings Plan on the same instance (a Database Savings Plan needs a Generation 7+ class; db.m6g is Generation 6)</td><td>Low (post-migration)</td></tr>
+          <tr><td>ElastiCache Reserved Nodes</td><td>ElastiCache cache.t3.small (node-based)</td><td>30–55% of the $20 line</td><td>1-year or 3-year, after a usage baseline; Database Savings Plans cover Generation 7 and newer instances only and cache.t3 is Generation 3, so Reserved Nodes is the applicable lever today</td><td>Low (post-migration)</td></tr>
+          <tr><td>S3 Intelligent-Tiering</td><td>S3 assets bucket</td><td>38–50% of storage, once the object mix is known (the $5 line is a stated baseline, not a measured volume)</td><td>None</td><td>Low (during migration)</td></tr>
+          <tr><td>Retire the idle plan</td><td>Elastic Beanstalk m6i.large (flagged idle)</td><td>The whole line — a $71/mo Linux-rate floor, more with the Windows licence</td><td>None; a Design decision to drop a zero-app plan</td><td>Low</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="appendix-steps">
+      <h2>Appendix C — Migration Steps and Rollback <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>Phases follow the cutover sequence in <code>MIGRATION_GUIDE.md</code>, in dependency-tier order. Every script under
+         <code>scripts/</code> is <strong>dry-run by default</strong> and takes <code>--execute</code> to act; none was executed during
+         Generate. Durations are not quoted — stage order and the verification gate after each phase carry the schedule.</p>
+
+      <h3>Phase 1 — Prerequisites</h3>
+      <ul class="compact">
+        <li>AWS account with billing alerts; root MFA; IAM Identity Center set up fresh (your identity choice: re-invite, not Entra federation)</li>
+        <li>Run <code>scripts/01-validate-prerequisites.sh</code> (dry run), then with <code>--execute</code> — checks CLI, credentials, region and quotas</li>
+        <li><strong>Blocker to clear:</strong> the reporting VM image is <code>2022-datacenter-azure-edition</code>, which AWS Application Migration Service refuses. Re-image to a standard Windows Server edition before Phase 4; this is a prerequisite, not a cost</li>
+      </ul>
+
+      <h3>Phase 2 — Network, identity and secrets (Terraform, tier 1)</h3>
+      <pre class="diagram" style="white-space: pre-wrap; font-size: 0.85rem;">cd terraform
+terraform init -backend=false
+terraform apply -target=aws_s3_bucket.tfstate -target=aws_dynamodb_table.tfstate_lock
+terraform init
+terraform plan
+terraform apply</pre>
+      <ul class="compact">
+        <li>Deploys the Balanced-tier stack including <code>baseline.tf</code> (account-wide security controls and the remote-state bucket and lock table)</li>
+        <li>VPC 10.20.0.0/16, subnets snet-apps and snet-data, route table, Session Manager access, Secrets Manager</li>
+        <li><code>scripts/04-migrate-secrets.sh</code> — copies Key Vault secrets into Secrets Manager (dry run, then <code>--execute</code>)</li>
+        <li><strong>Verify:</strong> Session Manager session opens to a test instance; secrets resolve by name</li>
+      </ul>
+
+      <h3>Phase 3 — Data (tier 2)</h3>
+      <ul class="compact">
+        <li>RDS PostgreSQL 16 (db.m6g.large, single-AZ), ElastiCache Valkey, DocumentDB, S3 assets bucket, FSx for Windows File Server (512 GiB)</li>
+        <li><code>scripts/02-migrate-data.sh</code> — blob sync to S3, SMB share copy to FSx, and the Postgres <strong>dump-and-restore</strong> rehearsal (your cutover choice, defaulted: largest relational database 64 GiB is under the 100 GiB DMS threshold)</li>
+        <li>DocumentDB: Mongo-API dump and restore from the Cosmos account; verify collection counts and indexes</li>
+        <li><strong>Verify:</strong> row counts and checksums on the rehearsal restore; application smoke test against the restored copy</li>
+      </ul>
+
+      <h3>Phase 4 — Compute (tier 3)</h3>
+      <ul class="compact">
+        <li>Elastic Beanstalk environment with the five web apps (confirm the runtime for admin, checkout, docs and webhooks — only storefront declares a stack), Lambda for imageresize, MSK brokers</li>
+        <li>Reporting VM: MGN replication starts only after the Phase 1 re-image; cut over the instance in the apps subnet</li>
+        <li>Idle P1v3 plan: decide whether to create its environment at all — it hosts zero apps today</li>
+        <li><strong>Verify:</strong> each app responds behind the ALB; the function processes a test object; consumers read from MSK</li>
+      </ul>
+
+      <h3>Phase 5 — Cutover and validation (tier 4)</h3>
+      <ul class="compact">
+        <li>Write freeze on Azure Postgres; final dump and restore; integrity check (a row-count match alone is not integrity evidence; any mismatch stops the cutover)</li>
+        <li>DNS and traffic switch <strong>last</strong></li>
+        <li><code>scripts/05-validate-migration.sh</code> — read-only post-migration checks</li>
+        <li>Keep every Azure resource running until verification passes; export Log Analytics and Application Insights history by hand before the workspace is turned off</li>
+        <li><strong>Deferred:</strong> IoT Hub telemetry_ingest — engage your AWS account team for an AWS IoT Core assessment; not in this runbook</li>
+      </ul>
+
+      <h3>Rollback procedure</h3>
+      <table>
+        <caption>Rollback triggers, actions and recovery objectives by track.</caption>
+        <thead><tr><th scope="col">Track</th><th scope="col">Trigger</th><th scope="col">Action</th><th scope="col">Recovery objective</th></tr></thead>
+        <tbody>
+          <tr><td>Database (dump-and-restore)</td><td>Integrity mismatch or application failure before the switch</td><td>Lift the write freeze on Azure Postgres; nothing on AWS is authoritative yet</td><td>Minutes — the Azure server never stopped</td></tr>
+          <tr><td>Database (after the switch)</td><td>Failure after DNS has moved</td><td>Revert DNS to Azure; reconcile writes made on AWS by hand. Keep the Azure server until the rollback window closes</td><td>Rollback window you set</td></tr>
+          <tr><td>Reporting VM (MGN)</td><td>Replication or cutover failure</td><td>The Azure VM stays running until verification passes; stop the MGN cutover instance</td><td>Minutes</td></tr>
+          <tr><td>Web, function, streaming</td><td>Error rate or latency regression after traffic switch</td><td>Revert DNS to the App Service hostnames; Azure resources are still running</td><td>DNS TTL</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="appendix-artifacts">
+      <h2>Appendix E — Generated Artifacts Catalog <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <table>
+        <caption>Artifacts produced by the migration assessment.</caption>
+        <thead><tr><th scope="col">Artifact</th><th scope="col">Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>azure-resource-inventory.json</code></td><td>30 resources from the Terraform workspace, canonical ARM types, edges, 1 untranslated-type warning resolved by namespace rule</td></tr>
+          <tr><td><code>azure-resource-clusters.json</code></td><td>5 workload clusters with tiering and edges</td></tr>
+          <tr><td><code>preferences.json</code></td><td>Clarify answers and design constraints (wizard mode, completing branch)</td></tr>
+          <tr><td><code>aws-design.json</code></td><td>16 service mappings + 1 deferral, cluster rationales, 17 warnings</td></tr>
+          <tr><td><code>estimation-infra.json</code></td><td>Cost tiers (all floors), excluded lines, licensing delta, migration-period costs, optimization opportunities, recommendation</td></tr>
+          <tr><td><code>generation-warnings.json</code></td><td>Accounting: 16 generated + 1 deferred = 17 accounted; skipped entries for config sources, observability and plan-folded apps</td></tr>
+          <tr><td><code>validation-report.json</code></td><td>Terraform fmt / init / validate and the policy gate verdict</td></tr>
+          <tr><td><code>terraform/</code></td><td>main.tf, variables.tf, outputs.tf, baseline.tf (security baseline + remote state), per-tier resources, terraform.tfvars.example, README.md</td></tr>
+          <tr><td><code>scripts/</code></td><td>01 validate prerequisites &middot; 02 migrate data &middot; 04 migrate secrets &middot; 05 validate migration (no 03: the estate has no container registry)</td></tr>
+          <tr><td><code>MIGRATION_GUIDE.md</code></td><td>Runbook: prerequisites, cutover sequence in tier order, database dump-and-restore branch, verification per service, rollback notes</td></tr>
+          <tr><td><code>README.md</code></td><td>What was generated and how to use it</td></tr>
+          <tr><td><code>migration-report.html</code></td><td>This report</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="appendix-config">
+      <h2>Appendix F — Your Configuration <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>Questions and assumptions from the Clarify phase that shaped this migration plan.</p>
+      <table>
+        <caption>Configuration choices with design consequences (from the Clarify preferences).</caption>
+        <thead>
+          <tr>
+            <th scope="col">Question / assumption</th>
+            <th scope="col">Your choice</th>
+            <th scope="col">Source</th>
+            <th scope="col">Design consequence</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Approximately how much are you spending on Azure per month?</td><td>$4,200 (USD)</td><td>User answer (stated, no Cost Management export)</td><td>Baseline for the cost comparison; flagged not comparable</td></tr>
+          <tr><td>Database availability</td><td>Single-AZ</td><td>User answer</td><td>RDS single-AZ against a ZoneRedundant source; availability downgrade raised as a finding</td></tr>
+          <tr><td>VM cutover method</td><td>MGN replication</td><td>User answer</td><td>Recorded as given; the Azure Edition image blocks MGN until re-imaged</td></tr>
+          <tr><td>Windows licensing model</td><td>License Included</td><td>User answer</td><td>Windows lines priced at the Linux rate and excluded as partial until a Windows rate exists</td></tr>
+          <tr><td>Compliance frameworks</td><td>None</td><td>User answer</td><td>Security baseline only; no Config or Security Hub add-on</td></tr>
+          <tr><td>Target region</td><td>eu-west-1</td><td>Detected (westeurope → eu-west-1)</td><td>All resources in eu-west-1; residency warning raised (Netherlands → Ireland)</td></tr>
+          <tr><td>CPU architecture</td><td>x86_64</td><td>Detected (Windows VM and Windows plan)</td><td>No Graviton substitution</td></tr>
+          <tr><td>Redis modules</td><td>None</td><td>Detected (plain Azure Cache for Redis)</td><td>ElastiCache Valkey is eligible</td></tr>
+          <tr><td>Compute target</td><td>Elastic Beanstalk</td><td>Default</td><td>App Service Plans become Beanstalk environments</td></tr>
+          <tr><td>Database cutover</td><td>Dump and restore</td><td>Default (largest relational database 64 GiB ≤ 100 GiB)</td><td>Runbook dump-and-restore branch; write freeze at cutover</td></tr>
+          <tr><td>Cost optimization appetite</td><td>Balanced</td><td>Default</td><td>No effect: no utilization data to size against</td></tr>
+          <tr><td>Traffic pattern (compute and database)</td><td>Steady</td><td>Default</td><td>Fixed instance counts</td></tr>
+          <tr><td>Storage I/O</td><td>Medium</td><td>Default</td><td>gp3 at baseline IOPS</td></tr>
+          <tr><td>User geography</td><td>Single region</td><td>Default</td><td>No edge services priced</td></tr>
+          <tr><td>Identity</td><td>IAM Identity Center re-invite</td><td>Default</td><td>No Entra federation workstream</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="appendix-security">
+      <h2>Appendix G — Security Capabilities <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <p>The generated <code>terraform/baseline.tf</code> implements an account-wide security baseline that is independent of the
+         workload clusters. <strong>None of these controls is in the $460 estimate</strong>: the Estimate does not roll CloudTrail
+         storage, GuardDuty, Config or Security Hub into the Balanced total. The cost column is an indicative list-price range,
+         not a line of the estimate. The budget limit is <strong>$553/mo</strong> = ceil(1.2 × $460), a floor on the priced workload.</p>
+      <table>
+        <caption>Account-wide security controls in baseline.tf, their Azure equivalents, and indicative monthly cost.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Control</th>
+            <th scope="col">Terraform resource</th>
+            <th scope="col">What it does for you</th>
+            <th scope="col">Azure equivalent</th>
+            <th scope="col">Monthly cost</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Alternate contacts</td><td class="mono">aws_account_alternate_contact.*</td><td>Billing, operations and security notices reach a named owner</td><td>Subscription service-admin and billing contacts</td><td>$0</td></tr>
+          <tr><td>IAM password policy</td><td class="mono">aws_iam_account_password_policy.baseline</td><td>14-character minimum, reuse prevention 24, complexity for console users</td><td>Entra ID password protection</td><td>$0</td></tr>
+          <tr><td>S3 account public-access block</td><td class="mono">aws_s3_account_public_access_block.baseline</td><td>Account-wide prevention of any bucket being made public (all four flags)</td><td>Storage account <code>allowBlobPublicAccess = false</code></td><td>$0</td></tr>
+          <tr><td>EBS default encryption</td><td class="mono">aws_ebs_encryption_by_default.baseline</td><td>Every volume encrypted at rest by default</td><td>Managed-disk server-side encryption (platform default)</td><td>$0</td></tr>
+          <tr><td>IAM Access Analyzer</td><td class="mono">aws_accessanalyzer_analyzer.baseline</td><td>Alerts when IAM policies or buckets grant external access</td><td>Entra Permissions Management / Defender CSPM (partial)</td><td>$0</td></tr>
+          <tr><td>IMDSv2 required</td><td class="mono">aws_ec2_instance_metadata_defaults.baseline</td><td>Blocks SSRF from stealing instance credentials (http_tokens required)</td><td>None — Azure IMDS has no token mode to enforce</td><td>$0</td></tr>
+          <tr><td>CloudTrail + log bucket</td><td class="mono">aws_cloudtrail.baseline</td><td>Immutable audit log of every API call; S3 bucket with SSE, versioning, lifecycle expiry</td><td>Activity Log + Log Analytics export</td><td>~$0.50–3/mo</td></tr>
+          <tr><td>AWS Budget</td><td class="mono">aws_budgets_budget.monthly_spend</td><td>Alerts before spend passes the $553 limit</td><td>Cost Management budgets</td><td>$0</td></tr>
+          <tr><td><strong>GuardDuty</strong></td><td class="mono">aws_guardduty_detector.baseline</td><td>Detects compromised credentials, crypto mining and unusual API patterns</td><td>Microsoft Defender for Cloud (paid plans)</td><td>~$2–25/mo after the 30-day trial</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Compliance-conditional controls (not generated)</h3>
+      <p>Your compliance list is empty, so <code>aws_config_configuration_recorder.baseline</code> (continuous configuration recording;
+         Azure equivalent Azure Policy with change tracking) and <code>aws_securityhub_account.baseline</code> (automated checks
+         against AWS best practices; Azure equivalent Defender for Cloud regulatory compliance) were not added. Declaring SOC 2,
+         PCI, HIPAA or FedRAMP in your preferences and re-running Generate adds them (indicative ~$3–25/mo combined).</p>
+
+      <h3>Cost guardrails</h3>
+      <p>Not applicable: this run has no AI track, so no <code>ai-migration/bedrock_monitoring.tf</code> was generated.</p>
+
+      <h3>What the baseline does NOT cover (you still need)</h3>
+      <ul class="compact">
+        <li>SOC 2: qualified auditor, formal policies, employee training, vendor management</li>
+        <li>HIPAA: BAA with AWS, qualified HIPAA auditor, data handling policies</li>
+        <li>PCI: QSA assessment, network segmentation validation, pen testing</li>
+        <li>FedRAMP: agency-level NIST 800-53 controls, ATO process</li>
+      </ul>
+
+      <p><strong>To enable:</strong> <code>terraform apply</code> applies <code>baseline.tf</code> with the rest of the stack.
+         <strong>To opt out:</strong> follow the three-step procedure in <code>terraform/README.md</code> — the Remote State section of
+         <code>baseline.tf</code> must survive; deleting the whole file breaks the root module.</p>
+    </section>
+
+    <section id="appendix-security-gap">
+      <h2>Appendix H — Security Gap Analysis <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <table>
+        <caption>Security capability comparison: Azure detected vs AWS generated, with actions.</caption>
+        <thead><tr><th scope="col">Capability</th><th scope="col">Azure (detected)</th><th scope="col">AWS (generated)</th><th scope="col">Gap / action</th></tr></thead>
+        <tbody>
+          <tr><td>Network perimeter</td><td>VNet with two subnets and a route table; no network security groups declared in the workspace</td><td>VPC 10.20.0.0/16, two subnets, route table; security groups per service (RDS subnet group + SG from the private-endpoint edge)</td><td>Mapped 1:1 for addressing. <strong>Net-new:</strong> explicit security groups where the source had none declared — review inbound rules before production</td></tr>
+          <tr><td>Identity &amp; access</td><td>No managed identities or role assignments declared; one Key Vault</td><td>IAM roles with scoped policies per service; IAM Identity Center set up fresh (re-invite)</td><td>No Entra federation workstream (your choice). Least-privilege roles are generated; review them against who needs access</td></tr>
+          <tr><td>Audit logging</td><td>Azure Activity Log (platform default, not exported in Terraform)</td><td>CloudTrail with its own S3 bucket in baseline.tf</td><td><strong>Net-new explicit trail</strong> with retention you set</td></tr>
+          <tr><td>Threat detection</td><td>Microsoft Defender for Cloud — not declared (free tier at most)</td><td>GuardDuty enabled in baseline.tf</td><td><strong>Net-new</strong> — indicative ~$2–25/mo after the trial; not in the estimate</td></tr>
+          <tr><td>Secrets management</td><td>Key Vault tf:main (standard), zero secret child resources declared</td><td>Secrets Manager; no KMS or ACM added</td><td>Mapped; the secret inventory is not discoverable from Terraform — run the secrets script in dry-run to list what moves</td></tr>
+          <tr><td>Public data exposure</td><td>Storage account tf:assets, LRS; no public-access setting declared</td><td>S3 account-level public-access block in baseline.tf; bucket private by default</td><td>Mapped; if the app serves assets publicly, add CloudFront with origin access control rather than a public bucket</td></tr>
+          <tr><td>Operator access</td><td>Azure Bastion (Basic) in rg-app</td><td>Systems Manager Session Manager, no instance</td><td>Mapped; no host to run or patch, and no cost. Confirm SSM agent on the Windows reporting instance</td></tr>
+          <tr><td>Observability cost shift</td><td>Log Analytics (PerGB2018, 30-day retention) and Application Insights</td><td>CloudWatch logs, metrics, alarms (~$38/mo mid, ±35%)</td><td><span class="increase">Cost shift:</span> Azure Monitor includes a Log Analytics allowance; CloudWatch charges from the first GB above its always-free tier. The estimate assumes 17.5 GB/mo of logs plus 85 custom metrics. Retained telemetry does not import</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="appendix-assumptions">
+      <h2>Appendix I — Assumptions, Exclusions, and Validation <a class="toplink" href="#toc">&uarr; contents</a></h2>
+
+      <h3>Pricing confidence</h3>
+      <table>
+        <caption>Pricing source and confidence band by cost domain.</caption>
+        <thead><tr><th scope="col">Domain</th><th scope="col">Source</th><th scope="col">Confidence</th><th scope="col">Last updated</th></tr></thead>
+        <tbody>
+          <tr><td>Infrastructure (12 priced lines)</td><td>Cached AWS rates, us-east-1, applied to an eu-west-1 target</td><td>Mixed direction: exclusions push totals down; the Multi-AZ RDS rate pushes the largest line up by roughly 2x. eu-west-1 runs roughly 5–12% higher on compute and RDS</td><td>2026-07-19 — past the cache's 30-day staleness window (status: cached, stale)</td></tr>
+          <tr><td>Observability</td><td>Heuristic volume (17.5 GB/mo logs, 85 metrics, 34 alarms)</td><td>±35%</td><td>Same cache</td></tr>
+          <tr><td>S3, Secrets Manager</td><td>Stated baselines from the rate file, not estate volumes</td><td>Indicative</td><td>Same cache</td></tr>
+          <tr><td>Windows licence, DocumentDB, FSx, Lambda</td><td>No rate or no quantity available</td><td>Excluded</td><td>&mdash;</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Exclusions</h3>
+      <ul class="compact">
+        <li><strong>IoT Hub telemetry_ingest</strong> — deferred to a specialist engagement (AWS IoT Core). It is an S1 hub with capacity 1, so it is cost-bearing on Azure today and the stated baseline includes it while the AWS side has no line for it.</li>
+        <li><strong>Unpriced lines</strong> — FSx for Windows File Server and DocumentDB have no rate in the pricing cache and the pricing API was unreachable; Lambda has rates but no invocation volume. All three are excluded from every tier, so every total is a floor.</li>
+        <li><strong>Windows licensing</strong> — the licensing category fired (License Included, 2 workloads, 6 vCPU) but no Windows rate or per-vCPU licence adder exists, so both Windows lines are priced at the Linux rate and excluded as partial. This is the line most likely to move the total. Azure Hybrid Benefit is not declared, so the Azure side is not understated on licence grounds.</li>
+        <li><strong>Azure egress</strong> — transfer volume unknown (Terraform declares allocated sizes, not used bytes); not assumed.</li>
+        <li><strong>Parallel operation, DMS and MGN replication hours, unexpired Azure commitments</strong> — named in Appendix B, not quantified.</li>
+        <li><strong>Professional services / dual-run labor</strong> — not modeled; no day rate or engineer-time figure appears anywhere in this estimate.</li>
+        <li><strong>MSK broker storage and the EC2 root volume</strong> — not sized by the design, so not priced.</li>
+      </ul>
+
+      <h3>Known limitations — utilization-based right-sizing</h3>
+      <ul class="compact">
+        <li>The right-sizing delta is <strong>$0</strong> because no utilization data was discovered (Terraform only: no RDfA report and no Azure Monitor metrics), so every source SKU was mapped like-for-like. This is a computed zero, not an uncomputed one. To unlock measured sizing, supply an RDfA export or at least 14 days of Azure Monitor P95 metrics and re-run Discover.</li>
+        <li><strong>Declared waste found:</strong> the P1v3 Windows App Service Plan tf:legacy has zero apps and is carried as <code>idle: true</code>. Removing it is a Design decision; its line is excluded from both totals as partial-rate, so it cannot move the delta.</li>
+        <li>Your cost-optimization appetite (Balanced) changed nothing in this run for the same reason.</li>
+      </ul>
+
+      <h3>Terraform validation</h3>
+      <div class="callout">
+        <strong>Validation report:</strong> Terraform fmt / init / validate and the policy gate
+        (tf-best-practices) run after this report is generated. The result of this run is in
+        <code>validation-report.json</code>; it is not repeated here.
+      </div>
+
+      <h3>Design and generation warnings</h3>
+      <ul class="compact">
+        <li><strong>Availability downgrade from source</strong> — Postgres Flexible Server is ZoneRedundant; the design is single-AZ as you answered. Multi-AZ roughly doubles the $275 line.</li>
+        <li><strong>Azure Edition Windows Server</strong> — the reporting VM image is refused by AWS Application Migration Service until re-imaged.</li>
+        <li><strong>Idle App Service Plan</strong> — tf:legacy hosts zero apps.</li>
+        <li><strong>Routed by namespace rule</strong> — Microsoft.Devices/IotHubs is not in the canonicalization table; it was derived and deferred, never silently skipped.</li>
+        <li><strong>Data residency</strong> — westeurope → eu-west-1 crosses a border (Netherlands → Ireland); eu-central-1 is the listed alternative.</li>
+        <li><strong>Skipped, with reasons recorded</strong> — 3 resource groups (no AWS equivalent), 2 config sources (NIC, private endpoint), 2 observability resources (re-established on CloudWatch), 5 web apps folded into their plan.</li>
+        <li><strong>Compliance never asked</strong> — no Clarify fragment produces a compliance row for this estate, so the compliance input is unknown rather than "none".</li>
+      </ul>
+    </section>
+
+    <section id="appendix-glossary">
+      <h2>Appendix J — Glossary <a class="toplink" href="#toc">&uarr; contents</a></h2>
+      <table class="glossary-table">
+        <caption>Terms used in this report.</caption>
+        <thead><tr><th scope="col">Term</th><th scope="col">Meaning</th></tr></thead>
+        <tbody>
+          <tr><td>Monthly run rate</td><td>Estimated recurring cloud-service charges; excludes staffing, support, migration labor, and other ownership costs</td></tr>
+          <tr><td>Floor</td><td>A total that is known to be understated because one or more lines are excluded</td></tr>
+          <tr><td>ARM type</td><td>Azure Resource Manager resource type (e.g. Microsoft.Web/serverfarms), the canonical identity Discover uses</td></tr>
+          <tr><td>MGN</td><td>AWS Application Migration Service — block-level VM replication</td></tr>
+          <tr><td>DMS</td><td>AWS Database Migration Service</td></tr>
+          <tr><td>MSK</td><td>Amazon Managed Streaming for Apache Kafka</td></tr>
+          <tr><td>RDfA</td><td>Azure Migrate "Review Data for Assessment" export — the utilization source this run did not have</td></tr>
+          <tr><td>LRS</td><td>Locally redundant storage (Azure)</td></tr>
+          <tr><td>IMDSv2</td><td>EC2 Instance Metadata Service version 2</td></tr>
+          <tr><td>RI / SP</td><td>Reserved Instance / Savings Plan — AWS commitment discounts</td></tr>
+          <tr><td>P95</td><td>95th-percentile value of a utilization metric</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <footer>
+      Generated by Azure to AWS Migration Advisor — draft for review; verify figures against the source JSON artifacts before executive sign-off.<br />
+      Golden fixture rendered from the azure-iac-terraform corpus (run 0908-1200). All figures sourced from the Design and Estimate JSON artifacts.
+    </footer>
+  </div>
+</body>
+</html>

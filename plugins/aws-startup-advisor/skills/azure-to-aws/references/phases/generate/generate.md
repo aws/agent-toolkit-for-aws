@@ -58,6 +58,8 @@ _preconditions:
     _on_failure: _halt_and_inform
   - _assert: "preferences.json exists and validates. WHEN the run has an infra track (azure-resource-inventory.json was produced at Discover): aws-design.json, estimation-infra.json, and azure-resource-inventory.json also exist and validate as JSON — an aws-design.json whose services[] is empty because every resource was deferred or skipped is still an infra track and takes the baseline-only path (core files + baseline.tf). WHEN the run is AI-only / app-code-only (no azure-resource-inventory.json — the app-code-only Discover/Clarify-ai-only/Design-ai/Estimate-ai track): those infra artifacts are ABSENT and instead ai-workload-profile.json, aws-design-ai.json, and estimation-ai.json exist and validate. A run with NEITHER an infra design nor an AI design is unrecoverable."
     _on_failure: _unrecoverable
+  - _assert: "WHEN the run has an infra track: estimation-infra.json projected_costs._premium_basis and projected_costs._optimized_basis are both present. If either is absent the file predates the current Premium / Optimized definitions: tell the user its Premium and Optimized figures were produced under the earlier tier definitions and offer to re-run Estimate first (a user-confirmed re-run, never a silent repair; set phases.estimate and phases.generate back to pending only if they accept). If they decline, continue, and the report's reading guide states the earlier-definitions notice (report-decision-core.md, How to read cost tiers) instead of the new derivations."
+    _on_failure: _halt_and_inform
   - _assert: "run_mode in .phase-status.json is 'decide_and_execute' — the user chose Execute at the post-Estimate decision gate, accepted the decide-complete resume offer, or explicitly asked this turn to generate the migration artifacts (the Terraform, migration scripts and migration guide on an infra track, or the AI-track artifacts named at the gate on an AI-only run). An absent run_mode is NOT consent."
     _on_failure: _halt_and_inform
   - _assert: "preferences.json metadata.deferred_to_generate is absent or an empty array, and no preferences.json row carries deferred_to_generate: true — every execution-only row Clarify defaulted (data.db_cutover) was confirmed at the Decision gate's Step 3b (estimate-assemble.md), which sets the row flag to false and removes the key from both metadata lists. A non-empty array or a row still flagged true means a runbook is about to be written against an answer the user never gave; return to Step 3b."
@@ -105,7 +107,18 @@ transition, and the `HANDOFF_OK` stay in the main window.
 worker emits `terraform/` only; it cannot invoke skills or run `terraform`/`python`.
 This mirrors gcp-to-aws's `generate.md`, which owns validation inline in its own main
 window and passes only the terraform DIR to the skill (the caller owns the report). See
-§ "Step: Run the phase" step 4.
+§ "Step: Run the phase" step 5.
+
+**Artifact pre-check gate (main window, before dispatch):** the report is rendered from the
+phase artifacts, so `generate-artifacts-report.md` Step 0 requires them to pass the plugin's
+artifact validator (`scripts/validate-artifacts.py --run-dir "$MIGRATION_DIR" --skill
+azure-to-aws`) **before** any report HTML is written. The `rw` worker cannot run `python3`,
+so this phase runs the check itself in the MAIN window as step 2 of § "Step: Run the phase",
+and dispatches the worker only when it passes. On `FAIL`: surface the `ERROR` lines to the
+user, emit `GATE_FAIL | phase=generate | fragment=artifacts-report | reason=artifact_contract`,
+do **NOT** patch artifacts to pass validation, and do **NOT** dispatch — so
+`migration-report.html` is never written, and the phase stops with `GATE_FAIL` rather than
+silently skipping a required `_produces` artifact.
 
 ## Generate is opt-in, and the check has no mechanical teeth
 
@@ -144,15 +157,22 @@ fragment's own `## Status`, not this line, for its emitter detail.
 
 ## Step: Run the phase
 
-Steps 2–3 are the phase's WORK and are dispatched to the file-only `rw` worker. Step 4
-and step 5 run in the MAIN window — the worker cannot invoke skills or run
+Steps 3–4 are the phase's WORK and are dispatched to the file-only `rw` worker. Steps 1–2
+and steps 5–6 run in the MAIN window — the worker cannot invoke skills or run
 `terraform`/`python`.
 
 1. Verify the entry gate, including `run_mode`.
-2. Run each fragment whose `_trigger` holds. (worker)
-3. Run `generate-assemble.md`. (worker — emits `terraform/`, the docs, the report, and
+2. **Artifact pre-check — MAIN WINDOW, before dispatch.** Run
+   `python3 "$PLUGIN_ROOT/scripts/validate-artifacts.py" --run-dir "$MIGRATION_DIR" --skill azure-to-aws`
+   (read-only; it rewrites nothing). Exit `0`: continue. Exit `1`: surface every `ERROR`
+   line, emit `GATE_FAIL | phase=generate | fragment=artifacts-report | reason=artifact_contract`,
+   name the phase that owns the failing artifact, do **NOT** patch artifacts, and stop here —
+   nothing is dispatched and no report is written. Any other exit code: the validator did not
+   run; tell the user the pre-check was skipped, never record it as a pass, and continue.
+3. Run each fragment whose `_trigger` holds. (worker)
+4. Run `generate-assemble.md`. (worker — emits `terraform/`, the docs, the report, and
    `generation-warnings.json`; it does NOT validate or write `validation-report.json`.)
-4. **Validate the generated Terraform and write the validation report — MAIN WINDOW,
+5. **Validate the generated Terraform and write the validation report — MAIN WINDOW,
    after the worker returns and before `_postconditions`.** This MUST run in the main
    window because the `rw` worker cannot invoke skills or run `terraform`/`python`. This
    phase is the **caller** of the `tf-best-practices` validation protocol, exactly as
@@ -173,7 +193,7 @@ and step 5 run in the MAIN window — the worker cannot invoke skills or run
      pin the skill's raw verdict path as the report.
    - An unresolved `POLICY_FAIL` the user does not `skip`/`abort` sets `status: policy_failed`
      and blocks completion (the `_postconditions` `_assert`).
-5. Evaluate `_postconditions`. On all-pass emit `HANDOFF_OK` and advance to
+6. Evaluate `_postconditions`. On all-pass emit `HANDOFF_OK` and advance to
    `complete`; on any failure emit `GATE_FAIL` and stop.
 
 **Write the web-handoff summary (fail-open), only after `HANDOFF_OK`:** run

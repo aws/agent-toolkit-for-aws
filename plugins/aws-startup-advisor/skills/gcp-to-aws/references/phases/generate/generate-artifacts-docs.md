@@ -83,6 +83,8 @@ Generate the following sections:
 Post-Infrastructure Tasks checklist: verify resources, check security groups, validate IAM roles.
 For each `warnings[]` entry in `aws-design.json` about an Elastic Beanstalk platform branch (a retired or undeclared language version), add a numbered step naming the service, the source version, the branch the Terraform selects, and that the team must test the application on that runtime before cutover.
 
+**Sizing basis subsection** (only when any `aws-design.json` mapping carries `sizing_provenance`): one table with columns Resource, Source size, AWS size, Sizing basis, Note. `Sizing basis` is `Measured (30-day p95 × 1.3)` or `Declared (<declared_reason>)`; `Note` carries `sizing_note` (`memory_bound`, `memory_saturated`, `burst`, `burstable_baseline_exceeded`) or the like-for-like size when the pick differs from it. Below the table, the same Known limitations lines `generate-artifacts-report.md` Appendix I requires (one per `insufficient`, `memory_unavailable`, `burst`, `idle`, `skipped_group_member`, `user_exempt`, `conservative`, `memory_bound`, `memory_saturated`, `burstable_baseline_exceeded` resource, plus one per `rds_proxy: true` database saying the proxy is recommended but not priced or generated, each with the action that unlocks measured sizing, e.g. "install the Ops Agent on these N VMs"), and a load-test step before cutover for every measured resource. When no mapping carries `utilization`-based sizing, one line says right-sizing requires live discovery with Cloud Monitoring read access.
+
 **Section 3: Data Migration** — **Include ONLY if `scripts/02-migrate-data.sh`,
 `scripts/03-migrate-containers.sh`, or `scripts/04-migrate-secrets.sh` exist.**
 If NONE of these scripts were generated, skip Section 3 entirely.
@@ -356,10 +358,10 @@ Table from estimation artifacts with: Current GCP Monthly, Projected AWS Monthly
 
 **How to read cost tiers** (required when infra estimates include Premium / Balanced / Optimized):
 
-- The three AWS monthly totals are **scenarios** for the **same** architecture, ordered **high → mid → low** estimate.
-- **Premium** — _Highest resilience / highest monthly estimate in this model_
-- **Balanced** — _Default scenario; compare GCP to this first_
-- **Optimized** — _Lower monthly estimate; reservations / Spot / storage trade-offs assumed_
+- The three AWS monthly totals are **pricing scenarios** for the **same** architecture, ordered **high → mid → low** estimate — never different builds.
+- **Premium** — _Balanced plus the Multi-AZ / HA uplift_
+- **Balanced** — _Right-sized design at on-demand rates; compare GCP to this row first_
+- **Optimized** — _Balanced with a commitment discount on RI/SP-eligible lines_
 - **Terraform:** The `terraform/` directory (when present) implements **one** stack, aligned with the **Balanced** scenario. **Premium** and **Optimized** are not separate generated folders — see `terraform/README.md` and the `migration_summary` output in `outputs.tf`.
 
 Include a compact three-tier row or table if the executive report does, matching figures from `estimation-infra.json`.

@@ -101,8 +101,10 @@ _postconditions:
    represent is never modified, deleted, or archived by workshop re-entry.
 
    Reaching the Decision gate afterward with a stale execution pack still on
-   disk is fine: `validate-heroku-migration-report.py --mode decision`
-   determines "pre-execution" from `.phase-status.json`'s own
+   disk is fine: the Decision gate's two-command validation
+   (`$PLUGIN_ROOT/scripts/validate-migration-report.py --profile heroku --mode decision`
+   plus `<SKILL_BASE>/scripts/validate-heroku-migration-report.py --mode decision`,
+   both `REPORT_OK`) determines "pre-execution" from `.phase-status.json`'s own
    `phases.generate` value (reset to `"pending"` by this guard above), not
    from whether `terraform/`/`generation-*.json` happen to exist on disk —
    see that validator's decision-mode check. A prior cycle's execution pack

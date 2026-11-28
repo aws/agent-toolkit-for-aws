@@ -8,9 +8,9 @@ Proceed with a phased migration on the Balanced cost scenario once the availabil
 
 | Tier                                         | Est. Monthly AWS |
 | -------------------------------------------- | ---------------- |
-| Premium                                      | $212/mo          |
+| Premium                                      | $167/mo          |
 | **Balanced** (compare GCP to this row first) | **$155/mo**      |
-| Optimized                                    | $118/mo          |
+| Optimized                                    | $140/mo          |
 
 GCP baseline: estimated from resource configs (±20–30%, standing charges only). The stated $1K–$5K/mo spend band measures the whole bill and is not directly comparable.
 

@@ -1,32 +1,15 @@
-# Report Decision Core (shared renderer spec)
+# Report Decision Core — Heroku layer
 
-The `decision-summary` / `decision-basis` / `exec-costs` / `developer-workflow` /
-`what-if-scenarios` / `next-steps` sections below are the **decision core** — the single source of
-truth for verdict, cost, and next-step rendering. Two consumers load this
-file; the content rules are identical in both:
+## Load order
 
-| Mode         | Loaded by                                      | Output                                                                                      |
-| ------------ | ---------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| **decision** | `estimate-assemble.md` Decision gate, choice A | Standalone `decision-report.html` + `DECISION.md` — decision core only, CTA footer          |
-| **full**     | `generate-report.md` Step 2                    | `migration-report.html` — the decision-core sections, plus the five appendices declared in `generate-report.md` |
-
-The full report and the decision report share the GCP visual shell defined in
-`generate-report.md` ("Visual shell"). The full report also has five
-appendices (`appendix-services`, `appendix-costs`, `appendix-config`,
-`appendix-security`, `appendix-assumptions`). **Decision mode omits that
-appendix block** — Generate has not run, so the security baseline and the
-artifact catalog are not execution output yet. This file is where that
-decision-mode override is declared.
-
-**Never patch one output into the other.** When Execute runs after a Decide
-run, `migration-report.html` is rendered **fresh from the artifacts** — do not
-extend, edit, or splice `decision-report.html`. All data needed for either
-output lives in the JSON artifacts (`estimation-infra.json`, `preferences.json`,
-`aws-design.json`, `scenarios/` when present).
+1. **Load `references/vendored/report/report-decision-core.md` first.** That vendored copy is the canonical, cloud-agnostic decision core — the section model and stable IDs, the decision-mode contract, verdict typography and metric hierarchy, cost labeling and the `data-cost-key` anchors, readability, CSS and accessibility, the draft footer. It lives inside this skill; read no other skill's file.
+2. **Then apply this file.** It supplies the values the canonical writes as `⟨parameter⟩`, the Heroku-only add-ons, and the declared exceptions that `SKILL_PROFILES["heroku"]` in the shared validator mirrors (three PaaS-justified appendix omissions; every vocabulary skip was converged). Where the canonical and `$PLUGIN_ROOT/scripts/validate-migration-report.py --profile heroku` disagree, the validator wins.
+3. **Section content rules live in `generate-report.md` Step 2, not here.** Render `decision-summary`, `exec-share`, `exec-services`, `exec-costs` / `exec-optimization` / `what-if-scenarios`, `developer-workflow`, `exec-timeline`, `exec-risks`, and `exec-assumptions` using the **exact same rules** as `generate-report.md` Step 2 — do not restate them; that file is the single source of truth for content rules in both modes. The full report and the decision report share the visual shell defined there ("Visual shell").
 
 **Decision mode is pre-execution for THIS decide-complete cycle — not "no
-generated files exist anywhere on disk."** `validate-heroku-migration-report.py
---mode decision` checks `.phase-status.json`'s `phases.generate` value
+generated files exist anywhere on disk."** The heroku add-on validator
+(`validate-heroku-migration-report.py --mode decision`) checks `.phase-status.json`'s
+`phases.generate` value
 (`"pending"` or absent passes; `"completed"`/`"in_progress"` fails), not
 whether `terraform/` or `generation-*.json` exist. A prior cycle's execution
 pack — including a customer's hand-edited `baseline.tf`/`variables.tf` or
@@ -34,11 +17,34 @@ their own `terraform.tfvars`/state — may legitimately still be present after a
 workshop reprice (`workshop.md` § Entry never deletes it) and coexists with a
 fresh decision without being touched or archived.
 
+## Parameters
+
+| Parameter                                                                                                                                                                                  | Heroku value                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ⟨source_cloud⟩                                                                                                                                                                             | Heroku                                                                                                                                                                                                                                                                                                                                                         |
+| ⟨modes_used⟩ / ⟨loaders⟩                                                                                                                                                                   | `decision` — `estimate-assemble.md` Decision gate, choice A (standalone `decision-report.html` + `DECISION.md`, decision core only, CTA footer). `full` — `generate-report.md` Step 2 (`migration-report.html`: the decision-core sections plus Appendices A, B, B.1, E, F, G, I and J declared there). No `ai_only` mode (no AI track).                                           |
+| ⟨required_ids⟩                                                                                                                                                                             | `SKILL_PROFILES["heroku"]` sets, passed as `--profile heroku` — listed in § Declared exceptions                                                                                                                                                                                                                                                                 |
+| ⟨current_monthly_path⟩                                                                                                                                                                     | `cost_comparison.heroku_monthly_baseline` — when the estimate carries it, the validator requires `data-cost-key="current_monthly"` on the rendered Heroku baseline inside `exec-costs`, in both modes, alongside `aws_monthly_balanced`                                                                                                                       |
+| ⟨ai_spend_key⟩                                                                                                                                                                             | none — no AI track, so `exec-tco` is never rendered (declared omission)                                                                                                                                                                                                                                                                                        |
+| ⟨baseline_label_table⟩                                                                                                                                                                     | `generate-report.md` Step 2, `exec-costs` row — the `current_costs.baseline_note` caveat for any derived (not invoiced) source, and the no-baseline variant when `current_costs.source` is `"unavailable"`                                                                                                                                                       |
+| ⟨service_mapping_table⟩                                                                                                                                                                    | none declared — no Operational Changes section; `developer-workflow` carries the what-stays / what-changes / what-you-build content instead (add-on below)                                                                                                                                                                                                       |
+| ⟨activate_status_path⟩ / ⟨activate_copy⟩                                                                                                                                                   | `preferences.json` → `global.startup_program_status` (Clarify Q17); copy in § Startup credits callout below                                                                                                                                                                                                                                                      |
+| ⟨decision_cta_text⟩ / ⟨decision_md_extras⟩                                                                                                                                                 | § Decision CTA and `DECISION.md` below                                                                                                                                                                                                                                                                                                                         |
+| ⟨validator_invocation⟩                                                                                                                                                                     | § Validator invocation below (two commands)                                                                                                                                                                                                                                                                                                                    |
+| ⟨tier_subtitles⟩ / ⟨tier_semantics⟩                                                                                                                                                         | Canonical default subtitles. Key mapping only: `projected_costs.aws_monthly_premium` / `aws_monthly_balanced` / `aws_monthly_optimized`; per line `projected_costs.breakdown.<line>.premium` / `.mid` / `.low` (`mid` = Balanced); `cost_comparison.option_a_premium` / `option_b_balanced` / `option_c_optimized`; derivation notes in `projected_costs._premium_basis` / `_optimized_basis`. The definitions are the canonical's.                                            |
+| ⟨complexity_source⟩, ⟨confidence_source⟩, ⟨key_decisions_source⟩, ⟨duration_driver_source⟩ / ⟨stage_sequence_source⟩, ⟨fallback_chain⟩, ⟨risk_sources⟩                                       | `generate-report.md` Step 2 section rules (`decision-summary`, `exec-costs`, `exec-timeline`, `exec-risks`, `exec-assumptions`). The migration shape and stage order (⟨duration_driver_source⟩ / ⟨stage_sequence_source⟩) come from `preferences.json` `global.migration_approach` — `full_cutover` → "Full cutover: one migration window", `interim_cutover_data_first` → "Data-first: interim cutover" — never from `recommendation.path_label`, which names the pricing scenario. Risk sources, in order and in both modes: `recommendation.conditions[]` / `would_flip_if[]`; `aws-design.json` `deferred[]`; preferences whose `sources.<QID>` is `default` on a cost- or HA-bearing question (Q3, Q4, Q6, Q6c, Q12c); full mode adds `generation-warnings.json` `warnings[]`. Never leave `exec-risks` empty                                                                                                                                                                                             |
+| ⟨defaulted_constraint_fields⟩ / ⟨extracted_from_wording⟩, ⟨provenance_fields⟩                                                                                                              | `sources.<QID> == "default"` in `preferences.json` (with `defaults_applied[]`; `compute_target.chosen_by == "system_recommended"` renders as derived, not defaulted) / "extracted from your Heroku inventory" / `pricing_source.status` + `pricing_source.message` + `accuracy_confidence` — rendered in `exec-assumptions` per `generate-report.md` Step 2                                                                                                                                                                                                                                      |
+| ⟨stack_overview_filter⟩                                                                                                                                                                    | every `aws-design.json` `services[]` entry (one row: Heroku app · Heroku primitive from `source_resource_id` · AWS target); `deferred[]` entries listed separately as "no AWS mapping selected"; count line = `services.length`                                                                                                                                                                                                                                                            |
+| ⟨how_we_chose_vocabulary_ref⟩                                                                                                                                                              | n/a — no Recommended AWS Architecture table in the exec block; targets are explained in `developer-workflow` and `appendix-services`                                                                                                                                                                                                                             |
+| ⟨ri_sp_eligibility_ref⟩                                                                                                                                                                    | `references/vendored/estimate/ri-sp-eligibility.md`                                                                                                                                                                                                                                             |
+| ⟨reference_fixture⟩                                                                                                                                                                        | `fixtures/heroku-decision-gate/after-decide-complete/decision-report.html` (decision mode) and `fixtures/heroku-generate/after-generate/migration-report.html` (full mode), both at the plugin root; in a skill-only package the in-skill reference is the visual shell in `generate-report.md`                                                                                                                                                                                                                                                                         |
+| ⟨deferred_analytics_example⟩                                                                                                                                                               | none — Heroku has no analytics service; deferred items are add-ons (`deferred[]`), surfaced in `developer-workflow`                                                                                                                                                                                                                                              |
+| ⟨spend_fields⟩                                                                                                                                                                             | Heroku spend, the AWS estimate, and the Q16 contract — the tier comes from Q17 only                                                                                                                                                                                                                                                                             |
+| ⟨fill_in_checklist_name⟩                                                                                                                                                                   | "checklist in MIGRATION_GUIDE.md"                                                                                                                                                                                                                                                                                                                              |
+
 ## Startup credits callout (both modes)
 
-`preferences.json` `global.startup_program_status` (Clarify Q17) drives one 💡
-callout in `decision-summary`. It is rendered in **both** modes — the credits
-decision belongs at the decision moment, not only after Generate.
+`preferences.json` `global.startup_program_status` (Clarify Q17) drives one 💡 callout in `decision-summary`. It is rendered in **both** modes — the credits decision belongs at the decision moment, not only after Generate. The canonical rules (always a callout, never a metric card; apply link required inside `decision-summary`; never infer the tier from spend) apply unchanged; the copy and the Heroku extras are:
 
 | `startup_program_status` | `decision-summary` copy |
 | ------------------------ | ----------------------- |
@@ -47,105 +53,52 @@ decision belongs at the decision moment, not only after Generate.
 | `has_credits`            | Note that Activate credits are already on the account and apply to the new AWS charges; **no "apply for" language** |
 | `unknown` or absent      | **Neutral only:** e.g. "Review AWS Activate credits tiers (Founders for self-funded startups, Portfolio for VC- or accelerator-backed ones) — funding stage not confirmed in Clarify." **Do not** write "eligible for Founders", "your status: eligible_*", or any tier dollar amount ($5K / $200K) |
 
-Rules:
+- Render it as a `<div class="callout callout-info">` (pale blue, see the visual shell) inside `decision-summary`, after the cost one-liner, with the apply link **inside the callout**. The heroku add-on's tier and apply-language rules read **only** this `.callout-info` fragment, so cost lines elsewhere in `decision-summary` may carry any figure. The shared validator (`--profile heroku`) fails a `decision-summary` that names Activate without the link, in both modes.
+- **Eligibility, one line:** Pre-Series B, founded in the last 10 years, AWS account on the Paid Tier plan, new to Activate or requesting more than before.
+- **Not retroactive.** When the status is not `has_credits`, say that credits apply only to charges after approval, so the founder applies before `terraform apply`. In full mode, also add one item to the decision-summary "Next steps" list: "Apply for AWS Activate credits before `terraform apply`" (omit for `has_credits`).
+- The RI/Savings Plan caveat under Appendix B.1 (`appendix-optimization`: "Activate credits don't cover RI/Savings Plan upfront costs") is unchanged and separate from this callout.
+- `DECISION.md` carries the same callout as one Markdown paragraph (💡 lead, same wording rules, Markdown apply link) directly under the cost line.
+- The Decision gate's "See your AWS credits" web handoff (upload `plan.json` to AWS Startups Migrate) is a different program and stays as is; this callout does not replace it.
 
-- **Always a 💡 callout, never a metric card.** A credit offer is a call-to-action
-  with a link, not a measurement; a card in `.metrics` gives it false equivalence
-  with the run rate. Render it as a `<div class="callout callout-info">` (pale blue,
-  see the visual shell) inside `decision-summary`, after the cost one-liner.
-- **Apply link (required).** Whenever `decision-summary`, `next-steps`, or
-  `DECISION.md` mentions AWS Activate, include a clickable link to the official
-  apply page: `<a href="https://aws.amazon.com/startups/credits/">AWS Activate
-  credits</a>` (HTML) / `[AWS Activate credits](https://aws.amazon.com/startups/credits/)`
-  (Markdown). The link goes **inside the callout**, so the action stays attached
-  to the benefit. `validate-heroku-migration-report.py` fails a `decision-summary`
-  that names Activate without this link, in both modes.
-  The validator's tier and apply-language rules read **only** this `.callout-info`
-  fragment, so cost lines elsewhere in `decision-summary` may carry any figure.
-- **Eligibility, one line:** Pre-Series B, founded in the last 10 years, AWS
-  account on the Paid Tier plan, new to Activate or requesting more than before.
-- **Do not infer the tier** from Heroku spend, the AWS estimate, or the Q16
-  contract. The tier comes from Q17 only.
-- **Not retroactive.** When the status is not `has_credits`, say that credits
-  apply only to charges after approval, so the founder applies before
-  `terraform apply`. In full mode, also add one `next-steps` item: "Apply for AWS
-  Activate credits before `terraform apply`" (omit for `has_credits`).
-- The RI/Savings Plan caveat under `cost-optimization` ("Activate credits don't
-  cover RI/Savings Plan upfront costs") is unchanged and separate from this callout.
-- `DECISION.md` carries the same callout as one Markdown paragraph (💡 lead,
-  same wording rules, Markdown apply link) directly under the cost line.
-- The Decision gate's "See your AWS credits" web handoff (upload `plan.json` to
-  AWS Startups Migrate) is a different program and stays as is; this callout
-  does not replace it.
+## Decision CTA and `DECISION.md`
 
-## Decision-mode specifics
+- **`decision-cta` (required, decision mode only):** `<section id="decision-cta">` — "**Ready to execute?** Say \"generate the Terraform and migration scripts\" and I'll produce the full execution pack (Terraform, migration scripts, MIGRATION_GUIDE.md) from this same analysis." Plus the canonical fixed line: "This decision report was generated without execution artifacts; the full migration report replaces it if you proceed." Decision mode renders no "Next steps" list (the one-sentence next action in `decision-summary` stays); full mode renders the decision-summary `<h3>Next steps</h3><ol class="compact">` from `generate-report.md` instead and never renders `decision-cta`.
+- **`DECISION.md` extras:** beyond the canonical parts (verdict headline, the one-sentence `Recommendation:` paragraph that twins the `<div class="verdict">` callout, cost line/table, "Migrate if" / "Stay entirely if" lists from `recommendation.migrate_if` / `stay_if`, timeline shape and drivers, `would_flip_if[]` when present, CTA line), carry the current-stack table (`exec-services` twin), the Top risks table (Risk · Impact · Likelihood · Mitigation, same rows as `exec-risks`), the assumptions block (`exec-assumptions` twin: defaults table or the nothing-assumed line, confidence line, pricing provenance), the Activate credits paragraph (§ Startup credits callout), the same CFO paragraph under a "Share with your CFO" heading, and the developer-workflow table and its closing paragraph(s) as a Markdown table under a "Developer workflow" heading (same pre-execution wording as the HTML). No HTML tags.
 
-- **HTML shell:** same inline-CSS `<head>` as the full report
-  (`generate-report.md` Step 2 "Visual shell"), title "Heroku to AWS
-  Migration Assessment — Decision Report". Body order: `decision-summary`,
-  then `<nav class="toc">`, then `exec-share`, then `decision-basis` (when
-  present), `exec-costs` →
-  `developer-workflow`, then `exec-timeline`, `what-if-scenarios` (when
-  present), and `decision-cta` (decision-mode only; it replaces
-  `next-steps`). Do not render `.appendix-header` or any `appendix-*` section.
-- **Required section IDs in decision mode:** `decision-summary`, `exec-share`,
-  `exec-timeline`, `exec-costs` (+ conditional `decision-basis`,
-  `what-if-scenarios` per their triggers in `generate-report.md`).
-  `developer-workflow` is always rendered (the
-  `decision-summary` pointer for a `critical` DX answer links to it, so the
-  link must resolve) but is not in the validator's required set.
-- **Section content:** render `decision-summary`, `exec-share`, `decision-basis`,
-  `exec-costs` / `what-if-scenarios`, `developer-workflow`, and `exec-timeline` using the
-  **exact same rules** as `generate-report.md` Step 2 — do not restate them
-  here; that file is the single source of truth for content rules in both
-  modes.
-- **`developer-workflow` pre-execution wording (decision-mode override):**
-  nothing has been generated yet, so the status word **Generated** reads
-  **Will be generated**, and "is generated" / "the generated Terraform" in a
-  cell read "will be generated" / "the Terraform that Generate will produce".
-  **Covered**, **Build** and **No equivalent** are unchanged — they do not
-  depend on Generate having run. The status rules themselves are the same in
-  both modes: the per-target one-off-command and log-tailing rules (EKS apps
-  get `kubectl exec` / `kubectl run` / a Kubernetes Job and `kubectl logs -f`,
-  with CloudWatch tailing **Build** because log forwarding is additional setup;
-  never ECS Exec, `eb ssh` or run-task), the per-target config-vars rules (EB / Fargate / EKS each have
-  their own rule — EKS apps get the Kubernetes Secret + `secretKeyRef` wording,
-  never the Fargate task-definition wording) and the Scheduler row's status,
-  which is **computed** from `aws-design.json` `services[]` vs `deferred[]`
-  (both exist at the Decision gate) and never asserted — a deferred
-  `advanced-scheduler` renders as **Build** with its deferred count in
-  `decision-report.html` and `DECISION.md` exactly as in the full report. The
-  decision report shows the user what Generate will and will not emit before
-  they commit to it.
-- **`decision-cta` (required, replaces `next-steps` in decision mode):**
-  `<section id="decision-cta">` — "**Ready to execute?** Say \"generate the
-  Terraform and migration scripts\" and I'll produce the full execution pack
-  (Terraform, migration scripts, MIGRATION_GUIDE.md) from this same analysis."
-  Plus one line: "This decision report was generated without execution
-  artifacts; the full migration report replaces it if you proceed."
-- **`DECISION.md` (required twin):** same content as the HTML, as plain
-  Markdown (Slack/GitHub-friendly): verdict headline, the Activate credits paragraph (§ Startup credits callout), the same CFO paragraph
-  under a "Share with your CFO" heading, cost line/table, the timeline
-  planning band, `would_flip_if[]` when present, the developer-workflow
-  table and its closing paragraph(s) as a Markdown table under a "Developer
-  workflow" heading (same pre-execution wording as the HTML), the CTA line.
-  No HTML tags.
-- **Validation:** run
-  `python3 "<SKILL_BASE>/scripts/validate-heroku-migration-report.py" "$MIGRATION_DIR/decision-report.html" --mode decision --migration-dir "$MIGRATION_DIR"`
-  (absolute paths — cwd must not be load-bearing; `--migration-dir` is required so the
-  decision-mode pre-execution checks run) and fix failures before presenting.
-- **Cost labeling, reader vocabulary:** unchanged from `generate-report.md` —
-  every dollar figure is "estimated monthly"; no `*.json` filenames or
-  `aws_*.` resource IDs in `decision-summary` / `exec-costs` /
-  `what-if-scenarios`. The scope-matched block's two variants (zero matched
-  baseline → "(percentage not applicable)"; `attribution == "incomplete"` →
-  the provisional label naming the unattributed add-ons, never
-  "decision-grade") and its `heroku_monthly_like_for_like` anchor apply in
-  decision mode exactly as in `generate-report.md` Step 1; the validator
-  checks the anchor in both modes.
+## Validator invocation
 
-## Full-mode specifics
+Two commands, both must pass. The shared validator carries the structure and content standard under the heroku profile; the heroku add-on carries the heroku-only rules (`heroku_monthly_like_for_like` anchor, Activate status rules, `exec-assumptions` when the estimate declares `decision_basis`, a populated row or the exact no-eligible-commitment sentence in `exec-optimization` and `appendix-optimization` in full mode, the `.phase-status.json` pre-execution check, no `decision-cta` in full mode, no `.appendix-header` element in decision mode, and no retired section ID in either mode — `next-steps`, `cost-optimization`, `decision-basis` fail with a message naming their replacement).
 
-`migration-report.html` uses `next-steps` instead of `decision-cta`, and it
-adds the appendix block from `generate-report.md`. Decision mode does not
-render that block.
+```bash
+python3 "$PLUGIN_ROOT/scripts/validate-migration-report.py" \
+  "$MIGRATION_DIR/decision-report.html" \
+  --profile heroku \
+  --mode decision \
+  --estimation-infra "$MIGRATION_DIR/estimation-infra.json" \
+  --migration-dir "$MIGRATION_DIR"
+python3 "<SKILL_BASE>/scripts/validate-heroku-migration-report.py" \
+  "$MIGRATION_DIR/decision-report.html" \
+  --mode decision \
+  --migration-dir "$MIGRATION_DIR"
+```
+
+Both must print `REPORT_OK` and exit 0. Either `REPORT_FAIL` blocks; a validator that does not run (non-0/1 exit, missing `python3`) is not a pass. There is no skip path. Absolute paths — cwd must not be load-bearing; `--migration-dir` is required so the add-on's decision-mode pre-execution checks run. Full mode runs the same pair against `migration-report.html` with `--mode full`. Fix failures before presenting.
+
+## Heroku add-ons
+
+- **Decision-mode body order:** `decision-summary` (verdict, metadata line, confidence pointer to `#exec-assumptions`, metrics, Activate callout, "Migrate if" / "Stay entirely if", "What would flip this"), then `<nav class="toc">`, then `exec-share`, `exec-services`, `exec-costs` → `developer-workflow` (with `exec-optimization` between them only when `optimization_opportunities[]` is non-empty), then `exec-timeline`, `what-if-scenarios` (when present), `exec-risks`, `exec-assumptions`, and `decision-cta` (decision-mode only). Do not render the `.appendix-header` element or any `appendix-*` section (the `.appendix-header` CSS rule stays in the shared stylesheet, per the canonical CSS contract). `developer-workflow` is required in both modes — the `decision-summary` pointer for a `critical` DX answer links to it, so the link must resolve.
+- **`developer-workflow` pre-execution wording (decision-mode override):** nothing has been generated yet, so the status word **Generated** reads **Will be generated**, and "is generated" / "the generated Terraform" in a cell read "will be generated" / "the Terraform that Generate will produce". **Covered**, **Build** and **No equivalent** are unchanged — they do not depend on Generate having run. The status rules themselves are the same in both modes: the per-target one-off-command and log-tailing rules (EKS apps get `kubectl exec` / `kubectl run` / a Kubernetes Job and `kubectl logs -f`, with CloudWatch tailing **Build** because log forwarding is additional setup; never ECS Exec, `eb ssh` or run-task), the per-target config-vars rules (EB / Fargate / EKS each have their own rule — EKS apps get the Kubernetes Secret + `secretKeyRef` wording, never the Fargate task-definition wording) and the Scheduler row's status, which is **computed** from `aws-design.json` `services[]` vs `deferred[]` (both exist at the Decision gate) and never asserted — a deferred `advanced-scheduler` renders as **Build** with its deferred count in `decision-report.html` and `DECISION.md` exactly as in the full report. The decision report shows the user what Generate will and will not emit before they commit to it.
+- **Scope-matched cost block and `heroku_monthly_like_for_like` anchor:** the scope-matched block's two variants (zero matched baseline → "(percentage not applicable)"; `attribution == "incomplete"` → the provisional label naming the unattributed add-ons, never "decision-grade") and its `heroku_monthly_like_for_like` anchor apply in decision mode exactly as in `generate-report.md` Step 1; the heroku add-on checks that anchor in both modes. Reader vocabulary is canonical: every dollar figure is "estimated monthly"; no `*.json` filenames or `aws_*.` resource IDs in `decision-summary` / `exec-costs` / `what-if-scenarios`.
+- **Full mode:** `migration-report.html` renders the "Next steps" `<ol class="compact">` inside `decision-summary` instead of `decision-cta`, always renders `exec-optimization` after `exec-costs`, and adds the appendix block from `generate-report.md` (A, B, B.1, E, F, G, I, J). Decision mode does not render that block.
+
+## Declared exceptions (`SKILL_PROFILES["heroku"]`)
+
+This skill's report adds PaaS-specific sections to the default contract and omits three appendices a PaaS source cannot fill, so it declares a profile here and in `SKILL_PROFILES["heroku"]` of `$PLUGIN_ROOT/scripts/validate-migration-report.py`, and passes `--profile heroku` on every run. The two must agree.
+
+- **Required sections, `full`:** `decision-summary`, `exec-share`, `exec-services`, `exec-costs`, `exec-optimization`, `developer-workflow`, `exec-timeline`, `exec-risks`, `exec-assumptions`, `appendix-services`, `appendix-costs`, `appendix-optimization`, `appendix-artifacts`, `appendix-config`, `appendix-security`, `appendix-assumptions`, `appendix-glossary`. `exec-optimization` and `appendix-optimization` are heroku add-ons here: always rendered in full mode, with the exact no-eligible-commitment sentence when `optimization_opportunities[]` is empty.
+- **Required sections, `decision`:** `decision-summary`, `exec-share`, `exec-services`, `exec-costs`, `developer-workflow`, `exec-timeline`, `exec-risks`, `exec-assumptions`, `decision-cta` (+ conditional `exec-optimization` and `what-if-scenarios` per their default triggers). The profile requires a TOC link to each.
+- **`not_required` (validator reasons):** `appendix-steps` — cutover procedure stays in MIGRATION_GUIDE.md; `appendix-security-gap` — no source-cloud security posture to gap-compare on a PaaS; `appendix-ai` — heroku-to-aws has no AI track.
+- **`skip`:** none — every vocabulary skip (glossary, "Stay entirely if" heading, optimization section IDs, `appendix-config` columns) was converged in this change; the default checks run in full under `--profile heroku`.
+- **Prose-only declarations (not enforced by the validator):** `exec-tco` is never rendered (no AI track); no Operational Changes section (`developer-workflow` carries that content); `appendix-security` columns are Control · Setting · What it does · Threat mitigated with no cost or Heroku-equivalent column; `appendix-assumptions` renders the `decision_basis` lists instead of the pricing-confidence table.
+
+Everything the canonical checks under this profile applies in full: exactly one `<h1>`, `decision-summary` before `<nav class="toc">`, every `<th>` with `scope`, every `<table>` with a `<caption>`, the Balanced figure as a `.metric-hero` card, exactly one "Stay entirely if" heading when `stay_if` is non-empty, the "What would flip this" list rendering every `would_flip_if[]` entry, `exec-risks` as a table placed before `exec-assumptions`, no quoted week range anywhere (durations are uncalibrated — give shape, stage order and drivers instead), whole-dollar monthly figures, and the "draft for review" footer.

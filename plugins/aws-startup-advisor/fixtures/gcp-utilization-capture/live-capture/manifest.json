@@ -29,25 +29,25 @@
       "command": "curl ... https://monitoring.googleapis.com/v3/projects/acme-prod/timeSeries filter=metric.type=\"compute.googleapis.com/instance/cpu/utilization\" aggregation.alignmentPeriod=3600s aggregation.perSeriesAligner=ALIGN_MEAN pageSize=1000",
       "file": "monitoring-gce-cpu-ALIGN_MEAN-p1.json",
       "status": "ok",
-      "note": "2 pages (monitoring-gce-cpu-ALIGN_MEAN-p1.json .. monitoring-gce-cpu-ALIGN_MEAN-p2.json), 150567 bytes"
+      "note": "2 pages (monitoring-gce-cpu-ALIGN_MEAN-p1.json .. monitoring-gce-cpu-ALIGN_MEAN-p2.json), 170323 bytes"
     },
     {
       "command": "curl ... https://monitoring.googleapis.com/v3/projects/acme-prod/timeSeries filter=metric.type=\"compute.googleapis.com/instance/cpu/utilization\" aggregation.alignmentPeriod=3600s aggregation.perSeriesAligner=ALIGN_MAX pageSize=1000",
       "file": "monitoring-gce-cpu-ALIGN_MAX-p1.json",
       "status": "ok",
-      "note": "1 page (monitoring-gce-cpu-ALIGN_MAX-p1.json), 150239 bytes"
+      "note": "1 page (monitoring-gce-cpu-ALIGN_MAX-p1.json), 169992 bytes"
     },
     {
       "command": "curl ... https://monitoring.googleapis.com/v3/projects/acme-prod/timeSeries filter=metric.type=\"agent.googleapis.com/memory/percent_used\" aggregation.alignmentPeriod=3600s aggregation.perSeriesAligner=ALIGN_MEAN pageSize=1000",
       "file": "monitoring-gce-mem-ALIGN_MEAN-p1.json",
       "status": "ok",
-      "note": "1 page (monitoring-gce-mem-ALIGN_MEAN-p1.json), 210485 bytes"
+      "note": "1 page (monitoring-gce-mem-ALIGN_MEAN-p1.json), 230370 bytes"
     },
     {
       "command": "curl ... https://monitoring.googleapis.com/v3/projects/acme-prod/timeSeries filter=metric.type=\"agent.googleapis.com/memory/percent_used\" aggregation.alignmentPeriod=3600s aggregation.perSeriesAligner=ALIGN_MAX pageSize=1000",
       "file": "monitoring-gce-mem-ALIGN_MAX-p1.json",
       "status": "ok",
-      "note": "1 page (monitoring-gce-mem-ALIGN_MAX-p1.json), 210565 bytes"
+      "note": "1 page (monitoring-gce-mem-ALIGN_MAX-p1.json), 230462 bytes"
     },
     {
       "command": "curl ... https://monitoring.googleapis.com/v3/projects/acme-prod/timeSeries filter=metric.type=\"cloudsql.googleapis.com/database/cpu/utilization\" aggregation.alignmentPeriod=3600s aggregation.perSeriesAligner=ALIGN_MEAN pageSize=1000",

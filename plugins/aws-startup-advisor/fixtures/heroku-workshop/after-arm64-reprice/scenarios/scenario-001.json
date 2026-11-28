@@ -7,9 +7,9 @@
   "preferences_fingerprint": "68b3a7da27ff04dce84bdd67675712e257c11eedb15247cfc01adc9a0d64ab77",
   "aws_design_fingerprint": "77923e75cfb1871763121d9d0c168e2b01952509590aea9372f2051a21b5aafd",
   "estimation_summary": {
-    "aws_monthly_premium": 120.0,
+    "aws_monthly_premium": 95.0,
     "aws_monthly_balanced": 95.0,
-    "aws_monthly_optimized": 78.0,
+    "aws_monthly_optimized": 90.0,
     "complexity_tier": "small",
     "pricing_source": "cached",
     "region_note": null

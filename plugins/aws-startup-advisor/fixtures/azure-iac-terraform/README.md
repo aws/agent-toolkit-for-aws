@@ -68,6 +68,9 @@ sentinel makes the assertion unambiguous.
 | `expected-clarify-fast-path.json` | pinned fast-path Clarify facts: the provenance lists, the unknown-size `db_cutover` fallback, the isolation default recorded-not-asked                                                             |
 | `check_expected_clarify_fast_path.py` | the fast-path Clarify oracle (wrapper over `check_expected_clarify.py`)                                                                                                                        |
 | `after-design/`                   | GOLDEN Design output — a **completing** design, 16 mapped + 1 deferred. From capability run 4                                                                                                      |
+| `after-generate/`                 | **HAND-AUTHORED** Generate report — `migration-report.html` rendered from the `after-design/` and `after-estimate/` goldens, exit 0 under `scripts/validate-migration-report.py`. See "The Generate report oracle" below                            |
+| `expected-generate.json`          | pinned Generate report facts: both cost anchors, the stable appendix lettering, Appendices C/G/H/I content, the accounting split                                                                     |
+| `check_expected_generate.py`      | the Generate report oracle (runs the shared validator, then pins the Azure-specific facts)                                                                                                            |
 
 Both asserters are **golden**: each is expected to exit 0 against its committed tree,
 so running them is how you confirm a change has not moved the pinned facts.
@@ -175,6 +178,44 @@ And four rubric outcomes where the wrong answer is the _tempting_ one:
 | Y1 consumption plan hosting a function app     | Elastic Beanstalk   | **Lambda**            | Y1 is consumption — there is no worker capacity to size                                                                                                                                                                                                             |
 | Windows VM                                     | Fargate             | **EC2**               | containerising a Windows VM is a re-architecture nobody asked for                                                                                                                                                                                                   |
 | Postgres with `ZoneRedundant` HA on the source | Aurora              | **RDS single-AZ**     | **the most valuable assertion here.** No availability answer was recorded. The source says what they _bought_, not what they _need_; inferring Aurora from silence inflates the estimate with no visible cause. The source HA posture surfaces as a FINDING instead |
+
+## The Generate report oracle
+
+`after-generate/migration-report.html` is the report the azure-to-aws Generate phase is
+specified to produce from the `after-design/` and `after-estimate/` goldens. It is
+**hand-authored**, not captured from a run, for the same reason `after-clarify-fast-path/`
+is: it pins a contract rather than traces an algorithm. Its Terraform-validation row is
+therefore illustrative — no Terraform was applied — and it says so in the report.
+
+It exists because the Azure report spec drifted from the GCP one in four ways that the
+shared validator could not see:
+
+- `current_costs.azure_monthly` was not a path the validator mapped, so the
+  `current_monthly` anchor was never asserted for an Azure report and a wrong current-spend
+  figure passed `REPORT_OK`. The validator now resolves that anchor from the first present of
+  `current_costs.gcp_monthly` and `current_costs.azure_monthly`; this fixture is the report
+  that proves the Azure path, and `tests/test_azure_generate_report_fixture.py` proves the
+  negative (a `$3,900` figure against a `4200` estimate fails with a cost-figure-mismatch
+  line).
+- The Step 3.75 lettering table promised `appendix-steps` (C), `appendix-security` (G),
+  `appendix-security-gap` (H) and `appendix-assumptions` (I) but the spec had no build
+  instructions for them. Step 3.8 now has; this report carries all four, and the oracle pins
+  the content each one must have.
+- The letters must not slide when a conditional section is absent. This run has no AI
+  track, so there is no Appendix D, and E–J keep their letters in both the `<h2>` and the TOC.
+- The Step 3.5 accounting split (30 discovered · 16 mapped · 17 accounted) is stated
+  verbatim so the discovered count and the plan headline cannot be conflated.
+
+```sh
+python3 check_expected_generate.py after-generate
+```
+
+The oracle runs `scripts/validate-migration-report.py` as a subprocess with the corpus's
+own estimate and design (`--estimation-infra`, `--aws-design`, `--migration-dir`) and
+requires `REPORT_OK`, then checks `expected-generate.json`. It never imports a sibling
+module, so it writes no `__pycache__` under `fixtures/`. The GCP structural reference
+(`fixtures/migration-report-reference.html`) remains the worked example for the CSS shell;
+do not copy its dollar figures or its `0611-0606` canary into this report.
 
 ## Scope
 

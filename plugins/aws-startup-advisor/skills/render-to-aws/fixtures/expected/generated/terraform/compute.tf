@@ -45,8 +45,8 @@ resource "aws_ecs_task_definition" "web" {
   family                   = "${local.name_prefix}-web"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = 1024
-  memory                   = 2048
+  cpu                      = 512
+  memory                   = 1024
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
   container_definitions = jsonencode([{
@@ -104,8 +104,8 @@ resource "aws_ecs_task_definition" "private" {
   family                   = "${local.name_prefix}-private"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = 512
-  memory                   = 1024
+  cpu                      = 256
+  memory                   = 512
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
   container_definitions = jsonencode([{
@@ -175,8 +175,8 @@ resource "aws_ecs_task_definition" "worker" {
   family                   = "${local.name_prefix}-worker"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = 512
-  memory                   = 1024
+  cpu                      = 256
+  memory                   = 512
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
   container_definitions = jsonencode([{
@@ -221,8 +221,8 @@ resource "aws_ecs_task_definition" "cron" {
   family                   = "${local.name_prefix}-cron"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = 512
-  memory                   = 1024
+  cpu                      = 256
+  memory                   = 512
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
   container_definitions = jsonencode([{

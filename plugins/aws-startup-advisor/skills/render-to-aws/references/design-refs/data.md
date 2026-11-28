@@ -11,6 +11,7 @@ Candidate set: `Amazon RDS for PostgreSQL`, `Amazon Aurora PostgreSQL`, `Self-ma
 5. Clarify inputs `database.extensions` (rule 1) and `database.reader_topology` (rule 2) are decisive when present; `reader_topology` also sets the reader count carried into Estimate. When `data.regulated_data` is true for a store (PostgreSQL, Key Value, or persistent disk), its mapping records `customer_managed_key: true` in `aws_config` (the field `kms.tf` gates on), keeps backups in-Region only and rejects cross-Region replicas; the same field is recorded when `global.compliance` requires a customer-managed key; the Key Value and persistent disk selectors apply the same rule.
 6. If the required facts for rules 1–4 are missing, return only those question IDs to Clarify.
 7. If both remain valid with no demonstrated differentiator, select RDS as the lower-change startup default. Record this default and reject Aurora with the trigger that would have selected it.
+8. Size the instance class from `knowledge/design/postgres-rds-sizing.json` and record `aws_config.sizing_provenance: "table"`. When the metrics window passes every threshold in `knowledge/estimate/rightsizing-thresholds.json` and CPU p95 is under the downsize limit, select the burstable class of equal vCPU and memory, recorded as `aws_config.instance_class` with `sizing_provenance: "measured"`; this right-sized class is the Balanced design the Terraform implements.
 
 The output has one target and records evidence, every rule evaluated/fired, questions/defaults, and both rejected candidates. It never says “RDS or Aurora.”
 
@@ -32,7 +33,7 @@ Candidate set: `Amazon ElastiCache for Valkey serverless`, `Amazon ElastiCache f
 2. Select MemoryDB only for an explicit active-active cross-Region write requirement or another demonstrated MemoryDB-specific durability outcome.
 3. Select ElastiCache Serverless when compatibility is established, demand is variable/unknown, serverless constraints fit, and persistence/eviction semantics are preserved.
 4. Select node-based ElastiCache when stable capacity, node-level control, reserved-node economics, or serverless incompatibility is established.
-5. If both ElastiCache modes fit and no differentiator exists, select node-based ElastiCache sized from the source memory plan as the capacity-preserving startup default; record the trigger for Serverless.
+5. If both ElastiCache modes fit and no differentiator exists, select node-based ElastiCache sized from the source memory plan plus headroom as the startup default (memory is capacity, not utilization, so the node is not right-sized below it) and record `aws_config.sizing_provenance: "table"`; record the trigger for Serverless.
 6. When `data.regulated_data` is true, the selected Key Value target records `customer_managed_key: true` (customer-managed KMS key for at-rest encryption and snapshots) and rejects cross-Region replication (no Global Datastore, no MemoryDB multi-Region).
 7. Missing role, persistence, eviction, compatibility, cross-Region, or sizing facts return to Clarify when they can change the winner. `key_value.migration_strategy` does not change the target; it selects the migration method written to Generate.
 

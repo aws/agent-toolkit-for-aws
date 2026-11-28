@@ -84,6 +84,18 @@ Generate is opt-in. The main window re-reads `.phase-status.json` immediately be
 
 Before the worker starts, the main window inspects the validated inventory's `discovery_sources`. If `render_blueprint` is absent, no Blueprint source or semantic evidence exists and this preflight is not applicable; continue Generate using the live/application/billing-backed inventory. If `render_blueprint` is present, the main window hashes the current regular, non-symlinked Blueprint bytes with SHA-256 and re-reads the consented semantic-validation evidence. Reuse is allowed only when all of these match the active discovery attempt: workspace ID, attempt ID, consent digest, Blueprint absolute source identity, source SHA-256, successful Render CLI validation status, and capture-manifest digest. If any field is absent, stale, or different, invalidate the evidence, disclose the exact read-only command, obtain renewed consent, and rerun the allowlisted `render blueprints validate` capture in the main window. A declined or failed revalidation halts Generate. The dispatched worker never invokes Render, validates the Blueprint, prompts, writes state, or emits `HANDOFF_OK`.
 
+## Main-window artifact pre-check
+
+Before the worker is dispatched, the main window validates the JSON artifacts the report is rendered from:
+
+```bash
+python3 "$PLUGIN_ROOT/scripts/validate-artifacts.py" \
+  --run-dir "$MIGRATION_DIR" \
+  --skill render-to-aws
+```
+
+Dispatch the worker only on exit `0` (`PASS`). On exit `1` (`FAIL`) surface every `ERROR` line to the user, emit `GATE_FAIL | phase=generate | fragment=artifacts-report | reason=artifact_contract`, name the phase that owns the failing artifact so the user can re-run it (for a missing `scenarios.premium`, `scenarios.balanced`, `scenarios.optimized`, `scenarios.like_for_like` or `rightsizing_delta` key, the estimate was written before the current tier semantics, for example with `scenarios.capacity_preserving` / `right_sized` and `delta_monthly_usd`: tell the user to re-run Design and then Estimate, because the Design sizing the new Estimate prices may have changed too), do **not** patch any artifact to pass validation, and do **not** dispatch the worker — so `migration-report.html` is never written. Any other exit code means the validator did not run (e.g. `python3` unavailable): tell the user the pre-report check was skipped and never record it as a pass. The dispatched worker never runs this check itself (`generate-artifacts-report.md` Step 0).
+
 ## Worker sequence
 
 1. Re-read and validate inventory, preferences, design, and estimate inputs.
@@ -94,6 +106,6 @@ Before the worker starts, the main window inspects the validated inventory's `di
 
 ## Main-window validation and completion
 
-After the worker returns, the main window performs every validation stage in `generate-assemble.md`, writes the single canonical `validation-report.json`, and evaluates this phase's postconditions. It may rename a failed report to `migration-report.incomplete.html`, but it never patches generated content to force a pass. Only after every gate passes does it write phase state, emit `HANDOFF_OK`, and advance to `complete`.
+After the worker returns, the main window performs every validation stage in `generate-assemble.md`, writes the single canonical `validation-report.json`, and evaluates this phase's postconditions. Stage 7 runs two report validators with absolute paths, in order: the plugin-root shared validator `$PLUGIN_ROOT/scripts/validate-migration-report.py` (structure, readability, accessibility, shared cost anchors) and the render-local `$SKILL_BASE/scripts/validate-render-migration-report.py` (render-specific sections, target rows, accounting, ledger). Both must print `REPORT_OK`; a failure from either renames the report to `migration-report.incomplete.html` and blocks completion. The main window never patches generated content to force a pass. Only after every gate passes does it write phase state, emit `HANDOFF_OK`, and advance to `complete`.
 
 There is no skip-and-complete path. `passed_degraded_offline` is limited to an identified provider-registry failure during `terraform init` (and the consequential inability to run provider-backed `terraform validate`); formatting, local syntax where available, policy, secret, JSON Schema, report, and accounting checks still must pass.

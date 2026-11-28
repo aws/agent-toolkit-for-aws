@@ -1,0 +1,36 @@
+{
+  "design_constraints": {
+    "target_region": {
+      "value": "us-east-1",
+      "chosen_by": "default",
+      "question_id": "Q1",
+      "prompt": "Where are your users located? (default applied)",
+      "design_consequence": "All resources deploy in us-east-1; Bedrock model availability checked for this region",
+      "source": "default:Q1"
+    },
+    "availability": {
+      "value": "single-az",
+      "chosen_by": "extracted",
+      "question_id": "Q6",
+      "prompt": "Detected: Cloud SQL ZONAL → single-AZ availability",
+      "design_consequence": "single-az drives RDS single-AZ vs Multi-AZ vs Aurora selection",
+      "source": "inventory:settings.availabilityType=ZONAL"
+    },
+    "cpu_architecture": {
+      "value": "graviton",
+      "chosen_by": "default",
+      "question_id": "Q11b",
+      "prompt": "All compute services are Graviton-ready (default applied)",
+      "design_consequence": "Graviton instance families for EC2 and RDS",
+      "source": "default:Q11b"
+    },
+    "cost_optimization": {
+      "value": "aggressive",
+      "chosen_by": "user",
+      "question_id": "Q-E0",
+      "prompt": "How aggressively should we right-size your AWS design versus your current capacity?",
+      "design_consequence": "aggressive: measured rule with no cap above the family minimum where the inventory carries utilization; web-steady exempted (known upcoming load change)"
+    }
+  },
+  "sizing_exemptions": ["1000000000000000001"]
+}

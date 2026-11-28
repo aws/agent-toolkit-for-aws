@@ -40,6 +40,9 @@ published Blueprint schema.
 | `estimate/estimation-infra.schema.json` | `skills/shared/estimate/estimation-infra.schema.json` |
 | `estimate/pricing-mode.md`              | `skills/shared/estimate/pricing-mode.md`              |
 | `estimate/ri-sp-eligibility.md`         | `skills/shared/estimate/ri-sp-eligibility.md`         |
+| `estimate/commitment-discount-ranges.json` | `skills/shared/estimate/commitment-discount-ranges.json` |
 | `pricing/aws-infra-pricing.json`        | `skills/shared/pricing/aws-infra-pricing.json`        |
 | `workshop/workshop-invariants.md`       | `skills/shared/workshop/workshop-invariants.md`       |
 | `migration/upfront-credits.md`          | `skills/shared/migration/upfront-credits.md`          |
+| `report/report-decision-core.md`        | `skills/shared/report/report-decision-core.md`        |
+| `report/report-appendix-skeleton.md`    | `skills/shared/report/report-appendix-skeleton.md`    |

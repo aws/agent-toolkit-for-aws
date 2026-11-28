@@ -110,9 +110,9 @@ After writing `estimation-infra.json`, present a concise summary to the user:
 1. **Pricing source and accuracy** — State cache age and accuracy range
 2. **Heroku baseline vs AWS projected** (balanced tier) — one-line comparison (if a baseline was determined, labeled with its source; include the derived-baseline caveat when the source is not billing data)
 3. **Three-tier table**: Premium, Balanced, Optimized with monthly totals
-   - Premium: _Highest resilience / highest monthly estimate_
-   - Balanced: _Default scenario; compare Heroku to this first_
-   - Optimized: _Lower estimate; reservations / Spot trade-offs assumed_
+   - Premium: _Balanced plus the Multi-AZ / HA uplift_
+   - Balanced: _Right-sized design at on-demand rates; compare Heroku to this row first_
+   - Optimized: _Balanced with a commitment discount on RI/SP-eligible lines_
    - One-line note: Three figures are pricing scenarios for the same architecture (not three Terraform stacks). Generated Terraform aligns with Balanced.
 4. **Per-service cost breakdown** (balanced tier, 1 line per service)
 5. **Migration complexity**: tier + timeline range
@@ -194,8 +194,9 @@ Phase 4 of 6 complete (Estimate). Remaining: Generate (+ optional Feedback).
 - Verdict: [outcome_label when recommendation.outcome exists; else path_label]
 - AWS estimate (Balanced): $[X]/mo · Your Heroku baseline: [figure, or "not
   established" when current_costs.source is unavailable]
-- Timeline if you execute: ~[N–M] weeks ([complexity_tier], from
-  references/vendored/estimate/complexity-tiers.json)
+- Timeline if you execute: [path_label] — [complexity_tier] complexity; stages and
+  duration drivers are in the decision report (no week figure: durations are
+  uncalibrated, and the report validator rejects a bare week range)
 
 #### Assumptions behind this number
 
@@ -388,13 +389,28 @@ restricted to the Terraform policy checker.
      `references/shared/report-decision-core.md` and render it in **decision**
      mode — write `$MIGRATION_DIR/decision-report.html` and
      `$MIGRATION_DIR/DECISION.md` per that file's decision-mode rules (no
-     appendices, no Terraform, CTA footer). Validate with
-     `python3 "<SKILL_BASE>/scripts/validate-heroku-migration-report.py" "$MIGRATION_DIR/decision-report.html" --mode decision --migration-dir "$MIGRATION_DIR"`
-     (absolute paths — cwd must not be load-bearing; `--migration-dir` is required
-     so the decision-mode pre-execution check — `.phase-status.json`'s
-     `phases.generate` must be `"pending"` or absent for THIS cycle, not raw
-     `terraform/` / `generation-*.json` absence; see `report-decision-core.md` —
-     actually runs) and fix failures before presenting.
+     appendices, no Terraform, CTA footer). Validate with both commands:
+
+     ```bash
+     python3 "$PLUGIN_ROOT/scripts/validate-migration-report.py" \
+       "$MIGRATION_DIR/decision-report.html" \
+       --profile heroku \
+       --mode decision \
+       --estimation-infra "$MIGRATION_DIR/estimation-infra.json" \
+       --migration-dir "$MIGRATION_DIR"
+     python3 "<SKILL_BASE>/scripts/validate-heroku-migration-report.py" \
+       "$MIGRATION_DIR/decision-report.html" \
+       --mode decision \
+       --migration-dir "$MIGRATION_DIR"
+     ```
+
+     Both must print `REPORT_OK` and exit 0; either `REPORT_FAIL` blocks, and a
+     validator that does not run is not a pass (no skip path). Absolute paths — cwd
+     must not be load-bearing; `--migration-dir` is required so the add-on's
+     decision-mode pre-execution check — `.phase-status.json`'s `phases.generate`
+     must be `"pending"` or absent for THIS cycle, not raw `terraform/` /
+     `generation-*.json` absence; see `report-decision-core.md` — actually runs.
+     Fix failures before presenting.
   2. Set `run_mode: "decide"` and `current_phase: "complete"` in
      `.phase-status.json` (`phases.generate` **stays** `"pending"` — this
      combination means "decision complete, execution available on request";

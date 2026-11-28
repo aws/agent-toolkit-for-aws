@@ -1,0 +1,52 @@
+{
+  "_comment": "Pinned facts for the azure-to-aws GENERATE report (migration-report.html) over the azure-iac-terraform corpus. Same selection rule as the other expected-*.json files: only facts where a plausible improvisation and the correct answer DIVERGE. The structural contract (section IDs, TOC, CSS shell, readability) is owned by scripts/validate-migration-report.py and is NOT re-described here; the asserter runs that validator and then pins the Azure-specific facts the validator either resolves from the estimate (the two cost anchors) or does not know about (appendix lettering, the four appendices this skill's spec had no build instructions for, the accounting split).",
+  "_not_asserted": "Prose quality, dollar figures other than the two anchored ones (tolerance-banded figures live in expected-estimate.json), the architecture diagram's content, the order of appendices beyond the artifacts-before-config rule.",
+  "report_file": "migration-report.html",
+  "estimation_relpath": "after-estimate/estimation-infra.json",
+  "design_relpath": "after-design/aws-design.json",
+  "validator_relpath": "../../scripts/validate-migration-report.py",
+  "cost_anchors": {
+    "_why": "The validator skipped a current_monthly anchor whose JSON path was absent, so an Azure report's current-spend dollars were never asserted (the GCP key is current_costs.gcp_monthly; this skill writes current_costs.azure_monthly). Both anchors must be present INSIDE exec-costs and equal the estimate.",
+    "aws_monthly_balanced": {"path": ["projected_costs", "aws_monthly_balanced"]},
+    "current_monthly": {"path": ["current_costs", "azure_monthly"]}
+  },
+  "appendix_lettering": {
+    "_why": "generate-artifacts-report.md Step 3.75: the letter is part of the heading and TOC label and does not shift when a conditional section is absent. This infra-only run has no appendix-ai, so E/F/G/H/I/J must NOT slide down to D/E/F/G/H/I.",
+    "appendix-services": "Appendix A",
+    "appendix-costs": "Appendix B",
+    "appendix-optimization": "Appendix B.1",
+    "appendix-steps": "Appendix C",
+    "appendix-artifacts": "Appendix E",
+    "appendix-config": "Appendix F",
+    "appendix-security": "Appendix G",
+    "appendix-security-gap": "Appendix H",
+    "appendix-assumptions": "Appendix I",
+    "appendix-glossary": "Appendix J"
+  },
+  "absent_sections": ["appendix-ai", "exec-tco", "what-if-scenarios"],
+  "required_appendices": {
+    "_why": "Step 3.8 of the Azure spec: C/G/H/I had no build instructions before, so a report that rendered only the validator's required set passed with a Step 3.75 table promising sections it never emitted. G needs the baseline.tf control table; H needs the Azure-vs-AWS gap table; I needs the pricing-confidence table and the right-sizing limitation.",
+    "appendix-steps": {"min_phases": 3, "must_mention": ["rollback", "dry-run", "01-validate-prerequisites.sh", "05-validate-migration.sh"]},
+    "appendix-security": {"must_mention": ["GuardDuty", "CloudTrail", "aws_guardduty_detector.baseline", "aws_cloudtrail.baseline", "Defender for Cloud", "in the $460 estimate"]},
+    "appendix-security-gap": {"must_mention": ["Network perimeter", "Identity", "Audit logging", "Threat detection", "Secrets management", "Observability", "Defender for Cloud", "Session Manager"]},
+    "appendix-assumptions": {"must_mention": ["2026-07-19", "us-east-1", "eu-west-1", "right-sizing", "$0", "like-for-like", "IoT Hub"]}
+  },
+  "accounting": {
+    "_why": "Step 3.5: the discovered count is total_resources (30) and the headline is generation accounting (16 mapped + 1 deferred = 17). A report that prints 30 as the service count, or 16 without the deferral, has conflated the two figures.",
+    "discovered": 30,
+    "mapped": 16,
+    "deferred": 1,
+    "split_phrase": "30 discovered \u00b7 16 mapped services \u00b7 17 accounted (16 + 1 deferred)"
+  },
+  "decision_core": {
+    "_why": "report-decision-core.md: the Azure baseline is user_stated, so the Azure figure must carry the not-comparable chip and the report must not print a savings percentage headline; the IoT Hub deferral needs the specialist callout; the cluster rationale must LEAD (Step 1) with the per-resource table only in an appendix.",
+    "verdict_headline": "Go, with conditions",
+    "not_comparable_chip_class": "chip-warn",
+    "forbidden_savings_headline_regex": "-89%|89% (cheaper|saving|reduction)",
+    "specialist_callout_phrase": "specialist engagement",
+    "deferred_resource_phrase": "IoT Hub",
+    "cluster_rationale_section": "exec-architecture",
+    "per_resource_table_section": "appendix-services"
+  },
+  "fixture_canary_must_be_absent": "0611-0606"
+}

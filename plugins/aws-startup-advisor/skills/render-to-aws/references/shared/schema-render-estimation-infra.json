@@ -1,0 +1,477 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:awslabs:startups:render-to-aws:estimate:estimation-infra",
+  "$comment": "Render-local contract read by scripts/validate-artifacts.py for render-to-aws (scripts/artifact-contracts.json). Everything in skills/shared/estimate/estimation-infra.schema.json is kept verbatim (tests/test_render_estimation_contract.py asserts it); this file only adds the keys the Render tier semantics require, so an estimate written before them (scenarios.capacity_preserving / right_sized, delta_monthly_usd) fails the Generate pre-check with the missing key named.",
+  "title": "estimation-infra.json (render-to-aws)",
+  "description": "Schema for the infrastructure cost-estimate artifact produced by a migration skill's estimate phase. projected_costs carries three pricing SCENARIOS (premium/balanced/optimized) for the same design — not three Terraform roots. Source-cloud baseline fields live under current_costs and are source-agnostic here (a skill records its own source monthly/annual). Cost FORMULAS and tier semantics are the estimate phase's prose, not this schema. Render adds scenarios.premium / balanced / optimized / like_for_like and rightsizing_delta as required.",
+  "type": "object",
+  "required": [
+    "phase",
+    "pricing_source",
+    "projected_costs",
+    "complexity_tier",
+    "recommendation",
+    "scenarios",
+    "rightsizing_delta"
+  ],
+  "properties": {
+    "phase": {
+      "const": "estimate"
+    },
+    "design_source": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "pricing_source": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "cached",
+            "cached_stale",
+            "cached_fallback",
+            "unavailable"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "fallback_staleness": {
+          "type": "object"
+        },
+        "services_by_source": {
+          "type": "object",
+          "description": "Buckets services by how their rate was obtained. Pricing is cache-only, so there is no live bucket: 'cached' came from the pricing cache, 'fallback' from a stale cache entry, 'estimated' from a rate the cost engine itself states verbatim.",
+          "properties": {
+            "cached": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "fallback": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "estimated": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "services_with_missing_fallback": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "accuracy_confidence": {
+      "type": "string"
+    },
+    "current_costs": {
+      "type": "object",
+      "description": "The source-platform baseline. 'source' names how it was derived; the monthly/annual totals and breakdown are the skill's source-platform spend (a skill may use source-specific key names such as heroku_monthly).",
+      "required": [
+        "source"
+      ],
+      "properties": {
+        "source": {
+          "type": "string"
+        },
+        "baseline_note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "breakdown": {
+          "type": "object"
+        }
+      }
+    },
+    "projected_costs": {
+      "type": "object",
+      "required": [
+        "aws_monthly_premium",
+        "aws_monthly_balanced",
+        "aws_monthly_optimized"
+      ],
+      "properties": {
+        "aws_monthly_premium": {
+          "type": "number"
+        },
+        "aws_monthly_balanced": {
+          "type": "number"
+        },
+        "aws_monthly_optimized": {
+          "type": "number"
+        },
+        "aws_annual_optimized": {
+          "type": "number"
+        },
+        "breakdown": {
+          "type": "object"
+        }
+      }
+    },
+    "cost_comparison": {
+      "type": "object"
+    },
+    "migration_cost_considerations": {
+      "type": "object"
+    },
+    "roi_analysis": {
+      "type": "object"
+    },
+    "optimization_opportunities": {
+      "type": "array"
+    },
+    "complexity_tier": {
+      "type": "string",
+      "enum": [
+        "small",
+        "medium",
+        "large"
+      ]
+    },
+    "complexity_inputs": {
+      "type": "object"
+    },
+    "financial_summary": {
+      "type": "object"
+    },
+    "recommendation": {
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "enum": [
+            "migrate_optimized",
+            "migrate_phased",
+            "stay"
+          ]
+        },
+        "migrate_if": {
+          "type": "array"
+        },
+        "stay_if": {
+          "type": "array"
+        }
+      }
+    },
+    "export_inputs": {
+      "type": "object",
+      "description": "Optional Estimate-retained evidence from cost-export-inputs.md. Structure only: the emitter verifies input digests, selected amounts, scenario binding, resource pointers and import bounds before attaching any context. Omit when unavailable; never infer or reprice.",
+      "required": [
+        "snapshot",
+        "rows"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "snapshot": {
+          "type": "object",
+          "required": [
+            "version",
+            "runId",
+            "owningSkill",
+            "files"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "version": {
+              "type": "integer",
+              "const": 1
+            },
+            "runId": {
+              "type": "string"
+            },
+            "owningSkill": {
+              "type": "string"
+            },
+            "files": {
+              "type": "object",
+              "description": "Input file names map to captured digests, or null when an optional input is absent.",
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "rows": {
+          "type": "object",
+          "description": "Selected amount JSON Pointers map to retained row evidence.",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "monthlyCost",
+              "estimateInput"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "monthlyCost": {
+                "type": "number"
+              },
+              "estimateInput": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "regionCode": {
+                    "type": "string"
+                  },
+                  "upfrontCost": {
+                    "type": "string"
+                  },
+                  "pricingBasis": {
+                    "type": "string"
+                  },
+                  "configurationSummary": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "estimateFile": {
+                        "type": "string"
+                      },
+                      "costPointer": {
+                        "type": "string"
+                      },
+                      "scenarioId": {
+                        "type": "string"
+                      },
+                      "resourceIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "resourceIdPointers": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "configurationPointers": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "workshop": {
+      "type": "object",
+      "description": "Optional what-if workshop metadata. Omitted when workshop unused.",
+      "properties": {
+        "scenario_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "region_note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "scenarios": {
+      "type": "object",
+      "description": "Pricing scenarios for the same design plus the like-for-like comparison block. Required: premium, balanced, optimized and like_for_like.",
+      "required": [
+        "premium",
+        "balanced",
+        "optimized",
+        "like_for_like"
+      ],
+      "properties": {
+        "premium": {
+          "type": "object",
+          "required": [
+            "known_cost_monthly_usd",
+            "is_floor",
+            "unpriced_line_ids",
+            "lines"
+          ],
+          "properties": {
+            "known_cost_monthly_usd": {
+              "type": "number"
+            },
+            "is_floor": {
+              "type": "boolean"
+            },
+            "unpriced_line_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "balanced": {
+          "type": "object",
+          "required": [
+            "known_cost_monthly_usd",
+            "is_floor",
+            "unpriced_line_ids",
+            "lines"
+          ],
+          "properties": {
+            "known_cost_monthly_usd": {
+              "type": "number"
+            },
+            "is_floor": {
+              "type": "boolean"
+            },
+            "unpriced_line_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "optimized": {
+          "type": "object",
+          "required": [
+            "known_cost_monthly_usd",
+            "is_floor",
+            "unpriced_line_ids",
+            "lines",
+            "commitment"
+          ],
+          "properties": {
+            "known_cost_monthly_usd": {
+              "type": "number"
+            },
+            "is_floor": {
+              "type": "boolean"
+            },
+            "unpriced_line_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "commitment": {
+              "type": "object"
+            }
+          }
+        },
+        "like_for_like": {
+          "type": "object",
+          "required": [
+            "known_cost_monthly_usd",
+            "is_floor",
+            "unpriced_line_ids",
+            "lines"
+          ],
+          "properties": {
+            "known_cost_monthly_usd": {
+              "type": "number"
+            },
+            "is_floor": {
+              "type": "boolean"
+            },
+            "unpriced_line_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "rightsizing_delta": {
+      "type": "object",
+      "description": "like_for_like minus balanced.",
+      "required": [
+        "monthly",
+        "annual",
+        "basis",
+        "explanation",
+        "what_would_change_this"
+      ],
+      "properties": {
+        "monthly": {
+          "type": "number"
+        },
+        "annual": {
+          "type": "number"
+        },
+        "basis": {
+          "type": "string",
+          "enum": [
+            "declared_waste",
+            "utilization",
+            "both",
+            "none"
+          ]
+        },
+        "explanation": {
+          "type": "string"
+        },
+        "what_would_change_this": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

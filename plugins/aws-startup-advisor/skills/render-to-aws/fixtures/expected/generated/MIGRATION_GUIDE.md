@@ -67,4 +67,4 @@ Trigger rollback on error rate, integrity mismatch, unacceptable lag, or failed 
 
 ## Known limitations
 
-Both estimate scenarios price every line, including EFS at the 5 GB Blueprint disk size. AI execution is `deferred_shared_ai_engine`. Workflow generation covers only the tested semantics; any other Workflow is `conditional_workflow_generation_unsupported` and emits no Terraform. Render run, retry-timing, and platform-error behavior are not claimed to match, and Render run history is not migrated.
+Every pricing scenario and the like-for-like comparison price every line, including EFS at the 5 GB Blueprint disk size. AI execution is `deferred_shared_ai_engine`. Workflow generation covers only the tested semantics; any other Workflow is `conditional_workflow_generation_unsupported` and emits no Terraform. Render run, retry-timing, and platform-error behavior are not claimed to match, and Render run history is not migrated.

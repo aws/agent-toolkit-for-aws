@@ -45,11 +45,11 @@
   "projected_costs": {
     "aws_monthly_premium": 479.99,
     "aws_monthly_balanced": 460.13,
-    "aws_monthly_optimized": 362.68,
-    "aws_annual_optimized": 4352.16,
+    "aws_monthly_optimized": 451.13,
+    "aws_annual_optimized": 5413.56,
     "_scenarios_note": "The three scenario keys are REQUIRED by the shared estimation-infra.schema.json and vary resilience and pricing model for ONE design. lift/right_sized below vary SIZING and are the azure addition the schema permits (it has no additionalProperties: false). Balanced IS right_sized.monthly by definition, emitted equal rather than recomputed. ALL THREE ARE FLOORS: five lines are excluded, and Optimized is the most misleading of them because a discounted floor reads as the cheapest credible figure here when it is the least complete.",
     "_premium_basis": "Balanced 460.13 + 19.86 multi-AZ uplift on elasticache-redis-session, the only line whose multi_az_handling is multiplier_x2 and which is not already multi-AZ. RDS gets NO uplift (baked_in — the rate already includes Multi-AZ) and MSK gets none (intrinsic). The two Windows lines and FSx would also cost more at higher resilience but are excluded, so the Premium figure understates the gap by more than Balanced does.",
-    "_optimized_basis": "RI/SP-eligible subtotal 324.83 (elastic-beanstalk-web EC2 component 30.37, rds-postgresql-store 274.60, elasticache-redis-session 19.86) x (1 - 0.30) = 227.38, plus the ineligible subtotal 135.3 unchanged = 362.68. 30% is the mid-point of the applicable ranges in estimate-defaults.json. The discount is applied ONLY to the eligible subtotal: MSK has no RI or Savings Plan product, and neither do ALB, EBS, S3, Secrets Manager or CloudWatch, so a blanket percentage would have discounted 135.3 of ineligible spend.",
+    "_optimized_basis": "RI/SP-eligible subtotal 30.37 (elastic-beanstalk-web EC2 component only); Compute Savings Plan 0.30 from references/vendored/estimate/commitment-discount-ranges.json on the EC2 component (30.37 x 0.30 = 9.11 -> 9), each line's discount rounded to whole dollars, total discount 9. rds-postgresql-store (274.60, db.m6g.large) is INELIGIBLE for the Database Savings Plan: db.m6g is Generation 6 and Database Savings Plans cover Generation 7 and newer instances only (AWS Savings Plans FAQ, read 2026-11-27). elasticache-redis-session (19.86, cache.t3.small) is INELIGIBLE: cache.t3 is Generation 3 and ElastiCache coverage is Valkey on Generation 7+ only. A Generation 7+ class (for example db.m7g.large, or a cache.m7g node) would qualify at Database Savings Plan 0.20. Optimized = 460.13 - 9 = 451.13, with the ineligible subtotal 429.76 unchanged: RDS and ElastiCache above on generation, MSK has no RI or Savings Plan product, and neither do ALB, EBS, S3, Secrets Manager or CloudWatch, so a blanket percentage would have discounted 429.76 of ineligible spend.",
     "lift": {
       "monthly": 460.13,
       "is_floor": true
@@ -451,7 +451,7 @@
       "opportunity": "ElastiCache Reserved Nodes",
       "type": "elasticache_reserved_nodes",
       "target_services": [
-        "ElastiCache (Redis OSS, node-based)"
+        "ElastiCache (Valkey, node-based, cache.t3.small)"
       ],
       "savings_percent": "30-55%",
       "savings_monthly": null,
@@ -459,7 +459,7 @@
       "timing": "post-migration (after a usage baseline)",
       "implementation_effort": "low",
       "prerequisite": "Confirm node type and count are stable; the cluster must be node-based, not ElastiCache Serverless.",
-      "description": "The source is Microsoft.Cache/Redis (Standard C1) and the target engine is Redis OSS, which Database Savings Plans do NOT cover (Valkey only). Reserved Nodes are the applicable commitment lever, per the vendored eligibility matrix."
+      "description": "The source is Microsoft.Cache/Redis (Standard C1) and the design targets ElastiCache for Valkey on cache.t3.small. cache.t3 is Generation 3 and Database Savings Plans cover Generation 7 and newer instances only, so no Database Savings Plan saving is claimed; Reserved Nodes are the applicable commitment lever today. A Generation 7+ node type would qualify for a Database Savings Plan."
     },
     {
       "opportunity": "S3 Intelligent-Tiering",

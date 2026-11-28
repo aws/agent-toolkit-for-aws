@@ -39,4 +39,4 @@ Use `set -euo pipefail`, quote all expansions, reject unknown arguments, and nev
 
 ## `README.md`
 
-List every generated file, state that Terraform implements the balanced baseline, show offline-safe initialization, link the migration guide, identify manual inputs, and explain that `validation-report.json` is authoritative. State that `passed_degraded_offline` requires a later network-connected `terraform init -backend=false && terraform validate` before apply.
+List every generated file, state that Terraform implements Balanced (the right-sized design) and that like-for-like, Premium and Optimized are estimate figures, not stacks, show offline-safe initialization, link the migration guide, identify manual inputs, and explain that `validation-report.json` is authoritative. State that `passed_degraded_offline` requires a later network-connected `terraform init -backend=false && terraform validate` before apply.

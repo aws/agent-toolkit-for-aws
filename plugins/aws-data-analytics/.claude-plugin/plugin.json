@@ -81,5 +81,5 @@
   "license": "Apache-2.0",
   "name": "aws-data-analytics",
   "repository": "https://github.com/aws/agent-toolkit-for-aws",
-  "version": "1.7.0"
+  "version": "1.7.1"
 }

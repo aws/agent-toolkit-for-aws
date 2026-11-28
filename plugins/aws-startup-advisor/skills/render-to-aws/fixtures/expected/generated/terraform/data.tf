@@ -19,7 +19,7 @@ resource "aws_db_instance" "postgres" {
   storage_type                    = "gp3"
   engine                          = "postgres"
   engine_version                  = "16"
-  instance_class                  = "db.m6g.large"
+  instance_class                  = "db.t4g.large"
   db_name                         = "application"
   username                        = "migration_admin"
   manage_master_user_password     = true

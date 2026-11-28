@@ -18,6 +18,7 @@ creator and owns the validation checklist at the bottom.
   "phase": "design",
   "timestamp": "<ISO 8601>",
   "source_inventory": "azure-resource-inventory.json",
+  "target_region": "us-east-1", // copied from preferences.json global.target_region; Estimate reads it
   "clusters": [], // one per input cluster — see § clusters
   "services": [], // mapped resources — see § services
   "deferred": [], // specialist gates — see § deferred
@@ -51,6 +52,7 @@ A resource with an AWS target.
   "sizing_source": {}, // REQUIRED when is_compute_unit — see § sizing_provenance
   "sizing_provenance": "table", // REQUIRED whenever aws_config carries a size — see § sizing_provenance
   "hosted_app_azure_ids": [], // REQUIRED on a Microsoft.Web/serverfarms entry — the apps folded into this plan
+  "sizing_note": "<optional free text — why this size, and what no sizing table covered>", // beside sizing_source / sizing_provenance
   "rationale": "<one or two sentences a customer can read>"
 }
 ```

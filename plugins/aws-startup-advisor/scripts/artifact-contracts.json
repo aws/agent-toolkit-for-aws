@@ -389,7 +389,8 @@
         "json_schema": "skills/render-to-aws/references/shared/schema-render-aws-design.json"
       },
       "estimation-infra.json": {
-        "json_schema": "skills/shared/estimate/estimation-infra.schema.json"
+        "json_schema": "skills/render-to-aws/references/shared/schema-render-estimation-infra.json",
+        "_why": "Render-local superset of skills/shared/estimate/estimation-infra.schema.json that also requires scenarios.{premium,balanced,optimized,like_for_like} and rightsizing_delta, so an estimate written before the tier semantics (scenarios.capacity_preserving / right_sized, delta_monthly_usd) fails the Generate pre-check and the user re-runs Design and Estimate."
       },
       "generation-warnings.json": {
         "json_schema": "skills/render-to-aws/references/shared/schema-generation-warnings.json",

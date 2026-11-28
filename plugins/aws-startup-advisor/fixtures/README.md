@@ -13,9 +13,13 @@ Also see:
   cases, fixed/autoscaled AKS pools, canonical VM OS-disk fields, and an ML workspace.
   `azure-rdfa-final/after-discover/` is the corresponding final inventory regression;
   it includes `rdfa_metadata` and is validated by the real artifact validator.
+- `heroku-generate/` — Heroku full-mode report golden (`after-generate/migration-report.html` plus the `heroku-resource-inventory.json`, `estimation-infra.json`, `aws-design.json`, `preferences.json`, `generation-warnings.json` and `.phase-status.json` it is rendered from; one `acme-web` app → Elastic Beanstalk + Multi-AZ RDS, tiers 210/210/182 with two Savings Plan opportunities; the Database Savings Plan row claims no saving because `db.t4g.medium` predates Generation 7) + `check_expected_generate.py`, which runs the two-command gate (`validate-migration-report.py --profile heroku --mode full`, then the heroku add-on) and pins the section order, the A/B/B.1/E/F/G/I/J lettering, the Appendix B.1 rows and the Balanced anchor
 - `heroku-workshop/` — Heroku what-if workshop seed + arm64 reprice snapshot + `check_expected_workshop.py`
 - `heroku-nonweb-scaling/` — Heroku Design seed + golden output for the Horizontal Non-Web Capacity Guard (`eco`/`basic` worker at `quantity: 2` → Fargate) + `check_expected_nonweb_scaling.py`
 - `gcp-workshop/` — GCP what-if workshop seed + graviton reprice + `check_expected_workshop.py`
+- `azure-iac-terraform/` — a synthetic Azure Terraform estate with goldens for every phase (`after-discover/` through `after-generate/`, which carries a full `migration-report.html`) and a `check_expected_*.py` asserter per phase
+- `gcp-decision-gate/`, `heroku-decision-gate/` — decision-mode goldens (`decision-report.html` + `DECISION.md` + estimate) with `check_expected_decide.py`, run through the shared validator in `--mode decision`
+- `estimation-infra-reference.json` — the GCP estimate the reference report is rendered from. Every estimate listed in `TIERED_ESTIMATES` (`tests/test_tier_semantics_contract.py`) carries `_premium_basis` / `_optimized_basis` sentences showing the tier arithmetic, and that test fails if one is missing or the tiers fall out of order; an estimate not in that list has not been re-derived under the tier rule.
 
 ## Migration report reference fixture
 

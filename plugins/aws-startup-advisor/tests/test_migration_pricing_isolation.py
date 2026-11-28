@@ -15,11 +15,11 @@ PLUGIN = Path(__file__).resolve().parents[1]
 FIXTURES = PLUGIN / "fixtures"
 
 PINNED_SHA256 = {
-    "azure-iac-terraform/after-estimate/estimation-infra.json": "55f52c50ece04b55dfa66e288e22eb5ea0e94bef2b5a840974dae9ce7f7ed034",
-    "heroku-decision-gate/after-decide-complete/estimation-infra.json": "96d55a2a529acd9616fc9b28c6997f4c897a6dc5dc54e42748be238f09d67c4e",
-    "heroku-decision-gate/retained-execution-pack/estimation-infra.json": "96d55a2a529acd9616fc9b28c6997f4c897a6dc5dc54e42748be238f09d67c4e",
-    "heroku-workshop/after-arm64-reprice/estimation-infra.json": "6757c43f05efe9f5982be65dcab00e49f9059528baf6b112539b5fc0e8be861b",
-    "heroku-workshop/seed/estimation-infra.json": "62da3cfffc002a7321056ddac96ed009c76724e432b7af8e3c225956466fdf5b",
+    "azure-iac-terraform/after-estimate/estimation-infra.json": "cb330d8bfc23993b904468b4ade93e1db2d72fb6165cdebfd95eaeb8d2162899",
+    "heroku-decision-gate/after-decide-complete/estimation-infra.json": "63d8b50ca8256fb1fb426a04ced6c66a7795364cc1a6d2864a0120a786333dec",
+    "heroku-decision-gate/retained-execution-pack/estimation-infra.json": "63d8b50ca8256fb1fb426a04ced6c66a7795364cc1a6d2864a0120a786333dec",
+    "heroku-workshop/after-arm64-reprice/estimation-infra.json": "9ee347a3559547b3fd00faa2690009a284591236b7db6b80d02e6e3b1fdeb98b",
+    "heroku-workshop/seed/estimation-infra.json": "d25ad1642c1d46d032a4b09d26ca54602d7b946329b5363fdcf7526d392cde44",
 }
 EFS_ECR = re.compile(r"\b(efs|ecr|elastic file system|elastic container registry)\b", re.IGNORECASE)
 

@@ -14,6 +14,7 @@ _knowledge:
   - { file: references/vendored/estimate/ri-sp-eligibility.md }
   - { file: knowledge/estimate/estimate-defaults.json }
   - { file: knowledge/estimate/rightsizing-thresholds.json }
+  - { file: references/vendored/estimate/commitment-discount-ranges.json }
   - { file: knowledge/estimate/render-pricing-cache.json }
 _fragments:
   - _id: infra
@@ -43,7 +44,9 @@ _postconditions:
     _on_failure: _halt_and_inform
   - _validate_json: estimation-infra.json
     _on_failure: _halt_and_inform
-  - _assert: "capacity-preserving and right-sized line totals reconcile independently, and delta equals right-sized minus capacity-preserving"
+  - _assert: "premium, balanced, optimized and like_for_like line totals each reconcile independently, and rightsizing_delta.monthly equals like_for_like minus balanced"
+    _on_failure: _halt_and_inform
+  - _assert: "premium is at least balanced and optimized is at most balanced; optimized discounts only RI/SP-eligible lines at the mid-point of the knowledge range"
     _on_failure: _halt_and_inform
   - _assert: "an unpriced line is excluded from numeric sums and makes the applicable total an explicit floor"
     _on_failure: _halt_and_inform
@@ -58,7 +61,7 @@ _forbids_files:
 
 # Phase 4: Estimate AWS costs
 
-Price only the selected infrastructure design. Produce a capacity-preserving AWS total and a right-sized AWS total, then the signed delta (`right_sized - capacity_preserving`) and a plain-language explanation. All arithmetic uses decimal inputs, rounds line items to two decimals with half-even rounding, and sums rounded lines in source-resource-ID byte order.
+Price only the selected infrastructure design. Price the right-sized design recorded in `aws-design.json` as Balanced; derive Premium (Balanced plus the resilience uplift) and Optimized (Balanced minus the commitment discount on the RI/SP-eligible subtotal) from it as pricing scenarios of that same design. Price the captured like-for-like plan as the `like_for_like` comparison block and record `rightsizing_delta` (`like_for_like - balanced`) with its basis and a plain-language explanation. All arithmetic uses decimal inputs, rounds line items to two decimals with half-even rounding, and sums rounded lines in source-resource-ID byte order.
 
 Source Render cost uses customer invoice/export first, user-stated monthly amount second, a fresh exact plan match in `render-pricing-cache.json` third, and `unavailable` otherwise. Do not recall a price from prose. AI execution contributes no cost while deferred.
 

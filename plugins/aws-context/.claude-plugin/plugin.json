@@ -18,5 +18,6 @@
     "data-catalog",
     "glue",
     "bedrock-knowledge-bases"
-  ]
+  ],
+  "hooks": "./com.anthropic.claude-code/hooks/hooks.json"
 }
