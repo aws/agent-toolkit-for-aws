@@ -26,7 +26,7 @@ and full control of the scaling/networking stack.
 
 ## Tradeoffs
 
-Always-on baseline cost during idle; you build session isolation/memory yourself.
+Always-on baseline cost during idle; you build session isolation/memory yourself — though ECS tasks can now optionally run on Nitro Sandboxes for hardware-isolated, multi-tenant-safe execution, reducing the need to build isolation entirely from scratch.
 
 ## Isolation (Nitro Sandboxes)
 
